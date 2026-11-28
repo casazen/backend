@@ -16,10 +16,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// SR-03b: <c>GET /api/payments</c> a page at a time, and still the array it always was without <c>page</c> and <c>pageSize</c>
-/// (the web app reads that today). The pages are the payment list service's; here what the endpoint decides.
-/// </summary>
 public class PaymentsControllerPagingTests
 {
     private const string OwnerId = "auth0|owner_123";

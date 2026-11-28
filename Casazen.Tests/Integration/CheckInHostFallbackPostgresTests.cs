@@ -72,7 +72,6 @@ public sealed class CheckInHostFallbackPostgresTests : IClassFixture<CheckInHost
         Assert.Contains(concurrent, r => r.StatusCode == HttpStatusCode.OK);
         Assert.All(concurrent, r => Assert.Contains(r.StatusCode, new[] { HttpStatusCode.OK, HttpStatusCode.Conflict }));
         Assert.Equal(HttpStatusCode.OK, (await host.PostAsync(path, null)).StatusCode);
-        // Initial session, failed email attempt, and exactly one successful request. Neither duplicate replaces the emailed link.
         Assert.Equal(3, await db.GuestCheckInSessions.CountAsync(s => s.BookingId == seed.BookingId));
         var pending = await host.GetFromJsonAsync<JsonElement>("/api/verification/pending");
         Assert.DoesNotContain(pending.EnumerateArray(), row => row.GetProperty("bookingId").GetGuid() == seed.BookingId);
@@ -94,7 +93,6 @@ public sealed class CheckInHostFallbackPostgresTests : IClassFixture<CheckInHost
         Assert.Equal("Queued", emailStatus);
         var token = link[($"{PublicSite}/checkin/".Length)..];
 
-        // The provider refuses the address: the email job records it, the link is not expired.
         _factory.Email.Result = new EmailSendResult(false, "invalid recipient");
         await RunQueuedLinkEmailAsync(token);
 
@@ -111,7 +109,6 @@ public sealed class CheckInHostFallbackPostgresTests : IClassFixture<CheckInHost
         var guest = _factory.CreateClient();
         Assert.Equal(HttpStatusCode.OK, (await guest.GetAsync($"/api/public/checkin/{token}")).StatusCode);
 
-        // The host copies a new link (no email): the previous one stops working, the new one opens the portal.
         var copied = await host.PostAsync($"/api/bookings/{seed.BookingId}/checkin/link", null);
         Assert.Equal(HttpStatusCode.OK, copied.StatusCode);
         var (copyLink, copyStatus, _) = await ReadLinkAsync(copied);
@@ -119,7 +116,6 @@ public sealed class CheckInHostFallbackPostgresTests : IClassFixture<CheckInHost
         Assert.Equal(HttpStatusCode.NotFound, (await guest.GetAsync($"/api/public/checkin/{token}")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await guest.GetAsync(copyLink.Replace(PublicSite, "/api/public", StringComparison.Ordinal))).StatusCode);
 
-        // Reminder by email, once the address is corrected: sent for real this time.
         _factory.Email.Result = EmailSendResult.Sent();
         var reminder = await host.PostAsync($"/api/bookings/{seed.BookingId}/checkin/resend-link", null);
         Assert.Equal(HttpStatusCode.OK, reminder.StatusCode);
@@ -201,7 +197,6 @@ public sealed class CheckInHostFallbackPostgresTests : IClassFixture<CheckInHost
             var rows = root.GetProperty("guests").EnumerateArray().ToList();
             Assert.All(rows, r => Assert.Equal("Host", r.GetProperty("dataSource").GetString()));
             Assert.All(rows, r => Assert.Equal(0, r.GetProperty("missingFields").GetArrayLength()));
-            // Masked like on the guest portal (CO-02): the full number needs an explicit request.
             Assert.Equal("*****567", rows[0].GetProperty("documentNumberMasked").GetString());
             Assert.False(rows[0].TryGetProperty("documentNumber", out _));
         }
@@ -214,12 +209,10 @@ public sealed class CheckInHostFallbackPostgresTests : IClassFixture<CheckInHost
         Assert.Equal(2, stored.Count);
         Assert.All(stored, s => Assert.Equal(StayGuestDataSource.Host, s.DataSource));
         Assert.All(stored, s => Assert.Equal(seed.OwnerId, s.EnteredByUserId));
-        // Like the guest portal: the communication is scheduled for the arrival day.
         var report = await db.AlloggiatiWebReports.SingleAsync(r => r.BookingId == seed.BookingId);
         Assert.Equal(AlloggiatiWebStatus.DaInviare, report.Status);
         Assert.False(string.IsNullOrEmpty(report.ScheduledJobId));
 
-        // No link to the guest any more: the data is complete.
         using (var scope = _factory.Services.CreateScope())
             await scope.ServiceProvider.GetRequiredService<GuestCheckInSendJob>().ExecuteAsync();
         Assert.False(await db.GuestCheckInSessions.AnyAsync(s => s.BookingId == seed.BookingId));
@@ -414,7 +407,6 @@ public sealed class CheckInHostFallbackPostgresTests : IClassFixture<CheckInHost
         return await db.Bookings.Where(b => b.Id == bookingId).Select(b => b.OrgId).SingleAsync();
     }
 
-    /// <summary>A context outside any request (no tenant filter, like the background jobs); its scope ends with the test.</summary>
     private AppDbContext NewDb()
     {
         var scope = _factory.Services.CreateScope();
@@ -472,7 +464,6 @@ public sealed class CheckInHostFallbackPostgresTests : IClassFixture<CheckInHost
     private static StringContent Json(object body) =>
         new(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
 
-    /// <summary>An email provider that is configured, with an outcome the test chooses (sent by default).</summary>
     public sealed class FallbackFactory : CasazenWebApplicationFactory
     {
         internal ControllableEmailService Email { get; } = new();

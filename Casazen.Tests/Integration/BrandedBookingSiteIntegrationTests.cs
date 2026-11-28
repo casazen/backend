@@ -8,9 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// US-003 (#215) branded booking site public org endpoints.
-/// </summary>
 public class BrandedBookingSiteIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private readonly CasazenWebApplicationFactory _factory;
@@ -58,7 +55,6 @@ public class BrandedBookingSiteIntegrationTests : IClassFixture<CasazenWebApplic
     [Fact]
     public async Task AC1_GetPublicOrg_ShowPoweredByTrue_ForStoredProWithoutSubscription()
     {
-        // A3-07 / A3-37: a Pro tier no subscription pays for is effectively Starter and keeps "Powered by".
         var org = await SeedOrgAsync($"unpaid-pro-org-{Guid.NewGuid():N}", planTier: PlanTier.Pro, paid: false);
 
         var client = _factory.CreateClient();

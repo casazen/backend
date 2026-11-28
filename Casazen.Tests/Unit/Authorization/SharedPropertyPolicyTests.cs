@@ -14,17 +14,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Authorization;
 
-/// <summary>
-/// LT-05 (A7-06): a long-term landlord (only the long-rent context) reaches the property core it needs to write leases
-/// (list, record, documents such as the APE) and nothing about short stays. The plan entitlement moved to the org policy
-/// <see cref="CasazenPolicies.OrgBillingAdmin"/> (PL-16).
-/// </summary>
 public class SharedPropertyPolicyTests
 {
-    /// <summary>
-    /// Every action a caller with only the long-rent <c>property.*</c> permissions may pass the policies of: the property core,
-    /// plus the one deliberate exception, the recommendation of CasaZen to a friend (<c>HostInvitationsController</c>).
-    /// </summary>
     private static readonly string[] SharedPropertyActions =
     [
         "PropertiesController.Create",
@@ -34,13 +25,9 @@ public class SharedPropertyPolicyTests
         "PropertiesController.GetById",
         "PropertiesController.GetDocumentSignedUrl",
         "PropertiesController.GetDocuments",
-        // SR-07a: how many properties the org has of how many its plan allows: the property limit counts the properties of both
-        // rental areas, so a landlord reads it too (it says nothing of the plan's name or the billing).
         "PropertiesController.GetPlanUsage",
-        // The code and the class read again from a stored APE (and the register of Lombardy): they belong to the property core.
         "PropertiesController.ReadApeIdentification",
         "PropertiesController.Update",
-        // LT-10: the lease contract needs the cadastral data of the unit and the APE code and class (property core).
         "PropertiesController.UpdateApeIdentification",
         "PropertiesController.UpdateCadastral",
         "PropertiesController.UploadDocument",
@@ -51,7 +38,6 @@ public class SharedPropertyPolicyTests
         "PropertyModeController.GetState",
         "PropertyModeController.Preview",
         "PropertyModeController.Schedule",
-        // AM-03: the member in charge of a property is part of the property core (both kinds of landlord have properties).
         "PropertyResponsibleController.Set",
         // E29/F01/US01/T01 (NF-124): the official directory of the Swiss localities and municipalities (search by postal code or name, one
         // municipality by its BFS number). It is reference data, the same for every org, with no tenant and no short-stay data, and it is the
@@ -68,14 +54,8 @@ public class SharedPropertyPolicyTests
         "HostInvitationsController.List",
         "HostInvitationsController.Resend",
         "HostInvitationsController.Revoke",
-        // E10/F01/US01/T03 (NF-104): the plan of the activation and its path are read with property.read in either context, as the brief
-        // decides. They answer codes and counts only, over the short-rent properties the caller reaches, and are behind
-        // Features:OctorateOnboarding.
         "OnboardingPlanController.GetPath",
         "OnboardingPlanController.GetPlan",
-        // NF-99 (E07/F03/US03): the document archive. The door is the read of the property core in either context, so a landlord with only the
-        // long-term area reaches the documents of its properties and the files of its leases; each type of document is then opened by the
-        // permission of its own area (DocumentArchiveAccessResolver), and the receipts of the tourist tax (payment.read) stay closed to it.
         "DocumentArchiveController.Download",
         "DocumentArchiveController.Export",
         "DocumentArchiveController.GetTypes",
@@ -140,7 +120,6 @@ public class SharedPropertyPolicyTests
     [Fact]
     public void ActionsOpenToLongRentPropertyPermissions_AreExactlyThePropertyCore()
     {
-        // Policies a long-term landlord passes: the shared property ones and its own lease permissions.
         var landlordPolicies = new HashSet<string>(StringComparer.Ordinal)
         {
             CasazenPolicies.SharedPropertyRead,
@@ -192,10 +171,6 @@ public class SharedPropertyPolicyTests
     private static ClaimsPrincipal User() =>
         new(new ClaimsIdentity([new Claim("sub", "auth0|landlord")], "TestAuth"));
 
-    /// <summary>
-    /// Evaluates the policy registered by <c>AddCasazenAuthorization</c> with the production context handler, the
-    /// caller's context permissions coming from <paramref name="hasPermission"/>.
-    /// </summary>
     private static async Task<bool> PassesAsync(string policyName, Func<string, string, bool> hasPermission)
     {
         var registered = new ServiceCollection();

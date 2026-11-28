@@ -26,7 +26,6 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
 {
     private LongRentWorld _world = null!;
 
-    /// <summary>The property the drafts are written on: owner A's, ready, with no lease (two leases of one property cannot cover the same days, LR-OVERLAP).</summary>
     private Guid _draftProperty;
 
     public async Task InitializeAsync()
@@ -48,8 +47,6 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
     private Task<LeaseContract> LoadAsync(Guid id) =>
         WithDbAsync(db => db.LeaseContracts.IgnoreQueryFilters().AsNoTracking().Include(l => l.Parties).Include(l => l.Events).SingleAsync(l => l.Id == id));
 
-    // ---- two tabs ------------------------------------------------------------------------------------------------
-
     [PostgresFact]
     public async Task Save_SeveralTabsOnTheSameVersionAtTheSameMoment_OneWins_TheOthersGet409_NoneGets500()
     {
@@ -69,7 +66,6 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
         foreach (var response in lost)
             Assert.Equal("lease_draft_conflict", (await JsonAsync(response)).GetProperty("code").GetString());
 
-        // The draft holds the winner's value, one version up: the others wrote nothing.
         var winner = rents[responses.ToList().FindIndex(r => r.StatusCode == HttpStatusCode.OK)];
         var draft = await JsonAsync(await client.GetAsync($"/api/leases/{id}/draft"));
         Assert.Equal(version + 1, draft.GetProperty("version").GetInt32());
@@ -83,7 +79,6 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
         using var client = Owner();
         var (id, version) = await CreateAsync(client, _draftProperty);
 
-        // Somebody else holds the draft (a confirmation that reads the energy certificate from the storage, a job that deletes it).
         await using var scope = factory.Services.CreateAsyncScope();
         var holder = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         await using var transaction = await holder.Database.BeginTransactionAsync();
@@ -94,11 +89,9 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
         var waited = DateTime.UtcNow - started;
 
         await ExpectProblemAsync(response, HttpStatusCode.Conflict, "lease_draft_conflict");
-        // It waited for the lock (5 seconds) and gave up; it did not hang until the command timeout.
         Assert.InRange(waited, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(25));
         await transaction.RollbackAsync();
 
-        // Nothing was written, and once the holder is gone the same save goes through.
         Assert.Equal(version, (await LoadAsync(id)).DraftVersion);
         await PatchAsync(client, id, version, 3, """{"monthlyRent":900}""");
     }
@@ -139,8 +132,6 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
                 () => client.PatchAsync($"/api/leases/{id}/draft", SaveBody(version, 3, """{"monthlyRent":950}""")),
             ]);
 
-            // Either the confirmation comes first and the save, made on the version before it, is refused; or the save comes first and the
-            // confirmation is of its values. Never an error, and never a confirmation of a state that is not the stored one.
             Assert.DoesNotContain(responses, r => (int)r.StatusCode >= 500);
             Assert.Equal(HttpStatusCode.OK, responses[0].StatusCode);
             Assert.Contains(responses[1].StatusCode, new[] { HttpStatusCode.OK, HttpStatusCode.Conflict });
@@ -150,8 +141,6 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
             Assert.Equal(responses[1].StatusCode == HttpStatusCode.OK ? 950m : 900m, lease.MonthlyRent);
         }
     }
-
-    // ---- personal data -------------------------------------------------------------------------------------------
 
     [PostgresFact]
     public async Task TheDraftAndTheResidence_AreStoredEncrypted_TheTableNeverHoldsTheValuesInClear()
@@ -174,12 +163,10 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
             return (raw, rows);
         });
 
-        // The data are incomplete (a second tenant with a first name only), so the whole typed state is in the draft...
         Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, draft, StringComparison.Ordinal);
         foreach (var secret in new[] { "Zefiro", "Quarantaquattro", "Arianna", "Boldrini", "RSSMRA80A01H501U", "Segretissima", "Pozzuoli", "Nascosto", "Taranto", "riservato", "Incompleto" })
             Assert.DoesNotContain(secret, draft, StringComparison.OrdinalIgnoreCase);
 
-        // ...and the residences of the parties written to their rows are not in clear either.
         Assert.NotEmpty(residences);
         Assert.All(residences, residence =>
         {
@@ -188,7 +175,6 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
             Assert.DoesNotContain("Nascosto", residence, StringComparison.OrdinalIgnoreCase);
         });
 
-        // Through the application the values come back as typed.
         var read = await JsonAsync(await client.GetAsync($"/api/leases/{id}/draft"));
         Assert.Equal("Via Segretissima 7, Pozzuoli", read.GetProperty("values").GetProperty("landlords")[0].GetProperty("residence").GetString());
     }
@@ -207,8 +193,6 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
         Assert.Equal(2, residences.Count);
         Assert.All(residences, residence => Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, residence, StringComparison.Ordinal));
     }
-
-    // ---- deletion ------------------------------------------------------------------------------------------------
 
     [PostgresFact]
     public async Task Delete_TakesWithItThePartiesTheSignersTheRegistrationTheAuthorizationsAndTheEvents()
@@ -246,7 +230,6 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
             await db.LeaseRegistrationAuthorizations.IgnoreQueryFilters().CountAsync(a => a.LeaseContractId == id),
         });
         Assert.Equal([0, 0, 0, 0, 0, 0], left);
-        // The property and the other leases are where they were.
         Assert.True(await WithDbAsync(db => db.Properties.IgnoreQueryFilters().AnyAsync(p => p.Id == _draftProperty)));
         Assert.True(await WithDbAsync(db => db.LeaseContracts.IgnoreQueryFilters().AnyAsync(l => l.Id == _world.Active)));
     }
@@ -278,9 +261,6 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
         Assert.Equal(2, lease.Parties.Count);
     }
 
-    // ---- retention -----------------------------------------------------------------------------------------------
-
-    /// <summary>Makes the last change of a draft <paramref name="idleDays"/> days before "now" (written by SQL: a save would stamp it).</summary>
     private Task IdleAsync(Guid id, int idleDays) => WithDbAsync(async db =>
     {
         var at = LeaseDraftFactory.Now.UtcDateTime.AddDays(-idleDays);
@@ -316,7 +296,6 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
             await db.Database.ExecuteSqlAsync($"""UPDATE "LeaseContracts" SET "SignedPdfStoragePath" = 'leases/signed.pdf' WHERE "Id" = {withSignedCopy}""");
             return 0;
         });
-        // A lease that is not a draft, idle for years, is not a draft's to delete.
         await IdleAsync(_world.Active, 900);
 
         var run = await RunRetentionAsync();
@@ -359,7 +338,6 @@ public class LeaseDraftPostgresTests(LeaseDraftFactory factory) : IClassFixture<
         Assert.Equal(0, skipped.Deleted);
         Assert.True(await ExistsAsync(abandoned));
 
-        // The lock is released with the handle: the next run takes it and does the work.
         var run = await RunRetentionAsync();
         Assert.False(run.Skipped);
         Assert.False(await ExistsAsync(abandoned));

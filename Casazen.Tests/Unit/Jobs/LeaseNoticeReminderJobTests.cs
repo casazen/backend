@@ -19,7 +19,6 @@ namespace Casazen.Tests.Unit.Jobs;
 /// </summary>
 public class LeaseNoticeReminderJobTests : IAsyncLifetime
 {
-    // A libero lease whose current period ends on 15/10/2027: the last day to give notice is six months earlier, 15/04/2027.
     private const string LastDay = "2027-04-15";
     private static readonly DateTime Start = new(2023, 10, 16, 0, 0, 0, DateTimeKind.Utc);
     private static readonly DateTime End = new(2027, 10, 15, 0, 0, 0, DateTimeKind.Utc);
@@ -54,19 +53,18 @@ public class LeaseNoticeReminderJobTests : IAsyncLifetime
         var notRegistered = await SeedLeaseAsync(LeaseStatus.Signed);
         var transitory = await SeedLeaseAsync(LeaseStatus.Registered, LeaseContractType.Transitorio);
 
-        await RunAsync("2027-03-10T08:30:00Z"); // 36 days before: too early
+        await RunAsync("2027-03-10T08:30:00Z");
         Assert.Empty(_sent);
 
-        await RunAsync("2027-03-16T08:30:00Z"); // 30 days before
-        await RunAsync("2027-03-16T18:00:00Z"); // the same day again: no duplicate
-        await RunAsync("2027-04-01T08:30:00Z"); // 14 days before: the 30-day reminder was sent already
-        await RunAsync("2027-04-08T08:30:00Z"); // 7 days before
-        await RunAsync("2027-04-15T08:30:00Z"); // the last day
-        await RunAsync("2027-04-16T08:30:00Z"); // the day after: nothing is sent after it
+        await RunAsync("2027-03-16T08:30:00Z");
+        await RunAsync("2027-03-16T18:00:00Z");
+        await RunAsync("2027-04-01T08:30:00Z");
+        await RunAsync("2027-04-08T08:30:00Z");
+        await RunAsync("2027-04-15T08:30:00Z");
+        await RunAsync("2027-04-16T08:30:00Z");
 
         Assert.Equal([$"notice-t-30:{LastDay}", $"notice-t-7:{LastDay}", $"notice-t-0:{LastDay}"], await PayloadsAsync(due));
 
-        // Three emails in all, to the landlord only: never to the tenant, no tenant name, no amount.
         Assert.Equal(3, _sent.Count);
         Assert.All(_sent, m => Assert.Equal("host@example.com", m.To));
         Assert.All(_sent, m => Assert.Contains("Casa Seveso", m.Subject, StringComparison.Ordinal));
@@ -77,7 +75,6 @@ public class LeaseNoticeReminderJobTests : IAsyncLifetime
         Assert.Contains("Giorni rimanenti: <strong>7</strong>", _sent[1].Body, StringComparison.Ordinal);
         Assert.Contains("<strong>oggi</strong>", _sent[2].Body, StringComparison.Ordinal);
 
-        // The other leases got nothing: the notice is given, the lease ended early, it is a draft or not registered, it has no notice.
         foreach (var lease in new[] { noticeGiven, endedEarly, draft, notRegistered, transitory })
             Assert.Empty(await PayloadsAsync(lease));
     }
@@ -90,7 +87,6 @@ public class LeaseNoticeReminderJobTests : IAsyncLifetime
         await job.ExecuteAsync();
     }
 
-    /// <summary>The reminders recorded for the lease, without the landlord suffix (<c>:{partyId}</c>), in the order they were sent.</summary>
     private async Task<List<string?>> PayloadsAsync(Guid leaseId)
     {
         await using var db = _database!.CreateContext();

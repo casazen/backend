@@ -24,7 +24,6 @@ public class MarketplaceActivationTenantTests
         var channelId = Guid.NewGuid();
         var partnerId = Guid.NewGuid();
 
-        // Written as a job would: no request, no tenant filter.
         await using (var system = new AppDbContext(options))
         {
             system.MarketplaceActivations.Add(new MarketplaceActivation
@@ -49,7 +48,6 @@ public class MarketplaceActivationTenantTests
             await system.SaveChangesAsync();
         }
 
-        // A request of org B sees nothing of org A: not the list, not a row by its id, not a row by its target, not the count.
         await using (var asB = new AppDbContext(options, new RequestTenant(orgB)))
         {
             Assert.Empty(await asB.MarketplaceActivations.ToListAsync());
@@ -59,7 +57,6 @@ public class MarketplaceActivationTenantTests
             Assert.Equal(0, await asB.MarketplaceActivations.CountAsync());
         }
 
-        // A request of org A sees its own rows.
         await using (var asA = new AppDbContext(options, new RequestTenant(orgA)))
         {
             var rows = await asA.MarketplaceActivations.OrderBy(a => a.TargetCode).ToListAsync();
@@ -69,7 +66,6 @@ public class MarketplaceActivationTenantTests
         Assert.True(typeof(ITenantOwned).IsAssignableFrom(typeof(MarketplaceActivation)));
     }
 
-    /// <summary>The tenant of an authenticated request of one org.</summary>
     private sealed class RequestTenant(Guid orgId) : ITenantContext
     {
         public Guid? OrgId { get; } = orgId;

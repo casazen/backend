@@ -3,21 +3,16 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Regulatory;
 
-/// <summary>
-/// LT-14 (A7-28): the fiscal code of a party is checked with the official algorithm (D.M. 23/12/1976: structure, month,
-/// day, check character; omocodia) or, for 11 digits, with the check digit. Same vectors as the frontend
-/// <c>src/lib/__tests__/fiscal-code.test.ts</c>.
-/// </summary>
 public class ItalianFiscalCodeTests
 {
     [Theory]
     [InlineData("RSSMRA85T10A562S", ItalianFiscalCodeKind.Person)]
     [InlineData("RSSMRA80A01H501U", ItalianFiscalCodeKind.Person)]
-    [InlineData("VRDGLI85B42F205E", ItalianFiscalCodeKind.Person)] // woman: day + 40
-    [InlineData("RSSMRA85T10A56NH", ItalianFiscalCodeKind.Person)] // omocodia: 2 of the place code written as N
+    [InlineData("VRDGLI85B42F205E", ItalianFiscalCodeKind.Person)]
+    [InlineData("RSSMRA85T10A56NH", ItalianFiscalCodeKind.Person)]
     [InlineData("12345678903", ItalianFiscalCodeKind.Numeric)]
     [InlineData("00123456782", ItalianFiscalCodeKind.Numeric)]
-    [InlineData(" rssmra 85t10 a562s ", ItalianFiscalCodeKind.Person)] // normalized first
+    [InlineData(" rssmra 85t10 a562s ", ItalianFiscalCodeKind.Person)]
     public void Classify_ValidCode_ReturnsItsKind(string code, ItalianFiscalCodeKind expected)
     {
         Assert.Equal(expected, ItalianFiscalCode.Classify(code));
@@ -25,14 +20,14 @@ public class ItalianFiscalCodeTests
     }
 
     [Theory]
-    [InlineData("RSSMRA85T10A562X")] // wrong check character
-    [InlineData("RSSMRA85Z10A562S")] // Z is not a month
-    [InlineData("RSSMRA85T32A562S")] // day 32
-    [InlineData("RSSMRA85T00A562S")] // day 0
-    [InlineData("RSSMRA85T72A562S")] // day 72 (woman, 32)
-    [InlineData("RSSMRA85T10A56KS")] // K is not an omocodia letter
-    [InlineData("RSSMRA85T10A562")] // 15 characters
-    [InlineData("12345678901")] // wrong check digit
+    [InlineData("RSSMRA85T10A562X")]
+    [InlineData("RSSMRA85Z10A562S")]
+    [InlineData("RSSMRA85T32A562S")]
+    [InlineData("RSSMRA85T00A562S")]
+    [InlineData("RSSMRA85T72A562S")]
+    [InlineData("RSSMRA85T10A56KS")]
+    [InlineData("RSSMRA85T10A562")]
+    [InlineData("12345678901")]
     [InlineData("1234567890A")]
     [InlineData("")]
     [InlineData(null)]

@@ -1,7 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
-using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Email.Templates;
@@ -82,7 +81,6 @@ public class ShowcaseBookingConfirmTests
 
         var confirmation = await s.Kit.Booking.ConfirmEmailAsync(await s.SupplierAsync(), hold.Id, token);
 
-        // Decision D8: SupplierSettings.RespondWithinMinutes, 180 by default.
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime.AddMinutes(180), confirmation.RespondBy);
 
         var settings = await s.Db.SupplierSettings.SingleAsync(x => x.OrgId == s.SupplierOrgId);
@@ -110,7 +108,6 @@ public class ShowcaseBookingConfirmTests
         Assert.Equal(request.Id, consumed.ServiceRequestId);
         Assert.Null(consumed.Payload);
         Assert.Equal(ShowcaseBookingTokens.Hash(token), consumed.TokenHash);
-        // Kept until it would have lapsed: the unique index on the slot and the replay of the link both need it.
         Assert.Equal(hold.ExpiresAt, consumed.ExpiresAt);
     }
 
@@ -124,11 +121,9 @@ public class ShowcaseBookingConfirmTests
 
         await s.Kit.Booking.ConfirmEmailAsync(supplier, hold.Id, token);
 
-        // The hold stops counting and the request starts counting in the same step: the slot is taken before and after.
         Assert.DoesNotContain(ServiceRequestScenario.FridayAt10, await s.FreeSlotsOfFridayAsync());
         await Assert.ThrowsAsync<DomainConflictException>(
             async () => await s.Kit.Booking.CreateHoldAsync(supplier, await s.InputAsync(email: "altra.persona@example.com")));
-        // And it stays taken after the consumed hold would have lapsed: from then on only the request holds it.
         s.Clock.Advance(TimeSpan.FromHours(1));
         Assert.DoesNotContain(ServiceRequestScenario.FridayAt10, await s.FreeSlotsOfFridayAsync());
     }
@@ -147,7 +142,6 @@ public class ShowcaseBookingConfirmTests
         Assert.Equal(s.SupplierOrgId, customer.OrgId);
         Assert.Equal(s.Kit.CustomerIndex.HashEmail("mario.rossi@example.com"), customer.EmailHash);
         Assert.Equal(ShowcaseScenario.CustomerName, customer.FullName);
-        // The address as typed: the e-mails go to it. The index is made of its lowercase form.
         Assert.Equal("Mario.Rossi@Example.com", customer.Email);
         Assert.Equal("+393331234567", customer.Phone);
         Assert.Equal("en", customer.Locale);
@@ -208,7 +202,6 @@ public class ShowcaseBookingConfirmTests
         using var s = await ServiceRequestScenario.CreateAsync();
         var supplier = await s.EnableBookingAsync();
         await s.BookedAsync();
-        // A collision of the index, or a key that changed under existing customers: the row says another address.
         var customer = await s.Db.ServiceCustomers.SingleAsync();
         customer.Email = "qualcun.altro@example.com";
         await s.Db.SaveChangesAsync();
@@ -359,7 +352,6 @@ public class ShowcaseBookingConfirmTests
             Assert.Equal(wrongToken.Message, ex.Message);
         }
 
-        // Nothing happened: the booking waits for the right link.
         Assert.Empty(await ShowcaseRequestsAsync(s));
         Assert.Null(Assert.Single(await s.HoldsAsync()).ConsumedAt);
         Assert.Empty(await s.HoldsAsync(other.OrgId));
@@ -389,7 +381,6 @@ public class ShowcaseBookingConfirmTests
         var ex = await Assert.ThrowsAsync<DomainConflictException>(
             async () => await s.Kit.Booking.ConfirmEmailAsync(supplier, hold.Id, token));
 
-        // The moment it expires is the end of it: at ExpiresAt the hold no longer holds anything.
         Assert.Equal("supplier_booking_link_expired", ex.Code);
         Assert.Empty(await ShowcaseRequestsAsync(s));
         Assert.Empty(await s.CustomersAsync());
@@ -480,7 +471,6 @@ public class ShowcaseBookingConfirmTests
         Assert.Empty(await ShowcaseRequestsAsync(s));
         Assert.Null(Assert.Single(await s.HoldsAsync()).ConsumedAt);
 
-        // The customer follows the link again and it works.
         var confirmation = await s.Kit.Booking.ConfirmEmailAsync(supplier, hold.Id, token);
         Assert.False(confirmation.AlreadyConfirmed);
     }
@@ -523,7 +513,6 @@ public class ShowcaseBookingConfirmTests
         var hold = await service.CreateHoldAsync(supplier, input);
         var token = s.VerificationTokenOf(hold.Id);
 
-        // Every path that logs: a replay of the booking, a slot already held, a wrong token, the check, and the check again.
         await service.CreateHoldAsync(supplier, input);
         await Assert.ThrowsAsync<DomainConflictException>(
             async () => await service.CreateHoldAsync(supplier, await s.InputAsync(email: "altra.persona@example.com")));

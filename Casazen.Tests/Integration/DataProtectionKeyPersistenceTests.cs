@@ -71,7 +71,6 @@ public class DataProtectionKeyPersistenceTests
         var withCertificate = CertificateSettings(CreateCertificatePfx("CN=casazen-dp-test"), "pfx-password");
 
         string protectedValue;
-        // Production: the certificate is there, the startup goes on.
         await using (var firstRun = BuildProvider(database, withCertificate, "Production"))
             protectedValue = Protector(firstRun).Protect("sk_live_ota_secret");
 

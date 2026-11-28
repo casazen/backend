@@ -76,10 +76,6 @@ public class LegacyRowsSchemaTests
 
     private static IReadOnlyList<SchemaStep> Steps => LazySteps.Value;
 
-    /// <summary>
-    /// Every use of a helper in the PostgreSQL tests: the helper and the migration under test (the rows are written at the
-    /// schema right before it); <c>*</c> = a fully migrated database (the "old writer" check of the rental mode tests).
-    /// </summary>
     public static TheoryData<string, string> Uses => new()
     {
         { nameof(LegacyOrgRows), "AddStayGuestsAndAlloggiatiCodeTables" },
@@ -141,7 +137,6 @@ public class LegacyRowsSchemaTests
         { E70LogRows, E70 },
     };
 
-    /// <summary>The first migration after which each helper is valid (see the summary of each helper).</summary>
     public static TheoryData<string, string> FirstValidAfter => new()
     {
         { nameof(LegacyPropertyRows), "AddOrgIdNullable" },
@@ -170,8 +165,6 @@ public class LegacyRowsSchemaTests
     [MemberData(nameof(FirstValidAfter))]
     public void Statement_AtTheStatedFirstMigration_IsValidAndTheOneBeforeIsNot(string helper, string first)
     {
-        // The summary of each helper states the point it applies from: valid right after it, refused right before it. A
-        // checker that cannot fail would prove nothing, this is also its sensitivity test.
         Assert.Empty(Problems(MigrationSchemaReplay.Step(Steps, first), Statements[helper]));
         Assert.NotEmpty(Problems(MigrationSchemaReplay.StepBefore(Steps, first), Statements[helper]));
     }
@@ -242,7 +235,6 @@ public class LegacyRowsSchemaTests
         Assert.True(differences.Count == 0, string.Join(Environment.NewLine, differences));
     }
 
-    /// <summary>What is wrong with an INSERT written at the schema of one migration point (empty = it fits).</summary>
     private static List<string> Problems(SchemaStep step, FormattableString statement)
     {
         var problems = new List<string>();
@@ -274,7 +266,6 @@ public class LegacyRowsSchemaTests
         return problems;
     }
 
-    /// <summary>Splits a VALUES list at the commas that are not inside parentheses, brackets or quotes.</summary>
     private static List<string> SplitTopLevel(string values)
     {
         var parts = new List<string>();

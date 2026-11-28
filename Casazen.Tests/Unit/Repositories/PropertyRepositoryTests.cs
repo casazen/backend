@@ -25,7 +25,6 @@ public class PropertyRepositoryTests
     [Fact]
     public async Task AddAsync_WithValidProperty_AddsProperty()
     {
-        // Arrange
         var property = new Property
         {
             Name = "Test Property",
@@ -34,10 +33,8 @@ public class PropertyRepositoryTests
             OwnerId = "auth0|test_user_123"
         };
 
-        // Act
         var result = await _repository.AddAsync(property);
 
-        // Assert
         Assert.NotNull(result);
         Assert.NotEqual(Guid.Empty, result.Id);
         var savedProperty = await _context.Properties.FindAsync(result.Id);
@@ -47,7 +44,6 @@ public class PropertyRepositoryTests
     [Fact]
     public async Task SearchAsync_WithCityFilter_ReturnsMatchingProperties()
     {
-        // Arrange: the public search only offers properties of an active org (BK-20)
         var org = new OrgEntity { Name = "Org", Slug = "org-search", DisplayName = "Org", ContactEmail = "org@example.com", IsActive = true };
         _context.Orgs.Add(org);
         await _context.SaveChangesAsync();
@@ -71,10 +67,8 @@ public class PropertyRepositoryTests
             OrgId = org.Id,
         });
 
-        // Act
         var result = await _repository.SearchAsync("Rome", null, null);
 
-        // Assert
         Assert.Single(result);
         Assert.Equal("Rome Property", result.First().Name);
     }
@@ -82,7 +76,6 @@ public class PropertyRepositoryTests
     [Fact]
     public async Task GetByOwnerAsync_WithValidOwnerId_ReturnsOwnerProperties()
     {
-        // Arrange
         var ownerId = "auth0|test_user_123";
         var otherOwnerId = "auth0|test_user_456";
 
@@ -110,10 +103,8 @@ public class PropertyRepositoryTests
             OwnerId = otherOwnerId
         });
 
-        // Act
         var result = await _repository.GetByOwnerAsync(ownerId);
 
-        // Assert
         Assert.Equal(2, result.Count());
         Assert.All(result, p => Assert.Equal(ownerId, p.OwnerId));
     }
@@ -121,13 +112,10 @@ public class PropertyRepositoryTests
     [Fact]
     public async Task GetByOwnerAsync_WithNonExistentOwnerId_ReturnsEmpty()
     {
-        // Arrange
         var ownerId = "auth0|nonexistent_user";
 
-        // Act
         var result = await _repository.GetByOwnerAsync(ownerId);
 
-        // Assert
         Assert.Empty(result);
     }
 
@@ -138,7 +126,6 @@ public class PropertyRepositoryTests
     [InlineData("auth0|very-long-user-id-with-many-characters-1234567890")]
     public async Task AddAsync_WithVariousOwnerIdFormats_SuccessfullyAddsProperty(string ownerId)
     {
-        // Arrange
         var property = new Property
         {
             Name = "Test Property",
@@ -147,10 +134,8 @@ public class PropertyRepositoryTests
             OwnerId = ownerId
         };
 
-        // Act
         var result = await _repository.AddAsync(property);
 
-        // Assert
         Assert.NotNull(result);
         Assert.Equal(ownerId, result.OwnerId);
     }
@@ -158,7 +143,6 @@ public class PropertyRepositoryTests
     [Fact]
     public async Task GetByOwnerAsync_WithInactiveProperties_ExcludesInactive()
     {
-        // Arrange
         var ownerId = "auth0|test_user_123";
 
         await _repository.AddAsync(new Property
@@ -179,10 +163,8 @@ public class PropertyRepositoryTests
             IsActive = false
         });
 
-        // Act
         var result = await _repository.GetByOwnerAsync(ownerId);
 
-        // Assert
         Assert.Single(result);
         Assert.Equal("Active Property", result.First().Name);
         Assert.True(result.First().IsActive);
@@ -191,7 +173,6 @@ public class PropertyRepositoryTests
     [Fact]
     public async Task GetByOwnerAsync_WithMultipleOwners_ReturnsOnlyRequestedOwnerProperties()
     {
-        // Arrange
         var owner1 = "auth0|owner_1";
         var owner2 = "google-oauth2|owner_2";
         var owner3 = "auth0|owner_3";
@@ -201,10 +182,8 @@ public class PropertyRepositoryTests
         await _repository.AddAsync(new Property { Name = "Property 3", City = "Rome", Address = "Address 3", OwnerId = owner1 });
         await _repository.AddAsync(new Property { Name = "Property 4", City = "Rome", Address = "Address 4", OwnerId = owner3 });
 
-        // Act
         var result = await _repository.GetByOwnerAsync(owner1);
 
-        // Assert
         Assert.Equal(2, result.Count());
         Assert.All(result, p => Assert.Equal(owner1, p.OwnerId));
         Assert.Contains(result, p => p.Name == "Property 1");

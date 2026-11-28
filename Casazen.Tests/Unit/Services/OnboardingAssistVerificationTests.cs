@@ -3,7 +3,6 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Multitenancy;
-using Casazen.Core.OrgTeam;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Octorate;
@@ -50,7 +49,6 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
     {
         _world = await HostScopeScenario.SeedAsync(_db);
 
-        // The channel manager: every property is confirmed on an accommodation of its own, and the police account answers what the test sets.
         var mappings = new Mock<IPropertyMappingReader>();
         mappings.SetupGet(m => m.IsProvided).Returns(true);
         mappings
@@ -79,8 +77,6 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
         await _db.DisposeAsync();
     }
 
-    // ─── The proofs of the brief ─────────────────────────────────────────────────────────────────────────────
-
     /// <summary>
     /// Proof (data): «Fatto» on the police connection is «verified» only when the panel reads <c>policeAccount.valid</c>. Not readable (a structure
     /// created through the API has no police account) is declared by the staff user and the step is confirmed, never verified; readable and not valid is
@@ -100,7 +96,6 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
         Assert.Equal(PanelVerificationOutcomes.Unverifiable, confirmed.LastVerificationOutcome);
         Assert.Equal([_world.OrgId], _tenantScope.Entered);
 
-        // Readable and not valid: «Fatto» is refused, the request stays with support and nothing is recorded or told.
         var notValid = await RequestAsync(OnboardingAssistContexts.PanelPolice, _world.Hidden.Id);
         _policeAccount = new OctoratePoliceAccountStatus(true, false, true, null);
         var refused = await Assert.ThrowsAsync<DomainConflictException>(() =>
@@ -108,12 +103,10 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
         Assert.Equal(OnboardingAssistCodes.DoneNotValid, refused.Code);
         await AssertStillWithSupportAsync(notValid.Id, _world.Hidden.Id);
 
-        // The panel cannot be read now: the error reaches the caller with its code, and nothing changes.
         _octorateFailure = new OctorateServerException(503);
         await Assert.ThrowsAsync<OctorateServerException>(() => StaffService().UpdateAsync(Staff, notValid.Id, OnboardingAssistStatus.Done, null, Ct));
         await AssertStillWithSupportAsync(notValid.Id, _world.Hidden.Id);
 
-        // Only a valid police account makes «verified».
         _octorateFailure = null;
         _policeAccount = new OctoratePoliceAccountStatus(true, true, true, null);
         _clock.Advance(TimeSpan.FromMinutes(5));
@@ -178,7 +171,6 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
         var untouched = await _db.OnboardingAssistRequests.AsNoTracking().SingleAsync(r => r.Id == foreign.Id);
         Assert.Equal((OnboardingAssistStatus.Done, (string?)null), (untouched.Status, untouched.HostNote));
 
-        // A collaborator «Solo alcuni» reaches neither the property it was not given nor the whole org.
         var ofHidden = await RequestAsync(OnboardingAssistContexts.PanelPolice, _world.Hidden.Id);
         var ofOrg = await HostService().RequestAsync(
             _world.OrgWide, _world.OwnerUserId, new AssistRequestInput(OnboardingPartKey.Channels, OnboardingAssistContexts.PanelChannelAccess, null, "142"), Ct);
@@ -205,8 +197,6 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
         var missing = await Assert.ThrowsAsync<NotFoundException>(() => StaffService().GetAsync(Guid.NewGuid(), Ct));
         Assert.Equal(OnboardingAssistCodes.NotFound, missing.Code);
     }
-
-    // ─── The checklist ───────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Checklist_InheritsOnlyTheRequestOrganizationsSavedChoice_WithoutDeclaringActivation()
@@ -236,7 +226,6 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
         await _db.SaveChangesAsync();
         Assert.Equal(ComplianceSenderType.ChannelManager, Assert.Single((await StaffService().GetAsync(request.Id, Ct)).Checklist).Sender!.Sender);
 
-        // A historic support request may still exist after the property country changes: no Italian sender is then shown.
         (await _db.Properties.SingleAsync(p => p.Id == _world.Granted.Id, Ct)).Country = "CH";
         await _db.SaveChangesAsync();
         Assert.Null(Assert.Single((await StaffService().GetAsync(request.Id, Ct)).Checklist).Sender);
@@ -315,7 +304,6 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
             new AssistIstatPresence(true, now, AssistIstatRequirements.Required),
             Assert.Single((await StaffService().GetAsync(istat.Id, Ct)).Checklist).IstatCredentials);
 
-        // A step that does not exist yet is listed as not started, with its guide.
         var row = await _db.OnboardingPanelSteps.SingleAsync(s => s.PropertyId == _world.Granted.Id);
         _db.OnboardingPanelSteps.Remove(row);
         await _db.SaveChangesAsync();
@@ -360,13 +348,6 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
         Assert.Equal(count, await _db.InternalActivities.CountAsync());
     }
 
-    // ─── «Non funziona» ──────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The host reopens a request support marked done: open again with the host's note, its step back with support (what «Fatto» recorded no longer stands),
-    /// a "To do" again, the line of the log by the host and the staff told live. Only a request done can be reopened, with a note; a second «Fatto» is
-    /// another event for the host.
-    /// </summary>
     [Fact]
     public async Task Reopen_GivesTheRequestAndItsStepBackToSupport_WithTheNote_AndTellsTheStaff()
     {
@@ -392,7 +373,6 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
             (PanelStepStatus.AssistRequested, (string?)null, (DateTime?)null, (string?)null),
             (step.Status, step.CompletedByUserId, step.CompletedAt, step.LastVerificationOutcome));
 
-        // A "To do" again (the one of the «Fatto» stays closed), the line of the log by the host, and the staff told with the instant of the reopening.
         Assert.NotEqual(request.ActivityId, reopened.ActivityId);
         Assert.NotNull((await _db.InternalActivities.AsNoTracking().SingleAsync(a => a.Id == request.ActivityId)).CompletedAt);
         var todo = await _db.InternalActivities.AsNoTracking().SingleAsync(a => a.Id == reopened.ActivityId);
@@ -410,17 +390,14 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
             (key, audience, payload.Type));
         Assert.DoesNotContain("Questura", JsonSerializer.Serialize(payload), StringComparison.Ordinal);
 
-        // Open again: it cannot be reopened, and staff sees the note.
         var open = await Assert.ThrowsAsync<DomainConflictException>(() => HostService().ReopenAsync(_world.OrgWide, _world.OwnerUserId, request.Id, Note, Ct));
         Assert.Equal(OnboardingAssistCodes.NotDone, open.Code);
         Assert.Equal(Note.Trim(), (await StaffService().GetAsync(request.Id, Ct)).Request.HostNote);
 
-        // Done again: another event for the host, with a key of its own.
         await StaffService().UpdateAsync(Staff, request.Id, OnboardingAssistStatus.Done, null, Ct);
         Assert.Equal(2, await _db.InAppNotifications.CountAsync(n => n.UserId == _world.OwnerUserId && n.EntityId == request.Id));
     }
 
-    /// <summary>A request done cannot be reopened while another request of the same part, property and channel is open: the new one stands for it.</summary>
     [Fact]
     public async Task Reopen_WhileAnotherRequestOfTheSamePartIsOpen_Is409_AndChangesNothing()
     {
@@ -456,12 +433,10 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => broken.ReopenAsync(_world.OrgWide, _world.OwnerUserId, request.Id, Note, Ct));
 
-        // Stored as reopened, and it names no "To do": the one of the «Fatto» is closed and is not the request's any more.
         var reopened = await _db.OnboardingAssistRequests.AsNoTracking().SingleAsync(r => r.Id == request.Id);
         Assert.Equal((OnboardingAssistStatus.Requested, (Guid?)null), (reopened.Status, reopened.ActivityId));
         Assert.NotNull((await _db.InternalActivities.AsNoTracking().SingleAsync(a => a.Id == request.ActivityId)).CompletedAt);
 
-        // The host asks again: the request exists, and its "To do" is raised and linked on that answer.
         var again = await Assert.ThrowsAsync<DomainConflictException>(() => HostService().RequestAsync(
             _world.OrgWide, _world.OwnerUserId, new AssistRequestInput(OnboardingPartKey.Compliance, OnboardingAssistContexts.PanelPolice, _world.Granted.Id), Ct));
         Assert.Equal(OnboardingAssistCodes.AlreadyOpen, again.Code);
@@ -471,8 +446,6 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
         var todo = await _db.InternalActivities.AsNoTracking().SingleAsync(a => a.Id == healed.ActivityId);
         Assert.Null(todo.CompletedAt);
     }
-
-    // ─── The host told live ──────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// «Fatto» tells the administrators of the org of the request, live: a push to the phone of each, an entry of the bell (the request as its entity) and
@@ -501,7 +474,6 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
         Assert.Equal((_world.OwnerUserId, (string?)PushTypes.AssistDeclared, (Guid?)istat.Id), Assert.Single(_publisher.Published));
         Assert.DoesNotContain(_push.Queued, q => q.Audience.UserId == _world.CollaboratorId);
 
-        // The queue of the pushes is down: the update is stored and answered all the same.
         var request = await RequestAsync(OnboardingAssistContexts.PanelPolice, _world.Hidden.Id);
         _push.Failure = new InvalidOperationException("The queue is down.");
         var stored = await StaffService().UpdateAsync(Staff, request.Id, OnboardingAssistStatus.Done, null, Ct);
@@ -516,7 +488,6 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
     [Fact]
     public async Task Done_WhenTheBellOfOneAdministratorCannotBeWritten_TheOtherIsToldAll_AndTheUpdateIsStored()
     {
-        // A second administrator of the org, whose id sorts before the owner's: it is the first one told.
         var admin = HostScopeScenario.NewUser($"auth0|admin-{Guid.NewGuid():N}", _world.OrgId, UserRole.None);
         _db.Users.Add(admin);
         _db.OrgMembers.Add(new OrgMember { OrgId = _world.OrgId, UserId = admin.Id, Role = OrgRole.Admin });
@@ -537,7 +508,6 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
         Assert.Contains(_push.Queued, q => q.Audience.UserId == _world.OwnerUserId && q.Key == bell.DeliveryKey);
     }
 
-    /// <summary>The verification of «Fatto» is registered with the activation, scoped, and the push types and keys are the stable ones.</summary>
     [Fact]
     public void Registration_AndTheStableCodes()
     {
@@ -555,18 +525,13 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
         Assert.Equal("assist-request:6f0c2b1e0d1a4c559a3f2b7d8e9f1a20:reopened:20261114090507", PushDeliveryKeys.AssistReopened(requestId, at));
         Assert.Equal("assist-request:6f0c2b1e0d1a4c559a3f2b7d8e9f1a20:done:20261114090507:auth0|x", PushDeliveryKeys.AssistOutcome(requestId, at, "auth0|x"));
 
-        // A user id too long for a key is replaced by its hash: the key stays stable and within the 200 characters of the column.
         var longKey = PushDeliveryKeys.AssistOutcome(requestId, at, new string('u', 300));
         Assert.True(longKey.Length <= InAppNotification.DeliveryKeyMaxLength);
         Assert.Equal(longKey, PushDeliveryKeys.AssistOutcome(requestId, at, new string('u', 300)));
     }
 
-    // ─── Helpers ─────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The service as one request of the host reaches it: a context of its own (a request never sees what another one tracks), no tenant filter.</summary>
     private OnboardingAssistService HostService() => ServiceOn(Fresh(tenant: null));
 
-    /// <summary>The service as one request of a platform administrator reaches it: a context of its own, under the tenant of ANOTHER org.</summary>
     private OnboardingAssistService StaffService() => ServiceOn(Fresh(new FixedTenant(_world.OtherOrgId)));
 
     private AppDbContext Fresh(ITenantContext? tenant)
@@ -587,7 +552,6 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
             new OrgScopedPanelVerification(_verifiers.GetRequiredService<IServiceScopeFactory>()),
             _publisher);
 
-    /// <summary>A «Do it for me» request of the compliance part, asked by the owner as the host does (it marks the panel step as asked for).</summary>
     private Task<AssistRequestView> RequestAsync(string context, Guid propertyId) =>
         HostService().RequestAsync(_world.OrgWide, _world.OwnerUserId, new AssistRequestInput(OnboardingPartKey.Compliance, context, propertyId), Ct);
 
@@ -609,7 +573,6 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
         public bool FilterEnabled => true;
     }
 
-    /// <summary>The scope of the verification as the web layer puts it under an org: the orgs it was put under are kept.</summary>
     private sealed class RecordingTenantScope : IBackgroundTenantScope
     {
         public List<Guid> Entered { get; } = [];
@@ -617,7 +580,6 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
         public void EnterOrg(Guid orgId) => Entered.Add(orgId);
     }
 
-    /// <summary>The push queue as the request sees it: what was asked is kept; <see cref="Failure"/>, when set, is thrown instead.</summary>
     private sealed class RecordingPush : IPushNotificationService
     {
         public List<(string Key, PushAudience Audience, PushNotificationPayload Payload)> Queued { get; } = [];
@@ -634,7 +596,6 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
         }
     }
 
-    /// <summary>The live channel of the bell: what was published is kept.</summary>
     private sealed class RecordingPublisher : IInAppNotificationPublisher
     {
         public List<(string UserId, string? Type, Guid? EntityId)> Published { get; } = [];
@@ -646,7 +607,6 @@ public class OnboardingAssistVerificationTests : IAsyncLifetime
         }
     }
 
-    /// <summary>A save that refuses the bell row of one person, as a database that fails for that row would.</summary>
     private sealed class RefuseTheBellOf(string userId) : SaveChangesInterceptor
     {
         public override ValueTask<InterceptionResult<int>> SavingChangesAsync(

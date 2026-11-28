@@ -17,22 +17,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E08/F05/US01/T02 (NF-36, NF-78): the store of the price and the rules of the nights and the read of every day of the calendar, on EF InMemory.
-/// The three proof tests are the money, permission and data rules of the brief; the others pin the behaviour around them.
-/// </summary>
 public class PropertyDayRuleServiceTests
 {
-    // 2026-10-09 10:00 UTC: the 9th of October in Rome and everywhere else the tests look.
     private static readonly DateTimeOffset Now = new(2026, 10, 9, 10, 0, 0, TimeSpan.Zero);
 
-    // --- The proofs --------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// PROOF TEST: money rule. A price of 120.505 is stored as 120.51 (half away from zero, as the quote rounds), the price read back is the
-    /// price stored, a price of 0 or 100000.01 (and one that rounds to nothing) is refused with its code and stages nothing, and the edges of the
-    /// range are allowed.
-    /// </summary>
     [Fact]
     public async Task DayRulePrice_StoredToTheCent_WithinBounds_Test()
     {
@@ -60,10 +48,8 @@ public class PropertyDayRuleServiceTests
             Assert.Equal(DayRuleErrorCodes.InvalidPrice, ex.Code);
         }
 
-        // A refusal stages nothing: the context holds the one saved row, as it was.
         Assert.All(db.ChangeTracker.Entries<PropertyDayRule>(), entry => Assert.Equal(EntityState.Unchanged, entry.State));
 
-        // The edges of the range are allowed.
         await service.ApplyAsync(ScopeOf(property), property.Id, next, next, null, new DayRulePatch(Price: FieldPatch<decimal>.Set(0.01m)), "auth0|host");
         await service.ApplyAsync(ScopeOf(property), property.Id, next.AddDays(1), next.AddDays(1), null, new DayRulePatch(Price: FieldPatch<decimal>.Set(100000m)), "auth0|host");
         await db.SaveChangesAsync();
@@ -98,7 +84,6 @@ public class PropertyDayRuleServiceTests
 
         Assert.Equal(world.Granted.Id, Assert.Single(collaborator.Properties).PropertyId);
         Assert.Equal(world.Granted.Id, Assert.Single(collaboratorAsking.Properties).PropertyId);
-        // Neither the days nor the price of what the collaborator cannot reach is in the answer.
         Assert.DoesNotContain(
             collaboratorAsking.Properties.SelectMany(p => p.Days),
             day => day.PriceCents is 77_700L or 88_800L);
@@ -108,7 +93,6 @@ public class PropertyDayRuleServiceTests
             owner.Properties.Select(p => p.PropertyId).Order());
         Assert.Equal(owner.Properties.Select(p => p.PropertyId), ownerAsking.Properties.Select(p => p.PropertyId));
         Assert.DoesNotContain(ownerAsking.Properties, p => p.PropertyId == world.OtherOrgProperty.Id);
-        // A caller with nobody behind it gets nothing at all.
         Assert.Empty((await service.GetDaysAsync(new HostScope(Guid.NewGuid()), query)).Properties);
     }
 
@@ -147,7 +131,6 @@ public class PropertyDayRuleServiceTests
             Assert.Equal(zone, (await service.GetDaysAsync(new HostScope(orgId), new CalendarDaysQuery(springForward, springForward))).Properties.Single().Timezone);
         }
 
-        // 2026-03-28 20:00 UTC is already the 29th in Auckland (13 hours ahead) and still the 28th in Rome: the night of the 28th is over there only.
         var evening = new DateTimeOffset(2026, 3, 28, 20, 0, 0, TimeSpan.Zero);
         var counted = new Dictionary<string, DayRuleApplyResult>();
         foreach (var zone in new[] { "Europe/Rome", "Pacific/Auckland" })
@@ -162,8 +145,6 @@ public class PropertyDayRuleServiceTests
         Assert.Equal(new DayRuleApplyResult(1, 0, 1), counted["Pacific/Auckland"]);
     }
 
-    // --- The change of the rules -------------------------------------------------------------------------------
-
     [Fact]
     public async Task Apply_NightsBeforeTodayOfTheProperty_AreSkippedAndCounted_TheRestIsStaged()
     {
@@ -171,7 +152,6 @@ public class PropertyDayRuleServiceTests
         var property = AddProperty(db, Guid.NewGuid());
         await db.SaveChangesAsync();
 
-        // Today is the 9th: the 7th and the 8th are over, the 9th (today) and the 10th are not.
         var result = await NewService(db).ApplyAsync(ScopeOf(property), property.Id, new DateOnly(2026, 10, 7), new DateOnly(2026, 10, 10), null, new DayRulePatch(ClosedToArrival: FieldPatch<bool>.Set(true)), "auth0|host");
         await db.SaveChangesAsync();
 
@@ -190,7 +170,6 @@ public class PropertyDayRuleServiceTests
         var service = NewService(db);
         var price = new DayRulePatch(Price: FieldPatch<decimal>.Set(100m));
 
-        // Today is the 9th of October: the 1st to the 8th are all over, whatever the weekdays asked for.
         var allPast = await Assert.ThrowsAsync<DomainRuleException>(
             () => service.ApplyAsync(ScopeOf(property), property.Id, new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 8), null, price, "auth0|host"));
         var onlyPastWeekdays = await Assert.ThrowsAsync<DomainRuleException>(
@@ -207,7 +186,6 @@ public class PropertyDayRuleServiceTests
         Assert.Equal(DayRuleErrorCodes.InPast, onlyPastWeekdays.Code);
         Assert.Empty(db.ChangeTracker.Entries<PropertyDayRule>());
 
-        // One night that is not over (today) is enough for the change to go through, the nights over counted as skipped.
         var result = await service.ApplyAsync(ScopeOf(property), property.Id, new DateOnly(2026, 10, 8), new DateOnly(2026, 10, 9), null, price, "auth0|host");
         Assert.Equal(new DayRuleApplyResult(1, 0, 1), result);
     }
@@ -219,7 +197,6 @@ public class PropertyDayRuleServiceTests
         var property = AddProperty(db, Guid.NewGuid());
         await db.SaveChangesAsync();
 
-        // 2026-12-21 is a Monday: the week from Monday to Sunday, only the Friday and the Saturday.
         var result = await NewService(db).ApplyAsync(ScopeOf(property), property.Id,
             new DateOnly(2026, 12, 21),
             new DateOnly(2026, 12, 27),
@@ -259,7 +236,6 @@ public class PropertyDayRuleServiceTests
         await db.SaveChangesAsync();
         var service = NewService(db);
 
-        // Opening the arrival empties the first row; the second one has no arrival closed already, so it is unchanged. The third night has no row.
         var result = await service.ApplyAsync(ScopeOf(property), property.Id, night, night.AddDays(2), null, new DayRulePatch(ClosedToArrival: FieldPatch<bool>.Clear), "auth0|host");
         await db.SaveChangesAsync();
 
@@ -309,7 +285,6 @@ public class PropertyDayRuleServiceTests
         db.PropertyDayRules.Add(new PropertyDayRule { OrgId = property.OrgId, PropertyId = property.Id, StayDate = night.AddDays(2), MinNights = 4 });
         await db.SaveChangesAsync();
 
-        // A maximum of 3 nights is fine on the nights without a rule and below the minimum of 4 on the third night: the third one refuses all.
         var refused = await Assert.ThrowsAsync<DomainRuleException>(() => NewService(db).ApplyAsync(ScopeOf(property), property.Id, night, night.AddDays(3), null, new DayRulePatch(MaxNights: FieldPatch<int>.Set(3)), "auth0|host"));
 
         Assert.Equal(DayRuleErrorCodes.InvalidStay, refused.Code);
@@ -332,7 +307,6 @@ public class PropertyDayRuleServiceTests
         Assert.Equal(DayRuleErrorCodes.RangeInvalid, await CodeOf(first, first.AddDays(-1), price));
         Assert.Equal(DayRuleErrorCodes.RangeTooLong, await CodeOf(first, first.AddDays(DayRuleLimits.MaxRangeDays), price));
         Assert.Equal(DayRuleErrorCodes.NothingToChange, await CodeOf(first, first, new DayRulePatch()));
-        // A year and a day of a leap year is the longest range that goes through.
         var year = await service.ApplyAsync(ScopeOf(property), property.Id, first, first.AddDays(DayRuleLimits.MaxRangeDays - 1), null, price, "auth0|host");
         Assert.Equal(new DayRuleApplyResult(DayRuleLimits.MaxRangeDays, 0, 0), year);
     }
@@ -376,25 +350,21 @@ public class PropertyDayRuleServiceTests
         var service = NewService(db);
         var patch = new DayRulePatch(Price: FieldPatch<decimal>.Set(100m));
 
-        // The collaborator reads and writes the property it was given...
         var given = await service.GetRulesAsync(world.Restricted, world.Granted.Id, night, night.AddDays(1));
         Assert.Equal(555m, given[night].Price);
         var applied = await service.ApplyAsync(world.Restricted, world.Granted.Id, night.AddDays(1), night.AddDays(1), null, patch, "auth0|collaborator");
         Assert.Equal(new DayRuleApplyResult(1, 0, 0), applied);
         await db.SaveChangesAsync();
 
-        // ...and none other: the property of its org that it was not given, the one of another org and an id that does not exist are not found.
         foreach (var unreachable in new[] { world.Hidden.Id, world.OtherOrgProperty.Id, Guid.NewGuid() })
         {
             await Assert.ThrowsAsync<NotFoundException>(() => service.GetRulesAsync(world.Restricted, unreachable, night, night.AddDays(1)));
             await Assert.ThrowsAsync<NotFoundException>(() => service.ApplyAsync(world.Restricted, unreachable, night, night, null, patch, "auth0|collaborator"));
         }
 
-        // A refused change stages nothing, and the rules of what the collaborator cannot reach are as they were.
         Assert.DoesNotContain(db.ChangeTracker.Entries<PropertyDayRule>(), entry => entry.State != EntityState.Unchanged);
         Assert.Equal(777m, (await db.PropertyDayRules.AsNoTracking().SingleAsync(r => r.PropertyId == world.Hidden.Id)).Price);
 
-        // The owner of the org reaches both of its properties, and still not the other org's.
         Assert.Equal(777m, (await service.GetRulesAsync(world.OrgWide, world.Hidden.Id, night, night.AddDays(1)))[night].Price);
         Assert.Equal(
             new DayRuleApplyResult(1, 0, 0),
@@ -417,19 +387,15 @@ public class PropertyDayRuleServiceTests
         await service.ApplyAsync(ScopeOf(property), property.Id, night, night, null, patch, "auth0|host");
         Assert.Single(db.ChangeTracker.Entries<PropertyDayRule>(), entry => entry.State == EntityState.Added);
 
-        // The save did not happen (say, the unique index refused it): what was staged is forgotten, and staging again gives the same single row.
         service.DiscardStaged();
         Assert.Empty(db.ChangeTracker.Entries<PropertyDayRule>());
         await service.ApplyAsync(ScopeOf(property), property.Id, night, night, null, patch, "auth0|host");
         await db.SaveChangesAsync();
         Assert.Single(await db.PropertyDayRules.AsNoTracking().ToListAsync());
 
-        // The service tells a refusal of that unique index from anything else.
         Assert.False(service.IsDateConflict(new InvalidOperationException("no")));
         Assert.False(service.IsDateConflict(new DbUpdateException("no", new InvalidOperationException("inner"))));
     }
-
-    // --- The days of the calendar ------------------------------------------------------------------------------
 
     [Fact]
     public async Task GetDays_ThePriceOfEachNightIsTheNumberOfTheQuote_WithItsSourceAndItsRules()
@@ -437,8 +403,6 @@ public class PropertyDayRuleServiceTests
         await using var db = NewDb();
         var orgId = Guid.NewGuid();
         var property = AddProperty(db, orgId, rate: 100m, weekend: 20m, minNights: 2);
-        // Thursday the 24th: a day rule with a price and the limits; Friday the 25th: a seasonal price the host confirmed; Saturday the 26th: the
-        // weekend (and taken by a block); Sunday the 27th: the rate. Monday the 28th: a rule without a price over a seasonal one.
         var thursday = new DateOnly(2026, 12, 24);
         db.PropertyDayRules.AddRange(
             new PropertyDayRule
@@ -489,11 +453,9 @@ public class PropertyDayRuleServiceTests
         var plain = days[thursday.AddDays(3)];
         Assert.Equal((10000L, DayPriceSource.Base, 2, false), (plain.PriceCents, plain.PriceSource, plain.MinNights, plain.Taken));
 
-        // A rule with no price leaves the seasonal price, and says the departure is closed.
         var closedDeparture = days[thursday.AddDays(4)];
         Assert.Equal((13500L, DayPriceSource.Seasonal, true, true), (closedDeparture.PriceCents, closedDeparture.PriceSource, closedDeparture.ClosedToDeparture, closedDeparture.HasRule));
 
-        // Each number is the one the quote adds up for a one-night stay.
         foreach (var day in listed.Days)
         {
             var hostPrices = DayRulePricing.HostPrices(
@@ -563,10 +525,8 @@ public class PropertyDayRuleServiceTests
         var on = await NewService(db, targets: targets.Object, connector: true).GetDaysAsync(new HostScope(orgId), query);
         var off = await NewService(db, targets: targets.Object, connector: false).GetDaysAsync(new HostScope(orgId), query);
 
-        // A failed lookup leaves the property shown as not mirrored; the days of every property are there.
         Assert.Equal([true, false, false], on.Properties.Select(p => p.Mirrored));
         Assert.All(on.Properties, p => Assert.Equal(2, p.Days.Count));
-        // With the connector off nothing is asked of the channel manager at all.
         Assert.All(off.Properties, p => Assert.False(p.Mirrored));
         targets.Verify(t => t.LookupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Exactly(3));
     }
@@ -594,12 +554,10 @@ public class PropertyDayRuleServiceTests
         clock.Now = Now.AddSeconds(30);
         var second = await service.GetDaysAsync(new HostScope(orgId), query);
 
-        // Within the minute nothing is asked again, a failure and a timeout included, and the answer is the same.
         Assert.Equal([true, false, false], first.Properties.Select(p => p.Mirrored));
         Assert.Equal([true, false, false], second.Properties.Select(p => p.Mirrored));
         targets.Verify(t => t.LookupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Exactly(3));
 
-        // After the minute the three are asked again.
         clock.Now = Now.AddSeconds(61);
         await service.GetDaysAsync(new HostScope(orgId), query);
         targets.Verify(t => t.LookupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Exactly(6));
@@ -617,7 +575,6 @@ public class PropertyDayRuleServiceTests
         var found = OctorateTargetLookup.Of(new OctorateBookingTarget("ACC-TEST", "ROOM-TEST"));
         var targets = new Mock<IOctorateBookingTargets>();
         targets.Setup(t => t.LookupAsync(quick.Id, It.IsAny<CancellationToken>())).ReturnsAsync(found);
-        // The second one answers only when it is told to stop waiting, which the budget of the read does.
         targets.Setup(t => t.LookupAsync(slow.Id, It.IsAny<CancellationToken>()))
             .Returns(async (Guid _, CancellationToken token) =>
             {
@@ -631,20 +588,16 @@ public class PropertyDayRuleServiceTests
 
         var first = await service.GetDaysAsync(new HostScope(orgId), query);
 
-        // The slow one used the budget and is not mirrored; the one after it was not asked at all, and the calendar was answered whole.
         Assert.Equal([true, false, false], first.Properties.Select(p => p.Mirrored));
         Assert.All(first.Properties, p => Assert.Single(p.Days, day => day.Date == new DateOnly(2026, 12, 1)));
         targets.Verify(t => t.LookupAsync(late.Id, It.IsAny<CancellationToken>()), Times.Never);
 
         var second = await service.GetDaysAsync(new HostScope(orgId), query);
 
-        // The next read keeps what it knows (the quick one, the slow one) and asks the one that was left out.
         Assert.Equal([true, false, true], second.Properties.Select(p => p.Mirrored));
         foreach (var property in new[] { quick, slow, late })
             targets.Verify(t => t.LookupAsync(property.Id, It.IsAny<CancellationToken>()), Times.Once);
     }
-
-    // --- The rules for the booking site ------------------------------------------------------------------------
 
     [Fact]
     public async Task GetRulesForSite_IsAPublicRead_TheHostRead_IsNot()
@@ -665,7 +618,6 @@ public class PropertyDayRuleServiceTests
             await system.SaveChangesAsync();
         }
 
-        // A signed-in host of another org looks at the site of org A.
         await using var asOrgB = NewDb(databaseName, new FixedTenantContext(orgB));
         var service = NewService(asOrgB);
 
@@ -675,20 +627,15 @@ public class PropertyDayRuleServiceTests
         Assert.Equal(propertyOfA, Assert.Single(forTheSite).Key);
         Assert.Equal(new DayRuleValues(Price: 150m, MinNights: 3), rules[night]);
         Assert.True(rules[night.AddDays(5)].ClosedToArrival);
-        // The host read is not public: for a signed-in host of another org the house is not found, whoever it is.
         await Assert.ThrowsAsync<NotFoundException>(() => service.GetRulesAsync(new HostScope(orgB), propertyOfA, night, night.AddDays(10)));
-        // Only the nights asked for, and nothing for no house or an empty range.
         Assert.Single(Assert.Single(await service.GetRulesForSiteAsync([propertyOfA], night, night.AddDays(1))).Value);
         Assert.Empty(await service.GetRulesForSiteAsync([], night, night.AddDays(1)));
         Assert.Empty(await service.GetRulesForSiteAsync([propertyOfA], night, night));
-        // The host of the house reads its own rules (and an empty range gives none).
         await using var asOrgA = NewDb(databaseName, new FixedTenantContext(orgA));
         var ofOrgA = NewService(asOrgA);
         Assert.Equal(2, (await ofOrgA.GetRulesAsync(new HostScope(orgA), propertyOfA, night, night.AddDays(10))).Count);
         Assert.Empty(await ofOrgA.GetRulesAsync(new HostScope(orgA), propertyOfA, night, night));
     }
-
-    // --- Helpers -----------------------------------------------------------------------------------------------
 
     private static AppDbContext NewDb() => NewDb($"day-rules-{Guid.NewGuid():N}", tenant: null);
 
@@ -758,7 +705,6 @@ public class PropertyDayRuleServiceTests
         ComputedAt = Now.UtcDateTime,
     };
 
-    // A clock the test moves between two reads of the calendar.
     private sealed class MovableClock(DateTimeOffset utcNow) : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = utcNow;

@@ -88,7 +88,6 @@ public class BookingRefundIntegrationTests : IClassFixture<CasazenWebApplication
         Assert.Equal(400m, quote.GetProperty("refundableAmount").GetDecimal());
         Assert.Equal(400m, quote.GetProperty("minimumRefundAmount").GetDecimal());
 
-        // PO 2026-10-08: the host-chosen amount is ignored; the guest always gets the full refundable amount.
         var response = await host.PostAsJsonAsync($"/api/bookings/{seed.BookingId}/cancel", new { refundAmount = 250m });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);

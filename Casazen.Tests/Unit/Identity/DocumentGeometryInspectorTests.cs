@@ -37,21 +37,16 @@ public class DocumentGeometryInspectorTests
         return Inspector(detector).Inspect(image, Cie, side, cancellationToken);
     }
 
-    /// <summary>A scripted detector that answers the upright picture with a face at the given shares of a card of <paramref name="cardWidth"/> by <paramref name="cardHeight"/> pixels, and the three turned ones with none.</summary>
     private static ScriptedFaceDetector FaceAt(DocumentFormatRegion share, int cardWidth, int cardHeight) =>
         new(OnCard(share, cardWidth, cardHeight), [], [], []);
 
-    /// <summary>One face of the card, as the detector answers: its box is the <paramref name="share"/> of a card of <paramref name="cardWidth"/> by <paramref name="cardHeight"/> pixels.</summary>
     private static IReadOnlyList<DetectedFace> OnCard(DocumentFormatRegion share, int cardWidth, int cardHeight) =>
     [
         new DetectedFace(
             (float)(share.X * cardWidth), (float)(share.Y * cardHeight), (float)(share.W * cardWidth), (float)(share.H * cardHeight), 0.9f, new float[10], share.W * share.H),
     ];
 
-    /// <summary>The middle of the portrait zone of the card (0.03, 0.22, 0.3, 0.62) as a face a bit smaller than the zone.</summary>
     private static DocumentFormatRegion InTheZone => new(0.06, 0.3, 0.24, 0.45);
-
-    // ---- AC1: a whole card is found, a card cut by the frame is not whole -----------------------------------------------------------------------------------------
 
     [Fact]
     public void Inspect_AWholeCardInsideTheFrame_IsFoundWithVisibleEdgesAndTheExpectedAspect()
@@ -141,8 +136,6 @@ public class DocumentGeometryInspectorTests
         Assert.Contains(IdentityGuidanceCodes.DocumentNotFound, report.Codes);
         Assert.Equal(IdentityGuidanceCodes.DocumentNotFound, report.Codes[0]);
     }
-
-    // ---- AC2: another ratio is a layout mismatch, a quarter or a half turn is reported -------------------------------------------------------------------------------
 
     [Fact]
     public void Inspect_ACardOfAnotherAspectRatio_IsALayoutMismatch()
@@ -255,7 +248,6 @@ public class DocumentGeometryInspectorTests
     [Fact]
     public void Inspect_ATallCardWithNothingToTellItsTurn_CannotDecideItsOrientation()
     {
-        // The front, with no face and no MRZ band on it: nothing says whether the top of the tall card is on the left or on the right.
         using var upright = DocumentImageFactory.Render(Cie, DocumentSide.Front, DocumentImageFactory.WholeCard, withFace: false);
         using var turned = DocumentImageFactory.TurnedCounterClockwise(upright);
 
@@ -278,8 +270,6 @@ public class DocumentGeometryInspectorTests
         Assert.Equal([IdentityGuidanceCodes.DocumentOrientation], report.Codes);
         Assert.Null(report.PortraitInZone);
     }
-
-    // ---- AC3: the portrait where the format puts it ---------------------------------------------------------------------------------------------------------------
 
     [Fact]
     public void Inspect_AFrontWithNoFaceInThePortraitRegion_IsPortraitMissing()
@@ -336,7 +326,6 @@ public class DocumentGeometryInspectorTests
     [Fact]
     public void Inspect_AFrontSentAsTheBack_ShowsItsPortraitAndAsksNothingAboutIt()
     {
-        // The side classifier tells a front from a back by the portrait: the face is looked for whatever side was declared, but only the side that has the portrait is told it is missing.
         using var picture = DocumentImageFactory.Render(Cie, DocumentSide.Front, DocumentImageFactory.WholeCard);
 
         var report = Inspect(picture, new PortraitStandInDetector(), DocumentSide.Back);
@@ -345,10 +334,6 @@ public class DocumentGeometryInspectorTests
         Assert.Empty(report.Codes);
     }
 
-    /// <summary>
-    /// A scripted detector that finds a face in the zone of the portrait only at the turn of the card it is asked about: 1 the card as it lies, 6 or 8 a quarter turn
-    /// either way (the frame is then tall), 3 a half turn. <paramref name="cardWidth"/> and <paramref name="cardHeight"/> are those of the card made landscape.
-    /// </summary>
     private static ScriptedFaceDetector FaceFoundAtTurn(int turn, int cardWidth, int cardHeight) => turn switch
     {
         1 => new ScriptedFaceDetector(OnCard(InTheZone, cardWidth, cardHeight), [], [], []),
@@ -376,14 +361,11 @@ public class DocumentGeometryInspectorTests
     [InlineData(270, 3)]
     public void Inspect_ABackThatTheDetectorFindsAFaceOn_IsTurnedByItsMrzBandAndTheFaceOnlySaysWhereAPortraitIs(int degrees, int faceTurn)
     {
-        // Measured before the band was put first: a face found sideways (6 or 8) on an upright back made it document_orientation, and one found at a half turn (3) turned
-        // the back by 180 degrees; on a back upside down a face found upright (1) turned it back to 0. A face on the back is a front sent as the back or a stray detection.
         using var upright = DocumentImageFactory.Render(Cie, DocumentSide.Back, DocumentImageFactory.WholeCard);
         using var turned = Turn(upright, degrees);
 
         var report = Inspect(turned, FaceFoundAtTurn(faceTurn, 480, 303), DocumentSide.Back);
 
-        // A face found sideways is not judged (null); found upright or at a half turn, it is in the zone the scripted detector puts it in.
         bool? expectedPortrait = faceTurn is 6 or 8 ? null : true;
         Assert.True(report.EdgesVisible);
         Assert.True(report.AspectOk);
@@ -395,7 +377,6 @@ public class DocumentGeometryInspectorTests
     [Fact]
     public void Inspect_AFrontSentAsTheBackUpsideDown_StillShowsItsPortraitAndAsksNothingAboutIt()
     {
-        // The band of a front means nothing, so the turn reported for it is not asserted: the picture is asked again as the wrong side. The portrait is what the classifier needs.
         using var upright = DocumentImageFactory.Render(Cie, DocumentSide.Front, DocumentImageFactory.WholeCard);
         using var turned = DocumentImageFactory.TurnedHalf(upright);
 
@@ -417,8 +398,6 @@ public class DocumentGeometryInspectorTests
         Assert.NotEmpty(detector.Scores);
         Assert.All(detector.Scores, score => Assert.Equal(0.42, score));
     }
-
-    // ---- AC4: glare and blur are the statistics and the limits of the capture checks ----------------------------------------------------------------------------
 
     [Fact]
     public void Inspect_ASharpCardWithNoReflection_IsWithinTheLimitsOfTheCaptureChecks()
@@ -469,11 +448,6 @@ public class DocumentGeometryInspectorTests
         Assert.Equal(IdentityGuidanceCodes.DocumentBlur, report.Codes[^1]);
     }
 
-    // ---- a card that is not held straight (IDENT-TILT): the angle is looked for, the card is levelled -------------------------------------------------------------------
-    // geometry-2026.11-1 read the card by the straight rows and columns of its edges: it tolerated a fifth of a degree either way and did not find the card from 0.35. The search of the
-    // angle (geometry-2026.11-2) finds the card held up to ten degrees either way and hands on its levelled copy, and refuses the card held more crooked for it. The pictures are the card of
-    // the factory (480 by 303 pixels in 640 by 480, its edges softened by the bilinear turn of the factory as in a photo), upright, upside down and turned a quarter. Real photos may not behave the same.
-
     private static IFaceDetector DetectorFor(DocumentSide side) => side == DocumentSide.Front ? new PortraitStandInDetector() : new ScriptedFaceDetector();
 
     [Theory]
@@ -520,12 +494,10 @@ public class DocumentGeometryInspectorTests
             Assert.Empty(report.Codes);
         }
 
-        // Nothing was levelled: the only buffers of the size of the picture are the two maps of its edges (no gray copy turned, no levelled card of 480 by 303 pixels).
         Assert.Equal(2, copies.OfType<byte[]>().Count(buffer => buffer.Length == DocumentImageFactory.Width * DocumentImageFactory.Height));
         Assert.DoesNotContain(copies.OfType<byte[]>(), buffer => buffer.Length == 480 * 303 * 3);
     }
 
-    /// <summary>The cards of the tolerance: the front and the back, held 0.5 to 8 degrees either way.</summary>
     public static TheoryData<DocumentSide, double> CrookedCards()
     {
         var data = new TheoryData<DocumentSide, double>();
@@ -565,7 +537,6 @@ public class DocumentGeometryInspectorTests
     [MemberData(nameof(CrookedCards))]
     public void Inspect_ACardUpsideDownAndHeldCrooked_IsFoundWholeAndLevelled(DocumentSide side, double degrees)
     {
-        // The same cards, upside down: the angle is the one the card has after the half turn that makes it upright, whatever the side it is held to.
         using var upright = DocumentImageFactory.Render(Cie, side, DocumentImageFactory.WholeCard);
         using var crooked = DocumentImageFactory.Rotated(upright, degrees);
         using var upsideDown = DocumentImageFactory.TurnedHalf(crooked);
@@ -581,7 +552,6 @@ public class DocumentGeometryInspectorTests
         AssertTheCardLevelled(report.RectifiedCard, side);
     }
 
-    /// <summary>The cards of the tolerance, turned a quarter either way and a half turn: the angle is the one of the card after the turn that makes it upright.</summary>
     public static TheoryData<DocumentSide, int, double> CrookedAndTurnedCards()
     {
         var data = new TheoryData<DocumentSide, int, double>();
@@ -645,7 +615,6 @@ public class DocumentGeometryInspectorTests
     [InlineData(DocumentSide.Back, -30)]
     public void Inspect_ACardHeldBeyondTheSearch_IsNotFound(DocumentSide side, double degrees)
     {
-        // The angle is looked for up to DocumentGeometryRules.TiltSearchDegrees either way: farther, nothing says that there is a card, as before.
         using var upright = DocumentImageFactory.Render(Cie, side, DocumentImageFactory.WholeCard);
         using var crooked = DocumentImageFactory.Rotated(upright, degrees);
 
@@ -657,9 +626,6 @@ public class DocumentGeometryInspectorTests
         Assert.Null(report.RectifiedCard);
     }
 
-    // ---- the pictures that are not a card stay refused, with the codes they had -------------------------------------------------------------------------------------------
-
-    /// <summary>The pictures of point 4 of the brief: what the inspector answered before the search of the angle, and still answers.</summary>
     public static TheoryData<string> NegativePictures() => new()
     {
         "no card",
@@ -700,8 +666,6 @@ public class DocumentGeometryInspectorTests
     [MemberData(nameof(NegativePictures))]
     public void Inspect_APictureThatIsNotAWholeCardOfTheFormat_IsRefusedWithTheCodeItHad(string name)
     {
-        // The codes are the ones of geometry-2026.11-1, measured before the search of the angle was written. A card of another ratio that is held crooked is found at its angle (and says
-        // what a card of another ratio says); a card held crooked and too dim, or a page of text, is not found, as before.
         string[] expected = name switch
         {
             "no card" => [IdentityGuidanceCodes.DocumentNotFound, IdentityGuidanceCodes.DocumentBlur],
@@ -720,8 +684,6 @@ public class DocumentGeometryInspectorTests
         Assert.Null(report.PortraitInZone);
         Assert.Equal(0, detector.Calls);
     }
-
-    // ---- the copies, the faults, the time ------------------------------------------------------------------------------------------------------------------------------
 
     [Fact]
     public void Inspect_EveryCopyOfACardHeldCrooked_IsZeroed_AndTheLevelledCardWhenTheReportIsDisposed()
@@ -746,20 +708,16 @@ public class DocumentGeometryInspectorTests
         var held = levelled.Rgb;
         using (report)
         {
-            // The picture was turned (a gray copy of its size), its edges were read twice (as it lies, then levelled), and the card was cut out of it levelled: every one of those buffers...
             Assert.True(copies.OfType<byte[]>().Count(buffer => buffer.Length == DocumentImageFactory.Width * DocumentImageFactory.Height) >= 5);
             Assert.Contains(copies, copy => ReferenceEquals(copy, held));
 
-            // ...is zero now, but the levelled card, which is the report's and still holds the card.
             Assert.All(copies.Where(copy => !ReferenceEquals(copy, held)), AssertAllZero);
             Assert.Contains(held, value => value != 0);
 
-            // The copies of the picture the face detector was shown are zero as well.
             Assert.NotEmpty(detector.SeenPixels);
             Assert.All(detector.SeenPixels, pixels => Assert.All(pixels, value => Assert.Equal(0, value)));
         }
 
-        // The owner of the report zeroes the levelled card, once or twice.
         Assert.All(held, value => Assert.Equal(0, value));
         Assert.Empty(levelled.Rgb);
         report.Dispose();
@@ -790,7 +748,6 @@ public class DocumentGeometryInspectorTests
             Assert.Equal(180, report.RotationDegrees);
             Assert.Contains(held, value => value != 0);
 
-            // The card levelled and not yet turned was a copy of its own and is zeroed; the turned one is the report's.
             Assert.DoesNotContain(copies, copy => ReferenceEquals(copy, held));
             Assert.All(copies, AssertAllZero);
         }
@@ -816,7 +773,6 @@ public class DocumentGeometryInspectorTests
             DocumentTilt.Probe = null;
         }
 
-        // The card was found and levelled before the face was asked for, so the levelled card was made, and no report was there to hold it.
         Assert.Contains(copies.OfType<byte[]>(), buffer => buffer.Length > 400_000 && buffer.Length < 500_000);
         Assert.NotEmpty(detector.SeenPixels);
         Assert.All(copies, AssertAllZero);
@@ -835,7 +791,6 @@ public class DocumentGeometryInspectorTests
         DocumentTilt.Probe = copies;
         try
         {
-            // The card is found at its angle and levelled; the request is cancelled when the face is asked for, so there is no report to hold the levelled card.
             Assert.Throws<OperationCanceledException>(() => Inspector(detector).Inspect(crooked, Cie, DocumentSide.Front, source.Token));
         }
         finally
@@ -858,7 +813,6 @@ public class DocumentGeometryInspectorTests
         inspector.Inspect(straight, Cie, DocumentSide.Back, CancellationToken.None).Dispose();
         inspector.Inspect(crooked, Cie, DocumentSide.Back, CancellationToken.None).Dispose();
 
-        // The best of a few rounds: the machines of the build are loaded, and what is measured is the work, not the queue for the processor.
         double Best(RasterImage picture)
         {
             var best = double.MaxValue;
@@ -877,12 +831,10 @@ public class DocumentGeometryInspectorTests
         var straightMs = Best(straight);
         var crookedMs = Best(crooked);
 
-        // Measured in the pull request (about a hundred milliseconds is the aim on one core); the assertion only guards against a search that no longer scales.
         Assert.True(crookedMs < 10 * straightMs + 50, $"{crookedMs:F0} ms for the card held crooked against {straightMs:F0} ms for the card straight");
         Assert.True(crookedMs < 1000, $"{crookedMs:F0} ms per inspection");
     }
 
-    /// <summary>The card levelled is the canonical card: landscape, the size of the card, its portrait (the front) or its MRZ band (the back) where the layout puts it.</summary>
     private static void AssertTheCardLevelled(RasterImage? card, DocumentSide side)
     {
         Assert.NotNull(card);
@@ -891,14 +843,12 @@ public class DocumentGeometryInspectorTests
         var layout = Cie.Layout.Sides[DocumentSides.CodeOf(side)];
         if (layout.Portrait is { } zone)
         {
-            // The middle of the zone of the portrait below the dark bar of the stand-in is skin, and the bar is where it is drawn, when the card lies upright and level.
             Assert.True(DocumentImageFactory.IsSkin(card.Rgb, PixelAt(card, zone.X + (zone.W * 0.5), zone.Y + (zone.H * 0.7))), "the portrait is where the layout puts it");
             Assert.True(DocumentImageFactory.IsHair(card.Rgb, PixelAt(card, zone.X + (zone.W * 0.5), zone.Y + (zone.H * 0.24))), "the bar of the portrait is where the layout puts it");
         }
 
         if (layout.MrzRegion is { } band)
         {
-            // The band is the densest text of the card: much more ink than the region opposite to it.
             var opposite = new DocumentFormatRegion(1 - band.X - band.W, 1 - band.Y - band.H, band.W, band.H);
             Assert.True(InkShare(card, band) > 1.5 * InkShare(card, opposite), "the MRZ band is where the layout puts it");
         }
@@ -907,7 +857,6 @@ public class DocumentGeometryInspectorTests
     private static int PixelAt(RasterImage card, double shareX, double shareY) =>
         ((((int)(shareY * card.Height)) * card.Width) + (int)(shareX * card.Width)) * 3;
 
-    /// <summary>The share of the pixels of the region of the card that are dark (ink).</summary>
     internal static double InkShare(RasterImage card, DocumentFormatRegion region)
     {
         var left = (int)(region.X * card.Width);
@@ -939,7 +888,6 @@ public class DocumentGeometryInspectorTests
         }
     }
 
-    /// <summary>A face detector whose first question cancels the request (the caller gave up while the picture was being read), and which keeps the pictures it was shown.</summary>
     private sealed class CancelOnFirstQuestion(CancellationTokenSource source) : IFaceDetector
     {
         public int Calls { get; private set; }
@@ -955,8 +903,6 @@ public class DocumentGeometryInspectorTests
             return [];
         }
     }
-
-    // ---- the picture, the copies, the faults ----------------------------------------------------------------------------------------------------------------------
 
     [Fact]
     public void Inspect_APictureLargerThanTheWorkingSize_GivesTheSameCard()
@@ -1066,11 +1012,8 @@ public class DocumentGeometryInspectorTests
 
         watch.Stop();
 
-        // The measured value is in the pull request (about 100 ms is the aim on one core); the assertion only guards against a method that no longer scales.
         Assert.True(watch.Elapsed.TotalMilliseconds / runs < 500, $"{watch.Elapsed.TotalMilliseconds / runs:F0} ms per inspection");
     }
-
-    // ---------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     private static RasterImage Turn(RasterImage source, int degrees) => degrees switch
     {
@@ -1080,10 +1023,8 @@ public class DocumentGeometryInspectorTests
         _ => DocumentImageFactory.Brightened(source, 0),
     };
 
-    /// <summary>The box is the card to within two pixels of the picture: the edge of a card is a pixel or two wide.</summary>
     private static void AssertNear(double expected, double actual) => Assert.InRange(actual, expected - 0.008, expected + 0.008);
 
-    /// <summary>The turn the report asks for makes the picture upright: the detector that only finds an upright face finds it there.</summary>
     private static void AssertTurnMakesTheFaceUpright(RasterImage turned, DocumentGeometryReport report)
     {
         using var made = turned.Oriented(report.ExifOrientation);
@@ -1091,7 +1032,6 @@ public class DocumentGeometryInspectorTests
         Assert.Single(found);
     }
 
-    /// <summary>A detector that finds nothing and keeps the scores it was asked with.</summary>
     private sealed class RecordingDetector : IFaceDetector
     {
         public List<double> Scores { get; } = [];

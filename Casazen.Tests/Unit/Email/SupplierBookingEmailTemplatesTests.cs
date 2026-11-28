@@ -17,7 +17,6 @@ public class SupplierBookingEmailTemplatesTests
     private const string EncodedPayload = "&lt;a href=&quot;https://phish.example&quot;&gt;Paga qui&lt;/a&gt;";
     private const string Link = "https://casazen-app.test/fornitori/vetrina-test/richiesta?code=ABCDE-12345";
 
-    /// <summary>Friday 9 October 2026, 10:00 in Rome.</summary>
     private static readonly DateTime Start = new(2026, 10, 9, 8, 0, 0, DateTimeKind.Utc);
 
     private static readonly DateTime AnswerBy = new(2026, 10, 8, 12, 0, 0, DateTimeKind.Utc);
@@ -30,7 +29,6 @@ public class SupplierBookingEmailTemplatesTests
         "verification", "receipt", "receipt-no-price", "new-request", "new-request-no-price", "accepted-quoted", "accepted-estimated",
         "accepted-no-reminder", "declined", "time-proposed", "reminder", "cancelled", "expired",
 
-        // SP-11: the customer's own area of a booking.
         "cancellation-receipt", "cancellation-receipt-no-reason", "proposal-expired", "cancelled-by-customer", "cancelled-by-customer-bare",
         "rescheduled-by-customer", "rescheduled-by-customer-bare", "proposal-accepted-by-customer", "proposal-rejected-by-customer",
         "proposal-lapsed",
@@ -126,7 +124,6 @@ public class SupplierBookingEmailTemplatesTests
         Assert.Contains("il fornitore non riceve nulla", content.HtmlBody);
         Assert.Contains("Teniamo libero l'orario per 30 minuti", content.HtmlBody);
         Assert.Contains("Se non hai chiesto tu questa prenotazione, ignora questo messaggio", content.HtmlBody);
-        // The button and the plain link for the clients that do not draw buttons.
         Assert.Equal(2, Regex.Matches(content.HtmlBody, Regex.Escape($"href=\"{Link}\"")).Count);
     }
 
@@ -289,8 +286,6 @@ public class SupplierBookingEmailTemplatesTests
         Assert.All(names, name => Assert.Matches("^supplier-booking-[a-z-]+$", name));
     }
 
-    // ─── SP-11: the customer's own area of a booking ───
-
     [Fact]
     public void CancellationReceipt_GivesTheCodeAndTheReasonTheCustomerWrote_AndSaysNothingIsChargedForCancelling()
     {
@@ -305,7 +300,6 @@ public class SupplierBookingEmailTemplatesTests
         Assert.Contains("Codice della richiesta: <strong>ABCDE-12345</strong>.", content.HtmlBody);
         Assert.Contains("Il motivo che hai indicato:", content.HtmlBody);
         Assert.Contains("Cambio programma", content.HtmlBody);
-        // Decision D6: no exit cost in v1, and the e-mail may say so; nothing else about money.
         Assert.Contains("Non hai pagato nulla e non ti addebitiamo nulla per l'annullo.", content.HtmlBody);
         Assert.DoesNotContain("Il motivo che hai indicato", withoutReason.HtmlBody);
         Assert.DoesNotContain("penale", content.HtmlBody, StringComparison.OrdinalIgnoreCase);
@@ -322,7 +316,6 @@ public class SupplierBookingEmailTemplatesTests
         Assert.Contains("ma non hai risposto in tempo", content.HtmlBody);
         Assert.Contains("Non hai pagato nulla.", content.HtmlBody);
         Assert.DoesNotContain("non ha risposto", content.HtmlBody);
-        // And the e-mail of the request nobody answered still blames nobody but the supplier.
         Assert.Contains("non ha risposto in tempo", expired.HtmlBody);
     }
 

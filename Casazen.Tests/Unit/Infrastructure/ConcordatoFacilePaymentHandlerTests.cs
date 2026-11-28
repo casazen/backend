@@ -68,7 +68,6 @@ public class ConcordatoFacilePaymentHandlerTests
         Assert.Equal(WebhookSource.ConcordatoFacile, claim.Source);
         Assert.Equal(ConcordatoFacilePurchaseStatus.Completed, (await db.ConcordatoFacilePurchases.AsNoTracking().SingleAsync()).Status);
 
-        // Stripe delivers the same event again: if it were applied it would complete the purchase once more.
         var tracked = await db.ConcordatoFacilePurchases.SingleAsync();
         tracked.Status = ConcordatoFacilePurchaseStatus.Pending;
         tracked.PaidAt = null;

@@ -25,17 +25,14 @@ public class SupplierCalendarDisconnectPostgresTests(SupplierCalendarSyncPostgre
 {
     private static DateOnly Today => TimeProvider.System.TodayInRomeAsDateOnly();
 
-    // ─── The lock ────────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task Disconnect_WaitsForTheCalendarSyncLockOfItsSupplier_ThenRemovesTheFeedRows()
     {
         var (userId, orgId, url) = await SeedSupplierWithFeedAsync();
         await SyncOnceAsync(orgId, url);
-        Assert.Single(await WindowsAsync(orgId)); // the feed wrote one window of hours and one closed day
+        Assert.Single(await WindowsAsync(orgId));
         Assert.Single(await DaysAsync(orgId));
 
-        // Another connection holds the lock of this supplier, as a write of the agenda or a sync would.
         await using var holder = new NpgsqlConnection(await ConnectionStringAsync());
         await holder.OpenAsync();
         await using var holderTransaction = await holder.BeginTransactionAsync();
@@ -47,7 +44,7 @@ public class SupplierCalendarDisconnectPostgresTests(SupplierCalendarSyncPostgre
         await Task.Delay(300);
 
         Assert.False(pending.IsCompleted, "the unlink did not wait for the lock of the supplier's calendar");
-        Assert.Single(await WindowsAsync(orgId)); // nothing is removed while the lock is held by someone else
+        Assert.Single(await WindowsAsync(orgId));
         Assert.Equal(CalendarSyncType.ICalFeed, (await ProfileAsync(orgId)).CalendarSyncType);
 
         await holderTransaction.CommitAsync();
@@ -112,7 +109,6 @@ public class SupplierCalendarDisconnectPostgresTests(SupplierCalendarSyncPostgre
             factory.Feeds.TryRemove(url, out _);
         }
 
-        // The run that downloaded the feed read, under the lock, a profile with no URL and wrote nothing.
         Assert.Empty(await WindowsAsync(orgId));
         Assert.Empty(await DaysAsync(orgId));
         var profile = await ProfileAsync(orgId);
@@ -140,8 +136,6 @@ public class SupplierCalendarDisconnectPostgresTests(SupplierCalendarSyncPostgre
         Assert.Empty(await WindowsAsync(orgId));
         Assert.Empty(await DaysAsync(orgId));
     }
-
-    // ─── What stays, and whose it is ─────────────────────────────────────────────
 
     [PostgresFact]
     public async Task Unlink_RemovesTheWindowsAndDaysOfTheFeed_ButNotTheBlocksAndDaysTheSupplierSetByHand()
@@ -171,7 +165,6 @@ public class SupplierCalendarDisconnectPostgresTests(SupplierCalendarSyncPostgre
         var (aUser, aOrg, aUrl) = await SeedSupplierWithFeedAsync();
         var (_, bOrg, bUrl) = await SeedSupplierWithFeedAsync();
         var day = Today.AddDays(9);
-        // The same event (UID and start) in the feed of both: the unique index is per supplier.
         factory.Feeds[aUrl] = () => FeedOf(Timed("shared", day, "100000", "110000"), AllDay("holiday", day.AddDays(3), day.AddDays(4)));
         factory.Feeds[bUrl] = () => FeedOf(Timed("shared", day, "100000", "110000"), AllDay("holiday", day.AddDays(3), day.AddDays(4)));
         await SyncAsync(aOrg);
@@ -212,10 +205,8 @@ public class SupplierCalendarDisconnectPostgresTests(SupplierCalendarSyncPostgre
         Assert.Equal(HttpStatusCode.NoContent, again.StatusCode);
         Assert.Equal(0, await FreeEventsAsync(orgId));
         Assert.Equal(1, await FreeEventsAsync(otherOrg));
-        Assert.Empty(await DaysAsync(orgId)); // the days the free-looking events kept occupied are open again
+        Assert.Empty(await DaysAsync(orgId));
     }
-
-    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private HttpClient SupplierClient(string userId) => factory.CreateAuthenticatedClient(userId, roles: "Supplier");
 
@@ -232,7 +223,6 @@ public class SupplierCalendarDisconnectPostgresTests(SupplierCalendarSyncPostgre
         return (userId, orgId, url);
     }
 
-    /// <summary>One timed event and one all-day event in the feed of the supplier, synced: a window and a closed day.</summary>
     private async Task SyncOnceAsync(Guid orgId, string url)
     {
         var day = Today.AddDays(9);
@@ -331,7 +321,6 @@ public class SupplierCalendarDisconnectPostgresTests(SupplierCalendarSyncPostgre
     private static string AllDay(string uid, DateOnly start, DateOnly end) =>
         $"BEGIN:VEVENT\r\nUID:{uid}\r\nDTSTART;VALUE=DATE:{start:yyyyMMdd}\r\nDTEND;VALUE=DATE:{end:yyyyMMdd}\r\nEND:VEVENT\r\n";
 
-    /// <summary>An all-day event the calendar marks "Available" (every all-day event of Google Calendar): occupied until the supplier answers.</summary>
     private static string FreeDay(string uid, DateOnly day) =>
         $"BEGIN:VEVENT\r\nUID:{uid}\r\nDTSTART;VALUE=DATE:{day:yyyyMMdd}\r\nDTEND;VALUE=DATE:{day.AddDays(1):yyyyMMdd}\r\nSUMMARY:Libero\r\nTRANSP:TRANSPARENT\r\nEND:VEVENT\r\n";
 }

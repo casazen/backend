@@ -56,8 +56,6 @@ public class OrgMemberAreasTests
     private async Task<List<OrgActivityEntry>> AreaLinesAsync(Guid orgId) =>
         (await _kit.ReadActivityAsync(orgId)).Where(e => e.Type == OrgActivityType.MemberAreasChanged).ToList();
 
-    // ─── What changes ───────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task SetAreasAsync_ThePropertyManagerMovesFromShortToLongRent_TheRentalRowFollowsAndTheAccountRowStays()
     {
@@ -69,7 +67,6 @@ public class OrgMemberAreasTests
         Assert.Equal(["long-rent"], view.Areas);
         Assert.Equal(OrgRole.PropertyManager, view.Role);
         Assert.Equal(["account/org_manager", "long-rent/property_manager"], await _kit.MembershipsAsync("auth0|pia"));
-        // The change is seen on the person's next request: its authorization cache is dropped.
         _kit.Cache.Verify(c => c.Invalidate("auth0|pia"), Times.AtLeastOnce);
     }
 
@@ -132,8 +129,6 @@ public class OrgMemberAreasTests
 
         Assert.Equal(["account/org_manager", "long-rent/property_manager"], await _kit.MembershipsAsync("auth0|anna"));
     }
-
-    // ─── What is refused ────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("")]
@@ -225,8 +220,6 @@ public class OrgMemberAreasTests
         Assert.Equal(["short-rent/staff"], await _kit.MembershipsAsync("auth0|stranger"));
     }
 
-    // ─── The activity log ───────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task SetAreasAsync_WritesOneLine_WithWhoWhomAndTheAreasBeforeAndAfter()
     {
@@ -242,8 +235,6 @@ public class OrgMemberAreasTests
         Assert.Equal(("short-rent", "long-rent.short-rent"), (details["fromAreas"], details["toAreas"]));
         Assert.False(details.ContainsKey("released"));
     }
-
-    // ─── «Solo alcuni»: the grants stay, the reach follows the areas ────────────────────────────────────
 
     private async Task<(Guid MemberId, Guid ShortProperty, Guid LongProperty)> LimitedCollaboratorAsync(Guid orgId)
     {
@@ -284,7 +275,6 @@ public class OrgMemberAreasTests
         var both = new[] { trullo, bilocale }.Order().ToList();
         Assert.Equal(both, await ReachedAsync(orgId, "auth0|anna"));
 
-        // Short-term only: the long-term grant is kept (the area can be given back) and is not reached.
         await SetAreasAsync(orgId, memberId, OwnerId, "short-rent");
         Assert.Equal(both, await _kit.ReadGrantsAsync("auth0|anna"));
         Assert.Equal([trullo], await ReachedAsync(orgId, "auth0|anna"));
@@ -292,11 +282,9 @@ public class OrgMemberAreasTests
         Assert.Equal(RentalMode.Short, snapshot.OrgMember!.GrantedMode);
         Assert.Equal([trullo], snapshot.OrgMember.GrantedPropertyIds!.ToArray());
 
-        // Long-term only: the other way round.
         await SetAreasAsync(orgId, memberId, OwnerId, "long-rent");
         Assert.Equal([bilocale], await ReachedAsync(orgId, "auth0|anna"));
 
-        // Both areas again: the grants come back with nothing to redo.
         await SetAreasAsync(orgId, memberId, OwnerId, "short-rent", "long-rent");
         Assert.Equal(both, await ReachedAsync(orgId, "auth0|anna"));
         Assert.Null((await SnapshotAsync("auth0|anna")).OrgMember!.GrantedMode);
@@ -320,7 +308,6 @@ public class OrgMemberAreasTests
         await using var verify = _kit.NewDb();
         var responsible = await verify.Properties.IgnoreQueryFilters().AsNoTracking().Where(p => p.OrgId == orgId)
             .ToDictionaryAsync(p => p.Id, p => p.ResponsibleUserId);
-        // The long-term property lost its person in charge, the short-term one did not; the grant rows are all still there.
         Assert.Equal("auth0|anna", responsible[trullo]);
         Assert.Null(responsible[bilocale]);
         Assert.Equal(2, (await _kit.ReadGrantsAsync("auth0|anna")).Count);
@@ -376,11 +363,8 @@ public class OrgMemberAreasTests
 
         var error = await Assert.ThrowsAsync<DomainRuleException>(() => access.SetResponsibleAsync(orgId, bilocale, "auth0|anna"));
         Assert.Equal(PropertyResponsibleErrors.Invalid, error.Code);
-        // The one it does reach is fine.
         await access.SetResponsibleAsync(orgId, trullo, "auth0|anna");
     }
-
-    // ─── Found by the review of the change ──────────────────────────────────────────────────────────────
 
     private async Task NameInChargeAsync(Guid propertyId, string userId)
     {
@@ -398,7 +382,6 @@ public class OrgMemberAreasTests
     [Fact]
     public void AreasCode_NoAreasAtAll_IsACodeTheLogAccepts_AndTheOthersAreSortedAndJoined()
     {
-        // An empty value is not a code: the log refuses it, and the change that repairs a member with no area could not be written.
         Assert.Equal("none", OrgActivityDetails.AreasCode([]));
         Assert.True(OrgActivityCatalog.IsSafeDetailValue(OrgActivityDetails.AreasCode([])));
         Assert.Equal("long-rent.short-rent", OrgActivityDetails.AreasCode(["short-rent", "LONG-RENT", "short-rent"]));
@@ -411,7 +394,6 @@ public class OrgMemberAreasTests
         var orgId = await SeedOrgAsync();
         var memberId = await AddMemberAsync(orgId, "auth0|anna", OrgRole.Collaborator, ["short-rent"]);
 
-        // A drift the reconcile reports as member_without_host_membership: the member row is there and its rental rows are not.
         await using (var db = _kit.NewDb())
         {
             db.UserContextMemberships.RemoveRange(db.UserContextMemberships.Where(m => m.UserId == "auth0|anna"));
@@ -434,12 +416,10 @@ public class OrgMemberAreasTests
         var orgId = await SeedOrgAsync();
         var (memberId, _, bilocale) = await LimitedCollaboratorAsync(orgId);
         await SetAreasAsync(orgId, memberId, OwnerId, "short-rent");
-        // A stale name on a long-term property (it changed mode, or a row written elsewhere): nothing else is wrong.
         await NameInChargeAsync(bilocale, "auth0|anna");
 
         await SetAreasAsync(orgId, memberId, OwnerId, "short-rent");
 
-        // The name is gone, and a change of state has its line even though the areas are the same: with the count that says what happened.
         Assert.Null(await ResponsibleOfAsync(bilocale));
         var released = Assert.Single(
             await AreaLinesAsync(orgId),
@@ -457,13 +437,11 @@ public class OrgMemberAreasTests
         await NameInChargeAsync(bilocale, "auth0|anna");
         await NameInChargeAsync(trullo, "auth0|anna");
 
-        // The owner saves the access with both properties still given: the long-term one is not reached, so the name goes.
         await using (var db = _kit.NewDb())
             await _kit.PropertyAccess(db).SetAsync(orgId, memberId, OwnerId, PropertyScope.Selected, [trullo, bilocale]);
 
         Assert.Equal("auth0|anna", await ResponsibleOfAsync(trullo));
         Assert.Null(await ResponsibleOfAsync(bilocale));
-        // The grants are exactly what was sent: nothing was taken away.
         Assert.Equal(new[] { trullo, bilocale }.Order(), (await _kit.ReadGrantsAsync("auth0|anna")).Order());
     }
 
@@ -476,18 +454,15 @@ public class OrgMemberAreasTests
         await using (var both = _kit.NewDb())
         {
             var view = await _kit.PropertyAccess(both).GetAsync(orgId, memberId);
-            // The owner reaches everything and Anna works in both areas: two people each.
             Assert.All(view.Properties, p => Assert.Equal(2, p.PeopleWithAccess));
         }
 
-        // Anna gives up long-term rentals: she keeps the grant on the bilocale and no longer reaches it.
         await SetAreasAsync(orgId, memberId, OwnerId, "short-rent");
 
         await using var db = _kit.NewDb();
         var items = (await _kit.PropertyAccess(db).GetAsync(orgId, memberId)).Properties.ToDictionary(p => p.PropertyId);
         Assert.Equal(2, items[trullo].PeopleWithAccess);
         Assert.Equal(1, items[bilocale].PeopleWithAccess);
-        // What an editor sends back is the stored grant: saving the page as it is must not take the bilocale away.
         Assert.True(items[bilocale].Granted);
     }
 
@@ -516,8 +491,6 @@ public class OrgMemberAreasTests
     [Fact]
     public async Task Decide_ALimitedCollaboratorWithNoRentalMembership_IsNotNarrowed()
     {
-        // A drift the reconcile reports (no area known): the grants are not narrowed, and the member holds no context permission
-        // either, so the permission layer is the one that refuses.
         var orgId = await SeedOrgAsync();
         var (memberId, trullo, bilocale) = await LimitedCollaboratorAsync(orgId);
         await using (var db = _kit.NewDb())

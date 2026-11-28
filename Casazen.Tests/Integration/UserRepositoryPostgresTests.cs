@@ -47,7 +47,6 @@ public class UserRepositoryPostgresTests
         await using var db = database.CreateContext();
         var repository = new UserRepository(db);
 
-        // A page of 0 (or negative) used to compute a negative Skip, which Postgres rejects with an error (A1-26).
         var (users, total) = await repository.GetPagedAsync(null, null, null, page: 0, pageSize: 20);
 
         Assert.Equal(1, total);

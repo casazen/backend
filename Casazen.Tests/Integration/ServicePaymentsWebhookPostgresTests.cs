@@ -8,7 +8,6 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.External;
 using Casazen.Tests.Integration.Postgres;
-using Casazen.Tests.Unit.Email;
 using Casazen.Tests.Unit.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,8 +29,6 @@ namespace Casazen.Tests.Integration;
 public class ServicePaymentsWebhookPostgresTests(ServicePaymentsFactory factory) : IClassFixture<ServicePaymentsFactory>
 {
     private const string SupplierAccount = "acct_supplier_pg_webhook";
-
-    // ─── The payment: events, the sync job, the lock ───
 
     [PostgresFact]
     public async Task Event_TheSameEventInParallel_RecordsThePaymentOnce_AndSendsOneReceipt()
@@ -62,7 +59,6 @@ public class ServicePaymentsWebhookPostgresTests(ServicePaymentsFactory factory)
         Assert.Equal(ServicePaymentStatus.Paid, payment.Status);
         Assert.NotNull(payment.PaidAt);
         Assert.Equal(ServicePaymentChannel.Stripe, payment.PaidVia);
-        // Both events were processed (each id is claimed), but only the first to take the lock paid: one receipt.
         Assert.Equal(1, await CountProcessedAsync(first.Id));
         Assert.Equal(1, await CountProcessedAsync(second.Id));
         Assert.Single(ReceiptsOf(opened));
@@ -72,7 +68,6 @@ public class ServicePaymentsWebhookPostgresTests(ServicePaymentsFactory factory)
     public async Task Event_ParallelWithTheSyncJob_RecordsThePaymentOnce_AndSendsOneReceipt()
     {
         var opened = await OpenedAsync();
-        // The debit is in flight: the payment is Processing, and the job will find the PaymentIntent succeeded.
         await DeliverAsync(PaymentIntentEvent(opened, "payment_intent.processing", $"evt_{Guid.NewGuid():N}"));
         Assert.Equal(ServicePaymentStatus.Processing, (await PaymentAsync(opened.PaymentId)).Status);
         factory.Gateway.SetStatus(opened.IntentId, "succeeded");
@@ -106,8 +101,6 @@ public class ServicePaymentsWebhookPostgresTests(ServicePaymentsFactory factory)
         Assert.Equal(ServicePaymentStatus.Paid, (await PaymentAsync(held.PaymentId)).Status);
     }
 
-    // ─── The refunds ───
-
     [PostgresFact]
     public async Task Refund_TwoParallelRefundsOfTheWholeAmount_CreateOneRefundOnStripe()
     {
@@ -119,7 +112,6 @@ public class ServicePaymentsWebhookPostgresTests(ServicePaymentsFactory factory)
             first.PostAsJsonAsync(RefundUrl(paid.PaymentId), new { }),
             second.PostAsJsonAsync(RefundUrl(paid.PaymentId), new { }));
 
-        // One reserved everything; the other found nothing left to refund (422): never a second refund, never a 500.
         Assert.Equal(new[] { HttpStatusCode.OK, HttpStatusCode.UnprocessableEntity }, responses.Select(r => r.StatusCode).Order().ToArray());
         Assert.Single(factory.Gateway.RefundRequests, r => r.PaymentIntentId == paid.IntentId);
         var payment = await PaymentAsync(paid.PaymentId);
@@ -139,7 +131,6 @@ public class ServicePaymentsWebhookPostgresTests(ServicePaymentsFactory factory)
             first.PostAsJsonAsync(RefundUrl(paid.PaymentId), new { amountCents = 4_000 }),
             second.PostAsJsonAsync(RefundUrl(paid.PaymentId), new { amountCents = 4_000 }));
 
-        // The first reserves 4000 euro cents; the second asks for more than the 2000 left.
         Assert.Equal(new[] { HttpStatusCode.OK, HttpStatusCode.UnprocessableEntity }, responses.Select(r => r.StatusCode).Order().ToArray());
         var rejected = responses.Single(r => r.StatusCode == HttpStatusCode.UnprocessableEntity);
         Assert.Equal("service_payment_refund_amount_exceeds", (await rejected.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("code").GetString());
@@ -216,13 +207,10 @@ public class ServicePaymentsWebhookPostgresTests(ServicePaymentsFactory factory)
         Assert.Equal(ServicePaymentStatus.PartiallyRefunded, payment.Status);
     }
 
-    // ─── The reminders ───
-
     [PostgresFact]
     public async Task Reminders_TwoParallelRuns_SendOneReminder()
     {
         var opened = await OpenedAsync();
-        // Asked three days ago, one email so far: the first reminder is due.
         await ChangePaymentAsync(opened.PaymentId, p =>
         {
             p.RequestedAt = DateTime.UtcNow.AddDays(-3);
@@ -254,12 +242,9 @@ public class ServicePaymentsWebhookPostgresTests(ServicePaymentsFactory factory)
         var ask = supplier.PostAsync($"/api/supplier/requests/{opened.RequestId}/payment-request", content: null);
         await Task.WhenAll(job, ask);
 
-        // The job and the supplier both want to send: the payer gets one email, the other finds the day taken.
         Assert.Equal(before + 1, RemindersOf(opened.PaymentId));
         Assert.Contains((await ask).StatusCode, new[] { HttpStatusCode.OK, HttpStatusCode.UnprocessableEntity });
     }
-
-    // ─── Helpers ───
 
     private sealed record Opened(ServiceRequestWorld World, Guid RequestId, Guid PaymentId, string IntentId, string SupplierEmail);
 
@@ -280,7 +265,6 @@ public class ServicePaymentsWebhookPostgresTests(ServicePaymentsFactory factory)
         return world;
     }
 
-    /// <summary>A request completed inside CasaZen whose payer opened the session: the payment has its PaymentIntent on the fake Stripe.</summary>
     private async Task<Opened> OpenedAsync()
     {
         var world = await ReadyWorldAsync();
@@ -311,7 +295,6 @@ public class ServicePaymentsWebhookPostgresTests(ServicePaymentsFactory factory)
         return new Opened(world, id, paymentId, intentId, supplierEmail);
     }
 
-    /// <summary>A payment that was paid: the PaymentIntent succeeded and the event was delivered.</summary>
     private async Task<Opened> PaidAsync()
     {
         var opened = await OpenedAsync();
@@ -321,7 +304,6 @@ public class ServicePaymentsWebhookPostgresTests(ServicePaymentsFactory factory)
         return opened;
     }
 
-    /// <summary>The event Stripe sends about the PaymentIntent of the payment, on the Connect endpoint.</summary>
     private Event PaymentIntentEvent(Opened opened, string type, string eventId)
     {
         var intent = factory.Gateway.Intent(opened.IntentId);
@@ -350,7 +332,6 @@ public class ServicePaymentsWebhookPostgresTests(ServicePaymentsFactory factory)
         };
     }
 
-    /// <summary>One delivery of an event: a worker of its own, with its own scope and connection, as a Hangfire job has.</summary>
     private async Task DeliverAsync(Event stripeEvent)
     {
         await using var scope = factory.Services.CreateAsyncScope();
@@ -413,7 +394,6 @@ public class ServicePaymentsWebhookPostgresTests(ServicePaymentsFactory factory)
         return scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.GetConnectionString()!;
     }
 
-    /// <summary>Another connection holding the payment lock of a request, as a webhook or a refund that is writing its payment would.</summary>
     private async Task<LockHolder> HoldTheLockAsync(Guid requestId)
     {
         var connection = new NpgsqlConnection(await ConnectionStringAsync());

@@ -26,12 +26,6 @@ public class ApprovalAlertDeliveryTests : IDisposable
 
     public void Dispose() => _rig.Dispose();
 
-    // ─── Who is told (AC-NF68-4) ───
-
-    /// <summary>
-    /// Permission rule: the alert of an item goes to the people who hold <c>approval.decide</c> and reach its property, not to everybody in the org (as the notice of NF-06 did): the
-    /// collaborator in charge of the property, who cannot decide, is told nothing; the manager is told about the property it is in charge of and the owner about both.
-    /// </summary>
     [Fact]
     public async Task NewItem_AlertsOnlyTheUsersWhoMayDecideAndReachTheProperty_Test()
     {
@@ -41,7 +35,6 @@ public class ApprovalAlertDeliveryTests : IDisposable
         var onA = await _rig.SubmitDraftAsync(service, _rig.PropertyA);
         var onB = await _rig.SubmitDraftAsync(service, _rig.PropertyB);
 
-        // On A: the owner (an administrator); the collaborator, in charge of A, does not hold the permission. On B: the owner and the manager in charge.
         var bells = (await _rig.Db.InAppNotifications.AsNoTracking().ToListAsync()).Select(n => (n.EntityId!.Value, n.UserId)).ToHashSet();
         Assert.Equal(
             new HashSet<(Guid, string)>
@@ -65,7 +58,6 @@ public class ApprovalAlertDeliveryTests : IDisposable
         var item = await service.SubmitForApprovalAsync(
             _rig.OrgId, ApprovalItemTypes.Campaign, Guid.NewGuid(), ApprovalQueueRules.CampaignTextOf("Oggetto", "<p>Testo</p>"), isAiGenerated: false);
 
-        // An event with no property goes to the administrators: the owner; the manager is not one, and the collaborator may not decide.
         var push = Assert.Single(_rig.Push.Queued);
         Assert.Equal(PushAudience.User(_rig.OrgId, ApprovalQueueRig.Owner), push.Audience);
         Assert.Equal(PushRoutes.Approvals(), push.Payload.Route);
@@ -96,8 +88,6 @@ public class ApprovalAlertDeliveryTests : IDisposable
         Assert.Equal("Bozza pronta", push.Payload.Title);
     }
 
-    // ─── The choice of each person (AC-NF65) ───
-
     [Fact]
     public async Task NewItem_TheCounterAndThePushAreTheDefault_TheEmailIsNot()
     {
@@ -124,7 +114,6 @@ public class ApprovalAlertDeliveryTests : IDisposable
         var item = await _rig.SubmitDraftAsync(service, _rig.PropertyA, text: Secret);
         await _rig.Alerts().RaiseAsync(new ApprovalAlert(_rig.OrgId, item.Id, item.CreatedAt), CancellationToken.None);
 
-        // Neither the counter nor the push (the person chose the e-mail), one e-mail even though the alert was raised twice.
         Assert.Empty(await _rig.Db.InAppNotifications.AsNoTracking().ToListAsync());
         Assert.Empty(_rig.Push.Queued);
         var email = Assert.Single(_rig.Email.Snapshot());
@@ -164,8 +153,6 @@ public class ApprovalAlertDeliveryTests : IDisposable
         Assert.Single(_rig.Email.Snapshot());
     }
 
-    // ─── Quiet hours (AC-NF65-3) ───
-
     [Fact]
     public async Task NewItem_InTheQuietHours_PushAndEmailWaitForTheMorning_TheCounterDoesNot()
     {
@@ -185,7 +172,6 @@ public class ApprovalAlertDeliveryTests : IDisposable
         Assert.Equal(item.Id, queued.ItemId);
         Assert.Equal(NotificationChannels.MobilePush | NotificationChannels.Email, queued.Channels);
 
-        // In the morning the job delivers what waited, and the bell is not written a second time.
         _rig.Clock.SetUtcNow(new DateTimeOffset(ApprovalQueueRig.MorningDue));
         await _rig.Alerts().DeliverDeferredAsync(queued, CancellationToken.None);
 
@@ -229,8 +215,6 @@ public class ApprovalAlertDeliveryTests : IDisposable
         Assert.Equal(nameof(ApprovalAlertJob.DeliverAsync), stored.Method.Name);
     }
 
-    // ─── The "To do" (ADR-026) ───
-
     [Fact]
     public async Task NewItem_RaisesOneTodo_LinkedToTheItem_AndAnAlertRaisedAgainRaisesNoSecond()
     {
@@ -271,12 +255,6 @@ public class ApprovalAlertDeliveryTests : IDisposable
         Assert.Empty(await _rig.Activities().GetPendingAsync(_rig.OrgWide, CancellationToken.None));
     }
 
-    // ─── Nothing of the text, nothing twice, nothing lost ───
-
-    /// <summary>
-    /// Privacy rule: the words of the item (a message to a guest, which may name the guest and an IBAN) are in no push, e-mail or notification of the alert: the property and the
-    /// kind of item only.
-    /// </summary>
     [Fact]
     public async Task NewItem_TheTextOfTheItemIsInNoPushEmailOrNotification_Test()
     {
@@ -320,7 +298,6 @@ public class ApprovalAlertDeliveryTests : IDisposable
 
         var item = await _rig.SubmitDraftAsync(service, _rig.PropertyA);
 
-        // The item is there and its "To do" was raised even though the push was refused; the whole alert is handed to a job.
         Assert.Equal(ApprovalStatus.Pending, (await _rig.Db.ApprovalQueueItems.AsNoTracking().SingleAsync(i => i.Id == item.Id)).Status);
         Assert.NotNull(item.ActivityId);
         var (retry, _) = Assert.Single(_rig.Scheduled<ApprovalAlert>(typeof(ApprovalAlertJob)));
@@ -333,7 +310,6 @@ public class ApprovalAlertDeliveryTests : IDisposable
         Assert.Equal(retry, back);
         Assert.Equal(DateTimeKind.Utc, back.OccurredAtUtc.Kind);
 
-        // The job runs when the push can be queued: the bell was written once already, and is not written again.
         await _rig.Alerts().RaiseAsync(retry, CancellationToken.None);
         Assert.Single(await _rig.Db.InAppNotifications.AsNoTracking().ToListAsync());
         Assert.Single(_rig.Push.Queued);
@@ -358,7 +334,6 @@ public class ApprovalAlertDeliveryTests : IDisposable
         Assert.Equal(first.Id, again.Id);
         Assert.NotEqual(first.Id, other.Id);
         Assert.Equal(2, await _rig.Db.ApprovalQueueItems.CountAsync());
-        // One bell and one To do for each of the two items; the push is queued again with the same key, which the delivery turns into one push per device.
         Assert.Equal(2, await _rig.Db.InAppNotifications.CountAsync());
         Assert.Equal(2, await _rig.Db.InternalActivities.CountAsync());
         var pushesOfTheFirst = _rig.Push.Queued.Where(p => p.Payload.ApprovalItemId == first.Id).ToList();
@@ -388,7 +363,6 @@ public class ApprovalAlertDeliveryTests : IDisposable
         Assert.Equal(ApprovalOriginActionStatus.Pending, stored.OriginActionStatus);
         Assert.Null(stored.OriginActionExecutedAt);
         Assert.Null(stored.ApprovedByUserId);
-        // A second alert, with its own bell and its own To do (the first one was closed by the approval).
         Assert.Equal(2, await _rig.Db.InAppNotifications.CountAsync());
         var todos = await _rig.Db.InternalActivities.AsNoTracking().OrderBy(a => a.CreatedAt).ToListAsync();
         Assert.Equal(2, todos.Count);

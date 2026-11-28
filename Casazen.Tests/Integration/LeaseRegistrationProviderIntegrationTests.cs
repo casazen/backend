@@ -99,7 +99,6 @@ public class LeaseRegistrationProviderIntegrationTests(LeaseProviderFlowWebAppli
         Assert.True((await ChecklistItemAsync(client, leaseId, RliChecklistKeys.DelegaCaptured)).GetProperty("done").GetBoolean());
         var receipt = await client.GetAsync($"/api/leases/{leaseId}/registration/receipt");
         Assert.Equal(HttpStatusCode.NotFound, receipt.StatusCode);
-        // While the provider works on it the landlord cannot declare a second registration.
         var manual = await DeclareManualAsync(client, leaseId);
         Assert.Equal(HttpStatusCode.Conflict, manual.StatusCode);
         Assert.Equal("rli_registration_in_progress", (await ReadJson(manual)).GetProperty("code").GetString());
@@ -219,7 +218,6 @@ public class LeaseRegistrationProviderIntegrationTests(LeaseProviderFlowWebAppli
         var (client, leaseId) = await SignedLeaseAsync("provider-stale");
         await using (var scope = factory.Services.CreateAsyncScope())
         {
-            // The state a crash between the reservation and the provider outcome leaves behind.
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var lease = await db.LeaseContracts.SingleAsync(l => l.Id == leaseId);
             lease.Status = LeaseStatus.RegistrationPending;
@@ -253,7 +251,6 @@ public class LeaseRegistrationProviderIntegrationTests(LeaseProviderFlowWebAppli
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await response.Content.ReadAsStringAsync();
-        // RegistrationAuthorized carries the ToS version as payload in the database: never in the response (A7-17).
         Assert.DoesNotContain(TosVersion, json, StringComparison.Ordinal);
         Assert.DoesNotContain(FakeLeaseRegistrationProvider.ExternalIdFor(leaseId), json, StringComparison.Ordinal);
         foreach (var field in new[] { "payload", "externalRegistrationId", "receiptStoragePath", "declaredByUserId" })
@@ -282,7 +279,6 @@ public class LeaseRegistrationProviderIntegrationTests(LeaseProviderFlowWebAppli
             },
         }));
         var leaseId = created.GetProperty("id").GetGuid();
-        // LT-02: offline signature (the e-sign provider flag stays off in this factory).
         (await LeaseSigningTestClient.UploadSignedContractAsync(client, leaseId)).EnsureSuccessStatusCode();
 
         Assert.Equal("Signed", (await GetLeaseAsync(client, leaseId)).GetProperty("status").GetString());

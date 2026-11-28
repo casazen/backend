@@ -15,10 +15,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// LT-03 (A7-03): the final contract exists only with a complete, approved template; the preview is always marked BOZZA
-/// and every datum comes from the lease.
-/// </summary>
 public sealed class LeaseContractTemplateServiceTests : IDisposable
 {
     private readonly LeaseTemplateTestFiles _files = new();
@@ -131,14 +127,12 @@ public sealed class LeaseContractTemplateServiceTests : IDisposable
     [Fact]
     public async Task GeneratePdfAsync_TwoLandlordsAndTwoTenants_ListsEveryPartyWithFiscalCodeInTheOrderEntered()
     {
-        // LT-14 (A7-28): co-owners and co-tenants are all parties of the contract, in their position order.
         _files.Write(
             FiscalRegime.CedolareSecca,
             LeaseTemplateTestFiles.ApprovedVersion,
             LeaseTemplateTestFiles.CompleteTemplate(FiscalRegime.CedolareSecca));
         var sut = CreateSut(_files.Options(FiscalRegime.CedolareSecca, LeaseTemplateTestFiles.Approved()));
         var lease = BuildLease(FiscalRegime.CedolareSecca);
-        // The second landlord comes first in the collection: the contract follows the position, not the storage order.
         lease.Parties =
         [
             new Party { Role = PartyRole.Landlord, Position = 1, FirstName = "Anna", LastName = "Bianchi", FiscalCode = "BNCNNA82A41F205W" },
@@ -183,7 +177,6 @@ public sealed class LeaseContractTemplateServiceTests : IDisposable
     [Fact]
     public void GetFinalContractBlocker_DefaultOptionsApprovedOrMissingData_SameCodeAsGeneratePdf()
     {
-        // LT-02: the signature panel shows why the final contract cannot be downloaded, without throwing.
         Assert.Equal(
             LeaseContractTemplateService.TemplateNotApprovedCode,
             CreateSut(new LeaseTemplateOptions()).GetFinalContractBlocker(BuildLease(FiscalRegime.CedolareSecca)));
@@ -285,7 +278,6 @@ public sealed class LeaseContractTemplateServiceTests : IDisposable
     [Fact]
     public async Task GeneratePdfAsync_ApprovedTemplateOver20000Characters_SpansSeveralA4PagesWithoutLosingText()
     {
-        // LT-09 (A7-14): the old writer printed one Letter page and cut the text at 4000 characters.
         const int wordCount = 3200;
         var regime = FiscalRegime.CanoneConcordato;
         var sections = LeaseContractTemplateStructure.RequiredSections(regime);

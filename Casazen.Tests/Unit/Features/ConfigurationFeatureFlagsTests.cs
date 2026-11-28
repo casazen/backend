@@ -5,7 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Features;
 
-/// <summary>FD-20: a feature flag is on only when <c>Features:{flag}</c> is explicitly <c>true</c>.</summary>
 public class ConfigurationFeatureFlagsTests
 {
     [Fact]
@@ -52,12 +51,9 @@ public class ConfigurationFeatureFlagsTests
         Assert.Contains(FeatureFlags.OtaPartnerApi, FeatureFlags.All);
     }
 
-    // ─── SP-02: the two flags of the supplier showcase and payments ──────────────
-
     [Fact]
     public void All_SupplierFlags_AreListedLastInTheOrderExposedToTheFrontend()
     {
-        // The supplier flags keep their order; a flag added after them is appended at the end.
         Assert.Equal("SupplierShowcaseBooking", FeatureFlags.SupplierShowcaseBooking);
         Assert.Equal("SupplierOnlinePayments", FeatureFlags.SupplierOnlinePayments);
         Assert.Equal("SupplierRequestAutoCancel", FeatureFlags.SupplierRequestAutoCancel);
@@ -71,70 +67,42 @@ public class ConfigurationFeatureFlagsTests
                 "SupplierShowcaseBooking",
                 "SupplierOnlinePayments",
                 "SupplierRequestAutoCancel",
-                // SEO-INVITE: the call to action to sign up on the public SEO pages, off while CasaZen is on invitation.
                 "SeoSignupCta",
-                // E01/F01/US01: the B2B agency tier features, off until deployed.
                 "AgencyTier",
-                // CF-FIX: the ConcordatoFacile service, on in the test environment and off in production until the trial run is confirmed.
                 "ConcordatoFacile",
-                // SP-BKP: the backup suppliers of a host's request, off until the product owner turns it on in the test environment.
                 "SupplierRequestBackups",
-                // DEB-01: the document reading and the selfie check of the guest check-in, placeholders, off until real models exist.
                 "CheckInIdentityVerification",
-                // E02/F01/US02/T01: the Octorate connector (connection, mapping, webhook), off until the sandbox is validated.
                 "OctorateConnector",
-                // E07/F06/US01/T01: the unfinished marketing module (CRM profiles, segments, campaigns), off until it is safe to send.
                 "CrmMarketing",
-                // E10/F01/US01/T02: the activation of CasaZen with Octorate (flow status, plan, panel steps), off until it is ready to be shown.
                 "OctorateOnboarding",
-                // E06/F02/US02/T02: the issuance of fiscal documents by CasaZen (and the mode «CasaZen issues» of the issuer setting), off until the accountant approves the rules.
                 "FiscalDocumentIssuance",
-                // E06/F02/US01/T04: the sync of the billing data with Octorate (pre-fill of the invoice data, write-back), off until the customer endpoints are proven.
                 "OctorateBillingSync",
-                // E03/F02/US01/T03: the compliance traffic light of the cockpit and the feed of its items into the «Da fare» list, off until the proofs can be archived.
                 "ComplianceTrafficLight",
-                // E05/F02/US02/T02: the translation of a message by CasaZen's AI (the text of a guest goes to the provider), off until the product owner decides the transfer.
                 "MessageTranslationAi",
-                // E06/F03/US02/T01: the import of the documents Octorate issued, off until the documents list is proven on a structure with the invoice module.
                 "OctorateDocumentImport",
-                // E05/F05/US01/T01: the assistant that answers the guests' messages (knowledge base, rules, situations, drafts), off until the privacy notice and the processing agreement exist.
                 "MessageAssistant",
-                // E14/F01/US01/T01: the invoices of the property manager to the owners made from the statement versions, off until the accountant confirms the ⚖ choices.
                 "OwnerInvoicing",
-                // E15/F01/US01/T01: the accountant package (ZIP of a month or a year) and the agency summary, off until the accountant confirms the ⚖ choices.
                 "AccountantPackage",
-                // E25/F01/US01/T01: the tourist tax paid online in the guest check-in on the organization's account, off until it is tried in the test environment.
                 "TouristTaxOnlinePayment",
-                // E01/F04/US01/T03: the automation routines (API, engine, time triggers), off until the actions a host needs are real.
                 "Routines",
-                // E23/F01/US01/T01: the check-in link of a portal booking with no e-mail goes in the reservation thread of the portal chat, off until the channel manager gives the chat permission.
                 "PortalChatCheckInLink",
-                // E23/F01/US01/T02: the e-mail of the guest of a portal booking is read from the channel manager, once, for the check-in link only, off until the static IP addresses are registered.
                 "GuestContactInfo",
                 // E17/F01/US02/T01: the submission of the Italian electronic invoices to the SDI through the provider and the correction of the rejected ones, off until the accountant confirms the ⚖ choices.
                 "SdiSubmission",
-                // E18/F01/US03/T01: the Italian tax reporting of the owners (the warnings of the limit of units and of the company tenant, the exports of E18), off until the accountant confirms the ⚖ choices.
                 "TaxReportingExports",
                 // E20/F02/US01/T02: the deletion of the guests' documents once the stay is covered by an archived Alloggiati receipt, off until the test environment has shown it.
                 "PurgeDocumentsAfterReceipt",
                 // E05/F07/US01/T01: the scheduled messages of the routines, off until the product owner confirms the send window and the retry times.
                 "ScheduledMessages",
-                // E40/F01/US01/T01: the guest area, the owner portal and the links on the agency's own domain, off until the frontend serves them there.
                 "WhiteLabelHost",
-                // E40/F01/US01/T01: the automatic registration of the agency domains in Auth0, off until the Management credentials exist.
                 "Auth0HostSync",
-                // E40/F01/US01/T01: the embeddable booking pages, the WordPress plugin and the GTM container of the agency, off until they are delivered.
                 "SiteEmbed",
-                // E30/F02/US01/T01: the staged alerts about the 24 hours of the notification of the guests of a Ticino property to the cantonal police (and, in the same job, those of the arrival days of the other cantons, E31/F02/US01/T01), off until the product owner has seen them on an arrival.
                 "TicinoNotificationAlerts",
-                // E29/F02/US01/T01: the regimes of the registration of the guests of Italy and of the 26 cantons (card of a property, effective duty), with the assisted notification of the other cantons (E31/F02/US01/T01) and the guest register (E31/F01/US01/T01) behind it, off until the product owner has read the catalog.
                 "GuestRegistrationRegimes",
-                // E50/F01/US01/T01: the guest portal, the services of the suppliers in it and the automatic replies of its chat, off until they are delivered and decided.
                 "GuestPortal",
                 "GuestPortalSupplierServices",
                 "GuestPortalAutoReplies",
                 "MarketingGuestInterestAi",
-                // E70/F01/US01/T01: the self-hosted identity verification, the automatic approval in a qualified segment and the evidence for the reviewer, off until the product owner orders them.
                 "CheckInIdentitySelfHosted",
                 "CheckInIdentityAutoApproval",
                 "CheckInIdentityReviewEvidence",
@@ -142,10 +110,6 @@ public class ConfigurationFeatureFlagsTests
             FeatureFlags.All);
     }
 
-    /// <summary>
-    /// E70/F01/US01/T01 (D3, data: production stays closed): the three flags of the self-hosted identity verification are off when nothing is configured and in the
-    /// committed appsettings.json, and each follows its own key alone: turning one on never turns another on, nor the legacy <c>CheckInIdentityVerification</c>.
-    /// </summary>
     [Theory]
     [InlineData(FeatureFlags.CheckInIdentitySelfHosted)]
     [InlineData(FeatureFlags.CheckInIdentityAutoApproval)]
@@ -193,7 +157,6 @@ public class ConfigurationFeatureFlagsTests
     [Fact]
     public void AppSettings_EveryFlagIsListedAndOffByDefault()
     {
-        // The documented default of each flag (a missing value is off anyway): appsettings.json of the web project.
         var configuration = new ConfigurationBuilder()
             .AddJsonFile(Path.Combine(FindRepositoryRoot(), "Casazen.Web", "appsettings.json"), optional: false)
             .Build();

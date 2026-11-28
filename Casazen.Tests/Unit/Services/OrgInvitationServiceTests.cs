@@ -39,8 +39,6 @@ public class OrgInvitationServiceTests
         return await _kit.Invitations(db).CreateAsync(request);
     }
 
-    // ─── Create ─────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task CreateAsync_Collaborator_StoresOnlyTheHashOfTheTokenAndQueuesTheEmailWithTheLink()
     {
@@ -378,8 +376,6 @@ public class OrgInvitationServiceTests
         Assert.Empty(_kit.Emails.Snapshot());
     }
 
-    // ─── List ───────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task ListAsync_ReturnsTheOpenAndTheExpiredOnesNewestFirst_NotTheAcceptedNorTheRevoked()
     {
@@ -397,11 +393,9 @@ public class OrgInvitationServiceTests
         await using var db = _kit.NewDb();
         var items = await _kit.Invitations(db).ListAsync(org.Id);
 
-        // The accepted and the revoked ones are history (and deleted after the retention); the others, newest first.
         Assert.Equal([marked.Id, overdue.Id, newer.Id, older.Id], items.Select(i => i.Id));
         Assert.Equal(OrgInvitationStatus.Pending, items.Single(i => i.Id == newer.Id).Status);
         Assert.Equal(OrgInvitationStatus.Pending, items.Single(i => i.Id == older.Id).Status);
-        // Past its expiry it is expired for everyone, before the job marks it.
         Assert.Equal(OrgInvitationStatus.Expired, items.Single(i => i.Id == overdue.Id).Status);
         Assert.Equal(OrgInvitationStatus.Expired, items.Single(i => i.Id == marked.Id).Status);
     }
@@ -419,8 +413,6 @@ public class OrgInvitationServiceTests
 
         Assert.Equal("a@example.com", Assert.Single(items).Email);
     }
-
-    // ─── Resend ─────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task ResendAsync_RotatesTheTokenResetsTheExpiryAndTheReminderAndQueuesTheEmail()
@@ -452,7 +444,6 @@ public class OrgInvitationServiceTests
         Assert.Equal(OrgInvitationStatus.Pending, stored.Status);
         Assert.True(sent.EmailQueued);
 
-        // The link of the first email no longer opens anything.
         await using var lookupDb = _kit.NewDb();
         Assert.Null(await _kit.Invitations(lookupDb).LookupAsync(firstToken));
         Assert.NotNull(await _kit.Invitations(lookupDb).LookupAsync(secondToken));
@@ -568,8 +559,6 @@ public class OrgInvitationServiceTests
             () => _kit.Invitations(db).ResendAsync(org.Id, invitation.Id, "auth0|member"));
     }
 
-    // ─── Revoke ─────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task RevokeAsync_ClosesTheInvitationAndFreesTheSeat()
     {
@@ -586,7 +575,6 @@ public class OrgInvitationServiceTests
         Assert.Equal(_kit.Now, stored.ClosedAt);
         await using var lookupDb = _kit.NewDb();
         Assert.Null(await _kit.Invitations(lookupDb).LookupAsync(token));
-        // The seat is free again.
         var again = await CreateAsync(Request(org.Id, email: "other@example.com"));
         Assert.Equal(OrgInvitationStatus.Pending, again.Invitation.Status);
     }
@@ -650,8 +638,6 @@ public class OrgInvitationServiceTests
         Assert.Equal(OrgInvitationStatus.Pending, (await _kit.ReadInvitationAsync(foreign.Id)).Status);
     }
 
-    // ─── Copy link ──────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task CopyLinkAsync_RotatesTheTokenWithoutTouchingExpiryOrReminderAndSendsNothing()
     {
@@ -675,7 +661,6 @@ public class OrgInvitationServiceTests
         Assert.Equal(before.ExpiresAt, link.ExpiresAt);
         Assert.Single(_kit.Emails.Snapshot());
 
-        // The first link, the one of the email, is dead; the copied one works.
         await using var lookupDb = _kit.NewDb();
         Assert.Null(await _kit.Invitations(lookupDb).LookupAsync(firstToken));
         Assert.NotNull(await _kit.Invitations(lookupDb).LookupAsync(secondToken));
@@ -709,8 +694,6 @@ public class OrgInvitationServiceTests
 
         Assert.Equal(OrgInvitationErrors.NotPending, error.Code);
     }
-
-    // ─── An administrator does not touch an administrator (decision D15) ────────────────────────────────
 
     [Theory]
     [InlineData(OrgInvitationStatus.Pending)]
@@ -797,8 +780,6 @@ public class OrgInvitationServiceTests
         Assert.NotEqual(toCopy.TokenHash, (await _kit.ReadInvitationAsync(toCopy.Id)).TokenHash);
     }
 
-    // ─── Lookup ─────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task LookupAsync_AValidToken_ShowsOrgEmailNameRoleAreasAndExpiry_AndNothingAboutTheInviter()
     {
@@ -863,8 +844,6 @@ public class OrgInvitationServiceTests
     [Fact]
     public async Task LookupAsync_NeverReadsThroughTheTenantFilter()
     {
-        // A context whose tenant filter is on for another org (an authenticated request of someone else) still finds the
-        // invitation by its token: the lookup scopes by the hash, not by the tenant.
         var (org, _) = await _kit.SeedOwnerOrgAsync();
         var (_, token) = await _kit.SeedInvitationAsync(org.Id, "anna.leone@example.com");
 
@@ -881,8 +860,6 @@ public class OrgInvitationServiceTests
 
         public bool FilterEnabled { get; } = filterEnabled;
     }
-
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────────
 
     private async Task<List<Guid>> ListIdsAsync(Guid orgId)
     {

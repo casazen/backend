@@ -34,7 +34,6 @@ public class SupplierResponseTimesTests
     [Fact]
     public void PublicMedianMinutes_OneRequestLeftForAWeekend_DoesNotMoveIt_AnAverageWouldBe()
     {
-        // Four answers in minutes and one after three days: the median is the typical one, the average (about 14 hours) is not.
         var minutes = new[] { 10d, 12d, 15d, 20d, 4320d };
 
         Assert.Equal(15, SupplierResponseTimes.PublicMedianMinutes(minutes));
@@ -44,9 +43,8 @@ public class SupplierResponseTimesTests
     [Fact]
     public void PublicMedianMinutes_AnEvenNumber_IsTheMiddleOfTheTwoCentralOnes_AHalfMinuteRoundsUp()
     {
-        Assert.Equal(4, SupplierResponseTimes.PublicMedianMinutes([1d, 2d, 3d, 4d, 5d, 6d])); // (3 + 4) / 2 = 3.5
-        Assert.Equal(3, SupplierResponseTimes.PublicMedianMinutes([1d, 2d, 3d, 3d, 4d, 5d])); // (3 + 3) / 2
-        // Neither of the central ones, and not the upper one: 35 is between 30 and 40, 4 between 3 and 5.
+        Assert.Equal(4, SupplierResponseTimes.PublicMedianMinutes([1d, 2d, 3d, 4d, 5d, 6d]));
+        Assert.Equal(3, SupplierResponseTimes.PublicMedianMinutes([1d, 2d, 3d, 3d, 4d, 5d]));
         Assert.Equal(35, SupplierResponseTimes.PublicMedianMinutes([10d, 20d, 30d, 40d, 50d, 60d]));
         Assert.Equal(4, SupplierResponseTimes.PublicMedianMinutes([1d, 2d, 3d, 5d, 8d, 9d]));
     }
@@ -61,7 +59,6 @@ public class SupplierResponseTimesTests
     [Fact]
     public void PublicMedianMinutes_ANegativeWait_IsReadAsZero()
     {
-        // A clock that moved: taken before it was received. Most of the sample is negative, so the median would be too.
         Assert.Equal(0, SupplierResponseTimes.PublicMedianMinutes([-9d, -8d, -7d, 4d, 5d]));
         Assert.Equal(0, SupplierResponseTimes.PublicMedianMinutes([-5d, -1d, 0d, 3d, 9d]));
     }

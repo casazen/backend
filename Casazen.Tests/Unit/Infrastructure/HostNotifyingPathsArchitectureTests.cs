@@ -14,73 +14,48 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// </summary>
 public class HostNotifyingPathsArchitectureTests
 {
-    /// <summary>The name of the service a path asks: a file that mentions it is a path that goes through the one place.</summary>
     private const string TheService = "INotificationPreferenceService";
 
-    /// <summary>
-    /// How a path that tells a host is recognised in the code. The pushes are found by the audience they name (the hosts of a booking, the hosts of
-    /// a property, one user), the choice of people by the query of the audience, the emails by the template they queue (the emails to a host about
-    /// the new booking, the cancellation, the guest messages and the legal deadlines), the counter of the bell and the popup alerts by the row they
-    /// write. The task that adds a kind of event with its own notices (an approval to give, a draft ready, a scheduled message that failed, a sync
-    /// error) adds them here in the same change.
-    /// </summary>
     private static readonly string[] Notices =
     [
-        // Pushes: every audience made of host users.
         "PushAudience.BookingHosts(",
         "PushAudience.PropertyHosts(",
         "PushAudience.User(",
         "PushAudience.OrgAdmins(",
 
-        // The one query that says who may hear about a property (AM-03), outside the service.
         "HostNotificationAudience.UsersToTell(",
         "HostNotificationAudience.AdministratorsToTell(",
 
-        // NewGuestMessage, UrgentGuestMessage.
         "EmailTemplates.Names.GuestMessageToHost",
         "EmailTemplates.Names.HostMessageReceived",
 
-        // NewBooking, BookingCancelled.
         "EmailTemplates.Names.HostBookingConfirmed",
         "EmailTemplates.Names.HostBookingCancelledByGuest",
         "EmailTemplates.Names.HostDeferredChargeCancelled",
 
-        // LegalDeadline.
         "EmailTemplates.Names.AlloggiatiDeadline",
         "EmailTemplates.Names.GuestCheckInIncomplete",
 
-        // AiDraftToApprove (E05/F04): an item of the approval queue waits for a decision.
         "EmailTemplates.Names.HostApprovalToDecide",
 
-        // ScheduledMessageIssue (E05/F07/US01): a scheduled message is held back, did not go out, was skipped or went out outside the send window.
         "EmailTemplates.Names.HostScheduledMessageIssue",
 
-        // The counter of the bell and the popup alerts: whoever writes a row of either for a host tells it something.
         "InAppNotifications.Add",
         "PopupAlerts.Add",
     ];
 
-    /// <summary>
-    /// The same, for the notices that a plain name cannot tell from a longer one: building a row of the bell or a popup alert (whatever way it is then
-    /// added to the context), but not <c>InAppNotificationItem</c>, <c>PopupAlertMessage</c> and the like.
-    /// </summary>
     private static readonly Regex[] NoticePatterns =
     [
         new(@"new\s+InAppNotification\b", RegexOptions.CultureInvariant),
         new(@"new\s+PopupAlert\b", RegexOptions.CultureInvariant),
     ];
 
-    /// <summary>The notices a (comment-free) source contains, by name.</summary>
     private static List<string> NoticesIn(string code) =>
         [
             .. Notices.Where(notice => code.Contains(notice, StringComparison.Ordinal)),
             .. NoticePatterns.Where(pattern => pattern.IsMatch(code)).Select(pattern => pattern.ToString()),
         ];
 
-    /// <summary>
-    /// The paths that tell a host without asking the service, each with the reason and the epic that migrates it (every one of them keeps the
-    /// audience it has always had until then). A path is taken off this list when it goes through the service, never added to it to make a test pass.
-    /// </summary>
     private static readonly IReadOnlyDictionary<string, (string Reason, string Epic)> Legacy = new Dictionary<string, (string, string)>
     {
         ["Casazen.Infrastructure/Services/BookingNotifier.cs"] =
@@ -187,7 +162,6 @@ public class HostNotifyingPathsArchitectureTests
     [Fact]
     public void ThePathsOfTheGuestMessages_TellTheHostsOnlyThroughTheDelivery()
     {
-        // Both sources of a message of a guest (a channel, a direct booking) alert through the one delivery, which asks the service.
         var root = FindRepositoryRoot();
         foreach (var file in new[] { "Casazen.Infrastructure/Services/GuestMessageService.cs", "Casazen.Infrastructure/Services/MessageReceivedNotifier.cs" })
         {
@@ -202,7 +176,6 @@ public class HostNotifyingPathsArchitectureTests
     [Fact]
     public void TheApprovalQueue_TellsTheHostsOnlyThroughTheDelivery()
     {
-        // The queue raises the alert of a new item through the one delivery, which asks the service (E05/F04): it no longer writes the notice of the bell to every member of the org.
         var code = CodeWithoutComments(File.ReadAllText(Path.Combine(
             FindRepositoryRoot(),
             "Casazen.Infrastructure", "Services", "ApprovalQueueService.cs")));
@@ -217,7 +190,6 @@ public class HostNotifyingPathsArchitectureTests
     [InlineData("Casazen.Infrastructure/Services/ScheduledMessageService.cs")]
     public void TheScheduledMessages_TellTheHostsOnlyThroughTheDelivery(string file)
     {
-        // The dispatch and the plan raise the alert of a message held back, skipped or sent late through the one delivery, which asks the service (E05/F07/US01): they write no notice of their own.
         var code = CodeWithoutComments(File.ReadAllText(Path.Combine(FindRepositoryRoot(), file.Replace('/', Path.DirectorySeparatorChar))));
 
         Assert.Contains("ScheduledMessageAlertDelivery", code, StringComparison.Ordinal);
@@ -225,9 +197,6 @@ public class HostNotifyingPathsArchitectureTests
         Assert.DoesNotContain("OrgMembers", code, StringComparison.Ordinal);
     }
 
-    // ─── helpers ───
-
-    /// <summary>The source without the lines that are only a comment (documentation names things without using them).</summary>
     private static string CodeWithoutComments(string text) =>
         string.Join('\n', text.Replace("\r\n", "\n").Split('\n').Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal)
                                                                               && !line.TrimStart().StartsWith("///", StringComparison.Ordinal)));

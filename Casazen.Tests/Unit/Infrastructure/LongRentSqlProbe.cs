@@ -23,7 +23,6 @@ internal static class LongRentSqlProbe
             .AddInterceptors(new NoConnection(), new Recorder(statements, answer))
             .Options);
 
-    /// <summary>A one-row table with the given columns, for the statements that need a row to let the code go on.</summary>
     public static DataTable Row(params (string Name, Type Type, object Value)[] columns)
     {
         var table = new DataTable();

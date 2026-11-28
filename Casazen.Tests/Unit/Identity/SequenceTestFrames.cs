@@ -6,10 +6,6 @@ using Casazen.Tests.Unit.Services;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// One frame of a scripted sequence (E72/F01/US01/T03): when it was taken, its gray pixels, the faces the detector double answers for it (in the pixels of the frame,
-/// the largest first) and the vector the embedder double gives for its face. Plain data the tests change before they build the run.
-/// </summary>
 public sealed class ScriptedFrame
 {
     public long TimestampMs { get; set; }
@@ -36,13 +32,10 @@ public sealed class ScriptedSequence
 
     public List<ScriptedFrame> Frames { get; } = [];
 
-    /// <summary>How long after the challenge was issued the sequence reached the server.</summary>
     public TimeSpan ReceivedAfterIssue { get; set; }
 
-    /// <summary>The duration of the recording, from the first frame to the last.</summary>
     public long DurationMs => Frames.Count < 2 ? 0 : Frames[^1].TimestampMs - Frames[0].TimestampMs;
 
-    /// <summary>The pictures, the detector that answers for each of them in order (the faces scaled to what the validator shows it) and the embedder keyed by frame.</summary>
     internal ScriptedRun Run(IdentityDecisionPolicy policy)
     {
         var frames = new List<SequenceFrame>(Frames.Count);
@@ -60,7 +53,6 @@ public sealed class ScriptedSequence
                 rgb[(pixel * 3) + 2] = scripted.Gray[pixel];
             }
 
-            // The bytes "received" are a stand-in of the picture: the same pixels give the same bytes, different pixels do not.
             byte[] jpeg = [0xFF, 0xD8, 0xFF, 0xE0, .. SHA256.HashData(scripted.Gray)[..12]];
             var image = new RasterImage(Width, Height, rgb);
             frames.Add(new SequenceFrame(index, scripted.TimestampMs, image, jpeg));
@@ -73,7 +65,6 @@ public sealed class ScriptedSequence
     }
 }
 
-/// <summary>A scripted sequence built: the frames, the challenge they answer, and the doubles of the models that agree with them. Disposing it disposes the sequence.</summary>
 internal sealed class ScriptedRun(FrameSequence sequence, StoredPresenceChallenge challenge, ScriptedFaceDetector detector, FrameKeyedEmbedder embedder) : IDisposable
 {
     public FrameSequence Sequence { get; } = sequence;
@@ -87,19 +78,12 @@ internal sealed class ScriptedRun(FrameSequence sequence, StoredPresenceChalleng
     public void Dispose() => Sequence.Dispose();
 }
 
-/// <summary>
-/// An embedder double that gives each frame the vector the script says, found by the picture it is shown (the frame of the sequence, not a copy): so a test says "these
-/// frames are another person" without caring which frames the validator samples. It hands out a fresh copy each time, keeps it in <see cref="Issued"/> to prove the
-/// application zeroes it, and records which frames were embedded.
-/// </summary>
 internal sealed class FrameKeyedEmbedder : IFaceEmbedder
 {
     private readonly Dictionary<RasterImage, (float[] Vector, int Index)> _frames = new(ReferenceEqualityComparer.Instance);
 
-    /// <summary>The vectors handed out, the very arrays the application held.</summary>
     public List<float[]> Issued { get; } = [];
 
-    /// <summary>The positions in the sequence of the frames that were embedded, in the order they were.</summary>
     public List<int> Embedded { get; } = [];
 
     public Exception? Failure { get; set; }
@@ -130,24 +114,15 @@ internal sealed class FrameKeyedEmbedder : IFaceEmbedder
 /// </summary>
 public static class SequenceTestFrames
 {
-    /// <summary>When the scripted challenges were issued.</summary>
     public static readonly DateTimeOffset IssuedAt = new(2026, 11, 27, 9, 0, 0, TimeSpan.Zero);
 
-    // The proportions of a face that the landmarks are written with: the nose depth of the yaw (0.636267 eye distances), where the nose tip stands between the eyes and the
-    // mouth in a frontal face (0.495) and its depth over the distance from the eyes to the mouth (0.551), and the distance from the eyes to the mouth over the eye distance.
     private const double NoseDepthOverEyeDistance = 0.636267;
     private const double FrontalNoseRatio = 0.495;
     private const double NoseDepthOverEyesToMouth = 0.551;
     private const double EyesToMouthOverEyeDistance = 1.1546;
 
-    /// <summary>The default challenge of the scripts: a turn to the left, a look up and a turn to the right.</summary>
     public static IReadOnlyList<string> DefaultSteps { get; } = [PresenceActions.TurnLeft, PresenceActions.LookUp, PresenceActions.TurnRight];
 
-    /// <summary>
-    /// A guest who does what the challenge asks, in order: neutral during the lead-in, then each move in its window of the policy (a ramp up, a hold, a ramp down), until half a
-    /// step after the last one. <paramref name="performed"/> is what the guest does in the windows (the steps when <c>null</c>); <paramref name="amplitude"/> is how far the head
-    /// goes, as a multiple of the least departure of the policy; the baseline is the pose at rest.
-    /// </summary>
     public static ScriptedSequence Genuine(
         IdentityDecisionPolicy policy,
         IReadOnlyList<string>? steps = null,
@@ -185,7 +160,6 @@ public static class SequenceTestFrames
         return sequence;
     }
 
-    /// <summary>A still picture played again: every frame is the first one, with its face where it was and no move at all. With <paramref name="noise"/> the pixels differ by that many grey levels on half of them.</summary>
     public static ScriptedSequence StaticReplay(IdentityDecisionPolicy policy, int noise = 0)
     {
         var sequence = Genuine(policy);
@@ -208,13 +182,11 @@ public static class SequenceTestFrames
         return sequence;
     }
 
-    /// <summary>The first two moves done the other way round: the look up in the window of the turn, the turn in the window of the look.</summary>
     public static ScriptedSequence OutOfOrder(IdentityDecisionPolicy policy)
     {
         return Genuine(policy, performed: [PresenceActions.LookUp, PresenceActions.TurnLeft, PresenceActions.TurnRight]);
     }
 
-    /// <summary>A recording of two seconds, shorter than the policy allows.</summary>
     public static ScriptedSequence TooShort(IdentityDecisionPolicy policy)
     {
         var sequence = Genuine(policy);
@@ -223,7 +195,6 @@ public static class SequenceTestFrames
         return sequence;
     }
 
-    /// <summary>A recording that is a second longer than the time between the challenge and the moment the server received it: made before the challenge existed.</summary>
     public static ScriptedSequence PreChallenge(IdentityDecisionPolicy policy)
     {
         var sequence = Genuine(policy);
@@ -231,7 +202,6 @@ public static class SequenceTestFrames
         return sequence;
     }
 
-    /// <summary>Someone else, smaller, behind the guest in five frames in the middle.</summary>
     public static ScriptedSequence TwoFaces(IdentityDecisionPolicy policy)
     {
         var sequence = Genuine(policy);
@@ -241,7 +211,6 @@ public static class SequenceTestFrames
         return sequence;
     }
 
-    /// <summary>Two people: the face of the first half of the frames is one person's, the second half another's.</summary>
     public static ScriptedSequence Splice(IdentityDecisionPolicy policy)
     {
         var sequence = Genuine(policy);
@@ -251,11 +220,6 @@ public static class SequenceTestFrames
         return sequence;
     }
 
-    /// <summary>
-    /// The face of a head turned by <paramref name="yawDegrees"/> and <paramref name="pitchDegrees"/> (yaw positive to the right of the picture, pitch positive looking up) as
-    /// the detector would find it in a picture of <paramref name="imageWidth"/> x <paramref name="imageHeight"/>: the box and the five landmarks (the right eye, the left eye, the
-    /// nose tip, the right and the left corner of the mouth), written with the model that <c>FacePose</c> inverts.
-    /// </summary>
     public static DetectedFace Face(
         int imageWidth,
         int imageHeight,
@@ -292,7 +256,6 @@ public static class SequenceTestFrames
         return new DetectedFace((float)left, (float)top, (float)boxWidth, (float)boxHeight, 0.99f, landmarks, boxWidth * boxHeight / ((double)imageWidth * imageHeight));
     }
 
-    /// <summary>The vector of a person: person 0 and person 1 have nothing in common (their cosine is 0).</summary>
     public static float[] Person(int person)
     {
         var vector = new float[8];
@@ -300,7 +263,6 @@ public static class SequenceTestFrames
         return vector;
     }
 
-    /// <summary>The size of the picture the validator shows the detector for a frame of <paramref name="width"/> x <paramref name="height"/> with a long side of at most <paramref name="maxSide"/>.</summary>
     internal static (int Width, int Height) Shown(int width, int height, int maxSide)
     {
         var longest = Math.Max(width, height);
@@ -311,7 +273,6 @@ public static class SequenceTestFrames
         return (Math.Max(1, (int)Math.Round(width * scale)), Math.Max(1, (int)Math.Round(height * scale)));
     }
 
-    /// <summary>The face of a frame as the detector finds it in a picture scaled by the factors.</summary>
     internal static DetectedFace Scaled(DetectedFace face, double scaleX, double scaleY)
     {
         var landmarks = new float[face.Landmarks.Length];
@@ -322,7 +283,6 @@ public static class SequenceTestFrames
             (float)(face.X * scaleX), (float)(face.Y * scaleY), (float)(face.Width * scaleX), (float)(face.Height * scaleY), face.Score, landmarks, face.AreaRatio);
     }
 
-    /// <summary>The yaw and the pitch, from the baseline, of a guest who does <paramref name="performed"/> in the windows of the steps: a ramp up, a hold and a ramp down of a quarter of a step each.</summary>
     private static (double Yaw, double Pitch) Pose(IdentityDecisionPolicy policy, IReadOnlyList<string> performed, double amplitude, long time)
     {
         var rules = policy.Presence.Challenge;

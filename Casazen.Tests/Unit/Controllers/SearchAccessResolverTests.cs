@@ -89,7 +89,6 @@ public class SearchAccessResolverTests
 
         await resolver.ResolveAsync(_user);
 
-        // Property.read of each rental context, booking.read, guest.read, lease.read, and the supplier role: nothing else decides.
         Assert.Equal(
             EveryHostPolicy.Append(CasazenPolicies.Supplier).Order(StringComparer.Ordinal),
             _asked.Order(StringComparer.Ordinal));
@@ -113,7 +112,6 @@ public class SearchAccessResolverTests
     [Fact]
     public async Task Resolve_APermissionWithoutAReachOnTheOrg_GivesNoHostAccess_NeverTheWholeOrg()
     {
-        // The member was deactivated, or belongs to another org: the resolver answers null and the search reads no host group.
         var resolver = NewResolver([.. EveryHostPolicy], scope: null);
 
         var access = await resolver.ResolveAsync(_user);

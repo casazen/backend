@@ -10,7 +10,6 @@ using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.Payments;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -53,7 +52,6 @@ public class WirePayableReadsTests
         await SetConfirmedAtAsync(db, older, Now.UtcDateTime.AddDays(-2));
         await SetConfirmedAtAsync(db, newer, Now.UtcDateTime.AddDays(-1));
 
-        // The payouts that cannot: already in a batch, reversed, reversed after its batch was made, of a version never published to the owner, with nothing to transfer.
         var batched = await AddPayoutAsync(db, orgId, mario, 300.00m);
         var reversedAfterBatch = await AddPayoutAsync(db, orgId, mario, 320.00m);
         var reversed = await AddPayoutAsync(db, orgId, mario, 310.00m, status: OwnerPayoutStatus.Reversed);
@@ -77,24 +75,17 @@ public class WirePayableReadsTests
         Assert.True(first.OwnerHasIban);
         Assert.Equal("Bianchi Immobiliare SA", payable[1].OwnerName);
 
-        // The two that are in a batch are in the payouts of that batch, and the one reversed after it was made says so.
         var inFirstBatch = (await service.GetBatchPayoutsAsync(orgId, firstBatch.Id)).Payouts;
         Assert.Equal(new[] { batched, reversedAfterBatch }.Order(), inFirstBatch.Select(p => p.PayoutId).Order());
         Assert.Equal(OwnerPayoutStatus.Confirmed, inFirstBatch.Single(p => p.PayoutId == batched).Status);
         Assert.Equal(OwnerPayoutStatus.Reversed, inFirstBatch.Single(p => p.PayoutId == reversedAfterBatch).Status);
 
-        // The list is what the page can pay: one batch of the whole list is accepted and, after it, a reload offers none of them again.
         var (batch, _) = await service.CreateBatchAsync(orgId, payable.Select(p => p.PayoutId).ToList(), ExecutionDate);
         Assert.Equal(2, batch.TransferCount);
         Assert.Equal(2000.50m, batch.TotalAmount);
         Assert.Empty(await service.ListPayablePayoutsAsync(orgId, "CHF"));
     }
 
-    /// <summary>
-    /// Money rule proof: a list is one currency. The CHF list holds the CHF payouts (a code stored in lower case is the same currency, as a batch reads it) and none of the
-    /// EUR ones, the EUR list the reverse, and one batch of a list is accepted (a batch is one currency). There is no list of every currency: a missing currency, or one with
-    /// no wire file, is refused (422 <c>wire_currency_not_supported</c>) and nothing is listed.
-    /// </summary>
     [Fact]
     public async Task PayablePayouts_AreNeverMixedAcrossCurrencies_Test()
     {
@@ -117,7 +108,6 @@ public class WirePayableReadsTests
         Assert.All(eurList, p => Assert.Equal("EUR", p.Currency));
         Assert.Empty(chfList.Select(p => p.PayoutId).Intersect(eurList.Select(p => p.PayoutId)));
 
-        // A list is a batch that can be made: each one goes into one file, and no file would be mixed.
         Assert.Equal("CHF", (await service.CreateBatchAsync(orgId, chfList.Select(p => p.PayoutId).ToList(), ExecutionDate)).Batch.Currency);
         Assert.Equal("EUR", (await service.CreateBatchAsync(orgId, eurList.Select(p => p.PayoutId).ToList(), ExecutionDate)).Batch.Currency);
 
@@ -129,10 +119,6 @@ public class WirePayableReadsTests
         }
     }
 
-    /// <summary>
-    /// Tenant rule proof: a batch of another org does not exist for the caller (404), whether the global filter of the context is on or off (the service asks for the org
-    /// itself), and the payable payouts of another org are never in a list. The org of the batch reads its payouts, with the state of the batch.
-    /// </summary>
     [Fact]
     public async Task WireBatchPayouts_OfAnotherOrganization_AreNotFound_Test()
     {
@@ -149,7 +135,6 @@ public class WirePayableReadsTests
         var owner = await AddOwnerAsync(db, orgId, "Giulia", "Verdi", SwissIban);
         var stillPayable = await AddPayoutAsync(db, orgId, owner, 90.00m);
 
-        // The org of the batch: its payouts in the order of the transfers (the confirmation, then the id), the amounts of the file and the state of the batch.
         var own = await service.GetBatchPayoutsAsync(orgId, batch.Id);
 
         Assert.Equal(batch.Id, own.Batch.Id);
@@ -163,7 +148,6 @@ public class WirePayableReadsTests
         Assert.All(own.Payouts, p => Assert.True(p.OwnerHasIban));
         Assert.Equal(stillPayable, Assert.Single(await service.ListPayablePayoutsAsync(orgId, "CHF")).PayoutId);
 
-        // Another org, with the global filter on and with it off: the batch is not found and none of the payouts of the first org is in its list.
         foreach (var filterEnabled in new[] { true, false })
         {
             await using var otherDb = NewDb(otherOrgId, filterEnabled, options, keys);
@@ -173,15 +157,9 @@ public class WirePayableReadsTests
             Assert.Empty(await other.ListPayablePayoutsAsync(otherOrgId, "CHF"));
         }
 
-        // A batch that does not exist is the same answer.
         await Assert.ThrowsAsync<NotFoundException>(() => service.GetBatchPayoutsAsync(orgId, Guid.NewGuid()));
     }
 
-    /// <summary>
-    /// Permission rule proof: the two reads list the payouts of every owner, so a caller whose reach is limited to some properties (a collaborator «Solo alcuni», an account
-    /// in no org team), one with no scope at all and one with no org get 403 before the service is asked anything; a caller who reaches the whole org is served, and the
-    /// answer is not cached.
-    /// </summary>
     [Fact]
     public async Task WireReads_PropertyLimitedCaller_IsForbidden_Test()
     {
@@ -220,11 +198,6 @@ public class WirePayableReadsTests
         Assert.Equal(payout.PayoutId, Assert.Single(response.Payouts).PayoutId);
     }
 
-    /// <summary>
-    /// Permission rule proof: the two reads need the financial permission of every wire endpoint, <c>agency.wire.manage</c>, which they get from the class of the controller. The
-    /// class names that policy and is not anonymous, and neither action overrides it: no <c>AllowAnonymous</c> on the action and no other requirement beside the policy of the
-    /// class, so what a request has to pass is that policy and not a weaker one (the integration tests of the roles run in CI only).
-    /// </summary>
     [Fact]
     public void WireReads_AreBehindTheWireManagePolicy_Test()
     {
@@ -287,9 +260,6 @@ public class WirePayableReadsTests
         Assert.Equal(payoutMembers, batchDocument.RootElement.GetProperty("payouts")[0].EnumerateObject().Select(p => p.Name).Order().ToArray());
     }
 
-    // ---- helpers -------------------------------------------------------------------------------------------------------------------------------------------
-
-    /// <summary>The instant a payout was confirmed: the reads list the oldest first.</summary>
     private static async Task SetConfirmedAtAsync(AppDbContext db, Guid payoutId, DateTime confirmedAt)
     {
         var payout = await db.OwnerPayouts.SingleAsync(p => p.Id == payoutId);
@@ -297,7 +267,6 @@ public class WirePayableReadsTests
         await db.SaveChangesAsync();
     }
 
-    /// <summary>What <c>OwnerPayoutService.ReversePayoutAsync</c> does to the payout row (it does not know about the wire batches).</summary>
     private static async Task ReverseAsync(AppDbContext db, Guid payoutId)
     {
         var payout = await db.OwnerPayouts.SingleAsync(p => p.Id == payoutId);
@@ -307,7 +276,6 @@ public class WirePayableReadsTests
         await db.SaveChangesAsync();
     }
 
-    /// <summary>The controller of the wire page for a caller of <paramref name="orgId"/> (<c>null</c>: of no org) whose reach on the properties is <paramref name="scope"/>.</summary>
     private static WireTransferController NewController(IWireTransferService service, Guid? orgId, HostScope? scope)
     {
         var org = new Mock<IOrgContextResolver>();

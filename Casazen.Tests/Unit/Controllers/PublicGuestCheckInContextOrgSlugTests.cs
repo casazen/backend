@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.SiteDocuments;
 using Casazen.Core.Utilities;
@@ -32,7 +31,6 @@ public class PublicGuestCheckInContextOrgSlugTests
         public async ValueTask DisposeAsync() => await Db.DisposeAsync();
     }
 
-    /// <summary>The case the page could not decide before: an org with no privacy notice. The answer names the org, and the consent step still has no notice slug.</summary>
     [Fact]
     public async Task GetContext_OpenLinkOfAnOrgWithNoPrivacyNotice_AnswersTheOrgSlugAndNoNoticeSlug()
     {
@@ -46,7 +44,6 @@ public class PublicGuestCheckInContextOrgSlugTests
         Assert.False(json.TryGetProperty("privacyNoticeOrgSlug", out _));
     }
 
-    /// <summary>With a published notice the answer is what it was (the notice slug), and carries the org slug beside it.</summary>
     [Fact]
     public async Task GetContext_OpenLinkWithAPublishedPrivacyNotice_AnswersBothSlugs()
     {
@@ -59,10 +56,6 @@ public class PublicGuestCheckInContextOrgSlugTests
         Assert.Equal(OrgSlug, json.GetProperty("privacyNoticeOrgSlug").GetString());
     }
 
-    /// <summary>
-    /// A5-28 and NF-140: once the guest has submitted, the link answers that the check-in is done and which org it belongs to, public data: no other
-    /// property, so nothing of the booking and of the guests (the notice slug is not one of them, it belongs to the consent step).
-    /// </summary>
     [Fact]
     public async Task GetContext_CompletedLink_AnswersOnlyCompletedStatusAndTheOrgSlug()
     {
@@ -80,7 +73,6 @@ public class PublicGuestCheckInContextOrgSlugTests
         Assert.Equal(new[] { "completed", "orgSlug", "status" }, properties);
     }
 
-    /// <summary>The answer of the controller for the token, as the JSON the page receives (the camel case of the web defaults).</summary>
     private static async Task<JsonElement> ContextAsync(AppDbContext db, string token)
     {
         var controller = Controller(new GuestCheckInService(db, NullLogger<GuestCheckInService>.Instance));
@@ -166,7 +158,6 @@ public class PublicGuestCheckInContextOrgSlugTests
             Mock.Of<IStringLocalizer<SharedResources>>(),
             NullLogger<PublicGuestCheckInController>.Instance)
         {
-            // The page reads the Accept-Language of the request to open in the guest's language (NF-40): a controller built by hand needs a request.
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
         };
     }

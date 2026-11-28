@@ -87,7 +87,6 @@ public class RoutineEventHandlerTests
     [Fact]
     public async Task HandleAsync_AMessageOfTheGuestAreaOfADirectBooking_StartsNoRoutine_AMessageOfAChannelStillDoes()
     {
-        // E05/F05/US02/T01: the message of a direct booking is recorded for the assistant; the routines start on the messages of a channel only, as they always have.
         var routine = await SeedRoutineAsync(OrgA, RoutineEventType.GuestMessageReceived);
         var direct = Event(OrgA, DomainEventType.GuestMessageReceived, $$"""{"threadKey":"direct:{{Guid.NewGuid()}}","source":"Direct","channel":"Direct"}""");
         var ota = Event(OrgA, DomainEventType.GuestMessageReceived, $$"""{"threadKey":"ota:{{Guid.NewGuid()}}","source":"Ota","channel":"Airbnb"}""");
@@ -165,7 +164,6 @@ public class RoutineEventHandlerTests
             await seed.SaveChangesAsync();
         }
 
-        // Two deliveries one after the other.
         var first = Event(OrgA, DomainEventType.BookingConfirmed);
         for (var delivery = 0; delivery < 2; delivery++)
         {
@@ -252,10 +250,6 @@ public class RoutineEventHandlerTests
         Active = active,
     };
 
-    /// <summary>
-    /// Holds each context about to write a new execution until <paramref name="parties"/> of them are there, so the deliveries
-    /// that run at once have all read "not executed yet" before any of them writes.
-    /// </summary>
     private sealed class ExecutionRendezvous(int parties) : SaveChangesInterceptor
     {
         private readonly TaskCompletionSource _allArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);

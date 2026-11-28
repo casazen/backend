@@ -26,7 +26,6 @@ public class ScheduledMessageServiceTests
 
     private static DateTime Now => ScheduledMessageRig.Now.UtcDateTime;
 
-    /// <summary>The moment the plan gives the message of the stay of the rig (check-in on 20 November): the day before, at the check-in time of the property (15:00 in Rome, 14:00 UTC).</summary>
     private static readonly DateTime FirstMoment = new(2026, 11, 19, 14, 0, 0, DateTimeKind.Utc);
 
     private const string StayOfMoreThanThreeNights = """{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"stayDuration","operator":"greaterThan","value":3}]}]}""";
@@ -58,7 +57,6 @@ public class ScheduledMessageServiceTests
         await db.SaveChangesAsync();
     }
 
-    /// <summary>A property, a stay of three nights (from 20 November), a template and nothing else: the routines are the test's to add.</summary>
     private static async Task<(Property Property, Booking Booking, MessageTemplate Template)> StayAsync(ScheduledMessageRig rig, string body = "Ciao {{guest_name}}! (TEST)")
     {
         var property = await rig.SeedPropertyAsync(OrgA);
@@ -67,15 +65,6 @@ public class ScheduledMessageServiceTests
         return (property, booking, template);
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The plan
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// PROOF TEST: data rule (nothing is sent that nobody asked for). An organization with no active routine that sends a message gets no row: not with no routine at all, not with one that is switched off,
-    /// in test mode or does something else, and not with an active one while the module of the messages or the one of the routines is closed. Planning a booking writes nothing then, and the hourly plan does
-    /// not look at the organization.
-    /// </summary>
     [Fact]
     public async Task ScheduledMessages_NothingPlannedWithoutActiveRoutine_Test()
     {
@@ -258,7 +247,6 @@ public class ScheduledMessageServiceTests
         var template = await rig.SeedTemplateAsync(OrgA, "Ciao (TEST)");
         await rig.SeedRoutineAsync(OrgA, template);
 
-        // The routine was switched on after the moment of its message: the guest who was welcomed long ago is not welcomed again.
         var late = await rig.SeedBookingAsync(property, checkIn: new DateTime(2026, 11, 18, 0, 0, 0, DateTimeKind.Utc));
         Assert.Equal(0, await PlanAsync(rig, late.Id));
         Assert.Empty(await rig.RowsAsync(late.Id));
@@ -278,10 +266,6 @@ public class ScheduledMessageServiceTests
         Assert.Equal(ScheduledMessageReasons.Missed, row.SkipReason);
     }
 
-    /// <summary>
-    /// The condition of a routine («only for stays of more than three nights») is read as the engine reads it: the plan writes nothing for a stay that does not meet it, writes the message when the stay grows
-    /// to meet it, and cancels it with its reason when the stay shrinks again.
-    /// </summary>
     [Fact]
     public async Task TheConditionOfTheRoutine_DecidesWhichStaysGetAMessage()
     {
@@ -320,10 +304,6 @@ public class ScheduledMessageServiceTests
         Assert.Equal(0, await PlanAsync(rig, booking.Id));
         Assert.Empty(await rig.RowsAsync(booking.Id));
     }
-
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // A booking that is cancelled, and the plan of an organization
-    // ------------------------------------------------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task ACancelledBooking_CancelsItsOpenMessages_AndClosesTheirTodo_ButNeverASentOne()
@@ -371,7 +351,6 @@ public class ScheduledMessageServiceTests
         var routine = await rig.SeedRoutineAsync(OrgA, template);
         var row = await rig.SeedRowAsync(booking, routine, template);
 
-        // The event «cancelled» arrives after the booking was confirmed again: what the event says is done only if the stay is still so.
         await using var db = rig.NewDb();
         Assert.Equal(0, await rig.Service(db).CancelForBookingAsync(booking.Id, ScheduledMessageReasons.BookingCancelled));
 
@@ -390,7 +369,6 @@ public class ScheduledMessageServiceTests
         var cancelled = await rig.SeedBookingAsync(property, BookingStatus.Cancelled);
         var open = await rig.SeedRowAsync(cancelled, routine, template);
 
-        // The same routine in another organization, with a stay of its own: this organization's pass never touches it.
         var otherProperty = await rig.SeedPropertyAsync(OrgB);
         var otherStay = await rig.SeedBookingAsync(otherProperty);
         await rig.SeedRoutineAsync(OrgB, await rig.SeedTemplateAsync(OrgB, "Ciao (TEST)"));
@@ -416,14 +394,12 @@ public class ScheduledMessageServiceTests
         var (_, _, templateA) = await StayAsync(rig);
         await rig.SeedRoutineAsync(OrgA, templateA);
 
-        // Org B: its only routine is off, but a message of it is still planned (switching it off must cancel it).
         var propertyB = await rig.SeedPropertyAsync(OrgB);
         var stayB = await rig.SeedBookingAsync(propertyB);
         var templateB = await rig.SeedTemplateAsync(OrgB, "Ciao (TEST)");
         var routineB = await rig.SeedRoutineAsync(OrgB, templateB, active: false);
         await rig.SeedRowAsync(stayB, routineB, templateB);
 
-        // Org C: nothing open and no routine.
         var orgC = Guid.NewGuid();
         var propertyC = await rig.SeedPropertyAsync(orgC);
         var stayC = await rig.SeedBookingAsync(propertyC);
@@ -438,10 +414,6 @@ public class ScheduledMessageServiceTests
         Assert.Contains(OrgB, orgs);
         Assert.DoesNotContain(orgC, orgs);
     }
-
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The timeline
-    // ------------------------------------------------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task TheTimeline_ListsTheMessagesInTimeOrder_WithTheTextAsItWillRead_AndWhatTheBookingHasNoValueFor_AndIssuesAndReleasesNothing()
@@ -470,7 +442,6 @@ public class ScheduledMessageServiceTests
         Assert.True(planned.CanSkip);
         Assert.True(planned.CanSendNow);
 
-        // A message that went out is history: no text (the conversation holds it), no way to act on it.
         var history = views[0];
         Assert.Equal(ScheduledMessageStatus.Sent, history.Status);
         Assert.Null(history.Text);
@@ -479,16 +450,11 @@ public class ScheduledMessageServiceTests
         Assert.False(history.CanSkip);
         Assert.False(history.CanSendNow);
 
-        // A preview is a read: no link of the check-in was issued, no code was released, nothing was sent.
         rig.CheckIn.Verify(c => c.IssueLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
         Assert.Empty(rig.Released);
         Assert.Empty(rig.Sent);
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule (TN-3, «Solo alcuni» immobili). A collaborator given only some properties reaches the messages of the bookings of those properties and of no other: for a booking or a message of
-    /// a property it was not given, or of another organization, the timeline, the edit, the skip and «Send now» answer 404 exactly as they do for one that does not exist, and the message is left as it was.
-    /// </summary>
     [Fact]
     public async Task ScheduledMessages_Collaborator_OnlyReachableBookings_Test()
     {
@@ -528,13 +494,11 @@ public class ScheduledMessageServiceTests
             Assert.Equal(ScheduledMessageErrors.NotFound, refused.Code);
         }
 
-        // Another organization reaches neither of them, with the whole of its own org behind it.
         var stranger = new HostScope(OrgB);
         Assert.Null(await service.FindBookingIdAsync(stranger, grantedRow.Id));
         await Assert.ThrowsAsync<NotFoundException>(() => service.ListForBookingAsync(stranger, grantedStay.Id));
         await Assert.ThrowsAsync<NotFoundException>(() => service.SkipAsync(stranger, grantedRow.Id, ScheduledMessageRig.Owner));
 
-        // The whole org reaches both.
         Assert.Equal(hiddenStay.Id, await service.FindBookingIdAsync(new HostScope(OrgA), hiddenRow.Id));
 
         Assert.Empty(rig.Sent);
@@ -542,10 +506,6 @@ public class ScheduledMessageServiceTests
         Assert.Null((await rig.RowAsync(hiddenRow.Id)).TextOverride);
         Assert.Equal(ScheduledMessageStatus.Scheduled, (await rig.RowAsync(grantedRow.Id)).Status);
     }
-
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // What the host does with a message
-    // ------------------------------------------------------------------------------------------------------------------------------------
 
     private static async Task<(Booking Booking, ScheduledMessage Row)> OneOpenMessageAsync(ScheduledMessageRig rig, string body = "Ciao {{guest_name}}! (TEST)", ScheduledMessageStatus status = ScheduledMessageStatus.Scheduled, DateTime? plannedAt = null)
     {
@@ -576,10 +536,6 @@ public class ScheduledMessageServiceTests
         Assert.Null((await rig.RowAsync(row.Id)).TextOverride);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (what is not valid is not saved). The edit of a message goes through the rules of the composer: a text that is too long, and a name that is not a variable, are refused with the
-    /// codes of the hub, and the message is left as it was.
-    /// </summary>
     [Fact]
     public async Task AnEditTheComposerRefuses_IsRefused_AndChangesNothing()
     {
@@ -641,7 +597,6 @@ public class ScheduledMessageServiceTests
         Assert.NotNull(saved.SkippedAt);
         Assert.Empty(await rig.OpenTodosAsync(booking.Id));
 
-        // The owner skipped it and needs no alert about its own action: the manager is told, through the bell and the push it chose.
         Assert.Equal(ScheduledMessageRig.Manager, Assert.Single(await rig.BellAsync()).UserId);
         Assert.Equal(ScheduledMessageRig.Manager, Assert.Single(rig.Push.Queued).Audience.UserId);
         Assert.Empty(rig.Sent);
@@ -696,10 +651,6 @@ public class ScheduledMessageServiceTests
         Assert.Empty(held.Sent);
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The door of the routine engine
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
     private static async Task<RoutineActionResult> FireAsync(ScheduledMessageRig rig, Routine routine, Guid bookingId, TimeProvider? clock = null)
     {
         await using var db = rig.NewDb();
@@ -732,7 +683,6 @@ public class ScheduledMessageServiceTests
 
         var result = await FireAsync(rig, routine, booking.Id);
 
-        // The moment of the message (the day before the check-in) is ahead: the row is written for it, nothing goes out now, and the action is in hand.
         Assert.Equal(RoutineActionOutcomes.Done, result.Outcome);
         Assert.Empty(rig.Sent);
         var row = Assert.Single(await rig.RowsAsync(booking.Id));
@@ -753,7 +703,6 @@ public class ScheduledMessageServiceTests
         Assert.Single(rig.Sent);
         Assert.Equal(ScheduledMessageStatus.Sent, Assert.Single(await rig.RowsAsync(booking.Id)).Status);
 
-        // The same event at 22:30 in Rome: the row is written for 08:00 the next morning and nothing goes out in the night.
         var night = new ScheduledMessageRig();
         var (_, nightStay, nightTemplate) = await StayAsync(night);
         var nightRoutine = await night.SeedRoutineAsync(OrgA, nightTemplate, eventType: RoutineEventType.PaymentSucceeded, eventConfig: "{}");
@@ -828,16 +777,8 @@ public class ScheduledMessageServiceTests
         Assert.Empty(await rig.RowsAsync(foreign.Id));
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // What the engine decides, and the campaigns
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
     private static string CampaignActions(MessageTemplate template) => $$$"""[{"type":"MessageToGuest","config":{"templateId":"{{{template.Id}}}","isCampaign":true}}]""";
 
-    /// <summary>
-    /// PROOF TEST: privacy rule (ADR-022-R11, campaigns only with the marketing consent). A message the routine marks as a campaign is planned only for a guest who gave the consent, read as the engine reads it:
-    /// a stay whose guest has none gets no row, one that had a row loses it («Cancelled», <c>campaign_needs_consent</c>) when the consent goes, and gets it back when the consent comes back.
-    /// </summary>
     [Fact]
     public async Task ACampaign_IsPlannedOnlyForAGuestWhoGaveTheMarketingConsent_AndCancelledWhenTheConsentGoes()
     {
@@ -888,7 +829,6 @@ public class ScheduledMessageServiceTests
         Assert.Equal(ScheduledMessageStatus.Scheduled, (await rig.RowAsync(rowOnPayment.Id)).Status);
         Assert.Equal(ScheduledMessageStatus.Scheduled, (await rig.RowAsync(rowWithCondition.Id)).Status);
 
-        // A routine that is switched off loses its row, as ever.
         await ChangeRoutineAsync(rig, withCondition.Id, r => r.Active = false);
         Assert.Equal(1, await PlanAsync(rig, booking.Id));
         Assert.Equal(ScheduledMessageStatus.Scheduled, (await rig.RowAsync(rowOnPayment.Id)).Status);
@@ -896,7 +836,6 @@ public class ScheduledMessageServiceTests
         Assert.Equal(ScheduledMessageStatus.Cancelled, switchedOff.Status);
         Assert.Equal(ScheduledMessageReasons.RoutineInactive, switchedOff.SkipReason);
 
-        // And the row goes with the stay.
         await ChangeBookingAsync(rig, booking.Id, b => b.Status = BookingStatus.Cancelled);
         await PlanAsync(rig, booking.Id);
         var gone = await rig.RowAsync(rowOnPayment.Id);

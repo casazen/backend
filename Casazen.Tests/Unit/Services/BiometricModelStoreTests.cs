@@ -11,10 +11,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E03/F04/US01/T01 (ADR-013-R8, R14): a model file is used only when its SHA-256 equals the pinned one; whatever else it is (missing, not
-/// pinned, different, not a model, not downloadable) the models are not available and the check-in goes to the operator.
-/// </summary>
 public sealed class BiometricModelStoreTests : IDisposable
 {
     private readonly string _folder = Path.Combine(Path.GetTempPath(), "cz-biometrics-" + Guid.NewGuid().ToString("N"));
@@ -289,21 +285,17 @@ public sealed class BiometricModelStoreTests : IDisposable
         Assert.True(options.Validate().Count >= 2);
     }
 
-    // ─── The optional second candidates (E72/F01/US02/T03, decision D6) ──────────────────────────────────
-
     [Fact]
     public async Task Store_NoCandidateConfigured_IsReady_AndEachCandidateIsNotConfigured()
     {
         using var store = await BundledBiometricModels.LoadAsync();
 
-        // The store is as it was: ready, no reason, the three models of the decisions loaded.
         Assert.True(store.IsAvailable);
         Assert.Equal(BiometricModelsState.Ready, store.Snapshot.State);
         Assert.Null(store.Snapshot.ReasonCode);
         Assert.Equal(3, store.Snapshot.Models.Count);
         Assert.All(store.Snapshot.Models, model => Assert.True(model.Loaded));
 
-        // The candidates are listed apart and say that they are not configured; nothing is loaded for them.
         Assert.Equal([BiometricModelRoles.AntiSpoofingCandidate, BiometricModelRoles.FaceRecognitionCandidate], store.Snapshot.Candidates.Select(candidate => candidate.Role));
         Assert.All(store.Snapshot.Candidates, candidate =>
         {
@@ -333,7 +325,6 @@ public sealed class BiometricModelStoreTests : IDisposable
             Assert.Equal("test candidate", candidate.Provenance);
         });
 
-        // The three models of the decisions are the ones they were, and the weights hash a decision is bound to ignores the candidates.
         Assert.True(store.IsAvailable);
         Assert.Equal(BiometricModelsState.Ready, store.Snapshot.State);
         Assert.Null(store.Snapshot.ReasonCode);
@@ -404,7 +395,6 @@ public sealed class BiometricModelStoreTests : IDisposable
 
         options.FaceRecognitionCandidate = candidate;
 
-        // A candidate that is wrong is its own problem: the settings of the three models are still valid, so the store is not "config_invalid".
         Assert.Empty(options.Validate());
         using var store = await BundledBiometricModels.LoadAsync(options);
 
@@ -458,7 +448,6 @@ public sealed class BiometricModelStoreTests : IDisposable
     [Fact]
     public async Task Store_WhenTheThreeModelsCannotBeUsed_TheCandidatesAreNotLoaded_AndSayNothingOfTheState()
     {
-        // The candidate is a file with its hash, but the three models are not there: the store is unavailable for its own reason and does not look at the candidates.
         var options = new BiometricModelOptions { FaceRecognitionCandidate = CandidateOf<FaceRecognitionCandidateOptions>(new ModelFileOptions { Path = "x", Sha256 = new string('C', 64) }, "recognition.onnx") };
         using var store = Store(options);
 
@@ -480,7 +469,6 @@ public sealed class BiometricModelStoreTests : IDisposable
         Assert.Empty(options.ValidateAntiSpoofingCandidate());
         Assert.Empty(options.ValidateFaceRecognitionCandidate());
 
-        // Anything of the file is "configured": a path, a hash or an address, and then the rest is asked for.
         options.AntiSpoofingCandidate.Sha256 = new string('D', 64);
         options.FaceRecognitionCandidate.DownloadUrl = "https://models.example.test/model.onnx";
         Assert.True(BiometricModelOptions.IsCandidateConfigured(options.AntiSpoofingCandidate));
@@ -488,12 +476,10 @@ public sealed class BiometricModelStoreTests : IDisposable
         Assert.NotEmpty(options.ValidateAntiSpoofingCandidate());
         Assert.NotEmpty(options.ValidateFaceRecognitionCandidate());
 
-        // Their reference defaults: the way MiniFASNetV2 and SFace are run, which the candidates are described against.
         Assert.Equal((2.7, 80), (new AntiSpoofingCandidateOptions().CropScale, new AntiSpoofingCandidateOptions().InputSize));
         var recognition = new FaceRecognitionCandidateOptions();
         Assert.Equal((112, 0.0, 1.0, true), (recognition.InputSize, recognition.Mean, recognition.Std, recognition.RgbOrder));
 
-        // And the three models are valid whatever the candidates are: they have their own validation.
         Assert.Empty(options.Validate());
     }
 
@@ -516,7 +502,6 @@ public sealed class BiometricModelStoreTests : IDisposable
         Assert.Equal((2.7, 80, 112, 0.0, 1.0, true), (options.LivenessCropScale, options.LivenessInputSize, options.RecognitionInputSize, options.RecognitionMean, options.RecognitionStd, options.RecognitionRgbOrder));
     }
 
-    /// <summary>A copy of a bundled model in the temporary folder, described as a candidate (the hash of the copy is the one of the original).</summary>
     private T CandidateOf<T>(ModelFileOptions bundled, string fileName)
         where T : ModelFileOptions, new()
     {

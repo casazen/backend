@@ -9,7 +9,6 @@ using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
 using Casazen.Web.Resources;
@@ -18,7 +17,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary><c>GET api/messages/unread</c>: the counters of the badges, in the scope of the caller, without any text.</summary>
 public class HostMessagesControllerTests
 {
     private static readonly Guid OrgId = Guid.NewGuid();

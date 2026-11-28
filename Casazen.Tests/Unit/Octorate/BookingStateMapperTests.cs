@@ -36,14 +36,11 @@ public class BookingStateMapperTests
     [Fact]
     public void ToBookingStatus_ABookingCasaZenOwnsAndCancelledIsNotBroughtBackByARead()
     {
-        // A booking of a channel comes back when Octorate undoes the cancellation...
         Assert.Equal(BookingStatus.Confirmed, Mapper.ToBookingStatus(OctorateBookingStatus.Confirmed, BookingStatus.Cancelled));
 
-        // ...one CasaZen owns does not: the read may be older than the cancellation that has yet to reach Octorate.
         Assert.Equal(BookingStatus.Cancelled, Mapper.ToBookingStatus(OctorateBookingStatus.Confirmed, BookingStatus.Cancelled, casazenOwned: true));
         Assert.Equal(BookingStatus.Cancelled, Mapper.ToBookingStatus(OctorateBookingStatus.Waiting, BookingStatus.Cancelled, casazenOwned: true));
 
-        // It still follows a cancellation made on Octorate.
         Assert.Equal(BookingStatus.Cancelled, Mapper.ToBookingStatus(OctorateBookingStatus.Cancelled, BookingStatus.Confirmed, casazenOwned: true));
     }
 
@@ -205,7 +202,6 @@ public class BookingStateMapperTests
             PriceBreakdown = [new OctoratePriceComponent("COMMISSION", 12m)],
         };
 
-        // A currency that is missing is not taken for the property's: its amounts are in an unknown unit.
         Assert.Equal(OtaAmounts.None, Mapper.ToOtaAmounts(reservation, propertyCurrency));
         Assert.Equal(StayPrices.None, Mapper.ToStayPrices(reservation, propertyCurrency));
         Assert.False(Mapper.InCurrencyOf(reservation, propertyCurrency));
@@ -225,7 +221,6 @@ public class BookingStateMapperTests
         var roomOnly = Mapper.ToStayPrices(Reservation() with { RoomGross = 70m }, "EUR");
         Assert.Equal(new StayPrices(70m, 70m, null), roomOnly);
 
-        // A figure that is really zero is a figure; one that is missing is not.
         var free = Mapper.ToStayPrices(Reservation() with { RoomGross = 0m, TotalGross = 0m, TouristTax = 0m }, "EUR");
         Assert.Equal(new StayPrices(0m, 0m, 0m), free);
 
@@ -253,6 +248,5 @@ public class BookingStateMapperTests
         Assert.Equal(expected, Mapper.ToOutbound(status));
     }
 
-    /// <summary>A reservation in euros (the amounts are only taken from a reservation that states the currency of the property).</summary>
     private static OctorateReservation Reservation() => new() { Id = "7001", Currency = "EUR" };
 }

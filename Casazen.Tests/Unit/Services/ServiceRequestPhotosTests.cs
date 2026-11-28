@@ -8,11 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// SP-04: the photos of the work. The supplier adds them while the work is on; they are kept in the <b>private</b> bucket under
-/// the request, listed on the request, and read back only through <c>OpenWorkPhotoAsync</c> (the controller authorizes the
-/// request first). Every file is checked on its content before any is stored, and a failed save leaves no object behind.
-/// </summary>
 public class ServiceRequestPhotosTests
 {
     private static readonly byte[] JpegBytes =
@@ -137,7 +132,7 @@ public class ServiceRequestPhotosTests
     [Theory]
     [InlineData("foto.gif", "image/gif")]
     [InlineData("foto.pdf", "application/pdf")]
-    [InlineData("foto.jpg", "image/png")] // the declared type and the extension must agree with the content
+    [InlineData("foto.jpg", "image/png")]
     [InlineData("foto.png", "image/jpeg")]
     public async Task AddWorkPhotosAsync_UnsupportedOrInconsistentType_Throws422PhotoInvalid(string fileName, string contentType)
     {
@@ -227,11 +222,8 @@ public class ServiceRequestPhotosTests
 
         Assert.Equal(ServiceRequestErrorCodes.StateChanged, ex.Code);
         Assert.Equal(1, interceptor.Refused);
-        // Nothing is left that no request lists.
         Assert.Empty(StoredObjects(s, StorageBucket.Private));
     }
-
-    // ─── Reading a photo back ───
 
     [Fact]
     public async Task OpenWorkPhotoAsync_ListedPhoto_ReturnsItsBytesItsTypeAndANeutralName()
@@ -280,7 +272,6 @@ public class ServiceRequestPhotosTests
         await s.Service.AddWorkPhotosAsync(another.Id, s.SupplierOrgId, [Image("altro.jpg", "image/jpeg", JpegBytes)]);
         var anotherPhoto = ServiceRequestJson.ReadPhotos((await s.ReadAsync(another.Id)).WorkPhotosJson).Single();
 
-        // A list that points at the file of another request (a tampered column) answers like a missing photo.
         var tampered = await s.ReadAsync(taken.Id);
         tampered.WorkPhotosJson = ServiceRequestJson.Serialize([new ServiceRequestPhoto(Guid.NewGuid(), anotherPhoto.Key, DateTime.UtcNow)]);
         var listed = ServiceRequestJson.ReadPhotos(tampered.WorkPhotosJson).Single();
@@ -300,8 +291,6 @@ public class ServiceRequestPhotosTests
 
         Assert.Null(await s.Service.OpenWorkPhotoAsync(saved, ServiceRequestJson.ReadPhotos(saved.WorkPhotosJson).Single().Id));
     }
-
-    // ─── helpers ───
 
     private static string[] StoredObjects(ServiceRequestScenario s, StorageBucket bucket)
     {
@@ -323,7 +312,6 @@ public class ServiceRequestPhotosTests
             ContentType = contentType,
         };
 
-    /// <summary>A file that claims to be <paramref name="length"/> bytes long without allocating them.</summary>
     private static IFormFile FakeSized(string fileName, string contentType, long length) =>
         new FormFile(new MemoryStream(JpegBytes), 0, length, "photos", fileName)
         {

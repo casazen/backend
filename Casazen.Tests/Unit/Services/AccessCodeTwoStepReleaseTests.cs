@@ -3,7 +3,6 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -90,10 +89,6 @@ public class AccessCodeTwoStepReleaseTests
         return (db, booking.Id, orgId);
     }
 
-    /// <summary>
-    /// PROOF TEST: privacy and audit rule. Taking the code passes the gate of the release (the guest is verified) and writes nothing; the line of the release log (the channel, never the code) is written by
-    /// <c>RecordReleaseAsync</c> once, when the message has gone. <c>ReleaseToGuestAsync</c> is both, as it always was.
-    /// </summary>
     [Fact]
     public async Task TakingTheCodeWritesNoLog_RecordingTheReleaseWritesOne_AndTheSingleCallIsBoth()
     {
@@ -114,7 +109,6 @@ public class AccessCodeTwoStepReleaseTests
         Assert.Equal(2, (await db.Set<AccessCodeReleaseLog>().AsNoTracking().ToListAsync()).Count);
     }
 
-    /// <summary>The gate is the same one: a guest who is not verified, and a code held back for the tourist tax, are given nothing and nothing is written; an unknown channel is refused by both halves.</summary>
     [Fact]
     public async Task TakingTheCode_StopsAtTheGateOfTheRelease_AndAnUnknownChannelIsRefused()
     {

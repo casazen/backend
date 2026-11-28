@@ -5,11 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Leases;
 
-/// <summary>
-/// LR-12: the values of one step merged into the draft. A key that is there replaces the field, <c>null</c> clears it, a list is
-/// replaced as a whole, a key that is not there leaves the field as it was; nothing is checked for being right, only for being the right
-/// shape, and the entries of the parties keep the id the server gave them.
-/// </summary>
 public class LeaseDraftPatchTests
 {
     private static readonly LeaseDraftValues Start = new() { PropertyId = LeaseDraftTestData.PropertyId };
@@ -18,8 +13,6 @@ public class LeaseDraftPatchTests
 
     private static LeaseDraftValues Apply(LeaseDraftValues current, int step, string json, Func<Guid>? newId = null) =>
         LeaseDraftPatch.Apply(current, step, Json(json), newId ?? Guid.NewGuid);
-
-    // ---- step 1 --------------------------------------------------------------------------------------------------
 
     [Fact]
     public void Step1_APropertyId_ReplacesTheProperty()
@@ -46,8 +39,6 @@ public class LeaseDraftPatchTests
     {
         Assert.Equal(Start, Apply(Start, 1, "{}"));
     }
-
-    // ---- step 2 --------------------------------------------------------------------------------------------------
 
     [Fact]
     public void Step2_Entries_AreKeptAsTyped_IncompleteAndWrongOnesToo()
@@ -110,8 +101,6 @@ public class LeaseDraftPatchTests
         var landlordId = typed.Landlords.Single().Id;
         var tenantId = typed.Tenants.Single().Id;
 
-        // The tenant's id inside the landlords, the tenants left as they are: the entry is a new one, never a second entry with the
-        // tenant's id (two rows of Parties with one key, or a list that nobody can save again).
         var next = Apply(typed, 2, $$"""{"landlords":[{"id":"{{tenantId}}","firstName":"Intruder"}]}""");
 
         var landlord = Assert.Single(next.Landlords);
@@ -139,7 +128,6 @@ public class LeaseDraftPatchTests
     [Fact]
     public void Step2_ADraftThatAlreadyHasTheSameIdTwice_DoesNotBreakTheNextSave()
     {
-        // A state nothing in the system writes any more, read back from an older save: the save does not fail on it.
         var id = Guid.NewGuid();
         var corrupt = Start with
         {
@@ -210,9 +198,9 @@ public class LeaseDraftPatchTests
     [InlineData("""{"landlords":[1]}""")]
     [InlineData("""{"landlords":[{"firstName":5}]}""")]
     [InlineData("""{"landlords":[{"id":"nope","firstName":"A"}]}""")]
-    [InlineData("""{"landlords":[{"documentsVerifiedOn":"2026-10-01"}]}""")] // step 5's field
+    [InlineData("""{"landlords":[{"documentsVerifiedOn":"2026-10-01"}]}""")]
     [InlineData("""{"landlords":[{"nickname":"Mario"}]}""")]
-    [InlineData("""{"monthlyRent":900}""")] // step 3's field
+    [InlineData("""{"monthlyRent":900}""")]
     public void Step2_AWrongShape_IsRefused(string json)
     {
         Assert.Throws<LeaseDraftValuesException>(() => Apply(Start, 2, json));
@@ -227,8 +215,6 @@ public class LeaseDraftPatchTests
         Assert.Throws<LeaseDraftValuesException>(() => Apply(Start, 2, $$"""{"landlords":[{"residence":"{{long500}}"}]}"""));
         Assert.Equal(500, Apply(Start, 2, $$"""{"landlords":[{"residence":"{{fine}}"}]}""").Landlords.Single().Residence!.Length);
     }
-
-    // ---- step 3 --------------------------------------------------------------------------------------------------
 
     [Fact]
     public void Step3_TheEconomics_AreKeptAsTyped_NothingIsRefusedForBeingWrong()
@@ -274,7 +260,6 @@ public class LeaseDraftPatchTests
     [Fact]
     public void Step3_ANumberTooBigToHold_IsAWrongValueKept_NotARefusedRequest()
     {
-        // The autosave goes on: 1e30 is not a rent, it is a rent that no rule accepts, and the flow says so.
         var next = Apply(Start, 3, """{"monthlyRent":1e30,"securityDeposit":-1e30,"concordato":{"sqm":1e40,"typeAElementCount":3000000000,"typeBElementCount":-3000000000}}""");
 
         Assert.Equal(decimal.MaxValue, next.MonthlyRent);
@@ -299,7 +284,7 @@ public class LeaseDraftPatchTests
     }
 
     [Theory]
-    [InlineData("""{"monthlyRent":"900"}""")] // a number is a number
+    [InlineData("""{"monthlyRent":"900"}""")]
     [InlineData("""{"monthlyRent":true}""")]
     [InlineData("""{"contractType":1}""")]
     [InlineData("""{"concordato":{"sqm":"big"}}""")]
@@ -307,13 +292,11 @@ public class LeaseDraftPatchTests
     [InlineData("""{"concordato":{"isFurnished":"yes"}}""")]
     [InlineData("""{"concordato":{"floors":2}}""")]
     [InlineData("""{"concordato":[]}""")]
-    [InlineData("""{"startDate":"2026-11-01"}""")] // step 4's field
+    [InlineData("""{"startDate":"2026-11-01"}""")]
     public void Step3_AWrongShape_IsRefused(string json)
     {
         Assert.Throws<LeaseDraftValuesException>(() => Apply(Start, 3, json));
     }
-
-    // ---- step 4 --------------------------------------------------------------------------------------------------
 
     [Fact]
     public void Step4_TheStartDate_IsKeptAsTyped_EvenWhenItIsNotADate()
@@ -328,8 +311,6 @@ public class LeaseDraftPatchTests
     {
         Assert.Throws<LeaseDraftValuesException>(() => Apply(Start, 4, """{"startDate":20261101}"""));
     }
-
-    // ---- step 5 --------------------------------------------------------------------------------------------------
 
     [Fact]
     public void Step5_TheDayTheDocumentsWereChecked_IsSetPerParty_ByItsId()
@@ -355,8 +336,6 @@ public class LeaseDraftPatchTests
             Apply(typed, 5, $$"""{"parties":[{"id":"{{Guid.NewGuid()}}","documentsVerifiedOn":"2026-10-01"}]}"""));
         Assert.Throws<LeaseDraftValuesException>(() => Apply(typed, 5, """{"parties":[{"documentsVerifiedOn":"2026-10-01"}]}"""));
     }
-
-    // ---- the step ------------------------------------------------------------------------------------------------
 
     [Theory]
     [InlineData(0)]

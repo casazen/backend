@@ -29,12 +29,6 @@ public class PropertyServiceGetDetailTests
             new Mock<ILogger<PropertyService>>().Object);
     }
 
-    /// <summary>
-    /// QA-CLOCK: check-in and check-out are date-only values, compared with today's date in Europe/Rome, so the summary
-    /// is the same at noon and at 23:30 UTC (Rome is already on the next day). PC-16 (A2-36): today's confirmed arrival is
-    /// upcoming until the host registers it (it was neither upcoming nor active) and the next check-in; a checked-in stay
-    /// leaving today is in progress until its check-out, and today is its next check-out.
-    /// </summary>
     [Theory]
     [InlineData("2026-09-25T12:00:00Z")]
     [InlineData("2026-09-24T23:30:00Z")]
@@ -75,7 +69,6 @@ public class PropertyServiceGetDetailTests
     [Fact]
     public async Task GetPropertyDetailAsync_WithValidId_ReturnsPropertyDetailResponse()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         var now = DateTime.UtcNow;
         var property = new Property
@@ -134,10 +127,8 @@ public class PropertyServiceGetDetailTests
 
         _mockRepository.Setup(x => x.GetPropertyDetailAsync(propertyId)).ReturnsAsync(property);
 
-        // Act
         var result = await _service.GetPropertyDetailAsync(propertyId);
 
-        // Assert
         Assert.NotNull(result);
         Assert.Equal(propertyId, result.Id);
         Assert.Equal("Villa Roma", result.Name);
@@ -181,7 +172,6 @@ public class PropertyServiceGetDetailTests
 
         Assert.True(result.PricingAdapterSummary.IsEnabled);
         Assert.Equal(lastComputed, result.PricingAdapterSummary.LastAdaptedAt);
-        // PC-15: next computation by Rome date, a week after the last one.
         Assert.Equal(new DateOnly(2026, 9, 30), result.PricingAdapterSummary.NextRunOn);
     }
 
@@ -216,22 +206,18 @@ public class PropertyServiceGetDetailTests
 
         var result = await _service.GetPropertyDetailAsync(propertyId);
 
-        // FD-07 / A2-31: the DTO never exposes the storage reference, only the authenticated download.
         var doc = Assert.Single(result.Documents);
         Assert.Equal("pdf", doc.FileType);
         Assert.Equal($"/api/properties/{propertyId}/documents/{documentId}/download", doc.DownloadUrl);
     }
 
-    // A2-36: "not found" is a NotFoundException (404), so an InvalidOperationException (500) is never read as one.
     [Fact]
     public async Task GetPropertyDetailAsync_WithNonExistentId_ThrowsNotFoundException()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
 
         _mockRepository.Setup(x => x.GetPropertyDetailAsync(propertyId)).ReturnsAsync((Property?)null);
 
-        // Act & Assert
         await Assert.ThrowsAsync<NotFoundException>(() => _service.GetPropertyDetailAsync(propertyId));
         _mockRepository.Verify(x => x.GetPropertyDetailAsync(propertyId), Times.Once);
     }
@@ -239,7 +225,6 @@ public class PropertyServiceGetDetailTests
     [Fact]
     public async Task GetPropertyDetailAsync_OtaIntegrations_DoNotExposeApiKey()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         var property = new Property
         {
@@ -267,10 +252,8 @@ public class PropertyServiceGetDetailTests
 
         _mockRepository.Setup(x => x.GetPropertyDetailAsync(propertyId)).ReturnsAsync(property);
 
-        // Act
         var result = await _service.GetPropertyDetailAsync(propertyId);
 
-        // Assert
         Assert.NotNull(result);
         Assert.Single(result.OtaIntegrations);
 
@@ -284,7 +267,6 @@ public class PropertyServiceGetDetailTests
     [Fact]
     public async Task GetPropertyDetailAsync_WithValidCinCode_SetsCinStatusValid()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         var property = new Property
         {
@@ -301,17 +283,14 @@ public class PropertyServiceGetDetailTests
 
         _mockRepository.Setup(x => x.GetPropertyDetailAsync(propertyId)).ReturnsAsync(property);
 
-        // Act
         var result = await _service.GetPropertyDetailAsync(propertyId);
 
-        // Assert
         Assert.Equal(CinStatus.Valid, result.CinStatus);
     }
 
     [Fact]
     public async Task GetPropertyDetailAsync_WithNullCinCode_SetsCinStatusMissing()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         var property = new Property
         {
@@ -328,17 +307,14 @@ public class PropertyServiceGetDetailTests
 
         _mockRepository.Setup(x => x.GetPropertyDetailAsync(propertyId)).ReturnsAsync(property);
 
-        // Act
         var result = await _service.GetPropertyDetailAsync(propertyId);
 
-        // Assert
         Assert.Equal(CinStatus.Missing, result.CinStatus);
     }
 
     [Fact]
     public async Task GetPropertyDetailAsync_WithInvalidCinCode_SetsCinStatusInvalid()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         var property = new Property
         {
@@ -355,10 +331,8 @@ public class PropertyServiceGetDetailTests
 
         _mockRepository.Setup(x => x.GetPropertyDetailAsync(propertyId)).ReturnsAsync(property);
 
-        // Act
         var result = await _service.GetPropertyDetailAsync(propertyId);
 
-        // Assert
         Assert.Equal(CinStatus.Invalid, result.CinStatus);
     }
 }

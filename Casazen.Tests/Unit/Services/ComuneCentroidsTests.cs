@@ -13,9 +13,9 @@ namespace Casazen.Tests.Unit.Services;
 public partial class ComuneCentroidsTests
 {
     [Theory]
-    [InlineData("013075", 45.81, 9.09)] // Como
-    [InlineData("015146", 45.47, 9.19)] // Milano
-    [InlineData("058091", 41.89, 12.48)] // Roma
+    [InlineData("013075", 45.81, 9.09)]
+    [InlineData("015146", 45.47, 9.19)]
+    [InlineData("058091", 41.89, 12.48)]
     public void TryGet_KnownComune_GivesItsCentre(string code, double latitude, double longitude)
     {
         var found = ComuneCentroids.TryGet(code, out var centre);
@@ -35,10 +35,10 @@ public partial class ComuneCentroidsTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData("13075")] // no leading zero: not the code the official list writes
+    [InlineData("13075")]
     [InlineData("0130755")]
     [InlineData("01307A")]
-    [InlineData("999999")] // well formed, no such comune
+    [InlineData("999999")]
     public void TryGet_BlankMalformedOrUnknownCode_IsNotFound(string? code)
     {
         var found = ComuneCentroids.TryGet(code, out var centre);
@@ -48,8 +48,8 @@ public partial class ComuneCentroidsTests
     }
 
     [Theory]
-    [InlineData("090047", "113017")] // Olbia: the code of the official list and the new one of the provinces of Sardinia
-    [InlineData("090003", "112001")] // Alghero
+    [InlineData("090047", "113017")]
+    [InlineData("090003", "112001")]
     public void TryGet_OldAndNewCodeOfASardinianComune_GiveTheSameCentre(string oldCode, string newCode)
     {
         Assert.True(ComuneCentroids.TryGet(oldCode, out var before));
@@ -62,14 +62,14 @@ public partial class ComuneCentroidsTests
     public void Parse_LinesThatCannotBeRead_AreCountedAndTheOthersAreKept()
     {
         const string text = "istat_code,latitude,longitude\n"
-            + "013075,45.8103,9.0861\n" // fine
-            + "13075,45.8,9.0\n" // a code of 5 digits
-            + "01307X,45.8,9.0\n" // a letter in the code
-            + "013076,95.0,9.0\n" // a latitude that is not on the earth
-            + "013077,45.8\n" // two cells
-            + "013075,46.0,9.0\n" // a code that is already there: the first one stays
+            + "013075,45.8103,9.0861\n"
+            + "13075,45.8,9.0\n"
+            + "01307X,45.8,9.0\n"
+            + "013076,95.0,9.0\n"
+            + "013077,45.8\n"
+            + "013075,46.0,9.0\n"
             + "\n"
-            + "015146,45.4669,9.19\n"; // fine
+            + "015146,45.4669,9.19\n";
 
         var (centres, rejected) = ComuneCentroids.Parse(new StringReader(text));
 
@@ -98,7 +98,6 @@ public partial class ComuneCentroidsTests
         Assert.True(centres.Count > 7_800, $"only {centres.Count} centres");
         foreach (var (code, centre) in centres)
         {
-            // Italy with a margin, Lampedusa to Vetta d'Italia and Bardonecchia to Otranto: a latitude and a longitude swapped, or a wrong sign, are out.
             Assert.True(centre.Latitude is >= 35.3m and <= 47.2m, $"{code} has latitude {centre.Latitude}");
             Assert.True(centre.Longitude is >= 6.4m and <= 18.9m, $"{code} has longitude {centre.Longitude}");
         }
@@ -109,8 +108,6 @@ public partial class ComuneCentroidsTests
     {
         var metadata = JsonDocument.Parse(ReadText(ComuneCentroids.SeedMetadataResourceName)).RootElement;
 
-        // The bytes of the file as they are committed (.gitattributes keeps them the same on every machine): an edit by hand, or a rebuild
-        // without the source file written again, is seen here.
         Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(ReadBytes(ComuneCentroids.SeedResourceName))), metadata.GetProperty("seedSha256").GetString());
         Assert.Equal(metadata.GetProperty("rows").GetInt32(), ComuneCentroids.Count);
         Assert.Equal("CC0 1.0", metadata.GetProperty("license").GetString());
@@ -119,7 +116,6 @@ public partial class ComuneCentroidsTests
     [Fact]
     public void Seed_Committed_HasACentreForNearlyEveryComuneOfTheOfficialList()
     {
-        // The rows of the official file begin with: region; supra-municipal unit; historical province; progressive; the code of the comune.
         var codes = OfficialCode().Matches(ReadText(ComuneImportService.SeedResourceName)).Select(m => m.Groups[1].Value).ToList();
 
         var missing = codes.Where(code => !ComuneCentroids.TryGet(code, out _)).ToList();

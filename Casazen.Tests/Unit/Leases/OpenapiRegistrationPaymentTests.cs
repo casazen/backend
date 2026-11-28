@@ -10,7 +10,6 @@ using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration;
-using Casazen.Tests.Unit.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -23,10 +22,6 @@ using static Casazen.Tests.Unit.Services.OrgTeamTestData;
 
 namespace Casazen.Tests.Unit.Leases;
 
-/// <summary>
-/// The filing-fee checkout asks Stripe before opening another session, and the webhook completes only the platform
-/// Checkout session that row stores. A Connect PaymentIntent with the same kind does not pay the fee.
-/// </summary>
 public class OpenapiRegistrationPaymentTests
 {
     private static readonly Guid OrgId = Guid.Parse("11111111-1111-1111-1111-111111111111");

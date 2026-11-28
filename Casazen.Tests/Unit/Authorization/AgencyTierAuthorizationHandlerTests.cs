@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
@@ -11,10 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Authorization;
 
-/// <summary>
-/// ADR-010-R2: agency.* policies require OrgEntity.PlanTier == PlanTier.Agency. Non-agency orgs
-/// cannot access B2B endpoints (permission proof test).
-/// </summary>
 public class AgencyTierAuthorizationHandlerTests
 {
     private const string Sub = "auth0|agency-tier-test";
@@ -26,7 +21,6 @@ public class AgencyTierAuthorizationHandlerTests
     [InlineData(PlanTier.Agency, true)]
     public async Task AgencyTierPolicy_NonAgencyOrgEntity_Returns403(PlanTier tier, bool shouldSucceed)
     {
-        // Arrange
         var org = new OrgEntity
         {
             Id = Guid.NewGuid(),
@@ -37,10 +31,8 @@ public class AgencyTierAuthorizationHandlerTests
         var handler = CreateHandler(org, "GET");
         var context = CreateContext();
 
-        // Act
         await handler.HandleAsync(context);
 
-        // Assert
         Assert.Equal(shouldSucceed, context.HasSucceeded);
         if (!shouldSucceed)
         {
@@ -50,8 +42,8 @@ public class AgencyTierAuthorizationHandlerTests
     }
 
     [Theory]
-    [InlineData("GET", true)]    // Reads succeed even when downgraded
-    [InlineData("POST", false)]  // Mutations fail when downgraded
+    [InlineData("GET", true)]
+    [InlineData("POST", false)]
     [InlineData("PUT", false)]
     [InlineData("PATCH", false)]
     [InlineData("DELETE", false)]
@@ -59,7 +51,6 @@ public class AgencyTierAuthorizationHandlerTests
         string httpMethod,
         bool shouldSucceed)
     {
-        // Arrange: Agency tier but downgraded
         var org = new OrgEntity
         {
             Id = Guid.NewGuid(),
@@ -70,10 +61,8 @@ public class AgencyTierAuthorizationHandlerTests
         var handler = CreateHandler(org, httpMethod);
         var context = CreateContext();
 
-        // Act
         await handler.HandleAsync(context);
 
-        // Assert
         Assert.Equal(shouldSucceed, context.HasSucceeded);
         if (!shouldSucceed)
         {
@@ -85,7 +74,6 @@ public class AgencyTierAuthorizationHandlerTests
     [Fact]
     public async Task AgencyTierPolicy_AgencyNotDowngraded_AllOperationsSucceed()
     {
-        // Arrange: Agency tier, not downgraded
         var org = new OrgEntity
         {
             Id = Guid.NewGuid(),
@@ -96,10 +84,8 @@ public class AgencyTierAuthorizationHandlerTests
         var handler = CreateHandler(org, "POST");
         var context = CreateContext();
 
-        // Act
         await handler.HandleAsync(context);
 
-        // Assert
         Assert.True(context.HasSucceeded);
         Assert.Empty(context.FailureReasons);
     }

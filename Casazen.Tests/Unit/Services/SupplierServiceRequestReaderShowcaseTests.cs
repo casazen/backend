@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Xunit;
 
@@ -53,7 +52,6 @@ public class SupplierServiceRequestReaderShowcaseTests
         Assert.Null(view.Stay);
         Assert.Equal(new DateOnly(2026, 10, 9), view.ScheduledFor);
 
-        // Nothing that identifies the customer is anywhere in what the console receives.
         var text = JsonSerializer.Serialize(items);
         foreach (var secret in Secrets)
             Assert.DoesNotContain(secret, text);
@@ -255,7 +253,6 @@ public class SupplierServiceRequestReaderShowcaseTests
         await s.Service.RejectAsync(request.Id, s.SupplierOrgId, "Non posso");
 
         Assert.Contains(ServiceRequestScenario.FridayAt10, await s.FreeSlotsOfFridayAsync());
-        // And the next customer can book it.
         var hold = await s.Kit.Booking.CreateHoldAsync(supplier, await s.InputAsync(email: "altra.persona@example.com"));
         Assert.NotEqual(Guid.Empty, hold.Id);
     }

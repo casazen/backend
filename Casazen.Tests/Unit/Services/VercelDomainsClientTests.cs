@@ -9,7 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>The Vercel Domains API client (BK-17, A3-25): paths, auth, answer mapping, and that nothing secret is logged.</summary>
 public class VercelDomainsClientTests
 {
     private const string Token = "vcl_secret_token_value";
@@ -109,7 +108,6 @@ public class VercelDomainsClientTests
     [Fact]
     public async Task GetDomainAsync_AnswerWithoutVerifiedField_IsNotVerified()
     {
-        // An answer that does not say "verified": true proves nothing: never a verified domain by omission.
         _http.When(HttpMethod.Get, $"{Base}/v9/*").Respond("application/json", """{"name":"www.example.it"}""");
 
         var result = await CreateClient().GetDomainAsync("www.example.it");

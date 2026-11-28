@@ -25,8 +25,6 @@ public class PresenceFrameSelectorTests
     private const int Width = 96;
     private const int Height = 72;
 
-    // ─── The proof of the brief ──────────────────────────────────────────────────────────────────────────
-
     /// <summary>
     /// Proof (security, NF-192, NF-193): the client cannot choose the frames. The sequence of a genuine guest, validated by the real validation, with the defects it tolerates (four
     /// frames without a face, three too dark to judge): over many selections, with the draw of the application, the frames chosen for the match are only frames the validation saw
@@ -78,11 +76,9 @@ public class PresenceFrameSelectorTests
     [Fact]
     public void PresenceFrameSelector_TheClientHasNoSayInTheChoice_NoParameterNamesFrames()
     {
-        // What goes in is the sequence (the server's own copy of the frames), the report of its validation and the policy: no list of places, no time, nothing the page sends.
         var parameters = typeof(PresenceFrameSelector).GetMethod(nameof(PresenceFrameSelector.Select))!.GetParameters().Select(parameter => parameter.ParameterType);
         Assert.Equal([typeof(FrameSequence), typeof(SequenceValidationReport), typeof(IdentityDecisionPolicy)], parameters);
 
-        // The only constructor of the application draws with RandomNumberGenerator and takes nothing; it holds no logger, so no ranking number can reach a log.
         var constructor = Assert.Single(typeof(PresenceFrameSelector).GetConstructors(BindingFlags.Public | BindingFlags.Instance));
         Assert.Empty(constructor.GetParameters());
         Assert.DoesNotContain(
@@ -90,13 +86,9 @@ public class PresenceFrameSelectorTests
             field => typeof(ILogger).IsAssignableFrom(field.FieldType));
     }
 
-    // ─── Acceptance criteria 1 and 2: who can be chosen, and how ─────────────────────────────────────────
-
     [Fact]
     public void Select_OnlyFramesWithOneFaceGoodQualityAndANearFrontalPose_CanBeChosenForTheMatch()
     {
-        // Eight kinds of frame, in rotation: neutral, poor quality, two faces, no face, turned 15.5 degrees, looking down 15.5 degrees, a pose that was not estimated, and turned exactly
-        // 15 degrees (the limit of the policy, which is allowed).
         using var built = Build(
             40,
             (index, spec) =>
@@ -143,11 +135,9 @@ public class PresenceFrameSelectorTests
     [Fact]
     public void Select_EachPickIsDrawnAmongTheBestRemainingCandidates_AndKeepsTheGap()
     {
-        // 30 frames 125 ms apart, all neutral, the face growing from one frame to the next: the best candidate is always the last frame that remains.
         using var built = Build(30, (index, spec) => spec.WidthShare = 0.20 + (0.01 * index));
         var draws = new List<int>();
 
-        // Always the best of the two: 29, then 26 (29 and 28 are too near), then 23.
         var best = new PresenceFrameSelector(count =>
         {
             draws.Add(count);
@@ -157,21 +147,17 @@ public class PresenceFrameSelectorTests
         Assert.True(best.IsSelected);
         Assert.Equal([23, 26, 29], best.Frames.MatchIndices);
 
-        // Always the second of the two: 28, then 24 (the best two that remain are 25 and 24), then 20.
         var second = new PresenceFrameSelector(count => count - 1).Select(built.Sequence, built.Report, Policy);
 
         Assert.True(second.IsSelected);
         Assert.Equal([20, 24, 28], second.Frames.MatchIndices);
 
-        // The draw is never asked for more than the number of the policy (the best two), and a frame is asked for once per pick of the match.
         Assert.All(draws.Take(Policy.Match.Frames), count => Assert.InRange(count, 1, Policy.Match.RandomizeAmongTop));
     }
 
     [Fact]
     public void Select_AFrameIsNeverOfferedToTheDrawWhenTheRestCouldNotBePicked()
     {
-        // Three frames 200 ms apart, the middle one the best, a gap of 300 ms and two frames to pick: picking the middle one first would leave nothing (the others are 200 ms away),
-        // so the only choice is the first and the last, whatever the draw.
         var policy = Policy with
         {
             Match = Policy.Match with { Frames = 2, MinFrameGapMs = 300, RandomizeAmongTop = 2 },
@@ -214,7 +200,6 @@ public class PresenceFrameSelectorTests
     [Fact]
     public void Select_ANearFrontalPoseIsTheOneOfThePolicy_NotOneOfTheCode()
     {
-        // Frames turned 10 degrees are near-frontal for a policy that allows 15 and not for one that allows 5: with 5 only the three frames at rest are left.
         var strict = Policy with { Presence = Policy.Presence with { Pose = Policy.Presence.Pose with { NeutralMaxDegrees = 5 } } };
         using var built = Build(40, (index, spec) => spec.Yaw = index is 5 or 15 or 25 ? 0 : 10);
 
@@ -226,8 +211,6 @@ public class PresenceFrameSelectorTests
         Assert.Equal([5, 15, 25], narrow.Frames.MatchIndices);
     }
 
-    // ─── Acceptance criterion 3: the liveness frames ─────────────────────────────────────────────────────
-
     [Fact]
     public void Select_TheLivenessFramesAreTheMatchFramesAndOthersSpreadOverTheSequence()
     {
@@ -238,7 +221,6 @@ public class PresenceFrameSelectorTests
         Assert.True(selection.IsSelected);
         Assert.Equal([23, 26, 29], selection.Frames.MatchIndices);
 
-        // The three frames of the match, and then the farthest in time from them: the first frame and one in the first half of the sequence.
         Assert.Equal([0, 11, 23, 26, 29], selection.Frames.LivenessIndices);
         AssertLivenessFrames(selection.Frames, built.Sequence, built.Report, Policy);
     }
@@ -246,8 +228,6 @@ public class PresenceFrameSelectorTests
     [Fact]
     public void Select_WhenNoMatchFrameIsInsideTheMoves_OneLivenessFrameIs()
     {
-        // The head is at rest only during the lead-in (the first second): every frame later is turned 25 degrees, so the match frames are all before the first move, and the
-        // liveness must add a frame inside the moves (from the end of the lead-in to the end of the last step).
         using var built = Build(51, (index, spec) =>
         {
             spec.Yaw = index * 125 < Policy.Presence.Challenge.LeadInMs ? 0 : 25;
@@ -280,12 +260,9 @@ public class PresenceFrameSelectorTests
 
         Assert.True(selection.IsSelected);
 
-        // With as many liveness frames as match frames the set is the match frames, plus one when none of them is inside the moves: never fewer than what is compared.
         Assert.InRange(selection.Frames.LivenessIndices.Count, expected, expected + 1);
         AssertLivenessFrames(selection.Frames, built.Sequence, built.Report, policy);
     }
-
-    // ─── Acceptance criterion 5: a report that did not pass ──────────────────────────────────────────────
 
     [Fact]
     public void Select_AReportThatDidNotPass_IsRefused_AndNothingIsDrawn()
@@ -314,7 +291,6 @@ public class PresenceFrameSelectorTests
         Assert.Throws<InvalidOperationException>(() => selector.Select(built.Sequence, timesOfAnother, Policy));
         Assert.Equal(0, draws);
 
-        // The positive control: the same sequence with the report that passed.
         Assert.True(selector.Select(built.Sequence, built.Report, Policy).IsSelected);
         Assert.True(draws > 0);
     }
@@ -330,12 +306,9 @@ public class PresenceFrameSelectorTests
         Assert.Throws<ArgumentNullException>(() => selector.Select(built.Sequence, built.Report, null!));
     }
 
-    // ─── Not enough frames: presence_quality ─────────────────────────────────────────────────────────────
-
     [Fact]
     public void Select_WithFewerNearFrontalFramesThanThePolicyAsks_IsThePresenceQualityFailure()
     {
-        // Only two frames at rest: the policy compares three.
         using var built = Build(40, (index, spec) => spec.Yaw = index is 5 or 20 ? 0 : 30);
 
         var selection = new PresenceFrameSelector().Select(built.Sequence, built.Report, Policy);
@@ -346,7 +319,6 @@ public class PresenceFrameSelectorTests
     [Fact]
     public void Select_WhenNoSetOfFramesRespectsTheGap_IsThePresenceQualityFailure()
     {
-        // Frames at rest 125 ms apart, but only four of them in a window of 375 ms: three frames 300 ms apart do not exist.
         using var built = Build(40, (index, spec) => spec.Yaw = index < 4 ? 0 : 30);
 
         var selection = new PresenceFrameSelector().Select(built.Sequence, built.Report, Policy);
@@ -357,7 +329,6 @@ public class PresenceFrameSelectorTests
     [Fact]
     public void Select_WithoutAUsableFrameInsideTheMoves_IsThePresenceQualityFailure()
     {
-        // The frames at rest are before the moves and every frame inside them is too dark to be judged.
         using var built = Build(
             51,
             (index, spec) =>
@@ -374,7 +345,6 @@ public class PresenceFrameSelectorTests
     [Fact]
     public void Select_WithFewerFramesToJudgeThanTheLivenessAsks_IsThePresenceQualityFailure()
     {
-        // The policy judges five frames and only four can be judged (the others are too dark): fewer frames than the frozen rule is never accepted.
         using var built = Build(51, (index, spec) => spec.QualityOk = index is 0 or 3 or 6 or 9);
 
         var selection = new PresenceFrameSelector().Select(built.Sequence, built.Report, Policy);
@@ -398,8 +368,6 @@ public class PresenceFrameSelectorTests
         }
     }
 
-    // ─── helpers ─────────────────────────────────────────────────────────────────────────────────────────
-
     private static PresenceSequenceValidator Validator(ScriptedRun run)
     {
         return new PresenceSequenceValidator(
@@ -421,7 +389,6 @@ public class PresenceFrameSelectorTests
         Assert.Equal("presence_quality", failure.Code);
     }
 
-    /// <summary>The indices are in time order and every two of them are at least <paramref name="gapMs"/> apart.</summary>
     private static void AssertSortedAndApart(IReadOnlyList<int> indices, FrameSequence sequence, int gapMs)
     {
         Assert.Equal(indices.Order(), indices);
@@ -436,7 +403,6 @@ public class PresenceFrameSelectorTests
         }
     }
 
-    /// <summary>The liveness frames include every match frame, are in time order without repeats, and include one inside the moves of the challenge.</summary>
     private static void AssertLivenessFrames(SelectedFrames frames, FrameSequence sequence, SequenceValidationReport report, IdentityDecisionPolicy policy)
     {
         Assert.Equal(frames.LivenessIndices.Order(), frames.LivenessIndices);
@@ -450,7 +416,6 @@ public class PresenceFrameSelectorTests
             index => sequence.Frames[index].TimestampMs >= movesStart && sequence.Frames[index].TimestampMs <= movesEnd);
     }
 
-    /// <summary>What the test says of one frame.</summary>
     private sealed class Spec
     {
         public int FaceCount { get; set; } = 1;
@@ -464,7 +429,6 @@ public class PresenceFrameSelectorTests
         public double WidthShare { get; set; } = 0.4;
     }
 
-    /// <summary>A sequence of frames and the report of a validation that passed: what the validation saw in each frame is what the <see cref="Spec"/> says.</summary>
     private sealed class Built(FrameSequence sequence, SequenceValidationReport report) : IDisposable
     {
         public FrameSequence Sequence { get; } = sequence;
@@ -474,10 +438,6 @@ public class PresenceFrameSelectorTests
         public void Dispose() => Sequence.Dispose();
     }
 
-    /// <summary>
-    /// <paramref name="count"/> frames <paramref name="interval"/> milliseconds apart, each the same random gray picture (so every face has the same sharpness and the largest face
-    /// ranks first) and the report of a validation of the three moves of the default challenge that passed, with what <paramref name="shape"/> says of each frame.
-    /// </summary>
     private static Built Build(int count, Action<int, Spec>? shape = null, int interval = 125)
     {
         var frames = new List<SequenceFrame>(count);

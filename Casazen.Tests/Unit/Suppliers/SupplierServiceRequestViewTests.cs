@@ -4,7 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>SU-08 (A4-14): what the supplier sees before and after the take, the history, the inbox status filter.</summary>
 public class SupplierServiceRequestViewTests
 {
     private static readonly DateTime Created = new(2026, 9, 1, 8, 0, 0, DateTimeKind.Utc);
@@ -28,7 +27,6 @@ public class SupplierServiceRequestViewTests
     [Fact]
     public void IsDisclosed_EveryStatus_IsCovered()
     {
-        // A new status must be placed on one side of the rule on purpose.
         Assert.Equal(7, Enum.GetValues<ServiceRequestStatus>().Length);
     }
 
@@ -64,8 +62,6 @@ public class SupplierServiceRequestViewTests
     [Fact]
     public void Build_PaidRequest_CreditsThePaymentToWhoMadeIt()
     {
-        // SP-15a: the supplier can record a payment received outside CasaZen (decision D5); a request paid before it has no author
-        // and keeps showing the host.
         var bySupplier = ServiceRequestHistory.Build(
             Milestones(ServiceRequestStatus.Pagato, taken: Taken, completed: Completed, paid: Paid, paidBy: ServiceRequestActorParty.Supplier),
             takenByName: null);
@@ -131,8 +127,6 @@ public class SupplierServiceRequestViewTests
     {
         Assert.False(SupplierInboxStatusFilter.TryParse(value, out _));
     }
-
-    // ─── SP-04: start and cancellation in the history ───
 
     [Fact]
     public void Build_StartedRequest_HasTheStartBetweenTheTakeAndTheCompletion()
@@ -203,8 +197,6 @@ public class SupplierServiceRequestViewTests
         Assert.Null(history[^1].Reason);
     }
 
-    // ─── SP-04: tabs and period filters of the inbox ───
-
     [Theory]
     [InlineData("nuove", SupplierInboxTab.New)]
     [InlineData("Nuove", SupplierInboxTab.New)]
@@ -232,9 +224,6 @@ public class SupplierServiceRequestViewTests
     [Fact]
     public void InboxTabs_EveryStatusIsInExactlyOneTab_SoNoRequestIsLostFromTheInbox()
     {
-        // The two tabs of SP-04e that split "nuove" (da-rispondere, in-attesa) are not counted a second time: they are the halves of
-        // one of these four. That they are, and nothing else, is checked by SupplierInboxQueryTests.Tabs_ToAnswerAndAwaitingCustomer_
-        // SplitTheNewRequestsInTwo; a tab added later has to be counted here, or named in that test.
         var all = Enum.GetValues<SupplierInboxTab>()
             .Where(tab => tab is not (SupplierInboxTab.ToAnswer or SupplierInboxTab.AwaitingCustomer))
             .SelectMany(SupplierInboxTabs.StatusesOf)
@@ -284,7 +273,6 @@ public class SupplierServiceRequestViewTests
         Assert.Equal(
             (new DateOnly(2028, 2, 1), new DateOnly(2028, 2, 29)),
             SupplierInboxWhens.RangeOf(SupplierInboxWhen.Month, new DateOnly(2028, 2, 10)));
-        // The week crosses the end of the year.
         Assert.Equal(
             (new DateOnly(2026, 12, 29), new DateOnly(2027, 1, 4)),
             SupplierInboxWhens.RangeOf(SupplierInboxWhen.Week, new DateOnly(2026, 12, 29)));

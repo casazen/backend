@@ -155,7 +155,6 @@ public sealed partial class GuestSupplierStripeSandboxTests
         Assert.Equal(55, order.RefundCents);
         Assert.Equal(5, new GuestSupplierOrders(db, TimeProvider.System).View(order).CommissionRefundCents);
         Assert.False(GuestSupplierRefunds.BlocksPayout(order));
-        // Stripe can revise a successful refund after the residual transfer has already left the platform.
         order.StripePayoutClaimedAt = DateTime.UtcNow;
         order.StripeReleasedAt = DateTime.UtcNow;
         order.State = GuestSupplierOrderState.Released;

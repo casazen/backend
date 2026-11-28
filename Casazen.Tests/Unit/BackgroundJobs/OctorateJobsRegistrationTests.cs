@@ -78,7 +78,6 @@ public class OctorateJobsRegistrationTests
 
         RecurringJobsRegistration.Configure(manager.Object, Flags(octorateConnector: true));
 
-        // ADR-002-R2, NF-36: the new job runs every 15 minutes, like the iCal sync of the feeds, which is registered as it was.
         Assert.Equal("CalendarSync", CalendarSyncJob.RecurringJobId);
         var calendar = jobs[CalendarSyncJob.RecurringJobId];
         Assert.Equal("*/15 * * * *", calendar.Cron);
@@ -100,7 +99,6 @@ public class OctorateJobsRegistrationTests
 
         RecurringJobsRegistration.Configure(manager.Object, Flags(octorateConnector: true));
 
-        // E09/F03/US01/T01: the health of the active integrations is read every 30 minutes, UTC, and the lock waits like the other jobs of its kind.
         Assert.Equal("marketplace-connection-sync", MarketplaceConnectionSyncJob.RecurringJobId);
         var sync = jobs[MarketplaceConnectionSyncJob.RecurringJobId];
         Assert.Equal("*/30 * * * *", sync.Cron);
@@ -122,7 +120,6 @@ public class OctorateJobsRegistrationTests
             Assert.DoesNotContain(id, jobs.Keys);
             manager.Verify(m => m.RemoveIfExists(id), Times.Once);
         });
-        // The rest of the schedule is not touched by the flag.
         Assert.Contains("property-ical-sync", jobs.Keys);
     }
 
@@ -146,16 +143,12 @@ public class OctorateJobsRegistrationTests
     [Fact]
     public void TheLockWaitOfTheJobs_IsTheOneOfTheWebJobsOfTheSameKind()
     {
-        // The jobs live in the infrastructure project, which cannot see JobLockTimeouts (web): the numbers are kept equal here.
         Assert.Equal(JobLockTimeouts.DefaultSeconds, OctorateBookingImportJob.LockTimeoutSeconds);
         Assert.Equal(JobLockTimeouts.DefaultSeconds, OctorateBookingSyncJob.LockTimeoutSeconds);
 
-        // The calendar sync runs every 15 minutes: it waits as the other frequent jobs do, far less than its interval.
         Assert.Equal(JobLockTimeouts.FrequentSeconds, CalendarSyncJob.LockTimeoutSeconds);
         Assert.True(CalendarSyncJob.LockTimeoutSeconds < 5 * 60);
 
-        // The follow-up of the publications is as frequent; the check of the changes made outside CasaZen, the daily health check and the
-        // publication of a listing, run on demand, wait as the other hourly, daily and on-demand jobs do.
         Assert.Equal(JobLockTimeouts.FrequentSeconds, ListingStatusSyncJob.LockTimeoutSeconds);
         Assert.Equal(JobLockTimeouts.DefaultSeconds, ListingOutsideChangeJob.LockTimeoutSeconds);
         Assert.Equal(JobLockTimeouts.DefaultSeconds, ListingChannelHealthJob.LockTimeoutSeconds);
@@ -165,10 +158,8 @@ public class OctorateJobsRegistrationTests
         Assert.Equal("*/15 * * * *", OctorateCheckInRetryJob.Cron);
         Assert.Equal(JobLockTimeouts.FrequentSeconds, OctorateCheckInRetryJob.LockTimeoutSeconds);
 
-        // The calendar changes run every minute (E08/F05/US02/T02) and wait as the other frequent jobs do.
         Assert.Equal(JobLockTimeouts.FrequentSeconds, CalendarChangeProcessJob.LockTimeoutSeconds);
 
-        // The read of the reviews of the channels runs every six hours (E05/F06/US01/T02): it waits as the other jobs of its kind do.
         Assert.Equal(JobLockTimeouts.DefaultSeconds, OtaReviewSyncJob.LockTimeoutSeconds);
     }
 
@@ -179,7 +170,6 @@ public class OctorateJobsRegistrationTests
 
         RecurringJobsRegistration.Configure(manager.Object, Flags(octorateConnector: true));
 
-        // E08/F05/US02/T02 (NF-36, NF-78): the due changes are sent and the accepted ones followed every minute, only while the connector is on.
         Assert.Equal("calendar-change-process", CalendarChangeProcessJob.RecurringJobId);
         var due = jobs[CalendarChangeProcessJob.RecurringJobId];
         Assert.Equal("* * * * *", due.Cron);
@@ -200,7 +190,6 @@ public class OctorateJobsRegistrationTests
 
         services.AddCasazenBookingOperations();
 
-        // The recorder is optional for the manual blocks and the change service, so a lost registration would switch the push off in silence: it is pinned here.
         foreach (var (service, implementation) in new (Type, Type)[]
                  {
                      (typeof(ICalendarChangeRecorder), typeof(CalendarChangeRecorder)),
@@ -217,11 +206,9 @@ public class OctorateJobsRegistrationTests
 
         Assert.Contains(services, d => d.ServiceType == typeof(CalendarChangeProcessJob) && d.Lifetime == ServiceLifetime.Scoped);
 
-        // The handler of the first publication is the one consumer of ListingPublished (typed: the plain consumers are not affected).
         var publication = Assert.Single(services, d => d.ServiceType == typeof(IEventHandler<ListingPublishedEvent>));
         Assert.Equal(typeof(ListingPublishedCalendarHandler), publication.ImplementationType);
 
-        // The section of the options is the one the checklist documents, and its defaults are the decided ones.
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { [$"{OctorateCalendarOptions.SectionName}:MaxDaysPerCall"] = "31" })
             .Build();
@@ -235,7 +222,6 @@ public class OctorateJobsRegistrationTests
     [Fact]
     public void TheJobClassesOfTheConnector_AreRegisteredInTheContainer()
     {
-        // AddCasazenOctorate registers the classes in every case ("what is not ready sits behind its flag where it is used").
         var services = new ServiceCollection();
         services.AddCasazenOctorate(new ConfigurationBuilder().Build());
 
@@ -262,7 +248,6 @@ public class OctorateJobsRegistrationTests
         var services = new ServiceCollection();
         services.AddCasazenOctorate(new ConfigurationBuilder().Build());
 
-        // One handler for each kind of notification of a reservation...
         var notifications = services
             .Where(d => d.ServiceType == typeof(IEventHandler<OctorateWebhookReceivedEvent>))
             .Select(d => d.ImplementationType)
@@ -271,7 +256,6 @@ public class OctorateJobsRegistrationTests
             [typeof(BookingCancelledHandler), typeof(BookingCreatedHandler), typeof(BookingModifiedHandler), typeof(ContentNotificationHandler)],
             notifications.OrderBy(t => t!.Name, StringComparer.Ordinal));
 
-        // ...and the one that queues the push of the arrival and the departure.
         Assert.Contains(
             services,
             d => d.ServiceType == typeof(IEventHandler<DomainEvent>) && d.ImplementationType == typeof(OctorateBookingStatePushHandler));
@@ -285,8 +269,6 @@ public class OctorateJobsRegistrationTests
         var services = new ServiceCollection();
         services.AddCasazenOctorate(new ConfigurationBuilder().Build());
 
-        // E02 sends CHECKIN_END and CHECKOUT_END when the host registers the arrival or the departure. The check-in sync of E03 sends only the
-        // NO_SHOW, which the check-in endpoints queue: no second handler reacts to the same events, so the two states are not sent twice.
         var handlers = services
             .Where(d => d.ServiceType == typeof(IEventHandler<DomainEvent>))
             .Select(d => d.ImplementationType)

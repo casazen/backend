@@ -56,7 +56,6 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
     [Fact]
     public async Task SetCustomDomain_StoredProWithoutSubscription_Returns403()
     {
-        // A3-07 / A3-37: the custom-domain gate follows the effective tier, and a Pro tier nobody pays for is Starter.
         var ownerId = $"auth0|unpaid-pro-{Guid.NewGuid():N}";
         var org = await _factory.SeedOrgForOwnerAsync(ownerId);
         await SetPlanTierAsync(org.Id, PlanTier.Pro, withActiveSubscription: false);
@@ -221,7 +220,6 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
     [Fact]
     public async Task ResolveHost_SubdomainOfStoredProWithoutSubscription_UsesEffectiveStarterTier()
     {
-        // A3-37: resolve-host branding and tier use the effective tier, not the stored one.
         var ownerId = $"auth0|resolve-unpaid-{Guid.NewGuid():N}";
         var org = await _factory.SeedOrgForOwnerAsync(ownerId);
         await SetPlanTierAsync(org.Id, PlanTier.Pro, withActiveSubscription: false);
@@ -287,7 +285,6 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
     [Fact]
     public async Task ResolveHost_SlugAsSubdomainOfAnOrgOnThePathMode_Returns404()
     {
-        // BK-16 (A3-08): no wildcard on the base domain, only the orgs that chose the subdomain mode are served on a label.
         var org = await _factory.SeedOrgForOwnerAsync($"auth0|resolve-path-{Guid.NewGuid():N}");
         var slug = $"path-mode-{Guid.NewGuid():N}"[..28];
         await SetSlugAsync(org.Id, slug);
@@ -300,7 +297,6 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
     [Fact]
     public async Task VerifyDomain_OnStarterWithALeftoverCustomDomain_Returns403NotAVerifiedDomainNobodyCanOpen()
     {
-        // A3-07 / BK-16: the domain is a Pro feature; after a downgrade a verification would say "verified" for a site that is not served.
         var ownerId = $"auth0|verify-starter-{Guid.NewGuid():N}";
         var org = await _factory.SeedOrgForOwnerAsync(ownerId);
         await SetPlanTierAsync(org.Id, PlanTier.Pro);
@@ -346,7 +342,6 @@ public class OrgDomainIntegrationTests : IClassFixture<CasazenWebApplicationFact
         await db.SaveChangesAsync();
     }
 
-    /// <summary>The org chose the subdomain mode with <paramref name="label"/>: the only way a label is served (BK-16).</summary>
     private async Task SetSubdomainModeAsync(Guid orgId, string label)
     {
         using var scope = _factory.Services.CreateScope();

@@ -36,7 +36,6 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
 {
     private const string HostRole = "PropertyOwner";
 
-    /// <summary><c>App:PublicSiteBaseUrl</c> of <see cref="CasazenWebApplicationFactory"/>.</summary>
     private const string PublicSite = "https://casazen-app.vercel.app";
 
     private readonly EmailsFactory _factory;
@@ -59,7 +58,6 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
         Assert.Equal(EmailTemplates.Names.GuestBookingConfirmed, guest.Template);
         Assert.Equal(seed.GuestEmail, guest.To);
         Assert.Equal($"Prenotazione confermata - {host.PropertyName}", guest.Content.Subject);
-        // BK-11: the readable code of "Le mie prenotazioni", never the booking id.
         var bookingCode = BookingCodes.Format(confirmed.BookingCode);
         Assert.Contains($"Codice prenotazione: <strong>{bookingCode}</strong>", guest.Content.HtmlBody);
         Assert.DoesNotContain(seed.BookingId.ToString("D"), guest.Content.HtmlBody);
@@ -101,7 +99,6 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
         var link = Assert.IsType<CheckInLinkEmail>(guest.Content.CheckInLink);
         Assert.Equal(seed.BookingId, link.BookingId);
 
-        // «In attesa» until the provider took the e-mail: the one session of the booking is queued with no time of sending, and the row says Email / Sending.
         var waiting = await LoadCheckInAsync(seed.BookingId);
         var queued = Assert.Single(waiting.Sessions);
         Assert.Equal(Casazen.Infrastructure.Services.GuestCheckInService.HashToken(token), queued.TokenHash);
@@ -112,7 +109,6 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
         Assert.Equal((CheckInLinkChannel.Email, CheckInLinkDeliveryState.Sending), (waiting.Row.Channel, waiting.Row.State));
         Assert.Null(waiting.Row.LinkToken);
 
-        // The job of the confirmation, the provider accepting the e-mail: sent.
         await RunConfirmationJobAsync(guest, link);
         var sent = await LoadCheckInAsync(seed.BookingId);
         var sentSession = Assert.Single(sent.Sessions);
@@ -120,17 +116,12 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
         Assert.NotNull(sentSession.SentAt);
         Assert.Equal((CheckInLinkChannel.Email, CheckInLinkDeliveryState.Sent), (sent.Row.Channel, sent.Row.State));
 
-        // The next run of the daily job finds a usable link: no second session and no second e-mail.
         await using (var scope = _factory.Services.CreateAsyncScope())
             await scope.ServiceProvider.GetRequiredService<GuestCheckInSendJob>().ExecuteAsync();
         Assert.Single((await LoadCheckInAsync(seed.BookingId)).Sessions);
         Assert.Single(Emails(seed));
     }
 
-    /// <summary>
-    /// The optional services of the check-in link of <c>BookingNotifier</c> (the check-in, the delivery, the options, the clock) are given by the container: built without them it says
-    /// nothing about the check-in and issues no link, in silence. The job of the confirmation is registered too.
-    /// </summary>
     [PostgresFact]
     public void Container_ResolvesTheNotifierWithItsCheckInServices_AndTheJobOfTheConfirmation()
     {
@@ -147,7 +138,6 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
         var seed = await SeedCheckoutHoldAsync(host, PaymentOption.Immediate);
         var stripeEvent = PaymentSucceeded(seed.IntentId, host.Account);
 
-        // Two workers on the same delivery at once, the same event again, then another event of the same payment.
         await Task.WhenAll(
             Task.Run(() => HandleAsync(stripeEvent, WebhookSource.Connected)),
             Task.Run(() => HandleAsync(stripeEvent, WebhookSource.Connected)));
@@ -157,7 +147,6 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
         Assert.Equal(BookingStatus.Confirmed, (await LoadAsync(seed.BookingId)).Status);
         Assert.Equal([EmailTemplates.Names.GuestBookingConfirmed], Emails(seed).Select(e => e.Template));
         Assert.Equal([EmailTemplates.Names.HostBookingConfirmed], HostEmails(host).Select(e => e.Template));
-        // MO-04 (A6-08): one "new booking" push to the hosts, queued with the host email.
         var push = Assert.Single(Pushes(seed));
         Assert.Equal(PushTypes.NewBooking, push.Payload.Type);
         Assert.Equal(PushAudience.BookingHosts(seed.BookingId), push.Audience);
@@ -225,7 +214,6 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
         var refund = await SingleRefundAsync(seed.BookingId);
         Assert.NotNull(refund.GuestNotifiedAt);
 
-        // Stripe's webhook for the same refund arrives afterwards: nothing more for the guest.
         await HandleAsync(RefundUpdated(refund, seed.IntentId, host.Account), WebhookSource.Connected);
         Assert.Single(Emails(seed));
         Assert.Empty(HostEmails(host));
@@ -258,11 +246,9 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
         Assert.Equal(PaymentStatus.Refunded, (await LoadAsync(seed.BookingId)).Payments.Single().Status);
     }
 
-    /// <summary>Emails of the guest of <paramref name="seed"/>, in queue order.</summary>
     private List<(string? To, EmailContent Content, string Template)> Emails(BookingSeed seed) =>
         _factory.Emails.Snapshot().Where(e => e.To == seed.GuestEmail).ToList();
 
-    /// <summary>The sessions of the check-in link of the booking and its delivery row, as the database holds them.</summary>
     private async Task<(List<GuestCheckInSession> Sessions, CheckInLinkDelivery Row)> LoadCheckInAsync(Guid bookingId)
     {
         using var scope = _factory.Services.CreateScope();
@@ -272,10 +258,6 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
         return (sessions, row);
     }
 
-    /// <summary>
-    /// What the Hangfire worker does with the confirmation that carries a link: the job of the confirmation, on the real delivery service of the application and a provider that accepts
-    /// the e-mail.
-    /// </summary>
     private async Task RunConfirmationJobAsync((string? To, EmailContent Content, string Template) email, CheckInLinkEmail link)
     {
         await using var scope = _factory.Services.CreateAsyncScope();
@@ -290,14 +272,12 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
         await job.SendAsync(email.To!, email.Content.Subject, email.Content.HtmlBody, email.Template, link.BookingId, link.SessionId, 1);
     }
 
-    /// <summary>Pushes queued about the booking (MO-04).</summary>
     private List<QueuedPushRecord> Pushes(BookingSeed seed) =>
         _factory.Pushes.Queued.Where(p => p.Payload.BookingId == seed.BookingId).ToList();
 
     private List<(string? To, EmailContent Content, string Template)> HostEmails(HostSeed host) =>
         _factory.Emails.Snapshot().Where(e => e.To == host.ContactEmail).ToList();
 
-    /// <summary>One delivery of the event with the application's handler, in its own DI scope, as the Hangfire job runs it.</summary>
     private async Task HandleAsync(Event stripeEvent, WebhookSource source)
     {
         await using var scope = _factory.Services.CreateAsyncScope();
@@ -371,7 +351,6 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
 
     private sealed record BookingSeed(Guid BookingId, string IntentId, string GuestEmail, DateTime? FreeRefundDeadline);
 
-    /// <summary>A host whose org has a connected account, a public name and contact email, and a bookable property.</summary>
     private async Task<HostSeed> SeedHostAsync()
     {
         var hostId = $"auth0|bk10-host-{Guid.NewGuid():N}";
@@ -392,10 +371,6 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
         return new HostSeed(hostId, org.Id, org.Slug, org.ContactEmail, org.StripeConnectedAccountId, property.Id, property.Name);
     }
 
-    /// <summary>
-    /// A checkout hold made 5 minutes ago (valid): 3 nights, 300 lodging + 50 cleaning + 12 tourist tax = 362. Immediate:
-    /// a pending PaymentIntent; deferred: a pending SetupIntent.
-    /// </summary>
     private async Task<BookingSeed> SeedCheckoutHoldAsync(HostSeed host, PaymentOption option, int daysAhead = 40)
     {
         var deferred = option == PaymentOption.OnCancellationDeadline;
@@ -422,7 +397,6 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
         return new BookingSeed(booking.Id, intentId, guest.Email, booking.FreeRefundDeadline);
     }
 
-    /// <summary>A "pay at the property" request whose guest confirmed the email, waiting for the host (BK-06).</summary>
     private async Task<BookingSeed> SeedOnSiteRequestAsync(HostSeed host)
     {
         var (booking, guest) = NewBooking(host, BookingStatus.Pending, PaymentOption.OnSite, minutesAgo: 30);
@@ -441,7 +415,6 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
         return new BookingSeed(booking.Id, string.Empty, guest.Email, booking.FreeRefundDeadline);
     }
 
-    /// <summary>A confirmed booking of the booking site, paid on Stripe on the host's connected account.</summary>
     private async Task<BookingSeed> SeedPaidBookingAsync(HostSeed host)
     {
         var intentId = $"pi_bk10_{Guid.NewGuid():N}";
@@ -520,7 +493,6 @@ public class BookingEmailsPostgresTests : IClassFixture<BookingEmailsPostgresTes
         return await db.PaymentRefunds.AsNoTracking().SingleAsync(r => r.Payment.BookingId == bookingId);
     }
 
-    /// <summary>The integration host with a recording email queue.</summary>
     public sealed class EmailsFactory : CasazenWebApplicationFactory
     {
         internal RecordingEmailQueue Emails { get; } = new();

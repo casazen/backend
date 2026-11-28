@@ -9,7 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Leases;
 
-/// <summary>LT-11 (A7-17): the lease API returns DTOs without clear personal data nor internal fields.</summary>
 public class LeaseDtoMapperTests
 {
     private const string LandlordCf = "RSSMRA80A01H501U";
@@ -18,13 +17,11 @@ public class LeaseDtoMapperTests
     private const string TenantEmail = "giulia.verdi@example.com";
     private static readonly DateTime Today = new(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
 
-    // Same enum handling as the API (Program.cs).
     private static readonly JsonSerializerOptions ApiJson = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter() },
     };
 
-    /// <summary>JSON names that must never appear in a lease response.</summary>
     private static readonly string[] ForbiddenFields =
     [
         "ownerId", "orgId", "safetyChecklistJson", "fiscalCode", "contactEmail", "citizenship", "payload",
@@ -51,7 +48,6 @@ public class LeaseDtoMapperTests
     [Fact]
     public void ToDetail_SignedPathLeftByTheOldStub_HasNoSignedPdf()
     {
-        // LT-02: a provider path written by the old e-sign stub is not a file of the private bucket and cannot be served.
         var lease = BuildLease();
         lease.SignedPdfStoragePath = "/signed/lease.pdf";
 
@@ -82,7 +78,6 @@ public class LeaseDtoMapperTests
     [Fact]
     public void ToRegistration_ManualWithReceipt_ExposesChannelDateAndHasReceiptOnly()
     {
-        // LT-01: the client learns that a receipt exists, never where it is stored nor who declared it.
         var registration = new LeaseRegistration
         {
             LeaseContractId = Guid.NewGuid(),
@@ -101,7 +96,6 @@ public class LeaseDtoMapperTests
         Assert.True(dto.HasReceipt);
         Assert.Equal(RegistrationChannel.Manual, dto.Channel);
         Assert.Equal(registration.RegistrationDate, dto.RegistrationDate);
-        // A failure code only describes a Failed registration.
         Assert.Null(dto.FailureCode);
         AssertNoForbiddenFields(json);
         Assert.DoesNotContain("auth0|declarer", json, StringComparison.Ordinal);
@@ -153,7 +147,6 @@ public class LeaseDtoMapperTests
     [Fact]
     public void LeaseSummaryDto_CarriesTheFirstTenantByNameOnly_NeverTheFiscalCodeTheEmailNorTheCitizenship()
     {
-        // LR-01, decision D29: the name yes. Nothing else of the person reaches the list.
         var row = new LeaseSummaryDto(
             Guid.NewGuid(), Guid.NewGuid(), new LeasePropertyDto(Guid.NewGuid(), "Bilocale", "Bari"), LeaseStatus.Registered,
             FiscalRegime.CedolareSecca, LeaseContractType.Libero, LeaseTaxRegime.CedolareSecca, Today, Today.AddYears(4), 900m, null, null,
@@ -175,7 +168,6 @@ public class LeaseDtoMapperTests
     [Fact]
     public void LeaseSummaryDto_ATenantWhoseDataWereAnonymized_HasNoNameToShow()
     {
-        // The repository leaves both names null and says so: the client must not show the placeholder of the anonymization.
         var row = new LeaseSummaryDto(
             Guid.NewGuid(), Guid.NewGuid(), null, LeaseStatus.Registered, FiscalRegime.CedolareSecca, LeaseContractType.Libero, null,
             Today, Today.AddYears(4), 900m, null, null, 2, false, Today, Today, null, null, true);
@@ -211,7 +203,6 @@ public class LeaseDtoMapperTests
     [Fact]
     public void ToDetail_SignedBeforeStart_ReturnsStipulaAndDeadlineFromStipula()
     {
-        // LT-04 (A7-04): signed on 1/8, start 1/10 → deadline 31/8, not 31/10.
         var lease = BuildLease();
         lease.StartDate = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
         lease.RecordStipula(new DateTime(2026, 8, 1, 9, 0, 0, DateTimeKind.Utc));

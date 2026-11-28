@@ -26,7 +26,7 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class ShowcasePaidBookingTests
 {
-    private const int Total = ServiceRequestScenario.ServicePriceCents; // 6_000: the commission of 10 % is 600, the net 5_400
+    private const int Total = ServiceRequestScenario.ServicePriceCents;
     private const int Commission = 600;
     private const int Net = 5_400;
 
@@ -38,7 +38,6 @@ public class ShowcasePaidBookingTests
         return (s, supplier);
     }
 
-    /// <summary>The customer confirmed the card in the browser: Stripe reports the block and the webhook hands it over.</summary>
     private static ShowcaseHoldAuthorization CardBlocked(ServiceRequestScenario s, ShowcaseBookingHold hold, long? capturableCents = null)
     {
         var charge = s.Kit.PlatformGateway.SetStatus(hold.StripePaymentIntentId!, "requires_capture");
@@ -56,7 +55,6 @@ public class ShowcasePaidBookingTests
             s.Clock.GetUtcNow().UtcDateTime);
     }
 
-    /// <summary>A booking whose card is blocked and whose e-mail is checked (the block first): the request, new, with its payment.</summary>
     private static async Task<(ServiceRequest Request, ShowcaseBookingHold Hold)> BookedAndPaidAsync(ServiceRequestScenario s, SupplierProfile supplier)
     {
         var (held, token) = await s.HoldAsync(supplier: supplier);
@@ -83,8 +81,6 @@ public class ShowcasePaidBookingTests
         Assert.Null(payment.CapturedAt);
     }
 
-    // ─── The card is blocked for the total, and the supplier is told nothing ───
-
     [Fact]
     public async Task Hold_OfABookingPaidInsideCasaZen_BlocksTheCardForTheTotal_AndNothingReachesTheSupplier()
     {
@@ -101,14 +97,12 @@ public class ShowcasePaidBookingTests
         Assert.False(string.IsNullOrEmpty(payment.ClientSecret));
         Assert.Equal(ServiceRequestTestKit.PublishableKey, payment.PublishableKey);
 
-        // On the platform, charged later (manual capture), for the total, with the transfer group of the hold: the same hold is the same block.
         var created = Assert.Single(s.Kit.PlatformGateway.Created);
         Assert.True(created.ManualCapture);
         Assert.Equal(Total, created.AmountCents);
         Assert.Equal(ServiceCharges.HoldTransferGroup(hold.Id), created.TransferGroup);
         Assert.Equal(ServiceCharges.HoldAuthorizationIdempotencyKey(hold.Id), created.IdempotencyKey);
 
-        // The hold remembers the block and its amount; there is no request, no payment and no mail to the supplier.
         var row = Assert.Single(await s.HoldsAsync());
         Assert.NotNull(row.StripePaymentIntentId);
         Assert.Equal(Total, row.PaymentAmountCents);
@@ -147,7 +141,7 @@ public class ShowcasePaidBookingTests
 
         Assert.Equal(first.Id, again.Id);
         Assert.NotNull(again.Payment);
-        Assert.False(string.IsNullOrEmpty(again.Payment!.ClientSecret)); // the card can still be asked for it
+        Assert.False(string.IsNullOrEmpty(again.Payment!.ClientSecret));
         Assert.Single(s.Kit.PlatformGateway.Created);
         Assert.Single(await s.HoldsAsync());
     }
@@ -161,11 +155,9 @@ public class ShowcasePaidBookingTests
 
         await Assert.ThrowsAsync<StripeException>(async () => await s.HoldAsync(supplier: supplier));
 
-        Assert.Empty(await s.HoldsAsync()); // nobody is left waiting for a booking that cannot be paid
+        Assert.Empty(await s.HoldsAsync());
         Assert.DoesNotContain(s.Emails.Snapshot(), e => e.Template == EmailTemplates.Names.SupplierBookingVerification);
     }
-
-    // ─── Both conditions, in either order, one request ───
 
     [Fact]
     public async Task TheRequest_IsBorn_WhenTheCardIsBlockedFirstAndTheEmailIsCheckedAfter()
@@ -177,7 +169,6 @@ public class ShowcasePaidBookingTests
 
         var block = await s.Kit.Booking.ApplyHoldAuthorizationAsync(CardBlocked(s, hold));
 
-        // The card is blocked and the e-mail is not checked: the supplier has nothing.
         Assert.True(block.Handled);
         Assert.Null(block.Completion);
         Assert.Empty(await s.ShowcaseRequestsAsync());
@@ -192,10 +183,8 @@ public class ShowcasePaidBookingTests
         Assert.Equal(Total, request.EstimatedAmountCents);
         AssertAuthorizedPayment(Assert.Single(await s.PaymentsOfAsync(request.Id)), Assert.Single(await s.HoldsAsync()));
 
-        // The receipt says the amount is blocked, not "you pay nothing now"; the supplier is told the amount is already blocked.
         var receipt = Assert.Single(s.Emails.Snapshot(), e => e.Template == EmailTemplates.Names.SupplierBookingReceipt);
         Assert.Contains("bloccato", receipt.Content.HtmlBody, StringComparison.OrdinalIgnoreCase);
-        // "non paghi nulla adesso" is the line of a booking with no payment; the note of a blocked one says "non paghi nulla" only about a refusal.
         Assert.DoesNotContain("non paghi nulla adesso", receipt.Content.HtmlBody, StringComparison.OrdinalIgnoreCase);
         var news = Assert.Single(s.Emails.Snapshot(), e => e.Template == EmailTemplates.Names.SupplierBookingNewRequest);
         Assert.Contains("bloccato sulla carta", news.Content.HtmlBody, StringComparison.OrdinalIgnoreCase);
@@ -211,7 +200,6 @@ public class ShowcasePaidBookingTests
 
         var waiting = await s.Kit.Booking.ConfirmEmailAsync(supplier, held.Id, token);
 
-        // The address is checked but the card is not blocked: no request, the supplier knows nothing, the page is told to wait for the card.
         Assert.True(waiting.AwaitingPayment);
         Assert.False(waiting.AlreadyConfirmed);
         Assert.Empty(await s.ShowcaseRequestsAsync());
@@ -230,13 +218,11 @@ public class ShowcasePaidBookingTests
         Assert.Equal(ServiceRequestPaymentMode.Online, request.PaymentMode);
         AssertAuthorizedPayment(Assert.Single(await s.PaymentsOfAsync(request.Id)), Assert.Single(await s.HoldsAsync()));
 
-        // The mails go once the webhook transaction committed, not before.
         Assert.DoesNotContain(s.Emails.Snapshot(), e => e.Template == EmailTemplates.Names.SupplierBookingReceipt);
         await s.Kit.Booking.CompleteHoldAuthorizationAsync(block.Completion!);
         Assert.Single(s.Emails.Snapshot(), e => e.Template == EmailTemplates.Names.SupplierBookingReceipt);
         Assert.Single(s.Emails.Snapshot(), e => e.Template == EmailTemplates.Names.SupplierBookingNewRequest);
 
-        // A third click on the link answers the request as it is.
         var replay = await s.Kit.Booking.ConfirmEmailAsync(supplier, held.Id, token);
         Assert.False(replay.AwaitingPayment);
         Assert.True(replay.AlreadyConfirmed);
@@ -257,7 +243,7 @@ public class ShowcasePaidBookingTests
         var second = await s.Kit.Booking.ApplyHoldAuthorizationAsync(authorization);
 
         Assert.NotNull(first.Completion);
-        Assert.False(second.Handled); // the hold is a request now: the event is about its payment, which handles it
+        Assert.False(second.Handled);
         Assert.Single(await s.ShowcaseRequestsAsync());
         Assert.Single(s.Db.ServiceRequestPayments);
     }
@@ -296,8 +282,6 @@ public class ShowcasePaidBookingTests
         Assert.Null(Assert.Single(await s.HoldsAsync()).PaymentAuthorizedAt);
     }
 
-    // ─── A hold that lapses releases its block; a request's block is never touched ───
-
     private static ServiceRequestExpiryService ExpiryJob(ServiceRequestScenario s) =>
         new(
             s.Db,
@@ -314,7 +298,7 @@ public class ShowcasePaidBookingTests
         using var scope = s;
         await s.HoldAsync(supplier: supplier);
         var hold = Assert.Single(await s.HoldsAsync());
-        await s.Kit.Booking.ApplyHoldAuthorizationAsync(CardBlocked(s, hold)); // the card is blocked, the e-mail never checked
+        await s.Kit.Booking.ApplyHoldAuthorizationAsync(CardBlocked(s, hold));
         s.Clock.Advance(TimeSpan.FromMinutes(s.Kit.ShowcaseOptions.EmailVerificationMinutes + 1));
 
         var run = await ExpiryJob(s).RunAsync();
@@ -333,19 +317,17 @@ public class ShowcasePaidBookingTests
         var (s, supplier) = await StartAsync();
         using var scope = s;
         var (request, hold) = await BookedAndPaidAsync(s, supplier);
-        s.Clock.Advance(TimeSpan.FromMinutes(s.Kit.ShowcaseOptions.EmailVerificationMinutes + 1)); // the hold lapsed; the block lives 48 hours
+        s.Clock.Advance(TimeSpan.FromMinutes(s.Kit.ShowcaseOptions.EmailVerificationMinutes + 1));
 
         var released = await s.Kit.Booking.ReleaseExpiredHoldAsync(supplier.OrgId, hold.Id);
         var run = await ExpiryJob(s).RunAsync();
 
         Assert.False(released);
-        Assert.Equal(1, run.HoldsDeleted); // the hold of a request is just deleted, as before
+        Assert.Equal(1, run.HoldsDeleted);
         Assert.Empty(s.Kit.PlatformGateway.Cancellations);
         Assert.Equal("requires_capture", s.Kit.PlatformGateway.Intent(hold.StripePaymentIntentId!).Status);
         Assert.Equal(ServicePaymentStatus.Authorized, Assert.Single(await s.PaymentsOfAsync(request.Id)).Status);
     }
-
-    // ─── The supplier's acceptance charges the card first ───
 
     [Fact]
     public async Task Take_ChargesTheCard_AndKeepsTheBookingPaidInsideCasaZen()
@@ -357,13 +339,12 @@ public class ShowcasePaidBookingTests
         var taken = await s.TakeAsSupplierAsync(request.Id);
 
         Assert.Equal(ServiceRequestStatus.PresoInCarico, taken.Status);
-        Assert.Equal(ServiceRequestPaymentMode.Online, taken.PaymentMode); // a take never turns a paid booking into a manual one
+        Assert.Equal(ServiceRequestPaymentMode.Online, taken.PaymentMode);
         var payment = Assert.Single(await s.PaymentsOfAsync(request.Id));
         Assert.Equal(ServicePaymentStatus.Held, payment.Status);
         Assert.NotNull(payment.CapturedAt);
         Assert.Single(s.Kit.PlatformGateway.Captures);
 
-        // The customer is told the card was charged and that CasaZen holds the amount.
         var accepted = Assert.Single(s.Emails.Snapshot(), e => e.Template == EmailTemplates.Names.SupplierBookingAccepted);
         Assert.Contains("addebitato", accepted.Content.HtmlBody, StringComparison.OrdinalIgnoreCase);
     }
@@ -380,7 +361,7 @@ public class ShowcasePaidBookingTests
         var refusal = await Assert.ThrowsAsync<DomainConflictException>(async () => await s.TakeAsSupplierAsync(request.Id));
 
         Assert.Equal("service_payment_authorization_expired", refusal.Code);
-        Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(request.Id)).Status); // never accepted with no money behind it
+        Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(request.Id)).Status);
         Assert.Equal("canceled", s.Kit.PlatformGateway.Intent(hold.StripePaymentIntentId!).Status);
     }
 
@@ -400,7 +381,7 @@ public class ShowcasePaidBookingTests
 
         Assert.Equal(ServiceRequestStatus.PresoInCarico, taken.Status);
         Assert.Equal(2, s.Kit.PlatformGateway.Captures.Count);
-        Assert.Single(s.Kit.PlatformGateway.Captures.Select(c => c.Key).Distinct()); // the same key: Stripe charges once
+        Assert.Single(s.Kit.PlatformGateway.Captures.Select(c => c.Key).Distinct());
     }
 
     [Fact]
@@ -423,8 +404,6 @@ public class ShowcasePaidBookingTests
         Assert.Empty(s.Kit.PlatformGateway.Captures);
         Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(request.Id)).Status);
     }
-
-    // ─── Closing the request gives the customer's money back ───
 
     [Fact]
     public async Task TheCustomersCancellation_ReleasesTheBlock_BeforeAnythingIsCharged()
@@ -464,7 +443,7 @@ public class ShowcasePaidBookingTests
         await s.Kit.Manager.CancelAsync(ShowcaseManageScenario.CredentialsOf(request.PublicCode!), reason: null);
 
         var refund = Assert.Single(s.Kit.PlatformGateway.Refunds);
-        Assert.Equal(Total, refund.AmountCents); // cancelling is always free (D6): the commission goes back too
+        Assert.Equal(Total, refund.AmountCents);
         Assert.Equal(ServicePaymentStatus.Refunded, Assert.Single(await s.PaymentsOfAsync(request.Id)).Status);
         Assert.Empty(s.Kit.PlatformGateway.Transfers);
     }
@@ -476,7 +455,7 @@ public class ShowcasePaidBookingTests
         using var scope = s;
         var (request, _) = await BookedAndPaidAsync(s, supplier);
         var payment = await s.Db.ServiceRequestPayments.SingleAsync(p => p.ServiceRequestId == request.Id);
-        payment.Status = ServicePaymentStatus.Canceled; // the block lapsed and was released
+        payment.Status = ServicePaymentStatus.Canceled;
         await s.Db.SaveChangesAsync();
         s.Db.ChangeTracker.Clear();
 
@@ -496,7 +475,7 @@ public class ShowcasePaidBookingTests
         var (s, supplier) = await StartAsync();
         using var scope = s;
         var settings = await s.Db.SupplierSettings.SingleAsync(x => x.OrgId == s.SupplierOrgId);
-        settings.RespondWithinMinutes = 7 * 24 * 60; // a supplier that gives itself a week; the block lives 48 hours
+        settings.RespondWithinMinutes = 7 * 24 * 60;
         await s.Db.SaveChangesAsync();
         s.Db.ChangeTracker.Clear();
 
@@ -507,8 +486,6 @@ public class ShowcasePaidBookingTests
         Assert.Equal(limit, request.ResponseDueAt);
         Assert.True(request.ResponseDueAt < payment.AuthorizationExpiresAt);
     }
-
-    // ─── What the customer sees, and "all fine" ───
 
     [Fact]
     public async Task Lookup_ShowsTheMoney_AndAllFineReleasesTheSupplierOnce_TheNetOfTheCommission()
@@ -526,10 +503,9 @@ public class ShowcasePaidBookingTests
         await s.TakeAsSupplierAsync(request.Id);
         view = await s.Kit.Manager.LookupAsync(credentials);
         Assert.Equal("held", view.Payment!.Status);
-        Assert.Null(view.Payment.ReleaseAtUtc); // the work is not done: no time is running
+        Assert.Null(view.Payment.ReleaseAtUtc);
         Assert.False(view.Actions.CanConfirmOk);
 
-        // "All fine" before the work is done is refused: there is nothing to release.
         var early = await Assert.ThrowsAsync<DomainRuleException>(async () => await s.Kit.Manager.ConfirmOkAsync(credentials));
         Assert.Equal("service_payment_not_confirmable", early.Code);
         Assert.Empty(s.Kit.PlatformGateway.Transfers);
@@ -541,7 +517,7 @@ public class ShowcasePaidBookingTests
         Assert.True(view.Actions.CanConfirmOk);
 
         var confirmed = await s.Kit.Manager.ConfirmOkAsync(credentials);
-        var again = await s.Kit.Manager.ConfirmOkAsync(credentials); // a double click is not an error and pays nobody twice
+        var again = await s.Kit.Manager.ConfirmOkAsync(credentials);
 
         Assert.Equal("released", confirmed.Payment!.Status);
         Assert.Equal("released", again.Payment!.Status);
@@ -567,8 +543,6 @@ public class ShowcasePaidBookingTests
         Assert.Equal(ServiceRequestPaymentMode.Manual, request.PaymentMode);
     }
 
-    // ─── The pure rules of what the customer reads ───
-
     [Theory]
     [InlineData(ServicePaymentStatus.Authorized, "authorized")]
     [InlineData(ServicePaymentStatus.Held, "held")]
@@ -585,11 +559,11 @@ public class ShowcasePaidBookingTests
     [Theory]
     [InlineData(ServiceRequestStatus.Completato, ServicePaymentStatus.Held, Net, 0, true)]
     [InlineData(ServiceRequestStatus.Completato, ServicePaymentStatus.TransferFailed, Net, 0, true)]
-    [InlineData(ServiceRequestStatus.PresoInCarico, ServicePaymentStatus.Held, Net, 0, false)] // the work is not done
-    [InlineData(ServiceRequestStatus.Completato, ServicePaymentStatus.Authorized, Net, 0, false)] // nothing was charged
-    [InlineData(ServiceRequestStatus.Completato, ServicePaymentStatus.Released, Net, 0, false)] // the supplier was paid
-    [InlineData(ServiceRequestStatus.Completato, ServicePaymentStatus.Disputed, Net, 0, false)] // a dispute stopped it
-    [InlineData(ServiceRequestStatus.Completato, ServicePaymentStatus.Held, Net, Net, false)] // nothing is left to release
+    [InlineData(ServiceRequestStatus.PresoInCarico, ServicePaymentStatus.Held, Net, 0, false)]
+    [InlineData(ServiceRequestStatus.Completato, ServicePaymentStatus.Authorized, Net, 0, false)]
+    [InlineData(ServiceRequestStatus.Completato, ServicePaymentStatus.Released, Net, 0, false)]
+    [InlineData(ServiceRequestStatus.Completato, ServicePaymentStatus.Disputed, Net, 0, false)]
+    [InlineData(ServiceRequestStatus.Completato, ServicePaymentStatus.Held, Net, Net, false)]
     public void CanConfirmOk_NeedsTheWorkDone_AndMoneyThatCanStillBeReleased(
         ServiceRequestStatus request, ServicePaymentStatus payment, int net, int refunded, bool expected) =>
         Assert.Equal(expected, ShowcaseBookingManagementRules.CanConfirmOk(request, payment, net, refunded));
@@ -600,7 +574,7 @@ public class ShowcasePaidBookingTests
         var at = new DateTime(2026, 10, 30, 8, 0, 0, DateTimeKind.Utc);
 
         Assert.Equal(at.AddHours(47), HeldPaymentRules.LatestResponseAt(at, TimeSpan.FromHours(48)));
-        Assert.Equal(at.AddHours(3), HeldPaymentRules.LatestResponseAt(at, TimeSpan.FromHours(4))); // 4 h - min(1 h, 1 h)
+        Assert.Equal(at.AddHours(3), HeldPaymentRules.LatestResponseAt(at, TimeSpan.FromHours(4)));
         Assert.Equal(at.AddMinutes(90), HeldPaymentRules.LatestResponseAt(at, TimeSpan.FromHours(2)));
         Assert.True(HeldPaymentRules.LatestResponseAt(at, TimeSpan.FromHours(1)) < HeldPaymentRules.AuthorizationExpiry(at, TimeSpan.FromHours(1)));
     }

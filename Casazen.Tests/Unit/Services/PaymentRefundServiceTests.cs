@@ -101,7 +101,6 @@ public class PaymentRefundServiceTests : IDisposable
         Assert.Equal(EmailTemplates.Names.GuestRefundConfirmed, email.Template);
         Assert.Contains("50,00", email.Content.HtmlBody);
 
-        // A webhook repeating the same refund does not email again.
         await Service().ApplyStripeRefundsAsync([Snapshot(refund.StripeRefundId!, payment, 5_000, "succeeded")], Account);
         foreach (var id in await Service().ApplyStripeRefundsAsync([Snapshot(refund.StripeRefundId!, payment, 5_000, "succeeded")], Account))
             await Service().NotifyGuestAsync(id);
@@ -135,12 +134,10 @@ public class PaymentRefundServiceTests : IDisposable
         Assert.Equal(0m, stored.RefundedAmount);
         Assert.Empty(_queued);
 
-        // The pending refund keeps its amount reserved.
         var summary = await Service().GetSummaryAsync(payment.Id);
         Assert.Equal(200m, summary.PendingRefundAmount);
         Assert.Equal(0m, summary.RefundableAmount);
 
-        // Stripe confirms through the webhook: only now Refunded, and the guest is emailed.
         var succeeded = await Service().ApplyStripeRefundsAsync(
             [Snapshot(refund.StripeRefundId!, payment, 20_000, "succeeded")], Account);
         foreach (var id in succeeded)

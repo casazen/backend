@@ -9,10 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// <see cref="OrgSiteDocumentService"/> (BK-14, A3-21): immutable versions numbered per org and kind, withdrawal, nothing
-/// stored for an invalid input, and the public read that only ever returns what the operator published.
-/// </summary>
 public class OrgSiteDocumentServiceTests : IDisposable
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 1, 9, 30, 0, TimeSpan.Zero);
@@ -222,7 +218,6 @@ public class OrgSiteDocumentServiceTests : IDisposable
     [Fact]
     public async Task GetPublishedAsync_RowWithUnsafeHtml_IsSanitizedOnRead()
     {
-        // A row written by other means (script, import, manual fix) never reaches a page unsanitized.
         _db.OrgSiteDocuments.Add(new Casazen.Core.Entities.OrgSiteDocument
         {
             OrgId = _org.Id,

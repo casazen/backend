@@ -1,4 +1,3 @@
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
@@ -76,7 +75,6 @@ public class ServiceRequestAutoCancelServiceTests
         Assert.Contains(ServiceRequestScenario.PropertyName, toHost.Content.Subject);
         var toSupplier = Assert.Single(emails, e => e.To == "supplier@test.com");
         Assert.Equal(EmailTemplates.Names.ServiceRequestCancelledToSupplier, toSupplier.Template);
-        // The supplier never learns the property nor the notes of a request it did not take.
         Assert.DoesNotContain(ServiceRequestScenario.PropertyName, toSupplier.Content.Subject + toSupplier.Content.HtmlBody);
         Assert.DoesNotContain(ServiceRequestScenario.HostNotes, toSupplier.Content.Subject + toSupplier.Content.HtmlBody);
 
@@ -130,13 +128,11 @@ public class ServiceRequestAutoCancelServiceTests
     public async Task CancelUnansweredAsync_OnlyTheRequestsNobodyAnswered()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        // Non-overlapping intervals: after one is taken, create still checks overlap against accepted jobs.
         var overdue = await s.RequestAsync(ServiceRequestScenario.FridayAt10, withService: false, durationMinutes: 60);
         var taken = await s.RequestAsync(ServiceRequestScenario.FridayAt10.AddDays(14), withService: false, durationMinutes: 60);
         await s.Service.TakeAsync(taken.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId);
         var rejected = await s.RequestAsync(ServiceRequestScenario.SaturdayAt09, withService: false, durationMinutes: 60);
         await s.Service.RejectAsync(rejected.Id, s.SupplierOrgId, "Non posso");
-        // Catalog service: propose-time needs a listing duration; FridayAt14 is free (taken is two weeks later).
         var withProposal = await s.RequestAsync(ServiceRequestScenario.SaturdayAt09.AddHours(3));
         await s.Service.ProposeTimeAsync(
             withProposal.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId,
@@ -153,12 +149,10 @@ public class ServiceRequestAutoCancelServiceTests
         Assert.Equal(ServiceRequestStatus.Annullato, (await s.ReadAsync(overdue.Id)).Status);
         Assert.Equal(ServiceRequestStatus.PresoInCarico, (await s.ReadAsync(taken.Id)).Status);
         Assert.Equal(ServiceRequestStatus.Rifiutato, (await s.ReadAsync(rejected.Id)).Status);
-        // A request with a time proposed was answered by the supplier: the host has to answer, nobody cancels it.
         Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(withProposal.Id)).Status);
         var byHost = await s.ReadAsync(cancelledByHost.Id);
         Assert.Equal(ServiceRequestActorParty.Host, byHost.CancelledBy);
         Assert.Equal(ServiceRequestStatus.Completato, (await s.ReadAsync(completed.Id)).Status);
-        // A request from before the deadlines existed has none: it is never cancelled by time.
         Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(longAgo.Id)).Status);
     }
 
@@ -174,8 +168,6 @@ public class ServiceRequestAutoCancelServiceTests
 
         await s.Service.RejectProposalAsync(request.Id, s.HostOrgId);
 
-        // The supplier did answer (it proposed). Declining that time must not make the next run cancel the request
-        // as if nobody had answered: the supplier gets the response window again, from the moment of the refusal.
         var saved = await s.ReadAsync(request.Id);
         Assert.Equal(ServiceRequestStatus.Richiesto, saved.Status);
         Assert.Null(saved.ProposedStartUtc);
@@ -222,7 +214,6 @@ public class ServiceRequestAutoCancelServiceTests
         var request = await s.RequestAsync();
         s.Clock.Advance(HostWindow);
         s.ForgetNotifications();
-        // The save of the run finds the request changed by someone else (xmin): the winner's change stays.
         interceptor.Failure = new DbUpdateConcurrencyException("the request changed");
 
         var run = await AutoCancel(s).CancelUnansweredAsync();
@@ -248,7 +239,6 @@ public class ServiceRequestAutoCancelServiceTests
         interceptor.Failure = null;
         var retried = await AutoCancel(s).CancelUnansweredAsync();
 
-        // Every request failed in the first run; the next run (10 minutes later in production) takes them.
         Assert.Equal(2, failed.Failed);
         Assert.Equal(0, failed.Cancelled);
         Assert.Equal(2, retried.Cancelled);
@@ -284,12 +274,9 @@ public class ServiceRequestAutoCancelServiceTests
 
         var run = await AutoCancel(s).CancelUnansweredAsync();
 
-        // The job works across every org: it is not scoped to one host nor to one supplier.
         Assert.Equal(1, run.Cancelled);
         Assert.Equal(ServiceRequestStatus.Annullato, (await s.ReadAsync(theirs.Id)).Status);
     }
-
-    // ─── The job ───
 
     [Fact]
     public async Task Job_RunsTheServiceOnceAndStaysQuietWhenNothingFails()
@@ -340,8 +327,6 @@ public class ServiceRequestAutoCancelServiceTests
         Assert.Equal("service-request-auto-cancel", Casazen.Web.BackgroundJobs.ServiceRequestAutoCancelJob.RecurringJobId);
         Assert.Equal("*/10 * * * *", Casazen.Web.BackgroundJobs.ServiceRequestAutoCancelJob.Cron);
     }
-
-    // ─── helpers ───
 
     private static ServiceRequestAutoCancelService AutoCancel(ServiceRequestScenario s, bool enabled = true) =>
         new(s.Db, s.Notifier, Flags(enabled), NullLogger<ServiceRequestAutoCancelService>.Instance, s.Clock);

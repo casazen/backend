@@ -30,8 +30,6 @@ public class SupplierServiceCatalogPostgresTests(CasazenWebApplicationFactory fa
     private static readonly byte[] PngBytes = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
 
-    // ─── Isolation between suppliers ─────────────────────────────────────────────
-
     [PostgresFact]
     public async Task TwoSuppliers_NeverSeeOrChangeEachOthersServices_AndEachRowBelongsToItsOwnOrg()
     {
@@ -46,11 +44,9 @@ public class SupplierServiceCatalogPostgresTests(CasazenWebApplicationFactory fa
         var bId = fromB.GetProperty("id").GetGuid();
         await a.PostAsync($"{Url}/{aId}/publish", null);
 
-        // Each lists only its own.
         Assert.Equal(new[] { aId }, Ids(await ReadAsync(await a.GetAsync(Url))));
         Assert.Equal(new[] { bId }, Ids(await ReadAsync(await b.GetAsync(Url))));
 
-        // B cannot reach A's service on any endpoint: 404, never 403 (it does not exist for B), and nothing changes.
         Assert.Equal(HttpStatusCode.NotFound, (await b.GetAsync($"{Url}/{aId}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await b.PutAsJsonAsync($"{Url}/{aId}", new { name = "Rubato", category = "cleaning", version = fromA.GetProperty("version").GetUInt32() })).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await b.DeleteAsync($"{Url}/{aId}")).StatusCode);
@@ -73,8 +69,6 @@ public class SupplierServiceCatalogPostgresTests(CasazenWebApplicationFactory fa
     [PostgresFact]
     public async Task ADualRoleAccount_UsesItsSupplierOrgForTheCatalog_NotItsHostOrg()
     {
-        // A host that is also a supplier: User.OrgId is the host org, User.SupplierOrgId the supplier org. The tenant filter
-        // follows the first, the catalog the second.
         var ownerId = $"auth0|sp02-dual-{Guid.NewGuid():N}";
         var hostOrg = await factory.SeedOrgForOwnerAsync(ownerId);
         Guid supplierOrgId;
@@ -113,8 +107,6 @@ public class SupplierServiceCatalogPostgresTests(CasazenWebApplicationFactory fa
         Assert.NotEqual(hostOrg.Id, row.OrgId);
     }
 
-    // ─── The unique slug, the checks and the cascade ─────────────────────────────
-
     [PostgresFact]
     public async Task SlugIndex_UniquePerSupplierAmongTheServicesNotDeleted()
     {
@@ -122,19 +114,15 @@ public class SupplierServiceCatalogPostgresTests(CasazenWebApplicationFactory fa
         var (_, orgB) = await SupplierCatalogTestData.SeedSupplierAsync(factory);
         await SaveRowAsync(Row(orgA, "pulizia"));
 
-        // The same slug twice for one supplier: the partial unique index refuses it.
         var duplicate = await Assert.ThrowsAsync<DbUpdateException>(() => SaveRowAsync(Row(orgA, "pulizia")));
         var postgres = Assert.IsType<PostgresException>(duplicate.InnerException);
         Assert.Equal(PostgresErrorCodes.UniqueViolation, postgres.SqlState);
         Assert.Equal("UIX_SupplierServiceListings_OrgId_Slug", postgres.ConstraintName);
 
-        // Another supplier is free to use it.
         await SaveRowAsync(Row(orgB, "pulizia"));
 
-        // A deleted service frees the slug (the index covers only the rows that are not deleted)...
         await SaveRowAsync(Row(orgA, "vecchio", deletedAt: Newer));
         await SaveRowAsync(Row(orgA, "vecchio"));
-        // ...and so do two deleted ones.
         await SaveRowAsync(Row(orgA, "vecchio", deletedAt: Newer));
 
         await using var scope = factory.Services.CreateAsyncScope();
@@ -166,7 +154,6 @@ public class SupplierServiceCatalogPostgresTests(CasazenWebApplicationFactory fa
                 $"{name}: expected a check violation, got {ex.InnerException?.Message}");
         }
 
-        // The accepted bounds are accepted.
         var ok = Row(orgId, "bounds");
         ok.PriceFromCents = null;
         ok.DurationMinutes = null;
@@ -185,7 +172,6 @@ public class SupplierServiceCatalogPostgresTests(CasazenWebApplicationFactory fa
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        // xmin is a system column: the migration does not create one (the unique index is the only extra).
         var columns = await db.Database
             .SqlQuery<string>($"SELECT column_name AS \"Value\" FROM information_schema.columns WHERE table_name = 'SupplierServiceListings'")
             .ToListAsync();
@@ -199,12 +185,9 @@ public class SupplierServiceCatalogPostgresTests(CasazenWebApplicationFactory fa
         Assert.Contains("UNIQUE", definition);
         Assert.Contains("\"DeletedAt\" IS NULL", definition);
 
-        // Deleting the supplier profile takes its services with it.
         await db.SupplierProfiles.Where(sp => sp.OrgId == orgId).ExecuteDeleteAsync();
         Assert.Equal(0, await db.SupplierServiceListings.CountAsync(l => l.OrgId == orgId));
     }
-
-    // ─── xmin ────────────────────────────────────────────────────────────────────
 
     [PostgresFact]
     public async Task Version_ChangesWithEveryUpdateOfTheRow_AndAnOlderOneIsRefused()
@@ -220,13 +203,11 @@ public class SupplierServiceCatalogPostgresTests(CasazenWebApplicationFactory fa
         Assert.NotEqual(v1, v2);
         Assert.Equal(v2, (await ReadAsync(await client.GetAsync($"{Url}/{id}"))).GetProperty("version").GetUInt32());
 
-        // The version of before the update: 409, and nothing was written.
         var stale = await client.PutAsJsonAsync($"{Url}/{id}", new { name = "Vecchio", category = "cleaning", version = v1 });
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
         Assert.Equal("supplier_service_changed", (await ReadAsync(stale)).GetProperty("code").GetString());
         Assert.Equal("Pulizia 2", (await ReadAsync(await client.GetAsync($"{Url}/{id}"))).GetProperty("name").GetString());
 
-        // A photo upload changes the row too, so the client that did not see it is told to reload.
         var uploaded = await ReadAsync(await UploadPhotoAsync(client, id));
         var v3 = uploaded.GetProperty("version").GetUInt32();
         Assert.NotEqual(v2, v3);
@@ -235,8 +216,6 @@ public class SupplierServiceCatalogPostgresTests(CasazenWebApplicationFactory fa
         var withNew = await client.PutAsJsonAsync($"{Url}/{id}", new { name = "Con foto", category = "cleaning", version = v3 });
         Assert.Equal(HttpStatusCode.OK, withNew.StatusCode);
     }
-
-    // ─── The catalog lock: parallel requests ─────────────────────────────────────
 
     [PostgresFact]
     public async Task TwoParallelUpdatesWithTheSameVersion_OneWins_TheOtherGets409()
@@ -359,13 +338,10 @@ public class SupplierServiceCatalogPostgresTests(CasazenWebApplicationFactory fa
         var photos = Strings((await ReadAsync(await setup.GetAsync($"{Url}/{id}"))).GetProperty("photoUrls"));
         Assert.Equal(SupplierServiceCatalogLimits.MaxPhotos, photos.Count);
 
-        // The objects of the refused uploads were removed again: only the six photos are on the disk.
         var stored = Directory.GetFiles(factory.StorageRoot, "*.png", SearchOption.AllDirectories)
             .Count(path => path.Contains(orgId.ToString()));
         Assert.Equal(SupplierServiceCatalogLimits.MaxPhotos, stored);
     }
-
-    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private HttpClient SupplierClient(string userId) => factory.CreateAuthenticatedClient(userId, roles: "Supplier");
 

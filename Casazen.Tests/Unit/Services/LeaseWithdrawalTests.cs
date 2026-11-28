@@ -29,7 +29,6 @@ public class LeaseWithdrawalTests : IDisposable
 
     private static DateTime Day(int year, int month, int day) => new(year, month, day, 0, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>A registered 4+4 lease that began on 1 November 2025 and states its first end on <paramref name="end"/>.</summary>
     private async Task<LeaseContract> RunningLeaseAsync(DateTime? end = null)
     {
         var property = await _h.SeedPropertyAsync(RentalMode.Long);
@@ -59,7 +58,7 @@ public class LeaseWithdrawalTests : IDisposable
         var ended = await LoadAsync(lease.Id);
         Assert.Equal(Day(2027, 4, 1), ended.TerminatedOn);
         Assert.Equal(Day(2027, 4, 1), ended.CurrentTermEndDate);
-        Assert.Equal(Day(2029, 10, 31), ended.EndDate); // the contract still says when it was to end
+        Assert.Equal(Day(2029, 10, 31), ended.EndDate);
         Assert.Equal("GraveMotivi:2026-10-01:2027-04-01:6", Assert.Single(ended.Events, e => e.EventType == LeaseEventType.WithdrawalRecorded).Payload);
         Assert.Equal("2027-04-01", Assert.Single(ended.Events, e => e.EventType == LeaseEventType.Terminated).Payload);
         _rent.Verify(r => r.CancelInstallmentsAfterAsync(lease.Id, new DateOnly(2027, 4, 1), It.IsAny<CancellationToken>()), Times.Once);
@@ -82,8 +81,8 @@ public class LeaseWithdrawalTests : IDisposable
     }
 
     [Theory]
-    [InlineData(2026, 10, 11)] // a letter that has not arrived yet
-    [InlineData(2025, 10, 31)] // before the lease began
+    [InlineData(2026, 10, 11)]
+    [InlineData(2025, 10, 31)]
     public async Task ADayOfReceiptInTheFutureOrBeforeTheStart_IsRefused(int year, int month, int day)
     {
         var lease = await RunningLeaseAsync();

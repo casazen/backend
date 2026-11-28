@@ -1,7 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Unit;
@@ -13,12 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// CO-04 (A5-09): the wire contract of the cockpit read by the web app (<c>src/lib/compliance-routes.ts</c>) and by the
-/// E2E mock (<c>e2e/helpers/compliance-mock.ts</c>). Each item carries the action by name and the id of its target;
-/// no front-end path, which the API used to invent (<c>/bookings/{id}/check-in</c>, ...) and the web app sent to the
-/// dashboard.
-/// </summary>
 public class ComplianceSummaryContractTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private const string HostRole = "PropertyOwner";
@@ -26,7 +19,6 @@ public class ComplianceSummaryContractTests : IClassFixture<CasazenWebApplicatio
 
     public ComplianceSummaryContractTests(CasazenWebApplicationFactory factory) => _factory = factory;
 
-    /// <summary>Fixed clock (FD-06): 22:30 UTC on 24/09 is already 25/09 in Rome, the day the cockpit counts.</summary>
     private static readonly FixedTimeProvider Clock = new(new DateTimeOffset(2026, 9, 24, 22, 30, 0, TimeSpan.Zero));
 
     private static readonly DateTime Today = new(2026, 9, 25, 0, 0, 0, DateTimeKind.Utc);
@@ -37,7 +29,6 @@ public class ComplianceSummaryContractTests : IClassFixture<CasazenWebApplicatio
         Assert.Equal(Today, Clock.TodayInRome());
         var hostId = $"auth0|co04-{Guid.NewGuid():N}";
         var property = await _factory.SeedPropertyAsync(hostId);
-        // casazen/backend#978: the departures are the host's here (by default CasaZen registers today's departure itself and lists none).
         await SeedManualDepartureAsync(property.OrgId);
         var departing = await SeedStayAsync(property, Today.AddDays(-2), Today, alloggiati: null);
         var rejected = await SeedStayAsync(property, Today.AddDays(-1), Today.AddDays(2), AlloggiatiWebStatus.Rifiutato);
@@ -56,7 +47,6 @@ public class ComplianceSummaryContractTests : IClassFixture<CasazenWebApplicatio
         AssertItem(summary, "alloggiatiManualRequired", departing, "SendAlloggiati", "bookingId");
         AssertItem(summary, "alloggiatiFailures", rejected, "ResolveAlloggiatiFailure", "bookingId");
 
-        // E31/F02/US01/T01: the section of the days to notify to the authority of the other cantons is there, empty (no Swiss property, and the module is off by default).
         Assert.Equal(0, summary.GetProperty("swissNotifications").GetProperty("count").GetInt32());
         Assert.Empty(summary.GetProperty("swissNotifications").GetProperty("items").EnumerateArray());
         foreach (var section in summary.EnumerateObject())
@@ -85,7 +75,6 @@ public class ComplianceSummaryContractTests : IClassFixture<CasazenWebApplicatio
         Assert.Equal(JsonValueKind.Null, item.GetProperty(otherTarget).ValueKind);
     }
 
-    /// <summary>A stay with incomplete guest data (no stay guests), inserted directly like the other cockpit tests.</summary>
     private async Task SeedManualDepartureAsync(Guid orgId)
     {
         using var scope = _factory.Services.CreateScope();

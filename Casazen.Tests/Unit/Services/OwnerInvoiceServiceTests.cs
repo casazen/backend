@@ -8,7 +8,6 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Resources;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -51,7 +50,6 @@ public class OwnerInvoiceServiceTests
             Sum(draft, FiscalLineType.Recharge));
         Assert.Equal(-entries.Where(e => e.EntryType == OwnerLedgerEntryType.OwnerExpense).Sum(e => e.Amount), Sum(draft, FiscalLineType.AdvancedExpense));
 
-        // One line per property for the commission, one per flat fee and charge, one per expense: 1'000.00 and 200.00, 80.00 and 30.00, 40.00.
         Assert.Equal(new[] { 1000.00m, 200.00m }, draft.Lines.Where(l => l.LineType == FiscalLineType.Commission).OrderByDescending(l => l.TotalPrice).Select(l => l.TotalPrice));
         Assert.Equal(new[] { 80.00m, 30.00m }, draft.Lines.Where(l => l.LineType == FiscalLineType.Recharge).OrderByDescending(l => l.TotalPrice).Select(l => l.TotalPrice));
         Assert.Equal(40.00m, Assert.Single(draft.Lines, l => l.LineType == FiscalLineType.AdvancedExpense).TotalPrice);
@@ -59,7 +57,6 @@ public class OwnerInvoiceServiceTests
         Assert.Equal((0m, 0m), (draft.Lines.Single(l => l.LineType == FiscalLineType.AdvancedExpense).VatRatePercent, draft.Lines.Single(l => l.LineType == FiscalLineType.AdvancedExpense).VatAmount ?? 0m));
         Assert.Equal((1350.00m, 106.11m, 1456.11m), (draft.TaxableBase, draft.VatAmount, draft.Total));
 
-        // The portal commissions of listings whose account the owner holds (the default) are not recharged.
         Assert.DoesNotContain(draft.Lines, l => l.Description.Contains("Booking.com", StringComparison.Ordinal));
 
         var again = await rig.Invoices.CreateDraftAsync(rig.OrgId, version.Id, "auth0|agency");
@@ -116,10 +113,6 @@ public class OwnerInvoiceServiceTests
         Assert.Equal(-81.00m, (await rig.Db.OwnerLedgerEntries.AsNoTracking().SingleAsync(e => e.EntryType == OwnerLedgerEntryType.AgencyVat)).Amount);
     }
 
-    /// <summary>
-    /// PROOF TEST: permission (tenant) rule. A statement version or an owner invoice of another organization is not found (404): no draft, no issue, nothing
-    /// written.
-    /// </summary>
     [Fact]
     public async Task OwnerInvoice_OtherOrganizationVersion404_Test()
     {
@@ -158,7 +151,6 @@ public class OwnerInvoiceServiceTests
         rig.Db.ChangeTracker.Clear();
         var before = await rig.Db.FiscalDocuments.AsNoTracking().CountAsync();
 
-        // The draft of the org comes back as it is, with its lines to the cent: what the creation answered, read again after a reload.
         var read = await rig.Invoices.GetAsync(rig.OrgId, draft.Id);
         Assert.Equal((draft.Id, FiscalDocumentStatus.Draft, FiscalDocumentPurpose.OwnerInvoice, draft.Total, draft.Lines.Count), (read.Id, read.Status, read.Purpose, read.Total, read.Lines.Count));
         Assert.Equal(
@@ -166,15 +158,12 @@ public class OwnerInvoiceServiceTests
             read.Lines.OrderBy(l => l.LineNumber).Select(l => (l.LineNumber, l.LineType, l.TotalPrice, l.VatRatePercent, l.VatAmount)));
         Assert.Equal(before, await rig.Db.FiscalDocuments.AsNoTracking().CountAsync());
 
-        // The credit note of an owner invoice is an owner invoice document too: read as it was issued.
         var note = await rig.Db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Kind == FiscalDocumentKind.CreditNote);
         Assert.Equal(note.Id, (await rig.Invoices.GetAsync(rig.OrgId, note.Id)).Id);
 
-        // Another org: the 404 of a document that does not exist; the same id asked by its own org is served.
         var other = await Assert.ThrowsAsync<NotFoundException>(() => rig.Invoices.GetAsync(Guid.NewGuid(), draft.Id));
         Assert.Equal(FiscalDocumentErrors.NotFound, other.Code);
 
-        // The same org, another purpose: a guest document and a self-billed invoice are not owner invoices.
         foreach (var purpose in new[] { FiscalDocumentPurpose.GuestStay, FiscalDocumentPurpose.SelfBilling })
         {
             var notAnOwnerInvoice = await rig.Db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Purpose == purpose);
@@ -201,11 +190,6 @@ public class OwnerInvoiceServiceTests
         PeriodMonth = 10,
     };
 
-    /// <summary>
-    /// PROOF TEST: money rule (⚖ I10, I11). With the listings on the default holder (the owner, V1) no portal commission is recharged; once the agency holds the
-    /// account of one listing on Booking.com (V2, written in bulk), its commissions, and only its, are one recharge line «Riaddebito commissioni Booking.com»;
-    /// with the recharge switched off there is none again.
-    /// </summary>
     [Fact]
     public async Task OwnerInvoice_PortalCommissionRechargedOnlyForAgencyHeldListings_Test()
     {
@@ -224,21 +208,14 @@ public class OwnerInvoiceServiceTests
         Assert.Equal((FiscalLineType.Recharge, 150.00m, 8.1m), (recharge.LineType, recharge.TotalPrice, recharge.VatRatePercent));
         Assert.Equal(owners.Id, agencys.Id);
 
-        // Turning the recharge off with an account of the agency is a waiver the agency acknowledges (FIX/BE-V2-NO-RECHARGE).
         await rig.Setup.SaveAsync(rig.OrgId, new PortalAccountSettingsCommand { RechargePortalCommissions = false, AcknowledgeRechargeWaiver = true }, null);
         var off = await rig.Invoices.CreateDraftAsync(rig.OrgId, version.Id, null);
         Assert.DoesNotContain(off.Lines, l => l.Description.StartsWith("Riaddebito commissioni", StringComparison.Ordinal));
 
-        // An empty list is never «all the listings».
         var empty = await Assert.ThrowsAsync<DomainRuleException>(() => rig.Setup.SaveAccountHoldersAsync(rig.OrgId, [], null));
         Assert.Equal(PortalAccountErrors.AccountHoldersInvalid, empty.Code);
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule. Who holds the portal accounts is off while <c>Features:OwnerInvoicing</c> is off, like the owner invoices: its three
-    /// endpoints are behind that flag as well as behind the billing setup, the two writes need <c>property.write</c>, and the section <c>channels</c> of the
-    /// billing setup shows its values only while the flag is on.
-    /// </summary>
     [Fact]
     public async Task PortalAccounts_OffWhileOwnerInvoicingIsOff_Test()
     {
@@ -317,7 +294,6 @@ internal sealed class OwnerInvoiceRig : IAsyncDisposable
         return (documents, invoices);
     }
 
-    /// <summary>The billing setup over the profile of the issuer of the rig, with the settings of the portal accounts and <c>Features:OwnerInvoicing</c> as given.</summary>
     public BillingSetupService BillingSetup(bool ownerInvoicing)
     {
         var environment = new Mock<IHostEnvironment>();
@@ -356,7 +332,6 @@ internal sealed class OwnerInvoiceRig : IAsyncDisposable
 
     public Guid PortalStayMountain { get; } = Guid.NewGuid();
 
-    /// <summary>The agency of Lugano with a complete Swiss profile (registered, UID, QR-IBAN and IBAN), its owner, two properties and three stays of October.</summary>
     public static async Task<OwnerInvoiceRig> SwissAsync()
     {
         var db = new AppDbContext(
@@ -415,10 +390,6 @@ internal sealed class OwnerInvoiceRig : IAsyncDisposable
         return rig;
     }
 
-    /// <summary>
-    /// The lines of October of the owner: a revenue, the commission of both properties (1'000.00 and 200.00), a cleaning flat fee (80.00), an approved charge
-    /// (30.00), an expense (40.00) and the Booking.com commissions of both properties (120.00 of the lake house, 150.00 of the mountain house).
-    /// </summary>
     public IReadOnlyList<OwnerLedgerEntry> StandardMonth() =>
     [
         Line(OwnerLedgerEntryType.BookingRevenue, 5000.00m, LakeHouse, OwnerLedgerSourceType.Booking, DirectStay),
@@ -431,7 +402,6 @@ internal sealed class OwnerInvoiceRig : IAsyncDisposable
         Line(OwnerLedgerEntryType.ChannelFee, -150.00m, MountainHouse, OwnerLedgerSourceType.Booking, PortalStayMountain),
     ];
 
-    /// <summary>A ledger line of the owner for October, in CHF, posted before the cut-off of the version.</summary>
     public OwnerLedgerEntry Line(
         OwnerLedgerEntryType type,
         decimal amount,
@@ -463,7 +433,6 @@ internal sealed class OwnerInvoiceRig : IAsyncDisposable
             PostedAt = Now.UtcDateTime.AddDays(-5),
         };
 
-    /// <summary>The lines written to the ledger and a draft version of October cut after them.</summary>
     public async Task<OwnerStatementVersion> VersionAsync(IReadOnlyList<OwnerLedgerEntry> lines)
     {
         Db.OwnerLedgerEntries.AddRange(lines);
@@ -492,7 +461,6 @@ internal sealed class OwnerInvoiceRig : IAsyncDisposable
 
     public ValueTask DisposeAsync() => Db.DisposeAsync();
 
-    /// <summary>A stay of October with no owner share in the registry: the generation of a version reads it and posts nothing of it.</summary>
     private Booking Stay(Guid id, Guid propertyId, Guid guestId, BookingSource source) => new()
     {
         Id = id,

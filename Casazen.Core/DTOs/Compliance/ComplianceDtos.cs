@@ -12,10 +12,6 @@ public record PropertyActivationWizardDto(
     PropertyComplianceStatus ComplianceStatus,
     IReadOnlyList<ComplianceWizardStepDto> Steps);
 
-public record PropertyActivationCompleteResultDto(
-    PropertyComplianceStatus ComplianceStatus,
-    IReadOnlyList<string> Blockers);
-
 public record ComplianceSummaryDto(
     int PropertiesPending,
     int GuestCheckInsIncomplete,
@@ -26,7 +22,3 @@ public record ComplianceSummaryDto(
 public record ComplianceSummaryLinkDto(string Key, string Route, int Count);
 
 public record CheckoutWizardDto(IReadOnlyList<ComplianceWizardStepDto> Steps);
-
-public record CheckoutWizardCompleteRequest(bool ConfirmDeparture);
-
-public record CheckoutWizardCompleteResultDto(bool PropertyReady, string BookingStatus);

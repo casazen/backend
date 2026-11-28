@@ -11,12 +11,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// SP-09: what the catalog gives to an anonymous read (<see cref="ISupplierServiceCatalogService.ListPublicAsync"/> and
-/// <see cref="ISupplierServiceCatalogService.FindPublicAsync"/>) on an in-memory database: only the published services, not
-/// deleted, of an active supplier and of the org asked for, in the supplier's order, in a type that has no field the console
-/// keeps to itself.
-/// </summary>
 public class SupplierServiceCatalogPublicReadTests
 {
     private static readonly Guid OrgA = Guid.Parse("00000000-0000-0000-0000-0000000000a1");
@@ -73,7 +67,6 @@ public class SupplierServiceCatalogPublicReadTests
         Assert.Equal(new[] { "Bagni", "Cucina" }, service.Included);
         Assert.Equal(new[] { "Vetri" }, service.Excluded);
         Assert.Equal(new[] { "https://storage.test/a.jpg", "https://storage.test/b.jpg" }, service.PhotoUrls);
-        // The terms the slot planner reads travel with it, as the planning terms of the service.
         Assert.Equal(12, service.MinNoticeHours);
         Assert.Equal(SupplierServiceWeekdays.ToMask([DayOfWeek.Monday, DayOfWeek.Friday]), service.WeekdaysMask);
         Assert.Equal(new SupplierSlotQuery(180, 12, service.WeekdaysMask), service.ToSlotQuery());
@@ -112,8 +105,6 @@ public class SupplierServiceCatalogPublicReadTests
     [Fact]
     public async Task ListPublicAsync_AnOrgWithNoSupplierProfile_HasNoPublicService()
     {
-        // A service row with no profile of an active supplier behind it (the foreign key is not enforced in memory, but the
-        // public statement joins the profile): it must not come out.
         await using (var db = CreateDb())
         {
             db.SupplierServiceListings.Add(Row(OrgA, "orfano"));
@@ -136,7 +127,6 @@ public class SupplierServiceCatalogPublicReadTests
         Assert.Equal(1000, a!.PriceFromCents);
         Assert.Equal(2000, b!.PriceFromCents);
         Assert.Null(await Catalog().FindPublicAsync(OrgA, "non-esiste"));
-        // The slug is matched as stored (lowercase): the showcase lowercases what the address bar sends.
         Assert.Null(await Catalog().FindPublicAsync(OrgA, "PULIZIA"));
     }
 

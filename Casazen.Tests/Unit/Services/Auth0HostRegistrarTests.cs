@@ -37,7 +37,6 @@ public sealed class Auth0HostRegistrarTests : IDisposable
     private readonly Mock<IAuth0ManagementTokenProvider> _tokenProvider = new();
     private readonly AppDbContext _db = new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
 
-    // The SPA application of the environment as Auth0 keeps it: the platform origin first (auth0.md § 1.2 rule 6).
     private List<string> _callbacks = [PlatformOrigin, LocalOrigin];
     private List<string> _logoutUrls = [PlatformOrigin, LocalOrigin];
     private List<string> _webOrigins = [PlatformOrigin, LocalOrigin];
@@ -64,13 +63,11 @@ public sealed class Auth0HostRegistrarTests : IDisposable
         Assert.Equal(Auth0HostRegistrationResult.Registered, await registrar.RegisterAsync(Host));
         Assert.Equal(Auth0HostRegistrationResult.AlreadyRegistered, await registrar.RegisterAsync(Host));
 
-        // One write, carrying the three lists and nothing else of the application.
         var patch = Assert.Single(_requests, r => r.Method == HttpMethod.Patch);
         Assert.EndsWith($"/clients/{SpaClientId}", patch.Path);
         var body = JsonDocument.Parse(patch.Body!).RootElement;
         Assert.Equal(["allowed_logout_urls", "callbacks", "web_origins"], body.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
 
-        // Appended: every entry that was there stays where it was, and the first callback URL is still the platform origin.
         Assert.Equal([PlatformOrigin, LocalOrigin, HostOrigin], Strings(body.GetProperty("callbacks")));
         Assert.Equal([PlatformOrigin, LocalOrigin, HostOrigin], _callbacks);
         Assert.Equal([PlatformOrigin, LocalOrigin, HostOrigin], _logoutUrls);
@@ -99,7 +96,6 @@ public sealed class Auth0HostRegistrarTests : IDisposable
         var result = await Registrar().RegisterAsync(Host);
 
         Assert.Equal(Auth0HostRegistrationResult.Rejected, result);
-        // The three lists travel in the one write Auth0 refused, so none of them changed; nothing else was written after the refusal.
         var patch = Assert.Single(_requests, r => r.Method == HttpMethod.Patch);
         Assert.Equal(3, JsonDocument.Parse(patch.Body!).RootElement.EnumerateObject().Count());
         Assert.Equal([PlatformOrigin, LocalOrigin], _callbacks);
@@ -110,7 +106,6 @@ public sealed class Auth0HostRegistrarTests : IDisposable
     [Fact]
     public async Task Register_TheReadBackLacksTheHost_IsRejected()
     {
-        // Auth0 answers 200 and keeps nothing: only the read-back can tell.
         ServeTheApplication(applyPatch: false);
 
         Assert.Equal(Auth0HostRegistrationResult.Rejected, await Registrar().RegisterAsync(Host));
@@ -144,12 +139,10 @@ public sealed class Auth0HostRegistrarTests : IDisposable
 
         Assert.Equal(Auth0HostRegistrationResult.Removed, await registrar.UnregisterAsync(Host));
 
-        // Exactly the strings of the host: another agency's origin and a longer URL that only starts like it stay, in their order.
         Assert.Equal([PlatformOrigin, OtherAgencyOrigin, HostOrigin + "/portale-proprietari"], _callbacks);
         Assert.Equal([PlatformOrigin, OtherAgencyOrigin], _logoutUrls);
         Assert.Equal([PlatformOrigin, OtherAgencyOrigin], _webOrigins);
 
-        // Nothing left to remove: nothing is written.
         Assert.Equal(Auth0HostRegistrationResult.Removed, await registrar.UnregisterAsync(Host));
         Assert.Single(_requests, r => r.Method == HttpMethod.Patch);
     }
@@ -222,7 +215,6 @@ public sealed class Auth0HostRegistrarTests : IDisposable
 
         var results = await Task.WhenAll(first.RegisterAsync(Host), second.RegisterAsync("prenota.altra-agenzia.example"));
 
-        // The second one read the application after the first one wrote it: both origins are in the three lists, after the platform's own.
         Assert.Equal([Auth0HostRegistrationResult.Registered, Auth0HostRegistrationResult.Registered], results);
         Assert.Equal(2, _requests.Count(r => r.Method == HttpMethod.Patch));
         foreach (var list in new[] { _callbacks, _logoutUrls, _webOrigins })
@@ -250,7 +242,6 @@ public sealed class Auth0HostRegistrarTests : IDisposable
         Assert.Empty(_requests);
         Assert.Contains(log.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("busy", StringComparison.Ordinal));
 
-        // The turn is given back: the next call goes through.
         Assert.Equal(Auth0HostRegistrationResult.Registered, await registrar.RegisterAsync(Host));
     }
 
@@ -262,7 +253,6 @@ public sealed class Auth0HostRegistrarTests : IDisposable
         const string IssuedToken = "eyJ-token-SECRET-TOKEN-1234";
         string[] neverSeen = [M2mClientId, M2mSecret, IssuedToken, "SECRET-", "Insufficient scope"];
 
-        // 1. The token comes, and Auth0 refuses the write echoing what it received (the scope update:clients is missing).
         var refusing = new MockHttpMessageHandler();
         refusing.When(HttpMethod.Post, $"https://{TenantDomain}/oauth/token")
             .Respond(_ => Json(HttpStatusCode.OK, new { access_token = IssuedToken, expires_in = 86400, token_type = "Bearer" }));
@@ -271,7 +261,6 @@ public sealed class Auth0HostRegistrarTests : IDisposable
             HttpStatusCode.Forbidden,
             new { statusCode = 403, error = "Forbidden", message = $"Insufficient scope for {M2mClientId} {M2mSecret} {IssuedToken}", errorCode = "insufficient_scope" }));
 
-        // 2. The token endpoint refuses the credentials, echoing them in its body.
         var noToken = new MockHttpMessageHandler();
         noToken.When(HttpMethod.Post, $"https://{TenantDomain}/oauth/token").Respond(_ => Json(
             HttpStatusCode.Unauthorized,
@@ -312,8 +301,6 @@ public sealed class Auth0HostRegistrarTests : IDisposable
         Assert.All(neverSeen, secret => Assert.DoesNotContain(secret, output, StringComparison.OrdinalIgnoreCase));
     }
 
-    // ─── Helpers ───────────────────────────────────────────────────────────────────────────────────
-
     private Auth0HostRegistrar Registrar(string? clientId = SpaClientId, Auth0HostRegistrationGate? gate = null) =>
         new(_tokenProvider.Object, Factory(_http), Options.Create(new Auth0HostSyncOptions { ClientId = clientId }), _db, NullLogger<Auth0HostRegistrar>.Instance, gate);
 
@@ -335,7 +322,6 @@ public sealed class Auth0HostRegistrarTests : IDisposable
             await RecordAsync(request);
             var answer = Json(HttpStatusCode.OK, Application());
 
-            // The answer is made before the wait: a read that is slow answers what the application was when it started.
             if (readDelayMilliseconds > 0)
                 await Task.Delay(readDelayMilliseconds);
 

@@ -60,7 +60,6 @@ public class SelfBillingAlertsTests
         var credited = await AddTd17Async(rig, 3);
         var accepted = await AddTd17Async(rig, 4);
 
-        // The event delivered twice raises one item, the dedicated one: organization-level, urgent, about the document, leading to the self-billed invoices.
         foreach (var document in new[] { open, corrected, credited, accepted })
         {
             await handler.HandleAsync(Event(rig.OrgId, DomainEventType.FiscalDocumentSdiRejected, document.Id), Ct);
@@ -95,7 +94,6 @@ public class SelfBillingAlertsTests
         foreach (var done in new[] { corrected.Id, credited.Id, accepted.Id })
             Assert.Equal((InternalActivity.ClosedBySystem, true), (after[done].ClosedBy, after[done].CompletedAt is not null));
 
-        // Closing again changes nothing, and a rejection delivered after the document left the rejected state (the events are not delivered in order) raises nothing.
         var closedAt = after[corrected.Id].CompletedAt;
         await handler.HandleAsync(Event(rig.OrgId, DomainEventType.FiscalDocumentCorrected, corrected.Id), Ct);
         await handler.HandleAsync(Event(rig.OrgId, DomainEventType.FiscalDocumentSdiRejected, corrected.Id), Ct);
@@ -131,20 +129,17 @@ public class SelfBillingAlertsTests
         await rig.StandardMonthAsync();
         var service = ServiceOf(rig, shipped, ActivitiesOf(rig));
 
-        // Off: a factory that is never asked for a scope (a strict mock throws at the first call): nothing is read, nothing is locked, nothing is written.
         var never = new Mock<IServiceScopeFactory>(MockBehavior.Strict);
         await JobOf(never.Object, rig, disabled, issuance: true).ExecuteAsync(Ct);
         never.VerifyNoOtherCalls();
         Assert.Empty(await rig.Db.FiscalDocuments.AsNoTracking().Where(d => d.Purpose == FiscalDocumentPurpose.SelfBilling).ToListAsync());
         Assert.Empty(await rig.Db.InternalActivities.AsNoTracking().ToListAsync());
 
-        // On, with the issuance off: the same.
         var enabled = SelfBillingRig.Shipped();
         enabled.MonthlyDrafts.Enabled = true;
         await JobOf(never.Object, rig, enabled, issuance: false).ExecuteAsync(Ct);
         never.VerifyNoOtherCalls();
 
-        // On: the drafts of October (the 12th of November is in the month after) are made once, one item stands, nothing is issued, the organization is entered as the tenant.
         var entered = new List<Guid>();
         var job = JobOf(ProviderOf(service, entered).GetRequiredService<IServiceScopeFactory>(), rig, enabled, issuance: true);
         await job.ExecuteAsync(Ct);
@@ -164,14 +159,12 @@ public class SelfBillingAlertsTests
         Assert.Equal(drafts.Select(d => d.Id).Order(), (await DocumentsAsync(rig)).Select(d => d.Id).Order());
         Assert.Equal(todo.Id, Assert.Single(await rig.Db.InternalActivities.AsNoTracking().ToListAsync()).Id);
 
-        // A person discards one draft: the next run does not bring it back, and the item stands while the other draft is open.
         await service.DiscardDraftAsync(rig.OrgId, drafts[0].Id);
         await job.ExecuteAsync(Ct);
         var states = (await DocumentsAsync(rig)).ToDictionary(d => d.Id, d => d.Status);
         Assert.Equal((FiscalDocumentStatus.Discarded, FiscalDocumentStatus.Draft), (states[drafts[0].Id], states[drafts[1].Id]));
         Assert.Null(Assert.Single(await rig.Db.InternalActivities.AsNoTracking().ToListAsync()).CompletedAt);
 
-        // The last draft is issued by a person (never by the run): the item closes, and a run after that makes nothing and raises nothing.
         await service.IssueAsync(rig.OrgId, drafts[1].Id, confirm: true, "auth0|agency");
         var closed = Assert.Single(await rig.Db.InternalActivities.AsNoTracking().ToListAsync());
         Assert.Equal((todo.Id, InternalActivity.ClosedBySystem), (closed.Id, closed.ClosedBy));
@@ -181,11 +174,6 @@ public class SelfBillingAlertsTests
         Assert.Equal(1, (await DocumentsAsync(rig)).Count(d => d.Status == FiscalDocumentStatus.Issued));
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. The monthly run puts right the items of the other months: the close that follows an issue, a discard or a generation is best effort, and an item whose close failed would
-    /// stay open for ever. The run closes the items «Autofatture da controllare» of its organization of any month that have no draft left open, keeps the item of a month that still has an open draft,
-    /// and an organization that is not in the run keeps its own.
-    /// </summary>
     [Fact]
     public async Task MonthlySelfBillingDrafts_CloseTheItemsOfOtherMonthsThatHaveNoDraftLeft_Test()
     {
@@ -196,7 +184,6 @@ public class SelfBillingAlertsTests
         var activities = ActivitiesOf(rig);
         var service = ServiceOf(rig, enabled, activities);
 
-        // Another agency, not in the run (no commission in October), with the item of August and no draft.
         var other = Guid.NewGuid();
         await rig.AddAsync(
             new OrgEntity
@@ -209,7 +196,6 @@ public class SelfBillingAlertsTests
                 PlanTier = PlanTier.Agency,
             });
 
-        // The items of past months of the first agency: August has no draft any more (its close failed after the last one was issued), September still has an open draft.
         var august = await activities.CreateAsync(DraftsTodo(rig.OrgId, 2026, 8), Ct);
         var september = await activities.CreateAsync(DraftsTodo(rig.OrgId, 2026, 9), Ct);
         var othersAugust = await activities.CreateAsync(DraftsTodo(other, 2026, 8), Ct);
@@ -226,7 +212,6 @@ public class SelfBillingAlertsTests
         Assert.Null(items[september].CompletedAt);
         Assert.Null(items[othersAugust].CompletedAt);
 
-        // The month the run made has its own open item; nothing else was raised.
         var october = Assert.Single(items.Values, a => a.EntityType == SelfBillingTodos.PeriodEntityType(2026, 10));
         Assert.Null(october.CompletedAt);
         Assert.Equal(4, items.Count);
@@ -251,7 +236,6 @@ public class SelfBillingAlertsTests
         var service = ServiceOf(rig, enabled, ActivitiesOf(rig), serviceLog);
         var job = JobOf(ProviderOf(service, []).GetRequiredService<IServiceScopeFactory>(), rig, enabled, issuance: true, jobLog);
 
-        // The first run: the valid holder gets its draft, the other one is refused, counted and reported with its code.
         var first = await service.RunMonthlyDraftsAsync(rig.OrgId, 2026, 10, Ct);
         Assert.Equal((false, 1, 1, 1), (first.AlreadyMade, first.Created, first.OpenDrafts, first.Refused));
         Assert.Equal([FiscalDocumentErrors.OwnerIssuerMissing], first.RefusedCodes);
@@ -261,7 +245,6 @@ public class SelfBillingAlertsTests
         Assert.DoesNotContain("Senza", serviceLog.AllOutput, StringComparison.Ordinal);
         Assert.DoesNotContain("01234567898", serviceLog.AllOutput, StringComparison.Ordinal);
 
-        // The item stands with the words that tell of the holder refused.
         var item = Assert.Single(await rig.Db.InternalActivities.AsNoTracking().Where(a => a.ActivityType == nameof(ActivityType.SelfBillingDraftsToReview)).ToListAsync());
         Assert.Null(item.CompletedAt);
         Assert.Contains("incompleti", item.Reason, StringComparison.Ordinal);
@@ -272,7 +255,6 @@ public class SelfBillingAlertsTests
         Assert.Equal(0, MadeBy(jobLog));
         Assert.Contains(jobLog.Entries, e => e.Level == LogLevel.Warning && e.Values.TryGetValue("Holders", out var holders) && (int)holders! == 1);
 
-        // The owner completes its profile: the next run makes the missing draft only; the holder that had its draft keeps it, and the same item goes back to its plain words (not closed, not raised again).
         await rig.AddAsync(
             new OrgFiscalIssuerProfile
             {
@@ -304,7 +286,6 @@ public class SelfBillingAlertsTests
         Assert.Equal((item.Id, true), (same.Id, same.CompletedAt is null));
         Assert.DoesNotContain("incompleti", same.Reason, StringComparison.Ordinal);
 
-        // A person discards the first draft: the next run does not bring it back, makes nothing, and the item stands for the other draft.
         await service.DiscardDraftAsync(rig.OrgId, companyDraft.Id, Ct);
         jobLog.Entries.Clear();
         await job.ExecuteAsync(Ct);
@@ -351,12 +332,10 @@ public class SelfBillingAlertsTests
     [Fact]
     public async Task MonthlyDraftsJob_RunsDailyFrom5To14_IsIdempotent_AndOnByDefault_Test()
     {
-        // On by default, in the code and in the shipped settings (nothing is switched on below).
         Assert.True(new SelfBillingOptions().MonthlyDrafts.Enabled);
         var shipped = SelfBillingRig.Shipped();
         Assert.True(shipped.MonthlyDrafts.Enabled);
 
-        // Scheduled every day from the 5th to the 14th at 07:30 of Rome, and on no other day.
         var scheduled = Schedule(issuance: true).Registered[SelfBillingMonthlyDraftsJob.RecurringJobId];
         Assert.Equal(("30 7 5-14 * *", RomeCalendar.TimeZone), (scheduled.Cron, scheduled.Options.TimeZone));
         var (minute, hour, days) = CronOf(scheduled.Cron);
@@ -364,7 +343,6 @@ public class SelfBillingAlertsTests
         Assert.Equal(Enumerable.Range(5, 10), days);
         Assert.DoesNotContain(15, days);
 
-        // October 2026: the company (profile complete) has two TD17 to make (Booking.com and Airbnb); a second owner company has no issuer profile yet, so its TD17 is refused.
         await using var rig = await SelfBillingRig.CreateAsync();
         await rig.StandardMonthAsync();
         await rig.AddAsync(rig.Fee(rig.NoProfileCompany, rig.Garden, await rig.StayAsync(rig.Garden, BookingSource.Airbnb, new DateTime(2026, 10, 9)), 10.00m));
@@ -376,7 +354,6 @@ public class SelfBillingAlertsTests
         Guid itemId = Guid.Empty;
         foreach (var day in days)
         {
-            // The owner completes its issuer profile on the 8th: the run of the 8th makes the missing draft and no other.
             if (day == 8)
                 await AddNoProfileIssuerAsync(rig);
 
@@ -390,13 +367,11 @@ public class SelfBillingAlertsTests
             var madeNow = day is 5 or 8 ? 1 : 0;
             var refusedNow = day < 8;
 
-            // Two drafts until the owner is complete, three after; every one is a draft, none is numbered or issued.
             Assert.Equal(day < 8 ? 2 : 3, documents.Count);
             Assert.All(documents, d => Assert.Equal((FiscalDocumentStatus.Draft, (int?)null, FiscalDocumentSdiStatuses.NotApplicable), (d.Status, d.SequenceNumber, d.SdiStatus)));
             Assert.Equal(madeNow, MadeBy(jobLog));
             Assert.Equal(refusedNow, jobLog.Entries.Any(e => e.Level == LogLevel.Warning && e.Values.TryGetValue("Holders", out var holders) && (int)holders! == 1));
 
-            // One «Da fare» of the month, the same all along, open, with the words that tell of the holder refused while somebody is.
             if (day == 5)
             {
                 itemId = item.Id;
@@ -405,11 +380,9 @@ public class SelfBillingAlertsTests
 
             Assert.Equal((itemId, true, refusedNow), (item.Id, item.CompletedAt is null, item.Reason!.Contains("incompleti", StringComparison.Ordinal)));
 
-            // The drafts made on the 5th are never touched by the runs that follow (no draft is made again, updated or dropped).
             Assert.All(madeOnThe5th, made => Assert.Equal(made.Value, documents.Single(d => d.Id == made.Key).UpdatedAt));
         }
 
-        // Nothing was issued by ten runs, and a run after the 14th (a trigger by hand) makes no second draft and no second item.
         Assert.Equal(10, days.Count);
         Assert.DoesNotContain(await rig.Db.FiscalDocuments.AsNoTracking().ToListAsync(), d => d.Status == FiscalDocumentStatus.Issued || d.SequenceNumber != null);
         var before = (await DocumentsAsync(rig)).Select(d => d.Id).Order().ToList();
@@ -419,10 +392,6 @@ public class SelfBillingAlertsTests
         Assert.Single(await rig.Db.InternalActivities.AsNoTracking().Where(a => a.ActivityType == nameof(ActivityType.SelfBillingDraftsToReview)).ToListAsync());
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. The run is repeated every day, so the «Da fare» must not come back every morning: an item a person closed while drafts are still open is not raised again by a run that made no
-    /// draft (the reminder was seen and put away), but a run that makes a new draft (a refused holder that is complete now) raises one for it: the days of the schedule never leave two open items for the month.
-    /// </summary>
     [Fact]
     public async Task MonthlyDraftsJob_DoesNotRaiseTheItemAgainOnceAPersonClosedIt_UnlessTheRunMadeANewDraft_Test()
     {
@@ -435,13 +404,11 @@ public class SelfBillingAlertsTests
         async Task<List<InternalActivity>> MonthItemsAsync() =>
             await rig.Db.InternalActivities.AsNoTracking().Where(a => a.ActivityType == nameof(ActivityType.SelfBillingDraftsToReview)).OrderBy(a => a.CreatedAt).ThenBy(a => a.Id).ToListAsync();
 
-        // The 5th: the draft of the company is made and its item raised; the other owner is refused.
         rig.Clock.SetUtcNow(new DateTimeOffset(2026, 11, 5, 6, 30, 0, TimeSpan.Zero));
         await job.ExecuteAsync(Ct);
         var first = Assert.Single(await MonthItemsAsync());
         Assert.Null(first.CompletedAt);
 
-        // A person closes the item with the draft still open (seen and put away): the runs of the 6th and the 7th, which make nothing, do not raise it again.
         await activities.CloseAsync(first.Id, "auth0|agency", Ct);
         foreach (var day in new[] { 6, 7 })
         {
@@ -451,7 +418,6 @@ public class SelfBillingAlertsTests
             Assert.Equal((first.Id, true), (only.Id, only.CompletedAt is not null));
         }
 
-        // The 8th: the owner completes its issuer profile, the run makes its draft and raises an item for it (one open item, never two).
         await AddNoProfileIssuerAsync(rig);
         rig.Clock.SetUtcNow(new DateTimeOffset(2026, 11, 8, 6, 30, 0, TimeSpan.Zero));
         await job.ExecuteAsync(Ct);
@@ -460,7 +426,6 @@ public class SelfBillingAlertsTests
         var open = Assert.Single(raised, a => a.CompletedAt is null);
         Assert.NotEqual(first.Id, open.Id);
 
-        // The runs that follow make nothing and raise nothing.
         foreach (var day in new[] { 9, 10, 14 })
         {
             rig.Clock.SetUtcNow(new DateTimeOffset(2026, 11, day, 6, 30, 0, TimeSpan.Zero));
@@ -504,7 +469,6 @@ public class SelfBillingAlertsTests
         var service = ServiceOf(rig, SelfBillingRig.Shipped(), activities);
         var handler = HandlerOf(rig.Db, activities);
 
-        // Another agency (in English) with a rejected TD17, an open draft of the same month and the item of that month.
         var other = Guid.NewGuid();
         await rig.AddAsync(
             new OrgEntity
@@ -524,14 +488,12 @@ public class SelfBillingAlertsTests
         await rig.AddAsync(otherDraft);
         await activities.CreateAsync(DraftsTodo(other), Ct);
 
-        // An event of one organization names the document of the other: nothing is raised for it.
         await handler.HandleAsync(Event(rig.OrgId, DomainEventType.FiscalDocumentSdiRejected, otherRejected.Id), Ct);
         Assert.Empty(await rig.Db.InternalActivities.AsNoTracking().Where(a => a.EntityId == otherRejected.Id).ToListAsync());
         await handler.HandleAsync(Event(other, DomainEventType.FiscalDocumentSdiRejected, otherRejected.Id), Ct);
         var raised = Assert.Single(await rig.Db.InternalActivities.AsNoTracking().Where(a => a.EntityId == otherRejected.Id).ToListAsync());
         Assert.Equal((other, nameof(ActivityType.SelfBillingRejected)), (raised.OrgId, raised.ActivityType));
 
-        // The words are the organization's: English for the other, Italian for the first, and not the same sentence (a TD17 of September: October is still to be made below).
         var mine = await AddTd17Async(rig, 3);
         await SetDocumentAsync(rig, mine.Id, d => d.PeriodMonth = 9);
         await handler.HandleAsync(Event(rig.OrgId, DomainEventType.FiscalDocumentSdiRejected, mine.Id), Ct);
@@ -540,13 +502,11 @@ public class SelfBillingAlertsTests
         Assert.Contains("autofattura", italian, StringComparison.Ordinal);
         Assert.NotEqual(raised.Reason, italian);
 
-        // The closing events of one organization never close the item of another's document.
         await handler.HandleAsync(Event(rig.OrgId, DomainEventType.FiscalDocumentCorrected, otherRejected.Id), Ct);
         await handler.HandleAsync(Event(rig.OrgId, DomainEventType.FiscalDocumentSdiDelivered, otherRejected.Id), Ct);
         await handler.HandleAsync(Event(rig.OrgId, DomainEventType.FiscalDocumentCreditNoteIssued, Guid.NewGuid(), CreditNotePayloadOf(otherRejected.Id)), Ct);
         Assert.Null((await rig.Db.InternalActivities.AsNoTracking().SingleAsync(a => a.EntityId == otherRejected.Id)).CompletedAt);
 
-        // The monthly run of the first organization makes its drafts and its item; the other's draft and item are not touched, and the item of the month of each is its own.
         var run = await service.RunMonthlyDraftsAsync(rig.OrgId, 2026, 10, Ct);
         Assert.Equal((false, 2, 2), (run.AlreadyMade, run.Created, run.OpenDrafts));
         var drafts = (await DocumentsAsync(rig)).Where(d => d.OrgId == rig.OrgId && d.Status == FiscalDocumentStatus.Draft).ToList();
@@ -555,13 +515,11 @@ public class SelfBillingAlertsTests
         var months = await rig.Db.InternalActivities.AsNoTracking().Where(a => a.ActivityType == nameof(ActivityType.SelfBillingDraftsToReview)).ToListAsync();
         Assert.Equal(new[] { other, rig.OrgId }.Order(), months.Select(m => m.OrgId).Order());
 
-        // The first organization issues its drafts: its item closes although the other organization still has an open draft of the same month, and the other's item stays open.
         foreach (var draft in drafts)
             await service.IssueAsync(rig.OrgId, draft.Id, confirm: true, "auth0|agency");
         months = await rig.Db.InternalActivities.AsNoTracking().Where(a => a.ActivityType == nameof(ActivityType.SelfBillingDraftsToReview)).ToListAsync();
         Assert.Equal((true, false), (months.Single(m => m.OrgId == rig.OrgId).CompletedAt is not null, months.Single(m => m.OrgId == other).CompletedAt is not null));
 
-        // Each organization reads only its own items; a caller restricted to some properties reads none of them.
         var ofFirst = await activities.GetPendingAsync(new HostScope(rig.OrgId), Ct);
         var ofOther = await activities.GetPendingAsync(new HostScope(other), Ct);
         Assert.Equal([mine.Id], ofFirst.Select(a => a.EntityId!.Value));
@@ -569,7 +527,6 @@ public class SelfBillingAlertsTests
         Assert.Empty(await activities.GetPendingAsync(new HostScope(rig.OrgId, GrantedToUserId: "auth0|collaborator"), Ct));
         Assert.Empty(await activities.GetPendingAsync(new HostScope(other, OwnerId: "auth0|legacy"), Ct));
 
-        // The run looks at the active agencies (not downgraded) that have commissions in the ledger of the month: not a starter plan, not a month without lines, not an inactive org.
         var ledgerOrgs = new List<(Guid Org, PlanTier Tier, bool Active, bool Downgraded)>
         {
             (other, PlanTier.Agency, true, false),
@@ -606,18 +563,12 @@ public class SelfBillingAlertsTests
         Assert.Equal(new[] { rig.OrgId, other }.Order(), (await service.OrgsWithCommissionsAsync(2026, 10, Ct)).Order());
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule. The items about the self-billed invoices are listed, and counted in the badge, only to a caller who holds <c>agency.invoice.manage</c> (the policy of their endpoints);
-    /// anybody else keeps every other item of the list and never sees them; a caller restricted to some properties reaches none of them whatever it may do; and the permission is looked up only when
-    /// the organization has such an item open (the badge runs on every page).
-    /// </summary>
     [Fact]
     public async Task SelfBillingTodos_AreListedOnlyToWhoCanManageTheInvoices_Test()
     {
         await using var rig = await SelfBillingRig.CreateAsync();
         var activities = ActivitiesOf(rig);
 
-        // Nothing about the self-billed invoices is open: the permission is not looked up at all, and the list is the usual one.
         var ordinary = await activities.CreateAsync(CheckIn(rig.Lake), Ct);
         var quiet = Controller(rig, activities, new HostScope(rig.OrgId), allowed: false);
         Assert.Equal([ordinary], (await ItemsAsync(quiet.Controller)).Select(i => i.Id));
@@ -626,7 +577,6 @@ public class SelfBillingAlertsTests
         var rejected = await activities.CreateAsync(RejectedTodo(rig.OrgId, Guid.NewGuid()), Ct);
         var monthly = await activities.CreateAsync(DraftsTodo(rig.OrgId), Ct);
 
-        // Who holds the permission reads all three and the badge counts the two urgent ones; who does not reads the ordinary one and the badge counts that one only.
         var allowed = Controller(rig, activities, new HostScope(rig.OrgId), allowed: true);
         Assert.Equal(new[] { ordinary, rejected, monthly }.Order(), (await ItemsAsync(allowed.Controller)).Select(i => i.Id).Order());
         Assert.Equal(2, await CountAsync(allowed.Controller));
@@ -636,12 +586,10 @@ public class SelfBillingAlertsTests
         Assert.Equal([ordinary], (await ItemsAsync(denied.Controller)).Select(i => i.Id));
         Assert.Equal(1, await CountAsync(denied.Controller));
 
-        // A caller restricted to some properties reaches no organization-level item, with the permission or without it.
         var restricted = Controller(rig, activities, new HostScope(rig.OrgId, GrantedToUserId: "auth0|collaborator"), allowed: true);
         Assert.DoesNotContain(await ItemsAsync(restricted.Controller), i => i.Id == rejected || i.Id == monthly);
         Assert.Equal(0, await CountAsync(restricted.Controller));
 
-        // The service leaves out only the types it is told to, and an empty list leaves out nothing, never everything.
         Assert.Equal(new[] { ordinary, rejected, monthly }.Order(), (await activities.GetPendingAsync(new HostScope(rig.OrgId), Ct, excludeTypes: [])).Select(a => a.Id).Order());
         Assert.Equal([ordinary], (await activities.GetPendingAsync(new HostScope(rig.OrgId), Ct, excludeTypes: SelfBillingTodos.ActivityTypes)).Select(a => a.Id));
         Assert.True(await activities.AnyOpenAsync(rig.OrgId, SelfBillingTodos.ActivityTypes, Ct));
@@ -649,9 +597,6 @@ public class SelfBillingAlertsTests
         Assert.False(await activities.AnyOpenAsync(Guid.NewGuid(), SelfBillingTodos.ActivityTypes, Ct));
     }
 
-    // ---------------------------------------------------------------- helpers
-
-    /// <summary>The issuer profile of the owner company that had none (the TD17 of the Garden refused until now), as the owner completes it.</summary>
     private static Task AddNoProfileIssuerAsync(SelfBillingRig rig) =>
         rig.AddAsync(
             new OrgFiscalIssuerProfile
@@ -673,7 +618,6 @@ public class SelfBillingAlertsTests
                 IssuerPec = "senzaprofilo@pec.example.com",
             });
 
-    /// <summary>The minute, the hour and the days of the month a cron expression of five fields fires on, for the shapes the job uses (numbers, ranges and lists in the day field; any month and weekday).</summary>
     private static (int Minute, int Hour, List<int> Days) CronOf(string cron)
     {
         var fields = cron.Split(' ');
@@ -719,10 +663,8 @@ public class SelfBillingAlertsTests
         logger ?? NullLogger<SelfBillingMonthlyDraftsJob>.Instance,
         rig.Clock);
 
-    /// <summary>The number of organizations the last run of the job counted as «made now» (the structured value of its summary line).</summary>
     private static int MadeBy(CapturingLogger<SelfBillingMonthlyDraftsJob> log) => (int)log.Entries.Last(e => e.Values.ContainsKey("Made")).Values["Made"]!;
 
-    /// <summary>A provider whose scopes hand out <paramref name="service"/> and record the organizations entered as the tenant.</summary>
     private static ServiceProvider ProviderOf(ISelfBillingService service, List<Guid> entered)
     {
         var services = new ServiceCollection();
@@ -820,7 +762,6 @@ public class SelfBillingAlertsTests
         return (manager, registered);
     }
 
-    /// <summary>The controller of the list for a caller of <paramref name="scope"/> who holds the permission of the self-billed invoices or not, with the authorization it asks.</summary>
     private static (ActivitiesController Controller, Mock<IAuthorizationService> Authorization) Controller(SelfBillingRig rig, IInternalActivityService activities, HostScope scope, bool allowed)
     {
         const string userId = "auth0|caller";
@@ -849,7 +790,6 @@ public class SelfBillingAlertsTests
         Assert.IsType<TodoCountDto>(Assert.IsType<OkObjectResult>((await controller.UrgentCount(Ct)).Result).Value).Count;
 }
 
-/// <summary>The tenant scope of a job that records the organizations it was entered for, in order.</summary>
 file sealed class RecordingTenantScope(List<Guid> entered) : IBackgroundTenantScope
 {
     public void EnterOrg(Guid orgId) => entered.Add(orgId);

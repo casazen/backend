@@ -5,7 +5,6 @@ using Casazen.Core.Leases;
 
 namespace Casazen.Tests.Unit.Condominium;
 
-/// <summary>CondoLedger's year: the settlement formula, the rate plan, and recoverability.</summary>
 public class CondominiumLedgerTests
 {
     [Fact]

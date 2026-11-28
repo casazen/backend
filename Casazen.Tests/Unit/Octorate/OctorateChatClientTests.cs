@@ -55,7 +55,6 @@ public class OctorateChatClientTests
                 Assert.Equal("OctorateChatNotLicensed", refused.MessageKey);
             }
 
-            // A typed refusal of the API is not the license: a token the API does not accept, the other environment.
             h.Handler.Respond = _ => (HttpStatusCode.Forbidden, """{"type":"ApiSecurityException","message":"No chat for you","suggestion":"errRefreshTokenInvalid"}""");
             var typed = await Assert.ThrowsAsync<OctorateAuthException>(() => h.Client.GetChatThreadsAsync("585492", 0, CancellationToken.None));
             Assert.Equal("octorate_auth_failed", typed.Code);
@@ -63,12 +62,10 @@ public class OctorateChatClientTests
             h.Handler.Respond = _ => (HttpStatusCode.Forbidden, """{"type":"WrongEnviroment"}""");
             await Assert.ThrowsAsync<OctorateWrongEnvironmentException>(() => h.Client.GetChatThreadsAsync("585492", 0, CancellationToken.None));
 
-            // The page of the application server on a call that is not a chat call keeps the common meaning.
             h.Handler.Respond = _ => (HttpStatusCode.Forbidden, ServerPage);
             var other = await Assert.ThrowsAsync<OctorateAuthException>(() => h.Client.GetPropertyAsync("585492", CancellationToken.None));
             Assert.Equal("octorate_auth_failed", other.Code);
 
-            // A failure of Octorate is a failure, not a license: the reads that answer 403 without the module do not answer 500 for it.
             h.Handler.Respond = _ => (HttpStatusCode.InternalServerError, ServerErrorPage);
             await Assert.ThrowsAsync<OctorateServerException>(() => h.Client.GetChatThreadsAsync("585492", 0, CancellationToken.None));
         }
@@ -94,19 +91,16 @@ public class OctorateChatClientTests
             Assert.Equal(409, refused.ResponseStatusCode);
             Assert.Equal("OctorateChatNotLicensed", refused.MessageKey);
 
-            // The 403 of the application server is still the license for this read, as for the others.
             h.Handler.Respond = _ => (HttpStatusCode.Forbidden, ServerPage);
             var forbidden = await Assert.ThrowsAsync<OctorateAuthException>(() => h.Client.GetRecentChatMessagesAsync("585492", CancellationToken.None));
             Assert.True(forbidden.IsChatNotLicensed);
 
-            // A failure the API itself describes (it has a type) and another 5xx are failures of Octorate, not a license.
             h.Handler.Respond = _ => (HttpStatusCode.InternalServerError, """{"type":"ApiException","message":"boom"}""");
             await Assert.ThrowsAsync<OctorateServerException>(() => h.Client.GetRecentChatMessagesAsync("585492", CancellationToken.None));
 
             h.Handler.Respond = _ => (HttpStatusCode.ServiceUnavailable, ServerErrorPage);
             await Assert.ThrowsAsync<OctorateServerException>(() => h.Client.GetRecentChatMessagesAsync("585492", CancellationToken.None));
 
-            // The other reads answer 403 without the module: a 500 on them is a failure.
             h.Handler.Respond = _ => (HttpStatusCode.InternalServerError, ServerErrorPage);
             await Assert.ThrowsAsync<OctorateServerException>(() => h.Client.GetChatThreadAsync("585492", "9001", CancellationToken.None));
             await Assert.ThrowsAsync<OctorateServerException>(() => h.Client.GetChatMessagesAsync("585492", "9001", null, CancellationToken.None));
@@ -139,7 +133,6 @@ public class OctorateChatClientTests
         using (h.Scope.Use(Org))
             page = await h.Client.GetChatThreadsAsync("585492", 40, CancellationToken.None);
 
-        // The list is asked by position, all threads whatever their read state; the item with no id is counted and left out.
         var address = Assert.Single(h.Handler.Addresses);
         Assert.Equal("/connect/rest/v1/chat/585492/threads", address.AbsolutePath);
         Assert.Equal("?offset=40&filterReadStatus=false", address.Query);
@@ -158,7 +151,6 @@ public class OctorateChatClientTests
         Assert.Equal(new DateTime(2026, 11, 6, 7, 0, 0, DateTimeKind.Utc), thread.LastActivityAt);
         Assert.Null(thread.ArchivedAt);
 
-        // An answer that is not a list is an answer CasaZen cannot read, never a list with nothing in it.
         h.Handler.Respond = _ => (HttpStatusCode.OK, """{"unexpected": true}""");
         using (h.Scope.Use(Org))
             await Assert.ThrowsAsync<OctorateServerException>(() => h.Client.GetChatThreadsAsync("585492", 0, CancellationToken.None));
@@ -194,13 +186,11 @@ public class OctorateChatClientTests
         using (h.Scope.Use(Org))
             messages = await h.Client.GetChatMessagesAsync("585492", "9001", new DateTime(2026, 11, 6, 6, 55, 0, DateTimeKind.Utc), CancellationToken.None);
 
-        // createdAfter goes as an ISO instant; the second page is asked for by its number.
         Assert.Equal(2, h.Handler.Addresses.Count);
         Assert.Equal("/connect/rest/v1/chat/585492/threads/9001/messages", h.Handler.Addresses[0].AbsolutePath);
         Assert.Equal("createdAfter=2026-11-06T06:55:00.000Z", Uri.UnescapeDataString(h.Handler.Addresses[0].Query.TrimStart('?')));
         Assert.Equal("createdAfter=2026-11-06T06:55:00.000Z&page=1", Uri.UnescapeDataString(h.Handler.Addresses[1].Query.TrimStart('?')));
 
-        // The item with no usable time is left out; the others are read with their direction, state, words and attachment.
         Assert.Equal(["70001", "70002", "70003"], messages.Select(m => m.Id));
         var guest = messages[0];
         Assert.Equal(OtaMessageDirection.Inbound, guest.Direction);
@@ -220,7 +210,6 @@ public class OctorateChatClientTests
         Assert.Null(host.AttachmentUrl);
         Assert.Equal("NOTE", messages[2].Processor);
 
-        // A wrapper that announces more pages and gives the same page again ignores the page asked for: the thread was not read whole.
         h.Handler.Addresses.Clear();
         h.Handler.Respond = _ => (HttpStatusCode.OK, """
             { "page": { "page": 0, "totalPages": 3 }, "data": [
@@ -293,7 +282,6 @@ public class OctorateChatClientTests
         public OctorateApiClient Client { get; }
     }
 
-    /// <summary>Answers each call as <see cref="Respond"/> says and keeps the addresses called.</summary>
     private sealed class StubHandler : HttpMessageHandler
     {
         public List<Uri> Addresses { get; } = [];

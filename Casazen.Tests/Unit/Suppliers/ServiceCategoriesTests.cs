@@ -5,15 +5,11 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>SU-03 (A4-05, A6-03): the single list of service category codes and its validation.</summary>
 public class ServiceCategoriesTests
 {
     [Fact]
     public void All_IsTheUnionOfTheCategoriesOfTheThreeClientsPlusElectrical()
     {
-        // Host web: cleaning, maintenance, plumbing, laundry. App: cleaning, maintenance, linen, check-in.
-        // Supplier wizard (Italian labels): Pulizie, Manutenzione, Giardinaggio, Eventi, Noleggio, Escursioni.
-        // SP-02 adds the electrician of the redesigned supplier console, last: the order is the one the clients show.
         Assert.Equal(
             new[]
             {
@@ -29,7 +25,6 @@ public class ServiceCategoriesTests
         Assert.Equal("electrical", ServiceCategories.Electrical);
         Assert.True(ServiceCategories.IsKnown("electrical"));
         Assert.Equal("electrical", ServiceCategories.Require(" Electrical "));
-        // The Italian label of the demo ("Elettricista") is not a code, like every other label.
         Assert.Throws<DomainRuleException>(() => ServiceCategories.Require("Elettricista"));
     }
 
@@ -43,8 +38,6 @@ public class ServiceCategoriesTests
     [InlineData("electrical")]
     public void DemoCategories_MapToTheBackendCodes(string code)
     {
-        // Demo -> code: pulizie -> cleaning, manutenzione -> maintenance, idraulico -> plumbing, lavanderia -> laundry,
-        // checkin -> check-in, giardinaggio -> gardening, elettricista -> electrical (SP-02).
         Assert.True(ServiceCategories.IsKnown(code));
     }
 

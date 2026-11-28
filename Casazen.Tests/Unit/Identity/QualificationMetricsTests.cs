@@ -6,15 +6,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// E74/F01/US02/T01 (NF-198, D12): the pure parts of the qualification runner: the opt-in of the long runs, the aggregate metrics at the thresholds of the policy, the aggregation of the scores of the
-/// frames, the comparison of the reference model with a candidate at the same acceptances, the sample of the impostor trials and the normalization the exactness of a field is judged by. The real
-/// pipeline over generated pictures is <c>QualificationSmokeTests</c>.
-/// </summary>
 public sealed class QualificationMetricsTests
 {
-    // ───── the opt-in of the long runs ─────
-
     private static Func<string, string?> Variables(params (string Variable, string Value)[] set)
     {
         var values = set.ToDictionary(entry => entry.Variable, entry => entry.Value, StringComparer.Ordinal);
@@ -46,7 +39,6 @@ public sealed class QualificationMetricsTests
         Assert.Null(QualificationEnvironment.SkipReason(Set(" calibration "), runner, freeze: false));
         Assert.Null(QualificationEnvironment.SkipReason(Set("test"), final, freeze: false));
 
-        // The test split belongs to the final test, and the others to the runner: neither takes the other's.
         Assert.Contains("does not serve", QualificationEnvironment.SkipReason(Set("test"), runner, freeze: false), StringComparison.Ordinal);
         Assert.Contains("does not serve", QualificationEnvironment.SkipReason(Set("development"), final, freeze: false), StringComparison.Ordinal);
         Assert.Contains(QualificationEnvironment.SplitVariable, QualificationEnvironment.SkipReason(Variables((QualificationEnvironment.ManifestVariable, "m.json"), (QualificationEnvironment.OutVariable, "out")), runner, freeze: false), StringComparison.Ordinal);
@@ -59,7 +51,6 @@ public sealed class QualificationMetricsTests
         var set = new[] { (QualificationEnvironment.ManifestVariable, "m.json"), (QualificationEnvironment.OutVariable, "out"), (QualificationEnvironment.SplitVariable, "test") };
         var freezing = set.Append((QualificationEnvironment.FreezeVariable, "1")).ToArray();
 
-        // The freeze runs only when it is asked for, and takes no split; the final test does not run on the same request, so no run writes the lock it is about to be checked against.
         Assert.Contains(QualificationEnvironment.FreezeVariable, QualificationEnvironment.SkipReason(Variables(set), [], freeze: true), StringComparison.Ordinal);
         Assert.Null(QualificationEnvironment.SkipReason(Variables(freezing), [], freeze: true));
         Assert.Contains(QualificationEnvironment.FreezeVariable, QualificationEnvironment.SkipReason(Variables(freezing), final, freeze: false), StringComparison.Ordinal);
@@ -72,15 +63,12 @@ public sealed class QualificationMetricsTests
     [Fact]
     public void TheFactsOfTheLongRuns_AreSkippedHereWithTheirReason_BecauseCiSetsNoVariable()
     {
-        // The environment of a test run is not the one of a qualification: with none of the variables set (as in CI) the attributes carry a reason to skip.
         if (Environment.GetEnvironmentVariable(QualificationEnvironment.ManifestVariable) is not null)
             return;
 
         Assert.NotNull(new QualificationFactAttribute(QualificationSplits.Development).Skip);
         Assert.NotNull(new QualificationFreezeFactAttribute().Skip);
     }
-
-    // ───── aggregation, normalization, sample ─────
 
     [Fact]
     public void Aggregate_IsTheRuleOfThePolicy_OverTheScoresOfTheFrames()
@@ -121,7 +109,6 @@ public sealed class QualificationMetricsTests
             [("surname", "Müller", "MUELLER"), ("surname", "Dell'Orto", "DELL ORTO"), ("surname", "Rossi", "ROSSO")],
             QualificationMetrics.NormalizeField);
 
-        // The umlaut as the MRZ spells it (MUELLER) is the same name, and so is the one with its apostrophe and its space; one letter of another is not.
         Assert.Equal([new NamedRate("surname", new CountedRate(2, 3))], exactness);
     }
 
@@ -134,13 +121,10 @@ public sealed class QualificationMetricsTests
         var first = pairs.Where(pair => QualificationRunner.IsSampled(pair.Item1, pair.Item2, 0.25)).ToList();
         var again = pairs.Where(pair => QualificationRunner.IsSampled(pair.Item1, pair.Item2, 0.25)).ToList();
 
-        // Twenty thousand pairs and a share of a quarter: about five thousand, and the very same ones every time, whatever the order they are asked in.
         Assert.Equal(first, again);
         Assert.InRange(first.Count, 4_700, 5_300);
         Assert.Equal(first.Count, Enumerable.Reverse(pairs).Count(pair => QualificationRunner.IsSampled(pair.Item1, pair.Item2, 0.25)));
     }
-
-    // ───── the metrics of a run, on fixed cases ─────
 
     [Fact]
     public void Compute_OnFixedCases_GivesTheCountsOfEveryMetricAtTheThresholdsOfThePolicy()
@@ -149,25 +133,19 @@ public sealed class QualificationMetricsTests
         QualificationFieldResult Field(string name, int exact) => new(name, exact, 1);
         var cases = new List<QualificationCaseResult>
         {
-            // A genuine check-in the policy approves (0.90 at the acceptance of 0.85, every frame over 0.70).
             QualificationTestData.Case("g1", QualificationCaseKinds.Genuine, QualificationTestData.Document(true, "passed", Field("surname", 1), Field("documentNumber", 1)), QualificationTestData.Presence(true, 0.90, 0.88), QualificationTestData.Decision("auto_approved", "approve"), matchMs: 100),
 
-            // One under the acceptance: a false non-match, and a surname misread.
             QualificationTestData.Case("g2", QualificationCaseKinds.Genuine, QualificationTestData.Document(true, "passed", Field("surname", 0), Field("documentNumber", 1)), QualificationTestData.Presence(true, 0.80, 0.75), QualificationTestData.Decision("review", "review"), matchMs: 200),
 
-            // A document that was refused, and a sequence that was not valid: a person present that is not accepted.
             QualificationTestData.Case("g3", QualificationCaseKinds.Genuine, QualificationTestData.Document(false, "unknown"), QualificationTestData.Presence(false, validation: false), QualificationTestData.Decision("review", "review")),
 
-            // A person with the document of another one: the face is far, and a frame under the minimum.
             QualificationTestData.Case("i1", QualificationCaseKinds.ImpostorPair, QualificationTestData.Document(true), QualificationTestData.Presence(true, 0.30, 0.20), QualificationTestData.Decision("review", "review")),
 
-            // An attack the presence accepted, and the policy approved: a critical false approval. Another of the class is turned away; one of another class too.
             QualificationTestData.Case("a1", QualificationCaseKinds.Attack, QualificationTestData.Document(true), QualificationTestData.Presence(true, 0.95, 0.9), QualificationTestData.Decision("auto_approved", "approve"), attackClass: QualificationAttackClasses.PhotoPrint),
             QualificationTestData.Case("a2", QualificationCaseKinds.Attack, QualificationTestData.Document(true), QualificationTestData.Presence(false), QualificationTestData.Decision("review", "review"), attackClass: QualificationAttackClasses.PhotoPrint),
             QualificationTestData.Case("a3", QualificationCaseKinds.Attack, null, QualificationTestData.Presence(false), null, attackClass: QualificationAttackClasses.ScreenReplay),
         };
 
-        // Two trials derived from the sequences: one far, one that is a false match at the policy.
         var trials = new List<QualificationImpostorTrial>
         {
             new("g1", "d-2", 0.40, 0.35, 300, null),
@@ -176,50 +154,40 @@ public sealed class QualificationMetricsTests
 
         var metrics = QualificationMetrics.Compute(cases, trials, thresholds, 0.95, QualificationTestData.Models());
 
-        // Of three impostor comparisons (the case, and two trials) one is a false match; of two genuine ones with a face one is not matched.
         Assert.Equal((1L, 3L), (metrics.Fmr.Count, metrics.Fmr.Total));
         Assert.Equal((1L, 2L), (metrics.Fnmr.Count, metrics.Fnmr.Total));
         Assert.Equal(IdentityStatistics.ClopperPearsonUpper(1, 3), metrics.Fmr.UpperBound);
 
-        // The attacks of the class that was tried: one of two accepted; the classes that were not tried are listed with nothing.
         Assert.Equal(QualificationAttackClasses.All.Order(StringComparer.Ordinal), metrics.Apcer.Select(entry => entry.Class));
         Assert.Equal((1L, 2L), (metrics.Apcer.Single(entry => entry.Class == QualificationAttackClasses.PhotoPrint).Rate.Count, metrics.Apcer.Single(entry => entry.Class == QualificationAttackClasses.PhotoPrint).Rate.Total));
         Assert.Equal((0L, 1L), (metrics.Apcer.Single(entry => entry.Class == QualificationAttackClasses.ScreenReplay).Rate.Count, metrics.Apcer.Single(entry => entry.Class == QualificationAttackClasses.ScreenReplay).Rate.Total));
         Assert.Null(metrics.Apcer.Single(entry => entry.Class == QualificationAttackClasses.Mask).Rate.Rate);
         Assert.Equal(0.5, metrics.ApcerMax);
 
-        // Persons present (the three genuine and the impostor pair): one not accepted.
         Assert.Equal((1L, 4L), (metrics.Bpcer.Count, metrics.Bpcer.Total));
 
-        // The fields of the two genuine documents that were read.
         Assert.Equal(
             [("documentNumber", 2L, 2L), ("surname", 1L, 2L)],
             metrics.OcrExactness.Select(entry => (entry.Field, entry.Rate.Count, entry.Rate.Total)));
         Assert.Equal(IdentityStatistics.Wilson(1, 2).Low, metrics.OcrExactness.Single(entry => entry.Field == "surname").Rate.Low);
 
-        // The automation: of the three genuine check-ins the policy would have closed one.
         Assert.Equal((1L, 3L), (metrics.ShadowAutomation.Count, metrics.ShadowAutomation.Total));
 
-        // The document stage: one of the three genuine documents was refused; nothing hostile.
         Assert.Equal((1L, 3L), (metrics.Document.FalseRejects.Count, metrics.Document.FalseRejects.Total));
         Assert.Equal((0L, 0L), (metrics.Document.HostileLetThrough.Count, metrics.Document.HostileLetThrough.Total));
         Assert.Equal(("it-cie-3.0", 3L, 1L), (metrics.Document.ByFormat.Single().Format, metrics.Document.ByFormat.Single().Genuine, metrics.Document.ByFormat.Single().GenuineRefused));
 
-        // A false approval of an attack.
         Assert.Equal(1, metrics.CriticalFalseApprovals.Total);
         Assert.Equal(1, metrics.CriticalFalseApprovals.ByKind[QualificationCaseKinds.Attack]);
         Assert.Equal(0, metrics.CriticalFalseApprovals.ByKind["altered"]);
 
-        // The cases the policy took a decision on, by kind: the two attacks with a document and the person with the document of another one; no altered, no foreign: not measured.
         var decided = metrics.CriticalFalseApprovals.Decided;
         Assert.Equal((2, 1, 0, 0), (decided["attack"], decided["impostor_pair"], decided["altered"], decided["foreign"]));
         Assert.Equal(["altered", "foreign"], metrics.CriticalFalseApprovals.NotMeasured());
 
-        // Every attack had a judgement, and a comparison that names no couple is a couple of its own.
         Assert.All(metrics.AttacksNotJudged, entry => Assert.Equal(0, entry.NotJudged));
         Assert.Equal((1L, 3L), (metrics.FmrCouples.Count, metrics.FmrCouples.Total));
 
-        // The time of the comparison: the two cases and the two trials, by nearest rank.
         var match = metrics.Latency.Single(stage => stage.Stage == QualificationStages.PresenceMatch);
         Assert.Equal((4, 200.0, 400.0, 400.0), (match.Count, match.P50Ms, match.P95Ms, match.MaxMs));
     }
@@ -235,7 +203,6 @@ public sealed class QualificationMetricsTests
 
         var metrics = QualificationMetrics.Compute(cases, [], QualificationTestData.Thresholds(), 0.95, QualificationTestData.Models());
 
-        // Neither is a genuine check-in: no automation, no false non-match, no field read; the altered one that the document stage let through and the policy approved is a critical case.
         Assert.Equal((0L, 0L), (metrics.ShadowAutomation.Count, metrics.ShadowAutomation.Total));
         Assert.Equal(0L, metrics.Fnmr.Total);
         Assert.Empty(metrics.OcrExactness);
@@ -257,8 +224,6 @@ public sealed class QualificationMetricsTests
         Assert.Equal(withTrials.Fmr.Count, rebound.Fmr.Count);
     }
 
-    // ───── the candidate model at the same acceptances ─────
-
     [Fact]
     public void CompareAtTheSameAcceptances_TheCandidateIsHeldToTheNumberOfNegativesTheReferenceAccepts()
     {
@@ -267,10 +232,8 @@ public sealed class QualificationMetricsTests
 
         var comparison = QualificationMetrics.CompareAtTheSameAcceptances("match", "SFace", "Other", 0.85, positives, negatives)!;
 
-        // The reference accepts one negative and rejects two positives at the threshold of the policy.
         Assert.Equal(new QualificationOperatingPoint(0.85, 1, 3, 2, 3), comparison.ReferencePoint);
 
-        // The candidate may accept one negative too: its threshold is just above the second highest negative (0.40), and it rejects no positive.
         Assert.Equal(Math.BitIncrement(0.40), comparison.CandidatePoint.Threshold);
         Assert.Equal((1L, 0L), (comparison.CandidatePoint.FalseAccepts, comparison.CandidatePoint.FalseRejects));
         Assert.True(comparison.CandidateRejectsFewer);
@@ -285,7 +248,6 @@ public sealed class QualificationMetricsTests
 
         var worse = QualificationMetrics.CompareAtTheSameAcceptances("liveness", "A", "B", 0.7, positives, negatives)!;
 
-        // The reference accepts no negative; the candidate must accept none: above 0.70, and both positives are under it.
         Assert.Equal(0, worse.ReferencePoint.FalseAccepts);
         Assert.Equal((0L, 2L), (worse.CandidatePoint.FalseAccepts, worse.CandidatePoint.FalseRejects));
         Assert.False(worse.CandidateRejectsFewer);
@@ -307,14 +269,11 @@ public sealed class QualificationMetricsTests
 
         var comparison = Assert.Single(QualificationMetrics.Compute(cases, trials, thresholds, 0.95, QualificationTestData.Models(candidate: true)).CandidateComparisons);
 
-        // The reference rejects the second genuine comparison (0.80 under 0.85); the candidate, held to the same (no) false acceptance, rejects none.
         Assert.Equal("match", comparison.Measure);
         Assert.Equal((0L, 2L, 1L), (comparison.ReferencePoint.FalseAccepts, comparison.ReferencePoint.Positives, comparison.ReferencePoint.FalseRejects));
         Assert.Equal((0L, 0L), (comparison.CandidatePoint.FalseAccepts, comparison.CandidatePoint.FalseRejects));
         Assert.True(comparison.CandidateRejectsFewer);
     }
-
-    // ───── what a run could not judge, the cases the criteria are measured on, the couples of persons ─────
 
     [Fact]
     public void WasJudged_ACaseThatBrokeOrWhosePresenceCouldNotBeRead_OrJudged_IsNotJudged()
@@ -324,13 +283,11 @@ public sealed class QualificationMetricsTests
             return QualificationTestData.Case("a", QualificationCaseKinds.Attack, null, presence, null, attackClass: QualificationAttackClasses.PhotoPrint, error: error);
         }
 
-        // Judged: refused by the validation for what the recording shows, its frames not chosen, its liveness failed or passed.
         Assert.True(QualificationMetrics.WasJudged(Attack(QualificationTestData.Presence(false, validation: false))));
         Assert.True(QualificationMetrics.WasJudged(Attack(QualificationTestData.Presence(false, validation: true, selectionFailure: "presence_quality"))));
         Assert.True(QualificationMetrics.WasJudged(Attack(QualificationTestData.Presence(false, liveness: [0.1, 0.2]))));
         Assert.True(QualificationMetrics.WasJudged(Attack(QualificationTestData.Presence(true, 0.9, 0.9))));
 
-        // Not judged: an exception, a sequence that could not be read, a validation or a liveness that was not available, no presence part at all.
         Assert.False(QualificationMetrics.WasJudged(Attack(QualificationTestData.Presence(false), error: "InvalidOperationException")));
         Assert.False(QualificationMetrics.WasJudged(Attack(QualificationTestData.Presence(false, intakeError: "presence_sequence_invalid"))));
         Assert.False(QualificationMetrics.WasJudged(Attack(QualificationTestData.Presence(false, validationUnavailable: true))));
@@ -338,7 +295,6 @@ public sealed class QualificationMetricsTests
         Assert.False(QualificationMetrics.WasJudged(Attack(null)));
     }
 
-    /// <summary>Proof (a target that cannot be measured fails): an attack that could not be judged is no rejection, so it is out of the total of its class and is counted apart.</summary>
     [Fact]
     public void Compute_AnAttackThatCouldNotBeJudged_IsOutOfTheTotalOfItsClass_AndCountedApart()
     {
@@ -359,7 +315,6 @@ public sealed class QualificationMetricsTests
 
         var metrics = QualificationMetrics.Compute(cases, [], QualificationTestData.Thresholds(), 0.95, QualificationTestData.Models());
 
-        // Of the six attacks two of the photo class were judged (one accepted); the other three and the one of the screen class were not.
         var photo = metrics.Apcer.Single(entry => entry.Class == QualificationAttackClasses.PhotoPrint).Rate;
         var screen = metrics.Apcer.Single(entry => entry.Class == QualificationAttackClasses.ScreenReplay).Rate;
         Assert.Equal((1L, 2L), (photo.Count, photo.Total));
@@ -371,7 +326,6 @@ public sealed class QualificationMetricsTests
         Assert.Equal(QualificationAttackClasses.All.Order(StringComparer.Ordinal), metrics.AttacksNotJudged.Select(entry => entry.Class));
     }
 
-    /// <summary>Proof (data): the exactness of a field is measured on the genuine captures of the owner of the document: an attack, a person with the document of another, an altered or a foreign one show pictures a genuine capture shows already.</summary>
     [Fact]
     public void Compute_TheExactnessOfTheFields_IsMeasuredOnTheGenuineCapturesOfTheOwnerOnly()
     {
@@ -392,7 +346,6 @@ public sealed class QualificationMetricsTests
         Assert.Equal(("surname", 1L, 2L), (surname.Field, surname.Rate.Count, surname.Rate.Total));
     }
 
-    /// <summary>Proof (the same name is the same name): a name read in the other spelling the MRZ may use is exact, as the coherence checker takes it; another name is not, and a number is not reconciled.</summary>
     [Fact]
     public void ExactnessRates_ANameInTheOtherSpellingOfTheMrz_IsExact_AndAnotherNameIsNot()
     {
@@ -411,27 +364,23 @@ public sealed class QualificationMetricsTests
             [("documentNumber", 0L, 1L), ("givenNames", 1L, 1L), ("surname", 3L, 4L), ("surname.mrz", 1L, 1L)],
             rates.Select(rate => (rate.Name, rate.Rate.Count, rate.Rate.Total)));
 
-        // The reconciliation is of names only, and only of the same name: the number and another name are as read.
         Assert.Equal("Müller", QualificationMetrics.SpelledAsExpected("surname", "Müller", "MULLER"));
         Assert.Equal("ROSSO", QualificationMetrics.SpelledAsExpected("surname", "Rossi", "ROSSO"));
         Assert.Equal("CA0OO00AA", QualificationMetrics.SpelledAsExpected("documentNumber", "CA00000AA", "CA0OO00AA"));
         Assert.Null(QualificationMetrics.SpelledAsExpected("surname", "Müller", null));
     }
 
-    /// <summary>Proof (a target that cannot be measured fails): the critical approvals have their DENOMINATORS, the cases of each kind the policy took a decision on.</summary>
     [Fact]
     public void Compute_TheCriticalApprovals_AreCountedOverTheCasesDecided_OfEachKind()
     {
         var cases = new List<QualificationCaseResult>
         {
-            // Decided: two attacks (one approved), a person with the document of another, an altered document that was approved, and a foreign image that was also altered.
             QualificationTestData.Case("a1", QualificationCaseKinds.Attack, QualificationTestData.Document(true), QualificationTestData.Presence(true, 0.9, 0.9), QualificationTestData.Decision("auto_approved", "approve"), attackClass: QualificationAttackClasses.PhotoPrint),
             QualificationTestData.Case("a2", QualificationCaseKinds.Attack, QualificationTestData.Document(true), QualificationTestData.Presence(false), QualificationTestData.Decision("review", "review"), attackClass: QualificationAttackClasses.Synthetic),
             QualificationTestData.Case("i1", QualificationCaseKinds.ImpostorPair, QualificationTestData.Document(true), QualificationTestData.Presence(true, 0.3, 0.3), QualificationTestData.Decision("review", "review")),
             QualificationTestData.Case("h1", QualificationCaseKinds.Genuine, QualificationTestData.Document(true), QualificationTestData.Presence(true, 0.9, 0.9), QualificationTestData.Decision("auto_approved", "approve"), altered: true),
             QualificationTestData.Case("f1", QualificationCaseKinds.Genuine, QualificationTestData.Document(false, "unknown"), QualificationTestData.Presence(false), QualificationTestData.Decision("review", "review"), altered: true, foreign: true),
 
-            // Not decided: an attack with no document, one that broke, and an altered document with no sequence: they are no denominator.
             QualificationTestData.Case("a3", QualificationCaseKinds.Attack, null, QualificationTestData.Presence(false), null, attackClass: QualificationAttackClasses.VideoReplay),
             QualificationTestData.Case("a4", QualificationCaseKinds.Attack, QualificationTestData.Document(true), QualificationTestData.Presence(false), null, attackClass: QualificationAttackClasses.ScreenReplay, error: "IOException"),
             QualificationTestData.Case("h2", QualificationCaseKinds.Genuine, QualificationTestData.Document(true), null, null, altered: true),
@@ -444,13 +393,11 @@ public sealed class QualificationMetricsTests
         Assert.Equal((2, 1, 2, 1), (critical.Decided["attack"], critical.Decided["impostor_pair"], critical.Decided["altered"], critical.Decided["foreign"]));
         Assert.Empty(critical.NotMeasured());
 
-        // With no case decided of a kind, that kind is not measured.
         var withoutForeign = QualificationMetrics.Compute([.. cases.Where(candidate => !candidate.Foreign)], [], QualificationTestData.Thresholds(), 0.95, QualificationTestData.Models()).CriticalFalseApprovals;
         Assert.Equal(["foreign"], withoutForeign.NotMeasured());
         Assert.Equal(QualificationCriticalKinds.All, QualificationMetrics.Compute([], [], QualificationTestData.Thresholds(), 0.95, QualificationTestData.Models()).CriticalFalseApprovals.NotMeasured());
     }
 
-    /// <summary>Proof (independence): the comparisons of one couple of persons are one piece of evidence, and a couple is a false match when any comparison of it is.</summary>
     [Fact]
     public void Compute_TheFalseMatchRate_IsAlsoCountedOverTheDistinctCouplesOfPersons()
     {
@@ -459,27 +406,23 @@ public sealed class QualificationMetricsTests
         var couple3 = QualificationMetrics.CoupleKey("p3", "p4");
         var trials = new List<QualificationImpostorTrial>
         {
-            // Five comparisons of the same couple of persons, one of them a false match (0.90 at the acceptance of 0.85).
             new("g1", "d-2", 0.40, 0.35, 1, null, couple1),
             new("g1b", "d-2", 0.41, 0.36, 1, null, couple1),
             new("g1", "d-2b", 0.42, 0.37, 1, null, couple1),
             new("g1b", "d-2b", 0.90, 0.80, 1, null, couple1),
             new("g1c", "d-2", 0.43, 0.38, 1, null, couple1),
 
-            // The other direction of the same two persons is another couple; a third couple has two comparisons and no false match.
             new("g2", "d-1", 0.30, 0.30, 1, null, couple2),
             new("g3", "d-4", 0.20, 0.20, 1, null, couple3),
             new("g3b", "d-4", 0.21, 0.21, 1, null, couple3),
         };
         var cases = new List<QualificationCaseResult>
         {
-            // A person with the document of another one: its own couple, with a score under the acceptance.
             QualificationTestData.Case("i1", QualificationCaseKinds.ImpostorPair, QualificationTestData.Document(true), QualificationTestData.Presence(true, 0.5, 0.5), couple: QualificationMetrics.CoupleKey("p5", "p6")),
         };
 
         var metrics = QualificationMetrics.Compute(cases, trials, QualificationTestData.Thresholds(), 0.95, QualificationTestData.Models());
 
-        // Nine comparisons, one of them a false match; four couples of persons, one of them a false match.
         Assert.Equal((1L, 9L), (metrics.Fmr.Count, metrics.Fmr.Total));
         Assert.Equal((1L, 4L), (metrics.FmrCouples.Count, metrics.FmrCouples.Total));
         Assert.Equal(IdentityStatistics.ClopperPearsonUpper(1, 4), metrics.FmrCouples.UpperBound);
@@ -499,7 +442,6 @@ public sealed class QualificationMetricsTests
     }
 }
 
-/// <summary>Cases, results and models written in code for the tests of the qualification toolkit: ids, codes and numbers, never a picture or a value of a person.</summary>
 internal static class QualificationTestData
 {
     public static readonly DateTimeOffset RunAt = new(2026, 12, 5, 10, 0, 0, TimeSpan.Zero);
@@ -513,13 +455,10 @@ internal static class QualificationTestData
     public static readonly string RecognitionHash = new('3', 64);
     public static readonly string CandidateHash = new('4', 64);
 
-    /// <summary>The thresholds of the committed policy.</summary>
     public static QualificationThresholds Thresholds() => QualificationThresholds.From(IdentityTestPolicy.Shipped());
 
-    /// <summary>The policy of the committed file, calibrated (not provisional): what a lock may be made from.</summary>
     public static IdentityDecisionPolicy Calibrated() => IdentityTestPolicy.Shipped() with { Provisional = false };
 
-    /// <summary>The three models of the decisions, loaded with their weights, and a loaded candidate of the recognition model when asked.</summary>
     public static IReadOnlyList<QualificationModelInfo> Models(bool candidate = false)
     {
         var models = new List<QualificationModelInfo>
@@ -534,7 +473,6 @@ internal static class QualificationTestData
         return models;
     }
 
-    /// <summary>The snapshot of a store that has the three models loaded (and the candidate, when asked).</summary>
     public static BiometricModelsSnapshot Snapshot(bool candidate = false)
     {
         var infos = Models(candidate).Select(model => new BiometricModelInfo(model.Role, model.Name, model.Version, model.License, model.Provenance, model.WeightSha256, model.Loaded, model.FailureCode)).ToList();
@@ -617,7 +555,6 @@ internal static class QualificationTestData
                 new Dictionary<string, int> { ["web:desktop-chromium"] = 2400 }));
     }
 
-    /// <summary>The results of a run with the metrics given (those of the cases when none is).</summary>
     public static QualificationResults Results(
         string split,
         IReadOnlyList<QualificationCaseResult> cases,

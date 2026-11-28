@@ -4,7 +4,6 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
@@ -33,7 +32,6 @@ public class ConcordatoFacileCheckoutPostgresTests
         var (orgId, leaseId) = await SeedLeaseAsync(database);
         var stripe = new SlowStripe();
 
-        // Two requests, each with its own context and connection, as two requests of the API are.
         async Task<CheckoutResult> ClickAsync()
         {
             await using var db = database.CreateContext();
@@ -84,7 +82,6 @@ public class ConcordatoFacileCheckoutPostgresTests
         return (orgId, leaseId);
     }
 
-    /// <summary>A Stripe where creating a Session takes a moment and a Session already created can be read back, thread-safe.</summary>
     private sealed class SlowStripe
     {
         private readonly ConcurrentDictionary<string, Session> _sessions = new();

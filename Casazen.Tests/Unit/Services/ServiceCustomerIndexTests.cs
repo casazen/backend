@@ -52,7 +52,6 @@ public class ServiceCustomerIndexTests
         var hash = Index(Key).HashEmail("mario.rossi@example.com");
 
         Assert.NotEqual(hash, Index(Key).HashEmail("maria.rossi@example.com"));
-        // The key is the secret: with another one nobody can test an address against a copy of the database.
         Assert.NotEqual(hash, Index(Key + "x").HashEmail("mario.rossi@example.com"));
     }
 
@@ -82,8 +81,6 @@ public class ServiceCustomerIndexTests
 
         Assert.Throws<InvalidOperationException>(() => index.HashEmail("mario@example.com"));
     }
-
-    // ─── Startup validation ──────────────────────────────────────────────────────
 
     private static ShowcaseBookingOptionsValidator Validator(bool flagOn, string environment)
     {

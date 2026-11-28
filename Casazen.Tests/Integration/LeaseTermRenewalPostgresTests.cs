@@ -9,8 +9,6 @@ using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
@@ -58,7 +56,6 @@ public class LeaseTermRenewalPostgresTests : IAsyncLifetime
 
         await using (var db = database.CreateContext())
         {
-            // A copy of the template at the previous migration (made once for the run), not a replay of every migration before it.
             await database.MigrateEmptyToAsync(PreviousMigration(db));
             await LegacyOrgRows.InsertAsync(db, new OrgEntity
             {
@@ -91,12 +88,9 @@ public class LeaseTermRenewalPostgresTests : IAsyncLifetime
 
             await db.Database.MigrateAsync();
 
-            // Written after the migration by a server that did not know the new columns (they keep the starting value of the database,
-            // -infinity), with a contract that is already over: it came in over, so it is not renewed.
             await InsertLeaseAsync(db, org, property, late, new DateTime(2086, 1, 1, 0, 0, 0, DateTimeKind.Utc), lateLast);
         }
 
-        // The clock is past the end of the second lease; the first and the third ended long before.
         var clock = new FakeTimeProvider(new DateTimeOffset(2094, 6, 15, 12, 0, 0, TimeSpan.Zero));
         var runs = new List<LeaseTermRenewalRun>();
         for (var i = 0; i < 3; i++)
@@ -112,12 +106,10 @@ public class LeaseTermRenewalPostgresTests : IAsyncLifetime
 
         await AssertStateAsync();
 
-        // The backfill is safe to run again: the lease that renewed is not recorded as ended, the ones that ended are not touched.
         await using (var db = database.CreateContext())
             await db.Database.ExecuteSqlRawAsync(AddLeaseTermLifecycle.BackfillSql);
         await AssertStateAsync();
 
-        // The signature is a door too: a contract signed after its last day (an old one imported) is concluded at once, so it is never due.
         var imported = new LeaseContract
         {
             ContractType = LeaseContractType.Libero,
@@ -135,19 +127,16 @@ public class LeaseTermRenewalPostgresTests : IAsyncLifetime
             var leases = await db.LeaseContracts.IgnoreQueryFilters().AsNoTracking().ToDictionaryAsync(l => l.Id);
             var events = await db.LeaseEvents.AsNoTracking().ToListAsync();
 
-            // Ended before the migration: concluded on its last day, never renewed, no event.
             Assert.Equal(endedLast, leases[ended].EndDate);
             Assert.Equal(endedLast, leases[ended].CurrentTermEndDate);
             Assert.Equal(endedLast, leases[ended].TerminatedOn);
             Assert.DoesNotContain(events, e => e.LeaseContractId == ended);
 
-            // Written after the migration with its contract already over: the repair of the job concludes it, it is never renewed, no event.
             Assert.Equal(lateLast, leases[late].EndDate);
             Assert.Equal(lateLast, leases[late].CurrentTermEndDate);
             Assert.Equal(lateLast, leases[late].TerminatedOn);
             Assert.DoesNotContain(events, e => e.LeaseContractId == late);
 
-            // Running at the migration: the contract's end stays, the current period goes forward by one period, once.
             Assert.Equal(runningFirstEnd, leases[running].EndDate);
             Assert.Equal(runningRenewedEnd, leases[running].CurrentTermEndDate);
             Assert.Null(leases[running].TerminatedOn);

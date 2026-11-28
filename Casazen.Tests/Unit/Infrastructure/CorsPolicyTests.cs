@@ -2,12 +2,10 @@ using System.Net;
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
-using Casazen.Web.Configuration;
 using Casazen.Web.Controllers;
 using Casazen.Web.Extensions;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
@@ -70,15 +68,12 @@ public class CorsPolicyTests
         request.Headers.Add("Origin", WebApp);
         using var response = await app.GetTestClient().SendAsync(request);
 
-        // A browser reads a header of another origin only when the answer exposes it: the name of the file of the CSV and Excel exports of the fiscal documents
-        // (E06/F03/US03/T01) and the header that says the calendar changes of a collaborator were cut (E08/F05/US02).
         var exposed = response.Headers.GetValues("Access-Control-Expose-Headers")
             .SelectMany(value => value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
             .ToList();
         Assert.Contains("Content-Disposition", exposed, StringComparer.OrdinalIgnoreCase);
         Assert.Contains(CalendarChangesController.TruncatedHeader, exposed, StringComparer.OrdinalIgnoreCase);
 
-        // The retention hint that comes with the guest register of a Swiss property (E31/F01/US01/T01): a page on another origin reads it from the answer of the download.
         Assert.Contains(SwissComplianceController.RetentionYearsHeader, exposed, StringComparer.OrdinalIgnoreCase);
     }
 
@@ -152,7 +147,6 @@ public class CorsPolicyTests
     [InlineData("https://casazen-lucalamalfa91s-projects.vercel.app")]
     public async Task Preflight_FrontendProjectHost_IsAllowedWithoutConfiguration(string origin)
     {
-        // Staging is the test API: it already has some configured origin, and still has to accept the frontend project.
         await using var staging = await StartAsync("Staging", new() { ["Cors:AllowedOrigins"] = WebApp });
         await using var production = await StartAsync(Environments.Production, new() { ["Cors:AllowedOrigins"] = WebApp });
 
@@ -284,7 +278,6 @@ public class CorsPolicyTests
     [InlineData("Seo:PublicBaseUrl")]
     public async Task Preflight_PublicSiteOrigin_IsAllowedWithoutRepeatingItInCorsVariables(string key)
     {
-        // SE-02 (A8-02): the public web app always calls the API, whatever its configured domain.
         const string publicSite = "https://www.public-site.test";
         await using var app = await StartAsync(Environments.Production, new() { [key] = publicSite + "/" });
 

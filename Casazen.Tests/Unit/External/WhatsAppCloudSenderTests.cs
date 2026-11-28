@@ -1,7 +1,6 @@
 using System.Net;
 using System.Text;
 using Casazen.Core.Options;
-using Casazen.Core.Services;
 using Casazen.Infrastructure.External;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;

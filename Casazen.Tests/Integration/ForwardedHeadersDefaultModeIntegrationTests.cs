@@ -10,10 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// Default configuration (no <c>ForwardedHeaders:KnownNetworks</c>): the peer is trusted as the proxy for one hop, so
-/// the client IP is the address the proxy appended last, never the client-written first value (FD-10, A1-12, A3-30).
-/// </summary>
 public class ForwardedHeadersDefaultModeIntegrationTests
     : IClassFixture<ForwardedHeadersDefaultModeIntegrationTests.DefaultModeFactory>
 {
@@ -73,7 +69,6 @@ public class ForwardedHeadersDefaultModeIntegrationTests
         Assert.NotEqual(HttpStatusCode.TooManyRequests, otherClient.StatusCode);
     }
 
-    /// <summary>Application defaults for forwarded headers; resolve-host allows one request per window.</summary>
     public sealed class DefaultModeFactory : CasazenWebApplicationFactory
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)

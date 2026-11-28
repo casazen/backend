@@ -13,10 +13,6 @@ using PlanTierEnum = Casazen.Core.Entities.Enums.PlanTier;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// BK-03 (A3-02, R-05, A8-23) on PostgreSQL with the migrated rates: the checkout quote and the booking use the same
-/// tourist tax engine and the same <c>TouristTaxRates</c>, so the amount shown is the amount recorded and charged.
-/// </summary>
 public class TouristTaxQuoteIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private const string ConsentVersion = "2026-06-direct-checkout-v1";
@@ -31,7 +27,6 @@ public class TouristTaxQuoteIntegrationTests : IClassFixture<CasazenWebApplicati
     [PostgresFact]
     public async Task Quote_ThenBook_RecordsAndChargesTheQuotedTouristTax()
     {
-        // City typed in upper case with spaces: the seeded "Firenze" rate (6,00, exempt under 12) is still found.
         var property = await SeedPropertyAsync("  FIRENZE ");
         using var client = _factory.CreateClient();
         var (checkIn, checkOut) = Stay(nights: 3);
@@ -50,7 +45,6 @@ public class TouristTaxQuoteIntegrationTests : IClassFixture<CasazenWebApplicati
         var quote = await ReadJsonAsync(quoteResponse);
         var tax = quote.GetProperty("touristTax");
         Assert.Equal("Calculated", tax.GetProperty("status").GetString());
-        // 2 adults x 6,00 x 3 nights; the 8-year-old is exempt.
         Assert.Equal(36.00m, tax.GetProperty("amount").GetDecimal());
         Assert.True(tax.GetProperty("ageRulesApply").GetBoolean());
         Assert.Equal(500.00m, quote.GetProperty("basePrice").GetDecimal());
@@ -78,7 +72,6 @@ public class TouristTaxQuoteIntegrationTests : IClassFixture<CasazenWebApplicati
     [PostgresFact]
     public async Task Quote_RateStoredInLowerCase_IsFoundForTheCapitalizedCity()
     {
-        // A8-23: an admin typing "lecco" must not make the rate invisible to "Lecco".
         await WithDbAsync(async db =>
         {
             db.TouristTaxRates.Add(new TouristTaxRate
@@ -115,7 +108,6 @@ public class TouristTaxQuoteIntegrationTests : IClassFixture<CasazenWebApplicati
     [PostgresFact]
     public async Task Quote_ComuneWithoutRate_IsUnavailableAndTheBookingGoesOnWithoutTax()
     {
-        // Seveso: no rate in CasaZen. No invented amount, no blocked checkout.
         var property = await SeedPropertyAsync("Seveso");
         using var client = _factory.CreateClient();
         var (checkIn, checkOut) = Stay(nights: 2);
@@ -200,7 +192,6 @@ public class TouristTaxQuoteIntegrationTests : IClassFixture<CasazenWebApplicati
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    /// <summary>A stay a few months ahead, far from the start dates of the seeded rates.</summary>
     private static (string CheckIn, string CheckOut) Stay(int nights)
     {
         var checkIn = TimeProvider.System.TodayInRome().AddDays(60);

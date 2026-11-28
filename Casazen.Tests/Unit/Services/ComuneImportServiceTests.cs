@@ -21,8 +21,6 @@ public class ComuneImportServiceTests
 
     private static readonly DateOnly Reference = ComuneTestData.ReferenceDate;
 
-    // ---- Official rows ------------------------------------------------------------------------------------------
-
     [Fact]
     public async Task ImportAsync_OfficialSample_ImportsEveryRowWithItsFields()
     {
@@ -37,7 +35,6 @@ public class ComuneImportServiceTests
         Assert.Equal(("H501", "Roma", "RM", "12", "Lazio", "LAZ", true), (roma.CadastralCode, roma.Name, roma.ProvinceCode, roma.RegionIstatCode, roma.RegionName, roma.RegionCode, roma.IsActive));
         Assert.Equal("roma", roma.NormalizedName);
 
-        // Leading zeros survive (the code is text), and the bilingual denomination is kept next to the Italian name.
         var torino = await db.Comuni.AsNoTracking().SingleAsync(c => c.IstatCode == ComuneTestData.Torino);
         Assert.Equal(("L219", "TO", "PIE"), (torino.CadastralCode, torino.ProvinceCode, torino.RegionCode));
         var bolzano = await db.Comuni.AsNoTracking().SingleAsync(c => c.IstatCode == ComuneTestData.Bolzano);
@@ -51,8 +48,6 @@ public class ComuneImportServiceTests
         await using var db = CreateDb();
         await ComuneTestData.ImportSampleAsync(db);
 
-        // F205 is Milano (the old registry said Firenze, which is D612); 010025 is Genova (the old registry said Torino,
-        // which is 001272); Varenna is in the province of Lecco with a code of that province.
         Assert.Equal("Milano", (await db.Comuni.SingleAsync(c => c.CadastralCode == "F205")).Name);
         Assert.Equal("Firenze", (await db.Comuni.SingleAsync(c => c.CadastralCode == "D612")).Name);
         Assert.Equal("Genova", (await db.Comuni.SingleAsync(c => c.IstatCode == "010025")).Name);
@@ -77,14 +72,11 @@ public class ComuneImportServiceTests
         var after = await db.Comuni.AsNoTracking().OrderBy(c => c.IstatCode).Select(c => new { c.IstatCode, c.UpdatedAt, c.SourceImportId }).ToListAsync();
         Assert.Equal(before, after);
 
-        // Both imports are logged, with the checksum of the file.
         var imports = await db.ComuneImports.AsNoTracking().ToListAsync();
         Assert.Equal(2, imports.Count);
         Assert.Single(imports.Select(i => i.Sha256).Distinct());
         Assert.All(imports, i => Assert.Equal((ComuneImportOrigin.AdminUpload, Reference, 64), (i.Origin, i.ReferenceDate, i.Sha256.Length)));
     }
-
-    // ---- Upsert, deactivation, validity -----------------------------------------------------------------------
 
     [Fact]
     public async Task ImportAsync_RowChanged_UpdatesOnlyThatRow()
@@ -97,7 +89,6 @@ public class ComuneImportServiceTests
         Assert.True(result.Success);
         Assert.Equal((0, 1, 1, 0), (result.Inserted, result.Updated, result.Unchanged, result.Deactivated));
         Assert.Equal("Prova Uno Nuovo", (await db.Comuni.AsNoTracking().SingleAsync(c => c.IstatCode == "999001")).Name);
-        // The changed row points at the import that changed it, the other one at the first import.
         var imports = await db.ComuneImports.AsNoTracking().OrderBy(i => i.ImportedAt).ToListAsync();
         Assert.Equal(imports[1].Id, (await db.Comuni.AsNoTracking().SingleAsync(c => c.IstatCode == "999001")).SourceImportId);
         Assert.Equal(imports[0].Id, (await db.Comuni.AsNoTracking().SingleAsync(c => c.IstatCode == "999002")).SourceImportId);
@@ -182,7 +173,6 @@ public class ComuneImportServiceTests
     [Fact]
     public async Task ImportAsync_CadastralCodeNotAvailable_IsStoredAsNull()
     {
-        // The legend of the official file: "N.d." = not available (a comune just instituted).
         await using var db = CreateDb();
 
         var result = await ImportAsync(db, Row("03", "999001", "Prova Uno", "Lombardia", "MI", "N.d."), Row("03", "999002", "Prova Due", "Lombardia", "MI", "n.d."));
@@ -190,8 +180,6 @@ public class ComuneImportServiceTests
         Assert.True(result.Success);
         Assert.All(await db.Comuni.AsNoTracking().ToListAsync(), c => Assert.Null(c.CadastralCode));
     }
-
-    // ---- Tolerated variants of the layout ---------------------------------------------------------------------
 
     [Fact]
     public async Task ImportAsync_CommaSeparatorAndSynonymHeaders_IsAccepted()
@@ -212,7 +200,6 @@ public class ComuneImportServiceTests
     [Fact]
     public async Task ImportAsync_NumericCodeWithoutLeadingZeros_GetsThemBack()
     {
-        // A spreadsheet that dropped the leading zeros, or the numeric format of the list (1272 for 001272).
         await using var db = CreateDb();
 
         var result = await ImportTextAsync(db, "Codice Regione;Codice Comune formato numerico;Denominazione in italiano;Denominazione Regione;Sigla automobilistica;Codice Catastale del Comune", "01;1272;Prova;Piemonte;TO;Z901");
@@ -247,8 +234,6 @@ public class ComuneImportServiceTests
         Assert.True(result.Success);
         Assert.Equal(1, await db.Comuni.CountAsync());
     }
-
-    // ---- Rejections: nothing is written ----------------------------------------------------------------------
 
     [Theory]
     [InlineData("03;999;Prova;Prova;Lombardia;MI;Z901", ComuneImportErrors.IstatInvalid)]
@@ -386,8 +371,6 @@ public class ComuneImportServiceTests
         Assert.Equal(ComuneImportService.MaxReportedErrors, result.Errors.Count);
     }
 
-    // ---- Regions ---------------------------------------------------------------------------------------------
-
     [Fact]
     public void ItalianRegions_AreTheTwentyOfTheIstatNumbering()
     {
@@ -395,7 +378,6 @@ public class ComuneImportServiceTests
         Assert.Equal(Enumerable.Range(1, 20).Select(i => i.ToString("00")), ItalianRegions.All.Select(r => r.IstatCode));
         Assert.Equal(20, ItalianRegions.All.Select(r => r.Code).Distinct().Count());
         Assert.Equal(20, ItalianRegions.All.Select(r => r.Slug).Distinct().Count());
-        // The codes the regional configuration already used keep their meaning.
         Assert.Equal("Lombardia", ItalianRegions.FindByCode("LOM")!.Name);
         Assert.Equal("Lazio", ItalianRegions.FindByCode("laz")!.Name);
     }
@@ -416,8 +398,6 @@ public class ComuneImportServiceTests
         Assert.Null(ItalianRegions.FindByName(""));
         Assert.Null(ItalianRegions.FindByName("Lomb"));
     }
-
-    // ---- Helpers ---------------------------------------------------------------------------------------------
 
     private static string Row(string regionCode, string istat, string name, string regionName, string province, string cadastral) =>
         $"{regionCode};{istat};{name};{name};{regionName};{province};{cadastral}";

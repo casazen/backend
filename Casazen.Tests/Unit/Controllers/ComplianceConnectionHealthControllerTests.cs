@@ -35,7 +35,6 @@ public class ComplianceConnectionHealthControllerTests
             .Setup(h => h.GetAsync(PropertyOfOrgA, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Health(PropertyOfOrgA));
 
-        // The property of the org A belongs to its owner; the property of the org B is hidden by the tenant filter.
         var lookup = new Mock<IHostResourceLookup>();
         lookup
             .Setup(l => l.ForPropertyAsync(PropertyOfOrgA, It.IsAny<CancellationToken>()))
@@ -44,11 +43,9 @@ public class ComplianceConnectionHealthControllerTests
             .Setup(l => l.ForPropertyAsync(PropertyOfOrgB, It.IsAny<CancellationToken>()))
             .ReturnsAsync((HostResource?)null);
 
-        // A member with no org-wide role and no grant reaches only the properties it created: nothing of this one, no call.
         var outsider = Controller(health, lookup, HostAuthorizationTestHarness.User("auth0|staff-a", "Staff"));
         Assert.IsType<ForbidResult>((await outsider.Get(PropertyOfOrgA, CancellationToken.None)).Result);
 
-        // Another organization's property is not found, even for a manager of the whole org A.
         var manager = Controller(health, lookup, HostAuthorizationTestHarness.User("auth0|manager-a", "PropertyManager"));
         var notFound = Assert.IsType<ObjectResult>((await manager.Get(PropertyOfOrgB, CancellationToken.None)).Result);
         Assert.Equal(StatusCodes.Status404NotFound, notFound.StatusCode);
@@ -56,7 +53,6 @@ public class ComplianceConnectionHealthControllerTests
 
         Assert.Empty(health.Invocations);
 
-        // Whoever reaches the property reads its health, and the answer is not kept by any cache.
         var owner = Controller(health, lookup, HostAuthorizationTestHarness.User(Owner, "PropertyOwner"));
         var read = Assert.IsType<OkObjectResult>((await owner.Get(PropertyOfOrgA, CancellationToken.None)).Result);
         var dto = Assert.IsType<ComplianceConnectionHealthDto>(read.Value);

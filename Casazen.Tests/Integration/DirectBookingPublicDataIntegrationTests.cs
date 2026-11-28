@@ -23,7 +23,6 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
 {
     private const string ConsentVersion = "2026-06-direct-checkout-v1";
 
-    // Distinctive values: if any of them shows up in an anonymous response, the test says which one.
     private const string SecretStreet = "Via Segretissima 17/B";
     private const string SecretUnit = "Scala C int. 9";
     private const decimal ExactLatitude = 45.464211m;
@@ -37,8 +36,6 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
         FakeStripeService.Reset();
     }
 
-    // ─── Quote: nothing changes by default, and the breakdown adds up ───────────────────────────────
-
     [Fact]
     public async Task Quote_PropertyWithoutStayRules_KeepsEveryFieldOfTodayAndAddsTheBreakdown()
     {
@@ -50,7 +47,6 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var quote = await ReadAsync(response);
-        // The fields the frontend reads today, with the values of today: 3 nights x 150 + 50 of cleaning.
         Assert.Equal(property.Id, quote.GetProperty("propertyId").GetGuid());
         Assert.Equal(3, quote.GetProperty("nights").GetInt32());
         Assert.Equal(150m, quote.GetProperty("nightlyRate").GetDecimal());
@@ -63,7 +59,6 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
         Assert.True(quote.TryGetProperty("paymentOptions", out _));
         Assert.True(quote.TryGetProperty("checkInDate", out _));
 
-        // The breakdown, in cents: one line of nights (Friday and Saturday included: no surcharge), cleaning, total.
         var lines = quote.GetProperty("lines").EnumerateArray().ToList();
         Assert.Equal(["Nights", "CleaningFee", "Total"], lines.Select(l => l.GetProperty("kind").GetString()));
         Assert.Equal(3, lines[0].GetProperty("quantity").GetInt32());
@@ -83,7 +78,6 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
 
         var quote = await ReadAsync(await PostQuoteAsync(client, property.Id, checkIn, checkIn.AddDays(3)));
 
-        // Friday and Saturday at 150 + 15 % = 172.50, Sunday at 150, plus 50 of cleaning: 545.
         Assert.Equal(495m, quote.GetProperty("lodgingTotal").GetDecimal());
         Assert.Equal(545m, quote.GetProperty("basePrice").GetDecimal());
         Assert.Equal(545m, quote.GetProperty("totalPrice").GetDecimal());
@@ -115,12 +109,10 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
         var (org, property) = await SeedAsync(p => p.WeekendSurchargePercent = 15m);
         using var client = _factory.CreateClient();
         var checkIn = NextFriday(40);
-        // The host confirmed 200 for the Friday (PC-15); the Saturday has no price of its own, the Sunday is an ordinary night.
         await SeedConfirmedPriceAsync(org.Id, property.Id, DateOnly.FromDateTime(checkIn), 200m);
 
         var quote = await ReadAsync(await PostQuoteAsync(client, property.Id, checkIn, checkIn.AddDays(3)));
 
-        // Friday 200 (the host's price, no surcharge on top) + Saturday 172.50 + Sunday 150 + cleaning 50.
         Assert.Equal(522.50m, quote.GetProperty("lodgingTotal").GetDecimal());
         Assert.Equal(572.50m, quote.GetProperty("totalPrice").GetDecimal());
         var lines = quote.GetProperty("lines").EnumerateArray().ToList();
@@ -154,8 +146,6 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
         var payment = await db.Payments.IgnoreQueryFilters().AsNoTracking().SingleAsync(p => p.BookingId == bookingId);
         Assert.Equal(545m, payment.Amount);
     }
-
-    // ─── Minimum stay ───────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Quote_StayShorterThanTheMinimum_Returns422WithTheStableCodeAndTheMinimumInBothLanguages()
@@ -237,11 +227,8 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
 
         Assert.Equal(2, with.GetProperty("minNights").GetInt32());
         Assert.Equal(JsonValueKind.Null, without.GetProperty("minNights").ValueKind);
-        // What the endpoint always answered is still there.
         Assert.True(with.TryGetProperty("bookedDates", out _));
     }
-
-    // ─── Public data of the org and of the property ─────────────────────────────────────────────────
 
     [Fact]
     public async Task PublicProperty_DetailCarriesTheStayRulesAndTheHostDataOnBothRoutes()
@@ -319,11 +306,8 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
         Assert.Equal(JsonValueKind.Null, dto.GetProperty("publicPhone").ValueKind);
         // The test host has no Gdpr:MarketingConsentVersion: the box is not offered.
         Assert.Equal(JsonValueKind.Null, dto.GetProperty("marketingConsentVersion").ValueKind);
-        // The private contact email of the org stays behind its own opt-in.
         Assert.Equal(JsonValueKind.Null, dto.GetProperty("contactEmail").ValueKind);
     }
-
-    // ─── The exact address never leaves ─────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task AnonymousEndpoints_NeverReturnTheExactAddressTheUnitOrTheExactCoordinates()
@@ -375,7 +359,6 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
         var quote = await client.PostAsync("/api/public/bookings/quote", quoteBody);
         bodies.Add(("POST /api/public/bookings/quote", await quote.Content.ReadAsStringAsync()));
 
-        // The endpoints that give the property out are really answering (a 404 would pass the checks below for nothing).
         Assert.Contains(bodies, b => b.Url.EndsWith($"/properties/{property.Slug}", StringComparison.Ordinal) && b.Body.Contains(property.Name));
         Assert.Contains(bodies, b => b.Url == $"/api/properties/{property.Id}/public" && b.Body.Contains(property.Name));
 
@@ -410,7 +393,6 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
             Assert.Equal(9.19m, dto.GetProperty("longitude").GetDecimal());
         }
 
-        // The host reads the exact position back from the stored record, unchanged.
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var stored = await db.Properties.IgnoreQueryFilters().AsNoTracking().SingleAsync(p => p.Id == property.Id);
@@ -440,7 +422,6 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
         var shown = new[] { list[0], detail, byId, search.EnumerateArray().First(p => p.GetProperty("id").GetGuid() == property.Id) };
         foreach (var dto in shown)
         {
-            // The centre of Como is 45.8103, 9.0861: shown to about a kilometre, like any position.
             Assert.Equal(45.81m, dto.GetProperty("latitude").GetDecimal());
             Assert.Equal(9.09m, dto.GetProperty("longitude").GetDecimal());
         }
@@ -468,7 +449,6 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
 
         var html = await client.GetStringAsync($"/api/public/seo/orgs/{org.Slug}/properties/{property.Slug}");
 
-        // The page is really there (a 404 would pass the check below for nothing), and a search engine is not told a place that is only a guess.
         Assert.Contains(property.Name, html);
         Assert.DoesNotContain("\"latitude\"", html);
         Assert.DoesNotContain("\"longitude\"", html);
@@ -494,17 +474,12 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
         Assert.DoesNotContain("Segretissima", html);
     }
 
-    // ─── The calendar with the price of every night (DB-03b) ────────────────────────────────────────
-
     [Fact]
     public async Task Calendar_EveryNightPrice_IsWhatTheQuoteAddsUpForThatNight_AndATakenNightSaysNothingMore()
     {
-        // 15 % on the weekend nights, and 200 that the host confirmed for the first Friday.
         var (org, property) = await SeedAsync(p => p.WeekendSurchargePercent = 15m);
         var friday = NextFriday(40);
         await SeedConfirmedPriceAsync(org.Id, property.Id, DateOnly.FromDateTime(friday), 200m);
-        // The Sunday is blocked by the host and the Tuesday is held by a guest who is paying: both are taken nights, and the calendar
-        // cannot tell them (nor a booking, nor an iCal block) apart, nor say who they are.
         var sunday = friday.AddDays(2);
         var tuesday = friday.AddDays(4);
         await SeedManualBlockAsync(org.Id, property.Id, sunday, sunday.AddDays(1));
@@ -522,13 +497,10 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
         Assert.Equal(14, days.Count);
         foreach (var day in days)
         {
-            // The number of the calendar is the first line of the quote of a one-night stay on that date (nights or weekend nights).
             var date = DateTime.ParseExact(day.GetProperty("date").GetString()!, "yyyy-MM-dd", null);
             var quote = await ReadAsync(await PostQuoteAsync(client, property.Id, date, date.AddDays(1)));
             var night = quote.GetProperty("lines").EnumerateArray().First();
             Assert.Equal(night.GetProperty("amountCents").GetInt64(), day.GetProperty("nightlyPriceCents").GetInt64());
-            // Dates, numbers and flags only (the rules of the day, E08/F05/US01/T03): never a name, an address or a source. This property has no
-            // rule of its own, so no maximum stay, no advance limit and nothing closed.
             Assert.Equal(
                 ["date", "available", "nightlyPriceCents", "minNights", "maxNights", "closedToArrival", "closedToDeparture", "minAdvanceDays", "maxAdvanceDays"],
                 day.EnumerateObject().Select(p => p.Name));
@@ -538,12 +510,10 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
             Assert.Equal(date != sunday && date != tuesday, day.GetProperty("available").GetBoolean());
         }
 
-        // Friday 200 (the host's price), Saturday 172.50 (rate + 15 %), Sunday 150.
         Assert.Equal([20000L, 17250L, 15000L], days.Take(3).Select(d => d.GetProperty("nightlyPriceCents").GetInt64()));
         Assert.DoesNotContain("example.com", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Manutenzione", body, StringComparison.OrdinalIgnoreCase);
 
-        // The same calendar through the slug of the site.
         var bySlug = await client.GetFromJsonAsync<JsonElement>(
             $"/api/public/orgs/{org.Slug}/properties/{property.Slug}/calendar?from={friday:yyyy-MM-dd}&to={friday.AddDays(14):yyyy-MM-dd}");
         Assert.Equal(
@@ -551,9 +521,6 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
             bySlug.GetProperty("days").EnumerateArray().Select(d => d.GetProperty("nightlyPriceCents").GetInt64()));
     }
 
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>A night blocked by hand by the host (a manual calendar block).</summary>
     private async Task SeedManualBlockAsync(Guid orgId, Guid propertyId, DateTime start, DateTime end)
     {
         using var scope = _factory.Services.CreateScope();
@@ -571,7 +538,6 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
         await db.SaveChangesAsync();
     }
 
-    /// <summary>The first Friday that is at least <paramref name="minDaysAhead"/> days from today in Rome (midnight UTC of its date).</summary>
     private static DateTime NextFriday(int minDaysAhead)
     {
         var day = TimeProvider.System.TodayInRome().AddDays(minDaysAhead);
@@ -581,7 +547,6 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
         return day;
     }
 
-    /// <summary>A seasonal price that the host confirmed for one date of the property (what the pricing adapter stores, PC-15).</summary>
     private async Task SeedConfirmedPriceAsync(Guid orgId, Guid propertyId, DateOnly date, decimal price)
     {
         using var scope = _factory.Services.CreateScope();
@@ -648,7 +613,6 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
         return JsonDocument.Parse(json).RootElement.Clone();
     }
 
-    /// <summary>An org with a property published in Seveso (no tourist tax rate), by default with a ready Stripe Connect account.</summary>
     private async Task<(OrgEntity Org, Property Property)> SeedAsync(
         Action<Property>? property = null,
         Action<OrgEntity>? org = null,

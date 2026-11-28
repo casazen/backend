@@ -2,7 +2,6 @@ using System.Text;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
-using Casazen.Core.Services;
 using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Documents;
@@ -37,9 +36,7 @@ public class RliExportServiceTests
     }
 
     [Theory]
-    // LT-04 (A7-04): signed 1/8, start 1/10 → stipula and deadline 31/8 in the prefill.
     [InlineData(true, "Data di stipula: 2026-08-01", "Scadenza registrazione: 2026-08-31")]
-    // Signed without a recorded stipula: no invented date.
     [InlineData(false, "Data di stipula: non disponibile", "Scadenza registrazione: da determinare")]
     public async Task ExportAsync_Deadline_FromStipulaOrToBeDetermined(bool withStipula, string stipulaLine, string deadlineLine)
     {
@@ -72,7 +69,6 @@ public class RliExportServiceTests
         var events = new Mock<ILeaseEventRepository>();
         var sut = new RliExportService(leases.Object, events.Object, new MigraDocPdfDocumentRenderer());
 
-        // Who may export is decided by the controller (TN-3); an id outside the caller's org is not found.
         Assert.Null(await sut.ExportAsync(Guid.NewGuid()));
         events.Verify(r => r.AddAsync(It.IsAny<LeaseEvent>()), Times.Never);
     }

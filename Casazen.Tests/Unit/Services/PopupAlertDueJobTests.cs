@@ -15,10 +15,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// ADR-025-R6 (E01/F03/US01/T02): the job that pushes the alerts that fell due. A user who keeps the app open all night must see the
-/// alert the quiet hours held back at 08:00, and the alert it snoozed when the snooze ends: once, and not again until it is snoozed again.
-/// </summary>
 public class PopupAlertDueJobTests : IAsyncLifetime
 {
     private const string UserId = "auth0|anna";
@@ -75,7 +71,6 @@ public class PopupAlertDueJobTests : IAsyncLifetime
         var held = Assert.Single(await ReadAlertsAsync());
         Assert.Equal(new DateTime(2026, 11, 6, 7, 0, 0, DateTimeKind.Utc), held.RemindAt);
 
-        // Two alerts the job must leave alone: one dismissed after it fell due, one that was never held back.
         await AddAsync(new PopupAlert
         {
             OrgId = _orgId,
@@ -98,12 +93,10 @@ public class PopupAlertDueJobTests : IAsyncLifetime
             DeliveredAt = clock.GetUtcNow().UtcDateTime,
         });
 
-        // Still night: not due.
         clock.SetUtcNow(new DateTimeOffset(2026, 11, 6, 6, 59, 0, TimeSpan.Zero));
         await RunAsync(clock);
         Assert.Empty(_publisher.Sent);
 
-        // 08:00 in Rome has passed: pushed to the user, once.
         clock.SetUtcNow(new DateTimeOffset(2026, 11, 6, 7, 0, 30, TimeSpan.Zero));
         await RunAsync(clock);
         var pushed = Assert.Single(_publisher.Sent);
@@ -114,7 +107,6 @@ public class PopupAlertDueJobTests : IAsyncLifetime
         await RunAsync(clock);
         Assert.Single(_publisher.Sent);
 
-        // The user snoozes it until 08:00 UTC (what PATCH …/remind does): not pushed before, pushed once at the end of the snooze.
         await using (var db = NewDb())
         {
             var alert = await db.PopupAlerts.SingleAsync(a => a.Id == held.Id, Ct);

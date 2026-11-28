@@ -56,7 +56,6 @@ public class MessageTemplateScheduledVariablesTests
     [InlineData("Recensione: {{review_link}}", "review_link")]
     public void ATemplateThatNamesTheLinkOrTheCode_IsRefusedWhereThereIsNone_WithTheNameOfTheVariable(string body, string name)
     {
-        // The composer of the hub fills a template from the conversation only: no link of the check-in is issued and no code is released there.
         var refused = Assert.Throws<DomainRuleException>(() => MessageTemplateRenderer.Render(body, OfAStay, Italian));
 
         Assert.Equal(MessageTemplateRenderer.MissingCode, refused.Code);

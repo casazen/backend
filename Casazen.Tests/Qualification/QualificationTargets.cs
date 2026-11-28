@@ -34,13 +34,10 @@ public sealed record QualificationTargets(
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     };
 
-    // The members of the file as the JSON writes them: the only names a message about a file that cannot be read may carry.
     private static readonly IReadOnlyDictionary<string, string> KnownMembers = QualificationJsonPlace.MemberNames(typeof(TargetsFile));
 
-    /// <summary>The targets file that ships with the tests (<c>Fixtures/Qualification/qualification-targets.json</c>, copied to the output folder).</summary>
     public static string DefaultPath => Path.Combine(AppContext.BaseDirectory, "Fixtures", "Qualification", "qualification-targets.json");
 
-    /// <summary>Reads the targets from <paramref name="path"/>, or from <see cref="DefaultPath"/> when none is given.</summary>
     public static QualificationTargets Load(string? path = null)
     {
         return Parse(File.ReadAllText(path ?? DefaultPath));
@@ -62,8 +59,6 @@ public sealed record QualificationTargets(
         }
         catch (JsonException exception)
         {
-            // Only the place is kept, without a word the author typed: the message of the parser may quote the text, and its path holds the name of a member it does
-            // not know. The parser counts lines from 0.
             throw new InvalidDataException(Unreadable(exception.Path, exception.LineNumber + 1));
         }
 
@@ -93,7 +88,6 @@ public sealed record QualificationTargets(
         return "The qualification targets cannot be read (" + QualificationJsonPlace.Describe(QualificationJsonPlace.SafePath(path, KnownMembers), line) + ").";
     }
 
-    // A rate, a bound or a confidence: strictly between 0 and 1 (a criterion of exactly 0 or 1 is no criterion).
     private static double Proportion(double? value, string name, List<string> problems)
     {
         if (value is null)

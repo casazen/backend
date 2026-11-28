@@ -8,11 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Email;
 
-/// <summary>
-/// E03/F02/US02/T02 (NF-52, CHK-12 point 6): the texts of the monthly compliance summary, in Italian and in English. «All compliant» only for a complete month; the
-/// open items are counted by the action that fixes them; what is held only by the channel manager is said to be checked there; the email carries counts, names of
-/// actions and a link, and every dynamic value is HTML-encoded.
-/// </summary>
 public class ComplianceSummaryEmailTemplateTests
 {
     private static readonly Guid Target = Guid.Parse("00000000-0000-0000-0000-0000000000aa");
@@ -68,7 +63,6 @@ public class ComplianceSummaryEmailTemplateTests
         Assert.Contains("Ricevute Alloggiati Web da caricare: 2", body);
         Assert.Contains("Imposta di soggiorno da dichiarare e pagare: 1", body);
         Assert.Contains("Comunicazioni Alloggiati Web da correggere: 1", body);
-        // What is held by the channel manager is not in the list of the missing: it is counted, and explained.
         Assert.DoesNotContain("Comunicazioni ISTAT da provare", body);
         Assert.Contains("Da verificare nel pannello del channel manager: 1", body);
         Assert.Contains("non lo dà per fatto", body);
@@ -115,7 +109,6 @@ public class ComplianceSummaryEmailTemplateTests
     [Fact]
     public void ComplianceSummary_NothingOfAGuestOrAProperty_CanBeInIt()
     {
-        // The summary has no field for a name, a document, a contact, a booking code or a property: what can be in the text is the month, counts and actions.
         var content = EmailTemplates.ComplianceSummary(
             EmailTemplates.DefaultCulture,
             Summary(3, Counts(proof: 1, held: 1, missing: 1), complete: false, Item(ComplianceCockpitAction.SendAlloggiati, ComplianceEvidenceClass.Missing)),

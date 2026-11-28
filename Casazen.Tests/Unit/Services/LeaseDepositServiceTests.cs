@@ -18,11 +18,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// LR-OPS-1c: the return of the security deposit on the real service and the real draft. The statement and the record give the same sums; the
-/// record writes one event with the sums and nothing else (no reason of a deduction, the deposit of the lease untouched); a day that has not come,
-/// a year without a rate, a lease without a deposit or one that is not ending are refused and write nothing. "Today" in Rome is 10 October 2026.
-/// </summary>
 public class LeaseDepositServiceTests : IDisposable
 {
     private readonly PropertyModeHarness _h = new();
@@ -42,7 +37,6 @@ public class LeaseDepositServiceTests : IDisposable
         return new LeaseOperationsService(db, catalog, new MigraDocPdfDocumentRenderer(), NullLogger<LeaseOperationsService>.Instance, _h.Clock);
     }
 
-    /// <summary>A registered lease that began on 1 November 2025 and ends on 31 October 2029, with a deposit and a notice (so it is ending).</summary>
     private async Task<LeaseContract> SeedAsync(decimal? deposit = 1950m, bool ending = true)
     {
         var property = await _h.SeedPropertyAsync(RentalMode.Long);
@@ -75,26 +69,25 @@ public class LeaseDepositServiceTests : IDisposable
         var service = NewService(db);
         var input = Input(null, new LeaseDepositDeduction("Pulizie straordinarie", 120m));
 
-        // 1,950.00 held from 1 November 2025 to 9 October 2026: 61 days of 2025 at 2 % (6.52) and 282 days of 2026 at 1.6 % (24.11).
         var statement = await service.CalculateDepositReturnAsync(lease.Id, input);
         var letter = BodyText((await service.BuildRestituzioneCauzioneAsync(lease.Id, input)).Pdf);
 
         Assert.Equal(30.63m, statement.Interest);
-        Assert.Equal(1860.63m, statement.Returned); // 1950.00 + 30.63 - 120.00
+        Assert.Equal(1860.63m, statement.Returned);
         Assert.Contains("2025: tasso 2% per 61 giorni su 365: euro 6,52", letter, StringComparison.Ordinal);
         Assert.Contains("2026: tasso 1,6% per 282 giorni su 365: euro 24,11", letter, StringComparison.Ordinal);
         Assert.Contains("Pulizie straordinarie: euro 120,00", letter, StringComparison.Ordinal);
         Assert.Contains("euro 1.860,63", letter, StringComparison.Ordinal);
-        Assert.Contains("BOZZA", letter, StringComparison.Ordinal); // a draft until the product owner approves the text
-        Assert.Empty(await db.LeaseEvents.ToListAsync()); // neither the statement nor the draft writes anything
+        Assert.Contains("BOZZA", letter, StringComparison.Ordinal);
+        Assert.Empty(await db.LeaseEvents.ToListAsync());
 
         await service.RecordDepositReturnAsync(lease.Id, input);
 
         var recorded = Assert.Single(await db.LeaseEvents.AsNoTracking().ToListAsync());
         Assert.Equal(LeaseEventType.DepositReturnRecorded, recorded.EventType);
-        Assert.Equal("2026-10-10:1950.00:30.63:120.00:1860.63", recorded.Payload); // the sums of the statement, and not the reason of the deduction
+        Assert.Equal("2026-10-10:1950.00:30.63:120.00:1860.63", recorded.Payload);
         Assert.DoesNotContain("Pulizie", recorded.Payload, StringComparison.Ordinal);
-        Assert.Equal(1950m, (await db.LeaseContracts.AsNoTracking().SingleAsync(l => l.Id == lease.Id)).SecurityDeposit); // the deposit does not change
+        Assert.Equal(1950m, (await db.LeaseContracts.AsNoTracking().SingleAsync(l => l.Id == lease.Id)).SecurityDeposit);
 
         var operations = await service.GetAsync(lease.Id);
         Assert.True(operations.Deposit.Available);
@@ -108,7 +101,6 @@ public class LeaseDepositServiceTests : IDisposable
         await using var db = _h.SecondContext();
         var service = NewService(db);
 
-        // Tomorrow can be worked out (the person prepares it before the day) but not recorded: what is recorded has already happened.
         var tomorrow = new DateOnly(2026, 10, 11);
         Assert.Equal(1950m, (await service.CalculateDepositReturnAsync(lease.Id, Input(tomorrow))).Deposit);
         Assert.Equal("lease_deposit_return_date_invalid", (await Assert.ThrowsAsync<DomainRuleException>(() => service.RecordDepositReturnAsync(lease.Id, Input(tomorrow)))).Code);
@@ -130,7 +122,6 @@ public class LeaseDepositServiceTests : IDisposable
         Assert.Empty(await db.LeaseEvents.ToListAsync());
     }
 
-    /// <summary>The words of the body of the PDF in reading order: the rotated watermark is not interleaved with the sentences it crosses.</summary>
     private static string BodyText(byte[] pdf) => string.Join(' ', PdfTestReader.BodyWords(pdf));
 
     private static string LettersDirectory()

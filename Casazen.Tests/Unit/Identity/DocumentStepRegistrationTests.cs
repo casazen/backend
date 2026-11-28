@@ -58,7 +58,6 @@ public sealed class DocumentStepRegistrationTests
         await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         await using var scope = provider.CreateAsyncScope();
 
-        // The decoder holds the reader of the zones, which is scoped (it reads the MRZ through the reader of the request): one for each request. The others keep no picture: one for all.
         Assert.Equal(ServiceLifetime.Scoped, Assert.Single(services, descriptor => descriptor.ServiceType == typeof(DocumentPictureAnalyzer)).Lifetime);
         Assert.Equal(ServiceLifetime.Scoped, Assert.Single(services, descriptor => descriptor.ServiceType == typeof(ZonedPrefillServices)).Lifetime);
         foreach (var singleton in new[] { typeof(DocumentSideClassifier), typeof(DocumentCoherenceChecker), typeof(DocumentFormatRegistry), typeof(IdentityPolicyProvider) })
@@ -92,7 +91,6 @@ public sealed class DocumentStepRegistrationTests
         services.AddSingleton(Mock.Of<IFeatureFlags>());
         services.AddSingleton(TimeProvider.System);
 
-        // E73/F01/US02/T01: the flow also takes the store of the evidence of the reviewer, which writes to the private bucket with Data Protection.
         services.AddSingleton(Mock.Of<IFileStorage>());
         services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
         var databaseName = $"document-step-registration-services-{Guid.NewGuid()}";

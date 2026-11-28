@@ -14,10 +14,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// CF-SIM: with the real service (<c>ConcordatoFacile:FormMode</c> not set, the default and the only mode of production) the endpoints of the
-/// simulated module answer 404 like a route that does not exist, so nothing of it can be reached; nothing is written either.
-/// </summary>
 public class CfSimulatorRealModeTests(CasazenWebApplicationFactory factory) : IClassFixture<CasazenWebApplicationFactory>
 {
     [Theory]
@@ -77,7 +73,6 @@ public class CfSimulatorEndpointsTests(CfSimulatorFactory factory) : IClassFixtu
 
         var second = await CreateAsync(client, Query(leaseId));
 
-        // Only the practices born with a good link are the contract's: the second is received, the first is closed as its duplicate.
         var listed = await ReadAsync(await client.GetAsync($"/api/cf-simulator/link?{Query(leaseId)}"));
         var practices = listed.GetProperty("practices").EnumerateArray().ToList();
         Assert.Equal(2, practices.Count);
@@ -97,7 +92,6 @@ public class CfSimulatorEndpointsTests(CfSimulatorFactory factory) : IClassFixtu
         var practiceId = created.GetProperty("practiceId").GetString()!;
         var token = created.GetProperty("controlToken").GetString()!;
 
-        // A wrong token changes nothing and does not say whether the practice exists.
         var refusedStatus = await PostStatusAsync(client, practiceId, "not-the-token", "Attested");
         var refusedDocument = await client.GetAsync($"/api/cf-simulator/practices/{practiceId}/documents/contract?controlToken=not-the-token");
         var noToken = await client.GetAsync($"/api/cf-simulator/practices/{practiceId}/documents/contract");
@@ -135,7 +129,6 @@ public class CfSimulatorEndpointsTests(CfSimulatorFactory factory) : IClassFixtu
         var statusClient = scope.ServiceProvider.GetRequiredService<IConcordatoFacileApiClient>();
         Assert.IsType<SimulatedConcordatoFacileApiClient>(statusClient);
 
-        // The list of a contract: its practices, with no lease on them (as the real list is); the municipality did not change.
         var listed = Assert.Single(await statusClient.GetPracticesByLeaseIdAsync(leaseId));
         Assert.Equal(practiceId, listed.PracticeId);
         Assert.Equal(CfPracticeStatus.AwaitingUser, listed.Status);
@@ -144,14 +137,12 @@ public class CfSimulatorEndpointsTests(CfSimulatorFactory factory) : IClassFixtu
         Assert.Null(listed.CloseReason);
         Assert.Null(listed.LeaseId);
 
-        // A practice by its number (in capitals too), with the lease; a number it does not know is null.
         var single = await statusClient.GetPracticeAsync("P-" + practiceId[2..].ToUpperInvariant());
         Assert.Equal(leaseId, single!.LeaseId);
         Assert.Null(await statusClient.GetPracticeAsync("P-0000000000000000"));
         Assert.Empty(await statusClient.GetPracticesByLeaseIdAsync(Guid.NewGuid()));
     }
 
-    /// <summary>A lease on a property of the test database: the simulated documents speak about the house of the lease.</summary>
     private async Task<Guid> SeedLeaseAsync()
     {
         var property = await factory.SeedPropertyAsync();
@@ -164,10 +155,6 @@ public class CfSimulatorEndpointsTests(CfSimulatorFactory factory) : IClassFixtu
         return lease.Id;
     }
 
-    /// <summary>
-    /// The parameters of the link as the specification v0.2 §2 describes them, signed here with the formula of the specification
-    /// (not with the code of the application): hex(HMAC-SHA256(secret, leaseId + "." + expiresAt)), expiry 15 minutes ahead.
-    /// </summary>
     private static string Query(Guid leaseId, bool tampered = false)
     {
         var expiresAt = DateTime.UtcNow.AddMinutes(15).ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);

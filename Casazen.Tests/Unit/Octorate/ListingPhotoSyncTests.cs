@@ -43,8 +43,6 @@ public class ListingPhotoSyncTests
     [Fact]
     public async Task SendAsync_ADoneEntryWithoutAName_StaysDone_IsNeverSentAgain_AndTheHostIsToldAboutIt()
     {
-        // The photo is on the channel manager but CasaZen cannot name it. Marking it as an error would send it again at the next publication (a second
-        // copy on the channels); so it stays done, and the host is told once for the property that removing one of these photos here will not remove it there.
         var property = await SeedPropertyAsync(photoCount: 2);
         _client
             .Setup(c => c.UploadPhotoAsync(Accommodation, It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -79,8 +77,6 @@ public class ListingPhotoSyncTests
     [Fact]
     public async Task SendAsync_APhotoToRemoveThatHasNoNameToBeDeletedWith_IsNeverMarkedRemoved_AndTheHostGetsAnItem()
     {
-        // NF-32: «removed» means removed. The queue says DONE and gives no name, so there is nothing to delete the photo with: the task says it could
-        // not be removed (and is not tried again), the host gets one item for that photo, and no DELETE is made at a guess.
         var property = await SeedPropertyAsync(photoCount: 0);
         var task = await SeedTaskAsync(property, "a.jpg", PhotoUploadStatus.RemovePending, queueId: "q-9");
         _client
@@ -145,7 +141,6 @@ public class ListingPhotoSyncTests
     [InlineData("q-3")]
     public async Task SendAsync_APhotoTheChannelManagerNeverTook_IsRemovedWithNoCallAndNoItem(string? queueId)
     {
-        // Never sent, or its queue entry ended in error: there is nothing on the channel manager to delete.
         var property = await SeedPropertyAsync(photoCount: 0);
         var task = await SeedTaskAsync(property, "a.jpg", PhotoUploadStatus.RemovePending, queueId: queueId);
         if (queueId is not null)
@@ -176,7 +171,6 @@ public class ListingPhotoSyncTests
     private AppDbContext NewDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options, NullTenantContext.Instance);
 
-    /// <summary>A property with <paramref name="photoCount"/> photos in the folder of its own photos of the public bucket.</summary>
     private async Task<Property> SeedPropertyAsync(int photoCount)
     {
         await using var db = NewDb();

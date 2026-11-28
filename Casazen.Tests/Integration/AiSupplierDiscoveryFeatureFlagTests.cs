@@ -4,7 +4,6 @@ using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
-using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,10 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// FD-21 / D11 (A8-01, A8-16 AI part): AI supplier discovery is behind <c>Features:AiSupplierDiscovery</c>, off by
-/// default. <c>match-supplier</c> answers 404 like a missing route and nothing reaches the AI provider or the web search.
-/// </summary>
 public class AiSupplierDiscoveryFeatureFlagTests(AiProviderMockFactory factory) : IClassFixture<AiProviderMockFactory>
 {
     [Fact]
@@ -77,10 +72,6 @@ public class AiSupplierDiscoveryFeatureFlagTests(AiProviderMockFactory factory) 
     }
 }
 
-/// <summary>
-/// FD-21 with <c>Features:AiSupplierDiscovery</c> on: the AI match exists again, with the guards of A8-01 / A8-15
-/// (category allowlist, per-user rate limit, no host notes in the prompt, budget error surfaced as 422).
-/// </summary>
 public class AiSupplierDiscoveryFlagOnTests(AiSupplierDiscoveryEnabledFactory factory)
     : IClassFixture<AiSupplierDiscoveryEnabledFactory>
 {

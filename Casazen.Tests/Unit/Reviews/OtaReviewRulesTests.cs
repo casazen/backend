@@ -11,16 +11,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Reviews;
 
-/// <summary>
-/// The pure rules of the reviews of the channels (E05/F06/US01/T02): what each channel allows (Airbnb only, S6), when a booking is read again, how the request of a host's review is
-/// checked before anything leaves, and what the requests to the channel manager carry.
-/// </summary>
 public class OtaReviewRulesTests
 {
     private static readonly DateTime Now = new(2026, 11, 20, 8, 0, 0, DateTimeKind.Utc);
     private static readonly DateTime CheckOut = new(2026, 11, 17, 0, 0, 0, DateTimeKind.Utc);
-
-    // ─── What each channel allows ───
 
     [Fact]
     public void Capabilities_Airbnb_ReadsRepliesAndWritesTheHostReview()
@@ -50,7 +44,6 @@ public class OtaReviewRulesTests
     [Fact]
     public void Capabilities_EveryChannelOfTheTable_HasARow_AndOnlyAirbnbIsOpen()
     {
-        // The list of the channels is the one of the enum: a channel added there is closed here until somebody decides it, never open by default.
         Assert.Equal(Enum.GetValues<OtaChannel>().OrderBy(c => (int)c), OtaReviewCapabilities.Channels.OrderBy(c => (int)c));
         Assert.Equal([OtaChannel.Airbnb], OtaReviewCapabilities.Channels.Where(c => OtaReviewCapabilities.For(c).CanRead));
     }
@@ -74,8 +67,6 @@ public class OtaReviewRulesTests
         }
     }
 
-    // ─── When a booking is read again ───
-
     [Fact]
     public void PollSchedule_TheFirstFortnight_IsEverySixHours_ThenOnceADayUntilDaySixty()
     {
@@ -91,14 +82,11 @@ public class OtaReviewRulesTests
     [Fact]
     public void PollSchedule_NothingLeftToWaitFor_LeavesTheSchedule_ButAnUnconfirmedActionNever()
     {
-        // The guest's review is out and the host's own is sent or closed: done.
         Assert.Null(OtaReviewPollSchedule.NextPollAt(Now, CheckOut, true, HostReviewWindow.Sent, OtaReviewActionState.Sent, OtaReviewActionState.Sent));
         Assert.Null(OtaReviewPollSchedule.NextPollAt(Now, CheckOut, true, HostReviewWindow.Closed, OtaReviewActionState.None, OtaReviewActionState.None));
 
-        // The guest's review is not out yet: the booking is waited for, even when the host's window is closed.
         Assert.NotNull(OtaReviewPollSchedule.NextPollAt(Now, CheckOut, false, HostReviewWindow.Closed, OtaReviewActionState.None, OtaReviewActionState.None));
 
-        // An action nobody confirmed is read at the next run, whatever else is true (even after the window).
         var after = CheckOut.AddDays(OtaReviewPollSchedule.WindowDays + 5);
         Assert.Equal(after, OtaReviewPollSchedule.NextPollAt(after, CheckOut, true, HostReviewWindow.Sent, OtaReviewActionState.ManualVerify, OtaReviewActionState.Sent));
         Assert.Equal(after, OtaReviewPollSchedule.NextPollAt(after, CheckOut, true, HostReviewWindow.Sent, OtaReviewActionState.Sent, OtaReviewActionState.ManualVerify));
@@ -119,12 +107,10 @@ public class OtaReviewRulesTests
     {
         var after = CheckOut.AddDays(OtaReviewPollSchedule.WindowDays + 5);
 
-        // The window is over and nothing waits: the booking leaves the schedule. An action nobody confirmed stays in it, with the pace of the failure.
         Assert.Null(OtaReviewPollSchedule.NextPollAfterFailure(after, CheckOut, "octorate_unavailable"));
         Assert.Equal(after.AddHours(6), OtaReviewPollSchedule.NextPollAfterFailure(after, CheckOut, "octorate_unavailable", unconfirmedAction: true));
         Assert.Equal(after.AddHours(24), OtaReviewPollSchedule.NextPollAfterFailure(after, CheckOut, OtaReviewErrorCodes.ReviewNotAvailable, unconfirmedAction: true));
 
-        // Inside the window the flag changes nothing.
         Assert.Equal(Now.AddHours(6), OtaReviewPollSchedule.NextPollAfterFailure(Now, CheckOut, "octorate_unavailable", unconfirmedAction: true));
     }
 
@@ -138,8 +124,6 @@ public class OtaReviewRulesTests
         Assert.Equal(TimeSpan.FromMinutes(10), OtaReviewPollSchedule.RefreshInterval);
         Assert.Equal(TimeSpan.FromHours(1), OtaReviewPollSchedule.UnconfirmedActionWindow);
     }
-
-    // ─── The host's review, checked before anything leaves ───
 
     private static OtaHostReviewCommand Command(string? text = "Ospiti ordinati e puntuali.", params (string Category, decimal Value)[] ratings) =>
         new(ratings.Select(r => new ReviewCategoryRating(r.Category, r.Value)).ToList(), text, null);
@@ -195,8 +179,6 @@ public class OtaReviewRulesTests
         Assert.Equal(OtaReviewErrorCodes.HostReviewInvalid, error.Code);
     }
 
-    // ─── What the requests carry ───
-
     [Fact]
     public void Requests_TheAddressOfTheReviewsOfABooking_EscapesWhatItIsMadeOf()
     {
@@ -240,8 +222,6 @@ public class OtaReviewRulesTests
         Assert.Throws<ArgumentException>(
             () => OctorateReviewRequests.HostReviewBody(new OctorateHostReviewCommand([new OctorateReviewRating("cleanliness", 6m)], "Testo", null)));
     }
-
-    // ─── Small rules ───
 
     [Fact]
     public void Options_AWrongCap_NeverStopsTheJobOrLetsItReadWithoutALimit()

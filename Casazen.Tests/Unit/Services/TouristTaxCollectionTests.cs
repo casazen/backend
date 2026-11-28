@@ -32,10 +32,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The tourist tax paid online in the guest check-in, never twice (E25/F01/US01/T01, NF-119, decision O12): the proofs of its money and permission rules,
-/// on the pure rules and on the real collection service with the in-memory database, a fake payment provider and the calculation of the stay given.
-/// </summary>
 public class TouristTaxCollectionTests
 {
     private const string Account = "acct_test_tourist_tax";
@@ -45,12 +41,9 @@ public class TouristTaxCollectionTests
     private static readonly FixedTimeProvider Clock = new(DateTimeOffset.Parse("2026-11-06T09:00:00Z", CultureInfo.InvariantCulture));
     private static readonly DateTime CheckIn = new(2026, 12, 10, 0, 0, 0, DateTimeKind.Utc);
 
-    // ─── What is due (pure, to the cent) ───────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public void TouristTaxDue_ChannelCollects_Zero_Test()
     {
-        // The channel collects the tax and pays the comune: nothing to collect and nothing to pay online, whatever the stay owes.
         var due = TouristTaxCollectionRules.Evaluate(Facts(TouristTaxCollector.Channel, amountDue: 18.00m));
 
         Assert.Equal(TouristTaxCollectionStatus.CollectedByChannel, due.Status);
@@ -59,12 +52,10 @@ public class TouristTaxCollectionTests
         Assert.Equal(0m, due.OnlinePayable);
         Assert.Equal(0m, due.RefundDue);
 
-        // A channel stay nobody knows the collector of is never charged either (the channel may have charged it already).
         var unknown = TouristTaxCollectionRules.Evaluate(Facts(null, amountDue: 18.00m));
         Assert.Equal(TouristTaxNotPayableReason.CollectorUnknown, unknown.Reason);
         Assert.Equal(0m, unknown.OnlinePayable);
 
-        // A tax that cannot be calculated is never taken as zero, nor charged: the host tells the amount.
         var notComputable = TouristTaxCollectionRules.Evaluate(Facts(TouristTaxCollector.Host, amountDue: null));
         Assert.Equal(TouristTaxNotPayableReason.NotComputable, notComputable.Reason);
         Assert.Equal(TouristTaxCollectionStatus.ToCollect, notComputable.Status);
@@ -74,26 +65,22 @@ public class TouristTaxCollectionTests
     [Fact]
     public void TouristTaxDue_DirectIncluded_OnlyDifference_Test()
     {
-        // €12.00 included in the price the guest paid with the booking, €15.00 confirmed: only €3.00 is payable.
         var higher = TouristTaxCollectionRules.Evaluate(Facts(TouristTaxCollector.Host, amountDue: 15.00m, confirmed: 15.00m, included: 12.00m));
         Assert.Equal(TouristTaxCollectionStatus.ToCollect, higher.Status);
         Assert.Equal(3.00m, higher.ToCollect);
         Assert.Equal(3.00m, higher.OnlinePayable);
         Assert.Equal(0m, higher.RefundDue);
 
-        // Before the host confirms the tax of the stay nothing more is asked of a guest who paid it with the booking.
         var waiting = TouristTaxCollectionRules.Evaluate(Facts(TouristTaxCollector.Host, amountDue: 15.00m, confirmed: null, included: 12.00m));
         Assert.Equal(TouristTaxCollectionStatus.IncludedInBookingPayment, waiting.Status);
         Assert.Equal(TouristTaxNotPayableReason.AwaitingConfirmation, waiting.Reason);
         Assert.Equal(0m, waiting.OnlinePayable);
 
-        // A lower confirmed amount is a difference to give back (the host's «To do»), never a refund made by itself and never a charge.
         var lower = TouristTaxCollectionRules.Evaluate(Facts(TouristTaxCollector.Host, amountDue: 9.00m, confirmed: 9.00m, included: 12.00m));
         Assert.Equal(TouristTaxCollectionStatus.IncludedInBookingPayment, lower.Status);
         Assert.Equal(0m, lower.OnlinePayable);
         Assert.Equal(3.00m, lower.RefundDue);
 
-        // The same amount: nothing to pay, nothing to give back.
         var same = TouristTaxCollectionRules.Evaluate(Facts(TouristTaxCollector.Host, amountDue: 12.00m, confirmed: 12.00m, included: 12.00m));
         Assert.Equal((0m, 0m), (same.OnlinePayable, same.RefundDue));
     }
@@ -101,7 +88,6 @@ public class TouristTaxCollectionTests
     [Fact]
     public void TouristTaxDue_PaidOnlineOnce_TheRestAtTheProperty_AndAStayWithNoNightGivesItBack()
     {
-        // What is due less what was paid online; once paid, more owed is collected at the property (one online payment per stay).
         var paid = TouristTaxCollectionRules.Evaluate(Facts(TouristTaxCollector.Host, amountDue: 15.00m, collected: 15.00m));
         Assert.Equal(TouristTaxCollectionStatus.PaidOnline, paid.Status);
         Assert.Equal(0m, paid.ToCollect);
@@ -114,7 +100,6 @@ public class TouristTaxCollectionTests
         var less = TouristTaxCollectionRules.Evaluate(Facts(TouristTaxCollector.Host, amountDue: 12.00m, collected: 15.00m));
         Assert.Equal(3.00m, less.RefundDue);
 
-        // A no-show or a stay cancelled before any night owes nothing: what was paid online goes back in full.
         var ended = TouristTaxCollectionRules.Evaluate(Facts(TouristTaxCollector.Host, amountDue: 15.00m, collected: 15.00m) with
         {
             StayActive = false,
@@ -147,8 +132,6 @@ public class TouristTaxCollectionTests
         Assert.False(TouristTaxCollectionRules.EndedBeforeAnyNight(active, null));
     }
 
-    // ─── The webhook: the amount of the intent, once ───────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task TouristTaxWebhook_AmountFromIntentOnce_Test()
     {
@@ -157,17 +140,14 @@ public class TouristTaxCollectionTests
         var record = await SeedRecordAsync(db, world.Booking, intentId: "pi_tax_once");
         var rig = Rig(db, (world.Booking.Id, Calculated(world.Booking.Id, 12.00m)));
 
-        // An intent with the stay's markers on another account is not its payment: nothing is recorded.
         var foreign = await rig.Service.ApplyPaymentSucceededAsync(IntentEvent("pi_tax_once", "acct_someone_else", world.Booking.Id, record.Id, 1500));
         Assert.Null(foreign);
         Assert.Equal(0m, (await ReloadAsync(db, record.Id)).CollectedAmount);
 
-        // The amount and the currency are the intent's (15.00 received), never the stay's own figure (12.00) nor a client's.
         var paidAt = new DateTime(2026, 11, 7, 10, 30, 0, DateTimeKind.Utc);
         var notice = await rig.Service.ApplyPaymentSucceededAsync(IntentEvent("pi_tax_once", Account, world.Booking.Id, record.Id, 1500, paidAt));
         Assert.NotNull(notice);
 
-        // The same payment delivered again (or by the other endpoint) records nothing more.
         var again = await rig.Service.ApplyPaymentSucceededAsync(IntentEvent("pi_tax_once", Account, world.Booking.Id, record.Id, 1500, paidAt.AddMinutes(5)));
         Assert.Null(again);
 
@@ -177,14 +157,12 @@ public class TouristTaxCollectionTests
         Assert.Equal("EUR", stored.Currency);
         Assert.Equal(paidAt, stored.CollectedAt);
 
-        // The hosts of the booking hear of it once the event is committed: the bell, the pop-up and the open pages, through the push.
         await rig.Service.CompletePaidAsync(notice);
         var push = Assert.Single(rig.Pushes.Queued);
         Assert.Equal(PushTypes.TouristTaxPaid, push.Payload.Type);
         Assert.Equal(PushAudience.BookingHosts(world.Booking.Id), push.Audience);
         Assert.Equal(PushDeliveryKeys.TouristTaxPaid(record.Id, "pi_tax_once"), push.DeliveryKey);
 
-        // 15.00 paid for 12.00 due: the difference is owed back, as a «To do» of the host, once.
         await rig.Service.ReconcileAsync(world.Booking.Id);
         var todo = Assert.Single(await db.InternalActivities.Where(a => a.EntityId == world.Booking.Id).ToListAsync());
         Assert.Equal(nameof(ActivityType.TouristTaxRefundDue), todo.ActivityType);
@@ -217,7 +195,6 @@ public class TouristTaxCollectionTests
                 Status = "requires_payment_method",
             });
 
-        // The guest asks to pay: one intent on the organization's connected account, the publishable key of the platform and the account.
         var session = await rig.Service.CreatePaymentIntentAsync(world.Token);
         Assert.NotNull(session);
         Assert.Equal((15.00m, "EUR", Account, PublishableKey), (session.Amount, session.Currency, session.StripeAccountId, session.PublishableKey));
@@ -230,7 +207,6 @@ public class TouristTaxCollectionTests
         Assert.Equal($"tourist-tax:{record.Id:N}:1500:first", idempotencyKey);
         Assert.Null(record.ConfirmedAt);
 
-        // Stripe tells the Connect endpoint the guest paid: the webhook records it on the stay's tourist tax.
         var handler = WebhookHandler(db, rig.Service);
         await handler.HandleEventAsync(SucceededEvent("evt_tax_flow", "pi_tax_flow", metadata, 1500), WebhookSource.Connected);
 
@@ -238,11 +214,9 @@ public class TouristTaxCollectionTests
         Assert.Equal(TouristTaxCollectionStatus.PaidOnline, paid.CollectionStatus);
         Assert.Equal(15.00m, paid.CollectedAmount);
 
-        // No Payment row, ever: the owner ledger, the balance of the booking and the revenue do not change.
         Assert.Empty(await db.Payments.AsNoTracking().ToListAsync());
         Assert.Equal(PushTypes.TouristTaxPaid, Assert.Single(rig.Pushes.Queued).Payload.Type);
 
-        // Paid: nothing more can be paid online, so no second intent is created.
         var refused = await Assert.ThrowsAsync<DomainConflictException>(() => rig.Service.CreatePaymentIntentAsync(world.Token));
         Assert.Equal(TouristTaxCharges.NothingToPayCode, refused.Code);
         rig.Stripe.Verify(
@@ -251,8 +225,6 @@ public class TouristTaxCollectionTests
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
-
-    // ─── The link of the guest reaches its own stay only ───────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task TouristTaxPublic_OtherBookingToken404_Test()
@@ -269,11 +241,9 @@ public class TouristTaxCollectionTests
             (expired.Booking.Id, Calculated(expired.Booking.Id, 6.00m)),
             (cancelled.Booking.Id, Calculated(cancelled.Booking.Id, 3.00m)));
 
-        // Each link reads its own stay's figures, never another's.
         Assert.Equal(15.00m, (await rig.Service.GetForGuestAsync(first.Token))!.Payable);
         Assert.Equal(9.00m, (await rig.Service.GetForGuestAsync(other.Token))!.Payable);
 
-        // An unknown link, an expired one and the link of a cancelled stay reach nothing: 404, and no intent is ever asked for.
         Assert.Null(await rig.Service.GetForGuestAsync("not-a-link-of-any-stay"));
         Assert.Null(await rig.Service.GetForGuestAsync(expired.Token));
         Assert.Null(await rig.Service.GetForGuestAsync(cancelled.Token));
@@ -301,8 +271,6 @@ public class TouristTaxCollectionTests
         await Assert.ThrowsAsync<DomainConflictException>(() => rig.Service.CreatePaymentIntentAsync(world.Token));
     }
 
-    // ─── What the price included: only what CasaZen collected with it ────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task TouristTaxDue_IncludedInThePrice_OnlyForADirectBookingThatCasaZenWasPaidFor_Test()
     {
@@ -316,12 +284,9 @@ public class TouristTaxCollectionTests
         var manual = await SeedAsync(db, source: BookingSource.Manual, touristTaxAmount: 12.00m, payment: PaymentStatus.Completed);
         var cases = new (StayWorld World, decimal Payable, decimal Included)[]
         {
-            // The price of a direct booking that went through CasaZen included 12.00: only the part of the confirmed 15.00 above it is payable.
             (paid, 3.00m, 12.00m),
             (partlyRefunded, 3.00m, 12.00m),
 
-            // Not collected by CasaZen: the charge of the deadline not taken yet, a payment given back, a booking paid at the property, the quote of a host's
-            // manual booking. The amount written on the booking is no tax paid: the whole 15.00 is payable and nothing is owed back.
             (deferred, 15.00m, 0m),
             (refunded, 15.00m, 0m),
             (atTheProperty, 15.00m, 0m),
@@ -361,7 +326,6 @@ public class TouristTaxCollectionTests
             (unknown.Booking.Id, Calculated(unknown.Booking.Id, 7.50m, 7.50m)),
             (declared.Booking.Id, Calculated(declared.Booking.Id, 7.50m, 7.50m)));
 
-        // The channel collects it (the active rule of the channel in the comune): nothing to pay whatever the stay owes, and no intent is ever asked for.
         var viaChannel = (await rig.Service.GetForGuestAsync(ruled.Token))!;
         Assert.Equal(
             (TouristTaxCollectionStatus.CollectedByChannel, TouristTaxNotPayableReason.ChannelCollects, 0m),
@@ -369,18 +333,14 @@ public class TouristTaxCollectionTests
         var refused = await Assert.ThrowsAsync<DomainConflictException>(() => rig.Service.CreatePaymentIntentAsync(ruled.Token));
         Assert.Equal(TouristTaxCharges.NothingToPayCode, refused.Code);
 
-        // Nobody knows who collected it (no rule, no declaration): never charged, the channel may have charged it already.
         var notKnown = (await rig.Service.GetForGuestAsync(unknown.Token))!;
         Assert.Equal((TouristTaxNotPayableReason.CollectorUnknown, 0m), (notKnown.Reason, notKnown.Payable));
         await Assert.ThrowsAsync<DomainConflictException>(() => rig.Service.CreatePaymentIntentAsync(unknown.Token));
 
-        // The host declared that it collects: the whole tax is payable, and the figure the channel reported (8.00) is not «already paid with the booking».
         var hostCollects = (await rig.Service.GetForGuestAsync(declared.Token))!;
         Assert.Equal((TouristTaxCollectionStatus.ToCollect, 15.00m), (hostCollects.Status, hostCollects.Payable));
         Assert.Equal(0m, (await rig.Service.GetForHostAsync(declared.Booking.Id, null)).IncludedInBooking);
     }
-
-    // ─── The tax confirmed lower than what was collected: the «To do» at the change, not at a later event ──────────────────────────
 
     [Fact]
     public async Task TouristTaxConfirmation_LowerThanWhatThePriceIncluded_RaisesTheRefundTodoRightAway_Test()
@@ -390,7 +350,6 @@ public class TouristTaxCollectionTests
         await SeedStayRecordAsync(db, world.Booking, confirmedAmount: 9.00m);
         var rig = Rig(db, (world.Booking.Id, Calculated(world.Booking.Id, 4.50m, 4.50m)));
 
-        // The host confirmed 9.00 for a price that included 12.00: the confirmation records no event, so the change itself evaluates the collection.
         await rig.Service.ReconcileAfterChangeAsync(world.Booking.Id);
 
         var todo = Assert.Single(await db.InternalActivities.AsNoTracking().Where(a => a.EntityId == world.Booking.Id).ToListAsync());
@@ -399,7 +358,6 @@ public class TouristTaxCollectionTests
         Assert.Equal(TouristTaxCollectionService.RefundDifferenceReason, todo.Reason);
         Assert.Equal(3.00m, (await rig.Service.GetForHostAsync(world.Booking.Id, null)).RefundDue);
 
-        // Never a charge, and once per booking: the same change again raises nothing new.
         Assert.Equal(0m, (await rig.Service.GetForGuestAsync(world.Token))!.Payable);
         await rig.Service.ReconcileAfterChangeAsync(world.Booking.Id);
         Assert.Single(await db.InternalActivities.AsNoTracking().ToListAsync());
@@ -413,7 +371,6 @@ public class TouristTaxCollectionTests
         await SeedStayRecordAsync(db, world.Booking, confirmedAmount: 9.00m);
         var rig = Rig(db, (world.Booking.Id, Calculated(world.Booking.Id, 4.50m, 4.50m)));
 
-        // Nothing was collected with the price: a confirmed amount below the quote owes nothing back.
         await rig.Service.ReconcileAfterChangeAsync(world.Booking.Id);
 
         Assert.Empty(await db.InternalActivities.AsNoTracking().ToListAsync());
@@ -433,8 +390,6 @@ public class TouristTaxCollectionTests
         Assert.Empty(await db.InternalActivities.AsNoTracking().ToListAsync());
     }
 
-    // ─── A stay that ends: the refund, never a Payment row ─────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task TouristTaxCancellation_BeforeAnyNight_RefundsTheOnlineTaxOnTheConnectedAccount()
     {
@@ -449,7 +404,6 @@ public class TouristTaxCollectionTests
             .ReturnsAsync(new Refund { Id = "re_tax", Status = "succeeded" });
 
         await rig.Service.ApplyStayEndedAsync(world.Booking.Id, CheckIn.AddDays(-5));
-        // Delivered again: nothing is held any more, nothing is refunded twice.
         await rig.Service.ApplyStayEndedAsync(world.Booking.Id, CheckIn.AddDays(-5));
 
         Assert.NotNull(asked);
@@ -486,21 +440,18 @@ public class TouristTaxCollectionTests
             .Setup(s => s.CreateRefundAsync(It.Is<StripeRefundCreateRequest>(r => r.PaymentIntentId == "pi_tax_late_down"), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new StripeException("Connection reset"));
 
-        // The payment lands after the stay was cancelled before any night, and the event of its end is gone: recorded, then refunded in full at once.
         var late = await rig.Service.ApplyPaymentSucceededAsync(IntentEvent("pi_tax_late", Account, ended.Booking.Id, endedRecord.Id, 1500));
         await rig.Service.CompletePaidAsync(late!);
         var stored = await ReloadAsync(db, endedRecord.Id);
         Assert.Equal((15.00m, 15.00m, TouristTaxCollectionStatus.NotDue), (stored.CollectedAmount, stored.RefundedAmount, stored.CollectionStatus));
         Assert.Empty(await db.Payments.AsNoTracking().ToListAsync());
 
-        // The refund cannot be made now and no event will deliver it again: nothing is thrown, the host is asked to give the money back.
         var lateDown = await rig.Service.ApplyPaymentSucceededAsync(IntentEvent("pi_tax_late_down", Account, down.Booking.Id, downRecord.Id, 1500));
         await rig.Service.CompletePaidAsync(lateDown!);
         Assert.Equal(15.00m, (await ReloadAsync(db, downRecord.Id)).CollectedAmount);
         var todo = Assert.Single(await db.InternalActivities.AsNoTracking().Where(a => a.EntityId == down.Booking.Id).ToListAsync());
         Assert.Equal(TouristTaxCollectionService.RefundFailedReason, todo.Reason);
 
-        // A stay still active keeps what was paid: no refund.
         var onTime = await rig.Service.ApplyPaymentSucceededAsync(IntentEvent("pi_tax_on_time", Account, active.Booking.Id, activeRecord.Id, 1500));
         await rig.Service.CompletePaidAsync(onTime!);
         rig.Stripe.Verify(
@@ -535,13 +486,10 @@ public class TouristTaxCollectionTests
             .Setup(s => s.GetPaymentIntentAsync("pi_tax_moving", Account, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PaymentIntent { Id = "pi_tax_moving", Status = "succeeded", Amount = 1500 });
 
-        // The success is not recorded yet (events are not in order): the event is delivered again, never consumed with no effect.
         await Assert.ThrowsAsync<TouristTaxCollectionPendingException>(() => rig.Service.ApplyStayEndedAsync(world.Booking.Id, CheckIn.AddDays(-5)));
         rig.Stripe.Verify(
             s => s.CancelPaymentIntentAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
-
-    // ─── «Pagata in struttura»: never twice ────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task TouristTaxPaidAtProperty_CancelsTheOpenIntent_SoTheGuestCannotPayTwice()
@@ -565,8 +513,6 @@ public class TouristTaxCollectionTests
         var refused = await Assert.ThrowsAsync<DomainConflictException>(() => rig.Service.CreatePaymentIntentAsync(world.Token));
         Assert.Equal(TouristTaxCharges.NothingToPayCode, refused.Code);
     }
-
-    // ─── The lock code: held back only while the guest owes a tax it can pay online ──────────────────────────────────────────────────
 
     [Fact]
     public async Task TouristTaxAccessCode_HeldBackOnlyWhileTheGuestOwesATaxItCanPayOnline_Test()
@@ -600,26 +546,19 @@ public class TouristTaxCollectionTests
             (viaChannel.Booking.Id, Calculated(viaChannel.Booking.Id, 7.50m, 7.50m)),
             (accountNotReady.Booking.Id, Calculated(accountNotReady.Booking.Id, 7.50m, 7.50m)));
 
-        // The tax is due, unpaid, and the guest can pay it online now: the code is held back.
         Assert.True(await rig.Service.IsAccessCodeHeldBackAsync(due.Booking.Id));
 
-        // Every other case lets the code go: the organization does not ask for it, it is paid online, it is recorded as paid at the property, every guest is
-        // exempt (nothing is due), the channel collects it, nobody can calculate it, the account of the organization cannot take the payment.
         foreach (var world in new[] { notAsked, paidOnline, paidAtTheProperty, exempt, viaChannel, notComputable, accountNotReady })
             Assert.False(await rig.Service.IsAccessCodeHeldBackAsync(world.Booking.Id));
 
-        // A guest who has no way to pay is never kept out: no platform key, or the flag off.
         var withoutKey = RigWith(db, new RigOptions(PublishableKeyIsSet: false), (due.Booking.Id, Calculated(due.Booking.Id, 7.50m, 7.50m)));
         Assert.False(await withoutKey.Service.IsAccessCodeHeldBackAsync(due.Booking.Id));
         var flagOff = RigWith(db, new RigOptions(FlagOn: false), (due.Booking.Id, Calculated(due.Booking.Id, 7.50m, 7.50m)));
         Assert.False(await flagOff.Service.IsAccessCodeHeldBackAsync(due.Booking.Id));
 
-        // Recorded as paid at the property by the host: the code is released at the next ask.
         await rig.Service.RecordPaidAtPropertyAsync(due.Booking.Id, "auth0|host");
         Assert.False(await rig.Service.IsAccessCodeHeldBackAsync(due.Booking.Id));
     }
-
-    // ─── The refunds: what the charge says, what the provider refuses ──────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task TouristTaxChargeRefunded_FollowsTheCharge_NeverMoreThanWasPaid_AndWaitsForAPaymentNotRecordedYet_Test()
@@ -629,25 +568,20 @@ public class TouristTaxCollectionTests
         var record = await SeedRecordAsync(db, world.Booking, intentId: "pi_tax_refunded", collected: 15.00m);
         var rig = Rig(db, (world.Booking.Id, Calculated(world.Booking.Id, 7.50m, 7.50m)));
 
-        // The refunded amount of the stay is what the charge says in all (5.00 so far).
         Assert.True(await rig.Service.ApplyChargeRefundedAsync(new TouristTaxChargeRefund("pi_tax_refunded", Account, 500)));
         Assert.Equal(5.00m, (await ReloadAsync(db, record.Id)).RefundedAmount);
 
-        // The same event again changes nothing, and an older total never takes back what a later one recorded.
         await rig.Service.ApplyChargeRefundedAsync(new TouristTaxChargeRefund("pi_tax_refunded", Account, 500));
         await rig.Service.ApplyChargeRefundedAsync(new TouristTaxChargeRefund("pi_tax_refunded", Account, 300));
         Assert.Equal(5.00m, (await ReloadAsync(db, record.Id)).RefundedAmount);
 
-        // Never more than what was paid: a total above it is capped (the check constraint of the column would refuse it).
         await rig.Service.ApplyChargeRefundedAsync(new TouristTaxChargeRefund("pi_tax_refunded", Account, 2000));
         Assert.Equal(15.00m, (await ReloadAsync(db, record.Id)).RefundedAmount);
 
-        // The event of another account that carries the intent of the stay is not its refund.
         var other = await SeedRecordAsync(db, (await SeedAsync(db)).Booking, intentId: "pi_tax_other_account", collected: 15.00m);
         Assert.True(await rig.Service.ApplyChargeRefundedAsync(new TouristTaxChargeRefund("pi_tax_other_account", "acct_someone_else", 1500)));
         Assert.Equal(0m, (await ReloadAsync(db, other.Id)).RefundedAmount);
 
-        // A charge that is not a tourist tax's is left to its own handler (false), and a refund of a payment not recorded yet is delivered again.
         Assert.False(await rig.Service.ApplyChargeRefundedAsync(new TouristTaxChargeRefund("pi_of_a_booking", Account, 1500)));
         Assert.False(await rig.Service.ApplyChargeRefundedAsync(new TouristTaxChargeRefund(string.Empty, Account, 1500)));
         await SeedRecordAsync(db, (await SeedAsync(db)).Booking, intentId: "pi_tax_not_recorded");
@@ -668,14 +602,12 @@ public class TouristTaxCollectionTests
             .ReturnsAsync(Array.Empty<Guid>());
         var handler = WebhookHandler(db, rig.Service, refunds.Object);
 
-        // The refund of a tax paid online: the stay follows the charge, never a Payment row, and the refunds of the bookings are not asked.
         await handler.HandleEventAsync(RefundedEvent("evt_tax_refund", "pi_tax_webhook_refund", 600), WebhookSource.Connected);
 
         Assert.Equal(6.00m, (await ReloadAsync(db, record.Id)).RefundedAmount);
         Assert.Empty(await db.Payments.AsNoTracking().ToListAsync());
         refunds.Verify(r => r.SyncPaymentIntentRefundsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // The refund of a charge that is not a tax's still reaches the refunds of the bookings, as it did before.
         await handler.HandleEventAsync(RefundedEvent("evt_booking_refund", "pi_of_a_booking", 1000), WebhookSource.Connected);
         refunds.Verify(r => r.SyncPaymentIntentRefundsAsync("pi_of_a_booking", Account, It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -699,7 +631,6 @@ public class TouristTaxCollectionTests
             .Setup(s => s.CreateRefundAsync(It.Is<StripeRefundCreateRequest>(r => r.PaymentIntentId == "pi_tax_transient"), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new StripeException("Connection reset"));
 
-        // A refusal that will not pass: the event is consumed, the host is asked to give the money back, and nothing says it was refunded.
         await rig.Service.ApplyStayEndedAsync(refused.Booking.Id, CheckIn.AddDays(-5));
         var todo = Assert.Single(await db.InternalActivities.AsNoTracking().Where(a => a.EntityId == refused.Booking.Id).ToListAsync());
         Assert.Equal(TouristTaxCollectionService.RefundFailedReason, todo.Reason);
@@ -707,7 +638,6 @@ public class TouristTaxCollectionTests
         Assert.Equal((0m, TouristTaxCollectionStatus.NotDue), (stored.RefundedAmount, stored.CollectionStatus));
         Assert.Equal(15.00m, (await rig.Service.GetForHostAsync(refused.Booking.Id, null)).RefundDue);
 
-        // A failure that may pass (no answer): thrown again, so the outbox delivers the event again; nothing is recorded and nobody is asked yet.
         await Assert.ThrowsAsync<StripeException>(() => rig.Service.ApplyStayEndedAsync(transient.Booking.Id, CheckIn.AddDays(-5)));
         Assert.Equal(0m, (await ReloadAsync(db, transientRecord.Id)).RefundedAmount);
         Assert.Empty(await db.InternalActivities.AsNoTracking().Where(a => a.EntityId == transient.Booking.Id).ToListAsync());
@@ -719,7 +649,6 @@ public class TouristTaxCollectionTests
         await using var db = NewDb();
         var rig = RigWith(db, new RigOptions());
 
-        // A refund the provider answers failed, canceled or needing an action is no refund: nothing is recorded as refunded and the host is asked.
         foreach (var status in new[] { "failed", "canceled", "requires_action" })
         {
             var intent = $"pi_tax_{status}";
@@ -736,7 +665,6 @@ public class TouristTaxCollectionTests
             Assert.Equal(0m, (await ReloadAsync(db, record.Id)).RefundedAmount);
         }
 
-        // A refund the provider is still making (pending) is a refund: nobody is asked, and the amount follows the charge.refunded that comes with it.
         var pending = await SeedAsync(db, status: BookingStatus.Cancelled, cancelledAt: CheckIn.AddDays(-5));
         var pendingRecord = await SeedRecordAsync(db, pending.Booking, intentId: "pi_tax_pending", collected: 15.00m);
         rig.Stripe
@@ -761,7 +689,6 @@ public class TouristTaxCollectionTests
             .Setup(s => s.CreateRefundAsync(It.IsAny<StripeRefundCreateRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Refund { Id = "re_noshow", Status = "succeeded" });
 
-        // The guests never came: no night, the tax is not due and what was paid online goes back in full, once.
         await rig.Service.ApplyStayEndedAsync(world.Booking.Id, CheckIn.AddHours(20));
         await rig.Service.ApplyStayEndedAsync(world.Booking.Id, CheckIn.AddHours(20));
 
@@ -770,15 +697,12 @@ public class TouristTaxCollectionTests
         rig.Stripe.Verify(s => s.CreateRefundAsync(It.IsAny<StripeRefundCreateRequest>(), It.IsAny<CancellationToken>()), Times.Once);
         Assert.Empty(await db.Payments.AsNoTracking().ToListAsync());
 
-        // Not due in every reader: the page of the guest's link (the booking is still confirmed, with a no-show mark) and the host's block.
         var guest = (await rig.Service.GetForGuestAsync(world.Token))!;
         Assert.Equal((TouristTaxCollectionStatus.NotDue, 0m), (guest.Status, guest.Payable));
         var host = await rig.Service.GetForHostAsync(world.Booking.Id, null);
         Assert.Equal((TouristTaxCollectionStatus.NotDue, 0m, 0m), (host.Status, host.RefundDue, host.OnlinePayable));
         await Assert.ThrowsAsync<DomainConflictException>(() => rig.Service.CreatePaymentIntentAsync(world.Token));
     }
-
-    // ─── Switzerland: the rule of the canton, in francs, when the host collects ───────────────────────────────────────────────────
 
     [Fact]
     public async Task TouristTaxDue_Switzerland_TheRuleOfTheCantonInFrancs_WhenTheHostCollects_Test()
@@ -798,28 +722,21 @@ public class TouristTaxCollectionTests
                 Account, 1200, "chf", It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PaymentIntent { Id = "pi_chf", ClientSecret = "pi_chf_secret", Amount = 1200, Currency = "chf", Status = "requires_payment_method" });
 
-        // Two guests, three nights, CHF 2.00 a person and night: CHF 12.00, charged in francs on the connected account.
         var page = (await rig.Service.GetForGuestAsync(hostCollects.Token))!;
         Assert.Equal((12.00m, "CHF", 2), (page.Payable, page.Currency, page.Guests.Count));
         Assert.All(page.Guests, line => Assert.Equal(6.00m, line.Amount));
         var session = (await rig.Service.CreatePaymentIntentAsync(hostCollects.Token))!;
         Assert.Equal((12.00m, "CHF"), (session.Amount, session.Currency));
 
-        // The portal that collects it itself (the default of the Swiss issuer): nothing to pay online, nothing is ever charged.
         var viaPortal = (await rig.Service.GetForGuestAsync(portalCollects.Token))!;
         Assert.Equal((TouristTaxCollectionStatus.CollectedByChannel, TouristTaxNotPayableReason.ChannelCollects, 0m), (viaPortal.Status, viaPortal.Reason, viaPortal.Payable));
         await Assert.ThrowsAsync<DomainConflictException>(() => rig.Service.CreatePaymentIntentAsync(portalCollects.Token));
 
-        // A canton with no rule: not calculated, never an assumed zero and never a charge, whatever the guests owe.
         var withoutRule = RigWith(db, new RigOptions(Swiss: new SwissTouristTaxOptions()));
         var unknown = (await withoutRule.Service.GetForGuestAsync(hostCollects.Token))!;
         Assert.Equal((TouristTaxNotPayableReason.NotComputable, 0m, (decimal?)null), (unknown.Reason, unknown.Payable, unknown.AmountDue));
     }
 
-    /// <summary>
-    /// E17/F01/US01/T01: the owners who issue have their issuer profiles in the same table as the organization's. The portals that collect the Swiss tax are the
-    /// choice of the organization itself, never the one of an owner's profile saved before it.
-    /// </summary>
     [Fact]
     public async Task TouristTaxDue_Switzerland_ThePortalsAreTheOrganizations_NeverTheProfileOfAnOwner()
     {
@@ -839,7 +756,6 @@ public class TouristTaxCollectionTests
         db.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile { OrgId = orgId, CountryCode = FiscalDocumentRules.Switzerland });
         await db.SaveChangesAsync();
 
-        // The organization says Airbnb collects the tax itself; the owner's profile says nothing.
         var rig = RigWith(db, new RigOptions(Swiss: swiss, ChannelsOf: profile => profile.PropertyOwnerId is null ? [BookingSource.Airbnb] : []));
 
         var viaPortal = (await rig.Service.GetForGuestAsync(portalCollects.Token))!;
@@ -864,22 +780,18 @@ public class TouristTaxCollectionTests
         await rig.Service.ApplyChargeRefundedAsync(new TouristTaxChargeRefund("pi_tax_given_back", Account, 1500));
         await rig.Service.ApplyChargeRefundedAsync(new TouristTaxChargeRefund("pi_tax_partly", Account, 500));
 
-        // Given back in full: the tax is collected at the property, and the host can record it (the intent is paid: nothing to cancel, nothing on its way).
         var view = await rig.Service.RecordPaidAtPropertyAsync(givenBack.Booking.Id, "auth0|host");
         Assert.Equal((TouristTaxCollectionStatus.PaidAtProperty, 0m), (view.Status, view.RefundDue));
         rig.Stripe.Verify(s => s.GetPaymentIntentAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
         rig.Stripe.Verify(
             s => s.CancelPaymentIntentAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // Paid online and not given back, or given back in part only: the guest's payment stands, the tax is never taken twice.
         foreach (var world in new[] { stands, partly })
         {
             var refused = await Assert.ThrowsAsync<DomainConflictException>(() => rig.Service.RecordPaidAtPropertyAsync(world.Booking.Id, "auth0|host"));
             Assert.Equal(TouristTaxCharges.PaidOnlineCode, refused.Code);
         }
     }
-
-    // ─── Registration and the consumer of the booking events ───────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void AddCasazenTouristTaxCollection_RegistersTheServiceAndTheConsumerOfTheBookingEvents()
@@ -919,8 +831,6 @@ public class TouristTaxCollectionTests
         collection.VerifyNoOtherCalls();
     }
 
-    // ─── helpers ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
     private static TouristTaxCollectionFacts Facts(
         TouristTaxCollector? collector,
         decimal? amountDue,
@@ -940,7 +850,6 @@ public class TouristTaxCollectionTests
             RefundedOnline: 0m);
     }
 
-    /// <summary>The calculation of a stay of three nights the host collects, with the tax of each guest.</summary>
     private static StayTouristTaxView Calculated(Guid bookingId, params decimal[] perGuest) => new(
         bookingId,
         TouristTaxQuoteStatus.Calculated,
@@ -963,10 +872,6 @@ public class TouristTaxCollectionTests
     private static AppDbContext NewDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"tourist-tax-collection-{Guid.NewGuid():N}").Options);
 
-    /// <summary>
-    /// An org that offers the payment, with a connected account that takes payments, one property in Como, a booking the host entered (its price does not
-    /// include the tax) and a check-in link of it.
-    /// </summary>
     private static async Task<StayWorld> SeedAsync(
         AppDbContext db,
         BookingStatus status = BookingStatus.Confirmed,
@@ -1037,7 +942,6 @@ public class TouristTaxCollectionTests
         db.AddRange(property, guest, booking);
         if (payment is { } paymentStatus)
         {
-            // A payment of the checkout through CasaZen (Stripe) in the state asked: the tax of the price is collected only when it went through.
             db.Payments.Add(new Payment
             {
                 BookingId = booking.Id,
@@ -1063,7 +967,6 @@ public class TouristTaxCollectionTests
         return new StayWorld(booking, token);
     }
 
-    /// <summary>A record of the stay with an intent on the connected account, paid online for <paramref name="collected"/> when above 0.</summary>
     private static async Task<StayTouristTax> SeedRecordAsync(AppDbContext db, Booking booking, string intentId, decimal collected = 0m)
     {
         var record = new StayTouristTax
@@ -1086,7 +989,6 @@ public class TouristTaxCollectionTests
         return record;
     }
 
-    /// <summary>The record of the stay with no intent: confirmed by the host for <paramref name="confirmedAmount"/> when given, with the collector the host declared when given.</summary>
     private static async Task<StayTouristTax> SeedStayRecordAsync(
         AppDbContext db,
         Booking booking,
@@ -1132,10 +1034,6 @@ public class TouristTaxCollectionTests
     private static TestRig Rig(AppDbContext db, params (Guid BookingId, StayTouristTaxView View)[] calculations) =>
         RigWith(db, new RigOptions(), calculations);
 
-    /// <summary>
-    /// What a test changes in the rig: the flag, the cantonal rules and the channels whose portal collects the tax of a Swiss stay (the same for every profile, or
-    /// <see cref="ChannelsOf"/> the profile read).
-    /// </summary>
     private sealed record RigOptions(
         bool FlagOn = true,
         SwissTouristTaxOptions? Swiss = null,
@@ -1261,7 +1159,6 @@ public class TouristTaxCollectionTests
 
     private sealed record TestRig(TouristTaxCollectionService Service, Mock<IStripeService> Stripe, RecordingPushQueue Pushes);
 
-    /// <summary>The key itself: the tests read which sentence was chosen, not its words.</summary>
     private sealed class KeyTexts : IDocumentTexts
     {
         public string Get(string key, string language, params object[] args) => key;

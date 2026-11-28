@@ -1,4 +1,3 @@
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
@@ -11,16 +10,8 @@ using static Casazen.Tests.Unit.Services.SupplierReadModelsTestSupport;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// SP-04e: the <c>payment</c> summary of a completed job in the console (where the payment stands, the split gross/commission/net, what
-/// the supplier may do) and that <c>canRequest</c> and <c>canRecordOffline</c> are the rules of the two endpoints of SP-15a: for every
-/// state a job can be in, the real service accepts the action exactly when the summary says it may. Scenario clock: Thursday
-/// 8 October 2026, 12:00 in Rome.
-/// </summary>
 public class SupplierPaymentSummaryTests
 {
-    // ─── Which requests have a summary ───
-
     [Theory]
     [InlineData(ServiceRequestStatus.Richiesto)]
     [InlineData(ServiceRequestStatus.PresoInCarico)]
@@ -66,8 +57,8 @@ public class SupplierPaymentSummaryTests
         Assert.NotNull(payment);
         Assert.Null(payment.Id);
         Assert.Null(payment.Status);
-        Assert.Equal(7500, payment.AmountCents); // what the supplier declared
-        Assert.Null(payment.CommissionPercent); // nothing was computed: no commission is charged outside CasaZen
+        Assert.Equal(7500, payment.AmountCents);
+        Assert.Null(payment.CommissionPercent);
         Assert.Null(payment.CommissionCents);
         Assert.Null(payment.NetCents);
         Assert.Null(payment.PaidAt);
@@ -94,8 +85,6 @@ public class SupplierPaymentSummaryTests
         Assert.False(payment.CanRecordOffline);
         Assert.False(payment.CanRequest);
     }
-
-    // ─── The record ───
 
     [Theory]
     [InlineData(true, ServicePayerKind.Host, false, true)]
@@ -143,7 +132,7 @@ public class SupplierPaymentSummaryTests
         Assert.Equal(ServicePaymentStatus.Requested, summary.Status);
         Assert.Equal(12345, summary.AmountCents);
         Assert.Equal(10m, summary.CommissionPercent);
-        Assert.Equal(1235, summary.CommissionCents); // 1234.5 rounds away from zero, like the payment was created
+        Assert.Equal(1235, summary.CommissionCents);
         Assert.Equal(12345 - 1235, summary.NetCents);
         Assert.Null(summary.PaidAt);
         Assert.Null(summary.PaidVia);
@@ -157,14 +146,13 @@ public class SupplierPaymentSummaryTests
     [Fact]
     public async Task Payment_TheSplitIsTheOneOfTheRecord_NotRecomputedWithTheCurrentCommission()
     {
-        // The commission is a snapshot taken when the payment was created: a later change of the percentage does not rewrite it.
         using var s = await ServiceRequestScenario.CreateAsync();
         var request = await s.SeedCompletedAsync(finalAmountCents: 10000, mode: ServiceRequestPaymentMode.Online);
         await s.AddPaymentAsync(request.Id, amountCents: 10000, commissionPercent: 3.5m);
 
         var summary = (await s.Reader.GetAsync(request.Id, s.SupplierOrgId))!.Payment!;
 
-        Assert.Equal(3.5m, summary.CommissionPercent); // the configured commission of the scenario is 10 %
+        Assert.Equal(3.5m, summary.CommissionPercent);
         Assert.Equal(350, summary.CommissionCents);
         Assert.Equal(9650, summary.NetCents);
     }
@@ -187,7 +175,7 @@ public class SupplierPaymentSummaryTests
         await s.AddPaymentAsync(
             request.Id,
             ServicePaymentStatus.Paid,
-            lateAt: Utc("2026-10-03T08:00:00Z"), // it was late for a while
+            lateAt: Utc("2026-10-03T08:00:00Z"),
             paidAt: Utc("2026-10-04T09:00:00Z"),
             paidVia: ServicePaymentChannel.Stripe);
 
@@ -196,7 +184,7 @@ public class SupplierPaymentSummaryTests
         Assert.Equal(ServicePaymentStatus.Paid, summary.Status);
         Assert.Equal(Utc("2026-10-04T09:00:00Z"), summary.PaidAt);
         Assert.Equal(ServicePaymentChannel.Stripe, summary.PaidVia);
-        Assert.False(summary.Late); // paid: no longer late
+        Assert.False(summary.Late);
         Assert.False(summary.CanRequest);
         Assert.False(summary.CanRecordOffline);
     }
@@ -260,7 +248,7 @@ public class SupplierPaymentSummaryTests
 
         Assert.Null(onlyCanceled.Id);
         Assert.Null(onlyCanceled.Status);
-        Assert.Equal(6000, onlyCanceled.AmountCents); // the declared total, not the withdrawn record's
+        Assert.Equal(6000, onlyCanceled.AmountCents);
 
         var live = await s.AddPaymentAsync(request.Id, ServicePaymentStatus.Requested, amountCents: 6000);
         var summary = (await s.Reader.GetAsync(request.Id, s.SupplierOrgId))!.Payment!;
@@ -284,8 +272,6 @@ public class SupplierPaymentSummaryTests
         Assert.False(summary.CanRequest);
         Assert.True(summary.CanRecordOffline);
     }
-
-    // ─── The list, the detail and the others ───
 
     [Fact]
     public async Task Payment_IsInTheListAndInTheDetail_AndOnlyForTheCompletedOnes()
@@ -332,7 +318,6 @@ public class SupplierPaymentSummaryTests
         await s.AddPaymentAsync(theirs.Id, amountCents: 12000, supplierOrgId: other);
         var input = new SupplierPaymentSummaryInput(theirs.Id, ServiceRequestStatus.Completato, ServiceRequestPaymentMode.Online, 12000, false, true);
 
-        // Asked for by a supplier that is not theirs, even with the id of their request: their payment is not found.
         var summaries = await s.Kit.PaymentReads.SummariesAsync(s.SupplierOrgId, [input]);
 
         var summary = summaries[theirs.Id];
@@ -353,8 +338,6 @@ public class SupplierPaymentSummaryTests
 
         Assert.Null((await bare.GetAsync(request.Id, s.SupplierOrgId))!.Payment);
     }
-
-    // ─── What the payer's address and the origin of the request change ───
 
     [Fact]
     public async Task CanRequest_AHostOrgWithoutAnAddress_IsFalse_AndOfflineStaysPossible()
@@ -380,11 +363,9 @@ public class SupplierPaymentSummaryTests
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.EnableBookingAsync();
         var (showcase, _) = await s.BookedAsync();
-        // After the booking: with the payments on, a booking of a showcase blocks the card of its customer (SP-15c-a) and is paid inside CasaZen.
         await s.EnablePaymentsAsync();
         await s.ChangeRequestAsync(showcase.Id, r =>
         {
-            // Even a showcase request marked Online by mistake, completed and old enough for a reminder.
             r.Status = ServiceRequestStatus.Completato;
             r.TakenAt = r.CreatedAt;
             r.CompletedAt = r.CreatedAt;
@@ -397,8 +378,6 @@ public class SupplierPaymentSummaryTests
         Assert.False(payment.CanRequest);
         Assert.True(payment.CanRecordOffline);
     }
-
-    // ─── The rules are the rules of the endpoints ───
 
     private static readonly string[] ScenarioNames =
     [
@@ -453,7 +432,6 @@ public class SupplierPaymentSummaryTests
         var told = summary?.CanRequest ?? false;
         var flagOn = s.Flags.IsEnabled(FeatureFlags.SupplierOnlinePayments);
 
-        // The endpoint is behind the flag (404 before authentication while it is off); the rest is the service it calls.
         var accepted = flagOn && await AcceptsAsync(() => s.Service.RequestPaymentAsync(id, s.SupplierOrgId));
 
         Assert.True(told == accepted, $"{scenario}: the summary says canRequest={told}, the endpoint {(accepted ? "accepts" : "refuses")}");
@@ -468,7 +446,6 @@ public class SupplierPaymentSummaryTests
         var summary = (await s.Reader.GetAsync(id, s.SupplierOrgId))!.Payment;
         var told = summary?.CanRecordOffline ?? false;
 
-        // A reason is always given: it is mandatory for a request paid inside CasaZen, an input of the action and not a condition of it.
         var accepted = await AcceptsAsync(() => s.Service.RecordOfflinePaymentAsync(
             id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId, "Pagato in contanti alla consegna"));
 
@@ -478,7 +455,6 @@ public class SupplierPaymentSummaryTests
     [Fact]
     public async Task TheScenarios_CoverEveryReasonForARefusal_AndBothAnswers()
     {
-        // The matrix proves both directions: some scenarios where the action is possible, some where each rule says no.
         var requestable = new List<string>();
         var recordable = new List<string>();
         foreach (var scenario in ScenarioNames)
@@ -503,8 +479,6 @@ public class SupplierPaymentSummaryTests
         Assert.True(recordable.Count >= 10, $"recordable in {recordable.Count} scenarios");
     }
 
-    // ─── helpers ───
-
     private static async Task<bool> AcceptsAsync(Func<Task> action)
     {
         try
@@ -522,7 +496,6 @@ public class SupplierPaymentSummaryTests
         }
     }
 
-    /// <summary>The request of the scenario <paramref name="name"/> (see <see cref="Scenarios"/>), in the state it names.</summary>
     private static async Task<Guid> PrepareAsync(ServiceRequestScenario s, string name)
     {
         switch (name)
@@ -578,7 +551,7 @@ public class SupplierPaymentSummaryTests
                 {
                     await s.EnableBookingAsync();
                     var (showcase, _) = await s.BookedAsync();
-                    await s.EnablePaymentsAsync(); // after the booking: see SupplierPaymentShowcaseTests
+                    await s.EnablePaymentsAsync();
                     await s.Service.TakeAsync(showcase.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId);
                     await s.Service.CompleteAsync(showcase.Id, s.SupplierOrgId);
                     s.Clock.Advance(TimeSpan.FromHours(25));
@@ -729,7 +702,6 @@ public class SupplierPaymentSummaryTests
         }
     }
 
-    /// <summary>Puts the only payment of the request in <paramref name="status"/> (a paid one says when and how it was paid).</summary>
     private static async Task SetPaymentStatusAsync(ServiceRequestScenario s, Guid requestId, ServicePaymentStatus status)
     {
         var payment = await s.Db.ServiceRequestPayments.SingleAsync(p => p.ServiceRequestId == requestId);

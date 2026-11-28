@@ -1,9 +1,7 @@
 using Casazen.Core.Authorization;
-using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Infrastructure;
-using Microsoft.AspNetCore.Authentication;
 
 namespace Casazen.Web.Extensions;
 

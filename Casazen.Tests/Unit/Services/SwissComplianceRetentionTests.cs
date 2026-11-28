@@ -26,7 +26,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class SwissComplianceRetentionTests
 {
-    // Today in Zurich is 20 November 2031: the cut day is 20 November 2026. A document dated the 19th goes, one dated the 20th stays.
     private static readonly FixedTimeProvider Clock = new(new DateTimeOffset(2031, 11, 20, 10, 0, 0, TimeSpan.Zero));
     private static readonly DateTime CutDay = new(2026, 11, 20, 0, 0, 0, DateTimeKind.Utc);
 
@@ -47,8 +46,6 @@ public class SwissComplianceRetentionTests
 
         await Job(db, storage).ExecuteAsync(CancellationToken.None);
 
-        // Gone: the police documents dated before the cut day, of both orgs, file and row. Kept: the one dated on the cut day (five years ago today, never
-        // early), the young one and the OTR report (tax evidence, no retention decided), each with its own file.
         var kept = await db.SwissComplianceReceipts.AsNoTracking().Select(r => r.Id).ToListAsync();
         Assert.Equal(new[] { onTheCutDay.Id, oldOtr.Id, youngAuthorization.Id }.Order(), kept.Order());
         foreach (var gone in new[] { oldPolice, oldSheet, oldAuthorization })
@@ -76,15 +73,12 @@ public class SwissComplianceRetentionTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => Job(db, failing.Object).ExecuteAsync(CancellationToken.None));
 
-        // Nothing past its time is kept in silence: the run fails (Hangfire repeats it) and only the row whose file is still there stays.
         Assert.Equal([stuck.Id], await db.SwissComplianceReceipts.AsNoTracking().Select(r => r.Id).ToListAsync());
     }
 
     [Fact]
     public async Task UploadDate_TheUploadRefusesExactlyWhatTheRetentionDeletes_Test()
     {
-        // One definition of the cut day for the job and for the upload: a document the job deletes is one the upload refuses, a document the job keeps is one
-        // the upload accepts, and an OTR report is neither deleted nor refused whatever its date: a legal proof is never destroyed in silence by a mistyped date.
         await using var db = NewDb();
         var property = NewProperty(db);
         var storage = new InMemoryFileStorage();
@@ -155,7 +149,6 @@ public class SwissComplianceRetentionTests
     [Fact]
     public void ReceiptTypes_AreAppended_TheUploadAcceptsEachName_AndEachStoredNameFitsTheColumn()
     {
-        // The values are appended, never renumbered; the stored text of each fits the column, which NF-128 widened to 40 («ParentalAuthorization» has 21).
         Assert.Equal(
             [(0, "Police"), (1, "OTR"), (2, "ParentalAuthorization"), (3, "GroupSheet")],
             Enum.GetValues<SwissComplianceFileType>().Select(t => ((int)t, SwissComplianceReceipts.StoredType(t))));
@@ -168,7 +161,6 @@ public class SwissComplianceRetentionTests
         foreach (var name in new[] { "police", "OTR", "ParentalAuthorization", "groupsheet" })
             Assert.True(EnumNames.TryParseDefined<SwissComplianceFileType>(name, out _), name);
 
-        // The five years apply to the documents of the police rules, never to the OTR report.
         Assert.Equal(["Police", "ParentalAuthorization", "GroupSheet"], SwissComplianceReceipts.RetainedFiveYears);
     }
 
@@ -177,7 +169,6 @@ public class SwissComplianceRetentionTests
     private static SwissComplianceRetentionJob Job(AppDbContext db, IFileStorage storage) =>
         new(db, storage, Clock, NullLogger<SwissComplianceRetentionJob>.Instance);
 
-    /// <summary>A property of a new org of its own.</summary>
     private static Property NewProperty(AppDbContext db)
     {
         var org = new OrgEntity { Name = "TEST", Slug = Guid.NewGuid().ToString("N"), ContactEmail = "test@example.com" };
@@ -187,7 +178,6 @@ public class SwissComplianceRetentionTests
         return property;
     }
 
-    /// <summary>A document of the archive, with its file in the private bucket under the key the real code builds.</summary>
     private static SwissComplianceReceipt Receipt(
         AppDbContext db,
         InMemoryFileStorage storage,

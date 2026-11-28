@@ -6,10 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Jobs;
 
-/// <summary>
-/// The job only hands the verified webhook body to <see cref="ILeaseSigningService"/>, where the flag check and the
-/// lease status guard live (LT-02, A7-20; see <c>LeaseSigningServiceTests</c>).
-/// </summary>
 public class ESignWebhookJobTests
 {
     [Fact]

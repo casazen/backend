@@ -60,7 +60,6 @@ public class XlsxWriterTests
         Assert.Equal(new Cell(Serial(2000, 1, 1).ToString(), true), table[3][2]);
     }
 
-    /// <summary>Every part is well-formed XML and the package has the six parts of a workbook with one sheet, under the name that was asked.</summary>
     [Fact]
     public void Write_IsAWorkbookOfSixWellFormedParts_WithOneNamedSheet()
     {
@@ -75,10 +74,6 @@ public class XlsxWriterTests
         Assert.NotNull(parts["xl/worksheets/sheet1.xml"].Descendants(Main + "pane").SingleOrDefault(pane => (string?)pane.Attribute("state") == "frozen"));
     }
 
-    /// <summary>
-    /// A formula is never run: the text is an inline string with the quote prefix of its style, the header is bold, an amount has the format 0.00 and a day the
-    /// format dd/mm/yyyy, and there is no formula element at all.
-    /// </summary>
     [Fact]
     public void Write_AFormulaIsAnInlineString_WithTheQuotePrefix_AndNoFormulaElementExists()
     {
@@ -139,7 +134,6 @@ public class XlsxWriterTests
         Assert.Equal(Header, Assert.Single(table).Select(cell => cell.Text));
     }
 
-    /// <summary>A control code is no XML 1.0 character, a lone surrogate is no character at all: neither stops the file, a surrogate pair stays whole.</summary>
     [Fact]
     public void Write_LeavesOutWhatXmlDoesNotAllow_AndKeepsTheRest()
     {
@@ -165,7 +159,6 @@ public class XlsxWriterTests
         Assert.Equal("two\nlines", cells[2].Descendants(Main + "t").Single().Value);
     }
 
-    /// <summary>Before 1 March 1900 a date cell would say another day (Excel counts a 29 February 1900 that never was): the day is written as the text it is.</summary>
     [Fact]
     public void Write_ADayBeforeMarch1900_IsText_AndTheFirstDayOfTheCalendarIsASerial()
     {

@@ -1,4 +1,3 @@
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
@@ -23,8 +22,6 @@ public class ServiceRequestExpiryServiceTests
 {
     private static readonly TimeSpan SupplierWindow = TimeSpan.FromMinutes(180);
     private static readonly TimeSpan HoldWindow = TimeSpan.FromMinutes(30);
-
-    // ─── The bookings that lapsed ────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Run_DeletesTheHoldsWhoseTimeHasPassed_AndKeepsTheLiveOnes()
@@ -65,7 +62,6 @@ public class ServiceRequestExpiryServiceTests
         await s.Kit.Booking.ConfirmEmailAsync(supplier, hold.Id, token);
 
         var early = await Expiry(s).RunAsync();
-        // The customer clicks the link again: the replay still works.
         var replay = await s.Kit.Booking.ConfirmEmailAsync(supplier, hold.Id, token);
 
         s.Clock.Advance(HoldWindow + TimeSpan.FromSeconds(1));
@@ -75,7 +71,6 @@ public class ServiceRequestExpiryServiceTests
         Assert.True(replay.AlreadyConfirmed);
         Assert.Equal(1, late.HoldsDeleted);
         Assert.Empty(await s.HoldsAsync());
-        // The request it made is not touched: only the hold goes.
         Assert.Single(await s.ShowcaseRequestsAsync());
     }
 
@@ -92,8 +87,6 @@ public class ServiceRequestExpiryServiceTests
             async () => await s.Kit.Booking.ConfirmEmailAsync(supplier, hold.Id, token));
         Assert.Empty(await s.ShowcaseRequestsAsync());
     }
-
-    // ─── The requests nobody answered ────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Run_ARequestTheSupplierDidNotAnswerInTime_IsCancelledBySystem_AndTheCustomerIsTold()
@@ -118,7 +111,6 @@ public class ServiceRequestExpiryServiceTests
         Assert.Equal(EmailTemplates.Names.SupplierBookingExpired, toCustomer.Template);
         Assert.Contains("è scaduta", toCustomer.Content.Subject);
         Assert.Contains("Non hai pagato nulla", toCustomer.Content.HtmlBody);
-        // The supplier learns that it lost the request, without the customer's data.
         var toSupplier = Assert.Single(s.Emails.Snapshot(), e => e.To == "supplier@test.com");
         Assert.DoesNotContain("Rossi", toSupplier.Content.Subject + toSupplier.Content.HtmlBody);
         Assert.DoesNotContain(ShowcaseScenario.Address, toSupplier.Content.Subject + toSupplier.Content.HtmlBody);
@@ -155,7 +147,6 @@ public class ServiceRequestExpiryServiceTests
         var late = await Expiry(s).RunAsync();
 
         Assert.Equal(0, early.RequestsCancelled);
-        // Past its deadline: the one nobody answered goes, the taken one has no deadline anymore.
         Assert.Equal(1, late.RequestsCancelled);
         Assert.Equal(ServiceRequestStatus.Annullato, (await s.ReadAsync(inTime.Id)).Status);
         Assert.Equal(ServiceRequestStatus.PresoInCarico, (await s.ReadAsync(taken.Id)).Status);
@@ -174,7 +165,6 @@ public class ServiceRequestExpiryServiceTests
             new ProposeServiceRequestTimeCommand(ServiceRequestScenario.FridayAt14));
         s.ForgetNotifications();
 
-        // The deadline of the supplier is spent: the supplier did answer. What is waited for is the customer.
         s.Clock.Advance(SupplierWindow + TimeSpan.FromMinutes(1));
         var whileWaiting = await Expiry(s).RunAsync();
         s.Clock.Advance(TimeSpan.FromHours(24));
@@ -187,7 +177,6 @@ public class ServiceRequestExpiryServiceTests
         Assert.Equal(ServiceRequestActorParty.System, saved.CancelledBy);
         Assert.Null(saved.ProposedStartUtc);
 
-        // SP-11: it is the customer who did not answer, so the reason says so and nobody is told the supplier stayed silent (D24).
         Assert.Equal(ServiceRequestCancellationReasons.ProposalNotAnswered, saved.CancellationReason);
         var toCustomer = Assert.Single(s.Emails.Snapshot(), e => e.To == ShowcaseScenario.CustomerEmail);
         Assert.Equal(EmailTemplates.Names.SupplierBookingProposalExpired, toCustomer.Template);
@@ -211,7 +200,6 @@ public class ServiceRequestExpiryServiceTests
         var (request, _) = await s.BookedAsync();
         s.Clock.Advance(SupplierWindow + TimeSpan.FromMinutes(1));
 
-        // SupplierRequestAutoCancel (decision D8 for the hosts) is off: that is the flag of another job.
         var run = await Expiry(s, hostsFlagOn: false).RunAsync();
 
         Assert.Equal(1, run.RequestsCancelled);
@@ -230,7 +218,6 @@ public class ServiceRequestExpiryServiceTests
         var expiry = await Expiry(s).RunAsync();
         var hostsRun = await AutoCancel(s, hostsFlagOn: true).CancelUnansweredAsync();
 
-        // Each job cancelled exactly its own.
         Assert.Equal(1, expiry.RequestsCancelled);
         Assert.Equal(1, hostsRun.Cancelled);
         Assert.Equal(ServiceRequestStatus.Annullato, (await s.ReadAsync(host.Id)).Status);
@@ -264,7 +251,6 @@ public class ServiceRequestExpiryServiceTests
 
         var second = await Expiry(s).RunAsync();
 
-        // The booking nobody checked and the one that became the request lapse together; the request nobody answered is cancelled.
         Assert.Equal(new ServiceRequestExpiryRun(false, 2, 1, 0, 0), first);
         Assert.Equal(new ServiceRequestExpiryRun(false, 0, 0, 0, 0), second);
         Assert.Empty(s.Emails.Snapshot());
@@ -290,8 +276,6 @@ public class ServiceRequestExpiryServiceTests
         Assert.Equal(1, run.RequestsCancelled);
         Assert.Equal(ServiceRequestStatus.Annullato, (await s.ReadAsync(request.Id)).Status);
     }
-
-    // ─── helpers ───
 
     private static ServiceRequestExpiryService Expiry(ServiceRequestScenario s, bool hostsFlagOn = true) =>
         new(s.Db, AutoCancel(s, hostsFlagOn), NullLogger<ServiceRequestExpiryService>.Instance, s.Clock);

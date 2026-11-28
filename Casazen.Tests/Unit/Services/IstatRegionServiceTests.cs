@@ -69,14 +69,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _db.DisposeAsync();
 
-    // ─── The proofs of the brief ─────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Proof (permission): only the platform staff changes the table. The controller that lists and saves it sits under <see cref="CasazenPolicies.AdminOnly"/>
-    /// and nothing else, with two actions (GET and PUT); the only other controller that takes the service is the one of the property, which has one GET under
-    /// the property read; the registered policy refuses every role but the administrator; and a save by a staff member reaches the service with its id and
-    /// leaves a line of the audit trail, while a caller with no id writes nothing.
-    /// </summary>
     [Fact]
     public async Task IstatRegions_AdminOnly_Test()
     {
@@ -93,7 +85,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
             Assert.DoesNotContain(action.GetCustomAttributes<AuthorizeAttribute>(inherit: true), a => a.Policy != CasazenPolicies.AdminOnly);
         });
 
-        // Nobody else writes the table: the other controller that takes the service is the property's, which only reads, for the caller who reads the property.
         var takers = admin.Assembly.GetTypes()
             .Where(type => typeof(ControllerBase).IsAssignableFrom(type))
             .Where(type => type.GetConstructors().Any(c => c.GetParameters().Any(p => p.ParameterType == typeof(IIstatRegionService))))
@@ -104,7 +95,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
         Assert.Equal([CasazenPolicies.PropertyRead], property.GetCustomAttributes<AuthorizeAttribute>(inherit: true).Select(a => a.Policy));
         Assert.Equal(["GET"], RoutedActions(property).SelectMany(a => a.GetCustomAttributes<HttpMethodAttribute>()).SelectMany(h => h.HttpMethods));
 
-        // The registered policy refuses every role but the administrator (the positive control).
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddCasazenAuthorization();
@@ -123,7 +113,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
         await ((IAuthorizationHandler)requirement).HandleAsync(staff);
         Assert.True(staff.HasSucceeded, "The platform administrator does not pass the policy of the ISTAT region table.");
 
-        // A save reaches the service with the id of the staff member and leaves its audit line; a caller with no id is refused and writes nothing.
         var request = new UpdateIstatRegionRequest
         {
             RegionIstatCode = "03",
@@ -156,7 +145,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
     {
         var service = Service();
 
-        // The seed, as the migration writes it and as the database now holds it.
         Assert.All(IstatRegionRuleSeed.Build(), AssertSeededRowIsToVerify);
         var table = await service.ListAsync(Ct);
         Assert.Equal(21, table.Count);
@@ -169,8 +157,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
         Assert.Equal((IstatCoverage.Unknown, IstatNextStep.AskSupport, OnboardingAssistContexts.PanelIstat), (seeded.Coverage, seeded.NextStep, seeded.AssistContext));
         Assert.Null(seeded.VerifiedAt);
 
-        // No comune, a comune the list does not have, and a comune of a territory with no row (the region 04 has only its two provinces): unknown as well,
-        // never the row of a neighbour.
         foreach (var comune in new string?[] { null, "123456", "999001" })
         {
             var unknown = await service.GetCoverageAsync((await AddPropertyAsync(comune)).Id, Ct);
@@ -180,20 +166,16 @@ public class IstatRegionServiceTests : IAsyncLifetime
             Assert.Empty(unknown.RequiredGuestFields);
         }
 
-        // A house outside Italy has nothing to do with the regional flows: no next step, nothing covered.
         var abroad = await service.GetCoverageAsync((await AddPropertyAsync("013075", country: "CH")).Id, Ct);
         Assert.Equal((false, IstatCoverage.Unknown), (abroad.Applies, abroad.Coverage));
         Assert.Null(abroad.NextStep);
         Assert.Null(abroad.RegionIstatCode);
 
-        // The autonomous provinces answer with their own row; a comune of the region 04 takes the row of its province.
         var bolzano = await service.GetCoverageAsync((await AddPropertyAsync("021008")).Id, Ct);
         var trento = await service.GetCoverageAsync((await AddPropertyAsync("022205")).Id, Ct);
         Assert.Equal(("04", "BZ", "Provincia autonoma di Bolzano"), (bolzano.RegionIstatCode, bolzano.ProvinceCode, bolzano.RegionName));
         Assert.Equal(("04", "TN", "Provincia autonoma di Trento"), (trento.RegionIstatCode, trento.ProvinceCode, trento.RegionName));
 
-        // Only the staff turns a row into covered (and then the host connects it in the panel), or into not covered (the portal of the region); the other
-        // regions stay as seeded, and a row put back to unknown asks support again.
         await service.UpdateAsync(Update("03", coverage: IstatCoverage.Covered), Staff, Ct);
         var covered = await service.GetCoverageAsync(como.Id, Ct);
         Assert.Equal(IstatCoverage.Covered, covered.Coverage);
@@ -209,7 +191,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
         var again = await service.GetCoverageAsync(como.Id, Ct);
         Assert.Equal((IstatCoverage.Unknown, IstatNextStep.AskSupport), (again.Coverage, again.NextStep));
 
-        // The pure rule: nothing but a verified «covered» connects in the panel.
         Assert.Equal(IstatNextStep.ConnectInPanel, IstatRegionResolver.NextStep(IstatCoverage.Covered));
         Assert.Equal(IstatNextStep.ManualPortal, IstatRegionResolver.NextStep(IstatCoverage.NotCovered));
         Assert.Equal(IstatNextStep.AskSupport, IstatRegionResolver.NextStep(IstatCoverage.Unknown));
@@ -217,12 +198,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
         Assert.Equal(IstatCoverage.Unknown, new IstatRegionRule().OctorateCoverage);
     }
 
-    /// <summary>
-    /// Proof (privacy, data minimization): the guest page asks a statistical field only where the region requires it. With the seeded table (no row requires
-    /// one) nobody is asked any; once the staff says a region requires two of them, the guests of that region are asked exactly those, in the order of the
-    /// lists, and the guests of another region, of a house with no comune and of a region whose row says «verified: none required» or is not verified
-    /// are asked none; a field that is not one of the three is refused and changes nothing.
-    /// </summary>
     [Fact]
     public async Task IstatRequiredFields_OnlyWhenRegionRequires_Test()
     {
@@ -231,11 +206,9 @@ public class IstatRegionServiceTests : IAsyncLifetime
         var toscana = await AddPropertyAsync("048017");
         var noComune = await AddPropertyAsync(null);
 
-        // The seeded table: nothing is asked anywhere.
         foreach (var property in new[] { lombardia, toscana, noComune })
             Assert.Empty(await PublicFieldsAsync(property));
 
-        // Lombardia requires two fields (named in any order, once repeated): exactly those are asked, and only of its own guests.
         await service.UpdateAsync(Update("03", fields: ["TravelWay", "TourismType", "tourismtype"]), Staff, Ct);
         Assert.Equal(["TourismType", "TravelWay"], await PublicFieldsAsync(lombardia));
         Assert.Empty(await PublicFieldsAsync(toscana));
@@ -244,7 +217,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
         Assert.Equal(["TourismType", "TravelWay"], coverage.RequiredGuestFields);
         Assert.True(coverage.RequiredGuestFieldsKnown);
 
-        // «Verified: none required» asks nothing, and so does a row that is not verified (null), which says it is not known.
         await service.UpdateAsync(Update("03", fields: []), Staff, Ct);
         Assert.Empty(await PublicFieldsAsync(lombardia));
         Assert.True((await service.GetCoverageAsync(lombardia.Id, Ct)).RequiredGuestFieldsKnown);
@@ -252,20 +224,16 @@ public class IstatRegionServiceTests : IAsyncLifetime
         Assert.Empty(await PublicFieldsAsync(lombardia));
         Assert.False((await service.GetCoverageAsync(lombardia.Id, Ct)).RequiredGuestFieldsKnown);
 
-        // A name that is not a statistical field of the lists is refused, and the row keeps what it had.
         await service.UpdateAsync(Update("03", fields: ["EducationLevel"]), Staff, Ct);
         var refused = await Assert.ThrowsAsync<DomainRuleException>(() => service.UpdateAsync(Update("03", fields: ["EducationLevel", "Religion"]), Staff, Ct));
         Assert.Equal(IstatRegionErrors.FieldsInvalidCode, refused.Code);
         Assert.Equal(["EducationLevel"], await PublicFieldsAsync(lombardia));
         Assert.Equal("EducationLevel", (await _db.IstatRegionRules.AsNoTracking().SingleAsync(r => r.RegionIstatCode == "03", Ct)).RequiredGuestFields);
 
-        // The pure rule: no row, no field.
         Assert.Empty(IstatRegionResolver.RequiredFields(null));
         Assert.Empty(IstatRegionResolver.RequiredFields(new IstatRegionRule()));
         Assert.Equal(["TravelWay"], IstatRegionResolver.RequiredFields(new IstatRegionRule { RequiredGuestFields = "Nope,TravelWay" }));
     }
-
-    // ─── The property endpoint ───────────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Proof (permission): the coverage of a property is read only by who reaches the property. The row-level check of the property runs with the production
@@ -325,13 +293,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
         Assert.Equal("api/properties/{propertyId:guid}/istat-coverage", controller.GetCustomAttribute<RouteAttribute>()!.Template);
     }
 
-    // ─── What the seed holds, what a save does ───────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The seed is the matrix of the runbook and nothing more: a row for each of the 19 regions with one portal and for the two autonomous provinces (none
-    /// for the region 04), with a monthly deadline only where the sources name the day (Lombardia, Valle d'Aosta and Umbria the 5th, Basilicata the 10th), a
-    /// portal address only where they name it, no region that the sources do not identify given a system (Molise), and no statistical field required.
-    /// </summary>
     [Fact]
     public void IstatRegionSeed_IsTheRunbookMatrix_NothingIsGuessed()
     {
@@ -361,10 +322,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
         Assert.All(rows, r => Assert.Null(r.RequiredGuestFields));
     }
 
-    /// <summary>
-    /// A save replaces what the row holds, stamps it (who, when, verified now) and leaves one line of the audit trail with what changed; saving the same
-    /// values again is a verification and says so; and a save never creates a row.
-    /// </summary>
     [Fact]
     public async Task IstatRegions_Update_StampsTheRow_AndLeavesOneAuditLinePerSave()
     {
@@ -388,7 +345,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
         Assert.Contains("requiredGuestFields: (none) -> EducationLevel", first.Changes, StringComparison.Ordinal);
         Assert.Contains("verifiedAt: (none) -> 2026-11-15", first.Changes, StringComparison.Ordinal);
 
-        // The same values again, checked on another day: only the verification is recorded.
         _clock.Advance(TimeSpan.FromDays(2));
         var recheck = update with
         {
@@ -405,11 +361,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
         Assert.Equal(21, await _db.IstatRegionRules.CountAsync(Ct));
     }
 
-    /// <summary>
-    /// What cannot be verified is refused and writes nothing: a source or a portal that is not an https address, a monthly deadline without a day (or with
-    /// one outside 1 to 31) and a day on a deadline that is not monthly, and a territory that is not in the table (a province that has no row, the region
-    /// 04 that has none of its own).
-    /// </summary>
     [Fact]
     public async Task IstatRegions_Update_RefusesWhatCannotBeVerified_AndWritesNothing()
     {
@@ -445,16 +396,10 @@ public class IstatRegionServiceTests : IAsyncLifetime
         Assert.Empty(await _db.RegulatoryDataAuditEntries.AsNoTracking().ToListAsync(Ct));
         Assert.Equal(21, await _db.IstatRegionRules.CountAsync(Ct));
 
-        // The province rows are found by their plate code, in either case.
         var province = await service.UpdateAsync(Update("04", province: "tn", coverage: IstatCoverage.NotCovered), Staff, Ct);
         Assert.Equal(("04", "TN", IstatCoverage.NotCovered), (province.RegionIstatCode, province.ProvinceCode, province.OctorateCoverage));
     }
 
-    /// <summary>
-    /// An address the table would refuse is a refusal of the service, never a failure of the database: the check of the table (<c>LIKE 'https://%'</c>) is
-    /// case-sensitive, so the scheme of an https address, which may be written in any case, is stored in lower case; an address with no «//» after the scheme,
-    /// or with no host, is not an https address (422). Whatever is stored starts with «https://».
-    /// </summary>
     [Fact]
     public async Task IstatRegions_Update_AnUpperCaseHttpsScheme_IsStoredInLowerCase_AndAnAddressWithoutTheSlashesIsRefused()
     {
@@ -476,12 +421,9 @@ public class IstatRegionServiceTests : IAsyncLifetime
             Assert.Equal(IstatRegionErrors.PortalInvalidCode, portal.Code);
         }
 
-        // The refusals changed nothing.
         var after = await _db.IstatRegionRules.AsNoTracking().SingleAsync(r => r.RegionIstatCode == "03" && r.ProvinceCode == null, Ct);
         Assert.Equal(("https://WWW.Example.gov.it/Flussi", "https://Portale.example.it/Guida"), (after.SourceUrl, after.PortalUrl));
     }
-
-    // ─── The deadline of the cockpit ─────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// The deadline of the ISTAT month is the monthly day of the row of the table (none for a daily or unknown one, none for a region with no row), and
@@ -502,7 +444,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
         Assert.Equal(12, IstatRegionResolver.DeadlineDay(new IstatRegionRule(), "LOM", overrides));
         Assert.Equal(5, IstatRegionResolver.DeadlineDay(monthly, "TOS", overrides));
 
-        // The answer for a property: the table's day, then the configured one for its region only.
         var service = Service();
         var como = await AddPropertyAsync("013075");
         var firenze = await AddPropertyAsync("048017");
@@ -554,35 +495,26 @@ public class IstatRegionServiceTests : IAsyncLifetime
             await db.SaveChangesAsync(Ct);
         }
 
-        // No row, then a row whose deadline is daily or unknown: «to define», no item (the clock is 6 November, 11:00 in Rome).
         Assert.Null(await IstatItemAsync());
         await SetRowAsync(IstatDeadlineKind.Daily, null);
         Assert.Null(await IstatItemAsync());
 
-        // The monthly day 5: October's communication was due on 5 November, so it is red.
         await SetRowAsync(IstatDeadlineKind.Monthly, 5);
         var overdue = Assert.IsType<ComplianceStatusItem>(await IstatItemAsync());
         Assert.Equal((ComplianceLight.Red, ComplianceReasonCodes.DeadlineOverdue), (overdue.Verdict.Light, overdue.Verdict.Reason));
         Assert.Equal(RomeCalendar.StartOfDayUtc(new DateOnly(2026, 11, 5)), overdue.DueAt);
 
-        // The day 10 of the table: still open on the 6th.
         await SetRowAsync(IstatDeadlineKind.Monthly, 10);
         var open = Assert.IsType<ComplianceStatusItem>(await IstatItemAsync());
         Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.PeriodOpen), (open.Verdict.Light, open.Verdict.Reason));
         Assert.Equal(RomeCalendar.StartOfDayUtc(new DateOnly(2026, 11, 10)), open.DueAt);
 
-        // The configuration wins over the table, and alone is enough for a region the table does not date.
         world.Options.IstatDeadlineDays["LOM"] = 20;
         Assert.Equal(RomeCalendar.StartOfDayUtc(new DateOnly(2026, 11, 20)), (await IstatItemAsync())!.DueAt);
         await SetRowAsync(IstatDeadlineKind.Unknown, null);
         Assert.Equal(RomeCalendar.StartOfDayUtc(new DateOnly(2026, 11, 20)), (await IstatItemAsync())!.DueAt);
     }
 
-    /// <summary>
-    /// A day configured for a region in <c>Compliance:IstatDeadlineDays</c> that is not a day of the month is ignored, and reported to the caller (which logs it):
-    /// the cockpit has no item for a day out of 1 to 31, so using it would silence the region there while the coverage of a property still said «monthly, day 40».
-    /// The table's day (or none) stands. A day of the month, the first and the last included, still overrides, and nothing is reported.
-    /// </summary>
     [Fact]
     public void IstatDeadlineDay_AConfiguredDayOutsideTheMonth_IsIgnored_AndReported()
     {
@@ -627,7 +559,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
         var lombardia = await service.GetCoverageAsync(como.Id, Ct);
         var toscana = await service.GetCoverageAsync(firenze.Id, Ct);
 
-        // The table says monthly, day 5 for Lombardia and nothing for Toscana: that is what the answers say, not «day 40».
         Assert.Equal((IstatDeadlineKind.Monthly, 5), (lombardia.DeadlineKind, lombardia.DeadlineDay));
         Assert.Equal(IstatDeadlineKind.Unknown, toscana.DeadlineKind);
         Assert.Null(toscana.DeadlineDay);
@@ -640,7 +571,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
             warnings,
             entry => entry.Message.Contains(como.Id.ToString(), StringComparison.OrdinalIgnoreCase) || entry.Message.Contains(_org.ToString(), StringComparison.OrdinalIgnoreCase));
 
-        // The cockpit: the same day outside the month leaves the day of the table in force (the month is still open on the 6th, due on the 10th).
         var world = await ComplianceStatusServiceTests.World.SeedAsync();
         await world.AddComuneAsync("015146", regionIstatCode: "03");
         world.Granted.ComuneIstatCode = "015146";
@@ -670,8 +600,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
             Assert.Equal(RomeCalendar.StartOfDayUtc(new DateOnly(2026, 11, 10)), item.DueAt);
         }
     }
-
-    // ─── Who sends the ISTAT communication ───────────────────────────────────────────────────────────────
 
     /// <summary>
     /// The one rule of the sender of the ISTAT communication: only the channel manager, and only where the table says it does not cover the region, gives
@@ -732,7 +660,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
             return (item, coverage);
         }
 
-        // Not verified, then covered (the day 10 is still ahead on the 6th): the channel manager has it, in the cockpit and in the coverage.
         foreach (var coverage in new[] { IstatCoverage.Unknown, IstatCoverage.Covered })
         {
             await SetRowAsync(coverage, day: 10);
@@ -742,7 +669,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
             Assert.Equal(ComplianceSenderType.ChannelManager, answer.IstatSender);
         }
 
-        // Not covered: nobody outside sends it. The cockpit asks the host for the proof of the month and sends it nowhere, the coverage says manual and the portal.
         await SetRowAsync(IstatCoverage.NotCovered, day: 10);
         var (open, manual) = await AnswersAsync();
         Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.PeriodOpen), (open.Verdict.Light, open.Verdict.Reason));
@@ -750,13 +676,10 @@ public class IstatRegionServiceTests : IAsyncLifetime
         Assert.Equal(ComplianceCockpitAction.UploadIstatProof, open.Action);
         Assert.Equal((ComplianceSenderType.Manual, IstatNextStep.ManualPortal), (manual.IstatSender, manual.NextStep));
 
-        // Past the deadline it is red, as for every other sender.
         await SetRowAsync(IstatCoverage.NotCovered, day: 5);
         var (overdue, _) = await AnswersAsync();
         Assert.Equal((ComplianceLight.Red, ComplianceReasonCodes.DeadlineOverdue), (overdue.Verdict.Light, overdue.Verdict.Reason));
     }
-
-    // ─── Helpers ─────────────────────────────────────────────────────────────────────────────────────────
 
     private static void AssertSeededRowIsToVerify(IstatRegionRule row)
     {
@@ -822,7 +745,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
         return property;
     }
 
-    /// <summary>The statistical fields the guest page of a stay of <paramref name="property"/> asks, read through the public link of a new session.</summary>
     private async Task<IReadOnlyList<string>> PublicFieldsAsync(Property property)
     {
         var guest = new Guest { Id = Guid.NewGuid(), FirstName = "Mario", LastName = "Rossi", Email = $"{Guid.NewGuid():N}@example.com" };
@@ -848,7 +770,6 @@ public class IstatRegionServiceTests : IAsyncLifetime
         return view.RequiredGuestFields ?? [];
     }
 
-    /// <summary>The rows of the table as a comparable text, to prove that a refused save left every one as it was.</summary>
     private async Task<List<string>> SnapshotAsync()
     {
         var rows = await _db.IstatRegionRules.AsNoTracking().OrderBy(r => r.Id).ToListAsync(Ct);

@@ -22,8 +22,6 @@ public class RestSdiEInvoiceProviderTests
     private const string IssuerName = "TEST Emittente Riservato Srl";
     private const string FiscalId = "01234567897";
 
-    // ---------------------------------------------------------------- the configuration
-
     [Theory]
     [InlineData("invoicetronic", Key, null, true)]
     [InlineData("Invoicetronic", Key, "https://api.invoicetronic.com/v1", true)]
@@ -60,8 +58,6 @@ public class RestSdiEInvoiceProviderTests
         Assert.Equal((false, SdiSubmissionErrors.NotSupported), (answer.Accepted, answer.Error));
         Assert.Empty(handler.Requests);
     }
-
-    // ---------------------------------------------------------------- the submission
 
     [Fact]
     public async Task Submit_TheIssuerIsKnown_SendsTheFileOnce_WithTheKeyOfTheAccountAndTheIdempotencyKeyOfTheDocument()
@@ -168,8 +164,6 @@ public class RestSdiEInvoiceProviderTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Adapter(new Handler(_ => Json(HttpStatusCode.OK, "[]"))).SubmitDocumentAsync(Submission(), cancelled.Token));
     }
 
-    // ---------------------------------------------------------------- what the SDI said
-
     [Fact]
     public async Task Status_TheLatestUpdateDecides_AndNoUpdateIsStillSubmitted()
     {
@@ -232,8 +226,6 @@ public class RestSdiEInvoiceProviderTests
         await Assert.ThrowsAsync<HttpRequestException>(() => Adapter(new Handler(_ => throw new HttpRequestException("down"))).GetStatusAsync("42"));
     }
 
-    // ---------------------------------------------------------------- the webhook
-
     [Fact]
     public async Task Notification_TheBodyOnlyNamesTheUpdate_TheUpdateIsReadAgainFromTheApi()
     {
@@ -271,12 +263,6 @@ public class RestSdiEInvoiceProviderTests
         await Assert.ThrowsAsync<SdiProviderException>(() => Adapter(new Handler(_ => Json(HttpStatusCode.NotFound, "{}"))).ReadNotificationAsync(payload));
     }
 
-    // ---------------------------------------------------------------- privacy
-
-    /// <summary>
-    /// PROOF TEST: privacy rule. Nothing of an invoice reaches a log: neither the file (as it is nor in base 64), the fiscal id or the name of the issuer, the key of the account, nor the body of an answer
-    /// of the provider (a refusal that echoes the file, a rejection with an address in its words); a call is logged by its operation and the status of the answer.
-    /// </summary>
     [Fact]
     public async Task SdiAdapter_NeverLogsInvoicePayload_Test()
     {
@@ -314,8 +300,6 @@ public class RestSdiEInvoiceProviderTests
         Assert.All(logger.Lines, line => Assert.All(forbidden, secret => Assert.DoesNotContain(secret, line, StringComparison.Ordinal)));
     }
 
-    // ---------------------------------------------------------------- helpers
-
     private static SdiDocumentSubmission Submission() =>
         new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), FiscalId, IssuerName, "IT09876543217_AB123.xml", $"<p:FatturaElettronica>{Marker}</p:FatturaElettronica>");
 
@@ -328,13 +312,11 @@ public class RestSdiEInvoiceProviderTests
     private static HttpResponseMessage Json(HttpStatusCode status, string body) =>
         new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
-    /// <summary>One request the adapter made: what the fake handler saw.</summary>
     private sealed record Seen(string Method, string Target, string Body, IReadOnlyDictionary<string, string> Headers)
     {
         public string? Header(string name) => Headers.TryGetValue(name, out var value) ? value : null;
     }
 
-    /// <summary>The fake service: answers in order, and remembers what it was asked. With no answer left it fails the test: a call nobody expected.</summary>
     private sealed class Handler(params Func<HttpRequestMessage, HttpResponseMessage>[] answers) : HttpMessageHandler
     {
         private readonly Queue<Func<HttpRequestMessage, HttpResponseMessage>> _answers = new(answers);

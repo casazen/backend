@@ -18,7 +18,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Xunit;
-// OrgEntity is a global alias defined in Casazen.Tests.csproj: OrgEntity = global::Casazen.Core.Entities.Org
 
 namespace Casazen.Tests.Integration;
 
@@ -37,7 +36,6 @@ public class SupplierCalendarSyncPostgresTests : IClassFixture<SupplierCalendarS
     [PostgresFact]
     public async Task SetIcalFeed_SupplierInActivation_QueuesTheSyncJobWhichThenUpdatesTheAvailability()
     {
-        // A supplier still in the activation wizard (Pending): before SU-15 its first sync always failed.
         var supplier = await SeedSupplierAsync(SupplierStatus.Pending, feedUrl: null);
         await SeedDayAsync(supplier.OrgId, new DateOnly(2026, 10, 12), available: false, SupplierAvailabilitySource.Manual);
         var url = $"https://calendar-{Guid.NewGuid():N}.example.com/basic.ics";
@@ -51,7 +49,6 @@ public class SupplierCalendarSyncPostgresTests : IClassFixture<SupplierCalendarS
         Assert.Equal("Syncing", accepted.GetProperty("lastSyncStatus").GetString());
         Assert.Equal(JsonValueKind.Null, accepted.GetProperty("calendarLastSyncAt").ValueKind);
         var job = Assert.Single(QueuedSyncs(supplier.OrgId));
-        // Nothing was downloaded by the request or behind it: the only sync is the queued job.
         await Task.Delay(TimeSpan.FromMilliseconds(300));
         Assert.Equal(0, _factory.Downloads(url));
         Assert.Equal([(new DateOnly(2026, 10, 12), false, SupplierAvailabilitySource.Manual)], await DaysAsync(supplier.OrgId));
@@ -113,8 +110,6 @@ public class SupplierCalendarSyncPostgresTests : IClassFixture<SupplierCalendarS
         Assert.Empty(QueuedSyncs(supplier.OrgId));
     }
 
-    // PC-10 note (A9-13): an empty feed used to leave its busy days for ever. Now it frees the days it had marked and
-    // only those: the supplier's own closures and openings stay.
     [PostgresFact]
     public async Task SyncIcalFeedAsync_ValidFeedWithoutEvents_FreesTheFeedDaysAndKeepsTheManualDays()
     {
@@ -190,7 +185,6 @@ public class SupplierCalendarSyncPostgresTests : IClassFixture<SupplierCalendarS
         var bothDownloading = new Barrier(2);
         _factory.Feeds[supplier.FeedUrl!] = () =>
         {
-            // Both runs hold the downloaded feed before either writes.
             bothDownloading.SignalAndWait(TimeSpan.FromSeconds(30));
             return Feed(Event("long", "20261201", "20261221"));
         };
@@ -201,7 +195,7 @@ public class SupplierCalendarSyncPostgresTests : IClassFixture<SupplierCalendarS
         }
         finally
         {
-            _factory.Feeds.TryRemove(supplier.FeedUrl!, out _); // later batch runs of the class must not wait on the barrier
+            _factory.Feeds.TryRemove(supplier.FeedUrl!, out _);
         }
 
         var days = await DaysAsync(supplier.OrgId);
@@ -233,8 +227,6 @@ public class SupplierCalendarSyncPostgresTests : IClassFixture<SupplierCalendarS
                           && (Guid)job.Args[0] == orgId)
             .ToList();
 
-    // Runs a queued job the way the Hangfire server does: a new DI scope, the job class activated from it, the method
-    // invoked with the queued arguments.
     private async Task PerformAsync(Job job)
     {
         await using var scope = _factory.Services.CreateAsyncScope();
@@ -322,7 +314,6 @@ public class SupplierCalendarSyncPostgresTests : IClassFixture<SupplierCalendarS
 
     private sealed record SeededSupplier(string UserId, Guid OrgId, string? FeedUrl);
 
-    /// <summary>The integration host with the download client replaced by <see cref="Feeds"/> (URL → body).</summary>
     public sealed class Factory : CasazenWebApplicationFactory
     {
         private readonly ConcurrentDictionary<string, int> _downloads = new(StringComparer.Ordinal);
@@ -349,7 +340,6 @@ public class SupplierCalendarSyncPostgresTests : IClassFixture<SupplierCalendarS
         public bool TryValidateUrl(string? url, [NotNullWhen(true)] out Uri? uri) =>
             ExternalUrlPolicy.TryParse(url, [443], out uri);
 
-        // Unknown URLs (feeds seeded by other tests of the class) answer like an unreachable host.
         public Task<string> GetStringAsync(string url, CancellationToken cancellationToken = default)
         {
             downloads.AddOrUpdate(url, 1, (_, count) => count + 1);

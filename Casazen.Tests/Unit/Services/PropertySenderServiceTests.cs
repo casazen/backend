@@ -38,7 +38,6 @@ public class PropertySenderServiceTests
         await using var db = OrgTeamTestData.NewDb(databaseName);
         var service = NewService(db, clock, octorate);
 
-        // The connected property is sent by the channel manager by default (PO-02); nothing proves it yet.
         var start = await service.GetAsync(world.Connected, CancellationToken.None);
         Assert.Equal(
             (ComplianceSenderType.ChannelManager, SenderSource.DefaultConnected, true),
@@ -48,7 +47,6 @@ public class PropertySenderServiceTests
             start.AvailableSenders.ToArray());
         Assert.Equal((SenderState.Unverified, SenderVerification.Unverifiable), (start.State, start.Verification));
 
-        // A change needs the host's confirmation: without it the answer is 409 and nothing is written.
         var unconfirmed = await Assert.ThrowsAsync<DomainConflictException>(
             () => service.SwitchAsync(world.Connected, ComplianceSenderType.Manual, false, false, Host, CancellationToken.None));
         Assert.Equal("sender_switch_confirmation_required", unconfirmed.Code);
@@ -56,7 +54,6 @@ public class PropertySenderServiceTests
         Assert.Equal<object?>("Manual", unconfirmed.Extensions["newSender"]);
         Assert.False(await db.PropertyComplianceSenders.AnyAsync());
 
-        // Confirmed, the manual sender is set: no delegation is needed for the host's own hand.
         clock.Advance(TimeSpan.FromMinutes(1));
         var manual = await service.SwitchAsync(world.Connected, ComplianceSenderType.Manual, true, false, Host, CancellationToken.None);
         Assert.Equal(
@@ -64,7 +61,6 @@ public class PropertySenderServiceTests
             (manual.Sender, manual.IstatSender, manual.Source));
         Assert.Equal((SenderState.NotConfigured, SenderVerification.NotApplicable), (manual.State, manual.Verification));
 
-        // An automatic sender needs the delegation accepted first: refused, the sender stays and no consent is recorded.
         clock.Advance(TimeSpan.FromMinutes(1));
         var noConsent = await Assert.ThrowsAsync<DomainForbiddenException>(
             () => service.SwitchAsync(world.Connected, ComplianceSenderType.ChannelManager, true, false, Host, CancellationToken.None));
@@ -103,8 +99,6 @@ public class PropertySenderServiceTests
         Assert.Equal(ComplianceSenderType.Manual, (await StoredAsync(db, world.Connected)).AlloggiatiSender);
         Assert.Null(await DelegationGrantedAtAsync(db, world.OrgId));
 
-        // The consent names the text the person read, and it has to be the text in force: without the version, or with another one (the
-        // screen was loaded before the text changed), nothing is recorded and the 409 carries the version to show.
         var unnamed = await Assert.ThrowsAsync<DomainRuleException>(
             () => service.SwitchAsync(world.Connected, ComplianceSenderType.ChannelManager, true, true, Host, CancellationToken.None));
         Assert.Equal("alloggiati_delegation_text_version_required", unnamed.Code);
@@ -116,7 +110,6 @@ public class PropertySenderServiceTests
         Assert.Equal(ComplianceSenderType.Manual, (await StoredAsync(db, world.Connected)).AlloggiatiSender);
         Assert.Null(await DelegationGrantedAtAsync(db, world.OrgId));
 
-        // With the consent and the text in force it is recorded on the organization (who, when, which text), then the channel manager is set.
         var automatic = await service.SwitchAsync(
             world.Connected, ComplianceSenderType.ChannelManager, true, true, Host, CancellationToken.None, delegationTextVersion: seen);
         Assert.Equal((ComplianceSenderType.ChannelManager, true), (automatic.Sender, automatic.DelegationAccepted));
@@ -125,11 +118,9 @@ public class PropertySenderServiceTests
             (Host, AlloggiatiDelegationTexts.CurrentVersion),
             (org.AlloggiatiDelegationGrantedByUserId, org.AlloggiatiDelegationTextVersion));
 
-        // The same sender again changes and records nothing.
         var again = await service.SwitchAsync(world.Connected, ComplianceSenderType.ChannelManager, false, false, Host, CancellationToken.None);
         Assert.Equal(ComplianceSenderType.ChannelManager, again.Sender);
 
-        // Whatever was asked, the property has one sender (both columns equal) and the audit holds the two real changes, once each.
         var row = await StoredAsync(db, world.Connected);
         Assert.Equal((ComplianceSenderType.ChannelManager, ComplianceSenderType.ChannelManager), (row.AlloggiatiSender, row.IstatSender));
         var lines = await db.OrgActivityEntries.AsNoTracking()
@@ -157,7 +148,6 @@ public class PropertySenderServiceTests
         await using var db = OrgTeamTestData.NewDb(databaseName);
         var service = NewService(db, clock, octorate);
 
-        // A declaration is for an automatic sender the org delegated: refused before the delegation is accepted.
         var early = await Assert.ThrowsAsync<DomainForbiddenException>(
             () => service.DeclareActivatedAsync(world.Connected, Host, CancellationToken.None));
         Assert.Equal("alloggiati_delegation_required", early.Code);
@@ -170,32 +160,27 @@ public class PropertySenderServiceTests
             CancellationToken.None,
             delegationTextVersion: AlloggiatiDelegationTexts.CurrentVersion);
 
-        // Octorate does not expose the police account: nothing is verified, and the test says so.
         var test = await service.TestConnectionAsync(world.Connected, CancellationToken.None);
         Assert.Equal((SenderConnectionTestOutcome.Unverifiable, SenderReasonCodes.PoliceNotExposed), (test.Outcome, test.Reason));
         var unverified = await service.GetAsync(world.Connected, CancellationToken.None);
         Assert.Equal((SenderState.Unverified, SenderVerification.Unverifiable), (unverified.State, unverified.Verification));
         Assert.Null(unverified.DeclaredAt);
 
-        // The host's word is stored with its date as a declaration, never as a verification.
         clock.Advance(TimeSpan.FromMinutes(1));
         var declared = await service.DeclareActivatedAsync(world.Connected, Host, CancellationToken.None);
         Assert.Equal((SenderState.Declared, SenderVerification.UserDeclared), (declared.State, declared.Verification));
         Assert.Equal<DateTime?>(clock.GetUtcNow().UtcDateTime, declared.DeclaredAt);
 
-        // Octorate cannot be reached: still unknown (a failure proves nothing) and the read of the sender does not fail.
         octorate.Setup(o => o.GetPoliceAccountAsync(Accommodation, It.IsAny<CancellationToken>())).ThrowsAsync(new OctorateServerException(503));
         var down = await service.TestConnectionAsync(world.Connected, CancellationToken.None);
         Assert.Equal((SenderConnectionTestOutcome.Unverifiable, SenderReasonCodes.Unavailable), (down.Outcome, down.Reason));
         Assert.Equal(SenderState.Declared, (await service.GetAsync(world.Connected, CancellationToken.None)).State);
 
-        // Octorate does not answer within the cap and the call is cut short: the same for the test as for the read, unknown and not an error.
         octorate.Setup(o => o.GetPoliceAccountAsync(Accommodation, It.IsAny<CancellationToken>())).ThrowsAsync(new TaskCanceledException());
         var slow = await service.TestConnectionAsync(world.Connected, CancellationToken.None);
         Assert.Equal((SenderConnectionTestOutcome.Unverifiable, SenderReasonCodes.Unavailable), (slow.Outcome, slow.Reason));
         Assert.Equal(SenderState.Declared, (await service.GetAsync(world.Connected, CancellationToken.None)).State);
 
-        // Octorate says the account is not valid, or the automatic send is off: inactive, whatever the host declared.
         OctorateExposes(octorate, valid: false, autorun: true);
         var invalid = await service.TestConnectionAsync(world.Connected, CancellationToken.None);
         Assert.Equal((SenderConnectionTestOutcome.Inactive, SenderReasonCodes.PoliceAccountInvalid), (invalid.Outcome, invalid.Reason));
@@ -204,8 +189,6 @@ public class PropertySenderServiceTests
         var autorunOff = await service.TestConnectionAsync(world.Connected, CancellationToken.None);
         Assert.Equal((SenderConnectionTestOutcome.Inactive, SenderReasonCodes.PoliceAutorunOff), (autorunOff.Outcome, autorunOff.Reason));
 
-        // Octorate says the account is valid but leaves out the automatic send (or the other way round): half a proof is no proof, so
-        // nothing is verified and the host's declaration is still what the state rests on.
         OctorateExposes(octorate, valid: true, autorun: null);
         var validOnly = await service.TestConnectionAsync(world.Connected, CancellationToken.None);
         Assert.Equal((SenderConnectionTestOutcome.Unverifiable, SenderReasonCodes.PoliceNotExposed), (validOnly.Outcome, validOnly.Reason));
@@ -216,7 +199,6 @@ public class PropertySenderServiceTests
         var autorunOnly = await service.TestConnectionAsync(world.Connected, CancellationToken.None);
         Assert.Equal((SenderConnectionTestOutcome.Unverifiable, SenderReasonCodes.PoliceNotExposed), (autorunOnly.Outcome, autorunOnly.Reason));
 
-        // Only Octorate's own word makes it active.
         OctorateExposes(octorate, valid: true, autorun: true);
         var proof = await service.TestConnectionAsync(world.Connected, CancellationToken.None);
         Assert.Equal((SenderConnectionTestOutcome.Verified, (string?)null), (proof.Outcome, proof.Reason));
@@ -224,7 +206,6 @@ public class PropertySenderServiceTests
         Assert.Equal((SenderState.Active, SenderVerification.Verified), (active.State, active.Verification));
         Assert.Equal<(bool?, bool?)>((true, true), (active.PoliceAccountValid, active.PoliceAutorun));
 
-        // CasaZen is not testable, manual has nothing to test, and a change of sender voids the declaration for good.
         OctorateExposes(octorate, valid: null, autorun: null);
         clock.Advance(TimeSpan.FromMinutes(1));
         await service.SwitchAsync(world.Connected, ComplianceSenderType.Manual, true, false, Host, CancellationToken.None);
@@ -250,13 +231,10 @@ public class PropertySenderServiceTests
         await using var db = OrgTeamTestData.NewDb(databaseName);
         var service = NewService(db, clock, octorate);
 
-        // The org accepted the delegation, and the property still has the default sender: the channel manager, with no row yet.
         await new AlloggiatiDelegationService(db, new ActivityLog(db, clock), clock)
             .GrantAsync(world.OrgId, Host, AlloggiatiDelegationTexts.CurrentVersion);
         Assert.False(await db.PropertyComplianceSenders.AnyAsync());
 
-        // The declaration makes the row of the default sender at this very instant, so the moment of the declaration and the moment of the
-        // last choice of the sender are the same one. On that boundary the declaration stands.
         var declared = await service.DeclareActivatedAsync(world.Connected, Host, CancellationToken.None);
         var row = await StoredAsync(db, world.Connected);
         Assert.Equal<DateTime?>(Start.UtcDateTime, row.LastChangedAt);
@@ -264,8 +242,6 @@ public class PropertySenderServiceTests
         Assert.Equal((SenderState.Declared, SenderVerification.UserDeclared), (declared.State, declared.Verification));
         Assert.Equal<DateTime?>(Start.UtcDateTime, declared.DeclaredAt);
 
-        // One microsecond later the sender is chosen again (the other one, and back): a later choice, so the declaration was about the
-        // choice before it and is void, the sender is not even said to be declared.
         clock.Advance(TimeSpan.FromTicks(10));
         var manual = await service.SwitchAsync(world.Connected, ComplianceSenderType.Manual, true, false, Host, CancellationToken.None);
         Assert.Null(manual.DeclaredAt);
@@ -277,21 +253,18 @@ public class PropertySenderServiceTests
     [Fact]
     public void OctorateApiClient_ReadPoliceAccount_ReadsAMemberOnlyWhenOctorateSendsIt()
     {
-        // A text date and the three members; the code and the web service key of the object are not read.
         using var full = JsonDocument.Parse(
             """{"policeAccount":{"codice":"TEST","wsCode":"TEST","valid":true,"autorun":false,"lastCron":"2026-11-05T22:00:00Z"}}""");
         var account = OctorateApiClient.ReadPoliceAccount(full.RootElement);
         Assert.Equal<(bool?, bool?)>((true, false), (account.Valid, account.Autorun));
         Assert.Equal<DateTime?>(new DateTime(2026, 11, 5, 22, 0, 0, DateTimeKind.Utc), account.LastCron);
 
-        // A date in epoch milliseconds, and the members Octorate leaves out stay unknown: nothing is assumed.
         var cron = new DateTimeOffset(2026, 11, 5, 22, 0, 0, TimeSpan.Zero);
         using var epoch = JsonDocument.Parse(JsonSerializer.Serialize(new { policeAccount = new { lastCron = cron.ToUnixTimeMilliseconds() } }));
         var partial = OctorateApiClient.ReadPoliceAccount(epoch.RootElement);
         Assert.Equal<DateTime?>(cron.UtcDateTime, partial.LastCron);
         Assert.Equal<(bool?, bool?)>((null, null), (partial.Valid, partial.Autorun));
 
-        // An accommodation created through the API has no police account at all.
         using var bare = JsonDocument.Parse("""{"id":"585492","name":"Casa"}""");
         var none = OctorateApiClient.ReadPoliceAccount(bare.RootElement);
         Assert.Equal<(bool?, bool?, DateTime?)>((null, null, null), (none.Valid, none.Autorun, none.LastCron));
@@ -314,13 +287,11 @@ public class PropertySenderServiceTests
         var service = NewService(db, clock, octorate);
         var ct = CancellationToken.None;
 
-        // The connected property has the channel manager by default: manual would change it, the channel manager would not.
         var toManual = await service.CheckSwitchAsync(world.Connected, ComplianceSenderType.Manual, ct);
         Assert.Equal((ComplianceSenderType.ChannelManager, ComplianceSenderType.Manual, true), (toManual.Current, toManual.New, toManual.WouldChange));
         var notConnected = await service.CheckSwitchAsync(world.NotConnected, ComplianceSenderType.Manual, ct);
         Assert.False(notConnected.WouldChange);
 
-        // The same refusals as the switch, with the same codes.
         async Task<string> RefusalAsync(Guid propertyId, ComplianceSenderType sender, ComplianceSenderType? istat = null)
         {
             var refused = await Assert.ThrowsAnyAsync<Exception>(() => service.CheckSwitchAsync(propertyId, sender, ct, istat));
@@ -340,14 +311,12 @@ public class PropertySenderServiceTests
         Assert.Equal("alloggiati_delegation_required", await RefusalAsync(world.Connected, ComplianceSenderType.ChannelManager));
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.CheckSwitchAsync(world.Connected, (ComplianceSenderType)99, ct));
 
-        // With the delegation accepted the channel manager is what the connected property has already: nothing would change.
         await new AlloggiatiDelegationService(db, new ActivityLog(db, clock), clock)
             .GrantAsync(world.OrgId, Host, AlloggiatiDelegationTexts.CurrentVersion, ct);
         var lines = await db.OrgActivityEntries.CountAsync();
         var sameSender = await service.CheckSwitchAsync(world.Connected, ComplianceSenderType.ChannelManager, ct);
         Assert.False(sameSender.WouldChange);
 
-        // Nothing was written by any of it, and Octorate was not asked.
         Assert.False(await db.PropertyComplianceSenders.AnyAsync());
         Assert.Equal(lines, await db.OrgActivityEntries.CountAsync());
         octorate.Verify(o => o.GetPoliceAccountAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -374,7 +343,6 @@ public class PropertySenderServiceTests
         void NeverAsked() => octorate.Verify(o => o.GetPoliceAccountAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         Task<int> LinesAsync() => db.OrgActivityEntries.CountAsync(e => e.Type == OrgActivityType.PropertySenderChanged);
 
-        // The refusals: the same code from the two, nothing written, nobody asked.
         (Guid Property, ComplianceSenderType Sender, bool Confirmed, bool Consent, string? Version, ComplianceSenderType? Istat, string Code)[] refusals =
         [
             (world.Connected, ComplianceSenderType.Manual, false, false, null, null, "sender_switch_confirmation_required"),
@@ -410,7 +378,6 @@ public class PropertySenderServiceTests
         Assert.Null(await DelegationGrantedAtAsync(db, world.OrgId));
         NeverAsked();
 
-        // The write: the connected property has the channel manager by default; confirmed, manual is stored for both communications, once in the audit.
         clock.Advance(TimeSpan.FromMinutes(1));
         var manual = await service.SwitchWithoutViewAsync(world.Connected, ComplianceSenderType.Manual, true, false, Host, ct);
         Assert.Equal(
@@ -420,7 +387,6 @@ public class PropertySenderServiceTests
         Assert.Equal(1, await LinesAsync());
         NeverAsked();
 
-        // The consent of the delegation is recorded when the caller gives it, with the text it read, and then the channel manager is stored.
         clock.Advance(TimeSpan.FromMinutes(1));
         var automatic = await service.SwitchWithoutViewAsync(world.Connected, ComplianceSenderType.ChannelManager, true, true, Host, ct, delegationTextVersion: seen);
         Assert.Equal((ComplianceSenderType.ChannelManager, ComplianceSenderType.ChannelManager), (automatic.AlloggiatiSender, automatic.IstatSender));
@@ -429,7 +395,6 @@ public class PropertySenderServiceTests
         Assert.Equal(2, await LinesAsync());
         NeverAsked();
 
-        // The switch of a single property builds its view: to the channel manager it reads the police account on Octorate, once, and says «Active».
         clock.Advance(TimeSpan.FromMinutes(1));
         await service.SwitchAsync(world.Connected, ComplianceSenderType.Manual, true, false, Host, ct);
         NeverAsked();
@@ -439,10 +404,6 @@ public class PropertySenderServiceTests
         octorate.Verify(o => o.GetPoliceAccountAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    /// <summary>
-    /// E20/F01/US01/T01 (decision O1): the guests written to the channel manager on their own is an org-wide setting, off by default, and the view of the
-    /// sender of any property of the org reads it from the org.
-    /// </summary>
     [Fact]
     public async Task PropertySender_AutoSendOfTheOrg_IsOffByDefault_AndTheViewReadsItFromTheOrg()
     {
@@ -534,7 +495,6 @@ public class PropertySenderServiceTests
         await Assert.ThrowsAsync<DomainConflictException>(() => store.SetAsync(world.Connected, ComplianceSenderType.ChannelManager, Host, default));
     }
 
-    /// <summary>The sender service over the real store and delegation service, with the clock, Octorate and the flags under the test's control.</summary>
     private static PropertySenderService NewService(AppDbContext db, FakeTimeProvider clock, Mock<IOctorateApiClient> octorate)
     {
         var environment = new Mock<IHostEnvironment>();
@@ -561,7 +521,6 @@ public class PropertySenderServiceTests
             clock);
     }
 
-    /// <summary>What Octorate answers for the police account of the connected property: the members it exposes (<c>null</c> = left out).</summary>
     private static void OctorateExposes(Mock<IOctorateApiClient> octorate, bool? valid, bool? autorun)
     {
         octorate
@@ -572,14 +531,12 @@ public class PropertySenderServiceTests
     private static Task<PropertyComplianceSender> StoredAsync(AppDbContext db, Guid propertyId) =>
         db.PropertyComplianceSenders.AsNoTracking().SingleAsync(s => s.PropertyId == propertyId);
 
-    /// <summary>When the org accepted the delegation (UTC); <c>null</c> while it has not: what a refused change has to leave untouched.</summary>
     private static async Task<DateTime?> DelegationGrantedAtAsync(AppDbContext db, Guid orgId)
     {
         var org = await db.Orgs.AsNoTracking().SingleAsync(o => o.Id == orgId);
         return org.AlloggiatiDelegationGrantedAt;
     }
 
-    /// <summary>One org with three properties: one confirmed on a connected Octorate account, one that is not connected, one in Switzerland.</summary>
     private static async Task<World> SeedAsync(string databaseName)
     {
         await using var db = OrgTeamTestData.NewDb(databaseName);

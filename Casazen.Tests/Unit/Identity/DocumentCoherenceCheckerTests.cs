@@ -28,7 +28,6 @@ public class DocumentCoherenceCheckerTests
     private static readonly IdentityDecisionPolicy Policy = IdentityTestDocuments.Policy();
     private static readonly DocumentCoherenceChecker Checker = new();
 
-    /// <summary>The stay of the tests: the check-in is on the 10th of December 2026, and the guest typed nothing yet.</summary>
     private static readonly DocumentCoherenceContext Stay = new(new DateOnly(2026, 12, 10));
 
     /// <summary>What the guest typed in the data step: the citizenship is the name of the state, as the Alloggiati list writes it (the check-in keeps no code of three letters).</summary>
@@ -40,10 +39,6 @@ public class DocumentCoherenceCheckerTests
     private static ZonedField FromMrz(string name, string value) =>
         new(name, value, DocumentSide.Back, ZonedFieldZones.Mrz, 0.95, ZonedFieldSources.Mrz);
 
-    /// <summary>
-    /// What the visual zone of the specimen card shows; every argument can be changed to make the card disagree with its MRZ, and the sex and the nationality can be
-    /// left out (null) as when the print of them was not read.
-    /// </summary>
     private static List<ZonedField> Card(
         string surname = "ROSSI",
         string givenNames = "MARIA GIUSEPPINA",
@@ -95,12 +90,10 @@ public class DocumentCoherenceCheckerTests
         Assert.Empty(report.Codes);
         Assert.All(report.Checks, entry => Assert.Equal(DocumentCoherenceResults.Passed, entry.Result));
 
-        // Nothing is unknown, every check of the report passed, and the one answer for the checks the format requires (the layout and the portrait are the geometry's) is yes.
         Assert.Equal(0, report.UnknownCount);
         Assert.All(DocumentCoherenceReport.CarriedChecks, check => Assert.Equal(DocumentCoherenceResults.Passed, report.Summary(check)));
         Assert.True(report.AllPassed(Cie.RequiredChecks));
 
-        // The five checks of the format that this task carries out are all in the report, in the order of the checks of the format; the fields of the policy have one each.
         Assert.Equal(
             [
                 DocumentFormatChecks.MrzCheckDigits, DocumentFormatChecks.Expiry, DocumentFormatChecks.SideConsistency, DocumentFormatChecks.FieldCoherence,
@@ -111,7 +104,6 @@ public class DocumentCoherenceCheckerTests
             [ZonedFieldNames.Surname, ZonedFieldNames.GivenNames, ZonedFieldNames.BirthDate, ZonedFieldNames.DocumentNumber],
             report.Checks.Where(entry => entry.Check == DocumentFormatChecks.SideConsistency).Select(entry => entry.Field));
 
-        // The coherence judges the dates, and what the card prints a second time against the MRZ.
         Assert.Equal(
             [ZonedFieldNames.BirthDate, ZonedFieldNames.IssueDate, ZonedFieldNames.ExpiryDate, ZonedFieldNames.Sex, ZonedFieldNames.Nationality],
             report.Checks.Where(entry => entry.Check == DocumentFormatChecks.FieldCoherence).Select(entry => entry.Field));
@@ -158,7 +150,6 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void Check_AnMrzNameFieldCutAtItsLength_IsNotAConflict()
     {
-        // The name field of a TD1 line has 30 characters: ROSSI<<MARIA<GIUSEPPINA<ANTONI is what is left of the three given names.
         var cut = IdentityTestDocuments.Mrz(givenNames: "MARIA GIUSEPPINA ANTONIETTA");
         Assert.Equal("MARIA GIUSEPPINA ANTONI", cut.GivenNames);
 
@@ -171,7 +162,6 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void Check_AnMrzNameThatIsAShortenedPrintedOneButIsNotCut_IsAConflict()
     {
-        // The line has room to spare: nothing was cut, so MARIA and MARIA GIUSEPPINA are two different names.
         var shortened = IdentityTestDocuments.Mrz(givenNames: "MARIA");
 
         var report = Checker.Check(Card(givenNames: "MARIA GIUSEPPINA"), Reading(shortened), Stay, Cie, Policy);
@@ -183,7 +173,6 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void Check_APrintedNameThatIsShorterThanTheMrzOne_IsAConflict_EvenWhenTheLineIsFull()
     {
-        // Only the MRZ can be cut by its line: a printed name that is the beginning of the MRZ one is a difference.
         var cut = IdentityTestDocuments.Mrz(givenNames: "MARIA GIUSEPPINA ANTONIETTA");
 
         var report = Checker.Check(Card(givenNames: "MARIA GIUSEPPINA"), Reading(cut), Stay, Cie, Policy);
@@ -194,7 +183,6 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void Check_ASurnameCutByTheLine_IsNotAConflict_AndTheGivenNamesLostWithItAreUnknown()
     {
-        // A surname so long that the 30 characters of the line end inside it: no given name is left in the MRZ.
         const string surname = "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFG";
         var cut = IdentityTestDocuments.Mrz(surname: surname);
         Assert.Equal(surname[..30], cut.Surname);
@@ -204,14 +192,12 @@ public class DocumentCoherenceCheckerTests
 
         Assert.Equal(DocumentCoherenceResults.Passed, Result(report, DocumentFormatChecks.SideConsistency, ZonedFieldNames.Surname));
         Assert.Equal(DocumentCoherenceResults.Unknown, Result(report, DocumentFormatChecks.SideConsistency, ZonedFieldNames.GivenNames));
-        // No conflict, and not an agreement either: the given names were not compared, so the sides are not said to agree.
         Assert.Null(report.IdentifyingConflict);
     }
 
     [Fact]
     public void Check_ASurnameThatIsTheBeginningOfAnotherWhileTheLineHoldsGivenNames_IsAConflict()
     {
-        // The surname ends at the double filler, so it was not cut, whatever the length of the line.
         var cut = IdentityTestDocuments.Mrz(givenNames: "MARIA GIUSEPPINA ANTONIETTA");
 
         var report = Checker.Check(Card(surname: "ROSSINI", givenNames: "MARIA GIUSEPPINA ANTONIETTA"), Reading(cut), Stay, Cie, Policy);
@@ -222,20 +208,17 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void Check_SwappedDayAndMonth_IsAnIdentifyingConflict()
     {
-        // 12 March 1985 in the MRZ, 3 December 1985 on the card.
         var report = Checker.Check(Card(birthDate: "1985-12-03"), Reading(), Stay, Cie, Policy);
 
         Assert.Equal(DocumentCoherenceResults.Failed, Result(report, DocumentFormatChecks.SideConsistency, ZonedFieldNames.BirthDate));
         Assert.True(report.IdentifyingConflict);
         Assert.Equal([IdentityGuidanceCodes.DocumentFieldConflict], report.Codes);
-        // The date itself is a possible one: a conflict is not an impossible date.
         Assert.True(report.DatesValid);
     }
 
     [Fact]
     public void Check_ABirthYearInAnotherCentury_IsAConflict()
     {
-        // The MRZ has the two digits of the year: 250312 reads as 2025 (a birth is never in the future), and a card that says 1925 is not the same date.
         var report = Checker.Check(Card(birthDate: "1925-03-12"), Reading(IdentityTestDocuments.Mrz(birth: "250312")), Stay, Cie, Policy);
 
         Assert.Equal(DocumentCoherenceResults.Failed, Result(report, DocumentFormatChecks.SideConsistency, ZonedFieldNames.BirthDate));
@@ -244,7 +227,6 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void Check_AnExpiryBeforeTheStay_YieldsDocumentExpired()
     {
-        // Expired on the 1st of December, the stay starts on the 10th: the card says the same date as the MRZ.
         var report = Checker.Check(Card(expiryDate: "2026-12-01"), Reading(IdentityTestDocuments.Mrz(expiry: "261201")), Stay, Cie, Policy);
 
         Assert.True(report.Expired);
@@ -270,18 +252,15 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void Check_TheExpiryOfTheMrz_WinsOverTheOnePrinted()
     {
-        // The printed date is read at the local confidence; the one of the MRZ is protected by its own digit: it is the one that says whether the card is expired.
         var report = Checker.Check(Card(expiryDate: "2020-01-01"), Reading(), Stay, Cie, Policy);
 
         Assert.False(report.Expired);
         Assert.Equal(DocumentCoherenceResults.Passed, Result(report, DocumentFormatChecks.Expiry, ZonedFieldNames.ExpiryDate));
 
-        // But a print that says another date than the MRZ is the classic sign of an altered card: the coherence fails, and the dates are not said to be valid.
         Assert.Equal(DocumentCoherenceResults.Failed, Result(report, DocumentFormatChecks.FieldCoherence, ZonedFieldNames.ExpiryDate));
         Assert.Equal(DocumentCoherenceResults.Failed, report.Summary(DocumentFormatChecks.FieldCoherence));
         Assert.False(report.DatesValid);
         Assert.False(report.AllPassed(Cie.RequiredChecks));
-        // It is no conflict on a field that identifies the holder, and no code is raised for it.
         Assert.False(report.IdentifyingConflict);
         Assert.Empty(report.Codes);
     }
@@ -294,16 +273,15 @@ public class DocumentCoherenceCheckerTests
         Assert.Equal(DocumentCoherenceResults.Failed, Result(report, DocumentFormatChecks.FieldCoherence, ZonedFieldNames.Sex));
         Assert.Equal(DocumentCoherenceResults.Failed, report.Summary(DocumentFormatChecks.FieldCoherence));
         Assert.False(report.AllPassed(Cie.RequiredChecks));
-        // A sex is not a date, and not a field that identifies the holder.
         Assert.True(report.DatesValid);
         Assert.False(report.IdentifyingConflict);
         Assert.Empty(report.Codes);
     }
 
     [Theory]
-    [InlineData("FRA", "ITA", DocumentCoherenceResults.Failed)] // the print says another state than the MRZ
+    [InlineData("FRA", "ITA", DocumentCoherenceResults.Failed)]
     [InlineData("ITA", "ITA", DocumentCoherenceResults.Passed)]
-    [InlineData("DEU", "D", DocumentCoherenceResults.Passed)] // the German cards write D in the MRZ and DEU in print
+    [InlineData("DEU", "D", DocumentCoherenceResults.Passed)]
     [InlineData("ITA", "D", DocumentCoherenceResults.Failed)]
     public void Check_ANationalityPrintedDifferentlyFromTheMrz_FailsTheCoherence(string printed, string onTheCard, string expected)
     {
@@ -316,14 +294,11 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void Check_AValueReadOnOneSideOnly_AddsNoEntryToTheCoherence()
     {
-        // The print of the sex and of the nationality was not read: there is nothing to compare, so nothing is said of them (the fields that identify the holder are
-        // the ones that must be there, and they are in side_consistency).
         var withoutPrint = Checker.Check(Card(sex: null, nationality: null), Reading(), Stay, Cie, Policy);
         Assert.Equal(
             [ZonedFieldNames.BirthDate, ZonedFieldNames.IssueDate, ZonedFieldNames.ExpiryDate],
             withoutPrint.Checks.Where(entry => entry.Check == DocumentFormatChecks.FieldCoherence).Select(entry => entry.Field));
 
-        // The MRZ was not read: the print has nothing to be compared with.
         var withoutMrz = Checker.Check(Card(), null, Stay, Cie, Policy);
         Assert.Equal(
             [ZonedFieldNames.BirthDate, ZonedFieldNames.IssueDate],
@@ -333,7 +308,6 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void Check_AFieldThatIdentifiesTheHolder_IsNotComparedTwice()
     {
-        // With the expiry among the fields that identify the holder, its difference is the identifying conflict and the coherence does not repeat it.
         var report = Checker.Check(Card(expiryDate: "2031-03-12"), Reading(), Stay, Cie, PolicyWith("[\"surname\",\"expiryDate\"]"));
 
         Assert.True(report.IdentifyingConflict);
@@ -343,7 +317,6 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void Check_TheExpiryPrinted_IsUsedWhenTheMrzDigitOfTheExpiryFailed()
     {
-        // The digit of the expiry fails: the MRZ gives no expiry (the reading drops a field whose own digit failed), the printed one is used.
         var broken = IdentityTestDocuments.Mrz(expiry: "320312");
         broken.ExpirationDate = null;
         broken.CheckDigitsValid = false;
@@ -363,7 +336,6 @@ public class DocumentCoherenceCheckerTests
 
         Assert.False(report.MrzValid);
         Assert.Equal(DocumentCoherenceResults.Failed, Result(report, DocumentFormatChecks.MrzCheckDigits));
-        // The birth date of the MRZ is not in a reading whose own digit failed: it cannot be compared, which is not a conflict (and not an agreement).
         Assert.Equal(DocumentCoherenceResults.Unknown, Result(report, DocumentFormatChecks.SideConsistency, ZonedFieldNames.BirthDate));
         Assert.Null(report.IdentifyingConflict);
         Assert.False(report.AllPassed(Cie.RequiredChecks));
@@ -372,13 +344,11 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void DocumentCoherence_DifferentDocumentNumber_IsConflict()
     {
-        // The number printed on the front is not the one of the MRZ on the back: a card that was put together, or a number that was misread. Either way a person decides.
         var report = Checker.Check(Card(documentNumber: "CA54321AA"), Reading(), Stay, Cie, Policy);
 
         Assert.True(report.IdentifyingConflict);
         Assert.Equal(DocumentCoherenceResults.Failed, Result(report, DocumentFormatChecks.SideConsistency, ZonedFieldNames.DocumentNumber));
         Assert.Contains(IdentityGuidanceCodes.DocumentFieldConflict, report.Codes);
-        // Nothing else is wrong with the card, so the conflict is the one thing the report says: it does not pass silently behind the other checks.
         Assert.True(report.MrzValid);
         Assert.False(report.Expired);
         Assert.DoesNotContain(report.Checks, entry => entry.Result == DocumentCoherenceResults.Failed && entry.Check != DocumentFormatChecks.SideConsistency);
@@ -395,7 +365,6 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void Check_AFieldReadOnOneSideOnly_IsUnknown_NeverAConflict()
     {
-        // The card was read for the surname only; the MRZ has everything.
         var printedOnly = new List<ZonedField> { Printed(ZonedFieldNames.Surname, "ROSSI") };
 
         var report = Checker.Check(printedOnly, Reading(), Stay, Cie, Policy);
@@ -406,7 +375,6 @@ public class DocumentCoherenceCheckerTests
         Assert.Equal(DocumentCoherenceResults.Passed, Result(report, DocumentFormatChecks.SideConsistency, ZonedFieldNames.Surname));
         Assert.Null(report.IdentifyingConflict);
 
-        // And the other way round: the card has everything and the MRZ was not read.
         var machineOnly = Checker.Check(Card(), null, Stay, Cie, Policy);
 
         Assert.All(
@@ -418,14 +386,10 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void Check_AValidMrzAndOnlyTheSurnamePrinted_IsNotAPass_AndNoFlagSaysOk()
     {
-        // The MRZ is read and valid, the card was read for the surname only: three of the four fields that identify the holder were never compared, the issue date
-        // is only printed and was not read, and the guest has typed nothing yet.
         var report = Checker.Check([Printed(ZonedFieldNames.Surname, "ROSSI")], Reading(), Stay, Cie, Policy);
 
-        // What was checked is said as it is: the digits hold and the MRZ says the card is valid on the day of the stay.
         Assert.True(report.MrzValid);
         Assert.False(report.Expired);
-        // What was not checked is not «ok»: no flag takes an unread value for a good one.
         Assert.Null(report.IdentifyingConflict);
         Assert.Null(report.DatesValid);
         Assert.Equal(DocumentCoherenceResults.Unknown, report.Summary(DocumentFormatChecks.SideConsistency));
@@ -445,7 +409,6 @@ public class DocumentCoherenceCheckerTests
     {
         var report = Checker.Check([], null, Stay, Cie, Policy);
 
-        // The MRZ is not valid when it was not read, and every other flag is unknown: none says «ok» for something that was not read.
         Assert.False(report.MrzValid);
         Assert.Null(report.IdentifyingConflict);
         Assert.Null(report.Expired);
@@ -485,7 +448,6 @@ public class DocumentCoherenceCheckerTests
         Assert.True(report.IdentifyingConflict);
         Assert.Equal(DocumentCoherenceResults.Failed, Result(report, DocumentFormatChecks.SideConsistency, ZonedFieldNames.DocumentNumber));
         Assert.Equal(DocumentCoherenceResults.Passed, Result(report, DocumentFormatChecks.SideConsistency, ZonedFieldNames.Surname));
-        // The digits are not known from a list of fields.
         Assert.False(report.MrzValid);
     }
 
@@ -505,17 +467,16 @@ public class DocumentCoherenceCheckerTests
     }
 
     [Theory]
-    [InlineData("2030-01-01", "2022-05-15", "2032-03-12", false)] // born in the future
-    [InlineData("2026-12-11", "2022-05-15", "2032-03-12", false)] // born the day after the check-in
-    [InlineData("2026-12-10", "2026-12-10", "2032-03-12", true)] // born on the day of the check-in: odd, possible
-    [InlineData("1900-01-01", "2022-05-15", "2032-03-12", false)] // 126 years old
-    [InlineData("1905-12-10", "2022-05-15", "2032-03-12", false)] // 121 on the day of the stay
-    [InlineData("1905-12-11", "2022-05-15", "2032-03-12", true)] // 120 on the day of the stay, 121 tomorrow
-    [InlineData("1985-03-12", "2033-01-01", "2032-03-12", false)] // issued after it expires
-    [InlineData("1985-03-12", "2032-03-12", "2032-03-12", true)] // issued the day it expires: odd, possible
+    [InlineData("2030-01-01", "2022-05-15", "2032-03-12", false)]
+    [InlineData("2026-12-11", "2022-05-15", "2032-03-12", false)]
+    [InlineData("2026-12-10", "2026-12-10", "2032-03-12", true)]
+    [InlineData("1900-01-01", "2022-05-15", "2032-03-12", false)]
+    [InlineData("1905-12-10", "2022-05-15", "2032-03-12", false)]
+    [InlineData("1905-12-11", "2022-05-15", "2032-03-12", true)]
+    [InlineData("1985-03-12", "2033-01-01", "2032-03-12", false)]
+    [InlineData("1985-03-12", "2032-03-12", "2032-03-12", true)]
     public void Check_AnImpossibleDate_SetsDatesValidFalse(string birth, string issue, string expiry, bool valid)
     {
-        // No MRZ: the dates alone are judged, so no conflict between the sides gets in the way (and nothing is compared, so nothing is said of the sides).
         var report = Checker.Check(Card(birthDate: birth, issueDate: issue, expiryDate: expiry), null, Stay, Cie, Policy);
 
         Assert.Equal(valid, report.DatesValid);
@@ -530,7 +491,6 @@ public class DocumentCoherenceCheckerTests
     {
         var report = Checker.Check([Printed(ZonedFieldNames.Surname, "ROSSI")], Reading(), Stay, Cie, Policy);
 
-        // The MRZ has the birth date and the expiry: those are judged. The issue date is only printed and was not read: unknown, so the dates are not said to be valid.
         Assert.Equal(DocumentCoherenceResults.Passed, Result(report, DocumentFormatChecks.FieldCoherence, ZonedFieldNames.BirthDate));
         Assert.Equal(DocumentCoherenceResults.Unknown, Result(report, DocumentFormatChecks.FieldCoherence, ZonedFieldNames.IssueDate));
         Assert.Null(report.DatesValid);
@@ -540,7 +500,6 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void Check_TheBookingFlags_AreTheOnesOfMrzCheckInConsistency()
     {
-        // The guest typed the same names, another birth date, no number, and a citizenship that is no name of the table of the states (a demonym): not compared.
         var typed = new CheckInIdentity("MARIA GIUSEPPINA", "ROSSI", new DateOnly(1990, 1, 1), null, "Italiana");
         var mrz = IdentityTestDocuments.Mrz();
         var expected = MrzCheckInConsistency.Compare(mrz, typed);
@@ -553,23 +512,22 @@ public class DocumentCoherenceCheckerTests
         // No number was declared: nothing to compare (IDENT-DECLARED), never a conflict. A citizenship that was declared but cannot be compared stays unknown.
         Assert.Equal(DocumentCoherenceResults.NotApplicable, Result(report, DocumentFormatChecks.BookingConsistency, ZonedFieldNames.DocumentNumber));
         Assert.Equal(DocumentCoherenceResults.Unknown, Result(report, DocumentFormatChecks.BookingConsistency, ZonedFieldNames.Nationality));
-        // What the guest typed is not what two sides of the document say: a booking mismatch is not an identifying conflict.
         Assert.False(report.IdentifyingConflict);
         Assert.Empty(report.Codes);
     }
 
     [Theory]
-    [InlineData("ITALIA", "ITA", DocumentCoherenceResults.Passed)] // the name of the state as the check-in keeps it
+    [InlineData("ITALIA", "ITA", DocumentCoherenceResults.Passed)]
     [InlineData("Italia", "ITA", DocumentCoherenceResults.Passed)]
-    [InlineData("ITA", "ITA", DocumentCoherenceResults.Passed)] // a code typed as such
-    [InlineData("GERMANIA", "D", DocumentCoherenceResults.Passed)] // the German cards write D (ICAO 9303)
+    [InlineData("ITA", "ITA", DocumentCoherenceResults.Passed)]
+    [InlineData("GERMANIA", "D", DocumentCoherenceResults.Passed)]
     [InlineData("Germania", "DEU", DocumentCoherenceResults.Passed)]
-    [InlineData("FRANCIA", "ITA", DocumentCoherenceResults.Failed)] // another state: a real disagreement
+    [InlineData("FRANCIA", "ITA", DocumentCoherenceResults.Failed)]
     [InlineData("ITALIA", "FRA", DocumentCoherenceResults.Failed)]
-    [InlineData("Italiana", "ITA", DocumentCoherenceResults.Unknown)] // not a name of the table: never guessed
+    [InlineData("Italiana", "ITA", DocumentCoherenceResults.Unknown)]
     [InlineData("Atlantide", "ITA", DocumentCoherenceResults.Unknown)]
-    [InlineData("KOSOVO", "RKS", DocumentCoherenceResults.Unknown)] // a code the table does not have on the card: not compared
-    [InlineData("RKS", "RKS", DocumentCoherenceResults.Passed)] // two equal codes the table does not have: as MrzCheckInConsistency compares them
+    [InlineData("KOSOVO", "RKS", DocumentCoherenceResults.Unknown)]
+    [InlineData("RKS", "RKS", DocumentCoherenceResults.Passed)]
     public void Check_TheCitizenshipTypedAsTheNameOfAState_IsComparedThroughTheExplicitTable(string typed, string onTheCard, string expected)
     {
         var report = Checker.Check(Card(), Reading(IdentityTestDocuments.Mrz(nationality: onTheCard)), Stay with { Declared = Typed with { Citizenship = typed } }, Cie, Policy);
@@ -683,7 +641,6 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void Check_ThePolicy_SaysWhichFieldsIdentify()
     {
-        // With the surname alone identifying, a different number is no conflict (it is not compared); with the expiry too, a different expiry is one.
         var surnameOnly = Checker.Check(Card(documentNumber: "CA54321AA"), Reading(), Stay, Cie, PolicyWith("[\"surname\"]"));
         Assert.False(surnameOnly.IdentifyingConflict);
         Assert.Equal(
@@ -712,7 +669,6 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void Check_TheReport_CarriesNoValueRead()
     {
-        // A card that disagrees with its MRZ on the name, the birth date and the number, with a guest who typed other values still.
         var typed = new CheckInIdentity("GIOVANNI", "VERDI", new DateOnly(1970, 6, 6), "ZZ99999ZZ", "FRA");
         var report = Checker.Check(
             Card(surname: "BIANCHI", givenNames: "LUCIA", birthDate: "1991-02-02", documentNumber: "CB11111BB"),
@@ -724,7 +680,6 @@ public class DocumentCoherenceCheckerTests
 
         var json = JsonSerializer.Serialize(report);
 
-        // The flags, the entries and the codes are what is kept; the derived answers (the count of unknowns) are not part of the shape.
         Assert.Contains("IdentifyingConflict", json, StringComparison.Ordinal);
         Assert.DoesNotContain("UnknownCount", json, StringComparison.Ordinal);
         foreach (var value in new[]
@@ -734,7 +689,6 @@ public class DocumentCoherenceCheckerTests
                  })
             Assert.DoesNotContain(value, json, StringComparison.OrdinalIgnoreCase);
 
-        // Only the names of the checks, their results, the names of the fields and the codes.
         Assert.All(report.Checks, entry =>
         {
             Assert.Contains(entry.Check, DocumentFormatChecks.All);
@@ -747,8 +701,6 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void DocumentCoherenceContext_ToString_NeverShowsWhatTheGuestTyped()
     {
-        // Privacy (ADR-013, R19): the context holds the names, the birth date and the document number the guest typed, and a record writes all of its members when it is
-        // logged by mistake. It says the day of the stay and that something was typed, nothing else, however it is written.
         var typed = new CheckInIdentity("MARIA GIUSEPPINA", "ROSSI", new DateOnly(1985, 3, 12), "CA12345AA", "ITALIA");
         var context = new DocumentCoherenceContext(new DateOnly(2026, 12, 10), typed);
         var log = new CapturingLogger<DocumentCoherenceChecker>();
@@ -766,7 +718,6 @@ public class DocumentCoherenceCheckerTests
         Assert.Contains("none", new DocumentCoherenceContext(new DateOnly(2026, 12, 10)).ToString(), StringComparison.Ordinal);
     }
 
-    /// <summary>The entries of a report in which every check passed: one entry for most checks, two for the ones that have more.</summary>
     private static List<DocumentCoherenceCheck> AllPassedEntries() =>
     [
         new(DocumentFormatChecks.MrzCheckDigits, DocumentCoherenceResults.Passed),
@@ -778,7 +729,6 @@ public class DocumentCoherenceCheckerTests
         new(DocumentFormatChecks.BookingConsistency, DocumentCoherenceResults.Passed, DocumentCoherenceFields.Names),
     ];
 
-    /// <summary>The report of <see cref="AllPassedEntries"/> where every entry of one check has another result.</summary>
     private static DocumentCoherenceReport ReportWith(string check, string result) =>
         DocumentCoherenceReport.FromChecks(AllPassedEntries().Select(entry => entry.Check == check ? entry with { Result = result } : entry).ToList());
 
@@ -787,7 +737,6 @@ public class DocumentCoherenceCheckerTests
     {
         Assert.True(DocumentCoherenceReport.FromChecks(AllPassedEntries()).AllPassed(Cie.RequiredChecks));
 
-        // One entry that is not a pass, in any check, and the answer is no: an unknown is no pass, a failure neither, and a result nobody knows is not one.
         foreach (var spoiled in new[] { DocumentCoherenceResults.Unknown, DocumentCoherenceResults.Failed, "maybe" })
         {
             for (var index = 0; index < AllPassedEntries().Count; index++)
@@ -867,18 +816,15 @@ public class DocumentCoherenceCheckerTests
     {
         var report = DocumentCoherenceReport.FromChecks(AllPassedEntries());
 
-        // A required check that has no entry at all was not made.
         var withoutExpiry = DocumentCoherenceReport.FromChecks(AllPassedEntries().Where(entry => entry.Check != DocumentFormatChecks.Expiry).ToList());
         Assert.False(withoutExpiry.AllPassed(Cie.RequiredChecks));
         Assert.False(withoutExpiry.AllPassed([DocumentFormatChecks.Expiry]));
         Assert.False(DocumentCoherenceReport.FromChecks([]).AllPassed(Cie.RequiredChecks));
 
-        // A format that requires nothing this report can vouch for is not a pass either (an empty list is never «all»), and the checks of the geometry are not judged here.
         Assert.False(report.AllPassed([]));
         Assert.False(report.AllPassed([DocumentFormatChecks.Layout, DocumentFormatChecks.Portrait]));
         Assert.True(report.AllPassed([DocumentFormatChecks.Layout, DocumentFormatChecks.Expiry]));
 
-        // A name that is no check of the plan (a typo in a format file) never passes.
         Assert.False(report.AllPassed([DocumentFormatChecks.Expiry, "expirey"]));
     }
 
@@ -922,7 +868,6 @@ public class DocumentCoherenceCheckerTests
         Assert.False(ReportWith(DocumentFormatChecks.MrzCheckDigits, DocumentCoherenceResults.Failed).MrzValid);
         Assert.False(ReportWith(DocumentFormatChecks.MrzCheckDigits, DocumentCoherenceResults.Unknown).MrzValid);
 
-        // And when every entry passed, each flag says what it means.
         var passed = DocumentCoherenceReport.FromChecks(AllPassedEntries());
         Assert.False(passed.IdentifyingConflict);
         Assert.False(passed.Expired);

@@ -15,10 +15,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// SR-07a: what the host's list says is missing is what the activation wizard says — one set of rules, read once for the whole page
-/// and applied to each property — and the list describes only the properties it was given, with the nights of the active ones.
-/// </summary>
 public class PropertyOverviewServiceTests
 {
     private static readonly DateTime Now = new(2026, 10, 29, 10, 0, 0, DateTimeKind.Utc);
@@ -34,7 +30,6 @@ public class PropertyOverviewServiceTests
             await SeedAsync(db, org, "Senza CIN", cin: null, documents: [DocumentType.CinCertificate], safety: true),
             await SeedAsync(db, org, "CIN non valido", cin: "IT-NO", documents: [DocumentType.CinCertificate], safety: true),
             await SeedAsync(db, org, "Senza documenti", cin: "IT058091C27G5FFZDZ", documents: [], safety: true),
-            // Lombardia asks for the APE as well: the certificate alone is not enough there.
             await SeedAsync(db, org, "Senza APE", cin: "IT058091C27G5FFZDZ", documents: [DocumentType.CinCertificate], safety: true, region: "LOM"),
             await SeedAsync(db, org, "Senza sicurezza", cin: "IT058091C27G5FFZDZ", documents: [DocumentType.CinCertificate], safety: false),
             await SeedAsync(db, org, "Senza dati base", cin: null, documents: [], safety: false, guests: 0, rate: 0m),
@@ -50,7 +45,6 @@ public class PropertyOverviewServiceTests
             Assert.Equal(Shape(alone), Shape(many[property.Id]));
         }
 
-        // The set is varied on purpose: the shapes are not all the same one.
         Assert.True(many.Values.Select(Shape).Distinct().Count() >= 6);
     }
 
@@ -82,7 +76,6 @@ public class PropertyOverviewServiceTests
         db.PropertyICalFeeds.Add(new PropertyICalFeed { PropertyId = active.Id, OrgId = org, ImportUrl = "https://example.test/cal.ics" });
         await db.SaveChangesAsync();
 
-        // 15 nights taken out of 24 available: 62.5 %, which the list says as 63.
         var dashboard = new Mock<IHostDashboardService>();
         dashboard
             .Setup(d => d.GetLast30DaysOccupancyAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
@@ -93,7 +86,6 @@ public class PropertyOverviewServiceTests
         var given = await db.Properties.AsNoTracking().Where(p => p.Id != elsewhere.Id).OrderBy(p => p.Name).ToListAsync();
         var overviews = await service.DescribeAsync(given);
 
-        // The same rows, in the same order, and nothing about the property left out of the list.
         Assert.Equal(given.Select(p => p.Id), overviews.Select(o => o.PropertyId));
         var byId = overviews.ToDictionary(o => o.PropertyId);
         Assert.DoesNotContain(elsewhere.Id, byId.Keys);
@@ -125,14 +117,12 @@ public class PropertyOverviewServiceTests
         Assert.Null(l.SiteVisibility);
         Assert.Equal(("cover.jpg", 2), (l.CoverPhotoUrl, l.PhotoCount));
 
-        // The nights are asked for the one active property of the page, no other.
         dashboard.Verify(
             d => d.GetLast30DaysOccupancyAsync(
                 It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { active.Id })), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
-    // What an API client sees of a step: everything that makes two answers differ.
     private static string Shape(IEnumerable<ComplianceActivationStep> steps) =>
         string.Join(
             " | ",

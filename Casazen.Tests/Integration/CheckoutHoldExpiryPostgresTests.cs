@@ -89,7 +89,6 @@ public class CheckoutHoldExpiryPostgresTests : IClassFixture<CasazenWebApplicati
         Assert.Equal(BookingStatus.Pending, stored.Status);
         Assert.Null(stored.CancellationReason);
         Assert.Equal(before.UpdatedAt, stored.UpdatedAt);
-        // Stripe's answer is recorded on the payment: the dates stay taken until the webhook confirms the booking.
         Assert.Equal(PaymentStatus.Processing, Assert.Single(stored.Payments).Status);
         Assert.Contains(NextYear(10, 2).ToString("yyyy-MM-dd"), await BookedDatesAsync(property.Id, NextYear(10, 1)));
 
@@ -125,8 +124,6 @@ public class CheckoutHoldExpiryPostgresTests : IClassFixture<CasazenWebApplicati
         });
         var confirmed = await SeedHoldAsync(property, NextYear(10, 10), NextYear(10, 12), minutesAgo: 600, confirmedIntent,
             b => b.Status = BookingStatus.Confirmed);
-        // D5: a "pay at the property" request waits for the host's approval until its own deadline, never the checkout
-        // TTL (BK-06).
         var onSite = await SeedHoldAsync(property, NextYear(10, 20), NextYear(10, 22), minutesAgo: 600, paymentIntentId: null,
             b =>
             {
@@ -170,7 +167,6 @@ public class CheckoutHoldExpiryPostgresTests : IClassFixture<CasazenWebApplicati
         Assert.DoesNotContain(expired, calendarIds);
         Assert.Contains(fresh, calendarIds);
 
-        // Reads only leave the hold out: cancelling it (with its intent) is the job's work.
         Assert.Equal(BookingStatus.Pending, (await LoadBookingAsync(expired)).Status);
     }
 
@@ -209,7 +205,6 @@ public class CheckoutHoldExpiryPostgresTests : IClassFixture<CasazenWebApplicati
     [PostgresFact]
     public async Task PublicCheckout_ExpiredHoldWhoseGuestHasPaid_KeepsDatesAndReturns409()
     {
-        // The cleanup before a new booking runs the same routine as the job: the late payment wins, no double booking.
         var (_, property, _) = await SeedCheckoutReadyPropertyAsync();
         var paymentIntentId = NewPaymentIntentId();
         FakeStripeService.SetIntentStatus(paymentIntentId, "succeeded");
@@ -238,7 +233,6 @@ public class CheckoutHoldExpiryPostgresTests : IClassFixture<CasazenWebApplicati
         return new PaymentIntent { Id = intentId, Status = "canceled" };
     }
 
-    /// <summary>One run of the recurring job, in its own DI scope (own DbContext), as Hangfire runs it.</summary>
     private async Task RunJobAsync()
     {
         await using var scope = _factory.Services.CreateAsyncScope();
@@ -290,7 +284,6 @@ public class CheckoutHoldExpiryPostgresTests : IClassFixture<CasazenWebApplicati
         paymentOption = nameof(PaymentOption.Immediate),
     };
 
-    /// <summary>A host whose org has its own connected account (Connect ready) and an active, bookable property.</summary>
     private async Task<(string HostId, Property Property, string Account)> SeedCheckoutReadyPropertyAsync()
     {
         var hostId = $"auth0|bk21-host-{Guid.NewGuid():N}";
@@ -309,7 +302,6 @@ public class CheckoutHoldExpiryPostgresTests : IClassFixture<CasazenWebApplicati
         return (hostId, property, account);
     }
 
-    /// <summary>A public checkout hold: Pending direct booking created <paramref name="minutesAgo"/> minutes ago.</summary>
     private async Task<Guid> SeedHoldAsync(
         Property property,
         DateTime checkIn,

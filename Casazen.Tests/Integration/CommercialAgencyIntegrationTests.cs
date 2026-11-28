@@ -75,7 +75,6 @@ public class CommercialAgencyIntegrationTests(CasazenWebApplicationFactory facto
         Assert.Equal(OrgRole.Owner, founder.Role);
         Assert.Contains(await db.UserContextMemberships.IgnoreQueryFilters().Where(m => m.UserId == userId).Include(m => m.Role).ToListAsync(),
             m => m.ContextKey == "account" && m.Role.RoleKey == "org_owner");
-        // Creation never grants the platform-wide Admin role.
         Assert.NotEqual(Casazen.Core.Entities.UserRole.Admin, user.Role);
     }
 }

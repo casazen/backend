@@ -5,7 +5,6 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Services;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -23,11 +22,9 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class GuestAccountBookingServiceTests
 {
-    // Monday 15 June 2026, 12:00 in Rome (10:00 UTC, summer time): "today" in Rome is 2026-06-15.
     private static readonly DateTimeOffset Now = new(2026, 6, 15, 10, 0, 0, TimeSpan.Zero);
     private static readonly DateTime Today = new(2026, 6, 15, 0, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>The address as the token carries it: capitals and spaces around; the bookings hold it in lower case.</summary>
     private const string AccountEmail = "  Anna.Guest@Example.COM ";
 
     private const string GuestEmail = "anna.guest@example.com";
@@ -35,8 +32,6 @@ public class GuestAccountBookingServiceTests
     private readonly string _database = $"guest-account-service-{Guid.NewGuid():N}";
     private readonly FakeTimeProvider _clock = new(Now);
     private readonly DateOnly _today = DateOnly.FromDateTime(Today);
-
-    // ─── The list: scope, order, paging ─────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task ListAsync_Upcoming_AcrossTwoOrgs_ByCheckInAscending_OnlyTheAccountsOwn()
@@ -48,7 +43,6 @@ public class GuestAccountBookingServiceTests
         var late = await AddBookingAsync(orgA, houseA, GuestEmail, checkInInDays: 30);
         var soon = await AddBookingAsync(orgB, houseB, GuestEmail, checkInInDays: 3);
         var middle = await AddBookingAsync(orgA, houseA, GuestEmail, checkInInDays: 10);
-        // Somebody else's, in the same org and in the other one: never listed.
         await AddBookingAsync(orgA, houseA, "other.person@example.com", checkInInDays: 5);
         await AddBookingAsync(orgB, houseB, "anna.guest2@example.com", checkInInDays: 6);
 
@@ -76,7 +70,6 @@ public class GuestAccountBookingServiceTests
         Assert.Equal([yesterdayOut.Id, longAgo.Id, olderStill.Id], past.Items.Select(i => i.Id));
         Assert.Equal(3, past.Total);
         Assert.All(past.Items, item => Assert.Equal(GuestBookingStatus.StayCompleted, item.Status));
-        // Check-out today (Europe/Rome): the stay is not over yet.
         Assert.Equal([outToday.Id], upcoming.Items.Select(i => i.Id));
         Assert.Equal(GuestBookingStatus.StayInProgress, Assert.Single(upcoming.Items).Status);
     }
@@ -84,7 +77,6 @@ public class GuestAccountBookingServiceTests
     [Fact]
     public async Task ListAsync_TheRomeDayDecidesTheScope_NotTheUtcDay()
     {
-        // 00:30 on 16 June in Rome is still 22:30 UTC on 15 June: today is the 16th in Rome.
         _clock.SetUtcNow(new DateTimeOffset(2026, 6, 15, 22, 30, 0, TimeSpan.Zero));
         var org = await AddOrgAsync();
         var house = await AddPropertyAsync(org, "Casa Mezzanotte");
@@ -119,15 +111,12 @@ public class GuestAccountBookingServiceTests
         Assert.Equal(ids.Skip(4), last.Items.Select(i => i.Id));
         Assert.All(new[] { first, second, last, beyond }, page => Assert.Equal(5, page.Total));
         Assert.Empty(beyond.Items);
-        // A page below 1 counts as 1 and a size below 1 as 1; a size above the cap as the cap.
         Assert.Equal((1, 1), (belowOne.Page, belowOne.PageSize));
         Assert.Equal([ids[0]], belowOne.Items.Select(i => i.Id));
         Assert.Equal(GuestAccountBookings.MaxPageSize, huge.PageSize);
         Assert.Empty(huge.Items);
         Assert.Equal(5, huge.Total);
     }
-
-    // ─── The list: which bookings count ─────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task ListAsync_DeadEndsAreNotListedOrCounted_EveryOtherStateIs()
@@ -136,17 +125,14 @@ public class GuestAccountBookingServiceTests
         var house = await AddPropertyAsync(org, "Casa Stati");
         var recent = Now.UtcDateTime.AddMinutes(-5);
 
-        // The states a guest can still act on or wants to read about.
         var expected = new Dictionary<GuestBookingStatus, Guid>
         {
             [GuestBookingStatus.Confirmed] = (await AddBookingAsync(org, house, GuestEmail, 10)).Id,
-            // A fresh hold, nothing paid yet.
             [GuestBookingStatus.AwaitingPayment] = (await AddBookingAsync(org, house, GuestEmail, 11, shape: b =>
             {
                 b.Status = BookingStatus.Pending;
                 b.CreatedAt = recent;
             })).Id,
-            // The last attempt failed and the hold is still valid.
             [GuestBookingStatus.PaymentFailed] = (await AddBookingAsync(
                 org,
                 house,
@@ -162,7 +148,6 @@ public class GuestAccountBookingServiceTests
                     p.Status = PaymentStatus.Failed;
                     p.StripePaymentIntentId = "pi_failed";
                 })).Id,
-            // A SEPA debit in flight: the dates stay taken even past the hold.
             [GuestBookingStatus.PaymentProcessing] = (await AddBookingAsync(
                 org,
                 house,
@@ -178,7 +163,6 @@ public class GuestAccountBookingServiceTests
                     p.Status = PaymentStatus.Processing;
                     p.StripePaymentIntentId = "pi_sepa";
                 })).Id,
-            // "Pay at the property": email confirmed, the host has not answered; and email not confirmed yet.
             [GuestBookingStatus.AwaitingHostApproval] = (await AddBookingAsync(org, house, GuestEmail, 14, shape: b =>
             {
                 b.Status = BookingStatus.Pending;
@@ -205,8 +189,6 @@ public class GuestAccountBookingServiceTests
             })).Id,
         };
 
-        // The dead ends: a hold that lapsed (its PaymentIntent exists, nothing was paid), the same cancelled by the job, a request nobody
-        // answered, and a payment that came when the dates were gone.
         var lapsedHold = await AddBookingAsync(
             org,
             house,
@@ -256,10 +238,8 @@ public class GuestAccountBookingServiceTests
         var house = await AddPropertyAsync(org, "Casa Canali");
         var goneHouse = await AddPropertyAsync(gone, "Casa Spenta");
         var own = await AddBookingAsync(org, house, GuestEmail, checkInInDays: 8);
-        // Same address, but not a booking of the public checkout: the host's own entries and the channels' stays.
         foreach (var source in new[] { BookingSource.Manual, BookingSource.Airbnb, BookingSource.BookingCom, BookingSource.Local })
             await AddBookingAsync(org, house, GuestEmail, checkInInDays: 9, source: source);
-        // Same address, but the org of the site is switched off.
         await AddBookingAsync(gone, goneHouse, GuestEmail, checkInInDays: 12);
 
         var page = await ListAsync(GuestEmail, GuestAccountBookingScope.Upcoming, 1, 20);
@@ -292,7 +272,6 @@ public class GuestAccountBookingServiceTests
         var house = await AddPropertyAsync(org, "Casa Filtro");
         var stay = await AddBookingAsync(org, house, GuestEmail, checkInInDays: 20);
 
-        // A guest with no org at all (the tenant is null), and a guest who is also a host of an org that is not the site's.
         var page = await ListAsync(
             GuestEmail,
             GuestAccountBookingScope.Upcoming,
@@ -302,8 +281,6 @@ public class GuestAccountBookingServiceTests
 
         Assert.Equal([stay.Id], page.Items.Select(i => i.Id));
     }
-
-    // ─── The list item ──────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task ListAsync_Item_CarriesTheFieldsOfTheContract()
@@ -343,7 +320,6 @@ public class GuestAccountBookingServiceTests
         Assert.Equal(house.Slug, item.PropertySlug);
         Assert.Equal("Casa dei Pini", item.PropertyName);
         Assert.Equal("Cernobbio", item.City);
-        // The first photo that is a full https address: not an old uploads path, not a blank, not http.
         Assert.Equal("https://cdn.example.com/3.jpg", item.PhotoUrl);
         Assert.Equal(_today.AddDays(12), item.CheckInDate);
         Assert.Equal(_today.AddDays(16), item.CheckOutDate);
@@ -372,8 +348,6 @@ public class GuestAccountBookingServiceTests
         Assert.Equal((0m, 0m), (item.PaidAmount, item.RefundedAmount));
     }
 
-    // ─── One booking ────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetAsync_OwnBooking_ReturnsTheViewOfTheAnonymousLookupWithTheIdAndTheSlug()
     {
@@ -390,7 +364,6 @@ public class GuestAccountBookingServiceTests
         Assert.Equal("Casa Dettaglio", view.PropertyName);
         Assert.Equal(362m, view.PaidAmount);
         Assert.Equal(new GuestBookingHostContact("Villa Dettaglio", "host@example.com"), view.Host);
-        // Arrival in 40 days: the link of the online check-in is emailed three days before.
         Assert.Equal(GuestCheckInAccessStatus.NotYetOpen, view.CheckIn.Status);
         Assert.Equal(_today.AddDays(37), view.CheckIn.OpensOn);
     }
@@ -416,7 +389,6 @@ public class GuestAccountBookingServiceTests
             await db.SaveChangesAsync();
         }
 
-        // The guest has no org (or one of their own): the session of the booking's org is still the booking's.
         var withoutOrg = await GetAsync(GuestEmail, stay.Id, tenantOrg: null);
         var otherOrg = await GetAsync(GuestEmail, stay.Id, tenantOrg: Guid.NewGuid());
 
@@ -463,8 +435,6 @@ public class GuestAccountBookingServiceTests
         });
     }
 
-    // ─── The session ────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task OpenSessionAsync_OwnBooking_MintsTheGuestAreaTokenOfTheSiteAndOfTheAccountsEmail()
     {
@@ -478,14 +448,12 @@ public class GuestAccountBookingServiceTests
         Assert.StartsWith(GuestSessionTokens.Prefix, opened.AccessToken, StringComparison.Ordinal);
         Assert.Equal(BookingCodes.Format(stay.BookingCode), opened.BookingCode);
         Assert.Equal(org.Slug, opened.OrgSlug);
-        // The default length of a guest-area session: two hours.
         Assert.Equal(Now.UtcDateTime.AddMinutes(GuestSessionService.DefaultSessionMinutes), opened.ExpiresAt);
         var ticket = tokens.Read(opened.AccessToken);
         Assert.NotNull(ticket);
         Assert.Equal(org.Id, ticket.OrgId);
         Assert.True(ticket.IsForEmail(GuestEmail));
         Assert.False(ticket.IsForEmail("someone.else@example.com"));
-        // The address is in the token only as a hash, inside the sealed payload.
         Assert.DoesNotContain(GuestEmail, opened.AccessToken, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -502,7 +470,6 @@ public class GuestAccountBookingServiceTests
             Tokens(),
             settings: new() { [GuestSessionService.SessionMinutesKey] = "9999" });
 
-        // Never more than 24 hours, whatever the configuration says.
         Assert.Equal(Now.UtcDateTime.AddMinutes(GuestSessionService.MaxSessionMinutes), opened.ExpiresAt);
     }
 
@@ -527,8 +494,6 @@ public class GuestAccountBookingServiceTests
         await Assert.ThrowsAnyAsync<ArgumentException>(() => OpenSessionAsync(email, Guid.NewGuid(), Tokens()));
     }
 
-    // ─── Harness ────────────────────────────────────────────────────────────────────────────────────────
-
     private AppDbContext NewDb(Guid? tenantOrg = null) =>
         new(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options,
@@ -539,7 +504,6 @@ public class GuestAccountBookingServiceTests
     private static IConfiguration Settings(Dictionary<string, string?>? values = null) =>
         new ConfigurationBuilder().AddInMemoryCollection(values ?? []).Build();
 
-    /// <summary>The service as the request of a signed-in guest sees it: the tenant filter on, for no org or for another one.</summary>
     private (GuestAccountBookingService Service, AppDbContext Db) NewService(
         Guid? tenantOrg,
         GuestSessionTokens? tokens = null,
@@ -708,7 +672,6 @@ public class GuestAccountBookingServiceTests
 
         if (payment is not null)
         {
-            // A payment attempt in the state the test needs (a failed one, one in flight, a hold's intent not paid yet).
             var attempt = new Payment
             {
                 BookingId = booking.Id,

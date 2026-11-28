@@ -31,8 +31,6 @@ namespace Casazen.Tests.Integration;
 [Collection(SupplierCatalogHostsCollection.Name)]
 public class PublicSupplierBookingIntegrationTests(PublicBookingFactory factory) : IClassFixture<PublicBookingFactory>
 {
-    // ─── The whole journey ───────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Booking_FromTheSlotsToTheTakenRequest_EndToEnd()
     {
@@ -40,14 +38,12 @@ public class PublicSupplierBookingIntegrationTests(PublicBookingFactory factory)
         var email = PublicBookingTestData.NewEmail();
         using var client = factory.CreateClient();
 
-        // 1. The customer picks one of the slots the showcase offers.
         var slots = await client.GetFromJsonAsync<JsonElement>($"/api/public/suppliers/{supplier.Slug}/slots?service={supplier.Service}");
         var start = slots.GetProperty("days").EnumerateArray()
             .SelectMany(day => day.GetProperty("slots").EnumerateArray())
             .Select(slot => slot.GetProperty("startUtc").GetDateTime())
             .First();
 
-        // 2. It leaves its data: a hold, an e-mail to check the address, and the supplier hears nothing.
         var created = await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/bookings", PublicBookingTestData.Body(supplier.Service, start, email));
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         AssertPrivateAnswer(created);
@@ -63,13 +59,11 @@ public class PublicSupplierBookingIntegrationTests(PublicBookingFactory factory)
         Assert.Empty(factory.EmailsTo(supplier.ContactEmail));
         Assert.Equal(0, (await supplier.InboxAsync(factory)).GetProperty("total").GetInt32());
 
-        // 3. The slot is taken from now on, for anybody else.
         var second = await client.PostAsJsonAsync(
             $"/api/public/suppliers/{supplier.Slug}/bookings",
             PublicBookingTestData.Body(supplier.Service, start, PublicBookingTestData.NewEmail()));
         await AssertProblemAsync(second, HttpStatusCode.Conflict, "supplier_slot_unavailable");
 
-        // 4. It follows the link: now the supplier has a request, and both sides are told.
         var confirmed = await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/bookings/{holdId}/confirm-email", new { token });
         Assert.Equal(HttpStatusCode.OK, confirmed.StatusCode);
         AssertPrivateAnswer(confirmed);
@@ -89,7 +83,6 @@ public class PublicSupplierBookingIntegrationTests(PublicBookingFactory factory)
             factory.Pushes.ToArray(),
             p => p.Audience == PushAudience.SupplierOrg(supplier.OrgId) && PushRoutes.IsAppRoute(p.Payload.Route) && p.Payload.Route.StartsWith("/supplier/requests/", StringComparison.Ordinal));
 
-        // 5. The supplier sees "Nome C." and the comune; the street waits for the take.
         var inbox = await supplier.InboxAsync(factory);
         var item = Assert.Single(inbox.GetProperty("items").EnumerateArray());
         var requestId = item.GetProperty("id").GetGuid();
@@ -101,7 +94,6 @@ public class PublicSupplierBookingIntegrationTests(PublicBookingFactory factory)
         foreach (var secret in PublicBookingTestData.Secrets(email))
             Assert.DoesNotContain(secret, beforeTake);
 
-        // 6. The supplier takes it: the customer is told, and the supplier now sees who and where.
         using (var asSupplier = supplier.Client(factory))
         {
             var taken = await asSupplier.PostAsync($"/api/service-requests/{requestId}/take", content: null);
@@ -118,7 +110,6 @@ public class PublicSupplierBookingIntegrationTests(PublicBookingFactory factory)
 
         Assert.Contains(factory.EmailsTo(email), e => e.Template == EmailTemplates.Names.SupplierBookingAccepted);
 
-        // 7. A second click on the link answers the same, with the status as it is by then, and does nothing again.
         var emailsBefore = factory.EmailsTo(email).Count;
         var again = await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/bookings/{holdId}/confirm-email", new { token });
         Assert.Equal(HttpStatusCode.OK, again.StatusCode);
@@ -200,7 +191,6 @@ public class PublicSupplierBookingIntegrationTests(PublicBookingFactory factory)
         {
             var expired = await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/bookings/{holdId}/confirm-email", new { token });
             await AssertProblemAsync(expired, HttpStatusCode.Conflict, "supplier_booking_link_expired");
-            // The slot is free again for the next customer (the booking starts again).
             var next = await client.PostAsJsonAsync(
                 $"/api/public/suppliers/{supplier.Slug}/bookings",
                 PublicBookingTestData.Body(supplier.Service, start.AddDays(7), PublicBookingTestData.NewEmail()));
@@ -209,8 +199,6 @@ public class PublicSupplierBookingIntegrationTests(PublicBookingFactory factory)
 
         Assert.Equal(0, (await supplier.InboxAsync(factory)).GetProperty("total").GetInt32());
     }
-
-    // ─── What is refused ─────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Create_ValuesThatAreNotValid_Are422WithTheirFields_AndNothingIsHeldOrSent()
@@ -286,7 +274,6 @@ public class PublicSupplierBookingIntegrationTests(PublicBookingFactory factory)
         var supplier = await PublicBookingTestData.SeedAsync(factory);
         using var client = factory.CreateClient();
 
-        // Sunday: the supplier does not work. A time that is not on the grid of the slots. A time in the past.
         foreach (var start in new[]
                  {
                      PublicBookingTestData.TuesdayAt9.AddDays(5),
@@ -307,8 +294,6 @@ public class PublicSupplierBookingIntegrationTests(PublicBookingFactory factory)
         var supplier = await PublicBookingTestData.SeedAsync(factory);
         using var client = factory.CreateClient();
 
-        // Whole minutes at the very ends of the calendar and far from today: anyone can send these dates, and the date arithmetic of
-        // the planner would overflow on them. They are refused like any slot that is not free.
         foreach (var start in new[]
                  {
                      new DateTime(1, 1, 1, 0, 0, 0, DateTimeKind.Utc),
@@ -382,7 +367,6 @@ public class PublicSupplierBookingIntegrationTests(PublicBookingFactory factory)
         Assert.NotEqual(Guid.Empty, answer.GetProperty("id").GetGuid());
         Assert.Empty(factory.EmailsTo(email));
         Assert.Equal(0, await CountHoldsAsync(supplier.OrgId));
-        // The slot is still free for a person.
         var person = await client.PostAsJsonAsync(
             $"/api/public/suppliers/{supplier.Slug}/bookings", PublicBookingTestData.Body(supplier.Service, PublicBookingTestData.TuesdayAt9, PublicBookingTestData.NewEmail()));
         Assert.Equal(HttpStatusCode.Created, person.StatusCode);
@@ -443,8 +427,6 @@ public class PublicSupplierBookingIntegrationTests(PublicBookingFactory factory)
         Assert.True(response.StatusCode is HttpStatusCode.RequestEntityTooLarge or HttpStatusCode.BadRequest, $"{(int)response.StatusCode}");
     }
 
-    // ─── What nobody may learn ───────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task EveryAnswer_IsNotIndexableNotCacheableAndSetsNoCookie_AndEchoesNothingPersonal()
     {
@@ -491,8 +473,6 @@ public class PublicSupplierBookingIntegrationTests(PublicBookingFactory factory)
             Assert.DoesNotContain(secret, logs, StringComparison.OrdinalIgnoreCase);
     }
 
-    // ─── helpers ───
-
     private static void AssertPrivateAnswer(HttpResponseMessage response)
     {
         Assert.Equal("noindex", Assert.Single(response.Headers.GetValues("X-Robots-Tag")));
@@ -521,10 +501,6 @@ public class PublicSupplierBookingIntegrationTests(PublicBookingFactory factory)
     }
 }
 
-/// <summary>
-/// SP-10 with the flag <c>SupplierShowcaseBooking</c> <b>off</b> (the default of every environment): the two endpoints answer 404
-/// like a route that does not exist, whatever the supplier published and whatever the request, and nothing is held, stored or sent.
-/// </summary>
 [Collection(SupplierCatalogHostsCollection.Name)]
 public class PublicSupplierBookingFlagOffIntegrationTests(CasazenWebApplicationFactory factory) : IClassFixture<CasazenWebApplicationFactory>
 {
@@ -540,7 +516,6 @@ public class PublicSupplierBookingFlagOffIntegrationTests(CasazenWebApplicationF
         {
             await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/bookings", PublicBookingTestData.Body(service, PublicBookingTestData.TuesdayAt9, PublicBookingTestData.NewEmail())),
             await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/bookings/{Guid.NewGuid()}/confirm-email", new { token = "x" }),
-            // A request that would be refused is a 404 too, never a 400 or a 422: nothing is read.
             await client.PostAsync($"/api/public/suppliers/{supplier.Slug}/bookings", new StringContent("{ not json", Encoding.UTF8, "application/json")),
             await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/bookings/{Guid.NewGuid()}/confirm-email", new { }),
         };
@@ -560,7 +535,6 @@ public class PublicSupplierBookingFlagOffIntegrationTests(CasazenWebApplicationF
     }
 }
 
-/// <summary>The showcase host with the per-IP limit of the booking at two requests per ten minutes.</summary>
 public sealed class PublicBookingPerIpThrottledFactory : PublicBookingFactory
 {
     protected override IEnumerable<KeyValuePair<string, string?>> ExtraSettings() =>
@@ -569,7 +543,6 @@ public sealed class PublicBookingPerIpThrottledFactory : PublicBookingFactory
     ];
 }
 
-/// <summary>The showcase host with the per-address limit of the booking at two requests an hour.</summary>
 public sealed class PublicBookingPerEmailThrottledFactory : PublicBookingFactory
 {
     protected override IEnumerable<KeyValuePair<string, string?>> ExtraSettings() =>
@@ -578,7 +551,6 @@ public sealed class PublicBookingPerEmailThrottledFactory : PublicBookingFactory
     ];
 }
 
-/// <summary>SP-10: the three limits of the booking — per IP, per address and supplier, and the cap of unchecked bookings of an address — all answer the same 429.</summary>
 [Collection(SupplierCatalogHostsCollection.Name)]
 public class PublicSupplierBookingRateLimitIntegrationTests(
     PublicBookingPerIpThrottledFactory perIp,
@@ -638,10 +610,8 @@ public class PublicSupplierBookingRateLimitIntegrationTests(
         Assert.Equal(HttpStatusCode.Created, second.StatusCode);
         var problem = await ClientIpRateLimitingIntegrationTests.AssertRateLimitedAsync(limited);
         Assert.Equal("rate_limited", problem.GetProperty("code").GetString());
-        // The wait it names is the window of the limit, an hour: the cap of unchecked bookings answers the same (next test).
         Assert.Equal(TimeSpan.FromHours(1), limited.Headers.RetryAfter?.Delta);
         Assert.Equal(HttpStatusCode.Created, otherAddress.StatusCode);
-        // Nothing of the third attempt was held or sent.
         Assert.Equal(2, perEmail.EmailsTo(email, StringComparison.OrdinalIgnoreCase).Count);
     }
 
@@ -662,8 +632,6 @@ public class PublicSupplierBookingRateLimitIntegrationTests(
         var problem = await ClientIpRateLimitingIntegrationTests.AssertRateLimitedAsync(fourth);
         Assert.Equal("rate_limited", problem.GetProperty("code").GetString());
         Assert.Equal(3, capped.EmailsTo(email).Count);
-        // The wait the answer names is the window of the limit per address, to the second — the same as that limit's own answer —
-        // and not the time until the oldest of the three lapses, which would tell when someone booked with this address.
         Assert.Equal(TimeSpan.FromHours(1), fourth.Headers.RetryAfter?.Delta);
         Assert.Equal(60 * 60, problem.GetProperty("retryAfterSeconds").GetInt32());
     }
@@ -701,7 +669,6 @@ public class PublicBookingFactory : PublicShowcaseFactory
     /// <summary>Everything written to a log since the host started, one line per entry.</summary>
     public string LogText() => string.Join('\n', _logs);
 
-    /// <summary>Moves the clock of the host for the lifetime of the returned handle (the shared host is put back afterwards).</summary>
     public IDisposable MoveClock(TimeSpan by)
     {
         var original = Clock.GetUtcNow();
@@ -713,7 +680,6 @@ public class PublicBookingFactory : PublicShowcaseFactory
     {
         base.ConfigureWebHost(builder);
 
-        // The "no secret in the logs" tests read what the host writes at Information: undo the quiet default.
         builder.ConfigureAppConfiguration((_, config) =>
             config.AddInMemoryCollection(new Dictionary<string, string?> { ["Logging:LogLevel:Default"] = "Information" }));
         builder.ConfigureLogging(logging => logging.AddProvider(new CapturingProvider(_logs)));
@@ -777,10 +743,8 @@ public class PublicBookingFactory : PublicShowcaseFactory
     }
 }
 
-/// <summary>A supplier of the booking tests: active, with a showcase, a published service, hours and online bookings on.</summary>
 internal sealed record BookableSupplier(Guid OrgId, string Slug, string Service, string UserId, string ContactEmail);
 
-/// <summary>Seeds and requests of the HTTP tests of the booking from a supplier's showcase (SP-10).</summary>
 internal static class PublicBookingTestData
 {
     public const string City = "Monza";
@@ -791,12 +755,10 @@ internal static class PublicBookingTestData
     public const string FullName = "Mario Rossi";
     public const string ServiceName = "Pulizia profonda";
 
-    /// <summary>Tuesday 13 October 2026, 09:00 in Rome: the first slot of the supplier after the 24 hours of notice.</summary>
     public static readonly DateTime TuesdayAt9 = new(2026, 10, 13, 7, 0, 0, DateTimeKind.Utc);
 
     public static string NewEmail() => $"cliente.{Guid.NewGuid():N}@example.com";
 
-    /// <summary>The texts that must never be in an answer nor in a log: the customer's data (the e-mail given).</summary>
     public static string[] Secrets(string email) =>
         [FullName, "Rossi", email, "3331234567", "333 123", Address, "Segretissima", "Piano 3", "Citofono", "cassetta"];
 
@@ -856,7 +818,6 @@ internal static class PublicBookingTestData
             website,
         };
 
-    /// <summary>The hold and the token of the link in a verification e-mail.</summary>
     public static (Guid HoldId, string Token) LinkOf((string? To, EmailContent Content, string Template) email)
     {
         var match = Regex.Match(email.Content.HtmlBody, "hold=([0-9a-fA-F-]{36})#token=([A-Za-z0-9_-]+)");

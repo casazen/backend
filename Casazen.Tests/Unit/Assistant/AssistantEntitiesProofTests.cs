@@ -11,14 +11,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Assistant;
 
-/// <summary>
-/// E05/F05/US01/T01 (NF-66, NF-67, PO-09): the tables of the assistant. The privacy rule has its proof (the free text of a host is a Data Protection payload at rest);
-/// the others are the shape the brief asks for: the unique indexes that keep one rules row per organization and one decision per message, the defaults (threshold
-/// 0.85, a new situation in draft), the provenance of the direct messages, and a log with no text.
-/// </summary>
 public class AssistantEntitiesProofTests
 {
-    // One provider for the whole class: EF keeps one model per provider, and a provider per test would fill the cache the other tests share.
     private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     /// <summary>
@@ -51,20 +45,17 @@ public class AssistantEntitiesProofTests
             var column = db.Model.FindEntityType(entityType)!.FindProperty(property)!;
             var converter = Assert.IsType<EncryptedStringConverter>(column.GetValueConverter());
 
-            // No length on the column: the payload of a text of the longest size does not fit in a column of that size.
             Assert.Null(column.GetMaxLength());
             var longestText = new string('a', longest);
             Assert.True(((string)converter.ConvertToProvider(longestText)!).Length > longest);
 
             var stored = (string)converter.ConvertToProvider(wifi)!;
 
-            // What the column holds: a payload, and nothing of the words in it.
             Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, stored, StringComparison.Ordinal);
             Assert.DoesNotContain(wifi, stored, StringComparison.Ordinal);
             Assert.DoesNotContain("Zefirino", stored, StringComparison.Ordinal);
             Assert.DoesNotContain("password", stored, StringComparison.OrdinalIgnoreCase);
 
-            // Read back only through the decryption of the assistant's purpose: the protector of the words of the conversations cannot read it.
             Assert.Equal(wifi, converter.ConvertFromProvider(stored));
             Assert.ThrowsAny<CryptographicException>(() => conversationWords.Unprotect(stored));
         }
@@ -76,7 +67,6 @@ public class AssistantEntitiesProofTests
     [Fact]
     public void AssistantDecisionLog_HoldsIdsAndCodesAndNoText()
     {
-        // PO-09 minimization: the log names the message by its id, the conversation by its key, the sources by ids and topics. No string member can carry a word of the guest.
         var strings = typeof(AssistantDecisionLog)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.PropertyType == typeof(string))
@@ -180,13 +170,11 @@ public class AssistantEntitiesProofTests
         Assert.Null(rules.HoursFrom);
         Assert.Null(rules.HoursTo);
 
-        // Each organization starts from its own list: the default is a copy, never the shared one.
         rules.Languages.Add("de");
         Assert.Equal(new[] { "it", "en" }, new OrgAssistantRules().Languages);
 
         Assert.Equal(AssistantMode.Draft, new AssistantSituationSetting().Mode);
 
-        // A null field of the exceptions of a property means «as the organization».
         var exceptions = new PropertyAssistantSettings();
         Assert.Null(exceptions.Enabled);
         Assert.Null(exceptions.Tone);
@@ -226,7 +214,6 @@ public class AssistantEntitiesProofTests
         Assert.Equal(MessageOrigin.Guest, GuestMessageRules.OriginOf(GuestMessageSender.Guest));
         Assert.Equal(MessageOrigin.Person, GuestMessageRules.OriginOf(GuestMessageSender.Host));
 
-        // The migration gave the messages that existed the origin the writers give a new one: the statement is written with the numbers of the two enums, and this fails if they move.
         Assert.Equal(1, (int)GuestMessageSender.Host);
         Assert.Equal(2, (int)MessageOrigin.Person);
         var migration = Directory

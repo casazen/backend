@@ -19,7 +19,6 @@ using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -75,8 +74,6 @@ public class VerificationVideoCallTests : IAsyncLifetime
 
     private HostScope OrgScope => new(_orgId);
 
-    // ─── The proofs of the brief ─────────────────────────────────────────────────────────────────────────
-
     /// <summary>
     /// Proof (privacy): CasaZen keeps no trace of the link. The e-mail carries it, once, to the guest; no row of the model holds it (the session, the log of the
     /// verifications, the "To do", the activity log: every column of every table is read) and no line of the application log does; what is kept is only that
@@ -98,12 +95,10 @@ public class VerificationVideoCallTests : IAsyncLifetime
         Assert.Equal("Videochiamata per il check-in — Casa Video", mail.Content.Subject);
         Assert.Contains($"href=\"{MeetingUrl}\"", mail.Content.HtmlBody, StringComparison.Ordinal);
 
-        // Nowhere in the database, nowhere in the logs.
         AssertNoRowHolds(Marker);
         AssertNoRowHolds("meet.example.test");
         Assert.All(_logs, line => Assert.DoesNotContain(Marker, line, StringComparison.Ordinal));
 
-        // What is kept: that a call was proposed, and when, in words (the id of the operator is in the log, not in the "To do"), and the state the operator sees.
         var todo = await _db.InternalActivities.SingleAsync(Ct);
         Assert.Equal(EmailTexts.Get("TodoReason_IdentityVerificationVideoCall", EmailTemplates.DefaultCulture), todo.Reason);
         Assert.Equal("Videochiamata proposta il 2026-11-14 10:00 (UTC)", todo.Notes);
@@ -111,7 +106,6 @@ public class VerificationVideoCallTests : IAsyncLifetime
         Assert.Null(todo.CompletedAt);
         Assert.Contains(_logs, line => line.Contains(Operator, StringComparison.Ordinal) && line.Contains("video call", StringComparison.Ordinal));
 
-        // The verification still waits for the operator: sending the link decided nothing.
         Assert.Single(await Service().GetPendingVerificationsAsync(Operator, OrgScope, Ct));
         Assert.False(await _db.BiometricVerificationLogs.AnyAsync(Ct));
     }
@@ -152,12 +146,10 @@ public class VerificationVideoCallTests : IAsyncLifetime
         await Assert.ThrowsAsync<DomainRuleException>(() => Service().ProposeVideoCallAsync(bookingId, OrgScope, "https://meet.example.test/a\nb", Operator, Ct));
         Assert.Single(_emails);
 
-        // The case of the scheme and the host does not matter; a bare host is an address.
         Assert.Equal(VideoCallOutcome.Sent, await Service().ProposeVideoCallAsync(bookingId, OrgScope, "HTTPS://MEET.EXAMPLE.TEST", Operator, Ct));
         Assert.Contains("https://meet.example.test/", _emails[^1].Content.HtmlBody, StringComparison.Ordinal);
     }
 
-    /// <summary>The address is checked by its shape only: the service has no way to reach it (no HTTP client, no handler, no factory among its dependencies).</summary>
     [Fact]
     public void VideoCall_TheAddressIsNeverFetched()
     {
@@ -168,9 +160,6 @@ public class VerificationVideoCallTests : IAsyncLifetime
         Assert.Null(VideoCallLinks.TryParse("http://meet.example.test/room"));
     }
 
-    // ─── The guest who cannot be reached, the stays out of reach, the language ───────────────────────────
-
-    /// <summary>A guest with no e-mail address: nothing is sent, the answer is «unreachable» and the "To do" suggests the portal chat; the link is in no row of the model.</summary>
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -190,10 +179,6 @@ public class VerificationVideoCallTests : IAsyncLifetime
         Assert.Single(await Service().GetPendingVerificationsAsync(Operator, OrgScope, Ct));
     }
 
-    /// <summary>
-    /// Proof (permission, scope): only a stay the caller reaches, whose verification waits for an operator, gets a call. A collaborator whose scope is another
-    /// property, an unknown booking, a verification already decided, one the agent accepted and a cancelled stay all answer «not pending» and send nothing.
-    /// </summary>
     [Fact]
     public async Task VideoCall_OnlyAStayTheCallerReaches_WhoseVerificationWaits_GetsACall()
     {
@@ -230,7 +215,6 @@ public class VerificationVideoCallTests : IAsyncLifetime
         Assert.All(await _db.InternalActivities.ToListAsync(Ct), todo => Assert.Null(todo.Notes));
     }
 
-    /// <summary>The e-mail is in the language the guest chose on the check-in page (Italian, English, German, French or Spanish), Italian when there is none.</summary>
     [Theory]
     [InlineData(null, "Videochiamata per il check-in")]
     [InlineData("it", "Videochiamata per il check-in")]
@@ -274,7 +258,6 @@ public class VerificationVideoCallTests : IAsyncLifetime
         Assert.Equal(EmailTexts.Get("TodoReason_IdentityVerificationVideoCall", CultureInfo.GetCultureInfo(orgLanguage)), todo.Reason);
     }
 
-    /// <summary>When the e-mail cannot be queued (no provider, the queue down) nothing is recorded and the operator is told: the "To do" is not changed.</summary>
     [Fact]
     public async Task VideoCall_AnEmailThatCannotBeQueued_RecordsNothing()
     {
@@ -289,10 +272,6 @@ public class VerificationVideoCallTests : IAsyncLifetime
         Assert.Equal(EmailTexts.Get("TodoReason_IdentityVerification", EmailTemplates.DefaultCulture), todo.Reason);
     }
 
-    /// <summary>
-    /// The decision after the call is the existing one: an approval of the queue with the note «videochiamata» is an operator decision (<c>Method = Operator</c>),
-    /// and proposing a call before it did not close the verification or the "To do".
-    /// </summary>
     [Fact]
     public async Task VideoCall_TheDecisionAfterTheCall_IsTheExistingApprovalOfTheOperator()
     {
@@ -310,9 +289,6 @@ public class VerificationVideoCallTests : IAsyncLifetime
         Assert.Empty(await Service().GetPendingVerificationsAsync(Operator, OrgScope, Ct));
     }
 
-    // ─── The endpoint and the e-mail ─────────────────────────────────────────────────────────────────────
-
-    /// <summary>The endpoint answers each outcome with its status and code, passes the caller and the address, and sits under the policy of the operators and behind the flag.</summary>
     [Theory]
     [InlineData(VideoCallOutcome.Sent, StatusCodes.Status200OK, null)]
     [InlineData(VideoCallOutcome.NotPending, StatusCodes.Status404NotFound, "no_pending_verification")]
@@ -365,7 +341,6 @@ public class VerificationVideoCallTests : IAsyncLifetime
         Assert.Equal("{bookingId:guid}/video-call", method.GetCustomAttribute<HttpPostAttribute>()!.Template);
     }
 
-    /// <summary>The e-mail exists in the five languages of the guest and every value in it is HTML-encoded, the address of the meeting too.</summary>
     [Fact]
     public void Email_IsInFiveLanguages_AndEveryValueIsEncoded()
     {
@@ -396,8 +371,6 @@ public class VerificationVideoCallTests : IAsyncLifetime
         Assert.Contains("&amp;y=2", hostile.HtmlBody, StringComparison.Ordinal);
     }
 
-    // ─── Fixtures ────────────────────────────────────────────────────────────────────────────────────────
-
     private VerificationQueueService Service() => new(
         _db,
         _queue.Object,
@@ -407,7 +380,6 @@ public class VerificationVideoCallTests : IAsyncLifetime
         _clock,
         Mock.Of<IAccessCodeService>());
 
-    /// <summary>A confirmed stay of the property whose check-in session was handed to an operator (not accepted), with the open "To do" of the verification.</summary>
     private async Task<Guid> AddStayAsync(
         string? email,
         string? language = "it",
@@ -461,7 +433,6 @@ public class VerificationVideoCallTests : IAsyncLifetime
         return booking.Id;
     }
 
-    /// <summary>Reads every column of every table of the model: no value holds <paramref name="text"/>.</summary>
     private void AssertNoRowHolds(string text)
     {
         _db.ChangeTracker.Clear();
@@ -483,7 +454,6 @@ public class VerificationVideoCallTests : IAsyncLifetime
         Assert.True(holders.Count == 0, $"'{text}' is stored in: {string.Join(", ", holders)}");
     }
 
-    /// <summary>A logger that keeps every formatted line, to prove what is (not) written.</summary>
     private sealed class ListLogger<T>(List<string> lines) : ILogger<T>
     {
         public IDisposable? BeginScope<TState>(TState state)

@@ -23,15 +23,12 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class CanoneConcordatoCoefficientMatrixTests
 {
-    /// <summary>Verified €/mq annui as (min, max) of sub-fascia 1, 2, 3 per surface band, per zone.</summary>
     private static readonly Dictionary<(string City, string Zone, int Band), decimal[]> Tables = new()
     {
-        // Seveso, allegato 2/S (F1 p. 63).
         [("Seveso", "Unica", 0)] = [20, 57, 58, 91, 92, 109],
         [("Seveso", "Unica", 1)] = [20, 52, 53, 85, 86, 100],
         [("Seveso", "Unica", 2)] = [20, 45, 46, 71, 72, 86],
         [("Seveso", "Unica", 3)] = [20, 41, 42, 62, 63, 76],
-        // Cesano Maderno, allegato 1/U (F1 p. 39).
         [("Cesano Maderno", "Centrale", 0)] = [20, 65, 66, 102, 103, 120],
         [("Cesano Maderno", "Centrale", 1)] = [20, 60, 61, 94, 95, 110],
         [("Cesano Maderno", "Centrale", 2)] = [20, 50, 51, 80, 81, 95],
@@ -42,10 +39,8 @@ public class CanoneConcordatoCoefficientMatrixTests
         [("Cesano Maderno", "Semi periferica", 3)] = [20, 40, 41, 60, 61, 73],
     };
 
-    /// <summary>One surface per band, none touching an optional surface coefficient: "Fino a 50", 51-74, 75-99, "Oltre 100".</summary>
     private static readonly decimal[] BandSqm = [45m, 65m, 85m, 110m];
 
-    /// <summary>Term uplift of the agreement for 3, 4, 5 and 6 years (F1 p. 9): none, 3, 5 and 6 per cent.</summary>
     private static readonly (string End, decimal Factor)[] Terms =
     [
         ("2029-08-31", 1.00m),
@@ -83,10 +78,8 @@ public class CanoneConcordatoCoefficientMatrixTests
         Assert.True(result.Available);
         Assert.Equal(subFascia, result.SubFascia);
         Assert.Equal(zone, result.Zone);
-        // The parties may go down to the sub-fascia 1 minimum and up to the maximum of the unit's sub-fascia.
         Assert.Equal(Math.Round(row[0] * sqm * factor, 2), result.CanoneMinAnnuo);
         Assert.Equal(Math.Round(row[subFascia * 2 - 1] * sqm * factor, 2), result.CanoneMaxAnnuo);
-        // Seveso and Cesano are Partial in the verified data: the range is a hint, not a bound.
         Assert.Equal(DataCompleteness.Partial, result.DataCompleteness);
         Assert.True(result.Indicative);
         Assert.Contains(CanoneConcordatoWarningCodes.PartialData, result.Warnings);
@@ -95,7 +88,6 @@ public class CanoneConcordatoCoefficientMatrixTests
     [Fact]
     public void Oracle_CoversEveryNumericCellOfTheSeed()
     {
-        // 24 values of Seveso + 48 of Cesano = 72 (context file, "Tabelle dei canoni"): the oracle has all of them.
         Assert.Equal(12, Tables.Count);
         Assert.Equal(72, Tables.Values.Sum(v => v.Length));
         var seeded = CanoneConcordatoMbSeed.BuildAgreements().Where(a => a.Bands.Count > 0).SelectMany(a => a.Bands).ToList();
@@ -122,12 +114,10 @@ public class CanoneConcordatoCoefficientMatrixTests
     }
 
     [Theory]
-    // Optional coefficients are cumulative and add (default CoefficientCombination): furniture +15 % and air conditioning
-    // +5 % on the maximum only, on top of the 3-year term (no uplift). Seveso, sub-fascia 2, 65 sqm: 85 €/mq.
     [InlineData(false, false, 5525.00)]
-    [InlineData(true, false, 6353.75)]   // 85 x 65 x 1,15
-    [InlineData(false, true, 5801.25)]   // 85 x 65 x 1,05
-    [InlineData(true, true, 6630.00)]    // 85 x 65 x 1,20
+    [InlineData(true, false, 6353.75)]
+    [InlineData(false, true, 5801.25)]
+    [InlineData(true, true, 6630.00)]
     public async Task Calculate_FurnitureAndAirConditioning_AddOnTheMaximumOnly(bool furnished, bool airConditioning, double expectedMax)
     {
         await using var db = CreateDb();
@@ -145,11 +135,8 @@ public class CanoneConcordatoCoefficientMatrixTests
 
     private static RentBandCharacteristics CharacteristicsOf(int subFascia, decimal sqm, string? zone) => subFascia switch
     {
-        // Missing one A element: sub-fascia 1 whatever the rest.
         1 => new RentBandCharacteristics { Sqm = sqm, TypeAElementCount = 1, TypeBElementCount = 3, ZoneName = zone },
-        // All A and 3 B, fewer than 3 C: sub-fascia 2.
         2 => new RentBandCharacteristics { Sqm = sqm, TypeAElementCount = 2, TypeBElementCount = 3, ZoneName = zone },
-        // All A, 3 B, 3 C and 2 qualifying D: sub-fascia 3.
         _ => new RentBandCharacteristics
         {
             Sqm = sqm,

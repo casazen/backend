@@ -9,10 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// NF-22: Internal activities performed by staff (collaborators with "Only some" perimeter) on properties.
-/// The proof tests that staff sees only activities within their perimeter.
-/// </summary>
 public class InternalActivityServiceTests
 {
     private const string OwnerId = "auth0|owner";
@@ -29,20 +25,15 @@ public class InternalActivityServiceTests
     private InternalActivityService Service(AppDbContext db) =>
         new(db, NullLogger<InternalActivityService>.Instance);
 
-    /// <summary>
-    /// Proof: Staff with "Only some" perimeter sees only activities on their assigned properties (NF-22, AC-NF22-5).
-    /// </summary>
     [Fact]
     public async Task StaffActivity_PerimeterIsolation_StaffSeesOnlyTheirProperties()
     {
-        // Arrange
         await using var db = NewDb();
         var service = Service(db);
 
         var org = new OrgEntity { Id = Guid.NewGuid(), Name = "Test Agency", PlanTier = PlanTier.Agency };
         db.Orgs.Add(org);
 
-        // Two properties: one granted to staff, one hidden
         var grantedProperty = new Property
         {
             Id = Guid.NewGuid(),
@@ -63,7 +54,6 @@ public class InternalActivityServiceTests
         };
         db.Properties.AddRange(grantedProperty, hiddenProperty);
 
-        // Staff member with "Only some" perimeter, granted access to only one property
         var memberAccess = new PropertyMemberAccess
         {
             Id = Guid.NewGuid(),
@@ -75,7 +65,6 @@ public class InternalActivityServiceTests
         db.PropertyMemberAccesses.Add(memberAccess);
         await db.SaveChangesAsync();
 
-        // Create activities on both properties
         var activityOnGrantedProperty = await service.CreateActivityAsync(
             grantedProperty.Id,
             StaffUserId,
@@ -94,7 +83,6 @@ public class InternalActivityServiceTests
             rechargeToOwner: false,
             createdByUserId: OwnerId);
 
-        // Act: Get activities with a restricted scope (staff with "Only some" perimeter)
         var restrictedScope = new HostScope(
             OrgId: org.Id,
             OwnerId: null,
@@ -103,14 +91,12 @@ public class InternalActivityServiceTests
 
         var visibleActivities = await service.GetActivitiesAsync(restrictedScope);
 
-        // Assert: Staff sees only the activity on their granted property
         Assert.Single(visibleActivities);
         Assert.Equal(grantedProperty.Id, visibleActivities[0].PropertyId);
         Assert.Equal("Cleaning", visibleActivities[0].ActivityType);
         Assert.Equal(50m, visibleActivities[0].InternalRate);
         Assert.True(visibleActivities[0].RechargeToOwner);
 
-        // Act: Get activities with an org-wide scope (owner sees all)
         var orgWideScope = new HostScope(
             OrgId: org.Id,
             OwnerId: null,
@@ -119,7 +105,6 @@ public class InternalActivityServiceTests
 
         var allActivities = await service.GetActivitiesAsync(orgWideScope);
 
-        // Assert: Owner sees both activities
         Assert.Equal(2, allActivities.Count);
         Assert.Contains(allActivities, a => a.PropertyId == grantedProperty.Id);
         Assert.Contains(allActivities, a => a.PropertyId == hiddenProperty.Id);
@@ -128,7 +113,6 @@ public class InternalActivityServiceTests
     [Fact]
     public async Task CreateActivityAsync_InheritsOrgIdFromProperty()
     {
-        // Arrange
         await using var db = NewDb();
         var service = Service(db);
 
@@ -147,7 +131,6 @@ public class InternalActivityServiceTests
         db.Properties.Add(property);
         await db.SaveChangesAsync();
 
-        // Act
         var activity = await service.CreateActivityAsync(
             property.Id,
             StaffUserId,
@@ -156,7 +139,6 @@ public class InternalActivityServiceTests
             internalRate: 30m,
             rechargeToOwner: true);
 
-        // Assert
         Assert.Equal(org.Id, activity.OrgId);
         Assert.Equal(property.Id, activity.PropertyId);
         Assert.Equal(StaffUserId, activity.StaffUserId);
@@ -168,7 +150,6 @@ public class InternalActivityServiceTests
     [Fact]
     public async Task UpdateStatusAsync_SetsCompletedAtWhenCompleted()
     {
-        // Arrange
         await using var db = NewDb();
         var service = Service(db);
 
@@ -193,10 +174,8 @@ public class InternalActivityServiceTests
             "Maintenance",
             DateTime.UtcNow.AddDays(1));
 
-        // Act
         var updated = await service.UpdateStatusAsync(activity.Id, "Completed", "All done");
 
-        // Assert
         Assert.Equal("Completed", updated.Status);
         Assert.Equal("All done", updated.Notes);
         Assert.NotNull(updated.CompletedAt);
@@ -205,7 +184,6 @@ public class InternalActivityServiceTests
     [Fact]
     public async Task GetMyActivitiesAsync_ReturnsOnlyStaffUsersActivitiesWithinPerimeter()
     {
-        // Arrange
         await using var db = NewDb();
         var service = Service(db);
 
@@ -223,7 +201,6 @@ public class InternalActivityServiceTests
         };
         db.Properties.Add(property);
 
-        // Staff access
         var memberAccess = new PropertyMemberAccess
         {
             Id = Guid.NewGuid(),
@@ -235,15 +212,12 @@ public class InternalActivityServiceTests
         db.PropertyMemberAccesses.Add(memberAccess);
         await db.SaveChangesAsync();
 
-        // Create activities for different staff members
         await service.CreateActivityAsync(property.Id, StaffUserId, "Cleaning", DateTime.UtcNow.AddDays(1));
         await service.CreateActivityAsync(property.Id, "auth0|other-staff", "Maintenance", DateTime.UtcNow.AddDays(2));
 
-        // Act
         var scope = new HostScope(org.Id, null, StaffUserId, RentalMode.Short);
         var myActivities = await service.GetMyActivitiesAsync(scope, StaffUserId);
 
-        // Assert
         Assert.Single(myActivities);
         Assert.Equal(StaffUserId, myActivities[0].StaffUserId);
         Assert.Equal("Cleaning", myActivities[0].ActivityType);

@@ -29,8 +29,8 @@ public class DefinedEnumJsonConverterFactoryTests
 
     [Theory]
     [InlineData("""{"type":"LongTerm"}""", RentalType.LongTerm)]
-    [InlineData("""{"type":"both"}""", RentalType.Both)] // case-insensitive
-    [InlineData("""{"type":1}""", RentalType.LongTerm)] // number of a declared member: accepted as before
+    [InlineData("""{"type":"both"}""", RentalType.Both)]
+    [InlineData("""{"type":1}""", RentalType.LongTerm)]
     public void Read_DeclaredMember_ReturnsValue(string json, RentalType expected)
     {
         var body = JsonSerializer.Deserialize<Body>(json, Options)!;
@@ -43,7 +43,7 @@ public class DefinedEnumJsonConverterFactoryTests
     [InlineData("""{"type":-1}""")]
     [InlineData("""{"type":"7"}""")]
     [InlineData("""{"type":"Unknown"}""")]
-    [InlineData("""{"type":"ShortTerm","optional":9}""")] // Nullable<TEnum> too
+    [InlineData("""{"type":"ShortTerm","optional":9}""")]
     public void Read_UndeclaredValue_ThrowsJsonException(string json)
     {
         Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Body>(json, Options));

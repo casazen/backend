@@ -7,7 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Assistant;
 
-/// <summary>E05/F05/US02/T01 (PO-09): what the two calls of the assistant may carry, their instructions, and the reading of the answer of the draft.</summary>
 public sealed class AssistantPromptBuilderTests
 {
     private static readonly AssistantPromptNames Names = new(["Giulia", "Verdi", "Li Wu"], ["Marco Bianchi"], ["K7M2Q9X4BN", "HMXYZ987", null, " "]);
@@ -30,7 +29,6 @@ public sealed class AssistantPromptBuilderTests
     {
         var names = new AssistantPromptNames(["Li Wu", "Ana"], ["Email"], []);
 
-        // «Ana» is not taken out of «banana», «Li» is not taken alone, and the placeholder [email] of the scrubber is not a name.
         Assert.Equal("Una banana per [guest] e Li, scrivi a [email]", AssistantPromptBuilder.Minimize("Una banana per Ana e Li, scrivi a a@b.it", names, PiiScrubber.Scrub));
         Assert.Equal("[guest] arriva", AssistantPromptBuilder.Minimize("Li  Wu arriva", names, PiiScrubber.Scrub));
     }
@@ -38,15 +36,12 @@ public sealed class AssistantPromptBuilderTests
     [Fact]
     public void Minimize_FoldsAccentsAndTypographicApostrophes_SoANameWrittenAnotherWayIsTakenOutToo()
     {
-        // «José», «D'Angelo» and «Zoë Müller» as the booking has them (the characters are written as escapes: an editor must not normalize them).
         var names = new AssistantPromptNames(["Jos\u00E9", "D'Angelo", "Zo\u00EB M\u00FCller"], [], []);
 
-        // «Jose» for «José», «JOSÉ», the apostrophe of a phone («D’Angelo»), capitals, and a name of two words written without their accents; a longer word is left alone.
         Assert.Equal(
             "Sono [guest] [guest], scrivete a [guest]; con me c'\u00E8 [guest] [guest]. Il sig. [guest]. Joseph resta.",
             AssistantPromptBuilder.Minimize("Sono Jose D\u2019Angelo, scrivete a JOS\u00C9; con me c'\u00E8 Zoe Muller. Il sig. D\u2019ANGELO. Joseph resta.", names, PiiScrubber.Scrub));
 
-        // A name stored with the typographic apostrophe is found written with the plain one, and an accent written as a letter and a mark (e + U+0301) goes with its letter.
         Assert.Equal("[guest] e [guest]", AssistantPromptBuilder.Minimize("D'Angelo e D\u2019Angelo", new AssistantPromptNames(["D\u2019Angelo"], [], []), PiiScrubber.Scrub));
         Assert.Equal("[guest] arriva", AssistantPromptBuilder.Minimize("Jose\u0301 arriva", names, PiiScrubber.Scrub));
     }
@@ -112,7 +107,6 @@ public sealed class AssistantPromptBuilderTests
     [Fact]
     public void ParseDraft_ReadsTheObjectAfterAReasoning_AndTheBracesOfTheGreetingDoNotHideIt()
     {
-        // #936: a model that thinks aloud; the object of the draft holds «{{guest_name}}» and is followed by another object.
         var answer = AssistantPromptBuilder.ParseDraft(
             "<think>Greet with {{guest_name}}, use the fact {parking}.</think>Ecco: {\"draft\":\"Ciao {{guest_name}}, il parcheggio è nel cortile.\",\"language\":\"it\",\"missingFacts\":false,\"topics\":[\"Parking\"]} {\"note\":\"x\"}");
 

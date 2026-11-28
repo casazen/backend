@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using System.Text.Json;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
@@ -41,7 +40,6 @@ public class PublicSupplierShowcaseRateLimitIntegrationTests(PublicShowcaseThrot
         using var client = factory.CreateClient();
 
         Assert.Equal(HttpStatusCode.OK, (await PostAsync(client, a.Slug, slugA, "203.0.113.21")).StatusCode);
-        // Another supplier and another service do not open a new quota: it is the visitor's, not the target's.
         Assert.Equal(HttpStatusCode.OK, (await PostAsync(client, b.Slug, slugB, "203.0.113.21")).StatusCode);
         var limited = await PostAsync(client, a.Slug, "non-esiste", "203.0.113.21");
 
@@ -57,10 +55,9 @@ public class PublicSupplierShowcaseRateLimitIntegrationTests(PublicShowcaseThrot
         const string ip = "203.0.113.31";
         var slots = $"/api/public/suppliers/{supplier.Slug}/slots?service={slug}";
         for (var i = 0; i < 3; i++)
-            await GetAsync(client, slots, ip); // the slots quota is spent
+            await GetAsync(client, slots, ip);
 
         Assert.Equal(HttpStatusCode.TooManyRequests, (await GetAsync(client, slots, ip)).StatusCode);
-        // The estimate has its own quota, and the page and the services are PublicRead: all still answer.
         Assert.Equal(HttpStatusCode.OK, (await PostAsync(client, supplier.Slug, slug, ip)).StatusCode);
         for (var i = 0; i < 5; i++)
         {

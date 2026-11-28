@@ -57,8 +57,6 @@ public class MeNotificationPreferencesControllerTests
         Events = [new NotificationEventRequest { EventType = NotificationEventType.NewGuestMessage, Channels = [NotificationChannels.CounterOnly] }],
     };
 
-    // ─── The contract ───
-
     [Fact]
     public void Controller_IsForSignedInUsersOnly_UnderApiMeNotificationPreferences()
     {
@@ -68,7 +66,6 @@ public class MeNotificationPreferencesControllerTests
         Assert.Equal(CasazenPolicies.Authenticated, Assert.Single(type.GetCustomAttributes<AuthorizeAttribute>()).Policy);
         Assert.Empty(type.GetCustomAttributes<AllowAnonymousAttribute>());
 
-        // [ApiController] is what answers 400 to a body that does not validate, before the action runs; the answers are private.
         Assert.NotNull(type.GetCustomAttribute<ApiControllerAttribute>());
         Assert.Contains(type.GetCustomAttributes(inherit: true), a => a.GetType().Name == "PrivateAnswerAttribute");
     }
@@ -89,8 +86,6 @@ public class MeNotificationPreferencesControllerTests
             save.GetCustomAttributes<ProducesResponseTypeAttribute>().Select(a => a.StatusCode).Order());
     }
 
-    // ─── GET ───
-
     [Fact]
     public async Task Get_GivesTheViewOfTheCaller_AsTheContractSays()
     {
@@ -103,7 +98,6 @@ public class MeNotificationPreferencesControllerTests
         Assert.Equal(new TimeOnly(8, 0), dto.QuietHours.End);
         Assert.True(dto.QuietHours.LegalAlertsOverride);
 
-        // One name for each channel, in the order of the page, and «chose nothing» marked as the default.
         var message = Assert.Single(dto.Events, e => e.EventType == NotificationEventType.NewGuestMessage);
         Assert.Equal([NotificationChannels.MobilePush, NotificationChannels.CounterOnly], message.Channels);
         Assert.True(message.IsDefault);
@@ -123,8 +117,6 @@ public class MeNotificationPreferencesControllerTests
         Assert.IsType<UnauthorizedResult>(result.Result);
         _service.VerifyNoOtherCalls();
     }
-
-    // ─── PUT ───
 
     [Fact]
     public async Task Save_MapsTheChannelsOfEachKindToTheFlagsOfTheService_ForTheCallerOnly()
@@ -172,7 +164,6 @@ public class MeNotificationPreferencesControllerTests
 
         await Controller().Save(new SaveNotificationPreferencesRequest(), CancellationToken.None);
 
-        // The service answers it 422 notification_preferences_empty.
         Assert.NotNull(sent);
         Assert.Null(sent.QuietHours);
         Assert.Null(sent.Events);
@@ -190,7 +181,6 @@ public class MeNotificationPreferencesControllerTests
     [Fact]
     public async Task Save_TheRefusalsOfTheService_ReachTheErrorHandlingUntouched()
     {
-        // 422 with the four codes of the contract, 404 for a caller with no host org: the middleware turns them into the answers.
         Exception[] refusals =
         [
             new DomainRuleException(NotificationPreferenceRules.LegalChannelRequiredCode, "NotificationLegalChannelRequired"),
@@ -213,8 +203,6 @@ public class MeNotificationPreferencesControllerTests
         }
     }
 
-    // ─── 400: the body that does not validate never reaches the action ───
-
     [Fact]
     public void Body_ANullKindOfEvent_IsABadRequest_NotAnExceptionOfTheAction()
     {
@@ -230,7 +218,6 @@ public class MeNotificationPreferencesControllerTests
     [Fact]
     public void Body_AKindOfEventWithoutItsChannels_IsABadRequest_AnEmptyListIsNot()
     {
-        // «channels»: [] is the explicit «nothing at all»; a missing «channels» is never taken for it.
         var without = new NotificationEventRequest { EventType = NotificationEventType.NewGuestMessage };
         var empty = new NotificationEventRequest { EventType = NotificationEventType.NewGuestMessage, Channels = [] };
 

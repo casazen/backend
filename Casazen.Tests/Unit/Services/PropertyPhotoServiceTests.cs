@@ -25,7 +25,6 @@ public class PropertyPhotoServiceTests : IDisposable
 {
     private const string PublicBaseUrl = "https://storage.test/public";
 
-    // A whole, plain JPEG (the metadata of every photo is removed before it is stored, and a file that is not a whole image is refused).
     private static readonly byte[] JpegBytes = ShowcaseTestImages.PhoneJpeg(orientation: 1);
 
     private static readonly byte[] PngBytes = Convert.FromBase64String(
@@ -62,8 +61,6 @@ public class PropertyPhotoServiceTests : IDisposable
             Directory.Delete(_root, recursive: true);
         GC.SuppressFinalize(this);
     }
-
-    // ─── AddAsync ────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task AddAsync_WithValidImages_StoresObjectsInThePublicBucketAndAppendsTheirUrlsInOrder()
@@ -249,7 +246,6 @@ public class PropertyPhotoServiceTests : IDisposable
     {
         var property = await SeedPropertyAsync();
         var service = CreateService();
-        // A parallel upload commits its photos while this one is storing its files.
         _hookedStorage.OnPut = () =>
         {
             using var other = CreateDb();
@@ -273,10 +269,8 @@ public class PropertyPhotoServiceTests : IDisposable
         var property = await SeedPropertyAsync();
         await using var db = CreateDb();
         var service = CreateService(db);
-        // The request first reads the row (the host permission check) ...
         var tracked = await db.Properties.SingleAsync(p => p.Id == property.Id);
         Assert.Empty(tracked.PhotoUrls);
-        // ... and meanwhile another request adds a photo.
         await using (var other = CreateDb())
         {
             other.Properties.Single(p => p.Id == property.Id).PhotoUrls = [$"{PublicBaseUrl}/properties/x/photos/other.jpg"];
@@ -301,8 +295,6 @@ public class PropertyPhotoServiceTests : IDisposable
         Assert.Empty(StoredObjects());
         Assert.Empty((await ReloadAsync(property.Id)).PhotoUrls);
     }
-
-    // ─── DeleteAsync ─────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task DeleteAsync_OwnPhoto_RemovesTheEntryAndTheStorageObject()
@@ -350,8 +342,6 @@ public class PropertyPhotoServiceTests : IDisposable
     [Fact]
     public async Task DeleteAsync_EntryThatIsAnotherPropertysObject_IsRemovedFromTheListButNeverFromTheStorage()
     {
-        // A gallery entry pointing at somebody else's photo (legacy data, a hand-edited row) must not let this
-        // property's host delete that object from the shared public bucket.
         var victim = await SeedPropertyAsync();
         var victimUrl = (await CreateService().AddAsync(victim.Id, [Image("vittima.png", "image/png", PngBytes)]))[0];
         var attacker = await SeedPropertyAsync([victimUrl]);
@@ -402,8 +392,6 @@ public class PropertyPhotoServiceTests : IDisposable
         Assert.Equal(gallery, (await ReloadAsync(property.Id)).PhotoUrls);
     }
 
-    // ─── ReorderAsync ────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task ReorderAsync_PermutationOfTheGallery_SavesTheNewOrderAndTheFirstIsTheCover()
     {
@@ -416,10 +404,10 @@ public class PropertyPhotoServiceTests : IDisposable
     }
 
     [Theory]
-    [InlineData("a", "b")] // a photo missing: the page is stale (one was added elsewhere)
-    [InlineData("a", "b", "c", "d")] // an unknown photo
-    [InlineData("a", "b", "b")] // a photo twice, another dropped
-    [InlineData("a", "b", "x")] // a photo replaced by an unknown one
+    [InlineData("a", "b")]
+    [InlineData("a", "b", "c", "d")]
+    [InlineData("a", "b", "b")]
+    [InlineData("a", "b", "x")]
     public async Task ReorderAsync_ListThatIsNotTheCurrentGallery_ThrowsConflictAndKeepsTheOrder(params string[] sent)
     {
         var property = await SeedPropertyAsync(["a", "b", "c"]);
@@ -440,8 +428,6 @@ public class PropertyPhotoServiceTests : IDisposable
 
         Assert.Equal(["a", "b"], (await ReloadAsync(property.Id)).PhotoUrls);
     }
-
-    // ─── SetCoverAsync ───────────────────────────────────────────────────────────
 
     [Fact]
     public async Task SetCoverAsync_LaterPhoto_MovesFirstAndKeepsTheOthersInOrder()
@@ -486,13 +472,9 @@ public class PropertyPhotoServiceTests : IDisposable
         Assert.Equal(["a", "b"], (await ReloadAsync(property.Id)).PhotoUrls);
     }
 
-    // ─── The listing photos go to the channel manager (E02/F03/US01/T02) ──────────────────────────────────────────
-
     [Fact]
     public async Task PropertyPhotoUpload_GpsMetadataRemoved_Test()
     {
-        // Proof (privacy): these addresses now go to the channel manager and the OTAs, so the position, the camera and the comments of a photo
-        // never reach the bucket, whatever the type; only the picture (and the orientation of a JPEG) stays.
         var property = await SeedPropertyAsync();
 
         var gallery = await CreateService().AddAsync(
@@ -521,7 +503,6 @@ public class PropertyPhotoServiceTests : IDisposable
     {
         var property = await SeedPropertyAsync();
 
-        // Starts like a JPEG and goes nowhere: the rewriting finds no picture in it.
         var ex = await Assert.ThrowsAsync<DomainRuleException>(
             () => CreateService().AddAsync(property.Id, [Image("rotta.jpg", "image/jpeg", [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00])]));
 
@@ -533,7 +514,6 @@ public class PropertyPhotoServiceTests : IDisposable
     [Fact]
     public async Task DeleteAsync_APhotoSentToTheChannelManager_MarksItsTaskToBeRemovedThere()
     {
-        // NF-32: deleting in CasaZen removes the photo on the channels. A photo that never reached the channel manager has nothing to remove.
         var property = await SeedPropertyAsync();
         var gallery = await CreateService().AddAsync(property.Id, [Image("a.png", "image/png", PngBytes), Image("b.png", "image/png", PngBytes)]);
         await using (var seed = CreateDb())
@@ -552,8 +532,6 @@ public class PropertyPhotoServiceTests : IDisposable
         Assert.Equal(PhotoUploadStatus.RemovePending, tasks.Single(t => t.PhotoUrl == gallery[0]).Status);
         Assert.Equal(PhotoUploadStatus.Removed, tasks.Single(t => t.PhotoUrl == gallery[1]).Status);
     }
-
-    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private AppDbContext CreateDb(Guid? tenantOrgId = null) =>
         new(
@@ -605,7 +583,6 @@ public class PropertyPhotoServiceTests : IDisposable
         public bool FilterEnabled => true;
     }
 
-    /// <summary>The filesystem storage with a hook on each upload and a switch that fails the deletions.</summary>
     private sealed class HookedStorage(IFileStorage inner) : IFileStorage
     {
         public Action? OnPut { get; set; }

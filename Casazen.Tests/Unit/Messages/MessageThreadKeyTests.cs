@@ -5,10 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Messages;
 
-/// <summary>
-/// The three queries that read the threads of the host (the list, the badges, the hub) share one expression for which bookings have a direct thread
-/// (<see cref="GuestMessageRules.IsThreadOfADirectBooking"/>); this pins it to the pure rule of the thread, <see cref="GuestMessageRules.StateOf"/>.
-/// </summary>
 public class DirectThreadQueryRuleTests
 {
     public static TheoryData<BookingSource, BookingStatus> EverySourceAndStatus()
@@ -50,7 +46,6 @@ public class DirectThreadQueryRuleTests
     }
 }
 
-/// <summary>E05/F02/US01/T01: the opaque key of a conversation of the hub, and the table of what the host may do in a conversation of a channel.</summary>
 public class MessageThreadKeyTests
 {
     private static readonly Guid Id = Guid.Parse("3fa85f64-5717-4562-b3fc-2c963f66afa6");
@@ -111,7 +106,6 @@ public class MessageThreadKeyTests
     }
 }
 
-/// <summary>The one table of what the host may do in a conversation of a channel (OCT-11, D3, D4): closed by default, one place to change.</summary>
 public class OtaChannelCapabilitiesTests
 {
     public static TheoryData<OtaChannel, OtaThreadKind> EveryChannelAndKind()

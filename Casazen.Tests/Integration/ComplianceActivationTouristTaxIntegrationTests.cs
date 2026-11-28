@@ -69,7 +69,6 @@ public class ComplianceActivationTouristTaxIntegrationTests : IClassFixture<Casa
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        // Test scope without an authenticated org: read the row directly to check what the API stored.
         var property = await db.Properties.IgnoreQueryFilters().AsNoTracking().SingleAsync(p => p.Id == propertyId);
         Assert.Equal(PropertyComplianceStatus.Active, property.ComplianceStatus);
     }
@@ -133,7 +132,6 @@ public class ComplianceActivationTouristTaxIntegrationTests : IClassFixture<Casa
         return body.GetProperty("steps").EnumerateArray().ToList();
     }
 
-    /// <summary>A property where every blocking step (safety checklist included) is satisfied except the ToS, given at completion.</summary>
     private async Task<(string HostId, Guid PropertyId)> SeedReadyPropertyAsync(string city, string? hostId = null)
     {
         hostId ??= $"auth0|tax-step-{Guid.NewGuid():N}";
@@ -204,7 +202,6 @@ public class ComplianceActivationTouristTaxIntegrationTests : IClassFixture<Casa
         db.SeoContentRevisions.Add(revision);
         await db.SaveChangesAsync();
 
-        // SE-01: a page is public with an approved revision only.
         if (status == LegalReviewStatus.Reviewed)
         {
             page.PublishedRevisionId = revision.Id;

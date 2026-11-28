@@ -13,10 +13,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The AI help of the supplier showcase editor: what goes to the provider (true facts, no contact, no legal name), what comes back (only what passes
-/// the checks of the static starter), the cache and the way a failing or missing provider reads for the editor.
-/// </summary>
 public class ShowcaseTextSuggestionServiceTests
 {
     private static readonly Guid Org = Guid.Parse("00000000-0000-0000-0000-0000000000b2");
@@ -99,8 +95,6 @@ public class ShowcaseTextSuggestionServiceTests
         return new Rig(service, ai, prompts);
     }
 
-    // ─── Availability ────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task IsAvailable_ReflectsTheProviderInEffect()
     {
@@ -119,8 +113,6 @@ public class ShowcaseTextSuggestionServiceTests
         Assert.Empty(rig.Prompts);
     }
 
-    // ─── What goes to the provider ───────────────────────────────────────────────
-
     [Fact]
     public async Task Suggest_ThePromptHoldsTheTrueFactsAndNoContactNorLegalName()
     {
@@ -136,7 +128,6 @@ public class ShowcaseTextSuggestionServiceTests
         Assert.Contains("Siamo una piccola squadra.", prompt);
         Assert.Contains("dal 2015", prompt);
 
-        // Not the legal name, not the contact data of the profile, not what the supplier typed that looks like a phone or an e-mail, not an old code.
         Assert.DoesNotContain("Rossi", prompt);
         Assert.DoesNotContain("338", prompt);
         Assert.DoesNotContain("info@", prompt);
@@ -195,8 +186,6 @@ public class ShowcaseTextSuggestionServiceTests
         Assert.Equal(new[] { ShowcaseTextAnswerKeys.About }, suggestion.Basis.Answers);
     }
 
-    // ─── What comes back ─────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Suggest_AGoodAnswer_ReturnsTheDraftsAndWhatTheyWereBasedOn()
     {
@@ -254,8 +243,6 @@ public class ShowcaseTextSuggestionServiceTests
         Assert.Equal("Lavoriamo dal 2015 a Cesano Maderno e a Seveso.", suggestion.Bio);
     }
 
-    // ─── The provider ────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Suggest_AProviderThatFails_IsAnAiUnavailableForTheEditor()
     {
@@ -289,8 +276,6 @@ public class ShowcaseTextSuggestionServiceTests
 
         await Assert.ThrowsAsync<AiBudgetExceededException>(() => rig.Service.SuggestAsync(Org, new ShowcaseTextSuggestionRequest()));
     }
-
-    // ─── The cache ───────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Suggest_TheSameInputsTwice_CallTheProviderOnce_AndRegenerateCallsItAgain()

@@ -14,16 +14,12 @@ namespace Casazen.Tests.Unit;
 /// </summary>
 internal static class Pain001TestSchemas
 {
-    /// <summary>The namespace of <c>pain.001.001.03</c>: the message CasaZen wrote for EUR before E16/F01/US02/T01 and writes no more. A schema of it is the schema of another message.</summary>
     public const string RetiredSepaNamespace = "urn:iso:std:iso:20022:tech:xsd:pain.001.001.03";
 
-    /// <summary>The text of a schema for a <c>Document</c> of the namespace of the messages of the service (<c>pain.001.001.09</c>) with any content.</summary>
     public static string AcceptingXsd => AcceptingXsdFor(Pain001SchemaProvider.IsoNamespace);
 
-    /// <summary>The text of a schema for a <c>Document</c> of the namespace of the messages of the service that must hold an element the service never writes.</summary>
     public static string RejectingXsd => RejectingXsdFor(Pain001SchemaProvider.IsoNamespace);
 
-    /// <summary>The text of a schema for a <c>Document</c> of <paramref name="targetNamespace"/> with any content: nothing the service writes is a schema error.</summary>
     public static string AcceptingXsdFor(string targetNamespace)
     {
         return Header(targetNamespace) +
@@ -32,7 +28,6 @@ internal static class Pain001TestSchemas
                "</xs:sequence></xs:complexType></xs:element></xs:schema>";
     }
 
-    /// <summary>The text of a schema for a <c>Document</c> of <paramref name="targetNamespace"/> that must hold an element the service never writes.</summary>
     public static string RejectingXsdFor(string targetNamespace)
     {
         return Header(targetNamespace) +
@@ -41,13 +36,11 @@ internal static class Pain001TestSchemas
                "</xs:sequence></xs:complexType></xs:element></xs:schema>";
     }
 
-    /// <summary>A set that accepts any content of a <c>Document</c> of the namespace of the messages of the service: one set serves both currencies.</summary>
     public static XmlSchemaSet Accepting()
     {
         return Compile(AcceptingXsdFor(Pain001SchemaProvider.IsoNamespace));
     }
 
-    /// <summary>A set in which every file the service writes, in either currency, has schema errors.</summary>
     public static XmlSchemaSet Rejecting()
     {
         return Compile(RejectingXsdFor(Pain001SchemaProvider.IsoNamespace));

@@ -6,10 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Email;
 
-/// <summary>
-/// LR-01, B1: the reminder of an unpaid rent that the landlord sends to a tenant, in Italian and English, with every dynamic value
-/// HTML-encoded (FD-13): the note, the property, the names, the landlord. With or without the personal payment link.
-/// </summary>
 public class RentReminderEmailTemplatesTests
 {
     private const string Payload = "<a href=\"https://phish.example\">Paga qui</a>";
@@ -94,7 +90,6 @@ public class RentReminderEmailTemplatesTests
         Assert.Contains("il pagamento va direttamente sul conto Stripe di Casa Rossi Srl", italian.HtmlBody, StringComparison.Ordinal);
         Assert.Contains("Il link è personale: non inoltrarlo.", italian.HtmlBody, StringComparison.Ordinal);
         Assert.DoesNotContain("Per il pagamento usa il metodo", italian.HtmlBody, StringComparison.Ordinal);
-        // The button, and the link written out (as text and as its address) for clients that do not render buttons.
         Assert.Equal(3, Regex.Matches(italian.HtmlBody, Regex.Escape(PayUrl)).Count);
         Assert.Contains("Pay the rent", english.HtmlBody, StringComparison.Ordinal);
         Assert.Contains("the payment goes directly to the Stripe account of Casa Rossi Srl", english.HtmlBody, StringComparison.Ordinal);
@@ -134,7 +129,6 @@ public class RentReminderEmailTemplatesTests
         Assert.DoesNotContain("<a href=\"https://phish.example\"", content.HtmlBody, StringComparison.Ordinal);
         Assert.DoesNotContain("phish.example\">", content.HtmlBody, StringComparison.Ordinal);
         Assert.Contains(EncodedPayload, content.HtmlBody, StringComparison.Ordinal);
-        // The subject is plain text on one line.
         Assert.DoesNotContain('\n', content.Subject);
     }
 

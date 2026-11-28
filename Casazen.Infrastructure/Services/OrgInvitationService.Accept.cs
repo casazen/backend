@@ -4,7 +4,6 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Models;
 using Casazen.Core.OrgTeam;
 using Casazen.Core.Services;
-using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;

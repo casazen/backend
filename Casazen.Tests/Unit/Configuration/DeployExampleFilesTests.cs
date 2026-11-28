@@ -27,7 +27,6 @@ public class DeployExampleFilesTests
     [Fact]
     public void Examples_RailwayTest_DeclaresEveryVariableTheRailwayEnvironmentRequires()
     {
-        // Startup requirements (the «S» rows of the backend deploy checklist, section 2): without them the container exits.
         string[] startupRequired =
         [
             "ASPNETCORE_ENVIRONMENT", "ConnectionStrings__DefaultConnection", "Hangfire__Schema", "Auth0__Domain", "Auth0__Audience",

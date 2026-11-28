@@ -5,7 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>A8-25 (SE-05): the cache of AI answers is bounded in size, expires, and is keyed by org.</summary>
 public class AiResponseCacheTests
 {
     private static readonly Guid OrgA = Guid.NewGuid();
@@ -112,7 +111,6 @@ public class AiResponseCacheTests
         Assert.False(cache.TryGet<string>(OrgA, "a1", out _));
         Assert.True(cache.TryGet<string>(OrgA, "a2", out _));
         Assert.True(cache.TryGet<string>(OrgA, "a3", out _));
-        // One org filling its quota never pushes out the entry of another org.
         Assert.True(cache.TryGet<string>(OrgB, "b1", out _));
         Assert.Equal(3, cache.Count);
     }

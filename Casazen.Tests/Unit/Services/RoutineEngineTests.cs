@@ -21,7 +21,6 @@ public class RoutineEngineTests
     private static readonly Guid OrgA = RoutineRig.OrgA;
     private static readonly Guid OrgB = RoutineRig.OrgB;
 
-    /// <summary>The condition the editor writes for "the channel is X".</summary>
     private static string ChannelIs(string channel) =>
         $$"""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"equals","value":"{{channel}}"}]}]}""";
 
@@ -30,12 +29,6 @@ public class RoutineEngineTests
 
     private static readonly string WaitAnHour = RoutineRig.Actions(("Wait", """{"hours":1}"""));
 
-    // ─── Conditions (AC-NF21-2) ─────────────────────────────────────────────────
-
-    /// <summary>
-    /// Proof (data rule): a routine whose condition is not met performs no action. Before this task every condition was met, so a routine meant for the
-    /// Airbnb stays also ran for the direct ones. Nothing is recorded either: the event is not about this routine.
-    /// </summary>
     [Fact]
     public async Task RoutineEngine_UnmetCondition_RunsNoAction_Test()
     {
@@ -77,7 +70,6 @@ public class RoutineEngineTests
         Assert.All(executions, e => Assert.Equal(RoutineExecutionOutcomes.Success, e.Outcome));
     }
 
-    /// <summary>The rules of the catalog the routines read, evaluated on a booking of Airbnb, 3 nights, 2 guests, made 10 days before its check-in.</summary>
     [Theory]
     [InlineData("channel", "equals", "\"airbnb\"", "AND", true)]
     [InlineData("channel", "notEquals", "\"Airbnb\"", "AND", false)]
@@ -105,10 +97,6 @@ public class RoutineEngineTests
         Assert.Equal(met ? 1 : 0, (await rig.ExecutionsAsync()).Count);
     }
 
-    /// <summary>
-    /// The lead time (the day the guest booked, 10 days before the check-in here) is a fact of the bookings CasaZen takes itself; the booking of a channel is
-    /// saved when it is imported, so its lead time is not known and the rule is not met: the routine does not run.
-    /// </summary>
     [Theory]
     [InlineData(BookingSource.Direct, 1)]
     [InlineData(BookingSource.Manual, 1)]
@@ -153,7 +141,6 @@ public class RoutineEngineTests
         Assert.Single(await rig.ExecutionsAsync());
     }
 
-    /// <summary>A rule on a fact nobody can prove (no booking in the event, a booking of another org) is not met: never "everything".</summary>
     [Fact]
     public async Task Trigger_ConditionOnAFactThatIsNotKnown_IsNotMet()
     {
@@ -178,7 +165,6 @@ public class RoutineEngineTests
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"equals"}]}]}""")]
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"paymentStatus","operator":"equals","value":"paid"}]}]}""")]
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"totalStays","operator":"greaterThan","value":3}]}]}""")]
-    // The value of a rule is of the kind its operator takes (E01/F04/US01 review): what the engine could never meet, or would meet for every booking, is invalid.
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"in","value":"Airbnb"}]}]}""")]
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"in","value":[]}]}]}""")]
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"notIn","value":[]}]}]}""")]
@@ -190,7 +176,6 @@ public class RoutineEngineTests
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"stayDuration","operator":"greaterThan","value":"2"}]}]}""")]
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"stayDuration","operator":"between","value":[3,1]}]}]}""")]
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"guestCount","operator":"between","value":[1,2,3]}]}]}""")]
-    // A member nobody reads: the rules that were meant are never read as "no condition".
     [InlineData("""{"rules":[{"fieldId":"channel","operator":"equals","value":"Airbnb"}]}""")]
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","conditions":[{"field":"channel","operator":"equals","value":"Airbnb"}]}]}""")]
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"field":"channel","operator":"equals","value":"Airbnb"}]}]}""")]
@@ -210,8 +195,6 @@ public class RoutineEngineTests
         Assert.Empty(result.Actions);
         Assert.Empty(rig.Scheduled);
     }
-
-    // ─── Waits (AC-NF21-1, ADR-022-R10) ──────────────────────────────────────────
 
     [Fact]
     public async Task Wait_SchedulesTheResumeJobAtResumeAt_AndSavesThePayloadAndTheNextAction()
@@ -245,10 +228,6 @@ public class RoutineEngineTests
         Assert.Equal(booking.Id, savedBooking);
     }
 
-    /// <summary>
-    /// The execution that resumes reads the booking with what the event said: the access code guardrail, which needs the booking, lets it through
-    /// (the old resume ran with an empty payload, so nothing after a wait could see the booking).
-    /// </summary>
     [Fact]
     public async Task Resume_ContinuesWithTheSavedPayload()
     {
@@ -306,7 +285,6 @@ public class RoutineEngineTests
         Assert.Single(rig.Scheduled);
     }
 
-    /// <summary>Proof (data rule): two resume jobs for the same wait run the remaining actions once (ADR-022-R10).</summary>
     [Fact]
     public async Task RoutineEngine_ResumeTwice_ContinuesOnce_Test()
     {
@@ -333,10 +311,6 @@ public class RoutineEngineTests
         Assert.Single(rig.Scheduled);
     }
 
-    /// <summary>
-    /// Proof (data rule): the job of the FIRST wait of a routine with two, delivered again, finds the execution waiting at the second one and does nothing: the
-    /// second wait is not skipped, it ends at its own time, once (ADR-022-R10). The two actions after the waits are real ones, so a skipped wait would show.
-    /// </summary>
     [Fact]
     public async Task Resume_AJobOfAnEarlierWaitThatComesAgain_DoesNotSkipTheNextWait()
     {
@@ -358,7 +332,6 @@ public class RoutineEngineTests
         Assert.Equal(RoutineRig.Now.UtcDateTime.AddHours(25), atTheSecondWait.ResumeAt);
         Assert.Equal(2, rig.Scheduled.Count);
 
-        // The same job again, half an hour later and once more many hours before the second wait is over: nothing changes.
         await rig.ResumeAsync(waiting.Id, new FixedTimeProvider(RoutineRig.Now.AddHours(1.5)));
         await rig.ResumeAsync(waiting.Id, new FixedTimeProvider(RoutineRig.Now.AddHours(20)));
 
@@ -368,7 +341,6 @@ public class RoutineEngineTests
         Assert.Equal(atTheSecondWait.ResultJson, unchanged.ResultJson);
         Assert.Equal(2, rig.Scheduled.Count);
 
-        // The job of the second wait, at its time, continues the execution, once.
         var secondWaitOver = new FixedTimeProvider(RoutineRig.Now.AddHours(25));
         await rig.ResumeAsync(waiting.Id, secondWaitOver);
         await rig.ResumeAsync(waiting.Id, secondWaitOver);
@@ -420,8 +392,6 @@ public class RoutineEngineTests
         Assert.Equal(RoutineCodes.Inactive, result.Code);
         Assert.Single(result.Actions);
     }
-
-    // ─── Actions with no implementation, test mode, the result (AC-NF21-1) ───────
 
     [Theory]
     [InlineData(nameof(RoutineActionType.NotifyOwner))]
@@ -508,7 +478,6 @@ public class RoutineEngineTests
         Assert.Empty(rig.Scheduled);
     }
 
-    /// <summary>The guardrails run in test mode too: the simulation shows what the real run would stop.</summary>
     [Fact]
     public async Task TestMode_StillShowsWhatAGuardrailBlocks()
     {
@@ -577,12 +546,6 @@ public class RoutineEngineTests
         Assert.Empty(rig.Scheduled);
     }
 
-    // ─── Failures, redelivery, tenants ──────────────────────────────────────────
-
-    /// <summary>
-    /// A failure outside the database that nobody expected (the queue that schedules the resume is down) is not swallowed: the execution says so with a
-    /// code and the failure goes on, so the dispatcher records it on the event.
-    /// </summary>
     [Fact]
     public async Task Wait_WhenTheJobCannotBeScheduled_RecordsTheFailureAndRethrows()
     {
@@ -631,7 +594,6 @@ public class RoutineEngineTests
         Assert.Equal(OrgA, execution.OrgId);
     }
 
-    /// <summary>The payload of the bus is a dictionary of JSON values with the names the producer chose; a test or a service may pass any object.</summary>
     [Fact]
     public async Task Trigger_PayloadInAnyShape_NamesTheBookingInAnyCase()
     {
@@ -653,8 +615,6 @@ public class RoutineEngineTests
 
         Assert.Equal(payloads.Length, (await rig.ExecutionsAsync()).Count);
     }
-
-    // ─── Simulation (AC-NF26-7) ──────────────────────────────────────────────────
 
     [Fact]
     public async Task Simulate_ReportsTheConditionAndTheGuardrails_AndWritesNothing()
@@ -715,9 +675,6 @@ public class RoutineEngineTests
         Assert.Equal(RoutineCodes.NotFound, error.Code);
     }
 
-    // ─── The flag (E01/F04/US01/T03) ─────────────────────────────────────────────
-
-    /// <summary>With <c>Features:Routines</c> off the module is closed: the events of the bus start no routine and nothing is recorded.</summary>
     [Fact]
     public async Task RoutinesFlagOff_TheEventsStartNothing()
     {
@@ -732,10 +689,6 @@ public class RoutineEngineTests
         Assert.Empty(rig.Scheduled);
     }
 
-    /// <summary>
-    /// A wait that comes due while the module is closed changes nothing: the job reads and writes nothing, the execution stays as it was (waiting, with its
-    /// saved payload) and no action runs. Its job is spent, so a job again (a manual run, a new schedule) continues it once the module is on.
-    /// </summary>
     [Fact]
     public async Task RoutinesFlagOff_AWaitThatComesDue_LeavesTheExecutionAsItIs()
     {
@@ -763,8 +716,6 @@ public class RoutineEngineTests
         await rig.ResumeAsync(waiting.Id, due);
         Assert.Equal(RoutineExecutionOutcomes.Success, (await rig.ExecutionAsync(waiting.Id)).Outcome);
     }
-
-    // ─── The job ─────────────────────────────────────────────────────────────────
 
     [Fact]
     public void RoutineDelayJob_RunsOnePerExecutionAtATime_AndRetriesAFewTimes()

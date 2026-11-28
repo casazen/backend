@@ -13,11 +13,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E24/F01/US01/T02 (NF-120, decision O11): the cleaning at check-out. The stay of <see cref="ServiceRequestScenario"/> ends on Monday 12 October 2026 (check-out day, Europe/Rome
-/// summer time, so 10:00 is 08:00 UTC); its property is in comune H501 and its supplier covers it. The real <see cref="ServiceRequestService"/> makes the request (every check it has),
-/// the alerts go to a recording router, and the clock is the scenario's (Thursday 8 October 2026).
-/// </summary>
 public class CleaningAutomationTests
 {
     private static readonly DateTime CheckOutStart = new(2026, 10, 12, 8, 0, 0, DateTimeKind.Utc);
@@ -96,7 +91,6 @@ public class CleaningAutomationTests
             return setup;
         }
 
-        /// <summary>The automation over other services than the scenario's real ones (a service that fails with something that is not a rule); everything else is the rig's.</summary>
         public CleaningAutomationService AutomationWith(IServiceRequestService requests, IInternalActivityService? staffWork = null) =>
             new(Scenario.Db, requests, staffWork ?? Activities, Alerts.Object, Scenario.Flags, Scenario.Clock, NullLogger<CleaningAutomationService>.Instance);
 
@@ -116,7 +110,6 @@ public class CleaningAutomationTests
             Scenario.Db.ChangeTracker.Clear();
         }
 
-        /// <summary>Points the key of the stay at another request, as a row written by hand could.</summary>
         public async Task PointKeyAtAsync(Guid serviceRequestId)
         {
             Scenario.Db.ChangeTracker.Clear();
@@ -125,10 +118,6 @@ public class CleaningAutomationTests
             Scenario.Db.ChangeTracker.Clear();
         }
 
-        /// <summary>
-        /// SP-BKP: a backup supplier took the job in place of the primary the key points at, as <c>CloseGroupAfterTake</c> leaves a group: the primary is cancelled for no response and
-        /// replaced, the backup (another supplier, same stay, same time) is the request the host follows. Returns the backup.
-        /// </summary>
         public async Task<ServiceRequest> PromoteBackupAsync(Guid primaryId)
         {
             var groupId = Guid.NewGuid();
@@ -183,12 +172,6 @@ public class CleaningAutomationTests
         public void Dispose() => Scenario.Dispose();
     }
 
-    // ─── Proofs: the rules of the brief that cost money or permission if wrong ──────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Proof (money): a stay gets exactly one automatic cleaning, whatever the number of triggers (the check-out time, the departure the host registered, a second routine, an event
-    /// delivered again): one request, at the agreed price, at the check-out day and time of the property, and one key; the second call finds the first and creates nothing.
-    /// </summary>
     [Fact]
     public async Task CleaningAutomation_OncePerStay_Test()
     {
@@ -213,14 +196,9 @@ public class CleaningAutomationTests
         var key = await rig.KeyAsync();
         Assert.Equal((rig.OrgId, rig.Scenario.PropertyId, PropertyCleanerKind.Supplier, request.Id, CheckOutStart), (key.OrgId, key.PropertyId, key.CleanerKind, key.ServiceRequestId, key.ScheduledStartUtc));
         Assert.Null(key.InternalActivityId);
-        // The supplier is told as of any new request, once.
         Assert.Single(rig.Scenario.Emails.Snapshot(), e => e.Template == EmailTemplates.Names.ServiceRequestCreated);
     }
 
-    /// <summary>
-    /// Proof (money): when the booking is cancelled the automatic cleaning is cancelled with it, with the reason «prenotazione annullata», while the work has not started (a request not
-    /// taken or taken, a staff activity not started); a cleaning that is in progress or done keeps its status, and so does one the host cancelled already.
-    /// </summary>
     [Theory]
     [InlineData(ServiceRequestStatus.Richiesto, true)]
     [InlineData(ServiceRequestStatus.PresoInCarico, true)]
@@ -269,7 +247,6 @@ public class CleaningAutomationTests
         var after = Assert.Single(await rig.StaffWorkAsync());
         Assert.Equal(cancelled ? CleaningAutomationOutcome.Cancelled : CleaningAutomationOutcome.Unchanged, result.Outcome);
         Assert.Equal(cancelled ? InternalActivity.StatusCancelled : status, after.Status);
-        // A cancelled activity is never completed: no cost is read from it.
         if (cancelled)
             Assert.Null(after.CompletedAt);
     }
@@ -304,10 +281,6 @@ public class CleaningAutomationTests
         Assert.Equal(cancelled ? "Prenotazione annullata" : null, request.CancellationReason);
     }
 
-    /// <summary>
-    /// Proof (money): a cleaning cancelled with its stay is final. Its status cannot change any more (422), so it can never be completed and come back as a cost to recharge to the owner;
-    /// saying «cancelled» again is not a change.
-    /// </summary>
     [Theory]
     [InlineData(InternalActivity.StatusPending)]
     [InlineData(InternalActivity.StatusInProgress)]
@@ -330,7 +303,6 @@ public class CleaningAutomationTests
         Assert.Equal(InternalActivity.StatusCancelled, again.Status);
     }
 
-    /// <summary>The same for the staff activity: a late cancellation of a stay that is due again leaves it alone; a stay that is cancelled or a no-show cancels it.</summary>
     [Theory]
     [InlineData(BookingStatus.Confirmed, false, false)]
     [InlineData(BookingStatus.Cancelled, false, true)]
@@ -352,10 +324,6 @@ public class CleaningAutomationTests
         Assert.Equal(cancelled ? InternalActivity.StatusCancelled : InternalActivity.StatusPending, Assert.Single(await rig.StaffWorkAsync()).Status);
     }
 
-    /// <summary>
-    /// Proof (permission): the automation works in the org it is given and nowhere else. A booking of another org is not found (nothing created), the changes of the stay asked in the
-    /// name of another org touch nothing, and a key that points at a request of another org never moves or cancels it.
-    /// </summary>
     [Fact]
     public async Task CleaningAutomation_OtherOrganizationNeverTouched_Test()
     {
@@ -377,7 +345,6 @@ public class CleaningAutomationTests
         Assert.All([moved, cancelled], result => Assert.Equal(CleaningAutomationOutcome.Unchanged, result.Outcome));
         Assert.Equal((ServiceRequestStatus.Richiesto, CheckOutStart), (request.Status, request.ScheduledStartUtc));
 
-        // A key that was tampered to point at a request of another org: the org of the request is read from the request, so nothing of it is touched.
         var strangerRequest = await rig.Scenario.SeedAsync(ServiceRequestStatus.Richiesto, r => r.OrgId = otherOrg);
         await rig.PointKeyAtAsync(strangerRequest.Id);
         await rig.ChangeStayAsync(b => b.Status = BookingStatus.Cancelled);
@@ -385,8 +352,6 @@ public class CleaningAutomationTests
         Assert.Equal(CleaningAutomationOutcome.Unchanged, viaKey.Outcome);
         Assert.Equal(ServiceRequestStatus.Richiesto, (await rig.Scenario.ReadAsync(strangerRequest.Id)).Status);
     }
-
-    // ─── Which stays, which properties ─────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task APropertyWithNoSetup_OrWithAnInactiveOne_IsNotAutomated()
@@ -402,12 +367,10 @@ public class CleaningAutomationTests
         Assert.Empty(await rig.RequestsAsync());
         Assert.Empty(await rig.StaffWorkAsync());
         Assert.Empty(rig.Scenario.Db.StayCleanings);
-        // The "To do" of a stay that ended without a cleaning is the event handler's, as it always was: the automation raises nothing here.
         Assert.Empty(await rig.TodosAsync(nameof(ActivityType.CleaningDue)));
         rig.VerifyAlerts(Times.Never());
     }
 
-    /// <summary>A request, a hold, a cancelled stay and a no-show get no cleaning: the one definition of a stay that is due.</summary>
     [Theory]
     [InlineData(BookingStatus.Pending, false)]
     [InlineData(BookingStatus.Cancelled, false)]
@@ -432,7 +395,6 @@ public class CleaningAutomationTests
         Assert.Equal(happens ? 1 : 0, (await rig.RequestsAsync()).Count);
     }
 
-    /// <summary>A cleaning someone asked for is the cleaning of the stay: the automation adds none (and a cancelled or refused one does not count).</summary>
     [Fact]
     public async Task ACleaningAskedForByHand_IsNotDoubled_ButACancelledOneIsNotACleaning()
     {
@@ -463,9 +425,6 @@ public class CleaningAutomationTests
         Assert.Empty(await rig.RequestsAsync());
     }
 
-    // ─── The supplier and the staff ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The time and the length of the setup win over the defaults; the time of the property is the one that applies when the setup has none.</summary>
     [Fact]
     public async Task TheRequest_TakesTheTimeAndTheLengthOfTheSetup_OrOfTheProperty()
     {
@@ -475,7 +434,6 @@ public class CleaningAutomationTests
 
         var result = await rig.Automation.CreateForStayAsync(rig.OrgId, rig.BookingId);
 
-        // 11:30 on the clock of Rome in summer time is 09:30 UTC; two hours long.
         var request = await rig.Scenario.ReadAsync(result.ServiceRequestId!.Value);
         Assert.Equal((new DateTime(2026, 10, 12, 9, 30, 0, DateTimeKind.Utc), new DateTime(2026, 10, 12, 11, 30, 0, DateTimeKind.Utc)), (request.ScheduledStartUtc, request.ScheduledEndUtc));
     }
@@ -552,7 +510,6 @@ public class CleaningAutomationTests
             .Setup(s => s.CreateAsync(It.IsAny<CreateServiceRequestCommand>(), It.IsAny<CancellationToken>()))
             .Returns<CreateServiceRequestCommand, CancellationToken>((command, _) =>
             {
-                // What a save that failed halfway leaves in the unit of work: a request that was added and never written.
                 rig.Scenario.Db.ServiceRequests.Add(new ServiceRequest
                 {
                     OrgId = command.OrgId,
@@ -576,7 +533,6 @@ public class CleaningAutomationTests
         rig.VerifyAlerts(Times.Exactly(2));
     }
 
-    /// <summary>The same for the staff path: an unexpected error while the activity of the member is made fails the cleaning, tells the host, and leaves nothing.</summary>
     [Fact]
     public async Task AnUnexpectedErrorWhileTheStaffActivityIsMade_FailsTheCleaningToo()
     {
@@ -608,7 +564,6 @@ public class CleaningAutomationTests
         rig.VerifyAlerts(Times.Once());
     }
 
-    /// <summary>A call that is cancelled is the cancellation it is, never a failure of the cleaning: it is thrown, and the host is told nothing.</summary>
     [Fact]
     public async Task ACancelledCall_IsNotAFailureOfTheCleaning()
     {
@@ -625,11 +580,6 @@ public class CleaningAutomationTests
         rig.VerifyAlerts(Times.Never());
     }
 
-    /// <summary>
-    /// Proof (money): a supplier setup on a property that is not in euro (its currency changed after the setup was saved, or the row was written by hand) gets no request: the requests to the
-    /// suppliers, their prices and their payments are in euro and nothing is converted. The cleaning fails with its own code, nothing is made, and the host is told; a member of the staff
-    /// is not affected by the currency.
-    /// </summary>
     [Fact]
     public async Task CleaningAutomation_SupplierForAPropertyInAnotherCurrencyGetsNoRequest_Test()
     {
@@ -682,7 +632,6 @@ public class CleaningAutomationTests
         Assert.Empty(await rig.RequestsAsync());
     }
 
-    /// <summary>A member of the staff whose setup has no price has an activity with no rate, still to be recharged to the owner (the cost entered later is recharged too).</summary>
     [Fact]
     public async Task TheStaffMember_WithNoPrice_GetsNoRateAndStillTheRecharge()
     {
@@ -714,7 +663,6 @@ public class CleaningAutomationTests
         Assert.Single(await rig.TodosAsync(nameof(ActivityType.CleaningDue)));
     }
 
-    /// <summary>The «To do» of a stay that ended without a cleaning, raised before the cleaning was made (a departure registered before the check-out time), is closed by the system.</summary>
     [Fact]
     public async Task TheToDoOfAStayWithoutACleaning_IsClosedWhenTheCleaningIsMade()
     {
@@ -738,9 +686,6 @@ public class CleaningAutomationTests
         Assert.Equal((InternalActivity.StatusCompleted, InternalActivity.ClosedBySystem), (todo.Status, todo.ClosedBy));
     }
 
-    // ─── The changes of the stay ─────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The dates of the stay change and nobody answered the request: it moves to the new check-out day, with the same length, and the key moves with it.</summary>
     [Fact]
     public async Task ARequestNobodyAnswered_MovesWithTheCheckOutDay()
     {
@@ -760,7 +705,6 @@ public class CleaningAutomationTests
         Assert.Empty(await rig.TodosAsync(nameof(ActivityType.CleaningDateChanged)));
     }
 
-    /// <summary>A change of the stay that does not move the check-out day moves nothing; a stay with no automatic cleaning has nothing to follow.</summary>
     [Fact]
     public async Task AChangeThatLeavesTheCheckOutDay_MovesNothing()
     {
@@ -777,10 +721,6 @@ public class CleaningAutomationTests
         Assert.Equal(CheckOutStart, Assert.Single(await rig.RequestsAsync()).ScheduledStartUtc);
     }
 
-    /// <summary>
-    /// The supplier took the job (or has an offer waiting, or the request has a backup): it stays on the old day, the host is asked to decide with a «To do» (one while it is open)
-    /// and an alert, and the cleaning keeps the start it was planned for.
-    /// </summary>
     [Theory]
     [InlineData("taken")]
     [InlineData("proposed")]
@@ -851,10 +791,6 @@ public class CleaningAutomationTests
         Assert.Single(await rig.TodosAsync(nameof(ActivityType.CleaningDateChanged)));
     }
 
-    /// <summary>
-    /// SP-BKP, proof (money): a backup took the job in place of the primary the key points at (the primary is cancelled and replaced, the backup is the request the host follows). The
-    /// cancellation of the stay cancels the backup's job, with the reason of a cancelled stay and the notice to its supplier, and never touches the primary that was replaced.
-    /// </summary>
     [Fact]
     public async Task CleaningAutomation_CancelledBookingCancelsThePromotedBackup_Test()
     {
@@ -875,10 +811,6 @@ public class CleaningAutomationTests
         Assert.Equal(1, rig.Scenario.Emails.Snapshot().Count(e => e.Template == EmailTemplates.Names.ServiceRequestCancelledToSupplier));
     }
 
-    /// <summary>
-    /// SP-BKP: the dates of the stay change after a backup took the job: the change acts on the request the host follows (the backup's job, which the supplier took: the host decides with a
-    /// «To do» and an alert), not on the primary that was replaced, which is left as it is.
-    /// </summary>
     [Fact]
     public async Task APromotedBackup_IsTheJobTheChangeOfDatesLeavesToTheHost()
     {
@@ -897,7 +829,6 @@ public class CleaningAutomationTests
         rig.VerifyAlerts(Times.Once());
     }
 
-    /// <summary>A staff activity not started moves with the stay; one that started, or is done, is left alone.</summary>
     [Theory]
     [InlineData(InternalActivity.StatusPending, true)]
     [InlineData(InternalActivity.StatusInProgress, false)]
@@ -919,9 +850,6 @@ public class CleaningAutomationTests
         Assert.Equal(moves ? expected : CheckOutStart, (await rig.KeyAsync()).ScheduledStartUtc);
     }
 
-    // ─── The key that tells the automatic cleaning from the one of the host ───────────────────────────────────────────────
-
-    /// <summary>A cleaning the host asked for by hand is not followed: only the one the automation made (the key) moves or is cancelled with the stay.</summary>
     [Fact]
     public async Task ACleaningTheHostAskedForByHand_IsNeverMovedNorCancelled()
     {

@@ -16,11 +16,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// SR-03: the host's day in one read. Who arrives and leaves today and how far their online check-in is, the requests waiting
-/// with the time left to answer, and the things to do in order of priority, each with what it lacks and where it leads; inside
-/// the caller's scope, and with the failed payments only for a caller who may read payments. Today is 9 October 2026 in Rome.
-/// </summary>
 public class HostTodayServiceTests
 {
     private static readonly TimeProvider Clock = new Casazen.Tests.Unit.FixedTimeProvider(HostScopeScenario.Now);
@@ -56,8 +51,6 @@ public class HostTodayServiceTests
             Clock);
     }
 
-    // --- The world of the scope tests: one of everything on each of two properties --------------------
-
     [Fact]
     public async Task Todo_EveryThingToDo_InOrderOfPriority_WithWhatItLacksAndWhereItLeads()
     {
@@ -80,7 +73,6 @@ public class HostTodayServiceTests
         Assert.Equal(expected.Select(HostTodoPriority.Of), today.Todo.Items.Select(i => i.Priority));
         Assert.All(today.Todo.Items, item => Assert.NotEmpty(item.Missing));
         Assert.All(today.Todo.Items, item => Assert.False(string.IsNullOrWhiteSpace(item.Label)));
-        // Never a path: a key and the ids of the target.
         Assert.All(today.Todo.Items, i => Assert.NotNull(i.BookingId));
     }
 
@@ -92,13 +84,10 @@ public class HostTodayServiceTests
 
         var todo = (await NewService(db).GetTodayAsync(world.OrgWide, new HostTodayOptions())).Todo.Items;
 
-        // The request is cancelled after its deadline: the answer is due by then.
         Assert.All(
             todo.Where(i => i.Action == HostTodoAction.RespondToRequest),
             item => Assert.Equal(HostScopeScenario.Now.UtcDateTime.AddDays(1), item.DueAt));
-        // The stay of 1–4 October has ended with required guest fields still missing: it is not a thing to send.
         Assert.DoesNotContain(todo, i => i.Action == HostTodoAction.SendAlloggiati);
-        // The data are needed by the day of the arrival (10 October, midnight in Rome).
         Assert.All(
             todo.Where(i => i.Action == HostTodoAction.CompleteGuestCheckIn),
             item => Assert.Equal(At(10, 9, 22), item.DueAt));
@@ -117,7 +106,6 @@ public class HostTodayServiceTests
             todo.Where(i => i.Action == HostTodoAction.RespondToRequest),
             item => Assert.Equal([new ComplianceMissing(ComplianceMissingCodes.ApprovalNotAnswered, "response")], item.Missing));
         Assert.DoesNotContain(todo, i => i.Action == HostTodoAction.SendAlloggiati);
-        // The booker is the only guest the stay has, and has none of the fields of the record. The arrival is still ahead.
         Assert.All(
             todo.Where(i => i.Action == HostTodoAction.CompleteGuestCheckIn),
             item => Assert.Contains(item.Missing, m => m.Code == ComplianceMissingCodes.GuestFieldMissing && m.Field == "documentNumber"));
@@ -141,7 +129,6 @@ public class HostTodayServiceTests
         Assert.All(
             restricted.Todo.Items.Where(i => i.PropertyId is not null),
             item => Assert.Equal(world.Granted.Id, item.PropertyId));
-        // The stays of the hidden property are in none of the lists, nor are those of another org in the whole org's.
         var hiddenBookings = await db.Bookings.Where(b => b.PropertyId == world.Hidden.Id).Select(b => b.Id).ToListAsync();
         Assert.Empty(restricted.Todo.Items.Select(i => i.BookingId ?? Guid.Empty).Intersect(hiddenBookings));
         Assert.Empty(restricted.Upcoming.Items.Select(s => s.Stay.BookingId).Intersect(hiddenBookings));
@@ -160,7 +147,6 @@ public class HostTodayServiceTests
         db.Guests.Add(guest);
         var late = Request(property, guest, expiresAt: At(10, 10, 18));
         var soon = Request(property, guest, expiresAt: At(10, 9, 14));
-        // Not for the host: the guest has not confirmed the email, or the time to answer ran out.
         var unconfirmed = Request(property, guest, expiresAt: At(10, 9, 14));
         unconfirmed.GuestEmailVerifiedAt = null;
         var expired = Request(property, guest, expiresAt: At(10, 9, 9));
@@ -174,7 +160,6 @@ public class HostTodayServiceTests
         Assert.Equal(At(10, 9, 14), today.Approvals.Items[0].RespondBy);
         Assert.Equal("Anna Verdi", today.Approvals.Items[0].GuestName);
         Assert.Equal("Trullo", today.Approvals.Items[0].PropertyName);
-        // The one to expire first is the first thing to do, with its deadline.
         var first = today.Todo.Items[0];
         Assert.Equal((HostTodoAction.RespondToRequest, soon.Id, At(10, 9, 14)), (first.Action, first.BookingId, first.DueAt));
     }
@@ -198,7 +183,6 @@ public class HostTodayServiceTests
         Assert.Equal(HostTodayService.ApprovalListSize, today.Approvals.Items.Count);
         Assert.Equal(25, today.Todo.Count);
         Assert.Equal(HostTodayService.TodoListSize, today.Todo.Items.Count);
-        // The nearest deadlines are the ones listed.
         Assert.Equal(today.Todo.Items.Select(i => i.DueAt).Order(), today.Todo.Items.Select(i => i.DueAt));
     }
 
@@ -216,8 +200,6 @@ public class HostTodayServiceTests
         CheckOutDate = Day(11, 23),
         NumberOfGuests = 2,
     };
-
-    // --- Failed payments: only for who may read payments ----------------------------------------------
 
     private static async Task<(AppDbContext Db, Guid OrgId, Booking Failed, Booking Paid, Booking Cancelled, Property Property)> SeedPaymentsAsync()
     {
@@ -255,8 +237,6 @@ public class HostTodayServiceTests
         var paid = Confirmed(BookingStatus.Confirmed, 22);
         var cancelled = Confirmed(BookingStatus.Cancelled, 24);
         db.Bookings.AddRange(failed, paid, cancelled);
-        // A card declined twice: one thing to do for the stay, pointing at the latest attempt. Failed, then paid: nothing to do. A
-        // cancelled stay is not chased.
         db.Payments.AddRange(
             Pay(failed, PaymentStatus.Failed, 1),
             Pay(failed, PaymentStatus.Failed, 2),
@@ -301,8 +281,6 @@ public class HostTodayServiceTests
         Assert.Empty(today.Todo.Items);
         Assert.Equal(0, today.Todo.Count);
     }
-
-    // --- The stays of the day and their online check-in ------------------------------------------------
 
     private static GuestCheckInSession Session(Booking booking, GuestCheckInSessionStatus status, DateTime expiresAt, GuestCheckInLinkEmailStatus? email = GuestCheckInLinkEmailStatus.Sent, DateTime? createdAt = null)
     {
@@ -354,7 +332,6 @@ public class HostTodayServiceTests
         var expired = Arrival("Scaduto");
         var failedEmail = Arrival("EmailFallita");
         var enteredByHost = Arrival("DatiDelTitolare");
-        // The link of "expired" is past its validity: an open link is expired even before the job marks it so.
         var future = At(10, 15, 8);
         db.GuestCheckInSessions.AddRange(
             Session(sent, GuestCheckInSessionStatus.Inviato, future),
@@ -362,7 +339,6 @@ public class HostTodayServiceTests
             Session(completed, GuestCheckInSessionStatus.Completo, future),
             Session(expired, GuestCheckInSessionStatus.Inviato, At(10, 8, 8)),
             Session(failedEmail, GuestCheckInSessionStatus.Inviato, future, GuestCheckInLinkEmailStatus.Failed));
-        // The host entered every field of the record for this stay: no link is needed.
         db.StayGuests.Add(new StayGuest
         {
             BookingId = enteredByHost.Id,
@@ -394,7 +370,6 @@ public class HostTodayServiceTests
         Assert.Equal(HostTodayCheckInState.Expired, states[expired.Id].State);
         Assert.Equal(HostTodayCheckInState.NotSent, states[failedEmail.Id].State);
         Assert.Equal(7, today.Arrivals.Count);
-        // The data of the guests: only the stay whose record the host filled in is complete.
         Assert.Equal([enteredByHost.Id], states.Where(s => s.Value.DataComplete).Select(s => s.Key));
         Assert.Equal(HostTodayCheckInState.NotSent, states[enteredByHost.Id].State);
     }
@@ -429,11 +404,8 @@ public class HostTodayServiceTests
         Assert.Equal(leaving.Id, stay.Stay.BookingId);
         Assert.Null(stay.CheckIn);
         Assert.Equal(Day(10, 9), today.TodayInRome);
-        // The departure is also a thing to do: close the stay.
         Assert.Contains(today.Todo.Items, i => i.Action == HostTodoAction.CheckOut && i.BookingId == leaving.Id);
     }
-
-    // --- The state of a link, as a rule ----------------------------------------------------------------
 
     [Theory]
     [InlineData(GuestCheckInSessionStatus.Inviato, false, GuestCheckInLinkEmailStatus.Sent, HostTodayCheckInState.Sent)]
@@ -467,7 +439,6 @@ public class HostTodayServiceTests
 
         Assert.Equal(HostTodayCheckInState.NotSent, HostTodayService.StateOf([], now));
         Assert.Equal(HostTodayCheckInState.Completed, HostTodayService.StateOf([newerOpen, oldCompleted], now));
-        // A new link replaced the one that expired: the new one is what the guest has.
         Assert.Equal(HostTodayCheckInState.Sent, HostTodayService.StateOf([olderExpired, newerOpen], now));
     }
 }

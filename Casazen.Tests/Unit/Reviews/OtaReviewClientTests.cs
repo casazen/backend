@@ -55,10 +55,6 @@ public class OtaReviewClientTests
         }
     }
 
-    /// <summary>
-    /// PROOF TEST: trust rule (ADR-023-R6). A 403 that is not an error of the API of the channel manager (the page of its application server, which a call without the permission gets)
-    /// is «the reviews are not available» (a state of the read), decided by the status and the shape of the answer, never by its text; a typed 403 keeps its common meaning.
-    /// </summary>
     [Fact]
     public async Task OctorateClient_ReviewRead_403WithTheServerPage_IsReviewNotAvailable_Test()
     {
@@ -96,7 +92,6 @@ public class OtaReviewClientTests
             await Assert.ThrowsAsync<OctorateServerException>(() => h.Client.SendHostReplyAsync("585001", "HMGRANTED1", "Grazie ancora!", CancellationToken.None));
         }
 
-        // One request for each call: a failure of the channel manager on a write is the caller's to decide on (OCT-13), never a second request of the client.
         Assert.Equal(2, h.Requests.Count);
         Assert.All(h.Requests, r => Assert.Equal(HttpMethod.Post, r.Method));
         Assert.All(h.Requests, r => Assert.EndsWith("/rest/v2/review/585001/HMGRANTED1/sendHostReply", r.Uri.PathAndQuery, StringComparison.Ordinal));

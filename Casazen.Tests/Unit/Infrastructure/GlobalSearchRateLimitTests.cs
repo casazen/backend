@@ -8,10 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>
-/// UI-13a: the rate limit of the global search. The palette asks at every pause in typing, so the limit is per user (the people
-/// of one office share an address), 60 a minute, set by <c>RateLimiting:GlobalSearch:*</c> like the other policies.
-/// </summary>
 public class GlobalSearchRateLimitTests
 {
     private static RateLimitPolicyDefinition Policy() =>
@@ -111,7 +107,6 @@ public class GlobalSearchRateLimitTests
     [Fact]
     public void Partition_ThePoliciesOfTheAnonymousEndpoints_StayPerAddress_EvenForASignedInCaller()
     {
-        // The other policies do not look at the user: a signed-in caller of a public endpoint is limited as anybody behind its address.
         var key = RateLimitingServiceCollectionExtensions.GetPartitionKey(Context("auth0|anna", "203.0.113.7"), partitionByToken: false);
 
         Assert.Equal("203.0.113.7", key);

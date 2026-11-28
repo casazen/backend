@@ -39,11 +39,9 @@ public class PropertyOverviewRulesTests
         var ready = mode == RentalMode.Short && compliance == PropertyComplianceStatus.Active;
         var published = ready && !paused && shownByHost;
 
-        // The very same expression, as the database reads it and as the code that holds the entity reads it.
         Assert.Equal(published, PublicListing.IsPublished.Compile()(property));
         Assert.Equal(published, PublicListing.Includes(property));
 
-        // The word of the host's list: published, or ready but kept off by the pause or the switch, or not ready at all.
         var expected = published
             ? PropertySiteVisibility.Published
             : ready ? PropertySiteVisibility.Hidden : PropertySiteVisibility.NotReady;
@@ -87,7 +85,6 @@ public class PropertyOverviewRulesTests
     [Fact]
     public void Missing_AnActivatedPropertyWithRemindersOpen_KeepsThemInItsList()
     {
-        // PO decision 2026-11-01 (option A): the documents and the safety checklist do not block, an active property still shows them.
         var property = NewProperty(RentalMode.Short, PropertyComplianceStatus.Active, paused: false, shownByHost: true);
         property.PhotoUrls = [.. Enumerable.Range(1, PropertyLifecycle.RecommendedPhotoCount).Select(i => $"{i}.jpg")];
         var steps = new[] { Step("base-data", true), Step("cin", true), Reminder("documents", true), Reminder("safety", false) };

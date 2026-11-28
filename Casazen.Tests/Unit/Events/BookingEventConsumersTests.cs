@@ -23,13 +23,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Events;
 
-/// <summary>
-/// E08/F06/US01/T02 (NF-79, ADR-022-R6, R7, ADR-026-R3): what the booking events start by themselves. A stay that ends without a cleaning
-/// request raises a cleaning «To do», a booking with a special request raises another, a booking from a channel pushes the host; each is
-/// raised once for an event delivered again, holds no guest data and works for the org of the event. On EF InMemory, on the world of
-/// <see cref="HostScopeScenario"/>: per property a stay checked out (Oct 1-4, its check-out record open), an upcoming confirmed stay
-/// (Oct 10-13, with a cleaning request) and a request waiting for the host (Nov 20-23, pending).
-/// </summary>
 public class BookingEventConsumersTests : IAsyncLifetime
 {
     private static readonly CancellationToken Ct = CancellationToken.None;
@@ -44,15 +37,12 @@ public class BookingEventConsumersTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _db.DisposeAsync();
 
-    // --- Cleaning «To do» ------------------------------------------------------------------------------------------------------
-
     [Fact]
     public async Task Cleaning_AStayThatEndsWithNoCleaningRequest_RaisesOneItemTiedToThePropertyAndTheNextArrival()
     {
         var ended = await StayAsync(_world.Granted, BookingStatus.CheckedOut);
 
         await Cleaning().HandleAsync(CheckOutCompleted(ended.Id), Ct);
-        // Delivered again, and as another event of the same stay: still one item (ADR-022-R7).
         await Cleaning().HandleAsync(CheckOutCompleted(ended.Id), Ct);
 
         var item = Assert.Single(await TodosAsync(ended.Id));
@@ -61,7 +51,6 @@ public class BookingEventConsumersTests : IAsyncLifetime
         Assert.Equal(InternalActivity.BookingEntityType, item.EntityType);
         Assert.Equal(_world.Granted.Id, item.PropertyId);
         Assert.Equal(_world.OrgId, item.OrgId);
-        // The next arrival of the property is the stay of Oct 10: it starts 12 hours from the clock of the scenario, within 48 hours.
         Assert.Equal(ActivityUrgency.High, item.Urgency);
         Assert.Equal(RomeCalendar.StartOfDayUtc(HostScopeScenario.Day(2026, 10, 10)), item.Deadline);
         Assert.Equal(EmailTexts.Get(BookingTodoItems.CleaningDueReason, EmailTemplates.DefaultCulture), item.Reason);
@@ -105,7 +94,6 @@ public class BookingEventConsumersTests : IAsyncLifetime
         (await _db.StayCheckouts.SingleAsync(c => c.BookingId == ready.Id)).PropertyReadyAt = HostScopeScenario.Now.UtcDateTime;
         await _db.SaveChangesAsync();
 
-        // The stay of Oct 10 has a cleaning request of its own (the scenario's): it is requested, not due.
         var requested = await StayAsync(_world.Granted, BookingStatus.Confirmed);
 
         await Cleaning().HandleAsync(CheckOutCompleted(ready.Id), Ct);
@@ -114,17 +102,12 @@ public class BookingEventConsumersTests : IAsyncLifetime
         Assert.Empty(await TodosAsync(ready.Id));
         Assert.Empty(await TodosAsync(requested.Id));
 
-        // A request the host cancelled, or the supplier declined, cleans nothing: the item is raised.
         (await _db.ServiceRequests.SingleAsync(r => r.BookingId == requested.Id)).Status = ServiceRequestStatus.Annullato;
         await _db.SaveChangesAsync();
         await Cleaning().HandleAsync(CheckOutCompleted(requested.Id), Ct);
         Assert.Single(await TodosAsync(requested.Id));
     }
 
-    /// <summary>
-    /// E24/F01/US01/T02: a staff activity of type Cleaning (the automation assigns one to a member of the staff) is a cleaning planned like a request: the stay that ended raises no
-    /// «To do». A cancelled one cleans nothing, so the item is raised.
-    /// </summary>
     [Fact]
     public async Task Cleaning_ACleaningActivityOfTheStaff_CountsAsACleaningPlanned()
     {
@@ -175,8 +158,6 @@ public class BookingEventConsumersTests : IAsyncLifetime
         Assert.Equal(ActivityUrgency.Medium, BookingCleaningActivityHandler.UrgencyOf(now.AddHours(48).AddMinutes(1), now));
     }
 
-    // --- Special-request «To do» ----------------------------------------------------------------------------------------------
-
     [Fact]
     public async Task SpecialRequest_ABookingWithARequest_RaisesOneItemForTheTwoEventsAndTheirRedelivery()
     {
@@ -211,7 +192,6 @@ public class BookingEventConsumersTests : IAsyncLifetime
         Assert.Empty(await TodosAsync(plain.Id));
         Assert.Empty(await TodosAsync(hold.Id));
 
-        // The hold is paid: the booking is confirmed, and now there is something to read.
         await ChangeAsync(hold.Id, b => b.Status = BookingStatus.Confirmed);
         await SpecialRequest().HandleAsync(Event(DomainEventType.BookingConfirmed, hold.Id), Ct);
         Assert.Single(await TodosAsync(hold.Id));
@@ -230,7 +210,6 @@ public class BookingEventConsumersTests : IAsyncLifetime
 
         await close.HandleAsync(Event(DomainEventType.CheckInCompleted, checkedIn.Id), Ct);
         await close.HandleAsync(Event(DomainEventType.BookingCancelled, cancelled.Id), Ct);
-        // The two events are delivered again after the items were closed.
         await SpecialRequest().HandleAsync(Event(DomainEventType.BookingConfirmed, checkedIn.Id), Ct);
         await SpecialRequest().HandleAsync(Event(DomainEventType.BookingConfirmed, cancelled.Id), Ct);
 
@@ -242,12 +221,6 @@ public class BookingEventConsumersTests : IAsyncLifetime
         }
     }
 
-    // --- Both items: no guest data, the org's language, the org of the event ------------------------------------------------------
-
-    /// <summary>
-    /// Proof (privacy; ADR-026-R3): the reason of the cleaning item and of the special-request item names the fact and nobody: nothing of
-    /// the guest (name, email, phone) and nothing of the request they wrote, in the item or in the texts, in Italian and in English.
-    /// </summary>
     [Fact]
     public async Task BookingActivities_NoGuestData_Test()
     {
@@ -281,7 +254,6 @@ public class BookingEventConsumersTests : IAsyncLifetime
         var forbidden = new[] { "Giulietta", "Capuleti", "giulietta.capuleti", "+39333", "Allergica", "gatti", "cane" };
         foreach (var item in items)
         {
-            // Everything the item says, reason included, and the staff fields the list never sends: none holds the guest.
             var said = string.Join('|', item.Reason, item.EntityType, item.EntityId, item.StaffUserId, item.Notes);
             foreach (var word in forbidden)
                 Assert.DoesNotContain(word, said, StringComparison.OrdinalIgnoreCase);
@@ -320,7 +292,6 @@ public class BookingEventConsumersTests : IAsyncLifetime
         var ended = await StayAsync(_world.Granted, BookingStatus.CheckedOut);
         await ChangeAsync(booking.Id, b => b.SpecialRequests = "Culla in camera");
 
-        // The booking exists, but not in the org the event names: no item, as for a booking that does not exist.
         var now = HostScopeScenario.Now.UtcDateTime;
         await SpecialRequest().HandleAsync(
             new DomainEvent(Guid.NewGuid(), _world.OtherOrgId, DomainEventType.BookingConfirmed, booking.Id, now, "{}"), Ct);
@@ -348,8 +319,6 @@ public class BookingEventConsumersTests : IAsyncLifetime
         Assert.Empty(await _db.InternalActivities.AsNoTracking().Where(a => a.Action != null).ToListAsync());
     }
 
-    // --- The alert of a booking from a channel ----------------------------------------------------------------------------------
-
     [Fact]
     public async Task ChannelAlert_ABookingFromTheChannelManager_PushesTheHostOnceWithTheChannelName()
     {
@@ -363,7 +332,6 @@ public class BookingEventConsumersTests : IAsyncLifetime
             b.GuestId = guest.Id;
         });
 
-        // Its creation and its confirmation, and each of them delivered again: one booking, one push key.
         await ChannelAlert().HandleAsync(await BookedAsync(DomainEventType.BookingCreated, booking.Id, BookingEventOrigin.Octorate), Ct);
         await ChannelAlert().HandleAsync(await BookedAsync(DomainEventType.BookingConfirmed, booking.Id, BookingEventOrigin.Octorate), Ct);
         await ChannelAlert().HandleAsync(await BookedAsync(DomainEventType.BookingConfirmed, booking.Id, BookingEventOrigin.Octorate), Ct);
@@ -378,7 +346,6 @@ public class BookingEventConsumersTests : IAsyncLifetime
         Assert.Equal(booking.Id, push.Payload.BookingId);
         Assert.Equal("Nuova prenotazione da Airbnb", push.Payload.Title);
         Assert.Equal("Trullo: dal 10/10/2026 al 13/10/2026, ospiti: 2.", push.Payload.Body);
-        // No email: the channel writes to its guest, and the push is the host's alert. No guest name on the lock screen.
         Assert.Empty(_emails.Snapshot());
         Assert.DoesNotContain("Anna", push.Payload.Title + push.Payload.Body, StringComparison.Ordinal);
         Assert.DoesNotContain("Verdi", push.Payload.Title + push.Payload.Body, StringComparison.Ordinal);
@@ -404,24 +371,19 @@ public class BookingEventConsumersTests : IAsyncLifetime
         var booking = await StayAsync(_world.Granted, BookingStatus.Confirmed);
         await ChangeAsync(booking.Id, b => b.Source = BookingSource.Airbnb);
 
-        // Said pending by the event: nothing to announce yet.
         await ChannelAlert().HandleAsync(
             await BookedAsync(DomainEventType.BookingCreated, booking.Id, BookingEventOrigin.Octorate, BookingStatus.Pending), Ct);
 
-        // Said confirmed by the event, cancelled by the time it is handled: the notifier looks at the booking and sends nothing.
         await ChangeAsync(booking.Id, b => b.Status = BookingStatus.Cancelled);
         var confirmed = await BookedAsync(DomainEventType.BookingConfirmed, booking.Id, BookingEventOrigin.Octorate, BookingStatus.Confirmed);
         await ChannelAlert().HandleAsync(confirmed, Ct);
 
-        // A payload that is not JSON, one that is not an object, and an event of another kind.
         await ChannelAlert().HandleAsync(confirmed with { PayloadJson = "not json" }, Ct);
         await ChannelAlert().HandleAsync(confirmed with { PayloadJson = "[]" }, Ct);
         await ChannelAlert().HandleAsync(confirmed with { Type = DomainEventType.CheckOutCompleted }, Ct);
 
         Assert.Empty(_pushes.Queued);
     }
-
-    // --- Registration and closing rules ---------------------------------------------------------------------------------------
 
     [Fact]
     public void AddCasazenBookingOperations_RegistersTheConsumersOnTheBus()
@@ -463,8 +425,6 @@ public class BookingEventConsumersTests : IAsyncLifetime
 
         services.AddCasazenBookingOperations();
 
-        // BookingService needs it to write a booking (E08/F01/US02/T01, NF-80): the check that no booking takes nights the channel manager
-        // refuses is the service's, and the container cannot build the service without this registration.
         var descriptor = Assert.Single(services, d => d.ServiceType == typeof(IChannelManagerAvailability));
         Assert.Equal(typeof(ChannelManagerAvailabilityService), descriptor.ImplementationType);
         Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
@@ -477,8 +437,6 @@ public class BookingEventConsumersTests : IAsyncLifetime
 
         services.AddCasazenBookingOperations();
 
-        // BookingsController takes it as a constructor parameter (E08/F03/US03/T02): without this registration the container cannot build the controller
-        // and no booking list or booking page answers. Scoped, as the context it reads through.
         var descriptor = Assert.Single(services, d => d.ServiceType == typeof(IBookingOctorateSyncReader));
         Assert.Equal(typeof(BookingOctorateSyncReader), descriptor.ImplementationType);
         Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
@@ -491,9 +449,6 @@ public class BookingEventConsumersTests : IAsyncLifetime
 
         services.AddCasazenBookingOperations();
 
-        // The quote and the checkout (BookingService), the public calendar and the search of the booking site judge a stay with the rules of its
-        // nights (E08/F05/US01, NF-36). They take this service as a required constructor parameter, so the container cannot build them without
-        // this registration and none of them can go on without the rules in silence.
         var descriptor = Assert.Single(services, d => d.ServiceType == typeof(IPropertyDayRuleService));
         Assert.Equal(typeof(PropertyDayRuleService), descriptor.ImplementationType);
         Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
@@ -516,8 +471,6 @@ public class BookingEventConsumersTests : IAsyncLifetime
 
         services.AddCasazenBookingOperations();
 
-        // BookingsController and BookingLifecycleController take it as a constructor parameter (E08/F03/US03/T02): the changeOptions of every booking answer
-        // are the configured policy's, not a closed one by default. One instance for the process, built from Octorate:ChannelActions.
         var descriptor = Assert.Single(services, d => d.ServiceType == typeof(OtaChannelActionPolicy));
         Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
         using var provider = services.BuildServiceProvider();
@@ -533,24 +486,17 @@ public class BookingEventConsumersTests : IAsyncLifetime
         Assert.Contains(ActivityType.BookingSpecialRequest, ActivityAutoCloseHandler.Rules[DomainEventType.CheckInCompleted]);
         Assert.Contains(ActivityType.BookingSpecialRequest, ActivityAutoCloseHandler.Rules[DomainEventType.BookingCancelled]);
         Assert.Contains(ActivityType.CleaningDue, ActivityAutoCloseHandler.Rules[DomainEventType.PropertyReadyDeclared]);
-        // E24/F01/US01/T02: the «To do» of a cleaning the host has to decide on closes with the stay (cancelled) or when the property is declared ready.
         Assert.Contains(ActivityType.CleaningDateChanged, ActivityAutoCloseHandler.Rules[DomainEventType.BookingCancelled]);
         Assert.Contains(ActivityType.CleaningDateChanged, ActivityAutoCloseHandler.Rules[DomainEventType.PropertyReadyDeclared]);
-        // What E04 closed before is still closed.
         Assert.Contains(ActivityType.CheckInPending, ActivityAutoCloseHandler.Rules[DomainEventType.CheckInCompleted]);
         Assert.Contains(ActivityType.CheckOutPending, ActivityAutoCloseHandler.Rules[DomainEventType.CheckOutCompleted]);
-        // E03/F04/US02: the identity verification of a stay that was cancelled or is over has nobody to wait for; the guest completing the form
-        // does not settle it (an operator may still have to decide).
         Assert.Contains(ActivityType.IdentityVerification, ActivityAutoCloseHandler.Rules[DomainEventType.BookingCancelled]);
         Assert.Contains(ActivityType.IdentityVerification, ActivityAutoCloseHandler.Rules[DomainEventType.CheckOutCompleted]);
         Assert.DoesNotContain(ActivityType.IdentityVerification, ActivityAutoCloseHandler.Rules[DomainEventType.CheckInCompleted]);
-        // E23/F01/US01/T01: the «To do» to carry the check-in link to the guest has no use once the stay arrived or was cancelled.
         Assert.Contains(ActivityType.CheckInLinkToSend, ActivityAutoCloseHandler.Rules[DomainEventType.CheckInCompleted]);
         Assert.Contains(ActivityType.CheckInLinkToSend, ActivityAutoCloseHandler.Rules[DomainEventType.BookingCancelled]);
         Assert.DoesNotContain(ActivityType.CheckInLinkToSend, ActivityAutoCloseHandler.Rules[DomainEventType.CheckOutCompleted]);
     }
-
-    // --- Helpers ------------------------------------------------------------------------------------------------------------------
 
     private InternalActivityService Activities() => new(_db, NullLogger<InternalActivityService>.Instance, _clock);
 
@@ -565,21 +511,18 @@ public class BookingEventConsumersTests : IAsyncLifetime
             new BookingNotifier(_db, _emails, EmailTestHelpers.Links(), _pushes, NullLogger<BookingNotifier>.Instance),
             NullLogger<ChannelBookingAlertHandler>.Instance);
 
-    /// <summary>The To do items about the booking, closed ones too.</summary>
     private async Task<List<InternalActivity>> TodosAsync(Guid bookingId)
     {
         _db.ChangeTracker.Clear();
         return await _db.InternalActivities.AsNoTracking().Where(a => a.Action != null && a.EntityId == bookingId).ToListAsync();
     }
 
-    /// <summary>The scenario's stay of the property with that status: Oct 10-13 confirmed, Oct 1-4 checked out, Nov 20-23 pending.</summary>
     private async Task<Booking> StayAsync(Property property, BookingStatus status)
     {
         _db.ChangeTracker.Clear();
         return await _db.Bookings.AsNoTracking().SingleAsync(b => b.PropertyId == property.Id && b.Status == status);
     }
 
-    /// <summary>Changes the booking and saves it; the context starts again clean.</summary>
     private async Task ChangeAsync(Guid bookingId, Action<Booking> change)
     {
         _db.ChangeTracker.Clear();
@@ -601,7 +544,6 @@ public class BookingEventConsumersTests : IAsyncLifetime
 
     private DomainEvent CheckOutCompleted(Guid bookingId) => Event(DomainEventType.CheckOutCompleted, bookingId);
 
-    /// <summary>The event of a booking as the services record it: the payload of <see cref="BookingEventPayload"/>.</summary>
     private async Task<DomainEvent> BookedAsync(DomainEventType type, Guid bookingId, BookingEventOrigin origin, BookingStatus? status = null)
     {
         _db.ChangeTracker.Clear();

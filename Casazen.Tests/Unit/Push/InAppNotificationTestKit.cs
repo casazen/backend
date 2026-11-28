@@ -49,7 +49,6 @@ internal sealed class InAppNotificationTestKit : IDisposable
         {
             OrgId = org.Id,
             OwnerId = World.OwnerId,
-            // AM-03: the manager is in charge of this property; the owner (an administrator of the org) is told as well.
             ResponsibleUserId = World.ManagerId,
             Name = "Villa",
             Address = "Via Test 1",

@@ -19,11 +19,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// E06/F05/US02 (NF-110, recurring rule of the portata): the owner accounting spans the properties of the owners, so a caller whose reach is restricted to some
-/// properties (a collaborator «Solo alcuni», an account outside the org team) is refused on EVERY action of its controllers, reads included, before anything is
-/// read or written; a caller who reaches the whole org is served.
-/// </summary>
 public class OwnerAccountingScopeTests
 {
     private static readonly Guid OrgId = Guid.NewGuid();
@@ -49,7 +44,6 @@ public class OwnerAccountingScopeTests
             checkedActions += await AssertEveryActionForbiddenAsync(new WithholdingController(
                 db, withholding.Object, payouts.Object, exports.Object, Org(), Scope(restricted), Mock.Of<IDocumentTexts>(), NullLogger<WithholdingController>.Instance));
 
-            // Every HTTP action of the three controllers was called (the reads and the writes), and none reached a service (strict mocks would have thrown).
             Assert.True(checkedActions >= 30, $"only {checkedActions} actions were checked");
             accounting.VerifyNoOtherCalls();
             payouts.VerifyNoOtherCalls();
@@ -73,10 +67,6 @@ public class OwnerAccountingScopeTests
         accounting.Verify(a => a.GetReadinessAsync(OrgId, 2026, 10, It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    /// <summary>
-    /// Permission (E18/F01/US01, review of S029): an approved rule set decides the withholding of every owner whose profile points at it, the seeded Italian draft
-    /// included, so a caller restricted to some properties is refused the approval before anything is read or written (403); a caller of the whole org approves it.
-    /// </summary>
     [Fact]
     public async Task ApprovePolicy_CallerWithoutAnOrgWideReach_GetsForbidden_Test()
     {
@@ -108,7 +98,6 @@ public class OwnerAccountingScopeTests
         approver.Verify(p => p.ApprovePolicyAsync(OrgId, policyId, "TEST Commercialista", UserId, request.SourceSha256, It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    /// <summary>Calls every HTTP action of the controller with empty arguments (a refusal needs none) and checks the answer is a 403.</summary>
     private static async Task<int> AssertEveryActionForbiddenAsync(ControllerBase controller)
     {
         controller.ControllerContext = Context();

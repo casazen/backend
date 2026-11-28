@@ -6,10 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// SR-03b: the rules of the booking list that need no database. The chips (each booking in at most one, and the right one), the
-/// channel, how much has been paid, and how the filters and the order of a request are written. Today is 9 October 2026 in Rome.
-/// </summary>
 public class BookingListRulesTests
 {
     private static readonly DateTimeOffset NowOffset = HostScopeScenario.Now;
@@ -43,8 +39,6 @@ public class BookingListRulesTests
 
     private static readonly BookingListView[] Chips =
         Enum.GetValues<BookingListView>().Where(view => view != BookingListView.All).ToArray();
-
-    // --- The chips ----------------------------------------------------------------------------------------
 
     private static Booking RequestForTheHost(bool emailConfirmed = true, DateTime? expiresAt = null)
     {
@@ -114,14 +108,12 @@ public class BookingListRulesTests
         Assert.Equal(
             expectedChip == BookingListView.All ? Array.Empty<BookingListView>() : new[] { expectedChip },
             chipsOfTheBooking);
-        // Everything is under "all".
         Assert.True(InView(booking, BookingListView.All));
     }
 
     [Fact]
     public void InView_TodayIsTheRomeDay_NotTheUtcOne()
     {
-        // 23:30 UTC of the 9th is half past one of the 10th in Rome (summer time): a stay that arrives "tomorrow" (the 10th) arrives today.
         var lateUtc = new DateTimeOffset(2026, 10, 9, 23, 30, 0, TimeSpan.Zero);
         var today = RomeCalendar.TodayAt(lateUtc);
         var cutoff = CheckoutHolds.CutoffAt(lateUtc.UtcDateTime, CheckoutHolds.DefaultTtlMinutes);
@@ -135,14 +127,11 @@ public class BookingListRulesTests
     [Fact]
     public void InView_ADateStoredWithATime_IsOnItsRomeDay()
     {
-        // 22:30 UTC of the 9th is half past midnight of the 10th in Rome (summer time): that arrival is on the 10th.
         var arrival = Make(BookingStatus.Confirmed, new DateTime(2026, 10, 9, 22, 30, 0, DateTimeKind.Utc));
 
         Assert.False(InView(arrival, BookingListView.InProgress));
         Assert.True(InView(arrival, BookingListView.Upcoming));
     }
-
-    // --- Predicates joined ---------------------------------------------------------------------------------
 
     [Fact]
     public void AnyOf_And_Or_Not_JoinPredicatesOverTheSameBooking()
@@ -160,8 +149,6 @@ public class BookingListRulesTests
         Assert.True(BookingListRules.AnyOf([confirmed, arrivesTomorrow]).Compile()(booking));
         Assert.False(BookingListRules.AnyOf([]).Compile()(booking));
     }
-
-    // --- The channel ---------------------------------------------------------------------------------------
 
     [Theory]
     [InlineData(BookingSource.Direct, BookingChannel.Direct)]
@@ -189,8 +176,6 @@ public class BookingListRulesTests
         Assert.Equal([BookingSource.Direct, BookingSource.Manual], BookingListRules.SourcesOf([BookingChannel.Direct, BookingChannel.Manual]).Order());
         Assert.Empty(BookingListRules.SourcesOf([]));
     }
-
-    // --- What has been paid ---------------------------------------------------------------------------------
 
     private static BookingPaymentFact Pay(PaymentStatus status, decimal amount, decimal refunded = 0m) => new(status, amount, refunded);
 
@@ -237,8 +222,6 @@ public class BookingListRulesTests
 
         Assert.Equal(450m, amount);
     }
-
-    // --- The words of a request -----------------------------------------------------------------------------
 
     [Theory]
     [InlineData(null, BookingListView.All)]

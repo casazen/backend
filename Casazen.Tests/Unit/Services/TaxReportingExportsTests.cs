@@ -36,14 +36,12 @@ public class TaxReportingExportsTests
         var paidToTheOwner = await world.StayAsync(house, BookingSource.Expedia, 200m);
         await PaidAsync(world, anna, "k-anna");
 
-        // A business owner: its stay is no short-let regime, so no contract to communicate, and the agency withholds nothing on it.
         var company = await world.OwnerAsync();
         (await world.Db.OwnerFiscalProfiles.SingleAsync(p => p.PropertyOwnerId == company)).EntityKind = OwnerEntityKind.LegalEntity;
         await world.Db.SaveChangesAsync();
         var companyStay = await world.StayAsync(await world.PropertyAsync(company), BookingSource.Manual, 400m, paid: true);
         await PaidAsync(world, company, "k-company");
 
-        // A payout that was reversed decides nothing: its stay is not a contract of the year (it comes back with the payout that decides it).
         var dario = await world.OwnerAsync();
         var darioHouse = await world.PropertyAsync(dario);
         await world.AgencyHoldsAccountAsync(darioHouse, BookingSource.Airbnb);
@@ -67,7 +65,6 @@ public class TaxReportingExportsTests
             data.Rows.OrderByDescending(r => r.Consideration).Select(r => (r.BookingId, r.Reason)));
         Assert.Equal(210m, (await world.Payouts.ReconcileAsync(world.OrgId, 2026)).ObligationsTotal);
 
-        // The file says it in the words of the language: the reasons, the lessor, the property, never the stay the agency withheld on (its 1000 is not a consideration of the file).
         var texts = new ResxDocumentTexts();
         var csv = Encoding.UTF8.GetString(TaxReportingExports.ContractsCsv(data, texts, DocumentLanguages.Italian));
         Assert.Contains("Ritenuta già operata dal portale", csv, StringComparison.Ordinal);
@@ -79,7 +76,6 @@ public class TaxReportingExportsTests
         Assert.Contains("Already withheld by the portal", Encoding.UTF8.GetString(TaxReportingExports.ContractsCsv(data, texts, DocumentLanguages.English)), StringComparison.Ordinal);
         Assert.True(TaxReportingExports.ContractsXlsx(data, texts, DocumentLanguages.Italian).Length > 0);
 
-        // Another year and another org have none.
         Assert.Empty((await world.Withholding.GetContractsCommunicationAsync(world.OrgId, 2025)).Rows);
         Assert.Empty((await world.Withholding.GetContractsCommunicationAsync(Guid.NewGuid(), 2026)).Rows);
         var invalid = await Assert.ThrowsAsync<DomainRuleException>(() => world.Withholding.GetContractsCommunicationAsync(world.OrgId, 1999));
@@ -135,14 +131,12 @@ public class TaxReportingExportsTests
         Assert.Equal("770-2026.csv", TaxReportingExports.Tax770FileName(2026, "csv"));
         Assert.True(TaxReportingExports.Tax770Xlsx(data, texts, DocumentLanguages.English).Length > 0);
 
-        // A year without any decision has no data; a year that is not one is refused.
         var empty = await Assert.ThrowsAsync<DomainRuleException>(() => world.Withholding.Get770DataAsync(world.OrgId, 2025));
         Assert.Equal(OwnerPayoutErrors.NoObligations, empty.Code);
         var invalid = await Assert.ThrowsAsync<DomainRuleException>(() => world.Withholding.Get770DataAsync(world.OrgId, 2101));
         Assert.Equal(OwnerAccountingErrors.PeriodInvalid, invalid.Code);
     }
 
-    /// <summary>The statement of October of the owner approved and the payout of 5 November confirmed.</summary>
     private static async Task<OwnerPayoutResult> PaidAsync(OwnerPayoutFactsTests.FactsWorld world, Guid owner, string key)
     {
         var version = await world.ApprovedVersionAsync(owner);

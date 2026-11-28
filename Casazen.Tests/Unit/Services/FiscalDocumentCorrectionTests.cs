@@ -10,7 +10,6 @@ using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Resources;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -52,7 +51,6 @@ public class FiscalDocumentCorrectionTests
         await SetIssueDayAsync(db, rejected.Id, new DateOnly(2026, 11, 10));
         await RejectedAsync(rig, rejected.Id);
 
-        // The correction: a draft with the same lines and recipient that holds the number the rejected invoice gave up; the rejected one keeps its number for the history and is discarded.
         var replacement = await rig.Corrections.StartCorrectionAsync(rejected.Id, "auth0|host");
         Assert.Equal(
             (FiscalDocumentStatus.Draft, rejected.Id, "2026", 1, "2026/1"),
@@ -61,19 +59,16 @@ public class FiscalDocumentCorrectionTests
         var gaveUp = await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == rejected.Id);
         Assert.Equal((FiscalDocumentStatus.Discarded, (int?)null, "2026/1", FiscalDocumentSdiStatuses.Rejected), (gaveUp.Status, gaveUp.SequenceNumber, gaveUp.Number, gaveUp.SdiStatus));
 
-        // A second click answers the same draft and records nothing more.
         Assert.Equal(replacement.Id, (await rig.Corrections.StartCorrectionAsync(rejected.Id, "auth0|host")).Id);
         recorder.Verify(
             r => r.Record(DomainEventType.FiscalDocumentCorrected, rejected.Id, It.IsAny<object>(), $"fiscal-document-corrected:{rejected.Id:N}", OrgId),
             Times.Once);
 
-        // The replacement is never discarded: the number would be lost (a hole) and the rejected invoice could not be corrected again.
         var holding = await Assert.ThrowsAsync<DomainRuleException>(() => rig.Documents.DiscardDraftAsync(replacement.Id));
         Assert.Equal(FiscalDocumentSdiErrors.ReplacementHoldsNumber, holding.Code);
         var stillHeld = await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == replacement.Id);
         Assert.Equal((FiscalDocumentStatus.Draft, (int?)1), (stillHeld.Status, stillHeld.SequenceNumber));
 
-        // Issued, it keeps the number (and the day of the invoice it replaces); no other number is reserved, so the next invoice of the series is the second.
         var reissued = await rig.Documents.IssueAsync(replacement.Id, confirm: true);
         Assert.Equal(
             (FiscalDocumentStatus.Issued, "2026", 1, "2026/1", new DateOnly(2026, 11, 10), FiscalDocumentSdiStatuses.ToSend, rejected.Id),
@@ -82,7 +77,6 @@ public class FiscalDocumentCorrectionTests
         Assert.Equal((2, "2026/2"), (next.SequenceNumber, next.Number));
         Assert.Equal([1, 2], await db.FiscalDocuments.AsNoTracking().Where(d => d.SequenceNumber != null).OrderBy(d => d.SequenceNumber).Select(d => d.SequenceNumber!.Value).ToListAsync());
 
-        // An invoice that was delivered is never rejected afterwards: it cannot be corrected here, and nothing changes.
         var delivered = await rig.Documents.IssueAsync((await rig.Documents.CreateDraftAsync(third, null)).Id, confirm: true);
         await SubmittedAsync(rig, delivered.Id, "88");
         Assert.Equal(SdiRecordResult.Recorded, await rig.Sdi.RecordOutcomeAsync(delivered.Id, new SdiOutcome(SdiOutcomeKind.Delivered)));
@@ -93,7 +87,6 @@ public class FiscalDocumentCorrectionTests
         Assert.Equal((FiscalDocumentStatus.Issued, 3, "2026/3", FiscalDocumentSdiStatuses.Delivered), (kept.Status, kept.SequenceNumber, kept.Number, kept.SdiStatus));
         Assert.Empty(await db.FiscalDocuments.AsNoTracking().Where(d => d.ReplacesDocumentId == delivered.Id).ToListAsync());
 
-        // A draft that claims the number of a delivered invoice is not issued with it, and no number is consumed by the refusal.
         var claim = await rig.Documents.CreateDraftAsync(fourth, null);
         var tracked = await db.FiscalDocuments.SingleAsync(d => d.Id == claim.Id);
         (tracked.ReplacesDocumentId, tracked.Series, tracked.SequenceNumber, tracked.Number) = (delivered.Id, "2026", 3, "2026/3");
@@ -160,7 +153,6 @@ public class FiscalDocumentCorrectionTests
             Assert.Equal(SelfBillingErrors.NotCorrectable, refused.Code);
         }
 
-        // Nothing was made, changed or numbered, and no event was recorded; the state says it cannot be corrected.
         var kept = await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == rejected.Id);
         Assert.Equal((FiscalDocumentStatus.Issued, (int?)1, "TD17-2026/1", FiscalDocumentSdiStatuses.Rejected), (kept.Status, kept.SequenceNumber, kept.Number, kept.SdiStatus));
         Assert.Empty(await db.FiscalDocuments.AsNoTracking().Where(d => d.ReplacesDocumentId != null).ToListAsync());
@@ -195,7 +187,6 @@ public class FiscalDocumentCorrectionTests
         Assert.Equal((guestInvoice.Id, ActivityAction.CorrectInvoice), (raised.EntityId!.Value, raised.Action!.Value));
     }
 
-    /// <summary>A rejected invoice never was issued: a credit note does not correct it, and neither does the correction of its booking (the host is told, nothing is prepared).</summary>
     [Fact]
     public async Task Correction_ARejectedInvoice_IsNeverCredited()
     {
@@ -210,7 +201,6 @@ public class FiscalDocumentCorrectionTests
         Assert.Equal(FiscalDocumentSdiErrors.UseCorrection, credit.Code);
         Assert.Empty(await db.FiscalDocuments.AsNoTracking().Where(d => d.Kind == FiscalDocumentKind.CreditNote).ToListAsync());
 
-        // Once it has credit notes (made before it was rejected), it is not replaced either.
         var other = await SeedBookingAsync(db);
         var withCredit = await rig.Documents.IssueAsync((await rig.Documents.CreateDraftAsync(other, null)).Id, confirm: true);
         await rig.Documents.CreateCreditNoteAsync(withCredit.Id, 10m, "test", confirm: true, "auth0|host");
@@ -218,10 +208,6 @@ public class FiscalDocumentCorrectionTests
         Assert.Equal(FiscalDocumentSdiErrors.NotCorrectable, (await Assert.ThrowsAsync<DomainRuleException>(() => rig.Corrections.StartCorrectionAsync(withCredit.Id, null))).Code);
     }
 
-    /// <summary>
-    /// The automatic runs never discard the replacement either: a booking that ends with nothing collected keeps it, with its number, and the host gets the «Da fare» of the change (the same
-    /// as when money was collected), so the number is neither lost nor left without anybody knowing.
-    /// </summary>
     [Fact]
     public async Task Correction_ABookingThatEnds_KeepsTheReplacementWithItsNumber_AndTellsTheHost()
     {
@@ -243,10 +229,6 @@ public class FiscalDocumentCorrectionTests
         Assert.Equal((ActivityAction.ReviewFiscalDocument, FiscalDocumentTodos.BookingChangedReason), (todo.Action!.Value, todo.Reason));
     }
 
-    /// <summary>
-    /// The booking changed while its invoice was rejected (its «Da fare» gave way to the one of the correction): the replacement is made from the booking as it is now, never the old amounts,
-    /// and keeps the series and the number of the rejected invoice.
-    /// </summary>
     [Fact]
     public async Task Correction_TheReplacementFollowsTheBookingAsItIsNow_AndKeepsTheNumber()
     {
@@ -267,8 +249,6 @@ public class FiscalDocumentCorrectionTests
         Assert.NotEqual(billed, replacement.Total);
         Assert.Equal((FiscalDocumentStatus.Draft, "2026", (int?)1, "2026/1"), (replacement.Status, replacement.Series, replacement.SequenceNumber, replacement.Number));
     }
-
-    // ---------------------------------------------------------------- the «To do»
 
     /// <summary>
     /// A «Da fare» is one per document while it is open: the item to look at an invoice (its booking changed) gives way to the one of its correction when the SDI rejects it, and the correction
@@ -352,7 +332,6 @@ public class FiscalDocumentCorrectionTests
         db.FiscalDocuments.Add(document);
         await db.SaveChangesAsync();
 
-        // The event delivered twice raises one item.
         await handler.HandleAsync(Event(DomainEventType.FiscalDocumentSdiRejected, document.Id, "{}"), CancellationToken.None);
         await handler.HandleAsync(Event(DomainEventType.FiscalDocumentSdiRejected, document.Id, "{}"), CancellationToken.None);
         var item = Assert.Single(await db.InternalActivities.AsNoTracking().Where(a => a.Action != null).ToListAsync());
@@ -360,7 +339,6 @@ public class FiscalDocumentCorrectionTests
             (ActivityType.FiscalDocument.ToString(), ActivityAction.CorrectInvoice, "FiscalDocument", document.Id, ActivityUrgency.High, "sdi_rejected", propertyId, (DateTime?)null),
             (item.ActivityType, item.Action!.Value, item.EntityType, item.EntityId!.Value, item.Urgency!.Value, item.Reason, item.PropertyId!.Value, item.CompletedAt));
 
-        // The hosts of the booking are told live, once per document (the same delivery key at the second delivery), in the words of the resx and with the booking as the place to go: no reason, no code.
         Assert.Equal(2, pushes.Count);
         Assert.All(
             pushes,
@@ -371,12 +349,10 @@ public class FiscalDocumentCorrectionTests
         Assert.NotEqual(FiscalDocumentLiveRefresh.SdiRejectedBodyKey, pushes[0].Payload.Body);
         Assert.DoesNotContain("00417", pushes[0].Payload.Title + pushes[0].Payload.Body, StringComparison.Ordinal);
 
-        // The correction closes it.
         await handler.HandleAsync(Event(DomainEventType.FiscalDocumentCorrected, document.Id, "{}"), CancellationToken.None);
         var closed = await db.InternalActivities.AsNoTracking().SingleAsync(a => a.Id == item.Id);
         Assert.Equal((InternalActivity.ClosedBySystem, true), (closed.ClosedBy, closed.CompletedAt is not null));
 
-        // A rejection whose document was corrected before the event was delivered raises nothing; the credit of a document (an owner invoice) closes its item.
         var tracked = await db.FiscalDocuments.SingleAsync(d => d.Id == document.Id);
         tracked.Status = FiscalDocumentStatus.Discarded;
         await db.SaveChangesAsync();
@@ -391,10 +367,8 @@ public class FiscalDocumentCorrectionTests
         await handler.HandleAsync(Event(DomainEventType.FiscalDocumentCreditNoteIssued, Guid.NewGuid(), payload), CancellationToken.None);
         Assert.All(await db.InternalActivities.AsNoTracking().Where(a => a.Action != null).ToListAsync(), a => Assert.NotNull(a.CompletedAt));
 
-        // Any other event is none of its business.
         await handler.HandleAsync(Event(DomainEventType.BookingCancelled, document.Id, "{}"), CancellationToken.None);
 
-        // An invoice without a booking (an owner invoice) has its «To do» and no push: there is no booking to open.
         var withoutBooking = new FiscalDocument
         {
             OrgId = OrgId,
@@ -509,7 +483,6 @@ public class FiscalDocumentCorrectionTests
         Assert.Empty(await db.InternalActivities.AsNoTracking().Where(a => a.EntityId == note.Id && a.CompletedAt == null).ToListAsync());
         Assert.Equal((FiscalDocumentStatus.Draft, invoice.Id), (replacement.Status, replacement.ReplacesDocumentId));
 
-        // An issued credit note: not corrected here, and the state says it.
         var other = await SeedBookingAsync(db);
         var credited = await rig.Documents.IssueAsync((await rig.Documents.CreateDraftAsync(other, null)).Id, confirm: true);
         await rig.Documents.CreateCreditNoteAsync(credited.Id, 10m, "test", confirm: true, "auth0|host");
@@ -517,8 +490,6 @@ public class FiscalDocumentCorrectionTests
         Assert.False((await rig.Sdi.GetStateAsync(credited.Id))!.CanCorrect);
         Assert.Equal(FiscalDocumentSdiErrors.NotCorrectable, (await Assert.ThrowsAsync<DomainRuleException>(() => rig.Corrections.StartCorrectionAsync(credited.Id, null))).Code);
     }
-
-    // ---------------------------------------------------------------- helpers
 
     private static DomainEvent Event(DomainEventType type, Guid entityId, string payload) => new(Guid.NewGuid(), OrgId, type, entityId, Now.UtcDateTime, payload);
 
@@ -543,14 +514,12 @@ public class FiscalDocumentCorrectionTests
         await db.SaveChangesAsync();
     }
 
-    /// <summary>The document submitted through the provider (its id of the submission): the way a document reaches «submitted».</summary>
     private static async Task SubmittedAsync(TestRig rig, Guid documentId, string transmissionId)
     {
         rig.Provider.Setup(p => p.SubmitDocumentAsync(It.IsAny<SdiDocumentSubmission>(), It.IsAny<CancellationToken>())).ReturnsAsync(SdiSubmissionResult.Success(transmissionId));
         Assert.Equal(SdiSubmitOutcome.Submitted, (await rig.Sdi.SubmitAsync(documentId)).Outcome);
     }
 
-    /// <summary>The document submitted and rejected by the SDI.</summary>
     private static async Task RejectedAsync(TestRig rig, Guid documentId)
     {
         await SubmittedAsync(rig, documentId, $"id-{documentId:N}");

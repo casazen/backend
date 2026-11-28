@@ -10,7 +10,6 @@ using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit;
 using Casazen.Tests.Unit.Documents;
-using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Resources;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -44,11 +43,9 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
 
         var afterCreate = await GetLease(client, leaseId);
         Assert.Equal("Draft", afterCreate.GetProperty("status").GetString());
-        // LT-04: not signed yet, start 1/9 already passed → deadline 30 days from the start, no stipula.
         Assert.Equal(JsonValueKind.Null, afterCreate.GetProperty("stipulaDate").ValueKind);
         Assert.Equal(new DateTime(2026, 10, 1), afterCreate.GetProperty("registrationDeadline").GetDateTime().Date);
 
-        // LT-02: offline signature, the default path. The final contract comes from the approved template (not a BOZZA).
         var contract = await client.GetAsync($"/api/leases/{leaseId}/contract.pdf");
         Assert.Equal(HttpStatusCode.OK, contract.StatusCode);
         Assert.Equal("application/pdf", contract.Content.Headers.ContentType?.MediaType);
@@ -59,15 +56,12 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
 
         var signed = await GetLease(client, leaseId);
         Assert.Equal("Signed", signed.GetProperty("status").GetString());
-        // LT-04: stipula 20/8 declared by the landlord, before the start 1/9: deadline 20/8 + 30 = 19/9.
         Assert.Equal(new DateTime(2026, 8, 20), signed.GetProperty("stipulaDate").GetDateTime().Date);
         Assert.Equal(new DateTime(2026, 9, 19), signed.GetProperty("registrationDeadline").GetDateTime().Date);
-        // The storage key stays on the server (A7-17): the client only learns that the signed PDF exists.
         Assert.True(signed.GetProperty("hasSignedPdf").GetBoolean());
         Assert.False(signed.TryGetProperty("signedPdfStoragePath", out _));
         Assert.Equal(0, _factory.ESignProvider.Calls);
 
-        // LT-01: the landlord registers on the official channel, then declares number, date and receipt.
         var declared = await DeclareManualAsync(client, leaseId);
         Assert.Equal(HttpStatusCode.OK, declared.StatusCode);
 
@@ -89,8 +83,6 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
     [Fact]
     public async Task GetContractForSignature_TemplateNotApproved_Returns422NoFinalPdfAndLeaseStaysDraft()
     {
-        // LT-03 (A7-03), LT-02: RegimeOrdinario keeps the committed default (no approved template) in this factory:
-        // no final contract to sign, only the BOZZA preview.
         var owner = UniqueOwner("template-422");
         var property = await _factory.SeedPropertyAsync(owner);
         using var client = LandlordClient(owner);
@@ -300,7 +292,6 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
         using var colleagueClient = LandlordClient(colleague);
         var response = await colleagueClient.GetAsync($"/api/leases/{leaseId}/registration");
 
-        // Authenticated but not the lease owner: 403 (a 401 would make the frontend log the user out).
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         var problem = await ReadJson(response);
         Assert.Equal("forbidden", problem.GetProperty("code").GetString());
@@ -420,7 +411,6 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
         using var colleagueClient = LandlordClient(colleague);
         var response = await colleagueClient.GetAsync($"/api/leases/{leaseId}");
 
-        // Visible in the org but not the caller's: 403, which the frontend shows as an access error, not "not found".
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal("forbidden", (await ReadJson(response)).GetProperty("code").GetString());
     }
@@ -486,7 +476,6 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
     [PostgresFact]
     public async Task TriggerRegistration_ProviderFlagOff_Returns404AndProviderNeverCalled()
     {
-        // LT-01 (A7-01): with Features:RliProvider off (default) nothing reaches a provider; the manual path works.
         var owner = UniqueOwner("flag-off");
         var property = await _factory.SeedPropertyAsync(owner);
         using var client = LandlordClient(owner);
@@ -668,7 +657,6 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
     [PostgresFact]
     public async Task GetReceipt_OnlyWithAuthorization_OwnerGetsItOthersDoNot()
     {
-        // FD-07: the receipt lives in the private bucket and is served only to a caller who may read the lease.
         var owner = UniqueOwner("receipt-auth");
         var colleague = UniqueOwner("receipt-colleague");
         var otherOrgOwner = UniqueOwner("receipt-other-org");
@@ -701,7 +689,6 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
     [Fact]
     public async Task RequestErasure_LeaseInForce_SchedulesForTheDayAfterTheEndOnceAndOnlyInTheOrg()
     {
-        // LT-12 (A7-18): the request is recorded (event once); the parties keep their data while the lease is in force.
         var owner = UniqueOwner("erasure");
         var otherOrgOwner = UniqueOwner("erasure-other-org");
         var property = await _factory.SeedPropertyAsync(owner);
@@ -732,7 +719,6 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
     [Fact]
     public async Task Create_TwoLandlordsAndTwoTenants_KeepsEveryPartyInTheOrderEntered()
     {
-        // LT-14 (A7-28): co-owners (spouses) and co-tenants, a company tenant with its 11-digit code.
         var owner = UniqueOwner("multi-party");
         var property = await _factory.SeedPropertyAsync(owner);
         using var client = LandlordClient(owner);
@@ -763,7 +749,6 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
                 .Select(p => $"{p.GetProperty("role").GetString()} {p.GetProperty("lastName").GetString()}"));
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        // Stored normalized, with the position of each party in its role.
         Assert.Equal(
             [(Core.Entities.Enums.PartyRole.Landlord, 0, LandlordCf), (Core.Entities.Enums.PartyRole.Landlord, 1, "BNCNNA82A41F205W")],
             (await db.Parties.AsNoTracking()
@@ -831,7 +816,6 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var property = await db.Properties.SingleAsync(p => p.Id == propertyId);
-        // CO-07: the safety checklist has its own table; its data must not leak through the lease either.
         var checklist = SafetyChecklistTestData.CompleteAllElectric(property.Id, property.OrgId);
         checklist.LegacyChecklistJson = "{\"secret-checklist\":true}";
         db.PropertySafetyChecklists.Add(checklist);
@@ -853,14 +837,12 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
             IsActive = true,
         };
         db.Users.Add(user);
-        // A colleague who completed the onboarding for the org (PL-02): the checks are about ownership.
         await HostOnboardingSeed.MarkOnboardedAsync(db, user, org.Id, scope.ServiceProvider.GetRequiredService<ILegalDocumentService>());
         await db.SaveChangesAsync();
     }
 
     private const string DefaultRegistrationCode = "24091234567890123-000001";
 
-    /// <summary>A minimal file with the PDF signature: the API checks the content, not the declared type.</summary>
     private static readonly byte[] ReceiptPdf = Encoding.ASCII.GetBytes("%PDF-1.4\n% ricevuta RLI di test\n%%EOF\n");
 
     private static async Task<HttpResponseMessage> DeclareManualAsync(
@@ -898,10 +880,8 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
     private static JsonElement ChecklistItem(JsonElement checklist, string key) =>
         checklist.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("key").GetString() == key);
 
-    /// <summary>Receipt files of the lease in the private bucket of the test storage.</summary>
     private string[] StoredReceiptsOf(Guid leaseId)
     {
-        // Only the registration folder: the signed contract of the lease lives next to it (LT-02).
         var folder = Directory.EnumerateDirectories(_factory.StorageRoot, leaseId.ToString(), SearchOption.AllDirectories)
             .Select(d => Path.Combine(d, "registration"))
             .FirstOrDefault(Directory.Exists);
@@ -937,7 +917,6 @@ public class LeasesControllerIntegrationTests : IClassFixture<LeaseFlowWebApplic
 
         var signed = await GetLease(client, leaseId);
         Assert.Equal("Signed", signed.GetProperty("status").GetString());
-        // LT-04: stipula 20/8 declared with the signed contract, before the start 1/9: deadline 19/9.
         Assert.Equal(new DateTime(2026, 9, 19), signed.GetProperty("registrationDeadline").GetDateTime().Date);
         return leaseId;
     }

@@ -12,10 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// <see cref="OrgBrandingService"/> (BK-12, A3-17) on the filesystem storage provider: images in the public bucket with
-/// absolute URLs, validated from their bytes, previous image deleted, nothing changed on an invalid value.
-/// </summary>
 public class OrgBrandingServiceTests : IDisposable
 {
     private const string PublicBaseUrl = "https://api.test/storage/public";
@@ -92,8 +88,6 @@ public class OrgBrandingServiceTests : IDisposable
         Assert.Null(await _service.UpdateAsync(Guid.NewGuid(), new OrgBrandingUpdate(null, null, null)));
     }
 
-    // ─── Public profile (DB-03) ─────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task UpdateAsync_PublicProfileSent_StoresTheNormalizedValues()
     {
@@ -114,7 +108,6 @@ public class OrgBrandingServiceTests : IDisposable
     [Fact]
     public async Task UpdateAsync_PublicProfileLeftOut_KeepsTheStoredValues()
     {
-        // The appearance form of today sends the color, the theme and the tagline only: it must not erase the profile.
         await _service.UpdateAsync(_org.Id, new OrgBrandingUpdate(
             null,
             null,
@@ -263,7 +256,6 @@ public class OrgBrandingServiceTests : IDisposable
     [Fact]
     public async Task RemoveImageAsync_UrlOfAnotherObject_ClearsUrlButKeepsObject()
     {
-        // A hero pointing at a property photo (set before BK-12): removing the hero must not delete the photo.
         var photoKey = StorageKeys.PropertyPhoto(Guid.NewGuid(), "photo.jpg");
         await _storage.PutAsync(StorageBucket.Public, photoKey, new MemoryStream([1, 2, 3]), "image/jpeg");
         var tracked = await _db.Orgs.FirstAsync(o => o.Id == _org.Id);

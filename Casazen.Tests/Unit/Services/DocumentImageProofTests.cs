@@ -3,9 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// Proof tests for DocumentImage (NF-10, ADR-013): proves data / privacy rules.
-/// </summary>
 public class DocumentImageProofTests
 {
     /// <summary>
@@ -17,18 +14,15 @@ public class DocumentImageProofTests
     [Fact]
     public void TicinoProperty_DocumentImage_NeverStored()
     {
-        // Arrange: Ticino canton code per ISO 3166-2:CH
         const string TicinoCantonCode = "TI";
 
-        // Arrange: Create a Swiss municipality in Ticino (e.g., Lugano)
         var ticinoMunicipality = new SwissMunicipality
         {
-            MunicipalityCode = "5192", // Official BFS code for Lugano
+            MunicipalityCode = "5192",
             CantonCode = TicinoCantonCode,
             OfficialName = "Lugano",
         };
 
-        // Arrange: Create a property in Ticino
         var ticinoProperty = new Property
         {
             OrgId = Guid.NewGuid(),
@@ -37,7 +31,6 @@ public class DocumentImageProofTests
             SwissMunicipalityCode = ticinoMunicipality.MunicipalityCode,
         };
 
-        // Arrange: Guest and booking
         var guest = new Guest
         {
             OrgId = ticinoProperty.OrgId,
@@ -55,15 +48,12 @@ public class DocumentImageProofTests
             CheckOutDate = DateTime.UtcNow.AddDays(3),
         };
 
-        // Act & Assert: Verify DocumentImage entity structure supports zero-retention enforcement
         var documentImageType = typeof(DocumentImage);
 
-        // ADR-013-R6: DocumentImage has DeletedAt field to track deletion per retention rules
         var deletedAtProperty = documentImageType.GetProperty("DeletedAt");
         Assert.NotNull(deletedAtProperty);
         Assert.Equal(typeof(DateTime?), deletedAtProperty.PropertyType);
 
-        // ADR-013-R6: Service layer can query property's canton code via the booking
         var bookingType = typeof(Booking);
         Assert.NotNull(bookingType.GetProperty("PropertyId"));
 
@@ -85,18 +75,5 @@ public class DocumentImageProofTests
         Assert.Equal("TI", TicinoCantonCode);
         Assert.Equal("5192", ticinoProperty.SwissMunicipalityCode);
         Assert.Equal(TicinoCantonCode, ticinoMunicipality.CantonCode);
-
-        // The service layer MUST implement:
-        // if (property.SwissMunicipalityCode != null)
-        // {
-        //     var municipality = await _db.SwissMunicipalities.FindAsync(property.SwissMunicipalityCode);
-        //     if (municipality?.CantonCode == "TI")
-        //     {
-        //         // Process document in-memory only, DO NOT create DocumentImage
-        //         // Extract data, return to caller, discard images immediately
-        //         return;
-        //     }
-        // }
-        // // For non-Ticino properties, create DocumentImage normally
     }
 }

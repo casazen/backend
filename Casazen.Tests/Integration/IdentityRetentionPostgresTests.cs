@@ -53,7 +53,6 @@ public sealed class IdentityRetentionPostgresTests : IAsyncLifetime
         var a = await SeedOrgAsync("A");
         var b = await SeedOrgAsync("B");
 
-        // Org A: an expired evidence, a live one, an abandoned session with its kept picture, the logs of a stay that ended 13 months ago, a session expired long ago.
         var expired = await EvidenceAsync(a, a.CurrentStay, Now.UtcDateTime.AddMinutes(-1));
         var live = await EvidenceAsync(a, a.CurrentStay, Now.UtcDateTime.AddHours(5));
         var abandoned = await SessionAsync(a, a.CurrentStay, openedAt: Now.UtcDateTime.AddHours(-25), expiresAt: Now.UtcDateTime.AddDays(5));
@@ -61,7 +60,6 @@ public sealed class IdentityRetentionPostgresTests : IAsyncLifetime
         var oldLog = await LogAsync(a.OrgId, a.OldStay, a.GuestId, new DateTime(2025, 10, 30, 9, 0, 0, DateTimeKind.Utc));
         var stale = await SessionAsync(a, a.OldStay, openedAt: null, expiresAt: Now.UtcDateTime.AddDays(-40));
 
-        // Org B: a session in use with its picture, a recent log and a log of B that names the old stay of A (judged with the stays of B: kept).
         await SessionAsync(b, b.CurrentStay, openedAt: Now.UtcDateTime.AddHours(-1), expiresAt: Now.UtcDateTime.AddDays(5));
         var imageOfB = await DocumentImageAsync(b, b.CurrentStay);
         var logOfB = await LogAsync(b.OrgId, b.CurrentStay, b.GuestId, Now.UtcDateTime.AddDays(-1));

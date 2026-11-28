@@ -81,7 +81,6 @@ public class UserServiceOnboardingMemberTests
         Assert.Equal(UserOnboardingErrors.MemberCannotOnboard, error.Code);
         Assert.Equal("MemberCannotOnboard", error.MessageKey);
 
-        // Not a single write: no user row touched or created, no org provisioned, no membership overwritten, no Auth0 call.
         Assert.Empty(_calls);
         _repository.Verify(r => r.GetBySubAsync(It.IsAny<string>()), Times.Never);
         _repository.Verify(r => r.AddIfAbsentAsync(It.IsAny<User>()), Times.Never);
@@ -100,8 +99,6 @@ public class UserServiceOnboardingMemberTests
     [InlineData(RentalType.Both, "PropertyOwner,LongTermLandlord")]
     public async Task CompleteOnboardingAsync_NotAMember_ChecksFirstThenOnboardsAsBefore(RentalType rentalType, string expectedRoles)
     {
-        // The owner of an org (no membership yet, or already the owner's) and a platform admin (its admin membership is not
-        // a host context) are not members: IsHostMemberAsync answers false.
         _memberships.Setup(m => m.IsHostMemberAsync(Sub, It.IsAny<CancellationToken>()))
             .Callback(() => _calls.Add("member-checked"))
             .ReturnsAsync(false);
@@ -111,7 +108,6 @@ public class UserServiceOnboardingMemberTests
         Assert.Equal(expectedRoles.Split(','), roles);
         Assert.True(roleSync.Succeeded);
         Assert.Equal("member-checked", _calls[0]);
-        // The owner row follows the org and comes before the owner's rental memberships (AM-01).
         Assert.True(_calls.IndexOf("org-ensured") < _calls.IndexOf("owner-ensured"));
         Assert.True(_calls.IndexOf("owner-ensured") < _calls.IndexOf("membership-granted"));
         Assert.Contains("membership-granted", _calls);

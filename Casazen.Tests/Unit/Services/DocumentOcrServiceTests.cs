@@ -87,7 +87,6 @@ public class DocumentOcrServiceTests
     [Fact]
     public void ParseOcrText_ImplausibleValues_AreLeftOut()
     {
-        // A date of issue in the future, an expiry fifty years away and a number with no digit are not taken; the surname alone is.
         const string text = "COGNOME ROSSI\nDATA DI RILASCIO 01.01.2040\nSCADENZA 01.01.2080\nNUMERO DOCUMENTO ABCDEFGH";
 
         var result = DocumentOcrService.ParseOcrText(text, Today);

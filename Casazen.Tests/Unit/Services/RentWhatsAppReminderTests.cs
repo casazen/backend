@@ -15,10 +15,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// WhatsApp rent reminder: a tenant with a phone and no email is messaged, and Meta is called only after the reminder
-/// is recorded, so a later failure does not send the same message again.
-/// </summary>
 public class RentWhatsAppReminderTests
 {
     private const string Phone = "+393331234567";

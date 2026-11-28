@@ -33,7 +33,6 @@ public class CrmContactProofTests
         var guest = CrmTestWorld.AddGuest(db, orgId, "Giulia", "Bianchi", "giulia@example.com");
         await db.SaveChangesAsync(Ct);
 
-        // It arrives with a booking from a channel.
         var viaChannel = await contacts.UpsertContactAsync(
             new CrmContactInput(orgId, GuestContactChannel.Email, "Reservation-77@guest.example.com", GuestContactOrigin.Manual, GuestId: guest.Id, BookedVia: BookingSource.Airbnb),
             Ct);
@@ -41,7 +40,6 @@ public class CrmContactProofTests
         Assert.Equal(GuestContactOrigin.OtaForward, viaChannel.Origin);
         Assert.Equal(GuestContactLegalBasis.ServiceOnly, viaChannel.LegalBasis);
 
-        // The guest ticks the marketing box on it at the check-in, and confirms it: recorded, not marketable.
         var consented = await contacts.RecordConsentAsync(
             new CrmConsentInput(orgId, GuestContactChannel.Email, "reservation-77@guest.example.com", GuestContactOrigin.CheckIn, "consent-v1", GuestConsentSource.GuestPortal, GuestId: guest.Id),
             Ct);
@@ -58,10 +56,8 @@ public class CrmContactProofTests
         Assert.False(CrmContactRules.CanReceiveMarketing(stored));
         Assert.Equal(CrmContactRules.ReasonOtaForward, CrmContactRules.ReachabilityReason(stored));
         Assert.True(CrmContactRules.CanReceiveService(stored));
-        // The privacy history is complete: the person did tick the box.
         Assert.Single(await db.GuestConsentRecords.AsNoTracking().Where(r => r.Purpose == GuestConsentPurpose.Marketing && r.Action == GuestConsentAction.Granted).ToListAsync(Ct));
 
-        // The same from a portal with no value of its own: OtherChannel is an OTA for the code (FiscalCopy.IsOtaBookingSource), so it is a forward too.
         var viaPortal = await contacts.UpsertContactAsync(
             new CrmContactInput(orgId, GuestContactChannel.Email, "portal-31@guest.example.com", GuestContactOrigin.Manual, GuestId: guest.Id, BookedVia: BookingSource.OtherChannel),
             Ct);
@@ -71,7 +67,6 @@ public class CrmContactProofTests
         Assert.False(CrmContactRules.CanReceiveMarketing(viaPortal));
         Assert.Equal(CrmContactRules.ReasonOtaForward, CrmContactRules.ReachabilityReason(viaPortal));
 
-        // The same on a relay domain of the list, with a booking of the public checkout.
         var onRelay = await contacts.UpsertContactAsync(
             new CrmContactInput(orgId, GuestContactChannel.Email, "abc123@relay.example.org", GuestContactOrigin.DirectBooking, GuestId: guest.Id, BookedVia: BookingSource.Direct, PurchaseConfirmed: true),
             Ct);
@@ -79,7 +74,6 @@ public class CrmContactProofTests
         Assert.Equal(GuestContactOrigin.OtaForward, onRelay.Origin);
         Assert.False(CrmContactRules.CanReceiveMarketing(onRelay));
 
-        // The rule itself does not depend on what the service stored.
         var forged = new GuestContact
         {
             Channel = GuestContactChannel.Email,
@@ -90,11 +84,6 @@ public class CrmContactProofTests
         Assert.False(CrmContactRules.CanReceiveMarketing(forged));
     }
 
-    /// <summary>
-    /// Privacy rule: a later booking cannot lower a consent, and nothing re-enables a suppressed contact. A confirmed consent is not touched by a
-    /// direct booking that brings the same address on a weaker basis; the withdrawal suppresses it, puts the address on the suppression list and
-    /// returns the basis to service only; a new consent, a new booking and a new confirmation afterwards change nothing about the suppression.
-    /// </summary>
     [Fact]
     public async Task CrmContact_WeakerBasisNeverOverwritesStronger_SuppressionSticky_Test()
     {
@@ -112,7 +101,6 @@ public class CrmContactProofTests
         await contacts.MarkConfirmedAsync(orgId, consent.Id, Ct);
         Assert.True(CrmContactRules.CanReceiveMarketing(consent));
 
-        // A later booking brings the same address: the basis it gives (service only, no notice) is weaker and changes nothing.
         var later = await contacts.UpsertContactAsync(
             new CrmContactInput(orgId, GuestContactChannel.Email, "OSPITE@example.com", GuestContactOrigin.DirectBooking, GuestId: guest.Id, BookedVia: BookingSource.Direct, PurchaseConfirmed: true),
             Ct);
@@ -123,7 +111,6 @@ public class CrmContactProofTests
         Assert.Equal("consent-v1", later.BasisVersion);
         Assert.Single(await db.GuestContacts.AsNoTracking().ToListAsync(Ct));
 
-        // The guest withdraws.
         var withdrawn = await contacts.WithdrawAsync(orgId, consent.Id, "unsubscribe", GuestConsentSource.GuestPortal, cancellationToken: Ct);
         Assert.NotNull(withdrawn);
         Assert.True(withdrawn.IsSuppressed);
@@ -136,7 +123,6 @@ public class CrmContactProofTests
         var history = await db.GuestConsentRecords.AsNoTracking().Where(r => r.Action == GuestConsentAction.Withdrawn).ToListAsync(Ct);
         Assert.Equal("consent-v1", Assert.Single(history).Version);
 
-        // Nothing brings it back: not a new consent, not a new booking, not a confirmation, not a second withdrawal.
         await contacts.RecordConsentAsync(
             new CrmConsentInput(orgId, GuestContactChannel.Email, "ospite@example.com", GuestContactOrigin.CheckIn, "consent-v2", GuestConsentSource.GuestPortal, GuestId: guest.Id),
             Ct);
@@ -155,11 +141,6 @@ public class CrmContactProofTests
         Assert.Single(await db.SuppressionListEntries.AsNoTracking().Where(e => e.OrgId == orgId).ToListAsync(Ct));
     }
 
-    /// <summary>
-    /// Privacy rule: an old yes/no consent is not enough to write to someone. The single flag of the old check-in and checkout, and the per-channel
-    /// consent of the check-in whose address was not confirmed, become consent contacts that are not marketable ("not confirmed"); the one whose
-    /// address the guest confirmed is. Reading them again changes nothing.
-    /// </summary>
     [Fact]
     public async Task CrmContact_LegacyConsent_NotMarketableUntilConfirmed_Test()
     {
@@ -222,7 +203,6 @@ public class CrmContactProofTests
         Assert.True(CrmContactRules.CanReceiveMarketing(doubleOptIn));
         Assert.Null(CrmContactRules.ReachabilityReason(doubleOptIn));
 
-        // Reading them again, a day later, changes nothing.
         var before = await db.GuestContacts.AsNoTracking().OrderBy(c => c.Id).Select(c => new { c.Id, c.LegalBasis, c.Confirmation, c.ConfirmedAt, c.BasisVersion, c.BasisRecordedAt, c.UpdatedAt }).ToListAsync(Ct);
         clock.Advance(TimeSpan.FromDays(1));
         foreach (var guestId in new[] { legacy, unconfirmed, confirmed })
@@ -233,10 +213,6 @@ public class CrmContactProofTests
         Assert.Equal(before, after);
     }
 
-    /// <summary>
-    /// Privacy rule: the privacy history says on which channel a consent was given. A guest who consents on the e-mail and on WhatsApp at the same
-    /// moment leaves two rows that differ only by their note; without it the register could not prove which of the two the person agreed to.
-    /// </summary>
     [Fact]
     public async Task CrmContact_ConsentHistory_NamesTheChannelOfEachConsent_Test()
     {
@@ -260,12 +236,6 @@ public class CrmContactProofTests
         Assert.Equal(new[] { GuestConsentChannelNote.Email, GuestConsentChannelNote.WhatsApp }, notes.Order().ToArray());
     }
 
-    /// <summary>
-    /// Privacy rule: the proof of a consent the person confirmed is not rewritten by a later consent nobody confirmed. The person consents at the
-    /// check-in and confirms the address; later somebody types the same address on the welcome page, with another text version and another
-    /// connection: the contact keeps the version, the source, the time and the address of the connection of the act that was confirmed, and stays
-    /// marketable. A consent that was not confirmed yet has nothing to protect, and the newer act takes its place.
-    /// </summary>
     [Fact]
     public async Task CrmContact_ConfirmedConsent_KeepsItsEvidenceAgainstALaterUnconfirmedOne_Test()
     {
@@ -286,7 +256,6 @@ public class CrmContactProofTests
             Ct);
         Assert.NotNull(waiting);
 
-        // Three days later the same two addresses are typed on the welcome page, with the current text.
         clock.Advance(TimeSpan.FromDays(3));
         foreach (var address in new[] { "ospite@example.com", "in-attesa@example.com" })
         {

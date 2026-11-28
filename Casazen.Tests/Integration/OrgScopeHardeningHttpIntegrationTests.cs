@@ -43,13 +43,8 @@ public class OrgScopeHardeningHttpIntegrationTests(OrgInvitationsFactory factory
 
     private HttpClient Owner(World world) => factory.CreateAuthenticatedClient(world.OwnerId, roles: "PropertyOwner");
 
-    /// <summary>A collaborator is a person of the database only: no role in the token, nothing it could widen its reach with.</summary>
     private HttpClient Collaborator(World world) => factory.CreateAuthenticatedClient(world.CollaboratorId);
 
-    /// <summary>
-    /// An org with its owner and a collaborator, two properties full of data, the fiscal data of the org and of both properties, and
-    /// one completed intervention per property (its final amount waiting for the host's confirmation).
-    /// </summary>
     private async Task<World> NewWorldAsync()
     {
         await EnsureSeedsAsync();
@@ -108,11 +103,6 @@ public class OrgScopeHardeningHttpIntegrationTests(OrgInvitationsFactory factory
 
     private static object Selected(params Guid[] propertyIds) => new { propertyScope = "Selected", propertyIds };
 
-    /// <summary>
-    /// Gives the person a role of the short-rent context that holds <c>property.write</c> besides what a collaborator holds: the
-    /// state the product owner's decision would leave. The membership is re-pointed in the database before the person's first
-    /// request, so no cached copy of its permissions exists.
-    /// </summary>
     private async Task GivePropertyWriteAsync(string userId)
     {
         using var scope = factory.Services.CreateScope();
@@ -138,8 +128,6 @@ public class OrgScopeHardeningHttpIntegrationTests(OrgInvitationsFactory factory
         return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
-    // --- The export of the org --------------------------------------------------------------------------
-
     [Fact]
     public async Task Export_TheOwner_GetsTheCompleteAnswerOfAlways()
     {
@@ -148,7 +136,6 @@ public class OrgScopeHardeningHttpIntegrationTests(OrgInvitationsFactory factory
 
         var export = await JsonAsync(await owner.GetAsync("/api/gdpr/org/export"));
 
-        // The keys it always had; the owner also gets the activity log (AM-02b).
         Assert.Equal(
             ["activity", "exportedAt", "fiscalCode", "fiscalDataRetentionUntil", "hasPartitaIva", "members", "partitaIvaNumber", "propertyFiscalYears", "propertyTaxpayers"],
             export.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
@@ -188,7 +175,6 @@ public class OrgScopeHardeningHttpIntegrationTests(OrgInvitationsFactory factory
         using var owner = Owner(world);
         using var collaborator = Collaborator(world);
 
-        // It reaches every property now: the export is still not its to make.
         await OrgTeamHttp.AssertProblemAsync(await collaborator.GetAsync("/api/gdpr/org/export"), HttpStatusCode.Forbidden, "forbidden");
 
         await JsonAsync(await owner.PutAsJsonAsync($"/api/orgs/me/members/{world.CollaboratorMemberId}/properties", Selected(world.GrantedId)));
@@ -221,8 +207,6 @@ public class OrgScopeHardeningHttpIntegrationTests(OrgInvitationsFactory factory
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/gdpr/org/export")).StatusCode);
     }
 
-    // --- The person in charge of a property -----------------------------------------------------------------
-
     [Fact]
     public async Task Responsible_WhenTheOwnerTakesThePropertyAway_NobodyIsInChargeAnyMore_AndTheAccessIsNeededToBePutBack()
     {
@@ -237,7 +221,6 @@ public class OrgScopeHardeningHttpIntegrationTests(OrgInvitationsFactory factory
                 (await owner.PutAsJsonAsync($"/api/properties/{propertyId}/responsible", new { userId = world.CollaboratorId })).StatusCode);
         }
 
-        // Only the second property stays with the collaborator.
         await JsonAsync(await owner.PutAsJsonAsync(access, Selected(world.HiddenId)));
 
         var first = await JsonAsync(await owner.GetAsync($"/api/properties/{world.GrantedId}"));
@@ -245,7 +228,6 @@ public class OrgScopeHardeningHttpIntegrationTests(OrgInvitationsFactory factory
         Assert.Equal(JsonValueKind.Null, first.GetProperty("responsibleUserId").ValueKind);
         Assert.Equal(world.CollaboratorId, second.GetProperty("responsibleUserId").GetString());
 
-        // Without the access it cannot be put back in charge; with it, it can.
         await OrgTeamHttp.AssertProblemAsync(
             await owner.PutAsJsonAsync($"/api/properties/{world.GrantedId}/responsible", new { userId = world.CollaboratorId }),
             HttpStatusCode.UnprocessableEntity,
@@ -273,8 +255,6 @@ public class OrgScopeHardeningHttpIntegrationTests(OrgInvitationsFactory factory
         Assert.Equal(world.CollaboratorId, property.GetProperty("responsibleUserId").GetString());
     }
 
-    // --- The payments of the interventions -------------------------------------------------------------------
-
     [Fact]
     public async Task Payments_ACollaboratorSoloAlcuni_CannotMarkPaidTheRequestOfAPropertyItWasNotGiven()
     {
@@ -283,7 +263,6 @@ public class OrgScopeHardeningHttpIntegrationTests(OrgInvitationsFactory factory
         using var collaborator = Collaborator(world);
         await JsonAsync(await owner.PutAsJsonAsync($"/api/orgs/me/members/{world.CollaboratorMemberId}/properties", Selected(world.GrantedId)));
 
-        // As if it did not exist: the same answer as for an id nobody knows.
         await OrgTeamHttp.AssertProblemAsync(
             await collaborator.PostAsync($"/api/service-requests/{world.HiddenRequestId}/mark-paid", content: null),
             HttpStatusCode.NotFound,
@@ -293,7 +272,6 @@ public class OrgScopeHardeningHttpIntegrationTests(OrgInvitationsFactory factory
             HttpStatusCode.NotFound,
             "service_request_not_found");
 
-        // Nothing happened to it: still completed and unpaid, seen by its owner.
         var hidden = await JsonAsync(await owner.GetAsync($"/api/service-requests/{world.HiddenRequestId}"));
         Assert.Equal("Completato", hidden.GetProperty("status").GetString());
     }
@@ -301,8 +279,6 @@ public class OrgScopeHardeningHttpIntegrationTests(OrgInvitationsFactory factory
     [Fact]
     public async Task Payments_EvenWithPropertyWrite_ACollaboratorSoloAlcuni_IsLimitedToThePropertiesItWasGiven()
     {
-        // The permission is one gate and the scope another: a collaborator whose role also holds property.write (the product owner
-        // may give it, to confirm a price or pay online) still acts only on the properties it was given.
         var world = await NewWorldAsync();
         await GivePropertyWriteAsync(world.CollaboratorId);
         using var owner = Owner(world);
@@ -316,7 +292,6 @@ public class OrgScopeHardeningHttpIntegrationTests(OrgInvitationsFactory factory
                 HttpStatusCode.NotFound,
                 "service_request_not_found");
 
-            // On the property it was given the request is authorized: whatever it answers is the rules of the payment, not a refusal.
             var granted = await collaborator.PostAsync($"/api/service-requests/{world.GrantedRequestId}/{action}", content: null);
             Assert.NotEqual(HttpStatusCode.Forbidden, granted.StatusCode);
             Assert.True((int)granted.StatusCode < 500, $"{action} answered {(int)granted.StatusCode}");
@@ -340,8 +315,6 @@ public class OrgScopeHardeningHttpIntegrationTests(OrgInvitationsFactory factory
         using var collaborator = Collaborator(world);
         await JsonAsync(await owner.PutAsJsonAsync($"/api/orgs/me/members/{world.CollaboratorMemberId}/properties", Selected(world.GrantedId)));
 
-        // property.write is not the collaborator's (the product owner decides whether it may confirm or pay): refused on every
-        // request, the ones it was given and the others alike, before the scope is even looked at.
         foreach (var action in new[] { "final-amount/confirm", "payment-session" })
         {
             foreach (var requestId in new[] { world.GrantedRequestId, world.HiddenRequestId })
@@ -352,7 +325,6 @@ public class OrgScopeHardeningHttpIntegrationTests(OrgInvitationsFactory factory
             }
         }
 
-        // servicerequest.write is: it records that the request was paid, on the property it was given.
         var paid = await JsonAsync(await collaborator.PostAsync($"/api/service-requests/{world.GrantedRequestId}/mark-paid", content: null));
         Assert.Equal("Pagato", paid.GetProperty("status").GetString());
     }
@@ -382,8 +354,6 @@ public class OrgScopeHardeningHttpIntegrationTests(OrgInvitationsFactory factory
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    // --- The seed data the in-memory fallback lacks ----------------------------------------------------
-
     /// <summary>
     /// On PostgreSQL the migrations seed the contexts, roles and permissions. The in-memory fallback of the host has none (and
     /// <c>EnsureCreated</c> seeds only a store nobody has touched, which the host's start-up already did): write the seed data
@@ -408,8 +378,6 @@ public class OrgScopeHardeningHttpIntegrationTests(OrgInvitationsFactory factory
                 foreach (var row in entityType.GetSeedData())
                 {
                     var entity = Activator.CreateInstance(entityType.ClrType)!;
-                    // Only the columns: a seed row also carries the navigation lists of the model (shared objects), and adding
-                    // them would attach and change the seed of the model itself, which every other host of the process reads.
                     foreach (var (name, value) in row.Where(column => entityType.FindProperty(column.Key) is not null))
                         entityType.ClrType.GetProperty(name)!.SetValue(entity, value);
                     db.Add(entity);

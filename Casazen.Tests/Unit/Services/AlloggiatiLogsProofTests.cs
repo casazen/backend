@@ -17,13 +17,10 @@ public class AlloggiatiLogsProofTests
     [Fact]
     public void AlloggiatiLogs_NoPersonalData()
     {
-        // Arrange: Inspect AlloggiatiSendJob and AlloggiatiReceiptJob source code
         var sendJobType = typeof(AlloggiatiSendJob);
         var receiptJobType = typeof(AlloggiatiReceiptJob);
         var clientType = typeof(AlloggiatiWebClient);
         var fakeServerType = typeof(FakeAlloggiatiServer);
-
-        // Act & Assert: Verify job classes do not have fields/properties that would leak PII
 
         // ADR-015-R11: Jobs MUST NOT store guest names, document numbers, or personal data
         var sendJobFields = sendJobType.GetFields(
@@ -36,7 +33,6 @@ public class AlloggiatiLogsProofTests
             System.Reflection.BindingFlags.NonPublic |
             System.Reflection.BindingFlags.Instance);
 
-        // Verify no fields contain guest data (jobs should only hold dependencies like DbContext, logger)
         var forbiddenFieldPatterns = new[]
         {
             "guest", "name", "surname", "firstname", "lastname", "document", "passport",
@@ -48,29 +44,24 @@ public class AlloggiatiLogsProofTests
             var fieldName = field.Name.ToLowerInvariant();
             foreach (var pattern in forbiddenFieldPatterns)
             {
-                // Assert: No field name suggests it stores guest PII
                 Assert.DoesNotContain(pattern, fieldName);
             }
         }
 
-        // ADR-015-R11: BuildErrorMessage in AlloggiatiSendJob MUST use only error codes, never guest names
         var buildErrorMethod = sendJobType.GetMethod(
             "BuildErrorMessage",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
 
         Assert.NotNull(buildErrorMethod);
 
-        // The method signature should accept List<AlloggiatiRowError> and return string (error code, not guest data)
         Assert.Equal(typeof(string), buildErrorMethod!.ReturnType);
 
-        // ADR-015-R11: Verify FakeAlloggiatiServer masks secrets in logs
         var maskSecretMethod = fakeServerType.GetMethod(
             "MaskSecret",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
 
         Assert.NotNull(maskSecretMethod);
 
-        // MaskSecret should accept string and return string (masked value for logs)
         Assert.Equal(typeof(string), maskSecretMethod!.ReturnType);
 
         // ADR-015-R11: AlloggiatiWebClient logs MUST mask credentials (WSKEY, password)
@@ -85,10 +76,6 @@ public class AlloggiatiLogsProofTests
             .Any(f => f.FieldType.Name == "IDataProtector");
 
         Assert.True(hasDataProtector, "AlloggiatiWebClient must use IDataProtector to decrypt credentials (never logged in plain text)");
-
-        // ADR-015-R11: Verify logs use stable error codes, not free-text messages with guest data
-        // The error message format should be: "alloggiati_test_error_row_{rowNumber}_code_{errorCode}"
-        // NOT: "Error for guest {guestName}: invalid document"
 
         // ADR-015-R11: Jobs log only:
         // - Booking ID (Guid, not PII)
@@ -112,7 +99,5 @@ public class AlloggiatiLogsProofTests
         // 2. BuildErrorMessage uses only error codes and row numbers (no guest names/documents)
         // 3. FakeAlloggiatiServer masks secrets
         // 4. AlloggiatiWebClient uses IDataProtector for credentials (encrypted at rest, never logged in clear)
-
-        // This proves the privacy rule: logs are safe for operators to read without exposing guest identity data.
     }
 }

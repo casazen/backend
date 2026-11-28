@@ -13,10 +13,8 @@ namespace Casazen.Tests.Qualification;
 //      the test split ONCE and writes the report of the candidate version, ending with its SHA-256.
 // The folders it writes to (the output folder, the folder of the lock) are checked first: never the folder of the committed policy files, never a folder of the checkout.
 
-/// <summary>The freeze and the final test of the qualification (see the comments at the top of the file).</summary>
 public sealed class QualificationFinalTests(ITestOutputHelper output)
 {
-    /// <summary>Writes the configuration in force to the lock (<c>lock.json</c> of the output folder, or the path of <c>CASAZEN_QUALIFICATION_LOCK</c>).</summary>
     [QualificationFreezeFact]
     public async Task QualificationLock_Freeze_WritesTheConfigurationInForceToTheLock()
     {
@@ -25,7 +23,6 @@ public sealed class QualificationFinalTests(ITestOutputHelper output)
         pipeline.EnsureOutputAllowed(QualificationEnvironment.OutDirectory);
         pipeline.EnsureOutputAllowed(Path.GetDirectoryName(Path.GetFullPath(lockPath))!);
 
-        // The manifest is checked (and the test split must hold a whole check-in of every kind of critical case) before a lock is written for it: a lock for a dataset the final test would refuse is no use.
         var preflight = QualificationRunner.Preflight(QualificationEnvironment.ManifestPath, QualificationSplits.Test);
         if (preflight.Counts.CriticalKindsMissing() is { Count: > 0 } missing)
             throw new QualificationRunException(QualificationRunCodes.CriticalKindsMissing, string.Join(", ", missing));
@@ -51,7 +48,6 @@ public sealed class QualificationFinalTests(ITestOutputHelper output)
         var targets = QualificationTargets.Load();
         await using var pipeline = await QualificationPipeline.CreateAsync();
 
-        // Before anything else: where it writes, and the manifest and the test split (a manifest that is wrong must not use up the one run).
         pipeline.EnsureOutputAllowed(outDirectory);
         pipeline.EnsureOutputAllowed(Path.GetDirectoryName(Path.GetFullPath(lockPath))!);
         var preflight = QualificationRunner.Preflight(manifestPath, QualificationSplits.Test);
@@ -59,7 +55,6 @@ public sealed class QualificationFinalTests(ITestOutputHelper output)
         var frozen = QualificationLock.Load(lockPath);
         var runner = new QualificationRunner(pipeline, targets, new QualificationRunOptions { Progress = output.WriteLine });
 
-        // The gate checks the lock before anything of the test split is read, writes the marker and calls the run once.
         var results = await QualificationFinalGate.RunOnceAsync(
             frozen,
             current,

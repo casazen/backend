@@ -64,7 +64,6 @@ public class SeparateSupplierOrgFromHostOrgIdMigrationPostgresTests : IAsyncLife
         {
             seed.Orgs.Add(supplierOrg);
             seed.SupplierProfiles.Add(NewProfile(supplierOrg.Id, "legacy"));
-            // Pre-SU-08 shape: only OrgId was ever set.
             seed.Users.Add(NewUser("legacy", u => u.OrgId = supplierOrg.Id));
             await seed.SaveChangesAsync();
         }
@@ -103,8 +102,6 @@ public class SeparateSupplierOrgFromHostOrgIdMigrationPostgresTests : IAsyncLife
     [PostgresFact]
     public async Task SeparateSql_SupplierOrgWithHostData_BecomesHostOrgAndSupplierSideMovesToNewOrg()
     {
-        // A1-40 ran to completion before the fix: the supplier did the host onboarding on its supplier org and created a
-        // property there; meanwhile another host sent it a request.
         var mixed = NewOrg("mixed", OrgType.Supplier);
         var otherHost = NewOrg("other-host", OrgType.Host);
         var profile = NewProfile(mixed.Id, "mixed");
@@ -151,7 +148,6 @@ public class SeparateSupplierOrgFromHostOrgIdMigrationPostgresTests : IAsyncLife
         await RunMigrationSqlAsync();
 
         await using var check = NewContext();
-        // The host side stays where it is: same org, now typed Host, same property, consents and account link.
         Assert.Equal(OrgType.Host, (await check.Orgs.AsNoTracking().SingleAsync(o => o.Id == mixed.Id)).OrgType);
         Assert.Equal(mixed.Id, (await check.Properties.IgnoreQueryFilters().AsNoTracking()
             .SingleAsync(p => p.Id == hostProperty.Id)).OrgId);
@@ -159,7 +155,6 @@ public class SeparateSupplierOrgFromHostOrgIdMigrationPostgresTests : IAsyncLife
         var user = await GetUserAsync("mixed");
         Assert.Equal(mixed.Id, user.OrgId);
 
-        // The supplier side is on a new supplier org, with the profile (and its showcase slug), days and requests.
         var supplierOrgId = Assert.IsType<Guid>(user.SupplierOrgId);
         Assert.NotEqual(mixed.Id, supplierOrgId);
         var supplierOrg = await check.Orgs.AsNoTracking().SingleAsync(o => o.Id == supplierOrgId);
@@ -187,7 +182,6 @@ public class SeparateSupplierOrgFromHostOrgIdMigrationPostgresTests : IAsyncLife
     [PostgresFact]
     public async Task SeparateSql_SupplierOrgWithStripeCustomerOnly_IsKeptAsHostOrg()
     {
-        // A paid host plan bought on the supplier org: billing is host data, the org must not be detached from its account.
         var mixed = NewOrg("billing", OrgType.Supplier);
         mixed.StripeCustomerId = "cus_pl05test";
         await using (var seed = NewContext())

@@ -19,8 +19,6 @@ public class ShowcaseBookingManagerProposalTests
 {
     private const string SupplierEmail = "supplier@test.com";
 
-    // ─── Accept ──────────────────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Accept_TakesTheRequestAtTheProposedTime_FreesTheOldSlot_AndTellsBothParties()
     {
@@ -40,7 +38,6 @@ public class ShowcaseBookingManagerProposalTests
         Assert.Equal(ServiceRequestScenario.FridayAt14.AddMinutes(ServiceRequestScenario.ServiceMinutes), view.EndUtc);
         Assert.Null(view.Proposal);
         Assert.Null(view.RespondBy);
-        // Taken now: the exact address is there, and the time can no longer be moved.
         Assert.Equal(ShowcaseScenario.Address, view.Place.Address);
         Assert.Equal(new ShowcaseBookingActions(CanCancel: true, CanReschedule: false, CanRespondToProposal: false), view.Actions);
 
@@ -48,7 +45,6 @@ public class ShowcaseBookingManagerProposalTests
         Assert.Equal(ServiceRequestStatus.PresoInCarico, saved.Status);
         Assert.Equal(ServiceRequestScenario.FridayAt14, saved.ScheduledStartUtc);
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, saved.TakenAt);
-        // Taken on behalf of the member of the supplier who proposed it.
         Assert.Equal(ServiceRequestScenario.SupplierUserId, saved.TakenByUserId);
         Assert.Null(saved.ResponseDueAt);
         Assert.Null(saved.ProposedStartUtc);
@@ -57,7 +53,6 @@ public class ShowcaseBookingManagerProposalTests
         Assert.Contains(ServiceRequestScenario.FridayAt10, free);
         Assert.DoesNotContain(ServiceRequestScenario.FridayAt14, free);
 
-        // The supplier is told, e-mail and push.
         var toSupplier = Assert.Single(s.Emails.Snapshot(), e => e.To == SupplierEmail);
         Assert.Equal(EmailTemplates.Names.SupplierBookingProposalAnsweredByCustomer, toSupplier.Template);
         Assert.Equal("Il cliente ha accettato il nuovo orario — Monza", toSupplier.Content.Subject);
@@ -70,7 +65,6 @@ public class ShowcaseBookingManagerProposalTests
         Assert.Equal("Nuovo orario accettato", push.Payload.Title);
         Assert.Equal(PushDeliveryKeys.ServiceRequestProposalAnswered(request.Id, proposedAt, accepted: true), push.DeliveryKey);
 
-        // The customer gets the e-mail of a request taken, with the new time and the estimate.
         var toCustomer = Assert.Single(s.Emails.Snapshot(), e => e.To == ShowcaseScenario.CustomerEmail);
         Assert.Equal(EmailTemplates.Names.SupplierBookingAccepted, toCustomer.Template);
         Assert.Contains("09/10/2026 14:00", toCustomer.Content.HtmlBody);
@@ -85,7 +79,6 @@ public class ShowcaseBookingManagerProposalTests
         await s.EnableBookingAsync();
         var (request, credentials) = await s.BookedForManagementAsync();
         await s.ProposeAsSupplierAsync(request.Id, ServiceRequestScenario.FridayAt14);
-        // A proposal is an offer, not a booking: it holds nothing, so somebody else can take the slot.
         await s.BookedForManagementAsync(ServiceRequestScenario.FridayAt14, "anna.verdi@example.com");
         s.ForgetNotifications();
 
@@ -123,7 +116,6 @@ public class ShowcaseBookingManagerProposalTests
         Assert.Equal(ShowcaseBookingManagementErrors.ProposalExpired, reject.Code);
         Assert.Equal(ServiceRequestScenario.FridayAt14, (await s.ReadAsync(request.Id)).ProposedStartUtc);
 
-        // The upkeep does what the page says it will.
         var run = await s.ExpiryJob().RunAsync();
 
         Assert.Equal(1, run.RequestsCancelled);
@@ -171,7 +163,6 @@ public class ShowcaseBookingManagerProposalTests
         Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(request.Id)).Status);
         Assert.Empty(s.Emails.Snapshot());
 
-        // After an answer, a second answer is the same refusal.
         await s.ProposeAsSupplierAsync(request.Id, ServiceRequestScenario.SaturdayAt09);
         await s.Kit.Manager.AcceptProposalAsync(credentials);
         var again = await Assert.ThrowsAsync<DomainRuleException>(() => s.Kit.Manager.AcceptProposalAsync(credentials));
@@ -203,12 +194,10 @@ public class ShowcaseBookingManagerProposalTests
         using var s = await ServiceRequestScenario.CreateAsync();
         var supplier = await s.EnableBookingAsync();
         var withNotice = await s.AddListingAsync("Con preavviso", minNoticeHours: 24);
-        // Booked for Monday 12 October; the supplier proposes Saturday 10 October 09:00, 45 hours away (24 hours of notice: fine).
         var input = await s.InputAsync(ServiceRequestScenario.FridayAt10.AddDays(3), service: await s.ListingSlugAsync(withNotice));
         var (request, confirmation) = await s.BookedAsync(input, supplier);
         await s.ProposeAsSupplierAsync(request.Id, ServiceRequestScenario.SaturdayAt09);
         var credentials = ShowcaseManageScenario.CredentialsOf(confirmation.PublicCode);
-        // The customer answers a minute before its day is over: Saturday 09:00 is then 21 hours away, less than the 24 of notice.
         s.Clock.Advance(TimeSpan.FromHours(23) + TimeSpan.FromMinutes(59));
         Assert.True((await s.Kit.Manager.LookupAsync(credentials)).Actions.CanRespondToProposal);
 
@@ -217,8 +206,6 @@ public class ShowcaseBookingManagerProposalTests
         Assert.Equal(ServiceRequestErrorCodes.SlotUnavailable, refused.Code);
         Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(request.Id)).Status);
     }
-
-    // ─── Reject ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Reject_DropsTheProposal_TheRequestStaysNewAtItsTime_AndTheSupplierHasItsWholeTimeAgain()
@@ -250,14 +237,12 @@ public class ShowcaseBookingManagerProposalTests
         Assert.Null(saved.ProposedByUserId);
         Assert.Null(saved.ProposalMessage);
         Assert.Null(saved.TakenAt);
-        // The slot it kept the whole time is still its.
         Assert.DoesNotContain(ServiceRequestScenario.FridayAt10, await s.FreeSlotsOfFridayAsync());
 
         var toSupplier = Assert.Single(s.Emails.Snapshot());
         Assert.Equal(SupplierEmail, toSupplier.To);
         Assert.Equal("Il cliente ha rifiutato il nuovo orario — Monza", toSupplier.Content.Subject);
         Assert.Contains("La richiesta resta in attesa dell'orario richiesto, <strong>09/10/2026 10:00</strong>", toSupplier.Content.HtmlBody);
-        // 12:20 UTC plus the supplier's 180 minutes is 15:20 UTC, 17:20 in Rome.
         Assert.Contains("rispondi entro le <strong>08/10/2026 17:20</strong>", toSupplier.Content.HtmlBody);
         var push = Assert.Single(s.Pushes);
         Assert.Equal(PushTypes.ServiceRequestProposalRejected, push.Payload.Type);
@@ -282,8 +267,6 @@ public class ShowcaseBookingManagerProposalTests
         Assert.Equal(ServiceRequestScenario.SaturdayAt09, view.StartUtc);
     }
 
-    // ─── The proposal that nobody answers ────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Lapse_AProposalTheCustomerLetsLapse_IsToldToBothAsWhatItIs_TheCustomersSilence()
     {
@@ -301,7 +284,7 @@ public class ShowcaseBookingManagerProposalTests
         Assert.Equal(EmailTemplates.Names.SupplierBookingProposalExpired, toCustomer.Template);
         Assert.Equal("Request to Supplier Srl cancelled: new time not answered", toCustomer.Content.Subject);
         Assert.Contains("but you did not answer in time, so we cancelled the request", toCustomer.Content.HtmlBody);
-        Assert.Contains("9 October 2026, 10:00", toCustomer.Content.HtmlBody); // the time it had asked for
+        Assert.Contains("9 October 2026, 10:00", toCustomer.Content.HtmlBody);
         Assert.DoesNotContain("did not answer your request", toCustomer.Content.HtmlBody);
         var toSupplier = Assert.Single(s.Emails.Snapshot(), e => e.To == SupplierEmail);
         Assert.Equal(EmailTemplates.Names.SupplierBookingProposalLapsed, toSupplier.Template);

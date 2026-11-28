@@ -1,26 +1,18 @@
 using Casazen.Core.Assistant;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Services;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Reviews;
 
-/// <summary>
-/// The call of the assistant that writes the reply to a review (E05/F06/US01/T03, NF-69, PO-09), pure: what the model is told, how its answer is read, and the rules a reply never breaks
-/// (no promise of money, no mention of an AI, no link or contact detail, no placeholder of the minimization), checked on the server whatever the instructions asked.
-/// </summary>
 public class ReviewReplyPromptBuilderTests
 {
     private static readonly EffectiveAssistantRules Rules = EffectiveAssistantRules.Defaults;
-
-    // ─── What the model is told ───
 
     [Fact]
     public void Build_ShowsTheStarsAndTheWordsAsMaterial_AndKeepsTheInstructionsApart()
     {
         var request = ReviewReplyPromptBuilder.Build(4.5m, "Posto bello.\nPeccato per il [guest] rumore.", Rules, 700);
 
-        // The builder writes its lines with the newline of the machine: the check does not depend on it.
         var prompt = request.Prompt.Replace("\r\n", "\n", StringComparison.Ordinal);
         Assert.StartsWith("RATING: 4.5 out of 5", prompt, StringComparison.Ordinal);
         Assert.Contains("<<<\nPosto bello. Peccato per il [guest] rumore.\n>>>", prompt, StringComparison.Ordinal);
@@ -42,7 +34,6 @@ public class ReviewReplyPromptBuilderTests
 
         var request = ReviewReplyPromptBuilder.Build(5m, hostile, Rules, 700);
 
-        // The markers of the material cannot be closed from inside it: what is between them is one line of words.
         var open = request.Prompt.IndexOf("<<<", StringComparison.Ordinal);
         var close = request.Prompt.LastIndexOf(">>>", StringComparison.Ordinal);
         Assert.Equal(1, request.Prompt.Split("<<<", StringSplitOptions.None).Length - 1);
@@ -80,8 +71,6 @@ public class ReviewReplyPromptBuilderTests
         Assert.Equal($"review-reply:{ReviewReplyPromptBuilder.Version}:{id:N}", label);
     }
 
-    // ─── What the model answers ───
-
     [Theory]
     [InlineData("""{"reply":"Grazie di cuore!"}""", "Grazie di cuore!")]
     [InlineData("""Ecco la risposta: {"reply": "  Grazie mille.  "} Spero vada bene.""", "Grazie mille.")]
@@ -105,8 +94,6 @@ public class ReviewReplyPromptBuilderTests
     {
         Assert.Null(ReviewReplyPromptBuilder.ParseReply(answer));
     }
-
-    // ─── What a reply never says ───
 
     [Theory]
     [InlineData("Grazie per la recensione, speriamo di rivedervi presto.")]

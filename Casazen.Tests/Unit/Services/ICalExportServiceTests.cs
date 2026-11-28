@@ -5,10 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// Content and format of the public iCal export (PC-12, A2-22): all-day events, DTEND = departure day, stable UIDs,
-/// neutral SUMMARY, no echo of the imported blocks nor of the OTA stays.
-/// </summary>
 public class ICalExportServiceTests
 {
     private const string Busy = "Occupato";

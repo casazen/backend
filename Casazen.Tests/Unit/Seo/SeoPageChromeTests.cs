@@ -3,7 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Seo;
 
-/// <summary>The links around the editorial pages: a crawler page must have a way in and out, written as plain, encoded HTML.</summary>
 public class SeoPageChromeTests
 {
     private static readonly SeoLink[] Nav =

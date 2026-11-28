@@ -92,7 +92,6 @@ public class MrzExtractionServiceTests
     [Fact]
     public void FailedBirthDigit_IsNeverCertain_AndTheBirthDateIsNotReturned()
     {
-        // The digit after the date of birth is 2: with 3 the date is not the one that was printed.
         var result = MrzExtractionService.ParseTd3Mrz(MrzSpecimens.Td3Line1, Replace(MrzSpecimens.Td3Line2, 19, '3'), Today);
 
         Assert.NotNull(result);
@@ -128,7 +127,6 @@ public class MrzExtractionServiceTests
     [Fact]
     public void OnlyTheCompositeDigitFailing_IsNeverCertainEither()
     {
-        // Every digit of a field is right, the composite one (the last character) is not: the lines are not the ones that were printed.
         var result = MrzExtractionService.ParseTd3Mrz(MrzSpecimens.Td3Line1, Replace(MrzSpecimens.Td3Line2, 43, '9'), Today);
 
         Assert.NotNull(result);
@@ -165,7 +163,6 @@ public class MrzExtractionServiceTests
     [Fact]
     public void OcrConfusions_InNumericAndAlphabeticFields_AreCorrectedBeforeTheDigits()
     {
-        // The reading has O for 0 and Z for 2 in the date of birth and its digit, I for 1 in the expiry, a zero for the O of the state.
         var line2 = Replace(Replace(Replace(Replace(MrzSpecimens.Td3Line2, 15, 'O'), 19, 'Z'), 21, 'I'), 12, '0');
         var line1 = MrzSpecimens.Td3Line1.Replace("ERIKSSON", "ER1KSSON", StringComparison.Ordinal);
 
@@ -183,7 +180,6 @@ public class MrzExtractionServiceTests
     [Fact]
     public void LongDocumentNumber_ContinuesInTheOptionalData()
     {
-        // A twelve character number: nine in its place, the filler where the digit would be, the rest and its digit in the optional data.
         const string document = "AB1234567CDE";
         var firstLine = "I<UTO" + document[..9] + "<" + document[9..] + MrzSpecimens.Check(document) + new string('<', 11);
         var secondBody = "740812" + MrzSpecimens.Check("740812") + "F" + "300101" + MrzSpecimens.Check("300101") + "UTO" + new string('<', 11);
@@ -206,7 +202,6 @@ public class MrzExtractionServiceTests
         var (line1, valid) = MrzSpecimens.Td3("L898902C3", "740812", "261105");
         var (_, expired) = MrzSpecimens.Td3("L898902C3", "740812", "261104");
 
-        // A document is valid through its expiry date: today it is still valid, the day after it is not.
         Assert.False(MrzExtractionService.ParseTd3Mrz(line1, valid, Today)!.IsExpired);
         Assert.True(MrzExtractionService.ParseTd3Mrz(line1, expired, Today)!.IsExpired);
         Assert.True(MrzExtractionService.ParseTd3Mrz(line1, valid, Today.AddDays(1))!.IsExpired);
@@ -224,7 +219,6 @@ public class MrzExtractionServiceTests
     [InlineData("990101", true, 1999, 1, 1)]
     public void MrzDate_TakesTheCenturyFromTheKindOfDate(string yymmdd, bool isExpiry, int year, int month, int day)
     {
-        // A date of birth is never in the future; an expiry date is in 20xx up to 30 years ahead (the old window made 35 into 1935).
         Assert.Equal(Utc(year, month, day), MrzExtractionService.ParseMrzDate(yymmdd, isExpiry, Today));
     }
 
@@ -278,8 +272,6 @@ public class MrzExtractionServiceTests
         Assert.Null(MrzExtractionService.Interpret(["ABC", "DEF"], Today));
         Assert.Null(MrzExtractionService.Interpret([MrzSpecimens.Td3Line1], Today));
     }
-
-    // ---- the reading of a picture, with the locator and the OCR replaced by scripts -------------------------------------------
 
     private static readonly FixedTimeProvider Clock = new(new DateTimeOffset(2026, 11, 5, 12, 0, 0, TimeSpan.Zero));
 

@@ -23,12 +23,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// The amounts of the channel on the booking API (E02/F02/US01/T01, ADR-033-R3, R8, R9): the booking detail gives the commission, net, paid and
-/// balance of an imported booking as stored, to whoever may read payments and to nobody else (permission rule); the channel is there for
-/// everyone, so the "OTA" badge works for the collaborator too; and a request to change an amount is refused with 422 (data rule), whatever
-/// else it carried.
-/// </summary>
 public class BookingsControllerOtaAmountsTests
 {
     private const string OwnerId = "auth0|owner_123";
@@ -51,7 +45,6 @@ public class BookingsControllerOtaAmountsTests
             booking.Id, HostAuthorizationTestHarness.Create(OrgId, (_, permission) => permission != "payment.read" || canReadPayments));
 
         var dto = Assert.IsType<BookingDetailDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
-        // The channel tells the imported booking apart for everyone: the badge is not money.
         Assert.Equal("Airbnb", dto.OtaSource);
         Assert.Equal("Airbnb", dto.Source);
         if (!canReadPayments)
@@ -116,7 +109,6 @@ public class BookingsControllerOtaAmountsTests
         await db.SaveChangesAsync();
         var service = HostBookings(db);
 
-        // A different commission, net, paid or balance is an edit of the channel's figures: refused, with the code the clients translate.
         foreach (var attempt in new[]
                  {
                      new OtaAmountsInput(99m, null, null, null),
@@ -159,7 +151,6 @@ public class BookingsControllerOtaAmountsTests
     {
         var stored = new OtaAmountsInput(18.15m, null, 123.45m, null);
 
-        // Sending back what is stored (a client that returns the whole answer) edits nothing, nor does sending nothing.
         Assert.False(new OtaAmountsInput(null, null, null, null).Edits(stored));
         Assert.False(new OtaAmountsInput(18.15m, null, 123.450m, null).Edits(stored));
         Assert.False(stored.Edits(stored));
@@ -223,7 +214,6 @@ public class BookingsControllerOtaAmountsTests
         };
     }
 
-    /// <summary>A booking of Airbnb imported from Octorate, in a property in francs, with a commission and a paid amount but no net and no balance.</summary>
     private static Booking ImportedBooking()
     {
         var property = new Property

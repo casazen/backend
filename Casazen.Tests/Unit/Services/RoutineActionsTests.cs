@@ -33,12 +33,6 @@ public class RoutineActionsTests
         return await db.InternalActivities.AsNoTracking().Where(a => a.ActivityType == nameof(ActivityType.RoutineTask)).ToListAsync();
     }
 
-    // ─── CreateActivity ──────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Proof (data rule): two executions for the same booking leave one open To do. The To do is one for each booking while it is open, so the host is not
-    /// asked twice for the same thing by two events, two routines or a delivery that comes again.
-    /// </summary>
     [Fact]
     public async Task RoutineActions_CreateActivity_Idempotent_Test()
     {
@@ -81,7 +75,6 @@ public class RoutineActionsTests
         Assert.Equal(new RoutineActionResult(0, RoutineActionType.CreateActivity, RoutineActionOutcomes.Done, null), action);
     }
 
-    /// <summary>No <c>dueInDays</c> is no deadline (the To do is scheduled when it is raised); 0 and 60 are the two ends of the range.</summary>
     [Theory]
     [InlineData(null)]
     [InlineData(0)]
@@ -129,7 +122,6 @@ public class RoutineActionsTests
         Assert.Single(await TodosAsync(rig));
     }
 
-    /// <summary>A CreateActivity after a Wait raises its To do for the booking the event named (the saved payload), once, however many jobs resume it.</summary>
     [Fact]
     public async Task CreateActivity_AfterAWait_RaisesOneToDoForTheBookingOfTheEvent()
     {
@@ -153,11 +145,6 @@ public class RoutineActionsTests
         Assert.Equal(RoutineExecutionOutcomes.Success, (await rig.ExecutionAsync(waiting.Id)).Outcome);
     }
 
-    /// <summary>
-    /// After a Wait a routine acts on nothing more for a stay that was cancelled, or marked as a no-show, while it waited: the action left is recorded
-    /// <c>blocked</c> with <c>routine_booking_not_active</c> and no To do is raised for a stay that does not happen. A request that waits for an answer
-    /// (Pending) and a stay that is on go on.
-    /// </summary>
     [Theory]
     [InlineData(BookingStatus.Cancelled, false, false)]
     [InlineData(BookingStatus.Confirmed, true, false)]
@@ -192,7 +179,6 @@ public class RoutineActionsTests
         Assert.Equal(acts ? 1 : 0, (await TodosAsync(rig)).Count);
     }
 
-    /// <summary>A routine of a cancellation is about exactly the stay that was cancelled: it goes on after its Wait.</summary>
     [Fact]
     public async Task CreateActivity_OfACancellationRoutine_GoesOnAfterItsWait_ForTheCancelledStay()
     {
@@ -249,7 +235,6 @@ public class RoutineActionsTests
         Assert.Empty(await TodosAsync(rig));
     }
 
-    /// <summary>The booking is read in the org of the routine: the id of another org's booking is no booking, and no To do is raised in either org.</summary>
     [Fact]
     public async Task CreateActivity_ABookingOfAnotherOrg_FailsAndRaisesNothing()
     {
@@ -331,7 +316,6 @@ public class RoutineActionsTests
         Assert.Empty(await TodosAsync(rig));
     }
 
-    /// <summary>The number of a member is never stored (the rows keep the name) but two members never share one: 100 is the number of its own (90 is taken by the tourist tax refunds of E25).</summary>
     [Fact]
     public void ActivityType_RoutineTask_HasANumberOfItsOwn()
     {
@@ -339,8 +323,6 @@ public class RoutineActionsTests
         var numbers = Enum.GetValues<ActivityType>().Select(type => (int)type).ToList();
         Assert.Equal(numbers.Count, numbers.Distinct().Count());
     }
-
-    // ─── Actions with no implementation ──────────────────────────────────────────
 
     [Fact]
     public async Task Simulate_ShowsWhichActionsCannotRunYet()
@@ -359,8 +341,6 @@ public class RoutineActionsTests
         Assert.Equal([null, RoutineCodes.ActionNotAvailable, null], result.Actions.Select(a => a.Code));
         Assert.Empty(await TodosAsync(rig));
     }
-
-    // ─── The catalog ─────────────────────────────────────────────────────────────
 
     [Fact]
     public void Catalog_ListsEveryAction_OnceWithItsAvailabilityAndCode()
@@ -393,9 +373,6 @@ public class RoutineActionsTests
             action => Assert.True(action.Available));
     }
 
-    // ─── No pretend texts ────────────────────────────────────────────────────────
-
-    /// <summary>The texts the old engine recorded for actions it did not perform exist nowhere in the code of the application.</summary>
     [Fact]
     public void PretendTexts_OfTheOldEngine_ExistNowhereInTheCode()
     {

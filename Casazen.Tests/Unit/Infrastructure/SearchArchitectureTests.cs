@@ -28,7 +28,6 @@ public class SearchArchitectureTests
     [Fact]
     public void TheSearchFiles_AreFound()
     {
-        // The guards below would pass on an empty list: say what they look at.
         var files = Sources().Select(source => source.Path).ToList();
 
         Assert.Contains("Casazen.Infrastructure/Search/GlobalSearchService.cs", files);
@@ -44,7 +43,6 @@ public class SearchArchitectureTests
         var offending = new List<string>();
         foreach (var (path, text) in Sources())
         {
-            // Every logging call, up to the end of its statement: nothing that names the term, the words or the request.
             foreach (Match call in Regex.Matches(text, @"\b[lL]ogger\s*\.\s*Log\w*\s*\([^;]*;", RegexOptions.Singleline))
             {
                 if (Regex.IsMatch(call.Value, @"\b(q|term|query|tokens?|request|prefix)\b", RegexOptions.IgnoreCase))
@@ -89,7 +87,6 @@ public class SearchArchitectureTests
     {
         var service = Sources().Single(source => source.Path == "Casazen.Infrastructure/Search/GlobalSearchService.cs").Text;
 
-        // The address is read for the guest group and goes into the answer only through the mask.
         Assert.Contains("PersonalDataMasking.MaskEmail(", service, StringComparison.Ordinal);
         var uses = CodeLines(service).Where(line => Regex.IsMatch(line.Text, @"\b[a-z]\w*\.Email\b")).ToList();
         Assert.NotEmpty(uses);
@@ -134,7 +131,6 @@ public class SearchArchitectureTests
             + string.Join("\n", offending));
     }
 
-    /// <summary>The lines of code of a file (comment lines and the comment at the end of a line left out), with their numbers.</summary>
     private static IEnumerable<(int Number, string Text)> CodeLines(string text)
     {
         var number = 0;

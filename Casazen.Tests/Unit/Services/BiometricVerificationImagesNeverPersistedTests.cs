@@ -16,11 +16,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E03/F04/US01/T01, privacy rule (ADR-013-R2, AC-NF51-9, AC-NF51-12): the selfie, the photo of the document, the crops and the vectors are held
-/// in memory only. After a verification that succeeds, one that fails and one that throws, none of their bytes appears in the logs, every array
-/// the service held is zeroed, and the service has nothing that could write them (no database, no queue, no file) or return them.
-/// </summary>
 public class BiometricVerificationImagesNeverPersistedTests
 {
     private static readonly CultureInfo Invariant = CultureInfo.InvariantCulture;
@@ -34,10 +29,8 @@ public class BiometricVerificationImagesNeverPersistedTests
         IReadOnlyList<string> ForbiddenInLogs,
         BiometricVerificationResult? Result);
 
-    /// <summary>The text a log could hold if it wrote a picture or a vector: base64, hex, decimal lists, and the numbers of the vectors.</summary>
     private static IEnumerable<string> Forbidden(byte[] encoded, byte[] pixels, params float[][] vectors)
     {
-        // Bytes from the middle of the compressed data (the signature of a PNG is the same for every picture).
         var fromFile = encoded.Skip(encoded.Length / 2).Take(16).ToArray();
         var fromPixels = pixels.Take(16).ToArray();
         yield return Convert.ToBase64String(encoded);
@@ -68,7 +61,6 @@ public class BiometricVerificationImagesNeverPersistedTests
         var selfieVector = new[] { 0.123457f, 0.654321f, 0.246810f, 0.135792f };
         var documentVector = new[] { 0.123457f, 0.654321f, 0.246810f, 0.135792f };
 
-        // Taken before the run: the application zeroes the very arrays the test keeps.
         var forbidden = Forbidden(selfiePng, selfiePixels, selfieVector)
             .Concat(Forbidden(documentPng, documentPixels, documentVector))
             .Distinct()
@@ -97,10 +89,8 @@ public class BiometricVerificationImagesNeverPersistedTests
         foreach (var token in run.ForbiddenInLogs)
             Assert.DoesNotContain(token, output);
 
-        // The exception itself is never handed to the logger: its message could carry what was being read.
         Assert.All(run.Log.Entries, entry => Assert.Null(entry.Exception));
 
-        // Every picture and every vector the service held has been zeroed.
         Assert.NotEmpty(run.Detector.SeenPixels);
         foreach (var pixels in run.Detector.SeenPixels)
             Assert.True(pixels.All(b => b == 0), $"{scenario}: a decoded picture was left in memory");
@@ -112,7 +102,6 @@ public class BiometricVerificationImagesNeverPersistedTests
     [Fact]
     public async Task BiometricVerification_ImagesNeverPersisted_Test()
     {
-        // Success: both faces found, the vectors compared, Accept.
         var success = await Execute(
             "success",
             (selfie, document) => (
@@ -122,7 +111,6 @@ public class BiometricVerificationImagesNeverPersistedTests
         Assert.Equal(2, success.Embedder.Issued.Count);
         AssertNothingKept("success", success);
 
-        // Failure: no face in the photo of the document, Reject.
         var failure = await Execute(
             "failure",
             (_, _) => (new ScriptedFaceDetector([Face(0.3)], []), new ScriptedFaceEmbedder()));
@@ -130,7 +118,6 @@ public class BiometricVerificationImagesNeverPersistedTests
         Assert.Equal(BiometricReasonCodes.NoFace, failure.Result.ReasonCode);
         AssertNothingKept("failure", failure);
 
-        // Exception: the second vector cannot be made and the error text holds the whole selfie in base64, Escalate.
         var exception = await Execute(
             "exception",
             (selfie, document) => (
@@ -146,7 +133,6 @@ public class BiometricVerificationImagesNeverPersistedTests
     [Fact]
     public void BiometricVerification_HasNothingThatCouldWriteAPicture()
     {
-        // No database, no job queue, no e-mail queue, no object storage, no form file: the services only read streams and return numbers.
         var services = new[]
         {
             typeof(BiometricVerificationService), typeof(AntiSpoofingService), typeof(FaceDetector), typeof(FaceEmbedder),
@@ -176,7 +162,6 @@ public class BiometricVerificationImagesNeverPersistedTests
         foreach (var property in typeof(BiometricVerificationResult).GetProperties(BindingFlags.Public | BindingFlags.Instance))
             Assert.Contains(property.PropertyType, allowed);
 
-        // The numbers the agent needs (E03/F04/US01/T01) are all there.
         foreach (var name in new[]
                  {
                      "LivenessScore", "FaceInSelfie", "FaceInDocument", "FaceAreaRatioSelfie", "Similarity", "ModelName", "ModelVersion",
@@ -184,17 +169,12 @@ public class BiometricVerificationImagesNeverPersistedTests
                  })
             Assert.NotNull(typeof(BiometricVerificationResult).GetProperty(name));
 
-        // And the liveness result is a score and a flag.
         Assert.Equal(2, typeof(LivenessResult).GetProperties().Length);
     }
-
-    // ─── E73/F01/US02/T01: the evidence of the reviewer of the self-hosted closure (NF-195, ADR-013-R20) ─────────────────────────────────────────────
 
     [Fact]
     public async Task BiometricVerificationImagesNeverPersisted_FlagOff_NothingPersisted()
     {
-        // Proof (privacy, AC1): with Features:CheckInIdentityReviewEvidence off a review keeps nothing, as before: the kept picture of the document goes, no evidence row, no
-        // object written, whatever the store wired in the flow could do.
         await using var run = await EvidenceRun.CreateAsync(evidenceOn: false);
 
         var answer = await run.SubmitAsync();
@@ -208,9 +188,6 @@ public class BiometricVerificationImagesNeverPersistedTests
     [Fact]
     public async Task BiometricVerificationImagesNeverPersisted_ReviewEvidenceOn_OnlyCiphertextOfTheCropAndTheChosenFrames_BeforeTheDocumentGoes()
     {
-        // Proof (privacy, AC1, AC3, AC5): with the flag on a review keeps the crop of the portrait and the frames the server chose, and nothing else: only ciphertext reaches the
-        // bucket (no PNG, no JPEG signature), it decrypts to a PNG and to the JPEG frames received without their metadata (no vector, no score in them), the rows are linked to the
-        // log row of the decision, and all of it is written BEFORE the kept picture of the document is deleted by the way to the operators.
         await using var run = await EvidenceRun.CreateAsync(evidenceOn: true);
 
         var answer = await run.SubmitAsync();
@@ -237,7 +214,6 @@ public class BiometricVerificationImagesNeverPersistedTests
                 Assert.Contains(chosen, frame => frame.SequenceEqual(plain));
         });
 
-        // Only the evidence is left in the bucket: the kept picture of the document was deleted, and after the evidence was written.
         Assert.Equal(rows.Select(row => row.StorageKey).Order(), run.Storage.Inner.Objects.Keys.Order());
         var lastEvidencePut = run.Storage.Operations.FindLastIndex(operation => operation.StartsWith("put:identity-evidence/", StringComparison.Ordinal));
         var documentDeleted = run.Storage.Operations.FindIndex(operation => operation == "delete:" + run.DocumentKey);
@@ -248,7 +224,6 @@ public class BiometricVerificationImagesNeverPersistedTests
     [Fact]
     public async Task BiometricVerificationImagesNeverPersisted_ReviewEvidenceOn_NothingForATicinoProperty_NorForAnApproval()
     {
-        // Proof (privacy, AC2): a property that keeps no document keeps no evidence (ADR-013-R6), and an approval keeps none either: the guest is approved, nobody reviews.
         await using (var ticino = await EvidenceRun.CreateAsync(evidenceOn: true, keepsNoDocument: true))
         {
             var answer = await ticino.SubmitAsync();
@@ -271,8 +246,6 @@ public class BiometricVerificationImagesNeverPersistedTests
     [Fact]
     public async Task BiometricVerificationImagesNeverPersisted_AFailureOfTheEvidence_LeavesTheDecisionAndTheHandOffAsTheyAre()
     {
-        // AC4: the bucket refuses the evidence; the review is the same (its row, its outcome code, the operators told once), no evidence row is left, and the kept picture of the
-        // document is deleted as on every way to a person.
         await using var run = await EvidenceRun.CreateAsync(evidenceOn: true);
         run.Storage.FailEvidencePuts = true;
 
@@ -286,10 +259,6 @@ public class BiometricVerificationImagesNeverPersistedTests
         Assert.Empty(run.Storage.Inner.Objects);
     }
 
-    /// <summary>
-    /// One closure of the presence on the world of <see cref="PresenceClosureWorld"/> with the store of the evidence wired in the flow: the kept front of the document is a real
-    /// picture (generated noise), the pipeline chose three frames, the detector of the store finds a portrait on any picture, and the bucket records the order of its operations.
-    /// </summary>
     private sealed class EvidenceRun : IAsyncDisposable
     {
         private readonly string _directory = Path.Combine(Path.GetTempPath(), "casazen-evidence-closure-" + Guid.NewGuid().ToString("N"));
@@ -308,14 +277,12 @@ public class BiometricVerificationImagesNeverPersistedTests
 
         public GuestCheckInSession Session { get; }
 
-        /// <summary>The key of the kept picture of the document (empty where nothing is kept).</summary>
         public string DocumentKey { get; }
 
         public OrderedStorage Storage { get; }
 
         public KeyedFaceDetector Detector { get; } = new();
 
-        /// <summary>The JPEG of the frames sent, in their order.</summary>
         public List<byte[]> SubmittedFrames { get; } = [];
 
         public static async Task<EvidenceRun> CreateAsync(bool evidenceOn, bool keepsNoDocument = false, bool allowApproval = false)
@@ -327,7 +294,6 @@ public class BiometricVerificationImagesNeverPersistedTests
 
             var session = await world.ReadyStayAsync(keepsNoDocument);
 
-            // The kept front of the document becomes a picture the store can cut (the flow decrypts it from the bucket, as it was kept).
             var documentKey = world.Storage.Objects.Keys.SingleOrDefault() ?? string.Empty;
             if (documentKey.Length > 0)
             {
@@ -374,7 +340,6 @@ public class BiometricVerificationImagesNeverPersistedTests
                 Directory.Delete(_directory, recursive: true);
         }
 
-        /// <summary>The flow of <see cref="PresenceClosureWorld.Flow"/>, with the store of the evidence and the bucket that records its operations.</summary>
         private IdentityVerificationFlowService Flow()
         {
             var store = new IdentityReviewEvidenceStore(
@@ -419,7 +384,6 @@ public class BiometricVerificationImagesNeverPersistedTests
         }
     }
 
-    /// <summary>The bucket of the world, recording its writes and deletions in order (<c>put:key</c>, <c>delete:key</c>); it can refuse the writes of the evidence.</summary>
     private sealed class OrderedStorage(PresenceMemoryStorage inner) : IFileStorage
     {
         public PresenceMemoryStorage Inner { get; } = inner;

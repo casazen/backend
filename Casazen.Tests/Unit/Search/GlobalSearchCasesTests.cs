@@ -51,7 +51,6 @@ public class GlobalSearchCasesTests : IAsyncLifetime
     [Fact]
     public async Task TheWorld_IsSoundForPostgreSql_NoDanglingKeyNoDuplicateInAUniqueIndex()
     {
-        // The in-memory provider checks neither foreign keys nor unique indexes; PostgreSQL does. The same rows are written to it in CI.
         await HostScopeScenario.AssertReferentialIntegrityAsync(_db);
     }
 }

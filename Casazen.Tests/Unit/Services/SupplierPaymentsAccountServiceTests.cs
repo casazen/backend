@@ -29,8 +29,6 @@ public class SupplierPaymentsAccountServiceTests
 
     private readonly Mock<IStripeConnectGateway> _gateway = new(MockBehavior.Strict);
 
-    // ─── State ───────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetAccountAsync_SupplierWithoutAccount_HasNoAccountAndIsNotVerified()
     {
@@ -57,7 +55,6 @@ public class SupplierPaymentsAccountServiceTests
 
         var state = await Service(db).GetAccountAsync(orgId, refreshFromStripe: false);
 
-        // The strict mock has no setup: any Stripe call would have thrown.
         Assert.True(state.HasAccount);
         Assert.True(state.ChargesEnabled);
         Assert.True(state.PayoutsEnabled);
@@ -170,7 +167,6 @@ public class SupplierPaymentsAccountServiceTests
 
         await Service(db).GetAccountAsync(orgId, refreshFromStripe: false);
 
-        // Read-only: the activation and the profile are exactly as they were.
         db.ChangeTracker.Clear();
         var profile = await db.SupplierProfiles.AsNoTracking().SingleAsync(sp => sp.OrgId == orgId);
         Assert.Equal(SupplierStatus.Pending, profile.Status);
@@ -199,8 +195,6 @@ public class SupplierPaymentsAccountServiceTests
         Assert.True(stored.ConnectChargesEnabled);
         Assert.True(stored.ConnectPayoutsEnabled);
     }
-
-    // ─── The account and the onboarding link ─────────────────────────────────────
 
     [Fact]
     public async Task EnsureAccountAsync_NoAccount_CreatesItOnceWithTheOrgIdempotencyKey()
@@ -298,8 +292,6 @@ public class SupplierPaymentsAccountServiceTests
         _gateway.VerifyNoOtherCalls();
     }
 
-    // ─── The dashboard link ──────────────────────────────────────────────────────
-
     [Fact]
     public async Task CreateDashboardLinkAsync_NoAccount_IsNotReadyAndNeverCallsStripe()
     {
@@ -310,7 +302,6 @@ public class SupplierPaymentsAccountServiceTests
 
         Assert.Equal("supplier_payments_not_ready", ex.Code);
         Assert.Equal("SupplierPaymentsNotReady", ex.MessageKey);
-        // No account is created to open its dashboard.
         _gateway.VerifyNoOtherCalls();
         Assert.Null((await ReloadOrgAsync(db, orgId)).StripeConnectedAccountId);
     }
@@ -343,7 +334,6 @@ public class SupplierPaymentsAccountServiceTests
         var ex = await Assert.ThrowsAsync<DomainRuleException>(() => Service(db).CreateDashboardLinkAsync(orgId));
 
         Assert.Equal("supplier_payments_not_ready", ex.Code);
-        // The account stays linked: the supplier finishes the onboarding with the onboarding link.
         Assert.Equal(Account, (await ReloadOrgAsync(db, orgId)).StripeConnectedAccountId);
     }
 
@@ -369,8 +359,6 @@ public class SupplierPaymentsAccountServiceTests
         // A dashboard link never unlinks the account, whatever Stripe answers.
         Assert.Equal(Account, (await ReloadOrgAsync(db, orgId)).StripeConnectedAccountId);
     }
-
-    // ─── Only a supplier org ─────────────────────────────────────────────────────
 
     [Fact]
     public async Task EveryOperation_OrgWithoutASupplierProfile_IsNotFoundAndNeverReachesStripe()
@@ -412,8 +400,6 @@ public class SupplierPaymentsAccountServiceTests
         _gateway.VerifyNoOtherCalls();
     }
 
-    // ─── helpers ─────────────────────────────────────────────────────────────────
-
     private SupplierPaymentsAccountService Service(AppDbContext db) =>
         new(
             db,
@@ -421,7 +407,6 @@ public class SupplierPaymentsAccountServiceTests
             _gateway.Object,
             NullLogger<SupplierPaymentsAccountService>.Instance);
 
-    /// <summary>The exception the real gateway throws for this Stripe answer.</summary>
     private static StripeConnectException StripeFailure(HttpStatusCode status, string? code) =>
         StripeConnectGateway.ToConnectException(StripeConnectGatewayTests.StripeError(status, code), "test");
 

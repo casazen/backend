@@ -14,7 +14,7 @@ namespace Casazen.Tests.Unit.Regulatory;
 /// </summary>
 public class AlloggiatiRecordFileTests
 {
-    private const string ComuneCode = "415063049"; // the example ComuneCodice of MANUALEWS.pdf, used here as an opaque value
+    private const string ComuneCode = "415063049";
     private const string ItalyCode = "100000100";
     private const string FranceCode = "100000227";
 
@@ -24,7 +24,6 @@ public class AlloggiatiRecordFileTests
     [Fact]
     public void Layout_FollowsTheOfficialTable_168CharactersWithNoGaps()
     {
-        // DA / A of the table "Tracciato Record" (MANUALEALBERGHI.pdf p. 34, MANUALEWS.pdf p. 19).
         var official = new (string Name, int From, int To)[]
         {
             ("TipoAlloggiato", 0, 1), ("DataArrivo", 2, 11), ("GiorniPermanenza", 12, 13), ("Cognome", 14, 63),
@@ -73,11 +72,10 @@ public class AlloggiatiRecordFileTests
         Assert.StartsWith("17", lines[0]);
         Assert.StartsWith("19", lines[1]);
         Assert.StartsWith("19", lines[2]);
-        // Members: the three document fields (5 + 20 + 9 = 34 characters, positions 134-167) are blank.
         Assert.All(lines.Skip(1), line => Assert.Equal(new string(' ', 34), line[134..]));
         Assert.Equal("IDENT", lines[0][134..139]);
         Assert.Equal("BIANCHI", lines[1][14..63].TrimEnd());
-        Assert.Equal("2", lines[1][94..95]); // woman
+        Assert.Equal("2", lines[1][94..95]);
         Assert.Equal(3, result.LineCount);
         Assert.DoesNotContain('\n', result.Text.Replace("\r\n", string.Empty));
         Assert.False(result.Text.EndsWith('\n') || result.Text.EndsWith('\r'));
@@ -98,10 +96,10 @@ public class AlloggiatiRecordFileTests
         var line = AlloggiatiRecordFile.Build([guest]).Text!;
 
         Assert.Equal(168, line.Length);
-        Assert.Equal(new string(' ', 9), line[105..114]); // comune: "completato con 9 spazi bianchi"
-        Assert.Equal("  ", line[114..116]); // province: 2 blanks
+        Assert.Equal(new string(' ', 9), line[105..114]);
+        Assert.Equal("  ", line[114..116]);
         Assert.Equal(FranceCode, line[116..125]);
-        Assert.Equal(ItalyCode, line[125..134]); // citizenship stays
+        Assert.Equal(ItalyCode, line[125..134]);
     }
 
     [Fact]
@@ -215,8 +213,8 @@ public class AlloggiatiRecordFileTests
     }
 
     [Theory]
-    [InlineData("abc")] // lowercase
-    [InlineData("1234567890")] // longer than the 9 characters of the field
+    [InlineData("abc")]
+    [InlineData("1234567890")]
     [InlineData("12 34")]
     public void Build_CodeThatDoesNotFitItsField_IsRefusedInsteadOfBeingCutOrShifted(string code)
     {
@@ -242,11 +240,11 @@ public class AlloggiatiRecordFileTests
     }
 
     [Theory]
-    [InlineData("李明")] // another alphabet
+    [InlineData("李明")]
     [InlineData("Иван")]
-    [InlineData("R2D2")] // digits
-    [InlineData("Rossi@")] // symbol
-    [InlineData("  ")] // blank
+    [InlineData("R2D2")]
+    [InlineData("Rossi@")]
+    [InlineData("  ")]
     public void Build_NameThatCannotBeWrittenWithLatinLetters_IsRefusedInsteadOfBeingCorrupted(string lastName)
     {
         var result = AlloggiatiRecordFile.Build([SingleGuest() with { LastName = lastName }]);
@@ -259,7 +257,6 @@ public class AlloggiatiRecordFileTests
     [Fact]
     public void Build_NameLongerThanTheFieldAfterTransliteration_IsRefused()
     {
-        // 26 times "ß" is 26 characters, but 52 once written "SS": it no longer fits the 50 characters of the surname.
         var result = AlloggiatiRecordFile.Build([SingleGuest() with { LastName = new string('ß', 26) }]);
 
         Assert.Null(result.Text);

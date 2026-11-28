@@ -33,10 +33,8 @@ public class ConsentCollectionFactory : CasazenWebApplicationFactory
 
     private readonly RecordingEmailQueue _emails = new();
 
-    /// <summary>What was queued so far: recipient, content and template name.</summary>
     public IReadOnlyList<(string? To, EmailContent Content, string Template)> SentEmails() => _emails.Snapshot();
 
-    /// <summary>While true the queue refuses every e-mail, like the real one when the e-mail provider is not configured.</summary>
     public bool RefuseEmails
     {
         get => _emails.Refuse;
@@ -77,11 +75,6 @@ public class CrmConsentCollectionIntegrationTests : IClassFixture<ConsentCollect
         FakeStripeService.Reset();
     }
 
-    /// <summary>
-    /// Privacy rule: a guest who ticks e-mail and WhatsApp and is shown the notice in force leaves the proof of each act (one row for each
-    /// channel and the notice, once each), a consent contact for each channel with the version, the source and the guest, and the double opt-in
-    /// e-mail of the address; the contact is not marketable until the guest confirms.
-    /// </summary>
     [Fact]
     public async Task DirectCheckout_PerChannelConsent_RecordsHistoryAndContact_Test()
     {
@@ -99,7 +92,6 @@ public class CrmConsentCollectionIntegrationTests : IClassFixture<ConsentCollect
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var booking = await db.Bookings.IgnoreQueryFilters().AsNoTracking().Include(b => b.Guest).SingleAsync(b => b.Id == bookingId);
 
-        // The privacy history, written with the booking: one row for each ticked channel and the notice, and nothing twice.
         var history = await db.GuestConsentRecords.IgnoreQueryFilters().AsNoTracking().Where(r => r.GuestId == booking.GuestId).ToListAsync();
         Assert.Equal(3, history.Count);
         Assert.Equal(
@@ -117,13 +109,11 @@ public class CrmConsentCollectionIntegrationTests : IClassFixture<ConsentCollect
             (notice.Action, notice.Version, notice.Source));
         Assert.True(booking.Guest.MarketingConsent);
 
-        // The register names the channel of each consent: the two rows are not the same row.
         Assert.Null(notice.Note);
         Assert.Equal(
             new[] { GuestConsentChannelNote.Email, GuestConsentChannelNote.WhatsApp },
             history.Where(r => r.Purpose == GuestConsentPurpose.Marketing).Select(r => r.Note ?? string.Empty).Order().ToArray());
 
-        // The contacts of the CRM: a consent for each channel, with the version, the source and the guest.
         var contacts = await db.GuestContacts.IgnoreQueryFilters().AsNoTracking().Where(c => c.OrgId == property.OrgId).ToListAsync();
         var email = Assert.Single(contacts, c => c.Channel == GuestContactChannel.Email);
         var whatsApp = Assert.Single(contacts, c => c.Channel == GuestContactChannel.WhatsApp);
@@ -138,17 +128,12 @@ public class CrmConsentCollectionIntegrationTests : IClassFixture<ConsentCollect
             Assert.Equal(booking.GuestId, contact.GuestId);
         }
 
-        // The double opt-in e-mail was queued once, and until the click the address is not marketable.
         Assert.Equal((GuestContactConfirmation.Pending, 1), (email.Confirmation, email.ConfirmationSentCount));
         var sent = Assert.Single(_factory.SentEmails(), mail => mail.To == guestEmail && mail.Template == EmailTemplates.Names.MarketingConfirmation);
         Assert.DoesNotContain(guestEmail, sent.Content.HtmlBody, StringComparison.Ordinal);
         Assert.False(CrmContactRules.CanReceiveMarketing(email));
     }
 
-    /// <summary>
-    /// Privacy rule: a notice the guest read that is no longer the one in force is refused (409) and nothing is stored; the notice in force is
-    /// recorded as presented, and a checkout that shows none records none.
-    /// </summary>
     [Fact]
     public async Task DirectCheckout_SoftOptInNoticeOutdated_Is409_Test()
     {
@@ -182,10 +167,6 @@ public class CrmConsentCollectionIntegrationTests : IClassFixture<ConsentCollect
         Assert.Equal((GuestConsentPurpose.SoftOptInNotice, ConsentCollectionFactory.NoticeVersion), (presented.Purpose, presented.Version));
     }
 
-    /// <summary>
-    /// Data rule: a consent on a channel needs the address of that channel. The WhatsApp box with no phone number, or with one the CRM cannot store,
-    /// is 422 <c>direct_booking_whatsapp_requires_phone</c> and nothing is stored; the same box with a number goes through.
-    /// </summary>
     [Fact]
     public async Task DirectCheckout_WhatsAppWithoutAPhone_Is422_AndStoresNothing_Test()
     {
@@ -219,10 +200,6 @@ public class CrmConsentCollectionIntegrationTests : IClassFixture<ConsentCollect
         Assert.Equal(HttpStatusCode.OK, withPhone.StatusCode);
     }
 
-    /// <summary>
-    /// Privacy rule: minors stay excluded from marketing. A check-in whose booker is a minor and who ticks the e-mail channel is refused, and no
-    /// consent row, no privacy history and no contact is made.
-    /// </summary>
     [Fact]
     public async Task CheckIn_MinorBooker_CreatesNoMarketingContact_Test()
     {
@@ -241,10 +218,6 @@ public class CrmConsentCollectionIntegrationTests : IClassFixture<ConsentCollect
         Assert.DoesNotContain(_factory.SentEmails(), mail => mail.To == "piccolo.offerte@example.it");
     }
 
-    /// <summary>
-    /// A booker of age who ticks the e-mail channel at the check-in leaves the consent contact of the address they typed (origin check-in, source
-    /// guest portal, the version, the guest) and the double opt-in e-mail goes to that address.
-    /// </summary>
     [Fact]
     public async Task CheckIn_AdultBooker_EmailChannel_MakesTheConsentContactAndQueuesItsConfirmation_Test()
     {
@@ -261,7 +234,6 @@ public class CrmConsentCollectionIntegrationTests : IClassFixture<ConsentCollect
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var orgId = await db.Bookings.IgnoreQueryFilters().Where(b => b.Id == seed.BookingId).Select(b => b.OrgId).SingleAsync();
 
-        // The value of a contact is encrypted at rest: the contact is found by its org and read in memory.
         var contact = Assert.Single(await db.GuestContacts.IgnoreQueryFilters().AsNoTracking().Where(c => c.OrgId == orgId).ToListAsync());
         Assert.Equal("luigi.offerte@example.it", contact.Value);
         Assert.Equal(GuestContactChannel.Email, contact.Channel);
@@ -275,8 +247,6 @@ public class CrmConsentCollectionIntegrationTests : IClassFixture<ConsentCollect
             _factory.SentEmails(),
             mail => mail.To == "luigi.offerte@example.it" && mail.Template == EmailTemplates.Names.MarketingConfirmation);
     }
-
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────
 
     private async Task AssertNoMarketingTraceAsync(Guid bookingId, Guid guestId)
     {
@@ -410,10 +380,6 @@ public class CrmConsentCollectionIntegrationTests : IClassFixture<ConsentCollect
     }
 }
 
-/// <summary>
-/// The default host: the product owner has set no soft opt-in notice (as in every environment today). The checkout shows none, a version sent
-/// back is a notice that is not in force (409) and nothing is recorded, and a checkout that shows none is the one of today.
-/// </summary>
 public class CrmConsentCollectionWithoutNoticeIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private readonly CasazenWebApplicationFactory _factory;

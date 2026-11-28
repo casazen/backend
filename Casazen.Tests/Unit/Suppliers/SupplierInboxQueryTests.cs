@@ -4,10 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>
-/// SP-04e: the words of the inbox that are new: the tabs <c>da-rispondere</c> and <c>in-attesa</c> (halves of <c>nuove</c>, which stays
-/// what it was), the <c>source</c> filter and the limits of the free text <c>q</c>.
-/// </summary>
 public class SupplierInboxQueryTests
 {
     [Theory]
@@ -36,7 +32,6 @@ public class SupplierInboxQueryTests
     [Fact]
     public void Tabs_ToAnswerAndAwaitingCustomer_SplitTheNewRequestsInTwo()
     {
-        // Same statuses and the same order as "nuove"; they differ only in what the supplier already did about the request.
         Assert.Equal(SupplierInboxTabs.StatusesOf(SupplierInboxTab.New), SupplierInboxTabs.StatusesOf(SupplierInboxTab.ToAnswer));
         Assert.Equal(SupplierInboxTabs.StatusesOf(SupplierInboxTab.New), SupplierInboxTabs.StatusesOf(SupplierInboxTab.AwaitingCustomer));
         Assert.Equal(SupplierInboxSort.Urgency, SupplierInboxTabs.SortOf(SupplierInboxTab.ToAnswer));
@@ -121,7 +116,7 @@ public class SupplierInboxQueryTests
     }
 
     [Theory]
-    [InlineData("\0\0")] // a NUL cannot be sent to PostgreSQL: it would be a 500, not a 400
+    [InlineData("\0\0")]
     [InlineData("\0ab")]
     [InlineData("ab\0")]
     [InlineData("a\0b")]
@@ -136,7 +131,7 @@ public class SupplierInboxQueryTests
     }
 
     [Theory]
-    [InlineData("  pulizie\t\r\n ")] // the white space around the text is trimmed away, not refused
+    [InlineData("  pulizie\t\r\n ")]
     [InlineData("forlì")]
     [InlineData("caffè e c.")]
     [InlineData("a%b_c")]

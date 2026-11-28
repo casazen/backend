@@ -1,6 +1,5 @@
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
-using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Services;
 using Xunit;
@@ -8,15 +7,8 @@ using static Casazen.Tests.Unit.Services.SupplierReadModelsTestSupport;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// SP-04e: <c>GET api/supplier/dashboard/overview</c>, the three numbers of the console home (how often the supplier says yes, how long
-/// it takes to answer, what comes in) for a period and for the same number of Rome days just before it. The scenario clock is Thursday
-/// 8 October 2026, 12:00 in Rome: "this month" is 1-8 October (8 days) and the period before it 23-30 September (8 days).
-/// </summary>
 public class SupplierOverviewMetricsTests
 {
-    // ─── The periods ───
-
     [Fact]
     public async Task Overview_CurrentMonth_IsTheMonthSoFarAndTheSameNumberOfDaysBeforeIt()
     {
@@ -77,8 +69,6 @@ public class SupplierOverviewMetricsTests
         Assert.False(overview.OnlinePayments);
     }
 
-    // ─── Received, accepted, refused ───
-
     [Fact]
     public async Task Received_IsCountedByTheDayItArrived_WhateverBecameOfIt()
     {
@@ -88,7 +78,7 @@ public class SupplierOverviewMetricsTests
         await s.SeedRequestAsync(ServiceRequestStatus.Rifiutato, "2026-10-07T08:00:00Z", updated: "2026-10-07T09:00:00Z");
         await s.SeedRequestAsync(ServiceRequestStatus.Richiesto, "2026-09-25T08:00:00Z");
         await s.SeedRequestAsync(ServiceRequestStatus.Richiesto, "2026-09-24T08:00:00Z");
-        await s.SeedRequestAsync(ServiceRequestStatus.Richiesto, "2026-09-10T08:00:00Z"); // before the period before
+        await s.SeedRequestAsync(ServiceRequestStatus.Richiesto, "2026-09-10T08:00:00Z");
 
         var overview = await s.Kpis.GetOverviewAsync(s.SupplierOrgId, SupplierKpiPeriod.CurrentMonth);
 
@@ -100,10 +90,8 @@ public class SupplierOverviewMetricsTests
     public async Task Accepted_IsCountedByTheDayOfTheTake_AndACancellationAfterTheTakeKeepsIt()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        // Arrived in September, taken in October: it is October's.
         await s.SeedRequestAsync(ServiceRequestStatus.PresoInCarico, "2026-09-29T08:00:00Z", taken: "2026-10-02T08:00:00Z");
         await s.SeedRequestAsync(ServiceRequestStatus.Completato, "2026-10-03T08:00:00Z", taken: "2026-10-03T08:20:00Z", completed: "2026-10-04T10:00:00Z");
-        // Taken, then cancelled by the host: the supplier said yes, the rate does not change.
         await s.SeedRequestAsync(
             ServiceRequestStatus.Annullato,
             "2026-10-04T08:00:00Z",
@@ -126,7 +114,7 @@ public class SupplierOverviewMetricsTests
         await s.SeedRequestAsync(ServiceRequestStatus.Rifiutato, "2026-09-29T08:00:00Z", updated: "2026-10-02T08:00:00Z");
         await s.SeedRequestAsync(ServiceRequestStatus.Rifiutato, "2026-10-03T08:00:00Z", updated: "2026-10-03T08:20:00Z");
         await s.SeedRequestAsync(ServiceRequestStatus.Rifiutato, "2026-09-20T08:00:00Z", updated: "2026-09-25T08:00:00Z");
-        await s.SeedRequestAsync(ServiceRequestStatus.Annullato, "2026-10-03T08:00:00Z", updated: "2026-10-03T09:00:00Z"); // not a refusal
+        await s.SeedRequestAsync(ServiceRequestStatus.Annullato, "2026-10-03T08:00:00Z", updated: "2026-10-03T09:00:00Z");
 
         var overview = await s.Kpis.GetOverviewAsync(s.SupplierOrgId, SupplierKpiPeriod.CurrentMonth);
 
@@ -156,7 +144,6 @@ public class SupplierOverviewMetricsTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.SeedRequestAsync(ServiceRequestStatus.Richiesto, "2026-10-02T08:00:00Z");
-        // Cancelled by CasaZen for no answer: the supplier neither took it nor refused it.
         await s.SeedRequestAsync(
             ServiceRequestStatus.Annullato,
             "2026-10-03T08:00:00Z",
@@ -175,8 +162,6 @@ public class SupplierOverviewMetricsTests
         Assert.Null(overview.Previous.AcceptanceRate);
     }
 
-    // ─── The time to answer ───
-
     [Fact]
     public async Task AverageResponse_IsTheMeanOfTheTimeToTakeTheRequestsTakenInThePeriod()
     {
@@ -184,24 +169,22 @@ public class SupplierOverviewMetricsTests
         await s.SeedRequestAsync(ServiceRequestStatus.PresoInCarico, "2026-10-02T08:00:00Z", taken: "2026-10-02T08:10:00Z");
         await s.SeedRequestAsync(ServiceRequestStatus.PresoInCarico, "2026-10-03T08:00:00Z", taken: "2026-10-03T08:20:00Z");
         await s.SeedRequestAsync(ServiceRequestStatus.PresoInCarico, "2026-10-04T08:00:00Z", taken: "2026-10-04T08:25:00Z");
-        // Arrived in September, taken in October: its wait is counted in October, as a whole (3 days).
         await s.SeedRequestAsync(ServiceRequestStatus.PresoInCarico, "2026-09-28T08:00:00Z", taken: "2026-10-01T08:00:00Z");
         await s.SeedRequestAsync(ServiceRequestStatus.PresoInCarico, "2026-09-24T08:00:00Z", taken: "2026-09-24T09:00:00Z");
         await s.SeedRequestAsync(ServiceRequestStatus.PresoInCarico, "2026-09-25T08:00:00Z", taken: "2026-09-25T09:30:00Z");
-        await s.SeedRequestAsync(ServiceRequestStatus.Richiesto, "2026-10-05T08:00:00Z"); // not answered: no pair
-        await s.SeedRequestAsync(ServiceRequestStatus.Rifiutato, "2026-10-05T08:00:00Z", updated: "2026-10-05T08:01:00Z"); // a refusal is no take
+        await s.SeedRequestAsync(ServiceRequestStatus.Richiesto, "2026-10-05T08:00:00Z");
+        await s.SeedRequestAsync(ServiceRequestStatus.Rifiutato, "2026-10-05T08:00:00Z", updated: "2026-10-05T08:01:00Z");
 
         var overview = await s.Kpis.GetOverviewAsync(s.SupplierOrgId, SupplierKpiPeriod.CurrentMonth);
 
-        Assert.Equal(1094, overview.Current.AverageResponseMinutes); // (10 + 20 + 25 + 4320) / 4 = 1093.75
-        Assert.Equal(75, overview.Previous.AverageResponseMinutes); // (60 + 90) / 2
+        Assert.Equal(1094, overview.Current.AverageResponseMinutes);
+        Assert.Equal(75, overview.Previous.AverageResponseMinutes);
     }
 
     [Fact]
     public async Task AverageResponse_SamePairsAsTheHome_SoTheTwoNumbersAgreeWhenTheWindowsAre()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        // The home averages the requests taken in the last 90 days; the last 3 months of the overview cover the same requests here.
         foreach (var taken in new[] { "2026-09-10T08:10:00Z", "2026-09-10T08:20:00Z", "2026-09-10T08:25:00Z" })
             await s.SeedRequestAsync(ServiceRequestStatus.PresoInCarico, "2026-09-10T08:00:00Z", taken: taken);
 
@@ -211,8 +194,6 @@ public class SupplierOverviewMetricsTests
         Assert.Equal(18, overview.Current.AverageResponseMinutes);
         Assert.Equal(home.AverageResponseMinutes, overview.Current.AverageResponseMinutes);
     }
-
-    // ─── Completed jobs ───
 
     [Fact]
     public async Task CompletedJobs_AreCountedByTheDayOfTheCompletion_APaidOneIncluded()
@@ -229,13 +210,11 @@ public class SupplierOverviewMetricsTests
         Assert.Equal(1, overview.Previous.CompletedJobs);
     }
 
-    // ─── Rome days, summer and winter time ───
-
     [Theory]
-    [InlineData("2026-09-30T21:59:59Z", false)] // 23:59:59 on 30 September in Rome: the period before
-    [InlineData("2026-09-30T22:00:00Z", true)] // 00:00:00 on 1 October in Rome: the first second of the month
-    [InlineData("2026-10-08T21:59:59Z", true)] // 23:59:59 on 8 October in Rome: the last second of today
-    [InlineData("2026-10-08T22:00:00Z", false)] // tomorrow
+    [InlineData("2026-09-30T21:59:59Z", false)]
+    [InlineData("2026-09-30T22:00:00Z", true)]
+    [InlineData("2026-10-08T21:59:59Z", true)]
+    [InlineData("2026-10-08T22:00:00Z", false)]
     public async Task TheDaysAreRomeDays_AtTheEdgesOfThePeriod(string created, bool inTheCurrentPeriod)
     {
         using var s = await ServiceRequestScenario.CreateAsync();
@@ -249,13 +228,13 @@ public class SupplierOverviewMetricsTests
 
     [Theory]
     [InlineData("2026-10-28T22:59:59Z", true)] // 23:59:59 on the 28th in Rome, winter time since the 25th (UTC+1)
-    [InlineData("2026-10-28T23:00:00Z", false)] // 00:00 on the 29th
-    [InlineData("2026-09-30T21:59:59Z", false)] // 23:59:59 on 30 September in Rome, still summer time (UTC+2)
+    [InlineData("2026-10-28T23:00:00Z", false)]
+    [InlineData("2026-09-30T21:59:59Z", false)]
     [InlineData("2026-09-30T22:00:00Z", true)]
     public async Task TheDaysAreRomeDays_AcrossTheEndOfSummerTime(string created, bool inTheCurrentPeriod)
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        s.Clock.SetUtcNow(new DateTimeOffset(2026, 10, 28, 11, 0, 0, TimeSpan.Zero)); // 12:00 in Rome, the clocks went back on the 25th
+        s.Clock.SetUtcNow(new DateTimeOffset(2026, 10, 28, 11, 0, 0, TimeSpan.Zero));
         await s.SeedRequestAsync(ServiceRequestStatus.Richiesto, created);
 
         var overview = await s.Kpis.GetOverviewAsync(s.SupplierOrgId, SupplierKpiPeriod.CurrentMonth);
@@ -266,13 +245,13 @@ public class SupplierOverviewMetricsTests
 
     [Theory]
     [InlineData("2026-04-05T21:59:59Z", true)] // 23:59:59 on 5 April in Rome (summer time since 29 March, UTC+2)
-    [InlineData("2026-04-05T22:00:00Z", false)] // 00:00 on 6 April
-    [InlineData("2026-03-06T22:59:59Z", false)] // 23:59:59 on 6 March in Rome (winter time, UTC+1): the day before the first day
-    [InlineData("2026-03-06T23:00:00Z", true)] // 00:00 on 7 March, the first day of the last 30 days
+    [InlineData("2026-04-05T22:00:00Z", false)]
+    [InlineData("2026-03-06T22:59:59Z", false)]
+    [InlineData("2026-03-06T23:00:00Z", true)]
     public async Task TheDaysAreRomeDays_AcrossTheStartOfSummerTime(string created, bool inTheCurrentPeriod)
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        s.Clock.SetUtcNow(new DateTimeOffset(2026, 4, 5, 10, 0, 0, TimeSpan.Zero)); // 12:00 in Rome
+        s.Clock.SetUtcNow(new DateTimeOffset(2026, 4, 5, 10, 0, 0, TimeSpan.Zero));
         await s.SeedRequestAsync(ServiceRequestStatus.Richiesto, created);
 
         var overview = await s.Kpis.GetOverviewAsync(s.SupplierOrgId, SupplierKpiPeriod.Last30Days);
@@ -323,8 +302,6 @@ public class SupplierOverviewMetricsTests
         Assert.Equal(54000, theirs.Current.ToCollectCents);
     }
 
-    // ─── Money: the payments that were paid ───
-
     [Fact]
     public async Task OnlinePayments_AreFalseWhileTheFlagIsOff_AndTheMoneyIsZeroEvenWithPaymentsInTheDatabase()
     {
@@ -335,7 +312,7 @@ public class SupplierOverviewMetricsTests
 
         Assert.False(overview.OnlinePayments);
         Assert.Equal((0, 0, 0), (overview.Current.PaidNetCents, overview.Current.PaidGrossCents, overview.Current.CommissionCents));
-        Assert.Equal(1, overview.Current.CompletedJobs); // the home talks about the jobs completed
+        Assert.Equal(1, overview.Current.CompletedJobs);
     }
 
     [Fact]
@@ -356,12 +333,11 @@ public class SupplierOverviewMetricsTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         s.Flags.Set(FeatureFlags.SupplierOnlinePayments, true);
-        await PaidAsync(s, paidAt: "2026-10-02T10:00:00Z", amountCents: 6000); // 600 commission, 5400 net
-        await PaidAsync(s, paidAt: "2026-10-07T10:00:00Z", amountCents: 10000); // 1000 commission, 9000 net
-        // Completed in September, paid in October: October's.
+        await PaidAsync(s, paidAt: "2026-10-02T10:00:00Z", amountCents: 6000);
+        await PaidAsync(s, paidAt: "2026-10-07T10:00:00Z", amountCents: 10000);
         await PaidAsync(s, paidAt: "2026-10-03T10:00:00Z", amountCents: 3000, completed: "2026-09-28T10:00:00Z");
-        await PaidAsync(s, paidAt: "2026-09-25T10:00:00Z", amountCents: 20000); // the period before: 2000 commission, 18000 net
-        await PaidAsync(s, paidAt: "2026-09-10T10:00:00Z", amountCents: 50000); // before the period before
+        await PaidAsync(s, paidAt: "2026-09-25T10:00:00Z", amountCents: 20000);
+        await PaidAsync(s, paidAt: "2026-09-10T10:00:00Z", amountCents: 50000);
 
         var overview = await s.Kpis.GetOverviewAsync(s.SupplierOrgId, SupplierKpiPeriod.CurrentMonth);
 
@@ -372,7 +348,6 @@ public class SupplierOverviewMetricsTests
         Assert.Equal(18000, overview.Previous.PaidNetCents);
         Assert.Equal(20000, overview.Previous.PaidGrossCents);
         Assert.Equal(2000, overview.Previous.CommissionCents);
-        // Net plus commission is gross, to the cent.
         Assert.Equal(overview.Current.PaidGrossCents, overview.Current.PaidNetCents + overview.Current.CommissionCents);
     }
 
@@ -400,7 +375,6 @@ public class SupplierOverviewMetricsTests
     [InlineData(ServicePaymentStatus.PartiallyRefunded)]
     public async Task Money_OnlyAPaymentThatIsPaidCounts(ServicePaymentStatus status)
     {
-        // The payments paid and then refunded are left out until the earnings page defines how a refund moves the figures.
         using var s = await ServiceRequestScenario.CreateAsync();
         s.Flags.Set(FeatureFlags.SupplierOnlinePayments, true);
         var request = await s.SeedCompletedAsync(change: r => r.PaymentMode = ServiceRequestPaymentMode.Online);
@@ -408,7 +382,6 @@ public class SupplierOverviewMetricsTests
 
         var overview = await s.Kpis.GetOverviewAsync(s.SupplierOrgId, SupplierKpiPeriod.CurrentMonth);
 
-        // A payment that was withdrawn is no payment: with only that, the supplier has nothing to show about online payments.
         Assert.Equal(status != ServicePaymentStatus.Canceled, overview.OnlinePayments);
         Assert.Equal(0, overview.Current.PaidNetCents);
         Assert.Equal(0, overview.Current.CommissionCents);
@@ -443,21 +416,19 @@ public class SupplierOverviewMetricsTests
         Assert.Equal(0, overview.Current.PaidNetCents);
     }
 
-    // ─── Still to collect ───
-
     [Fact]
     public async Task ToCollect_IsTheDeclaredTotalOfAJobPaidOutsideCasaZen_AndTheNetOfOneAskedInsideIt()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        await s.SeedCompletedAsync(finalAmountCents: 8000); // paid by hand: the gross
+        await s.SeedCompletedAsync(finalAmountCents: 8000);
         var online = await s.SeedCompletedAsync(finalAmountCents: 10000, mode: ServiceRequestPaymentMode.Online);
-        await s.AddPaymentAsync(online.Id, ServicePaymentStatus.Requested, amountCents: 10000); // 1000 commission, 9000 net
+        await s.AddPaymentAsync(online.Id, ServicePaymentStatus.Requested, amountCents: 10000);
         var inFlight = await s.SeedCompletedAsync(finalAmountCents: 5000, mode: ServiceRequestPaymentMode.Online);
-        await s.AddPaymentAsync(inFlight.Id, ServicePaymentStatus.Processing, amountCents: 5000); // 4500 net, still to collect
-        await s.SeedCompletedAsync(finalAmountCents: null); // a job with no amount: a job to collect, nothing to add
+        await s.AddPaymentAsync(inFlight.Id, ServicePaymentStatus.Processing, amountCents: 5000);
+        await s.SeedCompletedAsync(finalAmountCents: null);
         await s.SeedRequestAsync(
             ServiceRequestStatus.Pagato, "2026-10-01T08:00:00Z", taken: "2026-10-01T08:10:00Z", completed: "2026-10-02T08:00:00Z", paid: "2026-10-03T08:00:00Z",
-            change: r => r.FinalAmountCents = 99999); // paid: nothing to collect
+            change: r => r.FinalAmountCents = 99999);
 
         var overview = await s.Kpis.GetOverviewAsync(s.SupplierOrgId, SupplierKpiPeriod.CurrentMonth);
 
@@ -468,7 +439,6 @@ public class SupplierOverviewMetricsTests
     [Fact]
     public async Task ToCollect_AnOnlineJobWithNoPaymentYet_IsCountedAtTheDeclaredTotal()
     {
-        // Waiting for the host to confirm an amount above the quote: the commission is not computed until the payment exists.
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.SeedCompletedAsync(
             finalAmountCents: 7000, mode: ServiceRequestPaymentMode.Online, change: r => r.FinalAmountNeedsConfirmation = true);
@@ -483,7 +453,7 @@ public class SupplierOverviewMetricsTests
     public async Task ToCollect_IsTheStateNow_SoItIsInTheCurrentPeriodOnly_WhateverThePeriod()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        await s.SeedCompletedAsync(finalAmountCents: 8000); // completed on 6 October
+        await s.SeedCompletedAsync(finalAmountCents: 8000);
 
         foreach (var period in SupplierKpiPeriods.OverviewPeriods)
         {
@@ -499,7 +469,6 @@ public class SupplierOverviewMetricsTests
     [Fact]
     public async Task ToCollect_WithTheFlagOff_IsStillTheDeclaredTotalOfTheJobsPaidByHand()
     {
-        // The money figures of the payments are 0 with the flag off, but the jobs still to be collected are a fact about the requests.
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.SeedCompletedAsync(finalAmountCents: 6500);
 
@@ -509,9 +478,6 @@ public class SupplierOverviewMetricsTests
         Assert.Equal(6500, overview.Current.ToCollectCents);
     }
 
-    // ─── helpers ───
-
-    /// <summary>A job completed on 1 October and paid at <paramref name="paidAt"/>: the request, paid, and its payment record.</summary>
     private static async Task PaidAsync(
         ServiceRequestScenario s,
         string paidAt,

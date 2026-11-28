@@ -34,7 +34,6 @@ public class BankMovementFingerprintTests
         var fingerprints = BankMovementFingerprint.ForAll(Org, [Movement(), Movement(), Movement(description: "Altro")]);
 
         Assert.Equal(3, fingerprints.Distinct().Count());
-        // Another file with the same two payments, and others between them, gives the same two values.
         var other = BankMovementFingerprint.ForAll(Org, [Movement(description: "Prima"), Movement(), Movement(), Movement(description: "Altro")]);
         Assert.Equal(fingerprints[0], other[1]);
         Assert.Equal(fingerprints[1], other[2]);
@@ -103,7 +102,6 @@ public class BankMovementFingerprintTests
     {
         const string iban = "DE89370400440532013000";
 
-        // Whoever has the table and not the key cannot hash a guess: another key, another hash; and it is no plain SHA-256 of anything simple.
         Assert.NotEqual(BankPayerHash.Iban(Org, iban, Key), BankPayerHash.Iban(Org, iban, OtherKey));
         Assert.NotEqual(BankPayerHash.Name(Org, "Giulia Verdi", Key), BankPayerHash.Name(Org, "Giulia Verdi", OtherKey));
         Assert.NotEqual(BankMovementFingerprint.Hash(iban), BankPayerHash.Iban(Org, iban, Key));

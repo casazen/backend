@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit;
@@ -33,8 +32,6 @@ public class ComuneIstatPropertyIntegrationTests
         _emptyFactory = emptyFactory;
     }
 
-    // ---- Create ------------------------------------------------------------------------------------------------
-
     [PostgresFact]
     public async Task Create_WithAComune_StoresItsCodeAndTheRegionThatFollowsIt()
     {
@@ -61,7 +58,6 @@ public class ComuneIstatPropertyIntegrationTests
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var created = await response.Content.ReadFromJsonAsync<JsonElement>();
-        // Nothing is inferred from the free-text city.
         Assert.Equal(JsonValueKind.Null, created.GetProperty("comuneIstatCode").ValueKind);
         Assert.Equal(JsonValueKind.Null, created.GetProperty("regionCode").ValueKind);
     }
@@ -124,11 +120,8 @@ public class ComuneIstatPropertyIntegrationTests
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         Assert.Equal("comuni_dataset_unavailable", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
 
-        // Without a comune the property is created as before: the list is not needed for the free-text city.
         Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/properties", Body("Como", comuneIstatCode: null))).StatusCode);
     }
-
-    // ---- Update ------------------------------------------------------------------------------------------------
 
     [PostgresFact]
     public async Task Update_ChangeOfComune_ChangesTheRegionWithIt()
@@ -162,7 +155,6 @@ public class ComuneIstatPropertyIntegrationTests
         var (owner, propertyId) = await SeedPropertyAsync(_factory, "Como", ComuneTestData.Como, "LOM");
         using var client = _factory.CreateAuthenticatedClient(owner, "PropertyOwner");
 
-        // The same city (case and spaces aside) is not a change either.
         var response = await client.PutAsJsonAsync($"/api/properties/{propertyId}", new { name = "Altro nome", city = " como " });
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
@@ -203,7 +195,6 @@ public class ComuneIstatPropertyIntegrationTests
         await SetActiveAsync(_factory, "001235", false);
         try
         {
-            // The code is not changed, so it is not asked of the list again.
             var response = await client.PutAsJsonAsync($"/api/properties/{propertyId}", new { name = "Nuovo nome", comuneIstatCode = "001235" });
 
             Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
@@ -214,8 +205,6 @@ public class ComuneIstatPropertyIntegrationTests
             await SetActiveAsync(_factory, "001235", true);
         }
     }
-
-    // ---- Regional documents (A5-19) ----------------------------------------------------------------------------
 
     [PostgresTheory]
     [InlineData(ComuneTestData.Como, "LOM", "Ape")]
@@ -244,14 +233,11 @@ public class ComuneIstatPropertyIntegrationTests
 
         var documents = await GetStepAsync(client, propertyId, "documents");
 
-        // The city is never compared with the keys of the configuration: only CinCertificate is required.
         var message = documents.GetProperty("message").GetString()!;
         Assert.Contains("CinCertificate", message);
         Assert.DoesNotContain("Ape", message);
         Assert.DoesNotContain("PropertyLicense", message);
     }
-
-    // ---- CIN warning and notes ----------------------------------------------------------------------------------
 
     [PostgresFact]
     public async Task Activation_CinOfAnotherComune_IsAWarningNeverABlocker()
@@ -312,8 +298,6 @@ public class ComuneIstatPropertyIntegrationTests
         Assert.Empty(baseData.GetProperty("warnings").EnumerateArray());
     }
 
-    // ---- Tourist tax by code ---------------------------------------------------------------------------------
-
     [PostgresFact]
     public async Task Activation_TouristTax_ByTheCodeOfTheChosenComune_WhateverTheCityIsCalled()
     {
@@ -328,11 +312,8 @@ public class ComuneIstatPropertyIntegrationTests
 
         Assert.Equal("complete", byCode.GetProperty("status").GetString());
         Assert.NotEqual(JsonValueKind.Null, byCode.GetProperty("touristTax").GetProperty("rate").ValueKind);
-        // Written as "Milano (MI)" and with no comune chosen, the name does not match: the host is told there is no rate.
         Assert.Equal("warning", byName.GetProperty("status").GetString());
     }
-
-    // ---- Helpers -----------------------------------------------------------------------------------------------
 
     private static object Body(string city, string? comuneIstatCode) => new
     {

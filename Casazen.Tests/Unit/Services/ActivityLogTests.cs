@@ -2,7 +2,6 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.OrgTeam;
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -58,7 +57,6 @@ public class ActivityLogTests
         await using (var db = _kit.NewDb())
         {
             _kit.Activity(db).Record(Event(org.Id));
-            // The change failed before its save: the unit of work is dropped with the context.
         }
 
         Assert.Empty(await _kit.ReadActivityAsync(org.Id));

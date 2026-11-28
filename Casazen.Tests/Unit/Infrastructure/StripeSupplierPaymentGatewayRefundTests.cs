@@ -1,6 +1,5 @@
 using System.Net;
 using Casazen.Core.Services;
-using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.External;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -78,9 +77,7 @@ public class StripeSupplierPaymentGatewayRefundTests
         Assert.Equal(IntentId, options.PaymentIntent);
         Assert.Equal(1_500, options.Amount);
         Assert.True(options.RefundApplicationFee);
-        // A direct charge has no transfer to reverse.
         Assert.Null(options.ReverseTransfer);
-        // The refund is paid from the supplier's balance: the header, and the key of the payment and refund number.
         Assert.Equal(Account, request.RequestOptions!.StripeAccount);
         Assert.Equal("service-charge-refund:abc:1", request.RequestOptions.IdempotencyKey);
         Assert.Equal("service-charge-refund", options.Metadata["kind"]);
@@ -95,7 +92,6 @@ public class StripeSupplierPaymentGatewayRefundTests
         await Gateway().CreateRefundAsync(Request(refundFee: false));
 
         var options = Assert.IsType<RefundCreateOptions>(Assert.Single(_requests).Options);
-        // Null, not false: the parameter is left out of the request.
         Assert.Null(options.RefundApplicationFee);
     }
 

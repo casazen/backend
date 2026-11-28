@@ -5,7 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Push;
 
-/// <summary>The push (and bell entry) about a guest who completed the online check-in: its type, key, route and lock-screen text.</summary>
 public class GuestCheckInCompletedPushTests
 {
     [Fact]

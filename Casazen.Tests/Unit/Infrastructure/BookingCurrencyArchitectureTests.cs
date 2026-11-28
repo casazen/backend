@@ -12,10 +12,6 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// </summary>
 public class BookingCurrencyArchitectureTests
 {
-    /// <summary>
-    /// The files of the direct booking path: the quote, the checkout and its payment, the deferred charge, the webhooks, the refunds, the
-    /// cancellation of the guest and of the host, the guest area, the public pages of a house and the e-mails of a booking.
-    /// </summary>
     private static readonly string[] MoneyPathFiles =
     [
         "Casazen.Infrastructure/Services/BookingService.cs",
@@ -39,7 +35,6 @@ public class BookingCurrencyArchitectureTests
         "Casazen.Web/DTOs/OnSiteRequestDtos.cs",
     ];
 
-    // A currency written as a string: "EUR", "eur" (what a service gives Stripe) or a mix.
     private static readonly Regex EuroLiteral = new("\"[eE][uU][rR]\"", RegexOptions.Compiled);
 
     [Fact]
@@ -74,7 +69,6 @@ public class BookingCurrencyArchitectureTests
         Assert.DoesNotMatch(EuroLiteral, StripComments("var europe = \"Europe/Rome\";"));
     }
 
-    /// <summary>Removes <c>//</c> and <c>///</c> lines and <c>/* */</c> blocks: what a comment says about the euro is not a use of it.</summary>
     private static string StripComments(string source)
     {
         var withoutBlocks = Regex.Replace(source, @"/\*.*?\*/", string.Empty, RegexOptions.Singleline);

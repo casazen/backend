@@ -46,7 +46,6 @@ namespace Casazen.Tests.Integration.Acceptance;
 /// </remarks>
 public class TicinoPilotScenarioTests
 {
-    // Percorso principale, in memoria: dall'appartamento di Lugano senza comune alla giornata dichiarata, con gli avvisi e la conservazione di cinque anni.
     [Fact]
     [Trait("Scenario", "NF-124 NF-126 NF-127 NF-128 NF-129 NF-132 NF-133")]
     public async Task MainPath_TheFlatOfLugano_FromThePlaceToTheDeclaredDay_WithTheAlertsAndTheRetention()
@@ -55,7 +54,6 @@ public class TicinoPilotScenarioTests
         await new Pilot(world).RunAsync();
     }
 
-    // Percorso principale su PostgreSQL: lo stesso scenario sul database vero (chiavi esterne, indici univoci, SET NULL della ricevuta).
     [PostgresFact]
     [Trait("Scenario", "NF-124 NF-126 NF-127 NF-128 NF-129 NF-132 NF-133")]
     public async Task MainPath_TheFlatOfLugano_FromThePlaceToTheDeclaredDay_WithTheAlertsAndTheRetention_Postgres()
@@ -65,16 +63,11 @@ public class TicinoPilotScenarioTests
         await new Pilot(world).RunAsync();
     }
 
-    /// <summary>The story: the steps in order, over one world, with what each step leaves for the next one.</summary>
     private sealed class Pilot(World world)
     {
         private static readonly DateOnly Arrival = World.TicinoArrivalDay;
         private static readonly DateOnly Departure = Arrival.AddDays(3);
 
-        /// <summary>
-        /// What the guests typed, and must never be in an alert, a push, an event of the outbox or a line of log: the surnames, the documents, the street, the plate and the addresses as they are
-        /// (the long ones), and the first names, the postal code and the city of the home as whole words (so «Lea» is not found in «cleaning»). Both families are searched: Lugano's and Locarno's.
-        /// </summary>
         private static readonly Regex[] GuestData =
         [
             Part("Muster"), Part("Erika"), Part("X1234567"), Part("S1234567"), Part("Bahnhofstrasse"), Part("ZH123456"), Part("hans.muster@"),
@@ -104,7 +97,6 @@ public class TicinoPilotScenarioTests
             await Step(NF128_NothingOfTheGuestsIsInTheAlertsNorInTheLogs);
         }
 
-        /// <summary>Runs one step; a failure says which step, that is which requirement, it was.</summary>
         private static async Task Step(Func<Task> step)
         {
             try
@@ -117,8 +109,6 @@ public class TicinoPilotScenarioTests
             }
         }
 
-        // ------------------------------------------------------------ NF-124: where the flat is
-
         private async Task NF124_TheFlatOfLuganoIsInTicino_WithNoMunicipalityStored()
         {
             await world.CreateTheFlatInLuganoAsync();
@@ -129,7 +119,6 @@ public class TicinoPilotScenarioTests
             Assert.Null(property.SwissMunicipalityCode);
             Assert.Null(property.TicinoStructureId);
 
-            // The one resolver places it from the postal code and the city, with the official number of Lugano; it is derived, never stored behind the host's back.
             var place = await scope.Places.ResolveAsync(property);
             Assert.NotNull(place);
             Assert.Equal((World.LuganoMunicipality, "Lugano", "TI", SwissPlaceSource.Derived, false), (place.MunicipalityCode, place.MunicipalityName, place.CantonCode, place.Source, place.Ambiguous));
@@ -138,8 +127,6 @@ public class TicinoPilotScenarioTests
             Assert.Null((await scope.Db.Properties.AsNoTracking().SingleAsync(p => p.Id == world.PropertyId)).SwissMunicipalityCode);
         }
 
-        // ------------------------------------------------------------ NF-129: what the flat lacks to be notified
-
         private async Task NF129_WithoutTheStructureNumberTheFlatStaysPending_WithTheNumberItIsActive()
         {
             var host = new HostActivation(World.AgencyUser, RemindersAcknowledged: true);
@@ -147,7 +134,6 @@ public class TicinoPilotScenarioTests
 
             await using (var scope = world.OpenTicinoScope())
             {
-                // The activation is refused with the reason, and the flat stays pending.
                 var refused = await scope.Status.ActivateAsync(world.PropertyId, host);
                 Assert.Equal(PropertyComplianceStatus.Pending, refused.Status);
                 var step = Assert.Single(refused.IncompleteSteps);
@@ -155,7 +141,6 @@ public class TicinoPilotScenarioTests
                 Assert.Equal([GuestRegistrationReadiness.TicinoStructureIdMissing], step.Blockers.Select(b => b.Code));
                 Assert.Equal(PropertyComplianceStatus.Pending, (await scope.Db.Properties.AsNoTracking().SingleAsync(p => p.Id == world.PropertyId)).ComplianceStatus);
 
-                // The onboarding part of the guest registration says the same, property by property.
                 var open = await scope.OnboardingPart.EvaluateAsync(part, CancellationToken.None);
                 Assert.False(open.IsComplete);
                 Assert.Equal(OnboardingPartReasons.TicinoStructureIdMissing, open.Reason);
@@ -163,7 +148,6 @@ public class TicinoPilotScenarioTests
                 Assert.Equal((world.PropertyId, GuestRegistrationReadiness.TicinoStructureIdMissing), (missing.PropertyId, missing.Reason));
             }
 
-            // The host types the number as the form of the property takes it; the update stores it normalised and the re-evaluation never publishes a pending flat by itself.
             await world.SetTheStructureNumberAsync(" nl-12345678 ");
             await using (var scope = world.OpenTicinoScope())
             {
@@ -181,17 +165,13 @@ public class TicinoPilotScenarioTests
             }
         }
 
-        // ------------------------------------------------------------ NF-132: the check-in of the family
-
         private async Task NF132_TheFamilyCompletesTheCheckIn_WithTheDocumentOfBothAdultsAndTheirSwissHome()
         {
-            // The family books the flat the day after the start: two adults and a girl of nine; the link of the check-in is issued with the booking.
             world.At(World.InRome(World.TicinoStartDay.AddDays(1), 10));
             _booking = await world.BookTheFamilyOfZurichAsync(Arrival, Departure);
             await using var scope = world.OpenTicinoScope();
             _link = await scope.CheckIn.CreateSessionAsync(_booking, world.OrgId);
 
-            // Two evenings before the arrival the guests open the link: for a flat of Ticino the page asks the document of every adult, the home and the plate of the car.
             world.At(World.InRome(Arrival.AddDays(-2), 20));
             var view = await scope.CheckIn.GetPublicViewAsync(_link);
             Assert.NotNull(view);
@@ -199,7 +179,6 @@ public class TicinoPilotScenarioTests
             Assert.Equal(TicinoCheckInFields.Required, view.RequiredGuestFields);
             Assert.Equal(3, view.DeclaredGuests);
 
-            // The wife leaves her document empty: the police file notifies every adult, so the check-in is refused with the two fields and nothing is saved.
             var refused = await scope.CheckIn.SubmitAsync(
                 _link,
                 new GuestCheckInSubmitRequest { Guests = World.TheFamilyOfZurich(Arrival, documentOfTheSecondAdult: false), VehiclePlate = " zh 123 456 " });
@@ -222,11 +201,8 @@ public class TicinoPilotScenarioTests
             Assert.Equal("ZH123456", (await read.Db.Bookings.AsNoTracking().SingleAsync(b => b.Id == _booking)).VehiclePlate);
         }
 
-        // ------------------------------------------------------------ NF-127: the cockpit, 24 hours from the arrival
-
         private async Task NF127_TheArrivalIsRegistered_AndTheCockpitShowsOneDayDue24HoursLater()
         {
-            // 15:20 in Lugano on the arrival day: the host registers the arrival of the family. The deadline of the police is 24 hours from that moment.
             world.At(World.InRome(Arrival, 15, 20));
             _dueAt = world.Clock.GetUtcNow().UtcDateTime.AddHours(24);
 
@@ -234,7 +210,6 @@ public class TicinoPilotScenarioTests
             await scope.Stays.RegisterArrivalAsync(_booking);
             Assert.Equal(world.Clock.GetUtcNow().UtcDateTime, (await scope.Db.Bookings.AsNoTracking().SingleAsync(b => b.Id == _booking)).ArrivedAt);
 
-            // The guest of Locarno arrives in the same minute: the two days run on the same clock, so each hourly run has two alerts due at once and has to tell the two agencies apart.
             await scope.Stays.RegisterArrivalAsync(world.OtherBookingId);
             Assert.Equal(world.Clock.GetUtcNow().UtcDateTime, (await scope.Db.Bookings.AsNoTracking().SingleAsync(b => b.Id == world.OtherBookingId)).ArrivedAt);
 
@@ -247,7 +222,6 @@ public class TicinoPilotScenarioTests
             Assert.Equal(Arrival.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), item.Period);
             Assert.Equal(_dueAt, item.DueAt);
 
-            // The list the alerts read is the same list, for every org: one day with one stay for each agency, each on its own flat and with its own deadline.
             var pending = await scope.Ticino.ListPendingDaysAsync(null, null, world.Clock.TodayInRomeAsDateOnly());
             Assert.Equal(2, pending.Count);
             var own = Assert.Single(pending, p => p.OrgId == world.OrgId);
@@ -256,18 +230,13 @@ public class TicinoPilotScenarioTests
             Assert.Equal((world.OtherPropertyId, Arrival, 1, _dueAt), (other.PropertyId, other.Day, other.StayCount, other.DueAtUtc));
         }
 
-        // ------------------------------------------------------------ tenant (NF-133): the two agencies, while the day of Lugano is pending
-
         private async Task NF133_Tenant_AnotherAgencySeesNothingOfThePendingDay()
         {
             await AssertEachAgencySeesOnlyItsOwnAsync(luganoDayIsPending: true);
         }
 
-        // ------------------------------------------------------------ NF-127: the three alerts
-
         private async Task NF127_TheThreeAlertsAreQueuedOnceEach_AndTheFlagOffQueuesNothing()
         {
-            // The shipped configuration has the alerts off; with the flag off the hourly job reads no day, writes no state and queues nothing.
             Assert.False(World.Configuration.GetValue<bool>("Features:TicinoNotificationAlerts"));
             world.At(World.InRome(Arrival, 17, 30));
             Assert.Equal(0, await world.RunTheHourlyAlertsAsync());
@@ -312,8 +281,6 @@ public class TicinoPilotScenarioTests
                 }
             }
 
-            // Each agency got its three e-mails at its own address, naming its own flat and never the other one, and three pushes to the hosts of its own flat, each with a key of its own:
-            // the bell, the pop-up and the open pages are made from them. The audience of an alert is the org of its flat, even when the job reads the days of every org at once.
             var emails = AlertEmails();
             Assert.Equal(6, emails.Count);
             Assert.DoesNotContain(emails, e => e.To != World.TicinoAgencyEmail && e.To != World.OtherAgencyEmail);
@@ -340,11 +307,8 @@ public class TicinoPilotScenarioTests
             Assert.Equal(6, AlertPushesOf(world.PropertyId).Count + AlertPushesOf(world.OtherPropertyId).Count);
         }
 
-        // ------------------------------------------------------------ NF-126: the file for the portal
-
         private async Task NF126_TheCsvOfTheDayIsTheExpectedBytes()
         {
-            // 16:30 on the day after the arrival, the deadline has passed: the host opens the day and downloads the file.
             world.At(World.InRome(Arrival.AddDays(1), 16, 30));
             await using var scope = world.OpenTicinoScope();
 
@@ -357,15 +321,14 @@ public class TicinoPilotScenarioTests
 
             var file = await scope.Ticino.GenerateFileAsync(world.PropertyId, Arrival, TicinoPoliceFileFormat.Csv, new TicinoFileRequest(World.AgencyUser));
 
-            // The bytes: the header of the official model, the two adults (the girl is counted in «Min14» on the head of the family, who also has the plate), in Windows-1252.
             _expectedCsv = CodePagesEncodingProvider.Instance.GetEncoding(1252)!.GetBytes(ExpectedCsvText());
             Assert.Equal(_expectedCsv, file.Content);
             var model = File.ReadAllBytes(Path.Combine(System.AppContext.BaseDirectory, "Fixtures", "ticino", "D-Modello_2.CSV"));
             var modelHeader = model.AsSpan(0, model.AsSpan().IndexOf("\r\n"u8)).ToArray();
             Assert.Equal(modelHeader, file.Content.AsSpan(0, modelHeader.Length).ToArray());
-            Assert.Contains((byte)0xE0, file.Content); // «à» of «Nazionalità» and of «identità» is the single byte of the model
-            Assert.True(file.Content.AsSpan().IndexOf(new byte[] { (byte)'Z', 0xFC, (byte)'r', (byte)'i', (byte)'c', (byte)'h' }) >= 0); // «Zürich» with its single byte
-            Assert.DoesNotContain((byte)0xC3, file.Content); // and no UTF-8 sequence
+            Assert.Contains((byte)0xE0, file.Content);
+            Assert.True(file.Content.AsSpan().IndexOf(new byte[] { (byte)'Z', 0xFC, (byte)'r', (byte)'i', (byte)'c', (byte)'h' }) >= 0);
+            Assert.DoesNotContain((byte)0xC3, file.Content);
 
             Assert.Equal(
                 ($"notifiche-ti-{Iso(Arrival)}.csv", "text/csv; charset=windows-1252", $"TI-{world.PropertyId:N}-{Arrival.ToString("yyyyMMdd", CultureInfo.InvariantCulture)}", 2, 0),
@@ -373,14 +336,11 @@ public class TicinoPilotScenarioTests
             var hash = Convert.ToHexString(SHA256.HashData(_expectedCsv)).ToLowerInvariant();
             Assert.Equal(hash, file.FileHash);
 
-            // Every generation leaves one audit row: the format, the rows and the hash, and the person who asked; no guest, no value.
             var audit = await scope.Db.SwissNotificationFileEvents.AsNoTracking().SingleAsync();
             Assert.Equal(
                 (world.OrgId, world.PropertyId, Arrival, SwissNotificationFileFormats.Csv, 2, hash, World.AgencyUser),
                 (audit.OrgId, audit.PropertyId, audit.ArrivalDay, audit.Format, audit.RowCount, audit.Sha256, audit.CreatedByUserId));
         }
-
-        // ------------------------------------------------------------ NF-128: the declaration closes the day
 
         private async Task NF128_DeclaringClosesTheDayAndTheCockpitItem_AndANewFileAsksForTheConfirmation()
         {
@@ -390,8 +350,6 @@ public class TicinoPilotScenarioTests
             var declaredAt = world.Clock.GetUtcNow().UtcDateTime;
             Assert.Equal(1, (await scope.Cockpit.GetSummaryAsync(new HostScope(world.OrgId))).TicinoNotifications.Count);
 
-            // The host uploaded the file on the portal and says so, with no receipt (it is optional): the day is closed, the cockpit has nothing to notify, and the declaration
-            // says who declared it and when (NF-128 AC1).
             var declared = await scope.Ticino.DeclareDayAsync(world.PropertyId, Arrival, World.AgencyUser);
             Assert.True(declared.Created);
             Assert.Equal(World.TicinoHostName, declared.DeclaredBy);
@@ -402,7 +360,6 @@ public class TicinoPilotScenarioTests
             Assert.Equal(0, summary.TicinoNotifications.Count);
             Assert.Empty(summary.TicinoNotifications.Items);
 
-            // Declaring again changes nothing and tells nobody: the first declaration answers, and the other hosts of the flat were told once.
             var again = await scope.Ticino.DeclareDayAsync(world.PropertyId, Arrival, World.AgencyUser);
             Assert.False(again.Created);
             Assert.Equal(declared.DeclaredAtUtc, again.DeclaredAtUtc);
@@ -414,7 +371,6 @@ public class TicinoPilotScenarioTests
             Assert.Equal(World.TicinoHostName, closed.DeclaredBy);
             Assert.Equal((DateTime?)declaredAt, closed.DeclaredAtUtc);
 
-            // The portal may create duplicates: a new file of a closed day asks for the confirmation (409) and, once confirmed, is the same file.
             var conflict = await Assert.ThrowsAsync<DomainConflictException>(
                 () => scope.Ticino.GenerateFileAsync(world.PropertyId, Arrival, TicinoPoliceFileFormat.Csv, new TicinoFileRequest(World.AgencyUser)));
             Assert.Equal("ticino_day_already_declared", conflict.Code);
@@ -423,8 +379,6 @@ public class TicinoPilotScenarioTests
             Assert.Equal(_expectedCsv, confirmed.Content);
             Assert.Equal(2, (await scope.Ticino.GetDayAsync(world.PropertyId, Arrival)).FileGeneratedCount);
 
-            // A closed day stops the alerts: the first reminder of an overdue day is due now, a day after the deadline. It goes to the agency of Locarno, whose day is still open (the day of
-            // Lugano, declared, is not the one of Locarno); the agency of Lugano gets none, neither by e-mail nor by push.
             world.At(World.InRome(Arrival.AddDays(2), 17));
             Assert.Equal(1, await world.RunTheHourlyAlertsAsync());
             Assert.Equal(0, await world.RunTheHourlyAlertsAsync());
@@ -435,11 +389,8 @@ public class TicinoPilotScenarioTests
             Assert.Contains(World.OtherPropertyName, AlertEmailsTo(World.OtherAgencyEmail)[^1].Content.Subject, StringComparison.Ordinal);
         }
 
-        // ------------------------------------------------------------ NF-128: the receipt
-
         private async Task NF128_TheReceiptIsStoredEncrypted_AttachedToTheDeclaration_AndTheRetentionLeavesItWhileYoung()
         {
-            // Two days after the arrival the host uploads the receipt of the portal (a PDF) in the archive: dated on the arrival day, type «Police».
             world.At(World.InRome(Arrival.AddDays(2), 17, 30));
             var original = "%PDF-1.4 TEST ricevuta del portale notifiche.ti.ch"u8.ToArray();
             await using var scope = world.OpenTicinoScope();
@@ -450,7 +401,6 @@ public class TicinoPilotScenarioTests
             Assert.Equal(("Police", World.StoredDay(Arrival), world.OrgId), (receipt.Type, receipt.ReportDate, receipt.OrgId));
             Assert.Equal(Convert.ToHexString(SHA256.HashData(original)).ToLowerInvariant(), receipt.UploadedFileHash);
 
-            // What is in the private bucket is the encrypted payload, not the file; the archive gives the original back.
             var key = StorageKeys.SwissComplianceReceipt(world.OrgId, world.PropertyId, _receipt);
             await using (var stored = await world.Storage.OpenReadAsync(StorageBucket.Private, key))
             {
@@ -474,39 +424,30 @@ public class TicinoPilotScenarioTests
             Assert.Equal(1, listed.TotalCount);
             Assert.True(Assert.Single(listed.Items).HasFile);
 
-            // The receipt joins the declaration that has none; the day stays closed and nobody is told again.
             var attached = await scope.Ticino.DeclareDayAsync(world.PropertyId, Arrival, World.AgencyUser, _receipt);
             Assert.False(attached.Created);
             Assert.Equal(_receipt, attached.ReceiptId);
             Assert.Single(world.Pushes.Queued, p => p.Payload.Type == PushTypes.TicinoNotificationDeclared);
 
-            // The retention job runs every night: the receipt is two days old, it is left alone.
             await world.RunTheRetentionAsync();
             Assert.Equal((true, true), await ReceiptStateAsync());
         }
-
-        // ------------------------------------------------------------ tenant (NF-133): the two agencies, with the declaration and the receipt of Lugano
 
         private async Task NF133_Tenant_AnotherAgencySeesNothingOfTheDeclaredDayNorOfItsReceipt()
         {
             await AssertEachAgencySeesOnlyItsOwnAsync(luganoDayIsPending: false);
         }
 
-        // ------------------------------------------------------------ NF-128: five years
-
         private async Task NF128_TheRetentionDeletesTheReceiptAfterFiveYears_AndKeepsTheDeclaration()
         {
-            // The night the receipt is exactly five years old its day is the cut day, and a document dated on it is kept.
             world.At(World.InRome(Arrival.AddYears(5), 5));
             await world.RunTheRetentionAsync();
             Assert.Equal((true, true), await ReceiptStateAsync());
 
-            // The night after, it is past its time: the encrypted file goes first, then the row.
             world.At(World.InRome(Arrival.AddYears(5).AddDays(1), 5));
             await world.RunTheRetentionAsync();
             Assert.Equal((false, false), await ReceiptStateAsync());
 
-            // The declaration outlives the receipt (on PostgreSQL the foreign key puts NULL where the receipt was).
             await using var scope = world.OpenTicinoScope();
             var declaration = await scope.Db.SwissNotificationDeclarations.AsNoTracking().SingleAsync();
             Assert.Equal((world.PropertyId, Arrival), (declaration.PropertyId, declaration.ArrivalDay));
@@ -531,12 +472,8 @@ public class TicinoPilotScenarioTests
             }
         }
 
-        // ------------------------------------------------------------ NF-128: no personal data
-
         private async Task NF128_NothingOfTheGuestsIsInTheAlertsNorInTheLogs()
         {
-            // What the hosts are told (the alerts, the declarations and the check-in that was completed), what the services leave to the other handlers (the events of the outbox) and what they
-            // log name the property and the day, ids and counts, never a guest.
             List<string> events;
             await using (var scope = world.OpenTicinoScope())
                 events = await scope.Db.OutboxEvents.AsNoTracking().Select(e => e.PayloadJson).ToListAsync();
@@ -550,10 +487,8 @@ public class TicinoPilotScenarioTests
             Assert.True(world.Log.Count > 0);
             Assert.Contains("declared by", world.Log.AllOutput, StringComparison.Ordinal);
 
-            // The push «the guests completed the check-in» is one of the pilot too: the service of the check-in is built with the queue, so it is among the texts searched.
             Assert.Single(world.Pushes.Queued, p => p.Payload.Type == PushTypes.GuestCheckInCompleted);
 
-            // The control: every term finds what the guests typed (so a leak would be found), and «Lea» is a word, not the middle of «cleaning».
             Assert.All(GuestData, personal => Assert.Matches(personal, TypedByTheGuests));
             Assert.DoesNotMatch(Word("Lea"), "cleaning and release");
 
@@ -563,8 +498,6 @@ public class TicinoPilotScenarioTests
                 Assert.False(personal.IsMatch(world.Log.AllOutput), $"A line of log holds the data of a guest: {personal}");
             }
         }
-
-        // ------------------------------------------------------------ what the steps share
 
         /// <summary>
         /// The two agencies, each with a day of its own on the same date, and the tenant filter on, scoped to the org of the caller, as in every authenticated request. Each one reads its
@@ -581,7 +514,6 @@ public class TicinoPilotScenarioTests
             await AssertNothingOfAsync(World.AgencyUser, world.OrgId, world.OtherOrgId, world.OtherPropertyId, world.OtherBookingId, Guid.Empty);
         }
 
-        /// <summary>A person of the agency <paramref name="orgId"/> (tenant filter on) reads the cockpit, the list of the days and the day of its own flat.</summary>
         private async Task AssertAgencyReadsItsOwnAsync(Guid orgId, Guid propertyId, string structureNumber, bool dayIsPending)
         {
             await using var scope = world.OpenTicinoScopeOf(orgId);
@@ -589,7 +521,6 @@ public class TicinoPilotScenarioTests
 
             Assert.Equal(dayIsPending ? 1 : 0, (await scope.Cockpit.GetSummaryAsync(new HostScope(orgId))).TicinoNotifications.Count);
 
-            // The list the job reads for every org, read with the filter on: its own day, and nothing of the other agency.
             var days = await scope.Ticino.ListPendingDaysAsync(null, null, today);
             if (dayIsPending)
             {
@@ -606,10 +537,6 @@ public class TicinoPilotScenarioTests
             Assert.Equal((structureNumber, 1, !dayIsPending), (detail.StructureId, detail.StayCount, detail.AlreadyDeclared));
         }
 
-        /// <summary>
-        /// A person of the agency <paramref name="callerOrg"/> (tenant filter on) asks for the data of the flat <paramref name="victimProperty"/> of the agency <paramref name="victimOrg"/>:
-        /// the list of its days is empty, its flat is not a flat it can see, and every other read says <c>property_not_found</c>.
-        /// </summary>
         private async Task AssertNothingOfAsync(string callerUser, Guid callerOrg, Guid victimOrg, Guid victimProperty, Guid victimBooking, Guid victimReceipt)
         {
             await using var scope = world.OpenTicinoScopeOf(callerOrg);
@@ -643,38 +570,26 @@ public class TicinoPilotScenarioTests
                 await world.Storage.ExistsAsync(StorageBucket.Private, StorageKeys.SwissComplianceReceipt(world.OrgId, world.PropertyId, _receipt)));
         }
 
-        /// <summary>The alerts of the 24 hours the e-mail queue got, in the order they were queued.</summary>
         private List<(string? To, EmailContent Content, string Template)> AlertEmails() =>
             world.Emails.Snapshot().Where(e => e.Template == EmailTemplates.Names.TicinoNotificationAlert).ToList();
 
-        /// <summary>The alerts of the 24 hours the e-mail queue got for <paramref name="address"/>, in the order they were queued.</summary>
         private List<(string? To, EmailContent Content, string Template)> AlertEmailsTo(string address) =>
             AlertEmails().Where(e => e.To == address).ToList();
 
-        /// <summary>The pushes of the alerts of the 24 hours (the declarations are other pushes).</summary>
         private List<QueuedPushRecord> AlertPushes() =>
             world.Pushes.Queued.Where(p => p.Payload.Type is PushTypes.TicinoNotificationDue or PushTypes.TicinoNotificationOverdue).ToList();
 
-        /// <summary>The pushes of the alerts of the 24 hours that go to the hosts of the flat <paramref name="propertyId"/>, in the order they were queued.</summary>
         private List<QueuedPushRecord> AlertPushesOf(Guid propertyId) =>
             AlertPushes().Where(p => p.Audience.Equals(PushAudience.PropertyHosts(propertyId, ComplianceAlertAudience.AlloggiatiSubmit))).ToList();
 
-        /// <summary>What the families type on the page of the check-in, in one text: the control that every term of <see cref="GuestData"/> finds it.</summary>
         private const string TypedByTheGuests =
             "Hans Muster (hans.muster@ospiti-test.ch), passport X1234567; Erika Muster, identity card S1234567; Lea Muster; Bahnhofstrasse 12, 8001 Zürich; plate ZH123456; "
             + "Mirko Bernasconi (mirko.bernasconi@ospiti-test.ch)";
 
-        /// <summary>A term found anywhere in a text, in any case.</summary>
         private static Regex Part(string text) => new(Regex.Escape(text), RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
-        /// <summary>A term found only as a whole word, in any case.</summary>
         private static Regex Word(string text) => new($@"\b{Regex.Escape(text)}\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
-        /// <summary>
-        /// The file of the arrival day as the portal wants it, written here from the facts of the check-in and not by the code under test: the header of the model, the head of the family
-        /// with the girl counted in «Min14» and the plate of the car, the wife with her identity card, the booking code in «Numero bollettino», dates as <c>dd.MM.yyyy</c>, countries as
-        /// ISO alpha-3, lines ended by CRLF and none after the last.
-        /// </summary>
         private static string ExpectedCsvText() =>
             string.Join(
                 "\r\n",

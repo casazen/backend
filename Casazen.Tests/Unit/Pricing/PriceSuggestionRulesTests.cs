@@ -3,7 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Pricing;
 
-/// <summary>The rules of the nightly price of «Calcola con l'AI» (WIZ-AI-PRICE): figures, rounding, what is believed of the AI.</summary>
 public class PriceSuggestionRulesTests
 {
     private static readonly PriceSuggestionBasis Basis = new("Como", "CO", "Lombardia", 5, 3, [PriceSuggestionFields.Guests]);
@@ -20,8 +19,6 @@ public class PriceSuggestionRulesTests
         decimal? nights = null,
         string? rationale = null) =>
         new(rate, low, high, cleaning, weekend, nights, rationale);
-
-    // ─── Summarize ───────────────────────────────────────────────────────────────
 
     [Fact]
     public void Summarize_FewerThanTheMinimum_IsNull()
@@ -62,8 +59,6 @@ public class PriceSuggestionRulesTests
         Assert.False(stats.SimilarSize);
     }
 
-    // ─── RoundToStep ─────────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData(137.4, 135)]
     [InlineData(137.5, 140)]
@@ -75,8 +70,6 @@ public class PriceSuggestionRulesTests
     {
         Assert.Equal((decimal)expected, PriceSuggestionRules.RoundToStep((decimal)value));
     }
-
-    // ─── FromMarket ──────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData(PricePositioning.Lower, 115, 100, 145)]
@@ -104,8 +97,6 @@ public class PriceSuggestionRulesTests
         Assert.Null(suggestion.Rationale);
         Assert.Same(Basis, suggestion.BasedOn);
     }
-
-    // ─── Accept: the rate ────────────────────────────────────────────────────────
 
     [Fact]
     public void Accept_AValidAnswer_IsRoundedAndKeepsItsExtras()
@@ -140,7 +131,6 @@ public class PriceSuggestionRulesTests
     [InlineData(40)]
     public void Accept_ARateFarOutsideTheSimilarHomes_IsRefused(double rate)
     {
-        // The similar homes ask from 90 to 220: under 54 or over 352 is a misreading, not a price.
         Assert.Null(PriceSuggestionRules.Accept(Answer((decimal)rate), Market(similarSize: true)));
     }
 
@@ -155,11 +145,8 @@ public class PriceSuggestionRulesTests
     [Fact]
     public void Accept_HomesOfAnySize_AreNoBand()
     {
-        // The figures of homes of every size say little about this one: a villa may ask far more than the flats around it.
         Assert.NotNull(PriceSuggestionRules.Accept(Answer(400m), Market(similarSize: false)));
     }
-
-    // ─── Accept: the range ───────────────────────────────────────────────────────
 
     [Fact]
     public void Accept_ARangeThatIsMissing_IsWorkedOutAroundTheRate()
@@ -191,8 +178,6 @@ public class PriceSuggestionRulesTests
         Assert.Equal(200m, accepted.RangeMax);
     }
 
-    // ─── Accept: the extras ──────────────────────────────────────────────────────
-
     [Fact]
     public void Accept_ExtrasAboveTheLimits_AreCapped()
     {
@@ -214,8 +199,6 @@ public class PriceSuggestionRulesTests
         Assert.Null(accepted.WeekendSurchargePercent);
         Assert.Null(accepted.MinNights);
     }
-
-    // ─── CleanRationale ──────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData(null)]

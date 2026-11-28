@@ -7,11 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Regulatory;
 
-/// <summary>
-/// E31/F02/US01/T01 (NF-131, decisions D1, D5 and D12): the pure rules of the assisted notification of the guests to the authority of a canton other than Ticino: which regimes it covers, when
-/// the notification of an arrival day is due on the clock of the property (the three kinds of deadline of the brief, and no deadline when the regime has none), and the guests of a day as data
-/// ready to copy with what they lack. No database, no clock.
-/// </summary>
 public class SwissAssistedNotificationTests
 {
     private static readonly TimeZoneInfo Zurich = RomeCalendar.ZoneOf("Europe/Zurich");
@@ -21,12 +16,9 @@ public class SwissAssistedNotificationTests
 
     private static GuestRegistrationRegime Regime(string canton) => GuestRegistrationRegimeCatalog.ForCanton(canton);
 
-    // ─── Which regimes ───
-
     [Fact]
     public void Covers_TheNineCantonsThatAskForAnElectronicNotification_AndNoOtherRegime()
     {
-        // A photograph of the catalog: a canton added to or taken out of the assisted notification is a decision somebody makes on purpose.
         var covered = GuestRegistrationRegimeCatalog.All.Where(SwissAssistedNotification.Covers).Select(r => r.Code).Order(StringComparer.Ordinal);
 
         Assert.Equal(["CH-BS", "CH-FR", "CH-GE", "CH-NE", "CH-NW", "CH-SH", "CH-TG", "CH-ZG", "CH-ZH"], covered);
@@ -45,18 +37,15 @@ public class SwissAssistedNotificationTests
         Assert.False(SwissAssistedNotification.Covers(GuestRegistrationRegimeCatalog.UnknownSwissPlace));
         Assert.False(SwissAssistedNotification.Covers(null));
 
-        // Bern, Vaud and Appenzell Innerrhoden ask the host to keep a register: whatever the host says, there is nothing to notify.
         foreach (var canton in new[] { "BE", "VD", "AI", "LU" })
             Assert.False(SwissAssistedNotification.Covers(Regime(canton)), canton);
     }
 
-    // ─── The deadline ───
-
     [Theory]
-    [InlineData("2026-11-19", "2026-11-20T01:00:00Z")] // 02:00 CET the night after
-    [InlineData("2026-07-15", "2026-07-16T00:00:00Z")] // 02:00 CEST the night after
-    [InlineData("2026-03-28", "2026-03-29T01:00:00Z")] // 02:00 does not exist the night the clocks go forward: read one hour later on the clock (03:00 CEST)
-    [InlineData("2026-10-24", "2026-10-25T00:00:00Z")] // 02:00 happens twice the night they go back: the first one, in summer time
+    [InlineData("2026-11-19", "2026-11-20T01:00:00Z")]
+    [InlineData("2026-07-15", "2026-07-16T00:00:00Z")]
+    [InlineData("2026-03-28", "2026-03-29T01:00:00Z")]
+    [InlineData("2026-10-24", "2026-10-25T00:00:00Z")]
     public void DueAtUtc_DailyByTime_IsTheNightAfterTheArrivalAtTheTimeOfTheRegime_OnTheClockOfTheProperty(string arrival, string dueUtc)
     {
         var schaffhausen = Regime("SH");
@@ -77,7 +66,6 @@ public class SwissAssistedNotificationTests
         Assert.Equal(GuestRegistrationDeadlineKind.DailyByTime, regime.DeadlineKind);
         Assert.Null(regime.DeadlineTime);
 
-        // «Every day», no cut-off in the source: no deadline, not the end of the arrival day, whatever the day, the clock of the property or the arrival recorded.
         Assert.Null(SwissAssistedNotification.DueAtUtc(regime, new DateOnly(2026, 11, 19), Zurich, null));
         Assert.Null(SwissAssistedNotification.DueAtUtc(regime, new DateOnly(2026, 7, 15), Zurich, null));
         Assert.Null(SwissAssistedNotification.DueAtUtc(regime, new DateOnly(2026, 11, 19), TimeZoneInfo.Utc, Utc("2026-11-19T14:00:00Z")));
@@ -86,8 +74,6 @@ public class SwissAssistedNotificationTests
     [Fact]
     public void DueAtUtc_TheCoveredRegimesWithNoDeadline_AreExactlyTheOnesWhoseSourceGivesNone()
     {
-        // A photograph of the catalog: a covered canton gets a deadline only where a source gives one (a time, the arrival, the week); the five below are listed in the cockpit with no due date
-        // and never alerted. A canton that gains a deadline in the catalog changes this list on purpose.
         var withoutDeadline = GuestRegistrationRegimeCatalog.All
             .Where(SwissAssistedNotification.Covers)
             .Where(r => SwissAssistedNotification.DueAtUtc(r, new DateOnly(2026, 11, 19), Zurich, null) is null)
@@ -100,7 +86,6 @@ public class SwissAssistedNotificationTests
     [Fact]
     public void TheTimeOfTheRegime_IsInTheCatalogOnlyWhereTheSourceGivesOne()
     {
-        // Only Schaffhausen has a time (the brochure says «by 02:00»), and only a daily regime reads it.
         var withATime = GuestRegistrationRegimeCatalog.All.Where(r => r.DeadlineTime is not null).Select(r => r.Code).ToList();
 
         Assert.Equal(["CH-SH"], withATime);
@@ -108,13 +93,13 @@ public class SwissAssistedNotificationTests
     }
 
     [Theory]
-    [InlineData("2026-11-16", "2026-11-22T22:59:00Z")] // Monday: the Sunday of the week, 23:59 CET
-    [InlineData("2026-11-19", "2026-11-22T22:59:00Z")] // Thursday
-    [InlineData("2026-11-21", "2026-11-22T22:59:00Z")] // Saturday
-    [InlineData("2026-11-22", "2026-11-22T22:59:00Z")] // Sunday is its own week's last day
-    [InlineData("2026-07-15", "2026-07-19T21:59:00Z")] // Wednesday in summer time: 23:59 CEST
-    [InlineData("2026-03-23", "2026-03-29T21:59:00Z")] // the week the clocks go forward: Sunday 23:59 is already CEST
-    [InlineData("2026-10-19", "2026-10-25T22:59:00Z")] // the week they go back: Sunday 23:59 is CET
+    [InlineData("2026-11-16", "2026-11-22T22:59:00Z")]
+    [InlineData("2026-11-19", "2026-11-22T22:59:00Z")]
+    [InlineData("2026-11-21", "2026-11-22T22:59:00Z")]
+    [InlineData("2026-11-22", "2026-11-22T22:59:00Z")]
+    [InlineData("2026-07-15", "2026-07-19T21:59:00Z")]
+    [InlineData("2026-03-23", "2026-03-29T21:59:00Z")]
+    [InlineData("2026-10-19", "2026-10-25T22:59:00Z")]
     public void DueAtUtc_Weekly_IsSundayAt2359OfTheArrivalWeek_OnTheClockOfTheProperty(string arrival, string dueUtc)
     {
         var nidwalden = Regime("NW");
@@ -145,11 +130,9 @@ public class SwissAssistedNotificationTests
 
         Assert.Equal(Utc("2026-11-19T14:00:00Z"), SwissAssistedNotification.DueAtUtc(regime, day, Zurich, Utc("2026-11-19T14:00:00Z")));
 
-        // An arrival that came back from the database as an unspecified kind is read as UTC, like everywhere else.
         var unspecified = DateTime.SpecifyKind(new DateTime(2026, 11, 19, 14, 0, 0), DateTimeKind.Unspecified);
         Assert.Equal(Utc("2026-11-19T14:00:00Z"), SwissAssistedNotification.DueAtUtc(regime, day, Zurich, unspecified));
 
-        // No arrival recorded yet: the guests are expected during the day, so the day ends the notification (never a moment nobody knows).
         Assert.Equal(Utc("2026-11-19T23:00:00Z"), SwissAssistedNotification.DueAtUtc(regime, day, Zurich, null));
     }
 
@@ -168,7 +151,6 @@ public class SwissAssistedNotificationTests
     [Fact]
     public void DueAtUtc_TheClockOfTheProperty_IsTheOneOfItsOwnZone()
     {
-        // Zug, no arrival recorded: midnight of the end of the day on a property whose clock is UTC is 00:00Z, not the 23:00Z of Zurich in winter.
         Assert.Equal(
             Utc("2026-11-20T00:00:00Z"),
             SwissAssistedNotification.DueAtUtc(Regime("ZG"), new DateOnly(2026, 11, 19), TimeZoneInfo.Utc, null));
@@ -177,7 +159,6 @@ public class SwissAssistedNotificationTests
     [Fact]
     public void DueAtUtc_Hours24FromArrival_IsNotUsedByACoveredRegime_AndIsTheRuleOfTicinoWhenAsked()
     {
-        // Ticino and Italy have their own flows; the rule is total all the same: 24 hours from the first arrival recorded, else the end of the arrival day.
         Assert.DoesNotContain(
             GuestRegistrationRegimeCatalog.All.Where(SwissAssistedNotification.Covers),
             r => r.DeadlineKind == GuestRegistrationDeadlineKind.Hours24FromArrival);
@@ -190,8 +171,6 @@ public class SwissAssistedNotificationTests
             Utc("2026-11-19T23:00:00Z"),
             SwissAssistedNotification.DueAtUtc(ticino, new DateOnly(2026, 11, 19), Zurich, null));
     }
-
-    // ─── The guests of a day ───
 
     private static readonly DateOnly Arrival = new(2026, 11, 19);
     private static readonly DateOnly Today = new(2026, 11, 19);
@@ -261,7 +240,6 @@ public class SwissAssistedNotificationTests
 
         var (guests, issues) = SwissAssistedNotification.Plan([stay], Today);
 
-        // The host types what is there and completes the rest: the guest is listed, with the fields that are not recorded as null.
         var guest = Assert.Single(guests);
         Assert.Null(guest.FirstName);
         Assert.Null(guest.LastName);
@@ -349,7 +327,6 @@ public class SwissAssistedNotificationTests
     [Fact]
     public void TheGuestOfTheDay_HoldsNoExemptionNoImageAndNoContactOfTheBooker()
     {
-        // A tripwire like the one of the tracking tables: a new member must make somebody decide again whether it is data the notification needs.
         var names = typeof(SwissNotificationGuest).GetProperties().Select(p => p.Name).Order(StringComparer.Ordinal).ToList();
 
         Assert.Equal(

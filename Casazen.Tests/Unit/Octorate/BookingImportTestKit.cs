@@ -11,7 +11,6 @@ using Moq;
 
 namespace Casazen.Tests.Unit.Octorate;
 
-/// <summary>The values the tests of the bookings of the channel manager share (E02/F02/US01).</summary>
 internal static class BookingImportTestKit
 {
     public const string Accommodation = "585492";
@@ -20,16 +19,11 @@ internal static class BookingImportTestKit
     public static readonly Guid OrgA = Guid.Parse("4f1e2d3c-6b5a-4978-8a1b-2c3d4e5f6a11");
     public static readonly Guid OrgB = Guid.Parse("9a8b7c6d-5e4f-4a3b-9c2d-1e0f2a3b4c22");
 
-    /// <summary>2026-11-06 09:00 in Rome: the stays below start on 20 November.</summary>
     public static readonly DateTimeOffset Now = new(2026, 11, 6, 8, 0, 0, TimeSpan.Zero);
 
     public static readonly DateTime FirstVersion = new(2026, 11, 5, 10, 0, 0, DateTimeKind.Utc);
     public static readonly DateTime SecondVersion = new(2026, 11, 5, 12, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>
-    /// A confirmed reservation of Airbnb on the room of the property, 20 to 22 November 2026, in euros, with a commission of 45 and 100 paid (the
-    /// amounts are only taken from a reservation that states the currency of the property, EUR for the harness).
-    /// </summary>
     public static OctorateReservation Res(
         string id,
         OctorateBookingStatus status = OctorateBookingStatus.Confirmed,
@@ -55,7 +49,6 @@ internal static class BookingImportTestKit
         };
 }
 
-/// <summary>The tenant of an authenticated request of one org.</summary>
 internal sealed class RequestTenant(Guid orgId) : ITenantContext
 {
     public Guid? OrgId { get; } = orgId;
@@ -63,7 +56,6 @@ internal sealed class RequestTenant(Guid orgId) : ITenantContext
     public bool FilterEnabled => true;
 }
 
-/// <summary>A property of org A with a listing mapped to it, an Octorate client that answers what the test serves, and a clock.</summary>
 internal sealed class BookingImportHarness
 {
     private readonly string _database = $"octorate-import-{Guid.NewGuid():N}";
@@ -137,14 +129,12 @@ internal sealed class BookingImportHarness
             Clock,
             NullLogger<BookingImportService>.Instance);
 
-    /// <summary>The list answers these reservations on its first page (and an empty page after it); the single read answers each one.</summary>
     public void Serve(params OctorateReservation[] reservations)
     {
         Client.Reset();
         ServeMore(BookingImportTestKit.Accommodation, reservations);
     }
 
-    /// <summary>Like <see cref="Serve"/> for another accommodation, without forgetting what was served before.</summary>
     public void ServeMore(string accommodation, params OctorateReservation[] reservations)
     {
         Client
@@ -160,7 +150,6 @@ internal sealed class BookingImportHarness
         }
     }
 
-    /// <summary>Another property of org A, with a confirmed listing of its own (one room), on the connection of the harness.</summary>
     public async Task<Guid> AddListingAsync(string accommodation, string room)
     {
         await using var db = NewDb();

@@ -30,8 +30,6 @@ public class ComuneIstatSupplierIntegrationTests
         _emptyFactory = emptyFactory;
     }
 
-    // ---- Profile -----------------------------------------------------------------------------------------------
-
     [PostgresFact]
     public async Task UpdateProfile_ComuneIstatCodes_AreValidatedStoredAndDescribedWithTheirRegion()
     {
@@ -47,7 +45,6 @@ public class ComuneIstatSupplierIntegrationTests
         Assert.Equal(
             [("Como", "CO", "LOM"), ("Roma", "RM", "LAZ")],
             described.Select(c => (c.GetProperty("name").GetString(), c.GetProperty("provinceCode").GetString(), c.GetProperty("regionCode").GetString())));
-        // What was written as text is not touched.
         Assert.Equal(["Cesano Maderno"], profile.GetProperty("comuni").EnumerateArray().Select(c => c.GetString()));
 
         var read = await client.GetFromJsonAsync<JsonElement>("/api/supplier/profile");
@@ -106,7 +103,6 @@ public class ComuneIstatSupplierIntegrationTests
         Assert.Equal(HttpStatusCode.UnprocessableEntity, refused.StatusCode);
         Assert.Equal("comuni_dataset_unavailable", (await refused.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
 
-        // Free text keeps working (as before the list); an empty list of codes needs no list.
         var saved = await client.PutAsJsonAsync("/api/supplier/profile", new { comuni = new[] { "Roma", "Milano" }, comuneIstatCodes = Array.Empty<string>() });
         Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
         Assert.Equal(["Roma", "Milano"], JsonSerializer.Deserialize<string[]>((await ReadProfileAsync(_emptyFactory, supplier.OrgId)).ComuniJson)!);
@@ -120,7 +116,6 @@ public class ComuneIstatSupplierIntegrationTests
 
         var activation = await client.GetFromJsonAsync<JsonElement>("/api/supplier/profile/activation");
 
-        // SU-05: categories and comuni are the "services" step; a comune chosen from the list satisfies the comuni requirement.
         var step = activation.GetProperty("steps").EnumerateArray().Single(s => s.GetProperty("id").GetString() == "services");
         Assert.NotEqual("comuni_missing", step.GetProperty("blocker").GetString());
     }
@@ -146,14 +141,11 @@ public class ComuneIstatSupplierIntegrationTests
         Assert.Equal(["Como", "Seveso"], page.GetProperty("comuni").EnumerateArray().Select(c => c.GetString()));
     }
 
-    // ---- Matching with a property (A4-12) -----------------------------------------------------------------------
-
     [PostgresFact]
     public async Task Suppliers_ForAPropertyWithAComune_AreMatchedByCode_NotByTheWrittenCity()
     {
         var host = await SeedHostWithPropertyAsync("Milano (MI)", ComuneTestData.Milano);
         var inMilano = await SeedActiveSupplierAsync(_factory, chosen: [ComuneTestData.Milano]);
-        // The old invite code of the audit: F205 was mapped to Firenze, it is Milano.
         var oldCode = await SeedActiveSupplierAsync(_factory, written: ["F205"]);
         var inFirenze = await SeedActiveSupplierAsync(_factory, chosen: [ComuneTestData.Firenze]);
         var writtenFirenze = await SeedActiveSupplierAsync(_factory, written: ["Firenze", "D612"]);
@@ -166,7 +158,6 @@ public class ComuneIstatSupplierIntegrationTests
         Assert.Contains(oldCode.OrgId, found);
         Assert.DoesNotContain(inFirenze.OrgId, found);
         Assert.DoesNotContain(writtenFirenze.OrgId, found);
-        // The comuni chosen from the list are shown by name.
         var milano = response.GetProperty("items").EnumerateArray().Single(s => s.GetProperty("orgId").GetGuid() == inMilano.OrgId);
         Assert.Equal(["Milano"], milano.GetProperty("comuni").EnumerateArray().Select(c => c.GetString()));
     }
@@ -183,11 +174,8 @@ public class ComuneIstatSupplierIntegrationTests
 
         var found = response.GetProperty("items").EnumerateArray().Select(s => s.GetProperty("orgId").GetGuid()).ToList();
         Assert.Contains(inTorino.OrgId, found);
-        // 010025 is Genova, not Torino (the old registry said Torino).
         Assert.DoesNotContain(inGenova.OrgId, found);
     }
-
-    // ---- Admin invite ------------------------------------------------------------------------------------------
 
     [PostgresFact]
     public async Task Invite_ACadastralCode_IsStoredAsTheIstatCodeOfTheComune()
@@ -229,8 +217,6 @@ public class ComuneIstatSupplierIntegrationTests
         using var scope = _emptyFactory.Services.CreateScope();
         Assert.Equal("F205", (await scope.ServiceProvider.GetRequiredService<AppDbContext>().SupplierInviteRecords.SingleAsync(i => i.Email == email)).ComuneCode);
     }
-
-    // ---- Helpers -----------------------------------------------------------------------------------------------
 
     private sealed record SeededSupplier(string UserId, Guid OrgId);
 

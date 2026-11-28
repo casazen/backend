@@ -66,12 +66,6 @@ public class CleaningCostSourceTests
         db.ChangeTracker.Clear();
     }
 
-    // ─── Proofs: the rules of the brief that cost money or permission if wrong ──────────────────────────────────────────────────
-
-    /// <summary>
-    /// Proof (money): only the requests completed or paid are a cost, each once: a request that is cancelled, refused or still open (new, taken, in progress) never comes back, nor does a
-    /// backup that waits, a request of a supplier's showcase or one of another category.
-    /// </summary>
     [Fact]
     public async Task CleaningCost_CancelledAndRefusedExcluded_Test()
     {
@@ -124,10 +118,6 @@ public class CleaningCostSourceTests
         Assert.All(cleanings, c => Assert.Null(c.SupplierInvoiceReference));
     }
 
-    /// <summary>
-    /// Proof (permission): a property id of another organization returns nothing, whoever asks and whatever else is in the list; with no list the answer is the org's own properties only,
-    /// and the other org reads only its own.
-    /// </summary>
     [Fact]
     public async Task CleaningCost_OtherOrganizationPropertyEmpty_Test()
     {
@@ -186,11 +176,6 @@ public class CleaningCostSourceTests
         Assert.All(cleanings, c => Assert.Equal("EUR", c.Currency));
     }
 
-    /// <summary>
-    /// Proof (money): a final amount above the quote by more than the tolerance (decision D7) that the host has not confirmed is not a cost, in no period. One confirmed late comes back once, in
-    /// the period of its confirmation, with the day of the confirmation as <c>CompletedOn</c> (the very date the period is judged on) and not in the earlier period that may be invoiced already;
-    /// one that never needed the confirmation keeps the day of its completion, and one the host paid by hand with the confirmation still open counts from the day it was paid.
-    /// </summary>
     [Fact]
     public async Task CleaningCost_UnconfirmedAmountIsNoCost_ConfirmedLateFallsInThePeriodOfTheConfirmation_Test()
     {
@@ -227,7 +212,6 @@ public class CleaningCostSourceTests
         Assert.Equal([6000L, 9500L, 9800L], october.Select(c => c.AmountCents));
         Assert.DoesNotContain(waiting.Id, october.Select(c => c.SourceId));
 
-        // The host confirms the amount that waited: from then on it is a cost, once, on the day of the confirmation.
         db.ChangeTracker.Clear();
         var confirmed = await db.ServiceRequests.IgnoreQueryFilters().SingleAsync(r => r.Id == waiting.Id);
         confirmed.FinalAmountNeedsConfirmation = false;
@@ -244,8 +228,6 @@ public class CleaningCostSourceTests
         var entry = Assert.Single(november);
         Assert.Equal((waiting.Id, new DateOnly(2026, 11, 3), 9000L), (entry.SourceId, entry.CompletedOn, entry.AmountCents));
     }
-
-    // ─── The amount ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The amount is the final one the supplier declared, else the price it committed to, else a quote still waiting, else the estimate; none at all is 0, and the VAT says it does not know.</summary>
     [Fact]
@@ -272,9 +254,6 @@ public class CleaningCostSourceTests
             cleanings.Select(c => c.AmountVat));
     }
 
-    // ─── The period, the properties ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The days are Europe/Rome days, both ends included: a cleaning completed at 23:30 UTC on 31 October is 1 November in Rome (winter time).</summary>
     [Fact]
     public async Task Period_IsRomeDaysBothEndsIncluded()
     {
@@ -325,7 +304,6 @@ public class CleaningCostSourceTests
         Assert.Equal(["EUR", "CHF"], all.Select(c => c.Currency));
     }
 
-    /// <summary>Supplier requests and staff activities are one list, oldest first.</summary>
     [Fact]
     public async Task TheTwoSources_AreOneListOldestFirst()
     {

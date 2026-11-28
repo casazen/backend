@@ -8,9 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Notifications;
 
-/// <summary>
-/// ADR-025-R5, R6 (E01/F03/US01/T02): the popup alert travels on the hub of the bell, to the group of its own user, as references only.
-/// </summary>
 public class PopupAlertPublisherTests
 {
     private const string UserId = "auth0|anna";

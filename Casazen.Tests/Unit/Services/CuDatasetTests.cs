@@ -20,16 +20,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E18/F01/US02/T01 (NF-117, ⚖ I6, T2): the annual Certificazione Unica data per recipient, its exports and the owner's view of its own withholding. The payouts are made by the real
-/// services (<see cref="OwnerPayoutFactsTests.FactsWorld"/>: the committed Italian rule, 21%, code 1919, the gross without the tourist tax). Everything is invented (TEST owners, @example.com).
-/// </summary>
 public class CuDatasetTests
 {
-    /// <summary>The fiscal code of the first owner (invented, as the profile of the world gives it).</summary>
     private const string FirstFiscalCode = "RSSMRA70A01H501W";
 
-    /// <summary>The fiscal code of the second owner (invented).</summary>
     private const string SecondFiscalCode = "VRDLGU80B02F205Z";
 
     /// <summary>
@@ -43,7 +37,6 @@ public class CuDatasetTests
         var world = new OwnerPayoutFactsTests.FactsWorld();
         var (first, second) = await CoOwnedPaidAsync(world);
 
-        // The default: everything on the signatory, who says what each co-owner puts into it.
         var built = await world.Payouts.GenerateAnnualDatasetAsync(world.OrgId, 2026, "auth0|admin");
         var onSignatory = Assert.Single(CuDatasetPayload.Parse(built.PayloadJson));
         Assert.Equal((first, 1000m, 210m, CuAttributions.Signatory, 2), (onSignatory.OwnerId, onSignatory.GrossBase, onSignatory.Withheld, onSignatory.Attribution, onSignatory.Evidence));
@@ -53,7 +46,6 @@ public class CuDatasetTests
         Assert.Equal((onSignatory.GrossBase, onSignatory.Withheld), (onSignatory.Shares.Sum(s => s.GrossBase), onSignatory.Shares.Sum(s => s.Withheld)));
         Assert.Equal((onSignatory.GrossBase, onSignatory.Withheld), (onSignatory.Lines.Sum(l => l.GrossBase), onSignatory.Lines.Sum(l => l.Withheld)));
 
-        // The mandate of the signatory says per share: each co-owner keeps its share, and together they are what the signatory had.
         var mandate = await world.Db.OwnerMandates.SingleAsync(m => m.PropertyOwnerId == first);
         mandate.CoOwnerTaxReporting = CoOwnerTaxReporting.PerShare;
         await world.Db.SaveChangesAsync();
@@ -70,7 +62,6 @@ public class CuDatasetTests
         Assert.Equal(210m, (await world.Withholding.GenerateF24Async(world.OrgId, 11, 2026)).TotalAmount);
         Assert.True((await world.Payouts.ReconcileAsync(world.OrgId, 2026)).Reconciled);
 
-        // The shares of a payout are split to the cent: 21% of 600.06 is 126.01, and the three stays carry 126.01 between them, never 126.00 or 126.02.
         var owner = await world.OwnerAsync();
         var house = await world.PropertyAsync(owner);
         await world.StayAsync(house, BookingSource.Manual, 100.01m, paid: true);
@@ -86,7 +77,6 @@ public class CuDatasetTests
         Assert.All(pieces, p => Assert.InRange(Math.Abs(p.Withheld - (p.GrossBase * 0.21m)), 0m, 0.01m));
     }
 
-    /// <summary>The split of a withholding between stays: always the whole, to the cent, the leftover cents on the largest remainders, the first stay among equals.</summary>
     [Theory]
     [InlineData(100, new long[] { 1, 1, 1 }, new long[] { 34, 33, 33 })]
     [InlineData(12601, new long[] { 10001, 20002, 30003 }, new long[] { 2100, 4200, 6301 })]
@@ -121,14 +111,11 @@ public class CuDatasetTests
 
         var dataset = await world.Payouts.GenerateAnnualDatasetAsync(world.OrgId, 2026, "auth0|admin");
 
-        // The column is declared encrypted, with its own purpose, and the model of the test has its converter.
         Assert.Contains(
             EncryptedColumns.All,
             c => c.EntityType == typeof(TaxReportingDataset) && c.Property == nameof(TaxReportingDataset.PayloadJson) && c.Purpose == EncryptedColumns.TaxReportingDatasetPurpose);
         Assert.True(EncryptedColumns.IsConfigured(world.Db));
 
-        // What the column holds (the EF InMemory database keeps the values the model hands it, so the proof is on the converter of the model, as for the other encrypted columns): a payload, none of the
-        // recipient's data in it, never the clear JSON, read back only through the decryption of its own purpose.
         var provider = TestDataProtection.Shared;
         await using var keyed = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options, tenantContext: null, provider);
         var column = keyed.Model.FindEntityType(typeof(TaxReportingDataset))!.FindProperty(nameof(TaxReportingDataset.PayloadJson))!;
@@ -144,7 +131,6 @@ public class CuDatasetTests
         Assert.Equal(dataset.PayloadJson, converter.ConvertFromProvider(raw));
         Assert.ThrowsAny<CryptographicException>(() => provider.CreateProtector(EncryptedColumns.GuestDocumentPurpose).Unprotect(raw));
 
-        // The recipient is in the clear payload the model hands the service: with its fiscal code, its address, the property and the stay.
         var read = await world.Withholding.GetCuDatasetAsync(world.OrgId, 2026);
         var record = Assert.Single(read.Records);
         var recipient = record.Recipient!;
@@ -154,7 +140,6 @@ public class CuDatasetTests
         Assert.Equal((new DateOnly(2026, 10, 10), new DateOnly(2026, 10, 12), 2, 1000m, 210m), (line.CheckIn, line.CheckOut, line.Nights, line.GrossBase, line.Withheld));
         Assert.Equal("TEST Casa", Assert.Single(record.Properties).Name);
 
-        // The API of the annual data answers the totals of each owner and no recipient; the shape the accountant package reads is kept.
         var api = TaxReportingDatasetDto.From(read.Dataset);
         Assert.DoesNotContain(FirstFiscalCode, api.PayloadJson, StringComparison.Ordinal);
         Assert.DoesNotContain("Cernobbio", api.PayloadJson, StringComparison.Ordinal);
@@ -163,7 +148,6 @@ public class CuDatasetTests
         var fullShape = JsonSerializer.Deserialize<List<LegacyOwner>>(read.Dataset.PayloadJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
         Assert.Equal((owner, 1000m, 210m, 1), (fullShape[0].OwnerId, fullShape[0].GrossBase, fullShape[0].Withheld, fullShape[0].Evidence));
 
-        // A payload stored in clear before the column was encrypted (the totals of each owner) is read as it is by the converter; its records name no recipient, so nothing is exported from it.
         var clear = JsonSerializer.Serialize(new[] { new { ownerId = owner, grossBase = 1000m, withheld = 210m, evidence = 1 } });
         Assert.Equal(clear, converter.ConvertFromProvider(clear));
         (await world.Db.TaxReportingDatasets.SingleAsync()).PayloadJson = clear;
@@ -190,7 +174,6 @@ public class CuDatasetTests
         var flags = new TestFeatureFlags(FeatureFlags.AgencyTier, FeatureFlags.TaxReportingExports);
         var portal = new OwnerPortalService(world.Db, world.Clock, null, flags, new OwnerPortalAccessResolver(world.Db, world.Clock));
 
-        // Its own withholding only, in euro, with the property and the month; the details add up to the total.
         var mine = await portal.GetOwnerWithholdingAsync(annaUser, 2026);
         Assert.Equal((2026, "EUR", 210m), (mine.Year, mine.Currency, mine.TotalWithheld));
         var detail = Assert.Single(mine.Details);
@@ -199,12 +182,10 @@ public class CuDatasetTests
         var theirs = await portal.GetOwnerWithholdingAsync(brunoUser, 2026);
         Assert.Equal((105m, "TEST Casa di Bruno"), (theirs.TotalWithheld, Assert.Single(theirs.Details).PropertyName));
 
-        // A year with nothing, a person with no ownership and a stranger have nothing: an empty summary, not an error.
         Assert.Empty((await portal.GetOwnerWithholdingAsync(annaUser, 2025)).Details);
         var nobody = await portal.GetOwnerWithholdingAsync(Guid.NewGuid(), 2026);
         Assert.Equal((0m, 0, 0), (nobody.TotalWithheld, nobody.Details.Count, nobody.CuStatements.Count));
 
-        // The CU: not shown while the data is only generated (it can be built again), shown to its owner once reviewed, as totals, and never the other owner's or any recipient data.
         var dataset = await world.Payouts.GenerateAnnualDatasetAsync(world.OrgId, 2026, "auth0|admin");
         Assert.Empty((await portal.GetOwnerWithholdingAsync(annaUser, 2026)).CuStatements);
         await world.Payouts.SetDatasetFilingStateAsync(world.OrgId, dataset.Id, new TaxFilingCommand { State = TaxFilingState.Reviewed }, "auth0|admin");
@@ -217,14 +198,12 @@ public class CuDatasetTests
         foreach (var other in new[] { "TEST Casa di Bruno", SecondFiscalCode, FirstFiscalCode, bruno.ToString(), anna.ToString(), "Via del Test" })
             Assert.DoesNotContain(other, answer, StringComparison.Ordinal);
 
-        // A delegated contact of Anna needs accounting.read: without it 403, with it the same as Anna and nothing of Bruno.
         var without = await ContactOfAsync(world, anna, OwnerPortalPermission.DocumentsRead);
         var refusal = await Assert.ThrowsAsync<DomainForbiddenException>(() => portal.GetOwnerWithholdingAsync(without, 2026));
         Assert.Equal(OwnerPortalErrors.PermissionMissing, refusal.Code);
         var with = await ContactOfAsync(world, anna, OwnerPortalPermission.AccountingRead);
         Assert.Equal(210m, (await portal.GetOwnerWithholdingAsync(with, 2026)).TotalWithheld);
 
-        // With either flag off the summary is the empty one it was, whoever asks.
         foreach (var off in new[] { FeatureFlags.TaxReportingExports, FeatureFlags.AgencyTier })
         {
             flags.Set(off, false);
@@ -244,7 +223,6 @@ public class CuDatasetTests
         var world = new OwnerPayoutFactsTests.FactsWorld();
         var (first, second) = await CoOwnedPaidAsync(world);
 
-        // Per share, so both co-owners have a record, and the second one has no fiscal code.
         (await world.Db.OwnerFiscalProfiles.SingleAsync(p => p.PropertyOwnerId == second)).FiscalCode = null;
         (await world.Db.OwnerMandates.SingleAsync(m => m.PropertyOwnerId == first)).CoOwnerTaxReporting = CoOwnerTaxReporting.PerShare;
         await world.Db.SaveChangesAsync();
@@ -271,7 +249,6 @@ public class CuDatasetTests
         Assert.Contains("<v>126.00</v>", sheet, StringComparison.Ordinal);
         Assert.NotNull(workbook.GetEntry("xl/worksheets/sheet2.xml"));
 
-        // The draft PDF of an owner; nothing for an owner with no record (a signatory's co-owner without one, another org's owner, a stranger).
         var export = new StatementExportService(world.Db, new MigraDocPdfDocumentRenderer(), texts, Microsoft.Extensions.Logging.Abstractions.NullLogger<StatementExportService>.Instance);
         var pdf = await export.ExportCuProspectAsync(world.OrgId, 2026, first, "it");
         Assert.Equal(("application/pdf", $"prospetto-cu-2026-{first:N}.pdf", "%PDF"), (pdf.ContentType, pdf.FileName, Encoding.ASCII.GetString(pdf.Content, 0, 4)));
@@ -281,16 +258,11 @@ public class CuDatasetTests
         var noData = await Assert.ThrowsAsync<NotFoundException>(() => export.ExportCuProspectAsync(world.OrgId, 2025, first, "it"));
         Assert.Equal(OwnerPayoutErrors.DatasetNotFound, noData.Code);
 
-        // The second co-owner's record says its fiscal code is missing, in the language of the file.
         var secondRecord = stored.Records.Single(r => r.OwnerId == second);
         Assert.Equal([TaxReportingPeople.Missing.FiscalCode], secondRecord.Recipient!.Missing);
         Assert.Contains("fiscal code", Encoding.UTF8.GetString(TaxReportingExports.CuCsv(2026, stored.Records, texts, DocumentLanguages.English)), StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// A house of two co-owners, <paramref name="shares"/> of the first and the rest of the second, a stay of 1000 paid to the agency, both statements approved and both payouts made on 5
-    /// November: 600 and 400 of base, 126 and 84 withheld. Without <paramref name="firstIsPaid"/> only the second is paid: 400 of base, 84 withheld.
-    /// </summary>
     private static async Task<(Guid First, Guid Second)> CoOwnedPaidAsync(OwnerPayoutFactsTests.FactsWorld world, bool firstIsPaid = true)
     {
         var first = await world.OwnerAsync();
@@ -336,7 +308,6 @@ public class CuDatasetTests
         OwnershipStart = new DateTime(2026, 1, 1),
     };
 
-    /// <summary>An owner with a house named after it, a person of the portal that holds its ownership, one stay worth <paramref name="gross"/> and its payout of 5 November.</summary>
     private static async Task<(Guid Owner, Guid User)> PaidOwnerWithUserAsync(OwnerPayoutFactsTests.FactsWorld world, string name, decimal gross, string key, string fiscalCode)
     {
         var owner = await world.OwnerAsync();
@@ -354,7 +325,6 @@ public class CuDatasetTests
         return (owner, user);
     }
 
-    /// <summary>A person the owner delegated the portal to, with <paramref name="permissions"/> only.</summary>
     private static async Task<Guid> ContactOfAsync(OwnerPayoutFactsTests.FactsWorld world, Guid owner, OwnerPortalPermission permissions)
     {
         var user = Guid.NewGuid();
@@ -392,20 +362,17 @@ public class CuDatasetTests
         var laterMonth = await PaidOwnerAsync(world, "k-later-month");
         var nextYear = await PaidOwnerAsync(world, "k-next-year");
 
-        // The same month (November), a later month of the year (December), and the year after (January 2027).
         await world.Payouts.ReversePayoutAsync(world.OrgId, sameMonth.Payout, "TEST bonifico respinto", null);
         world.Clock.Advance(TimeSpan.FromDays(20));
         await world.Payouts.ReversePayoutAsync(world.OrgId, laterMonth.Payout, "TEST bonifico respinto", null);
         world.Clock.Advance(TimeSpan.FromDays(45));
         await world.Payouts.ReversePayoutAsync(world.OrgId, nextYear.Payout, "TEST bonifico respinto", null);
 
-        // 2026: only the payout that was not reversed in the year has a record; the evidence of the other two (decisions and reversals) is in the totals and nets to nothing.
         var year = await world.Payouts.GenerateAnnualDatasetAsync(world.OrgId, 2026, "auth0|admin");
         var record = Assert.Single(CuDatasetPayload.Parse(year.PayloadJson));
         Assert.Equal((nextYear.Owner, 1000m, 210m, 1), (record.OwnerId, record.GrossBase, record.Withheld, record.Evidence));
         Assert.Equal((1000m, 210m, 5), (year.TotalGrossBase, year.TotalWithheld, year.EvidenceCount));
 
-        // 2027: the reversal is a record with the opposite amounts, in the month of the reversal.
         var after = await world.Payouts.GenerateAnnualDatasetAsync(world.OrgId, 2027, "auth0|admin");
         var opposite = Assert.Single(CuDatasetPayload.Parse(after.PayloadJson));
         Assert.Equal((nextYear.Owner, -1000m, -210m), (opposite.OwnerId, opposite.GrossBase, opposite.Withheld));
@@ -414,7 +381,6 @@ public class CuDatasetTests
         Assert.Equal((-1000m, -210m, 1), (after.TotalGrossBase, after.TotalWithheld, after.EvidenceCount));
     }
 
-    /// <summary>An owner with a house, a stay of 1000 paid to the agency and its payout of 5 November: the owner and the payout.</summary>
     private static async Task<(Guid Owner, Guid Payout)> PaidOwnerAsync(OwnerPayoutFactsTests.FactsWorld world, string key)
     {
         var owner = await world.OwnerAsync();
@@ -424,10 +390,6 @@ public class CuDatasetTests
         return (owner, paid.Payout.Id);
     }
 
-    /// <summary>
-    /// Data (review of S031, ⚖ I6): when only a co-owner was paid in the year, its withholding is still reported on the signatory (the largest share), and the record says whose it is:
-    /// attribution signatory, the share of the co-owner in the shares and in the lines, so the files and the portal never pass it for the signatory's own.
-    /// </summary>
     [Fact]
     public async Task CuDataset_SignatoryWithoutOwnPayments_SaysWhoseShareItCarries_Test()
     {
@@ -443,13 +405,11 @@ public class CuDatasetTests
         Assert.All(record.Lines, line => Assert.Equal(second, line.SourceOwnerId));
         Assert.Equal((record.GrossBase, record.Withheld), (record.Lines.Sum(l => l.GrossBase), record.Lines.Sum(l => l.Withheld)));
 
-        // The file says it too: the signatory, with the co-owner and what it puts in.
         var stored = await world.Withholding.GetCuDatasetAsync(world.OrgId, 2026);
         var csv = Encoding.UTF8.GetString(TaxReportingExports.CuCsv(2026, stored.Records, new ResxDocumentTexts(), DocumentLanguages.Italian));
         Assert.Contains("Firmatario, con i comproprietari", csv, StringComparison.Ordinal);
         Assert.Contains("TEST Proprietario: 400,00 / 84,00", csv, StringComparison.Ordinal);
     }
 
-    /// <summary>The shape of the annual data the accountant package reads (<c>AccountantPackageService.ReadCu</c>).</summary>
     private sealed record LegacyOwner(Guid OwnerId, decimal GrossBase, decimal Withheld, int Evidence);
 }

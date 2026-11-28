@@ -20,7 +20,6 @@ public class LeaseTaxAdvisoryIntegrationTests : IClassFixture<CasazenWebApplicat
     private const string LongTermLandlord = "LongTermLandlord";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    /// <summary>A day of 2026, the tax year of the committed IRPEF brackets: the result does not depend on the real clock.</summary>
     private static readonly DateTimeOffset In2026 = new(2026, 9, 24, 10, 0, 0, TimeSpan.Zero);
 
     private readonly CasazenWebApplicationFactory _factory;
@@ -58,7 +57,6 @@ public class LeaseTaxAdvisoryIntegrationTests : IClassFixture<CasazenWebApplicat
         Assert.Equal("Computed", computed.GetProperty("bollo").GetProperty("status").GetString());
         Assert.Equal(64.00m, computed.GetProperty("bollo").GetProperty("amountEur").GetDecimal());
         Assert.Equal("Computed", computed.GetProperty("irpef").GetProperty("status").GetString());
-        // 900 €/month: 10.260 € after the 5% reduction; 20.000 + 10.260 crosses 28.000 € (23% then 33%).
         Assert.Equal(2585.80m, computed.GetProperty("irpef").GetProperty("additionalGrossIrpefEur").GetDecimal());
     }
 

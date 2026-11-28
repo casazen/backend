@@ -16,7 +16,6 @@ using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -36,12 +35,6 @@ public class OwnerTaxChecksTests
     private static readonly HostScope OrgWide = new(OrgId);
     private static readonly DateOnly Today = new(2026, 11, 15);
 
-    // ---- the limit of units -------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// Money: from the third apartment let short (two the agency manages and one the owner declares outside it, or three the agency manages) a private person is presumed a
-    /// business, and the withholding facts treat it as one: no short-let regime, so no withholding, on any of its stays; back under the limit the stays qualify again.
-    /// </summary>
     [Fact]
     public async Task OwnerTaxChecks_ThirdUnitFlagsBusiness_Test()
     {
@@ -50,23 +43,19 @@ public class OwnerTaxChecksTests
         var units = await world.UnitsAsync(owner, 2);
         var stay = await world.BookingAsync(units[0], new DateOnly(2026, 11, 10), new DateOnly(2026, 11, 13));
 
-        // Two units are the limit, not past it.
         var under = (await world.Checks.CheckUnitsAsync(OrgId, [owner], Today))[owner];
         Assert.Equal((true, 2, 0, 2, 2, false), (under.Applies, under.ManagedUnits, under.ExternalUnits, under.TotalUnits, under.MaxUnits, under.PresumedBusiness));
         Assert.True((await world.TreatmentAsync(owner, stay)).QualifiesAsShortLet);
 
-        // The third unit is one the owner declares it lets outside the agency: presumed a business, and its stays are no short let.
         var declared = await world.Checks.DeclareExternalUnitsAsync(OrgWide, owner, 1, "auth0|admin");
         Assert.Equal((2, 1, 3, true), (declared.ManagedUnits, declared.ExternalUnits, declared.TotalUnits, declared.PresumedBusiness));
         var business = await world.TreatmentAsync(owner, stay);
         Assert.Equal((false, ShortLetTreatmentReasons.OwnerPresumedBusiness), (business.QualifiesAsShortLet, business.Reason));
 
-        // Declaring fewer apartments takes the presumption away: the stays are short lets again.
         var back = await world.Checks.DeclareExternalUnitsAsync(OrgWide, owner, 0, "auth0|admin");
         Assert.False(back.PresumedBusiness);
         Assert.True((await world.TreatmentAsync(owner, stay)).QualifiesAsShortLet);
 
-        // The third unit the agency manages itself is the same: three managed units, nothing declared.
         await world.UnitsAsync(owner, 1);
         var three = (await world.Checks.CheckUnitsAsync(OrgId, [owner], Today))[owner];
         Assert.Equal((3, 0, true), (three.ManagedUnits, three.ExternalUnits, three.PresumedBusiness));
@@ -84,7 +73,6 @@ public class OwnerTaxChecksTests
         var world = World.Create(flagOn: false);
         Assert.False(world.Checks.WarningsEnabled);
 
-        // Three units the agency manages: a business whatever the screens show.
         var owner = await world.OwnerAsync();
         var units = await world.UnitsAsync(owner, 3);
         var stay = await world.BookingAsync(units[0], new DateOnly(2026, 11, 10), new DateOnly(2026, 11, 13));
@@ -93,7 +81,6 @@ public class OwnerTaxChecksTests
         var business = await world.TreatmentAsync(owner, stay);
         Assert.Equal((false, ShortLetTreatmentReasons.OwnerPresumedBusiness), (business.QualifiesAsShortLet, business.Reason));
 
-        // The stay of a company tenant of another owner: a short let until a decision, and the decision recorded before the flag was turned off is followed.
         var other = await world.OwnerAsync();
         var company = await world.CompanyStayAsync(await world.OwnedPropertyAsync(other));
         var waiting = await world.TreatmentAsync(other, company);
@@ -111,7 +98,6 @@ public class OwnerTaxChecksTests
         var decided = await world.TreatmentAsync(other, company);
         Assert.Equal((false, ShortLetTreatmentReasons.CompanyTenantNotShortLet), (decided.QualifiesAsShortLet, decided.Reason));
 
-        // The codes of the contract: names that never change.
         Assert.Equal(
             ("short_let", "owner_presumed_business", "company_tenant_short_let", "company_tenant_not_short_let"),
             (ShortLetTreatmentReasons.ShortLet, ShortLetTreatmentReasons.OwnerPresumedBusiness, ShortLetTreatmentReasons.CompanyTenantShortLet, ShortLetTreatmentReasons.CompanyTenantNotShortLet));
@@ -123,10 +109,6 @@ public class OwnerTaxChecksTests
             (OwnerReadinessWarnings.ShortLetBusinessPresumed, OwnerReadinessCodes.ShortLetBusinessPresumed, OwnerReadinessSuggestions.IssuerProfile, FeatureFlags.TaxReportingExports));
     }
 
-    /// <summary>
-    /// Money: only the apartments that are a short let in Italy count: a long lease, a Swiss property, a deleted one, an ownership that ended or has not started do not; the
-    /// property of two periods of the same owner counts once; a co-owned property counts for each co-owner, whatever its share.
-    /// </summary>
     [Fact]
     public async Task Units_OnlyItalianShortRentApartmentsInForce_CountOnceForEachCoOwner_Test()
     {
@@ -142,12 +124,10 @@ public class OwnerTaxChecksTests
         await world.OwnsAsync(owner, await world.PropertyAsync(), start, end: new DateOnly(2026, 6, 30));
         await world.OwnsAsync(owner, await world.PropertyAsync(), new DateOnly(2027, 1, 1));
 
-        // Shared 60/40: one unit for each of the two co-owners.
         var shared = await world.PropertyAsync();
         await world.OwnsAsync(owner, shared, start, share: 60m);
         await world.OwnsAsync(coOwner, shared, start, share: 40m);
 
-        // Two consecutive periods of the owner on one property: one unit.
         var twoPeriods = await world.PropertyAsync();
         await world.OwnsAsync(owner, twoPeriods, start, end: new DateOnly(2026, 3, 31));
         await world.OwnsAsync(owner, twoPeriods, new DateOnly(2026, 4, 1));
@@ -160,7 +140,6 @@ public class OwnerTaxChecksTests
         Assert.Equal(1, checks[coOwner].ManagedUnits);
         Assert.False(checks[coOwner].PresumedBusiness);
 
-        // The units are those of the day asked: before the first ownership there were none, and the period that ended on 30 June counted until then.
         Assert.Equal(0, (await world.Checks.CheckUnitsAsync(OrgId, [owner], new DateOnly(2024, 12, 31)))[owner].ManagedUnits);
         Assert.Equal(4, (await world.Checks.CheckUnitsAsync(OrgId, [owner], new DateOnly(2026, 6, 30)))[owner].ManagedUnits);
         Assert.Equal(3, (await world.Checks.CheckUnitsAsync(OrgId, [owner], new DateOnly(2026, 7, 1)))[owner].ManagedUnits);
@@ -181,25 +160,18 @@ public class OwnerTaxChecksTests
         Assert.False(OwnerTaxRules.CheckUnits(id, OwnerEntityKind.NaturalPerson, OwnerTaxRegime.Private, 2, 0, Today, rules).PresumedBusiness);
         Assert.False(OwnerTaxRules.CheckUnits(id, OwnerEntityKind.NaturalPerson, OwnerTaxRegime.Private, 3, 0, Today, new ShortStayFiscalOptions { MaxApartmentsPerTaxpayer = 4 }).PresumedBusiness);
 
-        // A company, a VAT holder: the limit is not about them.
         foreach (var (kind, regime) in new[] { (OwnerEntityKind.LegalEntity, OwnerTaxRegime.Private), (OwnerEntityKind.NaturalPerson, OwnerTaxRegime.VatHolder) })
         {
             var business = OwnerTaxRules.CheckUnits(id, kind, regime, 5, 5, Today, rules);
             Assert.Equal((false, 10, false), (business.Applies, business.TotalUnits, business.PresumedBusiness));
         }
 
-        // Before the first tax year of the limit the older limit was in force, which the configuration does not carry: nothing is presumed.
         Assert.False(OwnerTaxRules.CheckUnits(id, OwnerEntityKind.NaturalPerson, OwnerTaxRegime.Private, 9, 0, new DateOnly(2025, 12, 31), rules).PresumedBusiness);
         Assert.True(OwnerTaxRules.CheckUnits(id, OwnerEntityKind.NaturalPerson, OwnerTaxRegime.Private, 3, 0, new DateOnly(2026, 1, 1), rules).PresumedBusiness);
 
-        // A limit that is not a count never means «nobody may let anything»: at least one.
         Assert.Equal(1, OwnerTaxRules.CheckUnits(id, null, OwnerTaxRegime.Private, 1, 0, Today, new ShortStayFiscalOptions { MaxApartmentsPerTaxpayer = 0 }).MaxUnits);
     }
 
-    /// <summary>
-    /// Data: the apartments declared outside the agency are a required count from 0 to 1000: a request without it, a negative number or one past the bound is 422 with the field and
-    /// writes nothing, and a 0 is a choice that is kept, never what an omitted field turns into.
-    /// </summary>
     [Fact]
     public async Task DeclareExternalUnits_ARequiredCount_NothingIsWrittenByARefusal_Test()
     {
@@ -220,10 +192,6 @@ public class OwnerTaxChecksTests
         Assert.Equal(PropertyOwner.ExternalShortLetUnitsMax, (await world.Checks.DeclareExternalUnitsAsync(OrgWide, owner, PropertyOwner.ExternalShortLetUnitsMax, null)).ExternalUnits);
     }
 
-    /// <summary>
-    /// Permission: the limit of an owner is read and declared only within the reach of the caller (an owner with a property outside it is the 404 of an owner that does not
-    /// exist and nothing is written), an owner of another org is not found at all, and the count is the owner's whole portfolio, not the part the caller reaches.
-    /// </summary>
     [Fact]
     public async Task OwnerLimit_PartialReach_AnOwnerWithAPropertyOutsideIsNotFound_TheCountIsTheWholePortfolio_Test()
     {
@@ -249,14 +217,11 @@ public class OwnerTaxChecksTests
 
         Assert.Equal(0, (await world.Db.PropertyOwners.AsNoTracking().SingleAsync(o => o.Id == shared)).ExternalShortLetUnits);
 
-        // The whole org reads them all; the owner of another org is not found; the units counted are the owner's whole portfolio.
         Assert.Equal(2, (await world.Checks.GetUnitsCheckAsync(OrgWide, shared)).ManagedUnits);
         await Assert.ThrowsAsync<NotFoundException>(() => world.Checks.GetUnitsCheckAsync(new HostScope(Guid.NewGuid()), inside));
         Assert.Empty(await world.Checks.CheckUnitsAsync(Guid.NewGuid(), [inside, shared], Today));
         Assert.Empty(await world.Checks.CheckUnitsAsync(OrgId, [], Today));
     }
-
-    // ---- the company tenant -------------------------------------------------------------------------------------------------
 
     /// <summary>
     /// Money: the stay of a company tenant in the Italian property of a private owner stays a short let until a person decides (no automatic change of regime, the decision is
@@ -274,12 +239,10 @@ public class OwnerTaxChecksTests
         await world.InvoiceAsync(booking, InvoiceRecipientKind.Company);
         Assert.True(await world.Checks.RaiseCompanyTenantDecisionAsync(OrgId, booking));
 
-        // Nobody decided: still a short let (the regime is never changed by itself), and it says the decision is pending.
         var pending = await world.TreatmentAsync(owner, booking);
         Assert.Equal((true, ShortLetTreatmentReasons.ShortLet, true, true), (pending.QualifiesAsShortLet, pending.Reason, pending.CompanyTenant, pending.DecisionPending));
         Assert.Null(pending.Decision);
 
-        // Decided «not a short let»: the stay is no longer one for the withholding, and the «Da fare» is closed.
         var notShortLet = await world.Checks.DecideAsync(OrgWide, Decision(booking, ShortLetTaxRegime.NotShortLet, "Confermato dal commercialista"), "auth0|admin");
         var against = await world.TreatmentAsync(owner, booking);
         Assert.Equal((false, ShortLetTreatmentReasons.CompanyTenantNotShortLet, false), (against.QualifiesAsShortLet, against.Reason, against.DecisionPending));
@@ -288,19 +251,16 @@ public class OwnerTaxChecksTests
         Assert.Equal(("auth0|admin", OrgId, booking), (notShortLet.DecidedByUserId, notShortLet.OrgId, notShortLet.BookingId));
         Assert.All(await world.TodosAsync(booking), t => Assert.NotNull(t.CompletedAt));
 
-        // The same decision again is the same decision: nothing is written twice.
         var again = await world.Checks.DecideAsync(OrgWide, Decision(booking, ShortLetTaxRegime.NotShortLet, "Confermato dal commercialista"), "auth0|admin");
         Assert.Equal(notShortLet.Id, again.Id);
         Assert.Equal(1, await world.Db.ShortLetTaxDecisions.CountAsync());
 
-        // Another decision replaces it as the one in force; the first stays as the history.
         world.Clock.Advance(TimeSpan.FromHours(1));
         await world.Checks.DecideAsync(OrgWide, Decision(booking, ShortLetTaxRegime.ShortLet, "Segue la Cassazione"), "auth0|admin");
         var followed = await world.TreatmentAsync(owner, booking);
         Assert.Equal((true, ShortLetTreatmentReasons.CompanyTenantShortLet), (followed.QualifiesAsShortLet, followed.Reason));
         Assert.Equal(2, await world.Db.ShortLetTaxDecisions.CountAsync());
 
-        // A decision is followed only while the stay is one of a company tenant: the recipient became a private person, so the stay is a plain short let again.
         world.Clock.Advance(TimeSpan.FromHours(1));
         await world.Checks.DecideAsync(OrgWide, Decision(booking, ShortLetTaxRegime.NotShortLet, "Di nuovo"), "auth0|admin");
         await world.SetRecipientAsync(booking, InvoiceRecipientKind.Guest);
@@ -347,7 +307,6 @@ public class OwnerTaxChecksTests
         Assert.False(await world.Checks.RaiseCompanyTenantDecisionAsync(OrgId, noShow));
         Assert.Equal(ShortLetTaxRegime.NotShortLet, (await world.Checks.DecideAsync(OrgWide, Decision(qualifies, ShortLetTaxRegime.NotShortLet, "ok"), "auth0|admin")).Regime);
 
-        // An owner past the limit is a business: the stay of a company tenant is no short let whatever was decided about it.
         await world.UnitsAsync(owner, 2);
         await world.Checks.DeclareExternalUnitsAsync(OrgWide, owner, 1, null);
         await world.Checks.DecideAsync(OrgWide, Decision(qualifies, ShortLetTaxRegime.ShortLet, "il conduttore"), "auth0|admin");
@@ -355,10 +314,6 @@ public class OwnerTaxChecksTests
         Assert.Equal((false, ShortLetTreatmentReasons.OwnerPresumedBusiness, false), (business.QualifiesAsShortLet, business.Reason, business.DecisionPending));
     }
 
-    /// <summary>
-    /// Data: a decision is refused with its field when the booking, the regime or the reason is missing or wrong (the regime is required: never a regime by omission), and a refusal
-    /// writes nothing; the reason is trimmed.
-    /// </summary>
     [Fact]
     public async Task Decide_ARequiredRegimeAndReason_AreRefusedWithTheirField_Test()
     {
@@ -387,10 +342,6 @@ public class OwnerTaxChecksTests
         Assert.Equal(new string('x', ShortLetTaxDecision.ReasonMaxLength), (await world.Checks.DecideAsync(OrgWide, Decision(booking, ShortLetTaxRegime.NotShortLet, new string('x', ShortLetTaxDecision.ReasonMaxLength)), "auth0|admin")).Reason);
     }
 
-    /// <summary>
-    /// Permission: a stay is decided and listed only within the reach of the caller (a booking of a property outside it, or of another org, is the 404 of one that does not exist
-    /// and nothing is written), and the facts of another org's stays are not read.
-    /// </summary>
     [Fact]
     public async Task CompanyTenantStays_PartialReach_AreListedAndDecidedWithinIt_Test()
     {
@@ -416,10 +367,6 @@ public class OwnerTaxChecksTests
         Assert.Empty(await world.Checks.TreatmentOfStaysAsync(OrgId, owner, [], Today));
     }
 
-    /// <summary>
-    /// Privacy: the case lists the code of the booking, the property and the dates, never the tenant; the «Da fare» names the fact and nobody (a fixed sentence with the two readings,
-    /// in Italian and in English, no name of the guest or of the company); the reason of a decision is never in a log.
-    /// </summary>
     [Fact]
     public async Task CompanyTenant_NothingOfTheTenantInTheCaseTheTodoOrTheLogs_Test()
     {
@@ -430,7 +377,6 @@ public class OwnerTaxChecksTests
         await world.Checks.RaiseCompanyTenantDecisionAsync(OrgId, booking);
         await world.Checks.DecideAsync(OrgWide, Decision(booking, ShortLetTaxRegime.NotShortLet, "nota riservata dell'agenzia"), "auth0|admin");
 
-        // What a case says, and nothing else: the code of the booking, the property, the dates and the decision. No member holds the tenant, its name or its fiscal data.
         var listed = Assert.Single(await world.Checks.ListCompanyTenantCasesAsync(OrgWide, null));
         Assert.Equal(
             [
@@ -452,7 +398,6 @@ public class OwnerTaxChecksTests
             var text = EmailTexts.Get(OwnerTaxChecks.CompanyTenantReasonKey, culture);
             Assert.DoesNotContain("{", text, StringComparison.Ordinal);
 
-            // The rate of the withholding is configuration (ShortStayFiscal:OtaWithholdingRate), never a number written in a sentence.
             Assert.DoesNotContain("%", text, StringComparison.Ordinal);
             Assert.True(text.Length <= TodoLimits.ReasonMaxLength);
             Assert.Contains("12395/2024", text, StringComparison.Ordinal);
@@ -464,13 +409,6 @@ public class OwnerTaxChecksTests
         Assert.DoesNotContain("Segreta", world.Log.AllOutput, StringComparison.OrdinalIgnoreCase);
     }
 
-    // ---- the «Da fare» ------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// The «Da fare» of a company tenant is raised once for each booking, about the booking and its property, leading to the booking, with the sentence of the org's language; not
-    /// again for a redelivered event, a second save of the data, or after a person closed it; never for a stay that is no case; nothing while the flag is off; closed by a
-    /// cancellation.
-    /// </summary>
     [Fact]
     public async Task CompanyTenantTodo_RaisedOnce_OnlyWithTheFlag_ClosedByTheCancellation_Test()
     {
@@ -491,25 +429,21 @@ public class OwnerTaxChecksTests
         Assert.Equal(OrgId, item.OrgId);
         Assert.Null(item.CompletedAt);
 
-        // A cancelled booking has nothing to decide: the booking is cancelled, and the event of its cancellation closes the item.
         await world.SetStatusAsync(booking, BookingStatus.Cancelled);
         var close = new ActivityAutoCloseHandler(world.Db, world.Activities, NullLogger<ActivityAutoCloseHandler>.Instance);
         await close.HandleAsync(new DomainEvent(Guid.NewGuid(), OrgId, DomainEventType.BookingCancelled, booking, World.Now.UtcDateTime, "{}"), CancellationToken.None);
         Assert.Equal(InternalActivity.StatusCompleted, Assert.Single(await world.TodosAsync(booking)).Status);
         Assert.Contains(ActivityType.CompanyTenantDecision, ActivityAutoCloseHandler.Rules[DomainEventType.BookingCancelled]);
 
-        // A no-show is no stay either: the event that marks it closes the item of another booking.
         var noShow = await world.CompanyStayOfAPrivateOwnerAsync();
         await handler.HandleAsync(saved with { Id = Guid.NewGuid(), EntityId = noShow }, CancellationToken.None);
         Assert.Equal(InternalActivity.StatusPending, Assert.Single(await world.TodosAsync(noShow)).Status);
         await close.HandleAsync(new DomainEvent(Guid.NewGuid(), OrgId, DomainEventType.BookingNoShowMarked, noShow, World.Now.UtcDateTime, "{}"), CancellationToken.None);
         Assert.Equal(InternalActivity.StatusCompleted, Assert.Single(await world.TodosAsync(noShow)).Status);
 
-        // Closed, and the booking cancelled: it does not come back for the event delivered again.
         await handler.HandleAsync(saved with { Id = Guid.NewGuid() }, CancellationToken.None);
         Assert.Single(await world.TodosAsync(booking));
 
-        // The flag is off: nothing is raised for another stay (the warnings of the UI are behind it).
         var off = World.Create(flagOn: false);
         var other = await off.CompanyStayOfAPrivateOwnerAsync();
         await new CompanyTenantDecisionHandler(off.Checks).HandleAsync(saved with { EntityId = other }, CancellationToken.None);
@@ -518,10 +452,6 @@ public class OwnerTaxChecksTests
         Assert.False(off.Checks.WarningsEnabled);
     }
 
-    /// <summary>
-    /// The consumer asks for the «Da fare» of the booking of the event, in the org of the event, on the two events that can make a stay one of a company tenant (the invoice data
-    /// saved, the booking confirmed), and ignores every other event and an event that names no booking.
-    /// </summary>
     [Fact]
     public async Task CompanyTenantDecisionHandler_ReactsToTheInvoiceDataAndTheConfirmationOnly_InTheOrgOfTheEvent_Test()
     {
@@ -544,17 +474,12 @@ public class OwnerTaxChecksTests
         checks.VerifyNoOtherCalls();
     }
 
-    /// <summary>
-    /// The order of the events does not matter (the outbox delivers them out of order): the data saved while the booking is not yet confirmed raises nothing and the confirmation that
-    /// follows raises the «Da fare» once; a confirmation that comes before the data raises nothing and the data that follows raises it once.
-    /// </summary>
     [Fact]
     public async Task CompanyTenantTodo_EitherOrderOfTheInvoiceDataAndTheConfirmation_RaisesItOnce_Test()
     {
         var world = World.Create();
         var handler = new CompanyTenantDecisionHandler(world.Checks);
 
-        // The data first, the booking still waiting for its payment: nothing to decide yet; the confirmation makes it a stay.
         var property = await world.OwnedPropertyAsync(await world.OwnerAsync());
         var dataFirst = await world.CompanyStayAsync(property, status: BookingStatus.Pending);
         await handler.HandleAsync(new DomainEvent(Guid.NewGuid(), OrgId, DomainEventType.InvoiceDataSaved, dataFirst, World.Now.UtcDateTime, "{}"), CancellationToken.None);
@@ -568,7 +493,6 @@ public class OwnerTaxChecksTests
         await handler.HandleAsync(confirmed with { Id = Guid.NewGuid() }, CancellationToken.None);
         Assert.Single(await world.TodosAsync(dataFirst));
 
-        // The confirmation first, the data not yet saved: nothing; the data that follows raises it.
         var confirmationFirst = await world.BookingAsync(property, new DateOnly(2026, 12, 1), new DateOnly(2026, 12, 4));
         await handler.HandleAsync(confirmed with { Id = Guid.NewGuid(), EntityId = confirmationFirst }, CancellationToken.None);
         Assert.Empty(await world.TodosAsync(confirmationFirst));
@@ -578,10 +502,6 @@ public class OwnerTaxChecksTests
         Assert.Single(await world.TodosAsync(confirmationFirst));
     }
 
-    /// <summary>
-    /// The «Da fare» follows the state the consumer reads: when the stay is no case any more (the invoice data became a private person's) the open item is closed, by the system, so
-    /// nobody is asked for a decision that would be refused; when it is a case again the stay is asked about again, once; an item a person closed is never raised again.
-    /// </summary>
     [Fact]
     public async Task CompanyTenantTodo_ClosedWhenTheStayIsNoCaseAnyMore_AskedAgainIfItIsOneAgain_Test()
     {
@@ -592,7 +512,6 @@ public class OwnerTaxChecksTests
         await handler.HandleAsync(saved, CancellationToken.None);
         Assert.Equal(InternalActivity.StatusPending, Assert.Single(await world.TodosAsync(booking)).Status);
 
-        // The data become a private person's: there is nothing to decide (a decision would be 422), so the item is closed, by the system.
         await world.SetRecipientAsync(booking, InvoiceRecipientKind.Guest);
         await handler.HandleAsync(saved with { Id = Guid.NewGuid() }, CancellationToken.None);
         var closed = Assert.Single(await world.TodosAsync(booking));
@@ -600,7 +519,6 @@ public class OwnerTaxChecksTests
         var refused = await Assert.ThrowsAsync<DomainRuleException>(() => world.Checks.DecideAsync(OrgWide, Decision(booking, ShortLetTaxRegime.NotShortLet, "x"), "auth0|admin"));
         Assert.Equal(OwnerTaxErrors.DecisionNotApplicable, refused.Code);
 
-        // A company again: the stay is asked about again (an item the system closed says nothing about a person), once for the two deliveries.
         await world.SetRecipientAsync(booking, InvoiceRecipientKind.Company);
         await handler.HandleAsync(saved with { Id = Guid.NewGuid() }, CancellationToken.None);
         await handler.HandleAsync(saved with { Id = Guid.NewGuid() }, CancellationToken.None);
@@ -608,7 +526,6 @@ public class OwnerTaxChecksTests
         Assert.Equal(2, items.Count);
         var open = Assert.Single(items, t => t.CompletedAt is null);
 
-        // A person closes it: it is never raised again, whatever the data do after.
         await world.Activities.CloseAsync(open.Id, "auth0|admin", CancellationToken.None);
         await world.SetRecipientAsync(booking, InvoiceRecipientKind.Guest);
         await handler.HandleAsync(saved with { Id = Guid.NewGuid() }, CancellationToken.None);
@@ -618,8 +535,6 @@ public class OwnerTaxChecksTests
         Assert.Equal(2, after.Count);
         Assert.DoesNotContain(after, t => t.CompletedAt is null);
     }
-
-    // ---- the warnings -------------------------------------------------------------------------------------------------------
 
     /// <summary>
     /// The readiness warning and the statement flag (behind the flag): an owner past the limit carries the warning (the counts and the suggestion of an issuer profile as a business)
@@ -693,17 +608,10 @@ public class OwnerTaxChecksTests
         Assert.Equal(3, Assert.Single(partial.Owners.Single(o => o.OwnerId == inside).Warnings).ManagedUnits);
         Assert.Empty(partial.Owners.Single(o => o.OwnerId == shared).Warnings);
 
-        // The whole org sees both, with the whole portfolio.
         Assert.Equal(3, Assert.Single(whole.Owners.Single(o => o.OwnerId == inside).Warnings).ManagedUnits);
         Assert.Equal(3, Assert.Single(whole.Owners.Single(o => o.OwnerId == shared).Warnings).ManagedUnits);
     }
 
-    // ---- the co-owners ------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// Data (⚖ I6): the mandate says how the withholding evidence and the CU of a co-owned property are written: <c>Signatory</c> by default (also every mandate before the field),
-    /// <c>PerShare</c> when it says so, in a version and in the standard mandate; a value that is not one of the two is 422 with the field and writes nothing; the answer carries it.
-    /// </summary>
     [Fact]
     public async Task Mandate_CoOwnerTaxReporting_DefaultsToTheSignatory_AndIsReturned_Test()
     {
@@ -735,13 +643,6 @@ public class OwnerTaxChecksTests
         Assert.Equal(before, await world.Db.OwnerMandates.CountAsync());
     }
 
-    // ---- the API ------------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// Permission: the endpoints are behind <c>Features:TaxReportingExports</c> (404 before authentication while it is off) and each needs the permission it names: the decisions are
-    /// read with <c>agency.owner.financial.read</c> and recorded with <c>agency.owner.financial.manage</c>, the limit of an owner is read with <c>agency.owner.view</c> and the
-    /// apartments outside the agency declared with <c>agency.owner.financial.manage</c>; the routes are the ones of the contract.
-    /// </summary>
     [Fact]
     public void Controller_BehindTheFlag_EachActionNeedsItsOwnPermission_Test()
     {
@@ -764,9 +665,6 @@ public class OwnerTaxChecksTests
         Assert.Contains(FeatureFlags.TaxReportingExports, FeatureFlags.All);
     }
 
-    // ---- the pure rules -----------------------------------------------------------------------------------------------------
-
-    /// <summary>The decision in force is the latest one (then the greatest id, always the same one); without one there is none; the nights are the days between the two dates.</summary>
     [Fact]
     public void Rules_TheLatestDecisionIsInForce_TheNightsAreTheDaysBetween()
     {
@@ -790,7 +688,6 @@ public class OwnerTaxChecksTests
     private static DecideShortLetTaxCommand Decision(Guid booking, ShortLetTaxRegime regime, string reason) =>
         new() { BookingId = booking, Regime = regime, Reason = reason };
 
-    /// <summary>An agency over one in-memory database, with encryption, a clock on 15 November 2026 and the checks with their «Da fare».</summary>
     private sealed class World
     {
         public static readonly DateTimeOffset Now = new(2026, 11, 15, 10, 0, 0, TimeSpan.Zero);
@@ -877,7 +774,6 @@ public class OwnerTaxChecksTests
             await Db.SaveChangesAsync();
         }
 
-        /// <summary>A property the owner holds in full from the start of 2025.</summary>
         public async Task<Guid> OwnedPropertyAsync(Guid owner, string createdBy = "auth0|agency")
         {
             var property = await PropertyAsync(createdBy: createdBy);
@@ -885,7 +781,6 @@ public class OwnerTaxChecksTests
             return property;
         }
 
-        /// <summary>The agency manages <paramref name="count"/> more Italian short-rent apartments for the owner: the properties.</summary>
         public async Task<List<Guid>> UnitsAsync(Guid owner, int count, string createdBy = "auth0|agency")
         {
             var properties = new List<Guid>(count);
@@ -941,7 +836,6 @@ public class OwnerTaxChecksTests
             await Db.SaveChangesAsync();
         }
 
-        /// <summary>The status of the booking as the host's action leaves the row (a cancellation), before its event is handled.</summary>
         public async Task SetStatusAsync(Guid booking, BookingStatus status)
         {
             Db.ChangeTracker.Clear();
@@ -949,7 +843,6 @@ public class OwnerTaxChecksTests
             await Db.SaveChangesAsync();
         }
 
-        /// <summary>A three-night stay of a property with the invoice data of <paramref name="recipient"/> (a company by default).</summary>
         public async Task<Guid> CompanyStayAsync(
             Guid property,
             InvoiceRecipientKind recipient = InvoiceRecipientKind.Company,
@@ -964,7 +857,6 @@ public class OwnerTaxChecksTests
             return booking;
         }
 
-        /// <summary>A stay of a company tenant in a property held in full by a new private owner.</summary>
         public async Task<Guid> CompanyStayOfAPrivateOwnerAsync()
         {
             var owner = await OwnerAsync();
@@ -980,7 +872,6 @@ public class OwnerTaxChecksTests
         public async Task<StayShortLetTreatment> TreatmentAsync(Guid owner, Guid booking) =>
             Assert.Single(await Checks.TreatmentOfStaysAsync(OrgId, owner, [booking], Today));
 
-        /// <summary>The «Da fare» of the company tenants about the booking, closed ones too.</summary>
         public async Task<List<InternalActivity>> TodosAsync(Guid booking)
         {
             Db.ChangeTracker.Clear();

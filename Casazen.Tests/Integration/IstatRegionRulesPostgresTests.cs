@@ -33,7 +33,6 @@ public class IstatRegionRulesPostgresTests
     {
         await using var database = PostgresTestDatabase.CreateMigrated("istat");
 
-        // The seed the migration wrote: 21 territories, none covered, none verified, and the four monthly deadlines with their day.
         await using (var db = database.CreateContext())
         {
             var seeded = await db.IstatRegionRules.AsNoTracking().ToListAsync();
@@ -99,8 +98,6 @@ public class IstatRegionRulesPostgresTests
             await AssertRefusedAsync(database, row, PostgresErrorCodes.CheckViolation, constraint, what);
         }
 
-        // What is valid is stored: a monthly deadline with its day (the first and the last of the month), a daily and an unknown one with none, a portal, and
-        // the required fields as none (not verified), as an empty list (verified: none required), as each field alone and as the three together.
         var allFields = IstatRegionResolver.FormatFields(IstatRegionResolver.FieldNames.ToList());
         var valid = new List<IstatRegionRule>();
         var next = 70;
@@ -149,13 +146,10 @@ public class IstatRegionRulesPostgresTests
     {
         await using var database = PostgresTestDatabase.CreateMigrated("istatuq");
 
-        // A second row for a region with no province (Lombardia has one): the partial index of the regions refuses it.
         await AssertRefusedAsync(database, ValidRow("03"), PostgresErrorCodes.UniqueViolation, IstatRegionRule.RegionIndexName, "a second row for Lombardia");
 
-        // A second row for an autonomous province (Bolzano has one): the partial index of the provinces refuses it.
         await AssertRefusedAsync(database, ValidRow("04", "BZ"), PostgresErrorCodes.UniqueViolation, IstatRegionRule.RegionProvinceIndexName, "a second row for Bolzano");
 
-        // The two indexes only hold for their own rows: a province of a region that has a row of its own is another territory and is stored.
         await using (var db = database.CreateContext())
         {
             db.IstatRegionRules.Add(ValidRow("03", "CO"));
@@ -168,10 +162,6 @@ public class IstatRegionRulesPostgresTests
         }
     }
 
-    /// <summary>
-    /// The service never lets the database fail: an https address written with an upper case scheme (the check of the table is case-sensitive) is stored in
-    /// lower case, with the audit line of the save, and what the rules of the service refuse (a monthly deadline with no day) is a refusal of the service.
-    /// </summary>
     [PostgresFact]
     public async Task IstatRegionService_OnPostgres_StoresAnUpperCaseHttpsSchemeInLowerCase_AndNeverFailsInTheDatabase_Test()
     {
@@ -209,7 +199,6 @@ public class IstatRegionRulesPostgresTests
             Assert.Equal(1, await read.RegulatoryDataAuditEntries.CountAsync(e => e.EntityId == saved.Id));
         }
 
-        // The rules of the service come before the database: a monthly deadline with no day is a 422 and writes nothing.
         var refused = await Assert.ThrowsAsync<DomainRuleException>(() => service.UpdateAsync(
             new IstatRegionRuleUpdate("03", null, null, null, IstatDeadlineKind.Monthly, null, null, IstatCoverage.Unknown, Source, null, null),
             "auth0|staff-istat",
@@ -263,7 +252,6 @@ public class IstatRegionRulesPostgresTests
         UpdatedAt = Moment,
     };
 
-    /// <summary>Saves <paramref name="row"/> on a context of its own and says the database refused it, with this state and this constraint.</summary>
     private static async Task AssertRefusedAsync(PostgresTestDatabase database, IstatRegionRule row, string sqlState, string constraint, string what)
     {
         await using var db = database.CreateContext();

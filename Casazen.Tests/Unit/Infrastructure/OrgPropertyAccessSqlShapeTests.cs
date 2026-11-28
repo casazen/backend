@@ -37,12 +37,10 @@ public class OrgPropertyAccessSqlShapeTests
 
         await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.BuildViewAsync(OrgId, limited, CancellationToken.None));
 
-        // The properties, the grants of this member, the members who reach everything, the grants of the others counted per property.
         Assert.Equal(4, statements.Count);
         var counted = Assert.Single(statements, s => s.Contains("GROUP BY", StringComparison.Ordinal));
         Assert.Contains("\"PropertyMemberAccesses\"", counted, StringComparison.Ordinal);
         Assert.Contains("\"OrgMembers\"", counted, StringComparison.Ordinal);
-        // The mode of the property, and the two memberships of the person compared with it (the area of its mode, or no other).
         Assert.Contains("\"RentalMode\"", counted, StringComparison.Ordinal);
         Assert.Equal(2, Count(counted, "\"UserContextMemberships\""));
         Assert.DoesNotContain(" IN (", counted, StringComparison.Ordinal);

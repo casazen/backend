@@ -33,11 +33,8 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class Pain001ValidationProofTests
 {
-    // The two messages are written in the same namespace: the schema each currency is validated against is what tells them apart.
     private static readonly XNamespace Swiss = Pain001SchemaProvider.SwissNamespace;
     private static readonly XNamespace Iso = Pain001SchemaProvider.IsoNamespace;
-
-    // ---- the proof of the brief ------------------------------------------------------------------------------------------------------------------------
 
     /// <summary>
     /// Money rule: a file that fails the schema is refused (422 <c>wire_batch_xml_invalid</c>) and no batch row is written, not even the batch without its
@@ -105,7 +102,6 @@ public class Pain001ValidationProofTests
         }
         catch (DomainRuleException refused)
         {
-            // The writer has to change, not the schema: the failure says where (line and position, and the text of every error of the schema).
             Assert.Fail(await ExplainRefusedFileAsync(refused, currency, ownerIban));
             return;
         }
@@ -199,10 +195,6 @@ public class Pain001ValidationProofTests
         Assert.Contains(Pain001SchemaProvider.IsoNamespace, retired.Problem);
     }
 
-    /// <summary>
-    /// The container builds the service the way <c>Program.cs</c> registers it, with no schema source (the optional parameter is for the tests): it uses the
-    /// official schemas of the build, so an org's batch is refused with its code and never validated against nothing.
-    /// </summary>
     [Fact]
     public async Task WireTransferService_BuiltByTheContainer_UsesTheOfficialSchemasOfTheBuild_Test()
     {
@@ -223,12 +215,6 @@ public class Pain001ValidationProofTests
         Assert.Equal(WireTransferErrors.NoPayoutsProvided, refused.Code);
     }
 
-    // ---- the currency, the amounts and the lines --------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// The file is validated with the schema set of its own currency (EUR the ISO one, CHF the Swiss one: the two messages share a namespace, so the currency is what
-    /// picks the set); a currency that has no wire file is 422 <c>wire_currency_not_supported</c>, from the service and from the provider.
-    /// </summary>
     [Theory]
     [InlineData("EUR", ItalianIban)]
     [InlineData("CHF", SwissIban)]
@@ -258,10 +244,6 @@ public class Pain001ValidationProofTests
         Assert.Equal(WireTransferErrors.CurrencyNotSupported, unsupported.Code);
     }
 
-    /// <summary>
-    /// Money rule: a letter case or a space in the stored currency code does not make another currency: a payout in <c>" eur "</c> is a EUR payout, and the file
-    /// says it in capitals, in the SEPA message.
-    /// </summary>
     [Fact]
     public async Task WireBatch_CurrencyOfThePayout_LetterCaseAndSpacesAreTheSameCurrency_Test()
     {
@@ -385,11 +367,6 @@ public class Pain001ValidationProofTests
         Assert.Equal(violations.Count, violations.Distinct(StringComparer.Ordinal).Count());
     }
 
-    /// <summary>
-    /// The control sum and the count the batch says are checked too: a file consistent with itself but not with its batch is refused. And the elements are read in
-    /// the namespace of the message of the currency: a file of another message (the <c>pain.001.001.03</c> CasaZen wrote for EUR before) has no initiation message
-    /// at all.
-    /// </summary>
     [Fact]
     public async Task Pain001Checks_FileThatDoesNotMatchItsBatch_IsRefused_Test()
     {
@@ -402,10 +379,6 @@ public class Pain001ValidationProofTests
             Pain001Checks.Violations(xml.Replace(Pain001SchemaProvider.IsoNamespace, Pain001TestSchemas.RetiredSepaNamespace), "EUR", batch.TotalAmount, batch.TransferCount));
     }
 
-    /// <summary>
-    /// The validation reads no external entity and opens no connection: a file with a DTD, even one that points at an address, is a schema error and is never
-    /// parsed (the checks refuse it too), so nothing outside the text is ever read.
-    /// </summary>
     [Fact]
     public void WireFile_DtdAndExternalEntity_AreNeverRead_Test()
     {
@@ -416,8 +389,6 @@ public class Pain001ValidationProofTests
         Assert.NotEmpty(XsdValidator.Validate(hostile, Pain001TestSchemas.Accepting()));
         Assert.Throws<XmlException>(() => Pain001Checks.Violations(hostile, "CHF", 1.00m, 1));
     }
-
-    // ---- who can reach the wires --------------------------------------------------------------------------------------------------------------------------
 
     /// <summary>
     /// Permission and scope rule: the wire batches mix the properties of every owner of the org, so only the roles that reach every property hold
@@ -436,12 +407,6 @@ public class Pain001ValidationProofTests
         Assert.DoesNotContain(OrgRole.Collaborator, holders);
     }
 
-    // ---- helpers -------------------------------------------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// The SHA-256 the table of the official schemas of the runbook records for <paramref name="file"/>: the 64 hexadecimal digits, in backticks, that start the last
-    /// cell of the row that begins with the file name (the source cell of the Swiss row has the checksum of the archive it comes in, which is not the file's).
-    /// </summary>
     private static string RunbookChecksumOf(string[] runbook, string file)
     {
         var rows = runbook.Where(line => line.StartsWith($"| `{file}`", StringComparison.Ordinal)).ToList();
@@ -456,7 +421,6 @@ public class Pain001ValidationProofTests
 
     private static string FindRepositoryRoot()
     {
-        // System.AppContext: the bare name is ambiguous here with the entity of Casazen.Core.Entities.
         var directory = new DirectoryInfo(System.AppContext.BaseDirectory);
         while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Casazen.sln")))
             directory = directory.Parent;
@@ -464,12 +428,6 @@ public class Pain001ValidationProofTests
         return directory?.FullName ?? throw new InvalidOperationException("Casazen.sln not found above the test output folder.");
     }
 
-    /// <summary>
-    /// What a person who has to fix the writer needs when the file CasaZen writes does not validate against the official schema of its currency: the refusal
-    /// (its code and arguments: the count with the lines and positions of the schema errors, or the broken rules) and every error of the schema on the same
-    /// file with its line, position and text. The file is written with a schema that accepts anything. Its data are the invented ones of these tests, so the
-    /// text of an error may quote them without harm.
-    /// </summary>
     private static async Task<string> ExplainRefusedFileAsync(DomainRuleException refused, string currency, string ownerIban)
     {
         var orgId = Guid.NewGuid();
@@ -491,7 +449,6 @@ public class Pain001ValidationProofTests
         return string.Join(Environment.NewLine, lines);
     }
 
-    /// <summary>A CHF batch of two transfers and its Swiss file.</summary>
     private static async Task<(WireBatch Batch, string Xml)> WriteTwoTransfersAsync()
     {
         var orgId = Guid.NewGuid();
@@ -502,7 +459,6 @@ public class Pain001ValidationProofTests
         return await NewService(db).CreateBatchAsync(orgId, payouts, ExecutionDate);
     }
 
-    /// <summary>The file with one thing changed, as the name of the mutation says.</summary>
     private static string Mutate(string xml, string mutation)
     {
         var document = XDocument.Parse(xml);

@@ -8,9 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// Proof tests for BiometricVerificationLog (NF-11, ADR-013): proves privacy / data rules.
-/// </summary>
 public class BiometricVerificationLogProofTests
 {
     /// <summary>
@@ -22,7 +19,6 @@ public class BiometricVerificationLogProofTests
     [Fact]
     public void BiometricVerificationLog_NoImages_NeverStored()
     {
-        // Arrange: Create a BiometricVerificationLog entry
         var log = new BiometricVerificationLog
         {
             OrgId = Guid.NewGuid(),
@@ -36,11 +32,9 @@ public class BiometricVerificationLogProofTests
             CreatedAt = DateTime.UtcNow,
         };
 
-        // Act & Assert: Verify BiometricVerificationLog entity structure enforces no-image-storage rule
         var logType = typeof(BiometricVerificationLog);
         var allProperties = logType.GetProperties();
 
-        // ADR-013-R2 / ADR-013-R3: Log MUST have outcome, attempts, model metadata
         Assert.NotNull(logType.GetProperty("Outcome"));
         Assert.Equal(typeof(BiometricOutcome), logType.GetProperty("Outcome")!.PropertyType);
 
@@ -56,11 +50,8 @@ public class BiometricVerificationLogProofTests
         Assert.NotNull(logType.GetProperty("ThresholdsJson"));
         Assert.Equal(typeof(string), logType.GetProperty("ThresholdsJson")!.PropertyType);
 
-        // ADR-013-R2 / AC-NF11-12: Log MUST NOT have any image-related fields
-        // Verify NO properties containing common image field names
         var propertyNames = allProperties.Select(p => p.Name.ToLowerInvariant()).ToList();
 
-        // Forbidden field name patterns (case-insensitive)
         var forbiddenPatterns = new[]
         {
             "image", "selfie", "photo", "picture", "face", "crop", "embedding", "vector",
@@ -73,7 +64,6 @@ public class BiometricVerificationLogProofTests
                 .Where(name => name.Contains(pattern) && !name.Contains("biometricoutcome"))
                 .ToList();
 
-            // Assert: No property name contains forbidden patterns (except "BiometricOutcome" which is the enum result)
             Assert.Empty(matchingProperties);
         }
 
@@ -90,12 +80,11 @@ public class BiometricVerificationLogProofTests
             "modelversion", "thresholdsjson", "operatoruserid", "operatornote", "createdat",
             "method", "reasonsjson", "provisional", "durationms",
             "policyversion", "policyhash", "decisionmode", "shadowoutcome", "formatid", "channel", "idempotencykey",
-            "org", "booking", "guest", "operatoruser" // navigation properties
+            "org", "booking", "guest", "operatoruser"
         };
 
         foreach (var propertyName in propertyNames)
         {
-            // Assert: Every property is in the expected list
             Assert.Contains(propertyName, expectedFields);
         }
 
@@ -125,7 +114,6 @@ public class BiometricVerificationLogProofTests
         //     GC.Collect(); // Optional: force immediate cleanup
         // }
 
-        // ADR-013-R3: Verify ITenantOwned for multi-tenancy isolation
         Assert.True(typeof(Core.Multitenancy.ITenantOwned).IsAssignableFrom(logType));
     }
 
@@ -138,7 +126,6 @@ public class BiometricVerificationLogProofTests
     [Fact]
     public async Task BiometricSelfie_ImmediatelyDeleted_NeverStored()
     {
-        // Arrange: Create a mock anti-spoofing service
         var mockAntiSpoofing = new Mock<IAntiSpoofingService>();
         mockAntiSpoofing
             .Setup(s => s.DetectLivenessAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
@@ -148,9 +135,8 @@ public class BiometricVerificationLogProofTests
             mockAntiSpoofing.Object,
             NullLogger<BiometricVerificationService>.Instance);
 
-        // Act: Process selfie and document photo (in-memory streams)
-        using var selfieStream = new MemoryStream(new byte[] { 1, 2, 3 }); // Placeholder image bytes
-        using var documentStream = new MemoryStream(new byte[] { 4, 5, 6 }); // Placeholder image bytes
+        using var selfieStream = new MemoryStream(new byte[] { 1, 2, 3 });
+        using var documentStream = new MemoryStream(new byte[] { 4, 5, 6 });
 
         var result = await service.VerifyAsync(
             selfieStream,
@@ -158,19 +144,15 @@ public class BiometricVerificationLogProofTests
             acceptThreshold: 0.85,
             escalateThreshold: 0.70);
 
-        // Assert: Result contains only outcome and metadata, NO image data
         Assert.NotNull(result);
         Assert.Contains(result.Outcome, new[] { BiometricOutcome.Accept, BiometricOutcome.Escalate, BiometricOutcome.Reject });
         Assert.InRange(result.Similarity, 0.0, 1.0);
         Assert.NotEmpty(result.ModelName);
         Assert.NotEmpty(result.ModelVersion);
 
-        // ADR-013-R2: Verify result type has NO properties storing images or embeddings
         var resultType = typeof(BiometricVerificationResult);
         var resultProperties = resultType.GetProperties().Select(p => p.Name.ToLowerInvariant()).ToList();
 
-        // E03/F04/US01/T01: FaceInSelfie and FaceAreaRatioSelfie are a flag and a number, so the word "selfie" is allowed in a name; what is
-        // forbidden is any property that could hold a picture, a crop or a vector, by name and by type.
         var forbiddenResultFields = new[] { "image", "photo", "crop", "embedding", "vector", "bytes", "blob" };
         foreach (var forbidden in forbiddenResultFields)
         {

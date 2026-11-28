@@ -3,7 +3,6 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Identity;
@@ -34,11 +33,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// E70/F02/US01/T02 (NF-194, AC5, AC6): the endpoints of the segments. The administrators of an organization read, create and set the mode of the segments of their own
-/// organization only (another organization's segment is a uniform 404), the platform administrators alone qualify and revoke, the routes are behind the self-hosted flow,
-/// and every message is in Italian and English.
-/// </summary>
 public sealed class IdentitySegmentEndpointsTests : IAsyncLifetime
 {
     private const string Cie = "it-cie-3.0";
@@ -98,10 +92,6 @@ public sealed class IdentitySegmentEndpointsTests : IAsyncLifetime
             Directory.Delete(_directory, recursive: true);
     }
 
-    /// <summary>
-    /// Proof (permission): tenant isolation. The administrator of another organization gets 404 <c>not_found</c> on every segment endpoint for a segment of this one (the
-    /// change of its mode, the list does not show it), and so does the platform administrator who names the wrong organization in the route; the segment is untouched.
-    /// </summary>
     [Fact]
     public async Task IdentitySegmentEndpoints_OtherOrgSegment_Returns404()
     {
@@ -125,11 +115,6 @@ public sealed class IdentitySegmentEndpointsTests : IAsyncLifetime
         Assert.DoesNotContain(await _db.OrgActivityEntries.ToListAsync(Ct), entry => entry.OrgId == _other);
     }
 
-    /// <summary>
-    /// Proof (permission): only the platform administrators qualify or revoke. The two routes are on the controller of <see cref="CasazenPolicies.AdminOnly"/>, nothing opens
-    /// them wider, and that policy refuses the owner, a manager and any other role of a host while the platform administrator passes; the endpoints of the organization have
-    /// no route and no member that writes a qualification, and their <c>automatic</c> on an unqualified segment is refused.
-    /// </summary>
     [Fact]
     public async Task IdentitySegmentEndpoints_QualifyRequiresAdminOnly()
     {
@@ -145,14 +130,12 @@ public sealed class IdentitySegmentEndpointsTests : IAsyncLifetime
         Assert.Equal("{orgId:guid}/segments/{segmentId:guid}/qualification", qualify.GetCustomAttribute<HttpPutAttribute>()!.Template);
         Assert.Equal("{orgId:guid}/segments/{segmentId:guid}/qualification", revoke.GetCustomAttribute<HttpDeleteAttribute>()!.Template);
 
-        // The organization's own endpoints: no route of a qualification, no member of one.
         foreach (var action in RoutedActions(typeof(BiometricSettingsController)))
             Assert.DoesNotContain("qualif", action.Verb.Template ?? string.Empty, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(
             typeof(UpdateIdentitySegmentDto).GetProperties().Concat(typeof(CreateIdentitySegmentDto).GetProperties()),
             property => property.Name.Contains("Qualif", StringComparison.OrdinalIgnoreCase) || property.Name.Contains("Hash", StringComparison.OrdinalIgnoreCase));
 
-        // The real AdminOnly policy: every host role is refused, the platform administrator passes.
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddCasazenAuthorization();
@@ -170,14 +153,12 @@ public sealed class IdentitySegmentEndpointsTests : IAsyncLifetime
         await ((IAuthorizationHandler)requirement).HandleAsync(asAdmin);
         Assert.True(asAdmin.HasSucceeded);
 
-        // What an organization administrator can do: create, but not make automatic what nobody qualified.
         var created = Assert.IsType<IdentitySegmentDto>(Assert.IsType<OkObjectResult>(
             (await OrgController(_org).CreateSegment(new CreateIdentitySegmentDto { FormatId = Cie, Channel = IdentityChannels.AndroidChrome }, _service, Ct)).Result).Value);
         var refused = await Assert.ThrowsAsync<DomainRuleException>(
             () => OrgController(_org).UpdateSegment(created.Id, new UpdateIdentitySegmentDto { Mode = "automatic" }, _service, Ct));
         Assert.Equal(IdentityApiErrors.IdentitySegmentNotQualified, refused.Code);
 
-        // The platform administrator qualifies; then the organization may set automatic.
         var qualified = Assert.IsType<IdentitySegmentDto>(Assert.IsType<OkObjectResult>((await AdminController().QualifySegment(_org, created.Id, Qualification(), _service, Ct)).Result).Value);
         Assert.True(qualified.Qualified);
         Assert.Equal(IdentitySegmentModeCodes.Observation, qualified.Mode);
@@ -187,12 +168,10 @@ public sealed class IdentitySegmentEndpointsTests : IAsyncLifetime
         Assert.True(automatic.AutoApprovalAllowed);
         Assert.Null(automatic.AutoApprovalReason);
 
-        // Revoked by the platform administrator: back to observation.
         var revoked = Assert.IsType<IdentitySegmentDto>(Assert.IsType<OkObjectResult>((await AdminController().RevokeSegmentQualification(_org, created.Id, _service, Ct)).Result).Value);
         Assert.Equal((IdentitySegmentModeCodes.Observation, false), (revoked.Mode, revoked.Qualified));
     }
 
-    /// <summary>The list answers the contract of the page, in camel case: the segments, the formats, the channels, the policy in force and the platform permission.</summary>
     [Fact]
     public async Task IdentitySegmentEndpoints_TheList_AnswersTheContract()
     {
@@ -241,14 +220,12 @@ public sealed class IdentitySegmentEndpointsTests : IAsyncLifetime
         Assert.Equal((IdentitySegmentModeCodes.Suspended, "Falsi rifiuti sopra la soglia"), (suspended.Mode, suspended.SuspendedReason));
         Assert.Equal("auth0|admin", (await _db.IdentitySegmentSettings.AsNoTracking().SingleAsync(Ct)).UpdatedByUserId);
 
-        // No organization in the context: 404, like the settings.
         var resolver = new Mock<IOrgContextResolver>();
         resolver.Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync((Guid?)null);
         var nobody = new BiometricSettingsController(Mock.Of<IBiometricSettingsService>(), resolver.Object) { ControllerContext = ContextOf("auth0|admin") };
         Assert.Equal(StatusCodes.Status404NotFound, Assert.IsType<ObjectResult>((await nobody.GetSegments(_service, Ct)).Result).StatusCode);
     }
 
-    /// <summary>Behind the flags: the routes of the organization behind the self-hosted flow (the controller behind the identification), the routes of the staff behind both.</summary>
     [Fact]
     public void IdentitySegmentEndpoints_AreBehindTheSelfHostedFlow()
     {
@@ -267,7 +244,6 @@ public sealed class IdentitySegmentEndpointsTests : IAsyncLifetime
         }
     }
 
-    /// <summary>AC6: every message of the session and of the segments is in the Italian resources and in the English ones, translated.</summary>
     [Fact]
     public void IdentitySegmentEndpoints_MessagesAreLocalizedInItalianAndEnglish()
     {
@@ -290,8 +266,6 @@ public sealed class IdentitySegmentEndpointsTests : IAsyncLifetime
         Assert.Contains("{0}", italian["IdentitySegmentReasonRequired"], StringComparison.Ordinal);
         Assert.Contains("{0}", english["IdentitySegmentReasonRequired"], StringComparison.Ordinal);
     }
-
-    // ─── Fixtures ────────────────────────────────────────────────────────────────────────────────────────
 
     private QualifyIdentitySegmentDto Qualification() => new()
     {
@@ -348,7 +322,6 @@ public sealed class IdentitySegmentEndpointsTests : IAsyncLifetime
             .ToDictionary(element => (string)element.Attribute("name")!, element => (string?)element.Element("value") ?? string.Empty, StringComparer.Ordinal);
     }
 
-    /// <summary>A store of the three models, loaded, with fixed weight hashes.</summary>
     private sealed class LoadedModels : IBiometricModelStore
     {
         public BiometricModelsSnapshot Snapshot { get; } = new(

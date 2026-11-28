@@ -8,11 +8,6 @@ using static Casazen.Tests.Unit.Leases.LeaseDraftTestData;
 
 namespace Casazen.Tests.Unit.Leases;
 
-/// <summary>
-/// LR-12: the two directions between what the landlord typed and the lease every other reader sees. The columns hold the valid
-/// values and only them (a value that was not typed or is not valid takes its starting value, whatever the column held), a party is a row
-/// only when it is complete, and the lease of a complete draft gives back the same values.
-/// </summary>
 public class LeaseDraftProjectionTests
 {
     private static LeaseContract NewLease() => new()
@@ -27,8 +22,6 @@ public class LeaseDraftProjectionTests
         ConcordatoAssessmentKind.Assessed,
         Assessment: new LeaseConcordatoAssessment { Sqm = 70, RentWithinRange = withinRange, CanoneMinMensile = 400m, CanoneMaxMensile = 800m },
         Indicative: indicative);
-
-    // ---- columns -------------------------------------------------------------------------------------------------
 
     [Fact]
     public void ApplyColumns_ValidValues_AreWrittenToTheColumns_AndTheLegacyRegimeFollows()
@@ -54,7 +47,6 @@ public class LeaseDraftProjectionTests
         var lease = NewLease();
         LeaseDraftProjection.ApplyColumns(lease, LeaseDraftRules.Read(Complete()), null);
 
-        // The landlord clears the rent, the start and the deposit, and types a type that CasaZen does not have.
         var cleared = Complete() with { MonthlyRent = null, SecurityDeposit = null, StartDate = "", ContractType = "Studenti", TaxRegime = null };
         LeaseDraftProjection.ApplyColumns(lease, LeaseDraftRules.Read(cleared), null);
 
@@ -78,8 +70,6 @@ public class LeaseDraftProjectionTests
     [Fact]
     public void ApplyColumns_ATransitoryLease_HasTheEndItsLandlordTyped_NotTheOneOfAType()
     {
-        // The term of a transitory contract is free from 1 to 18 months (TR): the end typed goes to the column, and saving the documents
-        // of a party never turns the contract into a libero of four years under the landlord's hands.
         var lease = ATransitoryLease();
         lease.SetContractTerms(LeaseContractType.Transitorio, LeaseTaxRegime.CedolareSecca);
         var typed = Complete() with { ContractType = "Transitorio", MonthlyRent = 800m, EndDate = "2027-04-30" };
@@ -102,7 +92,6 @@ public class LeaseDraftProjectionTests
 
         Assert.Equal(LeaseContractType.Transitorio, lease.ContractType);
         Assert.Equal(new DateTime(2026, 12, 1, 0, 0, 0, DateTimeKind.Utc), lease.StartDate);
-        // The term of the starting type: more than a transitory lease can last, and the flow asks for the end (end_missing).
         Assert.Equal(new DateTime(2030, 11, 30, 0, 0, 0, DateTimeKind.Utc), lease.EndDate);
     }
 
@@ -121,13 +110,10 @@ public class LeaseDraftProjectionTests
     [Fact]
     public void TheStartingDates_AreFarInTheFuture_SoNoReaderActsOnThem()
     {
-        // The RLI deadline starts from a start date that is not in the future; the agenda lists what falls in 90 days; the
-        // retention of the parties counts from an end date long past; a fiscal year overlaps the dates of a lease.
         var today = new DateTime(2026, 10, 9, 0, 0, 0, DateTimeKind.Utc);
 
         Assert.True(LeaseDraftDefaults.PlaceholderDate > today.AddYears(900));
         Assert.Null(Casazen.Core.Regulatory.RliRegistrationDeadline.Resolve(LeaseStatus.Draft, null, LeaseDraftDefaults.PlaceholderDate, today));
-        // Arithmetic the readers do on a date does not overflow.
         Assert.Equal(3001, LeaseDraftDefaults.PlaceholderDate.AddYears(1).Year);
         Assert.Equal(DateTimeKind.Utc, LeaseDraftDefaults.PlaceholderDate.Kind);
     }
@@ -160,9 +146,9 @@ public class LeaseDraftProjectionTests
     }
 
     [Theory]
-    [InlineData(true, false, true)] // inside a verified range
-    [InlineData(false, true, true)] // outside an indicative one: stored, the assessment records it (A7-23)
-    [InlineData(false, false, false)] // outside a verified one: a block, never stored
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(false, false, false)]
     public void ApplyColumns_TheRangeIsStoredAsTheCompleteCreationStoresIt(bool within, bool indicative, bool stored)
     {
         var lease = NewLease();
@@ -185,8 +171,6 @@ public class LeaseDraftProjectionTests
         Assert.Null(withoutRent.ConcordatoAssessment);
         Assert.Null(libero.ConcordatoAssessment);
     }
-
-    // ---- parties -------------------------------------------------------------------------------------------------
 
     [Fact]
     public void ToRows_OnlyTheCompleteEntries_BecomeRows_EachRoleNumberedFromZeroInTheOrderEntered()
@@ -225,7 +209,7 @@ public class LeaseDraftProjectionTests
         Assert.Equal("Giulia", row.FirstName);
         Assert.Equal("VRDGLI85B02F205A", row.FiscalCode);
         Assert.Equal("US", row.Citizenship);
-        Assert.Equal(string.Empty, row.ContactEmail); // the column is NOT NULL, an empty address is "none"
+        Assert.Equal(string.Empty, row.ContactEmail);
         Assert.Equal("Bari", row.Residence);
         Assert.Equal(new DateOnly(2026, 10, 1), row.DocumentsVerifiedOn);
         Assert.True(row.IsExtraEU);
@@ -247,7 +231,7 @@ public class LeaseDraftProjectionTests
 
     [Theory]
     [InlineData("2026-10-09", true)]
-    [InlineData("2026-10-10", false)] // after today: kept in the draft, reported, not in the row
+    [InlineData("2026-10-10", false)]
     [InlineData("whenever", false)]
     [InlineData(null, false)]
     public void ToRows_TheDayTheDocumentsWereChecked_IsKeptOnlyWhenItIsARealDayNotAfterToday(string? typed, bool kept)
@@ -276,8 +260,6 @@ public class LeaseDraftProjectionTests
         Assert.False(LeaseDraftProjection.SameRows(rows, moved));
     }
 
-    // ---- reading back --------------------------------------------------------------------------------------------
-
     [Fact]
     public void ReadValues_ADraftThatKeepsItsData_GivesTheTypedState_WithThePropertyOfTheColumn()
     {
@@ -289,7 +271,7 @@ public class LeaseDraftProjectionTests
 
         Assert.Equal(-5m, values.MonthlyRent);
         Assert.Equal("soon", values.StartDate);
-        Assert.Equal(PropertyId, values.PropertyId); // the column is the truth for the property
+        Assert.Equal(PropertyId, values.PropertyId);
     }
 
     [Fact]
@@ -312,7 +294,6 @@ public class LeaseDraftProjectionTests
         Assert.Equal(typed.StartDate, values.StartDate);
         Assert.Equal(typed.Landlords, values.Landlords);
         Assert.Equal(typed.Tenants.Select(t => t with { ContactEmail = null }), values.Tenants);
-        // And what the typed values give is what the rows give back: the second projection changes nothing.
         Assert.True(LeaseDraftProjection.SameRows(lease.Parties, LeaseDraftProjection.ToRows(values, lease.Id, Today)));
     }
 

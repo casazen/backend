@@ -6,12 +6,10 @@ using System.Text.Json.Serialization;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
-using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -23,11 +21,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// PM-02: the endpoints of the scheduled change of rental mode. The property is authorized as a row (404 for another org's,
-/// 403 when the operation is not allowed) before the service is called; the preview, the creation and the cancellation need
-/// the write permission of the property, the state the read one; the target is parsed by name; the dates are calendar days.
-/// </summary>
 public class PropertyModeControllerTests
 {
     private static readonly Guid PropertyId = Guid.Parse("00000000-0000-0000-0000-0000000000aa");
@@ -61,8 +54,6 @@ public class PropertyModeControllerTests
         SetUser("auth0|host");
     }
 
-    // ─── Wiring ─────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public void Controller_RoutesAreTheOnesOfTheTask()
     {
@@ -94,8 +85,6 @@ public class PropertyModeControllerTests
             Assert.Equal(CasazenPolicies.SharedPropertyWrite, Method(action).GetCustomAttribute<AuthorizeAttribute>()!.Policy);
         }
     }
-
-    // ─── The row is authorized first ────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task EveryAction_PropertyOfAnotherOrgOrUnknown_Is404WithTheCodeAndTheServiceIsNotCalled()
@@ -156,8 +145,6 @@ public class PropertyModeControllerTests
         Assert.Equal(SharedPropertyOperations.Write, _requirementAsked);
     }
 
-    // ─── State ──────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetState_GivesTheModeAndTheChanges()
     {
@@ -173,8 +160,6 @@ public class PropertyModeControllerTests
         Assert.Equal(scheduled.Id, body.ScheduledChange!.Id);
         Assert.Equal("property_mode_blocked_by_bookings", body.LastChange!.FailureReason);
     }
-
-    // ─── Preview ────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("short", RentalMode.Short)]
@@ -246,7 +231,6 @@ public class PropertyModeControllerTests
         var listed = Assert.Single(body.Blockers);
         Assert.Equal((PropertyModeBlockerKind.Stay, stay.Id), (listed.Kind, listed.Id));
         Assert.Equal(new DateOnly(2026, 10, 21), listed.FreeFrom);
-        // To long-term the calendar would stay closed for two years from the day evaluated.
         Assert.Equal(new DateOnly(2028, 10, 15), body.CalendarClosedUntil);
     }
 
@@ -287,8 +271,6 @@ public class PropertyModeControllerTests
         Assert.Equal("2026-10-20", root.GetProperty("scheduledChange").GetProperty("effectiveDate").GetString());
     }
 
-    // ─── Schedule ───────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Schedule_CallsTheServiceWithTheCallerAndTheDayAndAnswers201()
     {
@@ -320,8 +302,6 @@ public class PropertyModeControllerTests
         _service.VerifyNoOtherCalls();
     }
 
-    // ─── Cancel ─────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Cancel_CallsTheServiceAndAnswers204()
     {
@@ -343,8 +323,6 @@ public class PropertyModeControllerTests
         Assert.IsType<UnauthorizedResult>(result);
         _service.VerifyNoOtherCalls();
     }
-
-    // ─── The request ────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void Request_WithoutTargetOrDay_FailsValidationWithTheResourceKeys()
@@ -368,8 +346,6 @@ public class PropertyModeControllerTests
         Assert.Equal(RentalMode.Long, request.To);
         Assert.Equal(new DateOnly(2026, 12, 1), request.EffectiveDate);
     }
-
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────
 
     private static MethodInfo Method(string name) => typeof(PropertyModeController).GetMethod(name)!;
 

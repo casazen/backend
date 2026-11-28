@@ -2,20 +2,15 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
-using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Data.Encryption;
 using Casazen.Infrastructure.Services;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// Proof tests for PropertyAccessCode (NF-13, E06/F03/US01/T01): proves encryption / permission / privacy rules.
-/// </summary>
 public class AccessCodeProofTests
 {
     private const string TestCode = "1234#5678";
@@ -34,7 +29,6 @@ public class AccessCodeProofTests
     [Fact]
     public async Task AccessCode_NeverReleasedWithoutVerification()
     {
-        // Arrange: in-memory database with Data Protection
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase($"AccessCodeVerificationTest_{Guid.NewGuid()}")
             .Options;
@@ -45,7 +39,6 @@ public class AccessCodeProofTests
         var guestId = Guid.NewGuid();
         var bookingId = Guid.NewGuid();
 
-        // Seed: Property, Booking, PropertyAccessCode
         await using (var db = new AppDbContext(options, new FixedTenantContext(orgId), dataProtection))
         {
             var org = new OrgEntity
@@ -111,18 +104,15 @@ public class AccessCodeProofTests
             await db.SaveChangesAsync();
         }
 
-        // Test 1: NO verification log -> release MUST be blocked
         await using (var db = new AppDbContext(options, new FixedTenantContext(orgId), dataProtection))
         {
             var service = new AccessCodeService(db, NullLogger<AccessCodeService>.Instance);
 
             var code = await service.ReleaseToGuestAsync(bookingId, "screen");
 
-            // Assert: Code is NOT released (null returned)
             Assert.Null(code);
         }
 
-        // Test 2: Verification log with Outcome = Reject -> release MUST be blocked
         await using (var db = new AppDbContext(options, new FixedTenantContext(orgId), dataProtection))
         {
             var rejectLog = new BiometricVerificationLog
@@ -148,11 +138,9 @@ public class AccessCodeProofTests
 
             var code = await service.ReleaseToGuestAsync(bookingId, "screen");
 
-            // Assert: Code is NOT released (reject outcome)
             Assert.Null(code);
         }
 
-        // Test 3: Verification log with Outcome = Accept -> release MUST succeed
         await using (var db = new AppDbContext(options, new FixedTenantContext(orgId), dataProtection))
         {
             var acceptLog = new BiometricVerificationLog
@@ -166,7 +154,7 @@ public class AccessCodeProofTests
                 ModelName = "AuraFace-v1",
                 ModelVersion = "1.0.0",
                 ThresholdsJson = "{\"AcceptThreshold\": 0.85}",
-                CreatedAt = DateTime.UtcNow.AddSeconds(1) // Later than reject
+                CreatedAt = DateTime.UtcNow.AddSeconds(1)
             };
             db.BiometricVerificationLogs.Add(acceptLog);
             await db.SaveChangesAsync();
@@ -178,28 +166,22 @@ public class AccessCodeProofTests
 
             var code = await service.ReleaseToGuestAsync(bookingId, "screen");
 
-            // Assert: Code IS released (Accept outcome)
             Assert.NotNull(code);
             Assert.Equal(TestCode, code);
 
-            // Verify release log was created WITHOUT the code (AC-NF13-4, AC-NF13-9)
             var releaseLog = await db.Set<AccessCodeReleaseLog>()
                 .FirstOrDefaultAsync(l => l.BookingId == bookingId);
             Assert.NotNull(releaseLog);
             Assert.Equal(orgId, releaseLog.OrgId);
             Assert.Equal("screen", releaseLog.Channel);
 
-            // Verify release log entity has NO code property
             var releaseLogType = typeof(AccessCodeReleaseLog);
             var codeProperty = releaseLogType.GetProperty("Code");
             Assert.Null(codeProperty);
         }
 
-        // Test 4 (E03/F04/US02/T03): an operator decision writes a row of its own. A rejection names the operator too, and still releases
-        // nothing: who decided does not open the gate, only an accepted outcome does.
         await using (var db = new AppDbContext(options, new FixedTenantContext(orgId), dataProtection))
         {
-            // Clear previous logs
             var logsToRemove = db.BiometricVerificationLogs.Where(l => l.BookingId == bookingId);
             db.BiometricVerificationLogs.RemoveRange(logsToRemove);
 
@@ -215,7 +197,6 @@ public class AccessCodeProofTests
             Assert.Null(await service.GetAccessCodeAsync(bookingId, "host-user", new HostScope(orgId)));
         }
 
-        // Test 5: the operator's approval (an Accept of the operator) -> release MUST succeed
         await using (var db = new AppDbContext(options, new FixedTenantContext(orgId), dataProtection))
         {
             db.BiometricVerificationLogs.Add(OperatorLog(orgId, bookingId, guestId, BiometricOutcome.Accept, DateTime.UtcNow.AddSeconds(1)));
@@ -228,7 +209,6 @@ public class AccessCodeProofTests
 
             var code = await service.ReleaseToGuestAsync(bookingId, "email");
 
-            // Assert: Code IS released (operator verification)
             Assert.NotNull(code);
             Assert.Equal(TestCode, code);
         }
@@ -259,7 +239,6 @@ public class AccessCodeProofTests
     [Fact]
     public async Task AccessCode_NeverInPlainTextLogs()
     {
-        // Arrange: in-memory database with Data Protection
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase($"AccessCodeEncryptionTest_{Guid.NewGuid()}")
             .Options;
@@ -267,7 +246,6 @@ public class AccessCodeProofTests
         var dataProtection = TestDataProtection.Shared;
         var orgId = Guid.NewGuid();
 
-        // Assert: The model has encryption converter on EncryptedCode
         await using (var db = new AppDbContext(options, new FixedTenantContext(orgId), dataProtection))
         {
             var accessCodeEntity = db.Model.FindEntityType(typeof(PropertyAccessCode))!;
@@ -275,17 +253,14 @@ public class AccessCodeProofTests
 
             Assert.IsType<EncryptedStringConverter>(encryptedCodeConverter);
 
-            // Test the converter directly: it encrypts the value
             var encrypted = (string)encryptedCodeConverter!.ConvertToProvider(TestCode)!;
 
             Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, encrypted);
             Assert.DoesNotContain(TestCode, encrypted);
 
-            // And decrypts back to the original value
             Assert.Equal(TestCode, encryptedCodeConverter.ConvertFromProvider(encrypted));
         }
 
-        // Act: Create a PropertyAccessCode, save and read back
         var propertyId = Guid.NewGuid();
         await using (var db = new AppDbContext(options, new FixedTenantContext(orgId), dataProtection))
         {
@@ -320,7 +295,7 @@ public class AccessCodeProofTests
                 Id = Guid.NewGuid(),
                 OrgId = orgId,
                 PropertyId = propertyId,
-                EncryptedCode = TestCode, // Stored encrypted by EF converter
+                EncryptedCode = TestCode,
                 UpdatedAt = DateTime.UtcNow
             };
             db.Set<PropertyAccessCode>().Add(accessCode);
@@ -328,34 +303,29 @@ public class AccessCodeProofTests
             await db.SaveChangesAsync();
         }
 
-        // Assert: Read back and verify decryption works
         await using (var db = new AppDbContext(options, new FixedTenantContext(orgId), dataProtection))
         {
             var retrieved = await db.Set<PropertyAccessCode>()
                 .FirstOrDefaultAsync(ac => ac.PropertyId == propertyId);
 
             Assert.NotNull(retrieved);
-            Assert.Equal(TestCode, retrieved.EncryptedCode); // EF converter decrypts on read
+            Assert.Equal(TestCode, retrieved.EncryptedCode);
         }
 
-        // Assert: Verify PropertyAccessCode entity has ITenantOwned
         var accessCodeType = typeof(PropertyAccessCode);
         Assert.True(typeof(ITenantOwned).IsAssignableFrom(accessCodeType));
 
-        // Assert: Verify AccessCodeReleaseLog NEVER stores the code
         var releaseLogType = typeof(AccessCodeReleaseLog);
         var allProperties = releaseLogType.GetProperties();
         var propertyNames = allProperties.Select(p => p.Name.ToLowerInvariant()).ToList();
 
-        // Forbidden field name patterns (case-insensitive)
         var forbiddenPatterns = new[] { "code", "pin", "password", "secret", "key" };
         foreach (var pattern in forbiddenPatterns)
         {
             var matchingProperties = propertyNames
-                .Where(name => name.Contains(pattern) && !name.Contains("bookingcode")) // BookingCode is OK (not the access code)
+                .Where(name => name.Contains(pattern) && !name.Contains("bookingcode"))
                 .ToList();
 
-            // Assert: No property name contains forbidden patterns
             Assert.Empty(matchingProperties);
         }
 

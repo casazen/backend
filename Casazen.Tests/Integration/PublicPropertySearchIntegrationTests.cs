@@ -10,10 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// <c>GET /api/properties/search</c> (BK-20, A8-13) over HTTP: the filters of the public search, the org slug that makes a
-/// result linkable to <c>/book/{orgSlug}/property/{slug}</c>, and the bounds of the filter values.
-/// </summary>
 public class PublicPropertySearchIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private readonly CasazenWebApplicationFactory _factory;
@@ -33,7 +29,6 @@ public class PublicPropertySearchIntegrationTests : IClassFixture<CasazenWebAppl
         Assert.Equal(seeded.OrgSlug, result.GetProperty("orgSlug").GetString());
         Assert.Equal("casa-del-faro", result.GetProperty("slug").GetString());
 
-        // /book/{orgSlug}/property/{slug}: the public API of that page finds the same property.
         var page = await client.GetAsync($"/api/public/orgs/{seeded.OrgSlug}/properties/casa-del-faro");
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);
         using var detail = JsonDocument.Parse(await page.Content.ReadAsStringAsync());

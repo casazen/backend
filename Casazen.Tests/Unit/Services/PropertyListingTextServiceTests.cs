@@ -74,7 +74,6 @@ public class PropertyListingTextServiceTests
         Assert.DoesNotContain("Altro comune", prompt);
         Assert.DoesNotContain("Org disattivata", prompt);
         Assert.DoesNotContain("Bilocale luminoso", prompt);
-        // The same kind of place first, then the closest number of guests.
         Assert.True(prompt.IndexOf("«Bilocale di un'altra org»", StringComparison.Ordinal)
             < prompt.IndexOf("«Trilocale della stessa org»", StringComparison.Ordinal));
     }
@@ -191,7 +190,6 @@ public class PropertyListingTextServiceTests
             NullLogger<PropertyListingTextService>.Instance);
     }
 
-    /// <summary>The caller's org scope, as in a request: the listings of the other orgs must still be read.</summary>
     private static AppDbContext Database(string name) =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(name).Options, new TenantScope(HostOrg));
 

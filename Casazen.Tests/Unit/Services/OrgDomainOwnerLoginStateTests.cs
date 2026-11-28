@@ -36,7 +36,6 @@ public class OrgDomainOwnerLoginStateTests
         var stored = await db.Orgs.AsNoTracking().SingleAsync(o => o.Id == org.Id);
         Assert.Equal(NewDomain, stored.CustomDomain);
         Assert.Equal(expected, stored.OwnerLoginHostState);
-        // The choices of the agency stay.
         Assert.Equal(ownerPortalOn, stored.OwnerPortalOnOwnDomain);
         Assert.True(stored.GuestAreaOnOwnDomain);
         Assert.False(stored.UseOwnDomainForLinks);
@@ -94,7 +93,6 @@ public class OrgDomainOwnerLoginStateTests
     private static AppDbContext CreateDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
 
-    /// <summary>An org with a verified custom domain whose owner sign-in is registered (<c>Ready</c>), the guest area on and the links off.</summary>
     private static async Task<OrgEntity> SeedOrgAsync(AppDbContext db, bool ownerPortalOn)
     {
         var org = new OrgEntity

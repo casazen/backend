@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Casazen.Core.Identity.Statistics;
 
 namespace Casazen.Tests.Qualification;
 
@@ -13,10 +12,8 @@ namespace Casazen.Tests.Qualification;
 // to the byte, and the same hash.
 // PRIVACY: the report is an aggregate. It names no capture, no person, no path, no document value, no picture: only versions, hashes, counts, rates, scores of the sets and times.
 
-/// <summary>The verdict of one target of <c>qualification-targets.json</c> (or of one class or field of it): what is asked, what was measured, and whether it holds. A target that could not be measured fails.</summary>
 public sealed record QualificationTargetVerdict(string Target, string Criterion, string Measured, bool Pass, string? Note = null);
 
-/// <summary>The report of a candidate version as data (<c>candidate-version-report.json</c>): everything the markdown says, and its SHA-256.</summary>
 public sealed record CandidateVersionReportDocument(
     string DatasetId,
     string DatasetVersion,
@@ -37,19 +34,12 @@ public sealed record CandidateVersionReportDocument(
     bool AllTargetsPassed,
     string ReportSha256);
 
-/// <summary>
-/// The report of a candidate version (see the comments at the top of the file). <see cref="Markdown"/> ends with its own SHA-256, <see cref="Sha256"/>: the hash of every line above that last
-/// one, as UTF-8 with <c>\n</c> line endings, lower case hexadecimal; <see cref="VerifyHash"/> checks a text against it.
-/// </summary>
 public sealed class CandidateVersionReport
 {
-    /// <summary>The name of the human-readable report in the output folder.</summary>
     public const string MarkdownFileName = "candidate-version-report.md";
 
-    /// <summary>The name of the report as data in the output folder.</summary>
     public const string JsonFileName = "candidate-version-report.json";
 
-    /// <summary>What the last line of the report begins with: the SHA-256 of the lines above it follows.</summary>
     public const string HashLinePrefix = "report-sha256: ";
 
     private readonly CandidateVersionReportDocument _document;
@@ -62,22 +52,16 @@ public sealed class CandidateVersionReport
         _document = document;
     }
 
-    /// <summary>The report as text, ending with the line of its SHA-256.</summary>
     public string Markdown { get; }
 
-    /// <summary>The SHA-256 of the report (the value the segment qualification takes), lower case hexadecimal.</summary>
     public string Sha256 { get; }
 
-    /// <summary>The verdict of every target and of every class and field they are measured on.</summary>
     public IReadOnlyList<QualificationTargetVerdict> Verdicts { get; }
 
-    /// <summary>True when every target holds. A report with a target that fails is still a report: it is what the person who decides reads.</summary>
     public bool AllTargetsPassed => Verdicts.All(verdict => verdict.Pass);
 
-    /// <summary>The attack classes the specification names (photos, screens, pre-recorded videos, synthetic input): a validation that does not cover one of them shows no verdict for it.</summary>
     public static IReadOnlyList<string> CoreAttackClasses => QualificationMetrics.CoreAttackClasses;
 
-    /// <summary>The report of <paramref name="results"/> for the candidate version frozen in <paramref name="frozen"/>, judged by <paramref name="targets"/>. The intervals are those of the confidence of the targets.</summary>
     public static CandidateVersionReport Build(QualificationResults results, QualificationLock frozen, QualificationTargets targets)
     {
         ArgumentNullException.ThrowIfNull(results);
@@ -111,7 +95,6 @@ public sealed class CandidateVersionReport
         return new CandidateVersionReport(body + HashLinePrefix + sha256 + "\n", sha256, verdicts, document);
     }
 
-    /// <summary>The verdict of every target of <paramref name="targets"/> on the metrics of <paramref name="results"/> (see <see cref="Build"/>).</summary>
     public static IReadOnlyList<QualificationTargetVerdict> Evaluate(QualificationResults results, QualificationTargets targets)
     {
         ArgumentNullException.ThrowIfNull(results);
@@ -119,13 +102,8 @@ public sealed class CandidateVersionReport
         return Evaluate(results, QualificationMetrics.Rebound(results.Metrics, targets.Confidence), targets);
     }
 
-    /// <summary>The report as data.</summary>
     public string ToJson() => JsonSerializer.Serialize(_document, QualificationResults.JsonOptions);
 
-    /// <summary>
-    /// Writes <see cref="MarkdownFileName"/> and <see cref="JsonFileName"/> to <paramref name="outDirectory"/>. The report of a final test is written once: a file that is there already is never
-    /// replaced (<see cref="QualificationRunCodes.FinalAlreadyRun"/>).
-    /// </summary>
     public void Write(string outDirectory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(outDirectory);
@@ -137,14 +115,12 @@ public sealed class CandidateVersionReport
         WriteNew(Path.Combine(outDirectory, JsonFileName), ToJson());
     }
 
-    /// <summary>True when <paramref name="outDirectory"/> holds a report already (either file of it).</summary>
     public static bool ExistsIn(string outDirectory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(outDirectory);
         return File.Exists(Path.Combine(outDirectory, MarkdownFileName)) || File.Exists(Path.Combine(outDirectory, JsonFileName));
     }
 
-    /// <summary>The SHA-256 the last line of a report states; null when the text does not end with such a line.</summary>
     public static string? ReadHash(string markdown)
     {
         ArgumentNullException.ThrowIfNull(markdown);
@@ -160,7 +136,6 @@ public sealed class CandidateVersionReport
         return hash.Length == 64 && hash.All(char.IsAsciiHexDigitLower) ? hash : null;
     }
 
-    /// <summary>True when the last line of <paramref name="markdown"/> is the SHA-256 of the lines above it: the report was not changed after it was made.</summary>
     public static bool VerifyHash(string markdown)
     {
         ArgumentNullException.ThrowIfNull(markdown);
@@ -184,8 +159,6 @@ public sealed class CandidateVersionReport
         writer.Write(text);
     }
 
-    // ───── the verdicts ─────
-
     private static List<QualificationTargetVerdict> Evaluate(QualificationResults results, QualificationMetricsBlock metrics, QualificationTargets targets)
     {
         var verdicts = new List<QualificationTargetVerdict>();
@@ -208,9 +181,6 @@ public sealed class CandidateVersionReport
                     ? string.Create(CultureInfo.InvariantCulture, $"with no false match about {couplesNeeded:0} independent couples of persons are needed to show it")
                     : null));
 
-        // The attacks that are accepted as a person present, per class: every class that was tried, and the classes the specification names even when none was. Only the attacks that were JUDGED
-        // are the evidence; one that could not be (a case that broke, a sequence that could not be read, a validation or a liveness that was not available) is no rejection, and a class that has
-        // one is not measured: its verdict fails.
         bool Reported(string candidate) =>
             CoreAttackClasses.Contains(candidate)
             || metrics.Apcer.Any(entry => entry.Class == candidate && entry.Rate.Total > 0)
@@ -236,7 +206,6 @@ public sealed class CandidateVersionReport
                 note));
         }
 
-        // The shadow automation: the policy would have closed at least the target of the check-ins, and the lower Wilson bound of the rate is high enough, on at least that many check-ins.
         var automation = metrics.ShadowAutomation;
         var observedAtLeast = (double)targets.AutomationTarget / targets.AutomationOf;
         verdicts.Add(new QualificationTargetVerdict(
@@ -248,7 +217,6 @@ public sealed class CandidateVersionReport
             automation.Total >= targets.AutomationOf && (automation.Rate ?? 0) >= observedAtLeast && automation.Low >= targets.AutomationWilsonLowMin,
             automation.Total < targets.AutomationOf ? "fewer check-ins than the target asks for" : null));
 
-        // The exactness of the fields that identify the holder, by source: the visual zone (the name of the field) and the MRZ (the name with .mrz).
         foreach (var field in results.Policy.IdentifyingFields)
         {
             var measured = new[] { field, field + QualificationMetrics.MrzFieldSuffix }.Select(key => metrics.OcrExactness.FirstOrDefault(entry => entry.Field == key)).OfType<QualificationFieldRate>().ToList();
@@ -284,7 +252,6 @@ public sealed class CandidateVersionReport
         return verdicts;
     }
 
-    // «3 approvals; attack 0/300, impostor_pair 0/50, altered 3/40, foreign 0/20»: the approvals of each kind out of the cases of the kind the policy took a decision on.
     private static string CriticalMeasured(QualificationCriticalApprovals critical)
     {
         var kinds = string.Join(
@@ -297,8 +264,6 @@ public sealed class CandidateVersionReport
     {
         return string.Create(CultureInfo.InvariantCulture, $"exact readings of an identifying field: lower Wilson bound at least {Number(targets.IdentifyingFieldExactnessMin)}");
     }
-
-    // ───── the text ─────
 
     private static string Render(
         QualificationResults results,

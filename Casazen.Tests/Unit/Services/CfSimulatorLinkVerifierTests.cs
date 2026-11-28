@@ -11,7 +11,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public sealed class CfSimulatorLinkVerifierTests
 {
-    // The test vector of the specification (§2) and of ConcordatoFacileLinkServiceTests.
     private const string Secret = "test_link_secret_0123456789abcdef0123456789abcdef";
     private const string LeaseId = "0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11";
     private const string ExpiresAt = "2026-10-13T10:00:00Z";
@@ -36,10 +35,10 @@ public sealed class CfSimulatorLinkVerifierTests
     }
 
     [Theory]
-    [InlineData("2026-10-13T10:01:59Z", true, null)] // after the expiry, within the 2 minutes of margin
+    [InlineData("2026-10-13T10:01:59Z", true, null)]
     [InlineData("2026-10-13T10:02:01Z", false, "expired")]
-    [InlineData("2026-10-13T09:00:00Z", true, null)] // it expires exactly 60 minutes after it is opened
-    [InlineData("2026-10-13T08:59:00Z", false, "too_far")] // 61 minutes
+    [InlineData("2026-10-13T09:00:00Z", true, null)]
+    [InlineData("2026-10-13T08:59:00Z", false, "too_far")]
     public void Verify_TheExpiry_HasTwoMinutesOfMarginAndSixtyMinutesAhead(string openedAt, bool valid, string? reason)
     {
         var check = Verify(Link(), openedAt);
@@ -50,13 +49,13 @@ public sealed class CfSimulatorLinkVerifierTests
     }
 
     [Theory]
-    [InlineData("casazen", LeaseId, ExpiresAt, "fa10ce472c1e3b33939e62e01a7f5f8cec10d45abc02726f691cae37bd639eeb", "signature_invalid")] // one digit changed
-    [InlineData("casazen", "1b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11", ExpiresAt, Signature, "signature_invalid")] // another lease, same signature
-    [InlineData("casazen", LeaseId, "2026-10-13T10:00:01Z", Signature, "signature_invalid")] // another expiry, same signature
+    [InlineData("casazen", LeaseId, ExpiresAt, "fa10ce472c1e3b33939e62e01a7f5f8cec10d45abc02726f691cae37bd639eeb", "signature_invalid")]
+    [InlineData("casazen", "1b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11", ExpiresAt, Signature, "signature_invalid")]
+    [InlineData("casazen", LeaseId, "2026-10-13T10:00:01Z", Signature, "signature_invalid")]
     [InlineData("other", LeaseId, ExpiresAt, Signature, "partner_invalid")]
     [InlineData("casazen", LeaseId, "2026-10-13T10:00:00+00:00", Signature, "expires_at_invalid")] // an offset instead of the Z
-    [InlineData("casazen", LeaseId, "2026-10-13 10:00:00Z", Signature, "expires_at_invalid")] // a space instead of the T
-    [InlineData("casazen", LeaseId, "2026-10-13t10:00:00z", Signature, "expires_at_invalid")] // lowercase t and z
+    [InlineData("casazen", LeaseId, "2026-10-13 10:00:00Z", Signature, "expires_at_invalid")]
+    [InlineData("casazen", LeaseId, "2026-10-13t10:00:00z", Signature, "expires_at_invalid")]
     [InlineData("casazen", "not-a-guid", ExpiresAt, Signature, "lease_id_invalid")]
     [InlineData("casazen", LeaseId, ExpiresAt, "abc", "signature_invalid")]
     [InlineData("casazen", LeaseId, ExpiresAt, null, "missing_parameters")]

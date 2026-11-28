@@ -11,11 +11,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// NF-05: the per-channel marketing consent of the public check-in over HTTP. The JSON names the frontend sends reach the
-/// service, the errors come back keyed by property together with the ones of the guests, and the consent is stored for the
-/// ticked channel only, not confirmed.
-/// </summary>
 public class PublicCheckInMarketingConsentIntegrationTests : IClassFixture<MarketingConsentConfiguredFactory>
 {
     private readonly MarketingConsentConfiguredFactory _factory;

@@ -5,10 +5,6 @@ using static Casazen.Tests.Unit.Leases.LeaseDraftTestData;
 
 namespace Casazen.Tests.Unit.Leases;
 
-/// <summary>
-/// LR-12: the impression of the values of the five data steps. The autosave that repeats the confirmed values (with a space more, a lower
-/// case fiscal code, the same number written another way, an entry deleted and typed again) leaves the review confirmed; a real change does not.
-/// </summary>
 public class LeaseDraftFingerprintTests
 {
     [Fact]
@@ -107,7 +103,6 @@ public class LeaseDraftFingerprintTests
     [Fact]
     public void TheCharacteristicsOfTheUnit_AreNothingForAnyOtherType_TheirColumnsKeepNone()
     {
-        // A form that goes on sending the characteristics after the landlord chose the libero must not withdraw the review at every save.
         var libero = Complete();
         var leftOver = libero with { Concordato = new LeaseDraftConcordato { Sqm = 70m } };
 
@@ -118,7 +113,7 @@ public class LeaseDraftFingerprintTests
     public void TheAreas_AreKeptToTheCentsOfTheirColumns_SoWhatIsReadBackIsTheSameAsWhatWasTyped()
     {
         var typed = AConcordato(sqm: 70.004m, garage: 12.345m);
-        var read = AConcordato(sqm: 70.00m, garage: 12.35m); // numeric(10,2): the database rounds half away from zero
+        var read = AConcordato(sqm: 70.00m, garage: 12.35m);
 
         Assert.Equal(LeaseDraftFingerprint.Compute(typed), LeaseDraftFingerprint.Compute(read));
     }
@@ -154,8 +149,6 @@ public class LeaseDraftFingerprintTests
     [Fact]
     public void FirstTermEnd_PassesTheTermRuleOfTheTypeForEveryStartDate_AFirstPeriodOfWholeMonths()
     {
-        // Every day of five years, including the leap days and the 29th to 31st: the end the server computes is a first period of
-        // exactly the months of the type, so the complete creation of the lease (EnsureTerm) would accept it.
         var day = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var last = new DateTime(2028, 12, 31, 0, 0, 0, DateTimeKind.Utc);
         for (; day <= last; day = day.AddDays(1))

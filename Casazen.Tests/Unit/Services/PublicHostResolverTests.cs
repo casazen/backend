@@ -1,4 +1,3 @@
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
@@ -88,7 +87,6 @@ public class PublicHostResolverTests
     [InlineData("")]
     public async Task ResolveAsync_BaseDomainNotConfigured_NoHostIsAnOrgSubdomain(string? baseDomain)
     {
-        // D3 (SE-03): PublicHost:BaseDomain has no default; without it there are no org subdomains to resolve.
         _orgService.Setup(s => s.GetByVerifiedCustomDomainAsync("villa-mare.casazen.it", It.IsAny<CancellationToken>()))
             .ReturnsAsync((OrgEntity?)null);
         var resolver = new PublicHostResolver(
@@ -174,7 +172,6 @@ public class PublicHostResolverTests
     [InlineData(CustomDomainMode)]
     public async Task ResolveAsync_SubdomainOfAnOrgThatDidNotChooseTheSubdomainMode_ReturnsNull(string mode)
     {
-        // BK-16 (A3-08): no wildcard on the base domain, only the orgs that opted in are served on a label.
         var org = BuildOrg("villa-mare", Enum.Parse<PublicHostMode>(mode));
         _orgService.Setup(s => s.GetByVerifiedCustomDomainAsync("villa-mare.casazen.it", It.IsAny<CancellationToken>()))
             .ReturnsAsync((OrgEntity?)null);

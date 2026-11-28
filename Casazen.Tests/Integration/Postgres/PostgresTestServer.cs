@@ -29,14 +29,9 @@ public static class PostgresTestServer
 
     public static bool IsAvailable => UnavailableReason is null;
 
-    /// <summary>True on CI runners, where falling back to InMemory or skipping PostgreSQL tests is not allowed.</summary>
     public static bool IsContinuousIntegration =>
         IsTrue(Environment.GetEnvironmentVariable("CI")) || IsTrue(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"));
 
-    /// <summary>
-    /// Connection string of the server's maintenance database (<c>postgres</c>). Starts the shared
-    /// Testcontainers instance on first use when <c>TEST_POSTGRES_CONNECTION</c> is not set.
-    /// </summary>
     public static string ServerConnectionString => ServerConnectionStringLazy.Value;
 
     private static string? ResolveUnavailableReason()
@@ -73,7 +68,6 @@ public static class PostgresTestServer
             var container = new PostgreSqlBuilder(ContainerImage).Build();
             // Start on the thread pool: blocking on xUnit's synchronization context could deadlock.
             Task.Run(() => container.StartAsync()).GetAwaiter().GetResult();
-            // The Testcontainers resource reaper (Ryuk) removes the container when the test process exits.
             connectionString = container.GetConnectionString();
         }
 

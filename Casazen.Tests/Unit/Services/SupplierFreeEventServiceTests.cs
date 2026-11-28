@@ -9,7 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>The supplier's list of, and answers about, the free-looking events of its calendar: isolation and stable codes.</summary>
 public class SupplierFreeEventServiceTests
 {
     private static readonly Guid SupplierA = Guid.Parse("a1111111-1111-4111-8111-111111111111");

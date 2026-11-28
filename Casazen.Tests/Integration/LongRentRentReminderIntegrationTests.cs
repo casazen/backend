@@ -24,8 +24,6 @@ public class LongRentRentReminderIntegrationTests(LongRentAggregatesFactory fact
 
     private static string Url(Guid installmentId) => $"/api/long-rent/rents/{installmentId}/reminder";
 
-    // --- One reminder -----------------------------------------------------------------------------------
-
     [Fact]
     public async Task Reminder_AnOverdueInstallment_QueuesTheEmailRecordsItAndAnswersWithoutPersonalData()
     {
@@ -44,7 +42,6 @@ public class LongRentRentReminderIntegrationTests(LongRentAggregatesFactory fact
         Assert.False(result.GetProperty("includesPaymentLink").GetBoolean());
         Assert.Equal(LongRentAggregatesFactory.Now.UtcDateTime, result.GetProperty("sentAt").GetDateTime().ToUniversalTime());
         Assert.Equal(LongRentAggregatesFactory.Now.UtcDateTime.AddHours(24), result.GetProperty("nextReminderAllowedAt").GetDateTime().ToUniversalTime());
-        // The answer names no one and gives no address.
         Assert.DoesNotContain("@", body, StringComparison.Ordinal);
         Assert.DoesNotContain("Giulia", body, StringComparison.Ordinal);
 
@@ -53,11 +50,9 @@ public class LongRentRentReminderIntegrationTests(LongRentAggregatesFactory fact
         Assert.Contains("Bilocale Sparano", email.Content.Subject, StringComparison.Ordinal);
         Assert.Contains("05/10/2026", email.Content.Subject, StringComparison.Ordinal);
         Assert.Contains("Gentile Giulia Verdi,", email.Content.HtmlBody, StringComparison.Ordinal);
-        // Past its due date: the wording of an overdue installment, the period and the amount.
         Assert.Contains("era in scadenza il <strong>05/10/2026</strong> e non risulta ancora pagato", email.Content.HtmlBody, StringComparison.Ordinal);
         Assert.Contains("900,00 €", email.Content.HtmlBody, StringComparison.Ordinal);
         Assert.Contains("dal <strong>01/10/2026</strong> al <strong>31/10/2026</strong>", email.Content.HtmlBody, StringComparison.Ordinal);
-        // The note is quoted, encoded: the landlord can add words, never markup.
         Assert.Contains("Messaggio del locatore", email.Content.HtmlBody, StringComparison.Ordinal);
         Assert.Contains("Ciao &lt;b&gt;Giulia&lt;/b&gt;, ricordati del bonifico &amp; grazie", email.Content.HtmlBody, StringComparison.Ordinal);
         Assert.DoesNotContain("<b>Giulia</b>", email.Content.HtmlBody, StringComparison.Ordinal);
@@ -80,7 +75,6 @@ public class LongRentRentReminderIntegrationTests(LongRentAggregatesFactory fact
 
         var response = await client.PostAsync(Url(world.Installment("ActiveNov")), content: null);
 
-        // No body at all is fine: the note is optional.
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var email = Assert.Single(EmailsTo(world, "Giulia", "Verdi"));
         Assert.Contains("è da pagare entro il <strong>05/11/2026</strong> e non risulta ancora pagato", email.Content.HtmlBody, StringComparison.Ordinal);
@@ -112,7 +106,6 @@ public class LongRentRentReminderIntegrationTests(LongRentAggregatesFactory fact
 
         Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
         Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
-        // The refused one recorded nothing and sent nothing.
         Assert.Single(EmailsTo(world, "Giulia", "Verdi"));
         Assert.Equal(1, (await ReadAsync(installment)).ReminderCount);
     }
@@ -136,12 +129,10 @@ public class LongRentRentReminderIntegrationTests(LongRentAggregatesFactory fact
         var stored = await ReadAsync(installment);
         Assert.NotNull(stored.PaymentTokenHash);
         Assert.NotNull(stored.PaymentRequestedAt);
-        // The link opens the payment page of that installment.
         var page = await tenant.PostAsJsonAsync($"/api/public/rent-payments/{installment}", new { token = firstToken });
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);
         Assert.Equal("Payable", Parse(await page.Content.ReadAsStringAsync()).GetProperty("state").GetString());
 
-        // A day later the second reminder has a new link; the first stops working.
         factory.Clock.Advance(TimeSpan.FromHours(24));
         try
         {
@@ -168,7 +159,6 @@ public class LongRentRentReminderIntegrationTests(LongRentAggregatesFactory fact
     {
         var world = await LongRentWorld.SeedAsync(factory);
         await AddTenantAsync(world, world.Active, "Luigi", "Verdi", world.EmailOf("Luigi", "Verdi"), position: 1);
-        // A second tenant who shares the address of the first: one email only.
         await AddTenantAsync(world, world.Active, "Carla", "Verdi", world.EmailOf("Giulia", "Verdi").ToUpperInvariant(), position: 2);
         using var client = world.OwnerClient(factory);
 
@@ -180,8 +170,6 @@ public class LongRentRentReminderIntegrationTests(LongRentAggregatesFactory fact
         var luigi = Assert.Single(EmailsTo(world, "Luigi", "Verdi"));
         Assert.Contains("Gentile Luigi Verdi,", luigi.Content.HtmlBody, StringComparison.Ordinal);
     }
-
-    // --- The frequency limit ----------------------------------------------------------------------------
 
     [Fact]
     public async Task Reminder_ASecondOneWithinTheInterval_IsRefusedAndSendsNothing_ThenItWorksAfterIt()
@@ -203,7 +191,6 @@ public class LongRentRentReminderIntegrationTests(LongRentAggregatesFactory fact
             Assert.Single(EmailsTo(world, "Giulia", "Verdi"));
             Assert.Equal(1, (await ReadAsync(installment)).ReminderCount);
 
-            // The register says so too: nothing to click until the interval has passed.
             using var register = world.OwnerClient(factory);
             var row = RegisterRow(await GetRegisterAsync(register), installment);
             Assert.False(row.GetProperty("canRemind").GetBoolean());
@@ -233,8 +220,6 @@ public class LongRentRentReminderIntegrationTests(LongRentAggregatesFactory fact
 
         Assert.Equal(2, EmailsTo(world, "Giulia", "Verdi").Count);
     }
-
-    // --- What is refused --------------------------------------------------------------------------------
 
     [Fact]
     public async Task Reminder_APaidInstallment_Returns409AndSendsNothing()
@@ -272,7 +257,6 @@ public class LongRentRentReminderIntegrationTests(LongRentAggregatesFactory fact
     public async Task Reminder_NoTenantWithAnAddress_Returns422AndRecordsNothing()
     {
         var world = await LongRentWorld.SeedAsync(factory);
-        // The tenant's data were anonymized (LT-12): no address is left.
         await AnonymizeTenantsAsync(world.Active);
         using var client = world.OwnerClient(factory);
         var installment = world.Installment("ActiveOct");
@@ -284,7 +268,6 @@ public class LongRentRentReminderIntegrationTests(LongRentAggregatesFactory fact
         var stored = await ReadAsync(installment);
         Assert.Null(stored.LastReminderAt);
         Assert.Equal(0, stored.ReminderCount);
-        // The register does not offer the button for it either.
         using var register = world.OwnerClient(factory);
         Assert.False(RegisterRow(await GetRegisterAsync(register), installment).GetProperty("canRemind").GetBoolean());
     }
@@ -294,7 +277,6 @@ public class LongRentRentReminderIntegrationTests(LongRentAggregatesFactory fact
     {
         var world = await LongRentWorld.SeedAsync(factory, connect: true);
         var installment = world.Installment("ActiveOct");
-        // A link emailed before (a payment request): it must still work after a reminder that did not go out.
         await SetPreviousLinkAsync(installment, "previous-link-hash", new DateTime(2026, 10, 1, 7, 0, 0, DateTimeKind.Utc));
         using var client = world.OwnerClient(factory);
 
@@ -316,11 +298,8 @@ public class LongRentRentReminderIntegrationTests(LongRentAggregatesFactory fact
         Assert.Equal(0, stored.ReminderCount);
         Assert.Equal("previous-link-hash", stored.PaymentTokenHash);
         Assert.Equal(new DateTime(2026, 10, 1, 7, 0, 0, DateTimeKind.Utc), stored.PaymentRequestedAt);
-        // Nothing was recorded, so the next try is not "too soon".
         Assert.Equal(HttpStatusCode.OK, (await client.PostAsync(Url(installment), content: null)).StatusCode);
     }
-
-    // --- Who may ----------------------------------------------------------------------------------------
 
     [Fact]
     public async Task Reminder_AnInstallmentOfAnotherOrg_Returns404_AndAnUnknownOne_Returns404()
@@ -376,8 +355,6 @@ public class LongRentRentReminderIntegrationTests(LongRentAggregatesFactory fact
         Assert.Empty(EmailsTo(world, "Giulia", "Verdi"));
     }
 
-    // --- Many at once -----------------------------------------------------------------------------------
-
     [Fact]
     public async Task Bulk_SendsWhatItCanAndSkipsTheRestWithTheirCode_NeverFailingTheOthers()
     {
@@ -388,11 +365,11 @@ public class LongRentRentReminderIntegrationTests(LongRentAggregatesFactory fact
         {
             world.Installment("ActiveAug"),
             world.Installment("ActiveOct"),
-            world.Installment("ActiveSep"), // paid
-            world.Installment("TransitoryOct"), // being processed
+            world.Installment("ActiveSep"),
+            world.Installment("TransitoryOct"),
             unknown,
-            world.Installment("ColleagueOct"), // a property of another owner
-            world.Installment("ActiveAug"), // repeated
+            world.Installment("ColleagueOct"),
+            world.Installment("ActiveAug"),
         };
 
         var response = await client.PostAsJsonAsync("/api/long-rent/rents/reminders", new { installmentIds = ids, note = "Grazie" });
@@ -409,10 +386,8 @@ public class LongRentRentReminderIntegrationTests(LongRentAggregatesFactory fact
         Assert.Equal("rent_installment_not_payable", skipped[world.Installment("ActiveSep")]);
         Assert.Equal("rent_installment_in_flight", skipped[world.Installment("TransitoryOct")]);
         Assert.Equal("rent_installment_not_found", skipped[unknown]);
-        // Of another owner: the same as not there at all.
         Assert.Equal("rent_installment_not_found", skipped[world.Installment("ColleagueOct")]);
 
-        // Two installments of the same lease, one email each; the note is in both.
         var emails = EmailsTo(world, "Giulia", "Verdi");
         Assert.Equal(2, emails.Count);
         Assert.All(emails, e => Assert.Contains("Grazie", e.Content.HtmlBody, StringComparison.Ordinal));
@@ -471,7 +446,6 @@ public class LongRentRentReminderIntegrationTests(LongRentAggregatesFactory fact
         Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, tooMany.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, empty.StatusCode);
-        // Exactly 50 is allowed; none of them exists, so all are skipped.
         Assert.Equal(HttpStatusCode.OK, atTheLimit.StatusCode);
         Assert.Equal(RentCharges.MaxBulkReminders, Parse(await atTheLimit.Content.ReadAsStringAsync()).GetProperty("skipped").GetArrayLength());
     }
@@ -487,8 +461,6 @@ public class LongRentRentReminderIntegrationTests(LongRentAggregatesFactory fact
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsJsonAsync("/api/long-rent/rents/reminders", body)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await wrongRole.PostAsJsonAsync("/api/long-rent/rents/reminders", body)).StatusCode);
     }
-
-    // --- helpers ----------------------------------------------------------------------------------------
 
     private static JsonElement Parse(string json) => JsonSerializer.Deserialize<JsonElement>(json, JsonOptions);
 

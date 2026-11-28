@@ -1,4 +1,3 @@
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
@@ -40,7 +39,6 @@ public class SupplierPaymentModeTests
 
         Assert.Equal(ServiceRequestPaymentMode.Online, taken.PaymentMode);
         Assert.Equal(ServiceRequestPaymentMode.Online, (await s.ReadAsync(taken.Id)).PaymentMode);
-        // Taking a request creates no payment and reaches no Stripe: the payment is born with the completion.
         Assert.Empty(await s.PaymentsOfAsync(taken.Id));
         Assert.Empty(s.Gateway.Created);
         Assert.Empty(s.Emails.PaymentEmails());
@@ -58,7 +56,7 @@ public class SupplierPaymentModeTests
     }
 
     [Theory]
-    [InlineData(true, false)] // charges enabled, payouts not: the KYC is not done
+    [InlineData(true, false)]
     [InlineData(false, true)]
     [InlineData(false, false)]
     public async Task Take_FlagOnButTheAccountCannotTakeChargesAndPayouts_IsManual(bool charges, bool payouts)
@@ -83,7 +81,6 @@ public class SupplierPaymentModeTests
         await s.EnablePaymentsAsync();
         var taken = await s.TakenAsync();
 
-        // Stripe disables the account after the take: the request stays Online (its payment waits for the supplier to be ready).
         await s.ConnectSupplierAsync(ready: false);
         var started = await s.Service.StartAsync(taken.Id, s.SupplierOrgId);
 
@@ -155,7 +152,6 @@ public class SupplierPaymentModeTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.EnablePaymentsAsync();
-        // A completed request written straight to the table, without the new column: the database default (0) is Manual.
         var legacy = await s.SeedAsync(ServiceRequestStatus.Completato, r => r.CompletedAt = ServiceRequestScenario.Instant.UtcDateTime);
 
         Assert.Equal(ServiceRequestPaymentMode.Manual, (await s.ReadAsync(legacy.Id)).PaymentMode);

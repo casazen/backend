@@ -74,7 +74,6 @@ public class ChannelCostRulesTests
             NoModes);
 
         Assert.DoesNotContain(report.Rows, r => r.MostExpensive);
-        // The ones with a rate come first (zero is a rate), then the one without; the larger gross first among equals.
         Assert.Equal(new[] { BookingSource.Manual, BookingSource.Local, BookingSource.Expedia }, report.Rows.Select(r => r.Source!.Value));
     }
 
@@ -98,7 +97,6 @@ public class ChannelCostRulesTests
     [Fact]
     public void Report_AStayCutAcrossTwoPeriods_IsRoundedOnTheTotal_NotOnEachShare()
     {
-        // 31 October to 3 November: three nights, one of them in October. A hundred over three nights is 33,333...; ten of commission is 3,333...
         var stay = new ChannelCostStay(BookingSource.Airbnb, 100m, Day(10, 31), Day(11, 3), 10m, null);
 
         var report = ChannelCostRules.Report(October, [stay], NoModes);
@@ -127,8 +125,6 @@ public class ChannelCostRulesTests
         Assert.Null(report.Rows.Single(r => r.Source == BookingSource.Manual).CommissionMode);
         Assert.Null(report.Total.CommissionMode);
     }
-
-    // ---------------------------------------------------------------- the file
 
     [Fact]
     public void Csv_HasTheTitleWithTheDays_AChannelPerRow_AnEmptyCellWhereNothingWasReported_AndTheTotal()

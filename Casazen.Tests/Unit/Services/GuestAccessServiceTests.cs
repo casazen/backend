@@ -31,7 +31,6 @@ public class GuestAccessServiceTests
     [Fact]
     public async Task IsGuestAccessibleAsync_GuestOfOtherOrgWithBookingInCallerOrg_ReturnsFalse()
     {
-        // The pre-TN-1 rule ("a booking of my org points at the guest") no longer grants access.
         await using var db = NewDb();
         var ownerOrg = Guid.NewGuid();
         var callerOrg = Guid.NewGuid();

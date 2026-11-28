@@ -9,10 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// LR-01, B1: <c>GET /api/long-rent/rents</c>, the rent register of the area, over the real pipeline (PostgreSQL in CI, InMemory in a
-/// local run). The world is described in <see cref="LongRentWorld"/>: "today" is 2026-10-09 in Rome.
-/// </summary>
 public class LongRentRentRegisterIntegrationTests(LongRentAggregatesFactory factory) : IClassFixture<LongRentAggregatesFactory>, IAsyncLifetime
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -30,7 +26,6 @@ public class LongRentRentRegisterIntegrationTests(LongRentAggregatesFactory fact
         var page = await GetAsync(client, "/api/long-rent/rents");
 
         Assert.Equal("2026-10", page.GetProperty("month").GetString());
-        // Due 2/10 (paid), 5/10 (overdue), 7/10 (a payment in flight): the cancelled installment of the month is not part of the rent.
         Assert.Equal(
             [_world.Installment("ExpiringOct"), _world.Installment("ActiveOct"), _world.Installment("TransitoryOct")],
             Ids(page));
@@ -102,14 +97,12 @@ public class LongRentRentRegisterIntegrationTests(LongRentAggregatesFactory fact
         Assert.Equal(4, overdue.GetProperty("daysOverdue").GetInt32());
         Assert.Equal("Scheduled", overdue.GetProperty("status").GetString());
 
-        // The same installment on the ledger of its lease says the same.
         var ledger = await client.GetAsync($"/api/leases/{_world.Active}/rent");
         var installment = JsonSerializer.Deserialize<JsonElement>(await ledger.Content.ReadAsStringAsync(), JsonOptions)
             .GetProperty("installments").EnumerateArray()
             .Single(i => i.GetProperty("id").GetGuid() == _world.Installment("ActiveOct"));
         Assert.True(installment.GetProperty("isOverdue").GetBoolean());
 
-        // A payment in flight is not overdue, whatever its date; a paid installment neither.
         var processing = rows[_world.Installment("TransitoryOct")];
         Assert.Equal("Processing", processing.GetProperty("status").GetString());
         Assert.False(processing.GetProperty("isOverdue").GetBoolean());
@@ -141,14 +134,12 @@ public class LongRentRentRegisterIntegrationTests(LongRentAggregatesFactory fact
         Assert.Equal(0, row.GetProperty("reminderCount").GetInt32());
         Assert.Equal(JsonValueKind.Null, row.GetProperty("lastReminderAt").ValueKind);
 
-        // A paid installment shows how and when; it cannot be reminded. Neither can one being processed.
         var paid = rows[_world.Installment("ExpiringOct")];
         Assert.Equal("Offline", paid.GetProperty("paidVia").GetString());
         Assert.Equal("2026-10-03", paid.GetProperty("paidOn").GetString());
         Assert.False(paid.GetProperty("canRemind").GetBoolean());
         Assert.False(rows[_world.Installment("TransitoryOct")].GetProperty("canRemind").GetBoolean());
 
-        // The tenant by name only: no fiscal code, no address.
         Assert.DoesNotContain("VRDGLI85B02F205A", body, StringComparison.Ordinal);
         Assert.DoesNotContain("@", body, StringComparison.Ordinal);
     }
@@ -157,7 +148,6 @@ public class LongRentRentRegisterIntegrationTests(LongRentAggregatesFactory fact
     public async Task Register_APageAtATime_NeverRepeatsNorSkipsARow()
     {
         var world = await LongRentWorld.SeedAsync(factory);
-        // Seven more installments of the same lease, five of them due on the same day: the order must still be total.
         await AddInstallmentsAsync(world, world.Active, "2026-10-20", "2026-10-20", "2026-10-20", "2026-10-20", "2026-10-20", "2026-10-21", "2026-10-30");
         using var client = world.OwnerClient(factory);
 
@@ -174,12 +164,10 @@ public class LongRentRentRegisterIntegrationTests(LongRentAggregatesFactory fact
             paged.AddRange(Ids(page));
         }
 
-        // The pages, one after the other, are the whole list in the same order; asking again gives the same page.
         Assert.Equal(everything, paged);
         Assert.Equal(
             Ids(await GetAsync(client, "/api/long-rent/rents?month=2026-10&pageSize=3&page=2")),
             Ids(await GetAsync(client, "/api/long-rent/rents?month=2026-10&pageSize=3&page=2")));
-        // The due dates never go back.
         var dueDates = (await GetAsync(client, "/api/long-rent/rents?month=2026-10&pageSize=100")).GetProperty("items").EnumerateArray()
             .Select(i => i.GetProperty("dueDate").GetString()!).ToList();
         Assert.Equal(dueDates.Order(StringComparer.Ordinal), dueDates);
@@ -219,8 +207,6 @@ public class LongRentRentRegisterIntegrationTests(LongRentAggregatesFactory fact
         Assert.Equal(code, JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync(), JsonOptions).GetProperty("code").GetString());
     }
 
-    // --- Who sees what ----------------------------------------------------------------------------------
-
     [Fact]
     public async Task Register_ALandlordWithLimitedScope_SeesNeitherTheRowsNorTheNumbersOfOtherProperties()
     {
@@ -234,7 +220,6 @@ public class LongRentRentRegisterIntegrationTests(LongRentAggregatesFactory fact
         Assert.Equal((0, 0m), Counter(counters, "collected"));
         Assert.Equal((1, 900m), Counter(counters, "pending"));
         Assert.Equal((0, 0m), Counter(counters, "overdue"));
-        // The overdue installment of the owner's lease is not there, not even by asking for it.
         Assert.Empty(Ids(await GetAsync(client, "/api/long-rent/rents?month=2026-10&status=Overdue")));
         Assert.Empty(Ids(await GetAsync(client, "/api/long-rent/rents?month=2026-08")));
     }
@@ -274,8 +259,6 @@ public class LongRentRentRegisterIntegrationTests(LongRentAggregatesFactory fact
         Assert.Equal(HttpStatusCode.Forbidden, (await wrongRole.GetAsync("/api/long-rent/rents")).StatusCode);
     }
 
-    // --- helpers ----------------------------------------------------------------------------------------
-
     private static async Task<JsonElement> GetAsync(HttpClient client, string url)
     {
         var response = await client.GetAsync(url);
@@ -292,7 +275,6 @@ public class LongRentRentRegisterIntegrationTests(LongRentAggregatesFactory fact
     private static (int Count, decimal Amount) Counter(JsonElement counters, string name) =>
         (counters.GetProperty(name).GetProperty("count").GetInt32(), counters.GetProperty(name).GetProperty("amount").GetDecimal());
 
-    /// <summary>More installments on the schedule of a lease, each due on the given day (the periods are only there to be distinct).</summary>
     private async Task AddInstallmentsAsync(LongRentWorld world, Guid leaseId, params string[] dueDates)
     {
         await using var scope = factory.Services.CreateAsyncScope();

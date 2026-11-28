@@ -24,7 +24,6 @@ namespace Casazen.Tests.Unit.Octorate;
 /// </summary>
 public class OctorateTokenRefreshTests
 {
-    // One provider for the whole class: EF keeps one model per provider.
     private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     private static readonly Guid OrgA = Guid.Parse("c3d4e5f6-0718-4293-a4b5-c6d7e8f90a01");
@@ -37,12 +36,9 @@ public class OctorateTokenRefreshTests
     {
         var refusals = new (string Name, HttpStatusCode Status, string Body, bool Forgets, string Code)[]
         {
-            // Octorate says the refresh token is not valid: the 403 seen in the sandbox, and the OAuth error.
             ("errRefreshTokenInvalid", HttpStatusCode.Forbidden, """{"type":"ApiSecurityException","suggestion":"errRefreshTokenInvalid"}""", true, "octorate_auth_failed"),
             ("invalid_grant", HttpStatusCode.BadRequest, """{"error":"invalid_grant"}""", true, "octorate_auth_failed"),
 
-            // Not the refresh token: the credentials of the other environment, a client secret rotated or mistyped (the suggestion of the
-            // last one is made up: any other reason of an ApiSecurityException).
             ("WrongEnviroment", HttpStatusCode.Forbidden, """{"type":"WrongEnviroment"}""", false, "octorate_wrong_environment"),
             ("invalid_client", HttpStatusCode.Unauthorized, """{"error":"invalid_client"}""", false, "octorate_auth_failed"),
             ("other ApiSecurityException", HttpStatusCode.Forbidden, """{"type":"ApiSecurityException","suggestion":"errOtherReason"}""", false, "octorate_auth_failed"),
@@ -53,14 +49,12 @@ public class OctorateTokenRefreshTests
             await using var rig = await Rig.CreateAsync();
             rig.Octorate.Answer(status, body);
 
-            // The refresh is refused with the typed error of its kind.
             var refused = await Assert.ThrowsAnyAsync<OctorateException>(() => rig.Tokens.GetAccessTokenAsync(OrgA, CancellationToken.None));
             Assert.True(code == refused.Code, $"{name}: the error is '{refused.Code}', expected '{code}'");
 
             var connection = await rig.ConnectionAsync();
             if (forgets)
             {
-                // Disconnected, both tokens forgotten, and nobody asks Octorate again: the next call is a plain "not connected".
                 Assert.True(
                     connection.Status == OctorateConnectionStatus.Disconnected
                     && connection.EncryptedAccessToken is null
@@ -73,14 +67,12 @@ public class OctorateTokenRefreshTests
             }
             else
             {
-                // Still connected, with both tokens as they were.
                 Assert.True(
                     connection.Status == OctorateConnectionStatus.Connected
                     && connection.EncryptedAccessToken == ExpiredAccessToken
                     && connection.EncryptedRefreshToken == RefreshToken,
                     $"{name}: the connection should still be connected with both tokens");
 
-                // The configuration put right, the very next call refreshes with the same refresh token, which Octorate would not give again.
                 rig.Octorate.Answer(HttpStatusCode.OK, $$"""{"access_token":"{{NewAccessToken}}","expires_in":129599}""");
                 Assert.Equal(NewAccessToken, await rig.Tokens.GetAccessTokenAsync(OrgA, CancellationToken.None));
                 Assert.Contains("refresh_token=" + RefreshToken, rig.Octorate.LastForm, StringComparison.Ordinal);
@@ -89,7 +81,6 @@ public class OctorateTokenRefreshTests
         }
     }
 
-    /// <summary>The service over an in-memory database with a connected, expired access token, and the stubbed refresh endpoint.</summary>
     private sealed class Rig : IAsyncDisposable
     {
         private Rig(AppDbContext db, RefreshEndpoint octorate, OctorateTokenService tokens)
@@ -146,7 +137,6 @@ public class OctorateTokenRefreshTests
         public ValueTask DisposeAsync() => Db.DisposeAsync();
     }
 
-    /// <summary>The refresh endpoint of Octorate: answers what the test says and keeps what it was sent.</summary>
     private sealed class RefreshEndpoint : HttpMessageHandler
     {
         private HttpStatusCode _status = HttpStatusCode.OK;
@@ -175,7 +165,6 @@ public class OctorateTokenRefreshTests
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
     }
 
-    /// <summary>The tenant of an authenticated request of one org.</summary>
     private sealed class RequestTenant(Guid orgId) : ITenantContext
     {
         public Guid? OrgId { get; } = orgId;

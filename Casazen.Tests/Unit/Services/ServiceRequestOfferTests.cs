@@ -26,7 +26,6 @@ public class ServiceRequestOfferTests
     private static readonly DateTime Start = ServiceRequestScenario.FridayAt10;
     private static readonly DateTime End = ServiceRequestScenario.FridayAt10.AddHours(2);
 
-    /// <summary>Two hours of the work at 45 euro and the materials at 30: 120 euro.</summary>
     private static SendServiceRequestOfferCommand TheOffer(int hours = 2, DateTime? start = null, DateTime? end = null) =>
         new(
             [new ServiceRequestOfferLine("Posa del corrimano", hours, 4500), new ServiceRequestOfferLine("Materiali", 1, 3000)],
@@ -39,8 +38,6 @@ public class ServiceRequestOfferTests
 
     private static ShowcaseBookingCredentials CredentialsOf(ServiceRequest request, string email = ShowcaseScenario.CustomerEmail) =>
         ShowcaseManageScenario.CredentialsOf(request.PublicCode!, email);
-
-    // ─── Sending ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task SendOffer_PutsTheOfferOnTheRequest_GivesTheCustomerADay_AndTellsItWithTheTotalAndTheLines()
@@ -65,8 +62,6 @@ public class ServiceRequestOfferTests
             new[] { new ServiceRequestQuoteLine("Posa del corrimano", 9000, 2, 4500), new ServiceRequestQuoteLine("Materiali", 3000, 1, 3000) },
             lines.ToArray());
 
-        // The offer holds no slot and gives the request no time: it keeps none until the customer accepts. The supplier answered, so the clock
-        // that stood on it (an hour) is the customer's now: a day.
         Assert.Null(saved.ScheduledStartUtc);
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime.AddHours(24), saved.ResponseDueAt);
 
@@ -140,7 +135,6 @@ public class ServiceRequestOfferTests
         var missing = await Assert.ThrowsAsync<NotFoundException>(() => SendAsync(s, Guid.NewGuid()));
         Assert.All(new[] { aBooking, missing }, ex => Assert.Equal(ofAnother.Code, ex.Code));
 
-        // The quote of SP-04b leans on the time of a request: a request on measure has none, so it is answered with an offer.
         var quote = await Assert.ThrowsAsync<DomainRuleException>(
             () => s.Service.SendQuoteAsync(
                 request.Id,
@@ -149,7 +143,6 @@ public class ServiceRequestOfferTests
                 new SendServiceRequestQuoteCommand([new ServiceRequestQuoteLine("Posa", 9000)])));
         Assert.Equal(ServiceRequestThreadErrors.OfferNeeded, quote.Code);
 
-        // A request the supplier refused has no offer to wait for.
         await s.Service.RejectAsync(request.Id, s.SupplierOrgId, "Non lavoro in quella zona");
         var closed = await Assert.ThrowsAsync<DomainRuleException>(() => SendAsync(s, request.Id));
         Assert.Equal(ServiceRequestOfferErrors.CannotOffer, closed.Code);
@@ -162,12 +155,10 @@ public class ServiceRequestOfferTests
         var supplier = await s.EnableBookingAsync();
         var request = await s.InquiredAsync(supplier);
 
-        // The supplier does not work on Sundays.
         var sunday = await Assert.ThrowsAsync<DomainConflictException>(
             () => SendAsync(s, request.Id, TheOffer(start: ServiceRequestScenario.SundayAt10, end: ServiceRequestScenario.SundayAt10.AddHours(2))));
         Assert.Equal(ServiceRequestErrorCodes.SlotUnavailable, sunday.Code);
 
-        // A request on measure names no service, so the end of the work cannot be guessed.
         var noEnd = await Assert.ThrowsAsync<DomainRuleException>(
             () => s.Service.SendOfferAsync(
                 request.Id,
@@ -176,7 +167,6 @@ public class ServiceRequestOfferTests
                 new SendServiceRequestOfferCommand([new ServiceRequestOfferLine("Posa", 1, 5000)], Start)));
         Assert.Equal(ServiceRequestErrorCodes.TimeInvalid, noEnd.Code);
 
-        // An offer outside the limits is refused whole, before anything is read.
         var invalid = await Assert.ThrowsAsync<DomainRuleException>(
             () => s.Service.SendOfferAsync(
                 request.Id,
@@ -190,8 +180,6 @@ public class ServiceRequestOfferTests
         Assert.Null(saved.QuoteTotalCents);
         Assert.Empty(s.Emails.Snapshot());
     }
-
-    // ─── What the customer reads ─────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Lookup_ShowsTheOfferNotAQuote_WithTheTimeTheDeadlineAndWhatTheCustomerMayDo()
@@ -221,7 +209,6 @@ public class ServiceRequestOfferTests
         Assert.False(view.Actions.CanReschedule);
         Assert.Null(view.RespondBy);
 
-        // The API gives it as an offer, with the time in the local time of Rome next to the UTC one.
         var dto = PublicSupplierBookingViewMapper.ToDto(view);
         Assert.Equal(12000, dto.Offer!.TotalCents);
         Assert.Equal(new DateTimeOffset(2026, 10, 9, 10, 0, 0, TimeSpan.FromHours(2)), dto.Offer.StartLocal);
@@ -249,13 +236,10 @@ public class ServiceRequestOfferTests
         Assert.True(view.Actions.CanRespondToQuote);
         Assert.False(view.Actions.CanRespondToOffer);
 
-        // And the offer endpoints do not answer it: a booking from a slot is the 404 of the area.
         var refused = await Assert.ThrowsAsync<NotFoundException>(
             () => s.Kit.Manager.AcceptOfferAsync(credentials, view.Quote!.SentAt));
         Assert.Equal(ShowcaseBookingManagementErrors.NotFound, refused.Code);
     }
-
-    // ─── Accepting ───────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Accept_TakesTheRequestAtTheTimeAndTheTotalOfTheOffer_Once_AndTellsBothParties()
@@ -267,7 +251,6 @@ public class ServiceRequestOfferTests
         var sentAt = (await s.ReadAsync(request.Id)).QuoteSentAt!.Value;
         s.ForgetNotifications();
 
-        // The answer is about the version the customer read: another one is a 409 and nothing changes.
         var stale = await Assert.ThrowsAsync<DomainConflictException>(
             () => s.Kit.Manager.AcceptOfferAsync(CredentialsOf(request), sentAt.AddMinutes(-1)));
         Assert.Equal(ServiceRequestOfferErrors.OfferChanged, stale.Code);
@@ -299,7 +282,6 @@ public class ServiceRequestOfferTests
         Assert.Null(saved.QuoteSentAt);
         Assert.Null(saved.QuoteTotalCents);
 
-        // The supplier is told, e-mail and push, with "Nome C." and never more; the customer gets the e-mail of a request taken, with the price.
         var toSupplier = Assert.Single(s.Emails.Snapshot(), e => e.To == SupplierEmail);
         Assert.Equal(EmailTemplates.Names.ServiceRequestQuoteAnswered, toSupplier.Template);
         Assert.Contains("Mario R.", toSupplier.Content.HtmlBody);
@@ -310,7 +292,6 @@ public class ServiceRequestOfferTests
         Assert.Contains("120,00 €", toCustomer.Content.HtmlBody);
         Assert.Equal(2, s.Emails.Snapshot().Count);
 
-        // A second acceptance (a double click, a second tab) finds nothing to accept: one transition, nothing told twice.
         s.ForgetNotifications();
         var again = await Assert.ThrowsAsync<DomainRuleException>(() => s.Kit.Manager.AcceptOfferAsync(CredentialsOf(request), sentAt));
         Assert.Equal(ServiceRequestOfferErrors.NoOffer, again.Code);
@@ -328,7 +309,6 @@ public class ServiceRequestOfferTests
         await SendAsync(s, request.Id);
         var sentAt = (await s.ReadAsync(request.Id)).QuoteSentAt!.Value;
 
-        // The supplier takes another job at that very time: the offer held no slot.
         await s.TakenAsync(Start);
         s.ForgetNotifications();
 
@@ -344,7 +324,6 @@ public class ServiceRequestOfferTests
         Assert.Empty(s.Emails.Snapshot());
         Assert.Empty(s.Pushes);
 
-        // The customer still has the offer: it can turn it down and go on talking.
         var view = await s.Kit.Manager.LookupAsync(CredentialsOf(request));
         Assert.True(view.Actions.CanRespondToOffer);
         var declined = await s.Kit.Manager.DeclineOfferAsync(CredentialsOf(request), sentAt);
@@ -371,8 +350,6 @@ public class ServiceRequestOfferTests
         Assert.Equal(ServiceRequestOfferErrors.OfferExpired, late.Code);
         Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(request.Id)).Status);
     }
-
-    // ─── Turning down, taking back, letting it lapse ─────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Decline_TheOfferGoes_TheConversationGoesOn_NoClockRunsOnTheSupplier_AndTheSupplierIsTold()
@@ -401,17 +378,14 @@ public class ServiceRequestOfferTests
         Assert.Equal((SupplierEmail, EmailTemplates.Names.ServiceRequestQuoteAnswered), (toSupplier.To, toSupplier.Template));
         Assert.Equal(PushTypes.ServiceRequestQuoteRejected, Assert.Single(s.Pushes).Payload.Type);
 
-        // Nobody closes the conversation behind the customer's back, however long it is quiet.
         s.Clock.Advance(TimeSpan.FromDays(10));
         var run = await s.ExpiryJob().RunAsync();
         Assert.Equal(0, run.RequestsCancelled);
         Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(request.Id)).Status);
 
-        // The supplier sees where it stands and can send another offer, which makes the negotiation an offer again.
         var thread = await s.Service.GetThreadAsSupplierAsync(request.Id, s.SupplierOrgId);
         Assert.Equal((ServiceRequestNegotiation.OfferDeclined, true), (thread.Negotiation, thread.CanSendOffer));
         Assert.Null(thread.Offer);
-        // The clock is ten days on: the other offer proposes the Friday two weeks after (still in summer time, still a free afternoon slot).
         var laterFridayAt14 = ServiceRequestScenario.FridayAt14.AddDays(14);
         await SendAsync(s, request.Id, TheOffer(start: laterFridayAt14, end: laterFridayAt14.AddHours(2)));
         Assert.Equal(ServiceRequestNegotiation.OfferSent, (await s.Service.GetThreadAsSupplierAsync(request.Id, s.SupplierOrgId)).Negotiation);
@@ -438,7 +412,6 @@ public class ServiceRequestOfferTests
         var nothing = await Assert.ThrowsAsync<DomainRuleException>(() => s.Service.WithdrawOfferAsync(request.Id, s.SupplierOrgId));
         Assert.Equal(ServiceRequestOfferErrors.NoOfferToWithdraw, nothing.Code);
 
-        // The customer who read it finds it gone.
         var gone = await Assert.ThrowsAsync<DomainRuleException>(() => s.Kit.Manager.AcceptOfferAsync(CredentialsOf(request), sentAt));
         Assert.Equal(ServiceRequestOfferErrors.NoOffer, gone.Code);
     }
@@ -466,7 +439,6 @@ public class ServiceRequestOfferTests
         Assert.Equal(ServiceRequestNegotiation.Expired, view.Negotiation);
         Assert.Null(view.Offer);
 
-        // The supplier did answer: the customer is told its offer was not answered, never that the supplier was silent.
         var toCustomer = Assert.Single(s.Emails.Snapshot(), e => e.To == ShowcaseScenario.CustomerEmail);
         Assert.Equal(EmailTemplates.Names.SupplierInquiryOfferExpired, toCustomer.Template);
         var toSupplier = Assert.Single(s.Emails.Snapshot(), e => e.To == SupplierEmail);
@@ -474,8 +446,6 @@ public class ServiceRequestOfferTests
         Assert.Equal(PushTypes.ServiceRequestQuoteExpired, Assert.Single(s.Pushes).Payload.Type);
         Assert.Empty(await s.ReliabilityEventsAsync());
     }
-
-    // ─── What the customer is told when the supplier gives the job up ────────────────────────────────────────────────
 
     [Fact]
     public async Task TheSupplierWhoCancelsAJobItAgreed_TellsTheCustomer_AndOneWhoGivesUpBeforeAnyOfferDoesToo()
@@ -501,8 +471,6 @@ public class ServiceRequestOfferTests
         var declined = Assert.Single(s.Emails.Snapshot(), e => e.To == "chi.aspetta@example.com");
         Assert.Equal(EmailTemplates.Names.SupplierInquiryDeclined, declined.Template);
     }
-
-    // ─── Only a request on measure has an offer ──────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task TheQuoteEndpointsOfTheCustomer_DoNotAnswerTheOfferOfARequestOnMeasure()

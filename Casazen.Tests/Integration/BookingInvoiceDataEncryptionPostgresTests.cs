@@ -3,7 +3,6 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Data.Encryption;
 using Casazen.Tests.Integration.Postgres;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -30,8 +29,6 @@ public class BookingInvoiceDataEncryptionPostgresTests
     // The hash of the billing data last written to Octorate (E06/F02/US01/T04): a hash of the data above, stored encrypted like it.
     private const string BillingHash = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
 
-    // Whole values and pieces of them that cannot appear by chance in a base64url payload (a dot, an at sign, a space, a slash, eleven digits or
-    // nine letters in a row): a shorter piece could, by luck, and make the proof flaky.
     private static readonly string[] Secrets =
         [Name, "Ristorante", FiscalCode, VatNumber, "12345678903", Street, "Sale Rosa", Civic, PostalCode, City, Pec, "fatture.gino", BillingHash];
 
@@ -113,7 +110,6 @@ public class BookingInvoiceDataEncryptionPostgresTests
             await db.SaveChangesAsync();
         }
 
-        // The table itself, whatever EF would have made of it: a context without Data Protection reads the stored text.
         await using var stored = database.CreateContext();
         var raws = new[]
         {
@@ -139,7 +135,6 @@ public class BookingInvoiceDataEncryptionPostgresTests
         var clear = await stored.Database.SqlQueryRaw<string>("SELECT \"SdiRecipientCode\" AS \"Value\" FROM \"BookingInvoiceData\"").SingleAsync();
         Assert.Equal(SdiCode, clear);
 
-        // Read through EF with Data Protection the clear values come back.
         await using var reader = new AppDbContext(database.CreateOptions(), tenantContext: null, provider);
         var row = await reader.BookingInvoiceData.IgnoreQueryFilters().AsNoTracking().SingleAsync(d => d.BookingId == bookingId);
         Assert.Equal((Name, FiscalCode, VatNumber), (row.Name, row.FiscalCode, row.VatNumber));

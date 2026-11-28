@@ -92,8 +92,6 @@ public class FileStorageIntegrationTests : IClassFixture<CasazenWebApplicationFa
 
         var response = await attacker.GetAsync(downloadUrl);
 
-        // Cross-tenant: the tenant query filter hides the other org's property (404, as AC7 of US-004),
-        // so the caller cannot even learn that the document exists.
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.NotEqual(PdfBytes, await response.Content.ReadAsByteArrayAsync());
         var signed = await attacker.GetAsync(downloadUrl.Replace("/download", "/signed-url"));
@@ -202,8 +200,6 @@ public class FileStorageIntegrationTests : IClassFixture<CasazenWebApplicationFa
     [PostgresFact]
     public async Task LegacyUploadsFolder_IsNeverServed()
     {
-        // A2-31: files left in wwwroot/uploads by the old storage (environments with a volume) used to be
-        // downloadable anonymously with permanent URLs.
         var webRoot = _factory.Services.GetRequiredService<IWebHostEnvironment>().WebRootPath;
         var uploadsRoot = Path.Combine(webRoot, "uploads");
         var uploadsExisted = Directory.Exists(uploadsRoot);

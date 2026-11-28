@@ -1,6 +1,5 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -15,10 +14,6 @@ namespace Casazen.Tests.Integration;
 /// </summary>
 public class BookingDocumentIssuerPostgresTests
 {
-    /// <summary>
-    /// PROOF TEST: data rule. A document has one issuer row: a second row of the same document, of the same kind or of the other one, is a unique violation
-    /// of the index on the document; a row of another document of the same booking is accepted; the first row is untouched.
-    /// </summary>
     [PostgresFact]
     public async Task BookingDocumentIssuer_OneRowPerDocument_Test()
     {
@@ -81,7 +76,6 @@ public class BookingDocumentIssuerPostgresTests
             Assert.Equal(BookingDocumentIssuer.DocumentIndexName, postgres.ConstraintName);
         }
 
-        // Another document of the same booking (the invoice of the agency beside the receipt of the owner) has its own row.
         var secondDocument = Guid.NewGuid();
         await using (var other = database.CreateContext())
         {

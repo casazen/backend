@@ -64,23 +64,20 @@ public class AlloggiatiRecordFilePostgresTests : IClassFixture<CasazenWebApplica
         Assert.Equal("attachment", response.Content.Headers.ContentDisposition?.DispositionType);
         Assert.Equal($"alloggiati-{arrival:yyyy-MM-dd}-{seed.BookingId.ToString("N")[..8]}.txt", response.Content.Headers.ContentDisposition?.FileName);
         var bytes = await response.Content.ReadAsByteArrayAsync();
-        Assert.NotEqual(new byte[] { 0xEF, 0xBB, 0xBF }, bytes.Take(3).ToArray()); // UTF-8 without byte order mark
+        Assert.NotEqual(new byte[] { 0xEF, 0xBB, 0xBF }, bytes.Take(3).ToArray());
         var lines = Encoding.UTF8.GetString(bytes).Split("\r\n");
-        Assert.Equal(2, lines.Length); // CR+LF between lines, none after the last
+        Assert.Equal(2, lines.Length);
         Assert.All(lines, line => Assert.Equal(168, line.Length));
 
-        // Head of family: kind, arrival, 3 days, names (capitals, no accents), sex, birth, comune/province, Italy, citizenship, document.
         Assert.Equal(
             "92" + $"{arrival:dd/MM/yyyy}" + "03" + "D'VERDI MULLER".PadRight(50) + "LUIGI".PadRight(30) + "1" + "10/03/1985"
             + "900000001" + "MI" + "900000100" + "900000100" + "TSTPA" + "AB123456".PadRight(20) + "900000001",
             lines[0]);
-        // Family member born abroad: kind 94, comune and province blank, state of birth France, the three document fields blank.
         Assert.Equal(
             "94" + $"{arrival:dd/MM/yyyy}" + "03" + "VERDI".PadRight(50) + "SOFIA".PadRight(30) + "2" + "01/06/2019"
             + new string(' ', 9) + "  " + "900000101" + "900000100" + new string(' ', 34),
             lines[1]);
 
-        // Downloading is not sending (D6): no report row was created or changed and no status reads sent.
         var status = await owner.GetFromJsonAsync<JsonElement>($"/api/alloggiati/{seed.BookingId}/status");
         Assert.NotEqual("Inviato", status.GetProperty("status").GetString());
         Assert.NotEqual("InviatoManualmente", status.GetProperty("status").GetString());
@@ -101,7 +98,7 @@ public class AlloggiatiRecordFilePostgresTests : IClassFixture<CasazenWebApplica
         Assert.StartsWith("application/", response.Content.Headers.ContentType?.MediaType);
         using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal("alloggiati_file_not_ready", problem.RootElement.GetProperty("code").GetString());
-        Assert.DoesNotContain("AB123456", problem.RootElement.GetRawText()); // no personal data in the error
+        Assert.DoesNotContain("AB123456", problem.RootElement.GetRawText());
     }
 
     [PostgresFact]

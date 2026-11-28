@@ -4,10 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>
-/// SP-10c: the reminders to the supplier of a request on measure that nobody answered — one at half of the time it has and one ten minutes before
-/// the deadline, each at most once, none after the deadline (the job closes the request), none for a wait too short to deserve two.
-/// </summary>
 public class ShowcaseReplyReminderRulesTests
 {
     private static readonly DateTime Begin = new(2026, 10, 31, 10, 0, 0, DateTimeKind.Utc);
@@ -48,7 +44,6 @@ public class ShowcaseReplyReminderRulesTests
     [Fact]
     public void ARunThatIsLate_SendsOnlyTheLastCall_NotTheHalfOneAndThenTheLast()
     {
-        // The job missed the half moment (a restart, a lock held): at 55 minutes only the last call is due, once.
         Assert.Equal(ShowcaseReplyReminder.Last, Due(60, 55, halfSent: false));
     }
 
@@ -78,19 +73,18 @@ public class ShowcaseReplyReminderRulesTests
     {
         Assert.Equal(ShowcaseReplyReminder.None, Due(240, 119));
         Assert.Equal(ShowcaseReplyReminder.Half, Due(240, 120));
-        // The half reminder went: nothing is due until the last call opens (a half reminder never sent would stay due until then).
         Assert.Equal(ShowcaseReplyReminder.None, Due(240, 229, halfSent: true));
         Assert.Equal(ShowcaseReplyReminder.Last, Due(240, 230));
     }
 
     [Theory]
     [InlineData(ServiceRequestRentalContext.Showcase, ServiceRequestKind.Custom, ServiceRequestStatus.Richiesto, true, false, true)]
-    [InlineData(ServiceRequestRentalContext.Showcase, ServiceRequestKind.Custom, ServiceRequestStatus.Richiesto, false, false, false)] // no deadline: the supplier already answered
-    [InlineData(ServiceRequestRentalContext.Showcase, ServiceRequestKind.Custom, ServiceRequestStatus.Richiesto, true, true, false)] // an offer waits: the deadline is the customer's
+    [InlineData(ServiceRequestRentalContext.Showcase, ServiceRequestKind.Custom, ServiceRequestStatus.Richiesto, false, false, false)]
+    [InlineData(ServiceRequestRentalContext.Showcase, ServiceRequestKind.Custom, ServiceRequestStatus.Richiesto, true, true, false)]
     [InlineData(ServiceRequestRentalContext.Showcase, ServiceRequestKind.Custom, ServiceRequestStatus.PresoInCarico, true, false, false)]
     [InlineData(ServiceRequestRentalContext.Showcase, ServiceRequestKind.Custom, ServiceRequestStatus.Annullato, true, false, false)]
-    [InlineData(ServiceRequestRentalContext.Showcase, ServiceRequestKind.Standard, ServiceRequestStatus.Richiesto, true, false, false)] // a booking has the supplier's own setting
-    [InlineData(ServiceRequestRentalContext.ShortRent, ServiceRequestKind.Standard, ServiceRequestStatus.Richiesto, true, false, false)] // a host's request has its own reminder
+    [InlineData(ServiceRequestRentalContext.Showcase, ServiceRequestKind.Standard, ServiceRequestStatus.Richiesto, true, false, false)]
+    [InlineData(ServiceRequestRentalContext.ShortRent, ServiceRequestKind.Standard, ServiceRequestStatus.Richiesto, true, false, false)]
     public void AReminderIsOnlyForARequestOnMeasureThatTheSupplierHasNotAnsweredYet(
         ServiceRequestRentalContext context,
         ServiceRequestKind kind,

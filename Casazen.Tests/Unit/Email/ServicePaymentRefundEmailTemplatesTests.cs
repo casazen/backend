@@ -67,7 +67,6 @@ public class ServicePaymentRefundEmailTemplatesTests
         foreach (var content in new[] { italian, english })
         {
             Assert.False(string.IsNullOrWhiteSpace(content.Subject));
-            // No placeholder is left unfilled and no resource key shows through.
             Assert.DoesNotMatch(@"\{\d+\}", content.HtmlBody);
             Assert.DoesNotMatch(@"\{\d+\}", content.Subject);
             Assert.DoesNotMatch(@"ServicePayment\w*_\w+", content.HtmlBody);
@@ -81,7 +80,6 @@ public class ServicePaymentRefundEmailTemplatesTests
     {
         var content = Render("failed", "it-IT");
 
-        // The new personal link: the address of the button, then the address and the text of the fallback.
         Assert.Equal(3, Regex.Matches(content.HtmlBody, Regex.Escape(PayUrl)).Count);
         Assert.Contains("non è andato a buon fine", content.HtmlBody);
         Assert.Contains("60,00 €", content.HtmlBody);
@@ -118,7 +116,6 @@ public class ServicePaymentRefundEmailTemplatesTests
 
         Assert.Contains(amount, content.HtmlBody);
         Assert.Contains(honestHint, content.HtmlBody);
-        // The payer paid the price shown: the commission is not his business, and the refund has no date promised.
         Assert.DoesNotMatch(@"\d\s*%", content.HtmlBody);
         Assert.DoesNotContain("ommission", content.HtmlBody);
         Assert.DoesNotContain("PaymentIntent", content.HtmlBody);
@@ -196,7 +193,6 @@ public class ServicePaymentRefundEmailTemplatesTests
             Assert.DoesNotContain("https://", body);
         }
 
-        // The signature itself keeps the payer out: ids, the supplier's name, the amount and a code.
         var parameters = typeof(EmailTemplates).GetMethod(nameof(EmailTemplates.ServicePaymentAdminAlert))!.GetParameters().Select(p => p.Name).ToArray();
         Assert.Equal(new[] { "culture", "dispute", "paymentId", "requestId", "supplierName", "amountCents", "detail" }, parameters);
     }

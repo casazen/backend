@@ -15,10 +15,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E07/F06/US01/T02 (NF-95, AC-NF95-6): the withdrawal of a marketing consent that the host records on the guest's request also puts the
-/// addresses of the guest in the suppression list, in the same unit of work.
-/// </summary>
 public class GdprMarketingWithdrawalSuppressionTests
 {
     private static readonly ICrmContactIndex Index = CrmTestIndex.Create();
@@ -41,7 +37,6 @@ public class GdprMarketingWithdrawalSuppressionTests
             suppression,
             crmContacts);
 
-    /// <summary>A contact the guest gave on a channel of the CRM (E07/F04/US01): a consent, by default.</summary>
     private static GuestContact ContactOf(
         Guid orgId,
         Guid guestId,
@@ -72,11 +67,6 @@ public class GdprMarketingWithdrawalSuppressionTests
         ConsentTextVersion = "marketing-v2",
     };
 
-    /// <summary>
-    /// Proof test (privacy rule, AC-NF95-6): a revocation recorded by the host on the guest's request blocks the marketing e-mail address. The
-    /// withdrawal puts the e-mail of the guest and the marketing e-mail of its consent records (once each, however they are spelled) in the
-    /// suppression list with the keyed hash and the source <c>manual</c>, flags the contact with the same hash, and touches nobody else.
-    /// </summary>
     [Fact]
     public async Task GdprWithdrawalByHost_EntersSuppression_Test()
     {
@@ -111,11 +101,9 @@ public class GdprMarketingWithdrawalSuppressionTests
         await using var verify = new AppDbContext(options);
         var suppressionAfter = new SuppressionService(verify, Index, NullLogger<SuppressionService>.Instance);
 
-        // The withdrawal itself is recorded...
         Assert.False((await verify.Guests.SingleAsync(g => g.Id == guest.Id)).MarketingConsent);
         Assert.Equal(1, await verify.GuestConsentRecords.CountAsync(r => r.GuestId == guest.Id && r.Action == GuestConsentAction.Withdrawn));
 
-        // ...and so is the suppression of the two addresses of the guest, nothing else, with the keyed hash (never the plain SHA-256).
         var entries = await verify.SuppressionListEntries.Where(e => e.OrgId == orgId).ToListAsync();
         Assert.Equal(2, entries.Count);
         Assert.All(entries, entry => Assert.Equal("manual", entry.Source));
@@ -175,11 +163,9 @@ public class GdprMarketingWithdrawalSuppressionTests
             (withdrawal.Purpose, withdrawal.Action, withdrawal.Source, withdrawal.RecordedByUserId));
         Assert.Equal(GuestPrivacyAuditAction.MarketingConsentWithdrawn, (await verify.GuestPrivacyAuditEntries.SingleAsync(a => a.GuestId == guest.Id)).Action);
 
-        // The suppression is skipped, nothing of it is half done.
         Assert.False(await verify.SuppressionListEntries.AnyAsync());
         Assert.False((await verify.GuestContacts.SingleAsync()).IsSuppressed);
 
-        // The error says what to fix and which withdrawal it is about, with no personal data.
         var error = Assert.Single(log.Entries, entry => entry.Level == LogLevel.Error);
         Assert.Contains("Crm__ContactIndexKey", error.Message);
         Assert.Equal(withdrawal.Id, Assert.IsType<Guid>(error.Values["ConsentRecordId"]));
@@ -189,10 +175,6 @@ public class GdprMarketingWithdrawalSuppressionTests
         Assert.DoesNotContain("Rossi", log.AllOutput, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// What a withdrawal does not do: a consent that is not in force changes nothing, as the interface says, and the service refuses to withdraw
-    /// without the suppression service (a wiring error that cannot happen in the running application: the container always supplies it).
-    /// </summary>
     [Fact]
     public async Task GdprWithdrawalByHost_WithNothingToWithdrawOrNoSuppressionService_RecordsNothing()
     {
@@ -206,7 +188,6 @@ public class GdprMarketingWithdrawalSuppressionTests
             await seed.SaveChangesAsync();
         }
 
-        // One context per call, as one request has its own scope: a context that failed is thrown away with what it had tracked.
         await using (var db = new AppDbContext(options))
         {
             await Assert.ThrowsAsync<InvalidOperationException>(
@@ -263,7 +244,6 @@ public class GdprMarketingWithdrawalSuppressionTests
         Assert.Equal(GuestContactLegalBasis.ServiceOnly, whatsApp.LegalBasis);
         Assert.False(CrmContactRules.CanReceiveMarketing(whatsApp));
 
-        // The record: the history has the withdrawal, who recorded it and the request; the audit entry; the flag was not set and still is not.
         var row = await verify.GuestConsentRecords.SingleAsync(r => r.GuestId == guest.Id);
         Assert.Equal(
             (GuestConsentPurpose.Marketing, GuestConsentAction.Withdrawn, GuestConsentSource.HostOnGuestRequest, "auth0|host", "Richiesta dell'ospite per telefono del 03/11"),
@@ -271,7 +251,6 @@ public class GdprMarketingWithdrawalSuppressionTests
         Assert.Equal(GuestPrivacyAuditAction.MarketingConsentWithdrawn, (await verify.GuestPrivacyAuditEntries.SingleAsync(a => a.GuestId == guest.Id)).Action);
         Assert.False((await verify.Guests.SingleAsync(g => g.Id == guest.Id)).MarketingConsent);
 
-        // Nobody else: the contact that was no consent, and the consent of another guest.
         Assert.False((await verify.GuestContacts.SingleAsync(c => c.GuestId == guest.Id && c.Channel == GuestContactChannel.Phone)).IsSuppressed);
         var theirs = await verify.GuestContacts.SingleAsync(c => c.GuestId == other.Id);
         Assert.False(theirs.IsSuppressed);
@@ -279,11 +258,6 @@ public class GdprMarketingWithdrawalSuppressionTests
         Assert.False(await verify.GuestConsentRecords.AnyAsync(r => r.GuestId == other.Id));
     }
 
-    /// <summary>
-    /// Proof test (privacy rule): with the flag set, the withdrawal also ends the contacts of the guest that the addresses it knows do not
-    /// reach: an e-mail typed on the guest page is not in the consent records of the check-in, and its address now enters the suppression list
-    /// with the others; the WhatsApp contact is suppressed; the flag is cleared and the withdrawal is recorded once as before.
-    /// </summary>
     [Fact]
     public async Task GdprWithdrawalByHost_WithTheFlag_AlsoEndsTheContactsTheAddressesDoNotReach_Test()
     {
@@ -317,10 +291,6 @@ public class GdprMarketingWithdrawalSuppressionTests
             record => record is { Action: GuestConsentAction.Withdrawn, Source: GuestConsentSource.HostOnGuestRequest, RecordedByUserId: "auth0|host" });
     }
 
-    /// <summary>
-    /// Proof test (the withdrawal never depends on the key): with the flag set and no key of the index the withdrawal is recorded as before, the
-    /// contacts of the guest are left as they are, and the log has an error for the contacts besides the one for the addresses, with ids only.
-    /// </summary>
     [Fact]
     public async Task GdprWithdrawalByHost_WithoutTheKey_LeavesTheContactsAndSaysSo_Test()
     {

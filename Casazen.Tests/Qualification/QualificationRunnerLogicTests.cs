@@ -19,10 +19,6 @@ namespace Casazen.Tests.Qualification;
 // asking only for the checks of the MRZ). The validation of the sequence, the choice of the frames, the matcher, the coherence checker, the engine, the registry and the statistics are the
 // application's own. Every picture is generated in code; the repository is public.
 
-/// <summary>
-/// The pixels of a generated picture that the doubles read: the frames of a sequence carry, in their first blocks of 8 by 8 pixels, the yaw, the pitch, whether there is a face, the person and
-/// whether the face is live; a card carries, at a fixed place inside its border, the person and the side.
-/// </summary>
 internal static class PixelCode
 {
     public const int FrameWidth = 96;
@@ -34,14 +30,12 @@ internal static class PixelCode
     public const int PersonBlock = 3;
     public const int LiveBlock = 4;
 
-    /// <summary>The degrees of one step of the yaw and of the pitch a block spells (16 levels of pixel).</summary>
     public const double YawStep = 5;
     public const double PitchStep = 3;
 
     public const int CardWidth = DocumentImageFactory.Width;
     public const int CardHeight = DocumentImageFactory.Height;
 
-    // Inside the border of the card of DocumentImageFactory.WholeCard, above the first field of the back and left of every field of the front.
     public const int CardPersonX = 88;
     public const int CardSideX = 96;
     public const int CardMarkY = 78;
@@ -49,12 +43,10 @@ internal static class PixelCode
     public const byte FrontLevel = 40;
     public const byte BackLevel = 200;
 
-    /// <summary>The level of the pixels that spell a person (the first person is 1).</summary>
     public static byte PersonLevel(int person) => (byte)(30 + (25 * person));
 
     public static int PersonOfLevel(int level) => Math.Clamp((int)Math.Round((level - 30) / 25.0), 0, 7);
 
-    /// <summary>The level of a block of a frame, read from the middle of the block.</summary>
     public static int Block(RasterImage frame, int block) => frame.Rgb[((4 * frame.Width) + (block * 8) + 4) * 3];
 
     public static int Level(RasterImage picture, int x, int y) => picture.Rgb[((y * picture.Width) + x) * 3];
@@ -63,12 +55,10 @@ internal static class PixelCode
 
     public static bool IsCard(RasterImage picture) => picture.Width == CardWidth && picture.Height == CardHeight;
 
-    /// <summary>The level of a pose (a number of steps from the front) as a pixel level: 16 levels of 16, the front at 8.</summary>
     public static byte PoseLevel(double degrees, double step) => (byte)(Math.Clamp((int)Math.Round(degrees / step) + 8, 0, 15) * 16);
 
     public static double PoseDegrees(int level, double step) => ((int)Math.Round(level / 16.0) - 8) * step;
 
-    /// <summary>The pixels of a frame of a sequence: its noise, and in its first blocks the code of what it shows.</summary>
     public static byte[] FramePixels(ScriptedFrame frame, int person, bool live)
     {
         var pixels = (byte[])frame.Gray.Clone();
@@ -90,7 +80,6 @@ internal static class PixelCode
         }
     }
 
-    /// <summary>Marks a card: who it belongs to, and which side it is.</summary>
     public static void StampCard(RasterImage card, int person, byte sideLevel)
     {
         for (var y = CardMarkY; y < CardMarkY + 16; y++)
@@ -107,7 +96,6 @@ internal static class PixelCode
     }
 }
 
-/// <summary>The face detector of the logic test: the stand-in of the portrait on a card (with the landmarks of a frontal face), and in a frame the face its pixels spell.</summary>
 internal sealed class PixelFaceDetector(IFaceDetector cards) : IFaceDetector
 {
     public IReadOnlyList<DetectedFace> Detect(RasterImage image, double minScore, CancellationToken cancellationToken)
@@ -123,7 +111,6 @@ internal sealed class PixelFaceDetector(IFaceDetector cards) : IFaceDetector
         return [SequenceTestFrames.Face(image.Width, image.Height, yaw, pitch)];
     }
 
-    /// <summary>The face of a box with the five landmarks of a face that looks at the camera, in the proportions the scripted frames use.</summary>
     private static DetectedFace Frontal(DetectedFace box)
     {
         var centreX = box.X + (box.Width / 2);
@@ -141,7 +128,6 @@ internal sealed class PixelFaceDetector(IFaceDetector cards) : IFaceDetector
     }
 }
 
-/// <summary>The embedder of the logic test: the vector of a person is one coordinate at 1, so two faces of one person are the same (similarity 1) and two persons have nothing in common (0).</summary>
 internal sealed class PixelFaceEmbedder : IFaceEmbedder
 {
     public float[] Embed(RasterImage image, DetectedFace face, CancellationToken cancellationToken)
@@ -153,7 +139,6 @@ internal sealed class PixelFaceEmbedder : IFaceEmbedder
     }
 }
 
-/// <summary>The anti-spoofing model of the logic test: a frame is live when its live block says so (score 0.95), a presentation attack is not (0.30).</summary>
 internal sealed class PixelAntiSpoofing : IAntiSpoofingService
 {
     public async Task<bool> DetectLivenessAsync(Stream imageStream, CancellationToken cancellationToken = default)
@@ -171,10 +156,7 @@ internal sealed class PixelAntiSpoofing : IAntiSpoofingService
     }
 }
 
-/// <summary>
-/// The MRZ reader of the logic test: it reads the MRZ of the BACK of a card (as the picture of the whole page says it is) and nothing on any other picture. The MRZ spells the true values of
-/// the owner of the card, the ones the dataset declares for the booking: a booking that differs from its own document would be a conflict, whatever the checks the format lists.
-/// </summary>
+/// <summary>The MRZ spells the true values of the owner of the card, which the dataset declares for the booking: a document that differs from its own booking is a conflict whatever the checks the format lists.</summary>
 internal sealed class MarkerMrzReader : IMrzExtractionService
 {
     public async Task<MrzExtractionResult?> ExtractAsync(Stream imageStream, CancellationToken cancellationToken = default)
@@ -213,20 +195,16 @@ internal sealed class MarkerMrzReader : IMrzExtractionService
     }
 }
 
-/// <summary>The collection of the tests that share the runs of the real pipeline (with the doubles of the pictures) over the dataset of the logic test.</summary>
 [CollectionDefinition(Name)]
 public sealed class QualificationLogicCollection : ICollectionFixture<QualificationLogicFixture>
 {
     public const string Name = "qualification logic: the real pipeline with the pictures read as a code";
 }
 
-/// <summary>The dataset of the logic test, written in code, and the runs of the real pipeline (with the doubles above) over it, shared by the tests of the collection.</summary>
 public sealed class QualificationLogicFixture : IAsyncLifetime
 {
-    /// <summary>The persons of the dataset, p1 to p4.</summary>
     public const int Persons = 4;
 
-    /// <summary>The impostor trials a capped run may make.</summary>
     public const int Cap = 5;
 
     public static string TrueSurname(int person) => $"ZQSURNAME{person}";
@@ -241,22 +219,18 @@ public sealed class QualificationLogicFixture : IAsyncLifetime
 
     public QualificationPipeline Pipeline { get; private set; } = null!;
 
-    /// <summary>The run of every impostor trial.</summary>
     public QualificationResults Results { get; private set; } = null!;
 
-    /// <summary>The run that makes at most <see cref="Cap"/> of them.</summary>
     public QualificationResults Capped { get; private set; } = null!;
 
     public string OutDirectory => Path.Combine(Folder, "out");
 
-    /// <summary>The ids of the first capture of the documents of the pool, by person.</summary>
     public static IReadOnlyDictionary<int, string> PoolCaptures { get; } = Enumerable.Range(1, Persons).ToDictionary(person => person, person => $"g-p{person}");
 
     public async Task InitializeAsync()
     {
         Directory.CreateDirectory(Folder);
 
-        // The Italian card with the checks of the MRZ only (the visual zone is read by an OCR that these pictures do not feed), and a copy of each of two models as their candidates.
         var formats = Path.Combine(Folder, "formats");
         Directory.CreateDirectory(formats);
         var card = JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "IdentityFormats", "it-cie-3.0.json")))!.AsObject();
@@ -297,7 +271,6 @@ public sealed class QualificationLogicFixture : IAsyncLifetime
             Directory.Delete(Folder, recursive: true);
     }
 
-    /// <summary>A candidate that is a copy of a bundled model (the same weights, so the same SHA-256): no weight of a candidate is added to the repository.</summary>
     private T CandidateOf<T>(ModelFileOptions bundled, string fileName)
         where T : ModelFileOptions, new()
     {
@@ -308,10 +281,6 @@ public sealed class QualificationLogicFixture : IAsyncLifetime
         return new T { Name = bundled.Name + " (copy)", Version = "test", License = bundled.License, Provenance = "A copy of the bundled model, for the tests of the qualification runner.", Path = target, Sha256 = bundled.Sha256 };
     }
 
-    /// <summary>
-    /// Four persons with a card each and a genuine sequence (the front, the back, their true values, a sequence that follows the challenge); the first also has an attack (the same face, not live),
-    /// the fourth an altered copy of its card with the same genuine sequence, and the second a capture with the card of the third. Seven captures in all.
-    /// </summary>
     private static void WriteDataset(string folder)
     {
         var format = IdentityTestDocuments.Cie();
@@ -366,7 +335,6 @@ public sealed class QualificationLogicFixture : IAsyncLifetime
         File.WriteAllText(Path.Combine(folder, "manifest.json"), manifest.ToJson());
     }
 
-    /// <summary>A sequence of a person who answers the challenge of the policy, frame by frame as JPEG files and the timestamps of the frames.</summary>
     private static void WriteSequence(string directory, IdentityDecisionPolicy policy, int person, bool live)
     {
         Directory.CreateDirectory(directory);
@@ -378,10 +346,6 @@ public sealed class QualificationLogicFixture : IAsyncLifetime
     }
 }
 
-/// <summary>
-/// The logic of the runner on the real pipeline: what every kind of capture comes to, the impostor trials and their sample, the paired scores of a candidate and the metrics that follow (see the
-/// comments at the top of the file).
-/// </summary>
 [Collection(QualificationLogicCollection.Name)]
 public sealed class QualificationRunnerLogicTests(QualificationLogicFixture run)
 {
@@ -443,7 +407,6 @@ public sealed class QualificationRunnerLogicTests(QualificationLogicFixture run)
         foreach (var stage in new[] { QualificationStages.DocumentCapture, QualificationStages.DocumentMrz, QualificationStages.DocumentGeometry, QualificationStages.DocumentCoherence, QualificationStages.PresenceIntake, QualificationStages.PresenceValidation, QualificationStages.PresenceSelection, QualificationStages.PresenceLiveness, QualificationStages.PresenceMatch, QualificationStages.Decision })
             Assert.True(genuine.StageMs[stage] >= 0, stage);
 
-        // The visual zone is not read here and the MRZ of the zoned reader is a picture the double does not know: the three fields of the truth are counted, and missed.
         Assert.Contains(genuine.Document!.Fields, field => field.Field == "surname" && field.Total >= 1 && field.Exact == 0);
         Assert.Contains(genuine.Document.Fields, field => field.Field == "documentNumber.mrz" && field.Exact == 0);
         Assert.Equal(run.Results.Metrics.Latency.Select(stage => stage.Stage), QualificationStages.All.Where(stage => run.Results.Metrics.Latency.Any(entry => entry.Stage == stage)));
@@ -464,7 +427,6 @@ public sealed class QualificationRunnerLogicTests(QualificationLogicFixture run)
         Assert.Equal(QualificationDecisionCodes.LivenessFailed, attack.Presence.LivenessState);
         Assert.All(attack.Presence.LivenessScores, score => Assert.Equal(0.30, score));
 
-        // The face is the owner's: the comparison is made all the same (it is the score a false non-match rate is measured on) and is not what the decision rests on.
         Assert.Equal(QualificationDecisionCodes.MatchOk, attack.Presence.MatchState);
         Assert.Equal(QualificationDecisionCodes.FinalReview, attack.Decision!.Final);
         Assert.Equal(QualificationDecisionCodes.ShadowReview, attack.Decision.Shadow);
@@ -502,7 +464,6 @@ public sealed class QualificationRunnerLogicTests(QualificationLogicFixture run)
     [Fact]
     public void Run_TheImpostorTrials_AreTheSequenceOfEveryPersonAgainstTheCardsOfTheOthers_AllOfThem()
     {
-        // Five sequences of a person with their own card (the four genuine ones and the altered one) against the three cards of the pool that are not their person's: 15 pairs.
         var sampling = run.Results.ImpostorSampling;
         var expected = new[] { ("g-p1", 1), ("g-p2", 2), ("g-p3", 3), ("g-p4", 4), ("h-p4", 4) }
             .SelectMany(source => Enumerable.Range(1, QualificationLogicFixture.Persons).Where(person => person != source.Item2).Select(person => $"{source.Item1}>{QualificationLogicFixture.PoolCaptures[person]}"))
@@ -514,8 +475,6 @@ public sealed class QualificationRunnerLogicTests(QualificationLogicFixture run)
         Assert.All(run.Results.ImpostorTrials, trial => Assert.Equal((0.0, 0.0), (trial.Similarity, trial.MinSimilarity)));
         Assert.All(run.Results.ImpostorTrials, trial => Assert.True(trial.MatchMs >= 0));
 
-        // Each trial says which couple of persons it is about (the person of the sequence, the owner of the document), by an opaque key: four persons make twelve couples, however many captures there are,
-        // and the person with the card of another one is the couple of the trial of the same two persons.
         Assert.All(run.Results.ImpostorTrials, trial => Assert.NotNull(trial.Couple));
         Assert.Equal(12, run.Results.ImpostorTrials.Select(trial => trial.Couple).Distinct().Count());
         Assert.Equal(QualificationMetrics.CoupleKey("p2", "p3"), run.Results.ImpostorTrials.Single(trial => trial.SequenceCase == "g-p2" && trial.DocumentCase == "g-p3").Couple);
@@ -545,25 +504,20 @@ public sealed class QualificationRunnerLogicTests(QualificationLogicFixture run)
     {
         var metrics = run.Results.Metrics;
 
-        // Impostors: the 15 trials and the person with the card of another; none matches. Genuine: the four with their own card, all matched.
         Assert.Equal((0L, 16L), (metrics.Fmr.Count, metrics.Fmr.Total));
         Assert.Equal((0L, 12L), (metrics.FmrCouples.Count, metrics.FmrCouples.Total));
         Assert.Equal((0L, 4L), (metrics.Fnmr.Count, metrics.Fnmr.Total));
 
-        // Every attack of the run was judged, and the cases the policy decided on are counted by kind: the attack with a document, the person with the card of another, the altered card.
         Assert.All(metrics.AttacksNotJudged, entry => Assert.Equal(0, entry.NotJudged));
         Assert.Equal((1, 1, 1, 0), (metrics.CriticalFalseApprovals.Decided["attack"], metrics.CriticalFalseApprovals.Decided["impostor_pair"], metrics.CriticalFalseApprovals.Decided["altered"], metrics.CriticalFalseApprovals.Decided["foreign"]));
 
-        // Persons present: the five genuine captures (the altered one included) and the impostor pair, all accepted by the presence.
         Assert.Equal((0L, 6L), (metrics.Bpcer.Count, metrics.Bpcer.Total));
 
-        // Check-ins: the four genuine with their own card, all of which the policy would approve.
         Assert.Equal((4L, 4L), (metrics.ShadowAutomation.Count, metrics.ShadowAutomation.Total));
         Assert.Equal((0L, 4L), (metrics.Document.FalseRejects.Count, metrics.Document.FalseRejects.Total));
         Assert.Equal(run.Results.Policy.IdentifyingFields, ["surname", "givenNames", "birthDate", "documentNumber"]);
         Assert.Equal(run.Results.Thresholds, QualificationThresholds.From(run.Pipeline.ActivePolicy));
 
-        // The metrics are the ones of the cases, whoever asks: the same function gives the same block.
         var again = QualificationMetrics.Compute(run.Results.Cases, run.Results.ImpostorTrials, run.Results.Thresholds, run.Results.Confidence, run.Results.Models);
         Assert.Equal(JsonSerializer.Serialize(metrics, QualificationResults.JsonOptions), JsonSerializer.Serialize(again, QualificationResults.JsonOptions));
     }
@@ -573,7 +527,6 @@ public sealed class QualificationRunnerLogicTests(QualificationLogicFixture run)
     {
         var paired = Case("g-p1").PairedMatch!;
 
-        // The reference scores are the ones of the matcher's pictures (one similarity per chosen frame); the candidate, a copy of SFace, scored the same frames.
         Assert.Equal(run.Pipeline.ActivePolicy.Match.Frames, paired.Reference.Count);
         Assert.Equal(paired.Reference.Count, paired.Candidate!.Count);
         Assert.Null(paired.CandidateCode);

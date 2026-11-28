@@ -12,7 +12,6 @@ namespace Casazen.Tests.Integration;
 /// </summary>
 public class PostgresMigrationTests : IAsyncLifetime
 {
-    // Hand-written migrations without a .Designer.cs: they must still be discovered and applied.
     private const string NormalizeOrgPublicHostState = "20260725110112_NormalizeOrgPublicHostState";
     private const string RestrictCustomDomainUniqueness = "20260730111500_RestrictCustomDomainUniquenessToVerified";
 
@@ -55,7 +54,6 @@ public class PostgresMigrationTests : IAsyncLifetime
             "`dotnet ef migrations add <Name> --project Casazen.Infrastructure --startup-project Casazen.Web`.");
     }
 
-    // Pending-model-changes is asserted explicitly above, so Migrate() must not throw on it first.
     private AppDbContext NewContext() =>
         new(new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql(_database!.ConnectionString, npgsql => npgsql.MigrationsAssembly("Casazen.Infrastructure"))

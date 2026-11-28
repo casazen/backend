@@ -20,7 +20,6 @@ public sealed class FakeLeaseRegistrationProvider : ILeaseRegistrationProvider
 
     public bool IsConfigured { get; set; } = true;
 
-    /// <summary>Submit, status and receipt calls made for <paramref name="leaseId"/>.</summary>
     public int CallsFor(Guid leaseId) => _calls.GetValueOrDefault(leaseId);
 
     public void FailNextSubmission(Guid leaseId) => _failNextSubmission[leaseId] = 0;

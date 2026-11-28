@@ -4,7 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Seo;
 
-/// <summary>XML of the booking-site sitemaps (BK-15), in the format of the compliance sitemap (SE-02).</summary>
 public class SeoSitemapsTests
 {
     private static readonly XNamespace Ns = "http://www.sitemaps.org/schemas/sitemap/0.9";

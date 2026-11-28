@@ -23,7 +23,6 @@ using Casazen.Web.Resources;
 using Hangfire;
 using Hangfire.Common;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
@@ -39,23 +38,12 @@ using DocumentKind = Casazen.Core.Entities.Enums.FiscalDocumentKind;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E12/F01/US01/T02 (NF-83, NF-112, ADR-022, ADR-026): the drafts at the end of every stay (the check-out event and the daily run, one draft for a booking), the automatic issue, the
-/// bulk issue (an empty selection never means «all», one row per document, only what the caller reaches), the documents of a booking and the push that makes the open pages refresh.
-/// </summary>
 public class FiscalDocumentAutomationTests
 {
-    /// <summary>09:00 in Rome on 2026-11-20: the stays that ended before that day are over.</summary>
     private static readonly DateTimeOffset Now = new(2026, 11, 20, 8, 0, 0, TimeSpan.Zero);
 
     private static readonly Guid OrgId = Guid.NewGuid();
 
-    /// <summary>
-    /// PROOF TEST: data rule (T02 point 2). The daily run makes one draft for each active stay that ended before today and has no document, and again nothing the second time: a
-    /// stay that is not over (today, ahead), cancelled, a no-show, older than the look-back or that already has a document (the check-out made it) gets none; a booking whose data is
-    /// missing is skipped and counted, not a failure; at most the limit a run, the most recent first. With the automatic issue the drafts are issued, the one the event made too;
-    /// without it they wait. Nothing runs with the issuance off or a profile that misses an item.
-    /// </summary>
     [Fact]
     public async Task DueJob_OneDraftPerBooking_Test()
     {
@@ -84,7 +72,6 @@ public class FiscalDocumentAutomationTests
         Assert.Equal(new[] { direct, portal, madeByTheEvent }.Order().ToList(), drafts.Select(d => d.BookingId!.Value).Order().ToList());
         Assert.Single(drafts, d => d.BookingId == madeByTheEvent);
 
-        // Nothing runs with the issuance off, or with a profile that misses an item.
         Assert.Equal(FiscalDocumentsDueSkipReasons.IssuanceOff, (await ServiceOf(db, issuanceOn: false).ProcessDueDocumentsAsync(OrgId, 500, 31)).NotRunReason);
         var profile = await db.OrgFiscalIssuerProfiles.SingleAsync();
         profile.LegalName = null;
@@ -118,7 +105,6 @@ public class FiscalDocumentAutomationTests
         Assert.Empty(await db.FiscalDocuments.AsNoTracking().ToListAsync());
         Assert.Equal([BillingSetupSections.Issuer, BillingSetupSections.Vat], asked);
 
-        // Nothing missing in those two sections (the others are not even asked): the draft is made.
         progress = new BillingSetupProgress(2, 2, []);
         var run = await service.ProcessDueDocumentsAsync(OrgId, 500, 31);
         Assert.Null(run.NotRunReason);
@@ -159,7 +145,6 @@ public class FiscalDocumentAutomationTests
         var first = await service.ProcessDueDocumentsAsync(OrgId, 500, 31);
         var second = await service.ProcessDueDocumentsAsync(OrgId, 500, 31);
 
-        // The draft the event made is issued too; the booking without data is skipped (and read again at the next run), never a failure.
         Assert.Equal((3, 1, 2, 1), (first.Examined, first.DraftsCreated, first.DocumentsIssued, first.Skipped));
         Assert.Equal((1, 0, 0, 1), (second.Examined, second.DraftsCreated, second.DocumentsIssued, second.Skipped));
         var documents = await db.FiscalDocuments.AsNoTracking().ToListAsync();
@@ -168,7 +153,6 @@ public class FiscalDocumentAutomationTests
         Assert.Equal(["2026/1", "2026/2"], documents.Select(d => d.Number!).Order().ToList());
         Assert.DoesNotContain(documents, d => d.BookingId == withoutData);
 
-        // Without the automatic issue the same stays only get their drafts.
         await using var manual = NewDb();
         await SeedOrgAsync(manual, autoIssue: false);
         var manualProperty = await AddPropertyAsync(manual, "auth0|host");
@@ -192,7 +176,6 @@ public class FiscalDocumentAutomationTests
         var service = ServiceOf(db);
         Assert.Equal(350.00m, (await service.CreateDraftAsync(booking, null)).Total);
 
-        // The host confirms the tourist tax of the stay (9.00) after the draft was made.
         db.StayTouristTaxes.Add(new StayTouristTax
         {
             OrgId = OrgId,
@@ -217,11 +200,6 @@ public class FiscalDocumentAutomationTests
         Assert.Contains(issued.Lines, l => l.LineType == FiscalLineType.TouristTax && l.TotalPrice == 9m);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (T01 point 4). The import records no event for a stay that is over, so the daily run compares the issued document of a portal stay that ended with the lines the
-    /// booking bills now and tells the host with the «To do» of a change (a price changed, a stay cancelled), once for each document even when the host closed the item; a stay that did
-    /// not change and a stay of CasaZen (whose changes are events) are left alone, and nothing is credited or rewritten.
-    /// </summary>
     [Fact]
     public async Task DueJob_TellsTheHostWhenTheIssuedDocumentOfAPortalStayChangedAfterItEnded_OncePerDocument()
     {
@@ -238,7 +216,6 @@ public class FiscalDocumentAutomationTests
         var cancelledDocument = await IssueAsync(service, cancelled);
         await IssueAsync(service, own);
 
-        // After the end the portal changes the price of one stay and cancels another; the price of a stay of CasaZen changes too (an event of the booking, not of this run).
         await ChangeBookingAsync(db, repriced, b => b.BasePrice = 420m);
         await ChangeBookingAsync(db, cancelled, b => b.Status = BookingStatus.Cancelled);
         await ChangeBookingAsync(db, own, b => b.BasePrice = 420m);
@@ -251,7 +228,6 @@ public class FiscalDocumentAutomationTests
         Assert.All(todos, t => Assert.Equal(FiscalDocumentTodos.BookingChangedReason, t.Reason));
         Assert.Equal(4, await db.FiscalDocuments.CountAsync());
 
-        // Once for each document: the item the host closed is not raised again, and the open one is not raised twice.
         var activities = new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, new FakeTimeProvider(Now));
         await activities.CloseAsync(todos[0].Id, InternalActivity.ClosedBySystem, CancellationToken.None);
         var second = await service.ProcessDueDocumentsAsync(OrgId, 500, 31);
@@ -279,14 +255,12 @@ public class FiscalDocumentAutomationTests
         await handler.HandleAsync(Event(DomainEventType.CheckOutCompleted, booking), CancellationToken.None);
         Assert.Equal((FiscalDocumentStatus.Draft, 1), ((await db.FiscalDocuments.AsNoTracking().SingleAsync()).Status, await db.FiscalDocuments.CountAsync()));
 
-        // Another event, a booking that does not exist and the issuance off: nothing.
         await handler.HandleAsync(Event(DomainEventType.CheckInCompleted, booking), CancellationToken.None);
         await handler.HandleAsync(Event(DomainEventType.CheckOutCompleted, Guid.NewGuid()), CancellationToken.None);
         await new FiscalDocumentCheckOutHandler(ServiceOf(db), new TestFeatureFlags(), NullLogger<FiscalDocumentCheckOutHandler>.Instance)
             .HandleAsync(Event(DomainEventType.CheckOutCompleted, booking), CancellationToken.None);
         Assert.Equal(1, await db.FiscalDocuments.CountAsync());
 
-        // The rules refuse (an answer, not a failure) or the database fails (the event is delivered again).
         var documents = new Mock<IFiscalDocumentService>();
         var refusing = new FiscalDocumentCheckOutHandler(documents.Object, flags, NullLogger<FiscalDocumentCheckOutHandler>.Instance);
         documents.Setup(d => d.EnsureDraftAsync(It.IsAny<Guid>(), null, It.IsAny<CancellationToken>()))
@@ -300,10 +274,6 @@ public class FiscalDocumentAutomationTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => refusing.HandleAsync(Event(DomainEventType.CheckOutCompleted, booking), CancellationToken.None));
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule (T02 point 3). A caller restricted to some properties issues only the documents of the properties it reaches, by period, by property and by id: any other
-    /// id is a row «not found», the same answer as an id that does not exist, and the drafts out of its reach stay drafts; a caller who reaches the whole org issues the rest.
-    /// </summary>
     [Fact]
     public async Task IssueBatch_PartialScopeIssuesOnlyReachable_Test()
     {
@@ -318,29 +288,22 @@ public class FiscalDocumentAutomationTests
         var b2 = (await service.CreateDraftAsync(await AddBookingAsync(db, others, BookingStatus.CheckedOut, BookingSource.Direct, checkOut: new DateTime(2026, 11, 17)), null)).Id;
         var restricted = new HostScope(OrgId, OwnerId: "auth0|host-a");
 
-        // By period and by the other property's id: only what the caller reaches is issued; the property out of reach selects nothing.
         var byPeriod = await service.IssueBatchAsync(restricted, new FiscalDocumentBatchRequest(null, new DateOnly(2026, 11, 1), new DateOnly(2026, 11, 30), null));
         Assert.Equal([a1, a2], byPeriod.Rows.Select(r => r.Id).ToList());
         Assert.All(byPeriod.Rows, r => Assert.True(r.Issued));
         var otherProperty = await service.IssueBatchAsync(restricted, new FiscalDocumentBatchRequest(null, null, null, [others]));
         Assert.Empty(otherProperty.Rows);
 
-        // By id: the draft of another host's property is «not found», whatever the caller guesses.
         var byId = await service.IssueBatchAsync(restricted, new FiscalDocumentBatchRequest([b1, Guid.NewGuid()], null, null, null));
         Assert.Equal(2, byId.Rows.Count);
         Assert.All(byId.Rows, r => Assert.Equal((false, FiscalDocumentErrors.NotFound), (r.Issued, r.ErrorCode)));
         Assert.Equal([FiscalDocumentStatus.Draft, FiscalDocumentStatus.Draft], await db.FiscalDocuments.AsNoTracking().Where(d => d.Id == b1 || d.Id == b2).Select(d => d.Status).ToListAsync());
 
-        // The whole org reaches the rest.
         var all = await service.IssueBatchAsync(new HostScope(OrgId), new FiscalDocumentBatchRequest([b1, b2], null, null, null));
         Assert.All(all.Rows, r => Assert.True(r.Issued));
         Assert.All(await db.FiscalDocuments.AsNoTracking().ToListAsync(), d => Assert.Equal(FiscalDocumentStatus.Issued, d.Status));
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule (T02 point 3). A member «Solo alcuni» (given some properties through <c>PropertyMemberAccess</c>, in one area or in both) issues only the documents of the
-    /// properties they were given, by id, by period and by property: any other id is a row «not found», and a member who works in the other area only reaches none of them.
-    /// </summary>
     [Fact]
     public async Task IssueBatch_MemberWithSomePropertiesIssuesOnlyTheGrantedOnes_Test()
     {
@@ -356,17 +319,14 @@ public class FiscalDocumentAutomationTests
         var n1 = (await service.CreateDraftAsync(await AddBookingAsync(db, notGranted, BookingStatus.CheckedOut, BookingSource.Direct, checkOut: new DateTime(2026, 11, 16)), null)).Id;
         var member = new HostScope(OrgId, GrantedToUserId: "auth0|member");
 
-        // By id: the draft of a property the member was not given is «not found», like an id that does not exist; the one they were given is issued.
         var byId = await service.IssueBatchAsync(member, new FiscalDocumentBatchRequest([n1, g1], null, null, null));
         Assert.Equal([(n1, false, (string?)FiscalDocumentErrors.NotFound), (g1, true, (string?)null)], byId.Rows.Select(r => (r.Id, r.Issued, r.ErrorCode)).ToList());
 
-        // By period and by property: only what the member was given; the property out of reach selects nothing and its draft stays a draft.
         var byPeriod = await service.IssueBatchAsync(member, new FiscalDocumentBatchRequest(null, new DateOnly(2026, 11, 1), new DateOnly(2026, 11, 30), null));
         Assert.Equal([g2], byPeriod.Rows.Select(r => r.Id).ToList());
         Assert.Empty((await service.IssueBatchAsync(member, new FiscalDocumentBatchRequest(null, null, null, [notGranted]))).Rows);
         Assert.Equal(FiscalDocumentStatus.Draft, (await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == n1)).Status);
 
-        // The same member working in the long-rent area only reaches none of the short-rent properties they were given.
         await service.CreateDraftAsync(await AddBookingAsync(db, granted, BookingStatus.CheckedOut, BookingSource.Direct, checkOut: new DateTime(2026, 11, 15)), null);
         var otherArea = new HostScope(OrgId, GrantedToUserId: "auth0|member", GrantedMode: RentalMode.Long);
         Assert.Empty((await service.IssueBatchAsync(otherArea, new FiscalDocumentBatchRequest(null, new DateOnly(2026, 11, 1), new DateOnly(2026, 11, 30), null))).Rows);
@@ -407,7 +367,6 @@ public class FiscalDocumentAutomationTests
         var left = await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == bad);
         Assert.Equal((FiscalDocumentStatus.Draft, null), (left.Status, left.Number));
 
-        // An empty selection is never «all»; too many documents; a period that ends before it starts.
         var everyone = new HostScope(OrgId);
         foreach (var empty in new[]
                  {
@@ -438,7 +397,6 @@ public class FiscalDocumentAutomationTests
         for (var i = 0; i < 3; i++)
             await service.CreateDraftAsync(await AddBookingAsync(db, property, BookingStatus.CheckedOut, BookingSource.Direct, checkOut: new DateTime(2026, 11, 10 + i)), null);
 
-        // The drafts of the stays of the period, the oldest check-out first, numbered in that order.
         var request = new FiscalDocumentBatchRequest(null, new DateOnly(2026, 11, 1), new DateOnly(2026, 11, 30), null);
         var result = await service.IssueBatchAsync(new HostScope(OrgId), request);
 
@@ -448,14 +406,9 @@ public class FiscalDocumentAutomationTests
             [new DateOnly(2026, 11, 10), new DateOnly(2026, 11, 11), new DateOnly(2026, 11, 12)],
             (await db.FiscalDocuments.AsNoTracking().OrderBy(d => d.SequenceNumber).ToListAsync()).Select(d => d.ServicePeriodTo!.Value).ToList());
 
-        // Nothing left to issue: an empty answer, not an error.
         Assert.Empty((await service.IssueBatchAsync(new HostScope(OrgId), request)).Rows);
     }
 
-    /// <summary>
-    /// The live refresh (T02 point 5): the issue of one document, asked by a person, tells the hosts of the booking (the push the decorator turns into the bell and the live message), once for
-    /// the document and with no guest and no amount in the text; the bulk issue and the daily run do not notify (a message for each of hundreds of documents is no help to anybody).
-    /// </summary>
     [Fact]
     public async Task Issue_TellsTheHostsOfTheBookingOnce_ButTheBulkIssueAndTheDailyRunDoNot()
     {
@@ -483,14 +436,12 @@ public class FiscalDocumentAutomationTests
         Assert.DoesNotContain("TEST Cliente", said, StringComparison.Ordinal);
         Assert.DoesNotContain("350", said, StringComparison.Ordinal);
 
-        // The daily run (the automatic issue) and the bulk issue say nothing.
         await service.ProcessDueDocumentsAsync(OrgId, 500, 31);
         var draft = (await service.CreateDraftAsync(await AddBookingAsync(db, property, BookingStatus.CheckedOut, BookingSource.Manual, checkOut: new DateTime(2026, 11, 15)), null)).Id;
         await service.IssueBatchAsync(new HostScope(OrgId), new FiscalDocumentBatchRequest([draft], null, null, null));
         Assert.Single(pushes);
         Assert.Equal(FiscalDocumentStatus.Issued, (await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.BookingId == two)).Status);
 
-        // A credit note asked by a person is told too; a push that cannot be queued never fails the issue.
         var credit = await service.CreateCreditNoteAsync(issued.Id, 50m, "TEST", confirm: true, null);
         Assert.Equal(PushDeliveryKeys.FiscalDocumentIssued(credit.Id), pushes[^1].Key);
         queue.Setup(p => p.Enqueue(It.IsAny<string>(), It.IsAny<PushAudience>(), It.IsAny<PushNotificationPayload>())).Throws(new InvalidOperationException("push down"));
@@ -526,7 +477,6 @@ public class FiscalDocumentAutomationTests
         Assert.Equal(EnsureDraftOutcome.AlreadyHasDocument, await service.EnsureDraftAsync(imported, null));
         Assert.Equal(1, await db.FiscalDocuments.CountAsync(d => d.BookingId == booking));
 
-        // A document discarded is no document: the next call makes a new draft.
         await service.DiscardDraftAsync((await db.FiscalDocuments.SingleAsync(d => d.BookingId == booking)).Id);
         Assert.Equal(EnsureDraftOutcome.Created, await service.EnsureDraftAsync(booking, null));
         Assert.Equal(1, await db.FiscalDocuments.CountAsync(d => d.BookingId == booking && d.Status == FiscalDocumentStatus.Draft));
@@ -547,8 +497,6 @@ public class FiscalDocumentAutomationTests
 
         Assert.Equal(new[] { OrgId, other }.Order().ToList(), orgs.Order().ToList());
     }
-
-    // ---------------------------------------------------------------- the job and its registration
 
     [Fact]
     public async Task Job_AnOrgThatFailsDoesNotStopTheOthers_AndEachRunsUnderItsOwnTenant_AndNothingRunsWithTheIssuanceOff()
@@ -608,8 +556,6 @@ public class FiscalDocumentAutomationTests
         off.Manager.Verify(m => m.RemoveIfExists(FiscalDocumentsDueJob.RecurringJobId), Times.Once);
     }
 
-    // ---------------------------------------------------------------- the endpoints
-
     [Fact]
     public async Task Controller_DocumentsOfABooking_AreServedToWhoMayReadItsPayments_AndNotFoundToTheOthers()
     {
@@ -637,7 +583,6 @@ public class FiscalDocumentAutomationTests
         Assert.Equal([("Invoice", "Issued", "2026/1", 362m, "EUR"), ("Invoice", "Draft", null, 120m, "EUR")], rows.Select(r => (r.Kind, r.Status, r.Number, r.Total, r.Currency)).ToList());
         Assert.All(rows, r => Assert.Equal(nameof(FiscalDocumentPaymentState.ToCollect), r.PaymentState));
 
-        // Unknown booking: the same answer as one the caller may not read.
         var missing = await Controller(documents.Object, Mock.Of<IHostResourceLookup>(), allowed: true, new HostScope(OrgId)).ForBooking(Guid.NewGuid());
         Assert.Equal(StatusCodes.Status404NotFound, (missing.Result as IStatusCodeActionResult)?.StatusCode);
     }
@@ -674,8 +619,6 @@ public class FiscalDocumentAutomationTests
         Assert.Equal("document_batch_too_large", FiscalDocumentErrors.BatchTooLarge);
         Assert.Equal("document_batch_period_invalid", FiscalDocumentErrors.BatchPeriodInvalid);
     }
-
-    // ---------------------------------------------------------------- helpers
 
     private static DomainEvent Event(DomainEventType type, Guid entityId) =>
         new(Guid.NewGuid(), OrgId, type, entityId, Now.UtcDateTime, "{}");

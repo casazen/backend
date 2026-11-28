@@ -5,10 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E31/F02/US01/T01: the regime of many properties with at most two queries (<see cref="Casazen.Core.Services.IGuestRegistrationRegimeResolver.ResolveManyAsync"/>) is exactly what the
-/// resolver says of each property alone: one place decides, for one property and for a list (decision D3).
-/// </summary>
 public class GuestRegistrationRegimeResolverManyTests
 {
     [Theory]
@@ -29,7 +25,6 @@ public class GuestRegistrationRegimeResolverManyTests
             world.AddProperty("TI", org, name: "Paris", country: "FR"),
         };
 
-        // A Swiss property whose municipality is not known (nothing stored, no postal code): the unknown Swiss place, never a canton chosen silently.
         var unknown = new Property { OrgId = org.Id, Name = "Unknown", Country = " ch ", PostalCode = "", City = "" };
         world.Db.Properties.Add(unknown);
         await world.Db.SaveChangesAsync();
@@ -55,7 +50,6 @@ public class GuestRegistrationRegimeResolverManyTests
         Assert.Equal("CH-UNKNOWN", many[unknown.Id].Regime!.Code);
         Assert.Null(many[properties[6].Id].Regime);
 
-        // The setting of the host is read only while the module is on.
         Assert.Equal(regimesOn ? GuestNotificationOverride.Required : (GuestNotificationOverride?)null, many[properties[2].Id].Override);
         Assert.Equal(regimesOn ? GuestRegistrationEffectiveDuty.Required : GuestRegistrationEffectiveDuty.Ask, many[properties[2].Id].EffectiveDuty);
     }

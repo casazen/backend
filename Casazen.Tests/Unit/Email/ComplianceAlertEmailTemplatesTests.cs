@@ -8,10 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Email;
 
-/// <summary>
-/// E03/F02/US02/T01 (NF-52, CHK-12): the texts of the new stay stages and of the alerts about a period and the connection, email and push. Every dynamic value
-/// is HTML-encoded in the email, both languages are complete, and what is in them is the property, the month, the day: no guest.
-/// </summary>
 public class ComplianceAlertEmailTemplatesTests
 {
     private const string Payload = "<a href=\"https://phish.example\">Paga qui</a>";
@@ -59,7 +55,6 @@ public class ComplianceAlertEmailTemplatesTests
         var english = EmailTemplates.ReceiptMissing(CultureInfo.GetCultureInfo("en"), "Villa Rosa", CheckIn);
 
         Assert.Equal("Ricevuta Alloggiati Web mancante - Villa Rosa (05/11/2026)", content.Subject);
-        // A stay only entrusted to the channel manager has no report: CasaZen does not know that it was sent, so the text never says only «sent».
         Assert.Contains("risulta inviata o affidata al channel manager", content.HtmlBody);
         Assert.Contains("non c'è ancora la ricevuta", content.HtmlBody);
         Assert.Contains("is recorded as sent or entrusted to the channel manager", english.HtmlBody);

@@ -14,10 +14,6 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// </summary>
 public class FiscalIssuerProofTests
 {
-    /// <summary>
-    /// PROOF TEST: data rule (tenant isolation). Two orgs have a profile of their issuer. The caller of org A reads its own only: the one of org B
-    /// is neither in the list nor found by its org (the 404 of the endpoints), and a caller with no org matches nothing.
-    /// </summary>
     [Fact]
     public async Task FiscalIssuerProfile_OtherOrgRow_Invisible_Test()
     {
@@ -27,7 +23,6 @@ public class FiscalIssuerProofTests
         var mine = NewProfile(orgA, "Casa Rossi S.r.l.");
         var theirs = NewProfile(orgB, "Casa Bianchi S.r.l.");
 
-        // The system writes both rows (no caller, so no filter), as a job or the seed would.
         await using (var system = NewDb(databaseName, tenant: null))
         {
             system.OrgFiscalIssuerProfiles.AddRange(mine, theirs);
@@ -42,19 +37,13 @@ public class FiscalIssuerProofTests
         Assert.Equal(orgA, row.OrgId);
         Assert.Equal("Casa Rossi S.r.l.", row.LegalName);
 
-        // By org too: the profile of the other org is not there.
         Assert.Null(await asOrgA.OrgFiscalIssuerProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.OrgId == orgB));
         Assert.False(await asOrgA.OrgFiscalIssuerProfiles.AsNoTracking().AnyAsync(p => p.Id == theirs.Id));
 
-        // A caller with no org is fail-closed: it matches nothing.
         await using var nobody = NewDb(databaseName, new FixedTenantContext(null));
         Assert.Empty(await nobody.OrgFiscalIssuerProfiles.AsNoTracking().ToListAsync());
     }
 
-    /// <summary>
-    /// E17/F01/US01/T01, T02: one profile for each organization (no owner) and one for each owner who issues, two partial unique indexes; the issuer rows of a
-    /// booking are one for each document (a booking may have the receipt of its owner and the invoice of the agency), no longer one for each booking.
-    /// </summary>
     [Fact]
     public void Model_OneProfileForEachOrgAndOwner_OneIssuerRowForEachDocument_UniqueAndTenantOwned()
     {

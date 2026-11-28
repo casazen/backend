@@ -18,8 +18,6 @@ public class OrgActivityCatalogTests
 {
     private static readonly Guid Org = Guid.Parse("7a3c1d52-9f0e-4b8a-8d65-2c4e1f0b9a11");
 
-    // ─── What is persisted ──────────────────────────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData(OrgActivityType.MemberInvited, 1)]
     [InlineData(OrgActivityType.InvitationRevoked, 2)]
@@ -55,7 +53,6 @@ public class OrgActivityCatalogTests
     [InlineData(OrgActivityType.IdentityEvidenceViewed, 151)]
     public void Type_TheIntegerOfEveryEvent_IsPinned(OrgActivityType type, int value)
     {
-        // The value is what the database holds: reordering or reusing it would rewrite history.
         Assert.Equal(value, (int)type);
     }
 
@@ -108,14 +105,12 @@ public class OrgActivityCatalogTests
     [Fact]
     public void Catalog_TheEventsOfAm02c_HaveTheirAreaSubjectAndDetails()
     {
-        // The areas of a member: «fromAreas» and «toAreas» are short codes, and «released» is the count of AM-03b.
         var areas = OrgActivityCatalog.Describe(OrgActivityType.MemberAreasChanged);
         Assert.Equal((OrgActivityArea.Account, OrgActivitySubjectType.Member), (areas.DefaultArea, areas.SubjectType));
         Assert.Equal(
             new[] { "fromAreas", "toAreas", "released" }.Order(),
             areas.DetailKeys.Order());
 
-        // The mode of a property: the subject is the property, the area is the one the service passes.
         foreach (var type in new[] { OrgActivityType.PropertyModeChangeScheduled, OrgActivityType.PropertyModeChangeCancelled, OrgActivityType.PropertyModeChanged })
         {
             var mode = OrgActivityCatalog.Describe(type);
@@ -143,8 +138,6 @@ public class OrgActivityCatalogTests
     {
         Assert.Equal("long-rent.short-rent", OrgActivityDetails.AreasCode(["short-rent", "LONG-RENT", "short-rent"]));
     }
-
-    // ─── Areas and names the API speaks ─────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData(OrgActivityArea.Account, "account")]
@@ -195,20 +188,15 @@ public class OrgActivityCatalogTests
         Assert.False(OrgActivityCatalog.TryParseType(name, out _));
     }
 
-    // ─── No personal data ───────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public void DetailKeys_TheClosedList_HasNothingThatCouldHoldAPersonalDatum()
     {
-        // A key that names a person, a contact, an amount or a text is the first step towards a log that keeps one.
         string[] forbidden =
         [
             "name", "email", "mail", "phone", "address", "note", "message", "text", "comment", "amount", "price", "iban",
             "fiscal", "slug", "token", "password", "reason", "description",
         ];
 
-        // `context` (E10/F01/US03/T01) holds the "text" of "con-text" and nothing else: it is the code of a closed list
-        // (OnboardingAssistContexts: panelPolice, panelIstat, panelChannelAccess, part), checked by the test below.
         string[] reviewed = [OrgActivityDetailKeys.Context];
 
         Assert.All(OrgActivityDetailKeys.All.Except(reviewed), key =>
@@ -218,8 +206,6 @@ public class OrgActivityCatalogTests
     [Fact]
     public void DetailKeys_TheContextOfAnAssistRequest_IsACodeOfTheClosedList_NeverAText()
     {
-        // The keys of the events of «Do it for me»: the part, the context and the status, each a short code; a staff update also says which kind of
-        // credential of the support vault was opened for the request (E20/F03/US01/T01): «panel», «police» or «regionalIstat».
         foreach (var (type, keys) in new[]
                  {
                      (OrgActivityType.OnboardingAssistRequested, new[] { OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Context, OrgActivityDetailKeys.Status }),
@@ -245,7 +231,6 @@ public class OrgActivityCatalogTests
             Assert.True(OrgActivityCatalog.IsSafeDetailValue(context), context);
         }
 
-        // A free text under the key is refused like under any other.
         Assert.Throws<ArgumentException>(() => OrgActivityCatalog.Validate(OrgActivity.Of(
             Org, OrgActivityType.OnboardingAssistUpdated, "auth0|staff", Org.ToString(), (OrgActivityDetailKeys.Context, "mario@example.com"))));
         Assert.Throws<ArgumentException>(() => OrgActivityCatalog.Validate(OrgActivity.Of(
@@ -270,8 +255,6 @@ public class OrgActivityCatalogTests
     [Fact]
     public void Entry_TheRowHasOnlyIdsCodesAndTheInstant_NoFreeText()
     {
-        // The whole shape of the row, by name and by type. A new column (a note, a name, a message) fails here: the person who
-        // adds it has to read this test, and the runbook, before the log starts keeping it.
         var columns = typeof(OrgActivityEntry).GetProperties()
             .ToDictionary(p => p.Name, p => p.PropertyType);
 
@@ -301,8 +284,6 @@ public class OrgActivityCatalogTests
             Assert.Equal(OrgActivityCatalog.MaxIdLength, max.Length);
         }
     }
-
-    // ─── Validate ───────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void Validate_EveryEventWithEveryDetailItAllows_IsAccepted()
@@ -393,8 +374,6 @@ public class OrgActivityCatalogTests
             OrgActivityCatalog.Validate(new OrgActivity(Org, OrgActivityType.MemberRemoved, "auth0|a", "auth0|b", Area: (OrgActivityArea)99)));
     }
 
-    // ─── The details as the database holds them ─────────────────────────────────────────────────────────
-
     [Fact]
     public void Details_SerializeInKeyOrder_AndReadBack()
     {
@@ -435,8 +414,6 @@ public class OrgActivityCatalogTests
         Assert.Equal(["org", "staff", "subscription"], Enum.GetValues<PlanChangeSource>().Select(s => s.Code()));
         Assert.All(Enum.GetValues<PlanChangeSource>(), s => Assert.True(OrgActivityCatalog.IsSafeDetailValue(s.Code())));
     }
-
-    // ─── The runbook lists the same events ──────────────────────────────────────────────────────────────
 
     private static string FindRepositoryRoot()
     {

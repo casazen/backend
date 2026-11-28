@@ -25,7 +25,6 @@ public sealed class QualificationCalibrationTests : IDisposable
         Directory.CreateDirectory(Committed);
     }
 
-    /// <summary>The folder of the committed policy files (a test copy of it).</summary>
     private string Committed => Path.Combine(_folder, "committed");
 
     private string Out => Path.Combine(_folder, "out");
@@ -36,7 +35,6 @@ public sealed class QualificationCalibrationTests : IDisposable
             Directory.Delete(_folder, recursive: true);
     }
 
-    // The base score of the liveness of each class of attack: the attacks of a class score from it up by a thousandth each.
     private static readonly Dictionary<string, double> LivenessBase = new(StringComparer.Ordinal)
     {
         [QualificationAttackClasses.PhotoPrint] = 0.05,
@@ -101,8 +99,6 @@ public sealed class QualificationCalibrationTests : IDisposable
         Assert.Equal(["identity-policy-2026.12-1.json"], PolicyFilesIn(Out));
         Assert.Equal("identity-policy-2026.12-1.json", proposal.PolicyFile);
 
-        // The acceptance is just above the highest score of the 40,000 impostor comparisons (no false match is the most that 1 in 10,000 allows at that number of trials); the floor is the score that
-        // leaves one in twenty of the genuine ones under it; the least liveness is just above the best score of the attacks of the class that scores highest (300 attacks allow none).
         var thresholds = proposal.Thresholds!;
         Assert.Equal(Math.BitIncrement(0.3 + (999 * 0.0005)), thresholds.Accept);
         Assert.Equal(0.55 + (4 * 0.0035), thresholds.ReviewFloor, 9);
@@ -113,7 +109,6 @@ public sealed class QualificationCalibrationTests : IDisposable
         Assert.Equal(300, proposal.Evidence.AttacksByClass[QualificationAttackClasses.PhotoPrint]);
         Assert.Equal(300, proposal.Evidence.AttacksReachingLiveness[QualificationAttackClasses.Synthetic]);
 
-        // The upper bound of the false match rate at that acceptance is under the target, and one more false match would not be.
         Assert.True(IdentityStatistics.ClopperPearsonUpper(0, 40_000) <= _targets.FmrMax);
         Assert.True(IdentityStatistics.ClopperPearsonUpper(1, 40_000) > _targets.FmrMax);
     }
@@ -129,7 +124,6 @@ public sealed class QualificationCalibrationTests : IDisposable
         var bytes = File.ReadAllBytes(path);
         Assert.Equal(IdentityPolicyProvider.CanonicalSha256(bytes), proposal.PolicyCanonicalHash);
 
-        // Pinned to its hash, the provider of the application finds a valid policy that is calibrated, with every other member as it was.
         var options = Options.Create(new IdentityVerificationOptions { PolicyFile = path, PolicySha256 = proposal.PolicyCanonicalHash! });
         var snapshot = new IdentityPolicyProvider(options, NullLogger<IdentityPolicyProvider>.Instance, Out).Snapshot;
         Assert.True(snapshot.IsReady);
@@ -145,20 +139,17 @@ public sealed class QualificationCalibrationTests : IDisposable
         Assert.Equal(active.Closure, read.Closure);
         Assert.Equal(active.CaptureRules, read.CaptureRules);
 
-        // The summary of the proposal is in the folder too, and says what the proposal is.
         using var summary = JsonDocument.Parse(File.ReadAllText(Path.Combine(Out, QualificationCalibration.ProposalFileName)));
         Assert.True(summary.RootElement.GetProperty("proposed").GetBoolean());
         Assert.Equal(proposal.PolicyCanonicalHash, summary.RootElement.GetProperty("policyCanonicalHash").GetString());
     }
 
-    /// <summary>Proof (security): a qualified policy file is never edited. The output folder is never the folder of the committed policies, and a file is created, never replaced.</summary>
     [Fact]
     public void Propose_NeverWritesToTheFolderOfTheCommittedPolicies_NorReplacesAFile()
     {
         var committedFile = Path.Combine(Committed, "identity-policy-2026.11-1.json");
         File.WriteAllText(committedFile, "THE COMMITTED POLICY");
 
-        // The output folder is the committed one, spelled in three ways, or a folder inside it: refused, and nothing is written there.
         foreach (var spelled in new[] { Committed, Committed + Path.DirectorySeparatorChar, Path.Combine(Committed, "..", "committed"), Path.Combine(Committed, "proposals") })
         {
             var refusal = Assert.Throws<QualificationRunException>(() => QualificationCalibration.Propose(Results(), _targets, IdentityTestPolicy.Shipped(), [Committed], spelled, _clock));
@@ -169,7 +160,6 @@ public sealed class QualificationCalibrationTests : IDisposable
         Assert.Equal(["identity-policy-2026.11-1.json"], PolicyFilesIn(Committed));
         Assert.Empty(Directory.EnumerateFiles(Committed, "calibration-proposal.json"));
 
-        // In another folder the proposal is a new file; the committed one is as it was.
         Assert.True(Propose(Results()).Proposed);
         Assert.Equal("THE COMMITTED POLICY", File.ReadAllText(committedFile));
         Assert.Equal(["identity-policy-2026.12-1.json"], PolicyFilesIn(Out));
@@ -223,10 +213,6 @@ public sealed class QualificationCalibrationTests : IDisposable
         Assert.Equal([QualificationCalibrationCodes.AttacksInsufficient + ":" + QualificationAttackClasses.VideoReplay], proposal.Codes);
     }
 
-    /// <summary>
-    /// Proof (a target that cannot be measured fails): an attack that could not be judged (a case that broke, a sequence that could not be read, a validation or a liveness that was not
-    /// available) is no evidence. It is not counted among the attacks of its class, which then may be too few to show the limit of the target, and it takes no part in the thresholds.
-    /// </summary>
     [Fact]
     public void Propose_AnAttackThatCouldNotBeJudged_IsNoEvidence_AndIsCountedApart()
     {
@@ -234,7 +220,6 @@ public sealed class QualificationCalibrationTests : IDisposable
         var broken = 0;
         var cases = results.Cases.Select(candidate =>
         {
-            // A hundred of the attacks of the photo class broke, each in its own way.
             if (candidate.AttackClass != QualificationAttackClasses.PhotoPrint || broken >= 100)
                 return candidate;
 
@@ -246,7 +231,6 @@ public sealed class QualificationCalibrationTests : IDisposable
 
         var proposal = Propose(QualificationTestData.Results(QualificationSplits.Calibration, cases, results.ImpostorTrials));
 
-        // 200 attacks of the class were judged: too few to show the limit of the target, whatever the 300 would have said.
         Assert.False(proposal.Proposed);
         Assert.Equal([QualificationCalibrationCodes.AttacksInsufficient + ":" + QualificationAttackClasses.PhotoPrint], proposal.Codes);
         Assert.Equal(200, proposal.Evidence.AttacksByClass[QualificationAttackClasses.PhotoPrint]);
@@ -271,7 +255,6 @@ public sealed class QualificationCalibrationTests : IDisposable
     [Fact]
     public void Propose_ImpostorsKeptOutByTheMinimumOfEachFrame_LeaveTheActiveAcceptanceAsItIs()
     {
-        // Every impostor has a frame under the minimum: the decision score of each is 0, nothing is above it, and the acceptance of the active policy already keeps them all out.
         var proposal = Propose(Results(impostorMin: 0.2));
 
         Assert.True(proposal.Proposed);

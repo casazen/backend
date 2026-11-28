@@ -10,10 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// E40/F01/US01/T01 (NF-140..NF-142): the surfaces of the agency's own domain in the domain settings. The endpoint is hidden while
-/// <c>WhiteLabelHost</c> is off, saves only the caller's own org, follows the domain's plan, and a save is seen by <c>resolve-host</c> at once.
-/// </summary>
 public class OrgDomainSurfacesIntegrationTests(CasazenWebApplicationFactory flagsOff, SiteIntegrationFlagsFactory flagsOn)
     : IClassFixture<CasazenWebApplicationFactory>, IClassFixture<SiteIntegrationFlagsFactory>
 {
@@ -133,7 +129,6 @@ public class OrgDomainSurfacesIntegrationTests(CasazenWebApplicationFactory flag
         Assert.True(surfaces.GetProperty("guestAreaOnOwnDomain").GetBoolean());
         Assert.True(surfaces.GetProperty("ownerPortalOnOwnDomain").GetBoolean());
         Assert.True(surfaces.GetProperty("useOwnDomainForLinks").GetBoolean());
-        // The owner portal asks for the Auth0 registration of the domain; until it is ready no owner signs in there.
         Assert.Equal("Pending", surfaces.GetProperty("ownerLoginHostState").GetString());
         Assert.False(surfaces.GetProperty("ownerLoginAutomatic").GetBoolean());
         var effective = surfaces.GetProperty("effective");
@@ -173,7 +168,6 @@ public class OrgDomainSurfacesIntegrationTests(CasazenWebApplicationFactory flag
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var stored = await ReadOrgAsync(flagsOn, org.Id);
-        // The registration of the first domain is forgotten and, the owner portal being on, the new domain asks for its own at once.
         Assert.Equal(OwnerLoginHostState.Pending, stored.OwnerLoginHostState);
         Assert.True(stored.GuestAreaOnOwnDomain);
         Assert.True(stored.OwnerPortalOnOwnDomain);
@@ -202,7 +196,6 @@ public class OrgDomainSurfacesIntegrationTests(CasazenWebApplicationFactory flag
         Assert.True(stored.OwnerPortalOnOwnDomain);
     }
 
-    /// <summary>Pro/Scale take effect only while a subscription pays for them (#274), like <c>OrgDomainIntegrationTests</c>.</summary>
     internal static Task SetPlanAsync(CasazenWebApplicationFactory factory, Guid orgId, PlanTier tier) =>
         UpdateOrgAsync(factory, orgId, org =>
         {
@@ -239,10 +232,6 @@ public class OrgDomainSurfacesIntegrationTests(CasazenWebApplicationFactory flag
     }
 }
 
-/// <summary>
-/// The default integration factory with the flags of the site integration on (<c>WhiteLabelHost</c> and <c>SiteEmbed</c>, E40-E43);
-/// <c>Auth0HostSync</c> stays off, as it will in the test environment until the Management credentials exist.
-/// </summary>
 public sealed class SiteIntegrationFlagsFactory : CasazenWebApplicationFactory
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)

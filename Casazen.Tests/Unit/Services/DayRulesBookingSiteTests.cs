@@ -21,14 +21,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E08/F05/US01/T03 (NF-36): the price and the rules of the nights where a guest meets them: the quote, the checkout and the public calendar of
-/// a property, built with the real services on EF InMemory (the repositories and the payment gateway are the only mocks). The two proof tests are
-/// the money and the data rule of the brief.
-/// </summary>
 public class DayRulesBookingSiteTests
 {
-    // 2026-10-09 10:00 UTC: the 9th of October in Rome, so every night of December below is some two months ahead.
     private static readonly DateTimeOffset Now = new(2026, 10, 9, 10, 0, 0, TimeSpan.Zero);
 
     private readonly string _databaseName = $"day-rules-site-{Guid.NewGuid():N}";
@@ -127,13 +121,6 @@ public class DayRulesBookingSiteTests
             .ReturnsAsync(true);
     }
 
-    // --- The proofs --------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// PROOF TEST: money rule. On a date with a price written in the calendar the quote of a one-night stay equals the price of that night in the
-    /// public calendar, to the cent: over a seasonal price the host confirmed for the same date, over the rate and over the weekend surcharge;
-    /// and when the host clears the day price the seasonal price (or the rate) comes back, in the quote and in the calendar alike.
-    /// </summary>
     [Fact]
     public async Task DayRulePrice_QuoteEqualsCalendarNightPrice_Test()
     {
@@ -142,8 +129,6 @@ public class DayRulesBookingSiteTests
         var monday = saturday.AddDays(2);
         var tuesday = saturday.AddDays(3);
 
-        // Saturday: a weekend night at 120 (100 + 20%) that gets a day price of 155.55. Sunday: a seasonal price of 130 that gets a day price of
-        // 150. Monday: a seasonal price of 130, no day price. Tuesday: nothing at all (the rate).
         _db.SeasonalPriceSuggestions.AddRange(Seasonal(sunday, 130m), Seasonal(monday, 130m));
         await _db.SaveChangesAsync();
         await ApplyAsync(saturday, saturday, new DayRulePatch(Price: FieldPatch<decimal>.Set(155.555m)));
@@ -153,24 +138,15 @@ public class DayRulesBookingSiteTests
         Assert.Equal([15556L, 15000L, 13000L, 10000L], await QuotedCentsAsync(nights));
         Assert.Equal([15556L, 15000L, 13000L, 10000L], await CalendarCentsAsync(nights));
 
-        // The host takes the day prices away: the weekend night costs the weekend rate again and the seasonal price is back.
         await ApplyAsync(saturday, sunday, new DayRulePatch(Price: FieldPatch<decimal>.Clear));
         Assert.Equal([12000L, 13000L, 13000L, 10000L], await QuotedCentsAsync(nights));
         Assert.Equal(await QuotedCentsAsync(nights), await CalendarCentsAsync(nights));
         Assert.Empty(await _db.PropertyDayRules.AsNoTracking().ToListAsync());
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. The quote refuses a stay that arrives on a night closed to arrival, leaves on a day closed to departure, is shorter
-    /// than the minimum or longer than the maximum of its arrival date, or breaks the advance limits, each with its own code, its sentence, the date
-    /// and the limit; the checkout refuses the same before it stores anything; a stay that respects every rule is quoted, and the host's own quote
-    /// of the same dates is not refused.
-    /// </summary>
     [Fact]
     public async Task Checkout_StayBreakingADayRule_IsRefused_Test()
     {
-        // 2026-12-10: booked at least 100 days ahead (it is 62). 12-12: at most 30 days ahead (it is 64). 12-14: closed to arrival. 12-17: closed to
-        // departure. 12-19: at least 3 nights. 12-22: at most 2 nights.
         await ApplyAsync(new DateOnly(2026, 12, 10), new DateOnly(2026, 12, 10), new DayRulePatch(MinAdvanceDays: FieldPatch<int>.Set(100)));
         await ApplyAsync(new DateOnly(2026, 12, 12), new DateOnly(2026, 12, 12), new DayRulePatch(MaxAdvanceDays: FieldPatch<int>.Set(30)));
         await ApplyAsync(new DateOnly(2026, 12, 14), new DateOnly(2026, 12, 14), new DayRulePatch(ClosedToArrival: FieldPatch<bool>.Set(true)));
@@ -201,26 +177,21 @@ public class DayRulesBookingSiteTests
             }
         }
 
-        // Nothing was stored, nothing was asked of the gateway, no tourist tax was worked out for a stay that cannot be booked.
         _repository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
         _repository.Verify(x => x.AddWithGuestConsentsAsync(It.IsAny<Booking>(), It.IsAny<IReadOnlyList<GuestConsentRecord>>()), Times.Never);
         _guests.Verify(x => x.AddAsync(It.IsAny<Guest>()), Times.Never);
         _touristTax.Verify(x => x.QuoteAsync(It.IsAny<TouristTaxComune>(), It.IsAny<TouristTaxStay>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // A stay that respects every rule is quoted: three nights from the 19th (the minimum), two from the 22nd (the maximum).
         foreach (var (arrival, nights) in new[] { (new DateOnly(2026, 12, 19), 3), (new DateOnly(2026, 12, 22), 2), (new DateOnly(2026, 12, 27), 5) })
         {
             var quote = await _booking.QuoteDirectBookingAsync(QuoteInput(arrival, nights));
             Assert.Equal(nights, quote.Nights);
         }
 
-        // The host's own quote and its manual booking are not refused by the rules: a stay entered by hand can break them.
         var closedArrival = new DateTime(2026, 12, 14, 0, 0, 0, DateTimeKind.Utc);
         var hostQuote = await _booking.PriceHostStayAsync(_property, closedArrival, closedArrival.AddDays(1), 2, 0, null);
         Assert.Equal(1, hostQuote.Nights);
     }
-
-    // --- The rest of the behaviour -----------------------------------------------------------------------------
 
     [Fact]
     public async Task PublicCalendar_EachDayCarriesItsRules_AndANightClosedToArrivalIsStillFree()
@@ -244,10 +215,8 @@ public class DayRulesBookingSiteTests
         var ruled = calendar.Days[0];
         Assert.Equal(friday, ruled.Date);
         Assert.Equal((true, 4, 7, true, true, 1, 200), (ruled.Available, ruled.MinNights, ruled.MaxNights, ruled.ClosedToArrival, ruled.ClosedToDeparture, ruled.MinAdvanceDays, ruled.MaxAdvanceDays));
-        // The day after has no rule: the minimum of the property, no maximum, nothing closed.
         var plain = calendar.Days[1];
         Assert.Equal((true, 2, null, false, false, null, null), (plain.Available, plain.MinNights, plain.MaxNights, plain.ClosedToArrival, plain.ClosedToDeparture, plain.MinAdvanceDays, plain.MaxAdvanceDays));
-        // The price of the night with a rule but no price is still the one of the rate and the weekend (a Friday: 120).
         Assert.Equal(12000L, ruled.NightlyPriceCents);
     }
 
@@ -276,7 +245,6 @@ public class DayRulesBookingSiteTests
         var night = new DateOnly(2026, 12, 16);
         await ApplyAsync(night, night, new DayRulePatch(Price: FieldPatch<decimal>.Set(222m), ClosedToArrival: FieldPatch<bool>.Set(true)));
 
-        // A signed-in host of another org looks at the site: the tenant filter is on for it, and the services read the site as everybody does.
         await using var asOtherOrg = new AppDbContext(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_databaseName).Options,
             new FixedTenant(Guid.NewGuid()));
@@ -298,7 +266,6 @@ public class DayRulesBookingSiteTests
         var monday = new DateOnly(2026, 12, 14);
         await ApplyAsync(monday.AddDays(7), monday.AddDays(7), new DayRulePatch(MinNights: FieldPatch<int>.Set(1)));
 
-        // No rule on the 14th: the property's minimum (3) refuses two nights. The 21st has its own minimum of one night, which wins over the property's.
         var refused = await Assert.ThrowsAsync<DomainRuleException>(() => _booking.QuoteDirectBookingAsync(QuoteInput(monday, 2)));
         var accepted = await _booking.QuoteDirectBookingAsync(QuoteInput(monday.AddDays(7), 1));
 
@@ -306,11 +273,6 @@ public class DayRulesBookingSiteTests
         Assert.Equal(1, accepted.Nights);
     }
 
-    /// <summary>
-    /// The search, the public calendar and the checkout agree (E08/F05/US01/T04, AC-NF36-2): for every arrival and every length tried, with rules of
-    /// every kind scattered over the days, the search offers a house exactly when the quote of the checkout accepts the stay, and the first free date
-    /// it proposes is a stay the quote accepts.
-    /// </summary>
     [Fact]
     public async Task Search_OffersAStayExactlyWhenTheCheckoutAcceptsIt_AndItsFirstFreeDateIsOneToo()
     {
@@ -366,7 +328,6 @@ public class DayRulesBookingSiteTests
                 if (!accepted)
                     refused++;
 
-                // The first free date the search proposes is a stay the checkout accepts too (as long as the stay asked, or the minimum of that night).
                 if (card.Availability.FirstFreeCheckIn is { } proposed && !card.Availability.Available)
                 {
                     var length = Math.Max(nights, DayRuleDefaults.MinNightsOf(rules[_property.Id].GetValueOrDefault(proposed), _property.MinNights));
@@ -375,15 +336,9 @@ public class DayRulesBookingSiteTests
             }
         }
 
-        // The scenario really has stays on both sides, or the comparison proves nothing.
         Assert.InRange(refused, 20, tried - 20);
     }
 
-    /// <summary>
-    /// The search and the checkout count the advance of a rule on the same clock, the one of the house (E08/F05/US01/T04, AC-NF36-2). A house in
-    /// Auckland is 13 hours ahead of UTC in October, so 11:00 UTC on the 9th is its midnight: a minute before it the night of the 10th is a day ahead,
-    /// a minute after it is today. The search stops offering the night exactly when the quote stops accepting it, while in Rome it is the 9th all along.
-    /// </summary>
     [Theory]
     [InlineData(10, 59, true)]
     [InlineData(11, 1, false)]
@@ -419,8 +374,6 @@ public class DayRulesBookingSiteTests
         if (!accepted)
             Assert.Equal(PublicStayReasons.Advance, card.Availability.Reason);
     }
-
-    // --- Helpers -----------------------------------------------------------------------------------------------
 
     private async Task ApplyAsync(DateOnly from, DateOnly to, DayRulePatch patch)
     {
@@ -471,7 +424,6 @@ public class DayRulesBookingSiteTests
         null,
         PaymentOption.Immediate);
 
-    // What the quote of a one-night stay on each night adds up to, in cents.
     private async Task<List<long>> QuotedCentsAsync(IEnumerable<DateOnly> nights)
     {
         var cents = new List<long>();
@@ -481,7 +433,6 @@ public class DayRulesBookingSiteTests
         return cents;
     }
 
-    // What the public calendar says each of the nights costs, in cents.
     private async Task<List<long>> CalendarCentsAsync(IEnumerable<DateOnly> nights)
     {
         var wanted = nights.ToList();
@@ -490,7 +441,6 @@ public class DayRulesBookingSiteTests
         return wanted.Select(night => calendar.Days.Single(day => day.Date == night).NightlyPriceCents).ToList();
     }
 
-    // A clock the test moves between the steps; every service of the test reads it.
     private sealed class SettableTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = utcNow;

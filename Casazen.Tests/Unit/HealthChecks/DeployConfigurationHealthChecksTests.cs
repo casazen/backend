@@ -9,11 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.HealthChecks;
 
-/// <summary>
-/// DEPLOY-CFG (D9): two settings the code needs but nothing reported are now visible in <c>/api/health/ready</c>: the
-/// public URL of the API (iCal export links) and the legal documents / subprocessor list. Both are <c>degraded</c>
-/// (the API works without them), name the variables and never a value.
-/// </summary>
 public class DeployConfigurationHealthChecksTests
 {
     private const string ApiUrl = "https://api-secret-host.example";
@@ -75,8 +70,6 @@ public class DeployConfigurationHealthChecksTests
     [Fact]
     public void Appsettings_ApiBaseUrl_HasNoCommittedValue()
     {
-        // A committed host would look configured on an environment that never set the variable (the test environment
-        // would publish the production host in its iCal links): the key stays empty and the check reports it.
         var configuration = new ConfigurationBuilder()
             .AddJsonFile(Path.Combine(FindSolutionRoot(), "Casazen.Web", "appsettings.json"), optional: false)
             .Build();

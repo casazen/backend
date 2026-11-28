@@ -31,13 +31,6 @@ public class BookingSearchServiceTests
         HostScope OrgWide,
         HostScope Restricted);
 
-    /// <summary>
-    ///   b1  Trullo       Anna Verdi   Confirmed   10-13 Oct   ABCDE-FGHJK
-    ///   b2  Trullo       Mario Rossi  Cancelled   12-14 Oct   MNPQR-STVWX
-    ///   b3  Casa Bianca  Luca Neri    CheckedOut  1-5 Sep     01234-56789
-    ///   b4  Casa Bianca  Anna Verdi   Pending     1-3 Nov     ZZZZZ-00000
-    /// plus a booking of Anna Verdi in another org, that nobody of this one may ever see.
-    /// </summary>
     private static async Task<Fixture> SeedAsync()
     {
         var db = HostScopeScenario.NewInMemoryDb();
@@ -88,8 +81,6 @@ public class BookingSearchServiceTests
     private static async Task<List<Guid>> IdsAsync(Fixture world, BookingSearchCriteria criteria, HostScope? scope = null) =>
         (await Search(world.Db).SearchAsync(scope ?? world.OrgWide, criteria)).Items.Select(b => b.Id).ToList();
 
-    // --- Without criteria ------------------------------------------------------------------------------
-
     [Fact]
     public async Task NoCriteria_EveryBookingOfTheScope_LatestCheckInFirst_WithTheirPropertyAndGuest()
     {
@@ -97,7 +88,6 @@ public class BookingSearchServiceTests
 
         var page = await Search(world.Db).SearchAsync(world.OrgWide, new BookingSearchCriteria());
 
-        // November, October (the 12th and the 10th), September; nothing of the other org.
         Assert.Equal([world.B4.Id, world.B2.Id, world.B1.Id, world.B3.Id], page.Items.Select(b => b.Id));
         Assert.Equal(4, page.TotalCount);
         Assert.Equal(1, page.Page);
@@ -106,8 +96,6 @@ public class BookingSearchServiceTests
         Assert.Equal("Casa Bianca", first.Property.Name);
         Assert.Equal("Anna", first.Guest.FirstName);
     }
-
-    // --- Status -----------------------------------------------------------------------------------------
 
     [Fact]
     public async Task Status_OneOrMany_AndNoneMeansEvery()
@@ -121,10 +109,7 @@ public class BookingSearchServiceTests
         Assert.Equal(4, (await Search(world.Db).SearchAsync(world.OrgWide, new BookingSearchCriteria(Statuses: []))).TotalCount);
     }
 
-    // --- Days ------------------------------------------------------------------------------------------
-
     [Theory]
-    // (from, to) as (month, day) pairs, 0 for none; the stays b1 10-13 Oct, b2 12-14 Oct, b3 1-5 Sep, b4 1-3 Nov.
     [InlineData(10, 13, 0, 0, "b4,b2,b1")]
     [InlineData(10, 14, 0, 0, "b4,b2")]
     [InlineData(10, 15, 0, 0, "b4")]
@@ -149,8 +134,6 @@ public class BookingSearchServiceTests
             expected.Length == 0 ? [] : expected.Split(',').Select(name => names[name]).ToList(),
             ids);
     }
-
-    // --- Text ------------------------------------------------------------------------------------------
 
     [Theory]
     [InlineData("verdi", "b4,b1")]
@@ -210,14 +193,11 @@ public class BookingSearchServiceTests
                     PropertyId: world.Trullo.Id)));
     }
 
-    // --- Pages -----------------------------------------------------------------------------------------
-
     [Fact]
     public async Task Pages_AreStable_NoBookingTwiceNorMissing_EvenWithTheSameCheckInDate()
     {
         var world = await SeedAsync();
         var guest = await world.Db.Guests.FirstAsync(g => g.OrgId == world.OrgId);
-        // 25 stays that start the same day: only the id can tell them apart.
         var ties = Enumerable.Range(0, 25)
             .Select(i => Stay(world.Trullo, guest, BookingStatus.Confirmed, Day(12, 20), Day(12, 22), $"TIE{i:0000000}"))
             .ToList();
@@ -235,10 +215,8 @@ public class BookingSearchServiceTests
 
         Assert.Equal(29, seen.Count);
         Assert.Equal(29, seen.Distinct().Count());
-        // The same order as one big page.
         var all = await Search(world.Db).SearchAsync(world.OrgWide, new BookingSearchCriteria(PageSize: 100));
         Assert.Equal(all.Items.Select(b => b.Id), seen);
-        // The ties come first (the 20th of December), by id.
         Assert.Equal(ties.Select(t => t.Id).Order(), all.Items.Take(25).Select(b => b.Id));
     }
 
@@ -258,14 +236,11 @@ public class BookingSearchServiceTests
         Assert.Equal(4, high.TotalCount);
     }
 
-    // --- The scope --------------------------------------------------------------------------------------
-
     [Fact]
     public async Task Scope_ACollaboratorLimitedToSomePropertiesSeesOnlyThose_WhateverTheCriteria()
     {
         var world = await SeedAsync();
 
-        // Everything, a text that also matches the other property's bookings, and the other property asked for by id.
         Assert.Equal([world.B2.Id, world.B1.Id], await IdsAsync(world, new BookingSearchCriteria(), world.Restricted));
         Assert.Equal([world.B1.Id], await IdsAsync(world, new BookingSearchCriteria(Query: "anna"), world.Restricted));
         Assert.Empty(await IdsAsync(world, new BookingSearchCriteria(PropertyId: world.CasaBianca.Id), world.Restricted));

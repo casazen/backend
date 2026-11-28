@@ -11,13 +11,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Tests.Qualification;
 
-// E74/F01/US02/T01 (NF-198, D12, ADR-013-R21): the REAL pipeline of the self-hosted identity verification, in this process, for the offline qualification. It is the services the
-// application registers (AddSelfHostedIdentityVerification, and the registrations of the models and of the readers of the document that AddCasazenServices makes next to it),
-// configured from the published appsettings.json that the test output carries like BundledCheckInModelTests, with the model files of MlModels: no double of a model, a reader or a
-// policy. Nothing leaves the process: no HTTP client is registered (so the store can download nothing), no AI provider, no job. Nothing is logged: the services of the pipeline log
-// codes and counts, and a qualification prints none of them.
-
-/// <summary>How a <see cref="QualificationPipeline"/> is built; the defaults are the ones of a real run.</summary>
 public sealed record QualificationPipelineOptions
 {
     /// <summary>
@@ -27,16 +20,10 @@ public sealed record QualificationPipelineOptions
     /// </summary>
     public bool IncludeEnvironmentVariables { get; init; } = true;
 
-    /// <summary>The time the models are given to load (verified by their SHA-256 and loaded): past it the run stops with <see cref="QualificationRunCodes.ModelsNotReady"/>.</summary>
     public TimeSpan ModelLoadTimeout { get; init; } = TimeSpan.FromMinutes(10);
 
-    /// <summary>The clock of the run: its "today" in Rome is the day documents must still be valid on, and its instant stamps the results.</summary>
     public TimeProvider Clock { get; init; } = TimeProvider.System;
 
-    /// <summary>
-    /// Registrations made last, to replace what a machine cannot run (a test of the machine without Tesseract, say). A real run leaves it null: the pipeline of a qualification is the one of
-    /// the application.
-    /// </summary>
     public Action<IServiceCollection>? ConfigureServices { get; init; }
 }
 
@@ -52,13 +39,10 @@ public sealed record QualificationPipelineOptions
 /// </summary>
 public sealed class QualificationPipeline : IAsyncDisposable
 {
-    /// <summary>The most the settings allow for the time of a model run (30 seconds).</summary>
     public const int WidenedModelTimeoutMs = 30_000;
 
-    /// <summary>The most the settings allow for the time of the validation of a sequence (30 seconds).</summary>
     public const int WidenedSequenceTimeoutMs = 30_000;
 
-    /// <summary>The most the settings allow for the time of the reading of a document (120 seconds).</summary>
     public const int WidenedOcrTimeoutSeconds = 120;
 
     private readonly ServiceProvider _provider;
@@ -92,105 +76,69 @@ public sealed class QualificationPipeline : IAsyncDisposable
         CandidateComparison = services.GetRequiredService<IBiometricCandidateComparison>();
     }
 
-    /// <summary>The clock of the run.</summary>
     public TimeProvider Clock { get; }
 
-    /// <summary>The models the store loaded (and the optional candidates).</summary>
     public IBiometricModelStore Models { get; }
 
-    /// <summary>The settings of the models in force (the published ones, the time limits widened).</summary>
     public BiometricModelOptions BiometricOptions { get; }
 
-    /// <summary>The settings of the identity verification in force (the published ones, the time of the sequence widened).</summary>
     public IdentityVerificationOptions IdentityOptions { get; }
 
-    /// <summary>The provider of the versioned policy the application uses.</summary>
     public IdentityPolicyProvider PolicyProvider { get; }
 
-    /// <summary>The fingerprint of the policy and the weights in force.</summary>
     public IdentityConfigurationFingerprint Fingerprint { get; }
 
-    /// <summary>The registry of the formats of the documents.</summary>
     public DocumentFormatRegistry Formats { get; }
 
-    /// <summary>The inspector of the geometry of a document: the card, its edges, its orientation, its portrait.</summary>
     public DocumentGeometryInspector Geometry { get; }
 
-    /// <summary>The decoder of a picture of a document and its geometry.</summary>
     public DocumentPictureAnalyzer Pictures { get; }
 
-    /// <summary>The classifier of the side a picture shows.</summary>
     public DocumentSideClassifier Sides { get; }
 
-    /// <summary>The reader of the fields of a card by zone.</summary>
     public IZonedFieldReader ZonedFields { get; }
 
-    /// <summary>The reader of the MRZ of a picture.</summary>
     public IMrzExtractionService Mrz { get; }
 
-    /// <summary>The checks of the quality of a capture.</summary>
     public CaptureQualityAssessor CaptureQuality { get; }
 
-    /// <summary>The coherence of the fields read on a document.</summary>
     public DocumentCoherenceChecker Coherence { get; }
 
-    /// <summary>The intake of the frames of a sequence, with the limits of the application.</summary>
     public FrameSequenceReader FrameReader { get; }
 
-    /// <summary>The validation of a sequence of frames.</summary>
     public PresenceSequenceValidator Validator { get; }
 
-    /// <summary>The choice of the frames by the server.</summary>
     public PresenceFrameSelector Selector { get; }
 
-    /// <summary>The liveness of the chosen frames.</summary>
     public SequenceLivenessEvaluator Liveness { get; }
 
-    /// <summary>The comparison of the portrait of the document with the chosen frames.</summary>
     public PresenceMatcher Matcher { get; }
 
-    /// <summary>The engine of the policy.</summary>
     public IdentityDecisionEngine Engine { get; }
 
-    /// <summary>The comparison of the optional candidate models with the reference ones.</summary>
     public IBiometricCandidateComparison CandidateComparison { get; }
 
     /// <summary>The policy in force, read once; ready (the run does not start otherwise).</summary>
     public IdentityPolicySnapshot PolicySnapshot => PolicyProvider.Snapshot;
 
-    /// <summary>The policy in force.</summary>
     public IdentityDecisionPolicy ActivePolicy => PolicySnapshot is { IsReady: true } snapshot
         ? snapshot.Policy
         : throw new QualificationRunException(QualificationRunCodes.PolicyNotReady, PolicySnapshot.ReasonCode);
 
-    /// <summary>
-    /// The folders that hold the committed policy files, which a qualification never writes to: the folder the application reads the policy from (next to the test assembly) and, when the tests run
-    /// from a checkout, the folder of the sources (<c>Casazen.Web/IdentityPolicies</c>). See <see cref="QualificationOutputFolder"/>.
-    /// </summary>
     public IReadOnlyList<string> ProtectedPolicyFolders()
     {
         return QualificationOutputFolder.ProtectedPolicyFolders(IdentityOptions.PolicyFile, AppContext.BaseDirectory);
     }
 
-    /// <summary>
-    /// Refuses a folder a qualification must not write to (<see cref="QualificationRunCodes.OutputFolderInvalid"/>): a folder of the committed policy files, or a folder of the checkout the tests
-    /// were built from (the repository is public, and the results are the scores of a real dataset). Asked before anything is read or written.
-    /// </summary>
     public void EnsureOutputAllowed(string path)
     {
         QualificationOutputFolder.EnsureAllowed(path, ProtectedPolicyFolders(), QualificationOutputFolder.CheckoutRoot(AppContext.BaseDirectory));
     }
 
-    /// <summary>True when a candidate of the recognition model is loaded.</summary>
     public bool HasRecognitionCandidate => Models.FaceRecognitionCandidate is not null;
 
-    /// <summary>True when a candidate of the anti-spoofing model is loaded.</summary>
     public bool HasAntiSpoofingCandidate => Models.AntiSpoofingCandidate is not null;
 
-    /// <summary>
-    /// Builds the pipeline and waits for it: the models verified by their SHA-256 and loaded, the policy read and pinned, the formats loaded. Any of them that cannot be used stops the
-    /// run with its code (<see cref="QualificationRunException"/>), never a partial pipeline.
-    /// </summary>
     public static async Task<QualificationPipeline> CreateAsync(QualificationPipelineOptions? options = null, CancellationToken ct = default)
     {
         options ??= new QualificationPipelineOptions();
@@ -230,7 +178,6 @@ public sealed class QualificationPipeline : IAsyncDisposable
         }
     }
 
-    /// <summary>The models of the run as the results report them: the three of the decisions, then the candidates that were looked at (loaded or not, with the code that says why not).</summary>
     public IReadOnlyList<QualificationModelInfo> ModelInfos()
     {
         var snapshot = Models.Snapshot;
@@ -252,11 +199,6 @@ public sealed class QualificationPipeline : IAsyncDisposable
         return Describe(options).BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = false });
     }
 
-    /// <summary>
-    /// The registrations of the pipeline, not built: what the application registers for the models, the readers of the document and the self-hosted identity verification, with the published
-    /// configuration. Nothing leaves the process with real faces and documents going through it, so none of them may be an HTTP client factory, an AI provider or a job client (proved by
-    /// <c>QualificationSafetyTests</c>).
-    /// </summary>
     internal static ServiceCollection Describe(QualificationPipelineOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -270,7 +212,6 @@ public sealed class QualificationPipeline : IAsyncDisposable
         services.AddSingleton(options.Clock);
         services.AddSingleton<IFeatureFlags>(new QualificationFlags());
 
-        // The models, as AddCasazenServices registers them. Without an HTTP client factory the store downloads nothing.
         services.AddOptions<BiometricModelOptions>().BindConfiguration(BiometricModelOptions.SectionName);
         services.AddSingleton<BiometricModelStore>();
         services.AddSingleton<IBiometricModelStore>(provider => provider.GetRequiredService<BiometricModelStore>());
@@ -279,7 +220,6 @@ public sealed class QualificationPipeline : IAsyncDisposable
         services.AddScoped<IAntiSpoofingService, AntiSpoofingService>();
         services.AddSingleton<CaptureQualityAssessor>();
 
-        // The readers of the document, as AddCasazenServices registers them.
         services.AddOptions<MrzOcrOptions>().BindConfiguration(MrzOcrOptions.SectionName);
         services.AddSingleton<IMrzBandLocator, MrzImageLocator>();
         services.AddSingleton<TesseractMrzTextReader>();
@@ -288,10 +228,8 @@ public sealed class QualificationPipeline : IAsyncDisposable
         services.AddSingleton<IPageTextReader>(provider => provider.GetRequiredService<TesseractPageTextReader>());
         services.AddScoped<IMrzExtractionService, MrzExtractionService>();
 
-        // The self-hosted identity verification itself: its options and every hook of the plan.
         services.AddSelfHostedIdentityVerification();
 
-        // The limits of time of the live request, raised and never lowered (see the remarks of the class).
         services.PostConfigure<BiometricModelOptions>(settings =>
         {
             settings.VerificationTimeoutMs = Math.Max(settings.VerificationTimeoutMs, WidenedModelTimeoutMs);
@@ -304,7 +242,6 @@ public sealed class QualificationPipeline : IAsyncDisposable
         return services;
     }
 
-    /// <summary>The flags of the run: the self-hosted verification is on (it is what is qualified); the automatic approval and the evidence are not read by anything here.</summary>
     private sealed class QualificationFlags : IFeatureFlags
     {
         public bool IsEnabled(string flag)
@@ -322,13 +259,10 @@ public sealed class QualificationPipeline : IAsyncDisposable
 /// </summary>
 public static class QualificationOutputFolder
 {
-    /// <summary>The detail of the refusal for a folder of the committed policy files.</summary>
     public const string PolicyFolderDetail = "policy_folder";
 
-    /// <summary>The detail of the refusal for a folder of the checkout.</summary>
     public const string CheckoutDetail = "checkout";
 
-    /// <summary>The checkout the tests were built from: the first folder at or above <paramref name="baseDirectory"/> that holds <c>Casazen.sln</c>; null when there is none (a copy of the test output).</summary>
     public static string? CheckoutRoot(string baseDirectory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(baseDirectory);
@@ -365,10 +299,6 @@ public static class QualificationOutputFolder
         return folders;
     }
 
-    /// <summary>
-    /// Refuses <paramref name="path"/> when it is, or is inside, one of <paramref name="protectedFolders"/> (the detail is <see cref="PolicyFolderDetail"/>) or <paramref name="checkoutRoot"/>
-    /// (<see cref="CheckoutDetail"/>): <see cref="QualificationRunCodes.OutputFolderInvalid"/>. Nothing is created or read.
-    /// </summary>
     public static void EnsureAllowed(string path, IReadOnlyList<string> protectedFolders, string? checkoutRoot)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -381,7 +311,6 @@ public static class QualificationOutputFolder
             throw new QualificationRunException(QualificationRunCodes.OutputFolderInvalid, CheckoutDetail);
     }
 
-    /// <summary>Whether <paramref name="path"/> is <paramref name="folder"/> or lies under it, as full paths (a <c>..</c> and a trailing separator change nothing; the case counts on Linux only).</summary>
     public static bool IsInside(string path, string folder)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);

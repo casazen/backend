@@ -30,7 +30,6 @@ public class SupplierRepairPostgresTests(CasazenWebApplicationFactory factory) :
         await DropEmailIndexAsync();
         var email = NewEmail("requests");
         var property = await factory.SeedPropertyAsync($"auth0|su14-host-{Guid.NewGuid():N}");
-        // The keeper is the active profile; the duplicate is older, pending, held by nobody, and has the requests.
         var keeper = await SeedProfileAsync(email, SupplierStatus.Active, Newer, """["maintenance"]""", """["H501"]""");
         var duplicate = await SeedProfileAsync(
             $"  {email.ToUpperInvariant()} ", SupplierStatus.Pending, Older, """["cleaning","maintenance"]""", """["F205"]""");
@@ -74,7 +73,6 @@ public class SupplierRepairPostgresTests(CasazenWebApplicationFactory factory) :
             .ToListAsync();
         Assert.Equal(2, days.Count);
         Assert.All(days, a => Assert.Equal(keeper, a.OrgId));
-        // The keeper's day wins: the keeper is the profile in use.
         Assert.True(days.Single(a => a.Date == new DateOnly(2026, 10, 2)).Available);
         var user = await db.Users.AsNoTracking().SingleAsync(u => u.Id == keeperUser);
         Assert.Equal(keeper, user.SupplierOrgId);
@@ -88,8 +86,6 @@ public class SupplierRepairPostgresTests(CasazenWebApplicationFactory factory) :
         var hostOrg = await factory.SeedOrgForOwnerAsync($"auth0|su14-dual-{Guid.NewGuid():N}");
         var keeper = await SeedProfileAsync(email, SupplierStatus.Active, Newer);
         var duplicate = await SeedProfileAsync(email, SupplierStatus.Pending, Older);
-        // Only the duplicate is held, by a supplier-only account (its org is the duplicate) and by a dual-role host
-        // (its supplier link is the duplicate): one held profile, so the merge decides alone.
         var supplierOnly = await SeedUserAsync(email, orgId: duplicate, supplierOrgId: null);
         var dualRole = await SeedUserAsync(email, orgId: hostOrg.Id, supplierOrgId: duplicate);
         var device = await SeedDeviceAsync(supplierOnly, duplicate);
@@ -107,7 +103,6 @@ public class SupplierRepairPostgresTests(CasazenWebApplicationFactory factory) :
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var supplier = await db.Users.AsNoTracking().SingleAsync(u => u.Id == supplierOnly);
-        // PL-05 (A1-40): User.OrgId is the host org only; the supplier-only account reaches the keeper by SupplierOrgId.
         Assert.Null(supplier.OrgId);
         Assert.Equal(keeper, supplier.SupplierOrgId);
         var host = await db.Users.AsNoTracking().SingleAsync(u => u.Id == dualRole);
@@ -115,7 +110,6 @@ public class SupplierRepairPostgresTests(CasazenWebApplicationFactory factory) :
         Assert.Equal(keeper, host.SupplierOrgId);
         Assert.Equal(keeper, (await db.DeviceRegistrations.AsNoTracking().SingleAsync(d => d.Id == device)).OrgId);
         Assert.False(await db.Orgs.AnyAsync(o => o.Id == duplicate));
-        // No account is left pointing to the deleted org.
         Assert.False(await db.Users.AnyAsync(u => u.OrgId == duplicate || u.SupplierOrgId == duplicate));
     }
 
@@ -132,7 +126,6 @@ public class SupplierRepairPostgresTests(CasazenWebApplicationFactory factory) :
         var response = await FixOrphanedAsync(dryRun: false);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        // Neither is active: the profile an account holds wins over the older one.
         var merge = SingleMerge(await response.Content.ReadFromJsonAsync<JsonElement>(), older);
         Assert.Equal(held, merge.GetProperty("keeperOrgId").GetGuid());
         await using var scope = factory.Services.CreateAsyncScope();
@@ -150,8 +143,6 @@ public class SupplierRepairPostgresTests(CasazenWebApplicationFactory factory) :
         var email = NewEmail("hostdata");
         var keeper = await SeedProfileAsync(email, SupplierStatus.Active, Older);
         var duplicate = await SeedProfileAsync(email, SupplierStatus.Pending, Newer);
-        // A supplier-only account that then completed the host onboarding on its supplier org (A1-40): a property
-        // references the duplicate org (ON DELETE RESTRICT).
         var owner = await SeedUserAsync(email, orgId: duplicate, supplierOrgId: null);
         var property = await SeedPropertyInOrgAsync(duplicate, owner);
 
@@ -182,7 +173,6 @@ public class SupplierRepairPostgresTests(CasazenWebApplicationFactory factory) :
         var request = await SeedRequestAsync(property, duplicate, ServiceRequestStatus.Richiesto);
         var dangling = await SeedUserAsync(NewEmail("dangling-dry"), orgId: null, supplierOrgId: Guid.NewGuid());
 
-        // No query string: the endpoint defaults to a dry run.
         using var admin = factory.CreateAuthenticatedClient($"auth0|su14-admin-{Guid.NewGuid():N}", roles: "Admin");
         var response = await admin.PostAsync("/api/admin/suppliers/fix-orphaned", null);
 
@@ -257,7 +247,6 @@ public class SupplierRepairPostgresTests(CasazenWebApplicationFactory factory) :
     {
         var email = NewEmail("ambiguous");
         var profile = await SeedProfileAsync(email, SupplierStatus.Pending, Older);
-        // An account that only shows the same email (in another case): the email is not proven, so no link (A4-23).
         var account = await SeedUserAsync($" {email.ToUpperInvariant()}", orgId: null, supplierOrgId: null);
         var orphan = await SeedProfileAsync(NewEmail("orphan"), SupplierStatus.Pending, Older);
 
@@ -325,8 +314,6 @@ public class SupplierRepairPostgresTests(CasazenWebApplicationFactory factory) :
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    // ─── Helpers ────────────────────────────────────────────────────────────
-
     private static string NewEmail(string prefix) => $"su14-{prefix}-{Guid.NewGuid():N}@test.com";
 
     private async Task<HttpResponseMessage> FixOrphanedAsync(bool dryRun)
@@ -335,7 +322,6 @@ public class SupplierRepairPostgresTests(CasazenWebApplicationFactory factory) :
         return await admin.PostAsync($"/api/admin/suppliers/fix-orphaned?dryRun={(dryRun ? "true" : "false")}", null);
     }
 
-    /// <summary>Data written before the migration SupplierProfileEmailUnique: without its unique index.</summary>
     private async Task DropEmailIndexAsync()
     {
         await using var scope = factory.Services.CreateAsyncScope();
@@ -411,7 +397,6 @@ public class SupplierRepairPostgresTests(CasazenWebApplicationFactory factory) :
             SupplierOrgId = supplierOrgId,
             Category = "cleaning",
             Status = status,
-            // Long-rent: tied to the property only, no stay needed (D2).
             RentalContext = ServiceRequestRentalContext.LongRent,
             CompletedAt = status == ServiceRequestStatus.Completato ? DateTime.UtcNow : null,
         };

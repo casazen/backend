@@ -4,10 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Octorate;
 
-/// <summary>
-/// From the days of the Octorate calendar to the blocks of CasaZen (E02/F02/US01/T03): which nights are closed, which of them nothing else takes
-/// already, how they group into blocks, and the key a block keeps from one run to the next.
-/// </summary>
 public class OctorateClosedNightsTests
 {
     private const string Room = "956528";
@@ -23,7 +19,6 @@ public class OctorateClosedNightsTests
 
         var runs = OctorateClosedNights.Runs(nights);
 
-        // A run goes from its first night to the day after its last: the check-out day stays free for a new check-in.
         Assert.Equal(
             [new NightRun(D(10), D(13)), new NightRun(D(14), D(15)), new NightRun(D(20), D(22))],
             runs);
@@ -59,7 +54,6 @@ public class OctorateClosedNightsTests
 
         var nights = OctorateClosedNights.Of(days, From, To, NothingElse);
 
-        // 13 was never opened (no unit, no price): it closes nothing. 11 is open.
         Assert.Equal([D(10), D(12), D(14)], nights);
     }
 
@@ -116,13 +110,10 @@ public class OctorateClosedNightsTests
         var own = Day(10, availability: 0);
         var other = Day(10, availability: 0, product: "956530");
 
-        // The room asked for is in the answer: only its days.
         Assert.Equal([own], OctorateClosedNights.DaysOf([own, other], Room));
 
-        // One unit only, named by another id than the one asked for: the call asked for one room, so it is that room.
         Assert.Equal([other], OctorateClosedNights.DaysOf([other], Room));
 
-        // Several units, none of them the room: nobody's days.
         Assert.Empty(OctorateClosedNights.DaysOf([other, Day(10, availability: 0, product: "956531")], Room));
         Assert.Empty(OctorateClosedNights.DaysOf([], Room));
     }

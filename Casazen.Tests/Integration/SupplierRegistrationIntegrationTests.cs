@@ -17,11 +17,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// Supplier invite and self-serve registration (SU-01: A4-03, A4-04, A4-21, A4-24). The invite token is bound to the
-/// invited email and comune, accepted once before its expiry by the signed-in account of that email; self-serve is
-/// limited to the configured pilot comuni; the anonymous endpoint is rate limited.
-/// </summary>
 public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegrationTests.PilotComuniFactory factory)
     : IClassFixture<SupplierRegistrationIntegrationTests.PilotComuniFactory>
 {
@@ -30,8 +25,6 @@ public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegratio
     private const string PilotName = "Roma";
     private const string PilotCadastralCode = "H501";
     private const string OtherComuneCode = "015146";
-
-    // ─── Invite ─────────────────────────────────────────────────────────────
 
     [PostgresFact]
     public async Task Register_AdminInviteAcceptedBySignedInInvitedAccount_LinksUserUsesInviteAndKeepsCategories()
@@ -72,7 +65,6 @@ public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegratio
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var user = await db.Users.SingleAsync(u => u.Id == userId);
             Assert.Equal(orgId, user.SupplierOrgId);
-            // PL-05 (A1-40): the supplier org is never written into OrgId, which is the host org only.
             Assert.Null(user.OrgId);
             var profile = await db.SupplierProfiles.SingleAsync(p => p.OrgId == orgId);
             Assert.Equal(email, profile.Email);
@@ -92,7 +84,6 @@ public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegratio
         var userId = $"auth0|other-{Guid.NewGuid():N}";
         using var client = factory.CreateAuthenticatedClient(userId, email: $"other-{Guid.NewGuid():N}@test.com");
 
-        // The form carries the invited email, but the signed-in account is another one.
         var response = await RegisterAsync(client, email, PilotCode, token);
 
         await AssertProblemAsync(response, HttpStatusCode.UnprocessableEntity, "supplier_invite_email_mismatch");
@@ -123,7 +114,6 @@ public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegratio
         using var first = factory.CreateAuthenticatedClient($"auth0|first-{Guid.NewGuid():N}", email: email);
         Assert.Equal(HttpStatusCode.Created, (await RegisterAsync(first, email, PilotCode, token)).StatusCode);
 
-        // A second account with the same email cannot reuse the token.
         using var second = factory.CreateAuthenticatedClient($"auth0|second-{Guid.NewGuid():N}", email: email);
         var reused = await RegisterAsync(second, email, PilotCode, token);
 
@@ -211,8 +201,6 @@ public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegratio
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.False((await db.SupplierInviteRecords.SingleAsync(i => i.Id == inviteId)).IsUsed);
     }
-
-    // ─── Self-serve ─────────────────────────────────────────────────────────
 
     [PostgresFact]
     public async Task RegistrationOptions_PilotComuniConfigured_ReturnsSelfServeEnabledWithComuni()
@@ -324,8 +312,6 @@ public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegratio
         await AssertProblemAsync(response, HttpStatusCode.UnprocessableEntity, "supplier_account_email_missing");
     }
 
-    // ─── One profile per email (SU-14, A4-22) ───────────────────────────────
-
     [PostgresFact]
     public async Task Register_EmailOfExistingProfileInAnotherCase_Returns409EmailTakenWithoutSecondProfile()
     {
@@ -333,7 +319,6 @@ public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegratio
         using var anonymous = factory.CreateClient();
         Assert.Equal(HttpStatusCode.Created, (await RegisterAsync(anonymous, email, PilotCode)).StatusCode);
 
-        // The registrant lost the claim token and registers again, with the same email written differently.
         var again = await RegisterAsync(anonymous, $" {email.ToUpperInvariant()} ", PilotCode);
 
         await AssertProblemAsync(again, HttpStatusCode.Conflict, "supplier_email_taken");
@@ -418,8 +403,6 @@ public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegratio
         Assert.False(await db.SupplierInviteRecords.AnyAsync(i => i.Email.ToLower() == email));
     }
 
-    // ─── Rate limit ─────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task Register_OverThePublicRegistrationLimit_Returns429RateLimited()
     {
@@ -437,8 +420,6 @@ public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegratio
         await AssertProblemAsync(limitedResponse, HttpStatusCode.TooManyRequests, "rate_limited");
         Assert.NotNull(limitedResponse.Headers.RetryAfter);
     }
-
-    // ─── Helpers ────────────────────────────────────────────────────────────
 
     private static Task<HttpResponseMessage> RegisterAsync(
         HttpClient client, string email, string comuneCode, string? inviteToken = null) =>
@@ -489,7 +470,6 @@ public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegratio
         Assert.False(string.IsNullOrWhiteSpace(problem.GetProperty("detail").GetString()));
     }
 
-    /// <summary>One pilot comune (058091 = Roma, validated against the official sample of the list) and a recording email queue.</summary>
     public class PilotComuniFactory : CasazenWebApplicationFactory
     {
         internal RecordingEmailQueue Emails { get; } = new();
@@ -508,14 +488,12 @@ public class SupplierRegistrationIntegrationTests(SupplierRegistrationIntegratio
 
         protected virtual Dictionary<string, string?> Settings() => new()
         {
-            // These tests cover the restricted (pilot) behaviour; the open one is in SupplierSelfServeAnyComuneIntegrationTests.
             ["Suppliers:AnyComune"] = "false",
             ["Suppliers:PilotComuni:0:Code"] = PilotCode,
             ["Suppliers:PilotComuni:0:Name"] = PilotName,
         };
     }
 
-    /// <summary>Same settings with a public registration limit of <see cref="PermitLimit"/> per client and window.</summary>
     private sealed class RateLimitedFactory : PilotComuniFactory
     {
         public const int PermitLimit = 2;

@@ -11,10 +11,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// Admin CRUD of the LTR regulatory reference data (LT-13, A7-22): status, expiry, every rule and band of a
-/// territorial agreement, and the comune IMU channels, all editable without a deploy, every write audited.
-/// </summary>
 public class RegulatoryReferenceDataAdminServiceTests
 {
     private const string AdminUserId = "auth0|admin";
@@ -248,7 +244,6 @@ public class RegulatoryReferenceDataAdminServiceTests
         var sut = CreateSut(db, clock);
 
         await sut.MarkAgreementVerifiedAsync(agreement.Id, new MarkVerifiedInput(new DateOnly(2026, 1, 1), "prima"), AdminUserId);
-        // Two verifications logged in the same instant would tie on OccurredAt: move the clock so "newest first" is unambiguous.
         clock.Advance(TimeSpan.FromMinutes(1));
         await sut.MarkAgreementVerifiedAsync(agreement.Id, new MarkVerifiedInput(new DateOnly(2026, 2, 1), "seconda"), AdminUserId);
 
@@ -323,8 +318,6 @@ public class RegulatoryReferenceDataAdminServiceTests
         return channel;
     }
 
-    /// <summary>Every rule field left as the seed's default (2 A-elements, 3 B-elements, everything else 0), so a test
-    /// can override just the field it cares about (named arguments: positional count never has to match by hand).</summary>
     private static UpdateAgreementInput FullRulesInput(TerritorialRentAgreement? agreement) => new(
         DataCompleteness: agreement?.DataCompleteness ?? DataCompleteness.Missing,
         SourceUrl: agreement?.SourceUrl,

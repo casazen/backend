@@ -2,7 +2,6 @@ using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Storage;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
@@ -13,10 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// FD-07: <c>storage:migrate-legacy</c> copies the files of the old local-disk storage into the object
-/// storage and rewrites the database references, and can be re-run safely.
-/// </summary>
 public sealed class LegacyFileMigrationServiceTests : IAsyncLifetime
 {
     private const string PublicBaseUrl = "https://storage.test/public";
@@ -104,7 +99,6 @@ public sealed class LegacyFileMigrationServiceTests : IAsyncLifetime
     [PostgresFact]
     public async Task MigrateAsync_ObjectAlreadyInStorage_RewritesReferenceWithoutUploading()
     {
-        // A previous run uploaded the file but crashed before saving the database.
         var seed = await SeedLegacyDataAsync();
         var key = $"properties/{seed.PropertyId}/documents/cin.pdf";
         await _storage.PutAsync(StorageBucket.Private, key, new MemoryStream([42]), "application/pdf");

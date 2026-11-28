@@ -7,11 +7,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The ranking of the active suppliers of a comune and category (<see cref="ISupplierMatchService.RankActiveAsync"/>) over the test database,
-/// without the whole supplier service: the active profiles whose comuni and categories contain the ones asked, by legal name, so a test
-/// names its backups in the order it expects them chosen. <see cref="ISupplierMatchService.MatchAsync"/> is not used by the backups.
-/// </summary>
 internal sealed class FakeSupplierRanking(AppDbContext db) : ISupplierMatchService
 {
     public Task<SupplierMatchResult> MatchAsync(

@@ -62,7 +62,6 @@ public class DocumentIssuerProofTests
         await db.SaveChangesAsync();
         var sut = Service(db, issuanceOn: true);
 
-        // CasaZen takes a booking of a portal; the same document again changes nothing, a second document of the booking (another issuer) has its own row.
         var firstDocument = Guid.NewGuid();
         var locked = await sut.LockIssuerAsync(ownBooking.Id, BookingDocumentIssuerKind.CasaZen, firstDocument);
         Assert.Equal(BookingDocumentIssuerKind.CasaZen, locked.Issuer);
@@ -115,7 +114,6 @@ public class DocumentIssuerProofTests
             db.Bookings.AddRange(bookings);
             await db.SaveChangesAsync();
 
-            // Issuance off: nobody issues, and no booking can be locked to CasaZen.
             var off = Service(db, issuanceOn: false);
             Assert.Equal(new IssuerDecision(IssuerDecisionKind.None, IssuerReasons.IssuanceOff), await off.ResolveIssuerAsync(bookings[0].Id));
             var notAvailable = await Assert.ThrowsAsync<DomainRuleException>(
@@ -135,11 +133,6 @@ public class DocumentIssuerProofTests
         }
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule. Two organizations each saved their issuer. The caller of org A reads its own setting only: the one of org B is not in
-    /// the answer, and not found even when the service is asked for it by id; the booking of org B is a 404 of the preview, a booking the caller sees and
-    /// does not reach a 403, and a caller who reaches only some of the properties cannot change the setting (403).
-    /// </summary>
     [Fact]
     public async Task FiscalDocumentSettings_OtherOrg_NotReadable_Test()
     {
@@ -164,7 +157,6 @@ public class DocumentIssuerProofTests
         lookup.Setup(l => l.ForBookingAsync(bookingOfColleague, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new HostResource(OrgA, "auth0|colleague-a", PropertyOfColleague));
 
-        // An account in no org team with no org-wide role: it reaches only the properties it created, so it cannot change the setting of the org.
         var staff = Controller(sut, resolver, lookup, HostAuthorizationTestHarness.User("auth0|staff-a", "Staff"));
         var read = Assert.IsType<OkObjectResult>((await staff.GetSettings(CancellationToken.None)).Result);
         var settings = Assert.IsType<FiscalDocumentSettingsDto>(read.Value);
@@ -172,7 +164,6 @@ public class DocumentIssuerProofTests
         Assert.Equal("Casa Rossi S.r.l.", settings.Issuer.LegalName);
         Assert.DoesNotContain("Bianchi", JsonSerializer.Serialize(settings, new JsonSerializerOptions(JsonSerializerDefaults.Web)), StringComparison.Ordinal);
 
-        // By id, the service under the filter of org A finds nothing of org B: the empty setting of one that has saved nothing.
         Assert.Null((await sut.GetSettingsAsync(OrgB)).Mode);
 
         var refused = await staff.PutSettings(new SaveFiscalDocumentSettingsRequest { Mode = "CasaZen" }, CancellationToken.None);
@@ -185,8 +176,6 @@ public class DocumentIssuerProofTests
             Assert.IsType<ObjectResult>((await staff.IssuerPreview(bookingOfOrgB, CancellationToken.None)).Result).StatusCode);
         Assert.IsType<ForbidResult>((await staff.IssuerPreview(bookingOfColleague, CancellationToken.None)).Result);
 
-        // The preview of the organization (no booking): who issues (the flag of this controller is off) and the tax rule in force today for the profile
-        // of org A, with the rate of every line type (E11/F01/US01/T02).
         var preview = Assert.IsType<IssuerPreviewDto>(Assert.IsType<OkObjectResult>((await staff.IssuerPreview(null, CancellationToken.None)).Result).Value);
         Assert.Equal(("None", IssuerReasons.IssuanceOff), (preview.Issuer, preview.Reason));
         Assert.NotNull(preview.Rule);
@@ -194,7 +183,6 @@ public class DocumentIssuerProofTests
         Assert.Equal(Enum.GetValues<FiscalLineType>().Length, preview.Rule.Rates.Count);
         Assert.Contains(preview.Rule.Rates, rate => rate.LineType == nameof(FiscalLineType.Accommodation) && rate.Percent == 10m);
 
-        // A manager of the whole org changes the setting of its own org (a draft: the profile is not complete yet), and org B's stays as it was.
         var manager = Controller(sut, resolver, lookup, HostAuthorizationTestHarness.User("auth0|manager-a", "PropertyManager"));
         var saved = await manager.PutSettings(
             new SaveFiscalDocumentSettingsRequest { Regime = "VatOrdinary", Issuer = new SaveIssuerDataRequest { LegalName = "Casa Rossi Due S.r.l." } },
@@ -207,11 +195,6 @@ public class DocumentIssuerProofTests
         Assert.Equal(DocumentIssuerMode.CasaZen, others.IssuerMode);
     }
 
-    /// <summary>
-    /// PROOF TEST: privacy rule. The IBAN and the QR-IBAN of the issuer are shown in full only to the caller who may change the setting (the whole
-    /// organization and <c>property.write</c>): a collaborator who reaches only some of the properties and a role of the whole organization that cannot write
-    /// read the setting with the accounts masked, and nothing of the full numbers is in their answer.
-    /// </summary>
     [Fact]
     public async Task FiscalDocumentSettings_BankAccounts_AreInClearOnlyForWhoMayChangeTheSetting_Test()
     {
@@ -234,17 +217,14 @@ public class DocumentIssuerProofTests
         resolver.Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(OrgA);
         var lookup = new Mock<IHostResourceLookup>();
 
-        // A collaborator who reaches only some of the properties reads the setting, the accounts masked.
         var staff = Controller(sut, resolver, lookup, HostAuthorizationTestHarness.User("auth0|staff-a", "Staff"));
         var partial = Assert.IsType<FiscalDocumentSettingsDto>(Assert.IsType<OkObjectResult>((await staff.GetSettings(CancellationToken.None)).Result).Value);
         AssertMasked(partial);
 
-        // A role of the whole organization that cannot write reads them masked too.
         var readOnly = Controller(
             sut, resolver, lookup, HostAuthorizationTestHarness.User("auth0|manager-a", "PropertyManager"), (_, permission) => permission != "property.write");
         AssertMasked(Assert.IsType<FiscalDocumentSettingsDto>(Assert.IsType<OkObjectResult>((await readOnly.GetSettings(CancellationToken.None)).Result).Value));
 
-        // The manager of the whole organization, who may change the setting, reads them in full and gets them back when it saves.
         var manager = Controller(sut, resolver, lookup, HostAuthorizationTestHarness.User("auth0|manager-a", "PropertyManager"));
         var full = Assert.IsType<FiscalDocumentSettingsDto>(Assert.IsType<OkObjectResult>((await manager.GetSettings(CancellationToken.None)).Result).Value);
         Assert.Equal(iban, full.Issuer.Iban);
@@ -274,10 +254,6 @@ public class DocumentIssuerProofTests
         }
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. The modes Octorate and accountant were retired on 2026-11-14: a PUT that asks for either answers 422
-    /// <c>issuer_mode_retired</c> and changes nothing of the stored profile; the old name of the mode CasaZen is still read as CasaZen.
-    /// </summary>
     [Fact]
     public async Task IssuerSettings_RetiredModeRefused_Test()
     {
@@ -341,7 +317,6 @@ public class DocumentIssuerProofTests
             Confirmed = true,
         };
 
-        // The flag is off: nothing can be saved, whatever else is true.
         var off = Service(db, issuanceOn: false);
         var notAvailable = await Assert.ThrowsAsync<DomainRuleException>(() => off.SaveSettingsAsync(OrgA, complete));
         Assert.Equal(DocumentIssuerErrorCodes.IssuanceNotAvailable, notAvailable.Code);
@@ -361,7 +336,6 @@ public class DocumentIssuerProofTests
         var registration = await Assert.ThrowsAsync<DomainRuleException>(() => on.SaveSettingsAsync(OrgA, complete with { VatRegistered = false }));
         Assert.Equal(IssuerFields.VatRegistered, registration.Extensions["field"]);
 
-        // Nothing was saved by the refusals; the same answers not confirmed are a draft, with what is missing.
         Assert.Empty(await db.OrgFiscalIssuerProfiles.IgnoreQueryFilters().AsNoTracking().ToListAsync());
         var saved = await on.SaveSettingsAsync(OrgA, complete with { Confirmed = false });
         Assert.Equal(DocumentIssuerMode.CasaZen, saved.Mode);
@@ -379,11 +353,6 @@ public class DocumentIssuerProofTests
         Assert.Null((await Service(db, issuanceOn: true, new FiscalTaxRulesOptions()).GetSettingsAsync(OrgA)).Rule);
     }
 
-    /// <summary>
-    /// A Swiss issuer (E11/F01/US01/T01): the UID is checked (format and check digit of eCH-0097) and stored as <c>CHE-123.456.789</c>, the Italian tax ids
-    /// are not asked, the IBAN and the QR-IBAN are checked (mod 97, a QR-IBAN of a Swiss bank), and the settings return them with the treatments and the
-    /// series. A UID with a wrong check digit or an IBAN in the place of the QR-IBAN is refused on its field.
-    /// </summary>
     [Fact]
     public async Task IssuerSettings_SwissProfile_ChecksTheUidAndTheBankAccounts()
     {
@@ -440,7 +409,6 @@ public class DocumentIssuerProofTests
         Assert.Equal([BookingSource.Airbnb], saved.Issuer.PlatformCollectedTouristTaxChannels);
         Assert.Null(saved.EffectiveRegimeCode);
 
-        // The same issuer not registered: no UID is needed and the registration follows the regime.
         var notRegistered = await sut.SaveSettingsAsync(OrgA, swiss with { Regime = DocumentRegime.SwissNotRegistered, SwissVatNumber = null });
         Assert.Empty(notRegistered.MissingFields);
         Assert.False(notRegistered.Issuer.VatRegistered);

@@ -12,7 +12,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class SdiRejectionReasonsTests
 {
-    /// <summary>The 63 codes of the official list (<c>docs/runbooks/fiscal-documents.md</c> says where it comes from), copied here so a code taken out of the map fails a test.</summary>
     private static readonly string[] OfficialCodes =
     [
         "00001", "00002", "00003", "00100", "00101", "00102", "00103", "00104", "00105", "00106", "00107", "00200", "00201",
@@ -55,7 +54,6 @@ public class SdiRejectionReasonsTests
             Assert.NotEqual(it, en);
         }
 
-        // The words never name the provider of the channel (decision D14).
         Assert.All(
             keys,
             key => Assert.DoesNotContain("invoicetronic", italian[key] + english[key], StringComparison.OrdinalIgnoreCase));
@@ -113,7 +111,6 @@ public class SdiRejectionReasonsTests
         Assert.Equal(name, SdiFileNames.Of("IT", "01234567897", first));
         Assert.NotEqual(name, SdiFileNames.Of("IT", "01234567897", Guid.NewGuid()));
         Assert.Equal(5, SdiFileNames.Progressive(first).Length);
-        // 2000 documents of one transmitter: the progressives are told apart (60 million values: a collision is a matter of luck, ten of them are not).
         Assert.InRange(Enumerable.Range(0, 2000).Select(_ => SdiFileNames.Progressive(Guid.NewGuid())).Distinct().Count(), 1990, 2000);
 
         Assert.True(SdiFileNames.IsValid("IT01234567897_00001.xml"));
@@ -125,7 +122,6 @@ public class SdiRejectionReasonsTests
         Assert.Throws<ArgumentException>(() => SdiFileNames.Of("IT", "not a valid transmitter!", first));
     }
 
-    /// <summary>The key → text pairs of a resource file of the web project, read from the repository (the tests never depend on the build output folder).</summary>
     private static Dictionary<string, string> Resources(string fileName)
     {
         var directory = new DirectoryInfo(System.AppContext.BaseDirectory);

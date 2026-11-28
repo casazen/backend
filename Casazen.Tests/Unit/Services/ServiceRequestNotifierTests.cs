@@ -149,7 +149,6 @@ public class ServiceRequestNotifierTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
 
-        // A new request, a reminder, a cancellation by the host and by CasaZen, a proposal accepted and turned down.
         var created = await s.RequestAsync(ServiceRequestScenario.FridayAt10);
         await s.Service.RemindAsync(created.Id, s.HostOrgId);
         var proposed = await s.RequestAsync(ServiceRequestScenario.SaturdayAt09);
@@ -169,7 +168,6 @@ public class ServiceRequestNotifierTests
 
         var toTheSupplier = s.Emails.Snapshot().Where(e => e.To == "supplier@test.com").ToList();
         var pushesToTheSupplier = s.Pushes.Where(p => p.Audience == PushAudience.SupplierOrg(s.SupplierOrgId)).ToList();
-        // Two new requests, the reminder, the proposal turned down and the one accepted, the cancellation by the host and the one for no answer.
         Assert.Equal(7, toTheSupplier.Count);
         Assert.Equal(toTheSupplier.Count, pushesToTheSupplier.Count);
         var texts = toTheSupplier.SelectMany(e => new[] { e.Content.Subject, e.Content.HtmlBody })

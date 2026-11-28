@@ -25,8 +25,6 @@ public class LeaseDraftServiceTests
 
     private static IReadOnlyList<string> Needs(LeaseDraftFlow flow, int step) => flow[step].Needs.Select(n => n.Code).ToList();
 
-    // ---- creation ------------------------------------------------------------------------------------------------
-
     [Fact]
     public async Task Create_WithOnlyTheProperty_MakesADraftWithTheStartingValues_AndNothingIsAskedYet()
     {
@@ -51,7 +49,6 @@ public class LeaseDraftServiceTests
         Assert.Null(lease.SentForSignatureAt);
         var created1 = Assert.Single(lease.Events);
         Assert.Equal(LeaseEventType.Created, created1.EventType);
-        // No APE, no parties, no dates were asked to create it: the flow says what is still to do.
         Assert.Equal(LeaseStepState.Done, created.Flow[1].State);
         Assert.NotEmpty(created.Flow[2].Needs);
         Assert.Equal(LeaseStepState.Locked, created.Flow[6].State);
@@ -90,8 +87,6 @@ public class LeaseDraftServiceTests
         Assert.Equal(LeaseStepState.NotApplicable, created.Flow[6].State);
     }
 
-    // ---- saving and taking it up again ---------------------------------------------------------------------------
-
     [Fact]
     public async Task Save_IncompleteAndWrongValues_AreKept_NoErrorOfAny_AndTheFlowSaysWhatIsMissing()
     {
@@ -112,7 +107,6 @@ public class LeaseDraftServiceTests
             Needs(s4.Flow, 3));
         Assert.Equal([LeaseNeedCodes.StartInvalid], Needs(s4.Flow, 4));
         var lease = await h.LoadAsync(created.Id);
-        // Nothing wrong reached the columns, and no incomplete party became a row.
         Assert.Empty(lease.Parties);
         Assert.Equal(0m, lease.MonthlyRent);
         Assert.Equal(LeaseDraftDefaults.PlaceholderDate, lease.StartDate);
@@ -195,11 +189,9 @@ public class LeaseDraftServiceTests
         Assert.Equal([LeaseNeedCodes.PartyDocumentsDateInvalid], Needs(saved.Flow, 5));
         var lease = await h.LoadAsync(created.Id);
         Assert.Null(lease.Parties.Single(p => p.Role == PartyRole.Tenant).DocumentsVerifiedOn);
-        Assert.NotNull(lease.DraftData); // the typed date lives on until it is corrected
+        Assert.NotNull(lease.DraftData);
         Assert.Equal("2026-12-25", (await h.Service.GetAsync(created.Id)).Values.Tenants.Single().DocumentsVerifiedOn);
     }
-
-    // ---- completing it -------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task Save_TheLastValidValue_MovesTheDataIntoTheColumnsAndTheParties_AndDropsTheTypedState()
@@ -225,7 +217,6 @@ public class LeaseDraftServiceTests
             (landlord.FirstName, landlord.LastName, landlord.FiscalCode, landlord.ContactEmail, landlord.Residence));
         Assert.Equal(string.Empty, tenant.ContactEmail);
         Assert.False(tenant.IsExtraEU);
-        // A lease the other readers see as a normal draft: the term passes the rule of its type.
         LeaseContractTerms.EnsureTerm(lease.ContractType, lease.StartDate, lease.EndDate);
     }
 
@@ -235,8 +226,6 @@ public class LeaseDraftServiceTests
         using var h = await NewAsync();
         var (created, version) = await h.CompleteAsync();
 
-        // The landlord makes it a transitory contract: who has the need and what it is come with the type, the end and the documentation
-        // of a term of more than 30 days with the dates.
         var typed = await h.SaveAsync(
             created.Id, version, 3, """{"contractType":"Transitorio","transitoryParty":"Tenant","transitoryNeed":"  Lavoro a Milano da novembre ad aprile  "}""");
         Assert.Empty(Needs(typed.Flow, 3));
@@ -255,7 +244,6 @@ public class LeaseDraftServiceTests
             (lease.TransitoryParty!.Value, lease.TransitoryNeed, lease.TransitoryDocumentation));
         LeaseContractTerms.EnsureTerm(lease.ContractType, lease.StartDate, lease.EndDate);
 
-        // Taken up again from the columns, as another browser would: nothing was kept only in the typed state.
         var view = await h.NewService().GetAsync(created.Id);
         Assert.Equal(
             ("Tenant", "Lavoro a Milano da novembre ad aprile", "Lettera di assunzione", "2027-04-30"),
@@ -263,8 +251,6 @@ public class LeaseDraftServiceTests
         Assert.Equal(new LeaseDraftComputed("2027-04-30", 6), view.Computed);
         Assert.All(Enumerable.Range(1, 5), n => Assert.Equal(LeaseStepState.Done, view.Flow[n].State));
 
-        // The review tells the landlord to check the rent against the bands of the agreement (TR-FU1) and blocks nothing; the need is
-        // printed in the contract, so changing it withdraws the confirmation.
         var review = await h.Service.GetReviewAsync(created.Id);
         var advisory = Assert.Single(review.Checks, c => c.Code == LeaseNeedCodes.TransitoryRentBandToCheck);
         Assert.Equal(LeaseReviewSeverity.Info, advisory.Severity);
@@ -306,7 +292,6 @@ public class LeaseDraftServiceTests
         var lease = await h.LoadAsync(created.Id);
         Assert.NotNull(lease.DraftData);
         Assert.Equal(LeaseDraftDefaults.PlaceholderRent, lease.MonthlyRent);
-        // Everything else typed before is still there.
         var view = await h.NewService().GetAsync(created.Id);
         Assert.Equal("Mario", view.Values.Landlords.Single().FirstName);
         Assert.Equal("2026-11-01", view.Values.StartDate);
@@ -335,8 +320,6 @@ public class LeaseDraftServiceTests
         Assert.Equal([ids[1], ids[0]], swapped.TenantIds);
     }
 
-    // ---- the version ---------------------------------------------------------------------------------------------
-
     [Fact]
     public async Task Save_OnAnOldVersion_Is409_AndNothingIsWritten()
     {
@@ -344,7 +327,6 @@ public class LeaseDraftServiceTests
         var created = await h.CreateAsync();
         var first = await h.SaveAsync(created.Id, created.Version, 3, """{"monthlyRent":900}""");
 
-        // The second tab still has the version it opened with.
         var error = await Assert.ThrowsAsync<DomainConflictException>(
             () => h.NewService().SaveAsync(created.Id, created.Version, 3, LeaseDraftHarness.Json("""{"monthlyRent":1000}""")));
 
@@ -430,8 +412,6 @@ public class LeaseDraftServiceTests
         Assert.Equal("lease_not_draft", review.Code);
     }
 
-    // ---- the property --------------------------------------------------------------------------------------------
-
     [Fact]
     public async Task Save_Step1_ChangesTheProperty_ToAnotherOfTheOrg()
     {
@@ -458,8 +438,6 @@ public class LeaseDraftServiceTests
         Assert.Equal(h.PropertyId, (await h.LoadAsync(created.Id)).PropertyId);
     }
 
-    // ---- the review ----------------------------------------------------------------------------------------------
-
     [Fact]
     public async Task Confirm_WithABlock_Is422_AndNothingChanges()
     {
@@ -481,19 +459,16 @@ public class LeaseDraftServiceTests
         using var h = await NewAsync();
         var (created, version) = await h.CompleteAsync();
 
-        // The model of the contract prints the deposit: left empty, the review cannot be confirmed (LR-DEP).
         var cleared = await h.SaveAsync(created.Id, version, 3, """{"securityDeposit":null}""");
         Assert.Equal([LeaseNeedCodes.DepositMissing], Needs(cleared.Flow, 3));
         var error = await Assert.ThrowsAsync<DomainRuleException>(() => h.Service.ConfirmReviewAsync(created.Id, cleared.Version));
         Assert.Equal("lease_review_blocked", error.Code);
         Assert.Null((await h.LoadAsync(created.Id)).ReviewConfirmedAt);
 
-        // "0 if there is none" is an answer.
         var none = await h.SaveAsync(created.Id, cleared.Version, 3, """{"securityDeposit":0}""");
         Assert.Empty(Needs(none.Flow, 3));
         Assert.NotNull((await h.Service.ConfirmReviewAsync(created.Id, none.Version)).ReviewConfirmedAt);
 
-        // A contract already signed prints nothing: its deposit stays optional.
         var imported = await h.CreateAsync(LeaseOrigin.Imported);
         var parties = await h.SaveAsync(imported.Id, imported.Version, 2, ValidParties);
         var terms = await h.SaveAsync(imported.Id, parties.Version, 3, """{"contractType":"Libero","taxRegime":"CedolareSecca","monthlyRent":900}""");
@@ -506,8 +481,6 @@ public class LeaseDraftServiceTests
         using var h = await NewAsync();
         var (created, version) = await h.CompleteAsync();
 
-        // An APE the reading takes for valid (the mock) whose code and class were never saved: the model prints them, so the review
-        // cannot be confirmed (LR-APE). It used to pass and end in 422 contract_data_missing at the download for signature.
         await h.SetApeIdentificationAsync(null, null);
         var saved = await h.SaveAsync(created.Id, version, 1, $$"""{"propertyId":"{{h.PropertyId}}"}""");
         Assert.Equal([LeaseNeedCodes.ApeIdentificationMissing], Needs(saved.Flow, 1));
@@ -517,21 +490,17 @@ public class LeaseDraftServiceTests
         Assert.Equal(LeaseReviewSeverity.Block, Assert.Single(review.Checks, c => c.Code == LeaseNeedCodes.ApeIdentificationMissing).Severity);
         Assert.DoesNotContain(review.Checks, c => c.Code is LeaseNeedCodes.ApeOk or LeaseNeedCodes.ApeMissing);
 
-        // A certificate the reading could not take whole asks for the same thing: its code and class, not another upload.
         h.Ape.Setup(a => a.EnsurePropertyHasValidApeAsync(It.IsAny<Guid>())).ThrowsAsync(ApeComplianceException.IdentificationRequired());
         var unreadable = await h.Service.GetReviewAsync(created.Id);
         Assert.Equal([LeaseNeedCodes.ApeIdentificationMissing], unreadable.Checks.Where(c => c.Severity == LeaseReviewSeverity.Block).Select(c => c.Code));
         h.Ape.Setup(a => a.EnsurePropertyHasValidApeAsync(It.IsAny<Guid>())).Returns(Task.CompletedTask);
 
-        // A contract already signed prints nothing: its APE is not asked for.
         var imported = await h.CreateAsync(LeaseOrigin.Imported);
         Assert.Empty(Needs(imported.Flow, 1));
 
-        // With the code and the class on the document the review can be confirmed.
         await h.SetApeIdentificationAsync(LeaseDraftHarness.SeededApeCode, LeaseDraftHarness.SeededApeEnergyClass);
         Assert.NotNull((await h.Service.ConfirmReviewAsync(created.Id, saved.Version)).ReviewConfirmedAt);
 
-        // The contract prints the last APE that has them: a later one that has not does not take its place.
         await using var db = h.SecondContext();
         db.PropertyDocuments.Add(new PropertyDocument
         {
@@ -629,7 +598,6 @@ public class LeaseDraftServiceTests
         var (created, version) = await h.CompleteAsync();
         var confirmed = await h.Service.ConfirmReviewAsync(created.Id, version);
 
-        // The same rent, written with a decimal point; the same start with a space; the tenant typed again, with the same id.
         var tenantId = (await h.Service.GetAsync(created.Id)).Values.Tenants.Single().Id;
         var a = await h.SaveAsync(created.Id, confirmed.Version, 3, """{"monthlyRent":900.00,"contractType":"libero"}""");
         var b = await h.SaveAsync(created.Id, a.Version, 4, """{"startDate":" 2026-11-01 "}""");
@@ -679,7 +647,6 @@ public class LeaseDraftServiceTests
 
     private static DateTime Day(int year, int month, int day) => new(year, month, day, 0, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>A lease of the harness's org on <paramref name="propertyId"/> with the days given; <paramref name="endedOn"/> is the day it was ended early.</summary>
     private static LeaseContract OtherLease(
         LeaseDraftHarness h, Guid propertyId, LeaseStatus status, DateTime start, DateTime end, DateTime? endedOn = null)
     {
@@ -708,21 +675,16 @@ public class LeaseDraftServiceTests
     public async Task GetReview_AnotherLeaseOfTheProperty_OnSomeOfTheSameDays_IsABlock_AndNothingElseIs()
     {
         using var h = await NewAsync();
-        var (created, _) = await h.CompleteAsync(); // 2026-11-01 to 2030-10-31
+        var (created, _) = await h.CompleteAsync();
         var otherProperty = await h.SeedPropertyAsync();
         await using (var db = h.SecondContext())
         {
             db.LeaseContracts.AddRange(
-                // Rejected: it will never take effect.
                 OtherLease(h, h.PropertyId, LeaseStatus.Rejected, Day(2026, 11, 1), Day(2030, 10, 31)),
-                // Ended the day before this one starts, and starts the day after it ends: the days follow each other.
                 OtherLease(h, h.PropertyId, LeaseStatus.Registered, Day(2022, 1, 1), Day(2026, 10, 31)),
                 OtherLease(h, h.PropertyId, LeaseStatus.Registered, Day(2030, 11, 1), Day(2034, 10, 31)),
-                // Another property.
                 OtherLease(h, otherProperty.Id, LeaseStatus.Registered, Day(2026, 6, 1), Day(2030, 5, 31)),
-                // A draft that does not have its two dates yet covers no days.
                 OtherLease(h, h.PropertyId, LeaseStatus.Draft, Day(2026, 11, 1), LeaseDraftDefaults.PlaceholderDate),
-                // Its contract goes on to 2032, but it was ended on 31 October 2026: the days after that are free.
                 OtherLease(h, h.PropertyId, LeaseStatus.Registered, Day(2024, 1, 1), Day(2032, 12, 31), endedOn: Day(2026, 10, 31)));
             await db.SaveChangesAsync();
         }
@@ -750,7 +712,7 @@ public class LeaseDraftServiceTests
     {
         using var h = await NewAsync();
         var (created, _) = await h.CompleteAsync();
-        var (other, _) = await h.CompleteAsync(); // the same days, on the same property: a second contract in the making
+        var (other, _) = await h.CompleteAsync();
 
         var view = await h.Service.GetAsync(created.Id);
 
@@ -764,11 +726,10 @@ public class LeaseDraftServiceTests
     public async Task ConfirmReview_AndMarkSent_AreRefusedWith409_WhenAnotherLeaseHasSomeOfTheSameDays_AndGoThroughWhenItEndsTheDayBefore()
     {
         using var h = await NewAsync();
-        var (created, version) = await h.CompleteAsync(); // 2026-11-01 to 2030-10-31
+        var (created, version) = await h.CompleteAsync();
         Guid other;
         await using (var db = h.SecondContext())
         {
-            // Its last day is the first day of this one: one day in common is enough.
             var lease = OtherLease(h, h.PropertyId, LeaseStatus.Registered, Day(2023, 3, 1), Day(2026, 11, 1));
             db.LeaseContracts.Add(lease);
             await db.SaveChangesAsync();
@@ -786,7 +747,6 @@ public class LeaseDraftServiceTests
         Assert.Null(untouched.ReviewConfirmedAt);
         Assert.Equal(version, untouched.DraftVersion);
 
-        // It ends the day before: the days follow each other and the review is confirmed.
         await using (var db = h.SecondContext())
         {
             var lease = await db.LeaseContracts.SingleAsync(l => l.Id == other);
@@ -798,7 +758,6 @@ public class LeaseDraftServiceTests
         var confirmed = await h.Service.ConfirmReviewAsync(created.Id, version);
         Assert.NotNull(confirmed.ReviewConfirmedAt);
 
-        // A lease that takes the days after the confirmation stops the download for signature, and nothing is written.
         await using (var db = h.SecondContext())
         {
             db.LeaseContracts.Add(OtherLease(h, h.PropertyId, LeaseStatus.Signed, Day(2028, 1, 1), Day(2031, 12, 31)));
@@ -828,8 +787,6 @@ public class LeaseDraftServiceTests
         Assert.Equal(LeaseReviewSeverity.Warn, Assert.Single(review.Checks, c => c.Code == LeaseNeedCodes.PropertyShortMode).Severity);
         Assert.Equal(0, review.Counts.Block);
     }
-
-    // ---- downloaded for signature --------------------------------------------------------------------------------
 
     [Fact]
     public async Task Sent_BeforeTheReviewIsConfirmed_Is422()
@@ -918,7 +875,6 @@ public class LeaseDraftServiceTests
         var confirmed = await h.Service.ConfirmReviewAsync(created.Id, version);
         await using (var db = h.SecondContext())
         {
-            // A column changed behind the draft's back (a bug elsewhere): the gate of the download still refuses it.
             (await db.LeaseContracts.SingleAsync(l => l.Id == created.Id)).EndDate = new DateTime(2027, 10, 31, 0, 0, 0, DateTimeKind.Utc);
             await db.SaveChangesAsync();
         }
@@ -928,8 +884,6 @@ public class LeaseDraftServiceTests
         Assert.Equal("lease_term_too_short", error.Code);
         h.Templates.Verify(t => t.EnsureFinalContractAvailable(It.IsAny<LeaseContract>()), Times.Never);
     }
-
-    // ---- an imported draft ---------------------------------------------------------------------------------------
 
     [Fact]
     public async Task AnImportedDraft_HasNoReviewToConfirmAndNothingToDownload_Both422()
@@ -943,8 +897,6 @@ public class LeaseDraftServiceTests
         Assert.Equal("lease_review_not_applicable", review.Code);
         Assert.Equal("lease_sent_not_applicable", sent.Code);
     }
-
-    // ---- deletion ------------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task Delete_ADraft_RemovesItWithItsPartiesAndEvents()
@@ -960,7 +912,6 @@ public class LeaseDraftServiceTests
         Assert.False(await db.Parties.AnyAsync(p => p.LeaseContractId == created.Id));
         Assert.False(await db.LeaseEvents.AnyAsync(e => e.LeaseContractId == created.Id));
         await Assert.ThrowsAsync<NotFoundException>(() => h.Service.GetAsync(created.Id));
-        // The property is still there and has no lease any more.
         Assert.True(await db.Properties.AnyAsync(p => p.Id == h.PropertyId));
     }
 
@@ -1039,8 +990,6 @@ public class LeaseDraftServiceTests
         await Assert.ThrowsAsync<NotFoundException>(() => h.Service.DeleteAsync(Guid.NewGuid()));
     }
 
-    // ---- canone concordato ---------------------------------------------------------------------------------------
-
     [Fact]
     public async Task Concordato_ARentInsideTheRange_StoresTheAssessmentAndTheThreeYearsPeriod()
     {
@@ -1060,7 +1009,6 @@ public class LeaseDraftServiceTests
         Assert.Equal(700m, lease.ConcordatoAssessment.CanoneMinMensile);
         Assert.Equal(70m, lease.ConcordatoAssessment.Sqm);
         Assert.Null(lease.DraftData);
-        // And the calculator was asked for a first period of 36 months, whatever the dates are.
         h.Eligibility.Verify(
             e => e.CalculateAsync(h.PropertyId, It.Is<RentBandCharacteristics>(c => c.Sqm == 70m && c.TypeAElementCount == 2), new LeaseTerm(36, 0), It.IsAny<CancellationToken>()),
             Times.AtLeastOnce);
@@ -1082,7 +1030,6 @@ public class LeaseDraftServiceTests
         var lease = await h.LoadAsync(created.Id);
         Assert.Null(lease.ConcordatoAssessment);
         Assert.NotNull(lease.DraftData);
-        // The review cannot be confirmed, and the rent the landlord typed is still there to be corrected.
         await Assert.ThrowsAsync<DomainRuleException>(() => h.Service.ConfirmReviewAsync(created.Id, null));
         Assert.Equal(900m, (await h.Service.GetAsync(created.Id)).Values.MonthlyRent);
     }
@@ -1150,8 +1097,6 @@ public class LeaseDraftServiceTests
         Assert.Equal(new DateTime(2030, 10, 31, 0, 0, 0, DateTimeKind.Utc), lease.EndDate);
     }
 
-    // ---- what the review of the draft found ----------------------------------------------------------------------
-
     private const string ValidParties = """
         {"landlords":[{"firstName":"Mario","lastName":"Rossi","fiscalCode":"RSSMRA80A01H501U","citizenship":"IT","residence":"Bari, via Sparano 1","contactEmail":"mario@example.com"}],
          "tenants":[{"firstName":"Giulia","lastName":"Verdi","fiscalCode":"VRDGLI85B02F205A","citizenship":"IT","residence":"Bari, via Argiro 7"}]}
@@ -1164,8 +1109,6 @@ public class LeaseDraftServiceTests
         var (created, version) = await h.CompleteAsync();
         var tenantId = (await h.Service.GetAsync(created.Id)).Values.Tenants.Single().Id;
 
-        // The tenant's id inside the landlords, the tenants left alone: the same key would end in two rows of Parties (a 500), or in a
-        // draft whose parties nobody can save any more.
         var saved = await h.SaveAsync(created.Id, version, 2, $$"""
             {"landlords":[{"id":"{{tenantId}}","firstName":"Mario","lastName":"Rossi","fiscalCode":"RSSMRA80A01H501U","citizenship":"IT","residence":"Bari, via Sparano 1"}]}
             """);
@@ -1189,10 +1132,9 @@ public class LeaseDraftServiceTests
         version = (await h.SaveAsync(created.Id, version, 3, LeaseDraftHarness.ConcordatoStep3)).Version;
         version = (await h.SaveAsync(created.Id, version, 4, """{"startDate":"2026-11-01"}""")).Version;
         var before = await h.LoadAsync(created.Id);
-        Assert.NotNull(before.DraftData); // the comune has no agreement data: the typed state is kept, there is no range to store
+        Assert.NotNull(before.DraftData);
         Assert.Null(before.ConcordatoAssessment);
 
-        // The agreement data of the comune are loaded: nothing in the draft changed, and nothing blocks any more.
         h.SetupConcordatoRange(minMonthly: 800m, maxMonthly: 1000m);
         var confirmed = await h.Service.ConfirmReviewAsync(created.Id, version);
 
@@ -1206,7 +1148,6 @@ public class LeaseDraftServiceTests
         Assert.Equal(version + 1, confirmed.Version);
         Assert.Equal(version + 1, after.DraftVersion);
         Assert.Contains(after.Events, e => e.EventType == LeaseEventType.ReviewConfirmed);
-        // And from now on a repeated autosave of the same values leaves the review as it is.
         var repeated = await h.SaveAsync(created.Id, confirmed.Version, 3, LeaseDraftHarness.ConcordatoStep3);
         Assert.NotNull((await h.LoadAsync(created.Id)).ReviewConfirmedAt);
         Assert.Equal(LeaseStepState.Done, repeated.Flow[6].State);
@@ -1214,8 +1155,6 @@ public class LeaseDraftServiceTests
 
     private static async Task<Guid> SeedOldFormDraftAsync(LeaseDraftHarness h, LeaseContractType type, DateTime end)
     {
-        // A draft made by POST /api/leases before the guided draft existed: every column set, the parties without a residence (the old
-        // form never asked for one), no typed state, no version.
         await using var db = h.SecondContext();
         var lease = new LeaseContract
         {
@@ -1244,7 +1183,6 @@ public class LeaseDraftServiceTests
         using var h = await NewAsync();
         var id = await SeedOldFormDraftAsync(h, LeaseContractType.Transitorio, new DateTime(2027, 4, 30, 0, 0, 0, DateTimeKind.Utc));
 
-        // The documents of the parties: nothing to do with the type or the term, which stay as the old form wrote them.
         var saved = await h.SaveAsync(id, 0, 5, "{}");
 
         var lease = await h.LoadAsync(id);
@@ -1254,7 +1192,6 @@ public class LeaseDraftServiceTests
         Assert.Contains(LeaseNeedCodes.TransitoryPartyMissing, Needs(saved.Flow, 3));
         Assert.Contains(LeaseNeedCodes.TransitoryNeedMissing, Needs(saved.Flow, 3));
 
-        // The landlord chooses a type that can be created: the term is the one of the type.
         await h.SaveAsync(id, saved.Version, 3, """{"contractType":"Libero"}""");
         lease = await h.LoadAsync(id);
         Assert.Equal(LeaseContractType.Libero, lease.ContractType);
@@ -1269,7 +1206,6 @@ public class LeaseDraftServiceTests
 
         var saved = await h.SaveAsync(id, 0, 5, "{}");
 
-        // The wizard owns the term: it shows the end its type gives (computed.endDate), and the save writes the same.
         var lease = await h.LoadAsync(id);
         Assert.Equal(new DateTime(2030, 10, 31, 0, 0, 0, DateTimeKind.Utc), lease.EndDate);
         Assert.Equal("2030-10-31", (await h.Service.GetAsync(id)).Computed.EndDate);
@@ -1306,8 +1242,6 @@ public class LeaseDraftServiceTests
         Assert.Equal(1, seen);
     }
 
-    // ---- no personal data in a log -------------------------------------------------------------------------------
-
     [Fact]
     public async Task TheLogs_OfAWholeLifeOfADraft_HoldNoPersonalData_OnlyIdsStepsAndCounts()
     {
@@ -1340,8 +1274,6 @@ public class LeaseDraftServiceTests
 
         Assert.Contains(created.Id.ToString(), logged);
     }
-
-    // ---- a company as a tenant -----------------------------------------------------------------------------------
 
     [Fact]
     public async Task ACompanyAsTenant_UnderTheCedolare_IsABlock_AndTheOrdinaryRegimeClearsIt()

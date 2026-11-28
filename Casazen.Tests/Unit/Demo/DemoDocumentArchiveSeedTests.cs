@@ -2,12 +2,9 @@ using System.Text;
 using Casazen.Core.Authorization;
 using Casazen.Core.Demo;
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
-using Casazen.Core.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
-using Casazen.Core.TouristTax;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Services;
@@ -20,11 +17,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Demo;
 
-/// <summary>
-/// NF-99, E07/F03/US03: what the showcase writes for the house of the scenario <c>document-archive</c> (Appartamento Brera) is what the archive
-/// lists to the owner of the demo org. The house and the payment of its comune are seeded by the real code of the showcase over an InMemory context
-/// and a private bucket that keeps what is put in it, and read back through the real sources and the real service of the archive.
-/// </summary>
 public class DemoDocumentArchiveSeedTests
 {
     [Fact]
@@ -43,13 +35,10 @@ public class DemoDocumentArchiveSeedTests
         var template = DemoShowcaseCatalog.Properties.Single(p => p.Scenarios.Contains(DemoShowcaseCatalog.Scenario.DocumentArchive));
         var payment = Assert.Single(DemoShowcaseCatalog.TouristTaxRemittances, t => t.PropertyKey == template.Key);
 
-        // The house as the reset creates it (its details, its compliance fill with the TEST certificates of its region, its marker), without the
-        // stays, which the archive does not read, and then the payment of its comune with the invented receipt.
         await seeding.CreateShowcasePropertyAsync(org.Id, owner.Id, template with { Bookings = [] }, CancellationToken.None);
         await seeding.CreateTouristTaxRemittanceAsync(org.Id, owner.Id, payment, CancellationToken.None);
         var house = await db.Properties.AsNoTracking().SingleAsync(p => p.OrgId == org.Id);
 
-        // The owner of the org (the whole org) asks the archive for everything, through the three real sources over the same context and bucket.
         var archive = new DocumentArchiveService(
             [new PropertyDocumentArchiveSource(db, storage), new LeaseDocumentArchiveSource(db, storage), new TouristTaxRemittanceArchiveSource(db, storage)],
             db,
@@ -60,7 +49,6 @@ public class DemoDocumentArchiveSeedTests
 
         var page = await archive.ListAsync(scope, DocumentArchiveWorld.Everything, everything);
 
-        // At least one TEST certificate of the house (the region of Brera asks for some), listed under the house...
         var certificates = page.Items.Where(i => i.Type == ArchiveDocumentType.PropertyDocument).ToList();
         Assert.NotEmpty(certificates);
         Assert.All(certificates, certificate =>
@@ -71,14 +59,12 @@ public class DemoDocumentArchiveSeedTests
             Assert.Equal("application/pdf", certificate.ContentType);
         });
 
-        // ...and the receipt of the one payment of the house to its comune, which belongs to the org and to no property.
         var receipt = Assert.Single(page.Items, i => i.Type == ArchiveDocumentType.TouristTax);
         Assert.Equal(house.City.Trim(), receipt.Title);
         Assert.Null(receipt.PropertyId);
         Assert.Equal("application/pdf", receipt.ContentType);
         Assert.Equal(certificates.Count + 1, page.TotalCount);
 
-        // Each of them opens: the file is the invented PDF that says it is test data, read from the private bucket under the key of its row.
         foreach (var row in new[] { certificates[0], receipt })
         {
             var file = await archive.OpenAsync(scope, DocumentArchiveWorld.Everything, row.Type, row.Id);
@@ -99,7 +85,6 @@ public class DemoDocumentArchiveSeedTests
         }
     }
 
-    /// <summary>The seeding code of the showcase over <paramref name="db"/> and <paramref name="storage"/>, as <c>DemoComplianceTrafficLightSeedTests</c> builds it.</summary>
     private static DemoEnvironmentService Seeding(AppDbContext db, IFileStorage storage)
     {
         var gate = new Mock<IDemoEnvironmentGate>();

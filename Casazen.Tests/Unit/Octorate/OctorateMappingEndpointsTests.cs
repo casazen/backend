@@ -35,13 +35,10 @@ public class OctorateMappingEndpointsTests
         var properties = new Mock<IPropertyService>();
         properties.Setup(p => p.GetPropertyRecordAsync(PropertyOfOrgA))
             .ReturnsAsync(new Property { Id = PropertyOfOrgA, OrgId = OrgA, OwnerId = Owner, Name = "Casa del Lago" });
-        // The tenant filter hides another org's property: the record of the caller's org is not found.
         properties.Setup(p => p.GetPropertyRecordAsync(PropertyOfOrgB)).ReturnsAsync((Property?)null);
-        // A colleague's property in the same org, which the owner (an account in no org team) does not reach.
         properties.Setup(p => p.GetPropertyRecordAsync(PropertyOfColleague))
             .ReturnsAsync(new Property { Id = PropertyOfColleague, OrgId = OrgA, OwnerId = Colleague, Name = "Casa del Bosco" });
 
-        // The listings of the org: 1001 is proposed to the owner's property, 2002 is already confirmed to the colleague's.
         IReadOnlyList<ChannelMappingRow> rows =
         [
             Row("1001", OctorateMappingStatus.Proposed, PropertyOfOrgA),
@@ -49,18 +46,14 @@ public class OctorateMappingEndpointsTests
         ];
         mappings.Setup(m => m.ListAsync(OrgA, It.IsAny<CancellationToken>())).ReturnsAsync(rows);
 
-        // A member with no org-wide role and no grant: it reaches only the properties it created, not this one.
         var outsider = Controller(mappings, properties, HostAuthorizationTestHarness.User("auth0|staff-a", "Staff"));
         var refused = await outsider.Confirm("1001", new ConfirmMappingRequest { PropertyId = PropertyOfOrgA }, CancellationToken.None);
         AssertNotFound(refused, "octorate_property_not_found");
 
-        // Nobody names a property of another organization, an org-wide manager neither.
         var manager = Controller(mappings, properties, HostAuthorizationTestHarness.User("auth0|manager-a", "PropertyManager"));
         var foreign = await manager.Confirm("1001", new ConfirmMappingRequest { PropertyId = PropertyOfOrgB }, CancellationToken.None);
         AssertNotFound(foreign, "octorate_property_not_found");
 
-        // The owner reaches the property it names, but listing 2002 is confirmed to a colleague's property it does not reach: the listing
-        // is hidden from it, so reaching the new property alone does not take the listing over.
         var owner = Controller(mappings, properties, HostAuthorizationTestHarness.User(Owner, "PropertyOwner"));
         var takeover = await owner.Confirm("2002", new ConfirmMappingRequest { PropertyId = PropertyOfOrgA }, CancellationToken.None);
         AssertNotFound(takeover, "octorate_mapping_not_found");
@@ -76,8 +69,6 @@ public class OctorateMappingEndpointsTests
                 It.IsAny<IReadOnlySet<string>?>()),
             Times.Never);
 
-        // The person who reaches the property of the listing (its creator, in an account with no org team) confirms it, and the roles of its
-        // token go to the service with the call: the service decides the reach of an account in no org team with them, as this layer did.
         Assert.IsType<NoContentResult>(
             await owner.Confirm("1001", new ConfirmMappingRequest { PropertyId = PropertyOfOrgA }, CancellationToken.None));
         mappings.Verify(
@@ -92,7 +83,6 @@ public class OctorateMappingEndpointsTests
             Times.Once);
     }
 
-    /// <summary>A listing of the org with the property it is proposed or confirmed to.</summary>
     private static ChannelMappingRow Row(string accommodationId, OctorateMappingStatus status, Guid propertyId) =>
         new(
             Guid.NewGuid(),

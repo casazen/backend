@@ -22,14 +22,12 @@ public sealed class IdentityDecisionEngineTests
     [Fact]
     public void IdentityDecisionEngine_IsPure_NoDependencyNoStateNoClockNoRandomness()
     {
-        // AC1: one constructor, without parameters; no field at all (instance or static), so no logger, clock, random generator, database or container can hide in it.
         var type = typeof(IdentityDecisionEngine);
         var constructor = Assert.Single(type.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic));
         Assert.Empty(constructor.GetParameters());
         Assert.Empty(type.GetFields(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic));
         Assert.Empty(type.GetProperties(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic));
 
-        // The same bundle gives the same decision, from the same engine and from another one.
         foreach (var bundle in new[] { EvidenceBundles.Perfect(EvidenceBundles.Allowed), EvidenceBundles.Perfect(EvidenceBundles.Observation), EvidenceBundles.WithFailure(VerificationReasons.Checks.PresenceTiming, correctable: true) })
         {
             var first = _engine.Decide(bundle);
@@ -256,7 +254,6 @@ public sealed class IdentityDecisionEngineTests
         Assert.Equal(IdentityOutcomeCodes.Review, decision.OutcomeCode);
         Assert.Contains(new VerificationReason(VerificationReasons.Checks.DocumentCoherence, result), decision.Reasons);
 
-        // A document that is not complete is not a pass either.
         var incomplete = _engine.Decide(EvidenceBundles.Perfect(EvidenceBundles.Allowed) with { DocumentComplete = false });
         Assert.Equal(IdentityFinalDecision.Review, incomplete.Final);
         Assert.Contains(new VerificationReason(VerificationReasons.Checks.DocumentCoherence, VerificationReasons.Results.NotRun), incomplete.Reasons);
@@ -320,7 +317,6 @@ public sealed class IdentityDecisionEngineTests
 
         Assert.Contains(new VerificationReason(VerificationReasons.Checks.DocumentFormat, VerificationReasons.Results.Failed), _engine.Decide(cases[0].Bundle).Reasons);
 
-        // A format that gives the chip satisfies a segment that requires it.
         var cryptographic = _engine.Decide(EvidenceBundles.Perfect(chip) with { ProvidedAssurance = IdentityAssuranceLevels.Cryptographic });
         Assert.Equal(IdentityFinalDecision.AutoApproved, cryptographic.Final);
     }
@@ -328,8 +324,6 @@ public sealed class IdentityDecisionEngineTests
     [Fact]
     public void IdentityDecisionEngine_Observation_RecordsShadowOnly()
     {
-        // Proof (security, AC5, AC-NF194-3): perfect evidence where the segment does not allow the automatic approval is the review of a person with the shadow approval and the
-        // reason observation_mode, whose result is the first condition of the segment that failed; never an approval, whatever that condition is.
         var observation = _engine.Decide(EvidenceBundles.Perfect(EvidenceBundles.Observation));
 
         Assert.Equal(IdentityFinalDecision.Review, observation.Final);
@@ -347,7 +341,6 @@ public sealed class IdentityDecisionEngineTests
             Assert.Equal(new VerificationReason(VerificationReasons.Checks.ObservationMode, reason), decision.Reasons[^1]);
         }
 
-        // No segment resolved at all is observation too.
         var unresolved = _engine.Decide(EvidenceBundles.Perfect(null));
         Assert.Equal((IdentityFinalDecision.Review, IdentityShadowDecision.Approve, IdentityDecisionMode.Observation), (unresolved.Final, unresolved.Shadow, unresolved.Mode));
     }
@@ -355,7 +348,6 @@ public sealed class IdentityDecisionEngineTests
     [Fact]
     public void IdentityDecisionEngine_QualifiedAndAllowed_ApprovesAutomatically()
     {
-        // AC6, AC-NF194-4: the approval needs the segment to allow it (qualified for the policy and the weights in force, with the global permission on).
         var decision = _engine.Decide(EvidenceBundles.Perfect(EvidenceBundles.Allowed));
 
         Assert.Equal(IdentityFinalDecision.AutoApproved, decision.Final);
@@ -367,7 +359,6 @@ public sealed class IdentityDecisionEngineTests
         Assert.DoesNotContain(decision.Reasons, reason => reason.Check == VerificationReasons.Checks.ObservationMode);
         Assert.All(decision.Reasons, reason => Assert.Equal(VerificationReasons.Results.Passed, reason.Result));
 
-        // The same evidence in the same segment once the qualification no longer matches (a new policy hash or weights hash): back to observation, by construction.
         var mismatch = _engine.Decide(EvidenceBundles.Perfect(EvidenceBundles.Allowed with { AutoApprovalAllowed = false, Qualified = false, ReasonCode = IdentitySegmentReasonCodes.QualificationMismatch }));
         Assert.Equal((IdentityFinalDecision.Review, IdentityShadowDecision.Approve), (mismatch.Final, mismatch.Shadow));
     }
@@ -384,7 +375,6 @@ public sealed class IdentityDecisionEngineTests
         Assert.Equal(IdentityCheckStatus.NotRun, default);
         Assert.Equal(IdentityDocumentCoherence.Unknown, default);
 
-        // Whatever the decision, the log never says Reject.
         foreach (var final in Enum.GetValues<IdentityFinalDecision>())
         {
             foreach (var shadow in Enum.GetValues<IdentityShadowDecision>())
@@ -415,7 +405,6 @@ public sealed class IdentityDecisionEngineTests
         Assert.NotEqual(IdentityFinalDecision.AutoApproved, strange.Final);
         Assert.Equal(IdentityShadowDecision.Review, strange.Shadow);
 
-        // A check given twice is its worst entry; an extra check the engine does not know still has to pass.
         var twice = _engine.Decide(EvidenceBundles.Perfect(EvidenceBundles.Allowed) with
         {
             Presence = [.. EvidenceBundles.PassedPresence(), new CheckOutcome(VerificationReasons.Checks.PresenceTiming, IdentityCheckStatus.Failed, false, IdentityGuidanceCodes.PresenceTiming)],
@@ -459,21 +448,14 @@ public sealed class IdentityDecisionEngineTests
     }
 }
 
-/// <summary>
-/// The bundles of the tests of the decision (E73/F01/US01/T01): perfect evidence with the numbers of the committed policy (an aggregate similarity of 0.93 and a weakest frame of
-/// 0.91 against the acceptance of 0.85, a liveness of 0.93 against 0.7), and the same with one change. Public for the qualification tests of E74.
-/// </summary>
 public static class EvidenceBundles
 {
-    /// <summary>A segment in observation, the behaviour everywhere: a person decides.</summary>
     public static SegmentResolution Observation { get; } =
         new(null, IdentitySegmentMode.Observation, false, false, IdentityAssuranceLevels.Consistency, IdentitySegmentReasonCodes.SegmentObservation);
 
-    /// <summary>A segment that allows the automatic approval: automatic, qualified for the policy and the weights in force, with the global permission on.</summary>
     public static SegmentResolution Allowed { get; } =
         new(Guid.Parse("7c1c3f6e-27e5-4a52-9d3c-0d9b8f1a6a10"), IdentitySegmentMode.Automatic, true, true, IdentityAssuranceLevels.Consistency, null);
 
-    /// <summary>Every check of the presence passed, the liveness with its score and the minimum of the committed policy.</summary>
     public static IReadOnlyList<CheckOutcome> PassedPresence(double livenessScore = 0.93)
     {
         var minScore = IdentityTestPolicy.Shipped().Presence.Liveness.MinScore;
@@ -485,7 +467,6 @@ public static class EvidenceBundles
         ];
     }
 
-    /// <summary>A comparison that was made, with the verdicts the matcher gives these numbers under the committed policy.</summary>
     public static MatchSummary Match(double aggregate, double min)
     {
         var policy = IdentityTestPolicy.Shipped().Match;
@@ -519,13 +500,11 @@ public static class EvidenceBundles
             GuidedRetriesAllowed: IdentityTestPolicy.Shipped().Closure.GuidedRetries);
     }
 
-    /// <summary>Perfect evidence in a segment that allows the approval, but for <paramref name="check"/>, which failed; the match was not made after a failed presence.</summary>
     public static IdentityEvidenceBundle WithFailure(string check, bool correctable, int guidedRetriesUsed = 0, string? guidance = IdentityGuidanceCodes.PresenceQuality)
     {
         return WithFailures(guidedRetriesUsed, new CheckOutcome(check, IdentityCheckStatus.Failed, correctable, guidance));
     }
 
-    /// <summary>Perfect evidence in a segment that allows the approval, but for <paramref name="failures"/>; the match was not made after a failed presence.</summary>
     public static IdentityEvidenceBundle WithFailures(int guidedRetriesUsed, params CheckOutcome[] failures)
     {
         var failed = failures.Select(failure => failure.Check).ToHashSet(StringComparer.Ordinal);
@@ -537,7 +516,6 @@ public static class EvidenceBundles
         };
     }
 
-    /// <summary>Perfect evidence in <paramref name="segment"/>, but for <paramref name="check"/>, whose status is <paramref name="status"/>.</summary>
     public static IdentityEvidenceBundle WithStatus(string check, IdentityCheckStatus status, SegmentResolution? segment)
     {
         return Perfect(segment) with

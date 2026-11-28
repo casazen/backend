@@ -4,7 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Seo;
 
-/// <summary>Host names and paths of the public site (BK-15): what is compared as a host is a plain DNS name, nothing else.</summary>
 public class PublicSiteHostsTests
 {
     [Theory]

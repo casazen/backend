@@ -13,10 +13,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// NF-99, E07/F03/US03: what the endpoints of the document archive ask before anything is read (the words of the request, the org and the scope
-/// of the caller, the types it may read), what they pass to the service, and what they write in the log.
-/// </summary>
 public class DocumentArchiveControllerTests
 {
     private const string UserId = "auth0|host";
@@ -86,8 +82,6 @@ public class DocumentArchiveControllerTests
         int page = 1,
         int pageSize = 25) =>
         harness.Controller.List(types, from, to, null, null, search, page, pageSize);
-
-    // ---------------------------------------------------------------- the words of a request
 
     [Theory]
     [InlineData("propertyDoc")]
@@ -193,7 +187,6 @@ public class DocumentArchiveControllerTests
         Assert.Equal("ostuni", query.Search);
         Assert.Equal((2, 10), (query.Page, query.PageSize));
 
-        // The caller holds every permission here, so it may read every type that has a source (the sources are the three of the harness).
         Assert.NotNull(access);
         Assert.Equal(
             new[] { ArchiveDocumentType.PropertyDocument, ArchiveDocumentType.TouristTax, ArchiveDocumentType.AlloggiatiReceipt }.Order(),
@@ -219,8 +212,6 @@ public class DocumentArchiveControllerTests
             [("touristTax", 0), ("propertyDocument", 7)],
             types.Types.Select(t => (t.Type, t.Count)));
     }
-
-    // ---------------------------------------------------------------- the download
 
     [Fact]
     public async Task Download_AnUnknownType_Is400()
@@ -254,10 +245,6 @@ public class DocumentArchiveControllerTests
         await file.FileStream.DisposeAsync();
     }
 
-    /// <summary>
-    /// PROOF TEST: privacy rule. Opening a compliance proof (it carries data about guests) writes one line in the log with the org, the user and the
-    /// type, and nothing that names a document: no title, no file name.
-    /// </summary>
     [Fact]
     public async Task Download_OfAComplianceProof_WritesOneLineWithIdsOnly()
     {
@@ -277,8 +264,6 @@ public class DocumentArchiveControllerTests
         Assert.DoesNotContain("mario", harness.Log.AllOutput, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(id.ToString(), harness.Log.AllOutput, StringComparison.Ordinal);
     }
-
-    // ---------------------------------------------------------------- the export
 
     [Fact]
     public async Task Export_WithoutDaysOrBeyondTwentyFourMonths_IsRefusedWithTheCodesOfTheReports()
@@ -305,10 +290,6 @@ public class DocumentArchiveControllerTests
         Assert.Equal((400, DocumentArchiveController.InvalidTypeCode), (StatusOf(result), CodeOf(result)));
     }
 
-    /// <summary>
-    /// PROOF TEST: privacy rule. An export writes one line in the log with the org, the user and the counts, and nothing that names a document or
-    /// a property. The service gets the days, the types and the property of the request and the response as the destination.
-    /// </summary>
     [Fact]
     public async Task Export_WritesOneLineWithTheIdsAndTheCounts_AndGivesTheServiceTheResponse()
     {

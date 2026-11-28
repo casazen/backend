@@ -14,10 +14,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Messages;
 
-/// <summary>
-/// E05/F02/US01/T01 (NF-61, NF-64): the list, the thread detail, the read mark and the badges of the hub, on the in-memory provider. What only the
-/// real SQL can show (that the one statement translates and runs) is proved by <see cref="MessageHubNpgsqlTranslationTests"/> and by CI.
-/// </summary>
 public class MessageHubServiceTests : IAsyncLifetime
 {
     private readonly AppDbContext _db = HostScopeScenario.NewInMemoryDb();
@@ -37,14 +33,11 @@ public class MessageHubServiceTests : IAsyncLifetime
 
     private static MessageThreadKey Ota(OtaMessageThread thread) => MessageThreadKey.ForOta(thread.Id);
 
-    // ---- The list -------------------------------------------------------------------------------------------------------------------
-
     [Fact]
     public async Task List_PutsBothSourcesInOneList_TheLatestMessageFirst_AndNeverTheOtherOrg()
     {
         var page = await Service().ListAsync(OrgWide, new MessageHubFilter(), 1, 20);
 
-        // The other org's conversation is not there; the six of this org are, by the time of their last message.
         Assert.Equal(6, page.TotalCount);
         Assert.Equal(
             [
@@ -216,7 +209,6 @@ public class MessageHubServiceTests : IAsyncLifetime
     [Fact]
     public async Task List_Query_DoesNotSearchTheWordsOfTheMessages()
     {
-        // The text of a message is encrypted at rest: a word that is only in a message finds nothing.
         var byWord = await Service().ListAsync(OrgWide, new MessageHubFilter(Query: "parking"), 1, 20);
 
         Assert.Empty(byWord.Items);
@@ -303,14 +295,11 @@ public class MessageHubServiceTests : IAsyncLifetime
     [Fact]
     public async Task List_OfTheAccountInNoTeam_ReachesTheHousesItCreated_AndNothingWithoutAProperty()
     {
-        // The account in no org team created the hidden house only (the old rule): it sees that house and no unassigned conversation.
         var page = await Service().ListAsync(_world.Scope.OwnedByOwner, new MessageHubFilter(), 1, 20);
 
         Assert.DoesNotContain(page.Items, i => i.Unassigned);
         Assert.All(page.Items.Where(i => i.Source == MessageThreadSource.Ota), i => Assert.NotNull(i.PropertyId));
     }
-
-    // ---- The thread detail ----------------------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task GetThread_OfAChannel_CarriesTheMessagesOldestFirst_TheBookingCard_TheCustomerLink_AndTheActions()
@@ -336,7 +325,6 @@ public class MessageHubServiceTests : IAsyncLifetime
         Assert.Null(view.Messages[0].AttachmentContentType);
         Assert.False(view.HasEarlierMessages);
 
-        // The booking and the customer: ADR-032-R8, AC-NF61-3, AC-NF61-4, AC-NF64-1, AC-NF64-3.
         Assert.NotNull(view.Booking);
         Assert.Equal(_world.GrantedChannelBooking.Id, view.Booking.BookingId);
         Assert.Equal(BookingCodes.Format(_world.GrantedChannelBooking.BookingCode), view.Booking.BookingCode);
@@ -349,10 +337,8 @@ public class MessageHubServiceTests : IAsyncLifetime
         Assert.Equal("EUR", view.Booking.Currency);
         Assert.Equal(_world.GrantedChannelBooking.GuestId, view.CustomerGuestId);
 
-        // The four figures the channel gave (null stays null) and the total.
         Assert.Equal(new MessageBookingAmounts(350m, 100m, 24.50m, null, null), view.Booking.Amounts);
 
-        // The actions of the channel: it can answer, with contact details, nothing else is confirmed.
         Assert.Equal(new MessageThreadActions(true, true, false, false, null), view.Actions);
     }
 
@@ -368,7 +354,6 @@ public class MessageHubServiceTests : IAsyncLifetime
         Assert.True(view.NeedsReply);
         Assert.Equal(1, view.UnreadCount);
 
-        // An Airbnb request: it can be answered, but no link, address or number may be written before the booking (OCT-11).
         Assert.Equal(new MessageThreadActions(true, false, false, false, null), view.Actions);
     }
 
@@ -381,7 +366,6 @@ public class MessageHubServiceTests : IAsyncLifetime
         Assert.Null(view.Booking.Amounts);
         Assert.Equal("Jonas Berg", view.Booking.GuestName);
 
-        // On the wire the card has no amounts at all, not even the names of the figures.
         var json = JsonSerializer.Serialize(MessageThreadDto.From(view), new JsonSerializerOptions(JsonSerializerDefaults.Web));
         using var document = JsonDocument.Parse(json);
         Assert.False(document.RootElement.GetProperty("booking").TryGetProperty("amounts", out _));
@@ -432,7 +416,6 @@ public class MessageHubServiceTests : IAsyncLifetime
     [Fact]
     public async Task GetThread_ABookingOfAnotherPropertyThanTheThreads_IsNotShown()
     {
-        // A stray link between a conversation and a stay at another house must not show that stay under this house.
         var thread = await _db.OtaMessageThreads.FirstAsync(t => t.Id == _world.GrantedReservation.Id);
         thread.BookingId = _world.HiddenDirectBooking.Id;
         await _db.SaveChangesAsync();
@@ -458,7 +441,6 @@ public class MessageHubServiceTests : IAsyncLifetime
     [Fact]
     public async Task GetThread_AConversationAnonymizedByTheRealCode_ShowsNoWords_NoName_NoPreview_AndNoFile()
     {
-        // Anonymized by the code that erases a guest (the one the retention and the sync of the channel manager call too), not by hand.
         var thread = await _db.OtaMessageThreads.FirstAsync(t => t.Id == _world.GrantedReservation.Id);
         var messages = await _db.OtaMessages.Where(m => m.ThreadId == thread.Id).ToListAsync();
         GuestDataEraser.AnonymizeOtaThread(thread, messages, MessageHubTestKit.Now.UtcDateTime);
@@ -565,7 +547,6 @@ public class MessageHubServiceTests : IAsyncLifetime
         Assert.Equal(_world.GrantedDirectBooking.GuestId, view.CustomerGuestId);
         Assert.Equal(new MessageThreadActions(true, true, false, false, null), view.Actions);
 
-        // A direct booking: the total and what came in, from its payments.
         Assert.Equal(new MessageBookingAmounts(300m, 120m, null, null, null), view.Booking!.Amounts);
         Assert.Equal(BookingSource.Direct, view.Booking.Source);
     }
@@ -573,8 +554,6 @@ public class MessageHubServiceTests : IAsyncLifetime
     [Fact]
     public async Task GetThread_ADirectBookingCasaZenSentToOctorate_KeepsItsOwnMoney_TheTotalAndWhatCameInFromItsPayments()
     {
-        // E08: the push of a booking of CasaZen saves the id of its reservation on the booking (OctorateReservationId), and the row of the mirror.
-        // The id does not make its money the channel manager's: the card must still show what the payments hold, not the four figures of a channel.
         var booking = await _db.Bookings.FirstAsync(b => b.Id == _world.GrantedDirectBooking.Id);
         booking.OctorateReservationId = "RES-PUSHED-1";
         _db.OctorateBookingSyncs.Add(new OctorateBookingSync
@@ -635,8 +614,6 @@ public class MessageHubServiceTests : IAsyncLifetime
             Service(guestMessages.Object).GetThreadAsync(OrgWide, MessageThreadKey.ForDirect(_world.GrantedChannelBooking.Id), true));
     }
 
-    // ---- Read marks and badges ----------------------------------------------------------------------------------------------------
-
     [Fact]
     public async Task MarkRead_OfAChannel_SetsReadAtOnTheInboundMessages_AndZeroesTheCounter()
     {
@@ -647,7 +624,6 @@ public class MessageHubServiceTests : IAsyncLifetime
         Assert.All(messages, m => Assert.NotNull(m.ReadAt));
         Assert.Equal(0, (await _db.OtaMessageThreads.AsNoTracking().FirstAsync(t => t.Id == _world.HiddenReservation.Id)).UnreadCount);
 
-        // The other conversations are untouched.
         Assert.Equal(1, (await _db.OtaMessageThreads.AsNoTracking().FirstAsync(t => t.Id == _world.GrantedRequest.Id)).UnreadCount);
     }
 
@@ -669,7 +645,6 @@ public class MessageHubServiceTests : IAsyncLifetime
         var result = await Service(guestMessages.Object).MarkReadAsync(OrgWide, MessageThreadKey.ForDirect(_world.GrantedDirectBooking.Id), "auth0|titolare");
         Assert.Equal(0, result.UnreadCount);
 
-        // A collaborator who was not given that house never gets as far as the existing service.
         await Assert.ThrowsAsync<NotFoundException>(() =>
             Service(guestMessages.Object).MarkReadAsync(_world.Scope.Restricted, MessageThreadKey.ForDirect(_world.HiddenDirectBooking.Id), "auth0|collab"));
         guestMessages.Verify(g => g.MarkReadAsync(_world.HiddenDirectBooking.Id, It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);

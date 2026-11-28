@@ -93,7 +93,6 @@ public class HouseCurrencyReadModelsTests
     [Fact]
     public void PaymentListItemDto_SaysTheStayOfTheBookingAsCalendarDays()
     {
-        // Stay days are calendar days stored at midnight: they travel as `yyyy-MM-dd`, with no time and no time zone.
         var dto = PaymentListItemDto.From(PendingOnArrival(new DateTime(2026, 11, 3), new DateTime(2026, 11, 6)));
 
         Assert.Equal(new DateOnly(2026, 11, 3), dto.BookingCheckIn);

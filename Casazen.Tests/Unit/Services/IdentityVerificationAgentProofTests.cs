@@ -13,10 +13,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E03/F04/US02/T02 proofs of the identity verification agent: <c>Ok</c> needs every check (AC-NF51-13), and nothing of the pictures or of the
-/// person leaves the process through it (AC-NF51-9, AC-NF51-10).
-/// </summary>
 public class IdentityVerificationAgentProofTests
 {
     private static readonly VerificationPolicy Policy = new(AcceptThreshold: 0.85, EscalateThreshold: 0.70, MaxAttempts: 3, Provisional: true);
@@ -33,7 +29,6 @@ public class IdentityVerificationAgentProofTests
 
     private static readonly DetectedFace OneFace = new(20, 20, 120, 120, 0.99f, new float[10], 0.56);
 
-    /// <summary>What the ADR-013 pipeline answers: by default a live selfie that matches the document well.</summary>
     private static BiometricVerificationResult Face(
         double similarity = 0.92,
         bool isLive = true,
@@ -53,7 +48,6 @@ public class IdentityVerificationAgentProofTests
             ReasonCode = reasonCode,
         };
 
-    /// <summary>Trust rule (AC-NF51-13): the result is <c>Ok</c> with every check passed, and never when any single one fails.</summary>
     [Fact]
     public async Task IdentityVerificationAgent_OkOnlyWhenEveryCheckPassed_Test()
     {
@@ -100,7 +94,6 @@ public class IdentityVerificationAgentProofTests
             Assert.True(outcome.OperatorPathOpen, $"'{check}' must leave the way to a person open");
         }
 
-        // The mapping of ADR-013: a review is Escalate, a failed attempt is Reject and goes to the operator at the last one.
         Assert.Equal(BiometricOutcome.Escalate, (await VerifyAsync(Face(similarity: 0.78), GoodDocument, [OneFace])).BiometricOutcome);
         var lastFailed = await VerifyAsync(Face(similarity: 0.2), GoodDocument, [OneFace], attempt: 3);
         Assert.Equal(BiometricOutcome.Reject, lastFailed.BiometricOutcome);
@@ -108,11 +101,6 @@ public class IdentityVerificationAgentProofTests
         Assert.Equal(IdentityVerificationGuestResults.Retry, (await VerifyAsync(Face(similarity: 0.2), GoodDocument, [OneFace])).GuestResult);
     }
 
-    /// <summary>
-    /// Privacy rule (AC-NF51-9, AC-NF51-10): the agent and its capture checks depend on nothing that writes (no logger, database, storage, queue,
-    /// push, job, HTTP client or AI provider), the request cannot even carry a name or a value of the document, the outcome holds no picture and
-    /// no vector, and the decoded selfie is zeroed once the agent is done with it.
-    /// </summary>
     [Fact]
     public async Task IdentityVerificationAgent_NoImageOrPersonalDataLeavesTheProcess_Test()
     {
@@ -130,10 +118,8 @@ public class IdentityVerificationAgentProofTests
                 p => writers.Any(w => w.IsAssignableFrom(p)) || (p.IsGenericType && p.GetGenericTypeDefinition() == typeof(ILogger<>)));
         }
 
-        // What reaches the agent about the document are flags: no name, no number, no date.
         Assert.All(typeof(DocumentCheck).GetProperties(), p => Assert.True(p.PropertyType == typeof(bool) || p.PropertyType == typeof(bool?), p.Name));
 
-        // The outcome carries codes and numbers: no picture, crop or vector, by type.
         Assert.DoesNotContain(
             typeof(IdentityVerificationOutcome).GetProperties().Select(p => p.PropertyType),
             t => t == typeof(byte[]) || t == typeof(float[]) || typeof(Stream).IsAssignableFrom(t));
@@ -170,7 +156,6 @@ public class IdentityVerificationAgentProofTests
         return await agent.VerifyAsync(new IdentityVerificationRequest(selfie, documentPhoto, document, Policy, attempt), CancellationToken.None);
     }
 
-    /// <summary>A pipeline that answers a fixed result (the decision is the agent's, the pipeline is proved by its own tests).</summary>
     private sealed class FixedBiometrics(BiometricVerificationResult result) : IBiometricVerificationService
     {
         public Task<BiometricVerificationResult> VerifyAsync(
@@ -182,7 +167,6 @@ public class IdentityVerificationAgentProofTests
             Task.FromResult(result);
     }
 
-    /// <summary>A detector that always finds the same faces and keeps the pixel arrays it was shown, to prove they are zeroed afterwards.</summary>
     private sealed class FixedFaceDetector(IReadOnlyList<DetectedFace> faces) : IFaceDetector
     {
         public List<byte[]> SeenPixels { get; } = [];

@@ -19,13 +19,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// E22/F01/US01/T02: the selfie of a property in Ticino, which keeps no document, carries four pictures (both captures and the two sides of the document that were
-/// read), and the 10 MB that the request had for the two of before refused them: a guest with pictures of about 4 MB each got a 413 and could not finish. The
-/// request of <c>/selfie</c> is 20 MiB plus multipart overhead, the same 5 MB for each picture. The proof runs a real Kestrel on the loopback, with the limits that the action itself
-/// declares (<see cref="RequestSizeLimitAttribute"/> and <see cref="RequestFormLimitsAttribute"/>, read from <c>UploadSelfie</c>): four pictures of about 4 MB
-/// pass, and a request that is over the cap is refused with 413, as the old cap refused the same four pictures.
-/// </summary>
 public class SelfieRequestSizeTests
 {
     private const int PictureBytes = 4_000_000;
@@ -42,7 +35,6 @@ public class SelfieRequestSizeTests
         Assert.True(selfie.Form.MemoryBufferThreshold >= selfie.Cap, "the whole request is buffered in memory, never in a temporary file");
         Assert.True(selfie.Form.MultipartBodyLengthLimit >= selfie.Cap);
 
-        // The four pictures of the proof did not fit the old cap, and fit the new one with the framing of the form.
         Assert.True(4L * PictureBytes > PublicGuestCheckInController.MaxImageRequestBytes);
         Assert.True(4L * PictureBytes + 10_000 < selfie.Cap);
     }
@@ -74,17 +66,14 @@ public class SelfieRequestSizeTests
         var (cap, form) = Limits(nameof(PublicGuestCheckInController.UploadSelfie));
         await using (var host = await ProbeHost.StartAsync(cap, form))
         {
-            // One byte over the cap is refused before a picture is read.
             Assert.Equal(413, await host.StatusOfDeclaredBodyAsync(cap + 1));
         }
 
-        // The cap of before, 10 MB for the whole request: the size of the same four pictures (about 12 MB) was a 413.
         var (oldCap, oldForm) = Limits(nameof(PublicGuestCheckInController.UploadDocument));
         await using var old = await ProbeHost.StartAsync(oldCap, oldForm);
         Assert.Equal(413, await old.StatusOfDeclaredBodyAsync((4L * PictureBytes) + 10_000));
     }
 
-    /// <summary>The cap and the form limits that an action declares, as the server will apply them.</summary>
     private static (long Cap, RequestFormLimitsAttribute Form) Limits(string action)
     {
         var method = typeof(PublicGuestCheckInController).GetMethod(action)!;
@@ -96,10 +85,6 @@ public class SelfieRequestSizeTests
         return (((IRequestSizeLimitMetadata)size).MaxRequestBodySize!.Value, form);
     }
 
-    /// <summary>
-    /// A Kestrel on the loopback with one endpoint that does what <c>[RequestSizeLimit]</c> and <c>[RequestFormLimits]</c> do for the action: it puts the limits
-    /// of the action on the request and reads the multipart form, answering the number of files.
-    /// </summary>
     private sealed class ProbeHost : IAsyncDisposable
     {
         private readonly WebApplication _app;
@@ -136,10 +121,6 @@ public class SelfieRequestSizeTests
             return new ProbeHost(app, new Uri(address));
         }
 
-        /// <summary>
-        /// The status of a form POST that declares <paramref name="declaredBytes"/> in its <c>Content-Length</c>, written by hand: a server that refuses a body for
-        /// its size answers before the body is read and closes the connection, so the answer is read from the socket and not from a client that is still writing.
-        /// </summary>
         public async Task<int> StatusOfDeclaredBodyAsync(long declaredBytes)
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));

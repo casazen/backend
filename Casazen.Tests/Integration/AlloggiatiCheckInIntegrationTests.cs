@@ -7,7 +7,6 @@ using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
-using Hangfire;
 using Hangfire.Common;
 using Hangfire.States;
 using Microsoft.Extensions.DependencyInjection;
@@ -35,7 +34,6 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var root = doc.RootElement;
         Assert.Equal(seed.BookingId, root.GetProperty("bookingId").GetGuid());
-        // The seeded check-in is today: CasaZen has transmitted nothing, so the host must send it (A5-01, A9-05).
         Assert.Equal("DaInviareManualmente", root.GetProperty("status").GetString());
         Assert.Equal(JsonValueKind.Null, root.GetProperty("reportedAt").ValueKind);
         Assert.Equal(JsonValueKind.Null, root.GetProperty("confirmationNumber").ValueKind);
@@ -174,7 +172,6 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
         Assert.Equal(3, root.GetProperty("stayDays").GetInt32());
         Assert.Equal(2, root.GetProperty("declaredGuests").GetInt32());
         Assert.True(root.GetProperty("dataComplete").GetBoolean());
-        // No official code table imported in the test database: the codes are still to complete.
         Assert.False(root.GetProperty("exportReady").GetBoolean());
         Assert.Equal(4, root.GetProperty("missingCodeTables").GetArrayLength());
         var guests = root.GetProperty("guests").EnumerateArray().ToList();
@@ -190,7 +187,6 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
         Assert.Equal("Italia", head.GetProperty("citizenship").GetString());
         Assert.True(head.GetProperty("requiresDocument").GetBoolean());
         Assert.Equal("Passport", head.GetProperty("documentType").GetString());
-        // CO-09: masked like on the guest portal, the full number only on an explicit request.
         Assert.Equal("*****456", head.GetProperty("documentNumberMasked").GetString());
         Assert.False(head.TryGetProperty("documentNumber", out _));
         Assert.Equal("Milano", head.GetProperty("documentIssuePlace").GetString());
@@ -219,14 +215,11 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
     [Fact]
     public async Task GetGuestProgress_Owner_ReturnsTheCountsWithoutPersonalData()
     {
-        // Arrange: MO-08, the app booking detail shows "2 ospiti completi su 2".
         var seed = await _factory.SeedConfirmedBookingWithTokenAsync(completeGuestData: true);
         var client = _factory.CreateAuthenticatedClient(seed.OwnerId, roles: "PropertyOwner");
 
-        // Act
         var response = await client.GetAsync($"/api/alloggiati/{seed.BookingId}/guest-progress");
 
-        // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(body);
@@ -237,7 +230,6 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
         Assert.Equal(2, root.GetProperty("completeGuests").GetInt32());
         Assert.True(root.GetProperty("dataComplete").GetBoolean());
         Assert.False(root.GetProperty("stayExceedsMaxDays").GetBoolean());
-        // Counts only: no name, birth place or document of the guests.
         Assert.DoesNotContain("Verdi", body);
         Assert.DoesNotContain("Milano", body);
         Assert.DoesNotContain("AB123456", body);
@@ -425,7 +417,6 @@ public static class AlloggiatiTestSeedExtensions
 
         if (completeGuestData)
         {
-            // CO-12: the two guests of the stay, as registered by the guest portal (head of family and a child).
             db.StayGuests.Add(new StayGuest
             {
                 BookingId = bookingId,

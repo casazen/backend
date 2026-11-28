@@ -4,11 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Leases;
 
-/// <summary>
-/// CondoLedger phase 1: a rent line is rent plus condominium advance (and any other part), the total is the sum, a budget
-/// does not rewrite a fixed contractual advance, leftover cents land on the last installment, and posting a month twice
-/// does not add a second line.
-/// </summary>
 public class RentLedgerComponentTests
 {
     [Fact]

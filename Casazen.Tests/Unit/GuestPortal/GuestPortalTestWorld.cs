@@ -20,10 +20,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Tests.Unit.GuestPortal;
 
-/// <summary>
-/// One stay for the unit tests of the guest portal: an org, a house, a confirmed stay of a portal (10-13 October 2026, the clock on 9 October) on the
-/// in-memory database, the real link service and context factory, and a sink that keeps every log line any of them writes.
-/// </summary>
 internal sealed class GuestPortalTestWorld : IDisposable
 {
     public static readonly DateTimeOffset Now = new(2026, 10, 9, 10, 0, 0, TimeSpan.Zero);
@@ -96,25 +92,18 @@ internal sealed class GuestPortalTestWorld : IDisposable
             Moq.Mock.Of<Microsoft.Extensions.Hosting.IHostEnvironment>(e => e.EnvironmentName == "Test"));
     }
 
-    /// <summary>The portal context of the stay, as the token filter makes it from its link.</summary>
     public async Task<PortalContext> ContextAsync()
     {
         var link = (await LinkService().GetOrCreateAsync(Org.Id, Booking.Id, createdByUserId: null))!.Link;
         return (await ContextFactory().CreateAsync(link))!;
     }
 
-    /// <summary>The token filter of the portal over this world, with its accessor.</summary>
     public (GuestPortalTokenFilter Filter, GuestPortalContextAccessor Accessor) TokenFilter()
     {
         var accessor = new GuestPortalContextAccessor();
         return (new GuestPortalTokenFilter(LinkService(), ContextFactory(), accessor, Logs.CreateLogger<GuestPortalTokenFilter>()), accessor);
     }
 
-    /// <summary>
-    /// Runs <paramref name="filter"/> for a request of the portal with <paramref name="token"/> in the route, as MVC does, with
-    /// <paramref name="action"/> in place of the action: the result it sets (a short cut) or <c>null</c> when it let the action run, and the response
-    /// the request ended with.
-    /// </summary>
     public static async Task<(IActionResult? Result, HttpResponse Response, bool ActionRan)> RunAsync(
         GuestPortalTokenFilter filter,
         string token,
@@ -154,7 +143,6 @@ internal sealed class GuestPortalTestWorld : IDisposable
     }
 }
 
-/// <summary>Keeps every log line, with the values of its state, the scopes around it and its exception, whatever the category.</summary>
 internal sealed class GuestPortalLogSink : ILoggerProvider
 {
     private readonly ConcurrentQueue<string> _lines = new();
@@ -166,7 +154,6 @@ internal sealed class GuestPortalLogSink : ILoggerProvider
         _factory = new LoggerFactory([this]);
     }
 
-    /// <summary>Every line: the category, the message, every value of the state and of the scopes, the exception as text.</summary>
     public IReadOnlyCollection<string> Lines => _lines;
 
     public ILogger<T> CreateLogger<T>() => new Logger<T>(_factory);

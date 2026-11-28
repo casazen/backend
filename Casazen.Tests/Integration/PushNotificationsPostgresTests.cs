@@ -34,7 +34,6 @@ public class PushNotificationsPostgresTests : IClassFixture<PushNotificationsPos
     public async Task CreateAndReject_ControllersAnswerWithoutWaitingForExpo_ThenTheJobsPushSupplierAndHostOnce()
     {
         var w = await SeedWorldAsync();
-        // A send made inside a request would block it until the test times out.
         var expoGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _factory.Expo.SendGate = expoGate.Task;
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
@@ -51,7 +50,6 @@ public class PushNotificationsPostgresTests : IClassFixture<PushNotificationsPos
         var reject = await supplier.PostAsJsonAsync($"/api/service-requests/{id}/reject", new { reason = "Non disponibile" }, timeout.Token);
         Assert.True(reject.StatusCode == HttpStatusCode.OK, await reject.Content.ReadAsStringAsync());
 
-        // Both answered while Expo was unreachable: nothing was sent inside the requests, two jobs were queued.
         Assert.Empty(_factory.Expo.SendRequests);
         var jobs = QueuedPushJobs()
             .Where(j => ((string)j.Args[0]).Contains(id.ToString("N"), StringComparison.Ordinal))
@@ -124,10 +122,6 @@ public class PushNotificationsPostgresTests : IClassFixture<PushNotificationsPos
         string HostToken,
         string SupplierToken);
 
-    /// <summary>
-    /// A host org with a property in comune H501, a confirmed stay and the owner's phone; an active supplier operating
-    /// in H501 for cleaning, with a member and the member's phone.
-    /// </summary>
     private async Task<World> SeedWorldAsync()
     {
         const string comune = "H501";
@@ -212,7 +206,6 @@ public class PushNotificationsPostgresTests : IClassFixture<PushNotificationsPos
         return new World(ownerId, property.Id, stay.Id, supplierOrg.Id, member.Id, hostToken, supplierToken);
     }
 
-    /// <summary>The application with the Expo client mocked (Hangfire is already mocked by the base factory).</summary>
     public sealed class PushFactory : CasazenWebApplicationFactory
     {
         public FakeExpoPushClient Expo { get; } = new();

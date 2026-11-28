@@ -6,7 +6,6 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>Seeds a supplier org with its profile and an account linked to it, for the catalog tests (SP-02).</summary>
 internal static class SupplierCatalogTestData
 {
     /// <summary>
@@ -61,7 +60,6 @@ internal static class SupplierCatalogTestData
         return (userId, org.Id);
     }
 
-    /// <summary>A complete, published service row of <paramref name="orgId"/>, written straight to the database by <see cref="SaveRowAsync"/>.</summary>
     public static SupplierServiceListing Row(Guid orgId, string slug, DateTime? deletedAt = null) =>
         new()
         {
@@ -77,7 +75,6 @@ internal static class SupplierCatalogTestData
             UpdatedAt = new DateTime(2026, 1, 10, 9, 0, 0, DateTimeKind.Utc),
         };
 
-    /// <summary>Saves <paramref name="row"/> on its own context: a failure leaves nothing tracked behind.</summary>
     public static async Task SaveRowAsync(CasazenWebApplicationFactory factory, SupplierServiceListing row)
     {
         await using var scope = factory.Services.CreateAsyncScope();

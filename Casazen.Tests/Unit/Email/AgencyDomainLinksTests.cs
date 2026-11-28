@@ -15,11 +15,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Email;
 
-/// <summary>
-/// E40/F01/US01/T03 (NF-142): the links CasaZen sends for an org move to the agency's own domain only when the flag, a verified domain the org pays
-/// for, the agency's settings and the surface of the link all say so; in every other case they are the platform links, byte for byte. An owner is
-/// never sent to a domain where its sign-in does not work, the host comes from the org record only, and a link carries only its token or code.
-/// </summary>
 public sealed class AgencyDomainLinksTests : IDisposable
 {
     private const string Domain = "prenota.agenzia.test";
@@ -52,7 +47,6 @@ public sealed class AgencyDomainLinksTests : IDisposable
         Assert.Equal($"https://{Domain}/checkin/{Token}", links.GuestCheckIn(Token));
         Assert.Equal($"https://{Domain}/my-bookings?code={Code}", links.GuestBookings(org.Slug, Code));
         Assert.Equal($"https://{Domain}/my-bookings", links.GuestBookings(org.Slug));
-        // The owner portal is not on the domain: the owner links stay on the CasaZen domain.
         Assert.Null(links.OwnerHost);
         Assert.Equal(_platform.OwnerInvitationAccept(Token), links.OwnerInvitationAccept(Token));
     }
@@ -99,7 +93,6 @@ public sealed class AgencyDomainLinksTests : IDisposable
                     o.UseOwnDomainForLinks = false;
                     break;
                 case "org inactive":
-                    // The resolver serves no host of an org that is not active: its links stay on the CasaZen domain.
                     o.IsActive = false;
                     break;
             }
@@ -137,7 +130,6 @@ public sealed class AgencyDomainLinksTests : IDisposable
         }
         else
         {
-            // «Not yet enabled» on the domain: the owner is sent to the CasaZen domain, where the sign-in works.
             Assert.Null(links.OwnerHost);
             Assert.Equal(_platform.OwnerInvitationAccept(Token), links.OwnerInvitationAccept(Token));
             Assert.Equal(_platform.OwnerContactAccept(Token), links.OwnerContactAccept(Token));
@@ -145,14 +137,12 @@ public sealed class AgencyDomainLinksTests : IDisposable
             Assert.Equal(_platform.OwnerPortalAccounting(), links.OwnerPortalAccounting());
         }
 
-        // The guest links follow the guest area alone.
         Assert.Equal($"https://{Domain}/checkin/{Token}", links.GuestCheckIn(Token));
     }
 
     [Fact]
     public async Task Host_ComesFromOrgRecordOnly()
     {
-        // Nothing of a request reaches the builder: no HTTP context, no header, no body. The host is the org's own verified domain.
         var parameters = typeof(AgencyDomainLinks).GetConstructors().Single().GetParameters().Select(p => p.ParameterType).ToList();
         Assert.DoesNotContain(typeof(IHttpContextAccessor), parameters);
         Assert.DoesNotContain(typeof(HttpContext), parameters);
@@ -176,7 +166,6 @@ public sealed class AgencyDomainLinksTests : IDisposable
         var links = await Builder().ForOrgAsync(org.Id);
         const string odd = "a b/c?d";
 
-        // The same escaping as the platform links, and nothing but the token or the code after the path.
         Assert.Equal($"https://{Domain}/checkin/a%20b%2Fc%3Fd", links.GuestCheckIn(odd));
         Assert.Equal(_platform.GuestCheckIn(odd)[EmailTestHelpers.PublicSiteBaseUrl.Length..], links.GuestCheckIn(odd)[$"https://{Domain}".Length..]);
         Assert.Equal($"https://{Domain}/my-bookings?code=a%20b%2Fc%3Fd", links.GuestBookings(org.Slug, odd));
@@ -200,7 +189,6 @@ public sealed class AgencyDomainLinksTests : IDisposable
     [Fact]
     public async Task PlatformNotConfigured_KeepsTheFailureOfToday()
     {
-        // Without App:PublicSiteBaseUrl the platform links throw as they always did: the agency domain never hides a configuration error.
         var org = await SeedAsync();
         var unconfigured = EmailTestHelpers.Links(null);
         var builder = new AgencyDomainLinks(_db, unconfigured, SiteUrls(unconfigured), _flags, NullLogger<AgencyDomainLinks>.Instance);
@@ -237,7 +225,6 @@ public sealed class AgencyDomainLinksTests : IDisposable
     private PublicOrgSiteUrls SiteUrls(PublicSiteLinks links) =>
         new(links, Options.Create(new PublicHostOptions { BaseDomain = "sites.casazen.test" }), _entitlements.Object);
 
-    /// <summary>An org whose verified domain serves everything; <paramref name="change"/> takes one condition away.</summary>
     private async Task<OrgEntity> SeedAsync(Action<OrgEntity>? change = null)
     {
         var org = new OrgEntity

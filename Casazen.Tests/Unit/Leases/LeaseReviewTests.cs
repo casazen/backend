@@ -5,10 +5,6 @@ using static Casazen.Tests.Unit.Leases.LeaseDraftTestData;
 
 namespace Casazen.Tests.Unit.Leases;
 
-/// <summary>
-/// LR-12: the review of a draft — blocks, warnings, things to know and what is fine — with the code, the step and the parameters of each
-/// check, and the rule that the blocks are the needs of the flow.
-/// </summary>
 public class LeaseReviewTests
 {
     private static IReadOnlyList<LeaseReviewCheck> Review(LeaseDraftProgressInput input, LeaseReviewFacts? facts = null) =>
@@ -18,8 +14,6 @@ public class LeaseReviewTests
         checks.Where(c => c.Severity == severity).Select(c => c.Code).ToList();
 
     private static LeaseReviewCheck Check(IReadOnlyList<LeaseReviewCheck> checks, string code) => Assert.Single(checks, c => c.Code == code);
-
-    // ---- a draft with nothing wrong ------------------------------------------------------------------------------
 
     [Fact]
     public void ACompleteDraft_HasNoBlock_AndEveryStepSaysItIsFine()
@@ -71,8 +65,6 @@ public class LeaseReviewTests
             Assert.Equal(group.Select(c => c.Step).Order(), group.Select(c => c.Step));
     }
 
-    // ---- blocks are the needs of the flow ------------------------------------------------------------------------
-
     [Fact]
     public void TheBlocks_AreTheNeedsOfTheDataSteps_SameCodeSameStepSameParameters()
     {
@@ -114,8 +106,6 @@ public class LeaseReviewTests
         Assert.Contains(checks, c => c.Code == LeaseNeedCodes.RentOk);
     }
 
-    // ---- warnings ------------------------------------------------------------------------------------------------
-
     [Fact]
     public void AStartDateAlreadyPast_IsAWarning()
     {
@@ -128,7 +118,7 @@ public class LeaseReviewTests
     }
 
     [Theory]
-    [InlineData("2026-10-09", false)] // today is not past
+    [InlineData("2026-10-09", false)]
     [InlineData("2026-10-10", false)]
     [InlineData("2026-10-08", true)]
     public void TheStartDate_IsPastOnlyBeforeToday(string start, bool past)
@@ -203,8 +193,6 @@ public class LeaseReviewTests
         Assert.DoesNotContain(checks, c => c.Code == LeaseNeedCodes.RentInBand);
     }
 
-    // ---- things to know ------------------------------------------------------------------------------------------
-
     [Fact]
     public void ANonEuTenant_IsToKnow_AboutTheQuestura_AtStep8()
     {
@@ -256,8 +244,6 @@ public class LeaseReviewTests
         Assert.DoesNotContain(Review(Input(allChecked)), c => c.Code == LeaseNeedCodes.DocumentsNotVerified);
     }
 
-    // ---- an imported contract ------------------------------------------------------------------------------------
-
     [Fact]
     public void AnImportedContract_MissingTheApeAndTheCadastralData_IsWarnedNotBlocked()
     {
@@ -283,8 +269,6 @@ public class LeaseReviewTests
 
         Assert.True(LeaseReview.HasBlock(checks));
     }
-
-    // ---- nothing typed yet ---------------------------------------------------------------------------------------
 
     [Fact]
     public void ADraftWithOnlyTheProperty_BlocksOnEverythingMissing_AndSaysOnlyThePropertyIsFine()

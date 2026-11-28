@@ -34,7 +34,6 @@ public class DemoOnboardingResetPostgresTests : IAsyncLifetime
     private static readonly CancellationToken Ct = CancellationToken.None;
     private static readonly DemoOnboardingActivationTemplate Template = DemoShowcaseCatalog.OnboardingActivations[0];
 
-    /// <summary>The kinds of rows the seed marks (the markers the reset drops).</summary>
     private static readonly string[] MarkedTypes =
     [
         TestDataEntities.Todo,
@@ -46,7 +45,6 @@ public class DemoOnboardingResetPostgresTests : IAsyncLifetime
 
     private readonly FixedTimeProvider _clock = new(new DateTimeOffset(At));
 
-    // One protection for every context of a test: the tokens one context writes are the ones the next reads.
     private readonly EphemeralDataProtectionProvider _protection = TestDataProtection.Shared;
     private PostgresTestDatabase? _database;
 
@@ -66,8 +64,6 @@ public class DemoOnboardingResetPostgresTests : IAsyncLifetime
 
         await using (var db = NewDb())
         {
-            // What a job of the connector that found no token may write on the test connection, with nobody's marker: the foreign keys would
-            // make the reset fail, and no real row can be there.
             var connectionId = await db.OctorateConnections.IgnoreQueryFilters().Where(c => c.OrgId == world.OrgId).Select(c => c.Id).SingleAsync();
             db.OctorateListingMappings.Add(new OctorateListingMapping { OrgId = world.OrgId, ConnectionId = connectionId, OctorateAccommodationId = "TEST-UNMARKED" });
             db.OtaMessageSyncStates.Add(new OtaMessageSyncState { OrgId = world.OrgId, ConnectionId = connectionId, OctorateAccommodationId = "TEST-ACC-ATTIVA" });
@@ -76,7 +72,6 @@ public class DemoOnboardingResetPostgresTests : IAsyncLifetime
 
         await using (var db = NewDb())
         {
-            // The connection, the two marked listings and the unmarked one, the bookings flow of the first house, the deferred part and its "To do".
             Assert.Equal(new Counts(1, 3, 1, 1, 1, 6), await CountsAsync(db, world.OrgId));
         }
 
@@ -87,12 +82,10 @@ public class DemoOnboardingResetPostgresTests : IAsyncLifetime
             Assert.Equal(new Counts(0, 0, 0, 0, 0, 0), await CountsAsync(db, world.OrgId));
             Assert.Equal(0, await db.OtaMessageSyncStates.IgnoreQueryFilters().CountAsync(s => s.OrgId == world.OrgId));
 
-            // The houses and their markers are the reset of the houses' business.
             Assert.Equal(3, await db.Properties.IgnoreQueryFilters().CountAsync(p => p.OrgId == world.OrgId));
             Assert.Equal(3, await db.TestDataMarkers.IgnoreQueryFilters().CountAsync(m => m.OrgId == world.OrgId && m.EntityType == TestDataEntities.Property));
         }
 
-        // The seed writes it all again.
         await CreateAsync(world);
         await using (var db = NewDb())
         {
@@ -114,7 +107,6 @@ public class DemoOnboardingResetPostgresTests : IAsyncLifetime
             await db.SaveChangesAsync();
         }
 
-        // No second connection and no invented listing next to the real ones; the activation and the deferred part are written anyway.
         await CreateAsync(world);
         await using (var db = NewDb())
         {
@@ -138,8 +130,6 @@ public class DemoOnboardingResetPostgresTests : IAsyncLifetime
         var world = await SeedHousesAsync();
         await CreateAsync(world);
 
-        // A real consent reuses the one connection of the org and the environment: its account and its tokens go into the marked row. The host then
-        // confirms a real listing on it and puts the very same part off again (the one row of the part is rewritten, its "To do" replaced).
         await using (var db = NewDb())
         {
             var real = HostScopeScenario.NewProperty(world.OrgId, world.OwnerId, "Casa Vera");
@@ -165,10 +155,8 @@ public class DemoOnboardingResetPostgresTests : IAsyncLifetime
 
         await using (var db = NewDb())
         {
-            // The real connection with its tokens, and the real listing: the two invented ones went, the real one did not.
             await AssertTheRealConnectionIsLeftAloneAsync(db, world.OrgId);
 
-            // The host's own deferral stays with the "To do" the host's call raised (open, pointing at the row); the invented "To do" went.
             var part = await db.OnboardingPartStates.IgnoreQueryFilters().SingleAsync(s => s.OrgId == world.OrgId);
             Assert.Equal(
                 (OnboardingPartKey.Listings, OnboardingPartStatus.Deferred, (DateTime?)At.AddDays(10), (Guid?)hostTodoId),
@@ -176,11 +164,9 @@ public class DemoOnboardingResetPostgresTests : IAsyncLifetime
             var todo = await db.InternalActivities.IgnoreQueryFilters().SingleAsync(a => a.OrgId == world.OrgId && a.Action != null);
             Assert.Equal((hostTodoId, (Guid?)part.Id, (DateTime?)null), (todo.Id, todo.EntityId, todo.CompletedAt));
 
-            // The invented activation of the first house went with the rest; no marker of the seed is left.
             Assert.Equal(new Counts(1, 1, 0, 1, 1, 0), await CountsAsync(db, world.OrgId));
         }
 
-        // The seed after the reset finds the org's own connection and part: it writes neither again.
         await CreateAsync(world);
         await using (var db = NewDb())
         {
@@ -233,14 +219,12 @@ public class DemoOnboardingResetPostgresTests : IAsyncLifetime
         Mock.Of<IFeatureFlags>(),
         Mock.Of<IHostEnvironment>(e => e.EnvironmentName == Environments.Development));
 
-    /// <summary>The seed of the activation, as the reset runs it after the houses.</summary>
     private async Task CreateAsync(World world)
     {
         await using var db = NewDb();
         await Service(db).CreateOnboardingActivationAsync(world.OrgId, world.OwnerId, Template, Ct);
     }
 
-    /// <summary>The removal of the activation, as the reset runs it, twice: the second finds nothing and changes nothing.</summary>
     private async Task ResetTwiceAsync(World world)
     {
         await using var db = NewDb();
@@ -249,7 +233,6 @@ public class DemoOnboardingResetPostgresTests : IAsyncLifetime
         await service.RemoveShowcaseOnboardingAsync(world.OrgId, Ct);
     }
 
-    /// <summary>An org with its owner and the three houses of the template (the houses the showcase just made), each with its marker.</summary>
     private async Task<World> SeedHousesAsync()
     {
         var kit = new OrgInvitationTestKit(() => _database!.CreateContext());
@@ -287,7 +270,6 @@ public class DemoOnboardingResetPostgresTests : IAsyncLifetime
 
     private sealed record Counts(int Connections, int Mappings, int Activations, int PartStates, int Todos, int Markers);
 
-    /// <summary>The part «Listings» as an org with nothing done sees it: provided, not complete.</summary>
     private sealed class OpenListingsEvaluator : IOnboardingPartEvaluator
     {
         public OnboardingPartKey Part => OnboardingPartKey.Listings;

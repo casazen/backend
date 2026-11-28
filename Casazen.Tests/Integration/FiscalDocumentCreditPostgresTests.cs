@@ -1,9 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Events;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
-using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Documents;
@@ -16,11 +14,9 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 using DocumentKind = Casazen.Core.Entities.Enums.FiscalDocumentKind;
-using RuleKind = Casazen.Core.Options.FiscalDocumentKind;
 
 namespace Casazen.Tests.Integration;
 
@@ -35,7 +31,6 @@ public class FiscalDocumentCreditPostgresTests
     private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
     private static readonly DateTimeOffset Now = new(2026, 11, 12, 10, 0, 0, TimeSpan.Zero);
 
-    /// <summary>PROOF TEST: money rule. An invoice of 122 and two parallel credit notes of 100: one is issued, the other refused, the total credited stays 100.</summary>
     [PostgresFact]
     public async Task FiscalDocument_ParallelCreditNotes_NeverCreditMoreThanTheOriginal_Test()
     {
@@ -47,7 +42,6 @@ public class FiscalDocumentCreditPostgresTests
         {
             var bookingId = await SeedOrgAndBookingAsync(db, orgId);
 
-            // The numbers are counted per issuer and series (E17/F01/US01/T01): the invoice and its counter are the organization's own profile's.
             issuer = await db.OrgFiscalIssuerProfiles.OfOrganization(orgId).Select(p => p.Id).SingleAsync();
             originalId = AddDocument(db, orgId, bookingId, FiscalDocumentStatus.Issued, number: 1, issuer);
             db.FiscalNumberSequences.Add(new FiscalNumberSequence { OrgId = orgId, IssuerProfileId = issuer, Series = "2026", LastNumber = 1 });
@@ -107,11 +101,6 @@ public class FiscalDocumentCreditPostgresTests
         events.VerifyNoOtherCalls();
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (E11/F01/US01/T01, E14). One live invoice to an owner for each period: a second invoice of the same owner and month is refused by
-    /// the database (<c>UIX_FiscalDocuments_OrgId_RecipientOwnerId_Period</c>); a discarded draft, a credit note, another month and another owner do not collide,
-    /// and an invoice credited in full (<c>CreditedInFull</c>) frees its owner and month for a new one.
-    /// </summary>
     [PostgresFact]
     public async Task FiscalDocument_OwnerInvoice_OneLiveInvoicePerOwnerAndPeriod_Test()
     {
@@ -130,7 +119,6 @@ public class FiscalDocumentCreditPostgresTests
             await db.SaveChangesAsync();
         }
 
-        // A second live invoice of the same owner and month: the unique index refuses it.
         await using (var db = Context(database))
         {
             db.FiscalDocuments.Add(OwnerInvoice(orgId, ownerId, 10, FiscalDocumentStatus.Issued, 2));
@@ -138,7 +126,6 @@ public class FiscalDocumentCreditPostgresTests
             Assert.Contains(FiscalDocument.OwnerPeriodIndexName, refused.InnerException?.Message, StringComparison.Ordinal);
         }
 
-        // What does not hold the period: a discarded draft, a credit note, another month, another owner.
         await using (var db = Context(database))
         {
             var creditNote = OwnerInvoice(orgId, ownerId, 10, FiscalDocumentStatus.Issued, 3);
@@ -152,7 +139,6 @@ public class FiscalDocumentCreditPostgresTests
             await db.SaveChangesAsync();
         }
 
-        // An invoice credited in full frees its period: a new live invoice of the same owner and month is accepted, and then holds it again.
         await using (var db = Context(database))
         {
             (await db.FiscalDocuments.SingleAsync(d => d.Id == firstId)).CreditedInFull = true;
@@ -169,7 +155,6 @@ public class FiscalDocumentCreditPostgresTests
         }
     }
 
-    /// <summary>An invoice of the property manager to an owner for a month of 2026 (E14): issued with its number, or a draft without one.</summary>
     private static FiscalDocument OwnerInvoice(Guid orgId, Guid ownerId, int month, FiscalDocumentStatus status, int? number) => new()
     {
         OrgId = orgId,
@@ -189,7 +174,6 @@ public class FiscalDocumentCreditPostgresTests
 
     private static PropertyOwner NewOwner(Guid orgId, Guid ownerId) => new() { Id = ownerId, OrgId = orgId, FirstName = "TEST", LastName = "Proprietario", Email = $"owner.{ownerId:N}@example.com" };
 
-    /// <summary>One credit note as the endpoint asks for it: its own context and service, the exception (if any) returned.</summary>
     private static async Task<Exception?> CreditAsync(PostgresTestDatabase database, Guid originalId)
     {
         await using var db = Context(database);
@@ -204,7 +188,6 @@ public class FiscalDocumentCreditPostgresTests
         }
     }
 
-    /// <summary>An org with its issuer profile, a property, a guest and a direct booking that is checked out; returns the booking.</summary>
     private static async Task<Guid> SeedOrgAndBookingAsync(AppDbContext db, Guid orgId)
     {
         var propertyId = Guid.NewGuid();

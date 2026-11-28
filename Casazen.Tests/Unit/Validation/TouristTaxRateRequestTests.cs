@@ -6,10 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Validation;
 
-/// <summary>
-/// Admin tourist tax rate body (A5-06): validation keys and the decimal range, which must not depend on the request
-/// culture (Italian uses a decimal comma: parsing "0.01" with it made every create/update a 500).
-/// </summary>
 public class TouristTaxRateRequestTests
 {
     [Theory]

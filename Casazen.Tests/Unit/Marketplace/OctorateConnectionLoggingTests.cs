@@ -24,12 +24,10 @@ public class OctorateConnectionLoggingTests
         var h = new OctorateConnectionClientHarness();
         var request = new OctorateConnectionCreate("142", "H-4471", Username, Password);
 
-        // The echo of the credentials in the answer is what Octorate's connection object does (it holds the username and the password).
         var echo = $$"""{"id": 7001, "channelId": 142, "accommodationId": {{Accommodation}}, "hotelId": "H-4471", "username": "{{Username}}", "password": "{{Password}}", "status": "WAITING"}""";
 
         using (h.Scope.Use(OrgA))
         {
-            // 1. A success: the connection comes back with its id, portal and status, and only those are kept.
             h.Answer(HttpStatusCode.Created, echo);
             var created = await h.Client.CreateConnectionAsync(Accommodation, request, CancellationToken.None);
             Assert.Equal(("7001", "142", "WAITING"), (created.ConnectionId, created.PortalCode, created.Status));
@@ -40,7 +38,6 @@ public class OctorateConnectionLoggingTests
             Assert.Contains(Password, sent.Body, StringComparison.Ordinal);
             Assert.Contains(Username, sent.Body, StringComparison.Ordinal);
 
-            // 2. Every failure that repeats what was sent: the typed error holds neither in its message nor in its text.
             var failures = new (string Name, HttpStatusCode Status, string Body, Type Expected)[]
             {
                 ("refused", HttpStatusCode.BadRequest, $$"""{"type":"ApiParamsExemption","message":"wrong login {{Username}} / {{Password}}"}""", typeof(OctorateRequestRejectedException)),
@@ -60,18 +57,15 @@ public class OctorateConnectionLoggingTests
                 Assert.DoesNotContain(Password, error.ToString(), StringComparison.Ordinal);
             }
 
-            // 3. A network error that names the password in its own text: the message of the typed error is the code and the status, no more.
             h.Fail(new HttpRequestException($"connection reset, password={Password} user={Username}"));
             var network = await Assert.ThrowsAsync<OctorateServerException>(() => h.Client.CreateConnectionAsync(Accommodation, request, CancellationToken.None));
             Assert.DoesNotContain(Password, network.Message, StringComparison.Ordinal);
             Assert.DoesNotContain(Username, network.Message, StringComparison.Ordinal);
 
-            // 4. A change that carries new credentials goes the same way.
             h.Answer(HttpStatusCode.OK, echo);
             await h.Client.UpdateConnectionAsync(Accommodation, "7001", new OctorateConnectionPatch { Username = Username, Password = Password }, CancellationToken.None);
         }
 
-        // A portal code that is not a number is refused before anything leaves, and the refusal names no credential.
         var calls = h.Requests.Count;
         using (h.Scope.Use(OrgA))
         {
@@ -83,7 +77,6 @@ public class OctorateConnectionLoggingTests
 
         Assert.Equal(calls, h.Requests.Count);
 
-        // The objects that hold the credentials do not print them (a log of the object, or an exception that names it, would).
         var patch = new OctorateConnectionPatch { Username = Username, Password = Password, UpdateCalendar = true };
         foreach (var text in new[] { request.ToString(), patch.ToString(), (request with { }).ToString() })
         {
@@ -91,7 +84,6 @@ public class OctorateConnectionLoggingTests
             Assert.DoesNotContain(Username, text, StringComparison.Ordinal);
         }
 
-        // The proof: the log has the line of the connection that was made (its id, portal and status) and not once a credential.
         var output = h.Logs.AllOutput;
         Assert.Contains("7001", output, StringComparison.Ordinal);
         Assert.Contains("142", output, StringComparison.Ordinal);

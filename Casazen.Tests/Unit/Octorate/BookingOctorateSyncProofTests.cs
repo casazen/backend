@@ -53,7 +53,6 @@ public class BookingOctorateSyncProofTests
                 ? Task.FromException<OctorateReservation?>(new OctorateServerException(null))
                 : Task.FromResult(octorate.FirstOrDefault(r => r.Refer == reference)));
 
-        // First delivery: the answer is lost and the reservation cannot be found yet: Failed, and the dispatcher delivers the event again.
         await using (var db = h.NewDb(new RequestTenant(OctorateSyncHarness.OrgA)))
         {
             await Assert.ThrowsAsync<OctorateServerException>(
@@ -66,21 +65,18 @@ public class BookingOctorateSyncProofTests
         Assert.Equal(OctorateSyncErrorCodes.Unavailable, failed.ErrorCode);
         Assert.Null((await h.ReadBookingAsync(bookingId)).OctorateReservationId);
 
-        // Second delivery: the lookup runs before any create and finds the reservation.
         await using (var db = h.NewDb(new RequestTenant(OctorateSyncHarness.OrgA)))
         {
             var state = await h.Service(db, new RequestTenant(OctorateSyncHarness.OrgA)).PushCreateAsync(bookingId, CancellationToken.None);
             Assert.Equal(OctorateSyncState.Synced, state);
         }
 
-        // Third delivery: the booking has its reservation, nothing is sent.
         await using (var db = h.NewDb(new RequestTenant(OctorateSyncHarness.OrgA)))
         {
             var state = await h.Service(db, new RequestTenant(OctorateSyncHarness.OrgA)).PushCreateAsync(bookingId, CancellationToken.None);
             Assert.Equal(OctorateSyncState.Synced, state);
         }
 
-        // One reservation on Octorate, created once; the booking points to it.
         Assert.Single(octorate);
         h.Client.Verify(
             c => c.CreateReservationAsync(It.IsAny<OctorateBookingTarget>(), It.IsAny<OctorateReservationCreate>(), It.IsAny<CancellationToken>()),
@@ -113,7 +109,6 @@ public class BookingOctorateSyncProofTests
         var tenantA = new RequestTenant(OctorateSyncHarness.OrgA);
         await using var asOrgA = h.NewDb(tenantA);
 
-        // The endpoint: the booking of org B is not a resource the caller of org A reaches.
         var sync = new Mock<IBookingOctorateSyncService>(MockBehavior.Strict);
         var controller = new BookingOctorateSyncController(
             sync.Object,
@@ -127,7 +122,6 @@ public class BookingOctorateSyncProofTests
         Assert.IsType<NotFoundResult>(answer.Result);
         sync.VerifyNoOtherCalls();
 
-        // The service: the same booking through the tenant filter of org A is not found.
         var service = h.Service(asOrgA, tenantA);
         await Assert.ThrowsAsync<NotFoundException>(() => service.RequeueAsync(foreign, overwrite: false, CancellationToken.None));
 
@@ -138,8 +132,6 @@ public class BookingOctorateSyncProofTests
             Assert.False(await read.OutboxEvents.AnyAsync(e => e.EntityId == foreign));
         }
 
-        // The control: the failed booking of org A is asked again; the push is queued as its own event and the row keeps its state until
-        // the push really starts.
         Assert.Equal(OctorateSyncState.Pending, await service.RequeueAsync(mine, overwrite: false, CancellationToken.None));
         await using (var read = h.NewDb())
         {
@@ -171,7 +163,6 @@ public class BookingOctorateSyncProofTests
             await seed.SaveChangesAsync();
         }
 
-        // The host asks again; before the event is delivered the booking is cancelled.
         await using (var db = h.NewDb(tenant))
         {
             Assert.Equal(OctorateSyncState.Pending, await h.Service(db, tenant).RequeueAsync(cancelled, overwrite: false, CancellationToken.None));
@@ -183,7 +174,6 @@ public class BookingOctorateSyncProofTests
             await db.SaveChangesAsync();
         }
 
-        // The push gives up without touching Octorate (the client is strict and has nothing set up for it).
         await using (var db = h.NewDb(tenant))
         {
             Assert.Null(await h.Service(db, tenant).PushCreateAsync(cancelled, CancellationToken.None));
@@ -229,13 +219,11 @@ public class BookingOctorateSyncProofTests
             c => c.CreateReservationAsync(It.IsAny<OctorateBookingTarget>(), It.IsAny<OctorateReservationCreate>(), It.IsAny<CancellationToken>()),
             Times.Never);
 
-        // The host can ask again from the state he sees: a failed row is retryable.
         await using (var db = h.NewDb(tenant))
         {
             Assert.Equal(OctorateSyncState.Pending, await h.Service(db, tenant).RequeueAsync(bookingId, overwrite: false, CancellationToken.None));
         }
 
-        // Octorate answers again: the next delivery creates the reservation, once.
         h.Client
             .Setup(c => c.GetPmsRoomsAsync(OctorateSyncHarness.Accommodation, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { new OctoratePmsRoom(OctorateSyncHarness.PmsRoom, OctorateSyncHarness.Room, "Sky 001 Real Room") });

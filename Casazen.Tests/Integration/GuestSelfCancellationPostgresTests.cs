@@ -45,8 +45,6 @@ public class GuestSelfCancellationPostgresTests : IClassFixture<GuestSelfCancell
     [PostgresFact]
     public async Task GuestArea_TheAmountShownIsTheAmountRefunded_PerPropertyPolicy_OnceOnly_AndNeverForAnotherGuest()
     {
-        // One site, two properties with different policies, a guest with a paid booking at each (400 of stay + 20 of tourist tax = 420,
-        // check-in in 10 days), and another guest of the same site with a booking of their own.
         var site = await SeedSiteAsync();
         var intermedia = await SeedBookingAsync(site, site.IntermediaPropertyId, "holder@example.com", daysToCheckIn: 10);
         var anticipata = await SeedBookingAsync(site, site.AnticipataPropertyId, "holder@example.com", daysToCheckIn: 10);
@@ -54,8 +52,6 @@ public class GuestSelfCancellationPostgresTests : IClassFixture<GuestSelfCancell
         var holderToken = await OpenSessionAsync(site, intermedia);
         var strangerToken = await OpenSessionAsync(site, stranger);
 
-        // The preview of each booking follows the policy of its property: 10 days ahead is 100% under "Intermedia" (full refund up
-        // to 5 days before) and 50% under "Anticipata" (half from 30 to 7 days before). The tourist tax comes back in full besides.
         var previewIntermedia = await ReadAsync(await GetAsync($"{BookingsPath}/{intermedia.Code}/cancellation", holderToken));
         var previewAnticipata = await ReadAsync(await GetAsync($"{BookingsPath}/{anticipata.Code}/cancellation", holderToken));
         Assert.True(previewIntermedia.GetProperty("cancellable").GetBoolean());
@@ -68,12 +64,9 @@ public class GuestSelfCancellationPostgresTests : IClassFixture<GuestSelfCancell
         Assert.Equal(200m, previewAnticipata.GetProperty("retainedAmount").GetDecimal());
         Assert.Equal("policy", previewAnticipata.GetProperty("retainedBecause").GetString());
 
-        // The window of the free cancellation is the last whole day at least 120 hours before the check-in day starts.
         var expectedFreeUntil = RomeCalendar.DateInRome(RomeCalendar.StartOfDayUtc(intermedia.CheckIn).AddHours(-120)).AddDays(-1);
         Assert.Equal(expectedFreeUntil.ToString("yyyy-MM-dd"), previewIntermedia.GetProperty("fullRefundUntil").GetString());
 
-        // Another guest of the site, with a valid session of their own: the booking of the holder is a 404 like a code that does not
-        // exist, for the preview and for the cancellation alike, and nothing happens to it.
         var refusals = new[]
         {
             await GetAsync($"{BookingsPath}/{intermedia.Code}/cancellation", strangerToken),
@@ -101,7 +94,6 @@ public class GuestSelfCancellationPostgresTests : IClassFixture<GuestSelfCancell
         Assert.Equal(BookingStatus.Confirmed, await StatusOfAsync(intermedia.BookingId));
         Assert.DoesNotContain(Stripe.RefundRequests, r => r.PaymentIntentId == intermedia.IntentId);
 
-        // The guest confirms an amount that is not the one shown: nothing is cancelled and the new figure comes back with the 409.
         var wrong = await PostCancelAsync(intermedia.Code, holderToken, expected: 400m, key: Key());
         Assert.Equal(HttpStatusCode.Conflict, wrong.StatusCode);
         var wrongProblem = await ReadAsync(wrong);
@@ -110,8 +102,6 @@ public class GuestSelfCancellationPostgresTests : IClassFixture<GuestSelfCancell
         Assert.Equal(BookingStatus.Confirmed, await StatusOfAsync(intermedia.BookingId));
         Assert.DoesNotContain(Stripe.RefundRequests, r => r.PaymentIntentId == intermedia.IntentId);
 
-        // The guest confirms the amount they were shown: that is what Stripe is asked to refund, and the refund is not "done" until
-        // Stripe says so (the fake confirms it at once here).
         var firstKey = Key();
         var cancelled = await PostCancelAsync(intermedia.Code, holderToken, expected: 420m, key: firstKey);
         Assert.Equal(HttpStatusCode.OK, cancelled.StatusCode);
@@ -123,7 +113,6 @@ public class GuestSelfCancellationPostgresTests : IClassFixture<GuestSelfCancell
         Assert.Equal(Account, asked.ConnectedAccountId);
         Assert.Equal(42_000, asked.AmountCents);
 
-        // The same click again, with the same key and with another: the same answer and no second refund.
         foreach (var key in new[] { firstKey, Key() })
         {
             var again = await PostCancelAsync(intermedia.Code, holderToken, expected: 420m, key: key);
@@ -134,7 +123,7 @@ public class GuestSelfCancellationPostgresTests : IClassFixture<GuestSelfCancell
         }
 
         Assert.Single(Stripe.RefundRequests, r => r.PaymentIntentId == intermedia.IntentId);
-        Assert.DoesNotContain(Stripe.RefundRequests, r => r.PaymentIntentId == anticipata.IntentId); // the other booking was not touched
+        Assert.DoesNotContain(Stripe.RefundRequests, r => r.PaymentIntentId == anticipata.IntentId);
         Assert.Equal(BookingStatus.Confirmed, await StatusOfAsync(anticipata.BookingId));
 
         await using (var scope = _factory.Services.CreateAsyncScope())
@@ -148,7 +137,6 @@ public class GuestSelfCancellationPostgresTests : IClassFixture<GuestSelfCancell
             Assert.Equal(PaymentRefundOrigin.BookingCancellation, refund.Origin);
         }
 
-        // The preview of a cancelled booking says so, with the outcome; the guest and the host were each told once.
         var after = await ReadAsync(await GetAsync($"{BookingsPath}/{intermedia.Code}/cancellation", holderToken));
         Assert.False(after.GetProperty("cancellable").GetBoolean());
         Assert.Equal("already_cancelled", after.GetProperty("reason").GetString());
@@ -221,7 +209,6 @@ public class GuestSelfCancellationPostgresTests : IClassFixture<GuestSelfCancell
 
     private sealed record BookingSeed(Guid BookingId, string Code, string Email, string IntentId, DateTime CheckIn);
 
-    /// <summary>One site with two properties: "Intermedia" (full refund up to 5 days before, then 50%) and "Anticipata" (30 days, then 50% down to 7).</summary>
     private async Task<SiteSeed> SeedSiteAsync()
     {
         using var scope = _factory.Services.CreateScope();
@@ -262,7 +249,6 @@ public class GuestSelfCancellationPostgresTests : IClassFixture<GuestSelfCancell
         CancellationPolicy = CatalogPolicies.Get(policy),
     };
 
-    /// <summary>A paid booking of the public checkout: 350 of lodging + 50 of cleaning + 20 of tourist tax = 420, collected through Stripe.</summary>
     private async Task<BookingSeed> SeedBookingAsync(SiteSeed site, Guid propertyId, string email, int daysToCheckIn)
     {
         var checkIn = TimeProvider.System.TodayInRome().AddDays(daysToCheckIn);
@@ -315,7 +301,6 @@ public class GuestSelfCancellationPostgresTests : IClassFixture<GuestSelfCancell
         return new BookingSeed(booking.Id, BookingCodes.Format(booking.BookingCode), email, intentId, checkIn);
     }
 
-    /// <summary>The integration host with a recording email queue and client IPs from <see cref="TestPeerIpStartupFilter"/>.</summary>
     public sealed class CancelFactory : CasazenWebApplicationFactory
     {
         internal RecordingEmailQueue Emails { get; } = new();

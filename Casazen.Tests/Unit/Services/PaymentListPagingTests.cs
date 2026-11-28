@@ -1,5 +1,4 @@
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -17,10 +16,6 @@ public class PaymentListPagingTests
 {
     private static DateTime At(int month, int day, int hour = 10) => new(2026, month, day, hour, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>
-    /// The world of the scope tests (one payment per stay on each of two properties and on another org's, plus the ones those
-    /// tests add) with 25 more payments on the first property, one every hour on the 14th and the last six at the same instant.
-    /// </summary>
     private static async Task<(AppDbContext Db, HostScopeWorld World, int Mine)> SeedAsync()
     {
         var db = HostScopeScenario.NewInMemoryDb();
@@ -34,7 +29,6 @@ public class PaymentListPagingTests
             Status = PaymentStatus.Completed,
             Method = PaymentMethod.CreditCard,
             TransactionId = $"tx-{Guid.NewGuid():N}",
-            // The last six share an instant: only the id tells them apart.
             CreatedAt = i < 19 ? At(10, 14, i) : At(10, 14, 23),
             UpdatedAt = At(10, 14, 23),
             ProcessedAt = At(10, 14, 12),
@@ -65,7 +59,6 @@ public class PaymentListPagingTests
         Assert.Equal(everything.Select(p => p.Id), seen);
         Assert.Equal(seen.Count, seen.Distinct().Count());
         Assert.True(everything.Count > 25);
-        // Newest first.
         Assert.Equal(everything.Select(p => p.CreatedAt).OrderByDescending(d => d), everything.Select(p => p.CreatedAt));
     }
 
@@ -96,7 +89,6 @@ public class PaymentListPagingTests
 
         Assert.Equal(6, tied.Count);
         Assert.Equal(tied.Order(), tied);
-        // Cut in pages of 4 the ties still come in the same order.
         var cut = new List<Guid>();
         for (var page = 1; page <= 10; page++)
             cut.AddRange((await service.ListPageAsync(world.OrgWide, new PaymentListCriteria(), page, 4)).Items.Select(p => p.Id));
@@ -175,7 +167,6 @@ public class PaymentListPagingTests
 
         Assert.Equal(mine, seen.Count);
         Assert.All(seen, p => Assert.Equal(world.Granted.Id, p.PropertyId));
-        // The other property by id: nothing, and a total of nothing.
         var hidden = await service.ListPageAsync(world.Restricted, new PaymentListCriteria(PropertyId: world.Hidden.Id), 1, 10);
         Assert.Empty(hidden.Items);
         Assert.Equal(0, hidden.TotalCount);

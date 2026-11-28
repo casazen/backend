@@ -79,8 +79,6 @@ public class PropertiesControllerTests
             Mock.Of<IPropertyComuneResolver>(),
             _mockLogger.Object);
 
-        // Defaults: caller has an org and is under the plan limit. Create-path tests that need
-        // the opposite (no org / limit reached) override these per-test.
         _mockOrgContextResolver
             .Setup(x => x.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(DefaultOrgId);
@@ -115,7 +113,6 @@ public class PropertiesControllerTests
             .ReturnsAsync(AuthorizationResult.Success());
     }
 
-    /// <summary>Verifies the TN-3 resource check of a shared action: this property's resource, this operation.</summary>
     private void VerifyHostAuthorization(Property property, HostOperationRequirement operation) =>
         _mockHostAuthz.Verify(x => x.AuthorizeAsync(
             It.IsAny<ClaimsPrincipal>(),
@@ -125,7 +122,6 @@ public class PropertiesControllerTests
     [Fact]
     public async Task GetAll_WithAuthenticatedUser_ReturnsUserProperties()
     {
-        // Arrange
         var userId = "auth0|test_user_123";
         SetupUserClaims(userId);
 
@@ -136,10 +132,8 @@ public class PropertiesControllerTests
         };
         _mockService.Setup(x => x.GetPropertiesAsync(new HostScope(DefaultOrgId, userId))).ReturnsAsync(properties);
 
-        // Act
         var result = await _controller.GetAll();
 
-        // Assert
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var returnedProperties = Assert.IsAssignableFrom<IEnumerable<PropertyResponse>>(okResult.Value).ToList();
         Assert.Equal(["Property 1", "Property 2"], returnedProperties.Select(p => p.Name));
@@ -149,7 +143,6 @@ public class PropertiesControllerTests
     [Fact]
     public async Task GetAll_WithoutSubClaim_ReturnsUnauthorized()
     {
-        // Arrange - User without "sub" claim
         var claims = new List<Claim>();
         var identity = new ClaimsIdentity(claims, "TestAuth");
         var claimsPrincipal = new ClaimsPrincipal(identity);
@@ -158,10 +151,8 @@ public class PropertiesControllerTests
             HttpContext = new DefaultHttpContext { User = claimsPrincipal }
         };
 
-        // Act
         var result = await _controller.GetAll();
 
-        // Assert
         Assert.IsType<UnauthorizedResult>(result.Result);
         _mockService.Verify(x => x.GetPropertiesAsync(It.IsAny<HostScope>()), Times.Never);
     }
@@ -169,7 +160,6 @@ public class PropertiesControllerTests
     [Fact]
     public async Task GetById_WithValidId_ReturnsProperty()
     {
-        // Arrange
         var userId = "auth0|owner_user_123";
         SetupUserClaims(userId);
         AllowAuthorization();
@@ -178,10 +168,8 @@ public class PropertiesControllerTests
         var property = new Property { Id = propertyId, Name = "Test Property", OwnerId = userId };
         _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync(property);
 
-        // Act
         var result = await _controller.GetById(propertyId);
 
-        // Assert
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var returnedProperty = Assert.IsType<PropertyResponse>(okResult.Value);
         Assert.Equal(propertyId, returnedProperty.Id);
@@ -193,16 +181,13 @@ public class PropertiesControllerTests
     [Fact]
     public async Task GetById_WithNonExistentId_ReturnsNotFound()
     {
-        // Arrange
         SetupUserClaims("auth0|owner_user_123");
 
         var propertyId = Guid.NewGuid();
         _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync((Property?)null);
 
-        // Act
         var result = await _controller.GetById(propertyId);
 
-        // Assert
         Assert.IsType<NotFoundResult>(result.Result);
         _mockService.Verify(x => x.GetPropertyRecordAsync(propertyId), Times.Once);
     }
@@ -263,7 +248,6 @@ public class PropertiesControllerTests
     [Fact]
     public async Task Create_WithAuthenticatedUser_CreatesPropertyWithCorrectOwnerId()
     {
-        // Arrange
         var userId = "auth0|test_user_123";
         SetupUserClaims(userId);
 
@@ -290,10 +274,8 @@ public class PropertiesControllerTests
         _mockService.Setup(x => x.CreatePropertyAsync(It.IsAny<Property>()))
             .ReturnsAsync(createdProperty);
 
-        // Act
         var result = await _controller.Create(request);
 
-        // Assert
         var createdResult = Assert.IsType<CreatedAtActionResult>(result.Result);
         var returnedProperty = Assert.IsType<Property>(createdResult.Value);
         Assert.Equal(userId, returnedProperty.OwnerId);
@@ -382,7 +364,6 @@ public class PropertiesControllerTests
         _mockService.Setup(x => x.CreatePropertyAsync(It.IsAny<Property>()))
             .ThrowsAsync(new DomainConflictException("duplicate_property_slug", "PropertySlugTaken"));
 
-        // The domain conflict reaches the error middleware: 409 with the code and the localized PropertySlugTaken message.
         var ex = await Assert.ThrowsAsync<DomainConflictException>(() => _controller.Create(request));
 
         Assert.Equal("duplicate_property_slug", ex.Code);
@@ -392,7 +373,6 @@ public class PropertiesControllerTests
     [Fact]
     public async Task Create_WithoutSubClaim_ReturnsUnauthorized()
     {
-        // Arrange - User without "sub" claim
         var claims = new List<Claim>();
         var identity = new ClaimsIdentity(claims, "TestAuth");
         var claimsPrincipal = new ClaimsPrincipal(identity);
@@ -403,10 +383,8 @@ public class PropertiesControllerTests
 
         var request = new CreatePropertyRequest { Name = "New Property", Address = "Via Roma 1", City = "Rome", Bedrooms = 1, Bathrooms = 1, MaxGuests = 2, NightlyRate = 50m };
 
-        // Act
         var result = await _controller.Create(request);
 
-        // Assert
         Assert.IsType<UnauthorizedResult>(result.Result);
         _mockService.Verify(x => x.CreatePropertyAsync(It.IsAny<Property>()), Times.Never);
     }
@@ -418,7 +396,6 @@ public class PropertiesControllerTests
     [InlineData("github|9876543210")]
     public async Task Create_WithVariousAuth0SubFormats_SetsCorrectOwnerId(string userId)
     {
-        // Arrange
         SetupUserClaims(userId);
 
         var request = new CreatePropertyRequest
@@ -444,10 +421,8 @@ public class PropertiesControllerTests
         _mockService.Setup(x => x.CreatePropertyAsync(It.IsAny<Property>()))
             .ReturnsAsync(createdProperty);
 
-        // Act
         var result = await _controller.Create(request);
 
-        // Assert
         var createdResult = Assert.IsType<CreatedAtActionResult>(result.Result);
         var returnedProperty = Assert.IsType<Property>(createdResult.Value);
         Assert.Equal(userId, returnedProperty.OwnerId);
@@ -459,7 +434,6 @@ public class PropertiesControllerTests
     [Fact]
     public async Task Update_WithValidId_UpdatesProperty()
     {
-        // Arrange
         var userId = "auth0|test_user_123";
         SetupUserClaims(userId);
         AllowAuthorization();
@@ -486,10 +460,8 @@ public class PropertiesControllerTests
         _mockService.Setup(x => x.UpdatePropertyAsync(It.IsAny<Property>()))
             .ReturnsAsync(existingProperty);
 
-        // Act
         var result = await _controller.Update(propertyId, request);
 
-        // Assert
         Assert.IsType<NoContentResult>(result);
         _mockService.Verify(x => x.GetPropertyRecordAsync(propertyId), Times.Once);
         _mockService.Verify(x => x.UpdatePropertyAsync(It.Is<Property>(
@@ -499,7 +471,6 @@ public class PropertiesControllerTests
     [Fact]
     public async Task Update_WithNonExistentId_ReturnsNotFound()
     {
-        // Arrange
         var userId = "auth0|test_user_123";
         SetupUserClaims(userId);
 
@@ -508,10 +479,8 @@ public class PropertiesControllerTests
 
         _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync((Property?)null);
 
-        // Act
         var result = await _controller.Update(propertyId, request);
 
-        // Assert
         Assert.IsType<NotFoundResult>(result);
         _mockService.Verify(x => x.GetPropertyRecordAsync(propertyId), Times.Once);
         _mockService.Verify(x => x.UpdatePropertyAsync(It.IsAny<Property>()), Times.Never);
@@ -520,7 +489,6 @@ public class PropertiesControllerTests
     [Fact]
     public async Task Update_AsOwner_SuccessfullyUpdates()
     {
-        // Arrange
         var userId = "auth0|owner_user_123";
         SetupUserClaims(userId);
         AllowAuthorization();
@@ -547,13 +515,10 @@ public class PropertiesControllerTests
         _mockService.Setup(x => x.UpdatePropertyAsync(It.IsAny<Property>()))
             .ReturnsAsync(existingProperty);
 
-        // Act
         var result = await _controller.Update(propertyId, request);
 
-        // Assert
         Assert.IsType<NoContentResult>(result);
         _mockService.Verify(x => x.GetPropertyRecordAsync(propertyId), Times.Once);
-        // ApplyTo mutates existingProperty in place; OwnerId and Id are preserved
         _mockService.Verify(x => x.UpdatePropertyAsync(It.Is<Property>(
             p => p.Id == propertyId && p.OwnerId == userId)), Times.Once);
     }
@@ -561,7 +526,6 @@ public class PropertiesControllerTests
     [Fact]
     public async Task Update_ChangingCityAfterCanoneConcordatoRegistrationSubmission_ReturnsConflict()
     {
-        // Arrange
         var userId = "auth0|owner_user_123";
         SetupUserClaims(userId);
         AllowAuthorization();
@@ -598,10 +562,8 @@ public class PropertiesControllerTests
                 }
             });
 
-        // Act
         var result = await _controller.Update(propertyId, request);
 
-        // Assert
         var problem = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status409Conflict, problem.StatusCode);
         Assert.Equal("property_city_locked", Assert.IsType<ProblemDetails>(problem.Value).Extensions["code"]);
@@ -612,7 +574,6 @@ public class PropertiesControllerTests
     [Fact]
     public async Task Update_KeepingCityAfterCanoneConcordatoRegistrationSubmission_UpdatesProperty()
     {
-        // Arrange
         var userId = "auth0|owner_user_123";
         SetupUserClaims(userId);
         AllowAuthorization();
@@ -651,10 +612,8 @@ public class PropertiesControllerTests
                 }
             });
 
-        // Act
         var result = await _controller.Update(propertyId, request);
 
-        // Assert
         Assert.IsType<NoContentResult>(result);
         _mockService.Verify(x => x.UpdatePropertyAsync(It.Is<Property>(
             p => p.Id == propertyId && p.City == request.City)), Times.Once);
@@ -663,7 +622,6 @@ public class PropertiesControllerTests
     [Fact]
     public async Task Update_AsNonOwner_ReturnsForbidden()
     {
-        // Arrange
         var ownerId = "auth0|owner_user_123";
         var attackerId = "auth0|attacker_user_456";
         SetupUserClaims(attackerId);
@@ -688,10 +646,8 @@ public class PropertiesControllerTests
 
         _mockService.Setup(x => x.GetPropertyRecordAsync(propertyId)).ReturnsAsync(existingProperty);
 
-        // Act
         var result = await _controller.Update(propertyId, request);
 
-        // Assert
         Assert.IsType<ForbidResult>(result);
         _mockService.Verify(x => x.GetPropertyRecordAsync(propertyId), Times.Once);
         _mockService.Verify(x => x.UpdatePropertyAsync(It.IsAny<Property>()), Times.Never);
@@ -700,7 +656,6 @@ public class PropertiesControllerTests
     [Fact]
     public async Task Update_WithoutSubClaim_ReturnsUnauthorized()
     {
-        // Arrange - User without "sub" claim
         var claims = new List<Claim>();
         var identity = new ClaimsIdentity(claims, "TestAuth");
         var claimsPrincipal = new ClaimsPrincipal(identity);
@@ -712,16 +667,12 @@ public class PropertiesControllerTests
         var propertyId = Guid.NewGuid();
         var request = new UpdatePropertyRequest { Name = "Updated", Address = "Via Roma 1", City = "Rome", Bedrooms = 1, Bathrooms = 1, MaxGuests = 2, NightlyRate = 50m };
 
-        // Act
         var result = await _controller.Update(propertyId, request);
 
-        // Assert
         Assert.IsType<UnauthorizedResult>(result);
         _mockService.Verify(x => x.GetPropertyRecordAsync(It.IsAny<Guid>()), Times.Never);
         _mockService.Verify(x => x.UpdatePropertyAsync(It.IsAny<Property>()), Times.Never);
     }
-
-    // ─── Pause / Activate (PC-03, A2-05) ────────────────────────────────────────
 
     [Fact]
     public async Task Pause_AsOwner_PausesAndReturnsTheNewStatus()
@@ -859,7 +810,6 @@ public class PropertiesControllerTests
     [Fact]
     public async Task Delete_WithValidId_DeletesProperty()
     {
-        // Arrange
         var userId = "auth0|test_user_123";
         SetupUserClaims(userId);
         AllowAuthorization();
@@ -875,10 +825,8 @@ public class PropertiesControllerTests
         _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
         _mockService.Setup(x => x.DeletePropertyAsync(propertyId)).ReturnsAsync(true);
 
-        // Act
         var result = await _controller.Delete(propertyId);
 
-        // Assert
         Assert.IsType<NoContentResult>(result);
         _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
         _mockService.Verify(x => x.DeletePropertyAsync(propertyId), Times.Once);
@@ -888,8 +836,6 @@ public class PropertiesControllerTests
     [Fact]
     public async Task Delete_PropertyHasUpcomingBookings_PropagatesTheConflictWithoutSwallowingIt()
     {
-        // The 409 property_has_upcoming_bookings (PC-05) is turned into ProblemDetails by the error middleware
-        // (FD-05): the controller must not catch it.
         var userId = "auth0|test_user_123";
         SetupUserClaims(userId);
         AllowAuthorization();
@@ -928,17 +874,14 @@ public class PropertiesControllerTests
     [Fact]
     public async Task Delete_WithNonExistentId_ReturnsNotFound()
     {
-        // Arrange
         var userId = "auth0|test_user_123";
         SetupUserClaims(userId);
 
         var propertyId = Guid.NewGuid();
         _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync((Property?)null);
 
-        // Act
         var result = await _controller.Delete(propertyId);
 
-        // Assert
         Assert.IsType<NotFoundResult>(result);
         _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
         _mockService.Verify(x => x.DeletePropertyAsync(It.IsAny<Guid>()), Times.Never);
@@ -947,7 +890,6 @@ public class PropertiesControllerTests
     [Fact]
     public async Task Delete_AsOwner_SuccessfullyDeletes()
     {
-        // Arrange
         var userId = "auth0|owner_user_123";
         SetupUserClaims(userId);
         AllowAuthorization();
@@ -963,10 +905,8 @@ public class PropertiesControllerTests
         _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
         _mockService.Setup(x => x.DeletePropertyAsync(propertyId)).ReturnsAsync(true);
 
-        // Act
         var result = await _controller.Delete(propertyId);
 
-        // Assert
         Assert.IsType<NoContentResult>(result);
         _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
         _mockService.Verify(x => x.DeletePropertyAsync(propertyId), Times.Once);
@@ -975,7 +915,6 @@ public class PropertiesControllerTests
     [Fact]
     public async Task Delete_AsNonOwner_ReturnsForbidden()
     {
-        // Arrange
         var ownerId = "auth0|owner_user_123";
         var attackerId = "auth0|attacker_user_456";
         SetupUserClaims(attackerId);
@@ -990,10 +929,8 @@ public class PropertiesControllerTests
 
         _mockService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(existingProperty);
 
-        // Act
         var result = await _controller.Delete(propertyId);
 
-        // Assert
         Assert.IsType<ForbidResult>(result);
         _mockService.Verify(x => x.GetPropertyAsync(propertyId), Times.Once);
         _mockService.Verify(x => x.DeletePropertyAsync(It.IsAny<Guid>()), Times.Never);
@@ -1002,7 +939,6 @@ public class PropertiesControllerTests
     [Fact]
     public async Task Delete_WithoutSubClaim_ReturnsUnauthorized()
     {
-        // Arrange - User without "sub" claim
         var claims = new List<Claim>();
         var identity = new ClaimsIdentity(claims, "TestAuth");
         var claimsPrincipal = new ClaimsPrincipal(identity);
@@ -1013,10 +949,8 @@ public class PropertiesControllerTests
 
         var propertyId = Guid.NewGuid();
 
-        // Act
         var result = await _controller.Delete(propertyId);
 
-        // Assert
         Assert.IsType<UnauthorizedResult>(result);
         _mockService.Verify(x => x.GetPropertyAsync(It.IsAny<Guid>()), Times.Never);
         _mockService.Verify(x => x.DeletePropertyAsync(It.IsAny<Guid>()), Times.Never);
@@ -1025,7 +959,6 @@ public class PropertiesControllerTests
     [Fact]
     public async Task Search_WithFilters_ReturnsFilteredProperties()
     {
-        // Arrange
         var properties = new List<PublicPropertyDto>
         {
             new() { Id = Guid.NewGuid(), Name = "Property 1", City = "Rome", Bedrooms = 2, NightlyRate = 100m },
@@ -1037,10 +970,8 @@ public class PropertiesControllerTests
             .Callback<PublicPropertySearchCriteria>(c => received = c)
             .ReturnsAsync(properties);
 
-        // Act
         var result = await _controller.Search("Rome", 2, 1, 4, 50m, 200m);
 
-        // Assert
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var returnedProperties = Assert.IsAssignableFrom<IEnumerable<PublicPropertyDto>>(okResult.Value);
         Assert.Equal(2, returnedProperties.Count());
@@ -1053,17 +984,14 @@ public class PropertiesControllerTests
     [Fact]
     public async Task GetAll_CallsServiceWithCorrectOwnerId()
     {
-        // Arrange
         var userId = "auth0|specific_user_id_12345";
         SetupUserClaims(userId);
 
         _mockService.Setup(x => x.GetPropertiesAsync(It.IsAny<HostScope>()))
             .ReturnsAsync(new List<Property>());
 
-        // Act
         await _controller.GetAll();
 
-        // Assert
         _mockService.Verify(x => x.GetPropertiesAsync(new HostScope(DefaultOrgId, userId)), Times.Once);
     }
 
@@ -1076,7 +1004,6 @@ public class PropertiesControllerTests
 
         await _controller.GetAll();
 
-        // Org-wide role: the scope has no owner filter (TN-3), so the manager can pick any property of the org.
         _mockService.Verify(x => x.GetPropertiesAsync(new HostScope(DefaultOrgId, null)), Times.Once);
     }
 
@@ -1151,7 +1078,6 @@ public class PropertiesControllerTests
             Bathrooms = 1,
             MaxGuests = 2,
             NightlyRate = 50m
-            // No OwnerId field — intentionally excluded from the DTO
         };
 
         Property? capturedProperty = null;
@@ -1159,7 +1085,6 @@ public class PropertiesControllerTests
             .Callback<Property>(p => capturedProperty = p)
             .ReturnsAsync((Property p) => p);
 
-        // Act
         await _controller.Create(request);
 
         // Assert - OwnerId is always set from the authenticated user's JWT claim
@@ -1175,7 +1100,6 @@ public class PropertiesControllerTests
         var claims = new List<Claim>
         {
             new Claim(System.Security.Claims.ClaimTypes.NameIdentifier, userId)
-            // Note: no "sub" claim — exercises the fallback path in GetAuthenticatedUserId()
         };
         var identity = new ClaimsIdentity(claims, "TestAuth");
         var claimsPrincipal = new ClaimsPrincipal(identity);
@@ -1200,10 +1124,8 @@ public class PropertiesControllerTests
             .Callback<Property>(p => capturedProperty = p)
             .ReturnsAsync((Property p) => p);
 
-        // Act
         var result = await _controller.Create(request);
 
-        // Assert — NameIdentifier fallback is used; OwnerId matches
         Assert.IsType<CreatedAtActionResult>(result.Result);
         Assert.NotNull(capturedProperty);
         Assert.Equal(userId, capturedProperty.OwnerId);
@@ -1217,7 +1139,6 @@ public class PropertiesControllerTests
         var jwtSubject = "auth0|jwt_subject_user_456";
         SetupUserClaims(jwtSubject);
 
-        // The DTO deliberately has no OwnerId property — this is the core fix from issue #143
         var request = new CreatePropertyRequest
         {
             Name = "JWT OwnerId Property",
@@ -1234,22 +1155,17 @@ public class PropertiesControllerTests
             .Callback<Property>(p => capturedProperty = p)
             .ReturnsAsync((Property p) => p);
 
-        // Act
         var result = await _controller.Create(request);
 
-        // Assert — OwnerId is set from JWT, not from request body (there is no such field)
         var createdResult = Assert.IsType<CreatedAtActionResult>(result.Result);
         Assert.NotNull(capturedProperty);
         Assert.Equal(jwtSubject, capturedProperty.OwnerId);
         _mockService.Verify(x => x.CreatePropertyAsync(It.Is<Property>(p => p.OwnerId == jwtSubject)), Times.Once);
     }
 
-    // ─── Photo gallery (PC-04, A2-26) ────────────────────────────────────────────
-
     private const string PhotoA = "https://storage.test/public/properties/p/photos/a.jpg";
     private const string PhotoB = "https://storage.test/public/properties/p/photos/b.jpg";
 
-    /// <summary>The record of a property of the caller's org, as the tenant-filtered lookup returns it.</summary>
     private Property SetupPhotoProperty(Guid propertyId, string ownerId, params string[] photoUrls)
     {
         var property = new Property
@@ -1300,7 +1216,6 @@ public class PropertiesControllerTests
     {
         SetupUserClaims("auth0|owner_user_123");
         AllowAuthorization();
-        // The tenant query filter hides the other org's row: the lookup finds nothing.
         _mockService.Setup(x => x.GetPropertyRecordAsync(It.IsAny<Guid>())).ReturnsAsync((Property?)null);
 
         var result = await _controller.GetImages(Guid.NewGuid());
@@ -1478,9 +1393,6 @@ public class PropertiesControllerTests
             x => x.SetCoverAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    // ─── GetDetail ───────────────────────────────────────────────────────────────
-
-    /// <summary>The record of a property of the caller's org, as the tenant-filtered lookup returns it.</summary>
     private Property SetupDetailRecord(Guid propertyId, string ownerId)
     {
         var property = new Property { Id = propertyId, OwnerId = ownerId, OrgId = DefaultOrgId };
@@ -1550,8 +1462,6 @@ public class PropertiesControllerTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => _controller.GetDetail(propertyId));
     }
 
-    // ─── GetDocuments ────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetDocuments_AsOwner_ReturnsOk()
     {
@@ -1596,8 +1506,6 @@ public class PropertiesControllerTests
 
         Assert.IsType<NotFoundResult>(result.Result);
     }
-
-    // ─── UploadDocument ──────────────────────────────────────────────────────────
 
     [Fact]
     public async Task UploadDocument_AsOwner_ReturnsCreated()
@@ -1664,7 +1572,6 @@ public class PropertiesControllerTests
 
         var result = await _controller.UploadDocument(propertyId, mockFile, "InvalidType");
 
-        // FN-01: a ProblemDetails with a stable code, not the legacy { error } body.
         var problem = AssertProblem(result.Result, StatusCodes.Status400BadRequest);
         Assert.Equal("validation_error", problem.Extensions["code"]);
     }
@@ -1683,14 +1590,10 @@ public class PropertiesControllerTests
         _mockDocumentService.Setup(x => x.UploadDocumentAsync(propertyId, mockFile, DocumentType.Ape, userId))
             .ThrowsAsync(ApeComplianceException.InvalidContent());
 
-        // Without a request there is no localization middleware: the detail is localized with the UI culture of the thread, which
-        // is the one of the machine (English on a developer's Windows, where the resource text also contains the English
-        // message of the exception, and the check below failed). The product's own language is pinned.
         var result = await WithUiCultureAsync("it", () => _controller.UploadDocument(propertyId, mockFile, "Ape"));
 
         var problem = AssertProblem(result.Result, StatusCodes.Status400BadRequest);
         Assert.Equal(ApeComplianceException.InvalidContentCode, problem.Extensions["code"]);
-        // The localized text of the resource reaches the client, the English text of the exception never does.
         Assert.Contains("riconoscere un APE leggibile", problem.Detail);
         Assert.DoesNotContain("contenuto del PDF", problem.Detail ?? string.Empty);
         Assert.DoesNotContain("not a valid APE", problem.Detail ?? string.Empty);
@@ -1744,8 +1647,6 @@ public class PropertiesControllerTests
         Assert.IsType<NotFoundResult>(result.Result);
         _mockDocumentService.Verify(x => x.UploadDocumentAsync(It.IsAny<Guid>(), It.IsAny<IFormFile>(), It.IsAny<DocumentType>(), It.IsAny<string>()), Times.Never);
     }
-
-    // ─── DeleteDocument ──────────────────────────────────────────────────────────
 
     [Fact]
     public async Task DeleteDocument_AsOwner_ReturnsNoContent()
@@ -1818,8 +1719,6 @@ public class PropertiesControllerTests
 
         Assert.IsType<NotFoundResult>(result);
     }
-
-    // ─── DownloadDocument / GetDocumentSignedUrl (FD-07) ─────────────────────────
 
     [Fact]
     public async Task DownloadDocument_AsOwner_ReturnsFileAsAttachmentWithoutCaching()
@@ -2041,12 +1940,6 @@ public class PropertiesControllerTests
         Assert.Equal("invalid_document_file", problem.Extensions["code"]);
     }
 
-    // E29/F01/US01/T02 (NF-124): the Swiss municipality of a property on its create, update and record.
-
-    /// <summary>
-    /// Permission: the update path of the Swiss municipality is isolated by organization. A property of another organization is not found (the
-    /// tenant filter of the record) and one the caller may not change is forbidden: neither stores a municipality, and the directory is never asked.
-    /// </summary>
     [Fact]
     public async Task Property_SwissMunicipality_OtherOrganizationCannotSet_Test()
     {
@@ -2222,7 +2115,6 @@ public class PropertiesControllerTests
         Assert.Equal(SwissPlaceSource.Stored, chosen.SwissPlace!.Source);
     }
 
-    /// <summary>The caller of the Swiss municipality tests: claims, localization and the one resolver over <paramref name="db"/>.</summary>
     private void SetupSwissCaller(string userId, AppDbContext db)
     {
         SetupUserClaims(userId);
@@ -2233,7 +2125,6 @@ public class PropertiesControllerTests
             .BuildServiceProvider();
     }
 
-    /// <summary>A directory with Lugano (5192, TI) and its locality of the postal code 6900.</summary>
     private static AppDbContext SwissDirectory()
     {
         var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -2274,7 +2165,6 @@ public class PropertiesControllerTests
             HttpContext = new DefaultHttpContext
             {
                 User = claimsPrincipal,
-                // ApiProblem (FD-05 contract) localizes the detail through SharedResources.
                 RequestServices = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider(),
             }
         };

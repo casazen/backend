@@ -1,7 +1,6 @@
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
-using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -9,7 +8,6 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Services;
-using Casazen.Tests.Unit.Logging;
 using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
 using Microsoft.AspNetCore.Authorization;
@@ -54,8 +52,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _db.DisposeAsync();
 
-    // ---------------------------------------------------------------- the three proofs of the brief
-
     /// <summary>
     /// Proof (data, permission): the owner import sends no invitation, and a batch is sent only by the confirmation of a preview. Without the
     /// fingerprint of the preview nothing is sent; with the fingerprint of an old preview (an address changed since) nothing is sent either; with the
@@ -64,7 +60,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
     [Fact]
     public async Task OwnerInvitation_ImportDoesNotSendAndConfirmRequiresPreview_Test()
     {
-        // The import writes two owners with their shares and sends nothing.
         var csv = "propertyId,ownerKey,legalName,email,sharePercent,ownershipStart\n"
                   + $"{Granted},A-1,Anna Verdi,anna@example.com,100,2025-01-01\n"
                   + $"{Hidden},B-1,Bruno Neri,bruno@example.com,100,2025-01-01";
@@ -78,7 +73,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         Assert.Empty(_queue.Sent);
         Assert.Empty(await _db.OwnerInvitations.AsNoTracking().ToListAsync());
 
-        // Confirming without a preview, or with a made-up fingerprint, sends nothing.
         var service = Service(_db);
         var missing = await Assert.ThrowsAsync<DomainRuleException>(() => service.ConfirmBatchAsync(_world.OrgWide, Admin, null, null, Ct));
         Assert.Equal(OwnerInvitationErrors.PreviewRequired, missing.Code);
@@ -86,14 +80,12 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         Assert.Equal(OwnerInvitationErrors.PreviewStale, forged.Code);
         Assert.Empty(_queue.Sent);
 
-        // The preview sends nothing and says who would be invited.
         var preview = await Service(NewDb()).PreviewBatchAsync(_world.OrgWide, null, Ct);
         Assert.Equal(["Anna Verdi", "Bruno Neri"], preview.Recipients.Select(r => r.DisplayName));
         Assert.Empty(preview.Exclusions);
         Assert.Equal((100, 0, 100), (preview.Quota.Limit, preview.Quota.Used, preview.Quota.Remaining));
         Assert.Empty(_queue.Sent);
 
-        // An address changes after the preview: the fingerprint is out of date, nothing is sent.
         var anna = await _db.PropertyOwners.SingleAsync(o => o.ExternalKey == "A-1");
         anna.Email = "anna.nuova@example.com";
         await _db.SaveChangesAsync();
@@ -102,7 +94,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         Assert.Equal(OwnerInvitationErrors.PreviewStale, stale.Code);
         Assert.Empty(_queue.Sent);
 
-        // The fresh preview confirms: one invitation and one e-mail for each recipient, to the address now in the registry.
         var fresh = await Service(NewDb()).PreviewBatchAsync(_world.OrgWide, null, Ct);
         Assert.NotEqual(preview.Fingerprint, fresh.Fingerprint);
         var result = await Service(NewDb()).ConfirmBatchAsync(_world.OrgWide, Admin, null, fresh.Fingerprint, Ct);
@@ -115,16 +106,11 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         Assert.Equal(2, lines.Count);
         Assert.All(lines, l => Assert.Equal((Admin, OrgActivitySubjectType.OwnerInvitation, "{\"status\":\"sent\"}"), (l.ActorUserId, l.SubjectType, l.DetailsJson)));
 
-        // The same confirmation again: the owners are invited now, so the preview it carried is out of date and nothing more is sent.
         await Assert.ThrowsAsync<DomainConflictException>(
             () => Service(NewDb()).ConfirmBatchAsync(_world.OrgWide, Admin, null, fresh.Fingerprint, Ct));
         Assert.Equal(2, _queue.Sent.Count);
     }
 
-    /// <summary>
-    /// Proof (E40/F01/US01/T03, NF-142, AC2): the invitation of an agency whose verified domain serves the owner portal links to that domain only once the
-    /// owner sign-in works there (<c>Ready</c>); while the Auth0 registration waits (<c>Pending</c>) the link stays on the CasaZen domain, where the owner can sign in.
-    /// </summary>
     [Fact]
     public async Task OwnerInvitation_AgencyDomainWithOwnerSignInReady_LinksToTheAgencyDomain_Test()
     {
@@ -165,7 +151,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         var token = await InviteAsync(owner);
         var service = Service(NewDb());
 
-        // Only the hash of the token is stored.
         var stored = Assert.Single(await _db.OwnerInvitations.AsNoTracking().ToListAsync());
         Assert.Equal(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(token))), stored.TokenHash);
         Assert.NotEqual(token, stored.TokenHash);
@@ -182,7 +167,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         Assert.Equal([Granted], first.PropertyIds);
         Assert.Equal(OwnerClaimsRefresh.Published, first.ClaimsRefresh);
 
-        // One identity, one ownership link, one acceptance in the log; the claims were handed over each time.
         var user = Assert.Single(await _db.OwnerUsers.AsNoTracking().ToListAsync());
         Assert.Equal(("auth0|anna", first.OwnerUserId), (user.Auth0Sub, user.Id));
         Assert.Equal(first.OwnerUserId, Assert.Single(await _db.PropertyOwnerships.AsNoTracking().ToListAsync()).OwnerUserId);
@@ -193,12 +177,10 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
             a => a.SetOwnerPortalClaimsAsync("auth0|anna", first.OwnerUserId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()),
             Times.Exactly(2));
 
-        // The token is single use: another account gets nothing, even with the right address.
         var other = await Assert.ThrowsAsync<DomainGoneException>(() => Service(NewDb()).AcceptAsync(Accept(token, "auth0|someone-else", "anna@example.com"), Ct));
         Assert.Equal(OwnerInvitationErrors.Used, other.Code);
         Assert.Single(await _db.OwnerUsers.AsNoTracking().ToListAsync());
 
-        // An account that is not verified, or whose address is not the invited one, is refused on a live token.
         var secondOwner = await AddReadyOwnerAsync("Bruno Neri", "bruno@example.com", Hidden);
         var secondToken = await InviteAsync(secondOwner);
         var unverified = await Assert.ThrowsAsync<DomainForbiddenException>(
@@ -210,7 +192,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         Assert.Equal(1, await _db.OwnerUsers.CountAsync());
         Assert.Null((await _db.PropertyOwnerships.AsNoTracking().SingleAsync(p => p.PropertyId == Hidden)).OwnerUserId);
 
-        // A token that was never issued is the same answer as any other that does not work.
         var unknown = await Assert.ThrowsAsync<DomainGoneException>(() => Service(NewDb()).AcceptAsync(Accept(new string('0', 64), "auth0|anna", "anna@example.com"), Ct));
         Assert.Equal(OwnerInvitationErrors.Invalid, unknown.Code);
         var malformed = await Assert.ThrowsAsync<DomainGoneException>(() => Service(NewDb()).AcceptAsync(Accept("not-a-token", "auth0|anna", "anna@example.com"), Ct));
@@ -227,7 +208,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
     {
         var owner = await AddReadyOwnerAsync("Anna Verdi", "anna@example.com", Granted);
         var ended = await AddPeriodAsync(_world.OrgId, Hidden, owner, new DateOnly(2018, 1, 1), new DateOnly(2020, 12, 31));
-        // A row of another org that names the same registry owner, and a row of this org that points at the other org's property.
         var foreignOrg = await AddPeriodAsync(_world.OtherOrgId, _world.OtherOrgProperty.Id, owner, new DateOnly(2025, 1, 1));
         var tampered = await AddPeriodAsync(_world.OrgId, _world.OtherOrgProperty.Id, owner, new DateOnly(2025, 1, 1));
         var token = await InviteAsync(owner);
@@ -242,7 +222,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         Assert.Null(stored.Single(p => p.Id == foreignOrg).OwnerUserId);
         Assert.Null(stored.Single(p => p.Id == tampered).OwnerUserId);
 
-        // An owner of another org can never be invited from this one: the same 404 as an owner that does not exist.
         var foreignOwner = new PropertyOwner { OrgId = _world.OtherOrgId, FirstName = "Altro", LastName = "Org", Email = "altro@example.com", CreatedAt = DateTime.UtcNow };
         _db.PropertyOwners.Add(foreignOwner);
         await _db.SaveChangesAsync();
@@ -252,15 +231,10 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         Assert.Equal(notFound.Code, unknownOwner.Code);
     }
 
-    /// <summary>
-    /// Proof (permission): the acceptance grants the ownerships in force now (ADR-011-R8, the portal reads the same period): one that starts later is
-    /// neither linked nor in the claims, and the repeat of the acceptance by the same account links it once it has started.
-    /// </summary>
     [Fact]
     public async Task Accept_AnOwnershipThatStartsLaterIsNotGranted_UntilItHasStarted()
     {
         var owner = await AddReadyOwnerAsync("Anna Verdi", "anna@example.com", Granted);
-        // Hidden is hers from 20 October; today is 9 October.
         var later = await AddPeriodAsync(_world.OrgId, Hidden, owner, new DateOnly(2026, 10, 20));
         var token = await InviteAsync(owner);
 
@@ -276,8 +250,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         Assert.Equal(new[] { Granted, Hidden }.Order(), second.PropertyIds);
         Assert.Equal(first.OwnerUserId, (await _db.PropertyOwnerships.AsNoTracking().SingleAsync(p => p.Id == later)).OwnerUserId);
     }
-
-    // ---------------------------------------------------------------- the lifecycle
 
     [Fact]
     public async Task Preview_LeavesOutWhoIsNotReady_WithTheReasons_AndWhoCannotBeInvited()
@@ -331,7 +303,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         var preview = await Service(NewDb()).PreviewBatchAsync(_world.Restricted, null, Ct);
         Assert.Equal([onGranted], preview.Recipients.Select(r => r.OwnerId));
 
-        // The single invitation looks at the reach too: the owner it cannot see is the same 404 as one that does not exist.
         var hidden = await Assert.ThrowsAsync<NotFoundException>(
             () => Service(NewDb()).CreateInvitationAsync(_world.OrgId, onHidden, Admin, Ct, _world.Restricted));
         Assert.Equal(OwnerInvitationErrors.PropertyOwnerNotFound, hidden.Code);
@@ -339,7 +310,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         await Service(NewDb()).CreateInvitationAsync(_world.OrgId, onGranted, Admin, Ct, _world.Restricted);
         Assert.Single(_queue.Sent);
 
-        // Naming the owner it cannot see is the same answer as an owner that does not exist.
         var named = await Service(NewDb()).PreviewBatchAsync(_world.Restricted, [onHidden], Ct);
         Assert.Empty(named.Recipients);
         var hiddenOwner = Assert.Single(named.Exclusions);
@@ -350,14 +320,12 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
     [Fact]
     public async Task ACollaboratorWithSomePropertiesDoesNotOfferALinkToAnOwnerWhoAlsoHoldsPropertiesItDoesNotReach()
     {
-        // Anna holds half of Granted (inside the reach) and the whole of Hidden (outside it); Carla the other half of Granted.
         var shared = await AddReadyOwnerAsync("Anna Verdi", "anna@example.com", Granted, share: 50m);
         await AddPeriodAsync(_world.OrgId, Hidden, shared, new DateOnly(2025, 1, 1));
         var alone = await AddReadyOwnerAsync("Carla Gialli", "carla@example.com", Granted, share: 50m);
 
         var preview = await Service(NewDb()).PreviewBatchAsync(_world.Restricted, null, Ct);
 
-        // The link of Anna would open Hidden too: it is not offered, with the reason; Carla's is.
         Assert.Equal([alone], preview.Recipients.Select(r => r.OwnerId));
         var excluded = Assert.Single(preview.Exclusions);
         Assert.Equal(shared, excluded.OwnerId);
@@ -366,11 +334,9 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         Assert.Equal(1, sent.Sent);
         Assert.Equal(["carla@example.com"], _queue.Sent.Select(s => s.To));
 
-        // Whoever reaches everything offers it.
         var orgWide = await Service(NewDb()).PreviewBatchAsync(_world.OrgWide, null, Ct);
         Assert.Equal([shared], orgWide.Recipients.Select(r => r.OwnerId));
 
-        // The single invitation and the resend of the collaborator refuse it with the same code.
         var single = await Assert.ThrowsAsync<DomainRuleException>(
             () => Service(NewDb()).CreateInvitationAsync(_world.OrgId, shared, Admin, Ct, _world.Restricted));
         Assert.Equal(OwnerInvitationErrors.SharedOutsideReach, single.Code);
@@ -418,7 +384,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         var list = await Service(NewDb()).ListAsync(_world.OrgWide, Ct);
         var preview = await Service(NewDb()).PreviewBatchAsync(_world.OrgWide, [last.Id], Ct);
 
-        // The last owner of the order is past the cut of the readiness: it is listed, and an id naming it is an owner, not an unknown id.
         Assert.Equal(total, list.Count);
         Assert.Contains(list, i => i.OwnerId == last.Id);
         var excluded = Assert.Single(preview.Exclusions);
@@ -430,7 +395,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
     {
         await AddReadyOwnerAsync("Anna Verdi", "anna@example.com", Granted);
         await AddReadyOwnerAsync("Bruno Neri", "bruno@example.com", Hidden);
-        // 99 invitations were sent in the last 24 hours: one more fits, two do not.
         _db.OwnerInvitations.Add(new OwnerInvitation
         {
             OrgId = _world.OrgId,
@@ -472,7 +436,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         Assert.Equal(OwnerInvitationStatus.Revoked, all.Single(i => i.Id == oldInvitation.Id).Status);
         Assert.Equal(2, _queue.Sent.Count);
 
-        // The old link is withdrawn; the new one works.
         var gone = await Assert.ThrowsAsync<DomainGoneException>(
             () => Service(NewDb()).AcceptAsync(Accept(oldToken, "auth0|anna", "anna@example.com"), Ct));
         Assert.Equal(OwnerInvitationErrors.Revoked, gone.Code);
@@ -480,7 +443,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         var accepted = await Service(NewDb()).AcceptAsync(Accept(newToken, "auth0|anna", "anna@example.com"), Ct);
         Assert.Equal([Granted], accepted.PropertyIds);
 
-        // Once accepted there is nothing to send again, and nothing to withdraw.
         var resendUsed = await Assert.ThrowsAsync<DomainConflictException>(
             () => Service(NewDb()).ResendAsync(_world.OrgWide, Admin, all[1].Id, Ct));
         Assert.Equal(OwnerInvitationErrors.Used, resendUsed.Code);
@@ -505,7 +467,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
             () => Service(NewDb()).AcceptAsync(Accept(token, "auth0|anna", "anna@example.com"), Ct));
         Assert.Equal(OwnerInvitationErrors.Revoked, gone.Code);
 
-        // An invitation of another org, and one that does not exist: one answer.
         var other = new OwnerInvitation
         {
             OrgId = _world.OtherOrgId,
@@ -538,7 +499,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
             () => Service(NewDb()).AcceptAsync(Accept(token, "auth0|anna", "anna@example.com"), Ct));
         Assert.Equal(OwnerInvitationErrors.Expired, expired.Code);
 
-        // Back in a new batch, and the lapsed row is closed as expired.
         var preview = await Service(NewDb()).PreviewBatchAsync(_world.OrgWide, null, Ct);
         Assert.Equal([owner], preview.Recipients.Select(r => r.OwnerId));
         await Service(NewDb()).ConfirmBatchAsync(_world.OrgWide, Admin, null, preview.Fingerprint, Ct);
@@ -565,8 +525,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         Assert.Null(list.Single(i => i.OwnerId == notReady).InvitationId);
     }
 
-    // ---------------------------------------------------------------- the e-mail, the link, the claims
-
     [Fact]
     public async Task TheLinkIsBuiltFromTheConfiguredPublicAddress_NeverFromADomainInTheCode()
     {
@@ -578,7 +536,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         Assert.Contains($"{PublicAddress}/portale-proprietari/invito?token=", email.Content.HtmlBody, StringComparison.Ordinal);
         Assert.DoesNotContain("app.casazen.com", email.Content.HtmlBody, StringComparison.OrdinalIgnoreCase);
 
-        // Without the public address nothing is invented: the call fails and no invitation is left behind.
         var unconfigured = new PublicSiteLinks(Options.Create(new PublicSiteOptions()));
         var other = await AddReadyOwnerAsync("Bruno Neri", "bruno@example.com", Hidden);
         await using var db = NewDb();
@@ -596,8 +553,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
     [InlineData("https://app.example.test", true)]
     public void ThePublicAddressOfTheLink_IsAnAbsoluteHttpsUrl_ElseTheStartupRefusesIt(string address, bool valid)
     {
-        // The address of the invitation is the one public domain of the product: where the configuration must be complete (everywhere but
-        // Development and Testing) the startup validator refuses a value that is missing, is not a URL or is not https.
         var result = new PublicSiteOptionsValidator().Validate(null, new PublicSiteOptions { PublicSiteBaseUrl = address });
 
         Assert.Equal(valid, result.Succeeded);
@@ -621,7 +576,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         Assert.Empty(rows.Single(i => i.PropertyOwnerId == second).SendLog);
         Assert.Equal(OwnerInvitationStatus.Pending, rows.Single(i => i.PropertyOwnerId == owner).Status);
 
-        // The single invitation says so too, with a 422 and no live invitation.
         _queue.Accept = _ => false;
         var single = await Assert.ThrowsAsync<DomainRuleException>(() => Service(NewDb()).CreateInvitationAsync(_world.OrgId, owner, Admin, Ct));
         Assert.Equal(OwnerInvitationErrors.EmailNotQueued, single.Code);
@@ -651,18 +605,14 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         Assert.Equal(OwnerInvitationStatus.Accepted, (await _db.OwnerInvitations.AsNoTracking().SingleAsync(i => i.PropertyOwnerId == third)).Status);
     }
 
-    // ---------------------------------------------------------------- the endpoints
-
     [Fact]
     public void TheEndpoints_HaveTheirPolicyAndTheirFlag()
     {
-        // The batch: agency.owner.manage on the whole controller, behind the onboarding flag.
         var batch = typeof(OwnerInvitationBatchController);
         Assert.Equal(CasazenPolicies.AgencyOwnerManage, batch.GetCustomAttribute<AuthorizeAttribute>()?.Policy);
         Assert.Equal("OctorateOnboarding", batch.GetCustomAttribute<Casazen.Web.Infrastructure.FeatureGateAttribute>()?.Flag);
         Assert.Equal(CasazenPolicies.AgencyOwnerManage, typeof(OwnerInvitationsController).GetCustomAttribute<AuthorizeAttribute>()?.Policy);
 
-        // The owner import and the readiness: manage the import, view the readiness; no action is anonymous.
         var onboarding = typeof(OwnerOnboardingController);
         Assert.Equal(
             CasazenPolicies.AgencyOwnerManage,
@@ -671,13 +621,10 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
             CasazenPolicies.AgencyOwnerView,
             onboarding.GetMethod(nameof(OwnerOnboardingController.GetReadiness))!.GetCustomAttribute<AuthorizeAttribute>()?.Policy);
 
-        // The acceptance: a signed-in account (the owner has no role yet), behind the agency flag, token in the body.
         var accept = typeof(OwnerInvitationAcceptanceController).GetMethod(nameof(OwnerInvitationAcceptanceController.Accept))!;
         Assert.Equal(CasazenPolicies.Authenticated, accept.GetCustomAttribute<AuthorizeAttribute>()?.Policy);
         Assert.DoesNotContain(accept.GetParameters(), p => p.GetCustomAttribute<Microsoft.AspNetCore.Mvc.FromQueryAttribute>() is not null);
     }
-
-    // ---------------------------------------------------------------- helpers
 
     private AppDbContext NewDb() => new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options);
 
@@ -690,7 +637,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         AgencyDomainLinks? agencyLinks = null;
         if (withAgencyLinks)
         {
-            // E40/F01/US01/T03: the links of the agency's own domain, with WhiteLabelHost on and the stored tier taken as paid for.
             var entitlements = new Mock<IEntitlementService>();
             entitlements.Setup(e => e.ResolveEffectiveTier(It.IsAny<OrgEntity>())).Returns((OrgEntity o) => o.PlanTier);
             var siteUrls = new PublicOrgSiteUrls(links, Options.Create(new Casazen.Core.Options.PublicHostOptions()), entitlements.Object);
@@ -711,7 +657,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         return await Service(NewDb()).AcceptAsync(Accept(token, sub, email), Ct);
     }
 
-    /// <summary>Invites one owner through the single invitation and returns the token of the e-mail that was queued.</summary>
     private async Task<string> InviteAsync(Guid ownerId)
     {
         await Service(NewDb()).CreateInvitationAsync(_world.OrgId, ownerId, Admin, Ct);
@@ -742,7 +687,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         return owner.Id;
     }
 
-    /// <summary>An owner with a name, an address and the whole property from 2025 (<paramref name="share"/> 0 = no ownership yet).</summary>
     private async Task<Guid> AddReadyOwnerAsync(string name, string email, Guid propertyId, decimal share = 100m)
     {
         var id = await AddOwnerAsync(name, email);
@@ -768,7 +712,6 @@ public class OwnerInvitationFlowTests : IAsyncLifetime
         return period.Id;
     }
 
-    /// <summary>The queue of e-mails: keeps what was queued, and says no to the addresses <see cref="Accept"/> refuses.</summary>
     private sealed class RecordingEmailQueue : IEmailQueue
     {
         public List<(string? To, EmailContent Content)> Sent { get; } = [];

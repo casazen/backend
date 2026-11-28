@@ -37,7 +37,6 @@ public class DemoReviewsSeedTests : IAsyncLifetime
         _world = await HostScopeScenario.SeedAsync(_db);
         var orgId = _world.OrgId;
 
-        // The two past stays the reviews are about, as the reset creates them: a booking of the public checkout and one that came from Airbnb, both of the house `appartamento-brera`.
         var direct = Stay(orgId, _world.Granted.Id, BookingSource.Direct, HostScopeScenario.Day(2026, 8, 20));
         var channel = Stay(orgId, _world.Granted.Id, BookingSource.Airbnb, HostScopeScenario.Day(2026, 9, 10));
         _db.Guests.AddRange(direct.Guest, channel.Guest);
@@ -103,8 +102,6 @@ public class DemoReviewsSeedTests : IAsyncLifetime
             await seeder.CreateReviewAsync(_world.OrgId, template, CancellationToken.None);
     }
 
-    // ─── The catalog ───
-
     [Fact]
     public void TheCatalog_HasAReviewOfADirectStayAndOneOfAnAirbnbStay_EachWithItsDraft_AllSayingTest()
     {
@@ -121,7 +118,6 @@ public class DemoReviewsSeedTests : IAsyncLifetime
             var property = Assert.Single(DemoShowcaseCatalog.Properties, p => p.Key == review.PropertyKey);
             var booking = Assert.Single(property.Bookings, b => b.Key == review.BookingKey);
 
-            // The stay is over, of the right kind, and the guest is at example.com; the words and the draft say TEST and keep the rules of a reply.
             Assert.Equal(BookingStatus.CheckedOut, booking.Status);
             Assert.EndsWith("@example.com", booking.Email, StringComparison.Ordinal);
             Assert.Contains("TEST", review.Text, StringComparison.Ordinal);
@@ -131,7 +127,6 @@ public class DemoReviewsSeedTests : IAsyncLifetime
             Assert.True(review.DraftReply.Length <= ReviewRules.ReplyMaxLength);
             Assert.True(review.Text.Length <= ReviewRules.TextMaxLength);
 
-            // Published after the stay ended, and before the reset.
             var endedDaysAgo = -(booking.CheckInOffsetDays + booking.Nights);
             Assert.InRange(review.PublishedDaysAgo, 0, endedDaysAgo);
         }
@@ -141,8 +136,6 @@ public class DemoReviewsSeedTests : IAsyncLifetime
         Assert.Equal(Math.Truncate(direct.Rating), direct.Rating);
     }
 
-    // ─── The seed ───
-
     [Fact]
     public async Task TheShowcase_WritesTheTwoReviewsAndTheirDrafts_ThatAgreeWithTheTemplates_AndMarksThem()
     {
@@ -151,7 +144,6 @@ public class DemoReviewsSeedTests : IAsyncLifetime
         var directTemplate = Assert.Single(DemoShowcaseCatalog.Reviews, r => r.Kind == DemoReviewKind.Direct);
         var airbnbTemplate = Assert.Single(DemoShowcaseCatalog.Reviews, r => r.Kind == DemoReviewKind.Airbnb);
 
-        // The review of the booking site: as the guest would have sent it, with no answer of the host.
         var site = await _db.Reviews.AsNoTracking().SingleAsync(r => r.BookingId == _directBookingId);
         Assert.Equal(_world.Granted.Id, site.PropertyId);
         Assert.Equal((int)directTemplate.Rating, site.Rating);
@@ -162,7 +154,6 @@ public class DemoReviewsSeedTests : IAsyncLifetime
         Assert.Equal(RomeCalendar.DateInRome(HostScopeScenario.Day(2026, 8, 22)).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc), site.StayEndedOn);
         Assert.Null(site.HostReply);
 
-        // The review of the channel: the row the sync would write, with no channel manager behind it.
         var channel = await _db.OtaReviews.AsNoTracking().SingleAsync(r => r.BookingId == _channelBookingId);
         Assert.Equal(OtaChannel.Airbnb, channel.Channel);
         Assert.True(channel.GuestReviewPublished);
@@ -174,7 +165,6 @@ public class DemoReviewsSeedTests : IAsyncLifetime
         Assert.Equal(HostReviewWindow.Open, channel.HostReviewWindow);
         Assert.Null(channel.NextPollAt);
 
-        // The drafts wait in the approval queue, written as the assistant would have written them, never sent.
         var items = await _db.ApprovalQueueItems.AsNoTracking().Where(i => i.ItemType == ApprovalItemTypes.ReviewReply).ToListAsync();
         Assert.Equal(2, items.Count);
         Assert.All(items, i =>
@@ -194,7 +184,6 @@ public class DemoReviewsSeedTests : IAsyncLifetime
         Assert.Equal(directTemplate.DraftReply, siteItem.ContentText);
         Assert.Equal(airbnbTemplate.DraftReply, channelItem.ContentText);
 
-        // Marked as showcase data, one marker for each row.
         var markers = await _db.TestDataMarkers.AsNoTracking()
             .Where(m => m.EntityType == TestDataEntities.Review || m.EntityType == TestDataEntities.OtaReview || m.EntityType == TestDataEntities.ApprovalQueueItem)
             .ToListAsync();
@@ -232,7 +221,6 @@ public class DemoReviewsSeedTests : IAsyncLifetime
         Assert.Contains("TEST", detail.Text, StringComparison.Ordinal);
         Assert.True(detail.Capabilities.CanReply);
 
-        // The default view has no review.
         Assert.Empty((await hub.ListAsync(_world.OrgWide, new MessageHubFilter(), 1, 20)).Items);
     }
 
@@ -241,7 +229,6 @@ public class DemoReviewsSeedTests : IAsyncLifetime
     {
         await SeedAllAsync();
 
-        // A review the guest left and a draft the host decided, with no marker, in this org; a marked review of another org.
         var theirs = Stay(_world.OrgId, _world.Hidden.Id, BookingSource.Direct, HostScopeScenario.Day(2026, 9, 1));
         var otherOrgGuest = Stay(_world.OtherOrgId, _world.OtherOrgProperty.Id, BookingSource.Direct, HostScopeScenario.Day(2026, 9, 1));
         _db.Guests.AddRange(theirs.Guest, otherOrgGuest.Guest);
@@ -295,12 +282,10 @@ public class DemoReviewsSeedTests : IAsyncLifetime
                         && (m.EntityType == TestDataEntities.Review || m.EntityType == TestDataEntities.OtaReview || m.EntityType == TestDataEntities.ApprovalQueueItem))
             .ToListAsync());
 
-        // What is not the showcase's is untouched, in this org and in the other.
         Assert.NotNull(await _db.Reviews.AsNoTracking().SingleOrDefaultAsync(r => r.Id == real.Id));
         Assert.NotNull(await _db.Reviews.AsNoTracking().SingleOrDefaultAsync(r => r.Id == foreign.Id));
         Assert.Single(await _db.TestDataMarkers.AsNoTracking().Where(m => m.OrgId == _world.OtherOrgId && m.EntityType == TestDataEntities.Review).ToListAsync());
 
-        // The next reset writes them again: removing and seeding is the cycle of a reset.
         await SeedAllAsync();
         var again = await _db.ApprovalQueueItems.AsNoTracking().Where(i => i.ItemType == ApprovalItemTypes.ReviewReply && i.OrgId == _world.OrgId).ToListAsync();
         Assert.Equal(3, again.Count);

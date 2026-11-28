@@ -16,10 +16,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>
-/// PROOF TESTS for ConcordatoFacileLinkService (ADR-007).
-/// These tests prove HMAC algorithm correctness and permission enforcement.
-/// </summary>
 public class ConcordatoFacileLinkServiceTests
 {
     private const string VectorSecret = "test_link_secret_0123456789abcdef0123456789abcdef";
@@ -34,20 +30,17 @@ public class ConcordatoFacileLinkServiceTests
     [Fact]
     public void GenerateSignature_SpecTestVectors_ExactMatch()
     {
-        // Arrange: Test vectors from ADR-007-R2 (ConcordatoFacile spec v1.3 section 2)
         var leaseId = Guid.Parse(VectorLeaseId);
         var expiresAt = "2026-10-13T10:00:00Z";
         var secret = VectorSecret;
         var expectedSignature = VectorSignature;
 
-        // Act: Compute HMAC-SHA256 per ADR-007-R1
         var input = $"{leaseId.ToString().ToLowerInvariant()}.{expiresAt}";
         var inputBytes = Encoding.UTF8.GetBytes(input);
         var keyBytes = Encoding.UTF8.GetBytes(secret);
         var hash = HMACSHA256.HashData(keyBytes, inputBytes);
         var actualSignature = Convert.ToHexString(hash).ToLowerInvariant();
 
-        // Assert: EXACT match required
         Assert.Equal(expectedSignature, actualSignature);
 
         // PROOF: If algorithm uses wrong encoding (not UTF-8), wrong order (expiresAt.leaseId),
@@ -92,17 +85,12 @@ public class ConcordatoFacileLinkServiceTests
             + "&provincia=RE",
             link.Url);
 
-        // The audit line has the lease and the time, never the address or the signature.
         var recorded = await db.LeaseEvents.SingleAsync(e => e.EventType == LeaseEventType.ConcordatoFacileLinkGenerated);
         Assert.Equal(leaseId, recorded.LeaseContractId);
         Assert.Equal(new DateTime(2026, 10, 13, 9, 45, 0, DateTimeKind.Utc), recorded.OccurredAt);
         Assert.Null(recorded.Payload);
     }
 
-    /// <summary>
-    /// CF-URL: with <c>FormUrl</c> set (the test module that ConcordatoFacile prepares for the test environment) the link opens that
-    /// address, with the same parameters and the same signature; without it the real module, as the test above proves.
-    /// </summary>
     [Fact]
     public async Task GenerateLink_WithAFormUrl_OpensThatAddressWithTheSameSignature()
     {
@@ -171,11 +159,6 @@ public class ConcordatoFacileLinkServiceTests
         Assert.Null(recorded.Payload);
     }
 
-    /// <summary>
-    /// CF-BYPASS: the secret goes only where the link opens the test module. Without <c>FormUrl</c> the link is the real module's, with
-    /// the simulator it is the page of the web app: neither carries the secret, whatever is configured (the startup refuses these
-    /// combinations too).
-    /// </summary>
     [Fact]
     public async Task GenerateLink_BypassSecretButNotTheTestModule_NeverCarriesIt()
     {
@@ -215,14 +198,12 @@ public class ConcordatoFacileLinkServiceTests
     [Fact]
     public async Task GenerateLink_NoAccessUser_ThrowsUnauthorized()
     {
-        // Arrange
         var orgId = Guid.NewGuid();
         var leaseId = Guid.NewGuid();
 
         await using var db = NewDb();
         await SeedLeaseAsync(db, orgId, leaseId, comune: SeedComune("108044", "Seveso", "MB"));
 
-        // Setup: Access service that returns HasAccess=false (no payment, no gift, not admin)
         var accessServiceMock = new Mock<IConcordatoFacileAccessService>();
         accessServiceMock.Setup(s => s.CheckAccessAsync(leaseId, It.IsAny<ClaimsPrincipal>(), default))
             .ReturnsAsync(new CfAccessResult(
@@ -235,37 +216,27 @@ public class ConcordatoFacileLinkServiceTests
 
         var options = Options.Create(new ConcordatoFacileOptions
         {
-            LinkSecret = VectorSecret // >= 32 chars
+            LinkSecret = VectorSecret
         });
         var logger = NullLogger<ConcordatoFacileLinkService>.Instance;
         var service = new ConcordatoFacileLinkService(db, accessServiceMock.Object, PrivacyAccepted(), options, logger);
 
         var user = new ClaimsPrincipal();
 
-        // Act & Assert: User without access must NOT get a link
         await Assert.ThrowsAsync<UnauthorizedAccessException>(async () =>
         {
             await service.GenerateSignedLinkAsync(leaseId, user);
         });
-
-        // PROOF: Access check happens BEFORE link generation.
-        // If the service skipped the access check, this test would fail.
-        // The permission rule is enforced: only users with paid access, gift, or admin role get links.
     }
 
-    /// <summary>
-    /// PROOF TEST: Municipality unknown - lease with property that has no ComuneIstatCode must return 422 (ADR-007-R7).
-    /// </summary>
     [Fact]
     public async Task GenerateLink_PropertyWithoutMunicipality_ThrowsDomainRuleException()
     {
-        // Arrange
         var orgId = Guid.NewGuid();
         var leaseId = Guid.NewGuid();
 
         await using var db = NewDb();
 
-        // A property WITHOUT ComuneIstatCode (no municipality selected)
         await SeedLeaseAsync(db, orgId, leaseId, comune: null);
 
         var options = Options.Create(new ConcordatoFacileOptions
@@ -277,7 +248,6 @@ public class ConcordatoFacileLinkServiceTests
 
         var user = new ClaimsPrincipal();
 
-        // Act & Assert: Property without municipality must throw DomainRuleException with code property_municipality_unknown
         var ex = await Assert.ThrowsAsync<DomainRuleException>(async () =>
         {
             await service.GenerateSignedLinkAsync(leaseId, user);
@@ -303,7 +273,6 @@ public class ConcordatoFacileLinkServiceTests
         return accessServiceMock.Object;
     }
 
-    /// <summary>The privacy gate is proven in <see cref="ConcordatoFacilePrivacyTests"/>: here the notice is accepted.</summary>
     private static IConcordatoFacilePrivacyService PrivacyAccepted() => Mock.Of<IConcordatoFacilePrivacyService>();
 
     private static Comune SeedComune(string istatCode, string name, string provinceCode) => new()

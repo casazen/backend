@@ -1,4 +1,3 @@
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
@@ -18,23 +17,18 @@ public class SupplierPaymentShowcaseTests
 
     private static readonly DateTime Created = new(2026, 10, 9, 8, 0, 0, DateTimeKind.Utc);
 
-    // ─── The mode and the payment of a showcase request ───
-
     [Fact]
     public async Task Take_AShowcaseRequest_IsManualEvenWithTheFlagOnAndTheAccountReady()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.EnableBookingAsync();
         var (request, _) = await s.BookedAsync();
-        // The payments are switched on after the booking: with them on a booking of a showcase blocks the card of its customer (SP-15c-a)
-        // and is paid inside CasaZen; this request was born without that and stays a manual one.
         await s.EnablePaymentsAsync();
 
         var taken = await s.Service.TakeAsync(request.Id, s.SupplierOrgId, UserId);
 
         Assert.Equal(ServiceRequestPaymentMode.Manual, taken.PaymentMode);
         Assert.Equal(ServiceRequestPaymentMode.Manual, (await s.ReadAsync(request.Id)).PaymentMode);
-        // The same supplier, flag and account: a request of a host is paid inside CasaZen (non-overlapping slot).
         Assert.Equal(ServiceRequestPaymentMode.Online, (await s.TakenAsync(ServiceRequestScenario.FridayAt14)).PaymentMode);
     }
 
@@ -44,14 +38,13 @@ public class SupplierPaymentShowcaseTests
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.EnableBookingAsync();
         var (request, credentials) = await s.BookedForManagementAsync();
-        await s.EnablePaymentsAsync(); // after the booking: see Take_AShowcaseRequest_IsManualEvenWithTheFlagOnAndTheAccountReady
+        await s.EnablePaymentsAsync();
         s.Clock.Advance(TimeSpan.FromMinutes(20));
         await s.ProposeAsSupplierAsync(request.Id, ServiceRequestScenario.FridayAt14);
         s.Clock.Advance(TimeSpan.FromMinutes(40));
 
         await s.Kit.Manager.AcceptProposalAsync(credentials);
 
-        // The customer's acceptance takes the request on the supplier's behalf (SP-11) without deciding how it is paid.
         var saved = await s.ReadAsync(request.Id);
         Assert.Equal(ServiceRequestStatus.PresoInCarico, saved.Status);
         Assert.Equal(ServiceRequestPaymentMode.Manual, saved.PaymentMode);
@@ -63,7 +56,7 @@ public class SupplierPaymentShowcaseTests
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.EnableBookingAsync();
         var (request, _) = await s.BookedAsync();
-        await s.EnablePaymentsAsync(); // after the booking: see Take_AShowcaseRequest_IsManualEvenWithTheFlagOnAndTheAccountReady
+        await s.EnablePaymentsAsync();
         await s.Service.TakeAsync(request.Id, s.SupplierOrgId, UserId);
         s.ForgetNotifications();
 
@@ -83,7 +76,7 @@ public class SupplierPaymentShowcaseTests
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.EnableBookingAsync();
         var (request, _) = await s.BookedAsync();
-        await s.EnablePaymentsAsync(); // after the booking: see Take_AShowcaseRequest_IsManualEvenWithTheFlagOnAndTheAccountReady
+        await s.EnablePaymentsAsync();
         await s.Service.TakeAsync(request.Id, s.SupplierOrgId, UserId);
         await s.ChangeRequestAsync(request.Id, r => r.PaymentMode = ServiceRequestPaymentMode.Online);
         s.ForgetNotifications();
@@ -91,7 +84,6 @@ public class SupplierPaymentShowcaseTests
         var completed = await s.Service.CompleteAsync(
             request.Id, s.SupplierOrgId, new CompleteServiceRequestCommand(FinalAmountCents: ServiceRequestScenario.ServicePriceCents));
 
-        // Nothing is addressed to the supplier's own mailbox as if it were the host: the request completes as a manual one.
         Assert.Equal(ServiceRequestPaymentMode.Manual, completed.PaymentMode);
         Assert.Empty(await s.PaymentsOfAsync(request.Id));
         Assert.Empty(s.Emails.PaymentEmails());
@@ -118,7 +110,6 @@ public class SupplierPaymentShowcaseTests
         Assert.Equal(s.SupplierOrgId, payment.SupplierOrgId);
         Assert.Equal(ServicePaymentChannel.Offline, payment.PaidVia);
         Assert.Equal(ServicePaymentStatus.Paid, payment.Status);
-        // No money went through CasaZen: no commission, as for any payment received outside it.
         Assert.Equal(0, payment.ApplicationFeeCents);
         Assert.Equal(payment.AmountCents, payment.NetCents);
         Assert.Empty(s.Emails.PaymentEmails());
@@ -142,8 +133,6 @@ public class SupplierPaymentShowcaseTests
         Assert.Equal(ServiceRequestStatus.Pagato, history[^1].Status);
         Assert.Equal(ServiceRequestActorParty.Supplier, history[^1].Actor);
     }
-
-    // ─── Who paid, in the history (the two records the two tasks added) ───
 
     [Theory]
     [InlineData(ServiceRequestActorParty.Host, null, ServiceRequestActorParty.Host)]

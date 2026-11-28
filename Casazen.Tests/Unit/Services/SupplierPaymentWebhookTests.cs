@@ -23,8 +23,6 @@ public class SupplierPaymentWebhookTests
 {
     private static readonly Guid UnknownPayment = Guid.Parse("99999999-9999-9999-9999-999999999999");
 
-    // ─── A succeeded payment ───
-
     [Fact]
     public async Task Succeeded_AsAskedFor_RecordsThePaymentAndTheRequestAsPaid()
     {
@@ -83,7 +81,6 @@ public class SupplierPaymentWebhookTests
         Assert.Contains("Commissione CasaZen (10 %)", receipt.Content.HtmlBody);
         Assert.Contains("6,00 €", receipt.Content.HtmlBody);
         Assert.Contains("54,00 €", receipt.Content.HtmlBody);
-        // Nobody else is told: the payer paid the price shown, the admins have nothing to look at.
         Assert.Single(s.Emails.PaymentEmails());
     }
 
@@ -150,8 +147,6 @@ public class SupplierPaymentWebhookTests
         Assert.Equal(ServiceRequestStatus.Pagato, (await s.ReadAsync(opened.Request.Id)).Status);
     }
 
-    // ─── Money that is not what was asked for: never "Pagato" ───
-
     public static TheoryData<string, string> Mismatches => new()
     {
         { "account", "review:account" },
@@ -199,7 +194,6 @@ public class SupplierPaymentWebhookTests
         Assert.Equal(ServiceRequestStatus.Completato, request.Status);
         Assert.Null(request.PaidAt);
         Assert.Null(request.PaidBy);
-        // An error in the log: somebody has to look at money that arrived in a way nobody planned.
         var error = Assert.Single(logger.Entries, e => e.Level == LogLevel.Error);
         Assert.Contains("NOT recorded as paid", error.Message);
         Assert.Contains(opened.PaymentId.ToString(), error.Message);
@@ -237,11 +231,9 @@ public class SupplierPaymentWebhookTests
         Assert.Contains(opened.Request.Id.ToString("D"), body);
         Assert.Contains("review:amount", body);
         Assert.Contains("Supplier Org", body);
-        // No personal data: the payer's address, the host's phone, the property are not in the alert.
         Assert.DoesNotContain("host@test.com", body);
         Assert.DoesNotContain(ServiceRequestScenario.PropertyAddress, body);
         Assert.DoesNotContain("+39 333 0001111", body);
-        // The payer and the supplier are not told that something is wrong with their payment.
         Assert.Empty(s.EmailsOf(EmailTemplates.Names.ServicePaymentReceived));
     }
 
@@ -284,11 +276,9 @@ public class SupplierPaymentWebhookTests
         using var s = await ServiceRequestScenario.CreateAsync(paymentLogger: logger);
         await s.AddAdminAsync();
         var opened = await s.OpenedAsync();
-        // The supplier recorded the payment as received outside CasaZen: the payment is withdrawn and its PaymentIntent canceled.
         await s.Service.RecordOfflinePaymentAsync(opened.Request.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId, "Pagato a mano");
         s.ForgetNotifications();
 
-        // A charge that raced the cancellation still succeeded on Stripe.
         s.Gateway.SetStatus(opened.IntentId, "succeeded");
         var notices = await s.Payments.ApplyPaymentIntentEventAsync(opened.EventOf(Succeeded));
         await s.Payments.CompleteAsync(notices);
@@ -314,7 +304,6 @@ public class SupplierPaymentWebhookTests
         await s.PayAsync(opened);
         s.ForgetNotifications();
 
-        // The payer, with an old tab, paid twice: a second PaymentIntent that names the same payment.
         var notices = await s.Payments.ApplyPaymentIntentEventAsync(opened.EventOf(Succeeded, e => e with { PaymentIntentId = "pi_second_charge" }));
 
         Assert.Empty(notices);
@@ -361,7 +350,6 @@ public class SupplierPaymentWebhookTests
         using var s = await ServiceRequestScenario.CreateAsync();
         var opened = await s.OpenedAsync();
 
-        // processing, a failure and a cancellation of a PaymentIntent the payment does not hold change nothing…
         foreach (var type in new[] { Processing, PaymentFailed, Canceled })
             Assert.Empty(await s.Payments.ApplyPaymentIntentEventAsync(opened.EventOf(type, e => e with { PaymentIntentId = "pi_foreign" })));
 
@@ -369,8 +357,6 @@ public class SupplierPaymentWebhookTests
         Assert.Equal(ServicePaymentStatus.Requested, payment.Status);
         Assert.Equal(opened.IntentId, payment.StripePaymentIntentId);
     }
-
-    // ─── Any order, any number of times ───
 
     [Theory]
     [InlineData("payment_intent.processing")]
@@ -432,7 +418,6 @@ public class SupplierPaymentWebhookTests
         var notices = await s.Payments.ApplyPaymentIntentEventAsync(opened.EventOf(PaymentFailed));
         await s.Payments.CompleteAsync(notices);
 
-        // The card was declined on the page the payer is looking at: the page says so, and nothing is emailed.
         Assert.Empty(notices);
         var payment = await s.ReloadAsync(opened.PaymentId);
         Assert.Equal(ServicePaymentStatus.Failed, payment.Status);
@@ -441,7 +426,6 @@ public class SupplierPaymentWebhookTests
         Assert.Equal(PublicServicePaymentState.Payable, page.State);
         Assert.True(page.LastAttemptFailed);
         Assert.Empty(s.Emails.PaymentEmails());
-        // The PaymentIntent is reused: Stripe lets the payer try another card on it.
         var session = await s.Payments.CreatePublicSessionAsync(opened.PaymentId, opened.Token);
         Assert.Equal(opened.Intent.ClientSecret, session.ClientSecret);
     }
@@ -455,7 +439,6 @@ public class SupplierPaymentWebhookTests
         s.ForgetNotifications();
         s.Clock.Advance(TimeSpan.FromDays(3));
 
-        // A SEPA debit that came back.
         s.Gateway.SetStatus(opened.IntentId, "requires_payment_method", lastErrorCode: "debit_not_authorized");
         var notices = await s.Payments.ApplyPaymentIntentEventAsync(
             opened.EventOf(PaymentFailed, e => e with { FailureCode = "debit_not_authorized" }, at: ServiceRequestScenario.Instant.UtcDateTime.AddDays(3)));
@@ -469,7 +452,7 @@ public class SupplierPaymentWebhookTests
         Assert.Equal("host@test.com", email.To);
         Assert.Contains("non è andato a buon fine", email.Content.HtmlBody);
         Assert.Contains("60,00 €", email.Content.HtmlBody);
-        Assert.DoesNotMatch(@"\d\s*%", email.Content.HtmlBody); // the payer is never told about the commission
+        Assert.DoesNotMatch(@"\d\s*%", email.Content.HtmlBody);
         var newLink = ServicePaymentTestSupport.LinkOf(email.Content);
         Assert.Equal(opened.PaymentId, newLink.PaymentId);
         Assert.NotEqual(opened.Token, newLink.Token);
@@ -492,7 +475,6 @@ public class SupplierPaymentWebhookTests
 
         await s.Payments.CompleteAsync(notices);
 
-        // Nothing was sent, so the link that was issued is not left around: the payer's previous link works as before.
         Assert.Empty(s.EmailsOf(EmailTemplates.Names.ServicePaymentFailed));
         Assert.Equal(PublicServicePaymentState.Payable, (await s.Payments.GetPublicAsync(opened.PaymentId, opened.Token)).State);
     }
@@ -505,7 +487,6 @@ public class SupplierPaymentWebhookTests
         var firstAttemptFailedAt = ServiceRequestScenario.Instant.UtcDateTime.AddMinutes(-10);
         s.Clock.Advance(TimeSpan.FromMinutes(5));
 
-        // The payer retried with SEPA: the processing is recorded now. The failure of the first attempt arrives late.
         await s.Payments.ApplyPaymentIntentEventAsync(opened.EventOf(Processing, at: ServiceRequestScenario.Instant.UtcDateTime.AddMinutes(4)));
         var notices = await s.Payments.ApplyPaymentIntentEventAsync(opened.EventOf(PaymentFailed, at: firstAttemptFailedAt));
 
@@ -568,13 +549,11 @@ public class SupplierPaymentWebhookTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         var opened = await s.OpenedAsync();
-        // The supplier replaced its Stripe account: the next session cancels the old PaymentIntent and makes a new one.
         await s.ConnectSupplierAsync(ready: true, accountId: "acct_new_account");
         await s.Payments.CreatePublicSessionAsync(opened.PaymentId, opened.Token);
         var current = await s.ReloadAsync(opened.PaymentId);
         Assert.NotEqual(opened.IntentId, current.StripePaymentIntentId);
 
-        // The event of the old one's cancellation arrives afterwards.
         var notices = await s.Payments.ApplyPaymentIntentEventAsync(opened.EventOf(Canceled));
 
         Assert.Empty(notices);
@@ -582,8 +561,6 @@ public class SupplierPaymentWebhookTests
         Assert.Equal(current.StripePaymentIntentId, after.StripePaymentIntentId);
         Assert.Equal("acct_new_account", after.ConnectedAccountId);
     }
-
-    // ─── Disputes ───
 
     [Fact]
     public async Task Dispute_OnAServicePayment_IsLoggedAsAnError_AndTheAdminsAreTold_NothingElseChanges()
@@ -626,8 +603,6 @@ public class SupplierPaymentWebhookTests
         Assert.False(none.Handled);
         Assert.Empty(unknown.Notices);
     }
-
-    // ─── The notices of a payment that is gone ───
 
     [Fact]
     public async Task CompleteAsync_ANoticeOfAPaymentThatDoesNotExist_SendsNothing()

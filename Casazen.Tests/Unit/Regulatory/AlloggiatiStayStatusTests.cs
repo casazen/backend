@@ -39,23 +39,18 @@ public class AlloggiatiStayStatusTests
         string? fields = null) =>
         new(position, status, draft, error, fields, Attempts: 1, LastAttemptAt: new DateTime(2026, 11, 6, 9, 0, 0, DateTimeKind.Utc));
 
-    // ─── The rules ───────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public void TheGuestsAreEntrustedOnlyWhenEveryRegisteredGuestIsOnOctorateForGood()
     {
         Assert.Equal(ChannelManagerWriteState.Entrusted, AlloggiatiStatusRules.ChannelManagerStateOf([0, 1], [Link(0), Link(1)]));
-        // A link of a position that is no longer a guest is not looked at.
         Assert.Equal(ChannelManagerWriteState.Entrusted, AlloggiatiStatusRules.ChannelManagerStateOf([0], [Link(0), Link(3, OctorateSyncStatus.Failed)]));
 
-        // A draft, a pending write and a missing link are not entrusted.
         Assert.Equal(ChannelManagerWriteState.InProgress, AlloggiatiStatusRules.ChannelManagerStateOf([0, 1], [Link(0), Link(1, draft: true)]));
         Assert.Equal(ChannelManagerWriteState.InProgress, AlloggiatiStatusRules.ChannelManagerStateOf([0, 1], [Link(0), Link(1, OctorateSyncStatus.Pending)]));
         Assert.Equal(ChannelManagerWriteState.InProgress, AlloggiatiStatusRules.ChannelManagerStateOf([0, 1], [Link(0)]));
         Assert.Equal(ChannelManagerWriteState.NothingWritten, AlloggiatiStatusRules.ChannelManagerStateOf([0, 1], []));
         Assert.Equal(ChannelManagerWriteState.NothingWritten, AlloggiatiStatusRules.ChannelManagerStateOf([], [Link(0)]));
 
-        // A guest that could not be written makes the stay a failure, whatever the others are.
         Assert.Equal(ChannelManagerWriteState.Failed, AlloggiatiStatusRules.ChannelManagerStateOf([0, 1], [Link(0), Link(1, OctorateSyncStatus.Failed, error: "octorate_server")]));
     }
 
@@ -72,7 +67,6 @@ public class AlloggiatiStayStatusTests
             AlloggiatiWebStatus.ChannelManagerWriteFailed,
             AlloggiatiStatusRules.WithChannelManager(AlloggiatiWebStatus.DaInviareManualmente, ChannelManagerWriteState.Failed));
 
-        // What the stay already is stays as it was: sent, declared sent, a portal error, a no-show, a transmission in progress.
         foreach (var settled in new[]
                  {
                      AlloggiatiWebStatus.Inviato, AlloggiatiWebStatus.InviatoManualmente, AlloggiatiWebStatus.Errore, AlloggiatiWebStatus.Rifiutato,
@@ -83,11 +77,9 @@ public class AlloggiatiStayStatusTests
             Assert.Equal(settled, AlloggiatiStatusRules.WithChannelManager(settled, ChannelManagerWriteState.Failed));
         }
 
-        // Nothing entrusted, nothing changes: the host still sends.
         foreach (var state in new[] { ChannelManagerWriteState.NotApplicable, ChannelManagerWriteState.NothingWritten, ChannelManagerWriteState.InProgress })
             Assert.Equal(AlloggiatiWebStatus.DaInviareManualmente, AlloggiatiStatusRules.WithChannelManager(AlloggiatiWebStatus.DaInviareManualmente, state));
 
-        // The two states are derived: a failure for the cockpit, a sent one for nobody.
         Assert.True(AlloggiatiStatusRules.IsFailure(AlloggiatiWebStatus.ChannelManagerWriteFailed));
         Assert.False(AlloggiatiStatusRules.IsFailure(AlloggiatiWebStatus.EntrustedToChannelManager));
         Assert.False(AlloggiatiStatusRules.IsSent(AlloggiatiWebStatus.EntrustedToChannelManager));
@@ -104,12 +96,6 @@ public class AlloggiatiStayStatusTests
             [Link(1, OctorateSyncStatus.Failed, error: OctoratePlaceRules.PlaceNotRecognizedCode, fields: "birthComune")]));
     }
 
-    // ─── The proofs ──────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Proof (data, CHK-12): a stay entrusted to the channel manager is yellow, in the per-stay status and in the cockpit alike, and never green without an
-    /// archived receipt, whatever the guests say; with its deadline gone it is red, and only the archived receipt turns it green.
-    /// </summary>
     [Fact]
     public async Task StayStatus_EntrustedNeverGreenWithoutReceipt_Test()
     {
@@ -125,7 +111,6 @@ public class AlloggiatiStayStatusTests
         var stay = await service.GetStayStatusAsync(world.OrgWide, entrusted.Id, CancellationToken.None);
         var late = await service.GetStayStatusAsync(world.OrgWide, overdue.Id, CancellationToken.None);
 
-        // Entrusted: never «to send manually», yellow, no receipt, and the cockpit reads the same.
         Assert.Equal(AlloggiatiWebStatus.EntrustedToChannelManager, stay!.Status);
         Assert.Equal(ChannelManagerWriteState.Entrusted, stay.ChannelManager);
         Assert.Equal(ComplianceLight.Yellow, stay.Verdict!.Verdict.Light);
@@ -137,11 +122,9 @@ public class AlloggiatiStayStatusTests
         var item = cockpit.Items.Single(i => i.Kind == ComplianceItemKind.Alloggiati && i.BookingId == entrusted.Id);
         Assert.Equal((stay.Verdict.Verdict.Light, stay.Verdict.Verdict.Reason, stay.Verdict.Action), (item.Verdict.Light, item.Verdict.Reason, item.Action));
 
-        // The deadline passed with no receipt: red, never green.
         Assert.Equal(ComplianceLight.Red, late!.Verdict!.Verdict.Light);
         Assert.Equal(ComplianceReasonCodes.ReceiptMissing, late.Verdict.Verdict.Reason);
 
-        // The only thing that makes it green is an archived receipt of the arrival day.
         await world.AddProofAsync(world.Granted.Id, ManualProofKind.AlloggiatiReceipt, RomeCalendar.DateInRome(entrusted.CheckInDate));
         await using var after = world.Db();
         var proven = await world.StatusService(after).GetStayStatusAsync(world.OrgWide, entrusted.Id, CancellationToken.None);
@@ -173,7 +156,6 @@ public class AlloggiatiStayStatusTests
         Assert.Null(await service.GetStayStatusAsync(world.OrgWide, Guid.NewGuid(), CancellationToken.None));
         Assert.NotNull(await service.GetStayStatusAsync(world.Restricted, granted.Id, CancellationToken.None));
 
-        // The endpoints: the booking of another org is not found by the tenant filter, so nothing is read and nothing is retried.
         var bookings = new Mock<IBookingService>();
         bookings.Setup(b => b.GetBookingAsync(foreign.Id)).ReturnsAsync((Booking?)null);
         var status = new Mock<IComplianceStatusService>();
@@ -186,7 +168,6 @@ public class AlloggiatiStayStatusTests
         sync.Verify(s => s.RetryGuestsNowAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    /// <summary>AC2: a failed guest write is on the stay with its code, per position, can be retried, and the cockpit shows it as a failure to resolve on the booking.</summary>
     [Fact]
     public async Task AFailedWrite_IsVisibleOnTheStayWithItsCode_CanBeRetried_AndIsAFailureToResolveInTheCockpit()
     {
@@ -302,7 +283,6 @@ public class AlloggiatiStayStatusTests
         var sync = new Mock<ICheckInOctorateSyncService>();
         var controller = ControllerOfAnOwner(booking, alloggiati, sync);
 
-        // Another send of the stay holds the lock: nothing was tried, and no status is answered as if it had.
         sync
             .Setup(s => s.RetryGuestsNowAsync(booking.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OctorateCheckInSendResult(OctorateCheckInSendState.NothingToSend, CheckInOctorateSyncService.ReasonSendInProgress, false, [], false));
@@ -318,7 +298,6 @@ public class AlloggiatiStayStatusTests
         var nothing = Assert.IsType<AlloggiatiStatusDto>(Assert.IsType<OkObjectResult>((await controller.RetryOctorateWrite(booking.Id)).Result).Value);
         Assert.Equal((OctorateCheckInSendState.NotApplicable, CheckInOctorateSyncService.ReasonSenderNotChannelManager), (nothing.Retry!.State, nothing.Retry.Reason));
 
-        // One that tried guests and did not get them all through says so too: the codes of the guests are in the block of the stay.
         sync
             .Setup(s => s.RetryGuestsNowAsync(booking.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OctorateCheckInSendResult(OctorateCheckInSendState.PartlyFailed, null, false, [], false));
@@ -326,7 +305,6 @@ public class AlloggiatiStayStatusTests
         Assert.Equal((OctorateCheckInSendState.PartlyFailed, null), (partly.Retry!.State, partly.Retry.Reason));
     }
 
-    /// <summary>The controller for the owner of the property of <paramref name="booking"/>, with the production-like authorization of the harness.</summary>
     private static AlloggiatiController ControllerOfAnOwner(Booking booking, Mock<IAlloggiatiWebService> alloggiati, Mock<ICheckInOctorateSyncService> sync)
     {
         const string owner = "auth0|owner";

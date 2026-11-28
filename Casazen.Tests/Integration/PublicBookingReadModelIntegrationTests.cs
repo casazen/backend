@@ -8,10 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// US-001 (#212) public booking read-model over HTTP. Verifies whitelist DTOs, anti-enumeration,
-/// inactive filtering, result cap, and AC6 JSON regression (no ownerId / apiKey / guest PII keys).
-/// </summary>
 public class PublicBookingReadModelIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private readonly CasazenWebApplicationFactory _factory;

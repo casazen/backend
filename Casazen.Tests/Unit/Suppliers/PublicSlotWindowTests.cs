@@ -3,10 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>
-/// SP-03b: the window of days a read of slots covers, shared by the public page (SP-09) and the supplier's preview "how customers
-/// see you": from the day asked for and never before today, 1 to 62 days (14 when left out), cut at the horizon.
-/// </summary>
 public class PublicSlotWindowTests
 {
     private static readonly DateOnly Today = new(2026, 10, 8);
@@ -21,7 +17,7 @@ public class PublicSlotWindowTests
     }
 
     [Theory]
-    [InlineData(-5, "2026-10-08")] // a day before today is today
+    [InlineData(-5, "2026-10-08")]
     [InlineData(0, "2026-10-08")]
     [InlineData(3, "2026-10-11")]
     public void RangeOf_TheFirstDay_IsTheDayAskedForNeverBeforeToday(int offset, string first)
@@ -33,11 +29,11 @@ public class PublicSlotWindowTests
     }
 
     [Theory]
-    [InlineData(0, 1)] // below 1 is 1
+    [InlineData(0, 1)]
     [InlineData(-4, 1)]
     [InlineData(1, 1)]
     [InlineData(62, 62)]
-    [InlineData(500, 62)] // above the most is the most
+    [InlineData(500, 62)]
     public void RangeOf_TheNumberOfDays_IsClampedToTheLimits(int days, int expected)
     {
         var range = PublicSlotWindow.RangeOf(Today, Today.AddDays(365), from: null, days);

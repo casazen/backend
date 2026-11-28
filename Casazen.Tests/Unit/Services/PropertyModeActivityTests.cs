@@ -30,8 +30,6 @@ public class PropertyModeActivityTests : IDisposable
 
     private PropertyModeService WithLog() => _h.NewService(_h.Db, _h.ActivityLogFor(_h.Db));
 
-    // ─── Programming ────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Schedule_WritesOneLine_WithWhoTheDayAndTheModesAndTheAreaTheProperyIsStillIn()
     {
@@ -43,7 +41,6 @@ public class PropertyModeActivityTests : IDisposable
         Assert.Equal(OrgActivityType.PropertyModeChangeScheduled, line.Type);
         Assert.Equal((property.OrgId, UserId, property.Id.ToString()), (line.OrgId, line.ActorUserId, line.SubjectId));
         Assert.Equal(OrgActivitySubjectType.Property, line.SubjectType);
-        // The property is still a short-term one on the day it is programmed: the line belongs to that area.
         Assert.Equal(OrgActivityArea.ShortRent, line.Area);
         var details = OrgActivityDetails.Parse(line.DetailsJson);
         Assert.Equal(("Short", "Long", "2026-10-20"), (details["fromMode"], details["toMode"], details["effectiveOn"]));
@@ -70,7 +67,6 @@ public class PropertyModeActivityTests : IDisposable
         await _h.SeedStayAsync(property, Day(12), Day(18));
         var service = WithLog();
 
-        // A stay in the way, the same mode, a day that is too early: three refusals, no line.
         await Assert.ThrowsAsync<DomainConflictException>(() => service.ScheduleAsync(property.Id, RentalMode.Long, Day(15), UserId));
         await Assert.ThrowsAsync<DomainRuleException>(() => service.ScheduleAsync(property.Id, RentalMode.Short, Day(25), UserId));
         await Assert.ThrowsAsync<DomainRuleException>(() => service.ScheduleAsync(property.Id, RentalMode.Long, Today, UserId));
@@ -90,8 +86,6 @@ public class PropertyModeActivityTests : IDisposable
         Assert.Single(await LinesAsync());
     }
 
-    // ─── Cancelling ─────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Cancel_WritesOneLine_WithWhoAndTheModes_AndLeavesTheProgrammingLineAlone()
     {
@@ -108,7 +102,6 @@ public class PropertyModeActivityTests : IDisposable
         Assert.Equal(("auth0|admin", property.Id.ToString(), OrgActivityArea.ShortRent), (cancelled.ActorUserId, cancelled.SubjectId, cancelled.Area));
         var details = OrgActivityDetails.Parse(cancelled.DetailsJson);
         Assert.Equal(("Short", "Long"), (details["fromMode"], details["toMode"]));
-        // A cancellation says no day: only the programming does.
         Assert.False(details.ContainsKey("effectiveOn"));
     }
 
@@ -123,8 +116,6 @@ public class PropertyModeActivityTests : IDisposable
         Assert.Empty(await LinesAsync());
     }
 
-    // ─── The daily job ──────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task ApplyDue_WritesOneLineWithNoActor_InTheAreaThePropertyIsInNow()
     {
@@ -138,7 +129,6 @@ public class PropertyModeActivityTests : IDisposable
         Assert.Equal(OrgActivityType.PropertyModeChanged, line.Type);
         Assert.Null(line.ActorUserId);
         Assert.Equal((property.OrgId, property.Id.ToString(), OrgActivitySubjectType.Property), (line.OrgId, line.SubjectId, line.SubjectType));
-        // The property is a long-term one from this day on: the line is in the long-term area.
         Assert.Equal(OrgActivityArea.LongRent, line.Area);
         var details = OrgActivityDetails.Parse(line.DetailsJson);
         Assert.Equal(("Short", "Long"), (details["fromMode"], details["toMode"]));
@@ -173,7 +163,6 @@ public class PropertyModeActivityTests : IDisposable
     [Fact]
     public async Task ApplyDue_AChangeThatFails_WritesNothing()
     {
-        // A stay in the way on the day: the change fails, with its reason, and the log says nothing of what did not happen.
         var property = await _h.SeedPropertyAsync();
         await _h.SeedStayAsync(property, Day(8), Day(14));
         var change = await _h.SeedChangeAsync(property, RentalMode.Long, Today);
@@ -202,12 +191,6 @@ public class PropertyModeActivityTests : IDisposable
             lines.Select(l => (l.OrgId, l.Area)).Order());
     }
 
-    // ─── The person in charge goes with the reach (AM-02c) ──────────────────────────────────────────
-
-    /// <summary>
-    /// A property of <paramref name="mode"/> given to <paramref name="userId"/> and with that person in charge of it: a member of
-    /// the org with <paramref name="role"/> and <paramref name="scope"/>, working in <paramref name="areas"/>.
-    /// </summary>
     private async Task<Property> InChargeAsync(
         RentalMode mode,
         OrgRole role,
@@ -244,8 +227,6 @@ public class PropertyModeActivityTests : IDisposable
 
         await WithLog().ApplyDueAsync();
 
-        // The property is a long-term one now and the person works in short-term rentals only: it cannot open it, so it cannot be
-        // in charge of it (and the notifications of its stays no longer go to it). The grant row is untouched.
         var stored = await _h.ReloadPropertyAsync(property.Id);
         Assert.Equal(RentalMode.Long, stored.RentalMode);
         Assert.Null(stored.ResponsibleUserId);
@@ -276,7 +257,6 @@ public class PropertyModeActivityTests : IDisposable
     [InlineData(OrgRole.Collaborator, PropertyScope.Selected, new string[0])]
     public async Task ApplyDue_ANameThatStillReachesTheProperty_Stays(OrgRole role, PropertyScope scope, string[] areas)
     {
-        // Both areas, the area of the new mode, every property by scope or by role, and no area known (nothing narrows the grants).
         var property = await InChargeAsync(RentalMode.Short, role, scope, areas);
         await _h.SeedChangeAsync(property, RentalMode.Long, Today);
 
@@ -302,7 +282,6 @@ public class PropertyModeActivityTests : IDisposable
     {
         foreach (var type in new[] { OrgActivityType.PropertyModeChangeScheduled, OrgActivityType.PropertyModeChangeCancelled, OrgActivityType.PropertyModeChanged })
             Assert.False(OrgActivityCatalog.Describe(type).Reserved, type.ToString());
-        // TrustedSupplierAdded is still reserved; TrustedSupplierRemoved is now written (NF-21).
         Assert.True(OrgActivityCatalog.Describe(OrgActivityType.TrustedSupplierAdded).Reserved, "TrustedSupplierAdded");
         Assert.False(OrgActivityCatalog.Describe(OrgActivityType.TrustedSupplierRemoved).Reserved, "TrustedSupplierRemoved");
     }

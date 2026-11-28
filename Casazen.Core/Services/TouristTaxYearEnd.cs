@@ -148,9 +148,6 @@ public sealed record TouristTaxStayFacts(
 /// <summary>The rules of the year-end exports of the tourist tax (E18/F01/US02/T03), apart from any storage.</summary>
 public static class TouristTaxYearEndRules
 {
-    /// <summary>The canton of Ticino, as <c>SwissMunicipalities</c> gives it: the one of <see cref="SwissPlace"/>.</summary>
-    public const string TicinoCanton = SwissPlace.TicinoCantonCode;
-
     /// <summary>The day the regional tourist organization of Ticino wants the yearly count of nights of the year before: 5 January.</summary>
     public static DateOnly TicinoCountDue(int year) => new(year + 1, 1, 5);
 

@@ -9,11 +9,9 @@ public class PricingAdapterConfigTests
     [Fact]
     public void CreatePricingAdapterConfig_WithValidData_InitializesCorrectly()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         var now = DateTime.UtcNow;
 
-        // Act
         var config = new PricingAdapterConfig
         {
             Id = Guid.NewGuid(),
@@ -27,7 +25,6 @@ public class PricingAdapterConfigTests
             UpdatedAt = now
         };
 
-        // Assert
         Assert.NotEqual(Guid.Empty, config.Id);
         Assert.Equal(propertyId, config.PropertyId);
         Assert.True(config.IsEnabled);
@@ -40,14 +37,12 @@ public class PricingAdapterConfigTests
     [Fact]
     public void CreatePricingAdapterConfig_WithDefaults_InitializesWithCorrectDefaults()
     {
-        // Arrange & Act
         var config = new PricingAdapterConfig
         {
             PropertyId = Guid.NewGuid(),
             AdaptationFrequency = "hourly"
         };
 
-        // Assert
         Assert.False(config.IsEnabled);
         Assert.False(config.IncludeSeasonality);
         Assert.False(config.IncludePublicHolidays);
@@ -59,10 +54,8 @@ public class PricingAdapterConfigTests
     [Fact]
     public void CreatePricingAdapterConfig_WithDifferentFrequencies_StoresCorrectly()
     {
-        // Arrange
         var frequencies = new[] { "hourly", "daily", "weekly", "monthly" };
 
-        // Act & Assert
         foreach (var frequency in frequencies)
         {
             var config = new PricingAdapterConfig
@@ -77,7 +70,6 @@ public class PricingAdapterConfigTests
     [Fact]
     public void CreatePricingAdapterConfig_AllCombinationsOfFlags_StoreCorrectly()
     {
-        // Arrange
         var combinations = new[]
         {
             (seasonality: true, holidays: true),
@@ -86,7 +78,6 @@ public class PricingAdapterConfigTests
             (seasonality: false, holidays: false)
         };
 
-        // Act & Assert
         foreach (var (seasonality, holidays) in combinations)
         {
             var config = new PricingAdapterConfig

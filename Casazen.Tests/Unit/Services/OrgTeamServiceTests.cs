@@ -1,4 +1,3 @@
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
@@ -46,8 +45,6 @@ public class OrgTeamServiceTests
         return 0;
     });
 
-    // ─── List ───────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task ListAsync_OwnerFirstThenByName_WithTheirAreasStatusAndTheSeats()
     {
@@ -68,7 +65,6 @@ public class OrgTeamServiceTests
         Assert.Equal(OrgMemberStatus.Deactivated, deactivated.Status);
         Assert.NotNull(deactivated.DeactivatedAt);
 
-        // The owner, the two active members and the pending invitation; the deactivated one holds no seat.
         Assert.Equal((10, 3, 1, 4), (team.Seats.Max, team.Seats.ActiveMembers, team.Seats.PendingInvitations, team.Seats.Used));
         Assert.Equal(6, team.Seats.Available);
     }
@@ -84,8 +80,6 @@ public class OrgTeamServiceTests
 
         Assert.Equal([OwnerId], team.Members.Select(m => m.UserId));
     }
-
-    // ─── Change of role ─────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task ChangeRoleAsync_OwnerGivesACollaboratorTheAdminRole_AreasKeptAndMembershipsFollow()
@@ -150,7 +144,6 @@ public class OrgTeamServiceTests
         var changed = await RunAsync(t => t.ChangeRoleAsync(orgId, adminId, OrgRole.PropertyManager, OwnerId));
 
         Assert.Equal(OrgRole.PropertyManager, changed.Role);
-        // The administrator's account row becomes the property manager's restricted one (AM-02c): the trusted suppliers, nothing else.
         Assert.Equal(["account/org_manager", "short-rent/property_manager"], await _kit.MembershipsAsync("auth0|admin"));
     }
 
@@ -209,8 +202,6 @@ public class OrgTeamServiceTests
         Assert.Equal(OrgInvitationErrors.MemberNotFound, error.Code);
         Assert.Equal(OrgRole.Collaborator, (await _kit.ReadMemberAsync("auth0|stranger"))!.Role);
     }
-
-    // ─── Deactivate and reactivate ──────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task DeactivateAsync_SwitchesTheAccessOffAndFreesTheSeat()
@@ -295,7 +286,6 @@ public class OrgTeamServiceTests
         var (orgId, _) = await SeedOrgAsync(PlanTier.Starter, SubscriptionStatus.None);
         var memberId = await AddMemberAsync(orgId, "auth0|anna", OrgRole.Collaborator);
         await RunAsync(t => t.DeactivateAsync(orgId, memberId, OwnerId));
-        // The freed seat goes to somebody else.
         await _kit.SeedInvitationAsync(orgId, "newcomer@example.com");
 
         var error = await Assert.ThrowsAsync<DomainConflictException>(
@@ -328,8 +318,6 @@ public class OrgTeamServiceTests
 
         Assert.Equal(OrgInvitationErrors.OwnerRequired, error.Code);
     }
-
-    // ─── Remove ─────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task RemoveAsync_TakesThePersonOutAndUnlinksTheOrgFromTheAccount()
@@ -404,8 +392,6 @@ public class OrgTeamServiceTests
 
         Assert.NotNull(await _kit.ReadMemberAsync("auth0|stranger"));
     }
-
-    // ─── The membership service itself ──────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task MembershipRemoveAsync_ClearsTheLastUsedContextOfTheOrgButKeepsAStaffOne()

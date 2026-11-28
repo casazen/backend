@@ -25,7 +25,6 @@ public class BookingCancellationServiceTests : IDisposable
 {
     private const string Account = "acct_host_1";
 
-    // 2026-09-24 10:00 in Rome.
     private static readonly DateTimeOffset Now = new(2026, 9, 24, 8, 0, 0, TimeSpan.Zero);
 
     private readonly DbContextOptions<AppDbContext> _options = new DbContextOptionsBuilder<AppDbContext>()
@@ -247,7 +246,6 @@ public class BookingCancellationServiceTests : IDisposable
         var refund = await _db.PaymentRefunds.AsNoTracking().SingleAsync(r => r.Id == refundId);
         Assert.NotNull(refund.GuestNotifiedAt);
 
-        // A later webhook for the same refund does not email the guest again.
         await RefundService().NotifyGuestAsync(refund.Id);
         Assert.Single(sent);
     }
@@ -269,7 +267,6 @@ public class BookingCancellationServiceTests : IDisposable
         var refund = await _db.PaymentRefunds.SingleAsync(r => r.Id == refundId);
         Assert.Null(refund.GuestNotifiedAt);
 
-        // Stripe confirms it later (webhook): the "refund confirmed" email, once.
         refund.Status = PaymentRefundStatus.Succeeded;
         await _db.SaveChangesAsync();
         var refundService = RefundService();
@@ -370,10 +367,6 @@ public class BookingCancellationServiceTests : IDisposable
         Assert.False(quote.RequiresRefundDecision);
     }
 
-    // ── The guest cancels (DB-08h, BK-02, BK-07): the minimum is the policy's refund, not everything refundable ──
-    // Moderata: 50% from 30 days to 48 hours before check-in. The check-in is 470 hours after Now, so 50% applies.
-    // Base price 280 + tourist tax 20 = 300 paid.
-
     [Fact]
     public async Task CancelAsync_GuestInThePartialRefundWindow_RefundsThePolicyShareWhereTheHostWouldBeRefused()
     {
@@ -399,7 +392,6 @@ public class BookingCancellationServiceTests : IDisposable
     [Fact]
     public async Task GetQuoteAsync_PartialPolicyWindow_StillAsksTheHostForEverythingRefundable()
     {
-        // The quote is the host's: the guest's minimum is never shown in the host's confirmation dialog.
         var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 300m, policy: Moderata(), basePrice: 280m);
 
         var quote = await Service().GetQuoteAsync(seed.BookingId);
@@ -437,7 +429,6 @@ public class BookingCancellationServiceTests : IDisposable
     [Fact]
     public async Task CancelAsync_GuestPolicyBasePriceAbovePaid_MinimumIsNeverAboveWhatIsRefundable()
     {
-        // 100% policy and a base price of 400, but only 300 was collected: the minimum is capped at the 300 refundable.
         var policy = CatalogPolicies.Get(CatalogPolicies.Ampia);
         var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 300m, policy: policy, basePrice: 400m);
 
@@ -454,7 +445,6 @@ public class BookingCancellationServiceTests : IDisposable
     [InlineData(0)]
     public async Task CancelAsync_GuestWhosePolicyRefundsNothing_CancelsWithoutAnAmountOrWithZero(int? amount)
     {
-        // 0% from 25 days to 2 days before check-in.
         var policy = new CancellationPolicy { Name = "Rigida", FullRefundHours = 1000, PartialRefundHours = 600, PartialRefundPercent = 50m };
         var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 300m, policy: policy, basePrice: 280m);
 
@@ -482,7 +472,6 @@ public class BookingCancellationServiceTests : IDisposable
     [Fact]
     public async Task CancelAsync_HostWithoutAnAmountOnAPartialPolicy_StillThrowsRefundRequired()
     {
-        // Same booking as the guest's above: the host owes everything refundable, so a missing amount is still refused.
         var seed = await SeedAsync(BookingStatus.Confirmed, PaymentStatus.Completed, amount: 300m, policy: Moderata(), basePrice: 280m);
 
         var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
@@ -579,7 +568,6 @@ public class BookingCancellationServiceTests : IDisposable
             db, RefundService(db), _stripe.Object, notifier, NullLogger<BookingCancellationService>.Instance, new FixedTimeProvider(Now));
     }
 
-    // One queue for the refund emails and the cancellation email: BK-10 checks the guest gets one email, not two.
     private PaymentRefundService RefundService(AppDbContext? db = null) =>
         new(
             db ?? _db,

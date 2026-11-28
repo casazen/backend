@@ -25,12 +25,6 @@ namespace Casazen.Tests.Unit.Octorate;
 /// </summary>
 public class CalendarPushProofTests
 {
-    // --- The proofs --------------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// PROOF TEST: data rule (no false success). The channel manager answers 200 with no process id (a room with no license writes nothing): the chunk is <c>Failed</c> with
-    /// <c>octorate_room_not_licensed</c>, it keeps no process id, and the process is not <c>Sent</c> (nor confirmed): it is <c>Failed</c> and nothing waits.
-    /// </summary>
     [Fact]
     public async Task CalendarPush_AnswerWithoutProcessId_IsFailedNotAccepted_Test()
     {
@@ -72,7 +66,6 @@ public class CalendarPushProofTests
             Mapping(connection.Id, "ACC-AMBIGUOUS", OctorateMappingStatus.Ambiguous, null, productId: null, candidates: $"[\"{h.PropertyId}\",\"{second}\"]"));
         await h.Db.SaveChangesAsync();
 
-        // The mapping of both is not confirmed: the channel manager must not be written to (OCT-04), so both are write-blocked.
         var mappings = new Mock<IChannelMappingService>();
         mappings.Setup(m => m.IsWriteBlockedAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         var targets = h.RealTargets(mappings.Object);
@@ -89,7 +82,6 @@ public class CalendarPushProofTests
         Assert.Equal(0, await h.Db.CalendarChangeChunks.CountAsync());
         Assert.Equal(CalendarChangeState.Applied, (await h.ProcessAsync()).State);
 
-        // A chunk that exists from the time the mapping was confirmed finds it proposed now: skipped, not sent.
         var (process, _) = await h.SeedAsync();
         await h.Service(targets).RunAsync(process.Id);
 
@@ -100,8 +92,6 @@ public class CalendarPushProofTests
         h.Client.Verify(c => c.GetConfigurationAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    // --- The recorder ------------------------------------------------------------------------------------------------------------
-
     [Fact]
     public async Task Record_AConnectedProperty_GetsChunksOfAtMostTheConfiguredDays_AndAQueuedProcessWithItsQuotaEstimate()
     {
@@ -110,7 +100,6 @@ public class CalendarPushProofTests
 
         var record = await h.Recorder().RecordAsync(CalendarChangeKind.Bulk, [window], "auth0|host", """{"price":{"action":"Set","value":120}}""");
 
-        // 100 days in calls of 62: two chunks (62 and 38 days), 5 and 3 units of quota.
         Assert.Equal([(62, CalendarChunkState.Pending), (38, CalendarChunkState.Pending)], record.Chunks.Select(c => (c.ToDate.DayNumber - c.FromDate.DayNumber + 1, c.State)));
         Assert.Equal(window.From, record.Chunks[0].FromDate);
         Assert.Equal(window.To, record.Chunks[1].ToDate);
@@ -122,12 +111,10 @@ public class CalendarPushProofTests
         Assert.Equal(Push.Now.UtcDateTime, process.NextAttemptAt);
         Assert.All(record.Chunks, c => Assert.Equal((Push.OrgId, process.Id, h.PropertyId), (c.OrgId, c.ProcessId, c.PropertyId)));
 
-        // The summary names the property and the dates, and what the caller said: never a name.
         Assert.Equal([h.PropertyId], CalendarChangeSummary.PropertyIdsOf(process.SummaryJson));
         Assert.Equal((window.From, window.To), CalendarChangeSummary.DatesOf(process.SummaryJson));
         Assert.Contains("\"action\":\"Set\"", process.SummaryJson);
 
-        // Recorded in the unit of work, not saved.
         Assert.Equal(0, await h.NewDb().CalendarChangeProcesses.CountAsync());
         Assert.Equal(EntityState.Added, h.Db.Entry(process).State);
         await h.Db.SaveChangesAsync();
@@ -210,8 +197,6 @@ public class CalendarPushProofTests
         await Assert.ThrowsAsync<ArgumentException>(() => h.Recorder().RecordAsync(CalendarChangeKind.Block, [], null, null));
     }
 
-    // --- The push ----------------------------------------------------------------------------------------------------------------
-
     [Fact]
     public async Task Run_AProcessIdIsTheAcceptance_RecordedOnTheChunk_AndTheProcessIsSentNeverPublished()
     {
@@ -229,7 +214,6 @@ public class CalendarPushProofTests
         Assert.Equal(Push.Now.UtcDateTime, chunk.LastAttemptAt);
         Assert.Equal((CalendarChangeState.Sent, 1), (after.State, after.Attempts));
         Assert.Equal(Push.Now.UtcDateTime, after.StartedAt);
-        // Accepted is not settled: the process is followed until the channel manager confirms it.
         Assert.Null(after.FinishedAt);
         Assert.Equal(Push.Now.UtcDateTime + CalendarPushRules.ConfirmationEvery, after.NextAttemptAt);
         Assert.Null(after.ErrorCode);
@@ -286,7 +270,6 @@ public class CalendarPushProofTests
             .ReturnsAsync(new OctorateCalendarUpdateResult(["1"]));
         OctorateCalendarUpdate Night(int day) => sent.Single(e => e.From <= Push.Today.AddDays(day) && Push.Today.AddDays(day) <= e.To);
 
-        // A manual block of three nights (days 1 to 3): closed, and no price.
         h.Db.CalendarBlocks.Add(new CalendarBlock
         {
             PropertyId = h.PropertyId,
@@ -303,7 +286,6 @@ public class CalendarPushProofTests
         Assert.Equal(new bool?[] { true, true, true, false, false }, Enumerable.Range(1, 5).Select(day => Night(day).Values.StopSells));
         Assert.All(sent, e => Assert.Null(e.Values.Price));
 
-        // The block is removed: the nights open again, and still no price.
         sent.Clear();
         h.Db.CalendarBlocks.Remove(await h.Db.CalendarBlocks.SingleAsync());
         await h.Db.SaveChangesAsync();
@@ -312,7 +294,6 @@ public class CalendarPushProofTests
 
         Assert.All(sent, e => Assert.Equal(((bool?)false, (decimal?)null), (e.Values.StopSells, e.Values.Price)));
 
-        // A change of the rules that prices one night: that night has its price, the others none.
         sent.Clear();
         IReadOnlyDictionary<DateOnly, decimal> priced = new Dictionary<DateOnly, decimal> { [Push.Today.AddDays(2)] = 90m };
         h.Pricing
@@ -330,7 +311,6 @@ public class CalendarPushProofTests
     {
         var h = new Push();
         var (process, _) = await h.SeedAsync();
-        // 150 units used of 164, 20 kept free: the 1 unit of this chunk would pass the 144 that may be used.
         h.Client.Setup(c => c.GetConfigurationAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new OctorateConfiguration("SANDBOX", 164, 150, null));
 
         await h.Service().RunAsync(process.Id);
@@ -353,7 +333,6 @@ public class CalendarPushProofTests
         h.Db.CalendarChangeChunks.Add(
             new CalendarChangeChunk { OrgId = Push.OrgId, ProcessId = process.Id, PropertyId = h.PropertyId, FromDate = Push.Today.AddDays(6), ToDate = Push.Today.AddDays(10) });
         await h.Db.SaveChangesAsync();
-        // 143 used of 164 with 20 free: one chunk of one unit fits (144), a second does not.
         h.Client.Setup(c => c.GetConfigurationAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new OctorateConfiguration("SANDBOX", 164, 143, null));
         h.Client
             .Setup(c => c.UpdateCalendarAsync(It.IsAny<IReadOnlyList<OctorateCalendarUpdate>>(), It.IsAny<CancellationToken>()))
@@ -415,7 +394,6 @@ public class CalendarPushProofTests
         await h.Db.SaveChangesAsync();
         h.Client
             .Setup(c => c.UpdateCalendarAsync(It.IsAny<IReadOnlyList<OctorateCalendarUpdate>>(), It.IsAny<CancellationToken>()))
-            // A real refusal of the access (a 403 of the permissions, not the 403 of a quota that is used up: that one is OctorateRateLimitException, see the test below).
             .ThrowsAsync(OctorateAuthException.Refused(403));
 
         await h.Service().RunAsync(process.Id);
@@ -468,7 +446,6 @@ public class CalendarPushProofTests
         Assert.NotEqual("octorate_not_authorized", after.ErrorCode);
         Assert.Equal(Push.Now.UtcDateTime.AddMinutes(5), after.NextAttemptAt);
         Assert.Null(after.FinishedAt);
-        // The run stops at the first answer: the second chunk is not tried.
         h.Client.Verify(c => c.UpdateCalendarAsync(It.IsAny<IReadOnlyList<OctorateCalendarUpdate>>(), It.IsAny<CancellationToken>()), where == "write" ? Times.Once() : Times.Never());
     }
 
@@ -557,8 +534,6 @@ public class CalendarPushProofTests
         Assert.Equal(CalendarChunkState.Pending, (await h.ChunkAsync()).State);
     }
 
-    // --- Helpers -----------------------------------------------------------------------------------------------------------------
-
     private static DateTime Utc(DateOnly day) => day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
     private static OctorateListingMapping Mapping(
@@ -586,7 +561,6 @@ public class CalendarPushProofTests
     {
         public static readonly Guid OrgId = Guid.Parse("1b3f5c0e-2a14-4e8d-9d52-7a6c4b1e0f01");
 
-        // 9 October 2026, 10:00 UTC: the 9th in Rome.
         public static readonly DateTimeOffset Now = new(2026, 10, 9, 10, 0, 0, TimeSpan.Zero);
 
         public static readonly DateOnly Today = new(2026, 10, 9);
@@ -630,7 +604,6 @@ public class CalendarPushProofTests
 
         public Guid PropertyId { get; }
 
-        /// <summary>A second context on the same database: what is saved, whatever the first one still tracks.</summary>
         public AppDbContext NewDb() =>
             new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options, NullTenantContext.Instance);
 
@@ -665,7 +638,6 @@ public class CalendarPushProofTests
                 new FixedTimeProvider(Now),
                 NullLogger<CalendarChangeRecorder>.Instance);
 
-        /// <summary>The real target lookup over the database of the test (the mapping rows decide), with the channel mapping given.</summary>
         public OctorateBookingTargets RealTargets(IChannelMappingService mappings)
         {
             var host = new Mock<IHostEnvironment>();
@@ -681,7 +653,6 @@ public class CalendarPushProofTests
                 NullLogger<OctorateBookingTargets>.Instance);
         }
 
-        /// <summary>A process waiting to be sent with one chunk (a pending one by default) for the property; the tracker is cleared, so the service reads what is stored.</summary>
         public async Task<(CalendarChangeProcess Process, CalendarChangeChunk Chunk)> SeedAsync(
             DateOnly? from = null,
             DateOnly? to = null,

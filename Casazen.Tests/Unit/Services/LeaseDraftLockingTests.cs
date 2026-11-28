@@ -21,7 +21,6 @@ public class LeaseDraftLockingTests
     {
         Assert.True(LeaseDraftLocking.IsContention(Postgres(sqlState)));
         Assert.True(LeaseDraftLocking.IsContention(new DbUpdateException("save failed", Postgres(sqlState))));
-        // EF reports a transient failure as an InvalidOperationException around it.
         Assert.True(LeaseDraftLocking.IsContention(new InvalidOperationException("transient failure", Postgres(sqlState))));
     }
 

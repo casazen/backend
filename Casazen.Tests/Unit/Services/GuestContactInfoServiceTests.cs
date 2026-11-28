@@ -34,11 +34,6 @@ public class GuestContactInfoServiceTests : IAsyncLifetime
 
     public Task DisposeAsync() => _db.DisposeAsync().AsTask();
 
-    /// <summary>
-    /// PROOF TEST: privacy rule (S18, D24, decision O10). The contact of ONE booking is read once, for the check-in link: the address is written on the guest of the booking and the
-    /// phone number too (for the host's view), the read is one line of the activity log with the purpose <c>check_in_link</c>, nobody as the actor and no address; and nothing goes to
-    /// the CRM: neither the operation of the CRM nor its store is touched, and no log, no row of the CRM and no line of the log holds the address or the number.
-    /// </summary>
     [Fact]
     public async Task ContactInfo_PurposeCheckInOnly_NotInCrm_Test()
     {
@@ -53,13 +48,11 @@ public class GuestContactInfoServiceTests : IAsyncLifetime
         Assert.Equal(GuestEmail, guest.Email);
         Assert.Equal(GuestPhone, guest.PhoneNumber);
 
-        // One booking, one read, for this link: the operation of the reservation, never the one of the guest registry that feeds the CRM.
         rig.Client.Verify(c => c.GetReservationContactInfoAsync("ACC-1", "REF-77", It.IsAny<CancellationToken>()), Times.Once);
         rig.Client.Verify(c => c.GetGuestContactInfoAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         Assert.Empty(await _db.GuestContacts.AsNoTracking().ToListAsync());
         Assert.Empty(await _db.GuestCrmProfiles.AsNoTracking().ToListAsync());
 
-        // The line of the activity log: the booking, the purpose, nobody as the actor, never the address or the number.
         var line = await _db.OrgActivityEntries.AsNoTracking().SingleAsync();
         Assert.Equal(OrgActivityType.ContactInfoRead, line.Type);
         Assert.Equal(OrgActivitySubjectType.Booking, line.SubjectType);
@@ -82,10 +75,6 @@ public class GuestContactInfoServiceTests : IAsyncLifetime
         }
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (S18, D24). A refusal of the channel manager (the static IP addresses of CasaZen are not registered, or the application has no permission) is the state
-    /// <c>StaticIpsRequired</c>, never an empty contact: nothing is written on the guest, nothing is recorded (nothing was released), and nothing of the answer is in the log.
-    /// </summary>
     [Fact]
     public async Task ContactInfo_ForbiddenWaitsStaticIps_Test()
     {
@@ -108,7 +97,6 @@ public class GuestContactInfoServiceTests : IAsyncLifetime
 
     // ---- Nothing is asked unless every rule holds -----------------------------------------------------------------------------------------
 
-    /// <summary>With the flag of the module off, or the connector off, nothing is asked: no call at all.</summary>
     [Theory]
     [InlineData(false, true)]
     [InlineData(true, false)]
@@ -125,10 +113,6 @@ public class GuestContactInfoServiceTests : IAsyncLifetime
         rig.Client.VerifyNoOtherCalls();
     }
 
-    /// <summary>
-    /// A stay that is not a portal's, one that is over or cancelled, a no-show, a booking of another org, a guest that has an address, an erased guest and a house with no confirmed
-    /// listing are not read: the contact of someone who does not need it is a sensitive read for nothing.
-    /// </summary>
     [Fact]
     public async Task ContactInfo_OnlyAnActivePortalStayWithNoAddress_IsRead_Test()
     {
@@ -145,13 +129,11 @@ public class GuestContactInfoServiceTests : IAsyncLifetime
 
         Assert.Equal(GuestContactInfoStatus.AlreadyHasEmail, (await rig.Service.ReadForCheckInLinkAsync(_world.Scope.OrgId, withAddress.Id)).Status);
 
-        // A booking of this org asked for as another org's, and an unknown one.
         var theirs = await rig.Service.ReadForCheckInLinkAsync(_world.Scope.OtherOrgId, manual.Id);
         var unknown = await rig.Service.ReadForCheckInLinkAsync(_world.Scope.OrgId, Guid.NewGuid());
         Assert.Equal(GuestContactInfoStatus.NotApplicable, theirs.Status);
         Assert.Equal(GuestContactInfoStatus.NotApplicable, unknown.Status);
 
-        // A house with no confirmed listing.
         rig.Targets.Setup(t => t.AccommodationOfAsync(_world.Scope.Granted.Id, It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
         var open = await AddStayAsync();
         Assert.Equal(GuestContactInfoStatus.NotApplicable, (await rig.Service.ReadForCheckInLinkAsync(_world.Scope.OrgId, open.Id)).Status);
@@ -160,10 +142,6 @@ public class GuestContactInfoServiceTests : IAsyncLifetime
         Assert.Empty(await _db.OrgActivityEntries.AsNoTracking().ToListAsync());
     }
 
-    /// <summary>
-    /// When the channel manager says it holds no address (an Airbnb guest has none) the contact is not asked for: the reservation, which gives flags and no data, is the only call, and
-    /// nothing is recorded. An answer that holds no usable address is a read that was made: recorded once, and the guest is not changed.
-    /// </summary>
     [Fact]
     public async Task ContactInfo_NoAddressAtTheChannel_IsNotAskedFor_AndAnAnswerWithNoUsableAddressChangesNothing_Test()
     {
@@ -187,10 +165,6 @@ public class GuestContactInfoServiceTests : IAsyncLifetime
         Assert.Single(await _db.OrgActivityEntries.AsNoTracking().ToListAsync());
     }
 
-    /// <summary>
-    /// A failure that says nothing about the permission (an outage, a limit) is thrown, never read as «no contact»: the caller decides whether to ask again. A reservation the channel
-    /// manager does not know, and an answer CasaZen cannot read, are states with a code, and the second one still records the read.
-    /// </summary>
     [Fact]
     public async Task ContactInfo_AFailureIsNeverReadAsNoContact_Test()
     {
@@ -234,36 +208,30 @@ public class GuestContactInfoServiceTests : IAsyncLifetime
         var longestPhone = "+" + new string('1', 19);
         Assert.Equal((255, 20), (longestAddress.Length, longestPhone.Length));
 
-        // A number the guest already has stays; the address is written.
         var hasPhone = await AddStayAsync(guestPhone: "+39 333 7654321");
         rig.ChannelHolds(GuestEmail, GuestPhone);
         Assert.Equal(GuestContactInfoStatus.EmailFilled, (await rig.Service.ReadForCheckInLinkAsync(orgId, hasPhone.Id)).Status);
         var kept = await _db.Guests.AsNoTracking().SingleAsync(g => g.Id == hasPhone.GuestId);
         Assert.Equal((GuestEmail, "+39 333 7654321"), (kept.Email, kept.PhoneNumber));
 
-        // An address of 256 characters is no address (the guest keeps none), the number that fits is written.
         var tooLongAddress = await AddStayAsync();
         rig.ChannelHolds(longestAddress + "m", GuestPhone);
         Assert.Equal(GuestContactInfoStatus.NoEmailAtChannel, (await rig.Service.ReadForCheckInLinkAsync(orgId, tooLongAddress.Id)).Status);
         var noAddress = await _db.Guests.AsNoTracking().SingleAsync(g => g.Id == tooLongAddress.GuestId);
         Assert.Equal((string.Empty, GuestPhone), (noAddress.Email, noAddress.PhoneNumber));
 
-        // A number of 21 characters is not kept, the address is.
         var tooLongPhone = await AddStayAsync();
         rig.ChannelHolds(GuestEmail, longestPhone + "1");
         Assert.Equal(GuestContactInfoStatus.EmailFilled, (await rig.Service.ReadForCheckInLinkAsync(orgId, tooLongPhone.Id)).Status);
         var noPhone = await _db.Guests.AsNoTracking().SingleAsync(g => g.Id == tooLongPhone.GuestId);
         Assert.Equal((GuestEmail, string.Empty), (noPhone.Email, noPhone.PhoneNumber));
 
-        // At the limit of the columns (255 and 20 characters) both are written.
         var atTheLimit = await AddStayAsync();
         rig.ChannelHolds(longestAddress, longestPhone);
         Assert.Equal(GuestContactInfoStatus.EmailFilled, (await rig.Service.ReadForCheckInLinkAsync(orgId, atTheLimit.Id)).Status);
         var full = await _db.Guests.AsNoTracking().SingleAsync(g => g.Id == atTheLimit.GuestId);
         Assert.Equal((longestAddress, longestPhone), (full.Email, full.PhoneNumber));
     }
-
-    // ---- The data every test runs on ----------------------------------------------------------------------------------------------------
 
     private async Task<Stay> AddStayAsync(
         BookingSource source = BookingSource.Airbnb,
@@ -337,7 +305,6 @@ public class GuestContactInfoServiceTests : IAsyncLifetime
 
         public GuestContactInfoService Service { get; }
 
-        /// <summary>The channel manager holds an address and a number for the reservation <c>RES-1</c> and gives them for the contact <c>REF-77</c>.</summary>
         public void ChannelHolds(string email, string phone)
         {
             Client

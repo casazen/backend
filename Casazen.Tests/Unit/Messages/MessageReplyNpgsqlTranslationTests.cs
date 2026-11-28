@@ -39,7 +39,6 @@ public class MessageReplyNpgsqlTranslationTests
         _ => new HostScope(OrgId),
     };
 
-    /// <summary>The row of the org the lookup of a conversation reads first (the name of the person who hosts and the name of the organization).</summary>
     private static DataTable? OrgRow(string sql)
     {
         if (!sql.Contains("FROM \"Orgs\"", StringComparison.Ordinal) || !sql.Contains("\"HostName\"", StringComparison.Ordinal))
@@ -69,11 +68,9 @@ public class MessageReplyNpgsqlTranslationTests
         await NpgsqlTranslationProbe.AssertTranslatesAsync(
             () => service.StartConversationAsync(scope, BookingId, "Ciao", "key-12345678", "auth0|persona"));
 
-        // The conversation of the channel, and the booking three times (the direct reply, the choice, the first message).
         Assert.Contains(statements, sql => sql.Contains("FROM \"OtaMessageThreads\"", StringComparison.Ordinal));
         Assert.True(statements.Count(sql => sql.Contains("FROM \"Bookings\"", StringComparison.Ordinal)) >= 3, $"{kind}: the queries of the bookings were not all reached.");
 
-        // Every statement names the org of the scope.
         Assert.All(statements, sql => Assert.Contains("\"OrgId\"", sql, StringComparison.Ordinal));
     }
 
@@ -105,7 +102,6 @@ public class MessageReplyNpgsqlTranslationTests
         Assert.Contains(statements, sql => sql.Contains("FROM \"OtaMessageThreads\"", StringComparison.Ordinal));
         Assert.Contains(statements, sql => sql.Contains("FROM \"Bookings\"", StringComparison.Ordinal));
 
-        // The templates are the data of the org: every statement that reads them names it.
         Assert.All(
             statements.Where(sql => sql.Contains("FROM \"MessageTemplates\"", StringComparison.Ordinal)),
             sql => Assert.Contains("\"OrgId\"", sql, StringComparison.Ordinal));

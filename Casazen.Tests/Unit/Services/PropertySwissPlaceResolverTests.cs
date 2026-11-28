@@ -22,7 +22,6 @@ public class PropertySwissPlaceResolverTests(PropertySwissPlaceResolverTests.See
     private static readonly DateOnly ArrivalDay = DateOnly.FromDateTime(Day);
     private static readonly FixedTimeProvider Clock = new(new DateTimeOffset(2026, 11, 18, 15, 0, 0, TimeSpan.Zero));
 
-    /// <summary>One in-memory database with the seed of the build, loaded once for the class; each test adds its own org and properties.</summary>
     public sealed class SeededPlaces : IAsyncLifetime
     {
         public string DatabaseName { get; } = "swiss-place-resolver-" + Guid.NewGuid().ToString("N");
@@ -49,7 +48,6 @@ public class PropertySwissPlaceResolverTests(PropertySwissPlaceResolverTests.See
         Assert.Equal(new SwissPlace("5113", "Locarno", "TI", SwissPlaceSource.Stored, Ambiguous: false), place);
     }
 
-    /// <summary>A property in Lugano with the postal code 6900 and no stored municipality is in Lugano, canton Ticino (acceptance criterion 1).</summary>
     [Fact]
     public async Task Resolve_Lugano6900WithoutAStoredMunicipality_IsLuganoInTicino()
     {
@@ -159,7 +157,6 @@ public class PropertySwissPlaceResolverTests(PropertySwissPlaceResolverTests.See
         Assert.Equal(new SwissPlace("5192", "Lugano", "TI", SwissPlaceSource.Derived, Ambiguous: false), place);
     }
 
-    /// <summary>Data: resolving reads only; a derived municipality is never stored behind the host's back.</summary>
     [Fact]
     public async Task Resolver_ReadDoesNotWrite_Test()
     {
@@ -220,10 +217,6 @@ public class PropertySwissPlaceResolverTests(PropertySwissPlaceResolverTests.See
         Assert.Equal(SwissPlaceErrorCodes.Unavailable, unavailable.Code);
     }
 
-    /// <summary>
-    /// A property with only the postal code 6900 and the city «Lugano» is in Ticino for the police notification: the endpoints no longer answer
-    /// <c>property_not_in_ticino</c>, its arrival day is in the days to notify, and the OTR report is made.
-    /// </summary>
     [Fact]
     public async Task TicinoNotificationAndOtrReport_AProperty6900LuganoWithoutMunicipality_IsInTicino()
     {

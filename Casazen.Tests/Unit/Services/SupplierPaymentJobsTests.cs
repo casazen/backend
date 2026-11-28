@@ -5,7 +5,6 @@ using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Email.Templates;
-using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Stripe;
 using Xunit;
@@ -23,14 +22,12 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class SupplierPaymentJobsTests
 {
-    // ─── service-payment-sync ───
-
     [Fact]
     public async Task Sync_APaymentInFlightThatSucceededOnStripe_IsRecordedAsPaid_AndTheSupplierGetsTheReceipt()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         var opened = await s.OpenedAsync();
-        await s.Payments.ApplyPaymentIntentEventAsync(opened.EventOf(Processing)); // the success event is lost
+        await s.Payments.ApplyPaymentIntentEventAsync(opened.EventOf(Processing));
         s.Gateway.SetStatus(opened.IntentId, "succeeded");
         s.ForgetNotifications();
         s.Clock.Advance(TimeSpan.FromMinutes(15));
@@ -75,7 +72,7 @@ public class SupplierPaymentJobsTests
 
         var run = await s.Payments.SynchronizeAsync();
 
-        Assert.Equal(0, run.PaymentsRead); // Paid is not "in flight" any more
+        Assert.Equal(0, run.PaymentsRead);
         Assert.Empty(s.Emails.PaymentEmails());
     }
 
@@ -189,7 +186,6 @@ public class SupplierPaymentJobsTests
         var statuses = new[] { (await s.ReloadAsync(first.PaymentId)).Status, (await s.ReloadAsync(second.PaymentId)).Status };
         Assert.Single(statuses, status => status == ServicePaymentStatus.Paid);
         Assert.Single(statuses, status => status == ServicePaymentStatus.Processing);
-        // The next run reads the one that failed.
         var next = await s.Payments.SynchronizeAsync();
         Assert.Equal(1, next.PaymentsUpdated);
         Assert.Equal(ServicePaymentStatus.Paid, (await s.ReloadAsync(first.PaymentId)).Status);
@@ -210,8 +206,6 @@ public class SupplierPaymentJobsTests
         Assert.Equal(1, run.PaymentsUpdated);
         Assert.Equal(ServicePaymentStatus.Paid, (await s.ReloadAsync(opened.PaymentId)).Status);
     }
-
-    // ─── service-payment-reminders ───
 
     private static async Task<(ServiceRequestScenario S, Guid RequestId, Guid PaymentId, string Token)> AskedAsync(ServiceRequestScenario? scenario = null)
     {
@@ -261,10 +255,8 @@ public class SupplierPaymentJobsTests
         var payment = await s.ReloadAsync(paymentId);
         Assert.Equal(2, payment.SentCount);
         Assert.Equal(ServiceRequestScenario.Instant.UtcDateTime.AddDays(2), payment.LastSentAt);
-        // The first link was replaced, as when the supplier reminds by hand; the new one pays.
         await Assert.ThrowsAsync<NotFoundException>(() => s.Payments.GetPublicAsync(paymentId, oldToken));
         Assert.Equal(PublicServicePaymentState.Payable, (await s.Payments.GetPublicAsync(paymentId, link.Token)).State);
-        // Valid for 30 days from this email.
         Assert.Equal(payment.LastSentAt!.Value.AddDays(30), (await s.Payments.GetPublicAsync(paymentId, link.Token)).ValidUntil);
     }
 
@@ -293,12 +285,12 @@ public class SupplierPaymentJobsTests
         using var _ = s;
 
         s.Clock.Advance(TimeSpan.FromDays(2));
-        await s.Payments.RunRemindersAsync(); // reminder 1
-        s.Clock.Advance(TimeSpan.FromDays(3)); // day 5
+        await s.Payments.RunRemindersAsync();
+        s.Clock.Advance(TimeSpan.FromDays(3));
         var dayFive = await s.Payments.RunRemindersAsync();
-        s.Clock.Advance(TimeSpan.FromDays(2)); // day 7
-        var daySeven = await s.Payments.RunRemindersAsync(); // reminder 2
-        s.Clock.Advance(TimeSpan.FromDays(10)); // day 17
+        s.Clock.Advance(TimeSpan.FromDays(2));
+        var daySeven = await s.Payments.RunRemindersAsync();
+        s.Clock.Advance(TimeSpan.FromDays(10));
         var later = await s.Payments.RunRemindersAsync();
         s.Clock.Advance(TimeSpan.FromDays(10));
         var muchLater = await s.Payments.RunRemindersAsync();
@@ -317,12 +309,12 @@ public class SupplierPaymentJobsTests
         var (s, requestId, paymentId, _) = await AskedAsync();
         using var _ = s;
         s.Clock.Advance(TimeSpan.FromDays(1).Add(TimeSpan.FromHours(1)));
-        await s.Service.RequestPaymentAsync(requestId, s.SupplierOrgId); // day 1: the supplier reminds
+        await s.Service.RequestPaymentAsync(requestId, s.SupplierOrgId);
         s.ForgetNotifications();
 
-        s.Clock.Advance(TimeSpan.FromDays(1)); // day 2 and one hour: the day of the first automatic reminder, already made up for
+        s.Clock.Advance(TimeSpan.FromDays(1));
         var dayTwo = await s.Payments.RunRemindersAsync();
-        s.Clock.Advance(TimeSpan.FromDays(5)); // day 7
+        s.Clock.Advance(TimeSpan.FromDays(5));
         var daySeven = await s.Payments.RunRemindersAsync();
 
         Assert.Equal(0, dayTwo.RemindersSent);
@@ -457,8 +449,6 @@ public class SupplierPaymentJobsTests
         Assert.Single(Reminders(s));
     }
 
-    // ─── Late ───
-
     [Fact]
     public async Task Late_FromTheSeventhDay_ThePaymentIsFlaggedOnce_AtTheMomentItBecameLate()
     {
@@ -478,7 +468,6 @@ public class SupplierPaymentJobsTests
 
         Assert.Equal(1, late.MarkedLate);
         Assert.Equal(0, again.MarkedLate);
-        // The moment it became late, not the moment the job noticed: the same figure whenever the job runs.
         Assert.Equal(asked.AddDays(7), (await s.ReloadAsync(paymentId)).LateAt);
     }
 
@@ -514,14 +503,11 @@ public class SupplierPaymentJobsTests
         Assert.NotNull((await s.ReloadAsync(paymentId)).LateAt);
     }
 
-    // ─── Pending requests: the supplier was not ready when the work was completed ───
-
     private static async Task<(ServiceRequestScenario S, Guid RequestId, Guid PaymentId)> PendingAsync(ServiceRequestScenario? scenario = null)
     {
         var s = scenario ?? await ServiceRequestScenario.CreateAsync();
         await s.EnablePaymentsAsync();
         var taken = await s.TakenAsync();
-        // The Stripe account stops being ready between the take and the completion: the payment is created, with no link to send.
         await s.ConnectSupplierAsync(ready: false);
         var request = await s.Service.CompleteAsync(taken.Id, s.SupplierOrgId);
         var payment = await s.OnlyPaymentOfAsync(request.Id);
@@ -598,7 +584,7 @@ public class SupplierPaymentJobsTests
         var (s, requestId, _) = await PendingAsync();
         using var _ = s;
         await s.ConnectSupplierAsync(ready: true);
-        await s.Service.RequestPaymentAsync(requestId, s.SupplierOrgId); // the supplier asks for it by hand first
+        await s.Service.RequestPaymentAsync(requestId, s.SupplierOrgId);
         s.ForgetNotifications();
 
         var sent = await s.Payments.SendPendingRequestsAsync(s.SupplierOrgId);
@@ -647,7 +633,7 @@ public class SupplierPaymentJobsTests
     {
         var (s, _, paymentId) = await PendingAsync();
         using var _ = s;
-        await s.ConnectSupplierAsync(ready: true); // the supplier became ready, but no account.updated queued the job
+        await s.ConnectSupplierAsync(ready: true);
 
         var run = await s.Payments.RunRemindersAsync();
 
@@ -663,11 +649,10 @@ public class SupplierPaymentJobsTests
         var (s, _, _) = await PendingAsync();
         using var _ = s;
         await s.ConnectSupplierAsync(ready: true);
-        s.Clock.Advance(TimeSpan.FromDays(9)); // long past the reminder days
+        s.Clock.Advance(TimeSpan.FromDays(9));
 
         var run = await s.Payments.RunRemindersAsync();
 
-        // Its first request goes out now: the reminder days count from it, not from when the work was completed.
         Assert.Equal(1, run.RequestsSent);
         Assert.Equal(0, run.RemindersSent);
         Assert.Empty(Reminders(s));

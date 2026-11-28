@@ -3,7 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Search;
 
-/// <summary>UI-13a: how a text is folded and a term is read, the same rules the database applies to the stored keys.</summary>
 public class SearchTextTests
 {
     [Theory]
@@ -36,7 +35,7 @@ public class SearchTextTests
     }
 
     [Theory]
-    [InlineData("Иван")] // Cyrillic: not a script of the table, so a separator
+    [InlineData("Иван")]
     [InlineData("中文")]
     public void Fold_AScriptTheTableDoesNotKnow_IsNotSearchable(string text)
     {
@@ -47,7 +46,6 @@ public class SearchTextTests
     [Fact]
     public void Fold_TheKelvinAndAngstromSignsAndTheDottedI_AreLetters()
     {
-        // Their lower case is an ASCII letter in some locales, so the database would fold them: the table must too.
         Assert.Equal("k", SearchText.Fold("K"));
         Assert.Equal("a", SearchText.Fold("Å"));
         Assert.Equal("istanbul", SearchText.Fold("İstanbul"));
@@ -67,8 +65,6 @@ public class SearchTextTests
             Assert.All(folded, character => Assert.True(character is ' ' or (>= 'a' and <= 'z') or (>= '0' and <= '9')));
         }
     }
-
-    // ─── Parse ──────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void Parse_TheWordsInTheOrderTyped_FoldedWithoutRepeats()
@@ -103,7 +99,6 @@ public class SearchTextTests
     [Fact]
     public void Parse_AOneLetterWordNextToALongerOne_IsKept()
     {
-        // "via a" is a way to say "via a ..." : the short word narrows the result, the long one makes the term safe to run.
         Assert.Equal(["a", "rossi"], SearchText.Parse("a rossi").Tokens);
     }
 
@@ -113,15 +108,12 @@ public class SearchTextTests
         Assert.Equal("ros:* & mar:*", SearchText.Parse("ros mar").ToTsQuery());
         Assert.Equal("it0720:*", SearchText.Parse("IT0720").ToTsQuery());
 
-        // Whatever is typed, the text holds only a-z, 0-9, ':*' and ' & ': nothing a client could shape into the query language.
         foreach (var hostile in new[] { "ros' | !mar", "a:*&b", "(x) <-> y", "\\", "%_", "ros\u0000mar", "foo\"bar" })
         {
             var text = SearchText.Parse(hostile).ToTsQuery();
             Assert.Matches("^([a-z0-9]+:\\*)( & [a-z0-9]+:\\*)*$|^$", text);
         }
     }
-
-    // ─── Booking code ───────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("7K3M9-PQ2XV", "7K3M9PQ2XV")]
@@ -137,12 +129,12 @@ public class SearchTextTests
     }
 
     [Theory]
-    [InlineData("O1L")] // O and L read as 0 and 1, but only three characters
+    [InlineData("O1L")]
     [InlineData("7K3")]
-    [InlineData("7K3U9")] // U is not in the alphabet
-    [InlineData("7K3M9-PQ2XV-12")] // three parts
-    [InlineData("7K3M9PQ2XV1")] // more than a code
-    [InlineData("zxcv")] // letters only and not whole
+    [InlineData("7K3U9")]
+    [InlineData("7K3M9-PQ2XV-12")]
+    [InlineData("7K3M9PQ2XV1")]
+    [InlineData("zxcv")]
     [InlineData("mario")]
     [InlineData("rossi")]
     [InlineData("")]
@@ -155,7 +147,6 @@ public class SearchTextTests
     [Fact]
     public void BookingCodePrefix_ACodeWithNoDigitIsStillFoundWhole()
     {
-        // 2.4 % of the codes have no digit; typed whole (10 characters) they are looked up.
         Assert.Equal("ABCDEFGHJK", SearchText.BookingCodePrefix("ABCDE-FGHJK"));
     }
 
@@ -166,8 +157,6 @@ public class SearchTextTests
         Assert.True(Casazen.Core.Services.BookingCodes.TryNormalize("O1 2345678-L", out var whole));
         Assert.Equal("0123456781", whole);
     }
-
-    // ─── KeyMatches ─────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("rossi maria", new[] { "ros" }, true)]

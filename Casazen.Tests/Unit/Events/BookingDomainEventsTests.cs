@@ -28,18 +28,11 @@ namespace Casazen.Tests.Unit.Events;
 /// </summary>
 public class BookingDomainEventsTests
 {
-    // 2026-10-10 in Rome: the day the stay of the scenario starts (HostScopeScenario: the confirmed stay of Oct 10-13).
     private static readonly DateTimeOffset Now = new(2026, 10, 10, 9, 0, 0, TimeSpan.Zero);
     private static readonly Guid OrgA = Guid.Parse("0f6c1a52-3b7e-4c11-9d2a-5e8b7c6d4a01");
     private static readonly Guid PropertyA = Guid.Parse("5b1f0c3e-7d2a-4e68-8a19-3c4d5e6f7a80");
     private static readonly Guid BookingA = Guid.Parse("c3a9e8d7-1b2c-4d5e-9f60-718293a4b5c6");
 
-    // --- The payload: ids, enums and dates only (privacy rule) ---------------------------------------------------------------
-
-    /// <summary>
-    /// Proof (privacy; ADR-022-R21, AC-E08-F06-US01-02): the events of a booking made of a guest, a special request, notes and prices
-    /// carry the ids, the source, the origin, the status and the dates, and nothing else: no guest field, no note, no amount.
-    /// </summary>
     [Fact]
     public async Task BookingEventPayload_HasNoPersonalData_Test()
     {
@@ -88,7 +81,6 @@ public class BookingDomainEventsTests
             }
         }
 
-        // By construction too: every member of the payload is an id, an enum or a date.
         var members = typeof(BookingEventPayload).GetConstructors().Single().GetParameters();
         Assert.All(members, p => Assert.True(
             p.ParameterType == typeof(Guid) || p.ParameterType == typeof(DateOnly) || p.ParameterType.IsEnum,
@@ -106,8 +98,6 @@ public class BookingDomainEventsTests
         Assert.Equal(payload, back);
         Assert.Contains("\"Origin\":\"Octorate\"", json, StringComparison.Ordinal);
     }
-
-    // --- The events and their keys ------------------------------------------------------------------------------------------
 
     [Fact]
     public void DedupKeyOf_IsTheKeyOfTheBrief_ForEachEvent()
@@ -149,7 +139,6 @@ public class BookingDomainEventsTests
         await using var db = NewDb(database);
         var booking = NewBooking();
 
-        // The same edit saved twice (a repeated save, a retried request): one event. Another edit, another instant: another event.
         await BookingEvents.RecordAsync(Recorder(db), db, DomainEventType.BookingModified, booking, BookingEventOrigin.Host);
         await db.SaveChangesAsync();
         await BookingEvents.RecordAsync(Recorder(db), db, DomainEventType.BookingModified, booking, BookingEventOrigin.Host);
@@ -161,7 +150,6 @@ public class BookingDomainEventsTests
         await db.SaveChangesAsync();
         Assert.Equal(2, await db.OutboxEvents.CountAsync());
 
-        // The check-in of a stay is one event, however many times it is asked for.
         await BookingEvents.RecordAsync(Recorder(db), db, DomainEventType.CheckInCompleted, booking, BookingEventOrigin.Host);
         await BookingEvents.RecordAsync(Recorder(db), db, DomainEventType.CheckInCompleted, booking, BookingEventOrigin.Host);
         await db.SaveChangesAsync();
@@ -188,7 +176,6 @@ public class BookingDomainEventsTests
         {
             await BookingEvents.RecordAsync(Recorder(db), db, type, booking, BookingEventOrigin.Host);
             await db.SaveChangesAsync();
-            // The same change again (a replay of it) is not a third one.
             await BookingEvents.RecordAsync(Recorder(db), db, type, booking, BookingEventOrigin.Host);
             await db.SaveChangesAsync();
         }
@@ -231,18 +218,9 @@ public class BookingDomainEventsTests
         Assert.All(kept, e => Assert.Equal(other.Id, e.EntityId));
     }
 
-    // --- The event is saved with the change, never after it (data rule, ADR-022-R1) -------------------------------------------
-
-    /// <summary>
-    /// Proof (data; ADR-022-R1, AC-E08-F06-US01-01): a check-in whose save is refused leaves neither the change of the booking nor its
-    /// event; the same request sent again records the event once, a third time (the stay is checked in) records nothing; and the
-    /// change and its event are one save (a second save would be refused here, and the check-in still stands).
-    /// </summary>
     [Fact]
     public async Task BookingEvents_RolledBackChange_LeavesNoEvent_Test()
     {
-        // One context for the whole test (the interceptor is part of it); between two requests its tracker is cleared, as a new request
-        // starts with a new context.
         var interceptor = new FailingSaveInterceptor();
         await using var db = NewDb(NewDatabase(), interceptor);
         var world = await HostScopeScenario.SeedAsync(db);
@@ -251,7 +229,6 @@ public class BookingDomainEventsTests
             .Select(b => b.Id)
             .SingleAsync();
 
-        // 1. The database refuses the save: the booking is as it was and no event stays.
         interceptor.Failure = new DbUpdateException("the save is refused");
         await Assert.ThrowsAsync<DbUpdateException>(() => Stay(db).RegisterArrivalAsync(bookingId));
         interceptor.Failure = null;
@@ -260,7 +237,6 @@ public class BookingDomainEventsTests
         Assert.Equal(BookingStatus.Confirmed, (await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId)).Status);
         Assert.Empty(await db.OutboxEvents.ToListAsync());
 
-        // 2. The request is sent again: the change and its event are saved by one save (a second save is refused, and nothing needs it).
         interceptor.AfterSave = () => interceptor.Failure = new DbUpdateException("a second save");
         await Stay(db).RegisterArrivalAsync(bookingId);
         interceptor.AfterSave = null;
@@ -278,7 +254,6 @@ public class BookingDomainEventsTests
             Assert.Equal("CheckedIn", json.RootElement.GetProperty("Status").GetString());
         }
 
-        // 3. A third request finds the stay checked in: refused by the rule, and no second event.
         await Assert.ThrowsAsync<DomainConflictException>(() => Stay(db).RegisterArrivalAsync(bookingId));
         db.ChangeTracker.Clear();
         Assert.Equal(1, await db.OutboxEvents.CountAsync());
@@ -327,10 +302,6 @@ public class BookingDomainEventsTests
         Assert.Equal($"property-ready:{closedBookingId}", row.DedupKey);
     }
 
-    /// <summary>
-    /// A booking the repository refuses (the dates are taken) takes the events recorded for it back: the save that follows in the same
-    /// context (the delete of the guest snapshot, say) does not write an event for a booking that does not exist.
-    /// </summary>
     [Fact]
     public async Task RefusedBooking_LeavesNoEvent_EvenIfTheContextSavesAgain()
     {
@@ -348,7 +319,6 @@ public class BookingDomainEventsTests
         Assert.DoesNotContain(await read.OutboxEvents.ToListAsync(), e => e.EntityId == refused.Id);
     }
 
-    /// <summary>A checkout whose payment could not be started is removed (BK-18) with the events of its creation, not published yet.</summary>
     [Fact]
     public async Task DiscardedCheckoutAttempt_TakesItsUnpublishedEventsWithIt()
     {
@@ -372,10 +342,6 @@ public class BookingDomainEventsTests
         Assert.Empty(await read.Bookings.ToListAsync());
     }
 
-    /// <summary>
-    /// The host cancels a booking: one <c>BookingCancelled</c>, origin Host, saved with the cancellation; a second request is refused by
-    /// the rule and records nothing.
-    /// </summary>
     [Fact]
     public async Task HostCancellation_RecordsTheCancellationOnce()
     {
@@ -400,10 +366,6 @@ public class BookingDomainEventsTests
         Assert.Equal(BookingStatus.Cancelled, (await read.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId)).Status);
     }
 
-    /// <summary>
-    /// A «pay at the property» request that nobody answered in time is cancelled by the expiry job: the cancellation is the system's, in
-    /// the save that cancels the booking.
-    /// </summary>
     [Fact]
     public async Task HoldExpiry_RecordsTheCancellationOfAnExpiredRequestAsTheSystems()
     {
@@ -411,7 +373,6 @@ public class BookingDomainEventsTests
         await using var db = NewDb(database);
         var world = await HostScopeScenario.SeedAsync(db);
         var requestId = await PendingRequestIdAsync(db, world);
-        // The request of the scenario waits for the host until the day after the clock of the scenario; the job runs two days later.
         var clock = new FixedTimeProvider(HostScopeScenario.Now.AddDays(2));
         var expiry = new CheckoutHoldExpiryService(
             db,
@@ -436,7 +397,6 @@ public class BookingDomainEventsTests
         Assert.Equal("Cancelled", json.RootElement.GetProperty("Status").GetString());
     }
 
-    /// <summary>The host turns a «pay at the property» request down: the cancellation is recorded with it, as the request's own (System).</summary>
     [Fact]
     public async Task DeclinedRequest_RecordsTheCancellationOnceWithoutTheMessageToTheGuest()
     {
@@ -469,8 +429,6 @@ public class BookingDomainEventsTests
         Assert.Equal("System", json.RootElement.GetProperty("Origin").GetString());
         Assert.Equal(BookingStatus.Cancelled, (await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == requestId)).Status);
     }
-
-    // --- Helpers ------------------------------------------------------------------------------------------------------------
 
     private static Task<Guid> PendingRequestIdAsync(AppDbContext db, HostScopeWorld world) =>
         db.Bookings.AsNoTracking()
@@ -508,7 +466,6 @@ public class BookingDomainEventsTests
             db, refunds, stripe, notifier, NullLogger<BookingCancellationService>.Instance, new FixedTimeProvider(Now), Recorder(db));
     }
 
-    /// <summary>The scenario's confirmed stay of the first property (Oct 10-13), in a database of its own.</summary>
     private static async Task<(string Database, Guid BookingId)> SeedStayAsync()
     {
         var database = NewDatabase();

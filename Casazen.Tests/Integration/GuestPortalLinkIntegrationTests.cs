@@ -27,7 +27,6 @@ public class GuestPortalEnabledFactory : CasazenWebApplicationFactory
 {
     private readonly RecordingEmailQueue _emails = new();
 
-    /// <summary>What the host queued so far: recipient, content and template name.</summary>
     public IReadOnlyList<(string? To, EmailContent Content, string Template)> SentEmails() => _emails.Snapshot();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -51,7 +50,6 @@ public class GuestPortalEnabledFactory : CasazenWebApplicationFactory
 /// </summary>
 public class GuestPortalLinkIntegrationTests(GuestPortalEnabledFactory factory) : IClassFixture<GuestPortalEnabledFactory>
 {
-    /// <summary>Permission rule (tenant): the five calls on a booking of another org answer the same 404, and nothing is written or sent for it.</summary>
     [PostgresFact]
     public async Task Host_BookingOfAnotherOrg_Returns404()
     {
@@ -97,7 +95,6 @@ public class GuestPortalLinkIntegrationTests(GuestPortalEnabledFactory factory) 
         var again = await owner.PostAsync(Link(bookingId), null);
         Assert.Equal(firstUrl, (await again.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("url").GetString());
 
-        // The collaborator reads the state, never the address, and changes nothing: no new link, no revocation, and no e-mail to the guest.
         var queuedBefore = factory.SentEmails().Count;
         var read = await collaborator.GetFromJsonAsync<JsonElement>(Link(bookingId));
         Assert.Equal("active", read.GetProperty("state").GetString());
@@ -112,7 +109,6 @@ public class GuestPortalLinkIntegrationTests(GuestPortalEnabledFactory factory) 
         Assert.Null(kept.RevokedAt);
         Assert.EndsWith(kept.Token, firstUrl, StringComparison.Ordinal);
 
-        // The owner regenerates (a new address, the old one revoked) and revokes.
         var regenerated = await owner.PostAsync(Link(bookingId, "/regenerate"), null);
         Assert.Equal(HttpStatusCode.OK, regenerated.StatusCode);
         Assert.NotEqual(firstUrl, (await regenerated.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("url").GetString());
@@ -124,7 +120,6 @@ public class GuestPortalLinkIntegrationTests(GuestPortalEnabledFactory factory) 
         Assert.Equal("none", (await owner.GetFromJsonAsync<JsonElement>(Link(bookingId))).GetProperty("state").GetString());
     }
 
-    /// <summary>Permission rule (the flag): off, every endpoint of the link answers 404 before authentication, signed in or not.</summary>
     [Fact]
     public async Task Host_FlagOff_Returns404()
     {
@@ -149,7 +144,6 @@ public class GuestPortalLinkIntegrationTests(GuestPortalEnabledFactory factory) 
 
     private static string Link(Guid bookingId, string suffix = "") => $"/api/bookings/{bookingId}/guest-portal{suffix}";
 
-    /// <summary>A confirmed stay from a portal at a new property of the org, arriving in five days.</summary>
     private async Task<Guid> AddBookingAsync(Guid orgId, string ownerId)
     {
         using var scope = factory.Services.CreateScope();

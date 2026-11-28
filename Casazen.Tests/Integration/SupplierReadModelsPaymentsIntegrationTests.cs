@@ -10,13 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// SP-04e on the real pipeline with the payments flag <c>Features:SupplierOnlinePayments</c> on (the host of
-/// <see cref="ServicePaymentsIntegrationTests"/>): the summary of the payment of a completed job in the inbox (the split gross,
-/// commission, net; where it stands; what the supplier may do), the late payments in the counters, and the money of the overview, all
-/// from payments created by the real flow. With the flag off the same endpoints answer with no payment data
-/// (<see cref="SupplierReadModelsIntegrationTests"/>).
-/// </summary>
 [Collection(SupplierCatalogHostsCollection.Name)]
 public class SupplierReadModelsPaymentsIntegrationTests(ServicePaymentsFactory factory) : IClassFixture<ServicePaymentsFactory>
 {
@@ -37,7 +30,7 @@ public class SupplierReadModelsPaymentsIntegrationTests(ServicePaymentsFactory f
         Assert.NotEqual(JsonValueKind.Null, payment.GetProperty("id").ValueKind);
         Assert.Equal("Requested", payment.GetProperty("status").GetString());
         Assert.Equal(6000, payment.GetProperty("amountCents").GetInt32());
-        Assert.Equal(10m, payment.GetProperty("commissionPercent").GetDecimal()); // the configured commission of the host of the tests
+        Assert.Equal(10m, payment.GetProperty("commissionPercent").GetDecimal());
         Assert.Equal(600, payment.GetProperty("commissionCents").GetInt32());
         Assert.Equal(5400, payment.GetProperty("netCents").GetInt32());
         Assert.Equal(1, payment.GetProperty("sentCount").GetInt32());
@@ -45,7 +38,6 @@ public class SupplierReadModelsPaymentsIntegrationTests(ServicePaymentsFactory f
         Assert.NotEqual(JsonValueKind.Null, payment.GetProperty("lastSentAt").ValueKind);
         Assert.False(payment.GetProperty("late").GetBoolean());
         Assert.False(payment.GetProperty("needsAmountConfirmation").GetBoolean());
-        // The link went out a moment ago: a reminder is for tomorrow. Recording it as paid outside CasaZen is possible now.
         Assert.False(payment.GetProperty("canRequest").GetBoolean());
         Assert.True(payment.GetProperty("canRecordOffline").GetBoolean());
     }
@@ -66,7 +58,6 @@ public class SupplierReadModelsPaymentsIntegrationTests(ServicePaymentsFactory f
         var reminder = await supplier.PostAsync($"/api/supplier/requests/{id}/payment-request", content: null);
         Assert.Equal(HttpStatusCode.OK, reminder.StatusCode);
 
-        // The reminder is on its way: not again today, in the summary and in the endpoint.
         Assert.False(await CanRequestAsync(supplier, id));
         var again = await supplier.PostAsync($"/api/supplier/requests/{id}/payment-request", content: null);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, again.StatusCode);
@@ -118,11 +109,9 @@ public class SupplierReadModelsPaymentsIntegrationTests(ServicePaymentsFactory f
         var asked = await supplier.GetFromJsonAsync<JsonElement>("/api/supplier/dashboard/overview");
         Assert.True(asked.GetProperty("onlinePayments").GetBoolean());
         Assert.Equal(0, asked.GetProperty("current").GetProperty("paidNetCents").GetInt64());
-        // Still to be collected: the net of the payment that was asked for, not the gross the supplier declared.
         Assert.Equal(5400, asked.GetProperty("current").GetProperty("toCollectCents").GetInt64());
         Assert.Equal(1, asked.GetProperty("current").GetProperty("toCollectJobs").GetInt32());
 
-        // The payer pays (the webhook is proved in SP-15b; here the state it leaves behind is written to the database).
         await ChangePaymentAsync(id, p =>
         {
             p.Status = ServicePaymentStatus.Paid;
@@ -164,9 +153,6 @@ public class SupplierReadModelsPaymentsIntegrationTests(ServicePaymentsFactory f
         Assert.NotEqual(stranger.SupplierOrgId, world.SupplierOrgId);
     }
 
-    // ─── helpers ───
-
-    /// <summary>A supplier whose Stripe account takes charges and payouts, with a host and a service.</summary>
     private async Task<ServiceRequestWorld> ReadyWorldAsync()
     {
         var world = await ServiceRequestWorlds.SeedAsync(factory);
@@ -180,7 +166,6 @@ public class SupplierReadModelsPaymentsIntegrationTests(ServicePaymentsFactory f
         return world;
     }
 
-    /// <summary>A request paid inside CasaZen, taken and completed at 60 euro: the payment exists and its link was sent.</summary>
     private async Task<(ServiceRequestWorld World, Guid Id)> CompletedAsync()
     {
         var world = await ReadyWorldAsync();

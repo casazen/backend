@@ -145,17 +145,13 @@ public class BookingListSearchTests
         return page.Items.Select(booking => names[booking.Id]).ToList();
     }
 
-    // --- Arrival days ---------------------------------------------------------------------------------------
-
     [Fact]
     public async Task Arrival_TheStaysThatArriveInTheRange_BothDaysIncluded()
     {
         var world = await SeedAsync();
 
-        // Latest check-in first: b1 arrives on the 10th, b2 on the 9th; b3 arrived on the 7th, b7 arrives on the 15th.
         Assert.Equal(["b1", "b2"], await NamesAsync(world, new BookingSearchCriteria(ArrivalFrom: new DateOnly(2026, 10, 9), ArrivalTo: new DateOnly(2026, 10, 12))));
         Assert.Equal(["b1"], await NamesAsync(world, new BookingSearchCriteria(ArrivalFrom: new DateOnly(2026, 10, 10), ArrivalTo: new DateOnly(2026, 10, 10))));
-        // b5 and b8 arrive the same day (the 20th): the id decides between them, and the ids are random.
         var fromTheTenth = await NamesAsync(world, new BookingSearchCriteria(ArrivalFrom: new DateOnly(2026, 10, 10)));
         Assert.Equal(["b6", "b7", "b1"], fromTheTenth.Where(name => name is not ("b5" or "b8")));
         Assert.Equal(["b5", "b8"], fromTheTenth.Skip(1).Take(2).Order());
@@ -180,12 +176,9 @@ public class BookingListSearchTests
     {
         var world = await SeedAsync();
 
-        // The 12th: b1 (10 to 13) and b2 (9 to 12) have a day in it; nobody arrives that day.
         Assert.Equal(["b1", "b2"], await NamesAsync(world, new BookingSearchCriteria(From: new DateOnly(2026, 10, 12), To: new DateOnly(2026, 10, 12))));
         Assert.Empty(await NamesAsync(world, new BookingSearchCriteria(ArrivalFrom: new DateOnly(2026, 10, 12), ArrivalTo: new DateOnly(2026, 10, 12))));
     }
-
-    // --- The chips ------------------------------------------------------------------------------------------
 
     [Theory]
     [InlineData(BookingListView.All, "b6,b5,b8,b7,b1,b2,b3,b4")]
@@ -218,7 +211,6 @@ public class BookingListSearchTests
     public async Task View_TodayIsTheRomeDay_TheCheckInOfTodayIsInProgress_TheNextDayIsUpcoming()
     {
         var world = await SeedAsync();
-        // 23:30 UTC of the 9th is half past one on the 10th in Rome: b1 (arrives the 10th) arrives today, b2 arrived yesterday.
         var late = new Casazen.Tests.Unit.FixedTimeProvider(new DateTimeOffset(2026, 10, 9, 23, 30, 0, TimeSpan.Zero));
         var service = new BookingSearchService(world.Db, new ConfigurationBuilder().Build(), late);
 
@@ -234,7 +226,6 @@ public class BookingListSearchTests
     public async Task View_AnExpiredHoldIsNotUpcoming_AndARequestPastItsTermIsNotToConfirm()
     {
         var world = await SeedAsync();
-        // A day later the hold of the 9th is long expired and the request (term: the 10th at 08:00Z) ran out.
         var later = new Casazen.Tests.Unit.FixedTimeProvider(new DateTimeOffset(2026, 10, 11, 10, 0, 0, TimeSpan.Zero));
         var service = new BookingSearchService(world.Db, new ConfigurationBuilder().Build(), later);
 
@@ -245,8 +236,6 @@ public class BookingListSearchTests
         Assert.Empty(toConfirm);
     }
 
-    // --- The counters of the chips -----------------------------------------------------------------------------
-
     [Fact]
     public async Task Counts_EachChipHasItsBookings_AndNoBookingIsCountedTwice()
     {
@@ -255,7 +244,6 @@ public class BookingListSearchTests
         var counts = await Search(world.Db).CountAsync(world.OrgWide, new BookingSearchCriteria());
 
         Assert.Equal(new BookingCounts(All: 8, ToConfirm: 1, Upcoming: 3, InProgress: 2, Completed: 1, Cancelled: 1), counts);
-        // The chips add up to the bookings, none being in two (here every booking is in one).
         Assert.Equal(counts.All, counts.ToConfirm + counts.Upcoming + counts.InProgress + counts.Completed + counts.Cancelled);
     }
 
@@ -268,7 +256,6 @@ public class BookingListSearchTests
     public async Task Counts_EachCounterIsTheTotalOfThatChipInTheList_WithTheSameFilters(BookingListView view)
     {
         var world = await SeedAsync();
-        // Any filter but the chip: the counters and the list read the same predicates.
         var filters = new BookingSearchCriteria(From: new DateOnly(2026, 10, 1), To: new DateOnly(2026, 10, 31), Query: "a");
 
         var counts = await Search(world.Db).CountAsync(world.OrgWide, filters);
@@ -298,7 +285,6 @@ public class BookingListSearchTests
         var byText = await service.CountAsync(world.OrgWide, new BookingSearchCriteria(Query: "verdi"));
 
         Assert.Equal(plain, withAChip);
-        // b1, b6 and b7 came from the booking site.
         Assert.Equal(new BookingCounts(3, 1, 2, 0, 0, 0), byChannel);
         Assert.Equal(new BookingCounts(1, 0, 1, 0, 0, 0), byText);
     }
@@ -312,12 +298,9 @@ public class BookingListSearchTests
         var restricted = await service.CountAsync(world.Restricted, new BookingSearchCriteria());
         var nobody = await service.CountAsync(new HostScope(Guid.NewGuid()), new BookingSearchCriteria());
 
-        // b1, b2, b5, b6, b8: the Trullo's.
         Assert.Equal(new BookingCounts(5, 1, 2, 1, 0, 1), restricted);
         Assert.Equal(new BookingCounts(0, 0, 0, 0, 0, 0), nobody);
     }
-
-    // --- The channel -----------------------------------------------------------------------------------------
 
     [Theory]
     [InlineData(BookingChannel.Direct, "b1,b6,b7")]
@@ -346,8 +329,6 @@ public class BookingListSearchTests
         Assert.Equal(8, (await NamesAsync(world, new BookingSearchCriteria(Channels: []))).Count);
     }
 
-    // --- The online check-in link ----------------------------------------------------------------------------
-
     private static GuestCheckInSession Session(
         Booking booking,
         GuestCheckInSessionStatus status,
@@ -374,8 +355,6 @@ public class BookingListSearchTests
         var world = await SeedAsync();
         var future = At(10, 15, 8);
         var past = At(10, 8, 8);
-        // b4: a submitted link wins over a newer open one. b5: the newest link tells, it replaced an expired one. b6: open but past
-        // its end, so expired before the job marks it so. b7: the email failed, the guest has nothing to open. b8: no link at all.
         world.Db.GuestCheckInSessions.AddRange(
             Session(world.B["b1"], GuestCheckInSessionStatus.Inviato, future, At(10, 6, 8)),
             Session(world.B["b2"], GuestCheckInSessionStatus.InCompilazione, future, At(10, 6, 8)),
@@ -390,7 +369,6 @@ public class BookingListSearchTests
         var sessions = (await world.Db.GuestCheckInSessions.ToListAsync()).ToLookup(s => s.BookingId);
         var expectedStates = world.B.ToDictionary(entry => entry.Key, entry => HostTodayService.StateOf(sessions[entry.Value.Id], Now));
 
-        // The expectations by hand, so the test does not only repeat the rule it compares with.
         Assert.Equal(HostTodayCheckInState.Sent, expectedStates["b1"]);
         Assert.Equal(HostTodayCheckInState.InProgress, expectedStates["b2"]);
         Assert.Equal(HostTodayCheckInState.Completed, expectedStates["b3"]);
@@ -441,8 +419,6 @@ public class BookingListSearchTests
         Assert.Empty(completed);
     }
 
-    // --- The order ----------------------------------------------------------------------------------------------
-
     [Fact]
     public async Task Sort_WithoutOne_IsTheLatestCheckInFirst_AsTheListAlwaysWas()
     {
@@ -473,7 +449,6 @@ public class BookingListSearchTests
 
         var names = await NamesAsync(world, new BookingSearchCriteria(Sort: new BookingSort(key, descending)));
 
-        // "a|b" is two bookings that tie on the key: either order, the id decides (and the ids are random), the same one every time.
         var groups = expected.Split(',').Select(group => group.Split('|')).ToList();
         var position = 0;
         foreach (var group in groups)
@@ -483,7 +458,6 @@ public class BookingListSearchTests
         }
 
         Assert.Equal(8, names.Count);
-        // Twice the same: a total order.
         Assert.Equal(names, await NamesAsync(world, new BookingSearchCriteria(Sort: new BookingSort(key, descending))));
     }
 
@@ -519,8 +493,6 @@ public class BookingListSearchTests
         }
     }
 
-    // --- What each row says besides the booking ---------------------------------------------------------------------
-
     [Fact]
     public async Task Rows_HowMuchWasPaid_AndWhereTheAlloggiatiCommunicationStands()
     {
@@ -531,12 +503,9 @@ public class BookingListSearchTests
         BookingRowDetails Row(string name) => page.Details[Id(world, name)];
         Assert.Equal(8, page.Details.Count);
         Assert.Equal(new BookingRowDetails(BookingPaymentState.Paid, 300m, AlloggiatiWebStatus.DaInviare), Row("b1"));
-        // 150 of 500 came in; the failed payment of 350 is nothing. It arrives today: to send on the portal.
         Assert.Equal(new BookingRowDetails(BookingPaymentState.Partial, 150m, AlloggiatiWebStatus.DaInviareManualmente), Row("b2"));
         Assert.Equal(new BookingRowDetails(BookingPaymentState.None, 0m, AlloggiatiWebStatus.Inviato), Row("b3"));
-        // Refunded in full; it left on the 4th with nothing sent: still to send.
         Assert.Equal(new BookingRowDetails(BookingPaymentState.Refunded, 0m, AlloggiatiWebStatus.DaInviareManualmente), Row("b4"));
-        // A cancelled booking, a request and a hold have no communication.
         Assert.Equal(new BookingRowDetails(BookingPaymentState.None, 0m, null), Row("b5"));
         Assert.Equal(new BookingRowDetails(BookingPaymentState.None, 0m, null), Row("b6"));
         Assert.Equal(new BookingRowDetails(BookingPaymentState.None, 0m, null), Row("b7"));
@@ -546,7 +515,6 @@ public class BookingListSearchTests
     [Fact]
     public async Task Rows_ANoShowHasNoAlloggiatiCommunication()
     {
-        // NF-45: b2 arrives today and would be "to send on the portal"; marked as a no-show, its guests never came, so the row says nothing.
         var world = await SeedAsync();
         var b2 = Id(world, "b2");
         var arrivesToday = await world.Db.Bookings.IgnoreQueryFilters().SingleAsync(b => b.Id == b2);

@@ -3,10 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Authorization;
 
-/// <summary>
-/// AM-00: the single answer to "is this DB membership the owner's?", used by the org billing policy and by the
-/// onboarding guard. A role key counts only in its own context.
-/// </summary>
 public class OrgOwnerRolesTests
 {
     [Theory]

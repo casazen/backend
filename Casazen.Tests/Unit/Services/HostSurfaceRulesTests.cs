@@ -4,10 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E40/F01/US01/T01 (NF-140..NF-142, NF-144): the one rule of the surfaces of an org's host. Nothing changes for an org without a verified
-/// custom domain or with the flags off; the owner sign-in and the owner links need the Auth0 state <c>Ready</c>.
-/// </summary>
 public class HostSurfaceRulesTests
 {
     [Theory]
@@ -26,7 +22,6 @@ public class HostSurfaceRulesTests
     [InlineData(PublicHostMode.CasazenPath)]
     public void Evaluate_SubdomainMode_NeverSurfaces(PublicHostMode servedMode)
     {
-        // A platform subdomain (or the platform path, e.g. a custom domain not verified or not paid for) never serves a surface.
         var surfaces = HostSurfaceRules.Evaluate(EverythingOn(), servedMode, whiteLabelHost: true, siteEmbed: true);
 
         Assert.False(surfaces.GuestArea);
@@ -52,7 +47,6 @@ public class HostSurfaceRulesTests
 
         Assert.True(surfaces.OwnerPortal);
         Assert.Equal(expected, surfaces.OwnerLoginReady);
-        // An owner is never sent to a domain where the sign-in is not enabled.
         Assert.Equal(expected, surfaces.OwnerLinksOnOwnDomain);
     }
 

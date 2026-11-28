@@ -34,7 +34,6 @@ public class FiscalDocumentPostgresTests
 
     private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
-    /// <summary>PROOF TEST: money and data rule. No number twice in one org and series, no Octorate document imported twice.</summary>
     [PostgresFact]
     public async Task FiscalDocument_NumberUniquePerSeries_Test()
     {
@@ -42,7 +41,6 @@ public class FiscalDocumentPostgresTests
         var orgId = Guid.NewGuid();
         var otherOrgId = Guid.NewGuid();
 
-        // The numbers are per org, issuer and series (E17/F01/US01/T01): the issuer of each document is the profile of its organization here.
         var issuer = new OrgFiscalIssuerProfile { OrgId = orgId };
         var otherIssuer = new OrgFiscalIssuerProfile { OrgId = otherOrgId };
         await using (var db = new AppDbContext(database.CreateOptions(), tenantContext: null, Provider))
@@ -70,7 +68,6 @@ public class FiscalDocumentPostgresTests
             Assert.Contains(FiscalDocument.OctorateDocumentIndexName, twice.InnerException?.Message ?? string.Empty, StringComparison.Ordinal);
         }
 
-        // Drafts have no number: any number of them in the same series.
         await using (var db = new AppDbContext(database.CreateOptions(), tenantContext: null, Provider))
         {
             db.FiscalDocuments.Add(new FiscalDocument { OrgId = orgId, Series = "2026", Currency = "EUR" });
@@ -80,7 +77,6 @@ public class FiscalDocumentPostgresTests
         }
     }
 
-    /// <summary>PROOF TEST: privacy rule. The raw text of every recipient column and of the XML holds a payload and none of the value.</summary>
     [PostgresFact]
     public async Task FiscalDocument_RecipientData_EncryptedAtRest_Test()
     {
@@ -101,11 +97,8 @@ public class FiscalDocumentPostgresTests
         document.RecipientPec = Pec;
         document.FatturaPaXml = Xml;
 
-        // E11/F01/US01/T01: the snapshot of the issuer is encrypted like the recipient (a column of the same list).
         document.IssuerSnapshot = new FiscalIssuerSnapshot { LegalName = RecipientName, AddressStreet = Street, VatNumber = "01234567897" }.ToJson();
 
-        // FIX/BE-TD17-JOB-EXIT: the free note of the closing of a replacement as «non più dovuta» is the last column of the list. A closed document is all or nothing (a check of the table): discarded, with its
-        // sequence number, its reason and its day.
         document.Status = FiscalDocumentStatus.Discarded;
         document.ClosedNotDueReason = SelfBillingCloseReasons.PortalCreditNote;
         document.ClosedNotDueAt = new DateTime(2026, 11, 13, 9, 30, 0, DateTimeKind.Utc);
@@ -120,12 +113,10 @@ public class FiscalDocumentPostgresTests
         await using var stored = database.CreateContext();
         foreach (var column in EncryptedColumns.All.Where(c => c.EntityType == typeof(FiscalDocument)).Select(c => c.Property))
         {
-            // The column names come from EncryptedColumns, never from input.
             var sql = "SELECT \"" + column + "\" AS \"Value\" FROM \"FiscalDocuments\"";
             var raw = await stored.Database.SqlQueryRaw<string>(sql).SingleAsync();
             Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, raw, StringComparison.Ordinal);
 
-            // The payload is random text, so a short value (a single word, a postal code) turns up in it by chance: only values too long to be met by chance are searched for.
             foreach (var secret in new[] { RecipientName, RecipientFiscalCode, "01234567897", Street, Pec, "<FatturaElettronica>", ClosingNote })
                 Assert.DoesNotContain(secret, raw, StringComparison.Ordinal);
         }
@@ -157,7 +148,6 @@ public class FiscalDocumentPostgresTests
             await db.SaveChangesAsync();
         }
 
-        // The number of the closed document is never taken again: another document of the same issuer and series with that number is refused by the unique index.
         await using (var db = new AppDbContext(database.CreateOptions(), tenantContext: null, Provider))
         {
             db.FiscalDocuments.Add(Issued(orgId, "TD17-2026", 1, issuer.Id));
@@ -165,7 +155,6 @@ public class FiscalDocumentPostgresTests
             Assert.Contains(FiscalDocument.SeriesNumberIndexName, duplicate.InnerException?.Message ?? string.Empty, StringComparison.Ordinal);
         }
 
-        // The closing is all or nothing: each of these shapes is refused by the check of the table.
         var shapes = new (string Name, Action<FiscalDocument> Change)[]
         {
             ("closed but not discarded", d => d.Status = FiscalDocumentStatus.Draft),
@@ -187,7 +176,6 @@ public class FiscalDocumentPostgresTests
                 $"{name}: the check of the closing did not refuse it ({refused.InnerException?.Message})");
         }
 
-        // What was accepted is what was written: the closed document and the one that was never closed.
         await using var read = new AppDbContext(database.CreateOptions(), tenantContext: null, Provider);
         var stored = await read.FiscalDocuments.AsNoTracking().OrderBy(d => d.SequenceNumber).ToListAsync();
         Assert.Equal(
@@ -297,7 +285,6 @@ public class FiscalDocumentPostgresTests
         SdiStatus = FiscalDocumentSdiStatuses.ToSend,
     };
 
-    /// <summary>A replacement closed as «non più dovuta»: discarded, with its sequence number and its display number, its reason, its note, its user and its day.</summary>
     private static FiscalDocument Closed(Guid orgId, Guid issuerProfileId, int number)
     {
         var document = Issued(orgId, "TD17-2026", number, issuerProfileId);

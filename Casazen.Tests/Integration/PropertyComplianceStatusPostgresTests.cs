@@ -54,7 +54,6 @@ public class PropertyComplianceStatusPostgresTests : IClassFixture<PropertyCompl
         Assert.Contains("codice identificativo nazionale (CIN) mancante o non valido", email.Content.HtmlBody);
         Assert.Contains($"/app/short-rent/properties/{seeded.PropertyId:D}/activation", email.Content.HtmlBody);
 
-        // The confirmed stay stays valid: nothing is cancelled.
         Assert.Equal(BookingStatus.Confirmed, await BookingStatusAsync(bookingId));
 
         var wizard = await ReadJsonAsync(await client.GetAsync($"/api/properties/{seeded.PropertyId}/compliance/activation"));
@@ -83,13 +82,12 @@ public class PropertyComplianceStatusPostgresTests : IClassFixture<PropertyCompl
         var wizard = await ReadJsonAsync(await client.GetAsync($"/api/properties/{seeded.PropertyId}/compliance/activation"));
         Assert.Equal("Active", wizard.GetProperty("complianceStatus").GetString());
         Assert.Empty(wizard.GetProperty("suspensionReasons").EnumerateArray());
-        Assert.Single(EmailsTo(seeded.HostEmail)); // only the suspension
+        Assert.Single(EmailsTo(seeded.HostEmail));
     }
 
     [PostgresFact]
     public async Task SaveSafetyChecklist_WithoutConfirmationOnActiveProperty_StaysActiveWithoutEmail()
     {
-        // PO decision 2026-11-01 (option A): the safety checklist is a reminder, it never suspends an active property.
         var seeded = await SeedActiveCompliantPropertyAsync("checklist");
         using var client = _factory.CreateAuthenticatedClient(seeded.HostId, "PropertyOwner");
 
@@ -123,7 +121,6 @@ public class PropertyComplianceStatusPostgresTests : IClassFixture<PropertyCompl
     [PostgresFact]
     public async Task DeleteDocument_RequiredDocumentOfActiveProperty_StaysActiveWithoutEmail()
     {
-        // PO decision 2026-11-01 (option A): the required documents are a reminder, they never suspend an active property.
         var seeded = await SeedActiveCompliantPropertyAsync("document");
         using var client = _factory.CreateAuthenticatedClient(seeded.HostId, "PropertyOwner");
 
@@ -157,7 +154,6 @@ public class PropertyComplianceStatusPostgresTests : IClassFixture<PropertyCompl
         var search = await ReadJsonAsync(await anonymous.GetAsync("/api/properties/search"));
         Assert.DoesNotContain(search.EnumerateArray(), p => p.GetProperty("id").GetGuid() == seeded.PropertyId);
 
-        // The OTAs keep the confirmed stay blocked: the export lists busy dates, never availability (runbook).
         var export = await anonymous.GetAsync($"/api/public/ical/{exportToken}");
         Assert.Equal(HttpStatusCode.OK, export.StatusCode);
         var calendar = await export.Content.ReadAsStringAsync();
@@ -177,7 +173,7 @@ public class PropertyComplianceStatusPostgresTests : IClassFixture<PropertyCompl
         // safety checklist and the documents no longer suspend (PO decision 2026-11-01, option A).
         var lostCin = (await LoadPropertyAsync(lostOutsideTheApi.PropertyId)).CinCode;
         await WithDbAsync(db => db.Properties
-            .IgnoreQueryFilters() // test scope without an org
+            .IgnoreQueryFilters()
             .Where(p => p.Id == lostOutsideTheApi.PropertyId)
             .ExecuteUpdateAsync(set => set.SetProperty(p => p.CinCode, (string?)null)));
 
@@ -192,9 +188,8 @@ public class PropertyComplianceStatusPostgresTests : IClassFixture<PropertyCompl
         Assert.Equal(["activation_cin_missing"], (await LoadPropertyAsync(lostOutsideTheApi.PropertyId)).ComplianceSuspensionReasons);
         Assert.Equal(PropertyComplianceStatus.Active, (await LoadPropertyAsync(stillCompliant.PropertyId)).ComplianceStatus);
 
-        // The requirement back without any request: the next night reactivates it, silently and once.
         await WithDbAsync(db => db.Properties
-            .IgnoreQueryFilters() // test scope without an org
+            .IgnoreQueryFilters()
             .Where(p => p.Id == lostOutsideTheApi.PropertyId)
             .ExecuteUpdateAsync(set => set.SetProperty(p => p.CinCode, lostCin)));
         await RunNightlyJobAsync();
@@ -263,11 +258,9 @@ public class PropertyComplianceStatusPostgresTests : IClassFixture<PropertyCompl
         var kept = await LoadPropertyAsync(historicComplete.PropertyId);
         Assert.Equal(PropertyComplianceStatus.Active, kept.ComplianceStatus);
         Assert.NotNull(kept.ComplianceCheckedAt);
-        // First check of a historic property: Compliance:StatusCheck:NotifyOnFirstCheck is off by default.
         Assert.Empty(EmailsTo(historic.HostEmail));
         Assert.Empty(EmailsTo(historicBare.HostEmail));
 
-        // Once checked, a later suspension always emails the host.
         await WithDbAsync(db => db.Properties
             .IgnoreQueryFilters()
             .Where(p => p.Id == historicComplete.PropertyId)
@@ -406,7 +399,6 @@ public class PropertyComplianceStatusPostgresTests : IClassFixture<PropertyCompl
         await WithDbAsync(db => db.Bookings.IgnoreQueryFilters().Where(b => b.Id == bookingId).Select(b => b.Status).SingleAsync());
 
     private async Task<Property> LoadPropertyAsync(Guid propertyId) =>
-        // Test scope without an authenticated org: read the row directly to check what the API stored.
         await WithDbAsync(db => db.Properties.IgnoreQueryFilters().AsNoTracking().SingleAsync(p => p.Id == propertyId));
 
     private async Task<T> WithDbAsync<T>(Func<AppDbContext, Task<T>> action)
@@ -424,7 +416,6 @@ public class PropertyComplianceStatusPostgresTests : IClassFixture<PropertyCompl
     private static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response) =>
         JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.Clone();
 
-    /// <summary>The integration host with a recording email queue.</summary>
     public sealed class EmailsFactory : CasazenWebApplicationFactory
     {
         internal RecordingEmailQueue Emails { get; } = new();

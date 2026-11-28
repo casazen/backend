@@ -10,11 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Configuration;
 
-/// <summary>
-/// BL-01: the "accesso aperto" settings are checked at startup in every environment (a wrong value stops the container, the
-/// previous deployment stays), the committed <c>appsettings.json</c> keeps the switch off, and a deployment with the switch on
-/// says so in its log.
-/// </summary>
 public class OpenAccessConfigurationTests
 {
     private static IConfiguration Config(Dictionary<string, string?>? values = null) =>
@@ -32,8 +27,6 @@ public class OpenAccessConfigurationTests
         using var provider = BuildProvider(configuration);
         provider.GetRequiredService<IStartupValidator>().Validate();
     }
-
-    // ─── Startup validation ──────────────────────────────────────────────────────
 
     [Fact]
     public void Startup_NothingConfigured_Starts()
@@ -123,8 +116,6 @@ public class OpenAccessConfigurationTests
         Assert.Equal(2, ex.Failures.Count());
     }
 
-    // ─── Startup log ─────────────────────────────────────────────────────────────
-
     [Fact]
     public void LogOpenAccess_SwitchOn_LogsOneWarningWithTheTierAndTheRunbook()
     {
@@ -159,7 +150,7 @@ public class OpenAccessConfigurationTests
     [Theory]
     [InlineData(null)]
     [InlineData("false")]
-    [InlineData("yes")] // not valid: refused at startup, read as off
+    [InlineData("yes")]
     public void LogOpenAccess_SwitchOffOrNotValid_LogsNothing(string? enabled)
     {
         var logs = new CapturingLoggerProvider();
@@ -188,7 +179,6 @@ public class OpenAccessConfigurationTests
         return directory?.FullName ?? throw new InvalidOperationException("Casazen.sln not found above the test output folder.");
     }
 
-    /// <summary>Keeps every log line written through the host's logger factory.</summary>
     private sealed class CapturingLoggerProvider : ILoggerProvider
     {
         public List<(LogLevel Level, string Message)> Entries { get; } = [];

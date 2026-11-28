@@ -59,7 +59,6 @@ public class PropertyCinIntegrationTests : IClassFixture<CasazenWebApplicationFa
     [Fact]
     public async Task GetCinCompliance_PastConfiguredDeadline_ReturnsStatusPassedWithDateAndNegativeDays()
     {
-        // Wave 3 committed Cin:ExposureDeadline=2025-01-01 (appsettings.json); that date is before today.
         var owner = $"auth0|cin-summary-{Guid.NewGuid():N}";
         await _factory.SeedPropertyAsync(owner);
         using var client = _factory.CreateAuthenticatedClient(owner, "PropertyOwner");

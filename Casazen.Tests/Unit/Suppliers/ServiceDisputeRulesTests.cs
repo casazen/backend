@@ -34,8 +34,6 @@ public class ServiceDisputeRulesTests
             endedMinutesAgo is { } ago ? Now.AddMinutes(-ago) : null,
             open);
 
-    // ─── Whether a payer may complain ───
-
     [Fact]
     public void CanReport_ACompletedJob_InsideTheWindow_IsAllowed()
     {
@@ -90,7 +88,7 @@ public class ServiceDisputeRulesTests
     public void CanReport_AJobNobodyMarkedCompleted_CanBeReportedOnlyOnceItsTimeHasEnded(ServiceRequestStatus request)
     {
         Assert.Equal(DisputeReportVerdict.TooEarly, ServiceDisputeRules.CanReport(Facts(request: request, endedMinutesAgo: -60), Now));
-        Assert.Equal(DisputeReportVerdict.TooEarly, ServiceDisputeRules.CanReport(Facts(request: request), Now)); // no time was agreed
+        Assert.Equal(DisputeReportVerdict.TooEarly, ServiceDisputeRules.CanReport(Facts(request: request), Now));
         Assert.Equal(DisputeReportVerdict.AllowedNoShow, ServiceDisputeRules.CanReport(Facts(request: request, endedMinutesAgo: 0), Now));
         Assert.Equal(DisputeReportVerdict.AllowedNoShow, ServiceDisputeRules.CanReport(Facts(request: request, endedMinutesAgo: 600), Now));
     }
@@ -120,8 +118,6 @@ public class ServiceDisputeRulesTests
         Assert.Null(ServiceDisputeRules.ReportableUntil(Facts(request: ServiceRequestStatus.InCorso, endedMinutesAgo: 5)));
     }
 
-    // ─── Which state allows which action ───
-
     [Theory]
     [InlineData(ServiceDisputeStatus.AwaitingSupplier, true, false, true, true, false)]
     [InlineData(ServiceDisputeStatus.AwaitingSupplier, true, true, false, true, false)]
@@ -140,14 +136,12 @@ public class ServiceDisputeRulesTests
         Assert.Equal(canResolve, ServiceDisputeRules.CanResolve(status));
     }
 
-    // ─── The money of a decision ───
-
     [Theory]
-    [InlineData(5_400, 0, 0, 5_400)] // the price 6_000 minus the commission 600: the supplier's whole part
+    [InlineData(5_400, 0, 0, 5_400)]
     [InlineData(5_400, 1_000, 0, 4_400)]
-    [InlineData(5_400, 1_000, 400, 4_000)] // a refund on its way is spoken for
+    [InlineData(5_400, 1_000, 400, 4_000)]
     [InlineData(5_400, 5_400, 0, 0)]
-    [InlineData(5_400, 6_000, 0, 0)] // never negative
+    [InlineData(5_400, 6_000, 0, 0)]
     public void RefundableToPayer_IsTheSuppliersPartThatIsLeft_NeverTheCommission(int net, int refunded, int inProgress, int expected)
     {
         Assert.Equal(expected, ServiceDisputeRules.RefundableToPayer(net, refunded, inProgress));
@@ -179,7 +173,7 @@ public class ServiceDisputeRulesTests
 
     [Theory]
     [InlineData(5_401)]
-    [InlineData(6_000)] // the whole price: the commission is never given back by a dispute
+    [InlineData(6_000)]
     public void DecideRefund_MoreThanTheSuppliersPart_IsRefused_AndTellsTheMost(int asked)
     {
         var decision = ServiceDisputeRules.DecideRefund(asked, 5_400);
@@ -197,7 +191,7 @@ public class ServiceDisputeRulesTests
 
     [Theory]
     [InlineData(0, 0, 4_000, 4_000)]
-    [InlineData(1_000, 0, 4_000, 5_000)] // a refund made before counts toward what the payment must have given back
+    [InlineData(1_000, 0, 4_000, 5_000)]
     [InlineData(1_000, 400, 4_000, 5_400)]
     public void RefundTarget_IsWhatThePaymentMustHaveGivenBackForTheDecisionToBeDone(int refunded, int inProgress, int decided, int expected)
     {
@@ -214,8 +208,6 @@ public class ServiceDisputeRulesTests
         Assert.Equal(expected, ServiceDisputeRules.RefundDone(refunded, target));
     }
 
-    // ─── The time ───
-
     [Fact]
     public void TheTimesAreCountedFromTheMomentTheyStart()
     {
@@ -228,7 +220,7 @@ public class ServiceDisputeRulesTests
     [InlineData(ServiceDisputeStatus.AwaitingSupplier, -1, true)]
     [InlineData(ServiceDisputeStatus.AwaitingSupplier, 0, true)]
     [InlineData(ServiceDisputeStatus.AwaitingSupplier, 1, false)]
-    [InlineData(ServiceDisputeStatus.AwaitingDecision, -60, false)] // it went to the admins already
+    [InlineData(ServiceDisputeStatus.AwaitingDecision, -60, false)]
     [InlineData(ServiceDisputeStatus.ResolvedForSupplier, -60, false)]
     public void ReplyTermPassed_OnlyForADisputeStillWaitingForTheSupplier(ServiceDisputeStatus status, int dueInMinutes, bool expected)
     {
@@ -241,18 +233,18 @@ public class ServiceDisputeRulesTests
         Assert.True(ServiceDisputeRules.DecisionOverdue(ServiceDisputeStatus.AwaitingDecision, Now.AddMinutes(-1), null, Now));
         Assert.True(ServiceDisputeRules.DecisionOverdue(ServiceDisputeStatus.AwaitingDecision, Now, null, Now));
         Assert.False(ServiceDisputeRules.DecisionOverdue(ServiceDisputeStatus.AwaitingDecision, Now.AddMinutes(1), null, Now));
-        Assert.False(ServiceDisputeRules.DecisionOverdue(ServiceDisputeStatus.AwaitingDecision, Now.AddMinutes(-1), Now.AddMinutes(-1), Now)); // told already
+        Assert.False(ServiceDisputeRules.DecisionOverdue(ServiceDisputeStatus.AwaitingDecision, Now.AddMinutes(-1), Now.AddMinutes(-1), Now));
         Assert.False(ServiceDisputeRules.DecisionOverdue(ServiceDisputeStatus.AwaitingSupplier, Now.AddMinutes(-1), null, Now));
         Assert.False(ServiceDisputeRules.DecisionOverdue(ServiceDisputeStatus.AwaitingDecision, null, null, Now));
     }
 
     [Theory]
     [InlineData(ServiceDisputeStatus.ResolvedForCustomer, 40, null, null, 100, 4_000, 0, true)]
-    [InlineData(ServiceDisputeStatus.ResolvedForCustomer, 10, null, null, 100, 4_000, 0, false)] // too soon
-    [InlineData(ServiceDisputeStatus.ResolvedForCustomer, 40, 1, null, 100, 4_000, 0, false)] // settled
-    [InlineData(ServiceDisputeStatus.ResolvedForCustomer, 40, null, 1, 100, 4_000, 0, false)] // told already
-    [InlineData(ServiceDisputeStatus.ResolvedForCustomer, 40, null, null, 100, 4_000, 400, false)] // a refund is waiting for Stripe
-    [InlineData(ServiceDisputeStatus.ResolvedForCustomer, 40, null, null, 4_000, 4_000, 0, false)] // done
+    [InlineData(ServiceDisputeStatus.ResolvedForCustomer, 10, null, null, 100, 4_000, 0, false)]
+    [InlineData(ServiceDisputeStatus.ResolvedForCustomer, 40, 1, null, 100, 4_000, 0, false)]
+    [InlineData(ServiceDisputeStatus.ResolvedForCustomer, 40, null, 1, 100, 4_000, 0, false)]
+    [InlineData(ServiceDisputeStatus.ResolvedForCustomer, 40, null, null, 100, 4_000, 400, false)]
+    [InlineData(ServiceDisputeStatus.ResolvedForCustomer, 40, null, null, 4_000, 4_000, 0, false)]
     [InlineData(ServiceDisputeStatus.ResolvedForSupplier, 40, null, null, 0, 0, 0, false)]
     public void RefundAlertDue_OnlyWhenTheDecidedRefundDidNotGoThrough_AndNothingIsWaitingForStripe(
         ServiceDisputeStatus status,
@@ -278,8 +270,6 @@ public class ServiceDisputeRulesTests
         Assert.Equal(expected, result);
     }
 
-    // ─── The penalty ───
-
     [Theory]
     [InlineData(ServiceDisputeStatus.ResolvedForCustomer, false, SupplierDisputePenaltyKind.DisputeLost)]
     [InlineData(ServiceDisputeStatus.ResolvedForCustomer, true, SupplierDisputePenaltyKind.NoShow)]
@@ -297,8 +287,6 @@ public class ServiceDisputeRulesTests
         Assert.Null(ServiceDisputeRules.PenaltyFor(outcome, noShow: false));
         Assert.Null(ServiceDisputeRules.PenaltyFor(outcome, noShow: true));
     }
-
-    // ─── Names, words ───
 
     [Theory]
     [InlineData("not_done", ServiceDisputeReason.NotDone)]
@@ -394,8 +382,6 @@ public class ServiceDisputeRulesTests
     {
         Assert.Equal("a\tb", ServiceDisputeRules.NormalizeText("a\tb", required: false, "text"));
     }
-
-    // ─── The errors ───
 
     [Fact]
     public void TheCodesAreSnakeCase_AndEveryKeyOfTheAreaExistsInItalianAndEnglishWithDifferentText()

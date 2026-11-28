@@ -33,7 +33,6 @@ public class OtaStayPostgresTests : IClassFixture<OtaStayPostgresTests.Factory>
 {
     private const string HostRole = "PropertyOwner";
 
-    // "Today" for the host: 2 October of next year at 10:00 in Rome (FD-06, fixed clock).
     private static readonly DateTime Today = PublicAvailabilityPostgresTests.NextYear(10, 2);
     private static readonly DateTimeOffset Now = new(Today.AddHours(8), TimeSpan.Zero);
 
@@ -60,7 +59,6 @@ public class OtaStayPostgresTests : IClassFixture<OtaStayPostgresTests.Factory>
         Assert.Equal(seeded.FeedId, stay.GetProperty("icalFeedId").GetGuid());
         Assert.Equal("Camera 2", stay.GetProperty("channelLabel").GetString());
         Assert.Equal(seeded.BlockId, stay.GetProperty("channelBlock").GetProperty("id").GetGuid());
-        // No price is made up: the host gave none.
         Assert.Equal(0m, stay.GetProperty("totalPrice").GetDecimal());
         Assert.Equal("mario.rossi@example.com", stay.GetProperty("guest").GetProperty("email").GetString());
 
@@ -74,20 +72,17 @@ public class OtaStayPostgresTests : IClassFixture<OtaStayPostgresTests.Factory>
             Assert.Equal(seeded.Property.OrgId, booking.Guest.OrgId);
         });
 
-        // Check-in link of the guest (CO-09), from the stay.
         var link = await host.PostAsync($"/api/bookings/{stayId}/checkin/link", null);
         Assert.Equal(HttpStatusCode.OK, link.StatusCode);
         var linkBody = await link.Content.ReadFromJsonAsync<JsonElement>();
         Assert.StartsWith("https://casazen-app.vercel.app/", linkBody.GetProperty("checkInLink").GetString());
         Assert.Equal("NotRequested", linkBody.GetProperty("emailStatus").GetString());
 
-        // Cockpit (CO-04): the guest data of the stay arriving today are to complete.
         var summary = await host.GetFromJsonAsync<JsonElement>("/api/compliance/summary");
         Assert.Contains(
             summary.GetProperty("guestCheckInsIncomplete").GetProperty("items").EnumerateArray(),
             item => item.GetProperty("bookingId").GetGuid() == stayId);
 
-        // "Registra arrivo" (CO-08) on the arrival day.
         var arrival = await host.PostAsync($"/api/bookings/{stayId}/check-in", null);
         Assert.Equal(HttpStatusCode.OK, arrival.StatusCode);
         Assert.Equal("CheckedIn", (await arrival.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("status").GetString());
@@ -109,7 +104,6 @@ public class OtaStayPostgresTests : IClassFixture<OtaStayPostgresTests.Factory>
         Assert.Equal(before, after);
         Assert.Equal(after.Count, after.Distinct().Count());
 
-        // PropertyOccupancy (BK-05): each night is taken by one record, the stay, no longer by its block too.
         await WithDbAsync(async db =>
         {
             Assert.Equal(0, await db.CalendarBlocks.CountAsync(PropertyOccupancy.BlockTakesNightIn(seeded.Property.Id, seeded.From, seeded.To)));
@@ -120,7 +114,6 @@ public class OtaStayPostgresTests : IClassFixture<OtaStayPostgresTests.Factory>
                 .SingleAsync());
         });
 
-        // The calendar of the host shows the stay once, not the block as well.
         var calendar = await host.GetFromJsonAsync<JsonElement>(
             $"/api/bookings/calendar?propertyId={seeded.Property.Id}&startDate={Today:yyyy-MM-dd}&endDate={Today.AddDays(10):yyyy-MM-dd}&timezone=UTC");
         var items = calendar.GetProperty("items").EnumerateArray().ToList();
@@ -143,7 +136,6 @@ public class OtaStayPostgresTests : IClassFixture<OtaStayPostgresTests.Factory>
         using var anonymous = _factory.CreateClient();
         var ics = await anonymous.GetStringAsync(new Uri(exportUrl).AbsolutePath);
 
-        // PC-12, no echo: neither the stay (source Airbnb) nor its imported block goes back to the OTAs.
         Assert.StartsWith("BEGIN:VCALENDAR", ics);
         Assert.DoesNotContain("BEGIN:VEVENT", ics);
         Assert.DoesNotContain(stayId.ToString(), ics);
@@ -206,7 +198,6 @@ public class OtaStayPostgresTests : IClassFixture<OtaStayPostgresTests.Factory>
         Assert.Equal("Expedia", stay.GetProperty("source").GetString());
         Assert.Equal(480.5m, stay.GetProperty("totalPrice").GetDecimal());
 
-        // A stay already over (check-out before today in Rome) is not converted.
         var ended = await SeedImportedBlockAsync("co21-ended", from: Today.AddDays(-5), nights: 3);
         using var endedHost = Host(ended.Property);
         await AssertProblemAsync(await ConvertAsync(endedHost, ended.BlockId, Guest("Mario", "Rossi")), (HttpStatusCode)422, "ota_stay_block_ended");
@@ -219,7 +210,6 @@ public class OtaStayPostgresTests : IClassFixture<OtaStayPostgresTests.Factory>
         using var host = Host(seeded.Property);
         var stayId = await ConvertedStayAsync(host, seeded.BlockId);
 
-        // The reservation is no longer in the Airbnb calendar (cancelled or moved on the channel).
         _factory.Feeds[seeded.Url] = () => Calendar();
         await SyncAsync(seeded.FeedId);
 
@@ -231,14 +221,12 @@ public class OtaStayPostgresTests : IClassFixture<OtaStayPostgresTests.Factory>
             Assert.Equal(OtaStayReviewReason.BlockRemoved, stay.OtaReviewReason);
             Assert.Equal(0, await db.CalendarBlocks.CountAsync(b => b.FeedId == seeded.FeedId));
         });
-        // The dates stay taken on the booking site: CasaZen does not release a stay by itself.
         Assert.Equal(3, (await BookedDatesAsync(seeded.Property.Id, Today, Today.AddDays(10))).Count);
 
         var email = Assert.Single(_factory.Emails, e => e.Template == "host-ota-stay-review" && e.Content.HtmlBody.Contains(stayId.ToString()));
         Assert.Contains("Airbnb (Camera 2)", email.Content.Subject);
         Assert.Single(_factory.Pushes, p => p.BookingId == stayId && p.Type == PushTypes.OtaStayReview);
 
-        // The next syncs find nothing new: no second alert.
         await SyncAsync(seeded.FeedId);
         Assert.Single(_factory.Pushes, p => p.BookingId == stayId);
 
@@ -260,7 +248,6 @@ public class OtaStayPostgresTests : IClassFixture<OtaStayPostgresTests.Factory>
         using var host = Host(seeded.Property);
         var stayId = await ConvertedStayAsync(host, seeded.BlockId);
 
-        // Same reservation (same UID), one day later on the channel.
         _factory.Feeds[seeded.Url] = () => Calendar(Event(seeded.Uid, seeded.From.AddDays(1), seeded.To.AddDays(1)));
         await SyncAsync(seeded.FeedId);
 
@@ -271,7 +258,6 @@ public class OtaStayPostgresTests : IClassFixture<OtaStayPostgresTests.Factory>
             Assert.Equal(seeded.To, stay.CheckOutDate.Date);
             Assert.Equal(OtaStayReviewReason.BlockDatesChanged, stay.OtaReviewReason);
         });
-        // Both ranges stay taken until the host decides: the stay's nights and the channel's new ones.
         Assert.Equal(4, (await BookedDatesAsync(seeded.Property.Id, Today, Today.AddDays(10))).Count);
         var email = Assert.Single(_factory.Emails, e => e.Template == "host-ota-stay-review" && e.Content.HtmlBody.Contains(stayId.ToString()));
         Assert.Contains(seeded.To.AddDays(1).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture), email.Content.HtmlBody);
@@ -289,7 +275,6 @@ public class OtaStayPostgresTests : IClassFixture<OtaStayPostgresTests.Factory>
             Assert.Equal(seeded.From.AddDays(1), stay.CheckInDate.Date);
             Assert.Equal(seeded.To.AddDays(1), stay.CheckOutDate.Date);
             Assert.Null(stay.OtaReviewReason);
-            // The block stands for its stay again: its nights count once.
             Assert.Equal(0, await db.CalendarBlocks.CountAsync(PropertyOccupancy.BlockTakesNightIn(seeded.Property.Id, Today, Today.AddDays(10))));
         });
         Assert.Equal(3, (await BookedDatesAsync(seeded.Property.Id, Today, Today.AddDays(10))).Count);
@@ -333,10 +318,6 @@ public class OtaStayPostgresTests : IClassFixture<OtaStayPostgresTests.Factory>
         Assert.False(string.IsNullOrWhiteSpace(problem.GetProperty("detail").GetString()));
     }
 
-    /// <summary>
-    /// A published property with an import feed (added through the API, channel taken from <paramref name="host"/>) whose
-    /// one event, from <paramref name="from"/> (today by default) for <paramref name="nights"/> nights, became a block.
-    /// </summary>
     private async Task<SeededBlock> SeedImportedBlockAsync(
         string name,
         string host = "www.airbnb.it",
@@ -391,7 +372,6 @@ public class OtaStayPostgresTests : IClassFixture<OtaStayPostgresTests.Factory>
         await scope.ServiceProvider.GetRequiredService<PropertyICalSyncService>().SyncFeedAsync(feedId);
     }
 
-    /// <summary><c>GET /api/bookings</c> is a <c>PagedResultDto</c> (<c>items</c>); older callers used a plain array.</summary>
     private static IEnumerable<JsonElement> BookingItems(JsonElement body) =>
         (body.ValueKind == JsonValueKind.Array ? body : body.GetProperty("items")).EnumerateArray();
 

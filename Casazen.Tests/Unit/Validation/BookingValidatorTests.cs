@@ -7,7 +7,6 @@ namespace Casazen.Tests.Unit.Validation;
 
 public class BookingValidatorTests
 {
-    // 00:30 on 01/10/2026 in Rome (CEST), still 30/09 in UTC.
     private static readonly FixedTimeProvider AfterMidnightInRome =
         new(new DateTimeOffset(2026, 9, 30, 22, 30, 0, TimeSpan.Zero));
 

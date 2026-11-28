@@ -14,7 +14,6 @@ public class LeaseFlowTests
 {
     private static readonly DateOnly Today = new(2026, 10, 9);
 
-    /// <summary>A registered 4+4 lease, renewed into 2030, with its rent plan: active and with nothing to do.</summary>
     private static readonly LeaseFlowInput Running = new()
     {
         Today = Today,

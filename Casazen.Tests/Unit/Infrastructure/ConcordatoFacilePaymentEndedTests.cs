@@ -46,10 +46,10 @@ public class ConcordatoFacilePaymentEndedTests
     }
 
     [Theory]
-    [InlineData("open", "unpaid", ConcordatoFacilePurchaseStatus.Pending)] // a card declined: the customer can try another one
-    [InlineData("expired", "unpaid", ConcordatoFacilePurchaseStatus.Failed)] // nobody can pay it any more
-    [InlineData("complete", "unpaid", ConcordatoFacilePurchaseStatus.Failed)] // a delayed payment that failed: a completed Session is not tried again
-    [InlineData("complete", "paid", ConcordatoFacilePurchaseStatus.Pending)] // paid: never closed (the success event completes it)
+    [InlineData("open", "unpaid", ConcordatoFacilePurchaseStatus.Pending)]
+    [InlineData("expired", "unpaid", ConcordatoFacilePurchaseStatus.Failed)]
+    [InlineData("complete", "unpaid", ConcordatoFacilePurchaseStatus.Failed)]
+    [InlineData("complete", "paid", ConcordatoFacilePurchaseStatus.Pending)]
     public async Task PaymentFailed_ClosesThePurchaseOnlyWhenTheSessionCanNoLongerSucceed(
         string sessionStatus, string paymentStatus, ConcordatoFacilePurchaseStatus expected)
     {
@@ -79,10 +79,6 @@ public class ConcordatoFacilePaymentEndedTests
         Assert.Equal(purchase.PaidAt, saved.PaidAt);
     }
 
-    /// <summary>
-    /// The whole road of the event: Stripe cancels the PaymentIntent of an expired Session, the webhook closes the purchase and claims the
-    /// event under the ConcordatoFacile source; the same delivery again changes nothing.
-    /// </summary>
     [Fact]
     public async Task WebhookPaymentCanceled_OfAnExpiredSession_ClosesThePurchase_OnceAndUnderTheServiceSource()
     {
@@ -103,7 +99,6 @@ public class ConcordatoFacilePaymentEndedTests
         Assert.Equal(ConcordatoFacilePurchaseStatus.Failed, (await db.ConcordatoFacilePurchases.AsNoTracking().SingleAsync()).Status);
         Assert.Equal(WebhookSource.ConcordatoFacile, (await db.ProcessedStripeEvents.AsNoTracking().SingleAsync(e => e.EventId == "evt_cf_canceled")).Source);
 
-        // Delivered again, with the purchase back to pending: a duplicate is skipped, not applied.
         var tracked = await db.ConcordatoFacilePurchases.SingleAsync();
         tracked.Status = ConcordatoFacilePurchaseStatus.Pending;
         await db.SaveChangesAsync();

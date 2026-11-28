@@ -3,7 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Push;
 
-/// <summary>MO-03 (A6-19): every push route is a screen of the app (<c>mobile/src/notifications/notification-routes.ts</c>).</summary>
 public class PushRoutesTests
 {
     [Theory]

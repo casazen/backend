@@ -36,7 +36,6 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
     private const string ConsentVersion = "2026-06-direct-checkout-v1";
     private const decimal HoldAmount = 350m;
 
-    /// <summary><c>Org.ContactEmail</c> of the orgs seeded by <see cref="CasazenWebApplicationFactory"/>: the host's emails.</summary>
     private const string SeededHostEmail = "owner@example.com";
 
     private readonly CasazenWebApplicationFactory _factory;
@@ -143,7 +142,6 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
     [PostgresFact]
     public async Task HandleEventAsync_PaymentOnHoldStillValid_ConfirmsWithTheStandardEmailsOnly()
     {
-        // A hold within its TTL kept its dates in the iCal export: a block imported meanwhile does not undo the payment.
         var (property, account) = await SeedCheckoutReadyPropertyAsync();
         var hold = await SeedBookingAsync(property, account, NextYear(10, 1), NextYear(10, 5), BookingStatus.Pending,
             minutesAgo: 5, paymentStatus: PaymentStatus.Pending);
@@ -155,7 +153,6 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
         Assert.Equal(BookingStatus.Confirmed, booking.Status);
         Assert.Equal(PaymentStatus.Completed, Assert.Single(booking.Payments).Status);
         NoRefundRequested();
-        // BK-10: the standard confirmation (guest) and new booking (host); no refund email.
         Assert.Equal(
             [
                 (hold.GuestEmail, EmailTemplates.Names.GuestBookingConfirmed),
@@ -174,7 +171,6 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
             minutesAgo: 5, paymentStatus: PaymentStatus.Completed);
         var stripeEvent = Succeeded(late.PaymentIntentId, account);
 
-        // Two workers on the same delivery at once, the same event again later, then another event of the same payment.
         await Task.WhenAll(
             Task.Run(() => HandleAsync(stripeEvent, WebhookSource.Connected)),
             Task.Run(() => HandleAsync(stripeEvent, WebhookSource.Connected)));
@@ -237,7 +233,6 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
 
         await HandleAsync(Succeeded(late.PaymentIntentId, account: null, kind: null), WebhookSource.Platform);
 
-        // A PaymentIntent reported by the platform endpoint without account lives on the platform: no Stripe-Account.
         _stripe.Verify(s => s.CreateRefundAsync(
             It.Is<StripeRefundCreateRequest>(r =>
                 r.PaymentIntentId == late.PaymentIntentId &&
@@ -278,7 +273,6 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
     [PostgresFact]
     public async Task HandleEventAsync_PlatformEndpointEventOfConnectedAccount_RefundsOnThatAccount()
     {
-        // The platform endpoint also subscribed to connected-account events: the event carries the account.
         var (property, account) = await SeedCheckoutReadyPropertyAsync();
         var late = await SeedExpiredHoldAsync(property, account, NextYear(12, 10), NextYear(12, 14));
         await SeedBookingAsync(property, account, NextYear(12, 12), NextYear(12, 16), BookingStatus.Confirmed,
@@ -379,7 +373,6 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
         return scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.GetConnectionString()!;
     }
 
-    /// <summary>One delivery of the event, in its own DI scope (own DbContext), as the Hangfire webhook job runs it.</summary>
     private async Task HandleAsync(Event stripeEvent, WebhookSource source)
     {
         await using var scope = _factory.Services.CreateAsyncScope();
@@ -451,7 +444,6 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
         paymentOption = nameof(PaymentOption.Immediate),
     };
 
-    /// <summary>An org with its own connected account (Connect ready) and an active, bookable property.</summary>
     private async Task<(Property Property, string Account)> SeedCheckoutReadyPropertyAsync()
     {
         var account = $"acct_bk04_{Guid.NewGuid():N}";
@@ -483,7 +475,6 @@ public class LateCheckoutPaymentPostgresTests : IClassFixture<CasazenWebApplicat
 
     private sealed record SeededBooking(Guid BookingId, string PaymentIntentId, string GuestEmail);
 
-    /// <summary>A checkout hold the expiry job has already released (BK-21): cancelled, payment row canceled.</summary>
     private Task<SeededBooking> SeedExpiredHoldAsync(Property property, string? paymentAccount, DateTime checkIn, DateTime checkOut) =>
         SeedBookingAsync(property, paymentAccount, checkIn, checkOut, BookingStatus.Cancelled, minutesAgo: 40,
             paymentStatus: PaymentStatus.Canceled, BookingCancellationReason.CheckoutHoldExpired);

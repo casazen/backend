@@ -8,10 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// PL-02 data migration (<see cref="AssignNoneRoleToUsersWithoutOnboarding"/>) on real PostgreSQL: only the users with no
-/// trace of use move from the old default <c>PropertyOwner</c> to <c>None</c>; everybody else keeps the stored role.
-/// </summary>
 public class AssignNoneRoleMigrationPostgresTests : IAsyncLifetime
 {
     private static readonly DateTime OnboardedAt = new(2026, 7, 1, 9, 30, 0, DateTimeKind.Utc);
@@ -106,11 +102,9 @@ public class AssignNoneRoleMigrationPostgresTests : IAsyncLifetime
 
         Assert.Equal(UserRole.None, roles["never-activated"]);
         Assert.Null(onboardedAt["never-activated"]);
-        // Onboarded before the timestamp existed (rental type written by the onboarding): backfilled, role kept.
         Assert.NotNull(onboardedAt["rental-type-only"]);
         Assert.Equal(ConsentRecordedAt, onboardedAt["rental-type-with-consents"]!.Value, TimeSpan.FromSeconds(1));
         Assert.Equal(UserRole.PropertyOwner, roles["rental-type-with-consents"]);
-        // Existing timestamps are never rewritten; no rental type, no timestamp.
         Assert.Equal(OnboardedAt, onboardedAt["onboarded"]!.Value, TimeSpan.FromSeconds(1));
         Assert.Null(onboardedAt["legacy-org"]);
         Assert.Equal(UserRole.PropertyOwner, roles["onboarded"]);

@@ -15,10 +15,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>
-/// Platform billing webhooks (A1-11): the tier is granted only by an active or trialing subscription, and events
-/// processed out of order or belonging to another subscription of the customer never reopen paid access.
-/// </summary>
 public class StripeWebhookSubscriptionStateTests
 {
     private const string ProPrice = "price_test_pro";
@@ -220,7 +216,6 @@ public class StripeWebhookSubscriptionStateTests
         await HandleAsync(evt);
         var paid = await ReloadAsync(org.Id);
         Assert.True(paid.CommercialPaymentConfirmed);
-        // Direct booking is included. Fiscal has a paid line. Channels is disabled; CRM has no paid line.
         Assert.Equal(new[] { "direct-booking", "ai-agents", "fiscal" }, System.Text.Json.JsonSerializer.Deserialize<string[]>(paid.CommercialPaidAddonsJson!));
     }
 

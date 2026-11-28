@@ -3,7 +3,6 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Data.Encryption;
 using Casazen.Tests.Integration.Postgres;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -19,7 +18,6 @@ public class OtaMessageEncryptionPostgresTests
     private const string GuestWords = "Buongiorno, arriviamo alle 22 con due bambini e un cane piccolo";
     private const string HostWords = "Benvenuti! Vi aspettiamo, il codice della cassetta e nel messaggio di domani";
 
-    // Whole texts and pieces of them that cannot appear by chance in a base64url payload (a comma, a space, a long word).
     private static readonly string[] Secrets = [GuestWords, HostWords, "Buongiorno,", "arriviamo alle", "bambini e un cane", "Benvenuti!", "cassetta"];
 
     [PostgresFact]
@@ -86,7 +84,6 @@ public class OtaMessageEncryptionPostgresTests
             orgId = org.Id;
         }
 
-        // The table itself, whatever EF would have made of it: a context without Data Protection reads the stored text.
         await using var stored = database.CreateContext();
         var texts = await stored.Database.SqlQueryRaw<string>("SELECT \"TextEncrypted\" AS \"Value\" FROM \"OtaMessages\"").ToListAsync();
 
@@ -98,7 +95,6 @@ public class OtaMessageEncryptionPostgresTests
                 Assert.DoesNotContain(secret, text, StringComparison.OrdinalIgnoreCase);
         });
 
-        // No plaintext column for the words exists: the only one is the encrypted one.
         var columns = await stored.Database
             .SqlQueryRaw<string>("SELECT column_name AS \"Value\" FROM information_schema.columns WHERE table_name = 'OtaMessages'")
             .ToListAsync();
@@ -106,11 +102,9 @@ public class OtaMessageEncryptionPostgresTests
         Assert.DoesNotContain("Text", columns);
         Assert.DoesNotContain("MessageText", columns);
 
-        // The same through the model of a context without Data Protection: the property holds the payload.
         var rows = await stored.OtaMessages.IgnoreQueryFilters().AsNoTracking().Where(m => m.OrgId == orgId).ToListAsync();
         Assert.All(rows, row => Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, row.Text, StringComparison.Ordinal));
 
-        // Read through EF with Data Protection the clear texts come back.
         await using var reader = new AppDbContext(database.CreateOptions(), tenantContext: null, provider);
         var readBack = await reader.OtaMessages.IgnoreQueryFilters().AsNoTracking()
             .Where(m => m.OrgId == orgId)

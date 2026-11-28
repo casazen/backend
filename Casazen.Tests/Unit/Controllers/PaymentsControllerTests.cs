@@ -16,10 +16,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// Payments are authorized as host resources (TN-3, A3-38): org, <c>payment.*</c> permission and property ownership,
-/// with the org-wide list filtered in SQL through a <see cref="HostScope"/>.
-/// </summary>
 public class PaymentsControllerTests
 {
     private const string OwnerId = "auth0|owner_123";
@@ -102,7 +98,6 @@ public class PaymentsControllerTests
             Times.Once);
     }
 
-    // SR-03: a booking the caller may not read the payments of answers 404, like a missing one, and nothing is listed.
     [Fact]
     public async Task GetAll_WithBookingIdOfAnotherOwner_ReturnsNotFound()
     {
@@ -241,7 +236,6 @@ public class PaymentsControllerTests
     [Fact]
     public void Controller_HasNoProcessPaymentAction()
     {
-        // A9-15: "process" marked a payment Completed without Stripe; payments are collected only through Stripe.
         Assert.Null(typeof(PaymentsController).GetMethod("Process"));
     }
 
@@ -285,7 +279,6 @@ public class PaymentsControllerTests
             HttpContext = new DefaultHttpContext
             {
                 User = HostAuthorizationTestHarness.User(userId, roles),
-                // ApiProblem (FD-05 contract) localizes the detail through SharedResources.
                 RequestServices = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider(),
             },
         };

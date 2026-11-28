@@ -12,7 +12,6 @@ public static class IdentityTestPolicy
 {
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
-    /// <summary>The committed policy, as the checkout of this machine has it.</summary>
     public static IdentityDecisionPolicy Shipped()
     {
         return JsonSerializer.Deserialize<IdentityDecisionPolicy>(IdentityPolicyTestFiles.ShippedText(), Web)

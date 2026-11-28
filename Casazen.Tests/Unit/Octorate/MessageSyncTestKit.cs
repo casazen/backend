@@ -24,7 +24,6 @@ internal sealed class MessageSyncHarness
     public static readonly Guid OrgA = Guid.Parse("5b0f3a2e-7c41-4d68-9e15-0a2b3c4d5e81");
     public static readonly Guid OrgB = Guid.Parse("c3d2e1f0-9a8b-4c7d-8e6f-5a4b3c2d1e82");
 
-    /// <summary>2026-11-06 09:00 in Rome.</summary>
     public static readonly DateTimeOffset Now = new(2026, 11, 6, 8, 0, 0, TimeSpan.Zero);
 
     private readonly string _database = $"message-sync-{Guid.NewGuid():N}";
@@ -48,7 +47,6 @@ internal sealed class MessageSyncHarness
 
     public Guid ConnectionId { get; }
 
-    /// <summary>The property of the confirmed listing <see cref="Accommodation"/>.</summary>
     public Guid PropertyId { get; }
 
     public Mock<IOctorateApiClient> Client { get; } = new(MockBehavior.Strict);
@@ -61,16 +59,11 @@ internal sealed class MessageSyncHarness
 
     public CapturingLogger<MessageSyncService> Log { get; } = new();
 
-    /// <summary>The rate limiter of the application (one instance): a test drains the calls of org A to see what the sync does without them.</summary>
     public OctorateRateLimiter Limiter { get; }
 
     public AppDbContext NewDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options, NullTenantContext.Instance);
 
-    /// <summary>
-    /// The service in one scope of the container: its own context, the org scope and the recorder of that context, and the pacing of the scope (the
-    /// default waits for the calls of the org, as a job does; the handler of a notification shares the one of its scope and sets it not to wait).
-    /// </summary>
     public MessageSyncService Service(AppDbContext db, MessageSyncPacing? pacing = null) =>
         new(
             db,
@@ -84,10 +77,6 @@ internal sealed class MessageSyncHarness
             Clock,
             Log);
 
-    /// <summary>
-    /// A listing of org A in the mapping: the row of the mapping (the connection it was found through) and what the mapping service says of it. A
-    /// confirmed listing gets a property, which is returned; any other state gets none.
-    /// </summary>
     public Guid? AddListing(string accommodation, OctorateMappingStatus status)
     {
         using var db = NewDb();
@@ -122,7 +111,6 @@ internal sealed class MessageSyncHarness
         return propertyId;
     }
 
-    /// <summary>A person confirmed the mapping of the listing to <paramref name="propertyId"/> (a property of org A).</summary>
     public void Confirm(string accommodation, Guid propertyId)
     {
         _rows.RemoveAll(r => r.OctorateAccommodationId == accommodation);
@@ -145,7 +133,6 @@ internal sealed class MessageSyncHarness
         [],
         null);
 
-    /// <summary>A thread of the Airbnb reservation <paramref name="reservationId"/> on <paramref name="accommodation"/>.</summary>
     public static OctorateChatThread Thread(string id, string accommodation = Accommodation, string? reservationId = "R-4711", string channelId = "274") => new()
     {
         Id = id,
@@ -158,7 +145,6 @@ internal sealed class MessageSyncHarness
         LastActivityAt = Now.UtcDateTime.AddHours(-1),
     };
 
-    /// <summary>A message of the guest, sent an hour ago.</summary>
     public static OctorateChatMessage Inbound(string id, string threadId, string text = "Buongiorno, a che ora e il check-in?") => new()
     {
         Id = id,

@@ -24,8 +24,6 @@ public class PropertyICalIntegrationTests : IClassFixture<CasazenWebApplicationF
 
     public PropertyICalIntegrationTests(CasazenWebApplicationFactory factory) => _factory = factory;
 
-    // PC-12 (A2-22): the imported block (SUMMARY "Reserved" from the OTA) is not sent back, the manual block is exported
-    // as an all-day event with the neutral localized SUMMARY, never with the text the host typed.
     [Theory]
     [InlineData(null, "Occupato")]
     [InlineData("en", "Booked")]
@@ -105,7 +103,6 @@ public class PropertyICalIntegrationTests : IClassFixture<CasazenWebApplicationF
         Assert.Equal(ICalErrorCodes.InvalidUrl, body.GetProperty("code").GetString());
     }
 
-    // FD-16 (A2-21, A9-32): no internal destination can be saved as an import URL.
     [Theory]
     [InlineData("https://127.0.0.1/cal.ics")]
     [InlineData("https://10.0.0.8/cal.ics")]
@@ -148,7 +145,6 @@ public class PropertyICalIntegrationTests : IClassFixture<CasazenWebApplicationF
         Assert.Equal(ICalFeedErrorCodes.InvalidLabel, body.GetProperty("code").GetString());
     }
 
-    // FD-16 (A2-21), PC-11: adding a feed answers at once, masked, and leaves the download to a Hangfire job.
     [Fact]
     public async Task AddFeed_PublicHttpsUrl_Returns202SyncingMaskedAndQueuesItsSync()
     {
@@ -171,7 +167,6 @@ public class PropertyICalIntegrationTests : IClassFixture<CasazenWebApplicationF
         VerifySyncQueued(body.GetProperty("id").GetGuid(), Times.Once());
     }
 
-    // FD-16 (A2-21): a stored error is shown as a code plus localized text, never as the exception message.
     [Fact]
     public async Task GetFeeds_WithStoredErrorCode_ReturnsCodeAndLocalizedMessagePerFeed()
     {
@@ -205,8 +200,6 @@ public class PropertyICalIntegrationTests : IClassFixture<CasazenWebApplicationF
         Assert.False(string.IsNullOrWhiteSpace(feed.GetProperty("lastError").GetString()));
     }
 
-    // ADR-002-R12 (backend side), E02/F02/US01/T03: the channels page tells the host that the Octorate calendar replaced the iCal import of a
-    // channel, so each feed answers whether it was replaced and when. The block it imported is still counted.
     [Fact]
     public async Task GetFeeds_AnswersDeprecatedAndDeprecatedAtOfEachFeed()
     {
@@ -271,7 +264,6 @@ public class PropertyICalIntegrationTests : IClassFixture<CasazenWebApplicationF
         Assert.DoesNotContain("seed-block-1", body);
     }
 
-    // "Sync now": 202 Syncing and one job for that feed; a second click while it is pending queues nothing.
     [Fact]
     public async Task SyncFeed_Twice_QueuesOneJobForThatFeed()
     {

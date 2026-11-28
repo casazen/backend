@@ -7,10 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The code of an APE the file does not show legibly (the dark header of a photocopy), taken from the public register of Lombardy
-/// with the comune and the index read on the file; the class read on the file must agree with the register's.
-/// </summary>
 public class ApeComplianceRegistryTests
 {
     private static readonly ApeRegistryContext Monza = new("Monza", "LOM");
@@ -27,7 +23,6 @@ public class ApeComplianceRegistryTests
         var check = await Service().CheckUploadedApeAsync(PdfFile(), Monza);
 
         Assert.Equal(("12345000067819", "F", ApeUploadCheck.FromRegistry), (check.CertificateCode, check.EnergyClass, check.CodeSource));
-        // The register gave what was missing: nothing is left "not read".
         Assert.Equal(ApeUploadCheck.Verified, check.Outcome);
         Assert.Empty(check.UnreadFields);
     }

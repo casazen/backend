@@ -14,8 +14,6 @@ public sealed class RealFormatReadingTests
 {
     private static readonly LeaseContractParseContext House = new("Via Verdi 12", "Bollate");
 
-    // ---- the sections ------------------------------------------------------------------------------------------------------
-
     [Fact]
     public void TheDocument_IsSplitInItsContract_ItsAttestation_AndItsSheet()
     {
@@ -33,7 +31,6 @@ public sealed class RealFormatReadingTests
     [Fact]
     public void TheMistakesOfAnOcr_DoNotMoveTheSections()
     {
-        // A wrong letter in each title, the watermark of the sample at the top or at the bottom of every page.
         var pages = RealFormatDocument.Pages().Select((page, index) =>
         {
             var text = page
@@ -65,8 +62,6 @@ public sealed class RealFormatReadingTests
         Assert.Equal([4], sections.UnreadablePages);
     }
 
-    // ---- each part on its own pages ---------------------------------------------------------------------------------------
-
     [Fact]
     public void TheContract_IsReadOnItsOwnPages_AndNotConfusedByTheDatesOfItsDocumentsOrByTheOtherSections()
     {
@@ -80,16 +75,13 @@ public sealed class RealFormatReadingTests
         Assert.Equal(595m, reading.MonthlyRent!.Value);
         Assert.Equal(1785m, reading.SecurityDeposit!.Value);
 
-        // The passport of the tenant and the energy certificate of the house expire on the first page: not the end of the lease.
         Assert.Equal(new DateOnly(2026, 9, 19), reading.StartDate!.Value);
         Assert.Equal(new DateOnly(2029, 9, 18), reading.EndDate!.Value);
         Assert.Equal(36, reading.TermMonths!.Value);
 
-        // "Letto, approvato e sottoscritto. Bollate, li 19-9-26" is the signature; the territorial agreement "sottoscritto in Milano il 20 maggio 2025" is not.
         Assert.Equal(new DateOnly(2026, 9, 19), reading.StipulaDate!.Value);
         Assert.Equal(PropertyAddressMatch.Match, reading.Property!.Value);
 
-        // A woman who rents ("denominata conduttrice") is a tenant.
         var landlord = Assert.Single(reading.Parties, p => p.Role == PartyRole.Landlord);
         var tenant = Assert.Single(reading.Parties, p => p.Role == PartyRole.Tenant);
         Assert.Equal(RealFormatDocument.LandlordFiscalCode, landlord.FiscalCode);
@@ -143,8 +135,6 @@ public sealed class RealFormatReadingTests
         Assert.Empty(warnings);
     }
 
-    // ---- what disagrees is said with a code -----------------------------------------------------------------------------------
-
     [Fact]
     public void WhatDisagrees_IsSaidWithStableCodes_AndNeverBlocks()
     {
@@ -156,7 +146,6 @@ public sealed class RealFormatReadingTests
         var attestation = AttestationReader.Read(ContractDocumentSections.TextOf(pages, sections, DocumentSectionKind.Attestation));
         var sheet = CalculationSheetReader.Read(ContractDocumentSections.TextOf(pages, sections, DocumentSectionKind.CalculationSheet));
 
-        // A contract that asks 800 a month where the attestation attests 595, between values that stop at 726, and the sheet works out 595.
         var dearer = pages.ToArray();
         dearer[1] = dearer[1].Replace("595,00", "800,00", StringComparison.Ordinal).Replace("7.140,00", "9.600,00", StringComparison.Ordinal);
         var dearerText = ContractDocumentSections.TextOf(dearer, ContractDocumentSections.Recognize(dearer), DocumentSectionKind.Contract);
@@ -167,7 +156,6 @@ public sealed class RealFormatReadingTests
         Assert.Contains(ContractReadingWarnings.AttestationRentOutOfRange, found);
         Assert.Contains(ContractReadingWarnings.SheetRentDiffers, found);
 
-        // An attestation of another town, which does not give the figures the sheet gives.
         var other = pages.ToArray();
         for (var page = 6; page < 10; page++)
             other[page] = other[page].Replace("Comune di Bollate", "Comune di Rho", StringComparison.Ordinal).Replace("66,00", "70,00", StringComparison.Ordinal);
@@ -176,7 +164,6 @@ public sealed class RealFormatReadingTests
         Assert.Contains(ContractReadingWarnings.AttestationComuneDiffers, otherFound);
         Assert.Contains(ContractReadingWarnings.AttestationSheetDiffer, otherFound);
 
-        // A page nobody can read is said with its number, and the sections around it stay.
         var blank = pages.ToArray();
         blank[8] = string.Empty;
         var unreadable = ContractDocumentValidator.Validate(new ContractDocumentFacts(ContractDocumentSections.Recognize(blank), reading, codes, 0, null, null, "Bollate"));
@@ -184,8 +171,6 @@ public sealed class RealFormatReadingTests
         Assert.Equal(ContractReadingWarnings.PagesUnreadable, warning.Code);
         Assert.Equal([9], warning.Pages);
     }
-
-    // ---- the receipt of the Agenzia delle Entrate ------------------------------------------------------------------------------
 
     [Fact]
     public void TheReceipt_IsRead_ForTheDeclarationOfTheRegistration_AndComparedWithTheLease()

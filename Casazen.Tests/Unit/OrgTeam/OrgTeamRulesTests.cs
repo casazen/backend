@@ -4,10 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.OrgTeam;
 
-/// <summary>
-/// AM-02: who may do what with the people of an org, as pure rules. No escalation: nobody gives more than they have, only
-/// the owner creates and manages administrators, nobody becomes owner, the owner is out of everyone's reach.
-/// </summary>
 public class OrgTeamRulesTests
 {
     public static TheoryData<OrgRole> AllRoles => new(Enum.GetValues<OrgRole>());
@@ -88,7 +84,6 @@ public class OrgTeamRulesTests
     [Fact]
     public void NoRoleCanGiveWhatItCannotTouch()
     {
-        // Nobody can assign a role that they could not act on afterwards: assigning is never wider than acting.
         foreach (var actor in Enum.GetValues<OrgRole>())
             foreach (var role in Enum.GetValues<OrgRole>())
                 Assert.False(OrgTeamRules.CanAssign(actor, role) && !OrgTeamRules.CanActOn(actor, role), $"{actor} could give {role} and not touch it");

@@ -26,8 +26,6 @@ public class LongRentPropertiesIntegrationTests(LongRentAggregatesFactory factor
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        // P1: an APE with its code and class, and the cadastral data of the contract. P2: an APE whose code and class are not on record, and a
-        // change of mode programmed. P3: nothing.
         db.PropertyDocuments.Add(Ape(_world.P1, "12345-678", "b"));
         db.PropertyDocuments.Add(Ape(_world.P2, null, null));
         var p1 = await db.Properties.SingleAsync(p => p.Id == _world.P1);
@@ -62,7 +60,6 @@ public class LongRentPropertiesIntegrationTests(LongRentAggregatesFactory factor
         Assert.Equal(new[] { "Bilocale Sparano", "Trilocale Murat" }, rows.Select(r => r.GetProperty("name").GetString()).ToArray());
         Assert.Equal(new[] { "Casa Corso" }, RowsOf(colleagueBody).Select(r => r.GetProperty("name").GetString()).ToArray());
 
-        // P1: held by the lease that started last of the three in force; it renews by itself, so there is no "then free".
         var first = rows[0];
         Assert.Equal("Rented", first.GetProperty("status").GetString());
         Assert.Equal(_world.Active, first.GetProperty("currentLease").GetProperty("leaseId").GetGuid());
@@ -70,15 +67,12 @@ public class LongRentPropertiesIntegrationTests(LongRentAggregatesFactory factor
         Assert.Equal(("Identified", true, "B", true), (first.GetProperty("ape").GetString(), first.GetProperty("apeValid").GetBoolean(), first.GetProperty("apeClass").GetString(), first.GetProperty("cadastralComplete").GetBoolean()));
         Assert.Equal(JsonValueKind.Null, first.GetProperty("scheduledModeChange").ValueKind);
 
-        // P2: held by the transitory lease, which does not renew: free again the day after its last day. Its APE is to be confirmed, and a
-        // change of mode is programmed.
         var second = rows[1];
         Assert.Equal(_world.Transitory, second.GetProperty("currentLease").GetProperty("leaseId").GetGuid());
         Assert.Equal("2027-03-01", second.GetProperty("currentLease").GetProperty("freeFrom").GetString());
         Assert.Equal(("ToConfirm", false, false), (second.GetProperty("ape").GetString(), second.GetProperty("apeValid").GetBoolean(), second.GetProperty("cadastralComplete").GetBoolean()));
         Assert.Equal("Short", second.GetProperty("scheduledModeChange").GetProperty("toMode").GetString());
 
-        // Nobody is named: no tenant, no e-mail, no amount of any lease.
         foreach (var body in new[] { ownerBody, colleagueBody })
         {
             foreach (var name in new[] { "Giulia", "Verdi", "Sara", "Gallo", "Valentina", "Marra", "Marco", "Bianchi", "@tenants.example", "monthlyRent" })

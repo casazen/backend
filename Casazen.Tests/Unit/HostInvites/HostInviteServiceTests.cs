@@ -48,8 +48,6 @@ public class HostInviteServiceTests
         Assert.Null(sent.Url);
     }
 
-    // ─── creation ───
-
     [Fact]
     public async Task CreateAsync_Host_StoresHashOnlyAttributionAndQueuesEmailWithPublicLink()
     {
@@ -177,8 +175,6 @@ public class HostInviteServiceTests
         Assert.Equal(HostInviteRecord.MessageMaxLength, Assert.Single(f.Db.HostInviteRecords).Message!.Length);
     }
 
-    // ─── duplicates ───
-
     [Fact]
     public async Task CreateAsync_PendingInviteOfTheSameInviterForTheEmail_Throws409Duplicate()
     {
@@ -221,8 +217,6 @@ public class HostInviteServiceTests
 
         Assert.Equal(2, f.Db.HostInviteRecords.Count());
     }
-
-    // ─── account enumeration ───
 
     [Fact]
     public async Task CreateAsync_HostInvitesRegisteredEmail_AnswersLikeSuccessAndSendsNothing()
@@ -278,8 +272,6 @@ public class HostInviteServiceTests
         Assert.Empty(f.Db.HostInviteRecords);
         Assert.Empty(f.Queue.Queued);
     }
-
-    // ─── quota and pending cap ───
 
     [Fact]
     public async Task CreateAsync_DailyQuotaUsedUp_Throws429WithQuotaCode()
@@ -373,8 +365,6 @@ public class HostInviteServiceTests
 
         Assert.Equal(new HostInviteQuota(10, 0, 10, Start.UtcDateTime.AddHours(24)), quota);
     }
-
-    // ─── list and authorization ───
 
     [Fact]
     public async Task ListAsync_Host_SeesOnlyItsOwnInvites()
@@ -479,8 +469,6 @@ public class HostInviteServiceTests
 
         Assert.Equal(1, (await f.Service.GetQuotaAsync(OrgA)).Used);
     }
-
-    // ─── resend / revoke state rules ───
 
     [Fact]
     public async Task ResendAsync_Pending_RotatesTheTokenSoTheOldLinkStopsWorking()
@@ -605,8 +593,6 @@ public class HostInviteServiceTests
         Assert.Equal(HostInviteErrors.NotPending, ex.Code);
     }
 
-    // ─── lookup ───
-
     [Fact]
     public async Task LookupAsync_PendingInvite_ReturnsInviterNameAndMaskedEmailNeverTheWholeAddress()
     {
@@ -674,8 +660,6 @@ public class HostInviteServiceTests
         Assert.Equal(new HostInviteLookup(false, "Invalid", null, null), malformed);
         Assert.Equal(malformed, unknown);
     }
-
-    // ─── acceptance ───
 
     [Fact]
     public async Task AcceptAsync_VerifiedMatchingEmail_MarksUsedWithoutGrantingAnything()
@@ -821,8 +805,6 @@ public class HostInviteServiceTests
         Assert.Equal(HostInviteErrors.Invalid, unknown.Code);
     }
 
-    // ─── retention ───
-
     [Fact]
     public async Task RunAsync_ClosedUnusedInvitesPastRetention_AreDeletedAndAuditIsKept()
     {
@@ -871,8 +853,6 @@ public class HostInviteServiceTests
         Assert.Equal(OrgA, stored.InvitedByOrgId);
         Assert.Equal("auth0|new", stored.UsedByUserId);
     }
-
-    // ─── fixture ───
 
     private static HostInviteRecord Invite(HostInviteActor actor, string email, Action<HostInviteRecord>? configure = null)
     {

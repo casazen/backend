@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Enums;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -81,7 +80,6 @@ public class ComplianceWizardIntegrationTests : IClassFixture<CasazenWebApplicat
             confirmDeparture = true,
         });
 
-        // A5-24: the quick check-out of the app declares nothing, so the property is not ready (never a fixed true).
         Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
         Assert.False((await complete.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("propertyReady").GetBoolean());
     }

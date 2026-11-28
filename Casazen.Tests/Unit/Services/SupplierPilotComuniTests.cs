@@ -7,7 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>SU-04: <c>Suppliers:PilotComuni</c> accepts ISTAT codes, validated against the official list.</summary>
 public class SupplierPilotComuniTests
 {
     [Fact]
@@ -54,7 +53,6 @@ public class SupplierPilotComuniTests
         var pilots = Create(db, ("H501", "Roma"));
 
         Assert.Equal("058091", Assert.Single(await pilots.GetAsync()).Code);
-        // A registration form that still sends the cadastral code finds the same pilot.
         Assert.Equal("058091", (await pilots.FindAsync("H501"))!.Code);
         Assert.Equal("058091", (await pilots.FindAsync("058091"))!.Code);
         Assert.Null(await pilots.FindAsync("015146"));
@@ -88,7 +86,6 @@ public class SupplierPilotComuniTests
         new(
             Options.Create(new SupplierRegistrationOptions
             {
-                // These tests cover the restricted (pilot) behaviour; the open one is covered by SupplierSelfServeAnyComune tests.
                 AnyComune = false,
                 PilotComuni = configured.Select(c => new SupplierPilotComune { Code = c.Code, Name = c.Name }).ToList(),
             }),

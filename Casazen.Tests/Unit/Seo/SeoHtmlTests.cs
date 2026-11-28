@@ -3,7 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Seo;
 
-/// <summary>Escaping and text helpers of the crawler pages (BK-15): what a host writes never becomes markup.</summary>
 public class SeoHtmlTests
 {
     [Fact]

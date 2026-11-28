@@ -14,11 +14,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E06/F03/US03/T01 (FIS-07, NF-87): the list of the fiscal documents as CSV and as Excel has the same fourteen columns in both files, carries the same
-/// cents and the same days, says its words in the language of the request, never names the channel manager, and never lets a spreadsheet run a text
-/// somebody typed.
-/// </summary>
 public class FiscalDocumentExportsTests
 {
     private static readonly XNamespace Main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
@@ -37,7 +32,6 @@ public class FiscalDocumentExportsTests
         "Payment status", "SDI status", "Source",
     ];
 
-    /// <summary>Data rule: a text a spreadsheet would run (<c>= + - @</c> first) is written as text in the CSV (a leading apostrophe) and in the Excel file (an inline string, no formula).</summary>
     [Fact]
     public void DocumentExport_FormulaInjection_Neutralized_Test()
     {
@@ -46,7 +40,6 @@ public class FiscalDocumentExportsTests
             .Select(p => Row(number: p + "1", property: p + "SUM(A1)", recipient: p + "cmd|' /C calc'!A0"))
             .ToList();
 
-        // CSV: every one of the three typed columns carries a leading apostrophe, so the cell is text.
         var csv = CsvCells(FiscalDocumentExports.Csv(rows, Texts, "it"));
         for (var i = 0; i < prefixes.Length; i++)
         {
@@ -56,7 +49,6 @@ public class FiscalDocumentExportsTests
             Assert.Equal("'" + prefixes[i] + "cmd|' /C calc'!A0", cells[5]);
         }
 
-        // Excel: the same cells are inline strings, read back as the text typed and never as a number, and the sheet holds no formula element at all.
         var workbook = FiscalDocumentExports.Xlsx(rows, Texts, "it");
         var table = XlsxTableReader.Read(workbook);
         for (var i = 0; i < prefixes.Length; i++)
@@ -79,7 +71,6 @@ public class FiscalDocumentExportsTests
         }
     }
 
-    /// <summary>Money rule: the two files carry the same cents (the amounts as the documents store them), the same days and the same words, row by row.</summary>
     [Fact]
     public void DocumentExport_CsvAndXlsx_CarryTheSameRowsAndAmounts_Test()
     {
@@ -102,7 +93,6 @@ public class FiscalDocumentExportsTests
             var sheetCells = table[r + 1];
             Assert.Equal(14, cells.Length);
 
-            // The four amounts, to the cent, as the document stores them: a decimal comma in the CSV, a number cell in the Excel file.
             decimal[] stored = [row.TaxableBase, row.VatAmount, row.StampDuty, row.Total];
             for (var c = 0; c < stored.Length; c++)
             {
@@ -111,7 +101,6 @@ public class FiscalDocumentExportsTests
                 Assert.Equal(stored[c], decimal.Parse(sheetCells[6 + c].Text, NumberStyles.Number, CultureInfo.InvariantCulture));
             }
 
-            // The day: an ISO day in the CSV, the serial of the same day in the Excel file; none in both when the document has none.
             if (row.IssueDate is { } day)
             {
                 Assert.Equal(day, DateOnly.ParseExact(cells[2], "yyyy-MM-dd", CultureInfo.InvariantCulture));
@@ -124,7 +113,6 @@ public class FiscalDocumentExportsTests
                 Assert.Equal(string.Empty, sheetCells[2].Text);
             }
 
-            // Every other cell says the same words.
             foreach (var c in new[] { 0, 1, 3, 4, 5, 10, 11, 12, 13 })
             {
                 Assert.Equal(cells[c], c < sheetCells.Length ? sheetCells[c].Text : string.Empty);
@@ -172,11 +160,9 @@ public class FiscalDocumentExportsTests
         Assert.Equal(["Pro forma invoice", "Sent outside CasaZen", "Issued by your channel manager"], new[] { english[3][0], english[3][12], english[3][13] });
         Assert.Equal(["Sent", "To send", "Not stated"], new[] { english[4][12], english[5][12], english[6][12] });
 
-        // A self-billed invoice (TD17) names its kind for what it is in both languages, its recipient column being the foreign supplier it integrates.
         Assert.Equal(["Autofattura TD17", "TEST Portale B.V."], new[] { italian[7][0], italian[7][5] });
         Assert.Equal(["Self-billed invoice TD17", "TEST Portale B.V."], new[] { english[7][0], english[7][5] });
 
-        // The channel manager is never named in a file, in either format or language.
         foreach (var language in new[] { "it", "en" })
         {
             Assert.DoesNotContain("octorate", Encoding.UTF8.GetString(FiscalDocumentExports.Csv(rows, Texts, language)), StringComparison.OrdinalIgnoreCase);
@@ -193,7 +179,6 @@ public class FiscalDocumentExportsTests
         Assert.Equal(string.Empty, csv[2][3]);
     }
 
-    /// <summary>A real day formatted, whatever the culture of the server: the name of the file is the month, as <c>yyyy-MM</c>.</summary>
     [Fact]
     public void FileName_IsTheMonthOfTheDay_WhateverTheCultureOfTheServer()
     {
@@ -211,7 +196,6 @@ public class FiscalDocumentExportsTests
         }
     }
 
-    /// <summary>A list one document too long is refused by the two writers (422) and never cut without a word; one short of it is a file.</summary>
     [Fact]
     public void ATooLongList_IsRefusedByBothFormats_AndOneShortOfItIsAFile()
     {
@@ -224,10 +208,6 @@ public class FiscalDocumentExportsTests
         Assert.Equal(FiscalDocumentExports.Limit, XlsxTableReader.Read(FiscalDocumentExports.Xlsx(fits, Texts, "it")).Count);
     }
 
-    /// <summary>
-    /// Every key of the export has a text in both languages that is not the key and is not the same in the two (the rule of the audit of the resource files,
-    /// which runs in the integration suite: a word identical in Italian and English fails it).
-    /// </summary>
     [Fact]
     public void ResourceKeys_AreTranslated_AndNeverTheSameInBothLanguages()
     {
@@ -270,7 +250,6 @@ public class FiscalDocumentExportsTests
         FiscalDocumentPurpose purpose = FiscalDocumentPurpose.GuestStay) =>
         new(Guid.NewGuid(), kind, number, issued ?? new DateOnly(2026, 11, 12), bookingCode, property, recipient, taxable, vat, stamp, total, currency, payment, sdi, source, purpose);
 
-    /// <summary>The rows of a CSV file of test data (no cell holds a separator or a quote), without the byte order mark.</summary>
     private static string[][] CsvCells(byte[] file) =>
         Encoding.UTF8.GetString(file, 3, file.Length - 3).TrimEnd('\r', '\n').Split("\r\n").Select(line => line.Split(';')).ToArray();
 

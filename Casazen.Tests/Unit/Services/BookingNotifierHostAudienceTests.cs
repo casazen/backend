@@ -1,6 +1,5 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Services;
@@ -51,7 +50,6 @@ public class BookingNotifierHostAudienceTests : IDisposable
         return user;
     }
 
-    /// <summary>An org with its contact address, an owner who created the property, and a confirmed booking on it.</summary>
     private async Task<World> SeedAsync(string? responsibleId = null, string creatorId = "owner")
     {
         var org = new OrgEntity { Name = "Villa Org", Slug = "villa-org", DisplayName = "Villa Org", ContactEmail = "contatto@example.com" };
@@ -107,12 +105,9 @@ public class BookingNotifierHostAudienceTests : IDisposable
 
         await Notifier().BookingConfirmedAsync(world.BookingId, BookingConfirmationKind.PaidOnline);
 
-        // The org contact, the manager in charge, the owner and the admin: not the collaborator, the accountant, the platform
-        // admin, nor the deactivated or locked administrators.
         Assert.Equal(
             ["admin@example.com", "contatto@example.com", "manager@example.com", "owner@example.com"],
             HostRecipients());
-        // The guest has its own message.
         Assert.Single(_emails.Snapshot(), e => e.To == "guest@example.com");
     }
 

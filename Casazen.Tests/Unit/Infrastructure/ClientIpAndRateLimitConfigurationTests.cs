@@ -9,9 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>
-/// Client IP resolution, forwarded headers configuration and rate limiting partitions/limits (FD-10, #273).
-/// </summary>
 public class ClientIpAndRateLimitConfigurationTests
 {
     [Fact]
@@ -115,8 +112,6 @@ public class ClientIpAndRateLimitConfigurationTests
     [Fact]
     public void Policies_TheSlotsAndTheEstimateOfTheSupplierShowcase_HaveTheirOwnTighterLimits()
     {
-        // SP-09: each slots read runs the planner (cached 30 s) and each estimate may look up a comune, so neither shares the
-        // 120 per minute of the plain reads.
         var slots = RateLimitingServiceCollectionExtensions.ResolveOptions(Policy(RateLimitPolicies.PublicSupplierSlots), Configuration());
         var quote = RateLimitingServiceCollectionExtensions.ResolveOptions(Policy(RateLimitPolicies.PublicSupplierQuote), Configuration());
         var read = RateLimitingServiceCollectionExtensions.ResolveOptions(Policy(RateLimitPolicies.PublicRead), Configuration());
@@ -143,7 +138,7 @@ public class ClientIpAndRateLimitConfigurationTests
 
         Assert.Equal((7, TimeSpan.FromSeconds(20)), (slots.PermitLimit, slots.Window));
         Assert.Equal(3, quote.PermitLimit);
-        Assert.Equal(120, read.PermitLimit); // the plain reads are not touched
+        Assert.Equal(120, read.PermitLimit);
     }
 
     [Fact]
@@ -154,7 +149,6 @@ public class ClientIpAndRateLimitConfigurationTests
 
         Assert.Equal(("PublicSupplierBookingCreate", 5, TimeSpan.FromMinutes(10)), (RateLimitPolicies.PublicSupplierBookingCreate, create.PermitLimit, create.Window));
         Assert.Equal(0, create.QueueLimit);
-        // Five in ten minutes is well below the requests per minute of the other public limits.
         Assert.True(create.PermitLimit / create.Window.TotalMinutes < quote.PermitLimit / quote.Window.TotalMinutes);
     }
 
@@ -180,22 +174,18 @@ public class ClientIpAndRateLimitConfigurationTests
         var perEmail = RateLimitingServiceCollectionExtensions.ResolveOptions(SupplierBookingEmailRateLimiter.Policy, Configuration());
 
         Assert.Equal(("SupplierBookingCreatePerEmail", 3, TimeSpan.FromHours(1)), (SupplierBookingEmailRateLimiter.Policy.Name, perEmail.PermitLimit, perEmail.Window));
-        // It is applied by a filter, next to the per-IP policy, so it is not one of the policies the rate limiter middleware registers.
         Assert.DoesNotContain(SupplierBookingEmailRateLimiter.Policy.Name, RateLimitingServiceCollectionExtensions.Policies.Select(p => p.Name));
     }
 
     [Fact]
     public void Policies_TheCustomersAreaOfABooking_SharesThePerIpPolicyOfTheGuests_AndHasItsOwnLimitPerAddress()
     {
-        // SP-11: the five endpoints of the customer's own area use the policy of "Le mie prenotazioni" per IP (10 every 5 minutes)...
         var perIp = RateLimitingServiceCollectionExtensions.ResolveOptions(Policy(RateLimitPolicies.PublicGuestBookingLookup), Configuration());
         var perEmail = RateLimitingServiceCollectionExtensions.ResolveOptions(SupplierBookingManageEmailRateLimiter.Policy, Configuration());
 
         Assert.Equal((10, TimeSpan.FromMinutes(5)), (perIp.PermitLimit, perIp.Window));
-        // ...and a limit per address and supplier of their own, applied by a filter next to it (10 every 15 minutes).
         Assert.Equal(("SupplierBookingManagePerEmail", 10, TimeSpan.FromMinutes(15)), (SupplierBookingManageEmailRateLimiter.Policy.Name, perEmail.PermitLimit, perEmail.Window));
         Assert.DoesNotContain(SupplierBookingManageEmailRateLimiter.Policy.Name, RateLimitingServiceCollectionExtensions.Policies.Select(p => p.Name));
-        // The guests' own limit per address is where it was.
         var guests = RateLimitingServiceCollectionExtensions.ResolveOptions(GuestBookingEmailRateLimiter.Policy, Configuration());
         Assert.Equal(("GuestBookingLookupPerEmail", 5, TimeSpan.FromMinutes(15)), (GuestBookingEmailRateLimiter.Policy.Name, guests.PermitLimit, guests.Window));
     }
@@ -212,7 +202,6 @@ public class ClientIpAndRateLimitConfigurationTests
         var guests = RateLimitingServiceCollectionExtensions.ResolveOptions(GuestBookingEmailRateLimiter.Policy, configuration);
 
         Assert.Equal((4, TimeSpan.FromMinutes(5)), (perEmail.PermitLimit, perEmail.Window));
-        // Setting one does not move the other: they are two limits.
         Assert.Equal(5, guests.PermitLimit);
     }
 

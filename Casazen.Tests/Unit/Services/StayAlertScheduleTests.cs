@@ -76,7 +76,6 @@ public class StayAlertScheduleTests
     [Fact]
     public void DueAlloggiatiStep_ShortStayWithoutRegisteredArrival_IsNotOverdueBeforeTheEndOfTheArrivalDay()
     {
-        // The deadline shown by CasaZen (CO-11) is 06:00 of the arrival day, before any real arrival: no false alarm.
         var shortStay = Stay(checkOut: Utc(2026, 10, 6));
 
         Assert.Null(Due(shortStay, guestDataComplete: true, Utc(2026, 10, 5, 5, 0)));
@@ -171,7 +170,6 @@ public class StayAlertScheduleTests
     [Fact]
     public void CheckoutReminderAtUtc_HourSkippedByDaylightSaving_IsOneHourLater()
     {
-        // 29 March 2026: in Rome 02:00 does not exist (02:00 -> 03:00 CEST = 01:00 UTC).
         Assert.Equal(Utc(2026, 3, 29, 1, 0), StayAlertSchedule.CheckoutReminderAtUtc(Utc(2026, 3, 29), "Europe/Rome", 2));
     }
 

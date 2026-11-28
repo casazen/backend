@@ -3,18 +3,12 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
-using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// SP-15a: the supplier asks for the payment of a completed request paid inside CasaZen, or reminds the payer
-/// (<c>POST api/supplier/requests/{id}/payment-request</c>): a new personal link replaces the previous one, at most one email a
-/// day, only when the supplier can be paid, and only for a request the supplier owns and may still act on.
-/// </summary>
 public class SupplierPaymentRequestTests
 {
     private static async Task<ServiceRequest> CompletedAsync(ServiceRequestScenario s) => await s.CompletedOnlineAsync();
@@ -31,7 +25,6 @@ public class SupplierPaymentRequestTests
 
         Assert.Equal(2, payment.SentCount);
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, payment.LastSentAt);
-        // RequestedAt is when the payer was first asked; the reminder moves only the last email and the validity of the link.
         Assert.Equal(ServiceRequestScenario.Instant.UtcDateTime, payment.RequestedAt);
         var reminder = Assert.Single(s.Emails.ReminderEmails());
         Assert.Equal("host@test.com", reminder.To);
@@ -41,7 +34,6 @@ public class SupplierPaymentRequestTests
         var saved = await s.OnlyPaymentOfAsync(completed.Id);
         Assert.True(CheckoutOutcomes.TokenMatches(saved.PaymentTokenHash, secondLink.Token));
         Assert.False(CheckoutOutcomes.TokenMatches(saved.PaymentTokenHash, firstLink.Token));
-        // Still one request email: the first one.
         Assert.Single(s.Emails.RequestEmails());
     }
 
@@ -98,7 +90,6 @@ public class SupplierPaymentRequestTests
 
         Assert.Equal(ServicePaymentErrors.RequestNotSent, ex.Code);
         var after = await s.OnlyPaymentOfAsync(completed.Id);
-        // Nothing was sent, so nothing changed: the link the host already has keeps working and the count did not move.
         Assert.Equal(before.PaymentTokenHash, after.PaymentTokenHash);
         Assert.Equal(before.LastSentAt, after.LastSentAt);
         Assert.Equal(before.RequestedAt, after.RequestedAt);
@@ -282,7 +273,6 @@ public class SupplierPaymentRequestTests
     [Fact]
     public async Task RequestPayment_ASecondLivePaymentRefusedByTheDatabase_Is409AndNothingIsSent()
     {
-        // The unique index "one payment per request that is not canceled" is the last guard: its violation is a conflict, never a 500.
         var interceptor = new FailingSaveInterceptor();
         using var s = await ServiceRequestScenario.CreateAsync(saveInterceptor: interceptor);
         var completed = await CompletedAsync(s);
@@ -323,8 +313,6 @@ public class SupplierPaymentRequestTests
     [Fact]
     public async Task RequestPayment_TheCallerGoesAwayRightAfterTheLinkIsSaved_TheEmailIsStillQueued()
     {
-        // A dropped connection after the commit must not leave the payer's old link dead and nothing sent (and the supplier
-        // locked out for a day).
         var interceptor = new FailingSaveInterceptor();
         using var s = await ServiceRequestScenario.CreateAsync(saveInterceptor: interceptor);
         var completed = await CompletedAsync(s);
@@ -342,7 +330,6 @@ public class SupplierPaymentRequestTests
         Assert.True(CheckoutOutcomes.TokenMatches((await s.OnlyPaymentOfAsync(completed.Id)).PaymentTokenHash, link.Token));
     }
 
-    /// <summary>Writes a change straight to the only live payment of a request.</summary>
     internal static async Task ChangePaymentAsync(ServiceRequestScenario s, Guid requestId, Action<ServiceRequestPayment> change)
     {
         var payment = await s.Db.ServiceRequestPayments.SingleAsync(p => p.ServiceRequestId == requestId);

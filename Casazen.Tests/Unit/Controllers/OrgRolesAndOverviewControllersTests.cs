@@ -72,8 +72,6 @@ public class OrgRolesAndOverviewControllersTests
         },
         OrgRole.Owner);
 
-    // ─── The matrix of the roles ────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetRoles_AsksForTheCallersOrgAndAccount_AndAnswersTheFiveRoles()
     {
@@ -102,11 +100,9 @@ public class OrgRolesAndOverviewControllersTests
         Assert.Equal("Owner", owner.GetProperty("role").GetString());
         Assert.False(owner.GetProperty("assignable").GetBoolean());
         Assert.False(owner.GetProperty("scopeSupported").GetBoolean());
-        // Per context: the role key and the permissions, the keys the contexts of the web app have.
         var account = owner.GetProperty("permissionsByContext").GetProperty("account");
         Assert.Equal("org_owner", account.GetProperty("roleKey").GetString());
         Assert.Equal(["org.billing.manage", "org.members.manage"], account.GetProperty("permissions").EnumerateArray().Select(p => p.GetString()));
-        // Thirteen capabilities with an id, a group and a level in words.
         var capabilities = owner.GetProperty("capabilities");
         Assert.Equal(13, capabilities.GetArrayLength());
         var booking = capabilities[0];
@@ -130,14 +126,11 @@ public class OrgRolesAndOverviewControllersTests
     {
         var controller = typeof(OrgRolesController);
 
-        // Any active member may read it; the service checks that the caller is one (the policy of the others would shut them out).
         Assert.Equal(
             CasazenPolicies.Authenticated,
             controller.GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true).Cast<AuthorizeAttribute>().Single().Policy);
         Assert.Equal("api/orgs/me/roles", controller.GetCustomAttributes(typeof(RouteAttribute), inherit: true).Cast<RouteAttribute>().Single().Template);
     }
-
-    // ─── The overview ───────────────────────────────────────────────────────────────────────────────────
 
     private static OrgOverview FullOverview() => new(
         Standing: "attention",

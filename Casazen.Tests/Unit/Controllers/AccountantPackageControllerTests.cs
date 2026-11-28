@@ -72,7 +72,6 @@ public class AccountantPackageControllerTests
 
         public AccountantPackageController Controller { get; }
 
-        /// <summary>The access, the period and the destination the service was given by the next call of <c>BuildAsync</c>.</summary>
         public Captured CaptureBuild()
         {
             var captured = new Captured();
@@ -88,7 +87,6 @@ public class AccountantPackageControllerTests
             return captured;
         }
 
-        /// <summary>The access and the period the service was given by the next call of <c>GetAsync</c>; it answers a summary that says whether the owner accounting is in it.</summary>
         public Captured CaptureSummary()
         {
             var captured = new Captured();
@@ -139,13 +137,6 @@ public class AccountantPackageControllerTests
 
     private static int StatusOf(IActionResult result) => Assert.IsType<ObjectResult>(result).StatusCode!.Value;
 
-    // ---------------------------------------------------------------- the permission rule
-
-    /// <summary>
-    /// PROOF TEST: permission rule. The owner accounting is asked of the service for a caller that holds <c>agency.statement.view</c> and only then: the controller evaluates the policy
-    /// by its name and turns the answer into the access the service gets, for the ZIP and for the summary alike. The service gets the days, the scope of the caller and the response
-    /// as the destination.
-    /// </summary>
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -180,7 +171,6 @@ public class AccountantPackageControllerTests
         Assert.Equal("private, no-store", harness.Http.Response.Headers.CacheControl.ToString());
     }
 
-    /// <summary>The permission does not widen the reach: a caller that holds it but reaches some properties is given the access, and its own restricted scope, to the service (which leaves the owner accounting out).</summary>
     [Fact]
     public async Task Download_ARestrictedScope_IsHandedOverAsItIs_NeverWidened()
     {
@@ -193,8 +183,6 @@ public class AccountantPackageControllerTests
         harness.Packages.Verify(p => p.BuildAsync(restricted, It.IsAny<AccountantPackageAccess>(), It.IsAny<AccountantPackagePeriod>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Once);
         Assert.False(captured.Access!.AllowsOwnerAccounting(restricted));
     }
-
-    // ---------------------------------------------------------------- who is nobody, and what is not a period
 
     [Theory]
     [InlineData(false, true)]
@@ -240,8 +228,6 @@ public class AccountantPackageControllerTests
         harness.Authorization.Verify(a => a.AuthorizeAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), It.IsAny<string>()), Times.Never);
     }
 
-    // ---------------------------------------------------------------- the response and the log
-
     /// <summary>PROOF TEST: privacy rule. The package is money and personal data built on request: never cached, and the log line carries the ids of the org and of the user and the counts, nothing else.</summary>
     [Fact]
     public async Task Download_IsNeverCached_AndWritesOneLineWithTheIdsAndTheCounts()
@@ -257,8 +243,6 @@ public class AccountantPackageControllerTests
         Assert.Equal(UserId, line.Values["UserId"]);
         Assert.Equal((3, 12, 4096L, 0), ((int)line.Values["Documents"]!, (int)line.Values["Files"]!, (long)line.Values["Bytes"]!, (int)line.Values["OmittedFolders"]!));
     }
-
-    // ---------------------------------------------------------------- the doors
 
     /// <summary>
     /// PROOF TEST: permission rule and rollback. Every endpoint is behind <c>Features:AccountantPackage</c> (404 while it is off: unsetting the variable is the rollback) and
@@ -294,12 +278,6 @@ public class AccountantPackageControllerTests
             actions.Select(a => $"{a.Name}:{string.Join("/", a.GetCustomAttributes<HttpMethodAttribute>().SelectMany(m => m.HttpMethods))}").Order());
     }
 
-    // ---------------------------------------------------------------- «send a test» (E15/F01/US02/T02)
-
-    /// <summary>
-    /// PROOF TEST: permission rule. The owner accounting is in the package a person sends to the accountant only if that person holds <c>agency.statement.view</c>: the controller evaluates the policy by its name and
-    /// turns the answer into the access the service gets, so a person never shares with a third party what it may not read. The answer says the month and the expiry of the link, never the address or the link.
-    /// </summary>
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -318,7 +296,6 @@ public class AccountantPackageControllerTests
         harness.Authorization.Verify(a => a.AuthorizeAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), CasazenPolicies.AgencyStatementView), Times.Once);
     }
 
-    /// <summary>PROOF TEST: permission rule. Nothing is made or sent by a caller that reaches only some properties, or none, even with the permissions: the package is the organization's.</summary>
     [Theory]
     [InlineData("account-in-no-team")]
     [InlineData("collaborator")]

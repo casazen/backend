@@ -38,8 +38,6 @@ public class DemoShowcaseTests
     [Fact]
     public void PropertyOwners_FiscalCodeAndIban_PassTheRulesOfTheOwnerRegistry_AndTheAddressIsATestOne()
     {
-        // The demo owners are the registry that the owner readiness judges: a fiscal code or an IBAN that fails its check character or checksum
-        // would show a fault nobody made. Invented, but valid for the real rules (demo-seed.md).
         foreach (var owner in DemoShowcaseCatalog.PropertyOwners)
         {
             Assert.True(
@@ -50,10 +48,6 @@ public class DemoShowcaseTests
         }
     }
 
-    /// <summary>
-    /// E13/F01/US01/T01: the commission rules of the channels of the demo are rules the API would save: a portal each, a percent from 0 to 100 with two
-    /// decimals, one rule per channel and first day, so the demo shows a rule replacing a default and a rule for a portal without one.
-    /// </summary>
     [Fact]
     public void ChannelCommissionRules_AreValidRulesOfPortals()
     {
@@ -192,11 +186,6 @@ public class DemoShowcaseTests
         Assert.All(DemoShowcaseCatalog.Properties.Where(p => p.Swiss is not null), p => Assert.Equal((string.Empty, string.Empty), (p.Place.IstatCode, p.Place.RegionCode)));
     }
 
-    /// <summary>
-    /// casazen/backend#979 (E29-E31), the demo rule: the showcase has ONE Swiss flat, in Lugano, and a confirmed stay of yesterday that exercises the Swiss flow: two adults with the data of the
-    /// Swiss file (a head with a Swiss home and a Swiss identity card, a family member with a foreign passport), the document of each adult, guests at example.com, numbers that say TEST and the TEST
-    /// structure number of the Ticino portal. The two older flats of Ticino stay Italian-model properties of the agency scenario, as they were.
-    /// </summary>
     [Fact]
     public void SwissGuestRegistration_TheDemoHasOneSwissFlat_WithAStayOfYesterdayWhoseAdultsCarryTheSwissFile()
     {
@@ -208,14 +197,12 @@ public class DemoShowcaseTests
         Assert.Equal(("Lugano", "6900"), (flat.Place.City, flat.Place.PostalCode));
         Assert.Null(flat.Cadastral);
 
-        // A TEST structure number that is valid under the real check the file and the activation use.
         var structure = flat.Swiss!.TicinoStructureId;
         Assert.Equal(DemoShowcaseCatalog.SwissFlatStructureId, structure);
         Assert.True(TicinoStructureId.IsValid(structure));
         Assert.Equal(structure, TicinoStructureId.Normalize(structure));
         Assert.Contains("TEST", structure, StringComparison.Ordinal);
 
-        // The stay: confirmed, arrived yesterday, a booking of the booking site paid at the property (nothing reaches Stripe), at example.com.
         var stay = Assert.Single(flat.Bookings);
         Assert.Equal(DemoShowcaseCatalog.Scenario.SwissGuestRegistration, stay.Scenario);
         Assert.Equal((BookingStatus.Confirmed, -1, BookingSource.Direct, PaymentOption.OnSite), (stay.Status, stay.CheckInOffsetDays, stay.Source, stay.PaymentOption));
@@ -224,7 +211,6 @@ public class DemoShowcaseTests
         Assert.Null(stay.Ota);
         Assert.Null(stay.Compliance);
 
-        // Two adults, a head of family and a family member, a valid composition; each has a Swiss file's data: a document that says TEST, a place of birth and a nationality, and the Swiss home.
         var guests = Assert.IsAssignableFrom<IReadOnlyList<DemoStayGuestTemplate>>(stay.Guests);
         Assert.Equal([StayGuestType.HeadOfFamily, StayGuestType.FamilyMember], guests.Select(g => g.Type));
         Assert.Empty(AlloggiatiRecordRules.CompositionErrors(guests.Select(g => g.Type).ToList()));
@@ -235,7 +221,6 @@ public class DemoShowcaseTests
             Assert.Contains("TEST", swiss.DocumentNumber, StringComparison.Ordinal);
             Assert.False(string.IsNullOrWhiteSpace(swiss.DocumentIssuePlaceName));
             Assert.Equal(("Bahnhofstrasse 12", "8001", "Zürich", "Svizzera"), (swiss.Home.Street, swiss.Home.PostalCode, swiss.Home.City, swiss.Home.CountryName));
-            // The file reads the states by name: each one is a state the table of the file knows.
             Assert.NotNull(TicinoCountryCodes.FromCheckIn(null, swiss.CitizenshipName));
             Assert.NotNull(TicinoCountryCodes.FromCheckIn(null, swiss.BirthCountryName));
             Assert.Equal("CHE", TicinoCountryCodes.FromCheckIn(null, swiss.Home.CountryName));
@@ -245,7 +230,6 @@ public class DemoShowcaseTests
         Assert.NotEqual("CHE", TicinoCountryCodes.FromCheckIn(null, guests[1].Swiss!.CitizenshipName));
         Assert.Equal(GuestDocumentType.Passport, guests[1].Swiss!.DocumentType);
 
-        // Decision D6: no image of a document is kept for a Swiss property: no check-in session of the showcase is about this stay.
         Assert.DoesNotContain(DemoShowcaseCatalog.CheckIns, c => c.PropertyKey == flat.Key || c.BookingKey == stay.Key);
 
         // The two older flats of Ticino are not touched: Italian-model properties with the invented ISTAT codes, for the agency scenario only.
@@ -258,11 +242,6 @@ public class DemoShowcaseTests
         }
     }
 
-    /// <summary>
-    /// E01/F04/US01/T03 (NF-21): the demo routines are routines the API would save, and the scenarios of the active and of the test-mode routine have their
-    /// template data: the active one is a time trigger with an action the engine can run (a routine with an action that cannot run is refused when it is
-    /// activated), the one in test mode holds a Wait, and both say DEMO or TEST.
-    /// </summary>
     [Fact]
     public void Routines_TheDemoRoutines_AreRoutinesTheApiWouldSave_AndSayDemoOrTest()
     {
@@ -298,7 +277,6 @@ public class DemoShowcaseTests
         Assert.Contains(DemoShowcaseCatalog.Scenario.RoutineActive, DemoShowcaseCatalog.Scenarios);
         Assert.Contains(DemoShowcaseCatalog.Scenario.RoutineTestMode, DemoShowcaseCatalog.Scenarios);
 
-        // E26/F01/US01/T01: the ready routine «Richiesta di recensione», a day after the check-out, in test mode (the guests of the showcase are invented).
         var review = Assert.Single(routines, r => r.Scenario == DemoShowcaseCatalog.Scenario.RoutineReviewRequest);
         Assert.True(review.IsTestMode);
         Assert.Equal((RoutineEventType.AfterCheckout, 1), (review.EventType, review.DaysBefore));
@@ -342,11 +320,6 @@ public class DemoShowcaseTests
         Assert.Empty(rig.Scheduled);
     }
 
-    /// <summary>
-    /// E24/F01/US01 (NF-120): the demo shows the cleaning at check-out: the ready routine «Pulizia al check-out» (the time of the check-out, no offset, the action that creates the
-    /// cleaning, active) and the two kinds of default cleaner on two different houses, one with a trusted supplier at an agreed price and one with a member of the staff, each a body the
-    /// API would save for a short-rent house of the demo and a supplier or staff member of its templates.
-    /// </summary>
     [Fact]
     public void CleaningAtCheckout_TheDemoHasTheReadyRoutine_AndASupplierAndAStaffSetup()
     {
@@ -402,7 +375,6 @@ public class DemoShowcaseTests
         Assert.Null(row.VerifiedAt);
     }
 
-    /// <summary>The routines of the demo are marked rows of the reset, like the other invented rows of the org.</summary>
     [Fact]
     public void Routines_TheMarkerOfTheDemoRoutines_IsTheNameOfTheEntity()
     {
@@ -446,7 +418,6 @@ public class DemoShowcaseTests
             Assert.EndsWith("@example.com", booking.Email, StringComparison.Ordinal);
             if (thread.Kind == DemoMessageThreadKind.Direct)
             {
-                // A direct conversation exists only for a booking of the public checkout that was confirmed (GuestMessageRules.StateOf).
                 Assert.Equal(BookingSource.Direct, booking.Source);
                 Assert.Contains(booking.Status, new[] { BookingStatus.Confirmed, BookingStatus.CheckedIn, BookingStatus.CheckedOut });
                 Assert.True(thread.Messages[^1].FromGuest, "the direct conversation of the demo waits for an answer");
@@ -457,7 +428,6 @@ public class DemoShowcaseTests
             }
         }
 
-        // The messages of every conversation are in the order they were written: the minutes ago fall, and what the host read comes first.
         foreach (var thread in threads)
         {
             var minutes = thread.Messages.Select(m => m.MinutesAgo).ToList();
@@ -467,10 +437,6 @@ public class DemoShowcaseTests
         }
     }
 
-    /// <summary>
-    /// NF-46: the demo shows a stay taxed guest by guest (a minor exempt by age, an adult the host exempted as resident, one who pays) and a channel
-    /// stay in a comune whose demo channel rule makes the channel collect; the rule is for an invented comune only, with an example source.
-    /// </summary>
     [Fact]
     public void TouristTax_TheDemoStays_ShowEveryCase_AndTheChannelRuleTouchesNoRealComune()
     {
@@ -524,11 +490,6 @@ public class DemoShowcaseTests
         Assert.EndsWith("@example.com", booking.Email, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// NF-40, NF-45 (E03/F01/US01/T04): the check-in wizard has a demo stay in each of the four states (expected, arrived, departed, no-show), all
-    /// with registered guests of a valid composition, and one stay with data to complete (a birth place missing) and a document expired before
-    /// the arrival. Invented guests, @example.com addresses.
-    /// </summary>
     [Fact]
     public void CheckInWizard_TheDemoHasStaysInTheFourStates_AndOneWithDataToComplete()
     {
@@ -544,7 +505,6 @@ public class DemoShowcaseTests
         Assert.True(expected is { Status: BookingStatus.Confirmed, NoShow: false } && expected.CheckInOffsetDays > 0);
         Assert.True(arrived.Status == BookingStatus.CheckedIn && arrived.CheckInOffsetDays <= 0);
         Assert.Equal(BookingStatus.CheckedOut, departed.Status);
-        // A no-show is a confirmed stay whose check-in day has come (the rule of the no-show).
         Assert.True(noShow is { Status: BookingStatus.Confirmed, NoShow: true } && noShow.CheckInOffsetDays < 0);
         Assert.All(bookings.Where(b => b.NoShow), b => Assert.Equal(BookingStatus.Confirmed, b.Status));
 
@@ -584,7 +544,6 @@ public class DemoShowcaseTests
         Assert.Contains(DemoShowcaseCatalog.Scenario.CrmWelcomeLink, DemoShowcaseCatalog.Scenarios);
         Assert.NotEmpty(links);
         Assert.Equal(links.Count, links.Select(link => link.Key).Distinct(StringComparer.Ordinal).Count());
-        // The token is unique in the whole table, and a house has one active link.
         Assert.Equal(links.Count, links.Select(link => link.Token).Distinct(StringComparer.Ordinal).Count());
         Assert.Equal(links.Count, links.Select(link => link.PropertyKey).Distinct(StringComparer.Ordinal).Count());
         Assert.All(links, link =>
@@ -605,18 +564,15 @@ public class DemoShowcaseTests
         Assert.Contains(DemoShowcaseCatalog.Scenario.WizardDrafts, DemoShowcaseCatalog.Scenarios);
         Assert.NotEmpty(drafts);
         Assert.Equal(drafts.Count, drafts.Select(d => d.Key).Distinct(StringComparer.Ordinal).Count());
-        // One draft per wizard: the demo host has a single draft of a new entity for each one (the unique index of the table).
         Assert.Equal(drafts.Count, drafts.Select(d => d.Type).Distinct().Count());
         Assert.All(drafts, draft =>
         {
             Assert.True(Enum.IsDefined(draft.Type));
-            // Saved in the past but inside the 30 days, so the retention does not anonymize it the night after a reset.
             Assert.InRange(draft.SavedOffsetDays, 1 - WizardDraftLimits.RetentionDays, 0);
 
             using var data = JsonDocument.Parse(draft.DataJson);
             var split = WizardDraftPii.Split(data.RootElement);
 
-            // The personal half exists, so the demo walks through the encryption; what is in it is invented (example.com, TEST).
             Assert.NotNull(split.PersonalJson);
             Assert.Contains("@example.com", split.PersonalJson, StringComparison.Ordinal);
             Assert.Contains("TEST", split.PersonalJson, StringComparison.Ordinal);
@@ -632,7 +588,6 @@ public class DemoShowcaseTests
             .ToList();
 
         Assert.Contains(DemoShowcaseCatalog.Scenario.GuestAppAccount, DemoShowcaseCatalog.Scenarios);
-        // Obviously test data, and the email of the account the store reviewers sign in with (created by hand in Auth0).
         Assert.EndsWith("@example.com", DemoShowcaseCatalog.GuestAppEmail, StringComparison.Ordinal);
         Assert.All(stays, s => Assert.Equal(DemoShowcaseCatalog.GuestAppEmail, s.Email));
         // «Le mie prenotazioni» of the app lists the bookings of the public checkout only, and the demo must not reach Stripe: paid at the property.
@@ -651,7 +606,6 @@ public class DemoShowcaseTests
             .SelectMany(p => p.Bookings.Where(b => b.Scenario == DemoShowcaseCatalog.Scenario.ReportYearOverYear))
             .ToList();
 
-        // NF-96: the same months of the year before the other demo stays are in, so the comparison of the reports is never empty.
         Assert.Contains(DemoShowcaseCatalog.Scenario.ReportYearOverYear, DemoShowcaseCatalog.Scenarios);
         Assert.NotEmpty(stays);
         Assert.All(stays, s => Assert.EndsWith("@example.com", s.Email, StringComparison.Ordinal));
@@ -695,12 +649,10 @@ public class DemoShowcaseTests
             Assert.Contains(o.OwnerKey, owners);
             Assert.Contains(o.PropertyKey, properties);
             Assert.Contains(o.Scenario, DemoShowcaseCatalog.Scenarios);
-            // The share of an ownership is the one the owner's template says.
             Assert.Equal(DemoShowcaseCatalog.PropertyOwners.Single(x => x.Key == o.OwnerKey).OwnershipSharePercent, o.SharePercent);
         });
         Assert.All(ownerships.GroupBy(o => o.PropertyKey), house => Assert.Equal(100m, house.Sum(o => o.SharePercent)));
 
-        // NF-96: the owner of the agency demo has a house with stays, and one house is shared 50/50 by two owners, so the weighting shows.
         var agencyOwner = Assert.Single(ownerships, o => o.Scenario == DemoShowcaseCatalog.Scenario.PropertyOwnerAgency);
         Assert.Contains(
             DemoShowcaseCatalog.Properties.Single(p => p.Key == agencyOwner.PropertyKey).Bookings,
@@ -735,7 +687,6 @@ public class DemoShowcaseTests
         var tiers = StayDiscountRules.Normalize([.. (house.StayDiscounts ?? []).Select(tier => new StayDiscountTier(tier.MinNights, tier.PercentOff))]);
 
         Assert.Contains(DemoShowcaseCatalog.Scenario.PropertyRoomsAndDiscounts, DemoShowcaseCatalog.Scenarios);
-        // The counters of the property are what the rooms give, as the rooms service sets them.
         Assert.Equal(house.Bedrooms, rooms.Bedrooms);
         Assert.Equal(house.Profile!.Beds, rooms.Beds);
         Assert.Equal([7, 28], tiers.Select(tier => tier.MinNights));
@@ -748,7 +699,6 @@ public class DemoShowcaseTests
         var alerts = DemoShowcaseCatalog.PopupAlerts;
         var houses = DemoShowcaseCatalog.Properties.ToDictionary(p => p.Key, StringComparer.Ordinal);
 
-        // NF-08, ADR-025: the queue of the demo host has an alert pending at once and one that comes back later.
         Assert.Contains(DemoShowcaseCatalog.Scenario.PopupAlerts, DemoShowcaseCatalog.Scenarios);
         Assert.Equal(alerts.Count, alerts.Select(a => a.Key).Distinct(StringComparer.Ordinal).Count());
         Assert.Single(alerts, a => a.SnoozedForHours is null);
@@ -756,7 +706,6 @@ public class DemoShowcaseTests
         Assert.All(alerts, a => Assert.Equal(DemoShowcaseCatalog.Scenario.PopupAlerts, a.Scenario));
         Assert.All(alerts, a => Assert.True(Enum.IsDefined(a.Type) && Enum.IsDefined(a.Urgency)));
 
-        // A reference only: the house or the stay it points at exists in the template, and the seed finds it by that key.
         Assert.All(alerts, a =>
         {
             Assert.True(houses.TryGetValue(a.PropertyKey, out var house), $"{a.Key}: no demo property {a.PropertyKey}.");
@@ -773,19 +722,15 @@ public class DemoShowcaseTests
         var stays = house.Bookings.Where(b => b.Scenario == DemoShowcaseCatalog.Scenario.TouristTaxPaid).ToList();
         var taxed = stays.Where(s => (s.TouristTax ?? 0m) > 0m).ToList();
 
-        // NF-100: the summary of the demo host shows an amount owed, a part of it paid with a receipt, and a stay counted apart.
         Assert.Contains(DemoShowcaseCatalog.Scenario.TouristTaxPaid, DemoShowcaseCatalog.Scenarios);
         Assert.Equal(DemoShowcaseCatalog.Scenario.TouristTaxPaid, payment.Scenario);
         Assert.Equal(stays.Count, stays.Select(s => s.Key).Distinct(StringComparer.Ordinal).Count());
         Assert.All(stays, s => Assert.EndsWith("@example.com", s.Email, StringComparison.Ordinal));
-        // The tourist tax report lists confirmed, checked-in and checked-out stays, and these are all finished.
         Assert.All(stays, s => Assert.Equal(BookingStatus.CheckedOut, s.Status));
         Assert.All(stays, s => Assert.True(s.CheckInOffsetDays + s.Nights <= 0, $"{s.Key} is not over."));
         Assert.True(taxed.Count >= 2, "The comune needs two stays that carry tax: one paid and one still to pay.");
         Assert.Contains(stays, s => (s.TouristTax ?? 0m) == 0m);
 
-        // The payment obeys the rules of a payment recorded through the service: an amount above zero, a period that is not backwards and
-        // lasts at most a year, a day that is not in the future.
         var anchor = new DateOnly(2026, 11, 6);
         Assert.True(TouristTaxSummaryRules.IsValidAmount(payment.PaidAmount));
         Assert.True(TouristTaxSummaryRules.IsValidRemittancePeriod(
@@ -793,7 +738,6 @@ public class DemoShowcaseTests
         Assert.True(payment.PaidOnOffsetDays <= 0);
         Assert.Contains("TEST", payment.Reference, StringComparison.Ordinal);
 
-        // It pays what the stays that check in during its period owe, not more, and leaves another stay to pay.
         var inside = taxed
             .Where(s => s.CheckInOffsetDays >= payment.PeriodFromOffsetDays && s.CheckInOffsetDays <= payment.PeriodToOffsetDays)
             .ToList();
@@ -808,12 +752,9 @@ public class DemoShowcaseTests
         Assert.Contains(DemoShowcaseCatalog.Scenario.DocumentArchive, DemoShowcaseCatalog.Scenarios);
         var house = Assert.Single(DemoShowcaseCatalog.Properties, p => p.Scenarios.Contains(DemoShowcaseCatalog.Scenario.DocumentArchive));
 
-        // NF-99: the archive is a read model over the tables the showcase already fills. A published house gets the TEST certificates of its
-        // region from the compliance fill (real PDF bytes, marked as showcase data), so the host finds property documents under Documents...
         Assert.True(house.Publish);
         Assert.NotEmpty(DemoRequiredDocuments.ForRegion(new ComplianceOptions().RequiredDocuments, house.Place.RegionCode));
 
-        // ...and the receipt of the tourist tax payment of that very house, an invented one-page PDF that says it is test data.
         var payment = Assert.Single(DemoShowcaseCatalog.TouristTaxRemittances, t => t.PropertyKey == house.Key);
         Assert.Equal(DemoShowcaseCatalog.Scenario.TouristTaxPaid, payment.Scenario);
         Assert.Contains(DemoShowcaseCatalog.Scenario.TouristTaxPaid, house.Scenarios);
@@ -826,7 +767,6 @@ public class DemoShowcaseTests
         var partners = DemoShowcaseCatalog.MarketplacePartners;
         var activations = DemoShowcaseCatalog.MarketplaceActivations;
 
-        // E09/F01, NF-54, NF-56: the Partners group of a test environment has a card, and the Active tab a declared activation of it.
         Assert.Contains(DemoShowcaseCatalog.Scenario.MarketplacePartnersVisible, DemoShowcaseCatalog.Scenarios);
         Assert.Contains(DemoShowcaseCatalog.Scenario.MarketplaceActivationDeclared, DemoShowcaseCatalog.Scenarios);
         Assert.NotEmpty(partners);
@@ -835,7 +775,6 @@ public class DemoShowcaseTests
         Assert.Equal(partners.Count, partners.Select(p => p.Code).Distinct(StringComparer.Ordinal).Count());
         Assert.All(partners, partner =>
         {
-            // Named TEST, pointing at an example address, a lowercase slug as the table requires, texts in both languages that say it is a test.
             Assert.Contains("TEST", partner.Name, StringComparison.Ordinal);
             Assert.Equal("https://example.com/", partner.WebsiteUrl);
             Assert.Matches("^[a-z0-9]+(-[a-z0-9]+)*$", partner.Code);
@@ -852,7 +791,6 @@ public class DemoShowcaseTests
             Assert.NotEqual(partner.Italian.Benefit, partner.English.Benefit);
         });
 
-        // The activation names a partner of the template and was declared before the reset, never in the future.
         Assert.All(activations, activation =>
         {
             Assert.Contains(partners, partner => partner.Key == activation.PartnerKey);
@@ -896,7 +834,6 @@ public class DemoShowcaseTests
         Assert.All(stays, s => Assert.NotNull(s.Ota));
         Assert.All(stays, s => Assert.Equal(BookingStatus.Confirmed, s.Status));
 
-        // The reservation ids say TEST, fit the column and are unique (the index of the table is on the org and the id).
         var reservationIds = stays.Select(s => s.Ota!.ReservationId).ToList();
         Assert.Equal(reservationIds.Count, reservationIds.Distinct(StringComparer.Ordinal).Count());
         Assert.All(reservationIds, id =>
@@ -905,7 +842,6 @@ public class DemoShowcaseTests
             Assert.InRange(id.Length, 1, Booking.OctorateReservationIdMaxLength);
         });
 
-        // Two bookings of a channel: all the amounts and the flags, and only the amount paid (the rest is «not available»).
         var channel = stays.Where(s => OtaChannelActionPolicy.IsChannelBooking(s.Source, s.Ota!.ReservationId)).ToList();
         Assert.Equal(2, channel.Count);
         var full = Assert.Single(channel, s => s.Ota!.Commission is not null).Ota!;
@@ -914,7 +850,6 @@ public class DemoShowcaseTests
         Assert.NotNull(full.Balance);
         Assert.NotNull(full.CompanyCollect);
         Assert.NotNull(full.CommissionIncludedInPayments);
-        // What the host receives is what the guest paid less the channel's commission, and nothing is left to pay.
         Assert.Equal(full.Paid - full.Commission, full.Net);
         Assert.Equal(0m, full.Balance);
         var sparse = Assert.Single(channel, s => s.Ota!.Commission is null).Ota!;
@@ -923,7 +858,6 @@ public class DemoShowcaseTests
         Assert.Null(sparse.Balance);
         Assert.Null(sparse.CompanyCollect);
 
-        // Every figure is to the cent, and a booking that is not of a channel has neither a figure nor a flag: its money is CasaZen's.
         foreach (var figure in stays.SelectMany(s => new[] { s.Ota!.Commission, s.Ota.Net, s.Ota.Paid, s.Ota.Balance }).OfType<decimal>())
             Assert.Equal(figure, decimal.Round(figure, 2));
 
@@ -937,13 +871,11 @@ public class DemoShowcaseTests
             Assert.Null(s.Ota.CommissionIncludedInPayments);
         });
 
-        // A booking of the booking site that CasaZen sent to Octorate: it has a reservation there and is not a booking of a channel.
         var synced = Assert.Single(stays, s => s.Ota!.Sync?.State == OctorateSyncState.Synced);
         Assert.Equal(BookingSource.Direct, synced.Source);
         Assert.False(OtaChannelActionPolicy.IsChannelBooking(synced.Source, synced.Ota!.ReservationId));
         Assert.Null(synced.Ota.Sync!.ErrorCode);
 
-        // A booking the host entered, whose change Octorate refused: a code CasaZen knows and the stay Octorate holds, which is not the booking's.
         var conflict = Assert.Single(stays, s => s.Ota!.Sync?.State == OctorateSyncState.Conflict);
         var mirror = conflict.Ota!.Sync!;
         Assert.Equal(BookingSource.Manual, conflict.Source);
@@ -952,15 +884,9 @@ public class DemoShowcaseTests
         Assert.NotNull(mirror.VersionGuests);
         Assert.True(OctorateBookingSync.IsRetryable(mirror.State));
 
-        // The channel bookings are mirrored by nobody: the import leaves no row for them.
         Assert.All(channel, s => Assert.Null(s.Ota!.Sync));
     }
 
-    /// <summary>
-    /// NF-52 (E03/F02/US01/T03): the compliance traffic light has a stay in yellow (the guests entrusted to the channel manager, at an Italian house whose
-    /// stored sender is the channel manager) and one in green (the receipt of the arrival day archived, inside the days the light looks at). Both have
-    /// registered guests of a valid composition, invented and at example.com; the receipt is stored under a key valid in the private bucket.
-    /// </summary>
     [Fact]
     public void ComplianceTrafficLight_TheDemoHasAnEntrustedStayInYellowAndOneWithAnArchivedReceiptInGreen_AllInvented()
     {
@@ -978,8 +904,6 @@ public class DemoShowcaseTests
             Assert.Empty(AlloggiatiRecordRules.CompositionErrors(s.Booking.Guests!.Select(g => g.Type).ToList()));
         });
 
-        // Yellow: the guests are entrusted, and the house they are at is sent by the channel manager (the only one in the catalog), in Italy: a house
-        // outside Italy has no police sender, and the invented comune of the tax rule has no real code. The stay has arrived and is not a short one.
         var entrusted = Assert.Single(stays, s => s.Booking.Compliance!.GuestsEntrusted);
         var sender = Assert.Single(DemoShowcaseCatalog.Properties, p => p.ComplianceSender is not null);
         Assert.Equal(entrusted.Property.Key, sender.Key);
@@ -992,14 +916,12 @@ public class DemoShowcaseTests
         Assert.True(entrusted.Booking.Nights > 1);
         Assert.False(entrusted.Booking.Compliance!.ReceiptArchived);
 
-        // Green: a finished stay with the receipt archived, whose arrival day is inside the days the status engine looks at.
         var archived = Assert.Single(stays, s => s.Booking.Compliance!.ReceiptArchived);
         Assert.False(archived.Booking.Compliance!.GuestsEntrusted);
         Assert.Equal(BookingStatus.CheckedOut, archived.Booking.Status);
         Assert.InRange(archived.Booking.CheckInOffsetDays, 1 - new ComplianceOptions().StatusLookbackDays, -1);
         Assert.Null(archived.Property.ComplianceSender);
 
-        // The receipt is stored under a key the private bucket accepts, named by the server and not by the host.
         var key = StorageKeys.ManualComplianceProof(Guid.NewGuid(), Guid.NewGuid(), "ricevuta-di-test.pdf");
         Assert.True(StorageKeys.IsValid(key), key);
         Assert.StartsWith("compliance-proofs/", key, StringComparison.Ordinal);
@@ -1013,7 +935,6 @@ public class DemoShowcaseTests
             .SelectMany(p => p.Bookings.Where(b => b.Scenario == DemoShowcaseCatalog.Scenario.CrmProfiles).Select(b => (House: p.Key, Booking: b)))
             .ToList();
 
-        // NF-88, NF-89: the CRM sync builds the profiles from these bookings, so the scenario has template data and every case it shows is in it.
         Assert.Contains(DemoShowcaseCatalog.Scenario.CrmProfiles, DemoShowcaseCatalog.Scenarios);
         Assert.NotEmpty(stays);
         Assert.Equal(stays.Count, stays.Select(s => s.Booking.Key).Distinct(StringComparer.Ordinal).Count());
@@ -1021,23 +942,18 @@ public class DemoShowcaseTests
         Assert.All(stays, s => Assert.NotEqual(BookingStatus.Cancelled, s.Booking.Status));
         Assert.Contains("TEST", DemoShowcaseCatalog.CrmTextVersion, StringComparison.Ordinal);
 
-        // A returning guest: the same address on two records, a stay that is over and one to come, at two houses.
         var returning = Assert.Single(
             stays.GroupBy(s => s.Booking.Email, StringComparer.Ordinal),
             group => group.Count() == 2 && group.Select(s => s.House).Distinct(StringComparer.Ordinal).Count() == 2);
         Assert.Contains(returning, s => s.Booking.Status == BookingStatus.CheckedOut && s.Booking.CheckInOffsetDays + s.Booking.Nights <= 0);
         Assert.Contains(returning, s => s.Booking.Status == BookingStatus.Confirmed && s.Booking.CheckInOffsetDays > 0);
 
-        // A booking that comes from an OTA (its address is a forward), a direct customer who saw the soft opt-in notice and whose booking is
-        // confirmed, and a guest who ticked the marketing consent of the online check-in.
         Assert.Contains(stays, s => OtaForwardAddress.IsOtaSource(s.Booking.Source));
         Assert.Contains(
             stays,
             s => s.Booking.Source == BookingSource.Direct && s.Booking.SoftOptInNotice && CrmContactRules.IsPurchase(s.Booking.Status));
         Assert.Contains(stays, s => s.Booking.CheckInMarketingConsent);
 
-        // Two different guests who share a phone: the matching proposes the merge, a person decides. The number is a number for the CRM, and
-        // the placeholder every other demo guest has is not, so no other two guests share one.
         var sharing = stays.Where(s => s.Booking.Phone == DemoShowcaseCatalog.CrmSharedPhone).ToList();
         Assert.Equal(2, sharing.Count);
         Assert.Equal(2, sharing.Select(s => s.Booking.Email).Distinct(StringComparer.Ordinal).Count());
@@ -1053,7 +969,6 @@ public class DemoShowcaseTests
             .SelectMany(p => p.Bookings.Where(b => b.Scenario == DemoShowcaseCatalog.Scenario.InvoiceData))
             .ToList();
 
-        // NF-81: the booking of the host has an invoice recipient to show, so the scenario has template data and a scenario without it fails.
         Assert.Contains(DemoShowcaseCatalog.Scenario.InvoiceData, DemoShowcaseCatalog.Scenarios);
         var stay = Assert.Single(stays);
         var data = stay.InvoiceData;
@@ -1062,12 +977,10 @@ public class DemoShowcaseTests
         Assert.Equal(BookingStatus.CheckedOut, stay.Status);
         Assert.EndsWith("@example.com", stay.Email, StringComparison.Ordinal);
 
-        // Invented and obviously so: TEST in the name, an address at example.com (the PEC is at a subdomain of it, pec.example.com).
         Assert.Contains("TEST", data.Name, StringComparison.Ordinal);
         Assert.EndsWith(".example.com", data.Pec!, StringComparison.Ordinal);
         Assert.Equal(InvoiceDataSource.Host, data.Source);
 
-        // Valid for the rules a recipient saved through the service obeys: no failure, and the recipient is identified.
         var state = new SaveInvoiceDataCommand
         {
             RecipientKind = data.Kind,
@@ -1115,7 +1028,6 @@ public class DemoShowcaseTests
                 Assert.True(accommodation.Length <= OctorateListingMapping.AccommodationIdMaxLength);
             }
 
-            // The bookings flow needs the connection and the confirmed listing (T02): the state the house shows after a reset.
             var mapping = house.AccommodationId is null
                 ? FlowPrerequisite.Lacks(OnboardingPrerequisiteKeys.Mapping, OnboardingFlowReasons.MappingUnconfirmed)
                 : FlowPrerequisite.Holds(OnboardingPrerequisiteKeys.Mapping);
@@ -1135,15 +1047,10 @@ public class DemoShowcaseTests
         Assert.Contains((OnboardingFlowStates.ToComplete, (string?)OnboardingFlowReasons.FlowNotActivated), states);
         Assert.Contains((OnboardingFlowStates.ToComplete, (string?)OnboardingFlowReasons.MappingUnconfirmed), states);
 
-        // The deferred part is one the plan lets the host defer, with a reminder in the future.
         Assert.True(OnboardingPartCatalog.IsDeferrable(activation.DeferredPart));
         Assert.InRange(activation.RemindInDays, 1, OnboardingPlanLimits.MaxRemindDays);
     }
 
-    /// <summary>
-    /// NF-36 (E08/F05/US01/T02): the scenario has template data (a published house with day rules), every rule is one the service would store (the
-    /// same function decides), the nights are ahead of the demo stays so a rule never sits on a booking, and the showcase shows each kind of rule.
-    /// </summary>
     [Fact]
     public void CalendarDayRules_TheDemoHouseHasRulesTheServiceWouldStore_OnNightsWithoutAStay()
     {
@@ -1166,13 +1073,11 @@ public class DemoShowcaseTests
             Assert.True(rule.OffsetDays > 0, "A rule of the demo is for a night ahead of the reset.");
         }
 
-        // The nights of the stays of the house carry no rule.
         var stayNights = house.Bookings
             .SelectMany(booking => Enumerable.Range(booking.CheckInOffsetDays, booking.Nights))
             .ToHashSet();
         Assert.DoesNotContain(rules, rule => stayNights.Contains(rule.OffsetDays));
 
-        // Each kind of rule is on show: a price of its own, a longer minimum stay, a closed arrival, a closed departure, a maximum stay and an advance.
         Assert.Contains(rules, rule => rule.Price is not null);
         Assert.Contains(rules, rule => rule.MinNights is > 1);
         Assert.Contains(rules, rule => rule.ClosedToArrival);
@@ -1184,7 +1089,6 @@ public class DemoShowcaseTests
     [Fact]
     public void FiscalIssuerProfile_TheDemoOrgHasACompleteProfileOfItsIssuer_InventedAndIssuedByCasazen()
     {
-        // FIS-02, NF-82: a scenario without template data fails (the coverage test above), and the profile is complete and obviously test data.
         Assert.Contains(DemoShowcaseCatalog.Scenario.FiscalIssuerProfile, DemoShowcaseCatalog.Scenarios);
         var profile = Assert.Single(DemoShowcaseCatalog.FiscalIssuerProfiles);
         Assert.Equal(DemoShowcaseCatalog.Scenario.FiscalIssuerProfile, profile.Scenario);
@@ -1279,10 +1183,6 @@ public class DemoShowcaseTests
         Assert.Equal(example.InstallmentTotal, rows.Sum(row => row.Total));
     }
 
-    /// <summary>
-    /// E06/F01/US01/T01: the demo has a draft (no number) and an issued receipt (with its number) of a direct stay, for a TEST recipient, each with the
-    /// tourist tax inside its total, in a currency of a stay.
-    /// </summary>
     [Fact]
     public void FiscalDocumentsDirect_HasADraftWithoutNumber_AndAnIssuedDocumentWithIt_ForATestRecipient()
     {
@@ -1440,10 +1340,6 @@ public class DemoShowcaseTests
         Assert.NotEqual(Casazen.Core.Services.SdiRejectionReasons.GenericKey, Casazen.Core.Services.SdiRejectionReasons.KeyOf(example.ErrorCode));
     }
 
-    /// <summary>
-    /// FIX/BE-TD17-JOB-EXIT: the demo replacement closed as «non più dovuta» is the TD17 the demo correction made (the same number, holder and TEST portal) and its reason is one of the three the closing accepts (the one
-    /// the screen translates), so a scenario without a real reason fails here.
-    /// </summary>
     [Fact]
     public void SelfBillingClosedNotDue_TheExampleIsTheDemoReplacementClosedWithAKnownReason()
     {
@@ -1458,10 +1354,6 @@ public class DemoShowcaseTests
         Assert.Equal(example.Reason, Casazen.Core.Services.SelfBillingCloseReasons.Normalize(example.Reason));
     }
 
-    /// <summary>
-    /// E18/F01/US03/T01: the demo owners of the limit of units are TEST owners, one under the limit and one past it (the third apartment is the one declared outside the agency),
-    /// as the check of the owners says; the stays of a company tenant are TEST ones, one waiting for a decision and one decided with the note of the agency.
-    /// </summary>
     [Fact]
     public void OwnerTaxChecks_TheExamplesAreWhatTheChecksAnswer()
     {
@@ -1487,10 +1379,6 @@ public class DemoShowcaseTests
         Assert.InRange(decided.Reason!.Length, 1, ShortLetTaxDecision.ReasonMaxLength);
     }
 
-    /// <summary>
-    /// E14/F01/US02/T01: the demo examples of the cleaning recharge are TEST owners and cleaners with positive amounts, one on the flat rate and the others on the actual cost: a
-    /// request with its price, and a staff cleaning with no rate that costs the flat rate of the mandate.
-    /// </summary>
     [Fact]
     public void CleaningRecharge_TheExamplesAreTestOnesOnTheFlatRateAndOnTheActualCost()
     {
@@ -1524,10 +1412,6 @@ public class DemoShowcaseTests
             examples.Where(e => e.Answer == CleaningSupplierVat.Applied).Select(e => VatRates.Find(e.Country, VatRateKind.Standard, e.CleaningDate)!.Percent).Order());
     }
 
-    /// <summary>
-    /// E18/F01/US01/T01: the stays of the demo payout are TEST ones and each is where the rules of the facts put it: the stay paid with a payment the agency recorded is
-    /// in the base, the Airbnb stay on the agency's account is withheld by the portal (⚖ R5), the Booking.com stay on the owner's account is not the agency's.
-    /// </summary>
     [Fact]
     public void PayoutFacts_TheExamplesAreWhatTheRulesAnswer()
     {
@@ -1593,10 +1477,6 @@ public class DemoShowcaseTests
         Assert.Equal(TouristTaxSummaryStatus.ToPay, TouristTaxSummaryRules.StatusOf((long)(tax.Due * 100m), (long)(tax.Settled!.Value * 100m)));
     }
 
-    /// <summary>
-    /// E06/F04/US01/T03: the demo ledger has a card line whose fee and net add up to its gross, a cash line and a line of a channel, the last two without
-    /// a provider figure (never a guess), every code one the API answers.
-    /// </summary>
     [Fact]
     public void PaymentLedger_HasACardLineWithFeeAndNet_ACashLine_AndAChannelLineWithoutGuesses()
     {
@@ -1691,7 +1571,6 @@ public class DemoShowcaseTests
                 Assert.True(payment.Status is PaymentStatus.Completed or PaymentStatus.PartiallyRefunded or PaymentStatus.Refunded, $"{booking.Key}: only a settled card payment has figures");
             }
 
-            // The money of a stay is never more than what the stay costs, and a stay of a channel has none of CasaZen's.
             Assert.False(FiscalCopy.IsOtaBookingSource(booking.Source), $"{booking.Key}: a portal collects the money of its stays itself");
         }
 
@@ -1701,7 +1580,6 @@ public class DemoShowcaseTests
             Assert.True(group.Sum(p => p.Payment.Amount) <= TotalOf(house, booking) + group.Sum(p => p.Payment.Status is PaymentStatus.Failed ? p.Payment.Amount : 0m), $"{booking.Key}: paid more than the stay costs");
         }
 
-        // The three ways the host is paid, a card payment partly refunded and one that failed.
         var methods = payments.Select(p => p.Payment.Method).Distinct().ToList();
         Assert.Contains(PaymentMethod.CashOnArrival, methods);
         Assert.Contains(PaymentMethod.BankTransfer, methods);
@@ -1709,13 +1587,11 @@ public class DemoShowcaseTests
         Assert.Contains(payments, p => p.Payment.Status == PaymentStatus.PartiallyRefunded);
         Assert.Contains(payments, p => p.Payment.Status == PaymentStatus.Failed);
 
-        // A direct stay paid in part: something collected, something left, and a stay that is not over.
         var partial = Assert.Single(ofTheScenario, s => s.Booking.Source == BookingSource.Direct && s.Booking.Status == BookingStatus.Confirmed);
         var collected = (partial.Booking.Payments ?? []).Where(p => p.Status == PaymentStatus.Completed).Sum(p => p.Amount - p.RefundedAmount);
         Assert.InRange(collected, 0.01m, TotalOf(partial.House, partial.Booking) - 0.01m);
         Assert.True(partial.Booking.CheckInOffsetDays > 0);
 
-        // A stay of a channel with a balance the host collects, past its check-out: Octorate's balance and paid amount add up to the price of the stay.
         var channel = Assert.Single(ofTheScenario, s => s.Booking.Ota is { Balance: > 0m });
         var ota = channel.Booking.Ota!;
         Assert.True(OtaChannelActionPolicy.IsChannelBooking(channel.Booking.Source, ota.ReservationId));
@@ -1725,11 +1601,6 @@ public class DemoShowcaseTests
         Assert.Equal(TotalOf(channel.House, channel.Booking), ota.Paid + ota.Balance);
     }
 
-    /// <summary>
-    /// E07/F03/US02/T02 (NF-98): the demo has finished stays of two channels with the commission and the net the channel manager reports (one whose portal pays the
-    /// host net of its commission, one that invoices it apart) and a direct stay paid by card with the fee the provider reported. The amounts are coherent: what the host
-    /// receives is what the guest paid less the commission, and a card fee and its net add up to the payment.
-    /// </summary>
     [Fact]
     public void ReportChannelCosts_TheDemoHasTwoChannelsWithCommissionAndNet_OneDeductedOneInvoiced_AndADirectStayWithAStoredStripeFee_AllInvented()
     {
@@ -1743,7 +1614,6 @@ public class DemoShowcaseTests
         Assert.All(stays, s => Assert.Equal(BookingStatus.CheckedOut, s.Booking.Status));
         Assert.All(stays, s => Assert.True(s.Booking.CheckInOffsetDays + s.Booking.Nights < 0, $"{s.Booking.Key}: a finished stay"));
 
-        // The two channels: the reservation says TEST and is a reservation of a channel, the commission is a share of what was paid, and the net is what is left.
         var channels = stays.Where(s => s.Booking.Ota is not null).ToList();
         Assert.Equal(2, channels.Count);
         Assert.Equal(channels.Count, channels.Select(s => s.Booking.Ota!.ReservationId).Distinct(StringComparer.Ordinal).Count());
@@ -1758,14 +1628,12 @@ public class DemoShowcaseTests
             Assert.Equal(0m, ota.Balance);
         }
 
-        // One portal pays the host net (the channel collects), the other invoices its commission apart (the host collects).
         var deducted = Assert.Single(channels, s => s.Booking.Ota!.CommissionIncludedInPayments == true);
         Assert.True(deducted.Booking.Ota!.CompanyCollect);
         var invoiced = Assert.Single(channels, s => s.Booking.Ota!.CommissionIncludedInPayments == false);
         Assert.False(invoiced.Booking.Ota!.CompanyCollect);
         Assert.NotEqual(deducted.Booking.Source, invoiced.Booking.Source);
 
-        // A direct stay paid by card, with the fee the provider reported (the capture's figures, coherent with the amount).
         var direct = Assert.Single(stays, s => s.Booking.Source == BookingSource.Direct);
         var payment = Assert.Single(direct.Booking.Payments!);
         Assert.Equal(PaymentMethod.CreditCard, payment.Method);
@@ -1774,12 +1642,6 @@ public class DemoShowcaseTests
         Assert.True(card.Fee > 0m && card.Fee < payment.Amount * 0.05m);
     }
 
-    /// <summary>
-    /// E27/F01/US01/T01 (NF-123): the demo has one stay ahead for each of the four origins the host reads (a portal, the site of the agency, CasaZen's own site, the host),
-    /// the site of the agency both by a link of the agency and by a reservation of its booking engine. The origin is worked out by the real rule from the source and the
-    /// attribution of the template; the attribution is what the real checkout rule would keep (a template that would be sanitized to something else fails here); the
-    /// reservations say TEST, are unique, and only the stays that have one on the channel manager carry it; no two stays of the house overlap.
-    /// </summary>
     [Fact]
     public void BookingFourOrigins_TheDemoHasAStayForEachOrigin_WithAnAttributionTheRealRulesKeep_AllInvented()
     {
@@ -1795,14 +1657,12 @@ public class DemoShowcaseTests
         Assert.All(stays, s => Assert.Equal(BookingStatus.Confirmed, s.Booking.Status));
         Assert.All(stays, s => Assert.True(s.Booking.CheckInOffsetDays > 0, $"{s.Booking.Key}: a stay ahead"));
 
-        // The four origins are all there, the agency's both ways, and the origin is the one of the real rule.
         var origins = stays.Select(s => BookingOrigins.Of(s.Booking.Source, s.Booking.Attribution?.Source)).ToList();
         Assert.Equal(Enum.GetValues<BookingOrigin>().Order(), origins.Distinct().Order());
         Assert.Equal(2, origins.Count(o => o == BookingOrigin.AgencySite));
         Assert.Contains(stays, s => s.Booking.Attribution?.Source == BookingAttribution.AgencySiteSource);
         Assert.Contains(stays, s => s.Booking.Attribution?.Source == BookingAttribution.OctorateBookingEngineSource);
 
-        // Every attribution is invented and is exactly what the checkout rule would store.
         Assert.All(stays.Where(s => s.Booking.Attribution is not null), s =>
         {
             var template = s.Booking.Attribution!;
@@ -1812,10 +1672,8 @@ public class DemoShowcaseTests
             Assert.True(template.ReferrerHost is null || template.ReferrerHost.EndsWith(".example.com", StringComparison.Ordinal));
         });
 
-        // The attribution is only on a booking of the booking site; a stay of a channel or of the host has none.
         Assert.All(stays.Where(s => s.Booking.Source != BookingSource.Direct), s => Assert.Null(s.Booking.Attribution));
 
-        // The reservations on the channel manager: TEST, fitting the column, unique in the org (the whole catalog), only on the portal and on the booking engine.
         var reservations = stays.Where(s => s.Booking.Ota is not null).Select(s => s.Booking.Ota!.ReservationId).ToList();
         Assert.Equal(2, reservations.Count);
         Assert.All(reservations, id =>
@@ -1826,8 +1684,6 @@ public class DemoShowcaseTests
         var everyReservation = DemoShowcaseCatalog.Properties.SelectMany(h => h.Bookings).Where(b => b.Ota is not null).Select(b => b.Ota!.ReservationId).ToList();
         Assert.Equal(everyReservation.Count, everyReservation.Distinct(StringComparer.Ordinal).Count());
 
-        // Who collects and whether the commission is taken out of the payments are known for a booking of a channel only: the booking engine of the agency has the
-        // amounts Octorate gives and no flag, as the import writes it.
         Assert.All(
             stays.Where(s => s.Booking.Ota is not null && !OtaChannelActionPolicy.IsChannelBooking(s.Booking.Source, s.Booking.Ota.ReservationId)),
             s => Assert.Equal((null, null), (s.Booking.Ota!.CompanyCollect, s.Booking.Ota.CommissionIncludedInPayments)));
@@ -1835,7 +1691,6 @@ public class DemoShowcaseTests
             stays.Where(s => s.Booking.Ota is not null),
             s => Assert.True(BookingOrigins.Of(s.Booking.Source, s.Booking.Attribution?.Source) is BookingOrigin.Portal or BookingOrigin.AgencySite));
 
-        // The stays of the house follow one another: none holds a night of another.
         var house = Assert.Single(DemoShowcaseCatalog.Properties, h => h.Key == stays[0].House.Key);
         var taken = house.Bookings.Where(b => b.Status != BookingStatus.Cancelled).OrderBy(b => b.CheckInOffsetDays).ToList();
         for (var index = 1; index < taken.Count; index++)

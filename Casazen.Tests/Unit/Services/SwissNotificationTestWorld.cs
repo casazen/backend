@@ -14,14 +14,8 @@ using Moq;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The test bench of the assisted notification of the other cantons (E31/F02/US01/T01): an EF InMemory database, the clock on Thursday 19 November 2026 at noon (winter time, CET, UTC+1), the
-/// flag <c>GuestRegistrationRegimes</c>, a queue of pushes, orgs, Swiss properties in any canton (the municipality of the canton is seeded, the real resolver of the regime reads it), stays and
-/// the guests of a stay. The codes of the municipalities are made up but for Lugano: only the canton they belong to matters.
-/// </summary>
 internal sealed class SwissNotificationTestWorld : IDisposable
 {
-    /// <summary>The arrival day of the tests: Thursday 19 November 2026.</summary>
     public static readonly DateOnly Day = new(2026, 11, 19);
 
     private static readonly IReadOnlyDictionary<string, string> MunicipalityOf = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -48,12 +42,10 @@ internal sealed class SwissNotificationTestWorld : IDisposable
         Db = NewDb();
     }
 
-    /// <summary>The flag <c>Features:GuestRegistrationRegimes</c>; a test turns it off to see the module stand still.</summary>
     public bool RegimesOn { get; set; }
 
     public AppDbContext Db { get; }
 
-    /// <summary>The name of the InMemory store: another context (a racing one, one of another caller) reads the same rows.</summary>
     public string Store => _store;
 
     public FakeTimeProvider Clock { get; } = new(new DateTimeOffset(2026, 11, 19, 12, 0, 0, TimeSpan.Zero));
@@ -62,7 +54,6 @@ internal sealed class SwissNotificationTestWorld : IDisposable
 
     public List<(string Key, PushAudience Audience, PushNotificationPayload Payload)> Pushes { get; } = [];
 
-    /// <summary>Another context on the same store, optionally as the caller of another org (the global tenant filter then applies).</summary>
     public AppDbContext NewDb(ITenantContext? tenant = null) =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_store).Options, tenant);
 
@@ -95,7 +86,6 @@ internal sealed class SwissNotificationTestWorld : IDisposable
         Db.SaveChanges();
     }
 
-    /// <summary>A short-rent property in <paramref name="canton"/> (two letters; the municipality of the canton is seeded) of <paramref name="org"/>, or of a new org.</summary>
     public Property AddProperty(
         string canton,
         OrgEntity? org = null,
@@ -130,7 +120,6 @@ internal sealed class SwissNotificationTestWorld : IDisposable
         return property;
     }
 
-    /// <summary>A stay of the property that arrives on <paramref name="day"/> (stored as midnight UTC of the day, as the bookings are).</summary>
     public Booking AddStay(
         Property property,
         DateOnly? day = null,
@@ -169,7 +158,6 @@ internal sealed class SwissNotificationTestWorld : IDisposable
         return booking;
     }
 
-    /// <summary>A guest of the check-in of a stay: complete by default (a Swiss passport), or with the fields the test blanks.</summary>
     public StayGuest AddGuest(
         Booking stay,
         int position = 0,
@@ -220,7 +208,6 @@ internal sealed class SwissNotificationTestWorld : IDisposable
     }
 }
 
-/// <summary>The caller of an org, as the web layer resolves it: the global tenant filter of the context scopes every read to it.</summary>
 internal sealed class SwissTestTenant(Guid orgId) : ITenantContext
 {
     public Guid? OrgId { get; } = orgId;

@@ -1,7 +1,6 @@
 using System.Reflection;
 using System.Security.Claims;
 using System.Text.Json;
-using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -67,8 +66,6 @@ public class SupportVaultTests : IAsyncLifetime
         await _db.DisposeAsync();
     }
 
-    // ─── The proofs of the brief ─────────────────────────────────────────────────────────────────────────────
-
     /// <summary>
     /// Proof (permission): a credential opens only for an OPEN «Do it for me» request, of the org and the property of that request, and only the kinds
     /// the request needs. The panel and the police credentials of the property open for its open police request; the ISTAT ones are refused for it;
@@ -120,7 +117,6 @@ public class SupportVaultTests : IAsyncLifetime
             Assert.Equal(SupportVaultCodes.SecretMissing, refused.Code);
         }
 
-        // A request that is done opens nothing any more, and an unknown request is a 404.
         await StaffAssist().UpdateAsync(Staff, request.Id, OnboardingAssistStatus.Done, null, Ct);
         var closed = await Assert.ThrowsAsync<DomainConflictException>(() =>
             vault.RevealAsync(Staff, request.Id, SupportVaultCredentialKind.OctoratePanel, Reason, Ct));
@@ -129,7 +125,6 @@ public class SupportVaultTests : IAsyncLifetime
             vault.RevealAsync(Staff, Guid.NewGuid(), SupportVaultCredentialKind.OctoratePanel, Reason, Ct));
         Assert.Equal(OnboardingAssistCodes.NotFound, unknown.Code);
 
-        // Only the two openings that passed are recorded.
         Assert.Equal(
             [SupportVaultCredentialKind.OctoratePanel, SupportVaultCredentialKind.Police],
             (await _db.SupportVaultAccesses.AsNoTracking().ToListAsync()).Select(a => a.Kind).Order());
@@ -138,11 +133,6 @@ public class SupportVaultTests : IAsyncLifetime
         await AssertEveryKindStaysWithinTheOrgAndThePropertyOfTheRequestAsync();
     }
 
-    /// <summary>
-    /// Proof (permission): the opening and the vault are for the platform administrators only. The two controllers sit under
-    /// <see cref="CasazenPolicies.AdminOnly"/> and nothing else opens them; the only action of the API that answers the values is the opening; the
-    /// registered policy refuses every role but the administrator (the positive control).
-    /// </summary>
     [Fact]
     public async Task Vault_NonAdminForbidden_Test()
     {
@@ -157,10 +147,8 @@ public class SupportVaultTests : IAsyncLifetime
             });
         }
 
-        // The vault itself lists, stores and removes: none of its actions answers a value.
         Assert.Equal(["Delete", "List", "Store"], RoutedActions(typeof(AdminSupportVaultController)).Select(a => a.Name).Order());
 
-        // In the whole API one action answers the values of a credential: the opening, with no-store.
         var answering = typeof(AdminOnboardingAssistController).Assembly.GetTypes()
             .Where(type => typeof(ControllerBase).IsAssignableFrom(type))
             .SelectMany(type => RoutedActions(type))
@@ -190,11 +178,6 @@ public class SupportVaultTests : IAsyncLifetime
         Assert.True(admin.HasSucceeded, "The platform administrator does not pass the policy of the support vault.");
     }
 
-    /// <summary>
-    /// Proof (privacy): every opening is audited without the value. The access row holds who, when, the request, the kind and the reason, and nothing
-    /// else (the shape is closed); the host reads the line of its request, with the kind of credential, in its own log, with the staff user as the actor
-    /// and no value and no reason in it. The sixth opening of the hour is refused and leaves nothing; an hour later the request opens again.
-    /// </summary>
     [Fact]
     public async Task Vault_RevealAuditedWithoutValue_Test()
     {
@@ -223,7 +206,6 @@ public class SupportVaultTests : IAsyncLifetime
         foreach (var never in new[] { PanelPassword, PanelUser, "Polizia nel pannello" })
             Assert.DoesNotContain(never, line.DetailsJson, StringComparison.Ordinal);
 
-        // At most five openings of the request in an hour: the sixth is refused and records nothing.
         for (var opening = 2; opening <= SupportVaultLimits.MaxOpeningsPerRequestPerHour; opening++)
         {
             _clock.Advance(TimeSpan.FromMinutes(1));
@@ -236,7 +218,6 @@ public class SupportVaultTests : IAsyncLifetime
         Assert.Equal(SupportVaultLimits.MaxOpeningsPerRequestPerHour, await _db.SupportVaultAccesses.CountAsync());
         Assert.Equal(SupportVaultLimits.MaxOpeningsPerRequestPerHour, await _db.OrgActivityEntries.CountAsync(l => l.Type == OrgActivityType.OnboardingAssistUpdated));
 
-        // An hour after the first opening, the request opens again.
         _clock.Advance(TimeSpan.FromMinutes(57));
         await vault.RevealAsync(Staff, request.Id, SupportVaultCredentialKind.OctoratePanel, Reason, Ct);
         Assert.Equal(SupportVaultLimits.MaxOpeningsPerRequestPerHour + 1, await _db.SupportVaultAccesses.CountAsync());
@@ -284,15 +265,11 @@ public class SupportVaultTests : IAsyncLifetime
         Assert.Equal(("utente-istat-31", IstatPassword, (string?)"CIR-031"), (opened.Username, opened.Password, opened.ExtraCode));
         Assert.Equal(SupportVaultCredentialKind.RegionalIstat, (await _db.SupportVaultAccesses.AsNoTracking().SingleAsync()).Kind);
 
-        // Removed: not configured any more; removing again says there was nothing.
         Assert.True(await service.DeleteAsync(_world.Granted.Id, Ct));
         Assert.Equal(IstatCredentialsStatus.NotConfigured, await service.GetStatusAsync(_world.Granted.Id, Ct));
         Assert.False(await service.DeleteAsync(_world.Granted.Id, Ct));
     }
 
-    // ─── The rules of the vault ──────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The reason of an opening is 10 to 300 characters once trimmed: anything else is refused and opens nothing.</summary>
     [Fact]
     public async Task Reveal_AReasonOutsideTenTo300Characters_Is422_AndOpensNothing()
     {
@@ -363,7 +340,6 @@ public class SupportVaultTests : IAsyncLifetime
         Assert.Equal(presence, PublicInstanceProperties(typeof(SupportVaultSecretDto)));
         Assert.DoesNotContain("NUOVA-PASSWORD", JsonSerializer.Serialize(SupportVaultSecretDto.From(listed)), StringComparison.Ordinal);
 
-        // Only a host org, and only one of its properties.
         var supplierOrg = await Assert.ThrowsAsync<NotFoundException>(() => StoreAsync(_world.SupplierOrgId, null, PanelUser, PanelPassword));
         Assert.Equal(SupportVaultCodes.OrgNotFound, supplierOrg.Code);
         var foreignProperty = await Assert.ThrowsAsync<NotFoundException>(() => StoreAsync(_world.OrgId, _world.OtherOrgProperty.Id, PanelUser, PanelPassword));
@@ -377,7 +353,6 @@ public class SupportVaultTests : IAsyncLifetime
             Staff, new SupportVaultSecretInput(_world.OrgId, null, (SupportVaultSecretKind)3, PanelUser, PanelPassword, null), Ct));
         Assert.Equal(SupportVaultCodes.KindInvalid, notAKind.Code);
 
-        // A credential of the whole org is one more row, held once too.
         await StoreAsync(_world.OrgId, null, PanelUser, PanelPassword);
         await StoreAsync(_world.OrgId, null, PanelUser, "ALTRA-PASSWORD");
         Assert.Equal(2, await _db.SupportVaultSecrets.CountAsync());
@@ -419,7 +394,6 @@ public class SupportVaultTests : IAsyncLifetime
         Assert.DoesNotContain(EncryptedColumns.All, c => c.EntityType == typeof(SupportVaultAccess));
     }
 
-    /// <summary>The services of the vault are registered with the activation, scoped.</summary>
     [Fact]
     public void Registration_TheVaultAndTheIstatCredentials()
     {
@@ -435,9 +409,6 @@ public class SupportVaultTests : IAsyncLifetime
             d => Assert.Equal(ServiceLifetime.Scoped, d.Lifetime));
     }
 
-    // ─── Helpers ─────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The vault as a platform administrator reaches it: the context is under the tenant of ANOTHER org.</summary>
     private SupportVaultService Vault() =>
         new(_staffDb, new ActivityLog(_staffDb, _clock), _clock, NullLogger<SupportVaultService>.Instance);
 
@@ -489,12 +460,10 @@ public class SupportVaultTests : IAsyncLifetime
         await _db.SaveChangesAsync();
         var vault = Vault();
 
-        // A property of the same org that holds nothing: neither its sibling's credentials nor the other org's ever answer for it, whatever the kind.
         var ofHidden = await AddOpenRequestAsync(_world.OrgId, _world.Hidden.Id, OnboardingPartKey.Compliance);
         foreach (var kind in Enum.GetValues<SupportVaultCredentialKind>())
             await AssertMissingAsync(vault, ofHidden.Id, kind);
 
-        // The whole org of each org opens the panel user of that org only, and no credential of a property.
         var ofOrgA = await AddOpenRequestAsync(_world.OrgId, null, OnboardingPartKey.Channels);
         await AssertOpensAsync(vault, ofOrgA.Id, SupportVaultCredentialKind.OctoratePanel, "utente-pannello-org-A-31", "PASSWORD-PANNELLO-ORG-A-31", null);
         await AssertNotNeededAsync(vault, ofOrgA.Id, SupportVaultCredentialKind.Police);
@@ -512,12 +481,10 @@ public class SupportVaultTests : IAsyncLifetime
         await AssertOpensAsync(vault, ofForeign.Id, SupportVaultCredentialKind.Police, "utente-questura-B-P-31", "PASSWORD-QUESTURA-B-P-31", "WSKEY-B-P-31");
         await AssertOpensAsync(vault, ofForeign.Id, SupportVaultCredentialKind.RegionalIstat, "utente-istat-B-P-31", "PASSWORD-ISTAT-B-P-31", "CIR-B-P-31");
 
-        // A request whose org and property disagree opens nothing: the org is part of the key too, not only the property.
         var corrupt = await AddOpenRequestAsync(_world.OtherOrgId, _world.Granted.Id, OnboardingPartKey.Compliance);
         foreach (var kind in Enum.GetValues<SupportVaultCredentialKind>())
             await AssertMissingAsync(vault, corrupt.Id, kind);
 
-        // Only the openings that passed are recorded (two before, eight here), each in the org of its request.
         var accesses = await _db.SupportVaultAccesses.AsNoTracking().ToListAsync();
         Assert.Equal(10, accesses.Count);
         Assert.All(accesses.Where(a => a.RequestId == ofGranted.Id), a => Assert.Equal((_world.OrgId, (Guid?)_world.Granted.Id), (a.OrgId, a.PropertyId)));
@@ -525,7 +492,6 @@ public class SupportVaultTests : IAsyncLifetime
         Assert.DoesNotContain(accesses, a => a.RequestId == ofHidden.Id || a.RequestId == corrupt.Id);
     }
 
-    /// <summary>An open request of the whole part, written as it is stored whatever the org and the property it names (the matrix needs one the service never makes).</summary>
     private async Task<OnboardingAssistRequest> AddOpenRequestAsync(Guid orgId, Guid? propertyId, OnboardingPartKey part)
     {
         var now = _clock.GetUtcNow().UtcDateTime;
@@ -559,7 +525,6 @@ public class SupportVaultTests : IAsyncLifetime
         Assert.Equal(SupportVaultCodes.SecretMissing, missing.Code);
     }
 
-    /// <summary>The kind is not one the request needs (a credential of a property for a request of the whole org): refused before anything is read.</summary>
     private async Task AssertNotNeededAsync(SupportVaultService vault, Guid requestId, SupportVaultCredentialKind kind)
     {
         var refused = await Assert.ThrowsAsync<DomainRuleException>(() => vault.RevealAsync(Staff, requestId, kind, Reason, Ct));
@@ -580,7 +545,6 @@ public class SupportVaultTests : IAsyncLifetime
         _db.SaveChanges();
     }
 
-    /// <summary>A «Do it for me» request of the compliance part, asked by the owner as the host does.</summary>
     private Task<AssistRequestView> RequestAsync(string context, Guid? propertyId) =>
         AssistOn(_db).RequestAsync(_world.OrgWide, _world.OwnerUserId, new AssistRequestInput(OnboardingPartKey.Compliance, context, propertyId), Ct);
 
