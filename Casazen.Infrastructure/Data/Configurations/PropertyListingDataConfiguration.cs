@@ -5,10 +5,6 @@ using Property = Casazen.Core.Entities.Property;
 
 namespace Casazen.Infrastructure.Data.Configurations;
 
-/// <summary>
-/// The rooms of a unit (NF-34): rows follow their property (cascade) and carry its org (TN-2, restrict like every other <c>OrgId</c> foreign
-/// key). The type and the position are also constraints, so no other writer can store a room the host form refuses.
-/// </summary>
 internal sealed class PropertyRoomConfiguration : IEntityTypeConfiguration<PropertyRoom>
 {
     public void Configure(EntityTypeBuilder<PropertyRoom> entity)
@@ -28,10 +24,6 @@ internal sealed class PropertyRoomConfiguration : IEntityTypeConfiguration<Prope
     }
 }
 
-/// <summary>
-/// The length-of-stay discounts of a property (NF-35, ADR-028-R2): same ownership as the rooms. One tier for each minimum of nights, and the
-/// ranges are also constraints, so no other writer can store a tier the host form refuses (the limit of five tiers is the rules').
-/// </summary>
 internal sealed class PropertyStayDiscountConfiguration : IEntityTypeConfiguration<PropertyStayDiscount>
 {
     public void Configure(EntityTypeBuilder<PropertyStayDiscount> entity)

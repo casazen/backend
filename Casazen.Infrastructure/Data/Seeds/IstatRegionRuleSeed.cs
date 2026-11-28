@@ -18,13 +18,11 @@ namespace Casazen.Infrastructure.Data.Seeds;
 /// </remarks>
 public static class IstatRegionRuleSeed
 {
-    /// <summary>The date the rows were written (fixed: a migration must not change after it ran).</summary>
     public static readonly DateTime SeededAt = new(2026, 11, 15, 0, 0, 0, DateTimeKind.Utc);
 
     private const string Ross1000FamilyPage =
         "https://statistica.regione.emilia-romagna.it/metadati/rilevazioni/turismo/allegati-rilevazioni-turismo/manuali-e-tracciati-rilevazioni-turismo";
 
-    /// <summary>New instances of the seeded rows on every call (entities are mutable).</summary>
     public static IReadOnlyList<IstatRegionRule> Build() =>
     [
         Row(

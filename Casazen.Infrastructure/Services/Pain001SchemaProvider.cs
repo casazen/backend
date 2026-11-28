@@ -24,34 +24,19 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public static class Pain001SchemaProvider
 {
-    /// <summary>
-    /// The target namespace of <c>pain.001.001.09</c>: the one of the ISO schema and of the EUR file CasaZen writes, which is validated against it. A file that is
-    /// written in another namespace is no file of this message (<see cref="LoadProblem"/>).
-    /// </summary>
     public const string IsoNamespace = "urn:iso:std:iso:20022:tech:xsd:pain.001.001.09";
 
-    /// <summary>
-    /// The target namespace of the CHF file CasaZen writes, <c>pain.001.001.09.ch.03</c>: the Swiss schema restricts the ISO one and keeps its namespace, so it is the
-    /// one of <see cref="IsoNamespace"/> (the two messages are told apart by the schema each currency is validated against).
-    /// </summary>
     public const string SwissNamespace = IsoNamespace;
 
-    /// <summary>The prefix of the logical names of the embedded ISO schema (EUR).</summary>
     public const string IsoResourcePrefix = "Casazen.Infrastructure.Payments.Schemas.Iso.";
 
-    /// <summary>The prefix of the logical names of the embedded Swiss schema (CHF).</summary>
     public const string SwissResourcePrefix = "Casazen.Infrastructure.Payments.Schemas.Swiss.";
 
     private static readonly Lazy<SchemaLoad> Iso = new(() => Load(IsoResourcePrefix, IsoNamespace), LazyThreadSafetyMode.ExecutionAndPublication);
     private static readonly Lazy<SchemaLoad> Swiss = new(() => Load(SwissResourcePrefix, SwissNamespace), LazyThreadSafetyMode.ExecutionAndPublication);
 
-    /// <summary>True when the official schema of <paramref name="currency"/> (EUR: ISO, CHF: Swiss) is embedded in this build and compiles.</summary>
     public static bool HasOfficialSchema(string currency) => Resolve(currency)?.Set is not null;
 
-    /// <summary>
-    /// The target namespace of the file of <paramref name="currency"/> (the one its schema has and the one the file is written in): 422
-    /// <c>wire_currency_not_supported</c> for a currency that has no wire file.
-    /// </summary>
     public static string NamespaceOf(string currency) => Normalize(currency) switch
     {
         WireTransferErrors.SepaCurrency => IsoNamespace,
@@ -59,23 +44,14 @@ public static class Pain001SchemaProvider
         _ => throw new DomainRuleException(WireTransferErrors.CurrencyNotSupported, "WireCurrencyNotSupported"),
     };
 
-    /// <summary>
-    /// The compiled schemas of the file of <paramref name="currency"/>: 422 <c>wire_currency_not_supported</c> for a currency that has no wire file,
-    /// 422 <c>wire_batch_schema_unavailable</c> when the official schema is not installed (or does not compile).
-    /// </summary>
     public static XmlSchemaSet GetSchemas(string currency)
     {
         var load = Resolve(currency) ?? throw new DomainRuleException(WireTransferErrors.CurrencyNotSupported, "WireCurrencyNotSupported");
         return load.Set ?? throw new DomainRuleException(WireTransferErrors.SchemaUnavailable, "WireBatchSchemaUnavailable", Normalize(currency));
     }
 
-    /// <summary>
-    /// Why the schema of <paramref name="currency"/> cannot be used although files are embedded (the compile error, which speaks of the schema and never of
-    /// a document); <c>null</c> when it is usable or when no file is embedded at all.
-    /// </summary>
     public static string? LoadProblem(string currency) => Resolve(currency)?.Problem;
 
-    /// <summary>The logical names of the embedded schemas, both sets (for the check of the checksums of the runbook).</summary>
     public static IReadOnlyList<string> EmbeddedSchemaNames() =>
         typeof(Pain001SchemaProvider).Assembly.GetManifestResourceNames()
             .Where(n => n.StartsWith(IsoResourcePrefix, StringComparison.Ordinal) || n.StartsWith(SwissResourcePrefix, StringComparison.Ordinal))
@@ -102,18 +78,11 @@ public static class Pain001SchemaProvider
         return Load(names, name => assembly.GetManifestResourceStream(name)!, requiredNamespace);
     }
 
-    /// <summary>
-    /// Compiles the schema files <paramref name="names"/> (read with <paramref name="open"/>) into one set that has the target namespace
-    /// <paramref name="requiredNamespace"/> (the one the file is written in: without it the validation would only warn that it has no schema for the root
-    /// element, and the file would pass). No file is no set and no reason; a file that does not compile, or files that are not the schema of that message, are
-    /// no set and the reason of it.
-    /// </summary>
     internal static SchemaLoad Load(IReadOnlyList<string> names, Func<string, Stream> open, string requiredNamespace)
     {
         if (names.Count == 0)
             return new SchemaLoad(null, null);
 
-        // The embedded schemas are files of this build, never input: no DTD and no resolver, so nothing outside the assembly is ever read.
         var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null };
         try
         {
@@ -136,6 +105,5 @@ public static class Pain001SchemaProvider
         }
     }
 
-    /// <summary>The outcome of loading the schemas of a currency: the compiled set, or why there is none (<c>null</c> too when no file is embedded).</summary>
     internal sealed record SchemaLoad(XmlSchemaSet? Set, string? Problem);
 }

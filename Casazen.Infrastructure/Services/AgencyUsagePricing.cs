@@ -3,7 +3,6 @@ using Stripe;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>Monthly Agency Base, LISTINO §5 (annual list prices plus 10% for monthly payment).</summary>
 public static class AgencyUsagePricing
 {
     public const string Base = "base";
@@ -27,8 +26,6 @@ public static class AgencyUsagePricing
     public static bool Available(IConfiguration configuration, string code) =>
         CommercialPricing.IsEnabled(configuration, code) && (Included.Contains(code) || (PriceId(configuration, code) != null && AddonAmount(configuration, code) > 0));
 
-    // Resolving the configured price on Stripe before Checkout prevents accidentally using a licensed
-    // owner/legacy price or collecting a different amount from the estimate.
     public static async Task ValidateAsync(StripeClient client, IConfiguration config, string code, CancellationToken ct)
     {
         var id = PriceId(config, code) ?? throw Unavailable();
@@ -55,8 +52,6 @@ public static class AgencyUsagePricing
     public static bool MatchesTariff(Price price, string code, decimal? addon)
     {
         if (price.BillingScheme != "tiered" || price.TiersMode != "volume" || price.Tiers is null) return false;
-        // Stripe bills the flat fee of the first tier even at zero units. The final tier
-        // intentionally has no automated charge: 400+ requires a negotiated quote.
         (long? UpTo, decimal Flat, decimal Unit)[] expected = code == Base
             ? [(9, Minimum * 100, 0), .. Bands.Select(b => ((long?)b.UpTo, 0m, b.UnitPrice * 100)), (null, 0, 0)]
             : new (long? UpTo, decimal Flat, decimal Unit)[] { (399, 0, (addon ?? -1m) * 100), (null, 0, 0) };

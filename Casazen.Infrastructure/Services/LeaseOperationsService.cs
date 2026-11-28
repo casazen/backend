@@ -42,8 +42,6 @@ public sealed class LeaseOperationsService(
             .Select(l => (Guid?)l.PropertyId)
             .FirstOrDefaultAsync(cancellationToken);
 
-    // ---- what the landlord can do ----------------------------------------------------------------------------------
-
     public async Task<LeaseOperationsDto> GetAsync(Guid leaseId, CancellationToken cancellationToken = default)
     {
         var lease = await db.LeaseContracts
@@ -62,7 +60,6 @@ public sealed class LeaseOperationsService(
         var handover = LeaseOperationRules.Handover(lease);
         var deposit = LeaseOperationRules.Deposit(lease, today);
 
-        // The lease of the same property that already covers days of the standard renewal: told before the person tries (the server refuses it too).
         LeasePeriodConflictDto? conflict = null;
         if (renewal.Available
             && await LeasePeriodGuard.FindAsync(
@@ -113,8 +110,6 @@ public sealed class LeaseOperationsService(
                 RecordedDepositReturn(lease)));
     }
 
-    // ---- the letters -----------------------------------------------------------------------------------------------
-
     public async Task<LeaseLetterFile> BuildDisdettaAsync(Guid leaseId, LeaseDisdettaReason? reason, CancellationToken cancellationToken = default)
     {
         var lease = await LoadForLetterAsync(leaseId, cancellationToken);
@@ -124,8 +119,6 @@ public sealed class LeaseOperationsService(
         if (lease.TerminatedOn is not null)
             throw new DomainConflictException(LeaseLifecycleCodes.AlreadyTerminated, "LeaseAlreadyTerminated");
 
-        // At the first expiry the law lets the landlord deny the renewal only for a reason of its list, and asks the letter to state it; later
-        // there is none to state.
         var flags = new HashSet<string>(StringComparer.Ordinal);
         if (LeaseOperationRules.IsFirstPeriod(lease))
         {
@@ -182,7 +175,6 @@ public sealed class LeaseOperationsService(
         if (!LeaseRenewal.Renews(lease.ContractType))
             throw new DomainRuleException(LeaseLifecycleCodes.LetterNotApplicable, "LeaseLetterNotApplicable");
 
-        // The days of the period the agreement adds: after the start of the lease, in order and not further than a typo would take them.
         var furthest = startsOn.AddYears(LeaseOperationRules.MaxAgreedExtensionYears);
         if (startsOn < RomeCalendar.DateInRome(lease.StartDate) || endsOn < startsOn || endsOn > furthest)
             throw new DomainRuleException(LeaseLifecycleCodes.RenewalEndInvalid, "LeaseRenewalEndInvalid", startsOn, furthest);
@@ -204,7 +196,6 @@ public sealed class LeaseOperationsService(
         var lease = await LoadForLetterAsync(leaseId, cancellationToken);
         EnsureInForce(lease);
 
-        // Only a transitory lease, and only when the need is the landlord's: when it is the tenant's, the tenant confirms it.
         if (!LeaseOperationRules.TransitoryConfirmation(lease, _clock.TodayInRomeAsDateOnly()).Available)
             throw new DomainRuleException(LeaseLifecycleCodes.LetterNotApplicable, "LeaseLetterNotApplicable");
 
@@ -231,7 +222,6 @@ public sealed class LeaseOperationsService(
         var lease = await LoadForLetterAsync(leaseId, cancellationToken);
         var calculation = CalculateIstat(lease, foiPercent, sharePercent);
 
-        // An update starts from the day it is asked for, never from one that has passed, and not after the period the lease is in.
         var facts = LeaseIstatRules.Facts(lease, _clock.TodayInRomeAsDateOnly());
         if (effectiveFrom < facts.MinEffectiveOn || effectiveFrom > facts.MaxEffectiveOn)
         {
@@ -256,7 +246,6 @@ public sealed class LeaseOperationsService(
         var lease = await LoadForLetterAsync(leaseId, cancellationToken);
         EnsureInForce(lease);
 
-        // Only a lease under the cedolare secca has the option to communicate.
         var facts = LeaseOperationRules.CedolareNotice(lease, _clock.TodayInRomeAsDateOnly());
         if (!facts.Available)
             throw new DomainRuleException(LeaseLifecycleCodes.LetterNotApplicable, "LeaseLetterNotApplicable");
@@ -277,7 +266,6 @@ public sealed class LeaseOperationsService(
         var lease = await LoadForLetterAsync(leaseId, cancellationToken);
         EnsureInForce(lease);
 
-        // Only a lease that is going to end or has ended has a handover to prepare.
         var facts = LeaseOperationRules.Handover(lease);
         if (!facts.Available)
             throw new DomainRuleException(LeaseLifecycleCodes.LetterNotApplicable, "LeaseLetterNotApplicable");
@@ -331,11 +319,9 @@ public sealed class LeaseOperationsService(
         var lease = await db.LeaseContracts.FirstOrDefaultAsync(l => l.Id == leaseId, cancellationToken) ?? throw NotFound(leaseId);
         var statement = CalculateDeposit(lease, input);
 
-        // What is recorded has already happened: from the start of the lease to today.
         if (input.ReturnedOn > _clock.TodayInRomeAsDateOnly() || input.ReturnedOn < RomeCalendar.DateInRome(lease.StartDate))
             throw new DomainRuleException(LeaseLifecycleCodes.DepositReturnDateInvalid, "LeaseDepositReturnDateInvalid");
 
-        // The sums of the statement and nothing else: no reason of a deduction, no name. The lease and its deposit do not change.
         db.LeaseEvents.Add(new LeaseEvent
         {
             LeaseContractId = lease.Id,
@@ -349,10 +335,6 @@ public sealed class LeaseOperationsService(
         logger.LogInformation("Lease deposit return recorded. LeaseId={LeaseId} Deductions={Deductions}", lease.Id, statement.Deductions.Count);
     }
 
-    /// <summary>
-    /// The checks the calculation, the statement and the record of the return of the deposit share: the lease is in force, is ending and has a
-    /// deposit; the days are plausible; then the rules of <see cref="LeaseDepositRules.Calculate"/>, whose refusals become the answers of the API.
-    /// </summary>
     private static LeaseDepositCalculation CalculateDeposit(LeaseContract lease, LeaseDepositReturnInput input)
     {
         EnsureInForce(lease);
@@ -398,10 +380,8 @@ public sealed class LeaseOperationsService(
         c.DeductionsTotal,
         c.Returned);
 
-    /// <summary>A sum of euros as the payload of an event writes it: two decimals and a dot, whatever the culture.</summary>
     private static string Euros(decimal amount) => amount.ToString("F2", CultureInfo.InvariantCulture);
 
-    /// <summary>The return of the deposit the landlord recorded last (the payload <c>{returnedOn}:{deposit}:{interestDue}:{deductions}:{returned}</c>), or <c>null</c>.</summary>
     private static LeaseDepositRecordDto? RecordedDepositReturn(LeaseContract lease)
     {
         foreach (var e in lease.Events.Where(e => e.EventType == LeaseEventType.DepositReturnRecorded).OrderByDescending(e => e.OccurredAt))
@@ -465,8 +445,6 @@ public sealed class LeaseOperationsService(
         return new LeaseLetterFile(pdf, fileName);
     }
 
-    // ---- the letter was sent ---------------------------------------------------------------------------------------
-
     public async Task MarkLetterSentAsync(
         Guid leaseId, LeaseLetterKind kind, DateOnly sentOn, LeaseLetterMeans means, CancellationToken cancellationToken = default)
     {
@@ -480,7 +458,6 @@ public sealed class LeaseOperationsService(
         if (sentOn > _clock.TodayInRomeAsDateOnly() || sentOn < RomeCalendar.DateInRome(lease.StartDate))
             throw new DomainRuleException(LeaseLifecycleCodes.LetterDateInvalid, "LeaseLetterDateInvalid");
 
-        // The lease itself does not change: the event is the whole record, with the day and the means and no copy of the letter.
         db.LeaseEvents.Add(new LeaseEvent
         {
             LeaseContractId = lease.Id,
@@ -493,9 +470,6 @@ public sealed class LeaseOperationsService(
         logger.LogInformation("Lease letter marked as sent. LeaseId={LeaseId} Kind={Kind} Means={Means}", lease.Id, kind, means);
     }
 
-    // ---- reading the history ---------------------------------------------------------------------------------------
-
-    /// <summary>The last time the landlord marked a letter of this kind as sent (the payload <c>{kind}:{means}:{day}</c>), or <c>null</c>.</summary>
     private static LeaseLetterSentDto? LastSent(LeaseContract lease, LeaseLetterKind kind)
     {
         foreach (var e in lease.Events.Where(e => e.EventType == LeaseEventType.LetterSent).OrderByDescending(e => e.OccurredAt))
@@ -513,7 +487,6 @@ public sealed class LeaseOperationsService(
         return null;
     }
 
-    /// <summary>The withdrawal of the tenant already recorded (the payload <c>{reason}:{receivedOn}:{effectiveOn}:{months}</c>), or <c>null</c>.</summary>
     private static LeaseWithdrawalRecordDto? RecordedWithdrawal(LeaseContract lease)
     {
         foreach (var e in lease.Events.Where(e => e.EventType == LeaseEventType.WithdrawalRecorded).OrderByDescending(e => e.OccurredAt))
@@ -532,10 +505,6 @@ public sealed class LeaseOperationsService(
         return null;
     }
 
-    /// <summary>
-    /// The last renewal the landlord recorded (the payload <c>{Standard|Agreed}:{from}:{to}</c>) when it is the one of the period the lease is in
-    /// now (<paramref name="currentEnd"/>), or <c>null</c>: once the lease has moved on to a later period or ended early, the record is history.
-    /// </summary>
     private static LeaseRenewalRecordDto? RecordedRenewal(LeaseContract lease, DateOnly currentEnd)
     {
         foreach (var e in lease.Events.Where(e => e.EventType == LeaseEventType.RenewalRecorded).OrderByDescending(e => e.OccurredAt))
@@ -553,9 +522,6 @@ public sealed class LeaseOperationsService(
         return null;
     }
 
-    // ---- loading and checking --------------------------------------------------------------------------------------
-
-    /// <summary>The lease with its property and its parties (their residences are decrypted here), read only.</summary>
     private async Task<LeaseContract> LoadForLetterAsync(Guid leaseId, CancellationToken cancellationToken) =>
         await db.LeaseContracts
             .AsNoTracking()

@@ -172,7 +172,6 @@ public sealed class PresetAgentTrainer(AppDbContext db, IServiceScopeFactory sco
         }, ct);
     }
 
-    // A nearest-neighbour classifier trained on labelled stays. Only the three closest examples go into the AI request.
     internal static AgentExample[] Neighbours(TrainedAgent profile, AgentStay stay) =>
         profile.Examples.OrderBy(example =>
             (example.Status == stay.Status ? 0 : 5) + (example.NoShow == stay.NoShow ? 0 : 5) +

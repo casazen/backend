@@ -53,10 +53,6 @@ internal sealed class OrgFiscalIssuerProfileConfiguration : IEntityTypeConfigura
     }
 }
 
-/// <summary>
-/// Who holds the account of a listing on a portal (E14/F01/US01/T01, ⚖ I10): one row for each property and portal (<see cref="PropertyChannelAccountHolder.PropertyChannelIndexName"/>),
-/// gone with its property (cascade), and only a known holder (check).
-/// </summary>
 internal sealed class PropertyChannelAccountHolderConfiguration : IEntityTypeConfiguration<PropertyChannelAccountHolder>
 {
     public void Configure(EntityTypeBuilder<PropertyChannelAccountHolder> entity)
@@ -110,7 +106,6 @@ internal sealed class FiscalDocumentConfiguration : IEntityTypeConfiguration<Fis
         entity.HasOne<FiscalDocument>().WithMany().HasForeignKey(d => d.ReplacesDocumentId).OnDelete(DeleteBehavior.Restrict);
         entity.HasMany(d => d.Lines).WithOne().HasForeignKey(l => l.DocumentId).OnDelete(DeleteBehavior.Cascade);
 
-        // One live owner invoice per owner and period (E14): neither a discarded draft, nor a credit note, nor an invoice credited in full holds it.
         entity.HasIndex(d => new { d.OrgId, d.RecipientOwnerId, d.PeriodYear, d.PeriodMonth })
             .IsUnique()
             .HasFilter(
@@ -142,8 +137,6 @@ internal sealed class FiscalDocumentConfiguration : IEntityTypeConfiguration<Fis
                 "\"SdiStatus\" IN (" + string.Join(", ", FiscalDocumentSdiStatuses.All.Select(s => $"'{s}'")) + ")");
             table.HasCheckConstraint("CK_FiscalDocuments_SequenceNumber", "\"SequenceNumber\" IS NULL OR \"SequenceNumber\" > 0");
 
-            // FIX/BE-TD17-JOB-EXIT: a replacement closed as «non più dovuta» is all or nothing: a document that was not closed has none of the four columns of the closing, and a closed one has its reason and its
-            // day, is discarded and KEEPS its sequence number (the number is reserved and never freed: with the unique index of the series, no other document can take it).
             table.HasCheckConstraint(
                 "CK_FiscalDocuments_ClosedNotDue",
                 "(\"ClosedNotDueAt\" IS NULL AND \"ClosedNotDueReason\" IS NULL AND \"ClosedNotDueByUserId\" IS NULL AND \"ClosedNotDueNote\" IS NULL) "
@@ -153,7 +146,6 @@ internal sealed class FiscalDocumentConfiguration : IEntityTypeConfiguration<Fis
     }
 }
 
-/// <summary>The lines of a fiscal document: one number per line within the document (<see cref="FiscalDocumentLine.DocumentLineIndexName"/>).</summary>
 internal sealed class FiscalDocumentLineConfiguration : IEntityTypeConfiguration<FiscalDocumentLine>
 {
     public void Configure(EntityTypeBuilder<FiscalDocumentLine> entity)
@@ -162,7 +154,6 @@ internal sealed class FiscalDocumentLineConfiguration : IEntityTypeConfiguration
     }
 }
 
-/// <summary>The counter of the fiscal numbers: one row per org, issuer and series (<see cref="FiscalNumberSequence.IssuerSeriesIndexName"/>).</summary>
 internal sealed class FiscalNumberSequenceConfiguration : IEntityTypeConfiguration<FiscalNumberSequence>
 {
     public void Configure(EntityTypeBuilder<FiscalNumberSequence> entity)

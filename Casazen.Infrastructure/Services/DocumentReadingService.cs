@@ -3,11 +3,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc />
-/// <remarks>
-/// A stream that cannot be rewound is copied into memory (never a file) so the OCR can read it after the MRZ. The log says the method and the
-/// confidence only, never a value read.
-/// </remarks>
 public sealed class DocumentReadingService(
     IMrzExtractionService mrz,
     IDocumentOcrService ocr,

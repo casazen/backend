@@ -66,7 +66,6 @@ public partial class FiscalService(
         bool? isPrimaryForCedolare,
         CancellationToken cancellationToken = default)
     {
-        // isPrimaryForCedolare is kept for API compatibility: the designated 21% unit is the one with CedolareSecca21.
         ValidateTaxYear(taxYear);
         if (!Enum.IsDefined(regime))
             throw new FiscalValidationException("fiscal_regime_unknown", "FiscalRegimeUnknown");
@@ -100,7 +99,6 @@ public partial class FiscalService(
 
         if (regime == StrFiscalRegime.CedolareSecca21)
         {
-            // One 21% unit per taxpayer and tax year (fiscale.md C2): the previous one goes back to the general rate.
             foreach (var other in view.ReducedRateAssignmentsOf(taxpayer).Where(y => y.PropertyId != propertyId))
             {
                 other.IsPrimaryForCedolare = false;
@@ -181,12 +179,10 @@ public partial class FiscalService(
         var org = await db.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken)
             ?? throw new KeyNotFoundException("Org not found");
 
-        // Only the fields sent change (CO-19, A5-23): a form never overwrites the saved profile with its defaults.
         var hasPartitaIva = update.HasPartitaIva ?? org.HasPartitaIva;
         if (hasPartitaIva)
         {
             var number = update.PartitaIvaNumber ?? org.PartitaIvaNumber;
-            // Spaces and the "IT" country prefix are accepted and dropped.
             var digits = new string((number ?? string.Empty).Where(c => !char.IsWhiteSpace(c)).ToArray()).ToUpperInvariant();
             if (digits.StartsWith("IT", StringComparison.Ordinal))
                 digits = digits[2..];
@@ -230,7 +226,6 @@ public partial class FiscalService(
         }
         else
         {
-            // Per taxpayer (fiscale.md C4): the simulation shows the taxpayer of the org with the most apartments.
             var orgFiscalCode = await db.Orgs.AsNoTracking()
                 .Where(o => o.Id == orgId)
                 .Select(o => o.FiscalCode)
@@ -285,11 +280,6 @@ public partial class FiscalService(
         }
     }
 
-    /// <summary>
-    /// Whether an OTA stay is a short-term rental contract, the only one subject to the intermediary's withholding
-    /// (fiscale.md C1, C7, C10): at most the configured nights, and the property's taxpayer not in business (impresa) for
-    /// the stay's tax year, neither by the assigned regime nor by the threshold presumption.
-    /// </summary>
     private async Task<bool> IsShortRentalContractAsync(Booking booking, CancellationToken cancellationToken = default)
     {
         if (!IsShortStay(booking.CheckInDate, booking.CheckOutDate)
@@ -315,10 +305,6 @@ public partial class FiscalService(
         return !view.TryGetProperty(booking.PropertyId, out var property) || !view.TaxpayerOf(property).ThresholdExceeded;
     }
 
-    /// <summary>
-    /// A 21% unit designated for a tax year stays one per taxpayer when the property changes taxpayer: refuses the change if
-    /// the new taxpayer already has another 21% unit in one of those years.
-    /// </summary>
     private async Task EnsureReducedRateUnitFreeAsync(
         Guid orgId,
         string? orgFiscalCode,
@@ -388,8 +374,6 @@ public partial class FiscalService(
             .Select(b => b.PropertyId)
             .ToHashSet();
 
-        // Leased in the year: the lease runs in it up to the end of the period it is in now (LR-14), so one that renewed by itself still
-        // counts after the end its contract states.
         var leasedPropertyIds = (await db.LeaseContracts.AsNoTracking()
                 .Where(l => l.OrgId == orgId && l.StartDate < yearEnd && l.CurrentTermEndDate >= yearStart)
                 .Select(l => l.PropertyId)
@@ -493,7 +477,6 @@ public partial class FiscalService(
             ReducedRatePropertyId);
     }
 
-    /// <summary>One tax year of an org: its properties, their assigned regimes and their taxpayers.</summary>
     private sealed class FiscalYearView
     {
         private readonly IReadOnlyDictionary<Guid, YearProperty> _properties;
@@ -514,7 +497,6 @@ public partial class FiscalService(
             _thresholdApplies = thresholdApplies;
             Candidates = properties.Values.Where(p => p.IsCandidate).OrderBy(p => p.Name).ThenBy(p => p.Id).ToList();
 
-            // The org tax profile first, then the other taxpayers in a stable order.
             _taxpayers = Candidates
                 .GroupBy(p => p.TaxpayerKey)
                 .OrderBy(g => g.Key == orgKey ? 0 : 1)
@@ -587,7 +569,6 @@ public partial class FiscalService(
             return declared > _rules.MaxApartmentsPerTaxpayer;
         }
 
-        /// <summary>The taxpayer's rows at the 21% rate in this year (normally at most one).</summary>
         public IEnumerable<PropertyFiscalYear> ReducedRateAssignmentsOf(TaxpayerYear taxpayer) =>
             Assignments.Values.Where(y =>
                 IsReducedRate(y)
@@ -659,7 +640,6 @@ public partial class FiscalService(
             if (taxpayer.ReducedRatePropertyId is Guid reduced)
                 return reduced == property.Id ? StrFiscalRegime.CedolareSecca21 : StrFiscalRegime.CedolareSecca26;
 
-            // No unit designated yet: 21% suggested when this is the taxpayer's only apartment let short-term.
             var count = taxpayer.ShortStayApartmentCount + (property.ShortStay ? 0 : 1);
             return count == 1 ? StrFiscalRegime.CedolareSecca21 : StrFiscalRegime.CedolareSecca26;
         }

@@ -41,7 +41,6 @@ public static class ICalFeedParser
 {
     private const string CalendarHeader = "BEGIN:VCALENDAR";
 
-    /// <exception cref="ICalFormatException">The document is empty, is not an iCalendar or cannot be read.</exception>
     public static ICalFeedParseResult Parse(
         string? icsContent,
         DateOnly recurrenceFrom,
@@ -85,7 +84,6 @@ public static class ICalFeedParser
 
         public ICalFeedParseResult Read(IReadOnlyList<CalendarEvent> events)
         {
-            // Instances of a series replaced by an override (same UID + RECURRENCE-ID): the override is read on its own.
             var overridesByUid = events
                 .Where(e => e.RecurrenceId is not null && UidOf(e) is not null)
                 .GroupBy(e => UidOf(e)!, StringComparer.Ordinal)
@@ -99,7 +97,6 @@ public static class ICalFeedParser
                 }
                 catch (Exception ex)
                 {
-                    // A transparent event blocked nothing before and still blocks nothing when it cannot be read.
                     if (!IsTransparent(calendarEvent))
                         Unreadable(ex.GetType().Name, UidOf(calendarEvent));
                 }
@@ -144,7 +141,6 @@ public static class ICalFeedParser
             var isSeries = calendarEvent.RecurrenceId is null
                 && (calendarEvent.RecurrenceRules.Count > 0 || calendarEvent.RecurrenceDates.Count > 0);
 
-            // An instance replaced by an override belongs to its series: one answer for all of them.
             var recurring = isSeries || calendarEvent.RecurrenceId is not null;
 
             if (!isSeries)
@@ -200,7 +196,7 @@ public static class ICalFeedParser
             if (!transparent)
                 _occurrences.Add(occurrence);
             else if (span.LastDay >= transparentFrom)
-                _transparentOccurrences.Add(occurrence); // what ended before today is not worth asking about
+                _transparentOccurrences.Add(occurrence);
         }
 
         private void Unreadable(string reason, string? uid)
@@ -211,7 +207,6 @@ public static class ICalFeedParser
                 _unreadableUids.Add(uid);
         }
 
-        // Ical.Net invents a random UID for an event without one: only a UID written in the feed is stable.
         private string? UidOf(CalendarEvent calendarEvent)
         {
             var uid = calendarEvent.Uid?.Trim();
@@ -219,7 +214,6 @@ public static class ICalFeedParser
         }
     }
 
-    /// <summary>What an event covers: its calendar days in Europe/Rome and the UTC instants (see <see cref="ICalOccurrence"/>).</summary>
     internal readonly record struct EventSpan(
         DateOnly StartDate,
         DateOnly EndDate,
@@ -228,15 +222,10 @@ public static class ICalFeedParser
         DateTime EndUtc,
         bool IsAllDay);
 
-    /// <summary>
-    /// Calendar days and instants of an event: first day, day after the last night, last day touched, and the UTC stretch.
-    /// Null when it ends before it starts (or, all-day, on its start date).
-    /// </summary>
     internal static EventSpan? ToSpan(IDateTime start, IDateTime? end)
     {
         if (!start.HasTime)
         {
-            // VALUE=DATE: the date as written. Ical.Net's AsUtc would shift it by the server's UTC offset (A2-23).
             var firstDay = DateOnly.FromDateTime(start.Value);
             var endDate = end is null ? firstDay.AddDays(1) : CalendarDateOf(end);
             return endDate > firstDay
@@ -263,11 +252,6 @@ public static class ICalFeedParser
     private static DateOnly CalendarDateOf(IDateTime value) =>
         value.HasTime ? RomeCalendar.DateInRome(ToUtc(value)) : DateOnly.FromDateTime(value.Value);
 
-    /// <summary>
-    /// The UTC instant of a timed value: as is when UTC, else the wall clock of its <c>TZID</c>. A floating time or an
-    /// unknown <c>TZID</c> is read as Europe/Rome wall clock (where the properties and the suppliers are), never as the
-    /// server's zone.
-    /// </summary>
     internal static DateTime ToUtc(IDateTime value)
     {
         if (value.IsUtc)
@@ -289,7 +273,7 @@ public static class ICalFeedParser
         var wallClock = DateTime.SpecifyKind(value, DateTimeKind.Unspecified);
         TimeSpan offset;
         if (zone.IsInvalidTime(wallClock))
-            offset = zone.GetUtcOffset(wallClock.AddDays(-1)); // no change happens twice in 24 hours
+            offset = zone.GetUtcOffset(wallClock.AddDays(-1));
         else if (zone.IsAmbiguousTime(wallClock))
             offset = zone.GetAmbiguousTimeOffsets(wallClock).Max();
         else
@@ -307,7 +291,6 @@ public static class ICalFeedParser
         if (TimeZoneInfo.TryFindSystemTimeZoneById(id, out var zone))
             return zone;
 
-        // Producers that prefix the Olson name, e.g. "/mozilla.org/20050126_1/Europe/Rome".
         var parts = id.Split('/', StringSplitOptions.RemoveEmptyEntries);
         return parts.Length > 2 && TimeZoneInfo.TryFindSystemTimeZoneById($"{parts[^2]}/{parts[^1]}", out zone)
             ? zone
@@ -330,7 +313,6 @@ public static class ICalFeedParser
     private static bool IsTransparent(CalendarEvent calendarEvent) =>
         string.Equals(calendarEvent.Transparency?.Trim(), TransparencyType.Transparent, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Extract X-CURRENCY custom property from the event (ADR-002-R8, NF-02); null when not present.</summary>
     private static string? ExtractCurrency(CalendarEvent calendarEvent)
     {
         var property = calendarEvent.Properties.FirstOrDefault(p =>
@@ -345,7 +327,6 @@ public static class ICalFeedParser
         || rule.ByMinute.Count > 1
         || rule.BySecond.Count > 1;
 
-    /// <summary>Text without control characters (a NUL byte is refused by PostgreSQL), trimmed; null when empty.</summary>
     private static string? Clean(string? value, bool keepSpaces)
     {
         if (string.IsNullOrEmpty(value))
@@ -386,7 +367,6 @@ public static class ICalFeedParser
     private static readonly System.Buffers.SearchValues<char> ForbiddenControlCharacters = System.Buffers.SearchValues.Create(
         Enumerable.Range(0, 0x20).Append(0x7F).Select(i => (char)i).Where(c => c is not ('\t' or '\r' or '\n')).ToArray());
 
-    /// <summary>The UID values written in the document (unfolded, raw and unescaped).</summary>
     private static HashSet<string> CollectWrittenUids(string text)
     {
         var uids = new HashSet<string>(StringComparer.Ordinal);

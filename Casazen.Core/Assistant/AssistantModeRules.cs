@@ -11,10 +11,8 @@ namespace Casazen.Core.Assistant;
 /// </summary>
 public static class AssistantModeRules
 {
-    /// <summary>The 422 of a mode the situation does not allow (an automatic one for a sensitive situation, or a value that is no mode).</summary>
     public const string ModeNotAllowedCode = "assistant_mode_not_allowed";
 
-    /// <summary>True when <paramref name="mode"/> is one of the modes <paramref name="situation"/> allows.</summary>
     public static bool IsAllowed(AssistantSituation situation, AssistantMode mode) =>
         AssistantSituationCatalog.Of(situation).AllowedModes.Contains(mode);
 
@@ -32,7 +30,6 @@ public static class AssistantModeRules
     public static AssistantMode Effective(AssistantSituation situation, AssistantMode stored) =>
         IsAllowed(situation, stored) ? stored : AssistantMode.Draft;
 
-    /// <summary>True for the two modes in which the assistant may send by itself.</summary>
     public static bool IsAutomatic(AssistantMode mode) => mode is AssistantMode.Automatic or AssistantMode.AutomaticWithExceptions;
 
     /// <summary>

@@ -59,12 +59,6 @@ public interface IGuestMatchingService
         string? language,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Recomputes the aggregates of a CRM profile from the bookings of every guest linked to it: stays (a booking not cancelled and not
-    /// pending, checked out or with a check-out before today in Rome), their spend and first and last arrival, and the properties of every
-    /// booking that is not cancelled, upcoming ones included, so the scope of a host sees them. Changes nothing, not even the update time,
-    /// when the values are the same.
-    /// </summary>
     Task UpdateProfileAggregatesAsync(
         Guid profileId,
         CancellationToken cancellationToken = default);

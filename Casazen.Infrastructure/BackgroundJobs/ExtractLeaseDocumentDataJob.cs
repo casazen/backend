@@ -19,18 +19,11 @@ public sealed class ExtractLeaseDocumentDataJob(
 {
     public const int MaxAttempts = 3;
 
-    /// <summary>
-    /// Enqueue the extraction job for a document.
-    /// </summary>
     public static string EnqueueAsync(Guid documentId)
     {
         return BackgroundJob.Enqueue<ExtractLeaseDocumentDataJob>(job => job.ExecuteAsync(documentId, CancellationToken.None));
     }
 
-    /// <summary>
-    /// Execute the extraction job. Verifies tenant isolation, extracts text from all pages,
-    /// parses fields, validates coherence, and populates lease fields if confidence is high.
-    /// </summary>
     [AutomaticRetry(Attempts = MaxAttempts, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
     [DisableConcurrentExecution(timeoutInSeconds: 300)]
     public async Task ExecuteAsync(Guid documentId, CancellationToken ct)
@@ -39,7 +32,6 @@ public sealed class ExtractLeaseDocumentDataJob(
 
         try
         {
-            // Verify the document exists and belongs to a lease contract (tenant isolation check)
             var document = await db.LeaseDocuments
                 .Include(d => d.LeaseContract)
                 .AsNoTracking()
@@ -51,7 +43,6 @@ public sealed class ExtractLeaseDocumentDataJob(
                 return;
             }
 
-            // Verify tenant isolation: the document's OrgId must match the lease contract's OrgId
             if (document.OrgId != document.LeaseContract.OrgId)
             {
                 logger.LogError(
@@ -62,7 +53,6 @@ public sealed class ExtractLeaseDocumentDataJob(
                 throw new DomainRuleException("tenant_isolation_violation", "TenantIsolationViolation");
             }
 
-            // Perform the extraction
             await extractionService.ExtractAsync(documentId, ct);
 
             logger.LogInformation("Extraction completed successfully for document {DocumentId}", documentId);

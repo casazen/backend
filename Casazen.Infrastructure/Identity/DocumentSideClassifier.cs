@@ -23,11 +23,6 @@ public sealed record DocumentPictureFingerprint(string Sha256, ulong? DHash, Doc
     }
 }
 
-/// <summary>
-/// Tells which side of a document a picture shows, and whether the pictures sent for the two sides really are two different sides (E71/F01/US01/T02, NF-189): the spec says
-/// that a foreign image or a duplicated side asks for a new, targeted capture. Pure: no I/O, no logging, no state and no constructor parameter, so nothing of a picture can
-/// leave through it; the numbers come in as arguments (the distance from <c>policy.document.perceptualDuplicateMaxDistance</c>, the sides and where the MRZ is from the format).
-/// </summary>
 public sealed class DocumentSideClassifier
 {
     /// <summary>
@@ -81,14 +76,12 @@ public sealed class DocumentSideClassifier
         if (!string.IsNullOrEmpty(picture.Sha256) && string.Equals(picture.Sha256, other.Sha256, StringComparison.OrdinalIgnoreCase))
             return true;
 
-        // A hash the flow does not have is never "close": it is null, not 0, and the hashes are compared only when both pictures have one.
         if (picture.DHash is { } hash && other.DHash is { } otherHash && PerceptualHash.Distance(hash, otherHash) <= maxDistance)
             return true;
 
         return picture.Side is { } side && other.Side == side;
     }
 
-    /// <summary>The side of the format a code names; only <c>front</c> and <c>back</c> are sides to tell apart.</summary>
     private static DocumentSide? SideOf(string? code)
     {
         return code switch
@@ -99,7 +92,6 @@ public sealed class DocumentSideClassifier
         };
     }
 
-    /// <summary>The side of the layout that has the portrait; null when none has.</summary>
     private static string? PortraitSide(DocumentFormat format)
     {
         foreach (var (side, layout) in format.Layout.Sides)

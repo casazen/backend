@@ -36,10 +36,8 @@ public class SwissComplianceRetentionJob(
 {
     public const string RecurringJobId = "swiss-compliance-retention";
 
-    /// <summary>Every day at 03:55 UTC, after the retention of the compliance proofs (03:40) and the purge of the guest documents (03:50).</summary>
     public const string Cron = "55 3 * * *";
 
-    /// <summary>Documents removed by one save.</summary>
     public const int BatchSize = 100;
 
     [AutomaticRetry(Attempts = 3)]
@@ -47,7 +45,6 @@ public class SwissComplianceRetentionJob(
     {
         var cutoffDay = SwissComplianceReceipts.RetentionCutoffDay(timeProvider.TodayInRomeAsDateOnly());
 
-        // The report date is stored as midnight UTC of its day (the convention of the stays): a document dated before the cut day is past its time.
         var cutoff = DateTime.SpecifyKind(cutoffDay.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
         var types = SwissComplianceReceipts.RetainedFiveYears.ToList();
 
@@ -95,7 +92,6 @@ public class SwissComplianceRetentionJob(
             removed,
             failed.Count);
 
-        // Nothing past its time is kept in silence: the run fails (and is repeated) while a file could not be deleted; what was removed stays removed.
         if (failed.Count > 0)
         {
             throw new InvalidOperationException(

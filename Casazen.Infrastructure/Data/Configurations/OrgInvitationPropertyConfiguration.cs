@@ -8,7 +8,6 @@ internal sealed class OrgInvitationPropertyConfiguration : IEntityTypeConfigurat
 {
     public void Configure(EntityTypeBuilder<OrgInvitationProperty> entity)
     {
-        // They go with the invitation (which goes with the org, and 30 days after it closed).
         entity.HasOne<OrgInvitation>()
             .WithMany()
             .HasForeignKey(p => p.InvitationId)
@@ -19,7 +18,6 @@ internal sealed class OrgInvitationPropertyConfiguration : IEntityTypeConfigurat
             .HasForeignKey(p => p.OrgId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // The property is soft-deleted, so in practice never removed; if it ever is, its mention goes with it.
         entity.HasOne<Property>()
             .WithMany()
             .HasForeignKey(p => p.PropertyId)
@@ -31,7 +29,6 @@ internal sealed class OrgInvitationPropertyConfiguration : IEntityTypeConfigurat
             .IsUnique()
             .HasDatabaseName("UIX_OrgInvitationProperties_InvitationId_PropertyId");
 
-        // The cascade of a property reads the rows that mention it.
         entity.HasIndex(p => p.PropertyId)
             .HasDatabaseName("IX_OrgInvitationProperties_PropertyId");
     }

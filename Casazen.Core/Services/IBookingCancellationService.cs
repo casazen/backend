@@ -11,8 +11,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IBookingCancellationService
 {
-    /// <summary>What a cancellation of the booking would do now, for the confirmation dialog.</summary>
-    /// <exception cref="Exceptions.NotFoundException">The booking does not exist.</exception>
     Task<BookingCancellationQuote> GetQuoteAsync(Guid bookingId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -32,12 +30,8 @@ public interface IBookingCancellationService
     Task<BookingCancellationResult> CancelAsync(BookingCancellationRequest request, CancellationToken cancellationToken = default);
 }
 
-/// <summary>Who cancels the booking: it sets the least refund the cancellation accepts (BK-02, PO 2026-10-08).</summary>
 public enum BookingCancellationInitiator
 {
-    /// <summary>
-    /// The host: the guest always gets back everything that can be refunded, whatever the cancellation policy says.
-    /// </summary>
     Host,
 
     /// <summary>
@@ -103,8 +97,6 @@ public sealed record BookingCancellationQuote(
     public bool RequiresRefundDecision => RefundableAmount > 0;
 }
 
-/// <param name="Refunds">Refunds created by the cancellation, as Stripe left them (succeeded, pending, failed).</param>
-/// <param name="CanceledIntents">Unpaid PaymentIntents / SetupIntents canceled on Stripe.</param>
 public sealed record BookingCancellationResult(
     Booking Booking,
     IReadOnlyList<PaymentRefund> Refunds,

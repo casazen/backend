@@ -14,7 +14,6 @@ internal static class OrgInvitationEmails
 {
     private static readonly CultureInfo English = CultureInfo.GetCultureInfo("en");
 
-    /// <summary>The culture of an invitation language (<c>it</c> or <c>en</c>).</summary>
     public static CultureInfo CultureOf(string? language) =>
         string.Equals(language, "en", StringComparison.OrdinalIgnoreCase) ? English : EmailTemplates.DefaultCulture;
 
@@ -40,7 +39,6 @@ internal static class OrgInvitationEmails
             links.OrgInvitationAccept(token),
             invitation.ExpiresAt);
 
-    /// <summary>The reminder of the third day, with the fresh link that replaces the one of the first email.</summary>
     public static EmailContent Reminder(PublicSiteLinks links, OrgInvitation invitation, string token, string orgName) =>
         EmailTemplates.OrgInvitationReminder(
             CultureOf(invitation.Language),
@@ -50,7 +48,6 @@ internal static class OrgInvitationEmails
             links.OrgInvitationAccept(token),
             invitation.ExpiresAt);
 
-    /// <summary>The note to the inviter: nobody accepted, the seat is free again.</summary>
     public static EmailContent Expired(PublicSiteLinks links, OrgInvitation invitation, string inviterName) =>
         EmailTemplates.OrgInvitationExpired(
             EmailTemplates.DefaultCulture,

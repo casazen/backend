@@ -27,15 +27,12 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    // ---------------------------------------------------------------- deadlines
-
     public async Task<LongRentDeadlines> GetDeadlinesAsync(
         HostScope scope, LongRentDeadlinesQuery query, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(query);
 
-        // Installments alone need no lease at all.
         IReadOnlyList<LeaseRow> leases = query.Type == LongRentDeadlineType.Rent
             ? Array.Empty<LeaseRow>()
             : await LoadLeasesAsync(scope, query.LeaseId, cancellationToken);
@@ -98,11 +95,9 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
             if (lease.Status != LeaseStatus.Registered)
                 continue;
 
-            // The end of the period the lease is in now (LR-14): a lease that renewed by itself has its next end here, not the first one.
             if (Wants(LongRentDeadlineType.LeaseEnd) && RomeCalendar.DateInRome(lease.CurrentTermEndDate) is var endDate && Listed(endDate, canBeOverdue: false))
                 items.Add(Of(LongRentDeadlineType.LeaseEnd, endDate, lease));
 
-            // Nothing left to give notice of once a notice is recorded (the lease ends with its period) or the lease was ended early.
             if (Wants(LongRentDeadlineType.Notice)
                 && lease.NoticeOn is null
                 && lease.TerminatedOn is null
@@ -123,7 +118,6 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
                     && e.DueDate <= to
                     && (e.DueDate >= from || carriesOverdue));
 
-            // The sheet of one lease (LR-03c): the same installments, narrowed to that lease in SQL.
             if (query.LeaseId is { } onlyLease)
                 due = due.Where(e => e.LeaseContractId == onlyLease);
 
@@ -173,8 +167,6 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
         return new LongRentDeadlines(from, to, ordered, truncated);
     }
 
-    // ---------------------------------------------------------------- overview
-
     public async Task<LongRentOverview> GetOverviewAsync(HostScope scope, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
@@ -184,8 +176,6 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
         var expiringUntil = todayStored.AddMonths(LeaseListViews.ExpiringWithinMonths);
         var firstOfMonth = new DateOnly(today.Year, today.Month, 1);
 
-        // The leases counted as the views of the lease list say (LeaseListViews): one grouped statement. "Soon" is the same rule as the
-        // "Expiring" view: the period ends within six months, or a notice or an early termination is recorded (LR-14).
         var groups = await db.LeaseContracts
             .AsNoTracking()
             .WithinScope(scope)
@@ -203,8 +193,6 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
             db.RentLedgerEntries.AsNoTracking().WithinScope(scope), firstOfMonth, firstOfMonth.AddMonths(1).AddDays(-1));
         var rents = await RentRegisterAggregates.CountersAsync(month, today, cancellationToken);
 
-        // All the installments past due, whatever their month: the landlord is behind with them until they are paid.
-        // One statement, one row per lease that is behind (a handful), added up here.
         var behind = await db.RentLedgerEntries
             .AsNoTracking()
             .WithinScope(scope)
@@ -301,7 +289,6 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
             : null;
     }
 
-    /// <summary>The counters of the views of the lease list, from the groups (status, ended, ending soon) of the leases.</summary>
     internal static LongRentLeaseCounters CountLeases(IEnumerable<(LeaseStatus Status, bool Ended, bool Soon, int Count)> groups)
     {
         int active = 0, expiring = 0, toSign = 0, toRegister = 0, ended = 0;
@@ -331,8 +318,6 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
 
         return new LongRentLeaseCounters(active, expiring, toSign + toRegister, toSign, toRegister, ended);
     }
-
-    // ---------------------------------------------------------------- leases
 
     /// <summary>
     /// The leases of the scope that can still carry a deadline: not rejected, not ended (a lease that ended with its registration

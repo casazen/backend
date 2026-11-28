@@ -19,18 +19,12 @@ public static class DemoShowcaseCatalog
 {
     public const string Version = "2026-11-27.1";
 
-    /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
 
     public const string DraftKey = "monolocale-bozza";
 
-    /// <summary>The key of the one Swiss flat of the showcase, in Lugano (<see cref="Scenario.SwissGuestRegistration"/>).</summary>
     public const string SwissFlatKey = "appartamento-lugano";
 
-    /// <summary>
-    /// The TEST «Numero identificativo LEAR / NO-LEAR» of the Swiss flat: letters and digits joined by a hyphen, valid for <c>TicinoStructureId.IsValid</c> (the check the file and the activation of the
-    /// flat use) and saying TEST. It is the number of no structure.
-    /// </summary>
     public const string SwissFlatStructureId = "NL-TEST0001";
 
     /// <summary>
@@ -40,30 +34,12 @@ public static class DemoShowcaseCatalog
     /// </summary>
     public const string GuestAppEmail = "ospite.app.demo@example.com";
 
-    /// <summary>
-    /// Version of the invented texts the CRM guests of <see cref="Scenario.CrmProfiles"/> saw: the soft opt-in notice of the direct customer and the
-    /// marketing consent of the online check-in. It says TEST, like every invented value of the showcase.
-    /// </summary>
     public const string CrmTextVersion = "DEMO-TEST-1";
 
-    /// <summary>
-    /// The phone number the two guests of <see cref="Scenario.CrmProfiles"/> who share one give. Invented: seven zeros stand for what a real
-    /// number would have. The other demo guests have a placeholder number (all zeros) that the CRM does not take for a phone, so they never
-    /// share one.
-    /// </summary>
     public const string CrmSharedPhone = "+39 333 0000777";
 
-    /// <summary>
-    /// The token of the welcome link of <see cref="Scenario.CrmWelcomeLink"/>: fixed, so a client can open <c>/benvenuto/{token}</c> after every
-    /// reset. It says TEST, uses only the characters of a base64url token and is not random: a real link is 32 random characters. The token is unique
-    /// among all the links of the installation, so the link is made only when no other org holds it.
-    /// </summary>
     public const string CrmWelcomeToken = "TEST-benvenuto-villa-lago-demo-01";
 
-    /// <summary>
-    /// Invented Financial Connections id stored on the demo org (<see cref="Scenario.LandlordBankLink"/>). It contains
-    /// TEST and is not a bank number. A real link replaces it; the reset does not overwrite one that is already set.
-    /// </summary>
     public const string BankLinkAccountId = "fca_TEST_showcase_landlord";
 
     public static class Scenario
@@ -73,16 +49,8 @@ public static class DemoShowcaseCatalog
         public const string ActivationPending = "short-stay-activation-pending";
         public const string LongStayCadastral = "long-stay-cadastral";
 
-        /// <summary>
-        /// The demo landlord has an optional Financial Connections account id (invented, marked TEST). The manual bank
-        /// transfer of a rent due is still the fallback: the id is not an IBAN.
-        /// </summary>
         public const string LandlordBankLink = "landlord-bank-link";
 
-        /// <summary>
-        /// A tenant maintenance request on the long-rent demo house: waiting, not paid, marked TEST.
-        /// Approval is a decision; the euro debit is a separate step. Not written as a row.
-        /// </summary>
         public const string TenantMaintenanceRequest = "tenant-maintenance-request";
         public const string BookingUpcoming = "booking-upcoming";
         public const string TodayArrivalNeedsCheckIn = "today-arrival-needs-checkin";
@@ -108,10 +76,6 @@ public static class DemoShowcaseCatalog
         public const string CheckInOperatorVerified = "checkin-operator-verified";
         public const string CheckInRejected = "checkin-rejected";
 
-        /// <summary>
-        /// E03/F04/US02/T04: a stay whose identity verification passed online, by the agent, before the arrival: the consent recorded with its
-        /// version, only the head of group verified, the lock code released on the check-in page and by e-mail. Test data, no real person.
-        /// </summary>
         public const string CheckInIdentityVerified = "checkin-identity-verified";
         public const string AlloggiatiSentReceiptPending = "alloggiati-sent-receipt-pending";
         public const string AlloggiatiRegistered = "alloggiati-registered";
@@ -157,10 +121,6 @@ public static class DemoShowcaseCatalog
         /// </summary>
         public const string Reviews = "reviews";
 
-        /// <summary>
-        /// The templates of the host for the messages to the guests (E05/F02/US02/T02, NF-63): three invented templates, all saying TEST, in Italian and
-        /// in English, that use the variables of a stay (guest, house, code, dates and times, host) so the host can try them in the hub and in the new message.
-        /// </summary>
         public const string MessageTemplates = "message-templates";
 
         /// <summary>
@@ -170,18 +130,12 @@ public static class DemoShowcaseCatalog
         /// </summary>
         public const string ScheduledMessages = "scheduled-messages";
 
-        // NF-40, NF-45 (E03/F01/US01/T04): the host wizard "Guest check-in" in the four states of a stay, and a stay with data to complete.
         public const string CheckInWizardExpected = "checkin-wizard-expected";
         public const string CheckInWizardArrived = "checkin-wizard-arrived";
         public const string CheckInWizardDeparted = "checkin-wizard-departed";
         public const string CheckInWizardNoShow = "checkin-wizard-no-show";
         public const string CheckInWizardIncomplete = "checkin-wizard-incomplete";
 
-        /// <summary>
-        /// Who an invoice of a booking is made out to (E06/F02/US01, FIS-01, NF-81): a finished direct stay for which the guest asked for an invoice
-        /// at the online check-in and the host completed the data of the company. Written for the booking at reset, marked as showcase data
-        /// (<c>TestDataEntities.BookingInvoiceData</c>) and gone with the booking.
-        /// </summary>
         public const string InvoiceData = "invoice-data";
 
         /// <summary>
@@ -191,19 +145,8 @@ public static class DemoShowcaseCatalog
         /// </summary>
         public const string FiscalIssuerProfile = "fiscal-issuer-profile";
 
-        /// <summary>
-        /// The CRM profiles built from the bookings (E07/F01/US02, NF-88, NF-89): a returning guest with a past and an upcoming stay at two houses, a
-        /// guest whose booking comes from an OTA (the address becomes a forward, service only), a direct customer with the soft opt-in notice, a guest
-        /// with a confirmed marketing consent from the online check-in, and two guests who share a phone (a merge to decide). The profiles, the
-        /// contacts and the proposed merges are written by the CRM sync of the showcase bookings.
-        /// </summary>
         public const string CrmProfiles = "crm-profiles";
 
-        /// <summary>
-        /// The welcome link of a house (E07/F04/US01/T03, NF-90): the address behind the QR code printed in the house, where a guest leaves a contact
-        /// and a per-channel consent. The demo house has an active link with a fixed test token (<see cref="CrmWelcomeToken"/>), so the public
-        /// welcome page can be opened after every reset.
-        /// </summary>
         public const string CrmWelcomeLink = "crm-welcome-link";
 
         /// <summary>
@@ -222,11 +165,6 @@ public static class DemoShowcaseCatalog
         /// </summary>
         public const string OnboardingActivation = "onboarding-activation";
 
-        /// <summary>
-        /// The price and the rules of single nights of a house (E08/F05/US01/T02, NF-36): the lake villa has a price of its own on some nights of a
-        /// weekend a few weeks ahead, a longer minimum stay, a night closed to arrival, a day closed to departure, and a shorter maximum stay with a
-        /// minimum advance. Invented rows of the house, marked as showcase data (<c>TestDataEntities.PropertyDayRule</c>); nothing is sent to a channel manager.
-        /// </summary>
         public const string CalendarDayRules = "calendar-day-rules";
 
         /// <summary>
@@ -246,42 +184,16 @@ public static class DemoShowcaseCatalog
         /// </summary>
         public const string DocumentArchive = "document-archive";
 
-        /// <summary>
-        /// The rent installment shows its parts (CondoLedger phase 1): rent € 900, condominium advance € 150, total € 1.050,
-        /// for twelve months. The showcase has no lease — its reset refuses to run when a showcase house has one — so this
-        /// template is the example the domain posts, not a row of <c>RentLedgerEntries</c>.
-        /// </summary>
         public const string RentLedgerComponents = "rent-ledger-components";
 
-        /// <summary>
-        /// The owner's condominium year (CondoLedger phase 2): Casa A, June fiscal year, ordinary and extraordinary kept apart,
-        /// prior-year balance on its own, installments left as issued. Template only: the showcase reset still refuses a lease
-        /// on a showcase house, and these rows are not written.
-        /// </summary>
         public const string CondominiumCore = "condominium-core";
 
-        /// <summary>
-        /// The tenant settlement after a confirmed consuntivo (CondoLedger phase 3): recoverable € 1,920, advances posted
-        /// € 1,800, debit € 120. Template only: the showcase reset still refuses a lease on a showcase house.
-        /// </summary>
         public const string TenantCondominiumSettlement = "tenant-condominium-settlement";
 
-        /// <summary>
-        /// The contract wizard's condominium expense when no year is loaded: previous consuntivo € 1,800 and new
-        /// preventivo € 1,920 become twelve advances of € 160. Template only.
-        /// </summary>
         public const string TenantExpenseProposal = "tenant-expense-proposal";
 
-        /// <summary>
-        /// Historical CondoLedger copy (condo-export-v1): Casa A 2024/2025 matches to the cent and stays a template.
-        /// A house without a verified property is not written into the book.
-        /// </summary>
         public const string CondominiumHistoricalImport = "condominium-historical-import";
 
-        /// <summary>
-        /// A free-form administrator preventivo: the reader proposes esercizio 2024/2025, quota ordinaria € 490,30
-        /// and straordinarie € 600. It does not post, and it does not read millesimi, payments or the rate plan.
-        /// </summary>
         public const string AdministratorStatementPdf = "administrator-statement-pdf";
 
         /// <summary>
@@ -365,12 +277,6 @@ public static class DemoShowcaseCatalog
         /// </summary>
         public const string ReportChannelCosts = "report-channel-costs";
 
-        /// <summary>
-        /// The cleaning at check-out (E24/F01/US01, NF-120): the ready routine «Pulizia al check-out» of the demo host (the time of the check-out of the property, the action
-        /// <c>CreateCleaningRequest</c>, a marked <c>Routine</c> row) and the two kinds of default cleaner a property can have: one with a trusted supplier at an agreed price and time,
-        /// one with a member of the staff and its cost to recharge to the owner. The cleaners are templates only, like the demo suppliers and staff they point at (the demo creates no
-        /// supplier org nor staff user), so no cleaning is created by the demo itself; they say what <c>api/properties/{id}/cleaning-setup</c> accepts. Invented amounts.
-        /// </summary>
         public const string CleaningAtCheckout = "cleaning-at-checkout";
 
         /// <summary>
@@ -439,7 +345,6 @@ public static class DemoShowcaseCatalog
         public const string SwissGuestRegistration = "swiss-guest-registration";
     }
 
-    /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
     public static IReadOnlyList<string> Scenarios { get; } =
     [
         Scenario.PublishedLombardia,
@@ -541,10 +446,6 @@ public static class DemoShowcaseCatalog
         Scenario.SwissGuestRegistration,
     ];
 
-    /// <summary>
-    /// Invites of new independent hosts the demo host sent: one waiting, one accepted, one expired, so the list of the host shows every
-    /// state. Addresses are <c>@example.com</c>; the link token is random and never shown, so none of them can be accepted.
-    /// </summary>
     public static IReadOnlyList<DemoHostInviteTemplate> HostInvites { get; } =
     [
         new("in-attesa", "host.demo.in-attesa@example.com", "Ciao, provaci anche tu (invito di dimostrazione).", -1, DemoHostInviteState.Pending, Scenario.HostInvitePending),
@@ -576,46 +477,26 @@ public static class DemoShowcaseCatalog
         new("canone-900-acconto-150", 900m, 150m, 12, Scenario.RentLedgerComponents),
     ];
 
-    /// <summary>
-    /// Casa A from CondoLedger: fiscal year from June, consuntivo 490.30, paid 412.80, balance 77.50 carried forward.
-    /// Extraordinary stays a separate amount. Not written as rows.
-    /// </summary>
     public static IReadOnlyList<DemoCondominiumCoreTemplate> CondominiumCoreExamples { get; } =
     [
         new("casa-a-2024", 6, 490.30m, 0m, 490.30m, 412.80m, 0m, 77.50m, Scenario.CondominiumCore),
     ];
 
-    /// <summary>
-    /// The tenant's consuntivo: recoverable final € 1,920, advances already posted € 1,800, debit € 120.
-    /// Not written as a lease.
-    /// </summary>
     public static IReadOnlyList<DemoTenantSettlementTemplate> TenantCondominiumSettlementExamples { get; } =
     [
         new("consuntivo-1920-acconti-1800", 1920m, 0m, 1800m, 120m, Scenario.TenantCondominiumSettlement),
     ];
 
-    /// <summary>
-    /// Nothing is loaded yet: the wizard takes last year's final and this year's budget and proposes the advance.
-    /// Not written as a lease, and it does not start a payment.
-    /// </summary>
     public static IReadOnlyList<DemoTenantExpenseProposalTemplate> TenantExpenseProposalExamples { get; } =
     [
         new("preventivo-1920", 1800m, 1920m, 12, 160m, Scenario.TenantExpenseProposal),
     ];
 
-    /// <summary>
-    /// Casa A 2024/2025 from the condo-export-v1 sample: ordinary, extraordinary, final, prior, payments,
-    /// the resulting balance, and the installment count and total, to the cent. Not written as rows.
-    /// </summary>
     public static IReadOnlyList<DemoCondominiumImportTemplate> CondominiumHistoricalImportExamples { get; } =
     [
         new("casa-a-2024", 490.30m, 0m, 490.30m, 0m, 412.80m, 77.50m, 12, 490.30m, Scenario.CondominiumHistoricalImport),
     ];
 
-    /// <summary>
-    /// The sentence a free-form administrator PDF can be read for. The extraordinary amount is proposed and not charged
-    /// until a person accepts it. Not written as a file.
-    /// </summary>
     public static IReadOnlyList<DemoAdministratorStatementTemplate> AdministratorStatementPdfExamples { get; } =
     [
         new(
@@ -637,10 +518,6 @@ public static class DemoShowcaseCatalog
         new("ricevuta-soggiorno-diretto", "Issued", "2026/1", "TEST Ospite Diretto", 248.00m, 8.00m, "EUR", Scenario.FiscalDocumentsDirect),
     ];
 
-    /// <summary>
-    /// The Swiss documents of a stay in Ticino (E11/F01/US01/T03): 4 nights CHF 600, cleaning 80, an extra 40 and the tourist tax of 2 guests × 4 nights ×
-    /// 2.00, issued by a registered issuer (the TEST UID of the example of eCH-0097) and by one that is not registered. Invented, a template only.
-    /// </summary>
     public static IReadOnlyList<DemoSwissFiscalDocumentTemplate> SwissFiscalDocumentExamples { get; } =
     [
         new("fattura-svizzera", DocumentRegime.SwissVatRegistered, "CHE-109.322.551", "TEST Ospite Svizzero", 600.00m, 80.00m, 40.00m, 16.00m, Scenario.SwissFiscalDocument),
@@ -667,10 +544,6 @@ public static class DemoShowcaseCatalog
         new("fattura-scartata", "2026/1", "TEST Immobiliare Lago Srl", 312.00m, "00417", Scenario.SdiRejectedInvoice),
     ];
 
-    /// <summary>
-    /// The self-billed invoice of the commissions of a month (E17/F01/US03): the TEST owner company that holds the Booking.com account of Villa del Lago, two stays with
-    /// a commission of 120.00 and 80.50 euro, the TEST supplier abroad as cedente. Invented, a template only.
-    /// </summary>
     public static IReadOnlyList<DemoSelfBillingTemplate> SelfBillingExamples { get; } =
     [
         new("td17-societa-booking", "TEST Immobiliare Lago Srl", "TEST Portale B.V.", "NL", [120.00m, 80.50m], Scenario.SelfBilling),
@@ -686,20 +559,11 @@ public static class DemoShowcaseCatalog
         new("td17-scartata", "TD17-2026/1", "TEST Immobiliare Lago Srl", "TEST Portale B.V.", 244.61m, "00427", Scenario.SelfBillingCorrection),
     ];
 
-    /// <summary>
-    /// The replacement draft of the rejected self-billed invoice of the demo month (<see cref="SelfBillingCorrectionExamples"/>) after the TEST portal issued a credit note of the invoice the TD17 integrated: the draft
-    /// that holds number TD17-2026/1 is closed as «non più dovuta» for that reason (<c>portal_credit_note</c>), the number stays reserved and the next TD17 of the series is TD17-2026/2.
-    /// Invented, a template only.
-    /// </summary>
     public static IReadOnlyList<DemoSelfBillingClosedTemplate> SelfBillingClosedExamples { get; } =
     [
         new("td17-chiusa-non-piu-dovuta", "TD17-2026/1", "TEST Immobiliare Lago Srl", "TEST Portale B.V.", "portal_credit_note", Scenario.SelfBillingClosedNotDue),
     ];
 
-    /// <summary>
-    /// The lines of the payment ledger of the demo (E06/F04/US01/T03): a card payment with the provider's commission and net, a cash payment, a booking of a
-    /// channel with what it collected. The commission of the channel is absent, as Octorate gives it today.
-    /// </summary>
     public static IReadOnlyList<DemoPaymentLedgerTemplate> PaymentLedgerExamples { get; } =
     [
         new("carta-soggiorno-diretto", "Card", 450.00m, 6.55m, 443.45m, "Host", "EUR", Scenario.PaymentLedger),
@@ -707,41 +571,24 @@ public static class DemoShowcaseCatalog
         new("incasso-canale-booking", "Ota", 380.00m, null, null, "Channel", "EUR", Scenario.PaymentLedger),
     ];
 
-    /// <summary>
-    /// The commission rules of the channels of the agency demo (E13/F01/US01/T01): Booking.com at 16% from the first of the year (it replaces the configured
-    /// default of 15%) and Agoda, which has no default, at 17% of the gross without the tourist tax and the cleaning. Invented figures.
-    /// </summary>
     public static IReadOnlyList<DemoChannelCommissionRuleTemplate> ChannelCommissionRules { get; } =
     [
         new("booking-16", BookingSource.BookingCom, 16m, CommissionBase.GrossExclTouristTax, new DateOnly(2026, 1, 1), Scenario.OwnerChannelCommission),
         new("agoda-17", BookingSource.Agoda, 17m, CommissionBase.GrossExclTouristTaxAndCleaning, new DateOnly(2026, 1, 1), Scenario.OwnerChannelCommission),
     ];
 
-    /// <summary>
-    /// The limit of units of two private owners of the agency demo (E18/F01/US03/T01, ⚖ I8, limit of 2 apartments): one with two managed apartments (under the limit) and one
-    /// with two managed and one declared outside the agency (the third: presumed a business). Invented, TEST owners; a template only.
-    /// </summary>
     public static IReadOnlyList<DemoOwnerUnitsTemplate> OwnerUnitsExamples { get; } =
     [
         new("due-unita-privato", "TEST Mario Rossi", 2, 0, Scenario.OwnerTaxChecks),
         new("tre-unita-impresa-presunta", "TEST Giulia Bianchi", 2, 1, Scenario.OwnerTaxChecks),
     ];
 
-    /// <summary>
-    /// The stay of a company tenant in the property of a private demo owner (E18/F01/US03/T01, ⚖ I7): one waiting for a decision (the «Da fare» is open, the stay stays a short
-    /// let meanwhile) and one decided <see cref="ShortLetTaxRegime.NotShortLet"/> with the note of the agency. Invented, TEST tenant and owner; a template only.
-    /// </summary>
     public static IReadOnlyList<DemoCompanyTenantTemplate> CompanyTenantExamples { get; } =
     [
         new("conduttore-societa-da-decidere", "TEST Mario Rossi", "TEST Impresa Lago Srl", null, null, Scenario.OwnerTaxChecks),
         new("conduttore-societa-non-locazione-breve", "TEST Mario Rossi", "TEST Impresa Lago Srl", ShortLetTaxRegime.NotShortLet, "TEST: deciso con il commercialista", Scenario.OwnerTaxChecks),
     ];
 
-    /// <summary>
-    /// The three ways the cleaning reaches the invoice of the agency to a demo owner (E14/F01/US02/T01, ⚖ I13): the flat fee of the mandate for each stay; the cost of a cleaning
-    /// request completed in the month (one line for each request, with its reference, and no flat fee); the cost of a staff cleaning that has no rate, which is the flat rate of the
-    /// mandate. Invented, TEST owners and amounts in euro; a template only.
-    /// </summary>
     public static IReadOnlyList<DemoCleaningRechargeTemplate> CleaningRechargeExamples { get; } =
     [
         new("forfait-per-soggiorno", "TEST Mario Rossi", CleaningRechargeMode.FlatRate, "TEST Impresa di pulizie", null, 40m, Scenario.CleaningRecharge),
@@ -762,10 +609,6 @@ public static class DemoShowcaseCatalog
         new("non-lo-so", "TEST Impresa di pulizie", "CH", new DateOnly(2026, 10, 22), 90.00m, CleaningSupplierVat.Unknown, false, Scenario.CleaningVat),
     ];
 
-    /// <summary>
-    /// The stays of the demo payout (E18/F01/US01/T01, ⚖ R5): what the ledger and the booking say of each and where the facts of the payout put it. Invented amounts of a
-    /// TEST owner of an Italian house; a template only.
-    /// </summary>
     public static IReadOnlyList<DemoPayoutStayTemplate> PayoutFactsExamples { get; } =
     [
         new("diretta-pagata-in-base", "TEST Mario Rossi", BookingSource.Manual, 900.00m, 18.00m, true, PortalAccountHolder.Owner, Services.PayoutStayReasons.InBase, Scenario.PayoutFacts),
@@ -789,10 +632,6 @@ public static class DemoShowcaseCatalog
         new("tassa-di-soggiorno-milano", DemoYearEndFile.TouristTax, "Milano", null, 126.00m, 100.00m, null, Scenario.TaxReportingYearEnd),
     ];
 
-    /// <summary>
-    /// Property owners of the agency demo (ADR-012): multiple owners with fiscal code and IBAN to exercise the
-    /// encryption, ownership shares, mandates with commission rates, the list endpoint with masked IBAN, and the financial read endpoint.
-    /// </summary>
     public static IReadOnlyList<DemoPropertyOwnerTemplate> PropertyOwners { get; } =
     [
         new("mario-rossi", "Mario", "Rossi", "proprietario.demo@example.com", "+39 333 1234567",
@@ -804,18 +643,10 @@ public static class DemoShowcaseCatalog
             "VRDLCU80D15F205D", "IT35J0200805017000105432100", OwnerTaxRegime.Private, 50m, 12m, Scenario.OwnerShares),
         new("anna-ferrari", "Anna", "Ferrari", "anna.proprietario@example.com", "+39 336 5544332",
             "FRRNNA85E50H501A", "IT07X0300203280284975071923", OwnerTaxRegime.VatHolder, 100m, 18m, Scenario.OwnerMandate),
-        // E10/F02/US02: an owner of the portfolio import with the registry only (no kind, no residence, no currency, no ownership): the readiness of
-        // the owner accounting lists what is missing, and the portal invitation waits for an ownership.
         new("paolo-gialli", "Paolo", "Gialli", "paolo.proprietario@example.com", null,
             "RSSMRA80A01H501U", "IT76Q0542811101000000654321", OwnerTaxRegime.Private, 100m, 15m, Scenario.OwnerOnboarding),
     ];
 
-    /// <summary>
-    /// Who owns which demo property and for how much (ADR-012-R4, NF-96): the report by owner of the agency and the owner portal weight the
-    /// figures of a property by these shares. The shares of a property add up to 100: the house of the agency demo owner is his alone and
-    /// has stays (it is the one with a finished stay and one a year earlier), and the villa is shared 50/50 by two owners, so the weighting
-    /// shows. Owners are the ones of <see cref="PropertyOwners"/>, properties the ones of <see cref="Properties"/>, both by key.
-    /// </summary>
     public static IReadOnlyList<DemoPropertyOwnershipTemplate> PropertyOwnerships { get; } =
     [
         new("mario-rossi", "casa-trastevere", 100m, Scenario.PropertyOwnerAgency),
@@ -823,28 +654,16 @@ public static class DemoShowcaseCatalog
         new("luca-verdi", "villa-lago", 50m, Scenario.OwnerShares),
     ];
 
-    /// <summary>
-    /// Agency invoices demo (ADR-019): one issued invoice to demonstrate the invoice generation flow.
-    /// Series is the year, invoice number is sequential, amounts are test data.
-    /// </summary>
     public static IReadOnlyList<DemoAgencyInvoiceTemplate> AgencyInvoices { get; } =
     [
         new("fattura-001", "mario-rossi", "2026", "1", 10, 2026, 100.00m, 22.00m, Scenario.AgencyInvoiceIssued),
     ];
 
-    /// <summary>
-    /// Guest segments for marketing campaigns (NF-24): simple condition to demo segment UI and recipient filtering.
-    /// Empty condition JSON matches all guests (with consent filtering applied at send time).
-    /// </summary>
     public static IReadOnlyList<DemoGuestSegmentTemplate> GuestSegments { get; } =
     [
         new("ospiti-fedeli", "Ospiti fedeli (DEMO)", "{\"version\":\"1.0\",\"groups\":[]}", Scenario.CampaignDraft),
     ];
 
-    /// <summary>
-    /// Marketing campaigns (NF-24): one in each status to demonstrate the campaign lifecycle.
-    /// Email addresses are @example.com, data clearly marked as TEST.
-    /// </summary>
     public static IReadOnlyList<DemoCampaignTemplate> Campaigns { get; } =
     [
         new("bozza", "ospiti-fedeli", "Offerta TEST - Sconto primavera (BOZZA)",
@@ -878,8 +697,6 @@ public static class DemoShowcaseCatalog
                 AccommodationType.HouseOrVilla, 5, 140, "Villa sul lago con giardino (demo)",
                 new TimeOnly(15, 0), new TimeOnly(10, 0), SmokingPolicy.No, PetsPolicy.OnRequest, PartiesPolicy.No,
                 new TimeOnly(22, 0), new TimeOnly(8, 0), 20m, ChildrenPolicy.Yes),
-            // DB-11a: what the host says about the house on its public page: invented like the rest of the demo, no video or tour (nothing
-            // of a third party is embedded from a demo).
             SiteProfile: new SitePropertyProfileInput(
                 FloorLevel: 0,
                 RenovatedYear: 2022,
@@ -904,8 +721,6 @@ public static class DemoShowcaseCatalog
                 ],
                 SafetyNotes: [new LocalizedTextInput("Rilevatore di fumo", "Smoke detector"), new LocalizedTextInput("Estintore", "Fire extinguisher")],
                 Tags: [],
-                // NF-31: the listing in English, written by hand (the demo translates nothing by machine), so the headline and the description
-                // exist in the two languages a publication needs.
                 Translations: new Dictionary<string, ListingTextsInput>
                 {
                     ["en"] = new ListingTextsInput(
@@ -919,16 +734,12 @@ public static class DemoShowcaseCatalog
                 new(PoiKind.Sight, "Funicolare per Brunate (demo)", "Brunate funicular (demo)", PoiTravelMode.Walk, 15, CompassPoint.NE, 1300),
                 new(PoiKind.Transport, "Stazione di Como San Giovanni (demo)", "Como San Giovanni station (demo)", PoiTravelMode.Car, 10, CompassPoint.W, 3200),
             ],
-            // NF-27, NF-38: where the content of the house stands on three channels, one in each state the host meets most: live, to fix, and
-            // written on the channel itself. Invented: the demo is connected to no channel manager and nothing here is ever sent.
             ChannelStates:
             [
                 new("booking_xml", ChannelPublishStatus.Published, null, null, 3),
                 new("airbnb_xml", ChannelPublishStatus.ToFix, "demo_photos_below_minimum", "Servono almeno cinque foto per questo canale (dimostrazione).", 5),
                 new("expedia", ChannelPublishStatus.ManagedOnChannel, null, null, null),
             ],
-            // NF-34, NF-35: the rooms of the house with their beds (three bedrooms and five beds, as the counters above say) and two
-            // length-of-stay discounts: a week, and a month.
             Rooms:
             [
                 new(PropertyRoomType.Bedroom, [new RoomBed(BedType.Double, 1)]),
@@ -941,8 +752,6 @@ public static class DemoShowcaseCatalog
                 new(7, 10m),
                 new(28, 20m),
             ],
-            // NF-36: the price and the rules of single nights a few weeks ahead, after the stays of the demo: a weekend at a price of its own with a
-            // longer minimum stay, a night closed to arrival, a day closed to departure, and a short maximum stay booked at least two days ahead.
             DayRules:
             [
                 new(50, Price: 260m, MinNights: 3),
@@ -962,7 +771,6 @@ public static class DemoShowcaseCatalog
                         new("Piet", "Jansen", StayGuestType.HeadOfFamily, 52),
                         new("Mila", "Jansen", StayGuestType.FamilyMember, 50, BirthPlaceMissing: true),
                     ]),
-                // NF-97 (Scenario.ReportCollections): the guest paid in cash at the arrival, as the host recorded it.
                 new(
                     "partito",
                     "Marco",
@@ -973,7 +781,6 @@ public static class DemoShowcaseCatalog
                     BookingStatus.CheckedOut,
                     Scenario.BookingPast,
                     Payments: [new(PaymentMethod.CashOnArrival, 760m, 20)]),
-                // SR-06a: entered by hand with only the name and the email, at a price agreed over the phone (the guest gives the rest with the online check-in).
                 new(
                     "a-mano",
                     "Elena",
@@ -1011,7 +818,6 @@ public static class DemoShowcaseCatalog
                     Scenario.GuestAppAccount,
                     BookingSource.Direct,
                     PaymentOption: PaymentOption.OnSite,
-                    // NF-97: paid at the property, in cash, as the host recorded it (the demo reaches no card or provider for this guest).
                     Payments: [new(PaymentMethod.CashOnArrival, 760m, 45)]),
                 new(
                     "app-annullata",
@@ -1025,13 +831,9 @@ public static class DemoShowcaseCatalog
                     BookingSource.Direct,
                     PaymentOption: PaymentOption.OnSite,
                     CancellationReason: BookingCancellationReason.GuestRequested),
-                // NF-96: stays of the same months one year earlier (finished, three channels), so the comparison with the year before of the
-                // performance report and of the trend is never empty in the demo. Invented guests at example.com, like the rest.
                 new("anno-prima-diretta", "Chiara", "Neri", "ospite.demo.anno-prima-1@example.com", -351, 4, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Direct),
                 new("anno-prima-airbnb", "Pietro", "Gallo", "ospite.demo.anno-prima-2@example.com", -344, 3, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Airbnb),
                 new("anno-prima-booking", "Sofie", "Peeters", "ospite.demo.anno-prima-3@example.com", -325, 5, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.BookingCom),
-                // NF-46: the tourist tax of a family, guest by guest, at the official rate of Como (3,00 a night from the 14th birthday): the mother
-                // pays, the father is exempt as a resident (the host's choice) and the girl of ten is exempt by age.
                 new(
                     "tassa-per-ospite",
                     "Laura",
@@ -1048,8 +850,6 @@ public static class DemoShowcaseCatalog
                         new("Paolo", "Conti", StayGuestType.FamilyMember, 47, TouristTaxExemptionReason.ResidentCode),
                         new("Sara", "Conti", StayGuestType.FamilyMember, 10),
                     ]),
-                // NF-88 (Scenario.CrmProfiles): a guest who comes back. This stay is over; the next one is at Casa Trastevere. Another record of the
-                // guest, the same address: one profile, one stay counted, two houses.
                 new(
                     "crm-ritorno-passato",
                     "Sofia",
@@ -1062,10 +862,7 @@ public static class DemoShowcaseCatalog
                     BookingSource.Direct,
                     PaymentOption: PaymentOption.OnSite,
                     Phone: "+39 333 0000555",
-                    // NF-97: paid by bank transfer, two days before the arrival.
                     Payments: [new(PaymentMethod.BankTransfer, 580m, 72)]),
-                // NF-98 (Scenario.ReportChannelCosts), in the nights before the stays of the collections. A booking of Airbnb as the import leaves it: the
-                // channel collected the money and its portal pays the host net, so the commission is deducted from the payout.
                 new(
                     "costi-airbnb",
                     "Katharina",
@@ -1084,8 +881,6 @@ public static class DemoShowcaseCatalog
                         Balance: 0.00m,
                         CompanyCollect: true,
                         CommissionIncludedInPayments: true)),
-                // A booking of Booking.com the host collected itself, whose commission the channel invoices apart: it costs more than the first, and its net is what is left
-                // once the invoice is paid.
                 new(
                     "costi-booking",
                     "Luca",
@@ -1104,7 +899,6 @@ public static class DemoShowcaseCatalog
                         Balance: 0.00m,
                         CompanyCollect: false,
                         CommissionIncludedInPayments: false)),
-                // A direct stay paid by card with the fee the provider reported (1,5 % and 0,25): the cost of the booking site is the fees of its payments.
                 new(
                     "costi-diretta",
                     "Ines",
@@ -1116,8 +910,6 @@ public static class DemoShowcaseCatalog
                     Scenario.ReportChannelCosts,
                     BookingSource.Direct,
                     Payments: [new(PaymentMethod.CreditCard, 400m, 30, Card: new DemoPaymentProviderTemplate(6.25m, 393.75m))]),
-                // NF-97 (Scenario.ReportCollections), in the nights between the stays above. A direct stay paid by card, as the booking site takes it: the
-                // provider's commission and net are the figures its capture stores.
                 new(
                     "incassi-carta",
                     "Valeria",
@@ -1129,8 +921,6 @@ public static class DemoShowcaseCatalog
                     Scenario.ReportCollections,
                     BookingSource.Direct,
                     Payments: [new(PaymentMethod.CreditCard, 580m, 25, Card: new DemoPaymentProviderTemplate(8.95m, 571.05m))]),
-                // A direct stay the guest cancelled: the host kept 180 of the 580 paid and refunded the rest, so the payment is partly refunded and the report
-                // counts what was kept. A cancelled stay holds no night and has nothing to collect.
                 new(
                     "incassi-annullata",
                     "Elio",
@@ -1143,7 +933,6 @@ public static class DemoShowcaseCatalog
                     BookingSource.Direct,
                     CancellationReason: BookingCancellationReason.GuestRequested,
                     Payments: [new(PaymentMethod.CreditCard, 580m, 14, PaymentStatus.PartiallyRefunded, 400m, new DemoPaymentProviderTemplate(8.95m, 571.05m))]),
-                // A stay the host entered, at the price agreed: a deposit by bank transfer and the rest in cash at the arrival (fully paid).
                 new(
                     "incassi-contanti",
                     "Dario",
@@ -1157,8 +946,6 @@ public static class DemoShowcaseCatalog
                     AgreedTotal: 500m,
                     PriceNote: "Concordato al telefono (dimostrazione)",
                     Payments: [new(PaymentMethod.BankTransfer, 200m, 14), new(PaymentMethod.CashOnArrival, 300m, 12)]),
-                // A booking of Booking.com that the host collects itself: 200 came in, 380 is still to collect and the stay is over (overdue). Octorate gives
-                // the balance (as the demo imagines a field that has it); the commission and the net are not given, so the channel credits read «not available».
                 new(
                     "incassi-saldo-canale",
                     "Joana",
@@ -1170,8 +957,6 @@ public static class DemoShowcaseCatalog
                     Scenario.ReportCollections,
                     BookingSource.BookingCom,
                     Ota: new DemoOtaTemplate("TEST-OCT-7101", Paid: 200.00m, Balance: 380.00m, CompanyCollect: false, CommissionIncludedInPayments: false)),
-                // A direct stay paid in part: a card deposit that settled (the credit is on its way), the rest to collect at the arrival, and an earlier attempt
-                // with a declined card that never counts.
                 new(
                     "incassi-acconto",
                     "Nadia",
@@ -1325,7 +1110,6 @@ public static class DemoShowcaseCatalog
             Bookings:
             [
                 new("past-guest-roma", "Francesca", "Romano", "francesca.demo@example.com", -15, 5, BookingStatus.CheckedOut, Scenario.AlloggiatiRegistered),
-                // NF-96: the same months one year earlier (see the villa).
                 new("anno-prima-roma", "Elisa", "Fontana", "ospite.demo.anno-prima-4@example.com", -380, 5, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Direct),
                 // NF-40, NF-45: the check-in wizard in the four states of a stay (departed, no-show, arrived, expected) and one stay whose data
                 // the host still has to complete (a birth place missing, a document expired before the arrival: a warning, never a block).
@@ -1362,7 +1146,6 @@ public static class DemoShowcaseCatalog
                         new("Piet", "Jansen", StayGuestType.HeadOfFamily, 52, DocumentExpired: true),
                         new("Mila", "Jansen", StayGuestType.FamilyMember, 50, BirthPlaceMissing: true),
                     ]),
-                // NF-88 (Scenario.CrmProfiles): the guest of the villa comes back, to a second house.
                 new(
                     "crm-ritorno-in-arrivo",
                     "Sofia",
@@ -1396,7 +1179,6 @@ public static class DemoShowcaseCatalog
                         Balance: 0.00m,
                         CompanyCollect: true,
                         CommissionIncludedInPayments: true)),
-                // A booking of the booking site that CasaZen sent to Octorate: its mirror is synced, the money is the booking site's.
                 new(
                     "ota-sincronizzata",
                     "Paul",
@@ -1483,10 +1265,7 @@ public static class DemoShowcaseCatalog
             Bookings:
             [
                 new("airbnb-ical", "Thomas", "Schmidt", "thomas.demo@example.com", 7, 3, BookingStatus.Confirmed, Scenario.BookingOtaIcal, BookingSource.Airbnb),
-                // NF-96: the same months one year earlier (see the villa).
                 new("anno-prima-firenze", "Hugo", "Martin", "ospite.demo.anno-prima-5@example.com", -358, 3, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Airbnb),
-                // NF-88, NF-89 (Scenario.CrmProfiles): a booking that comes from an OTA. Its address is a forward: the contact is service only and
-                // never marketable, and it is no key to recognise the guest by.
                 new(
                     "crm-prenotazione-ota",
                     "Hans",
@@ -1497,8 +1276,6 @@ public static class DemoShowcaseCatalog
                     BookingStatus.Confirmed,
                     Scenario.CrmProfiles,
                     BookingSource.BookingCom),
-                // NF-77 (Scenario.BookingOtaAmounts): a booking of Booking.com with only what Octorate gives today, the amount paid. The commission, the
-                // net and the balance are «not available», who collects is not said, and Booking.com invoices its commission apart.
                 new(
                     "ota-booking-sparsa",
                     "Marta",
@@ -1592,9 +1369,6 @@ public static class DemoShowcaseCatalog
             Scenarios: [Scenario.SwissGuestRegistration],
             Bookings:
             [
-                // The stay that arrived yesterday: two adults with the data of the Swiss file, so the cockpit lists a Ticino day to declare (its deadline is the end of the arrival day, as no arrival is
-                // recorded) and the file of the day has two rows. The head lives in Zurich and shows a Swiss identity card; the family member was born in Germany and shows a
-                // German passport. The document of both adults is stored (NF-132) and no image of a document is kept for a Swiss property (D6). Guests at example.com, numbers that say TEST.
                 new(
                     "ticino-arrivo-ieri",
                     "Erika",
@@ -1649,8 +1423,6 @@ public static class DemoShowcaseCatalog
             CleaningFee: 35m,
             Cadastral: null,
             Scenarios: [Scenario.AgencyPropertiesCrossRegion],
-            // NF-88 (Scenario.CrmProfiles): two different guests who left the same phone number (a family, an agent who books for others). They
-            // are two profiles; the matching proposes the merge to a person and never does it.
             Bookings:
             [
                 new(
@@ -1710,10 +1482,7 @@ public static class DemoShowcaseCatalog
             Bookings:
             [
                 new("booking-com-ical", "Marie", "Dubois", "marie.demo@example.com", 21, 5, BookingStatus.Confirmed, Scenario.BookingOtaIcal, BookingSource.BookingCom),
-                // NF-96: the same months one year earlier (see the villa).
                 new("anno-prima-amalfi", "Lucia", "Esposito", "ospite.demo.anno-prima-6@example.com", -344, 5, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.BookingCom),
-                // NF-88, NF-89, NF-90 (Scenario.CrmProfiles): a guest who ticked the marketing consent in the online check-in and confirmed the
-                // address (double opt-in): the contact is a consent, confirmed, marketable.
                 new(
                     "crm-consenso-checkin",
                     "Marco",
@@ -1726,9 +1495,6 @@ public static class DemoShowcaseCatalog
                     BookingSource.Direct,
                     PaymentOption: PaymentOption.OnSite,
                     CheckInMarketingConsent: true),
-                // NF-52 (Scenario.ComplianceTrafficLight): the guests of this stay are entrusted to the channel manager, which sends them to the police;
-                // the receipt is awaited, so the stay reads yellow. The guests arrived a few hours before the reset (the template sets the arrival), so the
-                // legal term is open at whatever time of the day the showcase is reset.
                 new(
                     "semaforo-affidato",
                     "Greta",
@@ -1842,28 +1608,18 @@ public static class DemoShowcaseCatalog
             Bookings: []),
     ];
 
-    /// <summary>
-    /// Staff members of the agency demo: collaborators who handle guests and properties.
-    /// </summary>
     public static IReadOnlyList<DemoStaffTemplate> StaffMembers { get; } =
     [
         new("sofia-conte", "Sofia", "Conte", "sofia.staff@example.com", "+39 340 1234567", OrgRole.Collaborator, Scenario.StaffCollaborator),
         new("marco-galli", "Marco", "Galli", "marco.staff@example.com", "+39 341 7654321", OrgRole.Collaborator, Scenario.StaffCollaborator),
     ];
 
-    /// <summary>
-    /// Trusted suppliers of the agency demo: one trusted supplier to demonstrate supplier management.
-    /// </summary>
     public static IReadOnlyList<DemoSupplierTemplate> Suppliers { get; } =
     [
         new("pulizie-express", "Pulizie Express DEMO", "Servizio pulizie di fiducia (DEMO)", "info@pulizieexpress.example.com",
             "+39 342 9988776", true, Scenario.TrustedSupplier),
     ];
 
-    /// <summary>
-    /// Check-in verifications demo: all verification states to demonstrate the biometric and operator verification flow.
-    /// No real faces - only recorded biometric outcomes.
-    /// </summary>
     public static IReadOnlyList<DemoCheckInTemplate> CheckIns { get; } =
     [
         new("pending-verification", "villa-lago", "arrivo", "Pending", null, false, false, Scenario.CheckInPending),
@@ -1871,8 +1627,6 @@ public static class DemoShowcaseCatalog
         new("operator-verified", "villa-amalfi", "booking-com-ical", "Completed", BiometricOutcome.Escalate, true, true, Scenario.CheckInOperatorVerified),
         new("rejected", "loft-torino", "rejected-guest", "Rejected", BiometricOutcome.Reject, false, false, Scenario.CheckInRejected),
 
-        // E03/F04/US02/T04: the online flow passed by the agent for the head of group of the expected stay (the member skips the step); the
-        // lock code went to the check-in page and to the guest's e-mail. The consent version is a test value.
         new(
             "identity-verified",
             "casa-trastevere",
@@ -1897,42 +1651,26 @@ public static class DemoShowcaseCatalog
         new("registered", "casa-trastevere", "past-guest-roma", RegistrationStatus.Registered, true, true, Scenario.AlloggiatiRegistered),
     ];
 
-    /// <summary>
-    /// Published owner statements demo (ADR-017): one published statement to demonstrate the statement lifecycle.
-    /// </summary>
     public static IReadOnlyList<DemoStatementTemplate> Statements { get; } =
     [
         new("statement-2026-09", "mario-rossi", 9, 2026, StatementStatus.Published, 2500.00m, 375.00m, 2125.00m, Scenario.StatementPublished),
     ];
 
-    /// <summary>
-    /// Withholding summaries demo: one summary to demonstrate the withholding tax calculation.
-    /// </summary>
     public static IReadOnlyList<DemoWithholdingTemplate> WithholdingSummaries { get; } =
     [
         new("withholding-2026-q3", "mario-rossi", 3, 2026, 1200.00m, 240.00m, Scenario.WithholdingSummary),
     ];
 
-    /// <summary>
-    /// F24 records demo: one F24 record to demonstrate the F24 tax payment flow.
-    /// </summary>
     public static IReadOnlyList<DemoF24Template> F24Records { get; } =
     [
         new("f24-2026-09", "mario-rossi", 9, 2026, 240.00m, "1001", Scenario.F24Record),
     ];
 
-    /// <summary>
-    /// Wire batches demo: one generated batch to demonstrate the wire transfer batch lifecycle.
-    /// </summary>
     public static IReadOnlyList<DemoWireBatchTemplate> WireBatches { get; } =
     [
         new("batch-2026-10", 10, 2026, WireBatchStatus.Generated, 4, 8500.00m, Scenario.WireBatchGenerated),
     ];
 
-    /// <summary>
-    /// The demo schedules cleaning automatically. Personal reminders and review invitations use test mode.
-    /// The linen check is paused so the host can preview it against stays of different lengths.
-    /// </summary>
     public static IReadOnlyList<DemoRoutineTemplate> Routines { get; } =
     [
         new(
@@ -1989,10 +1727,6 @@ public static class DemoShowcaseCatalog
             true,
             Scenario.RoutineReviewRequest),
 
-        // E05/F07/US01/T02: the ready routine «Messaggio di arrivo»: the day before the check-in, at the check-in time of the property (the send window of the plan keeps it between 08:00 and
-        // 21:00 on its own clock), the arrival instructions of the template «Istruzioni di arrivo (TEST)». Active and not in test mode, or the plan would write nothing for it: the guests of the
-        // showcase are invented, and with the module of the scheduled messages off (the default) nothing is planned or sent. The id of the template does not exist until the reset writes it: the
-        // action carries the placeholder id and the reset puts the real one in.
         new(
             "messaggio-arrivo",
             "Messaggio di arrivo (TEST)",
@@ -2004,17 +1738,8 @@ public static class DemoShowcaseCatalog
             MessageTemplateKey: "istruzioni-arrivo-it"),
     ];
 
-    /// <summary>
-    /// The id the action <c>MessageToGuest</c> of a demo routine carries until the reset knows the template it sends (<see cref="DemoRoutineTemplate.MessageTemplateKey"/>): a valid, unused id, so the
-    /// routine of the catalog is one the API would save, and replaced at reset by the id of the template the showcase wrote.
-    /// </summary>
     public const string MessageTemplatePlaceholderId = "00000000-0000-4000-8000-0000000000e5";
 
-    /// <summary>
-    /// The default cleaner of two demo properties (E24/F01/US01/T01, NF-120): Villa del Lago with the trusted supplier «Pulizie Express DEMO» at € 65.00 from 11:00 for two hours, Casa
-    /// Trastevere with Sofia Conte of the staff, at € 35.00 on the check-out time of the house (the cost is recharged to the owner). Templates only: the demo creates no supplier org
-    /// and no staff user (<see cref="Suppliers"/> and <see cref="StaffMembers"/> are templates too), so these are the bodies <c>PUT api/properties/{id}/cleaning-setup</c> takes, not rows.
-    /// </summary>
     public static IReadOnlyList<DemoCleaningSetupTemplate> CleaningSetups { get; } =
     [
         new("villa-lago-fornitore", "villa-lago", PropertyCleanerKind.Supplier, "pulizie-express", null, 6500, new TimeOnly(11, 0), 120, Scenario.CleaningAtCheckout),
@@ -2029,9 +1754,7 @@ public static class DemoShowcaseCatalog
     /// </summary>
     public static IReadOnlyList<DemoPopupAlertTemplate> PopupAlerts { get; } =
     [
-        // Open: the check-in of the stay that arrives in two weeks is still to do. Pending as soon as the host opens the app.
         new("check-in-da-completare", AlertType.CheckInPending, "villa-lago", "arrivo", AlertUrgency.High, null, Scenario.PopupAlerts),
-        // Snoozed: the host chose «Remind me later» on the house still in draft; the alert comes back in three hours.
         new("bozza-da-completare", AlertType.ComplianceIssue, DraftKey, null, AlertUrgency.Normal, 3, Scenario.PopupAlerts),
     ];
 
@@ -2051,12 +1774,6 @@ public static class DemoShowcaseCatalog
             Scenario.WizardDrafts),
     ];
 
-    /// <summary>
-    /// Tourist tax payments of the demo host (NF-100): one payment to Milano, with a receipt (an invented one-page PDF that says it is test
-    /// data), for the first of the three stays of <see cref="Scenario.TouristTaxPaid"/> in Appartamento Brera: 18.00 EUR, the tax recorded on it,
-    /// for the days from 90 to 60 before the reset, made 55 days before it. The second stay (12.00 EUR) is not paid, so the summary of the
-    /// comune over the last three months shows 30.00 owed, 18.00 paid, 12.00 to pay, a payment with its receipt and one stay with no amount.
-    /// </summary>
     public static IReadOnlyList<DemoTouristTaxRemittanceTemplate> TouristTaxRemittances { get; } =
     [
         new(
@@ -2227,8 +1944,6 @@ public static class DemoShowcaseCatalog
             "Ciao {{guest_name}}, un promemoria per la partenza da {{property_name}}: prenotazione {{booking_code}}, check-out il {{check_out_date}} entro le {{check_out_time}}. Grazie e buon viaggio! (TEST)",
             Scenario.MessageTemplates),
 
-        // E05/F07/US01/T03: the two templates of the scheduled messages, which use the five variables of the plan: the arrival (how to get in, the link of the check-in, the code of the lock, the address)
-        // and the thanks with the link of the review. The link, the code and the review link are filled when the message is sent, never in a preview.
         new(
             "istruzioni-arrivo-it",
             "Istruzioni di arrivo (TEST)",
@@ -2306,11 +2021,6 @@ public static class DemoShowcaseCatalog
             Scenario.TouristTaxChannelCollected),
     ];
 
-    /// <summary>
-    /// The welcome link of the demo house (E07/F04/US01/T03, NF-90): the lake villa has an active link with the fixed test token
-    /// <see cref="CrmWelcomeToken"/>, so the host sees the QR code of a house that has one and a client can open the public welcome page. Written
-    /// for the org at reset, marked as showcase data (<c>TestDataEntities.WelcomeLink</c>), deleted with its house by the next reset.
-    /// </summary>
     public static IReadOnlyList<DemoWelcomeLinkTemplate> WelcomeLinks { get; } =
     [
         new("benvenuto-villa-lago", "villa-lago", CrmWelcomeToken, Scenario.CrmWelcomeLink),
@@ -2340,10 +2050,6 @@ public static class DemoShowcaseCatalog
     ];
 }
 
-/// <summary>
-/// The activation with Octorate of the demo org (E10/F01/US01/T04): the test connection, the houses with their confirmed listing and activated
-/// flows, and the deferred part of the plan with the days to its reminder.
-/// </summary>
 public sealed record DemoOnboardingActivationTemplate(
     string Key,
     string AccountId,
@@ -2352,16 +2058,8 @@ public sealed record DemoOnboardingActivationTemplate(
     int RemindInDays,
     string Scenario);
 
-/// <summary>
-/// A demo house of the activation: the invented Octorate accommodation its listing is confirmed to (<c>null</c>: not confirmed) and the flows
-/// activated on it.
-/// </summary>
 public sealed record DemoOnboardingPropertyTemplate(string PropertyKey, string? AccommodationId, IReadOnlyList<OnboardingFlow> ActivatedFlows);
 
-/// <summary>
-/// The profile of the issuer of the documents of the demo organization (FIS-02): the answers of the wizard «Come emetti i documenti?», invented.
-/// <paramref name="ConfirmedOffsetDays"/> is when the wizard was completed, in days from the reset (negative: in the past).
-/// </summary>
 public sealed record DemoFiscalIssuerProfileTemplate(
     string Key,
     DocumentIssuerMode Mode,
@@ -2447,10 +2145,6 @@ public sealed record DemoPaymentTemplate(
     decimal RefundedAmount = 0m,
     DemoPaymentProviderTemplate? Card = null);
 
-/// <summary>What the provider reported for a settled card payment of the showcase (<c>Fee</c> plus <c>Net</c> is the amount, to the cent).</summary>
-/// <param name="Fee">The commission the provider kept.</param>
-/// <param name="Net">What was credited after it.</param>
-/// <param name="CreditAfterDays">Days after the payment the funds are credited (a credit day that is still ahead reads «expected»).</param>
 public sealed record DemoPaymentProviderTemplate(decimal Fee, decimal Net, int CreditAfterDays = 2);
 
 /// <summary>
@@ -2593,10 +2287,6 @@ public sealed record DemoSwissHome(string Street, string PostalCode, string City
 /// <param name="TicinoStructureId">The «Numero identificativo LEAR / NO-LEAR» of the structure (a TEST number valid for <see cref="Regulatory.TicinoStructureId"/>).</param>
 public sealed record DemoSwissProperty(string TicinoStructureId);
 
-/// <summary>
-/// A tenant maintenance request of the showcase. <see cref="Paid"/> stays false: opening and approving do not pay it.
-/// Not written as a row.
-/// </summary>
 public sealed record DemoLeaseMaintenanceTemplate(
     string Key,
     string Title,
@@ -2606,10 +2296,6 @@ public sealed record DemoLeaseMaintenanceTemplate(
     string Scenario,
     bool Paid = false);
 
-/// <summary>
-/// One rent line of the showcase example: <see cref="Rent"/> plus <see cref="CondominiumAdvance"/> for
-/// <see cref="Months"/> months. The total of each month is their sum.
-/// </summary>
 public sealed record DemoRentLedgerComponentTemplate(
     string Key,
     decimal Rent,
@@ -2617,7 +2303,6 @@ public sealed record DemoRentLedgerComponentTemplate(
     int Months,
     string Scenario);
 
-/// <summary>The tenant settlement the showcase calculates: recoverable final + prior balance − advances already posted.</summary>
 public sealed record DemoTenantSettlementTemplate(
     string Key,
     decimal RecoverableFinal,
@@ -2626,11 +2311,6 @@ public sealed record DemoTenantSettlementTemplate(
     decimal ExpectedSettlement,
     string Scenario);
 
-/// <summary>
-/// The wizard proposal when the property has no condominium year yet: the advance is the new preventivo split into
-/// <see cref="Installments"/>, and <see cref="PreviousConsuntivo"/> is kept for the settlement.
-/// </summary>
-/// <summary>A line of the demo payment ledger: its kind and collector codes, the gross and, only when stored, the provider's fee and net.</summary>
 public sealed record DemoPaymentLedgerTemplate(
     string Key,
     string Kind,
@@ -2641,10 +2321,6 @@ public sealed record DemoPaymentLedgerTemplate(
     string Currency,
     string Scenario);
 
-/// <summary>
-/// A Swiss document of a demo stay in CHF: the regime of the issuer, its TEST UID when it is registered, the TEST recipient and what the guest paid for the
-/// stay, the cleaning, an extra and the tourist tax.
-/// </summary>
 public sealed record DemoSwissFiscalDocumentTemplate(
     string Key,
     DocumentRegime Regime,
@@ -2656,10 +2332,6 @@ public sealed record DemoSwissFiscalDocumentTemplate(
     decimal TouristTax,
     string Scenario);
 
-/// <summary>
-/// The document of a demo stay issued in the name of its owner (E17/F01/US01): the owner, its regime and series, the shares of the co-owners, the TEST stamp
-/// reference, what the guest paid for the stay, the cleaning and the tourist tax, and whether the agency bills the cleaning apart as its service.
-/// </summary>
 public sealed record DemoOwnerIssuerDocumentTemplate(
     string Key,
     string OwnerName,
@@ -2685,10 +2357,6 @@ public sealed record DemoSdiRejectedInvoiceTemplate(
     string ErrorCode,
     string Scenario);
 
-/// <summary>
-/// The self-billed invoice of a demo month (E17/F01/US03): the TEST holder that issues it, the TEST portal abroad that is its cedente (name and ISO country), and the
-/// commissions of the stays of the month, euro, whose sum is the taxable amount.
-/// </summary>
 public sealed record DemoSelfBillingTemplate(
     string Key,
     string HolderName,
@@ -2710,10 +2378,6 @@ public sealed record DemoSelfBillingCorrectionTemplate(
     string ErrorCode,
     string Scenario);
 
-/// <summary>
-/// The replacement draft of a rejected self-billed invoice of a demo month, closed as «non più dovuta» (FIX/BE-TD17-JOB-EXIT): the number it keeps reserved, the TEST holder that issues the TD17, the TEST portal abroad
-/// that is its cedente and the reason of the closing (one of <c>SelfBillingCloseReasons</c>: the code the screen translates).
-/// </summary>
 public sealed record DemoSelfBillingClosedTemplate(
     string Key,
     string Number,
@@ -2722,7 +2386,6 @@ public sealed record DemoSelfBillingClosedTemplate(
     string Reason,
     string Scenario);
 
-/// <summary>A fiscal document of a direct demo stay: its status, the number of an issued one, the TEST recipient, the total and the tourist tax in it.</summary>
 public sealed record DemoFiscalDocumentTemplate(
     string Key,
     string Status,
@@ -2761,10 +2424,6 @@ public sealed record DemoTenantExpenseProposalTemplate(
     decimal ExpectedInstallment,
     string Scenario);
 
-/// <summary>
-/// One CondoLedger year in the showcase: ordinary and extraordinary stay apart, and the settlement is
-/// consuntivo + extraordinary + prior − paid.
-/// </summary>
 public sealed record DemoCondominiumCoreTemplate(
     string Key,
     int FiscalStartMonth,
@@ -2776,33 +2435,18 @@ public sealed record DemoCondominiumCoreTemplate(
     decimal ExpectedSettlement,
     string Scenario);
 
-/// <summary>
-/// The rate the demo host declared for the comune of a demo house with no official one (NF-46, AC-NF46-6): a fixed amount per person per night,
-/// with an invented source note that says so. Tenant data of the demo org, deleted by the reset.
-/// </summary>
 public sealed record DemoDeclaredTouristTaxRate(
     decimal RatePerPersonPerNight,
     int? MaxNights,
     int MinimumAge,
     string SourceNote);
 
-/// <summary>A commission rule of a channel of the agency demo (E13/F01/US01/T01): a portal, a percent of a base, from a first check-out day.</summary>
 public sealed record DemoChannelCommissionRuleTemplate(string Key, BookingSource Channel, decimal Percent, CommissionBase Base, DateOnly ValidFrom, string Scenario);
 
-/// <summary>The limit of units of a private demo owner (E18/F01/US03/T01): the apartments the agency manages for it and the ones it declares outside the agency.</summary>
 public sealed record DemoOwnerUnitsTemplate(string Key, string OwnerName, int ManagedUnits, int ExternalUnits, string Scenario);
 
-/// <summary>
-/// The stay of a company tenant in the property of a private demo owner (E18/F01/US03/T01): the owner, the TEST company, and the decision about its regime with the note of the
-/// agency, both <c>null</c> while nobody decided.
-/// </summary>
 public sealed record DemoCompanyTenantTemplate(string Key, string OwnerName, string TenantName, ShortLetTaxRegime? Decision, string? Reason, string Scenario);
 
-/// <summary>
-/// An example of how the cleaning reaches the invoice of the agency to an owner (E14/F01/US02/T01, ⚖ I13): the <paramref name="Mode"/> of its mandate, who cleaned
-/// (<paramref name="Cleaner"/>), the price of the request in euro (<paramref name="RequestAmount"/>, <c>null</c> for a staff cleaning with no rate) and the flat fee of the mandate
-/// (<paramref name="MandateFlatRate"/>), which is the fee of each stay on the flat rate and the price of a staff cleaning with no rate on the actual cost.
-/// </summary>
 public sealed record DemoCleaningRechargeTemplate(
     string Key,
     string OwnerName,
@@ -2826,10 +2470,6 @@ public sealed record DemoCleaningVatTemplate(
     bool RememberForCompany,
     string Scenario);
 
-/// <summary>
-/// A stay of the demo payout (E18/F01/US01/T01): the owner, the channel, the owner's gross of it without the tourist tax and the tourist tax left out, whether the ledger
-/// posted it from a payment the agency recorded, who holds the account of the portal, and the reason the facts of the payout give it (<c>in_base</c> or why not).
-/// </summary>
 public sealed record DemoPayoutStayTemplate(
     string Key,
     string OwnerName,
@@ -2841,19 +2481,14 @@ public sealed record DemoPayoutStayTemplate(
     string Reason,
     string Scenario);
 
-/// <summary>The year-end files of the tax reporting (E18/F01/US02) a line of the demo is in.</summary>
 public enum DemoYearEndFile
 {
-    /// <summary>The Certificazione Unica data: one line for each recipient.</summary>
     Cu,
 
-    /// <summary>The data of the 770: one line for each month and tax code.</summary>
     Tax770,
 
-    /// <summary>The communication of the short-let contracts handled without withholding: one line for each contract.</summary>
     Contracts,
 
-    /// <summary>The year-end tourist tax: one line for each comune.</summary>
     TouristTax,
 }
 
@@ -2873,10 +2508,6 @@ public sealed record DemoYearEndExportTemplate(
     string? Detail,
     string Scenario);
 
-/// <summary>
-/// A channel rule of the tourist tax written by the showcase (NF-46, ADR-037-R3): platform data, for the comune of the demo house
-/// <paramref name="PropertyKey"/> only.
-/// </summary>
 public sealed record DemoTouristTaxChannelRuleTemplate(
     string Key,
     string PropertyKey,
@@ -2912,20 +2543,10 @@ public sealed record DemoPropertyTemplate(
     IReadOnlyList<DemoDayRule>? DayRules = null,
     DemoSwissProperty? Swiss = null);
 
-/// <summary>
-/// A room of a demo property with its beds (NF-34): invented like the rest of the demo. The counters of the property (<c>Bedrooms</c>, <c>Beds</c>)
-/// are those the rooms give, as the rooms service sets them.
-/// </summary>
 public sealed record DemoRoom(PropertyRoomType Type, IReadOnlyList<RoomBed> Beds);
 
-/// <summary>A length-of-stay discount of a demo property (NF-35): from <paramref name="MinNights"/> nights, <paramref name="PercentOff"/> percent less on the lodging.</summary>
 public sealed record DemoStayDiscount(int MinNights, decimal PercentOff);
 
-/// <summary>
-/// The price and the rules of one night of a demo property (E08/F05/US01/T02, NF-36): the night that starts <paramref name="OffsetDays"/> days after the
-/// day of the reset, with the values a host could set from the calendar (invented, and inside the bounds the rules of the service apply: the showcase
-/// test checks them with the same function). A value left out is unset.
-/// </summary>
 public sealed record DemoDayRule(
     int OffsetDays,
     decimal? Price = null,
@@ -2952,17 +2573,8 @@ public sealed record DemoChannelState(
     string? ErrorMessage,
     int? LastSyncedHoursAgo);
 
-/// <summary>
-/// A point of interest of a demo property (DB-11a): invented like the rest of the demo. The distance is stored through the same rounding as a host's
-/// (<see cref="PoiDistance"/>), so a demo can never hold a figure a host could not.
-/// </summary>
 public sealed record DemoPoi(PoiKind Kind, string NameIt, string NameEn, PoiTravelMode Mode, int Minutes, CompassPoint Direction, int DistanceMeters);
 
-/// <summary>
-/// The fields of the wizard «Aggiungi immobile» (SR-07a) a demo property carries, so the list and the cards of the host are not
-/// empty. Invented like the rest of the demo; a property without a profile keeps them unset, as every real property that existed
-/// before the wizard. The rules are consistent with the house rules text of the demo (no smoking, quiet after 22:00).
-/// </summary>
 public sealed record DemoPropertyProfile(
     AccommodationType Type,
     int Beds,
@@ -2978,7 +2590,6 @@ public sealed record DemoPropertyProfile(
     decimal? ExtraGuestFeePerNight,
     ChildrenPolicy? Children = null);
 
-/// <summary>State a demo host invite is created in.</summary>
 public enum DemoHostInviteState
 {
     Pending,
@@ -2986,7 +2597,6 @@ public enum DemoHostInviteState
     Expired,
 }
 
-/// <summary>An invite of the demo host: created <paramref name="CreatedOffsetDays"/> days from today (negative: in the past).</summary>
 public sealed record DemoHostInviteTemplate(
     string Key,
     string Email,
@@ -3016,20 +2626,14 @@ public sealed record DemoPropertyOwnerTemplate(
     string? TaxResidenceCountry = null,
     string? SettlementCurrency = null);
 
-/// <summary>
-/// The share of a demo property an owner holds (ADR-012-R4): <paramref name="SharePercent"/> of <paramref name="PropertyKey"/>, from the
-/// start of the showcase and without an end. The owner is a <see cref="DemoPropertyOwnerTemplate"/> by key.
-/// </summary>
 public sealed record DemoPropertyOwnershipTemplate(string OwnerKey, string PropertyKey, decimal SharePercent, string Scenario);
 
-/// <summary>A guest segment for demo campaigns (NF-24): condition is empty to match all consented guests.</summary>
 public sealed record DemoGuestSegmentTemplate(
     string Key,
     string Name,
     string ConditionJson,
     string Scenario);
 
-/// <summary>A marketing campaign for demo (NF-24): created <paramref name="CreatedOffsetDays"/> days from today.</summary>
 public sealed record DemoCampaignTemplate(
     string Key,
     string SegmentKey,
@@ -3044,7 +2648,6 @@ public sealed record DemoCampaignTemplate(
     int ErrorCount,
     string Scenario);
 
-/// <summary>An agency invoice for demo (ADR-019): one issued invoice with test amounts.</summary>
 public sealed record DemoAgencyInvoiceTemplate(
     string Key,
     string OwnerKey,
@@ -3056,7 +2659,6 @@ public sealed record DemoAgencyInvoiceTemplate(
     decimal VatRate,
     string Scenario);
 
-/// <summary>A staff member of the agency demo: collaborator role to demonstrate staff management.</summary>
 public sealed record DemoStaffTemplate(
     string Key,
     string FirstName,
@@ -3066,7 +2668,6 @@ public sealed record DemoStaffTemplate(
     OrgRole Role,
     string Scenario);
 
-/// <summary>A trusted supplier of the agency demo: demonstrates supplier management and service requests.</summary>
 public sealed record DemoSupplierTemplate(
     string Key,
     string Name,
@@ -3076,10 +2677,6 @@ public sealed record DemoSupplierTemplate(
     bool IsTrusted,
     string Scenario);
 
-/// <summary>
-/// A check-in verification demo: demonstrates all verification states.
-/// No real faces - only recorded biometric outcomes.
-/// </summary>
 public sealed record DemoCheckInTemplate(
     string Key,
     string PropertyKey,
@@ -3104,7 +2701,6 @@ public sealed record DemoAlloggiatiTemplate(
     bool IsRegistered,
     string Scenario);
 
-/// <summary>A published owner statement demo (ADR-017): demonstrates the statement lifecycle.</summary>
 public sealed record DemoStatementTemplate(
     string Key,
     string OwnerKey,
@@ -3116,7 +2712,6 @@ public sealed record DemoStatementTemplate(
     decimal NetAmount,
     string Scenario);
 
-/// <summary>A withholding summary demo: demonstrates the withholding tax calculation.</summary>
 public sealed record DemoWithholdingTemplate(
     string Key,
     string OwnerKey,
@@ -3126,7 +2721,6 @@ public sealed record DemoWithholdingTemplate(
     decimal WithholdingAmount,
     string Scenario);
 
-/// <summary>An F24 record demo: demonstrates the F24 tax payment flow.</summary>
 public sealed record DemoF24Template(
     string Key,
     string OwnerKey,
@@ -3136,7 +2730,6 @@ public sealed record DemoF24Template(
     string TaxCode,
     string Scenario);
 
-/// <summary>A wire batch demo: demonstrates the wire transfer batch lifecycle (ADR-017).</summary>
 public sealed record DemoWireBatchTemplate(
     string Key,
     int Month,
@@ -3166,13 +2759,8 @@ public sealed record DemoRoutineTemplate(
     string ConditionJson = "{}",
     string? MessageTemplateKey = null);
 
-/// <summary>An action of a demo routine: its type and its configuration as the JSON object the editor writes (<c>{ "text": "…", "dueInDays": 1 }</c>).</summary>
 public sealed record DemoRoutineAction(RoutineActionType Type, string ConfigJson);
 
-/// <summary>
-/// The default cleaner of a demo property (E24/F01/US01/T01, NF-120): who cleans (the key of a <see cref="DemoSupplierTemplate"/> or of a <see cref="DemoStaffTemplate"/>), the agreed price in
-/// cents of the property's currency, and the time and the length when the setup says them. A template only (not written as a row): it is the body of <c>PUT api/properties/{id}/cleaning-setup</c>.
-/// </summary>
 public sealed record DemoCleaningSetupTemplate(
     string Key,
     string PropertyKey,
@@ -3184,16 +2772,12 @@ public sealed record DemoCleaningSetupTemplate(
     int? DurationMinutes,
     string Scenario);
 
-/// <summary>Which of the two sources of the hub of messages a demo conversation is kept in, and what it is about.</summary>
 public enum DemoMessageThreadKind
 {
-    /// <summary>The conversation with the guest of a direct stay (<c>GuestThread</c>).</summary>
     Direct = 0,
 
-    /// <summary>A conversation of a channel about a booking (<c>OtaMessageThread</c> of kind Reservation, linked to the booking).</summary>
     OtaReservation = 1,
 
-    /// <summary>A conversation of a channel with no booking yet (<c>OtaMessageThread</c> of kind Request).</summary>
     OtaRequest = 2,
 }
 
@@ -3219,13 +2803,10 @@ public sealed record DemoMessageThreadTemplate(
     IReadOnlyList<DemoMessageTemplate> Messages,
     string Scenario);
 
-/// <summary>Where a demo review is kept: the booking site (<c>Review</c>), or a channel (<c>OtaReview</c>, Airbnb).</summary>
 public enum DemoReviewKind
 {
-    /// <summary>The review of a direct stay on the booking site.</summary>
     Direct = 0,
 
-    /// <summary>The review of an Airbnb stay, as the channel manager would have reported it.</summary>
     Airbnb = 1,
 }
 
@@ -3253,7 +2834,6 @@ public sealed record DemoReviewTemplate(
     string DraftReply,
     string Scenario);
 
-/// <summary>A message of a demo conversation: who wrote it, how long before the reset, what it says (it says TEST) and whether the host read it.</summary>
 public sealed record DemoMessageTemplate(bool FromGuest, int MinutesAgo, string Text, bool Read = false);
 
 /// <summary>
@@ -3267,11 +2847,6 @@ public sealed record DemoMessageTemplate(bool FromGuest, int MinutesAgo, string 
 /// <param name="Scenario">The scenario it exercises.</param>
 public sealed record DemoHostMessageTemplate(string Key, string Name, string Language, string Body, string Scenario);
 
-/// <summary>
-/// A scheduled message of the demo host (E05/F07/US01/T02): the stay it is for (<paramref name="BookingKey"/>, of the house <paramref name="PropertyKey"/>), the routine that planned it
-/// (<paramref name="RoutineKey"/>, a <see cref="DemoRoutineTemplate"/> with a <c>MessageToGuest</c> action), where it stands (<paramref name="Status"/>: planned, blocked or skipped by a person)
-/// and why when it is held back or skipped (<paramref name="Reason"/>, a code of <c>ScheduledMessageReasons</c>).
-/// </summary>
 public sealed record DemoScheduledMessageTemplate(
     string Key,
     string PropertyKey,
@@ -3302,11 +2877,6 @@ public sealed record DemoPopupAlertTemplate(
     int? SnoozedForHours,
     string Scenario);
 
-/// <summary>
-/// A saved draft of the demo host (ADR-024): <paramref name="DataJson"/> is what the person typed in the wizard, a JSON object with
-/// the personal fields still in it (the seeding splits them off, as the service does). Saved <paramref name="SavedOffsetDays"/> days
-/// from today (negative: in the past, inside the 30 days a draft is kept). The demo host has one draft per wizard of a new entity.
-/// </summary>
 public sealed record DemoWizardDraftTemplate(
     string Key,
     WizardType Type,
@@ -3369,7 +2939,6 @@ public sealed record DemoMarketplacePartnerTemplate(
     DemoMarketplacePartnerText English,
     string Scenario);
 
-/// <summary>The words of a showcase partner in one language; the lines of <paramref name="Requirements"/> and <paramref name="DataShared"/> are separated by a line break.</summary>
 public sealed record DemoMarketplacePartnerText(
     string Benefit,
     string Audience,
@@ -3381,17 +2950,8 @@ public sealed record DemoMarketplacePartnerText(
     string ActivationGuide,
     IReadOnlyList<DemoMarketplaceFaq> Faq);
 
-/// <summary>A question and its answer.</summary>
 public sealed record DemoMarketplaceFaq(string Question, string Answer);
 
-/// <summary>
-/// The partner the demo host declared activated (E09/F01, NF-56): an org-level activation of <paramref name="PartnerKey"/>, status active and
-/// declared (not proven by Octorate), declared <paramref name="DeclaredOffsetDays"/> days from the reset (negative: in the past).
-/// </summary>
 public sealed record DemoMarketplaceActivationTemplate(string Key, string PartnerKey, int DeclaredOffsetDays, string Scenario);
 
-/// <summary>
-/// The active welcome link of a demo house (E07/F04/US01/T03, NF-90): the house is <paramref name="PropertyKey"/> (a
-/// <see cref="DemoPropertyTemplate.Key"/>) and the token is the fixed test token <paramref name="Token"/>, in the alphabet of a base64url token.
-/// </summary>
 public sealed record DemoWelcomeLinkTemplate(string Key, string PropertyKey, string Token, string Scenario);

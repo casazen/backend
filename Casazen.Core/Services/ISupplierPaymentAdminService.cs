@@ -72,7 +72,6 @@ public sealed record AdminServicePaymentItem(
     string? CardDisputeStatus = null,
     DateTime? CardDisputeAt = null);
 
-/// <summary>A payment with its refunds, newest last.</summary>
 public sealed record AdminServicePaymentDetail(AdminServicePaymentItem Payment, IReadOnlyList<ServiceRequestPaymentRefund> Refunds);
 
 /// <summary>
@@ -91,21 +90,12 @@ public sealed record SupplierCommissionSetting(
     bool OverrideActive,
     decimal EffectivePercent);
 
-/// <summary>Kinds of line of the commission export.</summary>
 public static class CommissionExportRowType
 {
-    /// <summary>A payment collected through Stripe in the month: the commission CasaZen kept.</summary>
     public const string Payment = "payment";
 
-    /// <summary>A refund that succeeded in the month: the commission that went back (negative amounts).</summary>
     public const string Refund = "refund";
 
-    /// <summary>
-    /// The commission CasaZen <b>retained</b> from money it held (SP-15c-b): the day the supplier was paid (the transfer), or, when the supplier
-    /// was at fault and got nothing, the day the last refund to the payer succeeded. Gross is what stayed with CasaZen of the payer's money (the
-    /// price minus what was given back), the commission is CasaZen's whole commission, the net what the supplier got. A payment refunded in full
-    /// has no such row: CasaZen kept nothing.
-    /// </summary>
     public const string Retained = "retained";
 }
 
@@ -136,31 +126,16 @@ public sealed record CommissionExportRow(
 /// <param name="VatPercent">The VAT rate in the configuration; <b>empty</b> until the tax consultant decides (D4). Shown, never applied.</param>
 public sealed record CommissionExport(int Year, int Month, decimal? VatPercent, IReadOnlyList<CommissionExportRow> Rows);
 
-/// <summary>
-/// The admin tools of the service payments (SP-15b): the list and the detail of the payments, the commission of a supplier
-/// (its own percentage, or a period with a lower one), and the monthly commission export for the manual invoice. Platform admins
-/// only (<c>AdminOnly</c>); they read across every supplier on purpose, so every query is a read-only projection.
-/// </summary>
 public interface ISupplierPaymentAdminService
 {
-    /// <summary>The payments, newest first, paginated in SQL.</summary>
     Task<(IReadOnlyList<AdminServicePaymentItem> Items, int Total)> ListAsync(
         AdminServicePaymentQuery query,
         CancellationToken cancellationToken = default);
 
-    /// <summary>One payment with its refunds. 404 <c>service_payment_not_found</c>.</summary>
     Task<AdminServicePaymentDetail> GetAsync(Guid paymentId, CancellationToken cancellationToken = default);
 
-    /// <summary>The commission applied to a supplier. 404 <c>supplier_not_found</c>.</summary>
     Task<SupplierCommissionSetting> GetCommissionAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Sets the supplier's own commission (<paramref name="percent"/>, 0 to the maximum of the configuration, two decimals at most;
-    /// a free period is 0), optionally until <paramref name="until"/>, or removes it (<paramref name="percent"/> null). It applies
-    /// to the payments created afterwards: a payment keeps the percentage it was created with. The change and its audit entry
-    /// (who, when, old and new value, the reason) are saved together. 404 <c>supplier_not_found</c>; 422
-    /// <c>supplier_commission_invalid</c>, <c>supplier_commission_until_invalid</c>.
-    /// </summary>
     Task<SupplierCommissionSetting> SetCommissionAsync(
         Guid supplierOrgId,
         decimal? percent,
@@ -169,9 +144,5 @@ public interface ISupplierPaymentAdminService
         string actorUserId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The commission of a month (Europe/Rome): one line for each payment collected through Stripe in it, and one for each refund
-    /// that succeeded in it (negative). 422 <c>service_payment_export_month_invalid</c> for a month in the future.
-    /// </summary>
     Task<CommissionExport> ExportCommissionsAsync(int year, int month, CancellationToken cancellationToken = default);
 }

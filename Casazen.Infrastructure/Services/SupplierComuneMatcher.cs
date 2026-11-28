@@ -6,7 +6,6 @@ using Casazen.Core.Suppliers;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc cref="ISupplierComuneMatcher" />
 public class SupplierComuneMatcher(IComuneDirectory directory) : ISupplierComuneMatcher
 {
     public async Task<bool> CoversAsync(SupplierProfile supplier, ComuneTarget target, CancellationToken cancellationToken = default) =>
@@ -35,7 +34,6 @@ public class SupplierComuneMatcher(IComuneDirectory directory) : ISupplierComune
 
         var legacy = suppliers.ToDictionary(s => s.OrgId, s => ReadStrings(s.ComuniJson));
 
-        // Resolve text identifiers for all locations and suppliers together.
         var identifiers = legacy.Values.SelectMany(values => values)
             .Concat(relevantTargets.Select(target => target.Name).OfType<string>());
         var resolved = await directory.ResolveAsync(identifiers, cancellationToken);
@@ -67,7 +65,6 @@ public class SupplierComuneMatcher(IComuneDirectory directory) : ISupplierComune
         return (code is not null && targetCodes.Contains(code)) || targetNames.Contains(ComuneNames.Normalize(entry));
     }
 
-    /// <summary>String items of a JSON array column; anything else (not an array, non-string items) is ignored.</summary>
     internal static IReadOnlyList<string> ReadStrings(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))

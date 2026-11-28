@@ -17,7 +17,6 @@ internal sealed class ServiceRequestQuoteConfiguration : IEntityTypeConfiguratio
 {
     public void Configure(EntityTypeBuilder<ServiceRequest> entity)
     {
-        // The JSON columns are added to a table that already has rows: the database gives those the empty list.
         entity.Property(sr => sr.QuoteLinesJson).HasDefaultValue("[]");
         entity.Property(sr => sr.QuoteEventsJson).HasDefaultValue("[]");
 

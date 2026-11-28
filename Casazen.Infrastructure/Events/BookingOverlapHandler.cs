@@ -60,7 +60,6 @@ public sealed class BookingOverlapHandler(
     TimeProvider timeProvider,
     ILogger<BookingOverlapHandler> logger) : IEventHandler<DomainEvent>
 {
-    /// <summary>Key of the reason of the «To do» in <see cref="EmailTexts"/> (Italian and English): the property and the nights.</summary>
     internal const string ReasonKey = "TodoReason_BookingOverlap";
 
     private static readonly JsonSerializerOptions PayloadOptions = new() { PropertyNameCaseInsensitive = true };
@@ -80,7 +79,6 @@ public sealed class BookingOverlapHandler(
 
         var raises = domainEvent.Type != DomainEventType.BookingCancelled && CameFromTheChannelManager(domainEvent);
 
-        // First what a cancellation or a change may have freed on the property, then what the booking of the event brings.
         if (domainEvent.Type is DomainEventType.BookingCancelled or DomainEventType.BookingModified)
             await CheckOpenItemsOfThePropertyAsync(domainEvent, except: raises ? domainEvent.EntityId : null, ct);
 
@@ -88,7 +86,6 @@ public sealed class BookingOverlapHandler(
             await ReconcileAsync(domainEvent.OrgId, domainEvent.EntityId, mayRaise: true, ct);
     }
 
-    /// <summary>The payload of the event says the booking was made or changed by the channel manager.</summary>
     private bool CameFromTheChannelManager(DomainEvent domainEvent)
     {
         BookingEventPayload? payload;
@@ -147,10 +144,6 @@ public sealed class BookingOverlapHandler(
             await ReconcileAsync(orgId, waitingBookingId, mayRaise: false, ct);
     }
 
-    /// <summary>
-    /// Brings the item of a booking in line with its conflicts now: closed when it has none, replaced when the nights moved, raised (with its
-    /// alert) when <paramref name="mayRaise"/> and there is none yet.
-    /// </summary>
     private async Task ReconcileAsync(Guid orgId, Guid bookingId, bool mayRaise, CancellationToken ct)
     {
         var open = await OpenItemAsync(orgId, bookingId, ct);
@@ -167,7 +160,6 @@ public sealed class BookingOverlapHandler(
 
         if (open is not null)
         {
-            // The dates the channel manager refused for a booking of CasaZen: the overlap is over there, not in this calendar.
             if (occupies && await PushRefusedAsync(orgId, bookingId, ct))
                 return;
 
@@ -201,13 +193,10 @@ public sealed class BookingOverlapHandler(
         if (await ClosedByAPersonAsync(orgId, bookingId, item, ct))
             return;
 
-        // The alert goes first and is written once while open, the item last and once while open: a delivery that stops between the two is made
-        // again, and what is left to do is whatever is missing.
         await AlertAsync(stay, item, ct);
         await RaiseItemAsync(stay, item, ct);
     }
 
-    /// <summary>The open item of the booking, if it has one.</summary>
     private Task<OpenItem?> OpenItemAsync(Guid orgId, Guid bookingId, CancellationToken ct)
     {
         var typeName = nameof(ActivityType.BookingOverlap);
@@ -223,10 +212,6 @@ public sealed class BookingOverlapHandler(
             .FirstOrDefaultAsync(ct);
     }
 
-    /// <summary>
-    /// A person closed an item of the booking for these same nights: the host has seen it and a later event of the booking (the price changed)
-    /// does not bring it back. An item the system closed (the nights were free) does not count: if the conflict comes back, so does the item.
-    /// </summary>
     private Task<bool> ClosedByAPersonAsync(Guid orgId, Guid bookingId, Described item, CancellationToken ct)
     {
         var typeName = nameof(ActivityType.BookingOverlap);
@@ -247,13 +232,11 @@ public sealed class BookingOverlapHandler(
                 ct);
     }
 
-    /// <summary>The push of the booking to the channel manager found its dates taken there (E08/F01/US01/T03): that item is the sync's.</summary>
     private Task<bool> PushRefusedAsync(Guid orgId, Guid bookingId, CancellationToken ct) =>
         db.OctorateBookingSyncs
             .AsNoTracking()
             .AnyAsync(s => s.OrgId == orgId && s.BookingId == bookingId && s.State == OctorateSyncState.Conflict, ct);
 
-    /// <summary>The booking and its property, in the org of the event; <c>null</c> when either is gone.</summary>
     private async Task<StayFacts?> ReadStayAsync(Guid orgId, Guid bookingId, CancellationToken ct)
     {
         var booking = await db.Bookings
@@ -282,10 +265,6 @@ public sealed class BookingOverlapHandler(
             orgId, bookingId, booking.PropertyId, property.Name, property.OwnerId, property.ResponsibleUserId, booking.CheckInDate, booking.CheckOutDate);
     }
 
-    /// <summary>
-    /// The conflicts of the booking with what else takes its nights, by <see cref="CalendarAlertRules"/>, the earliest first, and whether the
-    /// booking takes its own nights at all (a cancelled booking, an expired hold, does not).
-    /// </summary>
     private async Task<(bool Occupies, IReadOnlyList<CalendarAlert> Conflicts)> ConflictsAsync(StayFacts stay, CancellationToken ct)
     {
         var cutoff = CheckoutHolds.CutoffAt(timeProvider.GetUtcNow().UtcDateTime, CheckoutHolds.GetTtlMinutes(configuration));
@@ -326,7 +305,6 @@ public sealed class BookingOverlapHandler(
         return (true, conflicts);
     }
 
-    /// <summary>The reason and the deadline of the item for the first range of shared nights, in the language of the org.</summary>
     private async Task<Described> DescribeAsync(StayFacts stay, CalendarAlert first, CancellationToken ct)
     {
         var language = await db.Orgs
@@ -338,16 +316,11 @@ public sealed class BookingOverlapHandler(
         return new Described(ReasonOf(OrgInvitationEmails.CultureOf(language), stay.PropertyName, first), RomeCalendar.StartOfDayUtc(first.From));
     }
 
-    /// <summary>
-    /// «{property}: the booking arrives on nights that are already taken, from {first night} to {the day they are free again}»: the property and
-    /// the nights, nothing of the guest. On one line and at most <see cref="TodoLimits.ReasonMaxLength"/> characters, as the list keeps it.
-    /// </summary>
     internal static string ReasonOf(CultureInfo culture, string propertyName, CalendarAlert conflict)
     {
         ArgumentNullException.ThrowIfNull(culture);
         ArgumentNullException.ThrowIfNull(conflict);
 
-        // DateOnly takes the formats of a date only; both are the date formats of the texts of the emails.
         var dateFormat = EmailTexts.Get("Format_Date", culture);
         var reason = OneLine(
             string.Format(
@@ -359,7 +332,6 @@ public sealed class BookingOverlapHandler(
         return reason.Length <= TodoLimits.ReasonMaxLength ? reason : reason[..TodoLimits.ReasonMaxLength].TrimEnd();
     }
 
-    /// <summary>The alert of the booking to the people who reach its property, once for each person while it is open.</summary>
     private async Task AlertAsync(StayFacts stay, Described item, CancellationToken ct)
     {
         var users = await HostNotificationAudience
@@ -417,7 +389,6 @@ public sealed class BookingOverlapHandler(
         return await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
     }
 
-    /// <summary>The same one-line form the list keeps a reason in (<see cref="IInternalActivityService.CreateAsync"/>), so the two compare.</summary>
     private static string OneLine(string? value) =>
         value is null ? string.Empty : string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 

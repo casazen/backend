@@ -39,18 +39,12 @@ public sealed class ServiceRequestAutoCancelService(
 {
     internal const string RunLockKey = "service-request-auto-cancel";
 
-    /// <summary>
-    /// Requests one run handles at most: the first run after the flag is turned on may find many overdue requests, and a run
-    /// that stays short is better than one that holds the lock for minutes. The next run (10 minutes later) goes on.
-    /// </summary>
     public const int MaxPerRun = 500;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     public async Task<ServiceRequestAutoCancelRun> CancelUnansweredAsync(CancellationToken cancellationToken = default)
     {
-        // Also checked here and not only when the job is scheduled: a run triggered by hand, or by a schedule an earlier deploy
-        // left behind, does nothing while the flag is off.
         if (!featureFlags.IsEnabled(FeatureFlags.SupplierRequestAutoCancel))
             return ServiceRequestAutoCancelRun.FlagOff;
 
@@ -74,7 +68,6 @@ public sealed class ServiceRequestAutoCancelService(
 
         var dueIds = await (showcase ? DueShowcaseIdsOf(db, now) : DueIdsOf(db, now)).ToListAsync(cancellationToken);
 
-        // SP-15c-a: the new requests paid inside CasaZen that lost the block on their customer's card are due whatever their deadline says.
         var unpayable = showcase ? await UnpayableShowcaseIdsOf(db).ToListAsync(cancellationToken) : [];
         var unpayableIds = unpayable.ToHashSet();
         dueIds = dueIds.Concat(unpayable.Where(id => !dueIds.Contains(id))).ToList();
@@ -179,14 +172,8 @@ public sealed class ServiceRequestAutoCancelService(
         Failed,
     }
 
-    /// <summary>
-    /// When the request began to wait for the supplier's answer: its creation, or the start of the last window when the deadline was
-    /// restarted (a proposal or a quote the host turned down), that is <c>Suppliers:ServiceRequests:HostResponseMinutes</c> before the
-    /// deadline. The supplier is judged on the time it really had.
-    /// </summary>
     private DateTime WaitStartOf(ServiceRequest request, DateTime dueUtc)
     {
-        // A request on measure from a showcase waits from the moment it was made: its clock is never restarted (SP-10c).
         if (request.RentalContext == ServiceRequestRentalContext.Showcase)
             return request.CreatedAt;
 
@@ -201,16 +188,12 @@ public sealed class ServiceRequestAutoCancelService(
         db.ChangeTracker.Clear();
         try
         {
-            // IgnoreQueryFilters: see DueIdsOf. The property (none for a showcase request) and the supplier org are read for the
-            // notifications.
             var request = await db.ServiceRequests
                 .IgnoreQueryFilters()
                 .Include(r => r.Property)
                 .Include(r => r.SupplierOrg)
                 .FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
 
-            // A request that lost the block on its customer's card (SP-15c-a) is due whatever its deadline says; it must still be a new
-            // showcase request that is paid inside CasaZen, as it was when it was listed.
             var stillUnpayable = unpayable
                                  && request is { Status: ServiceRequestStatus.Richiesto, PaymentMode: ServiceRequestPaymentMode.Online };
             if (request is null
@@ -223,8 +206,6 @@ public sealed class ServiceRequestAutoCancelService(
                 return Outcome.Conflict;
             }
 
-            // The deadline the request had, before it is cleared: the ranking (SP-REL) judges the supplier against it. A request of the hosts
-            // always has one (the run lists only those); a showcase request that lost the block on its card (SP-15c-a) may have none.
             var deadline = request.ResponseDueAt;
 
             // A showcase request can lapse with a time proposed, or a quote sent, that its customer never answered (SP-11 and SP-04b give the
@@ -243,12 +224,10 @@ public sealed class ServiceRequestAutoCancelService(
                     : ServiceRequestCancellationReasons.NoResponse;
             request.ResponseDueAt = null;
 
-            // A cancelled request has no proposal and no quote waiting.
             ServiceRequestService.ClearProposal(request);
             ServiceRequestService.ClearQuote(request);
             request.UpdatedAt = now;
 
-            // Saved only if the request is as it was read (xmin): a supplier that took it meanwhile wins.
             await db.SaveChangesAsync(cancellationToken);
 
             logger.LogInformation("ServiceRequest {Id}: Richiesto -> Annullato, no answer before the deadline", id);
@@ -268,13 +247,9 @@ public sealed class ServiceRequestAutoCancelService(
                 && await reliability.RecordNoReplyAsync(
                     request.SupplierOrgId, request.Id, WaitStartOf(request, dueAt), dueAt, asBackup: false, cancellationToken);
 
-            // After the save, by the winner only: the host (or the customer of a showcase request) is told that nobody answered,
-            // the supplier that it lost the request (and, when it did, the points).
             await notifier.NotifyHostAsync(request, cancellationToken);
             await notifier.NotifySupplierCancelledAsync(request, cancellationToken, lostPoints);
 
-            // SP-15c-a: the block on the customer's card goes with the request. Never throws: the request is closed and stays so, and the
-            // funds job releases the block on its next run if this cannot.
             if (showcase && funds is not null)
                 await funds.SettleClosedRequestAsync(id, cancellationToken);
 

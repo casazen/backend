@@ -36,13 +36,10 @@ public class OctorateBookingSyncJob(
 {
     public const string RecurringJobId = "octorate-booking-sync";
 
-    /// <summary>Every six hours, on the hour (UTC).</summary>
     public const string Cron = "0 */6 * * *";
 
-    /// <summary>The seconds a run waits for the previous one: <c>JobLockTimeouts.DefaultSeconds</c>.</summary>
     public const int LockTimeoutSeconds = 300;
 
-    /// <summary>A booking CasaZen changed within this time is not overwritten by the reconciliation (ADR-031-R9).</summary>
     public static readonly TimeSpan OptimisticWindow = TimeSpan.FromMinutes(5);
 
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]

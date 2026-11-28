@@ -63,29 +63,19 @@ public sealed record ImportResult(
     ImportOutcome Outcome = ImportOutcome.Completed,
     int Failed = 0)
 {
-    /// <summary>The run read everything it had to.</summary>
     public bool IsComplete => Outcome == ImportOutcome.Completed;
 
-    /// <summary>A run that did nothing, for <paramref name="outcome"/>.</summary>
     public static ImportResult Nothing(ImportOutcome outcome) => new(0, 0, 0, [], outcome);
 }
 
-/// <summary>How a run of the import ended.</summary>
 public enum ImportOutcome
 {
-    /// <summary>Every reservation of the window was read and dealt with.</summary>
     Completed = 1,
 
-    /// <summary>
-    /// The run stopped before the end (the rate limit of the org, Octorate failing on a reservation, or an item of the list that cannot be
-    /// read): what was read is saved, the listing is not marked as read, and the next run reads the window again.
-    /// </summary>
     Incomplete = 2,
 
-    /// <summary>The property has no confirmed mapping (or is not known): nothing was asked of Octorate.</summary>
     NotMapped = 3,
 
-    /// <summary>The listing is confirmed but its room is not chosen yet, so it is not known which reservations are the property's: nothing was asked.</summary>
     RoomNotChosen = 4,
 }
 

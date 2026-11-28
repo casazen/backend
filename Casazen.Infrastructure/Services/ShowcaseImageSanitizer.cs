@@ -22,18 +22,12 @@ internal static class ShowcaseImageSanitizer
 {
     private static readonly byte[] PngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
 
-    // The chunks of a PNG that are kept: the critical ones and those that say how the colors are read. Everything else (text, EXIF, time, the
-    // chunks of an animation) is dropped; an animated PNG becomes its still image, which every decoder draws.
     private static readonly byte[][] KeptPngChunks =
     [
         "IHDR"u8.ToArray(), "PLTE"u8.ToArray(), "IDAT"u8.ToArray(), "IEND"u8.ToArray(),
         "tRNS"u8.ToArray(), "gAMA"u8.ToArray(), "cHRM"u8.ToArray(), "sRGB"u8.ToArray(), "iCCP"u8.ToArray(), "sBIT"u8.ToArray(), "pHYs"u8.ToArray(),
     ];
 
-    /// <summary>
-    /// The image in <paramref name="source"/> (of <paramref name="contentType"/>, <c>image/jpeg</c>, <c>image/png</c> or <c>image/webp</c>, already
-    /// told from its first bytes) written again without its metadata; <c>null</c> when it is not a whole, still image of that type.
-    /// </summary>
     public static byte[]? Clean(byte[] source, string contentType)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -45,8 +39,6 @@ internal static class ShowcaseImageSanitizer
             _ => null,
         };
     }
-
-    // ─── JPEG: a list of segments, then the entropy-coded data of each scan ────────────────────────
 
     private static byte[]? Jpeg(byte[] data)
     {
@@ -62,7 +54,6 @@ internal static class ShowcaseImageSanitizer
 
         while (pos < data.Length)
         {
-            // The next marker: one or more FF (fill bytes are allowed), then its code.
             if (data[pos] != 0xFF)
                 return null;
 
@@ -75,11 +66,9 @@ internal static class ShowcaseImageSanitizer
             var marker = data[pos++];
             var segmentStart = pos - 2;
 
-            // The end of the image: nothing after it is kept.
             if (marker == 0xD9)
                 break;
 
-            // Markers that stand alone cannot be here: a stuffed zero, TEM, a restart marker, a second start of image.
             if (marker is 0x00 or 0x01 or (>= 0xD0 and <= 0xD8))
                 return null;
 
@@ -90,7 +79,6 @@ internal static class ShowcaseImageSanitizer
             if (length < 2 || pos + length > data.Length)
                 return null;
 
-            // The payload is what follows the length; the whole segment is the marker, the length and the payload.
             var payload = data.AsMemory(pos + 2, length - 2);
             var segment = data.AsMemory(segmentStart, 2 + length);
             pos += length;
@@ -98,13 +86,11 @@ internal static class ShowcaseImageSanitizer
             switch (marker)
             {
                 case 0xE1:
-                    // EXIF or XMP: never kept. The orientation of the photo is the only thing taken from the EXIF block.
                     if (payload.Span.StartsWith("Exif\0\0"u8))
                         orientation = ImageSizeReader.ExifOrientation(payload.Span) ?? orientation;
                     break;
 
                 case 0xE0 when payload.Span.StartsWith("JFIF\0"u8):
-                    // The JFIF header says how the picture is read; its thumbnail (a smaller copy, often of the picture before it was cropped) is not kept.
                     if (payload.Length < 12)
                         return null;
 
@@ -116,17 +102,14 @@ internal static class ShowcaseImageSanitizer
 
                 case 0xE2 when payload.Span.StartsWith("ICC_PROFILE\0"u8):
                 case 0xEE when payload.Span.StartsWith("Adobe"u8):
-                    // The color profile, and the Adobe marker that says how the colors of some files (CMYK) are read.
                     kept.Add(segment);
                     break;
 
                 case >= 0xE0 and <= 0xEF:
                 case 0xFE:
-                    // Any other application segment (XMP, IPTC, Photoshop, the extra pictures of a phone, a JFXX thumbnail) and the comments.
                     break;
 
                 case 0xDA:
-                    // Start of scan: its header, then the entropy-coded data up to the next marker.
                     if (!sawFrame)
                         return null;
 
@@ -141,7 +124,6 @@ internal static class ShowcaseImageSanitizer
                     break;
 
                 default:
-                    // A frame header, a table, a restart interval...: what the picture is made of.
                     if (marker is >= 0xC0 and <= 0xCF and not (0xC4 or 0xC8 or 0xCC))
                     {
                         if (length < 8)
@@ -158,7 +140,6 @@ internal static class ShowcaseImageSanitizer
         if (!sawFrame || !sawScan)
             return null;
 
-        // A photo taken on its side keeps its orientation, as a block of one tag, right after the JFIF header when there is one.
         var exif = orientation is >= 2 and <= 8 ? OrientationSegment(orientation) : null;
         var exifAt = jfifFirst ? 1 : 0;
 
@@ -179,10 +160,6 @@ internal static class ShowcaseImageSanitizer
         return output.ToArray();
     }
 
-    /// <summary>
-    /// Where the entropy-coded data that starts at <paramref name="start"/> ends: at the FF of the next marker (a stuffed FF 00, a restart
-    /// marker and the fill bytes before a marker are part of the data), or at the end of the file when it was cut off.
-    /// </summary>
     private static int EndOfScan(byte[] data, int start)
     {
         var end = start;
@@ -197,14 +174,12 @@ internal static class ShowcaseImageSanitizer
             var next = data[end + 1];
             if (next == 0x00 || next is >= 0xD0 and <= 0xD7)
             {
-                // A stuffed FF, or a restart marker: still the data of this scan.
                 end += 2;
                 continue;
             }
 
             if (next == 0xFF)
             {
-                // A fill byte before a marker.
                 end++;
                 continue;
             }
@@ -212,14 +187,11 @@ internal static class ShowcaseImageSanitizer
             return end;
         }
 
-        // A file cut off in the data of its last scan runs to its end; it is closed by the caller.
         return data.Length;
     }
 
-    /// <summary>The JFIF header written again with a thumbnail of 0 by 0: the same version, units and densities.</summary>
     private static byte[] JfifWithoutThumbnail(ReadOnlySpan<byte> payload)
     {
-        // Marker, length (16), "JFIF\0", the version (2), the units (1), the densities (2 + 2), the size of the thumbnail (0, 0).
         var segment = new byte[2 + 2 + 14];
         segment[0] = 0xFF;
         segment[1] = 0xE0;
@@ -229,19 +201,16 @@ internal static class ShowcaseImageSanitizer
         return segment;
     }
 
-    /// <summary>An EXIF block that holds one tag, the orientation (2 to 8), in big-endian TIFF: 36 bytes with the marker and the length.</summary>
     private static byte[] OrientationSegment(int orientation) =>
     [
-        0xFF, 0xE1, 0x00, 0x22,                          // APP1, length 34
-        0x45, 0x78, 0x69, 0x66, 0x00, 0x00,              // "Exif" and two zero bytes
-        0x4D, 0x4D, 0x00, 0x2A, 0x00, 0x00, 0x00, 0x08,  // TIFF header: big-endian, 42, the first directory at offset 8
-        0x00, 0x01,                                      // one entry
-        0x01, 0x12, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01,  // tag 0x0112 (orientation), type SHORT, one value
-        0x00, (byte)orientation, 0x00, 0x00,             // the value, in the first two bytes of the field
-        0x00, 0x00, 0x00, 0x00,                          // no next directory
+        0xFF, 0xE1, 0x00, 0x22,
+        0x45, 0x78, 0x69, 0x66, 0x00, 0x00,
+        0x4D, 0x4D, 0x00, 0x2A, 0x00, 0x00, 0x00, 0x08,
+        0x00, 0x01,
+        0x01, 0x12, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01,
+        0x00, (byte)orientation, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
     ];
-
-    // ─── PNG: signature, then length / type / data / CRC chunks up to IEND ─────────────────────────
 
     private static byte[]? Png(byte[] data)
     {
@@ -264,7 +233,6 @@ internal static class ShowcaseImageSanitizer
             if (!IsChunkName(type))
                 return null;
 
-            // The first chunk is the header of the image, 13 bytes.
             if (first)
             {
                 if (!type.SequenceEqual("IHDR"u8) || length != 13)
@@ -282,12 +250,10 @@ internal static class ShowcaseImageSanitizer
 
             pos += total;
 
-            // The end of the image: whatever follows is not part of it and is not kept.
             if (type.SequenceEqual("IEND"u8))
                 return sawData ? output.ToArray() : null;
         }
 
-        // No IEND: the file is cut short.
         return null;
     }
 
@@ -313,14 +279,11 @@ internal static class ShowcaseImageSanitizer
         return false;
     }
 
-    // ─── WebP: a RIFF container of chunks ──────────────────────────────────────────────────────────
-
     private static byte[]? WebP(byte[] data)
     {
         if (data.Length < 20 || !data.AsSpan(0, 4).SequenceEqual("RIFF"u8) || !data.AsSpan(8, 4).SequenceEqual("WEBP"u8))
             return null;
 
-        // The size of the container: what follows it (a file can carry anything after its end) is not kept.
         var riffSize = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(4, 4));
         if (riffSize < 12 || riffSize + 8L > data.Length)
             return null;
@@ -338,13 +301,10 @@ internal static class ShowcaseImageSanitizer
 
             var payload = data.AsSpan(pos + 8, (int)size);
 
-            // A chunk is padded to an even size.
             pos += 8 + (int)size + (int)(size & 1);
 
             if (id.SequenceEqual("VP8X"u8))
             {
-                // The extended format: the flags say which optional chunks follow. An animation is refused; the flags of the EXIF and the XMP
-                // go with their chunks (0x08 and 0x04).
                 if (size < 10 || (payload[0] & 0x02) != 0)
                     return null;
 
@@ -365,11 +325,8 @@ internal static class ShowcaseImageSanitizer
             {
                 return null;
             }
-
-            // EXIF, XMP and every chunk this code does not know are not kept.
         }
 
-        // One still picture.
         if (images != 1)
             return null;
 
@@ -392,7 +349,6 @@ internal static class ShowcaseImageSanitizer
         return output;
     }
 
-    /// <summary>A chunk of a RIFF container: its name, its size (without the padding), the data, and a zero byte when the size is odd.</summary>
     private static byte[] Chunk(ReadOnlySpan<byte> id, ReadOnlySpan<byte> payload)
     {
         var chunk = new byte[8 + payload.Length + (payload.Length & 1)];

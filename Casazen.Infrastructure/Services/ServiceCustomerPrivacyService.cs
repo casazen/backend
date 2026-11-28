@@ -37,13 +37,10 @@ public sealed class ServiceCustomerPrivacyService(
 
     private const int ChunkSize = 100;
 
-    /// <summary>The placeholder of the name of an anonymized customer (the same as the guests, CO-15).</summary>
     public const string AnonymizedValue = "ANONYMIZED";
 
-    /// <summary>The anonymized e-mail address of a customer: unique per row, never deliverable.</summary>
     public static string AnonymizedEmail(Guid customerId) => $"ANON-{customerId:N}@deleted.local";
 
-    /// <summary>The e-mail index of an anonymized customer: matches no address, so the row is never found again by one.</summary>
     public static string AnonymizedEmailHash(Guid customerId) => $"anon-{customerId:N}";
 
     private static readonly ServiceRequestStatus[] OpenStatuses =
@@ -87,10 +84,6 @@ public sealed class ServiceCustomerPrivacyService(
         return new ServiceCustomerRetentionRun(true, customers, requests);
     }
 
-    /// <summary>
-    /// The place of the showcase requests that are over and whose period ended: street address, floor and access notes removed.
-    /// The comune and the postal code stay (the supplier's own accounts and statistics, nothing that identifies a person).
-    /// </summary>
     private async Task<int> AnonymizeRequestPlacesAsync(RetentionPeriodOptions period, DateTime today, CancellationToken cancellationToken)
     {
         var candidateBefore = period.CandidateStartBefore(today);
@@ -125,12 +118,6 @@ public sealed class ServiceCustomerPrivacyService(
         return anonymized;
     }
 
-    /// <summary>
-    /// The messages of the requests on measure that are over (SP-10b) once their period ended, counted from the end of the request (its
-    /// cancellation, else its last change): what two people wrote to each other is free text that can say anything, so it is deleted and the
-    /// request stays for the supplier's accounts (the comune, the status, the dates). Marked by what is gone: a thread with no message is not a
-    /// candidate, so a second run finds nothing. A request still open keeps its thread, and a closed one takes no new message.
-    /// </summary>
     private async Task<int> DeleteThreadsAsync(RetentionPeriodOptions period, DateTime today, CancellationToken cancellationToken)
     {
         var candidates = await CandidateThreadsOf(db, period.CandidateStartBefore(today)).ToListAsync(cancellationToken);
@@ -210,7 +197,6 @@ public sealed class ServiceCustomerPrivacyService(
                                        && c.AnonymizedAt == null
                                        && !db.ServiceRequests.IgnoreQueryFilters().Any(r => r.CustomerId == c.Id && OpenStatuses.Contains(r.Status)));
 
-    /// <summary>Replaces every personal field of <paramref name="customer"/>; the language and the consent version and date stay.</summary>
     public static void Anonymize(ServiceCustomer customer, DateTime now)
     {
         customer.FullName = AnonymizedValue;
@@ -277,10 +263,8 @@ public sealed class ServiceCustomerPrivacyService(
                         && (r.ScheduledEndUtc ?? r.CancelledAt ?? r.UpdatedAt) < candidateBefore)
             .Select(r => new RequestReference(r.Id, r.ScheduledEndUtc ?? r.CancelledAt ?? r.UpdatedAt));
 
-    /// <summary>A request and the date its retention period counts from.</summary>
     internal sealed record RequestReference(Guid Id, DateTime ReferenceUtc);
 
-    /// <summary>A customer, its supplier, whether it has an open request, and the date its retention period counts from.</summary>
     internal sealed record CustomerReference(Guid Id, Guid OrgId, bool HasOpenRequest, DateTime ReferenceUtc);
 
     private DateTime UtcNow() => _clock.GetUtcNow().UtcDateTime;

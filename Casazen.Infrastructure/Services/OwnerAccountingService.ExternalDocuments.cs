@@ -9,7 +9,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>The links from the statement versions to the invoices issued by the agency's external fiscal system (E06/F01/US02/T05).</summary>
 public sealed partial class OwnerAccountingService
 {
     public async Task<OwnerExternalDocumentReference> AddExternalDocumentAsync(

@@ -17,20 +17,14 @@ namespace Casazen.Core.Services;
 /// </summary>
 public static partial class OwnerFieldRules
 {
-    /// <summary>The country of the tax residence that follows the Italian rules.</summary>
     public const string Italy = "IT";
 
-    /// <summary>
-    /// The countries whose IBAN is reachable with the IBAN alone (the SEPA area): the BIC of an owner paid there is optional. For any other
-    /// country the BIC is part of the payment data.
-    /// </summary>
     private static readonly HashSet<string> SepaCountries = new(StringComparer.Ordinal)
     {
         "AD", "AT", "BE", "BG", "CH", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GB", "GR", "HR", "HU", "IE", "IS", "IT", "LI", "LT", "LU",
         "LV", "MC", "MT", "NL", "NO", "PL", "PT", "RO", "SE", "SI", "SK", "SM", "VA",
     };
 
-    /// <summary>The names of a country the registry understands besides the ISO code (the key is <see cref="Key"/>).</summary>
     private static readonly Dictionary<string, string> CountryNames = new(StringComparer.Ordinal)
     {
         ["italia"] = "IT",
@@ -62,7 +56,6 @@ public static partial class OwnerFieldRules
     [GeneratedRegex("^[A-Z0-9]{4,30}$", RegexOptions.CultureInvariant, 250)]
     private static partial Regex ForeignVatShape();
 
-    /// <summary>A header or a value in the form compared: lower case, no accents, only letters and digits.</summary>
     public static string Key(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -82,12 +75,6 @@ public static partial class OwnerFieldRules
         return key.ToString();
     }
 
-    // ---------------------------------------------------------------- kind, countries, currency
-
-    /// <summary>
-    /// The kind a cell names: <c>person</c>, <c>natural person</c>, <c>persona fisica</c>, <c>pf</c>... or <c>company</c>, <c>legal entity</c>,
-    /// <c>persona giuridica</c>, <c>societa</c>, <c>pg</c>...
-    /// </summary>
     public static bool TryParseKind(string? value, out OwnerEntityKind kind)
     {
         switch (Key(value))
@@ -105,7 +92,6 @@ public static partial class OwnerFieldRules
         }
     }
 
-    /// <summary>The ISO 3166-1 alpha-2 code a cell names (the code itself, or the name of a few countries), upper case.</summary>
     public static bool TryNormalizeCountry(string? value, out string country)
     {
         country = string.Empty;
@@ -128,7 +114,6 @@ public static partial class OwnerFieldRules
         return false;
     }
 
-    /// <summary>The ISO 4217 code of a currency, upper case: three letters.</summary>
     public static bool TryNormalizeCurrency(string? value, out string currency)
     {
         currency = string.Empty;
@@ -140,9 +125,6 @@ public static partial class OwnerFieldRules
         return true;
     }
 
-    // ---------------------------------------------------------------- identifiers
-
-    /// <summary>The fiscal code or tax id in the form compared and stored: upper case, no spaces.</summary>
     public static string NormalizeFiscalCode(string? value) => ItalianFiscalCode.Normalize(value);
 
     /// <summary>
@@ -158,19 +140,12 @@ public static partial class OwnerFieldRules
         return compact.Length == 13 && compact.StartsWith("IT", StringComparison.Ordinal) && compact[2..].All(char.IsAsciiDigit) ? compact[2..] : compact;
     }
 
-    /// <summary>The IBAN in the form compared and stored: upper case, no spaces.</summary>
     public static string NormalizeIban(string? value) =>
         string.IsNullOrWhiteSpace(value) ? string.Empty : new string(value.Where(c => !char.IsWhiteSpace(c) && c != '-').Select(char.ToUpperInvariant).ToArray());
 
-    /// <summary>The BIC in the form compared and stored: upper case, no spaces.</summary>
     public static string NormalizeBic(string? value) =>
         string.IsNullOrWhiteSpace(value) ? string.Empty : new string(value.Where(c => !char.IsWhiteSpace(c)).Select(char.ToUpperInvariant).ToArray());
 
-    /// <summary>
-    /// True when <paramref name="normalized"/> (<see cref="NormalizeFiscalCode"/>) is a fiscal identifier for an owner resident in
-    /// <paramref name="residence"/>: for Italy, or when the residence is not known, a valid Italian fiscal code (16 characters, or 11 digits for a
-    /// company); for another country, 4 to 40 letters and digits.
-    /// </summary>
     public static bool IsValidFiscalId(string normalized, string? residence) =>
         IsItalian(residence) ? ItalianFiscalCode.IsValid(normalized) : ForeignTaxIdShape().IsMatch(normalized);
 
@@ -178,27 +153,18 @@ public static partial class OwnerFieldRules
     public static bool IsValidVat(string normalized, string? residence) =>
         IsItalian(residence) ? InvoiceDataFormats.IsValidVatNumber(normalized) : ForeignVatShape().IsMatch(normalized);
 
-    /// <summary>True when <paramref name="normalized"/> (<see cref="NormalizeIban"/>) has the length and the checksum of an IBAN.</summary>
     public static bool IsValidIban(string normalized) => BankValues.IsValidIban(normalized);
 
-    /// <summary>True when <paramref name="normalized"/> (<see cref="NormalizeBic"/>) is shaped like a BIC: 8 or 11 characters.</summary>
     public static bool IsValidBic(string normalized) => BicShape().IsMatch(normalized);
 
-    /// <summary>True when the owner is paid on an IBAN of the SEPA area, where the IBAN alone is enough (no BIC needed).</summary>
     public static bool IsSepaIban(string normalizedIban) =>
         normalizedIban.Length >= 2 && SepaCountries.Contains(normalizedIban[..2]);
 
-    /// <summary>True for an e-mail address of at most 255 characters that the framework's validation accepts.</summary>
     public static bool IsValidEmail(string? value) =>
         !string.IsNullOrWhiteSpace(value) && value.Trim().Length <= 255 && new EmailAddressAttribute().IsValid(value.Trim());
 
     private static bool IsItalian(string? residence) => string.IsNullOrEmpty(residence) || string.Equals(residence, Italy, StringComparison.Ordinal);
 
-    // ---------------------------------------------------------------- the name of an owner
-
-    /// <summary>
-    /// The name the agency keeps for the owner: the legal name, else the first and the last name. Never a fiscal identifier or an address.
-    /// </summary>
     public static string DisplayName(PropertyOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
@@ -208,10 +174,6 @@ public static partial class OwnerFieldRules
         return $"{owner.FirstName} {owner.LastName}".Trim();
     }
 
-    /// <summary>
-    /// The first and the last name of a natural person from its legal name: the first word and the rest (a display convention; the legal name
-    /// stays as it was given). A single word is the last name. Both are cut to the length of their columns.
-    /// </summary>
     public static (string FirstName, string LastName) SplitName(string legalName, OwnerEntityKind kind)
     {
         var name = legalName.Trim();

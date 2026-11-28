@@ -36,7 +36,6 @@ public sealed class PublicSiteSearchService(
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
     private readonly PublicOccupancyReader _occupancy = new(db, configuration, timeProvider);
 
-    // How far before the check-in the nearby dates (alternatives) go.
     private const int AlternativeLookBehindDays = 21;
 
     public async Task<PublicStaysResult> SearchStaysAsync(Org org, PublicStaysCriteria criteria, CancellationToken cancellationToken = default)
@@ -47,7 +46,6 @@ public sealed class PublicSiteSearchService(
         var today = _clock.TodayInRomeAsDateOnly();
         ValidateStay(criteria);
 
-        // The answer is shared by whoever asks the same thing within a few seconds, so it is not worked out for one caller's token.
         var key = string.Join('|', "stays", org.Id.ToString("N"), today.DayNumber, org.CanTakeDirectPayments, CriteriaKey(criteria));
         return await cache.GetOrCreateAsync(key, () => BuildStaysAsync(org, criteria, today));
     }
@@ -79,8 +77,6 @@ public sealed class PublicSiteSearchService(
     public async Task<IReadOnlyList<PublicDestination>> GetDestinationsAsync(Guid orgId, CancellationToken cancellationToken = default) =>
         PublicStayPlanner.Destinations(await LoadHousesAsync(orgId, cancellationToken));
 
-    // ─── The same across all the sites (the public /search of CasaZen) ──────────────────────────────
-
     public async Task<PublicStaysResult> SearchPlatformStaysAsync(PublicStaysCriteria criteria, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(criteria);
@@ -88,7 +84,6 @@ public sealed class PublicSiteSearchService(
         var today = _clock.TodayInRomeAsDateOnly();
         ValidateStay(criteria);
 
-        // Whatever scope the caller wrote, this is the platform search: the place, the sort and the page are read the platform way.
         var platform = criteria with { Scope = PublicStaysScope.Platform };
         var key = string.Join('|', "platform-stays", today.DayNumber, CriteriaKey(platform));
         return await cache.GetOrCreateAsync(key, () => BuildStaysAsync(null, platform, today));
@@ -122,7 +117,6 @@ public sealed class PublicSiteSearchService(
         var key = string.Join('|', "platform-destinations", _clock.TodayInRomeAsDateOnly().DayNumber);
         return await cache.GetOrCreateAsync(key, async () =>
         {
-            // Only the written comune of each house: the places do not need the houses.
             var rows = await PublishedHouses(null)
                 .OrderBy(p => p.Name)
                 .ThenBy(p => p.Id)
@@ -157,7 +151,6 @@ public sealed class PublicSiteSearchService(
         var today = _clock.TodayInRomeAsDateOnly();
         var ids = houses.Select(house => house.Id).ToList();
 
-        // The «from» price of a card is the lowest night of the next days, the prices the hosts wrote in their calendar included.
         var until = today.AddDays(PublicSiteSearch.FromPriceDays);
         var rules = await LoadDayRulesAsync(ids, today, until, cancellationToken);
         var data = new PublicStayData(
@@ -172,9 +165,6 @@ public sealed class PublicSiteSearchService(
         return PublicStayPlanner.Similar(target, houses, data, max);
     }
 
-    // ─── The list ───────────────────────────────────────────────────────────────────────────────────
-
-    /// <param name="org">The org of the site; <c>null</c> for the search across all the sites.</param>
     private async Task<PublicStaysResult> BuildStaysAsync(Org? org, PublicStaysCriteria criteria, DateOnly today)
     {
         var houses = org is null
@@ -182,7 +172,6 @@ public sealed class PublicSiteSearchService(
             : await LoadHousesAsync(org.Id, CancellationToken.None);
         var ids = houses.Select(house => house.Id).ToList();
 
-        // The window the answer needs: the nights of the stay and of the nearby dates, and the days the first free date is looked for in.
         DateOnly from;
         DateOnly to;
         var taxRatesOfPeriod = new List<TouristTaxRate>();
@@ -207,11 +196,9 @@ public sealed class PublicSiteSearchService(
             to = today.AddDays(PublicSiteSearch.FromPriceDays);
         }
 
-        // The rules of the nights (NF-36) of all the houses in one read, from the first day to the day after the last the search looks at.
         var rules = await LoadDayRulesAsync(ids, from, to.AddDays(1), CancellationToken.None);
         if (asked && LongestMinimumStay(rules) is var longest && longest > length)
         {
-            // A rule can ask for a longer minimum stay than any house does: the window the first free date is looked for in must hold that stay.
             to = Max(from, criteria.CheckIn!.Value.AddDays(PublicSiteSearch.FirstFreeHorizonDays + longest + 1));
             rules = await LoadDayRulesAsync(ids, from, to.AddDays(1), CancellationToken.None);
         }
@@ -219,7 +206,6 @@ public sealed class PublicSiteSearchService(
         var taken = criteria.CheckIn is null
             ? new Dictionary<Guid, IReadOnlySet<DateOnly>>()
             : await LoadTakenAsync(ids, from, to);
-        // Across the sites the houses read are those of orgs that can take a booking already: nothing is «not bookable» there.
         var data = new PublicStayData(
             today,
             org?.CanTakeDirectPayments ?? true,
@@ -233,7 +219,6 @@ public sealed class PublicSiteSearchService(
         return PublicStayPlanner.Search(houses, data, criteria, _clock.GetUtcNow().UtcDateTime);
     }
 
-    /// <param name="org">The org of the site; <c>null</c> for the calendar across all the sites, optionally of one <paramref name="where"/>.</param>
     private async Task<PublicSiteCalendar> BuildSiteCalendarAsync(
         Org? org,
         string? where,
@@ -268,7 +253,6 @@ public sealed class PublicSiteSearchService(
         return new PublicSiteCalendar(first, end, today, PublicStayPlanner.CurrencyOf(houses), adults, children, days, _clock.GetUtcNow().UtcDateTime);
     }
 
-    /// <summary>The rules of the stay asked, the ones the quote and the checkout apply to every stay: a 422 before anything is read.</summary>
     private static void ValidateStay(PublicStaysCriteria criteria)
     {
         if (criteria.CheckIn is null && criteria.CheckOut is null)
@@ -284,13 +268,9 @@ public sealed class PublicSiteSearchService(
         }
     }
 
-    // ─── What is read ───────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The published houses of the org (at most <see cref="PublicSiteSearch.MaxHouses"/>, by name): the rule of the site search.</summary>
     private Task<IReadOnlyList<PublicStayHouse>> LoadHousesAsync(Guid orgId, CancellationToken cancellationToken) =>
         LoadHousesCoreAsync(orgId, cancellationToken);
 
-    /// <summary>The published houses of every org that can take a booking (at most <see cref="PublicSiteSearch.MaxPlatformHouses"/>, by name), each with its site.</summary>
     private Task<IReadOnlyList<PublicStayHouse>> LoadPlatformHousesAsync(CancellationToken cancellationToken) =>
         LoadHousesCoreAsync(null, cancellationToken);
 
@@ -367,11 +347,9 @@ public sealed class PublicSiteSearchService(
             if (platform && !Org.AcceptsDirectPayments(row.OrgStripeConnectedAccountId, row.OrgConnectChargesEnabled))
                 continue;
 
-            // What the host wrote for the page (the zone) and the labels of the house: the ones the host chose and the ones its data give.
             var profile = SitePropertyProfileJson.ParseForPublicPage(row.SiteProfileJson);
             var tags = SitePropertyProfileRules.EffectiveTags(
                 profile.Tags, SitePropertyProfileRules.DerivedTags(row.Amenities, row.AreaKind, row.PetsPolicy));
-            // The position the public sees: rounded to about 1 km, and for a house whose host gave none, the centre of its comune.
             var (latitude, longitude) = PublicPropertyPosition.Of(row.Latitude, row.Longitude, row.ComuneIstatCode);
             houses.Add(new PublicStayHouse(
                 row.Id,
@@ -400,20 +378,16 @@ public sealed class PublicSiteSearchService(
                 row.CatalogPolicy,
                 new HostCancellationOverrides(
                     row.OverrideFullRefundHours, row.OverridePartialRefundHours, row.OverridePartialRefundPercent, row.OverrideRefundType),
-                // The site of the house and the name of its host: only where the list mixes the sites.
                 platform ? row.OrgSlug : null,
                 platform ? HostNameOf(row) : null,
-                // The property says its own currency and country (EUR and IT, or CHF and CH): the price of a card is in that currency.
                 string.IsNullOrWhiteSpace(row.Currency) ? PublicStayHouse.DefaultCurrency : row.Currency.Trim().ToUpperInvariant(),
                 string.IsNullOrWhiteSpace(row.Country) ? PublicStayHouse.DefaultCountry : row.Country.Trim().ToUpperInvariant(),
-                // The clock the advance rules of its nights are read on, as the quote and the checkout read them.
                 string.IsNullOrWhiteSpace(row.Timezone) ? PublicStayHouse.DefaultTimezone : row.Timezone.Trim()));
         }
 
         return houses;
     }
 
-    /// <summary>The name the host chose for the site, else the name of the org: never the account of the owner.</summary>
     private static string HostNameOf(HouseRow row) =>
         !string.IsNullOrWhiteSpace(row.OrgHostName) ? row.OrgHostName.Trim() : row.OrgDisplayName;
 
@@ -472,11 +446,6 @@ public sealed class PublicSiteSearchService(
         return result;
     }
 
-    /// <summary>
-    /// The rules of the nights of all the houses from <paramref name="from"/> (included) to <paramref name="toExclusive"/> (excluded), in one read
-    /// (<see cref="IPropertyDayRuleService.GetRulesForSiteAsync"/>, a public read of the site): never one read per house. None when there is nothing
-    /// to read.
-    /// </summary>
     private async Task<IReadOnlyDictionary<Guid, IReadOnlyDictionary<DateOnly, DayRuleValues>>> LoadDayRulesAsync(
         IReadOnlyCollection<Guid> ids,
         DateOnly from,
@@ -489,11 +458,9 @@ public sealed class PublicSiteSearchService(
         return await dayRules.GetRulesForSiteAsync(ids, from, toExclusive, cancellationToken);
     }
 
-    // The longest minimum stay any night of any house asks for (0 when no night has one).
     private static int LongestMinimumStay(IReadOnlyDictionary<Guid, IReadOnlyDictionary<DateOnly, DayRuleValues>> rules) =>
         rules.Values.SelectMany(house => house.Values).Select(rule => rule.MinNights ?? 0).DefaultIfEmpty(0).Max();
 
-    /// <param name="orgId">The org of the site; <c>null</c> across all the sites (the houses named by <paramref name="ids"/> are the limit).</param>
     private async Task<IReadOnlyDictionary<Guid, PublicRatingSummary>> LoadRatingsAsync(
         Guid? orgId,
         IReadOnlyCollection<Guid> ids,
@@ -503,7 +470,6 @@ public sealed class PublicSiteSearchService(
         if (ids.Count == 0)
             return result;
 
-        // The reviews the public reads: published and reported ones, never a removed one (the same rule as the property page).
         var reviews = db.Reviews
             .AsNoTracking()
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -521,9 +487,6 @@ public sealed class PublicSiteSearchService(
         return result;
     }
 
-    // ─── Small helpers ──────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>Everything in the query that changes the answer, in a fixed order: the key the answer is kept under.</summary>
     private static string CriteriaKey(PublicStaysCriteria c) => string.Join(
         '|',
         c.CheckIn?.DayNumber,
@@ -551,14 +514,12 @@ public sealed class PublicSiteSearchService(
 
     private sealed class HouseRow
     {
-        // The org of the house: read for the search across all the sites (its site, its host, and whether it can take a booking).
         public string OrgSlug { get; init; } = string.Empty;
         public string OrgDisplayName { get; init; } = string.Empty;
         public string? OrgHostName { get; init; }
         public string? OrgStripeConnectedAccountId { get; init; }
         public bool OrgConnectChargesEnabled { get; init; }
 
-        // The currency and the country of the property (EUR / IT by default, CHF / CH in Switzerland).
         public string Currency { get; init; } = PublicStayHouse.DefaultCurrency;
         public string Country { get; init; } = PublicStayHouse.DefaultCountry;
         public string Timezone { get; init; } = PublicStayHouse.DefaultTimezone;
@@ -587,7 +548,6 @@ public sealed class PublicSiteSearchService(
         public bool? ChildrenWelcome { get; init; }
         public string? SiteProfileJson { get; init; }
 
-        // The cancellation policy of the house (the catalog row and what the host changed of it): the card of a stay says what cancelling costs.
         public CancellationPolicy? CatalogPolicy { get; init; }
         public int? OverrideFullRefundHours { get; init; }
         public int? OverridePartialRefundHours { get; init; }

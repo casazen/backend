@@ -86,7 +86,6 @@ public sealed class SupportVaultService(
             }
             catch (DbUpdateException ex) when (attempt == 1 && created && OrgTeamAccess.IsUniqueViolation(ex, SupportVaultSecret.SecretIndexName))
             {
-                // A parallel first save of the same credential won: the values replace that row instead.
                 db.Entry(row).State = EntityState.Detached;
                 continue;
             }
@@ -155,7 +154,6 @@ public sealed class SupportVaultService(
         if (!SupportVaultRules.KindFits(request.PartKey, request.Context, request.PropertyId, kind))
             throw new DomainRuleException(SupportVaultCodes.KindNotForRequest, "SupportVaultKindNotForRequest");
 
-        // The limit counts the openings of the request, whatever their kind, in the hour before now.
         var now = Now();
         var windowStart = now.AddHours(-1);
         var recent = await db.SupportVaultAccesses
@@ -177,7 +175,6 @@ public sealed class SupportVaultService(
                 MessageKey = "SupportVaultSecretMissing",
             };
 
-        // The audit and the line the host reads, in the org OF THE REQUEST, in the save of the opening: never the value, never the reason in the line.
         db.SupportVaultAccesses.Add(new SupportVaultAccess
         {
             OrgId = request.OrgId,
@@ -300,7 +297,6 @@ public sealed class SupportVaultService(
 
     private DateTime Now() => timeProvider.GetUtcNow().UtcDateTime;
 
-    /// <summary>The values of a credential, in clear, inside the service only: it hides them from <c>ToString</c> too.</summary>
     private sealed record VaultValues(string Username, string Password, string? ExtraCode, string? UnitCode = null)
     {
         public override string ToString() => nameof(VaultValues) + " { *** }";

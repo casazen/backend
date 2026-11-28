@@ -10,10 +10,6 @@ namespace Casazen.Core.SiteProfile;
 /// </summary>
 public static class PoiDistance
 {
-    /// <summary>
-    /// <paramref name="meters"/> rounded to 100 m below 1 km, 250 m below 5 km, 500 m below 20 km and 1 km beyond, between
-    /// <see cref="PropertyPoi.MinDistanceMeters"/> and <see cref="PropertyPoi.MaxDistanceMeters"/>.
-    /// </summary>
     public static int Round(int meters)
     {
         var clamped = Math.Clamp(meters, PropertyPoi.MinDistanceMeters, PropertyPoi.MaxDistanceMeters);

@@ -37,7 +37,6 @@ public sealed class RentBankImportService(
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    // The key of the payer hashes comes from the secret of the signed links; without it nothing is kept of who paid.
     private readonly byte[]? _payerKey = BankPayerHash.DeriveKey(configuration?[MarketingUnsubscribeLinks.SecretVariable]);
 
     public async Task<RentBankImportPreview> PreviewAsync(
@@ -47,7 +46,6 @@ public sealed class RentBankImportService(
         var statement = BankStatementParser.Parse(file, mapping);
         var credits = ToCredits(scope.OrgId, statement);
 
-        // What was imported before is left out: the same file twice, or two files that overlap, change nothing.
         var known = await KnownFingerprintsAsync(scope.OrgId, credits.Select(c => c.Fingerprint).ToList(), cancellationToken);
         var fresh = credits.Where(c => !known.Contains(c.Fingerprint)).ToList();
 
@@ -122,7 +120,6 @@ public sealed class RentBankImportService(
         var credits = ToCredits(scope.OrgId, statement).ToDictionary(c => c.Fingerprint, StringComparer.Ordinal);
         var known = await KnownFingerprintsAsync(scope.OrgId, selections.Select(s => s.Fingerprint).ToList(), cancellationToken);
 
-        // The installments the landlord chose, read inside the scope: one of another org or of a property out of reach is simply not here.
         var installmentIds = selections.Select(s => s.InstallmentId).Distinct().ToList();
         var installments = await db.RentLedgerEntries
             .AsNoTracking()
@@ -158,7 +155,6 @@ public sealed class RentBankImportService(
                 continue;
             }
 
-            // Another org's installment, or one of a property the caller may not handle, answers like one that does not exist.
             if (!installments.TryGetValue(selection.InstallmentId, out var installment))
             {
                 skipped.Add(Skip(RentBillingErrorCodes.InstallmentNotFound));
@@ -177,15 +173,12 @@ public sealed class RentBankImportService(
                 continue;
             }
 
-            // The amount to the cent and the currency of a rent: what the matcher offers, checked again here for a choice made by hand.
             if (credit.Movement.Amount != installment.AmountDue || credit.Movement.Currency != RentBankMatcher.Currency)
             {
                 skipped.Add(Skip(BankStatementErrorCodes.AmountMismatch));
                 continue;
             }
 
-            // The credit is claimed before the installment is paid (see the remarks of the class). Hashes of the payer are kept only for
-            // a lease whose tenants have not asked to be erased and have not been anonymized.
             var claim = NewMovement(scope.OrgId, installment.LeaseContractId, installment.Id, credit, userId, keepPayer: !installment.PartiesErased);
             if (!await TryClaimAsync(claim, cancellationToken))
             {
@@ -194,7 +187,6 @@ public sealed class RentBankImportService(
                 continue;
             }
 
-            // A value date after today (a bank may date a credit ahead) is declared paid today: the ledger refuses a future day.
             var paidOn = credit.Movement.ValueDate > today ? today : credit.Movement.ValueDate;
             try
             {
@@ -219,8 +211,6 @@ public sealed class RentBankImportService(
             }
             catch
             {
-                // Neither a refusal of the ledger nor a success: the request was canceled, or the database or Stripe failed. Whether the
-                // installment was paid is the ledger's to say, and the claim stays only if it was.
                 if (!await WasPaidByTheImportAsync(installment.Id))
                     await ReleaseAsync(claim);
                 throw;
@@ -237,8 +227,6 @@ public sealed class RentBankImportService(
             skipped.Count);
         return new RentBankConfirmation(selections.Count, confirmed, skipped);
     }
-
-    // ---------------------------------------------------------------- reading
 
     private List<RentBankCredit> ToCredits(Guid orgId, ParsedBankStatement statement)
     {
@@ -268,8 +256,6 @@ public sealed class RentBankImportService(
     private async Task<RentBankMatching> MatchAsync(
         HostScope scope, List<RentBankCredit> credits, DateOnly today, CancellationToken cancellationToken)
     {
-        // Only the installments a credit of this file could settle: the amount is one of the amounts, the due date is in the window around
-        // the dates of the credits, still to collect, and of a property the caller reaches (in SQL).
         var amounts = credits.Select(c => c.Movement.Amount).Distinct().ToList();
         var days = credits.Select(c => c.Movement.ValueDate > today ? today : c.Movement.ValueDate).ToList();
         var from = days.Min().AddDays(-RentBankMatcher.DaysLate);
@@ -320,7 +306,6 @@ public sealed class RentBankImportService(
                 tenants[r.LeaseContractId].ToList()))
             .ToList();
 
-        // Who paid these leases before, recognized by the hashes of the IBAN and of the name (never the values).
         var ibanHashes = credits.Select(c => c.IbanHash).OfType<string>().Distinct().ToList();
         var nameHashes = credits.Select(c => c.NameHash).OfType<string>().Distinct().ToList();
         var payers = ibanHashes.Count == 0 && nameHashes.Count == 0
@@ -354,7 +339,6 @@ public sealed class RentBankImportService(
             .Select(p => new { p.LeaseContractId, p.FirstName, p.LastName, Anonymized = p.AnonymizedAt != null })
             .ToListAsync(cancellationToken);
 
-        // The first tenant of the lease, by name only (D29); none once that tenant was anonymized.
         return parties
             .GroupBy(p => p.LeaseContractId)
             .ToDictionary(
@@ -374,8 +358,6 @@ public sealed class RentBankImportService(
         candidate.Amount,
         RentCharges.Currency.ToUpperInvariant());
 
-    // ---------------------------------------------------------------- claiming
-
     private RentBankMovement NewMovement(
         Guid orgId, Guid leaseId, Guid installmentId, RentBankCredit credit, string userId, bool keepPayer)
     {
@@ -394,7 +376,6 @@ public sealed class RentBankImportService(
         };
     }
 
-    /// <summary>Saves the claim on the credit; false when another request saved one for the same credit first (the unique index of the fingerprint).</summary>
     private async Task<bool> TryClaimAsync(RentBankMovement claim, CancellationToken cancellationToken)
     {
         db.RentBankMovements.Add(claim);
@@ -436,10 +417,6 @@ public sealed class RentBankImportService(
         }
     }
 
-    /// <summary>
-    /// Did the import itself declare this installment paid? Asked of the ledger, never of the context, which may hold a half-done change.
-    /// When it cannot be told the answer is yes: a credit hidden as imported over a rent still to collect is the safe side.
-    /// </summary>
     private async Task<bool> WasPaidByTheImportAsync(Guid installmentId)
     {
         try

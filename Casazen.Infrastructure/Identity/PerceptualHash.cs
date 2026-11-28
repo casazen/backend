@@ -31,16 +31,12 @@ namespace Casazen.Infrastructure.Identity;
 /// </summary>
 public static class PerceptualHash
 {
-    /// <summary>The thumbnail is this many cells wide: 9 cells make 8 comparisons in a row.</summary>
     private const int Columns = 9;
 
-    /// <summary>The thumbnail is this many cells high.</summary>
     private const int Rows = 8;
 
-    /// <summary>The length of the text of a hash: 64 bits in hexadecimal.</summary>
     private const int HexLength = 16;
 
-    /// <summary>The 64-bit difference hash of <paramref name="image"/> (see the class). A picture that has been disposed is <see cref="ObjectDisposedException"/>.</summary>
     public static ulong DHash64(RasterImage image)
     {
         ArgumentNullException.ThrowIfNull(image);
@@ -73,7 +69,6 @@ public static class PerceptualHash
             }
         }
 
-        // The left cell is brighter than the right one when sum / count is larger; compared by cross-multiplication, so no rounding decides.
         ulong hash = 0;
         for (var row = 0; row < Rows; row++)
         {
@@ -89,22 +84,16 @@ public static class PerceptualHash
         return hash;
     }
 
-    /// <summary>The Hamming distance of two hashes: how many of the 64 bits differ (0 the same picture, 64 the opposite one).</summary>
     public static int Distance(ulong a, ulong b)
     {
         return BitOperations.PopCount(a ^ b);
     }
 
-    /// <summary>A hash as 16 lower case hexadecimal digits, the most significant first: the form the flow keeps it in (the SHA-256 it keeps next to it is hexadecimal as well).</summary>
     public static string ToHex(ulong hash)
     {
         return hash.ToString("x16", CultureInfo.InvariantCulture);
     }
 
-    /// <summary>
-    /// A hash from its 16 hexadecimal digits, upper or lower case; false for anything else (a null, a blank, a different length, another character). On false the flow has no
-    /// hash for that picture: its <see cref="DocumentPictureFingerprint"/> holds null, never the 0 this method leaves in <paramref name="hash"/>, which is the hash of a plain picture.
-    /// </summary>
     public static bool TryParseHex(string? text, out ulong hash)
     {
         hash = 0;

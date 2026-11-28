@@ -2,11 +2,6 @@ using Casazen.Infrastructure.Services;
 
 namespace Casazen.Infrastructure.Identity;
 
-/// <summary>
-/// The edges of a gray copy of a picture of a document, as <see cref="DocumentGeometryInspector"/> reads them (E71/F01/US01/T01, IDENT-TILT): which pixels are strong edges of a mostly
-/// horizontal line and which of a mostly vertical one, and how many of them each row and each column has. Held in memory only; <see cref="Dispose"/> zeroes every buffer (ADR-013-R2), and
-/// every owner reaches it in a <c>finally</c>.
-/// </summary>
 internal sealed class DocumentEdgeMaps : IDisposable
 {
     public DocumentEdgeMaps(int width, int height)
@@ -23,16 +18,12 @@ internal sealed class DocumentEdgeMaps : IDisposable
 
     public int Height { get; }
 
-    /// <summary>1 where a strong edge is mostly horizontal (its gradient is mostly vertical).</summary>
     public byte[] Horizontal { get; }
 
-    /// <summary>1 where a strong edge is mostly vertical (its gradient is mostly horizontal).</summary>
     public byte[] Vertical { get; }
 
-    /// <summary>The pixels of a horizontal edge in every row.</summary>
     public int[] RowEdges { get; }
 
-    /// <summary>The pixels of a vertical edge in every column.</summary>
     public int[] ColumnEdges { get; }
 
     public void Dispose()
@@ -44,10 +35,6 @@ internal sealed class DocumentEdgeMaps : IDisposable
     }
 }
 
-/// <summary>
-/// The strong edge pixels of a picture as points (their distance from the centre of the picture): the ones of horizontal edges and the ones of vertical edges. They are what the angle of a card is
-/// read from: how sharply they pile up in rows and columns when the picture is turned (IDENT-TILT). Held in memory only; <see cref="Dispose"/> zeroes them.
-/// </summary>
 internal sealed class DocumentEdgePoints : IDisposable
 {
     private readonly float[] _horizontalX;
@@ -93,18 +80,10 @@ internal sealed class DocumentEdgePoints : IDisposable
         }
     }
 
-    /// <summary>The edge pixels of the picture as points.</summary>
     public static DocumentEdgePoints From(DocumentEdgeMaps edges) => new(edges);
 
-    /// <summary>The number of edge pixels there are.</summary>
     public int Count => _horizontalX.Length + _verticalX.Length;
 
-    /// <summary>
-    /// How sharply the edges pile up in rows and in columns when the picture is turned <paramref name="degrees"/> counter-clockwise (the sum of the squares of the edge pixels of every row of the
-    /// horizontal edges and of every column of the vertical ones): a long straight edge that the turn makes level falls in one row, so a card whose sides run along the turned rows and columns
-    /// scores far more than at any other angle, and the long lines of the card (its sides, the lines of its text) weigh more than anything short. A card turned <paramref name="degrees"/>
-    /// clockwise scores most at that angle.
-    /// </summary>
     public long Sharpness(double degrees)
     {
         var radians = degrees * Math.PI / 180.0;
@@ -149,25 +128,15 @@ internal sealed class DocumentEdgePoints : IDisposable
 /// </summary>
 internal static class DocumentTilt
 {
-    /// <summary>
-    /// A test seam: when a test sets it on its thread, every buffer made of a picture here (the edge maps and the points, the levelled copies, the levelled card) is added to it, so the test can
-    /// prove that every one of them is zeroed when the inspection returns. Null in the application: nothing is recorded.
-    /// </summary>
     [ThreadStatic]
     internal static List<Array>? Probe;
 
-    /// <summary>Records <paramref name="buffer"/> for the test seam and returns it.</summary>
     internal static T[] Track<T>(T[] buffer)
     {
         Probe?.Add(buffer);
         return buffer;
     }
 
-    /// <summary>
-    /// The angles, in degrees clockwise, the card of a picture may be turned by, the likeliest first, at most <paramref name="maxCount"/> of them: the peaks of the score of the angles of
-    /// <paramref name="points"/> within <paramref name="searchDegrees"/> either way, each of at least <see cref="DocumentGeometryRules.TiltPeakFactor"/> times the median score, two of them at
-    /// least <see cref="DocumentGeometryRules.TiltPeakSeparationDegrees"/> apart, each refined to <see cref="DocumentGeometryRules.TiltFineStepDegrees"/>.
-    /// </summary>
     internal static IReadOnlyList<double> Angles(DocumentEdgePoints points, double searchDegrees, int maxCount)
     {
         var coarse = DocumentGeometryRules.TiltCoarseStepDegrees;
@@ -197,10 +166,6 @@ internal static class DocumentTilt
         return picked.Select(peak => Refined(points, (peak - half) * coarse)).ToList();
     }
 
-    /// <summary>
-    /// <paramref name="degrees"/> refined: the angles within a coarse step either way are scanned by <see cref="DocumentGeometryRules.TiltFineStepDegrees"/>, and the angle is the middle (the
-    /// score-weighted mean) of the ones that score at least <see cref="DocumentGeometryRules.TiltPlateauShare"/> of the best.
-    /// </summary>
     internal static double Refined(DocumentEdgePoints points, double degrees)
     {
         var step = DocumentGeometryRules.TiltFineStepDegrees;
@@ -227,11 +192,6 @@ internal static class DocumentTilt
         return Math.Round(sum / weight, 2);
     }
 
-    /// <summary>
-    /// A copy of <paramref name="source"/> with its content turned <paramref name="degrees"/> counter-clockwise around the centre (a card turned <paramref name="degrees"/> clockwise lies
-    /// straight in it), bilinear, of the same size. What the turn uncovers at the border takes the value of the nearest pixel of the picture, so no edge is made where the picture ends. The
-    /// caller zeroes the copy.
-    /// </summary>
     internal static GrayBitmap Level(GrayBitmap source, double degrees)
     {
         var radians = degrees * Math.PI / 180.0;
@@ -270,10 +230,6 @@ internal static class DocumentTilt
         return new GrayBitmap(width, height, pixels);
     }
 
-    /// <summary>
-    /// Where a point of the levelled gray copy (<see cref="Level"/> by <paramref name="degrees"/>) is in the gray copy as it lies, in pixels of the copy, both of <paramref name="width"/> by
-    /// <paramref name="height"/>.
-    /// </summary>
     internal static (double X, double Y) ToPicture(double degrees, int width, int height, double levelledX, double levelledY)
     {
         var radians = degrees * Math.PI / 180.0;
@@ -286,11 +242,6 @@ internal static class DocumentTilt
         return (centreX + (cos * dx) - (sin * dy), centreY + (sin * dx) + (cos * dy));
     }
 
-    /// <summary>
-    /// The card of a levelled gray copy cut out of the colour picture, upright as it lies and not yet turned by its quarter turns: the rectangle <paramref name="left"/>, <paramref name="top"/>,
-    /// <paramref name="right"/>, <paramref name="bottom"/> (lines of the levelled copy, <paramref name="grayWidth"/> by <paramref name="grayHeight"/> pixels, levelled by
-    /// <paramref name="degrees"/>) sampled in <paramref name="image"/> at its own resolution, bilinear, in one pass (no levelled copy of the whole picture is made). The caller zeroes the copy.
-    /// </summary>
     internal static RasterImage LevelCard(RasterImage image, int grayWidth, int grayHeight, double degrees, int left, int top, int right, int bottom)
     {
         var scaleX = (double)image.Width / grayWidth;

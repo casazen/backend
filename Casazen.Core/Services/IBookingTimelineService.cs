@@ -7,13 +7,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IBookingTimelineService
 {
-    /// <summary>
-    /// The entries of the booking in order, or <c>null</c> when the booking does not exist for the caller's org. The caller has already
-    /// checked that it may read the booking (<c>booking.read</c> on its property).
-    /// </summary>
-    /// <param name="bookingId">The booking.</param>
-    /// <param name="includeAmounts">The caller may read payments (<c>payment.read</c>): without it the entries say that money moved, not how much.</param>
-    /// <param name="cancellationToken">Cancellation.</param>
     Task<IReadOnlyList<BookingTimelineEvent>?> GetAsync(
         Guid bookingId,
         bool includeAmounts,

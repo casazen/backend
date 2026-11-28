@@ -70,10 +70,6 @@ public class LeaseContractTemplateService(
         return (template, data);
     }
 
-    /// <summary>
-    /// Template of the lease: the one of its legacy fiscal regime for a libero or a concordato, and the transitory model (the Allegato B
-    /// of the D.M. 16/01/2017) for a transitorio lease, whatever its tax regime: a 4+4 or a 3+2 model must not be used for it (LT-10, TR).
-    /// </summary>
     private LeaseContractTemplateState TemplateFor(LeaseContract lease) =>
         catalog.Get(LeaseTemplateVariants.For(lease.ContractType, lease.FiscalRegime));
 

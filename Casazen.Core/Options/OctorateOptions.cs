@@ -15,28 +15,21 @@ public sealed class OctorateOptions
 
     public string? BillingNetworkName { get; set; }
 
-    /// <summary>Minutes a consent state lives when the setting is not given.</summary>
     public const int DefaultStateLifetimeMinutes = 10;
 
-    /// <summary>The longest life a consent state may be given.</summary>
     public const int MaxStateLifetimeMinutes = 60;
 
-    /// <summary>The attempts of a check-in write (a guest, a state of the stay) before one "To do" is raised (E03/F01/US01/T03).</summary>
     public const int DefaultCheckInMaxAttempts = 5;
 
-    /// <summary>The application's client id (<c>Octorate__ClientId</c>): the code exchange, the refresh, the partner login.</summary>
     public string? ClientId { get; set; }
 
     /// <summary>The application's client secret (<c>Octorate__ClientSecret</c>): an environment variable only, never committed.</summary>
     public string? ClientSecret { get; set; }
 
-    /// <summary>The API address (<c>Octorate__ApiBaseUrl</c>, <c>https://api.octorate.com/connect</c>); the calls add <c>/rest/v1/...</c>.</summary>
     public string? ApiBaseUrl { get; set; }
 
-    /// <summary>The Octorate login and panel address (<c>Octorate__FrontendBaseUrl</c>), also read by the panel steps of E10.</summary>
     public string? FrontendBaseUrl { get; set; }
 
-    /// <summary>The consent page (<c>Octorate__AuthorizationEndpoint</c>, <c>.../octobook/identity/oauth.xhtml</c>).</summary>
     public string? AuthorizationEndpoint { get; set; }
 
     /// <summary>
@@ -45,25 +38,17 @@ public sealed class OctorateOptions
     /// </summary>
     public string? RedirectUri { get; set; }
 
-    /// <summary>Allow the test deployment to connect to production Octorate credentials. This can affect real properties.</summary>
     public bool AllowProductionApiInTest { get; set; }
 
-    /// <summary>Minutes a consent state is valid (1 to <see cref="MaxStateLifetimeMinutes"/>).</summary>
     public int StateLifetimeMinutes { get; set; } = DefaultStateLifetimeMinutes;
 
-    /// <summary>
-    /// The domain of the CasaZen address given as the alternative e-mail when CasaZen creates a property on Octorate (PO-19), read by
-    /// E02/F03/US01/T06. No default in code.
-    /// </summary>
     public string? OwnerEmailDomain { get; set; }
 
     /// <summary>The secret in the address of the webhook (<c>Octorate__WebhookSecret</c>, 32+ characters), never committed.</summary>
     public string? WebhookSecret { get; set; }
 
-    /// <summary>The thresholds of the matcher of the listings (<c>Octorate:Mapping</c>, E02/F01/US02/T03).</summary>
     public OctorateMappingOptions Mapping { get; set; } = new();
 
-    /// <summary>The import of the listings that already exist on OTAs (<c>Octorate:ExistingInventory</c>, E02/F01/US03): the evidence of the pilot, channel by channel.</summary>
     public OctorateExistingInventoryOptions ExistingInventory { get; set; } = new();
 
     /// <summary>
@@ -87,7 +72,6 @@ public sealed class OctorateOptions
     /// </summary>
     public bool SendGuestsWhenSenderIsNotChannelManager { get; set; }
 
-    /// <summary>The life of a consent state, brought into 1 to <see cref="MaxStateLifetimeMinutes"/> minutes.</summary>
     public TimeSpan StateLifetime =>
         TimeSpan.FromMinutes(StateLifetimeMinutes is >= 1 and <= MaxStateLifetimeMinutes ? StateLifetimeMinutes : DefaultStateLifetimeMinutes);
 }
@@ -110,7 +94,6 @@ public sealed class OctorateMappingOptions
 
     public int CandidateMinScore { get; set; } = DefaultCandidateMinScore;
 
-    /// <summary>True when 0 &lt;= candidate &lt; propose &lt;= 100 and the margin is 0 to 100.</summary>
     public bool IsValid =>
         CandidateMinScore >= 0 && CandidateMinScore < ProposeMinScore && ProposeMinScore <= 100
         && ProposeMinMargin is >= 0 and <= 100;

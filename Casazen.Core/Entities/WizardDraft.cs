@@ -28,22 +28,17 @@ namespace Casazen.Core.Entities;
 [Table("WizardDrafts")]
 public class WizardDraft : ITenantOwned
 {
-    /// <summary>Name of the unique index on (<see cref="OrgId"/>, <see cref="UserId"/>, <see cref="WizardType"/>) for the drafts with no <see cref="EntityId"/>.</summary>
     public const string NewEntityIndexName = "UIX_WizardDrafts_OrgId_UserId_WizardType";
 
-    /// <summary>Name of the unique index on (<see cref="OrgId"/>, <see cref="UserId"/>, <see cref="WizardType"/>, <see cref="EntityId"/>) for the drafts that have one.</summary>
     public const string ExistingEntityIndexName = "UIX_WizardDrafts_OrgId_UserId_WizardType_EntityId";
 
-    /// <summary>Column length of <see cref="UserId"/>: the one of <c>User.Id</c>, the Auth0 subject.</summary>
     public const int UserIdMaxLength = 255;
 
-    /// <summary>The draft of a row once anonymized: no data at all.</summary>
     public const string EmptyJson = "{}";
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row: the org the person worked in. Server-set, never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
     /// <summary>
@@ -56,13 +51,10 @@ public class WizardDraft : ITenantOwned
 
     public WizardType WizardType { get; set; }
 
-    /// <summary>What the wizard edits (the property, the booking...); <c>null</c> for a wizard that creates something.</summary>
     public Guid? EntityId { get; set; }
 
-    /// <summary>The counter the client sees: 1 at the first save, plus one at every save (conflict detection per ADR-024, Q-A05).</summary>
     public int Version { get; set; }
 
-    /// <summary>The typed data without the personal fields, as JSON. Never holds a field of <c>WizardDraftPiiFields</c>.</summary>
     [Required, Column(TypeName = "jsonb")]
     public string DraftJson { get; set; } = EmptyJson;
 
@@ -72,10 +64,8 @@ public class WizardDraft : ITenantOwned
     /// </summary>
     public string? EncryptedFieldsJson { get; set; }
 
-    /// <summary>UTC instant of the last save, whole microseconds.</summary>
     public DateTime LastSavedAt { get; set; }
 
-    /// <summary>UTC instant after which the retention anonymizes the draft: <see cref="LastSavedAt"/> plus <see cref="WizardDraftLimits.RetentionDays"/> days.</summary>
     public DateTime ExpiresAt { get; set; }
 
     /// <summary>
@@ -84,11 +74,6 @@ public class WizardDraft : ITenantOwned
     /// </summary>
     public uint RowVersion { get; set; }
 
-    /// <summary>
-    /// Takes the person and the data out of the row and keeps the rest (org, wizard, entity, version, instants) for the audit trail: the
-    /// state of a draft the retention reached or the person discarded. The nightly retention writes the same three values in SQL, without
-    /// loading the rows (<c>WizardDraftRetentionService</c>): a change here is a change there.
-    /// </summary>
     public void Anonymize()
     {
         DraftJson = EmptyJson;
@@ -97,15 +82,9 @@ public class WizardDraft : ITenantOwned
     }
 }
 
-/// <summary>Limits of the wizard drafts (ADR-024).</summary>
 public static class WizardDraftLimits
 {
-    /// <summary>A draft is kept this many days from its last save, then anonymized by the retention job (ADR-024-R5).</summary>
     public const int RetentionDays = 30;
 
-    /// <summary>
-    /// Most bytes (UTF-8) of the typed data of one draft, counting both halves. A wizard saves on every step and blur, so the size of
-    /// one save is bounded: a draft is the answers of a form, never a file (photos and documents are uploaded on their own).
-    /// </summary>
     public const int MaxDataBytes = 256 * 1024;
 }

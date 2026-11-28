@@ -37,12 +37,10 @@ public class PublicHostResolver(
 {
     private const string CacheKeyPrefix = "PublicHostResolver:";
 
-    // Shared across scopes when registered as a singleton; a private one when a caller (a test) passes none.
     private readonly PublicHostMissCache _misses = missCache ?? new PublicHostMissCache();
 
     public async Task<ResolveHostResponseDto?> ResolveAsync(string host, CancellationToken cancellationToken = default)
     {
-        // Anything that is not a plain DNS name is no host of ours: no lookup, nothing cached under an attacker's text.
         var normalizedHost = PublicSiteHosts.Normalize(host);
         if (normalizedHost is null)
             return null;
@@ -68,7 +66,6 @@ public class PublicHostResolver(
         return resolved;
     }
 
-    /// <summary>Drops the cached answer (found or not found) of a host after a domain set/verify, a slug or branding change.</summary>
     public void InvalidateCacheForHost(string host)
     {
         var normalizedHost = PublicSiteHosts.Normalize(host);
@@ -96,8 +93,6 @@ public class PublicHostResolver(
         if (subdomainOrg is null)
             return null;
 
-        // Only an org that chose the subdomain mode is served on its label (BK-16, A3-08): an org on the path or
-        // custom-domain mode did not opt in, so its slug is not a host (and no CORS origin) of the platform.
         if (subdomainOrg.PublicHostMode != PublicHostMode.CasazenSubdomain)
             return null;
 
@@ -123,7 +118,6 @@ public class PublicHostResolver(
             Surfaces = new ResolveHostSurfacesDto { GuestArea = surfaces.GuestArea, OwnerPortal = surfaces.OwnerPortal },
             OwnerLoginReady = surfaces.OwnerLoginReady,
             EmbedEnabled = surfaces.EmbedEnabled,
-            // E40/F01/US01/T04: the container of the agency only while SiteEmbed is on, and only a valid one.
             Tracking = new ResolveHostTrackingDto { GtmContainerId = GtmContainerIds.Served(org.GtmContainerId, siteEmbed) },
         };
     }
@@ -132,7 +126,6 @@ public class PublicHostResolver(
 
     private string? TryExtractSubdomainLabel(string host)
     {
-        // D3: no default base domain; without PublicHost:BaseDomain no host is an org subdomain.
         if (options.Value.NormalizedBaseDomain is not { } baseDomain)
             return null;
 

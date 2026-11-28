@@ -21,10 +21,8 @@ public class CalendarChangeProcessJob(ICalendarPushService push, ICalendarChange
 {
     public const string RecurringJobId = "calendar-change-process";
 
-    /// <summary>Every minute: a change reaches the channel manager within about a minute even when the run enqueued after it did not.</summary>
     public const string Cron = "* * * * *";
 
-    /// <summary>The seconds a run waits for the previous run of the same job: the lock wait of the frequent jobs (`JobLockTimeouts.FrequentSeconds`).</summary>
     public const int LockTimeoutSeconds = 60;
 
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Fail)]

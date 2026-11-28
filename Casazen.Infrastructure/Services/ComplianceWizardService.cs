@@ -31,7 +31,6 @@ public class ComplianceWizardService(
     ITicinoNotificationService? ticinoNotifications = null,
     ISwissNotificationService? swissNotifications = null) : IComplianceWizardService
 {
-    /// <summary>The most items listed in each section of the compliance status (the count covers all of the ones that need attention).</summary>
     internal const int StatusSectionMaxItems = 50;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -57,8 +56,6 @@ public class ComplianceWizardService(
         var property = await LoadPropertyAsync(propertyId, cancellationToken)
             ?? throw new KeyNotFoundException($"Property {propertyId} not found");
 
-        // PM-01: activating the listing publishes the property on the booking site; a property in long-term mode is never
-        // published (422 property_not_bookable_in_long_mode), whatever its other data say.
         PropertyRentalModeRules.EnsureShortRent(property);
 
         if (tosAccepted != true)
@@ -106,7 +103,7 @@ public class ComplianceWizardService(
             .Where(OpenableStayRules.CanShow)
             .Where(b => b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn)
             .Where(AlloggiatiStatusRules.ItalianProperties) // casazen/backend#979: Alloggiati data, an Italian duty; Ticino has its own section
-            .Where(b => b.NoShowAt == null) // NF-45: the guests of a no-show never came, there is no data to complete
+            .Where(b => b.NoShowAt == null)
             .Where(b => b.CheckInDate.Date <= today.AddDays(1))
             .ToListAsync(cancellationToken);
 
@@ -130,11 +127,8 @@ public class ComplianceWizardService(
             });
         }
 
-        // casazen/backend#978: the booking flow of the org says which steps CasaZen does by itself; those are not the host's to do.
         var flow = flowSettings is null ? null : await flowSettings.GetAsync(orgId, cancellationToken);
 
-        // Departures of today (Europe/Rome), with or without the arrival registered, and checked-in stays not closed
-        // (CO-08, A5-08): until then only checked-in stays counted and none could be checked in from the apps.
         var checkoutDue = (await db.Bookings
                 .AsNoTracking()
                 .Where(b => b.OrgId == orgId)
@@ -154,7 +148,6 @@ public class ComplianceWizardService(
                     GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim(),
                 })
                 .ToListAsync(cancellationToken))
-            // A departure of today that the flow registers by itself at the check-out time is not a thing to do; one of an earlier day (the flow did not close it) is.
             .Where(b => !(flow is { RegistersDeparture: true }
                           && b.CheckOutDate.Date == today.Date
                           && b.NoShowAt is null
@@ -166,10 +159,6 @@ public class ComplianceWizardService(
             })
             .ToList();
 
-        // E03/F02/US01/T03 (NF-52): the traffic light of every item, from the one rule class, and the feed of the «Da fare» list. Behind
-        // Features:ComplianceTrafficLight, OFF by default (nothing in the application writes the proofs that turn an item green yet, so on it would
-        // give every stay of the last 90 days a red To do nobody can close). Off, the status is not even evaluated and the cockpit is what it was
-        // before: the items carry no light, the new sections are empty, the "to send by hand" section keeps every stay and nothing is written.
         var lights = statusService is not null && featureFlags is not null && featureFlags.IsEnabled(FeatureFlags.ComplianceTrafficLight);
         var status = lights ? await statusService!.EvaluateAsync(scope, cancellationToken) : null;
         var statusOfStay = (status?.Items ?? [])
@@ -186,13 +175,11 @@ public class ComplianceWizardService(
         var ticinoDays = await GetTicinoNotificationsAsync(scope, cancellationToken);
         var swissDays = await GetSwissNotificationsAsync(scope, cancellationToken);
 
-        // An item of the sections that existed: red with the code of its action when the traffic light is on, as it was (no light) when it is off.
         ComplianceSummaryItem Lit(ComplianceSummaryItem item) => status is null ? item : WithOpenVerdict(item);
 
         var summary = new ComplianceSummaryResult(
             new ComplianceSummarySection(
                 pendingProperties.Count,
-                // Pending and suspended alike: the activation wizard opens on the first blocking step still open.
                 pendingProperties.Select(p => Lit(ComplianceSummaryItem.ForProperty(
                     ComplianceCockpitAction.ActivateProperty, p.Id, p.Name))).ToList()),
             new ComplianceSummarySection(incompleteCheckIns.Count, incompleteCheckIns.Select(Lit).ToList()),
@@ -221,8 +208,6 @@ public class ComplianceWizardService(
                     .ToList()),
         };
 
-        // AC-NF52-13: the red and yellow items feed the unified "To do". The summary is the cockpit of the host: if the list cannot be
-        // kept in step it must still be answered, and the next read tries again.
         if (activityFeeder is not null && status is not null)
         {
             try
@@ -238,10 +223,6 @@ public class ComplianceWizardService(
         return summary;
     }
 
-    /// <summary>
-    /// casazen/backend#979: the arrival days of the Ticino properties of the caller's reach whose guests are not notified to the cantonal police
-    /// yet, oldest first: one item per property and day, the day in <c>Period</c> (<c>yyyy-MM-dd</c>), due 24 hours from the arrival.
-    /// </summary>
     private async Task<List<ComplianceSummaryItem>> GetTicinoNotificationsAsync(HostScope scope, CancellationToken cancellationToken)
     {
         if (ticinoNotifications is null)
@@ -267,11 +248,6 @@ public class ComplianceWizardService(
             .ToList();
     }
 
-    /// <summary>
-    /// E31/F02/US01/T01: the arrival days of the properties of the caller's reach in a canton other than Ticino whose guests are not notified to the cantonal authority yet, oldest first:
-    /// one item per property and day, the day in <c>Period</c> (<c>yyyy-MM-dd</c>), due at the deadline of the regime (<c>null</c> where it has none). Only where the duty is <c>Required</c>
-    /// and while <c>Features:GuestRegistrationRegimes</c> is on: both are decided by <see cref="ISwissNotificationService.ListPendingDaysAsync"/>, the one place that lists them.
-    /// </summary>
     private async Task<List<ComplianceSummaryItem>> GetSwissNotificationsAsync(HostScope scope, CancellationToken cancellationToken)
     {
         if (swissNotifications is null)
@@ -297,10 +273,6 @@ public class ComplianceWizardService(
             .ToList();
     }
 
-    /// <summary>
-    /// An item of the cockpit that exists today and is not computed from a proof (a property to activate, guest data to complete, a
-    /// check-out, a turnover): the host has something to do, so it is red with the code that says what (<see cref="ComplianceLightRules.OpenAction"/>).
-    /// </summary>
     private static ComplianceSummaryItem WithOpenVerdict(ComplianceSummaryItem item) =>
         WithVerdict(item, ComplianceLightRules.OpenAction(item.Action), null);
 
@@ -312,7 +284,7 @@ public class ComplianceWizardService(
         ComplianceSummaryItem item,
         IReadOnlyDictionary<Guid, ComplianceStatusItem>? statusOfStay) =>
         statusOfStay is null
-            ? item // the traffic light is off: the item is what it was
+            ? item
             : item.BookingId is { } bookingId && statusOfStay.TryGetValue(bookingId, out var stayStatus) && stayStatus.Action == item.Action
                 ? WithVerdict(item, stayStatus.Verdict, null)
                 : WithOpenVerdict(item);
@@ -329,11 +301,6 @@ public class ComplianceWizardService(
             HandoffTopic = verdict.HandoffTopic,
         };
 
-    /// <summary>
-    /// A new section of the cockpit (CHK-12): the items of the status that <paramref name="belongs"/> says, the red ones first, then the
-    /// yellow, then the green, each group by its deadline. The count is the number that need attention (not green); the list is capped at
-    /// <see cref="StatusSectionMaxItems"/>. Empty when the status was not asked for.
-    /// </summary>
     private static ComplianceSummarySection StatusSection(ComplianceStatusResult? status, Func<ComplianceStatusItem, bool> belongs)
     {
         if (status is null)
@@ -358,7 +325,6 @@ public class ComplianceWizardService(
             ? ComplianceSummaryItem.ForBooking(item.Action, bookingId, item.Label)
             : ComplianceSummaryItem.ForProperty(item.Action, item.PropertyId, item.Label);
 
-        // What the item still lacks: the reason, under the field it is about (nothing for a green item).
         IReadOnlyList<ComplianceMissing> missing = item.Verdict.NeedsAttention
             ? [new ComplianceMissing(item.Verdict.Reason, MissingFieldOf(item.Kind))]
             : [];
@@ -377,14 +343,8 @@ public class ComplianceWizardService(
         _ => "compliance",
     };
 
-    /// <summary>Most recent turnovers listed; the count covers all of them.</summary>
     internal const int TurnoverSectionMaxItems = 10;
 
-    /// <summary>
-    /// Turnovers still open (CO-17): stays checked out whose property was not declared ready, from the check-out record
-    /// (a stay closed before CO-17 has none and is not listed). A later stay of the same property whose arrival is
-    /// registered closes it: the property was obviously ready for it.
-    /// </summary>
     private async Task<ComplianceSummarySection> GetTurnoversPendingAsync(
         HostScope scope,
         BookingFlowSettingsView? flow,
@@ -396,8 +356,6 @@ public class ComplianceWizardService(
             .InScope(scope)
             .Where(c => c.Booking.Status == BookingStatus.CheckedOut);
 
-        // casazen/backend#978: the flow declares the property ready by itself when its cleaning is done, so a stay whose cleaning is planned waits for it, not for the host.
-        // A stay with no cleaning planned, or whose property the host said was not ready yet, stays the host's to declare (nobody else will).
         if (flow is { DeclaresReadyWhenCleaningDone: true })
         {
             pending = pending.Where(c => c.PropertyReady == false
@@ -414,7 +372,6 @@ public class ComplianceWizardService(
         }
 
         pending = pending
-            // The check-out page of a stay whose property or guest is gone answers 404: it is not a thing to close.
             .Where(c => c.Booking.Property != null && c.Booking.Guest != null && !c.Booking.Guest.IsDeleted
                 && c.Booking.Property.Name != "" && c.Booking.Guest.FirstName != "" && c.Booking.Guest.LastName != "")
             .Where(c => !db.Bookings.Any(next =>
@@ -509,7 +466,6 @@ public class ComplianceWizardService(
             }
             else if (status == AlloggiatiWebStatus.DaInviareManualmente && !supersededByStatus.Contains(stay.Id))
             {
-                // A stay the status lists elsewhere (entrusted to the channel manager, sent by hand, with its receipt) is not one the host sends by hand.
                 manual.Add((stay.CheckInDate, WithStayVerdict(
                     ComplianceSummaryItem.ForBooking(ComplianceCockpitAction.SendAlloggiati, stay.Id, stay.GuestName) with
                     {
@@ -535,7 +491,6 @@ public class ComplianceWizardService(
         bool registerArrival = false,
         CancellationToken cancellationToken = default)
     {
-        // Same rules and transition as the completion and POST /check-out (CO-08).
         await stayLifecycle.StartCheckOutAsync(bookingId, registerArrival, cancellationToken);
         return await BuildCheckoutStateAsync(bookingId, cancellationToken);
     }
@@ -562,7 +517,6 @@ public class ComplianceWizardService(
         if (!input.ConfirmDeparture)
             throw new DomainRuleException(BookingErrorCodes.DepartureNotConfirmed, "CheckoutDepartureNotConfirmed");
 
-        // Before CO-17 a supplier alone meant "request": the app still sends it that way.
         var cleaning = input.CleaningChoice ?? (input.SupplierOrgId is null ? null : CheckoutCleaningChoice.Request);
         if ((cleaning == CheckoutCleaningChoice.Request && input.SupplierOrgId is null)
             || (cleaning == CheckoutCleaningChoice.Skip && input.SupplierOrgId is not null))
@@ -601,7 +555,6 @@ public class ComplianceWizardService(
         return await BuildCheckoutStateAsync(bookingId, cancellationToken);
     }
 
-    /// <summary>The wizard as committed now: the booking, its check-out record and what each step shows.</summary>
     private async Task<CheckoutWizardState> BuildCheckoutStateAsync(Guid bookingId, CancellationToken cancellationToken)
     {
         var booking = await db.Bookings
@@ -634,19 +587,11 @@ public class ComplianceWizardService(
             touristTax);
     }
 
-    /// <summary>
-    /// The tax CasaZen recorded on the booking (BK-03): only bookings it priced (booking site, host booking) and only an
-    /// amount above 0. A channel booking or a comune without a rate records 0, which is not the tax of the stay.
-    /// </summary>
     private static decimal? RecordedTouristTax(Booking booking) =>
         booking.Source is BookingSource.Direct or BookingSource.Manual && booking.TouristTax > 0
             ? booking.TouristTax
             : null;
 
-    /// <summary>
-    /// The tax was in the total paid online on the booking site (BK-03: the direct booking charges it with the stay):
-    /// a booking-site booking not paid at the property, with a Stripe payment collected.
-    /// </summary>
     private async Task<bool> IsTouristTaxCollectedOnlineAsync(Booking booking, CancellationToken cancellationToken)
     {
         if (booking.Source != BookingSource.Direct || booking.PaymentOption == PaymentOption.OnSite || booking.TouristTax <= 0)
@@ -660,7 +605,6 @@ public class ComplianceWizardService(
                 cancellationToken);
     }
 
-    // The documents and the checklist are read by the evaluation itself (IPropertyComplianceStatusService).
     private async Task<Property?> LoadPropertyAsync(Guid propertyId, CancellationToken cancellationToken) =>
         await db.Properties.FirstOrDefaultAsync(p => p.Id == propertyId, cancellationToken);
 
@@ -672,10 +616,8 @@ public class ComplianceWizardService(
         // re-evaluation after every change and the nightly check (CO-06).
         var blockingSteps = await complianceStatus.GetBlockingStepsAsync(property, cancellationToken);
 
-        // The regional documents are decided by the region of the comune the host chose (PropertyComplianceStatusService, SU-04).
         var touristTax = await ResolveTouristTaxAsync(property, cancellationToken);
 
-        // Any import feed of the property (PC-11: Airbnb, Booking.com, ... each its own feed).
         var icalComplete = await db.PropertyICalFeeds
             .AnyAsync(f => f.PropertyId == property.Id && f.ImportUrl != null && f.ImportUrl != "", cancellationToken);
 

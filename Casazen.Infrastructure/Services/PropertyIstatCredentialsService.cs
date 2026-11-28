@@ -23,7 +23,6 @@ public sealed class PropertyIstatCredentialsService(
 
     public async Task<IstatCredentialsStatus> GetStatusAsync(Guid propertyId, CancellationToken cancellationToken = default)
     {
-        // Projection on the date only: the encrypted columns are never read (nor decrypted) for the status.
         var updatedAt = await db.PropertyIstatCredentials
             .AsNoTracking()
             .Where(c => c.PropertyId == propertyId)
@@ -96,7 +95,6 @@ public sealed class PropertyIstatCredentialsService(
     {
         row.Username = credentials.Username.Trim();
 
-        // The password is kept exactly as typed: spaces may be part of it.
         row.Password = credentials.Password;
         row.StructureCode = string.IsNullOrWhiteSpace(credentials.StructureCode) ? null : credentials.StructureCode.Trim();
         row.UpdatedAt = now;

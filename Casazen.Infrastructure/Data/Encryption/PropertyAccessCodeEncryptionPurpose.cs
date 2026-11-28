@@ -9,9 +9,5 @@ namespace Casazen.Infrastructure.Data.Encryption;
 /// </summary>
 public static class PropertyAccessCodeEncryptionPurpose
 {
-    /// <summary>
-    /// Data Protection purpose for property access codes.
-    /// NEVER change it: stored encrypted values could not be decrypted.
-    /// </summary>
     public const string Purpose = "Casazen.PropertyAccessCode";
 }

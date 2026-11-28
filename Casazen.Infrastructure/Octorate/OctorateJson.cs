@@ -11,7 +11,6 @@ namespace Casazen.Infrastructure.Octorate;
 /// </summary>
 internal static partial class OctorateJson
 {
-    /// <summary>The member called one of <paramref name="names"/>, exact spelling first, then without regard to case.</summary>
     internal static JsonElement? Find(JsonElement element, params string[] names)
     {
         if (element.ValueKind != JsonValueKind.Object)
@@ -35,7 +34,6 @@ internal static partial class OctorateJson
         return null;
     }
 
-    /// <summary>A string, or a number as its text, trimmed; <c>null</c> when absent, blank or of another kind.</summary>
     internal static string? Text(JsonElement element, params string[] names) =>
         Find(element, names) is { } value ? TextOf(value) : null;
 
@@ -50,7 +48,6 @@ internal static partial class OctorateJson
         return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
     }
 
-    /// <summary>A whole number from a JSON number or a numeric string that fits an <see cref="int"/>.</summary>
     internal static int? Int(JsonElement element, params string[] names)
     {
         if (Find(element, names) is not { } value || !OctorateHttp.TryReadLong(value, out var number))
@@ -73,7 +70,6 @@ internal static partial class OctorateJson
         };
     }
 
-    /// <summary>A boolean from <c>true</c>/<c>false</c>, the strings <c>"true"</c>/<c>"false"</c> or the numbers 1/0.</summary>
     internal static bool? Bool(JsonElement element, params string[] names)
     {
         if (Find(element, names) is not { } value)
@@ -89,10 +85,6 @@ internal static partial class OctorateJson
         };
     }
 
-    /// <summary>
-    /// An instant in UTC from an ISO 8601 text (a text without an offset counts as UTC) or from a Unix time in seconds or milliseconds;
-    /// <c>null</c> when absent or unreadable.
-    /// </summary>
     internal static DateTime? Instant(JsonElement element, params string[] names)
     {
         if (Find(element, names) is not { } value)
@@ -113,7 +105,6 @@ internal static partial class OctorateJson
             : null;
     }
 
-    /// <summary>The calendar date at the start of <paramref name="text"/> (<c>2026-11-10</c> or <c>2026-11-10T00:00:00Z</c>); <c>null</c> when it does not start with one.</summary>
     internal static DateOnly? DateOf(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -130,7 +121,6 @@ internal static partial class OctorateJson
     {
         try
         {
-            // Ten digits is seconds, thirteen is milliseconds.
             return (value > 99_999_999_999L ? DateTimeOffset.FromUnixTimeMilliseconds(value) : DateTimeOffset.FromUnixTimeSeconds(value)).UtcDateTime;
         }
         catch (ArgumentOutOfRangeException)

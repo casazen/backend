@@ -3,17 +3,8 @@ using Casazen.Core.Suppliers;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// «Descrivi di cosa hai bisogno» in the guided request of a short-rent host (WIZ-AI-REQUEST): the host tells in a few words what the job is and
-/// the AI proposes the kind of service, how urgent it is, a sentence for the supplier and who to ask. It only proposes: the wizard fills in its
-/// answers with it, and the host reads, changes and sends the request (or does not use it at all: the wizard works without an AI).
-/// </summary>
 public interface IServiceRequestAssistService
 {
-    /// <summary>
-    /// Whether an AI could answer now: an external provider is in effect (not the stub) and has a key. A cheap read, no call to a provider: the
-    /// wizard asks it before it offers the box, so a platform without an AI shows nothing new.
-    /// </summary>
     Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default);
 
     /// <summary>

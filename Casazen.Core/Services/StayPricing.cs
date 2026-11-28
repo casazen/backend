@@ -84,12 +84,6 @@ public static class StayPricing
         return priced is null ? lodging : lodging with { PricedNights = priced };
     }
 
-    /// <summary>
-    /// The length-of-stay discount a stay of <paramref name="nights"/> nights gets on a lodging of <paramref name="lodgingTotal"/> (NF-35,
-    /// ADR-028-R3, R4): the tier with the most nights that the stay reaches, taking <c>round(lodgingTotal x percent / 100, 2)</c> off, half away from
-    /// zero. <c>null</c> when no tier is reached, or the amount would be nothing. A tier that is not a discount (no night, a percentage that is not
-    /// above 0 and at most 100) is ignored: the rules refuse such a tier before it is stored.
-    /// </summary>
     public static StayDiscount? DiscountFor(int nights, decimal lodgingTotal, IReadOnlyList<StayDiscountTier>? tiers)
     {
         if (tiers is null || tiers.Count == 0)
@@ -112,11 +106,6 @@ public static class StayPricing
         return amount > 0m ? new StayDiscount(reached.MinNights, reached.PercentOff, amount) : null;
     }
 
-    /// <summary>
-    /// The price of each night of the stay, in order, when it is not the same every night; <c>null</c> when it is (no weekend
-    /// night and no night priced by the host): the tourist tax of a comune that taxes a percentage of the price reads the
-    /// price of every night.
-    /// </summary>
     public static IReadOnlyList<decimal>? NightPrices(DateOnly checkIn, StayLodging lodging)
     {
         ArgumentNullException.ThrowIfNull(lodging);
@@ -139,10 +128,6 @@ public static class StayPricing
         return prices;
     }
 
-    /// <summary>
-    /// The price of the one night that starts on <paramref name="night"/>: a stay of one night through <see cref="Lodging"/>, so the
-    /// calendar of the booking site (DB-03b) shows exactly what the quote adds up for that night and has no calculation of its own.
-    /// </summary>
     public static decimal NightPrice(
         DateOnly night,
         decimal nightlyRate,
@@ -150,16 +135,8 @@ public static class StayPricing
         IReadOnlyDictionary<DateOnly, decimal>? hostPrices = null) =>
         Lodging(night, 1, nightlyRate, weekendSurchargePercent, hostPrices).Total;
 
-    /// <summary>An amount in euros as whole cents (half away from zero): the cents of the quote lines and of the calendar.</summary>
     public static long ToCents(decimal amount) => Cents(amount);
 
-    /// <summary>
-    /// The breakdown of a quote, in order: the ordinary nights (at the nightly rate first, then one line for each other price
-    /// the host set for dates of the stay, in the order of the nights), the weekend nights, the length-of-stay discount (a negative
-    /// amount, NF-35), the cleaning fee, the tourist tax and the total. A line that does not apply is left out (no zero nights, no
-    /// discount without a tier, no cleaning fee of 0, no tax that CasaZen could not calculate: its <c>status</c> says why). The lines
-    /// before the total add up to the total, to the cent.
-    /// </summary>
     public static IReadOnlyList<QuoteLine> Lines(DirectBookingQuote quote)
     {
         ArgumentNullException.ThrowIfNull(quote);
@@ -167,7 +144,6 @@ public static class StayPricing
         var lodging = quote.Lodging;
         var lines = new List<QuoteLine>(6);
 
-        // Ordinary nights grouped by price: the nights at the rate and the nights the host priced at that same price are one line.
         var ordinary = new List<(decimal Price, int Count)>(2);
         if (lodging.WeekdayNights > 0)
             ordinary.Add((lodging.NightlyRate, lodging.WeekdayNights));

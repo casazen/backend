@@ -4,10 +4,6 @@ using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// Links a CasaZen property to a condominium. <see cref="Millesimi"/> is only what the administrator already wrote;
-/// nothing is calculated from it.
-/// </summary>
 [Table("CondominiumUnits")]
 public class CondominiumUnit : ITenantOwned
 {
@@ -25,7 +21,6 @@ public class CondominiumUnit : ITenantOwned
     [MaxLength(UnitReferenceMaxLength)]
     public string? UnitReference { get; set; }
 
-    /// <summary>Informational thousandths. Never used to split an amount.</summary>
     [Column(TypeName = "decimal(8,2)")]
     public decimal? Millesimi { get; set; }
 

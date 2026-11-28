@@ -11,22 +11,12 @@ namespace Casazen.Core.Leases;
 /// </summary>
 public enum LeaseLetterKind
 {
-    /// <summary>The landlord's notice to the tenant that the lease will not renew (the denial of renewal at the first expiry, the renunciation after).</summary>
     Disdetta = 0,
 
-    /// <summary>The landlord's acknowledgement of the tenant's withdrawal (recesso).</summary>
     PresaAttoRecesso = 1,
 
-    /// <summary>
-    /// The agreement of the parties to renew or to extend the lease (LR-OPS-1): the standard renewal at the expiry, or an extension to a
-    /// day they agreed on. Both parties sign it; it is not sent.
-    /// </summary>
     Rinnovo = 2,
 
-    /// <summary>
-    /// The confirmation, sent before the expiry, that the need that justified a transitory lease goes on (D.M. 16/01/2017); the landlord
-    /// prepares it when the need is his.
-    /// </summary>
     ConfermaEsigenza = 3,
 
     /// <summary>
@@ -41,20 +31,11 @@ public enum LeaseLetterKind
     /// </summary>
     OpzioneCedolare = 5,
 
-    /// <summary>
-    /// The minutes of the handover of the property at the end of the lease (LR-OPS-1c): the date, the state, the readings of the meters and the
-    /// keys, mostly lines the two parties fill in by hand on the day. Both sign it; it is not sent.
-    /// </summary>
     Riconsegna = 6,
 
-    /// <summary>
-    /// The statement the landlord gives the tenant when he returns the security deposit (LR-OPS-1c): the deposit, the legal interest year by year,
-    /// the interest already paid, the sums he keeps and why, and what he returns.
-    /// </summary>
     RestituzioneCauzione = 7,
 }
 
-/// <summary>How the person sent a letter (<c>Segna come inviata</c>): written in the history of the lease with the day, nothing else.</summary>
 public enum LeaseLetterMeans
 {
     RegisteredMail = 0,
@@ -69,39 +50,29 @@ public enum LeaseLetterMeans
 /// </summary>
 public enum LeaseDisdettaReason
 {
-    /// <summary>Lettera a): the landlord wants the home for his own use, or for his spouse, parents, children or relatives up to the second degree.</summary>
     OwnUse = 0,
 
-    /// <summary>Lettera b): the landlord is a company, an entity or a body with public or social aims and wants the home for its activities, offering another suitable one.</summary>
     LegalEntityUse = 1,
 
-    /// <summary>Lettera c): the tenant has the full availability of another free and suitable home in the same comune.</summary>
     TenantOtherHome = 2,
 
-    /// <summary>Lettera d): the home is in a seriously damaged building that must be rebuilt or made stable.</summary>
     DamagedBuilding = 3,
 
-    /// <summary>Lettera e): the building is to be renovated as a whole, demolished or transformed, or raised by a floor.</summary>
     Renovation = 4,
 
-    /// <summary>Lettera f): the tenant does not live in the home continuously, without a good reason.</summary>
     TenantAbsent = 5,
 
-    /// <summary>Lettera g): the landlord wants to sell the home to a third party and owns no other home.</summary>
     Sale = 6,
 }
 
-/// <summary>Why the tenant withdraws from the lease before its end (recesso), as the landlord records it.</summary>
 public enum TenantWithdrawalReason
 {
     /// <summary>For serious reasons, which the law allows at any time with the notice of the rules (art. 3, comma 6, L. 431/1998).</summary>
     GraveMotivi = 0,
 
-    /// <summary>By the faculty the contract itself gives, with the notice the contract states.</summary>
     ContractualFaculty = 1,
 }
 
-/// <summary>The address names of the letters (<c>/letters/{slug}</c>); never renamed.</summary>
 public static class LeaseLetterKinds
 {
     public static string Slug(LeaseLetterKind kind) => kind switch
@@ -169,11 +140,6 @@ public sealed record LeaseTransitoryConfirmationFacts(bool Applies, bool Availab
 /// <param name="MaxEffectiveOn">The last day (the end of the period the lease is in).</param>
 public sealed record LeaseCedolareNoticeFacts(bool Available, DateOnly MinEffectiveOn, DateOnly MaxEffectiveOn);
 
-/// <summary>What the landlord can do about the handover of the property today (<see cref="LeaseOperationRules.Handover"/>).</summary>
-/// <param name="Available">The lease is in force and ending (a notice is recorded, it was ended early, or it is of a type that does not renew): the handover is to be arranged.</param>
-/// <param name="MinOn">The first day the handover can be dated (the start of the lease).</param>
-/// <param name="MaxOn">The last day (a year after the end of the lease: a sanity bound).</param>
-/// <param name="SuggestedOn">The day the window suggests: the last day of the lease.</param>
 public sealed record LeaseHandoverFacts(bool Available, DateOnly MinOn, DateOnly MaxOn, DateOnly SuggestedOn);
 
 /// <summary>What the landlord can do about the return of the security deposit today (<see cref="LeaseOperationRules.Deposit"/>).</summary>
@@ -186,27 +152,18 @@ public sealed record LeaseHandoverFacts(bool Available, DateOnly MinOn, DateOnly
 public sealed record LeaseDepositFacts(
     bool Available, decimal Amount, DateOnly PaidOn, DateOnly MinPaidOn, DateOnly SuggestedReturnOn, DateOnly MaxReturnOn);
 
-/// <summary>
-/// The rules of the operations of a lease in force (LR-OPS-1), pure: when a notice is on time, what a withdrawal ends the lease on, which
-/// operation makes sense now. The months and days are the figures of <see cref="LongRentRules"/> and <see cref="LongRentDeadlineRules"/>,
-/// the product values a lawyer has still to confirm (decision LR-D29): none is copied here or in the interface.
-/// </summary>
 public static class LeaseOperationRules
 {
-    /// <summary>The longest notice, in months, a landlord can type for a withdrawal by contractual faculty: a sanity bound, not a figure of law.</summary>
     public const int MaxContractualNoticeMonths = 12;
 
-    /// <summary>How far past the end of the period an extension agreed by the parties can go, in years: a sanity bound against a typo, not a figure of law.</summary>
     public const int MaxAgreedExtensionYears = 20;
 
-    /// <summary>The period the lease is in is the first one it has: it has not renewed by itself yet (<see cref="LeaseContract.EndDate"/> does not move).</summary>
     public static bool IsFirstPeriod(LeaseContract lease)
     {
         ArgumentNullException.ThrowIfNull(lease);
         return RomeCalendar.DateInRome(lease.CurrentTermEndDate) == RomeCalendar.DateInRome(lease.EndDate);
     }
 
-    /// <summary>The notice of non-renewal that the landlord can still prepare today, and by when it is on time.</summary>
     public static LeaseDisdettaFacts Disdetta(LeaseContract lease, DateOnly today)
     {
         ArgumentNullException.ThrowIfNull(lease);
@@ -223,7 +180,6 @@ public static class LeaseOperationRules
         return new LeaseDisdettaFacts(available, IsFirstPeriod(lease), periodEnd, lastDay, lastDay is { } last && today > last);
     }
 
-    /// <summary>Whether a withdrawal of the tenant can be recorded now, and the days it can have been received on.</summary>
     public static LeaseWithdrawalFacts Withdrawal(LeaseContract lease, DateOnly today)
     {
         ArgumentNullException.ThrowIfNull(lease);
@@ -258,7 +214,6 @@ public static class LeaseOperationRules
         return new LeaseRenewalFacts(available, opensOn, periodEnd.AddDays(1), standardEnd, months ?? 0, periodEnd.AddYears(MaxAgreedExtensionYears));
     }
 
-    /// <summary>The confirmation of the need of a transitory lease: whether it applies, whose it is and the day before which it has to be sent.</summary>
     public static LeaseTransitoryConfirmationFacts TransitoryConfirmation(LeaseContract lease, DateOnly today)
     {
         ArgumentNullException.ThrowIfNull(lease);
@@ -290,17 +245,12 @@ public static class LeaseOperationRules
         return new LeaseCedolareNoticeFacts(available, start, periodEnd);
     }
 
-    /// <summary>
-    /// The lease is going to end or has ended and does not renew: a notice is recorded (by either party), it was ended early, or it is of a type
-    /// that ends by itself. The handover of the property and the return of the deposit belong to this moment.
-    /// </summary>
     public static bool IsEnding(LeaseContract lease)
     {
         ArgumentNullException.ThrowIfNull(lease);
         return lease.TerminatedOn is not null || lease.NoticeOn is not null || !LeaseRenewal.Renews(lease.ContractType);
     }
 
-    /// <summary>Whether the minutes of the handover can be prepared (the lease is in force and ending) and the days they can be dated.</summary>
     public static LeaseHandoverFacts Handover(LeaseContract lease)
     {
         ArgumentNullException.ThrowIfNull(lease);
@@ -311,7 +261,6 @@ public static class LeaseOperationRules
         return new LeaseHandoverFacts(available, start, end.AddYears(1), end < start ? start : end);
     }
 
-    /// <summary>Whether the statement of the return of the deposit can be worked out (the lease is ending and has a deposit), and the days it can have.</summary>
     public static LeaseDepositFacts Deposit(LeaseContract lease, DateOnly today)
     {
         ArgumentNullException.ThrowIfNull(lease);
@@ -327,12 +276,10 @@ public static class LeaseOperationRules
             end.AddYears(LeaseDepositRules.MaxYearsAfterEnd));
     }
 
-    /// <summary>The notice, in months, of a withdrawal: the one of the rules for serious reasons, the one typed (or the rules') for the contractual faculty.</summary>
     public static int WithdrawalNoticeMonths(TenantWithdrawalReason reason, int? contractualMonths) =>
         reason == TenantWithdrawalReason.ContractualFaculty && contractualMonths is { } months
             ? months
             : LongRentDeadlineRules.NoticeMonthsBeforeEnd;
 
-    /// <summary>The last day of the lease when a withdrawal received on <paramref name="receivedOn"/> takes effect (the day the notice runs out).</summary>
     public static DateOnly WithdrawalEffectiveOn(DateOnly receivedOn, int noticeMonths) => receivedOn.AddMonths(noticeMonths);
 }

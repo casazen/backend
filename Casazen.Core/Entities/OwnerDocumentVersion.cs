@@ -26,38 +26,30 @@ public class OwnerDocumentVersion : ITenantOwned, IAppendOnlyRecord
 
     public Guid OwnerDocumentId { get; set; }
 
-    /// <summary>1 for the first file, then one more for each new file of the document.</summary>
     public int VersionNumber { get; set; }
 
-    /// <summary>The key of the file in the private bucket (<c>StorageKeys.OwnerDocumentFile</c>): made by the server, never the name sent.</summary>
     [Required]
     [MaxLength(StorageKeyMaxLength)]
     public string StorageKey { get; set; } = string.Empty;
 
-    /// <summary>The name of the file as uploaded, without any folder: what the download offers.</summary>
     [Required]
     [MaxLength(FileNameMaxLength)]
     public string FileName { get; set; } = string.Empty;
 
-    /// <summary>The type the scan recognised from the content (<c>application/pdf</c>, <c>image/jpeg</c>, <c>image/png</c>), never the one declared.</summary>
     [Required]
     [MaxLength(ContentTypeMaxLength)]
     public string ContentType { get; set; } = string.Empty;
 
     public long SizeBytes { get; set; }
 
-    /// <summary>SHA-256 of the file (lower-case hex).</summary>
     [Required]
     [MaxLength(HashLength)]
     public string Sha256 { get; set; } = string.Empty;
 
-    /// <summary>The first day the document is in force; <c>null</c> when it says nothing.</summary>
     public DateOnly? EffectiveFrom { get; set; }
 
-    /// <summary>The last day the document is in force (an insurance, a mandate): the agency is told before it lapses. <c>null</c> for no expiry.</summary>
     public DateOnly? ExpiresOn { get; set; }
 
-    /// <summary>The engine that judged the file clean (<c>IOwnerFileScanner.Engine</c>).</summary>
     [Required]
     [MaxLength(EngineMaxLength)]
     public string ScanEngine { get; set; } = string.Empty;

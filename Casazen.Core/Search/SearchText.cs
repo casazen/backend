@@ -19,25 +19,16 @@ namespace Casazen.Core.Search;
 /// </remarks>
 public static class SearchText
 {
-    /// <summary>The shortest term accepted by <c>GET /api/search</c> (after trimming).</summary>
     public const int MinQueryLength = 2;
 
-    /// <summary>The longest term accepted (after trimming). A name or a code never needs more.</summary>
     public const int MaxQueryLength = 64;
 
-    /// <summary>Words of the term that count: the others are ignored, so the SQL of one search has a bounded size.</summary>
     public const int MaxTokens = 5;
 
-    /// <summary>Characters a booking code prefix needs before the bookings are also searched by code (any fewer would match by chance).</summary>
     public const int MinBookingCodeLength = 4;
 
-    /// <summary>Words of the term that can be typed with a space inside a booking code (<c>7K3M9 PQ2XV</c>): more than this is not a code.</summary>
     private const int MaxBookingCodeParts = 2;
 
-    /// <summary>
-    /// The folded form of <paramref name="value"/>: lower case, no accents, words of <c>a-z0-9</c> separated by one space, no
-    /// space at the ends. Empty for a null or empty value, or one with no letter or digit.
-    /// </summary>
     public static string Fold(string? value)
     {
         if (string.IsNullOrEmpty(value))
@@ -51,7 +42,6 @@ public static class SearchText
             string? letters = null;
             if (!isAsciiWord && !SearchFolding.TryFold(character, out letters))
             {
-                // Anything else (space, punctuation, a letter the table does not know) ends the word.
                 pendingSeparator = true;
                 continue;
             }
@@ -69,11 +59,6 @@ public static class SearchText
         return folded.ToString();
     }
 
-    /// <summary>
-    /// The query of <paramref name="term"/>: its words (folded, no repeats, at most <see cref="MaxTokens"/>) and, when the term
-    /// can be the beginning of a booking code, that prefix. <see cref="SearchQuery.Empty"/> when no word is at least
-    /// <see cref="MinQueryLength"/> characters long: one letter would match half of the rows.
-    /// </summary>
     public static SearchQuery Parse(string? term)
     {
         var folded = Fold(term);
@@ -104,7 +89,6 @@ public static class SearchText
         if (string.IsNullOrWhiteSpace(term))
             return null;
 
-        // The hyphen-minus and the dashes a word processor or a phone puts in a code (U+2010 to U+2014, U+2212), like BookingCodes does.
         var parts = term.Split([' ', '-', '\u2010', '\u2011', '\u2012', '\u2013', '\u2014', '\u2212'], StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length is 0 or > MaxBookingCodeParts)
             return null;
@@ -136,10 +120,6 @@ public static class SearchText
         return hasDigit || prefix.Length == BookingCodes.Length ? prefix.ToString() : null;
     }
 
-    /// <summary>
-    /// True when every word of <paramref name="tokens"/> is the beginning of a word of <paramref name="key"/> (a folded text): the
-    /// rule PostgreSQL applies with the full-text index, in C#. False for an empty key or no words.
-    /// </summary>
     public static bool KeyMatches(string? key, IReadOnlyList<string> tokens)
     {
         ArgumentNullException.ThrowIfNull(tokens);
@@ -176,15 +156,9 @@ public static class SearchText
 /// <param name="BookingCodePrefix">The beginning of a booking code (stored form), or null.</param>
 public sealed record SearchQuery(IReadOnlyList<string> Tokens, string? BookingCodePrefix)
 {
-    /// <summary>Nothing to search: no group is read and the answer is empty.</summary>
     public static SearchQuery Empty { get; } = new([], null);
 
-    /// <summary>True when there is nothing to search for.</summary>
     public bool IsEmpty => Tokens.Count == 0;
 
-    /// <summary>
-    /// The PostgreSQL <c>to_tsquery</c> text of the words, each one as a prefix: <c>ros:* &amp; mar:*</c>. Safe by construction (a
-    /// word has only letters and digits of ASCII).
-    /// </summary>
     public string ToTsQuery() => string.Join(" & ", Tokens.Select(token => token + ":*"));
 }

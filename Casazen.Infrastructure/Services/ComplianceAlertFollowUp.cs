@@ -29,7 +29,6 @@ public sealed class ComplianceAlertFollowUp(
     IComplianceAlertRecipientResolver recipients,
     ILogger<ComplianceAlertFollowUp> logger) : IComplianceAlertFollowUp
 {
-    /// <summary>The most items a sweep of the stays that owe nothing closes in one call.</summary>
     internal const int MaxSweep = 500;
 
     public async Task OpenTodoAsync(CreateTodoRequest request, CancellationToken ct)
@@ -54,8 +53,6 @@ public sealed class ComplianceAlertFollowUp(
         if (!ComplianceAlertSchedule.IsLegalDeadlineNear(popup.DeadlineUtc, nowUtc))
             return;
 
-        // The caller that already read the audience (the alerts about a period or the connection read it before the claim, for the email too) hands it
-        // over: no second read. An empty list is nobody, never «everybody»; only «not read» (null) asks the port.
         var userIds = popup.UserIds ?? (await recipients.ForPropertyAsync(popup.OrgId, popup.PropertyId, ct)).UserIds;
         var failures = new List<Exception>();
         foreach (var userId in userIds.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
@@ -91,7 +88,6 @@ public sealed class ComplianceAlertFollowUp(
         ArgumentException.ThrowIfNullOrWhiteSpace(entityType);
         ArgumentNullException.ThrowIfNull(entityIds);
 
-        // An empty list of entities is nothing, never "all of them".
         if (types.Count == 0 || entityIds.Count == 0)
             return;
 
@@ -127,7 +123,6 @@ public sealed class ComplianceAlertFollowUp(
                         && a.EntityType == InternalActivity.BookingEntityType
                         && a.EntityId != null
                         && typeNames.Contains(a.ActivityType))
-            // The one definition of a stay that owes a communication: an active status and no no-show mark.
             .Where(a => db.Bookings.Any(b => b.Id == a.EntityId
                                              && (!AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) || b.NoShowAt != null)))
             .OrderBy(a => a.CreatedAt)

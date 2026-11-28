@@ -24,32 +24,25 @@ namespace Casazen.Infrastructure.Data.Seeds;
 /// </remarks>
 public static class SwissMunicipalitySeed
 {
-    /// <summary>The name of the seed compiled into the assembly.</summary>
     public const string ResourceName = "Casazen.Infrastructure.Data.Seeds.swiss.swiss-localities.csv";
 
-    /// <summary>The header line of the seed.</summary>
     public const string Header = "postal_code;add_on;locality;municipality_code;municipality;canton";
 
-    /// <summary>The page of the official directory (the source credit of the licence is «swisstopo»).</summary>
     public const string SourceUrl = "https://www.swisstopo.admin.ch/de/amtliches-ortschaftenverzeichnis";
 
-    /// <summary>The authority that publishes the directory.</summary>
     public const string Authority = "swisstopo";
 
-    /// <summary>Largest seed read.</summary>
     public const int MaxSeedBytes = 5 * 1024 * 1024;
 
     private const int Columns = 6;
     private const int MaxNameLength = 100;
 
-    /// <summary>The 26 cantons (ISO 3166-2:CH).</summary>
     public static readonly IReadOnlySet<string> Cantons = new HashSet<string>(StringComparer.Ordinal)
     {
         "AG", "AI", "AR", "BE", "BL", "BS", "FR", "GE", "GL", "GR", "JU", "LU", "NE",
         "NW", "OW", "SG", "SH", "SO", "SZ", "TG", "TI", "UR", "VD", "VS", "ZG", "ZH",
     };
 
-    /// <summary>The seed of this build; <c>null</c> when the build has none.</summary>
     public static byte[]? ReadEmbedded()
     {
         using var stream = typeof(SwissMunicipalitySeed).Assembly.GetManifestResourceStream(ResourceName);
@@ -61,12 +54,6 @@ public static class SwissMunicipalitySeed
         return memory.ToArray();
     }
 
-    /// <summary>
-    /// Reads a seed: UTF-8, the <see cref="Header"/>, six cells a line, a postal code of four digits (not starting with 0), an add-on of two digits,
-    /// a BFS number of one to four digits (not starting with 0), names of 1 to 100 characters, one of the 26 cantons, a municipality with one name
-    /// and one canton, no row twice.
-    /// </summary>
-    /// <exception cref="FormatException">The file is not a seed: the message names the first wrong line.</exception>
     public static SwissPlacesSeedData Parse(byte[] content)
     {
         ArgumentNullException.ThrowIfNull(content);
@@ -83,7 +70,6 @@ public static class SwissMunicipalitySeed
             throw new FormatException("Swiss places seed: the file is not UTF-8.", ex);
         }
 
-        // A byte order mark (U+FEFF) at the start is not part of the header.
         if (text.Length > 0 && text[0] == (char)0xFEFF)
             text = text[1..];
 
@@ -146,11 +132,6 @@ public static class SwissMunicipalitySeed
             localities);
     }
 
-    /// <summary>
-    /// Makes <c>SwissMunicipalities</c> and <c>SwissLocalities</c> equal to the seed <paramref name="content"/> (see the remarks of the class) and
-    /// records it in <c>OfficialSourceFetches</c>; nothing is written when the same file is already recorded and the row counts match.
-    /// </summary>
-    /// <exception cref="FormatException">The file is not a seed (<see cref="Parse"/>): nothing is written.</exception>
     public static async Task<SwissPlacesSeedResult> ApplyAsync(AppDbContext db, byte[] content, TimeProvider clock, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(db);
@@ -170,7 +151,6 @@ public static class SwissMunicipalitySeed
             && await db.SwissMunicipalities.CountAsync(m => seedCodes.Contains(m.MunicipalityCode), cancellationToken) == seed.Municipalities.Count
             && await db.SwissLocalities.CountAsync(cancellationToken) == seed.Localities.Count)
         {
-            // Nothing to write. The municipalities an earlier load kept (a property still carries them) are still told to the startup log.
             var kept = await CarriedByPropertiesAsync(
                 db, await db.SwissMunicipalities.Where(m => !seedCodes.Contains(m.MunicipalityCode)).Select(m => m.MunicipalityCode).ToListAsync(cancellationToken), cancellationToken);
             return new SwissPlacesSeedResult(false, seed.Sha256, seed.Municipalities.Count, seed.Localities.Count, 0, 0, kept.Count, kept.Values.Sum());
@@ -213,7 +193,6 @@ public static class SwissMunicipalitySeed
 
         db.SwissMunicipalities.RemoveRange(storedMunicipalities.Values);
 
-        // Localities: by postal code, add-on, municipality and name; the canton follows the municipality, the search name follows the name.
         var storedLocalities = (await db.SwissLocalities.ToListAsync(cancellationToken))
             .ToDictionary(KeyOf);
         foreach (var locality in seed.Localities)
@@ -261,10 +240,6 @@ public static class SwissMunicipalitySeed
             true, seed.Sha256, seed.Municipalities.Count, seed.Localities.Count, storedMunicipalities.Count, storedLocalities.Count, carried.Count, carried.Values.Sum());
     }
 
-    /// <summary>
-    /// How many properties carry each of <paramref name="codes"/> as their Swiss municipality: every org and the deleted properties too (the load runs
-    /// outside a request, for the whole platform), only the codes that some property carries are in the answer.
-    /// </summary>
     private static async Task<Dictionary<string, int>> CarriedByPropertiesAsync(
         AppDbContext db, List<string> codes, CancellationToken cancellationToken)
     {
@@ -279,12 +254,6 @@ public static class SwissMunicipalitySeed
         return carried.GroupBy(code => code, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
     }
 
-    /// <summary>
-    /// Called by the Up method of the migration <c>AddSwissMunicipality</c> (2026-10-25), which inserted here a hand-written list of 48
-    /// municipalities, four of its five Ticino numbers wrong. It inserts nothing any more: a new database gets the official directory from
-    /// <see cref="ApplyAsync"/> at startup (<c>SwissPlacesSeedHostedService</c>), and a database that already has the old rows gets them corrected
-    /// or removed by the same load. The migration file itself is left as it was generated.
-    /// </summary>
     public static void Insert(MigrationBuilder migrationBuilder)
     {
         ArgumentNullException.ThrowIfNull(migrationBuilder);
@@ -311,7 +280,6 @@ public static class SwissMunicipalitySeed
     private static FormatException Wrong(int line, string reason) => new($"Swiss places seed: line {line}: {reason}.");
 }
 
-/// <summary>A seed read by <see cref="SwissMunicipalitySeed.Parse"/>: its SHA-256, the municipalities (one per BFS number) and the localities.</summary>
 public sealed record SwissPlacesSeedData(string Sha256, IReadOnlyList<SwissMunicipality> Municipalities, IReadOnlyList<SwissLocality> Localities);
 
 /// <summary>

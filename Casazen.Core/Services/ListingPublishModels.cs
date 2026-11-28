@@ -11,11 +11,6 @@ namespace Casazen.Core.Services;
 /// <param name="ErrorCode">A stable code of what went wrong (<see cref="ListingChannelErrors"/>); <c>null</c> while nothing did.</param>
 public sealed record ListingChannelResult(string ChannelCode, ChannelPublishStatus Status, string? ErrorCode);
 
-/// <summary>
-/// The codes a channel row keeps in <c>ListingChannelState.ErrorCode</c> and the words that go with each (E02/F03/US01/T02, T07, NF-38): the host is
-/// told what is wrong in simple words, never a generic «error». The message of a code is a key of <c>SharedResources.resx</c> (Italian and English);
-/// the Italian default is stored next to the code in <c>ErrorMessage</c>, for the rows a reader without the resources reads.
-/// </summary>
 public static class ListingChannelErrors
 {
     public const string CinMissing = "listing_cin_missing";
@@ -55,16 +50,10 @@ public static class ListingChannelErrors
         ["octorate_existing_inventory_must_import"] = ("OctorateExistingInventoryMustImport", "Gli annunci di questo immobile esistono già sul channel manager o sulle OTA: si importano e si abbinano, non si creano di nuovo."),
     };
 
-    /// <summary>The key of <c>SharedResources</c> for a code, or <c>null</c> for a code with no words.</summary>
     public static string? MessageKey(string? code) => code is not null && Catalog.TryGetValue(code, out var entry) ? entry.Key : null;
 
-    /// <summary>The Italian words of a code (what the row keeps); <c>null</c> for a code with no words.</summary>
     public static string? ItalianMessage(string? code) => code is not null && Catalog.TryGetValue(code, out var entry) ? entry.Italian : null;
 
-    /// <summary>
-    /// The code a row keeps for an error of the channel manager: the code of the typed error when it has words, <see cref="ContentRejected"/> for a
-    /// refusal of the request itself, <see cref="ChannelPushFailed"/> for anything else.
-    /// </summary>
     public static string CodeOfOctorateError(string? octorateCode) =>
         octorateCode == "octorate_request_rejected" ? ContentRejected
         : octorateCode is not null && Catalog.ContainsKey(octorateCode) ? octorateCode

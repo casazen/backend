@@ -30,7 +30,6 @@ public sealed class FiscalNumberingService(
         if (PostgresAdvisoryLocks.IsSupported(db) && db.Database.CurrentTransaction is null)
             throw new InvalidOperationException("A fiscal number is reserved in the transaction that saves its document: open it first.");
 
-        // Joins the caller's transaction (null is returned and nobody commits here).
         await using var joined = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db, ct, (PostgresAdvisoryLocks.Scope.FiscalNumbering, $"{orgId:N}:{issuerProfileId:N}:{normalized}"));
 

@@ -16,15 +16,11 @@ public sealed record DnsInstructions(
     string? VercelTxtHost = null,
     string? VercelTxtValue = null);
 
-/// <summary>Preview links for each publication mode.</summary>
 public sealed record PublicUrls(
     string PathUrl,
     string? SubdomainUrl,
     string? CustomDomainUrl);
 
-/// <summary>Owner-facing domain configuration snapshot for an org (#298 / US-024).</summary>
-/// <param name="Surfaces">The surfaces of the agency's own domain (E40/F01/US01), <c>null</c> while the flag <c>WhiteLabelHost</c> is off.</param>
-/// <param name="Tracking">The tracking of the agency's pages (E40/F01/US01/T04), <c>null</c> while the flag <c>SiteEmbed</c> is off.</param>
 public sealed record OrgDomainConfig(
     Guid OrgId,
     PublicHostMode PublicHostMode,
@@ -38,7 +34,6 @@ public sealed record OrgDomainConfig(
     OrgDomainSurfaces? Surfaces = null,
     OrgDomainTracking? Tracking = null);
 
-/// <summary>The tracking of the agency's pages (NF-149): its Google Tag Manager container (<see cref="GtmContainerIds"/>), or <c>null</c>.</summary>
 public sealed record OrgDomainTracking(string? GtmContainerId);
 
 public enum SetOrgDomainTrackingOutcome
@@ -46,7 +41,6 @@ public enum SetOrgDomainTrackingOutcome
     Success,
     NotFound,
 
-    /// <summary>The text is no container id (<see cref="GtmContainerIds.TryNormalize"/>) — controller maps to 400 <c>gtm_container_id_invalid</c>.</summary>
     Invalid,
 }
 
@@ -67,7 +61,6 @@ public sealed record OrgDomainSurfaces(
     bool OwnerLoginAutomatic,
     HostSurfaces Effective);
 
-/// <summary>The three choices of <c>PUT api/orgs/{orgId}/domain/surfaces</c> (E40/F01/US01).</summary>
 public sealed record OrgDomainSurfaceSettings(
     bool GuestAreaOnOwnDomain,
     bool OwnerPortalOnOwnDomain,
@@ -78,10 +71,8 @@ public enum SetOrgDomainSurfacesOutcome
     Success,
     NotFound,
 
-    /// <summary>The org's effective tier cannot use a custom domain: the surfaces follow the domain's plan — controller maps to 403 <c>plan_required</c>.</summary>
     PlanRequired,
 
-    /// <summary>The org is not in the custom-domain mode or has no custom domain — controller maps to 400 <c>org_domain_not_configured</c>.</summary>
     NotConfigured,
 }
 
@@ -94,13 +85,8 @@ public enum RetryOwnerLoginOutcome
     Success,
     NotFound,
 
-    /// <summary>
-    /// The org has a verified custom domain but its effective tier no longer pays for it — controller maps to 403 <c>plan_required</c>. Asked after
-    /// <see cref="DomainNotVerified"/>, as <see cref="IOrgDomainService.VerifyDomainAsync"/> asks for a configured domain before the plan: an org with no verified domain is never refused for its plan.
-    /// </summary>
     PlanRequired,
 
-    /// <summary>The org has no verified custom domain to register, whatever its plan — controller maps to 409 <c>org_domain_not_verified</c>.</summary>
     DomainNotVerified,
 }
 
@@ -109,8 +95,6 @@ public sealed record RetryOwnerLoginResult(
     RetryOwnerLoginOutcome Outcome,
     OrgDomainConfig? Config);
 
-/// <summary>One org of the queue of the owner sign-ins (E40/F01/US02/T01): <c>GET api/admin/owner-login-hosts?state=…</c>.</summary>
-/// <param name="DomainVerified">The domain is verified: <see cref="OwnerLoginHostState.Ready"/> can be set only for a verified domain the org pays for.</param>
 public sealed record OwnerLoginHostQueueItem(
     Guid OrgId,
     string DisplayName,
@@ -123,7 +107,6 @@ public enum SetOwnerLoginStateOutcome
     Success,
     NotFound,
 
-    /// <summary><see cref="OwnerLoginHostState.Ready"/> for an org whose custom domain is not verified and served — controller maps to 422 <c>org_domain_not_verified</c>.</summary>
     DomainNotVerified,
 }
 
@@ -131,13 +114,6 @@ public sealed record SetOwnerLoginStateResult(
     SetOwnerLoginStateOutcome Outcome,
     OwnerLoginHostState? State);
 
-/// <summary>
-/// Honest state of the custom domain for the settings page (BK-17): why it is pending or failed, when it was last checked,
-/// when it became verified, whether the platform can activate domains at all, and whether the periodic check still runs.
-/// </summary>
-/// <param name="Detail">A <c>DomainIssues</c> code, <c>null</c> when verified (or not checked yet).</param>
-/// <param name="ActivationAvailable"><c>false</c> while <c>Vercel__ApiToken</c>/<c>Vercel__ProjectId</c> are not set: no domain is reported as active.</param>
-/// <param name="AutoCheckActive">The periodic job still checks this domain (pending domains are given up on after <c>MaxPendingDays</c>).</param>
 public sealed record DomainStatusInfo(
     string? Detail,
     DateTime? CheckedAt,
@@ -153,11 +129,9 @@ public enum SetOrgDomainOutcome
     Conflict,
     ValidationError,
 
-    /// <summary>Subdomain mode requested but <c>PublicHost:BaseDomain</c> is not configured — controller maps to 422.</summary>
     SubdomainsNotConfigured,
 }
 
-/// <param name="ErrorKey">Resource key (<c>SharedResources</c>) of the validation message, localized by the controller.</param>
 public sealed record SetOrgDomainResult(
     SetOrgDomainOutcome Outcome,
     OrgDomainConfig? Config,
@@ -168,13 +142,8 @@ public enum VerifyOrgDomainOutcome
     Success,
     NotFound,
 
-    /// <summary>Org is not in CustomDomain mode, or is missing CustomDomain/token — controller maps to 400.</summary>
     NotConfigured,
 
-    /// <summary>
-    /// The custom domain is a Pro feature and the org's effective tier is not Pro or Scale (BK-16): the domain is not
-    /// served, so a verification would report "verified" for a site nobody can open — controller maps to 403.
-    /// </summary>
     PlanRequired,
 }
 
@@ -210,10 +179,6 @@ public interface IOrgDomainService
         OrgDomainSurfaceSettings settings,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Saves the Google Tag Manager container of the agency's pages (E40/F01/US01/T04, NF-149), normalized by <see cref="GtmContainerIds"/>; an
-    /// empty value clears it. The cached <c>resolve-host</c> answers of the org's hosts are dropped. The flag <c>SiteEmbed</c> is the controller's gate.
-    /// </summary>
     Task<SetOrgDomainTrackingResult> SetTrackingAsync(
         Guid orgId,
         string? gtmContainerId,
@@ -227,10 +192,6 @@ public interface IOrgDomainService
     /// </summary>
     Task<RetryOwnerLoginResult> RetryOwnerLoginAsync(Guid orgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The queue of the owner sign-ins for the platform administrators (E40/F01/US02/T01): the active orgs with a custom domain in <paramref name="state"/>, by
-    /// name. The policy <c>AdminOnly</c> is the controller's.
-    /// </summary>
     Task<IReadOnlyList<OwnerLoginHostQueueItem>> ListOwnerLoginHostsAsync(
         OwnerLoginHostState state,
         CancellationToken cancellationToken = default);

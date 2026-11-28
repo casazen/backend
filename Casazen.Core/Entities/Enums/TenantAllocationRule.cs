@@ -13,6 +13,5 @@ public enum TenantAllocationRule
     ExplicitAmount = 4,
     NotChargeable = 5,
 
-    /// <summary>The contract names a rule this version does not apply. The line is not charged.</summary>
     ContractSpecific = 6,
 }

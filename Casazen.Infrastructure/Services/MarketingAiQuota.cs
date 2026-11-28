@@ -5,7 +5,6 @@ using Microsoft.Extensions.Configuration;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>Monthly request allowance shared by manual generation and background runs for one organization.</summary>
 public sealed class MarketingAiQuota(AppDbContext db, IConfiguration config, TimeProvider clock)
 {
     public async Task ReserveAsync(Guid orgId, CancellationToken ct)

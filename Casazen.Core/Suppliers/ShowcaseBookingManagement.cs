@@ -5,11 +5,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Core.Suppliers;
 
-/// <summary>
-/// What the customer of a supplier's public showcase types to find its booking again (SP-11): the supplier's slug, the code of the
-/// booking (<c>XXXXX-XXXXX</c>, in the e-mails) and the e-mail address the booking was made with. Nothing is checked yet:
-/// <see cref="ShowcaseBookingManagementRules.TryNormalize"/> does.
-/// </summary>
 public sealed record ShowcaseBookingCredentials(string? Slug, string? Code, string? Email);
 
 /// <summary>
@@ -121,12 +116,6 @@ public sealed record ShowcaseBookingDisputeView(
     int? RefundCents,
     bool Settled);
 
-/// <summary>
-/// The quote the supplier sent for the booking and the customer has not answered (SP-04b): the lines and the total, the note, the other
-/// time when the supplier offered one (the booking keeps its own until the customer accepts), and the deadline of the answer.
-/// </summary>
-/// <param name="SentAt">When it was sent: the version of the quote, which the answer repeats.</param>
-/// <param name="AnswerBy">The instant the customer has to answer by; after it the request is cancelled.</param>
 public sealed record ShowcaseBookingQuote(
     DateTime SentAt,
     IReadOnlyList<ServiceRequestQuoteLine> Lines,
@@ -136,46 +125,22 @@ public sealed record ShowcaseBookingQuote(
     DateTime? EndUtc,
     DateTime? AnswerBy);
 
-/// <param name="Name">The name of the service when the request was made.</param>
-/// <param name="Slug">
-/// The public slug of the service, while it is published (the page asks <c>GET api/public/suppliers/{slug}/slots?service=</c>
-/// for the free times to move the booking to); <c>null</c> once the supplier paused or deleted it.
-/// </param>
 public sealed record ShowcaseBookingServiceInfo(string Name, string? Slug);
 
-/// <summary>The supplier: the name its showcase shows and the slug of that showcase.</summary>
 public sealed record ShowcaseBookingSupplierInfo(string Name, string Slug);
 
-/// <summary>
-/// Where the work is: the comune and the postal code always, the street address, the floor and the notes for the access only once
-/// the supplier took the request (<c>null</c> before, and once the retention removed them).
-/// </summary>
 public sealed record ShowcaseBookingPlace(string City, string? PostalCode, string? Address, string? Floor, string? AccessNotes);
 
-/// <summary>
-/// One line of the price, in cents of euro: the choices of the customer at the time of the booking, or — once the supplier
-/// completed the work — the lines of the final amount.
-/// </summary>
-/// <param name="Kind">
-/// <c>service</c> (the work), <c>option</c> (a supplement the customer picked), <c>urgent</c> (the surcharge of an urgent booking,
-/// SP-04c: the page says it in the customer's language) or <c>extra</c> (added when the work was completed).
-/// </param>
 public sealed record ShowcaseBookingPriceLine(string Kind, string Label, int Quantity, int UnitAmountCents, int AmountCents);
 
-/// <summary>
-/// The price of the booking in cents of euro: what was estimated when it was made, what the supplier quoted when it took the
-/// request, the final total, and the lines. <see cref="AmountCents"/> is the one to show.
-/// </summary>
 public sealed record ShowcaseBookingPrice(
     int? EstimatedAmountCents,
     int? QuotedAmountCents,
     int? FinalAmountCents,
     IReadOnlyList<ShowcaseBookingPriceLine> Lines)
 {
-    /// <summary>The final total, else the supplier's quote, else the estimate; <c>null</c> is "to agree with the supplier".</summary>
     public int? AmountCents => FinalAmountCents ?? QuotedAmountCents ?? EstimatedAmountCents;
 
-    /// <summary><c>final</c>, <c>quote</c> or <c>estimate</c>: which of the three <see cref="AmountCents"/> is; <c>null</c> when there is none.</summary>
     public string? Basis => FinalAmountCents is not null ? "final" : QuotedAmountCents is not null ? "quote" : EstimatedAmountCents is not null ? "estimate" : null;
 }
 
@@ -187,14 +152,8 @@ public sealed record ShowcaseBookingPrice(
 /// <param name="Message">What the supplier wrote with the proposal (the customer was e-mailed it).</param>
 public sealed record ShowcaseBookingProposal(DateTime StartUtc, DateTime EndUtc, DateTime ProposedAt, DateTime? AnswerBy, string? Message);
 
-/// <summary>A cancelled booking: when, by whom (the customer, the supplier, or CasaZen for no answer) and the reason a person wrote.</summary>
-/// <param name="Reason">The text a person wrote; <c>null</c> when the cancellation has no text (a code is not a sentence).</param>
 public sealed record ShowcaseBookingCancellation(DateTime At, ServiceRequestActorParty By, string? Reason);
 
-/// <summary>
-/// The terms of cancelling (decision D6: no exit cost in v1, so a late cancellation costs nothing either): until when it is free,
-/// as <see cref="ShowcaseBookingManagementRules.FreeCancellationUntil"/>, and whether it still is.
-/// </summary>
 public sealed record ShowcaseBookingCancellationTerms(DateTime FreeUntilUtc, bool IsFree);
 
 /// <summary>What the customer may do now with the booking (<see cref="ShowcaseBookingManagementRules"/>).</summary>
@@ -221,23 +180,14 @@ public sealed record ShowcaseBookingActions(
 /// </summary>
 public static class ShowcaseBookingManagementErrors
 {
-    /// <summary>
-    /// 404: no booking matches. <b>One answer</b>, with the same body, for a supplier that does not exist, a code that does not
-    /// exist or has a wrong format, a code of another supplier, and an e-mail address that is not the one of the booking: nothing
-    /// tells which of them it was.
-    /// </summary>
     public const string NotFound = "supplier_booking_not_found";
 
-    /// <summary>422: the booking is not in a status the customer can cancel from (in progress, done, refused or already cancelled), or its time has passed.</summary>
     public const string CannotCancel = "supplier_booking_cannot_cancel";
 
-    /// <summary>422: the time can be changed only while the request is new, the supplier is active and the service is still published.</summary>
     public const string CannotReschedule = "supplier_booking_cannot_reschedule";
 
-    /// <summary>422: the booking has no proposed time to answer (never made, already answered, or the request moved on).</summary>
     public const string NoProposal = "supplier_booking_no_proposal";
 
-    /// <summary>422: the time to answer the proposed time has passed; the request is cancelled by the next run of the upkeep job.</summary>
     public const string ProposalExpired = "supplier_booking_proposal_expired";
 
     public const string NotFoundMessageKey = "SupplierBookingNotFound";
@@ -246,7 +196,6 @@ public static class ShowcaseBookingManagementErrors
     public const string NoProposalMessageKey = "SupplierBookingNoProposal";
     public const string ProposalExpiredMessageKey = "SupplierBookingProposalExpired";
 
-    /// <summary>Every <c>SharedResources</c> key the area raises (a test checks that each one exists in Italian and English).</summary>
     public static IReadOnlyList<string> MessageKeys { get; } =
     [
         NotFoundMessageKey,
@@ -256,7 +205,6 @@ public static class ShowcaseBookingManagementErrors
         ProposalExpiredMessageKey,
     ];
 
-    /// <summary>404: no booking matches the slug, the code and the e-mail address (see <see cref="NotFound"/>).</summary>
     public static NotFoundException BookingNotFound() =>
         new("No showcase booking matches the supplier, the code and the e-mail address")
         {
@@ -264,16 +212,12 @@ public static class ShowcaseBookingManagementErrors
             MessageKey = NotFoundMessageKey,
         };
 
-    /// <summary>422: the booking cannot be cancelled by the customer now.</summary>
     public static DomainRuleException CancelRefused() => new(CannotCancel, CannotCancelMessageKey);
 
-    /// <summary>422: the time of the booking cannot be changed now.</summary>
     public static DomainRuleException RescheduleRefused() => new(CannotReschedule, CannotRescheduleMessageKey);
 
-    /// <summary>422: there is no proposed time to answer.</summary>
     public static DomainRuleException ProposalMissing() => new(NoProposal, NoProposalMessageKey);
 
-    /// <summary>422: the time to answer the proposed time has passed.</summary>
     public static DomainRuleException ProposalLapsed() => new(ProposalExpired, ProposalExpiredMessageKey);
 }
 
@@ -318,14 +262,9 @@ public static class ShowcaseBookingManagementRules
         return true;
     }
 
-    /// <summary>
-    /// The last instant a cancellation is free: <paramref name="freeCancellationHours"/> elapsed hours before
-    /// <paramref name="startUtc"/>. With 0 hours it is the start itself.
-    /// </summary>
     public static DateTime FreeCancellationUntil(DateTime startUtc, int freeCancellationHours) =>
         startUtc.AddHours(-Math.Max(0, freeCancellationHours));
 
-    /// <summary>True while a cancellation at <paramref name="nowUtc"/> is still free (at the deadline itself it is).</summary>
     public static bool IsFreeCancellation(DateTime startUtc, DateTime nowUtc, int freeCancellationHours) =>
         nowUtc <= FreeCancellationUntil(startUtc, freeCancellationHours);
 
@@ -341,11 +280,6 @@ public static class ShowcaseBookingManagementRules
         _ => false,
     };
 
-    /// <summary>
-    /// True when the customer may move the time: only a new request that has a time, of a supplier that is active, for a service that
-    /// is still published (the page needs its free slots, and the planner needs its duration and rules), and that has no quote waiting
-    /// (SP-04b: the quote is about the time the request has; the customer answers it first, and can ask for another time after turning it down).
-    /// </summary>
     public static bool CanReschedule(
         ServiceRequestStatus status,
         bool hasTime,
@@ -354,10 +288,6 @@ public static class ShowcaseBookingManagementRules
         bool quotePending = false) =>
         status == ServiceRequestStatus.Richiesto && hasTime && supplierActive && serviceBookable && !quotePending;
 
-    /// <summary>
-    /// True when the customer may accept or turn down the quote (SP-04b): the request is new, a quote is waiting, the deadline to answer it
-    /// (<paramref name="answerByUtc"/>) has not passed and the supplier is active (accepting takes the request on its behalf).
-    /// </summary>
     public static bool CanRespondToQuote(
         ServiceRequestStatus status,
         bool quotePending,
@@ -370,10 +300,6 @@ public static class ShowcaseBookingManagementRules
         && answerByUtc is { } answerBy
         && nowUtc < answerBy;
 
-    /// <summary>
-    /// True when the customer may accept or turn down the offer of a request on measure (SP-10b-b): the same rule as the quote of SP-04b, which
-    /// the offer is (the request is new, the offer waits, the deadline to answer has not passed and the supplier is active).
-    /// </summary>
     public static bool CanRespondToOffer(
         ServiceRequestStatus status,
         bool offerPending,
@@ -382,10 +308,6 @@ public static class ShowcaseBookingManagementRules
         bool supplierActive) =>
         CanRespondToQuote(status, offerPending, validUntilUtc, nowUtc, supplierActive);
 
-    /// <summary>
-    /// True when the customer may accept or turn down the proposed time: the request is new, a proposal is waiting, the deadline to
-    /// answer it (<paramref name="answerByUtc"/>) has not passed and the supplier is active (accepting takes the request on its behalf).
-    /// </summary>
     public static bool CanRespondToProposal(
         ServiceRequestStatus status,
         bool proposalPending,
@@ -398,15 +320,8 @@ public static class ShowcaseBookingManagementRules
         && answerByUtc is { } answerBy
         && nowUtc < answerBy;
 
-    /// <summary>
-    /// What the customer reads of the state of a payment held by CasaZen (SP-15c-a): <c>authorized</c>, <c>held</c> (charged and kept by
-    /// CasaZen, also while a transfer to the supplier is being retried or a card dispute is open: none of that is the customer's concern),
-    /// <c>released</c>, <c>refunded</c> (all given back, or all but the commission), <c>canceled</c> (the block was released, nothing was
-    /// charged) or <c>review</c> (CasaZen is looking at the payment).
-    /// </summary>
     public static string PaymentStatusOf(ServicePaymentStatus status) => status switch
     {
-        // SP-10b-b: the card of an accepted offer has not been blocked yet.
         ServicePaymentStatus.Requested or ServicePaymentStatus.Failed => "awaiting_card",
         ServicePaymentStatus.Authorized => "authorized",
         ServicePaymentStatus.Held or ServicePaymentStatus.TransferFailed or ServicePaymentStatus.Disputed => "held",
@@ -416,22 +331,11 @@ public static class ShowcaseBookingManagementRules
         _ => "review",
     };
 
-    /// <summary>
-    /// True when the customer may say "all fine" (SP-15c-a): the work is completed and the money is held by CasaZen with something still owed
-    /// to the supplier. The same facts <see cref="HeldPaymentRules.Release"/> needs before the payer's word releases the money, so the page and
-    /// the API cannot disagree; the money of a payment that a card dispute or a review stopped is not released this way.
-    /// </summary>
     public static bool CanConfirmOk(ServiceRequestStatus requestStatus, ServicePaymentStatus paymentStatus, int netCents, int refundedCents) =>
         requestStatus == ServiceRequestStatus.Completato
         && paymentStatus is ServicePaymentStatus.Held or ServicePaymentStatus.TransferFailed
         && HeldPaymentRules.ReleasableCents(netCents, refundedCents, 0) > 0;
 
-    /// <summary>
-    /// The reason a customer gave when it cancelled: trimmed, with the lines it wrote, or <c>null</c> when there is none. A reason
-    /// that is longer than <see cref="ServiceRequestLimits.CancellationReasonMaxLength"/> or has control characters is a 422 naming
-    /// the <c>reason</c> field.
-    /// </summary>
-    /// <exception cref="ShowcaseBookingRuleException">422 <see cref="ShowcaseBookingErrors.Invalid"/> for <see cref="ShowcaseBookingFields.Reason"/>.</exception>
     public static string? NormalizeReason(string? reason)
     {
         var text = reason?.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Trim();

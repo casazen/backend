@@ -30,16 +30,12 @@ public abstract class OctorateException : Exception
         OctorateStatusCode = octorateStatusCode;
     }
 
-    /// <summary>Stable snake_case code the clients translate.</summary>
     public string Code { get; }
 
-    /// <summary>Key of the user-facing message in <c>SharedResources.resx</c>.</summary>
     public string MessageKey { get; }
 
-    /// <summary>The status CasaZen answers its caller with.</summary>
     public int ResponseStatusCode { get; }
 
-    /// <summary>What Octorate answered; <c>null</c> when no answer arrived or the error is CasaZen's own.</summary>
     public int? OctorateStatusCode { get; }
 }
 
@@ -49,10 +45,8 @@ public abstract class OctorateException : Exception
 /// </summary>
 public sealed class OctorateAuthException : OctorateException
 {
-    /// <summary>Code of an org with no usable connection (none, or disconnected).</summary>
     public const string NotConnectedCode = "octorate_not_connected";
 
-    /// <summary>Code of a refusal by Octorate.</summary>
     public const string RefusedCode = "octorate_auth_failed";
 
     /// <summary>Code of a chat call refused because the <c>chat</c> module is not in the license of the accommodation (E05/F01/US01/T02).</summary>
@@ -69,10 +63,8 @@ public sealed class OctorateAuthException : OctorateException
     {
     }
 
-    /// <summary>True when the org has no usable connection: the host has to connect (again).</summary>
     public bool IsNotConnected => Code == NotConnectedCode;
 
-    /// <summary>True when the channel manager does not give the reviews of the accommodation (<see cref="ReviewNotAvailableCode"/>).</summary>
     public bool IsReviewNotAvailable => Code == ReviewNotAvailableCode;
 
     /// <summary>
@@ -93,11 +85,9 @@ public sealed class OctorateAuthException : OctorateException
     public static OctorateAuthException ChatNotLicensed(int? octorateStatusCode) =>
         new(ChatNotLicensedCode, "OctorateChatNotLicensed", StatusCodes.Status409Conflict, octorateStatusCode);
 
-    /// <summary>The org has no connection, or it is disconnected: 409, the host connects again.</summary>
     public static OctorateAuthException NotConnected() =>
         new(NotConnectedCode, "OctorateNotConnected", StatusCodes.Status409Conflict, null);
 
-    /// <summary>Octorate refused the credentials or the token with <paramref name="octorateStatusCode"/>: 502.</summary>
     public static OctorateAuthException Refused(int? octorateStatusCode) =>
         new(RefusedCode, "OctorateAuthFailed", StatusCodes.Status502BadGateway, octorateStatusCode);
 }
@@ -115,11 +105,6 @@ public sealed class OctorateSensitiveDataNotAllowedException(int? octorateStatus
         StatusCodes.Status409Conflict,
         octorateStatusCode);
 
-/// <summary>
-/// A conversation CasaZen cannot write to (E05/F02/US02/T01): the channel manager's description of the thread names no person of the host side to write
-/// as, or no id of the thread on the channel, so the message it needs cannot be built. Raised before anything is sent: the message did not leave. 409,
-/// the host answers on the channel manager.
-/// </summary>
 public sealed class OctorateChatNotSendableException()
     : OctorateException("octorate_chat_not_sendable", "OctorateChatNotSendable", StatusCodes.Status409Conflict, null);
 
@@ -139,7 +124,6 @@ public sealed class OctorateChatNotReadException(int? octorateStatusCode, Except
 public sealed class OctorateReviewActionNotAllowedException(int? octorateStatusCode)
     : OctorateException(CodeValue, "OctorateReviewActionNotAllowed", StatusCodes.Status409Conflict, octorateStatusCode)
 {
-    /// <summary>The code of a 409 of Octorate to a reply or a host's review.</summary>
     public const string CodeValue = "review_action_not_allowed";
 }
 
@@ -147,11 +131,9 @@ public sealed class OctorateReviewActionNotAllowedException(int? octorateStatusC
 public sealed class OctorateServerException(int? octorateStatusCode, Exception? innerException = null)
     : OctorateException("octorate_unavailable", "OctorateUnavailable", StatusCodes.Status502BadGateway, octorateStatusCode, innerException);
 
-/// <summary>Octorate does not know what the call names (404): the accommodation, the room, the reservation.</summary>
 public sealed class OctorateNotFoundException()
     : OctorateException("octorate_not_found", "OctorateNotFound", StatusCodes.Status404NotFound, StatusCodes.Status404NotFound);
 
-/// <summary>Octorate refused a change that conflicts with its data (409).</summary>
 public sealed class OctorateConflictException()
     : OctorateException("octorate_conflict", "OctorateConflict", StatusCodes.Status409Conflict, StatusCodes.Status409Conflict);
 
@@ -163,7 +145,6 @@ public sealed class OctorateConflictException()
 public sealed class OctorateWrongEnvironmentException(int? octorateStatusCode)
     : OctorateException("octorate_wrong_environment", "OctorateWrongEnvironment", StatusCodes.Status409Conflict, octorateStatusCode)
 {
-    /// <summary>The <c>type</c> of Octorate's 403 for credentials of the other environment, spelled as Octorate spells it.</summary>
     public const string OctorateErrorType = "WrongEnviroment";
 }
 
@@ -174,7 +155,6 @@ public sealed class OctorateWrongEnvironmentException(int? octorateStatusCode)
 /// </summary>
 public sealed class OctorateRateLimitException : OctorateException
 {
-    /// <summary>The <c>type</c> of Octorate's 403 for a quota that is used up, spelled as Octorate spells it (OCT-13).</summary>
     public const string QuotaErrorType = "ApiQuotaException";
 
     public OctorateRateLimitException(int? octorateStatusCode, bool quotaExhausted = false)
@@ -190,11 +170,9 @@ public sealed class OctorateRateLimitException : OctorateException
     public bool QuotaExhausted { get; }
 }
 
-/// <summary>Octorate refused the request itself (400, 405, 406, 415, 422 and the other 4xx not mapped above): 502.</summary>
 public sealed class OctorateRequestRejectedException(int octorateStatusCode)
     : OctorateException(RejectedCode, "OctorateRequestRejected", StatusCodes.Status502BadGateway, octorateStatusCode)
 {
-    /// <summary>The stable code of a request Octorate refused (also the code of a message that was refused before it left CasaZen).</summary>
     public const string RejectedCode = "octorate_request_rejected";
 }
 
@@ -207,21 +185,12 @@ public sealed class OctorateRequestRejectedException(int octorateStatusCode)
 public sealed class OctoratePartnerFailureException()
     : OctorateException("octorate_partner_failed", "OctoratePartnerFailed", StatusCodes.Status502BadGateway, OctorateStatus)
 {
-    /// <summary>The status Octorate answers with when the partner (the channel or tool) fails.</summary>
     public const int OctorateStatus = 550;
 }
 
-/// <summary>
-/// The <c>state</c> of a consent is not valid (E02/F01/US02/T01): unknown, already used, expired, or bound to another org, user or
-/// redirect address. Always the same 400, whatever failed, so the answer tells nothing about which check refused it.
-/// </summary>
 public sealed class OctorateOAuthStateInvalidException()
     : OctorateException("octorate_state_invalid", "OctorateStateInvalid", StatusCodes.Status400BadRequest, null);
 
-/// <summary>
-/// Octorate did not exchange the consent code for tokens (E02/F01/US02/T01): a code that is not valid or expired (403
-/// <c>OAuthGrant</c>), no answer, or an answer without the tokens. 502: the host starts the consent again.
-/// </summary>
 public sealed class OctorateExchangeFailedException(int? octorateStatusCode, Exception? innerException = null)
     : OctorateException("octorate_exchange_failed", "OctorateExchangeFailed", StatusCodes.Status502BadGateway, octorateStatusCode, innerException);
 
@@ -233,13 +202,8 @@ public sealed class OctorateExchangeFailedException(int? octorateStatusCode, Exc
 public sealed class OctoratePropertyRejectedException(IReadOnlyList<OctorateFieldError> fields)
     : OctorateException("octorate_property_invalid", "OctoratePropertyInvalid", StatusCodes.Status422UnprocessableEntity, StatusCodes.Status400BadRequest)
 {
-    /// <summary>The fields Octorate refused.</summary>
     public IReadOnlyList<OctorateFieldError> Fields { get; } = fields;
 }
 
-/// <summary>
-/// The network named for a new accommodation is not one Octorate knows (E02/F03/US01/T06): 412. The new accommodation was not created; the host
-/// connects the account again.
-/// </summary>
 public sealed class OctorateNetworkUnknownException()
     : OctorateException("octorate_network_unknown", "OctorateNetworkUnknown", StatusCodes.Status409Conflict, StatusCodes.Status412PreconditionFailed);

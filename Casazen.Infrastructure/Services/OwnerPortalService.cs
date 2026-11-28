@@ -36,11 +36,6 @@ public sealed class OwnerPortalService(
     IOwnerStatementDocuments? statementDocuments = null,
     IOwnerIssuedDocumentsExport? issuedDocuments = null) : IOwnerPortalService
 {
-    /// <summary>
-    /// Gets properties owned by the owner with occupancy and revenue summaries (ADR-011-R2, ADR-011-R8).
-    /// Filters by ownership period: OwnershipStart &lt;= now AND (OwnershipEnd == null OR OwnershipEnd &gt;= now).
-    /// Guest data is masked in booking summaries (ADR-011-R3).
-    /// </summary>
     public async Task<IReadOnlyList<OwnerPortalPropertyInfo>> GetOwnerPropertiesAsync(
         Guid ownerUserId,
         CancellationToken cancellationToken = default)
@@ -60,7 +55,6 @@ public sealed class OwnerPortalService(
         if (!propertyIds.Any())
             return [];
 
-        // Get properties with their bookings. The subquery is built outside the projection: an expression tree cannot hold the list of the filters to ignore.
         var bookings = db.Set<Booking>().IgnoreQueryFilters([AppDbContext.TenantQueryFilter]);
         var properties = await db.Set<Property>()
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -87,14 +81,11 @@ public sealed class OwnerPortalService(
                         Channel = b.Source.ToString(),
                         TotalAmount = b.TotalPrice,
                         Status = b.Status
-                        // Guest data masked: no names, emails, phones per ADR-011-R3
                     })
                     .ToList()
             })
             .ToListAsync(cancellationToken);
 
-        // NF-96: the occupancy of the last 30 days is the Home's (the very nights the Home counts for «ultimi 30 giorni»), as a percentage
-        // from 0 to 100 to one decimal, as the page prints it; it used to be a placeholder of 0.
         if (dashboard is not null)
         {
             var occupancy = await dashboard.GetLast30DaysOccupancyAsync(propertyIds, cancellationToken);
@@ -108,8 +99,6 @@ public sealed class OwnerPortalService(
         return properties;
     }
 
-    // ---------------------------------------------------------------- E13/F01/US02/T02: the statements and the invoices of the owner
-
     public async Task<IReadOnlyList<OwnerPortalStatementInfo>> GetOwnerStatementsAsync(
         Guid ownerUserId,
         CancellationToken cancellationToken = default)
@@ -117,8 +106,6 @@ public sealed class OwnerPortalService(
         if (await AccountingAccessAsync(ownerUserId, cancellationToken) is not { } access)
             return [];
 
-        // The published versions of the owner profiles the caller reads the accounting of; the newest first. The filter on the grants is in memory: the owner profile
-        // ids are the caller's, and a contact that holds the permission on some of an owner's properties reads the statements of that owner profile.
         var ownerIds = access.With(OwnerPortalPermission.AccountingRead).Select(g => g.PropertyOwnerId).Distinct().ToList();
         var versions = (await StatementVersions()
                 .Where(v => ownerIds.Contains(v.PropertyOwnerId) && v.PublishedAt != null)
@@ -164,7 +151,6 @@ public sealed class OwnerPortalService(
         if (await AccountingAccessAsync(ownerUserId, cancellationToken) is not { } access)
             return [];
 
-        // The issued documents the property manager made out to the owner profiles of the caller. The recipient snapshot (an address, a tax id) is never read.
         var ownerIds = access.With(OwnerPortalPermission.AccountingRead).Select(g => g.PropertyOwnerId).Distinct().ToList();
         var rows = (await db.FiscalDocuments
                 .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -217,7 +203,6 @@ public sealed class OwnerPortalService(
         string? language = null,
         CancellationToken cancellationToken = default)
     {
-        // One 404 for an invoice that is not the caller's, of another owner, not issued, not an owner invoice or missing.
         var access = await AccountingAccessAsync(ownerUserId, cancellationToken) ?? throw InvoiceNotFound(invoiceId);
         var document = await db.FiscalDocuments
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -232,8 +217,6 @@ public sealed class OwnerPortalService(
         return new OwnerFileContent(new MemoryStream(file.Content, writable: false), file.FileName, file.ContentType);
     }
 
-    // ---------------------------------------------------------------- E17/F02/US01/T01: the documents issued in the name of the owner
-
     public async Task<IReadOnlyList<OwnerPortalIssuedDocumentInfo>> GetOwnerIssuedDocumentsAsync(
         Guid ownerUserId,
         AccountantPackagePeriod? period = null,
@@ -242,7 +225,6 @@ public sealed class OwnerPortalService(
         if (await IssuedDocumentsAccessAsync(ownerUserId, cancellationToken) is not { } access)
             return [];
 
-        // Only the documents issued on the issuer profile of an owner profile the caller holds accounting.read on: the agency's own documents and the ones of another owner are not there.
         var rows = await IssuedDocuments().ListAsync(OwnersOf(access), period, OwnerCollaborationRules.MaxList, cancellationToken);
         var agencies = await AgencyNamesAsync(rows.Select(r => r.OrgId), cancellationToken);
 
@@ -268,7 +250,6 @@ public sealed class OwnerPortalService(
         string? language = null,
         CancellationToken cancellationToken = default)
     {
-        // One 404 for a document that is not the caller's, of another owner, the agency's, not issued or missing, and with a flag off.
         var access = await IssuedDocumentsAccessAsync(ownerUserId, cancellationToken) ?? throw IssuedDocumentNotFound(documentId);
         var file = await IssuedDocuments().GetPdfAsync(OwnersOf(access), documentId, language, cancellationToken) ?? throw IssuedDocumentNotFound(documentId);
         return new OwnerFileContent(new MemoryStream(file.Content, writable: false), file.FileName, file.ContentType);
@@ -302,10 +283,6 @@ public sealed class OwnerPortalService(
         return await IssuedDocuments().BuildAsync(OwnersOf(access), period, destination, cancellationToken);
     }
 
-    /// <summary>
-    /// What the caller reads of the documents issued in the name of its owners: the accounting access (<see cref="AccountingAccessAsync"/>: the agency plan, an ownership in force,
-    /// <c>accounting.read</c>), and <c>null</c> too while <c>Features:FiscalDocumentIssuance</c> is off: with either flag off the lists stay empty and the files are not there.
-    /// </summary>
     private async Task<OwnerPortalAccess?> IssuedDocumentsAccessAsync(Guid ownerUserId, CancellationToken cancellationToken)
     {
         if (!Features().IsEnabled(FeatureFlags.FiscalDocumentIssuance))
@@ -314,15 +291,9 @@ public sealed class OwnerPortalService(
         return await AccountingAccessAsync(ownerUserId, cancellationToken);
     }
 
-    /// <summary>The owner profiles the caller holds <c>accounting.read</c> on, each of an agency: the owners whose documents it reads (never more than the grants say).</summary>
     private static IReadOnlyList<OwnerIssuedDocumentsOwner> OwnersOf(OwnerPortalAccess access) =>
         [.. access.With(OwnerPortalPermission.AccountingRead).Select(g => new OwnerIssuedDocumentsOwner(g.OrgId, g.PropertyOwnerId)).Distinct()];
 
-    /// <summary>
-    /// What the caller reads of the accounting. <c>null</c> when there is nothing to show: <c>Features:AgencyTier</c> is off (the lists stay empty as they were), or the
-    /// caller has no ownership in force and no delegation. A caller that has some and holds <c>accounting.read</c> on none of them (a delegated contact the owner did not
-    /// give it to) is refused, 403.
-    /// </summary>
     private async Task<OwnerPortalAccess?> AccountingAccessAsync(Guid ownerUserId, CancellationToken cancellationToken)
     {
         if (!Features().IsEnabled(FeatureFlags.AgencyTier))
@@ -336,7 +307,6 @@ public sealed class OwnerPortalService(
         return access;
     }
 
-    /// <summary>A published version of the statements of an owner profile the caller reads the accounting of; the same 404 for one that is not published, not the caller's, of another owner or missing.</summary>
     private async Task<OwnerStatementVersion> ReachedStatementAsync(Guid ownerUserId, Guid statementId, CancellationToken cancellationToken)
     {
         var access = await AccountingAccessAsync(ownerUserId, cancellationToken) ?? throw StatementNotFound(statementId);
@@ -347,7 +317,6 @@ public sealed class OwnerPortalService(
         return version;
     }
 
-    /// <summary>The statements as the list shows them: the agency, whether the PDF is stored, and the version that replaced it when that one is published too.</summary>
     private async Task<IReadOnlyList<OwnerPortalStatementInfo>> StatementSummariesAsync(IReadOnlyList<OwnerStatementVersion> versions, CancellationToken cancellationToken)
     {
         if (versions.Count == 0)
@@ -369,8 +338,6 @@ public sealed class OwnerPortalService(
                 .ToListAsync(cancellationToken))
             .ToHashSet();
 
-        // For the owner a statement is replaced only when the version that replaces it is published too: the agency marks the published one as superseded as soon as it
-        // generates a correction, but until that one is published (a draft, or approved and not yet given) the published statement is still the one the owner was given.
         Guid? ReplacementOf(OwnerStatementVersion version) => version.SupersededByVersionId is { } later && laterPublished.Contains(later) ? later : null;
 
         return versions
@@ -396,7 +363,6 @@ public sealed class OwnerPortalService(
         return await db.Orgs.AsNoTracking().Where(o => ids.Contains(o.Id)).Select(o => new { o.Id, o.Name }).ToDictionaryAsync(o => o.Id, o => o.Name, cancellationToken);
     }
 
-    /// <summary>The statement versions of every org: the caller of the portal has no org of its own, so what it reaches is named by its grants in each predicate.</summary>
     private IQueryable<OwnerStatementVersion> StatementVersions() =>
         db.OwnerStatementVersions.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking();
 
@@ -433,8 +399,6 @@ public sealed class OwnerPortalService(
             MessageKey = OwnerIssuedDocumentsErrors.NotFoundMessageKey,
         };
 
-    // ---------------------------------------------------------------- E18/F01/US02/T01: the withholding and the Certificazione Unica of the owner
-
     /// <summary>
     /// The withholding of the owner in the year (ADR-011-R2, E18/F01/US02/T01). <b>Only the owner profiles of the claim</b>: the evidence and the annual data are read by the owner profiles the
     /// caller holds <c>accounting.read</c> on (<see cref="AccountingAccessAsync"/>), each predicate names them and the tenant filter of the caller (it has no org of its own) is ignored on purpose,
@@ -449,7 +413,6 @@ public sealed class OwnerPortalService(
         var taxYear = year ?? timeProvider.TodayInRomeAsDateOnly().Year;
         var summary = new OwnerPortalWithholdingInfo { Year = taxYear };
 
-        // Both flags off (the production default): the empty summary it was.
         if (!Features().IsEnabled(FeatureFlags.TaxReportingExports) || await AccountingAccessAsync(ownerUserId, cancellationToken) is not { } access)
             return summary;
 
@@ -506,10 +469,6 @@ public sealed class OwnerPortalService(
         return summary;
     }
 
-    /// <summary>
-    /// The Certificazione Unica of the year of the owner profiles of <paramref name="grants"/>, from the annual data of each agency once it is reviewed (reviewed, submitted or accepted: the
-    /// data still generated can be built again, and a rejected one is not the owner's to read). Only the record of each profile, as the totals.
-    /// </summary>
     private async Task<IReadOnlyList<OwnerPortalCuInfo>> CuStatementsAsync(
         IReadOnlyList<OwnerPortalGrant> grants,
         int year,
@@ -533,7 +492,6 @@ public sealed class OwnerPortalService(
             }
             catch (JsonException)
             {
-                // A damaged payload shows nothing to the owner; the agency's own exports fail loudly on it.
                 continue;
             }
 
@@ -577,9 +535,6 @@ public sealed class OwnerPortalService(
                       cancellationToken);
     }
 
-    // ---------------------------------------------------------------- NF-96: the Home's numbers for the owner
-
-    // A property of the owner and the part of it the owner holds (0..1): the weight of every figure of the Home for that property.
     private sealed record OwnedProperty(Guid OrgId, Guid PropertyId, decimal Weight);
 
     /// <summary>
@@ -642,11 +597,6 @@ public sealed class OwnerPortalService(
             total);
     }
 
-    /// <summary>
-    /// The owner's trend (NF-96): the Home's trend of each org, narrowed to the owner's properties, each property line weighted by the
-    /// owner's share. The buckets are the host's (<see cref="HostReportRules.TrendBucketsOf"/>); all the properties together are the sum of
-    /// the weighted lines.
-    /// </summary>
     public async Task<OwnerPortalTrend> GetOwnerTrendAsync(
         Guid ownerUserId,
         OwnerOverviewQuery query,
@@ -660,7 +610,6 @@ public sealed class OwnerPortalService(
         var previousPeriod = query.CompareYear ? HostReportRules.PreviousYearPeriodOf(query.From, query.To) : null;
         var (unit, buckets) = HostReportRules.TrendBucketsOf(period, HostTrendBucketUnit.Auto, query.CompareYear);
 
-        // One weighted line for each property of the owner, in every org: the host's trend cut by property, none of it folded.
         var lines = new List<OwnerPortalSeries>();
         foreach (var org in owned.GroupBy(o => o.OrgId))
         {
@@ -698,8 +647,6 @@ public sealed class OwnerPortalService(
         return new OwnerPortalTrend(period, previousPeriod, unit, buckets, series);
     }
 
-    // The ownerships of the owner that count for the days of the query, one entry for each property with the part held. An owner sees
-    // only its own ownerships (ADR-011-R2): the ones in force today that had started by the last day and had not ended before the first.
     private async Task<List<OwnedProperty>> OwnedPropertiesAsync(
         Guid ownerUserId,
         OwnerOverviewQuery query,
@@ -713,7 +660,6 @@ public sealed class OwnerPortalService(
             .Select(po => new { po.OrgId, po.PropertyId, po.SharePercent, po.OwnershipStart, po.OwnershipEnd })
             .ToListAsync(cancellationToken);
 
-        // Several rows of one property are parts of one whole; the owner never holds more than all of it.
         var owned = ownerships
             .Where(po => RomeCalendar.DateInRome(po.OwnershipStart) <= query.To
                          && (po.OwnershipEnd is not { } end || RomeCalendar.DateInRome(end) >= query.From))
@@ -725,7 +671,6 @@ public sealed class OwnerPortalService(
         if (query.PropertyId is not { } asked)
             return owned;
 
-        // One 404 for a property that is missing, another owner's, or no longer (or not yet) the owner's.
         owned = owned.Where(o => o.PropertyId == asked).ToList();
         if (owned.Count == 0)
             throw new NotFoundException($"Property {asked} not found") { MessageKey = "PropertyNotFound" };
@@ -743,7 +688,6 @@ public sealed class OwnerPortalService(
     private IHostDashboardService HostDashboard() =>
         dashboard ?? throw new InvalidOperationException("The owner portal numbers need the Home's service, which the dependency injection provides.");
 
-    // The lines of the properties, the ones with most revenue first; from MaxTrendSeries + 1 on, the 25th line is the sum of the rest.
     private static List<OwnerPortalSeries> FoldLines(List<OwnerPortalSeries> lines)
     {
         var ordered = lines
@@ -760,7 +704,6 @@ public sealed class OwnerPortalService(
         return kept;
     }
 
-    // Several lines as one: the points added bucket by bucket; a bucket of the year before is empty only when it is for every line.
     private static OwnerPortalSeries Together(string key, IReadOnlyList<OwnerPortalSeries> lines, int buckets, bool compared)
     {
         var points = new List<OwnerPerformanceFigures>(buckets);

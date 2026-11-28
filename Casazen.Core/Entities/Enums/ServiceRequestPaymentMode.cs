@@ -9,10 +9,6 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum ServiceRequestPaymentMode
 {
-    /// <summary>
-    /// The payment happens outside CasaZen and is recorded by hand: the host marks the request paid (<c>mark-paid</c>) or the
-    /// supplier records it (<c>payment/offline</c>). No commission: no money goes through CasaZen.
-    /// </summary>
     Manual = 0,
 
     /// <summary>

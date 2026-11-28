@@ -22,7 +22,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed class OwnerReportService(AppDbContext db, IHostDashboardService dashboard) : IOwnerReportService
 {
-    // The weights below are decimals: a sum of thirds is short of one by a few billionths, which is not a property nobody owns.
     private const decimal Tolerance = 0.000001m;
 
     private sealed record Part(Guid OwnerId, Guid PropertyId, decimal Weight);
@@ -37,7 +36,6 @@ public sealed class OwnerReportService(AppDbContext db, IHostDashboardService da
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(query);
 
-        // The Home's figures of every property of the scope, once; the same call answers the 404 of a property the caller does not reach.
         var performance = await dashboard.GetPerformanceAsync(
             scope, query with { GroupBy = HostPerformanceGroupBy.Property, CompareYear = false }, cancellationToken);
         var period = performance.Period;
@@ -47,7 +45,6 @@ public sealed class OwnerReportService(AppDbContext db, IHostDashboardService da
 
         var parts = await PartsAsync(scope.OrgId, figuresOf.Keys.ToList(), query, period.Nights, cancellationToken);
 
-        // Only the id and the name of an owner are read: the fiscal code, the IBAN, the e-mail and the phone are not even selected.
         var ownerIds = parts.Select(p => p.OwnerId).Distinct().ToList();
         List<OwnerName> owners = [];
         if (ownerIds.Count > 0)
@@ -59,7 +56,6 @@ public sealed class OwnerReportService(AppDbContext db, IHostDashboardService da
                 .ToListAsync(cancellationToken);
         }
 
-        // An owner that is not in the registry any more (it cannot happen: the link cascades) would leave its part nowhere: it stays unassigned.
         var known = owners.Select(o => o.Id).ToHashSet();
         parts = parts.Where(p => known.Contains(p.OwnerId)).ToList();
 
@@ -78,7 +74,6 @@ public sealed class OwnerReportService(AppDbContext db, IHostDashboardService da
             .ThenBy(r => r.OwnerId)
             .ToList();
 
-        // What no owner holds of a property is the unassigned part: owners and this row add up to the Home's total.
         var held = parts.GroupBy(p => p.PropertyId).ToDictionary(g => g.Key, g => g.Sum(p => p.Weight));
         var unassigned = OwnerPerformanceFigures.Zero;
         var unassignedCount = 0;
@@ -99,7 +94,6 @@ public sealed class OwnerReportService(AppDbContext db, IHostDashboardService da
             OwnerPerformanceFigures.Of(performance.Total.Figures));
     }
 
-    // The part each owner holds of each property of the report, in the days of the report.
     private async Task<List<Part>> PartsAsync(
         Guid orgId,
         List<Guid> propertyIds,
@@ -110,7 +104,6 @@ public sealed class OwnerReportService(AppDbContext db, IHostDashboardService da
         if (propertyIds.Count == 0)
             return [];
 
-        // Generous in SQL (the instants of the Rome days), exact below (the days).
         var startsAt = RomeCalendar.StartOfDayUtc(query.From.ToDateTime(TimeOnly.MinValue));
         var endsAt = RomeCalendar.StartOfDayUtc(query.To.AddDays(1).ToDateTime(TimeOnly.MinValue));
         var ownerships = await db.PropertyOwnerships
@@ -130,7 +123,6 @@ public sealed class OwnerReportService(AppDbContext db, IHostDashboardService da
                 .Where(w => w.Weight > 0m)
                 .ToList();
 
-            // A property has one whole to give: if the data say more, everyone gets a proportional part of it.
             var sum = weights.Sum(w => w.Weight);
             var scale = sum > 1m ? 1m / sum : 1m;
             foreach (var owner in weights.GroupBy(w => w.Owner))
@@ -140,7 +132,6 @@ public sealed class OwnerReportService(AppDbContext db, IHostDashboardService da
         return parts;
     }
 
-    // The days of the report (Rome calendar days, both included) the ownership was in force: from the day it started to the day it ended, included.
     private static int OverlapDays(DateTime start, DateTime? end, HostPerformanceQuery query)
     {
         var first = RomeCalendar.DateInRome(start);

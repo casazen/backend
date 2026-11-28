@@ -173,10 +173,6 @@ public sealed class LegacyFileMigrationService(
         }
     }
 
-    /// <summary>
-    /// Ensures the object exists in the storage (uploading the local file when needed).
-    /// Returns false when the file is neither in the storage nor on disk.
-    /// </summary>
     private async Task<bool> CopyAsync(
         StorageBucket bucket, string localPath, string key, LegacyFileMigrationReport report, CancellationToken ct)
     {
@@ -212,13 +208,11 @@ public sealed class LegacyFileMigrationService(
         return true;
     }
 
-    /// <summary>A pre-FD-07 local folder and the relative URL prefix it was exposed with.</summary>
     private sealed record LegacyLocation(string Root, IReadOnlyList<string> UrlPrefixes)
     {
         public static LegacyLocation FromConfiguration(
             IConfiguration configuration, string section, string defaultLocalPath, string defaultBaseUrl)
         {
-            // Same resolution as the old services: relative paths are relative to the working directory.
             var root = Path.GetFullPath(configuration[$"{section}:LocalPath"] is { Length: > 0 } configured
                 ? configured
                 : defaultLocalPath);
@@ -230,7 +224,6 @@ public sealed class LegacyFileMigrationService(
             return new LegacyLocation(root, prefixes);
         }
 
-        /// <summary>Path segments after the legacy prefix, or null when <paramref name="url"/> is not a legacy reference.</summary>
         public string[]? TryGetSegments(string? url)
         {
             if (string.IsNullOrWhiteSpace(url))
@@ -252,15 +245,11 @@ public sealed class LegacyFileMigrationReport
 {
     public bool DryRun { get; init; }
 
-    /// <summary>Files uploaded from the local disk (or that would be, in a dry run).</summary>
     public int Uploaded { get; set; }
 
-    /// <summary>Files already in the storage (a previous run uploaded them).</summary>
     public int AlreadyPresent { get; set; }
 
-    /// <summary>Legacy references whose file is neither on disk nor in the storage: left unchanged.</summary>
     public int Missing { get; set; }
 
-    /// <summary>Database references pointing to the storage after the run.</summary>
     public int ReferencesRewritten { get; set; }
 }

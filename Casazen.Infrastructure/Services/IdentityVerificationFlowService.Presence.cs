@@ -18,18 +18,14 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public sealed partial class IdentityVerificationFlowService : IIdentityPresenceFlow
 {
-    /// <summary>Data Protection purpose of the proof of a presence challenge. Never change it: a proof issued before would not be accepted any more.</summary>
     internal const string PresenceTokenPurpose = "Casazen.CheckIn.Presence.v1";
 
-    /// <summary>The longest proof that is looked at: a proof of this purpose is far shorter, and the rest is not a proof.</summary>
     private const int MaxPresenceTokenLength = 2048;
 
     public Task<PresenceChallengeIssue?> IssuePresenceChallengeAsync(GuestCheckInSession session, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        // What does not depend on the session is read before its row is locked: the flags, the policy, the models and the options. When one of them is missing nothing is
-        // stored and no lock is taken; the page offers the assisted path.
         var snapshot = identityPolicy?.Snapshot;
         var options = identityOptions?.Value;
         if (!SelfHostedOn || presenceIssuer is null || options is null || snapshot is null || !snapshot.IsReady || biometricModels is not { IsAvailable: true })
@@ -59,7 +55,6 @@ public sealed partial class IdentityVerificationFlowService : IIdentityPresenceF
             if (state.Step is not (IdentityVerificationSteps.Selfie or IdentityVerificationSteps.Presence) || ReadCheck(session) is not { } check)
                 return null;
 
-            // A new challenge replaces the stored one: the proof of the old one is made with the id of the old one and no longer unprotects.
             var now = clock.GetUtcNow();
             var attempt = PresenceAttempt(session);
             var challenge = presenceIssuer.Issue(policy, attempt, now);
@@ -87,7 +82,6 @@ public sealed partial class IdentityVerificationFlowService : IIdentityPresenceF
         if (challengeToken is not { Length: > 0 and <= MaxPresenceTokenLength } || session.BiometricConsentAt is null)
             return false;
 
-        // The challenge stored for this session, and only for the attempt the session is at: a proof of an earlier attempt is not one any more.
         if (ReadCheck(session)?.Presence is not { } challenge || challenge.Attempt != PresenceAttempt(session))
             return false;
 
@@ -98,7 +92,6 @@ public sealed partial class IdentityVerificationFlowService : IIdentityPresenceF
         }
         catch (Exception ex) when (ex is CryptographicException or FormatException)
         {
-            // Of another session, attempt, consent or challenge, or not a proof at all.
             return false;
         }
 

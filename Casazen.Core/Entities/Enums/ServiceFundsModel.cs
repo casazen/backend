@@ -1,9 +1,5 @@
 namespace Casazen.Core.Entities.Enums;
 
-/// <summary>
-/// Whose money a service payment is while it is in flight (<see cref="ServiceRequestPayment.FundsModel"/>, SP-15c-a). Stored as an
-/// integer: append only, never renumber.
-/// </summary>
 public enum ServiceFundsModel
 {
     /// <summary>

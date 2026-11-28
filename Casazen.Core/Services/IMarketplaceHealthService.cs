@@ -53,39 +53,25 @@ public interface IMarketplaceHealthService
     /// </summary>
     Task<MarketplaceSyncResult> SyncAsync(Guid orgId, CancellationToken ct = default);
 
-    /// <summary>
-    /// The orgs the job syncs: the ones with an activation of a channel, a tool or a function of the license (with a property) that is not turned off and a
-    /// connected account in this environment, the least recently synced first, so a run that was stopped continues with the orgs it did not reach. Empty
-    /// while the connector is off.
-    /// </summary>
     Task<IReadOnlyList<Guid>> ListOrgsToSyncAsync(CancellationToken ct = default);
 }
 
-/// <summary>The stable codes of the problems the health panel shows, kept in <c>MarketplaceActivation.LastErrorCode</c> (E09/F03/US01/T01).</summary>
 public static class MarketplaceHealthErrorCodes
 {
-    /// <summary>Octorate lists the connection as <c>DISABLED</c>: it was switched off on the channel manager.</summary>
     public const string ConnectionDisabled = "connection_disabled";
 
-    /// <summary>The connection is no longer listed by Octorate (removed there). Also the code the activation wizard keeps when it finds the connection gone.</summary>
     public const string ConnectionMissing = MarketplaceActivationErrorCodes.ConnectionLost;
 
-    /// <summary>After «mark connected» Octorate does not show the connection as working (kept by the activation wizard).</summary>
     public const string ConnectionNotEnabled = MarketplaceActivationErrorCodes.ConnectionNotEnabled;
 
-    /// <summary>A function that was on is no longer in the license (kept by the reconciliation of the license).</summary>
     public const string LicenseModuleOff = MarketplaceFunctionErrorCodes.LicenseModuleOff;
 
-    /// <summary>The channel or tool behind a connection failed (Octorate's 550); the same code as <c>OctoratePartnerFailureException</c>.</summary>
     public const string ChannelFailed = "octorate_partner_failed";
 
-    /// <summary>Octorate did not answer; the same code as <c>OctorateServerException</c>. The next start or check goes on from there.</summary>
     public const string ChannelManagerUnavailable = "octorate_unavailable";
 
-    /// <summary>The resource key of the message of a code nobody listed: it says only that the connection needs a look, and never a word of the channel manager.</summary>
     public const string GenericMessageKey = "Marketplace.Error.generic";
 
-    /// <summary>Every code of the list above: each has a message in the resource files, Italian and English (<see cref="MessageKeyOf"/>).</summary>
     public static IReadOnlyList<string> All { get; } =
     [
         ConnectionDisabled,
@@ -96,12 +82,9 @@ public static class MarketplaceHealthErrorCodes
         ChannelManagerUnavailable,
     ];
 
-    /// <summary>The resource key of the plain-language message of a code.</summary>
     public static string MessageKeyOf(string code) => $"Marketplace.Error.{code}";
 }
 
-/// <summary>The health of the integrations a caller reaches, as <c>GET api/marketplace/health</c> answers it.</summary>
-/// <param name="Items">One row for each activation, ordered by property name, then kind and name.</param>
 public sealed record MarketplaceHealth(IReadOnlyList<MarketplaceHealthItem> Items);
 
 /// <summary>One activation of a channel, a tool or a function of the license, with what the health panel shows of it.</summary>
@@ -163,10 +146,8 @@ public sealed record MarketplaceSyncResult(
     int TodoRaised,
     int TodoClosed)
 {
-    /// <summary>A sync that did nothing (the connector is off, or the org is not connected).</summary>
     public static MarketplaceSyncResult Empty { get; } = new(0, 0, 0, 0, 0, 0, 0);
 
-    /// <summary>The sum of two results: how the job counts a whole run.</summary>
     public MarketplaceSyncResult Plus(MarketplaceSyncResult other)
     {
         ArgumentNullException.ThrowIfNull(other);

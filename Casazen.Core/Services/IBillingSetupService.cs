@@ -19,16 +19,10 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IBillingSetupContributor
 {
-    /// <summary>The section the items belong to: one of <see cref="BillingSetupSections"/>.</summary>
     string Section { get; }
 
-    /// <summary>The items still missing in the section for <paramref name="orgId"/>.</summary>
     Task<IReadOnlyList<BillingSetupItem>> EvaluateAsync(Guid orgId, CancellationToken ct);
 
-    /// <summary>
-    /// The contributor has something to look at for <paramref name="orgId"/> (E17/F01/US01/T01: the owner issuers of an agency without Italian properties have
-    /// none): when it says no it is not asked and does not make its section apply. By default it does.
-    /// </summary>
     Task<bool> AppliesAsync(Guid orgId, CancellationToken ct) => Task.FromResult(true);
 }
 
@@ -52,16 +46,8 @@ public interface IBillingSetupContributor
 /// </remarks>
 public interface IBillingSetupService
 {
-    /// <summary>The setup as sections, in the order of the wizard, each with its values and its missing items.</summary>
     Task<BillingSetup> GetAsync(Guid orgId, CancellationToken ct = default);
 
-    /// <summary>
-    /// Saves the fields of one section and answers the section as saved. 404 <c>billing_setup_section_unknown</c> for a name that is not a section; 422
-    /// <c>billing_setup_section_not_writable</c> for a section another endpoint saves (<c>channels</c>, <c>mandates</c>), <c>billing_setup_field_not_in_section</c>
-    /// for a field of another section, <c>issuer_field_invalid</c> (with the <c>field</c> and the list of <c>errors</c>) for a value that is not valid,
-    /// <c>issuer_regime_country_mismatch</c> for a regime of the other country, <c>document_issuance_not_available</c> while the flag is off. A payload with no
-    /// field saves nothing. Nothing is saved when it is refused.
-    /// </summary>
     Task<BillingSetupSection> PutSectionAsync(
         Guid orgId,
         string section,
@@ -76,19 +62,14 @@ public interface IBillingSetupService
     Task<BillingSetupProgress> GetProgressAsync(Guid orgId, IReadOnlyCollection<string>? sections = null, CancellationToken ct = default);
 }
 
-/// <summary>The stable codes of the errors of the billing setup, with the keys of their messages in <c>SharedResources</c> (the codes of the issuer are <see cref="DocumentIssuerErrorCodes"/>).</summary>
 public static class BillingSetupErrorCodes
 {
-    /// <summary>404: the name is not a section of the billing setup.</summary>
     public const string SectionUnknown = "billing_setup_section_unknown";
 
-    /// <summary>422: the section exists but is saved by the endpoint of the epic that owns it, not by this one.</summary>
     public const string SectionNotWritable = "billing_setup_section_not_writable";
 
-    /// <summary>422: the payload carries a field that belongs to another section; the <c>field</c> is in the answer.</summary>
     public const string FieldNotInSection = "billing_setup_field_not_in_section";
 
-    /// <summary>The key in <c>SharedResources</c> of the message of <paramref name="code"/>.</summary>
     public static string MessageKeyOf(string code) => code switch
     {
         SectionUnknown => "BillingSetupSectionUnknown",

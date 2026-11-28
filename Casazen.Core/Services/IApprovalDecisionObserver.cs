@@ -1,15 +1,11 @@
 namespace Casazen.Core.Services;
 
-/// <summary>What a person did with an item of the approval queue (<see cref="ApprovalDecision.Kind"/>). Not stored.</summary>
 public enum ApprovalDecisionKind
 {
-    /// <summary>The item was approved and its action ran (the message went out).</summary>
     Approved = 1,
 
-    /// <summary>The item was rejected, with its reason (<c>ApprovalQueueItem.RejectionReason</c>; <c>regenerated</c> when a new draft replaced it).</summary>
     Rejected = 2,
 
-    /// <summary>The text of the item was edited and it still waits (<c>ApprovalQueueItem.EditedContentText</c>; <c>null</c> when the edit gave the original back).</summary>
     Edited = 3,
 }
 

@@ -3,7 +3,6 @@ using Casazen.Core.Models;
 
 namespace Casazen.Core.Services;
 
-/// <summary>Stable keys of the activation checklist steps (PL-15): never rename one.</summary>
 public static class ActivationStepKeys
 {
     public const string Account = "account";
@@ -15,63 +14,45 @@ public static class ActivationStepKeys
     public const string FirstBooking = "firstBooking";
 }
 
-/// <summary>Stable states of an activation checklist step (PL-15): never rename one.</summary>
 public static class ActivationStepStates
 {
-    /// <summary>The stored state proves the step is complete.</summary>
     public const string Done = "done";
 
-    /// <summary>Nothing done yet and the host can start it now.</summary>
     public const string Todo = "todo";
 
-    /// <summary>Started, and still missing something (a CIN, a Stripe verification, a payment capability).</summary>
     public const string InProgress = "inProgress";
 
-    /// <summary>Another step comes first: the host cannot do this one yet.</summary>
     public const string Blocked = "blocked";
 }
 
-/// <summary>Stable reasons a checklist step is not done (PL-15): never rename one.</summary>
 public static class ActivationStepReasons
 {
-    /// <summary>Role, consents or org are missing: the onboarding wizard is not completed.</summary>
     public const string OnboardingIncomplete = "onboarding_incomplete";
 
-    /// <summary>The org still has the generated name or the generated slug (the host has not chosen them).</summary>
     public const string OrgProfileIncomplete = "org_profile_incomplete";
 
     public const string NoProperty = "no_property";
 
-    /// <summary>At least one property has no valid CIN (missing or malformed).</summary>
     public const string CinMissingOrInvalid = "cin_missing_or_invalid";
 
-    /// <summary>No Stripe connected account is linked yet.</summary>
     public const string ConnectNotStarted = "connect_not_started";
 
-    /// <summary>Stripe still asks for data or documents on the connected account.</summary>
     public const string ConnectRequirementsDue = "connect_requirements_due";
 
-    /// <summary>Everything is submitted but Stripe has not enabled charges on the account yet.</summary>
     public const string ConnectPendingVerification = "connect_pending_verification";
 
-    /// <summary>The org itself is disabled: its public pages answer 404.</summary>
     public const string OrgInactive = "org_inactive";
 
-    /// <summary>Every property that could be published is paused by its host (PC-03).</summary>
     public const string PropertiesPaused = "properties_paused";
 
-    /// <summary>The properties are waiting for (or lost) the compliance activation (CO-06).</summary>
     public const string CompliancePending = "compliance_pending";
 
-    /// <summary>The properties are deactivated.</summary>
     public const string PropertiesInactive = "properties_inactive";
 
-    /// <summary>A property is published, but guests cannot pay: Stripe charges are not enabled.</summary>
     public const string PaymentsNotReady = "payments_not_ready";
 
     public const string SiteNotPublished = "site_not_published";
 
-    /// <summary>The site is open and bookable: the step only waits for a guest.</summary>
     public const string AwaitingFirstBooking = "awaiting_first_booking";
 }
 
@@ -91,12 +72,6 @@ public sealed record ActivationPropertyFacts(
     public static ActivationPropertyFacts None { get; } = new(0, 0, 0, 0, 0);
 }
 
-/// <summary>Everything the activation checklist reads, loaded by the service (so the rules stay pure).</summary>
-/// <param name="Org">The org of the caller; null when the caller has none yet.</param>
-/// <param name="OnboardingCompleted">
-/// <c>User.OnboardingCompletedAt</c> is set: the same fact the host onboarding gate reads
-/// (<c>HostOnboardingStatus.IsComplete</c>), so the account step and the web guard cannot disagree.
-/// </param>
 public sealed record ActivationFacts(
     bool RoleChosen,
     bool OrgProvisioned,
@@ -127,8 +102,6 @@ public static class ActivationChecklist
 
         var org = facts.Org;
         var properties = org is null ? ActivationPropertyFacts.None : facts.Properties;
-        // Same facts as the host onboarding gate (onboarding completed + current consents), plus the org: a step that
-        // is "todo" always sends the host to a wizard that still has something to do, never to a redirect loop.
         var accountDone = facts.OnboardingCompleted && facts.OrgProvisioned && facts.ConsentsAccepted;
 
         var organization = OrganizationStep(org);
@@ -141,7 +114,6 @@ public static class ActivationChecklist
         var propertyCreated = properties.Total > 0;
         var sitePublished = site.State == ActivationStepStates.Done;
 
-        // The six milestones of PLG-AC6: unchanged meaning, a real "site published" (A1-37).
         var activated = accountDone && propertyCreated && sitePublished && facts.FirstBookingTaken;
 
         var steps = new[]
@@ -180,8 +152,6 @@ public static class ActivationChecklist
         if (org is null)
             return Blocked(ActivationStepKeys.Organization, ActivationStepReasons.OnboardingIncomplete);
 
-        // The generated name and the generated slug are what a new org starts with: only the host choosing them is
-        // evidence that the profile is set. A slug the host never picked is never "configured".
         var configured = !string.IsNullOrWhiteSpace(org.Name)
             && !string.Equals(org.Name.Trim(), Org.PlaceholderName, StringComparison.OrdinalIgnoreCase)
             && !string.IsNullOrWhiteSpace(org.Slug)
@@ -238,7 +208,6 @@ public static class ActivationChecklist
                 ActivationStepKeys.Payments, ActivationStepStates.Todo, ActivationStepReasons.ConnectNotStarted);
         }
 
-        // An account exists but cannot charge: started is not done. Stripe either asks for more or is still checking.
         var requirementsDue = !org.ConnectDetailsSubmitted || !string.IsNullOrWhiteSpace(org.ConnectRequirementsDueJson);
         return new ActivationChecklistStep(
             ActivationStepKeys.Payments,
@@ -266,7 +235,6 @@ public static class ActivationChecklist
                 ActivationStepKeys.SitePublished, ActivationStepStates.Todo, reason, 0, properties.Total);
         }
 
-        // A published property nobody can pay for: the link exists but every checkout would be refused.
         if (!org.CanTakeDirectPayments)
         {
             return new ActivationChecklistStep(

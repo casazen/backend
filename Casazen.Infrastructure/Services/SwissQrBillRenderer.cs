@@ -34,10 +34,8 @@ internal static class SwissQrBillRenderer
     private const double QrSizeMm = 46;
     private const double CrossSizeMm = 7;
 
-    /// <summary>The top of the slip on the page.</summary>
     private const double SlipTopMm = PageHeightMm - SlipHeightMm;
 
-    /// <summary>Appends a page with the payment part of <paramref name="bill"/> to <paramref name="pdf"/>.</summary>
     public static void AddPaymentPart(PdfDocument pdf, PdfSwissQrBill bill)
     {
         ArgumentNullException.ThrowIfNull(pdf);
@@ -115,7 +113,6 @@ internal static class SwissQrBillRenderer
             BlankBox(gfx, labels.PayableByNameAddress, x, y, 65, 25, heading);
     }
 
-    /// <summary>The Swiss QR Code of <paramref name="payload"/> (error correction M) at the given corner, 46 × 46 mm, with the Swiss cross in its middle.</summary>
     private static void DrawQrCode(XGraphics gfx, string payload, double leftMm, double topMm)
     {
         using var generator = new QRCodeGenerator();
@@ -143,7 +140,6 @@ internal static class SwissQrBillRenderer
                 while (column < modules && line[column + quiet])
                     column++;
 
-                // A hair of overlap so two rectangles that touch leave no seam on screen.
                 gfx.DrawRectangle(XBrushes.Black, left + (start * size), top + (row * size), ((column - start) * size) + 0.05, size + 0.05);
             }
         }
@@ -151,7 +147,6 @@ internal static class SwissQrBillRenderer
         DrawSwissCross(gfx, leftMm + ((QrSizeMm - CrossSizeMm) / 2), topMm + ((QrSizeMm - CrossSizeMm) / 2));
     }
 
-    /// <summary>The Swiss cross of the QR-bill: a white square of 7 mm, a black square inside it and the white cross (arms one sixth longer than wide).</summary>
     private static void DrawSwissCross(XGraphics gfx, double leftMm, double topMm)
     {
         gfx.DrawRectangle(XBrushes.White, Pt(leftMm), Pt(topMm), Pt(CrossSizeMm), Pt(CrossSizeMm));
@@ -167,7 +162,6 @@ internal static class SwissQrBillRenderer
         gfx.DrawRectangle(XBrushes.White, Pt(centerX - (length / 2)), Pt(centerY - (arm / 2)), Pt(length), Pt(arm));
     }
 
-    /// <summary>The currency and the amount: the headings, then the values, or a box to fill in when the bill has no amount.</summary>
     private static void AmountSection(
         XGraphics gfx,
         PdfSwissQrBill bill,
@@ -190,7 +184,6 @@ internal static class SwissQrBillRenderer
             gfx.DrawRectangle(new XPen(XColors.Black, 0.75), Pt(amountMm), Pt(valueTop), Pt(boxWidthMm), Pt(boxHeightMm));
     }
 
-    /// <summary>A heading and its lines (each wrapped to the width); answers where the next block starts.</summary>
     private static double Block(
         XGraphics gfx,
         string title,
@@ -212,7 +205,6 @@ internal static class SwissQrBillRenderer
         return y + 2.5;
     }
 
-    /// <summary>A heading and an empty box with its corners marked, for the payer to write in.</summary>
     private static void BlankBox(XGraphics gfx, string title, double leftMm, double topMm, double widthMm, double heightMm, XFont heading)
     {
         gfx.DrawString(title, heading, XBrushes.Black, new XPoint(Pt(leftMm), Pt(topMm)), XStringFormats.TopLeft);
@@ -231,7 +223,6 @@ internal static class SwissQrBillRenderer
     private static void Title(XGraphics gfx, string text, double leftMm, double topMm) =>
         gfx.DrawString(text, Font(11, bold: true), XBrushes.Black, new XPoint(Pt(leftMm), Pt(topMm)), XStringFormats.TopLeft);
 
-    /// <summary><paramref name="text"/> broken at the spaces into lines no wider than <paramref name="width"/> points; a word wider than a line is cut.</summary>
     private static IEnumerable<string> Wrap(XGraphics gfx, string text, XFont font, double width)
     {
         var line = new StringBuilder();

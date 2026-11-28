@@ -14,10 +14,6 @@ namespace Casazen.Core.Utilities;
 /// </remarks>
 public static class XsdValidator
 {
-    /// <summary>
-    /// The errors of <paramref name="xml"/> against <paramref name="schemas"/>, in the order they were found (line and position of each); empty when the
-    /// document is valid. A text that is not well-formed is one error at the position the parser stopped.
-    /// </summary>
     public static IReadOnlyList<XsdValidationError> Validate(string xml, XmlSchemaSet schemas)
     {
         ArgumentNullException.ThrowIfNull(xml);

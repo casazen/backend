@@ -19,7 +19,6 @@ public class NotificationService(
     {
         ArgumentNullException.ThrowIfNull(alert);
 
-        // Background job: no tenant filter; the booking id comes from the job's own query.
         var booking = await db.Bookings
             .AsNoTracking()
             .Include(b => b.Org)
@@ -36,7 +35,6 @@ public class NotificationService(
         var culture = EmailTemplates.DefaultCulture;
         var guestName = $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim();
         var propertyName = booking.Property.Name;
-        // Validated at startup outside Development/Testing (FD-13); without it the email has no button.
         var bookingUrl = links.IsConfigured ? links.HostBooking(booking.Id) : null;
         var (template, email) = alert.Kind switch
         {
@@ -58,7 +56,6 @@ public class NotificationService(
                 EmailTemplates.Names.CheckoutReminder,
                 EmailTemplates.CheckoutReminder(culture, guestName, propertyName, booking.CheckOutDate, bookingUrl)),
 
-            // E03/F02/US02/T01 (CHK-12): the new stages name the property and the day, never the guest.
             StayAlertKind.ReceiptMissing => (
                 EmailTemplates.Names.ReceiptMissing,
                 EmailTemplates.ReceiptMissing(culture, propertyName, booking.CheckInDate, bookingUrl)),
@@ -82,7 +79,6 @@ public class NotificationService(
                 booking.OrgId);
         }
 
-        // Queued on PushDeliveryJob (MO-04): the key of the stage makes a retried job send it once per device.
         var isCheckoutReminder = alert.Kind == StayAlertKind.CheckoutReminder;
         var push = isCheckoutReminder
             ? EmailTemplates.CheckoutReminderPush(culture, propertyName)
@@ -116,7 +112,6 @@ public class NotificationService(
         ArgumentNullException.ThrowIfNull(emails);
         ArgumentException.ThrowIfNullOrWhiteSpace(deliveryKey);
 
-        // Background job: no tenant filter; the property id comes from the job's own query.
         var property = await db.Properties
             .AsNoTracking()
             .Where(p => p.Id == alert.PropertyId)
@@ -129,7 +124,6 @@ public class NotificationService(
         }
 
         var culture = EmailTemplates.DefaultCulture;
-        // Validated at startup outside Development/Testing (FD-13); without it the email has no button.
         var complianceUrl = links.IsConfigured ? links.HostCompliance() : null;
         var (template, email) = alert.Type switch
         {
@@ -137,12 +131,10 @@ public class NotificationService(
                 EmailTemplates.Names.ComplianceConnectionAlert,
                 EmailTemplates.ComplianceConnectionAlert(culture, alert, property.Name, complianceUrl)),
 
-            // E30/F02/US01/T01 (NF-127): a Ticino arrival day names the property, the day, the deadline and the types of field that are missing, never a guest.
             Casazen.Core.Entities.ComplianceAlertType.TicinoNotification => (
                 EmailTemplates.Names.TicinoNotificationAlert,
                 EmailTemplates.TicinoNotificationAlert(culture, alert, property.Name, complianceUrl)),
 
-            // E31/F02/US01/T01 (NF-131): the same for a canton other than Ticino: the property, the day, the deadline and the types of field that are missing, never a guest.
             Casazen.Core.Entities.ComplianceAlertType.SwissNotification => (
                 EmailTemplates.Names.SwissNotificationAlert,
                 EmailTemplates.SwissNotificationAlert(culture, alert, property.Name, complianceUrl)),
@@ -164,7 +156,6 @@ public class NotificationService(
             }
         }
 
-        // Queued on PushDeliveryJob (MO-04): the key of the stage makes a retried job send it once per device.
         var push = alert.Type switch
         {
             Casazen.Core.Entities.ComplianceAlertType.TicinoNotification => EmailTemplates.TicinoNotificationPush(culture, alert, property.Name),
@@ -193,7 +184,6 @@ public class NotificationService(
     {
         ArgumentNullException.ThrowIfNull(alert);
 
-        // Background job: no tenant filter; the org and its property ids come from the job's own query.
         var propertyIds = alert.PropertyIds.ToArray();
         var propertyNames = await db.Properties
             .AsNoTracking()
@@ -212,7 +202,6 @@ public class NotificationService(
             .Where(o => o.Id == alert.OrgId)
             .Select(o => o.ContactEmail)
             .FirstOrDefaultAsync(cancellationToken);
-        // Validated at startup outside Development/Testing (FD-13); without it the email has no button.
         var complianceUrl = links.IsConfigured ? links.HostCinCompliance() : null;
         var email = EmailTemplates.CinDeadlineAlert(EmailTemplates.DefaultCulture, alert.Deadline, propertyNames, complianceUrl);
 
@@ -232,7 +221,6 @@ public class NotificationService(
     {
         ArgumentNullException.ThrowIfNull(alert);
 
-        // Called by the iCal sync job: no tenant filter; the booking id comes from the sync's own query.
         var booking = await db.Bookings
             .AsNoTracking()
             .Include(b => b.Org)
@@ -284,8 +272,6 @@ public class NotificationService(
     {
         ArgumentNullException.ThrowIfNull(notice);
 
-        // Called by the mode change service after its commit (a request, or the hourly job without a tenant context): the
-        // change id is its own. The property's soft delete filter applies: nobody is told about a property that is gone.
         var change = await db.PropertyModeChanges
             .AsNoTracking()
             .Where(c => c.Id == notice.ChangeId)
@@ -312,7 +298,6 @@ public class NotificationService(
             .Select(o => o.ContactEmail)
             .FirstOrDefaultAsync(cancellationToken);
 
-        // Validated at startup outside Development/Testing (FD-13); without it the email has no button.
         var culture = EmailTemplates.DefaultCulture;
         var (template, email) = notice.Kind switch
         {
@@ -363,7 +348,6 @@ public class NotificationService(
     {
         ArgumentNullException.ThrowIfNull(alert);
 
-        // Background job or service call: the booking id is provided by the caller
         var booking = await db.Bookings
             .AsNoTracking()
             .Include(b => b.Org)
@@ -382,7 +366,6 @@ public class NotificationService(
         var propertyName = booking.Property.Name;
         var bookingUrl = links.IsConfigured ? links.HostBooking(booking.Id) : null;
 
-        // Send email to org contact address (AC-NF12-1)
         var email = EmailTemplates.HostVerificationRequired(culture, guestName, propertyName, booking.CheckInDate, bookingUrl);
 
         if (!emailQueue.Enqueue(booking.Org?.ContactEmail, email, EmailTemplates.Names.VerificationRequired))
@@ -393,7 +376,6 @@ public class NotificationService(
                 booking.OrgId);
         }
 
-        // Send push notification to property hosts (AC-NF12-1)
         var push = EmailTemplates.VerificationRequiredPush(culture, guestName, propertyName);
 
         var deliveryKey = PushDeliveryKeys.VerificationRequired(booking.Id);

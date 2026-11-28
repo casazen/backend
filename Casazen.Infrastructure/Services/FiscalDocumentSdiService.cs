@@ -47,7 +47,6 @@ public sealed class FiscalDocumentSdiService(
 
     public async Task<SdiSubmitResult> SubmitAsync(Guid documentId, CancellationToken ct = default)
     {
-        // The quick refusals first (a read, no lock): the document is not found, imported, or no electronic invoice.
         var head = await db.FiscalDocuments
             .AsNoTracking()
             .Where(d => d.Id == documentId)
@@ -56,7 +55,6 @@ public sealed class FiscalDocumentSdiService(
             ?? throw NotFound(documentId);
         RequireElectronic(head.Source, head.Status, head.SdiStatus);
 
-        // No channel (no provider, or the module is off): nothing is sent and nothing changes. The document stays «to send» and can be uploaded by hand and declared.
         if (!ChannelIsOpen)
         {
             logger.LogInformation("SDI submission of document {DocumentId}: no provider is configured, nothing is sent", documentId);
@@ -65,7 +63,6 @@ public sealed class FiscalDocumentSdiService(
 
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, ct, (PostgresAdvisoryLocks.Scope.FiscalDocumentSdi, LockKey(documentId)));
 
-        // The state again, under the lock: another request may have submitted it while this one waited.
         var document = await db.FiscalDocuments.FirstOrDefaultAsync(d => d.Id == documentId, ct) ?? throw NotFound(documentId);
         RequireElectronic(document.Source, document.Status, document.SdiStatus);
         if (document.SdiStatus == FiscalDocumentSdiStatuses.Submitted)
@@ -93,7 +90,6 @@ public sealed class FiscalDocumentSdiService(
             return new SdiSubmitResult(SdiSubmitOutcome.Submitted, document.SdiStatus);
         }
 
-        // A refusal (or an answer that accepted without the id of the submission, which is no acceptance): the document stays «to send», with why.
         var code = CodeOfRefusal(answer);
         document.SdiErrorCode = code;
         document.SdiErrorDetail = SdiRejectionReasons.Clean(answer.Detail);
@@ -192,7 +188,6 @@ public sealed class FiscalDocumentSdiService(
 
         var id = transmissionId.Trim();
 
-        // A document declared by hand keeps the reference its issuer typed in the same column: it is never one the provider knows.
         return await db.FiscalDocuments
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -221,7 +216,6 @@ public sealed class FiscalDocumentSdiService(
             .Where(p => !string.IsNullOrWhiteSpace(p.PropertyOwnerId is null ? organizationVat : p.VatNumber))
             .ToList();
 
-        // A caller who reaches only some properties sees the issuers of the documents of those properties (the rule of the list of the documents), never «every issuer of the org».
         if (!scope.IsOrgWide && issuers.Count > 0)
         {
             var bookings = db.Bookings.IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter]).Where(b => b.OrgId == orgId).InScope(scope);
@@ -272,12 +266,6 @@ public sealed class FiscalDocumentSdiService(
         return hasAcceptance ? SdiIssuerRegistrationStates.Registered : SdiIssuerRegistrationStates.Unknown;
     }
 
-    // ---------------------------------------------------------------- the state machine
-
-    /// <summary>
-    /// Applies an outcome to the document (the caller holds its lock and saves): «submitted» changes nothing; a delivery needs the document <c>submitted</c>; a rejection needs it
-    /// not delivered; a state already reached is no change; a contradiction is ignored and logged. The event is recorded here, in the unit of work of the caller.
-    /// </summary>
     private SdiRecordResult Apply(FiscalDocument document, SdiOutcome outcome)
     {
         var current = document.SdiStatus;
@@ -342,9 +330,6 @@ public sealed class FiscalDocumentSdiService(
             dedupKey: $"{(type == DomainEventType.FiscalDocumentSdiRejected ? "fiscal-document-sdi-rejected" : "fiscal-document-sdi-delivered")}:{document.Id:N}",
             orgId: document.OrgId);
 
-    // ---------------------------------------------------------------- rules
-
-    /// <summary>The provider is configured and the module is on: a submission is attempted.</summary>
     private bool ChannelIsOpen => provider.IsConfigured && (featureFlags is null || featureFlags.IsEnabled(FeatureFlags.SdiSubmission));
 
     /// <summary>Only an issued electronic invoice of CasaZen goes to the SDI: an imported document is read-only, a receipt, a Swiss document and a draft are no electronic invoice.</summary>
@@ -356,7 +341,6 @@ public sealed class FiscalDocumentSdiService(
             throw new DomainRuleException(FiscalDocumentSdiErrors.NotElectronic, FiscalDocumentSdiErrors.MessageKeyOf(FiscalDocumentSdiErrors.NotElectronic));
     }
 
-    /// <summary>A document the provider has (submitted) is decided by the provider's answer, never by a declaration.</summary>
     private static void RequireNotWithTheProvider(FiscalDocument document)
     {
         if (document.SdiStatus == FiscalDocumentSdiStatuses.Submitted)
@@ -368,7 +352,6 @@ public sealed class FiscalDocumentSdiService(
     private static DomainConflictException StateFinal() =>
         new(FiscalDocumentSdiErrors.StateFinal, FiscalDocumentSdiErrors.MessageKeyOf(FiscalDocumentSdiErrors.StateFinal));
 
-    /// <summary>The fields of a declaration that are missing or not valid (never a value): the sending needs its day and its reference, a rejection its code.</summary>
     private static List<string> InvalidFieldsOf(SdiDeclaration declaration, FiscalDocument document, DateOnly today)
     {
         var invalid = new List<string>();
@@ -392,8 +375,6 @@ public sealed class FiscalDocumentSdiService(
 
         return invalid;
     }
-
-    // ---------------------------------------------------------------- the file
 
     /// <summary>
     /// What the provider is given: the XML as it was issued, the issuer it is transmitted for (its VAT number, else its fiscal code, from the snapshot of the issue) and the name of the
@@ -432,7 +413,6 @@ public sealed class FiscalDocumentSdiService(
         return string.IsNullOrWhiteSpace(issuer.FiscalCode) ? null : issuer.FiscalCode.Trim().ToUpperInvariant();
     }
 
-    /// <summary>The transmitter the XML names (<c>IdTrasmittente</c>: country and code); <c>null</c> when it has none or is not XML.</summary>
     internal static (string Country, string Code)? TransmitterOf(string xml)
     {
         try
@@ -447,8 +427,6 @@ public sealed class FiscalDocumentSdiService(
             return null;
         }
     }
-
-    // ---------------------------------------------------------------- reads
 
     private FiscalDocumentSdiState StateOf(Guid documentId, StateSource d)
     {
@@ -466,10 +444,6 @@ public sealed class FiscalDocumentSdiService(
             CanCorrect: electronic && d.SdiStatus == FiscalDocumentSdiStatuses.Rejected && d.Purpose == FiscalDocumentPurpose.GuestStay && !d.Credited);
     }
 
-    /// <summary>
-    /// The document has an issued credit note: a rejected one is then not corrected (<see cref="FiscalDocumentCorrectionService"/> refuses it, the accountant decides). The draft of a credit note
-    /// does not count: the correction discards it.
-    /// </summary>
     private Task<bool> HasIssuedCreditNoteAsync(Guid documentId, CancellationToken ct) =>
         db.FiscalDocuments.AsNoTracking().AnyAsync(c => c.CreditedDocumentId == documentId && c.Status == FiscalDocumentStatus.Issued, ct);
 
@@ -483,7 +457,6 @@ public sealed class FiscalDocumentSdiService(
         DateTime? SdiStatusUpdatedAt,
         bool Credited);
 
-    /// <summary>The code a refused submission is stored with: one of the channel's (<see cref="SdiSubmissionErrors"/>), the generic refusal for anything else (at most 20 characters).</summary>
     private static string CodeOfRefusal(SdiSubmissionResult answer) =>
         answer.Error is { } error && SdiSubmissionErrors.All.Contains(error, StringComparer.Ordinal)
             ? error

@@ -5,12 +5,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// Comune office that receives the canone concordato IMU-reduction communication, with its rate (LT-13, A7-22). One
-/// row per comune with known data; a comune with no row falls back to "verify with the comune's ufficio tributi" in
-/// the notification draft. Every value is data an admin can change without a deploy (<c>AdminCanoneConcordatoController</c>);
-/// <see cref="DataCompleteness"/> other than <c>Complete</c> keeps the uncertainty visible to the landlord.
-/// </summary>
 [Table("ComuneImuChannels")]
 public class ComuneImuChannel
 {
@@ -36,15 +30,12 @@ public class ComuneImuChannel
     [MaxLength(300)]
     public string? PostalAddress { get; set; }
 
-    /// <summary>Free text: portal name, uncertainty between channels, anything the landlord needs to know before sending.</summary>
     [MaxLength(2000)]
     public string? Instructions { get; set; }
 
-    /// <summary>Nominal IMU rate published by the comune, per mille or percent as the comune states it.</summary>
     [Precision(7, 3)]
     public decimal? RatePercent { get; set; }
 
-    /// <summary>Rate after the national 25% canone concordato reduction (L. 160/2019 art. 1 c. 760), when computed.</summary>
     [Precision(7, 3)]
     public decimal? EffectiveRatePercent { get; set; }
 
@@ -65,7 +56,6 @@ public class ComuneImuChannel
 
     public DateTime? LastVerifiedAt { get; set; }
 
-    /// <summary>What the last verification was checked against (an admin's free text, never inferred).</summary>
     [MaxLength(500)]
     public string? VerificationSource { get; set; }
 

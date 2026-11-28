@@ -4,28 +4,16 @@ using Casazen.Core.Utilities;
 
 namespace Casazen.Core.TouristTax;
 
-/// <summary>Outcome of a tourist tax quote.</summary>
 public enum TouristTaxQuoteStatus
 {
-    /// <summary>The amount is known (<see cref="TouristTaxQuote.Amount"/>, possibly 0 when every guest is exempt).</summary>
     Calculated = 0,
 
-    /// <summary>
-    /// CasaZen has no rate for the comune, or none for some night of the stay: the amount is not known and is NOT 0.
-    /// The booking goes on without the tax (never an invented amount, never a blocked checkout: A8-12, R-05).
-    /// </summary>
     RateUnavailable = 1,
 
-    /// <summary>
-    /// The comune's rates depend on the accommodation category (Roma, Venezia) and the stay has none, or an unknown
-    /// one: see <see cref="TouristTaxQuote.Categories"/>.
-    /// </summary>
     CategoryRequired = 2,
 
-    /// <summary>The rates exempt or reduce minors by age and the ages of the minors are missing or invalid.</summary>
     ChildAgesRequired = 3,
 
-    /// <summary>A percentage rate applies and the night price is missing.</summary>
     NightlyPriceRequired = 4,
 }
 
@@ -107,10 +95,8 @@ public sealed record TouristTaxQuote(
 /// </remarks>
 public static class TouristTaxCalculator
 {
-    /// <summary>Age used for adults: they are never exempt by age (<c>MinimumAge</c> is at most 18).</summary>
     public const int AdultAge = 18;
 
-    /// <summary>Longest stay quoted (guard for public endpoints).</summary>
     public const int MaxNights = 366;
 
     public static TouristTaxQuote Calculate(IEnumerable<TouristTaxRate> rates, TouristTaxStay stay)
@@ -190,7 +176,6 @@ public static class TouristTaxCalculator
             if (knownAge is null && hostExemption is null && ageRulesApply)
                 return NotCalculated(TouristTaxQuoteStatus.ChildAgesRequired, stay, ageRulesApply, [], applied);
 
-            // An unknown age is used only where it cannot change any amount: rates that never depend on age, or a guest the host exempted.
             guests.Add(new GuestOnNights(guest.Position, knownAge ?? AdultAge, hostExemption));
         }
 
@@ -213,10 +198,6 @@ public static class TouristTaxCalculator
             results);
     }
 
-    /// <summary>
-    /// Active rates valid on <paramref name="date"/>, whatever their category or season: what CasaZen knows about the
-    /// comune on that day (public page, sitemap).
-    /// </summary>
     public static IReadOnlyList<TouristTaxRate> RatesInForce(IEnumerable<TouristTaxRate> rates, DateOnly date)
     {
         ArgumentNullException.ThrowIfNull(rates);
@@ -228,10 +209,6 @@ public static class TouristTaxCalculator
             .ToList();
     }
 
-    /// <summary>
-    /// Rate of a night on <paramref name="date"/> for an accommodation of <paramref name="category"/> (null: no category
-    /// known, so only rates for every accommodation apply). Null when there is none.
-    /// </summary>
     public static TouristTaxRate? RateFor(IEnumerable<TouristTaxRate> rates, DateOnly date, string? category = null)
     {
         ArgumentNullException.ThrowIfNull(rates);
@@ -239,7 +216,6 @@ public static class TouristTaxCalculator
         return Pick(applicable, NormalizeCategory(category));
     }
 
-    /// <summary>True when the rate exempts or reduces some minors but not all: the ages of the minors matter.</summary>
     public static bool AgeMatters(TouristTaxRate rate)
     {
         ArgumentNullException.ThrowIfNull(rate);
@@ -247,7 +223,6 @@ public static class TouristTaxCalculator
             || (rate.ReducedRateMaxAge is not null && rate.ReducedRatePerPersonPerNight is not null);
     }
 
-    /// <summary>Rounds to the cent, half away from zero (commercial rounding).</summary>
     public static decimal RoundToCent(decimal amount) => Math.Round(amount, 2, MidpointRounding.AwayFromZero);
 
     private static bool IsInForce(TouristTaxRate rate, DateOnly date)
@@ -280,10 +255,6 @@ public static class TouristTaxCalculator
     private static string? NormalizeCategory(string? category) =>
         string.IsNullOrWhiteSpace(category) ? null : category.Trim();
 
-    /// <summary>
-    /// Age of every guest; null when the ages of the minors are needed and missing or out of 0-17. When they are not
-    /// needed, minors count as 0 (the rates then treat every minor alike).
-    /// </summary>
     private static List<int>? GuestAges(TouristTaxStay stay, bool ageRulesApply)
     {
         var ages = Enumerable.Repeat(AdultAge, stay.Adults).ToList();
@@ -305,15 +276,9 @@ public static class TouristTaxCalculator
         return ages;
     }
 
-    /// <summary>
-    /// True when the per-guest amount depends on the age of a guest: an exemption age above 0 (18 included: every minor exempt, so whether
-    /// the guest is a minor matters) or a reduced band. <see cref="AgeMatters"/> is the rule of the counts of <see cref="Calculate"/>, where
-    /// adults and minors are told apart by the counts themselves.
-    /// </summary>
     private static bool AgeMattersPerGuest(TouristTaxRate rate) =>
         rate.MinimumAge > 0 || (rate.ReducedRateMaxAge is not null && rate.ReducedRatePerPersonPerNight is not null);
 
-    /// <summary>The guards on the nights of a stay, shared by <see cref="Calculate"/> and <see cref="CalculatePerGuest"/>.</summary>
     private static void EnsureQuotableNights(int nights, IReadOnlyList<decimal>? nightlyPrices, string paramName)
     {
         if (nights <= 0)
@@ -324,7 +289,6 @@ public static class TouristTaxCalculator
             throw new ArgumentException("The night prices must be one per night of the stay.", paramName);
     }
 
-    /// <summary>The rate of every night, or why there is none (rules 1 and 2 of the class).</summary>
     private static ResolvedNights ResolveNightRates(
         IEnumerable<TouristTaxRate> rates,
         DateOnly checkIn,
@@ -338,7 +302,6 @@ public static class TouristTaxCalculator
             .Select(date => active.Where(r => IsInForce(r, date) && IsInSeason(r, date)).ToList())
             .ToList();
 
-        // Categories the comune has during the stay: a category outside this list is unknown, not merely unpriced.
         var categories = new SortedSet<string>(
             applicableByNight.SelectMany(list => list)
                 .Select(r => NormalizeCategory(r.AccommodationCategory))
@@ -372,11 +335,9 @@ public static class TouristTaxCalculator
     private static bool NeedsNightPrices(IEnumerable<TouristTaxRate> applied) =>
         applied.Any(r => r.CalculationMethod == TouristTaxCalculationMethod.PercentOfNightlyPrice);
 
-    /// <summary>True when the price of every night is known and not negative: the one price of the stay, or one per night.</summary>
     private static bool HasNightPrices(decimal? nightlyPrice, IReadOnlyList<decimal>? nightlyPrices) =>
         nightlyPrices is { } prices ? prices.All(price => price >= 0m) : nightlyPrice is >= 0m;
 
-    /// <summary>The price of night <paramref name="night"/> (0-based from check-in): its own, or the one price of the stay.</summary>
     private static decimal PriceOfNight(decimal? nightlyPrice, IReadOnlyList<decimal>? nightlyPrices, int night) =>
         nightlyPrices is { } prices ? prices[night] : nightlyPrice ?? 0m;
 
@@ -392,11 +353,6 @@ public static class TouristTaxCalculator
         return RoundToCent(perPerson);
     }
 
-    /// <summary>
-    /// The one loop of the tax (rules 3 to 6 of the class), night by night and guest by guest: <see cref="Calculate"/> and
-    /// <see cref="CalculatePerGuest"/> both add up what it returns, so their totals cannot diverge. A guest with a host exemption pays 0 every
-    /// night; the percentage is still divided by all the guests.
-    /// </summary>
     private static NightsTaxed TaxNights(
         IReadOnlyList<TouristTaxRate> nightRates,
         IReadOnlyList<GuestOnNights> guests,
@@ -507,16 +463,13 @@ public static class TouristTaxCalculator
         IReadOnlyList<TouristTaxRate>? applied = null) =>
         new(status, null, stay.Nights, 0, ageRulesApply, categories, applied ?? [], []);
 
-    /// <summary>A guest as the loop sees it: its position, the age it is taxed at and the host's exemption (null: none).</summary>
     private sealed record GuestOnNights(int Position, int Age, string? HostExemptionCode);
 
-    /// <summary>The rate of every night, or the status that stops the calculation (with the categories of the comune when one is needed).</summary>
     private sealed record ResolvedNights(
         TouristTaxQuoteStatus? Failure,
         IReadOnlyList<string> Categories,
         IReadOnlyList<TouristTaxRate> NightRates,
         IReadOnlyList<TouristTaxRate> Applied);
 
-    /// <summary>What the loop produced: the exact total, the taxed nights, the amount of every guest on every night and the nights within the cap.</summary>
     private sealed record NightsTaxed(decimal Total, int TaxableNights, decimal[][] Amounts, bool[] WithinCap);
 }

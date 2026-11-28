@@ -26,10 +26,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public static class PropertyModeRules
 {
-    /// <summary>
-    /// Furthest day a change can be programmed for, in years from today. A lease runs up to 4+4 years, so the first free day
-    /// after one can be eight years away; ten leaves room, and stops a typo (year 2206) from reaching the calendar block.
-    /// </summary>
     public const int MaxYearsAhead = 10;
 
     /// <summary>
@@ -39,13 +35,10 @@ public static class PropertyModeRules
     /// </summary>
     public const int CalendarBlockYears = 2;
 
-    /// <summary>The other mode: the mode is exclusive, so a change always goes to it.</summary>
     public static RentalMode Opposite(RentalMode mode) => mode == RentalMode.Short ? RentalMode.Long : RentalMode.Short;
 
-    /// <summary>The first day a change can be programmed for: tomorrow, Europe/Rome.</summary>
     public static DateTime FirstPossibleDay(DateTime todayInRome) => todayInRome.Date.AddDays(1);
 
-    /// <summary>The last day a change can be programmed for (<see cref="MaxYearsAhead"/> years from today).</summary>
     public static DateTime LastPossibleDay(DateTime todayInRome) => todayInRome.Date.AddYears(MaxYearsAhead);
 
     /// <summary>
@@ -59,16 +52,8 @@ public static class PropertyModeRules
     /// </summary>
     public static DateTime CalendarBlockStart(DateTime effectiveDate) => effectiveDate.Date.AddDays(-1);
 
-    /// <summary>
-    /// The first free day after the calendar block: <see cref="CalendarBlockYears"/> years after
-    /// <paramref name="effectiveDate"/>. The block itself begins the night before (<see cref="CalendarBlockStart"/>).
-    /// </summary>
     public static DateTime CalendarBlockEnd(DateTime effectiveDate) => effectiveDate.Date.AddYears(CalendarBlockYears);
 
-    /// <summary>
-    /// The first day a change can start: tomorrow, or the day after the last thing in its way, whichever is later. Drafts
-    /// have no free day and do not count: they are deleted, not waited for.
-    /// </summary>
     public static DateTime EarliestDate(DateTime todayInRome, IEnumerable<PropertyModeBlocker> candidates)
     {
         ArgumentNullException.ThrowIfNull(candidates);
@@ -83,10 +68,6 @@ public static class PropertyModeRules
         return earliest;
     }
 
-    /// <summary>
-    /// What stands in the way of a change that starts on <paramref name="date"/>: every candidate that is not free yet on
-    /// that day (a draft never is), by start date.
-    /// </summary>
     public static IReadOnlyList<PropertyModeBlocker> BlockersFor(IEnumerable<PropertyModeBlocker> candidates, DateTime date)
     {
         ArgumentNullException.ThrowIfNull(candidates);
@@ -99,13 +80,6 @@ public static class PropertyModeRules
             .ToList();
     }
 
-    /// <summary>
-    /// The answer of the preview and the check of the creation: <paramref name="candidates"/> are the stays and blocks (to
-    /// long-term) or the leases (to short stays) that end after today; <paramref name="requested"/> is the day asked for
-    /// (none = the first possible day); <paramref name="scheduled"/> the change already waiting, if any. A day before
-    /// tomorrow is reported as <see cref="PropertyModeErrorCodes.DateTooEarly"/>; what is in the way is then evaluated for
-    /// tomorrow, which is the first day that could be chosen.
-    /// </summary>
     public static PropertyModePreview Assess(
         Guid propertyId,
         RentalMode from,
@@ -144,13 +118,6 @@ public static class PropertyModeRules
             propertyId, from, to, today, earliest, date, blockers, issues, scheduled is { Status: PropertyModeChangeStatus.Scheduled } ? scheduled : null);
     }
 
-    /// <summary>
-    /// Throws the error of the first issue of <paramref name="preview"/>, if it has any: 409 for a change that already
-    /// waits and for the stays, blocks and leases in the way (they are the state of the property), 422 for a day that is
-    /// not allowed. The messages of the date errors and of the stays and leases carry the day to choose.
-    /// </summary>
-    /// <exception cref="DomainRuleException"><see cref="PropertyModeErrorCodes.DateTooEarly"/>, <see cref="PropertyModeErrorCodes.DateTooFar"/>.</exception>
-    /// <exception cref="DomainConflictException">The other issues.</exception>
     public static void EnsureAllowed(PropertyModePreview preview)
     {
         ArgumentNullException.ThrowIfNull(preview);
@@ -177,10 +144,6 @@ public static class PropertyModeRules
         throw error;
     }
 
-    /// <summary>
-    /// The <see cref="PropertyModeChange.FailureReason"/> of a change the job found blocked: the code of the first rule that
-    /// stands in the way (stays and blocks, then leases, then drafts); <c>null</c> when nothing does.
-    /// </summary>
     public static string? FailureReasonOf(IReadOnlyCollection<PropertyModeBlocker> blockers)
     {
         ArgumentNullException.ThrowIfNull(blockers);

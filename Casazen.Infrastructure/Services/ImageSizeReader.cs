@@ -12,7 +12,6 @@ internal static class ImageSizeReader
 {
     private const int MaxExifBytes = 65_535;
 
-    /// <summary>The size of the image in <paramref name="content"/>, read from its start; <c>null</c> when it cannot be told.</summary>
     public static async Task<(int Width, int Height)?> ReadAsync(Stream content, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(content);
@@ -29,8 +28,6 @@ internal static class ImageSizeReader
         };
     }
 
-    // ─── PNG: the IHDR chunk right after the signature ──────────────────────────────────────────────
-
     private static (int, int)? Png(ReadOnlySpan<byte> head)
     {
         if (head.Length < 24 || !head.Slice(12, 4).SequenceEqual("IHDR"u8))
@@ -38,8 +35,6 @@ internal static class ImageSizeReader
 
         return Valid(BinaryPrimitives.ReadUInt32BigEndian(head.Slice(16, 4)), BinaryPrimitives.ReadUInt32BigEndian(head.Slice(20, 4)));
     }
-
-    // ─── WebP: lossy (VP8 ), lossless (VP8L) or extended (VP8X) ─────────────────────────────────────
 
     private static (int, int)? WebP(ReadOnlySpan<byte> head)
     {
@@ -70,15 +65,11 @@ internal static class ImageSizeReader
         return null;
     }
 
-    // ─── JPEG: walk the segments to the start of frame, noting the EXIF orientation on the way ──────
-
     private static async Task<(int, int)?> JpegAsync(Stream content, ReadOnlyMemory<byte> alreadyRead, CancellationToken cancellationToken)
     {
-        // The first bytes were read to tell the type; the walk continues from the stream, so they are put back in front of it.
         var reader = new PrefixedReader(content, alreadyRead);
         var orientation = 1;
 
-        // FF D8 (start of image).
         if (!await reader.SkipAsync(2, cancellationToken))
             return null;
 
@@ -87,7 +78,6 @@ internal static class ImageSizeReader
         var guard = 0;
         while (guard++ < 4096)
         {
-            // The next marker: FF, then the code (FF again is padding).
             if (!await reader.ReadExactAsync(one, cancellationToken))
                 return null;
             if (one[0] != 0xFF)
@@ -102,11 +92,9 @@ internal static class ImageSizeReader
             }
             while (marker == 0xFF);
 
-            // Markers with no length: stuffed zero, start of image, restart markers, TEM.
             if (marker is 0x00 or 0x01 or 0xD8 || marker is >= 0xD0 and <= 0xD7)
                 continue;
 
-            // End of image, or the start of the scan: no frame header was found.
             if (marker is 0xD9 or 0xDA)
                 return null;
 
@@ -116,7 +104,6 @@ internal static class ImageSizeReader
             if (length < 0)
                 return null;
 
-            // Start of frame (baseline, extended, progressive, lossless...): precision, height, width.
             if (marker is >= 0xC0 and <= 0xCF && marker is not (0xC4 or 0xC8 or 0xCC))
             {
                 var frame = new byte[5];
@@ -145,10 +132,8 @@ internal static class ImageSizeReader
         return null;
     }
 
-    /// <summary>The orientation (1 to 8) of the EXIF block of an APP1 segment; <c>null</c> when it has none.</summary>
     internal static int? ExifOrientation(ReadOnlySpan<byte> app1)
     {
-        // "Exif" and two zero bytes, then a TIFF header: byte order (II or MM), 42, the offset of the first directory.
         if (app1.Length < 14 || !app1[..6].SequenceEqual("Exif\0\0"u8))
             return null;
 
@@ -171,7 +156,6 @@ internal static class ImageSizeReader
             if (at + 12 > tiff.Length)
                 return null;
 
-            // Tag 0x0112 (orientation), type 3 (short), one value stored in the first two bytes of the value field.
             if (ReadU16(tiff, at, little) == 0x0112 && ReadU16(tiff, at + 2, little) == 3 && ReadU32(tiff, at + 4, little) == 1)
             {
                 var value = ReadU16(tiff, at + 8, little);
@@ -181,8 +165,6 @@ internal static class ImageSizeReader
 
         return null;
     }
-
-    // ─── Small helpers ──────────────────────────────────────────────────────────────────────────────
 
     private static ushort ReadU16(ReadOnlySpan<byte> bytes, int at, bool little) =>
         little ? BinaryPrimitives.ReadUInt16LittleEndian(bytes.Slice(at, 2)) : BinaryPrimitives.ReadUInt16BigEndian(bytes.Slice(at, 2));
@@ -208,7 +190,6 @@ internal static class ImageSizeReader
         return read;
     }
 
-    /// <summary>A stream read from the start after its first bytes were already taken off it.</summary>
     private sealed class PrefixedReader(Stream rest, ReadOnlyMemory<byte> prefix)
     {
         private int _used;

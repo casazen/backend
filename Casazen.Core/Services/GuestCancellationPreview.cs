@@ -2,35 +2,22 @@ using Casazen.Core.Exceptions;
 
 namespace Casazen.Core.Services;
 
-/// <summary>Where the guest cancels from: it decides which stays can still be cancelled (DB-08a).</summary>
 public enum GuestCancellationChannel
 {
-    /// <summary>
-    /// The guest area (<c>api/public/guest/*</c>): the guest proved the booking with its code and email. A stay that has started
-    /// (the check-in day began, or the host registered the arrival) is not cancelled here: the guest writes to the host (DB-D3).
-    /// </summary>
     GuestArea,
 
-    /// <summary>
-    /// The signed one-time link the host emailed (DB-08h): the host decided to send it, so it also works for a stay in progress.
-    /// </summary>
     SignedLink,
 }
 
-/// <summary>What cancelling means to the guest: the stable <c>kind</c> of a <see cref="GuestCancellationPreview"/>.</summary>
 public static class GuestCancellationKinds
 {
-    /// <summary>A booking that was confirmed: the refund of the policy, if any, goes back to the payment method.</summary>
     public const string Cancel = "cancel";
 
-    /// <summary>A request to pay at the property that the host has not accepted yet: the guest withdraws it, nothing was paid.</summary>
     public const string WithdrawRequest = "withdrawRequest";
 
-    /// <summary>"Paga alla scadenza" with nothing charged yet: the saved card is released, the guest pays nothing.</summary>
     public const string DeferredNoCharge = "deferredNoCharge";
 }
 
-/// <summary>Why a booking cannot be cancelled by the guest: the stable <c>reason</c> of a <see cref="GuestCancellationPreview"/>.</summary>
 public static class GuestCancellationReasons
 {
     public const string AlreadyCancelled = "already_cancelled";
@@ -39,52 +26,32 @@ public static class GuestCancellationReasons
     public const string PaymentInProgress = "payment_in_progress";
 }
 
-/// <summary>Stable error codes of the cancellation of the guest (frontend <c>apiErrors.codes.*</c>).</summary>
 public static class GuestCancellationErrorCodes
 {
-    /// <summary>
-    /// 409: the refund is not the one the guest was shown (a threshold of the policy was crossed, or a payment changed) and nothing was
-    /// cancelled; the answer carries the new preview.
-    /// </summary>
     public const string RefundChanged = "refund_changed";
 
-    /// <summary>422: the stay has started; the guest writes to the host.</summary>
     public const string StayStarted = "guest_cancel_stay_started";
 
-    /// <summary>422: the body does not carry the confirmation the guest gave.</summary>
     public const string ConfirmationRequired = "guest_cancel_confirmation_required";
 }
 
-/// <summary>The policy of the stay as the guest reads it. The description is the catalog's, and only while the host did not change its windows.</summary>
-/// <param name="Slug">Stable identifier of the catalog policy.</param>
-/// <param name="Name">Name of the policy (not translated).</param>
-/// <param name="Description">The catalog text; <c>null</c> when the host's overrides make it say something else.</param>
 public sealed record GuestCancellationPolicyInfo(string Slug, string Name, string? Description);
 
-/// <summary>The stay a preview is about: only what is on the page, nothing personal.</summary>
 public sealed record GuestCancellationStay(string PropertyName, DateOnly CheckInDate, DateOnly CheckOutDate);
 
-/// <summary>What happened when a booking was already cancelled: the refund of its cancellation and where it stands.</summary>
-/// <param name="RefundAmount">What the cancellation decided to refund (in the currency of the stay).</param>
-/// <param name="RefundStatus"><see cref="GuestCancellationRefundStatuses"/>.</param>
 public sealed record GuestCancellationOutcome(decimal RefundAmount, string RefundStatus);
 
-/// <summary>Where the refund of a cancellation stands; never "refunded" before the bank confirms it.</summary>
 public static class GuestCancellationRefundStatuses
 {
-    /// <summary>Nothing to refund (nothing was paid, or the policy refunds nothing).</summary>
     public const string None = "none";
 
-    /// <summary>Started, Stripe has not confirmed it yet.</summary>
     public const string Pending = "pending";
 
-    /// <summary>Every refund of the cancellation was confirmed by Stripe.</summary>
     public const string Confirmed = "confirmed";
 
     /// <summary>Stripe refused a refund; the host sees it and retries.</summary>
     public const string Failed = "failed";
 
-    /// <summary>The status of a set of refunds, as <see cref="Entities.PaymentRefundStatus"/> left them.</summary>
     public static string Of(IReadOnlyCollection<Entities.PaymentRefund> refunds)
     {
         ArgumentNullException.ThrowIfNull(refunds);
@@ -141,14 +108,8 @@ public sealed record GuestCancellationPreview(
     GuestCancellationOutcome? Outcome,
     DateTime GeneratedAt);
 
-/// <summary>
-/// The refund the guest was shown is not the one the cancellation would make now (a threshold of the policy was crossed, or a payment
-/// changed): nothing was cancelled, <see cref="Current"/> is what the guest sees now and confirms again (DB-08a). 409
-/// <see cref="GuestCancellationErrorCodes.RefundChanged"/>.
-/// </summary>
 public sealed class GuestRefundChangedException(GuestCancellationPreview current)
     : DomainConflictException(GuestCancellationErrorCodes.RefundChanged, "GuestRefundChanged")
 {
-    /// <summary>The preview as it is now.</summary>
     public GuestCancellationPreview Current { get; } = current;
 }

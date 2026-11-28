@@ -17,7 +17,6 @@ public class PropertyAccessCode : ITenantOwned
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant key (ITenantOwned). Inherited from the property.</summary>
     public Guid OrgId { get; set; }
     public virtual Org Org { get; set; } = null!;
 
@@ -25,13 +24,8 @@ public class PropertyAccessCode : ITenantOwned
     public Guid PropertyId { get; set; }
     public virtual Property Property { get; set; } = null!;
 
-    /// <summary>
-    /// Encrypted access code (PIN, key code, lockbox combo). NEVER logged in plain text.
-    /// Encrypted with separate purpose per ADR-012 pattern.
-    /// </summary>
     [Required]
     public string EncryptedCode { get; set; } = string.Empty;
 
-    /// <summary>When the code was last updated (UTC).</summary>
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

@@ -7,7 +7,6 @@ namespace Casazen.Infrastructure.GuestPortal;
 
 public static class GuestExtraFiscalPayment
 {
-    /// <summary>Serialize the payment with guest document numbering. An already issued document cannot acquire more lines.</summary>
     public static async Task SavePaidAsync(AppDbContext db, GuestHostExtraOrder order, CancellationToken ct)
     {
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, ct,

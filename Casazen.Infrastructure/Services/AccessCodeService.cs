@@ -9,9 +9,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Manages property access codes with encryption and verification gating (NF-13, E06/F03/US01/T01).
-/// </summary>
 public class AccessCodeService : IAccessCodeService
 {
     private readonly AppDbContext _db;
@@ -39,13 +36,11 @@ public class AccessCodeService : IAccessCodeService
 
         if (existing != null)
         {
-            // Update existing code (EF converter handles encryption)
             existing.EncryptedCode = code;
             existing.UpdatedAt = DateTime.UtcNow;
         }
         else
         {
-            // Create new access code (EF converter handles encryption)
             var accessCode = new PropertyAccessCode
             {
                 PropertyId = propertyId,
@@ -58,7 +53,6 @@ public class AccessCodeService : IAccessCodeService
 
         await _db.SaveChangesAsync(ct);
 
-        // Log the action without the code itself (AC-NF13-1, AC-NF13-5)
         _logger.LogInformation(
             "Access code set for property {PropertyId} by user {UserId}",
             propertyId, userId);
@@ -68,8 +62,6 @@ public class AccessCodeService : IAccessCodeService
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        // The booking is one the caller reaches (AM-03): the org first, then the properties it was given. The same rule as the status of the
-        // codes (ReachableProperties): a booking of another property of the org is as absent as one that does not exist.
         var reaches = await _db.Bookings
             .AsNoTracking()
             .Where(b => b.OrgId == scope.OrgId && b.Id == bookingId)
@@ -83,7 +75,6 @@ public class AccessCodeService : IAccessCodeService
             return null;
         }
 
-        // Check verification passed before allowing access
         if (!await IsVerificationPassedAsync(bookingId, ct))
         {
             _logger.LogWarning(
@@ -105,12 +96,10 @@ public class AccessCodeService : IAccessCodeService
         if (accessCode == null)
             return null;
 
-        // Log the access (AC-NF13-2)
         _logger.LogInformation(
             "Access code accessed for booking {BookingId} by user {UserId}",
             bookingId, userId);
 
-        // EF converter handles decryption
         return accessCode.EncryptedCode;
     }
 
@@ -126,11 +115,9 @@ public class AccessCodeService : IAccessCodeService
 
     public async Task<string?> GetReleasableCodeAsync(Guid bookingId, string channel, CancellationToken ct = default)
     {
-        // E03/F04/US02: the log records how the code left, so the channel is one of the known ones (never a free text).
         if (!AccessCodeReleaseChannels.All.Contains(channel, StringComparer.Ordinal))
             throw new ArgumentException($"Unknown release channel '{channel}'.", nameof(channel));
 
-        // Check verification passed before releasing (AC-NF13-3, AC-NF13-6)
         if (!await IsVerificationPassedAsync(bookingId, ct))
         {
             _logger.LogWarning(
@@ -146,8 +133,6 @@ public class AccessCodeService : IAccessCodeService
         if (booking == null)
             return null;
 
-        // E03/F04/US02: a code opens the door of a stay still to come or in progress. The one definition of an active stay
-        // (AlloggiatiStatusRules: no request, hold, cancelled stay or no-show), and not one already over.
         if (!AlloggiatiStatusRules.IsDue(booking) || booking.Status == BookingStatus.CheckedOut)
         {
             _logger.LogWarning(
@@ -156,8 +141,6 @@ public class AccessCodeService : IAccessCodeService
             return null;
         }
 
-        // E25/F01/US01/T01: an organization that asks for the tourist tax before the code holds it back while the tax is due and not paid. This is the one gate
-        // of every release to a guest (the screen, the e-mail, the operator's approval), so no channel gets the code around it; nothing is logged as released.
         if (await GetHoldReasonAsync(bookingId, ct) is { } hold)
         {
             _logger.LogInformation("Access code release held back for booking {BookingId} via {Channel}: {Reason}", bookingId, channel, hold);
@@ -170,7 +153,6 @@ public class AccessCodeService : IAccessCodeService
         if (accessCode == null)
             return null;
 
-        // EF converter handles decryption
         return accessCode.EncryptedCode;
     }
 
@@ -185,7 +167,6 @@ public class AccessCodeService : IAccessCodeService
             .Select(b => b.Property.OrgId)
             .SingleAsync(ct);
 
-        // Log the release WITHOUT the code itself (AC-NF13-4, AC-NF13-9)
         var releaseLog = new AccessCodeReleaseLog
         {
             OrgId = orgId,
@@ -218,23 +199,16 @@ public class AccessCodeService : IAccessCodeService
         var skipped = (page - 1) * pageSize;
         var rows = await StatusRows(scope, skipped, pageSize).ToListAsync(ct);
 
-        // A property with no code row has no date: the status is derived from the date, there is no second read of the code table.
         var items = rows
             .Select(r => new AccessCodeStatusItem(r.PropertyId, r.Name, r.City, r.CodeUpdatedAt is not null, r.CodeUpdatedAt))
             .ToList();
 
-        // A page that is not full is the last one, and says how many there are: no second query. A full page, or a page past the end,
-        // does not, and the count is asked.
         var isLastPage = items.Count < pageSize && (items.Count > 0 || skipped == 0);
         var total = isLastPage ? skipped + items.Count : await ReachableProperties(scope).CountAsync(ct);
 
         return new AccessCodeStatusPage(items, total, page, pageSize);
     }
 
-    /// <summary>
-    /// The properties of <paramref name="scope"/>, narrowed in SQL (AM-03): the org of the caller first, then what the caller reaches. A
-    /// collaborator «Solo alcuni» gets the properties it was given, and a property of another org is never in the query.
-    /// </summary>
     internal IQueryable<Property> ReachableProperties(HostScope scope) =>
         _db.Properties
             .AsNoTracking()
@@ -278,12 +252,4 @@ public class AccessCodeService : IAccessCodeService
     }
 }
 
-/// <summary>
-/// What the status query reads for a property: the property and the date its code was last set (<c>null</c> when it has none). There is
-/// no member for the code on purpose, so the statement cannot select it.
-/// </summary>
-/// <param name="PropertyId">The property.</param>
-/// <param name="Name">The name of the property.</param>
-/// <param name="City">The city of the property.</param>
-/// <param name="CodeUpdatedAt">The latest <see cref="PropertyAccessCode.UpdatedAt"/> of the property, <c>null</c> when it has no code row.</param>
 internal sealed record AccessCodeStatusRow(Guid PropertyId, string Name, string City, DateTime? CodeUpdatedAt);

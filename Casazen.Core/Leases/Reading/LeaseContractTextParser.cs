@@ -20,13 +20,11 @@ namespace Casazen.Core.Leases.Reading;
 /// </remarks>
 public static partial class LeaseContractTextParser
 {
-    /// <summary>The confidence from which a read value goes into a draft (the person still checks it).</summary>
     public const int AcceptedConfidence = 70;
 
     private const RegexOptions Options = RegexOptions.CultureInvariant | RegexOptions.IgnoreCase;
     private const int Timeout = 2000;
 
-    /// <summary>Reads <paramref name="text"/>; <paramref name="context"/> is the property of the draft, to say whether the contract names it.</summary>
     public static LeaseContractReading Parse(string? text, LeaseContractParseContext? context = null)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -43,7 +41,6 @@ public static partial class LeaseContractTextParser
         ReadValue<DateOnly>? end = period.End;
         if (end is null && period.Start is { } start && months is { } length)
         {
-            // The contract says how long it lasts and when it starts, not when it ends: worked out, and told so.
             var worked = start.Value.AddMonths(length.Value).AddDays(-1);
             end = new ReadValue<DateOnly>(worked, Math.Min(start.Confidence, length.Confidence) - 10, Derived: true);
         }
@@ -63,15 +60,12 @@ public static partial class LeaseContractTextParser
         };
     }
 
-    // ---- the text --------------------------------------------------------------------------------------------------------
-
     [GeneratedRegex(@"\.{3,}|\u2026+|-{3,}|={3,}|\*{3,}", RegexOptions.CultureInvariant, Timeout)]
     private static partial Regex Placeholders();
 
     [GeneratedRegex(@" {2,}", RegexOptions.CultureInvariant, Timeout)]
     private static partial Regex ManySpaces();
 
-    /// <summary>One line: a single space between words, the quotes and dashes of the typography brought to the plain ones, the blanks of a form (dots, underscores) gone.</summary>
     internal static string Flatten(string text)
     {
         var builder = new StringBuilder(text.Length);
@@ -108,8 +102,6 @@ public static partial class LeaseContractTextParser
         return ManySpaces().Replace(Placeholders().Replace(builder.ToString(), " "), " ").Trim();
     }
 
-    // ---- dates -----------------------------------------------------------------------------------------------------------
-
     private readonly record struct FoundDate(DateOnly Date, int Index, int End);
 
     [GeneratedRegex(@"(?<![\d/.\-])(?<d>\d{1,2}) ?[/.\-] ?(?<m>\d{1,2}) ?[/.\-] ?(?<y>\d{4})(?!\d)", Options, Timeout)]
@@ -124,7 +116,6 @@ public static partial class LeaseContractTextParser
     private static readonly string[] Months =
         ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
 
-    /// <summary>Every real calendar date written in the text (numeric or in words), between 1970 and 2100, in the order they appear.</summary>
     private static List<FoundDate> FindDates(string flat)
     {
         var dates = new List<FoundDate>();
@@ -159,7 +150,6 @@ public static partial class LeaseContractTextParser
         return dates.OrderBy(d => d.Index).ToList();
     }
 
-    /// <summary>The words that may stand between a label ("decorrenza") and its date ("dal giorno"): nothing else, or the date is another one's.</summary>
     private static readonly HashSet<string> GapWords =
         ["dal", "dall", "del", "dello", "della", "dalla", "giorno", "il", "la", "lo", "l", "al", "data", "a", "far", "partire", "di", "sino", "fino", "entro", "in", "odierna"];
 
@@ -183,7 +173,6 @@ public static partial class LeaseContractTextParser
         FoundDate? chosen = null;
         foreach (Match match in label.Matches(flat))
         {
-            // A label that is not the one looked for ("mediante passaporto … con scadenza 03/03/2030" is not the end of the lease).
             if (skip is not null && skip(flat, match.Index))
                 continue;
 
@@ -209,21 +198,17 @@ public static partial class LeaseContractTextParser
         return chosen;
     }
 
-    // The documents a contract describes and that expire: the identity document of the tenant, the energy certificate of the house.
     [GeneratedRegex(
         @"\b(?:passaporto|permesso\s+di\s+soggiorno|carta\s+d.\s?identit\w*|documento\s+(?:di\s+)?(?:identit\w*|riconoscimento)|patente|prestazione\s+energetica|attestato\s+di\s+prestazione|certificat\w+\s+energetic\w*|a\.?\s?p\.?\s?e\.?)\b",
         Options,
         Timeout)]
     private static partial Regex DocumentWord();
 
-    /// <summary>Whether the label at <paramref name="index"/> closes the description of a document ("…con scadenza 03/03/2030"), looking back at the words just before it.</summary>
     private static bool ExpiresADocument(string flat, int index)
     {
         var before = flat[Math.Max(0, index - 170)..index];
         return DocumentWord().IsMatch(before);
     }
-
-    // ---- the first period: start, end, length -----------------------------------------------------------------------------
 
     [GeneratedRegex(
         @"\b(?:decorrenz[ae]|decorr(?:e|ere|er[\u00e0a]|ono|endo)|ha\s+inizio|avr[\u00e0a]\s+inizio|data\s+di\s+inizio|inizio|a\s+partire|a\s+far\s+data|con\s+effetto|entrer[\u00e0a]\s+in\s+vigore)\b",
@@ -252,7 +237,6 @@ public static partial class LeaseContractTextParser
         var startConfidence = 92;
         var endConfidence = 92;
 
-        // "dal 01/11/2026 al 31/10/2030": two dates joined by "al", the first after a "dal".
         for (var i = 0; i + 1 < dates.Count; i++)
         {
             var first = dates[i];
@@ -279,7 +263,6 @@ public static partial class LeaseContractTextParser
             break;
         }
 
-        // An end on or before the start is a misreading of one of them: neither is trusted as a pair, the start alone stays.
         if (start is { } s && end is { } e && e.Date <= s.Date)
             end = null;
 
@@ -320,15 +303,12 @@ public static partial class LeaseContractTextParser
     [GeneratedRegex(@"\bdurata\b", Options, Timeout)]
     private static partial Regex DurationLabel();
 
-    // "4 (quattro) anni", "quattro anni", "36 mesi"
     [GeneratedRegex(@"(?<![\p{L}\d/])(?<n>" + NumberPattern + @")\s*(?:\([^)]{0,30}\)\s*)?(?<u>anni|anno|mesi|mese)\b", Options, Timeout)]
     private static partial Regex NumberThenUnit();
 
-    // "anni 4", "mesi 12"
     [GeneratedRegex(@"\b(?<u>anni|anno|mesi|mese)\s*(?<n>" + NumberPattern + @")\b(?![\d/])", Options, Timeout)]
     private static partial Regex UnitThenNumber();
 
-    /// <summary>How long the first period lasts, in months, from the first "durata" followed within a few words by a number of years or months.</summary>
     private static ReadValue<int>? ReadTermMonths(string flat)
     {
         foreach (Match label in DurationLabel().Matches(flat))
@@ -351,8 +331,6 @@ public static partial class LeaseContractTextParser
     }
 
     private static Match? FirstBy(MatchCollection matches) => matches.Count > 0 ? matches[0] : null;
-
-    // ---- the day of the signature ------------------------------------------------------------------------------------------
 
     [GeneratedRegex(@"\bdata\s+di\s+(?:stipula|stipulazione|sottoscrizione)\b|\b(?:stipulat[oa]|concluso|redatto)\s+(?:in\s+data|il)\b", Options, Timeout)]
     private static partial Regex StipulaLabel();
@@ -379,18 +357,15 @@ public static partial class LeaseContractTextParser
         if (DateAfter(flat, dates, StipulaLabel(), last: true) is { } labelled)
             return new ReadValue<DateOnly>(labelled.Date, 88);
 
-        // The signature block at the end: "Letto, confermato e sottoscritto. Milano, li 15/10/2026" ("l'Accordo … sottoscritto in Milano il 20 maggio 2025" is not it).
         if (DateAfter(flat, dates, SignatureLabel(), last: true, loose: true, maxGap: 70, skip: IsAgreementDate) is { } signature)
             return new ReadValue<DateOnly>(signature.Date, 80);
 
-        // "Letto, approvato e sottoscritto. Bollate, li 19-9-26": a year of two digits, as the parties write it by hand.
         if (SignedShortDate().Match(flat) is { Success: true } shortDate
             && ReadingText.Date($"{shortDate.Groups["d"].Value}/{shortDate.Groups["m"].Value}/{shortDate.Groups["y"].Value}") is { } shortDay)
         {
             return new ReadValue<DateOnly>(shortDay, 72);
         }
 
-        // "Milano, li 15 ottobre 2026": the last date written after "li" is the signature's.
         FoundDate? afterLi = null;
         foreach (var date in dates)
         {

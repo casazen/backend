@@ -9,13 +9,8 @@ namespace Casazen.Core.Authorization;
 /// </summary>
 public static class HostOnboarding
 {
-    /// <summary>Stable <c>code</c> of the 403 ProblemDetails; the web app opens the onboarding, the mobile app its activation screen.</summary>
     public const string RequiredCode = "onboarding_required";
 
-    /// <summary>
-    /// Contexts withheld until the host onboarding is complete: the two rental contexts and the org's account
-    /// (<see cref="AccountContext"/>, AM-01). It is not exempt from the onboarding and consents of the web app.
-    /// </summary>
     public static readonly IReadOnlySet<string> HostContextKeys =
         new HashSet<string>(["short-rent", "long-rent", AccountContext.Key], StringComparer.OrdinalIgnoreCase);
 
@@ -30,9 +25,7 @@ public static class HostOnboarding
 /// </param>
 public sealed record HostOnboardingStatus(bool OnboardingCompleted, bool ConsentsAccepted)
 {
-    /// <summary>No user row, or nothing done yet.</summary>
     public static HostOnboardingStatus NotStarted { get; } = new(false, false);
 
-    /// <summary>True when the host contexts may be granted.</summary>
     public bool IsComplete => OnboardingCompleted && ConsentsAccepted;
 }

@@ -43,8 +43,6 @@ public sealed class DomainRecheckService(
         return new DomainRecheckSummary(checkedCount, nowVerified, noLongerVerified, removed, removalsFailed);
     }
 
-    // ─── Removals ───────────────────────────────────────────────────────────────────────────────────
-
     private async Task<(int Removed, int Failed)> ProcessRemovalsAsync(CancellationToken cancellationToken)
     {
         await EnqueueRemovalsOfInactiveOrgsAsync(cancellationToken);
@@ -71,7 +69,6 @@ public sealed class DomainRecheckService(
                     continue;
                 }
 
-                // Another org may hold the same domain by now (set again after it was dropped): it must stay on the project.
                 var inUse = await dbContext.Orgs.AsNoTracking().AnyAsync(
                     o => o.PublicHostMode == PublicHostMode.CustomDomain && o.CustomDomain == removal.Domain && o.IsActive,
                     cancellationToken);
@@ -86,7 +83,6 @@ public sealed class DomainRecheckService(
                 removal.Attempts++;
                 removal.LastAttemptAt = timeProvider.GetUtcNow().UtcDateTime;
 
-                // Not found = already gone from the project: done as well. Then the Auth0 entries of the owner sign-in (E40/F01/US02/T01).
                 if (result.Status is VercelCallStatus.Ok or VercelCallStatus.NotFound)
                 {
                     var auth0 = await RemoveFromAuth0Async(removal.Domain, cancellationToken);
@@ -97,7 +93,6 @@ public sealed class DomainRecheckService(
                     }
                     else
                     {
-                        // The domain is off Vercel and still in Auth0: the row stays, the next run removes both again (Vercel answers NotFound).
                         removal.LastError = Auth0RemovalError(auth0.Value);
                         failed++;
                     }
@@ -142,7 +137,6 @@ public sealed class DomainRecheckService(
         _ => "auth0_unavailable",
     };
 
-    /// <summary>An org that was deactivated no longer serves its domain: it leaves the Vercel project too.</summary>
     private async Task EnqueueRemovalsOfInactiveOrgsAsync(CancellationToken cancellationToken)
     {
         var inactive = await dbContext.Orgs
@@ -160,8 +154,6 @@ public sealed class DomainRecheckService(
             await dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    // ─── Checks ─────────────────────────────────────────────────────────────────────────────────────
-
     private async Task<(int Checked, int NowVerified, int NoLongerVerified)> RecheckDomainsAsync(CancellationToken cancellationToken)
     {
         var hostOptions = options.Value;
@@ -170,7 +162,6 @@ public sealed class DomainRecheckService(
         var verifiedCutoff = now.AddHours(-Math.Max(1, hostOptions.RecheckVerifiedHours));
         var giveUpBefore = now.AddDays(-Math.Max(1, hostOptions.MaxPendingDays));
 
-        // Orgs are not tenant-owned: the periodic job reads them all, on purpose.
         var candidates = await dbContext.Orgs
             .Where(o => o.IsActive
                         && o.PublicHostMode == PublicHostMode.CustomDomain
@@ -194,7 +185,6 @@ public sealed class DomainRecheckService(
         {
             try
             {
-                // Same rule as everywhere else: the effective tier, so a lapsed plan is not checked (nor served).
                 if (entitlementService.ResolveEffectiveTier(org) is not (PlanTier.Pro or PlanTier.Scale))
                     continue;
 
@@ -208,7 +198,6 @@ public sealed class DomainRecheckService(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // One org never stops the run: its domain is checked again at the next one.
                 logger.LogError(ex, "Periodic domain check of org {OrgId} failed", org.Id);
                 dbContext.ChangeTracker.Clear();
             }
@@ -226,7 +215,6 @@ public sealed class DomainRecheckService(
 /// <summary>Writes the domains that must leave the Vercel project (BK-17), one row per domain.</summary>
 public static class DomainRemovalQueue
 {
-    /// <summary>Queues <paramref name="domain"/> for removal; a domain already queued is left as it is. The caller saves.</summary>
     public static async Task EnqueueAsync(AppDbContext dbContext, string domain, DateTime now, CancellationToken cancellationToken)
     {
         if (await dbContext.PendingDomainRemovals.AnyAsync(r => r.Domain == domain, cancellationToken))

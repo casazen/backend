@@ -20,35 +20,27 @@ namespace Casazen.Core.Entities;
 [Table("PropertyFlowActivations")]
 public class PropertyFlowActivation : ITenantOwned
 {
-    /// <summary>Name of the unique index on (<see cref="PropertyId"/>, <see cref="Flow"/>).</summary>
     public const string PropertyFlowIndexName = "UIX_PropertyFlowActivations_PropertyId_Flow";
 
-    /// <summary>Longest user id: the column length of <c>User.Id</c>, the Auth0 subject.</summary>
     public const int UserIdMaxLength = 255;
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row, copied from the property when it is created (TN-2).</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The property (FK, CASCADE: the activation goes with the property).</summary>
     public Guid PropertyId { get; set; }
 
     public OnboardingFlow Flow { get; set; }
 
-    /// <summary>When the flow was activated on the property (the last activation, UTC).</summary>
     public DateTime ActivatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>Who activated it: the Auth0 subject of the account.</summary>
     [Required]
     [MaxLength(UserIdMaxLength)]
     public string ActivatedByUserId { get; set; } = string.Empty;
 
-    /// <summary>When the flow was deactivated by the host (UTC); <c>null</c> while the activation stands.</summary>
     public DateTime? DeactivatedAt { get; set; }
 
-    /// <summary>Who deactivated it: the Auth0 subject of the account; <c>null</c> while the activation stands.</summary>
     [MaxLength(UserIdMaxLength)]
     public string? DeactivatedByUserId { get; set; }
 }

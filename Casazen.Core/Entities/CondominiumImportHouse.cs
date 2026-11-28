@@ -5,9 +5,6 @@ using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// One CondoLedger house in staging. Without a verified <see cref="PropertyId"/> it never changes a balance.
-/// </summary>
 [Table("CondominiumImportHouses")]
 public class CondominiumImportHouse : ITenantOwned
 {
@@ -35,7 +32,6 @@ public class CondominiumImportHouse : ITenantOwned
 
     public int FiscalStartMonth { get; set; }
 
-    /// <summary>Set when someone verifies which CasaZen property this house is. Until then the row stays staged.</summary>
     public Guid? PropertyId { get; set; }
 
     public Guid? CondominiumId { get; set; }

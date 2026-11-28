@@ -9,26 +9,16 @@ using Casazen.Core.Utilities;
 
 namespace Casazen.Core.Regulatory;
 
-/// <summary>
-/// The identifier of a structure on the Ticino police portal (casazen/backend#979): the «Numero identificativo LEAR / NO-LEAR» Ticino
-/// Turismo gives a structure when it registers (examples of the official format page: <c>XNA9999</c>, <c>NL-99999999</c>). It is the first
-/// field of every row of the file (<c>userId</c> / «Id Struttura»); the portal refuses a file whose identifier it does not know.
-/// </summary>
 public static partial class TicinoStructureId
 {
-    /// <summary>Longest identifier stored.</summary>
     public const int MaxLength = 20;
 
-    /// <summary>Shortest identifier accepted.</summary>
     public const int MinLength = 3;
 
-    /// <summary>Letters and digits, groups joined by single hyphens (after <see cref="Normalize"/>).</summary>
     public const string Pattern = "^[A-Z0-9]+(-[A-Z0-9]+)*$";
 
-    /// <summary>The SharedResources key of the validation message.</summary>
     public const string InvalidFormatMessageKey = "TicinoStructureIdInvalid";
 
-    /// <summary>Trimmed, without spaces, uppercase; <c>null</c> when blank.</summary>
     public static string? Normalize(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -37,7 +27,6 @@ public static partial class TicinoStructureId
         return compact.Length == 0 ? null : compact;
     }
 
-    /// <summary>True when the normalized value is 3 to 20 letters, digits and single hyphens.</summary>
     public static bool IsValid(string? value) =>
         Normalize(value) is { Length: >= MinLength and <= MaxLength } normalized && PatternRegex().IsMatch(normalized);
 
@@ -45,17 +34,13 @@ public static partial class TicinoStructureId
     private static partial Regex PatternRegex();
 }
 
-/// <summary>The formats of the file the portal accepts that CasaZen writes (the third, Excel, is not written).</summary>
 public enum TicinoPoliceFileFormat
 {
-    /// <summary>The official CSV model (<c>D-Modello_2.CSV</c>): semicolons, Windows-1252 (or UTF-8 by configuration), dates <c>dd.MM.yyyy</c>.</summary>
     Csv = 1,
 
-    /// <summary>The official XML (<c>F-Modello_4.xsd</c>): UTF-8, dates <c>yyyy-MM-dd</c>.</summary>
     Xml = 2,
 }
 
-/// <summary>The three document types of the portal.</summary>
 public enum TicinoDocumentKind
 {
     Passport = 1,
@@ -63,62 +48,33 @@ public enum TicinoDocumentKind
     Other = 3,
 }
 
-/// <summary>The character sets the CSV is written in (<c>GuestNotifications:TicinoCsvEncoding</c>, decision D8).</summary>
 public enum TicinoCsvCharset
 {
-    /// <summary>Windows-1252, the single-byte set of the official model (the default): its header is written byte for byte as the model's.</summary>
     Windows1252 = 1,
 
-    /// <summary>UTF-8 without byte order mark (the mark would become part of the name of the first column).</summary>
     Utf8 = 2,
 }
 
-/// <summary>What a row of the file stands for (the day response says <c>kind</c>: <c>guest</c> or <c>group</c>).</summary>
 public enum TicinoRowKind
 {
-    /// <summary>One notified person: an adult (with the minors of the stay counted on them, or none), or a minor of a stay without adults.</summary>
     Guest = 1,
 
-    /// <summary>
-    /// The leader of a group of <see cref="TicinoPoliceFile.GroupMinSize"/> or more persons, every other member counted on the row (decision D11): the
-    /// other members are not rows, they are on the sheet of the group.
-    /// </summary>
     Group = 2,
 }
 
-/// <summary>A person on the sheet of a group (decision D11): what the sheet keeps of every member, the leader first.</summary>
-/// <param name="FirstName">The first name; empty when the check-in has none.</param>
-/// <param name="LastName">The last name; empty when the check-in has none.</param>
-/// <param name="BirthDate">The birth date; null when the check-in has none.</param>
-/// <param name="Nationality">ISO 3166-1 alpha-3; empty when it is not known.</param>
 public sealed record TicinoGroupMember(string FirstName, string LastName, DateOnly? BirthDate, string Nationality);
 
-/// <summary>Something about a stay the file alone does not settle (the day lists it with the booking); the codes of <see cref="TicinoWarnings"/>.</summary>
 public sealed record TicinoStayWarning(Guid BookingId, string Code);
 
-/// <summary>The stable codes of <see cref="TicinoStayWarning"/> (the clients translate them).</summary>
 public static class TicinoWarnings
 {
-    /// <summary>
-    /// A stay with minors and no adult (decision D11): each minor is a row, and the written authorization of the parents is needed, kept five years
-    /// (receipt type <c>ParentalAuthorization</c>); without it the police is to be told at once.
-    /// </summary>
     public const string ParentalAuthorizationNeeded = "parental_authorization_needed";
 
-    /// <summary>
-    /// A group of six or more whose sheet misses the name or the nationality of a member: the leader's row can go, the sheet that is kept with it is not
-    /// complete until the guests are.
-    /// </summary>
     public const string GroupSheetIncomplete = "group_sheet_incomplete";
 }
 
-/// <summary>A CSV for the portal (<see cref="TicinoPoliceFile.WriteCsvFile"/>).</summary>
-/// <param name="Content">The bytes, in <paramref name="Charset"/>.</param>
-/// <param name="Charset">The IANA name of the character set: <c>windows-1252</c> or <c>utf-8</c> (the <c>charset</c> of the content type).</param>
-/// <param name="TransliteratedCount">The characters of the rows the character set cannot hold, written without their accent or as <c>?</c>.</param>
 public sealed record TicinoCsvFile(byte[] Content, string Charset, int TransliteratedCount);
 
-/// <summary>One guest of a stay as the check-in has it (a <see cref="StayGuest"/>, with the address of its guest record when linked).</summary>
 public sealed record TicinoGuestFacts(
     int Position,
     StayGuestType Type,
@@ -197,12 +153,6 @@ public sealed record TicinoStayFacts(
     string? ReferenceNumber = null,
     string? VehiclePlate = null)
 {
-    /// <summary>
-    /// A stay as the file reads it, from its booking and the guests its check-in recorded (the one reading of a stay for the Ticino file and for the guest register of E31/F01):
-    /// the guests in their order, or the booker alone while the check-in has none; «Numero bollettino» is the code of the booking as hosts read it, «Numero autovettura» the plate of the stay.
-    /// </summary>
-    /// <param name="booking">The booking, with its booker (<see cref="Booking.Guest"/>) loaded.</param>
-    /// <param name="stayGuests">The rows of the check-in of the booking, with their guest record loaded when linked.</param>
     public static TicinoStayFacts From(Booking booking, IEnumerable<StayGuest> stayGuests)
     {
         ArgumentNullException.ThrowIfNull(booking);
@@ -226,7 +176,6 @@ public sealed record TicinoStayFacts(
     }
 }
 
-/// <summary>One row of the file: one notified person (an adult, or a minor travelling without an adult), or the leader of a group of six or more.</summary>
 public sealed record TicinoRegistration(
     Guid BookingId,
     int Position,
@@ -250,26 +199,17 @@ public sealed record TicinoRegistration(
     /// <summary>«Numero autovettura» / <c>carid</c>: the plate of the stay on the row of its head (the person the minors are counted on), empty otherwise.</summary>
     public string CarId { get; init; } = string.Empty;
 
-    /// <summary>«Numero bollettino» / <c>referenceNr</c>: the code of the booking (<c>XXXXX-XXXXX</c>), so the host finds the row again on the portal.</summary>
     public string ReferenceNr { get; init; } = string.Empty;
 
-    /// <summary><see cref="TicinoRowKind.Group"/> on the row of the leader of a group of six or more, whose counters hold every other member.</summary>
     public TicinoRowKind Kind { get; init; } = TicinoRowKind.Guest;
 
-    /// <summary>The persons of the group, the leader included, on a group row; 0 on the row of a guest.</summary>
     public int GroupSize { get; init; }
 
-    /// <summary>The row fits the official XSD: the postcode is a whole number (<c>xs:integer</c>) and the country of residence is known.</summary>
     public bool FitsXml => Zip.Length is > 0 and <= 18 && Zip.All(char.IsAsciiDigit) && Nation.Length == 3;
 }
 
-/// <summary>
-/// Why a guest (or a whole stay, <see cref="Position"/> <c>null</c>) cannot be in the file: the codes of <see cref="TicinoMissing"/>.
-/// The stay is left out of the file until its data are complete.
-/// </summary>
 public sealed record TicinoGuestIssue(Guid BookingId, int? Position, string GuestName, IReadOnlyList<string> Missing);
 
-/// <summary>The stable codes of what a guest misses for the file (the clients translate them).</summary>
 public static class TicinoMissing
 {
     public const string FirstName = "firstName";
@@ -278,17 +218,11 @@ public static class TicinoMissing
     public const string Nationality = "nationality";
     public const string DocumentType = "documentType";
 
-    /// <summary>Stay level: the booking counts more guests than the check-in recorded.</summary>
     public const string Guests = "guests";
 }
 
-/// <summary>What the file of one arrival day holds: the rows of the stays whose data are complete, and what the others miss.</summary>
 public sealed record TicinoDayPlan(IReadOnlyList<TicinoRegistration> Registrations, IReadOnlyList<TicinoGuestIssue> Issues)
 {
-    /// <summary>
-    /// What the file alone does not settle, per stay, whether the stay is in the file or not: a stay of minors without adults needs the parents'
-    /// authorization, a group sheet misses a name or a nationality (<see cref="TicinoWarnings"/>).
-    /// </summary>
     public IReadOnlyList<TicinoStayWarning> Warnings { get; init; } = [];
 
     /// <summary>The XML can be written: there is a row and every row fits the XSD (otherwise the CSV, which has no such limits).</summary>
@@ -317,28 +251,21 @@ public sealed record TicinoDayPlan(IReadOnlyList<TicinoRegistration> Registratio
 /// </remarks>
 public static class TicinoPoliceFile
 {
-    /// <summary>Persons, the leader included, from which a group is notified as one row (decision D11; the rule of the canton: «almeno 6 persone»).</summary>
     public const int GroupMinSize = 6;
 
-    /// <summary>The header of the sheet of a group (decision D11): the four data the rule asks of every member.</summary>
     public static readonly IReadOnlyList<string> GroupSheetColumns = ["Nome", "Cognome", "Data di nascita", "Nazionalità"];
 
-    /// <summary>The portal where the host uploads the file.</summary>
     public const string PortalUrl = "https://www.notifiche.ti.ch";
 
-    /// <summary>The first day of birth the portal accepts.</summary>
     public static readonly DateOnly MinBirthDate = new(1900, 1, 1);
 
-    /// <summary>The first day of arrival or departure the portal accepts.</summary>
     public static readonly DateOnly MinStayDate = new(2000, 1, 1);
 
-    /// <summary>Age from which a guest is notified on their own row.</summary>
     public const int AdultAge = 18;
 
     /// <summary>Age from which an accompanying minor is counted in «Mag14» rather than «Min14».</summary>
     public const int Over14Age = 14;
 
-    /// <summary>The header of the official CSV model, column by column.</summary>
     public static readonly IReadOnlyList<string> CsvColumns =
     [
         "Id Struttura", "Cognome", "Nome", "Data di nascita", "Nazionalità", "Data di arrivo", "Data di partenza", "Luogo di nascita",
@@ -346,10 +273,6 @@ public static class TicinoPoliceFile
         "Numero documento",
     ];
 
-    /// <summary>
-    /// The rows of the stays arriving on one day for the structure <paramref name="structureId"/>, and what the incomplete stays miss.
-    /// <paramref name="today"/> is the last birth date accepted.
-    /// </summary>
     public static TicinoDayPlan Plan(string structureId, IEnumerable<TicinoStayFacts> stays, DateOnly today)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(structureId);
@@ -386,12 +309,6 @@ public static class TicinoPoliceFile
         return leaders.Count == 1 ? leaders[0] : null;
     }
 
-    /// <summary>
-    /// The positions of the guests the file notifies on their own row, so the check-in asks the document of each (NF-132): every adult (18 or more at
-    /// <paramref name="arrival"/>, family and group members included), or every minor when the stay has no adult; in a group of six or more only its
-    /// leader (<see cref="GroupLeaderPosition"/>: the other members are counted on the leader's row). A guest without a birth date is not in it: nobody
-    /// can tell yet whether they are a row.
-    /// </summary>
     public static IReadOnlySet<int> NotifiedPositions(IEnumerable<(int Position, StayGuestType Type, DateOnly? BirthDate)> guests, DateOnly arrival)
     {
         ArgumentNullException.ThrowIfNull(guests);
@@ -425,10 +342,6 @@ public static class TicinoPoliceFile
             .ToHashSet();
     }
 
-    /// <summary>
-    /// The members of the group of a stay for its sheet (decision D11), in the order of the check-in (the head of group first when the check-in put it
-    /// first); null when the stay is not a group of <see cref="GroupMinSize"/> or more. A datum the check-in does not have stays empty.
-    /// </summary>
     public static IReadOnlyList<TicinoGroupMember>? GroupSheetOf(TicinoStayFacts stay)
     {
         ArgumentNullException.ThrowIfNull(stay);
@@ -463,7 +376,6 @@ public static class TicinoPoliceFile
         var adults = guests.Where(g => ages[g.Position] >= AdultAge).ToList();
         var minors = guests.Where(g => ages[g.Position] is { } age && age < AdultAge).ToList();
 
-        // Minors without an adult (D11): each minor is notified, and the written authorization of their parents is needed (kept five years).
         if (adults.Count == 0 && minors.Count > 0)
             warnings.Add(new TicinoStayWarning(stay.BookingId, TicinoWarnings.ParentalAuthorizationNeeded));
 
@@ -483,7 +395,6 @@ public static class TicinoPoliceFile
         var over14 = head is null ? 0 : minors.Count(g => ages[g.Position] >= Over14Age);
         var under14 = head is null ? 0 : minors.Count - over14;
 
-        // The plate of the stay is written once: on the row of its head, or of its first notified minor when it has no adult.
         var carRow = head?.Position ?? guests.FirstOrDefault(g => notified.Contains(g.Position))?.Position;
 
         foreach (var guest in guests)
@@ -492,7 +403,6 @@ public static class TicinoPoliceFile
             var missing = new List<string>();
             if (ages[guest.Position] is null || guest.BirthDate < MinBirthDate || guest.BirthDate > today)
             {
-                // Without a valid birth date a guest can be neither notified nor counted as a minor.
                 missing.Add(TicinoMissing.BirthDate);
             }
 
@@ -527,12 +437,6 @@ public static class TicinoPoliceFile
         return (rows, issues, warnings);
     }
 
-    /// <summary>
-    /// A group of six or more (decision D11): ONE row, the leader's, with every other member counted in «Mag14» (14 or more, adults included) and «Min14»
-    /// (under 14), and the plate of the stay. The leader needs what every row needs; the other members a valid birth date, without which they cannot be
-    /// counted. A member without a name or a nationality does not hold the notification back (the member is not in the file), but the sheet kept with it
-    /// is then incomplete (<c>SheetComplete</c> false).
-    /// </summary>
     private static (List<TicinoRegistration> Rows, List<TicinoGuestIssue> Issues, bool SheetComplete) PlanGroup(
         string structureId,
         TicinoStayFacts stay,
@@ -588,7 +492,6 @@ public static class TicinoPoliceFile
         return ([row], issues, sheetComplete);
     }
 
-    /// <summary>The row of a notified guest whose mandatory data are complete (the callers checked them).</summary>
     private static TicinoRegistration RowOf(string structureId, TicinoStayFacts stay, TicinoGuestFacts guest, int over14, int under14, bool withPlate)
     {
         return new TicinoRegistration(
@@ -620,7 +523,6 @@ public static class TicinoPoliceFile
     public static string? DomicileOf(TicinoGuestFacts guest) =>
         guest.ResidenceInItaly == true && !string.IsNullOrWhiteSpace(guest.ResidenceComuneName) ? guest.ResidenceComuneName : guest.City;
 
-    /// <summary>Full years at <paramref name="day"/>.</summary>
     public static int AgeAt(DateOnly born, DateOnly day)
     {
         var age = day.Year - born.Year;
@@ -657,16 +559,9 @@ public static class TicinoPoliceFile
     public static string? ResidenceNationOf(TicinoGuestFacts guest) =>
         guest.ResidenceInItaly == true ? "ITA" : TicinoCountryCodes.FromCheckIn(guest.ResidenceCountryCode, guest.ResidenceCountryName);
 
-    /// <summary>Trimmed, inner runs of white space (line breaks included) as one space; empty when <c>null</c>.</summary>
     public static string Clean(string? value) =>
         string.IsNullOrWhiteSpace(value) ? string.Empty : string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
-    // ─── Writers ────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The official XML: <c>&lt;registrationForms&gt;</c> with one <c>&lt;registration&gt;</c> per row, all 18 elements in the order of the XSD,
-    /// UTF-8. Only for rows that <see cref="TicinoRegistration.FitsXml"/> (the caller checks <see cref="TicinoDayPlan.XmlAvailable"/>).
-    /// </summary>
     public static byte[] WriteXml(IReadOnlyList<TicinoRegistration> registrations)
     {
         ArgumentNullException.ThrowIfNull(registrations);
@@ -702,7 +597,6 @@ public static class TicinoPoliceFile
         return stream.ToArray();
     }
 
-    /// <summary>The CSV in <paramref name="charset"/> (Windows-1252 by default), its bytes only: see <see cref="WriteCsvFile"/>.</summary>
     public static byte[] WriteCsv(IReadOnlyList<TicinoRegistration> registrations, TicinoCsvCharset charset = TicinoCsvCharset.Windows1252) =>
         WriteCsvFile(registrations, charset).Content;
 
@@ -728,7 +622,6 @@ public static class TicinoPoliceFile
         return new TicinoCsvFile(EncodingOf(charset).GetBytes(text), CharsetName(charset), transliterated);
     }
 
-    /// <summary>The IANA name of a character set, as the <c>charset</c> of a content type: <c>windows-1252</c> or <c>utf-8</c>.</summary>
     public static string CharsetName(TicinoCsvCharset charset) => charset == TicinoCsvCharset.Utf8 ? "utf-8" : "windows-1252";
 
     /// <summary>
@@ -751,7 +644,6 @@ public static class TicinoPoliceFile
         return CsvWriter.Write(rows);
     }
 
-    /// <summary>The value of <c>documentType</c> in the XML.</summary>
     public static string XmlDocumentType(TicinoDocumentKind kind) => kind switch
     {
         TicinoDocumentKind.Passport => "Passport",
@@ -759,7 +651,6 @@ public static class TicinoPoliceFile
         _ => "Other",
     };
 
-    /// <summary>The value of «Tipo documento» in the CSV.</summary>
     public static string CsvDocumentType(TicinoDocumentKind kind) => kind switch
     {
         TicinoDocumentKind.Passport => "Passaporto",
@@ -773,11 +664,6 @@ public static class TicinoPoliceFile
 
     private static string CsvValue(string value) => value.Replace(';', ',').Replace('"', '\'');
 
-    /// <summary>
-    /// The text with every character <paramref name="charset"/> can hold kept as it is, and the others without their accent or, as the last resort,
-    /// as <c>?</c>; <paramref name="transliterated"/> counts the characters that were changed (a character outside the basic plane counts once). The text is
-    /// read in its composed form first (<see cref="Composed"/>), so a letter typed as a base and a combining mark is the one letter the set holds.
-    /// </summary>
     private static string Transliterate(string text, TicinoCsvCharset charset, out int transliterated)
     {
         transliterated = 0;
@@ -794,7 +680,6 @@ public static class TicinoPoliceFile
                 continue;
             }
 
-            // A broken surrogate (never a character) or a character the set cannot hold.
             transliterated++;
             var plain = status == OperationStatus.Done ? WithoutAccent(rune) : string.Empty;
             builder.Append(plain.Length > 0 && plain.EnumerateRunes().All(r => CanEncode(r, charset)) ? plain : "?");
@@ -803,11 +688,6 @@ public static class TicinoPoliceFile
         return builder.ToString();
     }
 
-    /// <summary>
-    /// The text in its composed form (NFC): a letter typed as a base and a combining mark («e» and U+0301, as some keyboards, pastes and files give it) is the
-    /// one letter «é» that Windows-1252 holds, and not an «e» followed by a mark the set has no byte for, which would be written as a stray «?» and counted.
-    /// A text that is not well-formed UTF-16 (a lone surrogate, which <see cref="Transliterate"/> writes as «?») is left as it is: normalizing it would throw.
-    /// </summary>
     private static string Composed(string text)
     {
         var rest = text.AsSpan();
@@ -822,7 +702,6 @@ public static class TicinoPoliceFile
         return text.Normalize(NormalizationForm.FormC);
     }
 
-    /// <summary>The letter without its accent (<c>Ł</c> → <c>L</c>, <c>ș</c> → <c>s</c>), or empty when it has none to lose.</summary>
     private static string WithoutAccent(Rune rune) => rune.Value switch
     {
         'Ł' => "L",
@@ -845,11 +724,9 @@ public static class TicinoPoliceFile
     private static Encoding EncodingOf(TicinoCsvCharset charset) =>
         charset == TicinoCsvCharset.Utf8 ? new UTF8Encoding(encoderShouldEmitUTF8Identifier: false) : Windows1252.Value;
 
-    /// <summary>Windows-1252 from the code pages of .NET (the same provider the bank statement reader uses).</summary>
     private static readonly Lazy<Encoding> Windows1252 = new(() => CodePagesEncodingProvider.Instance.GetEncoding(1252)
         ?? throw new InvalidOperationException("The Windows-1252 code page is not available."));
 
-    /// <summary>Every character Windows-1252 holds: the ones its 256 bytes decode to and encode back to the same byte.</summary>
     private static readonly HashSet<char> Windows1252Characters = BuildWindows1252Characters();
 
     private static HashSet<char> BuildWindows1252Characters()
@@ -867,11 +744,9 @@ public static class TicinoPoliceFile
             }
             catch (DecoderFallbackException)
             {
-                // A byte Windows-1252 leaves undefined.
             }
             catch (EncoderFallbackException)
             {
-                // A character that does not go back to the same byte.
             }
         }
 

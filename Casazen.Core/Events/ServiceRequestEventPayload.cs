@@ -43,7 +43,6 @@ public sealed record ServiceRequestEventPayload(
     /// <summary>The dedup key of the event of <paramref name="requestId"/> with <paramref name="prefix"/> (<see cref="CreatedKeyPrefix"/> or <see cref="CompletedKeyPrefix"/>): <c>{prefix}:{id}</c>.</summary>
     public static string KeyOf(string prefix, Guid requestId) => $"{prefix}:{requestId:N}";
 
-    /// <summary>The payload of <paramref name="request"/> as it is now, with <paramref name="status"/> as the status the event records.</summary>
     public static ServiceRequestEventPayload Of(ServiceRequest request, ServiceRequestStatus status)
     {
         ArgumentNullException.ThrowIfNull(request);

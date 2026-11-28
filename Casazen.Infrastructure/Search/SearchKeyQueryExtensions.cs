@@ -11,10 +11,6 @@ namespace Casazen.Infrastructure.Search;
 /// </summary>
 internal static class SearchKeyQueryExtensions
 {
-    /// <summary>
-    /// Keeps the rows whose <c>SearchKey</c> has every word of <paramref name="query"/> at the beginning of one of its words;
-    /// no row for an empty query. <paramref name="fullText"/> is true on PostgreSQL.
-    /// </summary>
     public static IQueryable<T> WhereKeyMatches<T>(this IQueryable<T> source, SearchQuery query, bool fullText)
         where T : class
     {

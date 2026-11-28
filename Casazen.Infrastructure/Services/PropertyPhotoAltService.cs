@@ -37,7 +37,6 @@ public class PropertyPhotoAltService(
     {
         ArgumentNullException.ThrowIfNull(photos);
 
-        // The rules first: nothing is locked or read for a text that cannot be stored.
         var texts = new Dictionary<string, LocalizedText?>(StringComparer.Ordinal);
         var rooms = new Dictionary<string, Guid?>(StringComparer.Ordinal);
         foreach (var photo in photos)
@@ -53,7 +52,6 @@ public class PropertyPhotoAltService(
         if (property is null)
             return null;
 
-        // The request may already have read (and tracked) this row before the lock was free: the gallery must be the committed one.
         await db.Entry(property).ReloadAsync(cancellationToken);
 
         var unknown = texts.Keys.FirstOrDefault(url => !property.PhotoUrls.Contains(url, StringComparer.Ordinal));
@@ -66,7 +64,6 @@ public class PropertyPhotoAltService(
             };
         }
 
-        // A room is one of this property's rooms (the tenant filter already hides the rooms of another org): a room of another property is 404.
         var wanted = rooms.Values.OfType<Guid>().Distinct().ToList();
         if (wanted.Count > 0)
         {
@@ -84,7 +81,6 @@ public class PropertyPhotoAltService(
             }
         }
 
-        // The texts and the rooms of the photos listed; every other photo of the gallery loses both; sizes stay as they are.
         var current = PropertyPhotoMeta.Parse(property.PhotoAltJson);
         var next = new Dictionary<string, PhotoMeta>(StringComparer.Ordinal);
         foreach (var url in property.PhotoUrls)

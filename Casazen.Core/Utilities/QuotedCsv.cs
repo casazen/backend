@@ -10,7 +10,6 @@ public static class QuotedCsv
 {
     public static readonly char[] DefaultDelimiters = [';', ',', '\t', '|'];
 
-    /// <summary>One record of a CSV file; <see cref="StartLine"/> is 1-based in the original text.</summary>
     public sealed record Record(int StartLine, IReadOnlyList<string> Cells);
 
     /// <summary>

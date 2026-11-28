@@ -19,43 +19,33 @@ namespace Casazen.Core.Authorization;
 /// </remarks>
 public static class HostScopeQueryExtensions
 {
-    /// <summary>The properties of the scope.</summary>
     public static IQueryable<Property> InScope(this IQueryable<Property> source, HostScope scope) =>
         source.InScope(scope, property => property);
 
-    /// <summary>The bookings of the scope (those of a property it reaches).</summary>
     public static IQueryable<Booking> InScope(this IQueryable<Booking> source, HostScope scope) =>
         source.InScope(scope, booking => booking.Property);
 
-    /// <summary>The leases of the scope.</summary>
     public static IQueryable<LeaseContract> InScope(this IQueryable<LeaseContract> source, HostScope scope) =>
         source.InScope(scope, lease => lease.Property);
 
-    /// <summary>The payments of the scope (the property of their booking).</summary>
     public static IQueryable<Payment> InScope(this IQueryable<Payment> source, HostScope scope) =>
         source.InScope(scope, payment => payment.Booking.Property);
 
-    /// <summary>The service requests of the scope; a request with no property is never in a restricted scope.</summary>
     public static IQueryable<ServiceRequest> InScope(this IQueryable<ServiceRequest> source, HostScope scope) =>
         source.InScope(scope, request => request.Property);
 
-    /// <summary>The iCal feeds of the scope.</summary>
     public static IQueryable<PropertyICalFeed> InScope(this IQueryable<PropertyICalFeed> source, HostScope scope) =>
         source.InScope(scope, feed => feed.Property);
 
-    /// <summary>The check-out records of the scope (the property of their booking).</summary>
     public static IQueryable<StayCheckout> InScope(this IQueryable<StayCheckout> source, HostScope scope) =>
         source.InScope(scope, checkout => checkout.Booking.Property);
 
-    /// <summary>The reviews of the scope (those of a property it reaches, DB-12a).</summary>
     public static IQueryable<Review> InScope(this IQueryable<Review> source, HostScope scope) =>
         source.InScope(scope, review => review.Property);
 
-    /// <summary>The reviews of the channels of the scope (those of a property it reaches, E05/F06/US01/T01, NF-69).</summary>
     public static IQueryable<OtaReview> InScope(this IQueryable<OtaReview> source, HostScope scope) =>
         source.InScope(scope, review => review.Property);
 
-    /// <summary>The message threads of the scope (those of a property it reaches, DB-14a).</summary>
     public static IQueryable<GuestThread> InScope(this IQueryable<GuestThread> source, HostScope scope) =>
         source.InScope(scope, thread => thread.Property);
 
@@ -67,7 +57,6 @@ public static class HostScopeQueryExtensions
     public static IQueryable<OtaMessageThread> InScope(this IQueryable<OtaMessageThread> source, HostScope scope) =>
         source.InScope(scope, thread => thread.Property);
 
-    /// <summary>The internal activities of the scope (those on properties it reaches, NF-22).</summary>
     public static IQueryable<InternalActivity> InScope(this IQueryable<InternalActivity> source, HostScope scope) =>
         source.InScope(scope, activity => activity.Property);
 
@@ -90,7 +79,6 @@ public static class HostScopeQueryExtensions
             .Where(EveryCoveredFlatInReach(scope));
     }
 
-    /// <summary>The lines of the send log of the scope (those of a property it reaches, E03/F02/US03/T01, NF-47).</summary>
     public static IQueryable<ComplianceSendLogEntry> InScope(this IQueryable<ComplianceSendLogEntry> source, HostScope scope) =>
         source.InScope(scope, entry => entry.Property);
 
@@ -116,12 +104,6 @@ public static class HostScopeQueryExtensions
         return source.Where(guest => stays.Any(stay => stay.GuestId == guest.Id));
     }
 
-    /// <summary>
-    /// The CRM profiles of the scope (E07/F01/US03/T01, NF-88). A profile belongs to no property, so it is reached through its guests: in a
-    /// restricted scope it is one of which a guest has a booking at a property the scope reaches (whatever the status of the booking, as for the
-    /// guests above), as one <c>EXISTS</c> in the same statement. A lead from the welcome page has no guest and so no booking: it is in an
-    /// org-wide scope only, which returns the query as it is. <paramref name="bookings"/> is where the stays are read from, as for the guests.
-    /// </summary>
     public static IQueryable<GuestCrmProfile> InScope(this IQueryable<GuestCrmProfile> source, HostScope scope, IQueryable<Booking> bookings)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -136,10 +118,6 @@ public static class HostScopeQueryExtensions
         return source.Where(profile => stays.Any(stay => stay.Guest.GuestCrmProfileId == profile.Id));
     }
 
-    /// <summary>
-    /// The rows of <paramref name="source"/> bound to a property the scope reaches, the property being what
-    /// <paramref name="property"/> selects. For an org-wide scope the query is returned as it is.
-    /// </summary>
     public static IQueryable<T> InScope<T>(
         this IQueryable<T> source,
         HostScope scope,
@@ -152,8 +130,6 @@ public static class HostScopeQueryExtensions
         if (scope.IsOrgWide)
             return source;
 
-        // The predicate on a Property, then moved onto the selected property: EF translates the result as if it were
-        // written by hand (a join to the property and an EXISTS), which is what the tests of the SQL check.
         var predicate = PropertyPredicate(scope);
         var body = new ReplaceParameter(predicate.Parameters[0], property.Body).Visit(predicate.Body)!;
         return source.Where(Expression.Lambda<Func<T, bool>>(body, property.Parameters));
@@ -182,7 +158,6 @@ public static class HostScopeQueryExtensions
         return Expression.Lambda<Func<ManualComplianceProof, bool>>(all, proof);
     }
 
-    /// <summary>The predicate a property must satisfy to be in the scope (the one rule every <c>InScope</c> applies).</summary>
     private static Expression<Func<Property, bool>> PropertyPredicate(HostScope scope)
     {
         ArgumentNullException.ThrowIfNull(scope);
@@ -195,8 +170,6 @@ public static class HostScopeQueryExtensions
         if (ownerId is not null)
             return p => p.OwnerId == ownerId;
 
-        // A collaborator «Solo alcuni» that works in one area only reaches the granted properties of that mode (AM-02c): the
-        // grants of the other mode stay in the table and come back with the area.
         if (memberId is not null && scope.GrantedMode is { } mode)
             return p => p.RentalMode == mode && p.MemberAccesses.Any(a => a.UserId == memberId);
         if (memberId is not null)

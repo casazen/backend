@@ -12,10 +12,8 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public sealed class FiscalDocumentLinkTokens
 {
-    /// <summary>The Data Protection purpose: a token made for another purpose does not open here.</summary>
     public const string Purpose = FiscalDocumentLinkRules.TokenPurpose;
 
-    /// <summary>The longest text taken for a token: a real one is a few hundred characters, anything longer is not one.</summary>
     private const int MaxTokenLength = 1024;
 
     private readonly ITimeLimitedDataProtector _protector;
@@ -26,14 +24,9 @@ public sealed class FiscalDocumentLinkTokens
         _protector = provider.CreateProtector(Purpose).ToTimeLimitedDataProtector();
     }
 
-    /// <summary>The token of <paramref name="documentId"/>, valid until <paramref name="expiresAt"/>.</summary>
     public string Create(Guid documentId, DateTimeOffset expiresAt) =>
         _protector.Protect(documentId.ToString("N"), expiresAt);
 
-    /// <summary>
-    /// The document a token was made for. False for anything that is not a token of ours: empty, too long, changed by a single character, made with another key or purpose, or expired. The text of the
-    /// token is never kept: not in a log, not in an error.
-    /// </summary>
     public bool TryRead(string? token, out Guid documentId)
     {
         documentId = Guid.Empty;

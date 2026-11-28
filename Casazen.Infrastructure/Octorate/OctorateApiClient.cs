@@ -42,16 +42,12 @@ public sealed partial class OctorateApiClient(
     ILogger<OctorateApiClient> logger,
     OctorateMasterBoundary? master = null) : IOctorateApiClient
 {
-    /// <summary>Longest accommodation id CasaZen accepts (the id column of the mappings is 64 characters).</summary>
     public const int MaxAccommodationIdLength = 64;
 
-    /// <summary>The longest arrival time kept (<c>OctorateStayStateSync.OctorateArrivalTime</c>).</summary>
     public const int ArrivalTimeMaxLength = 10;
 
-    /// <summary>The pages of accommodations read at most in one listing (pages are numbered from 0).</summary>
     private const int MaxAccommodationPages = 50;
 
-    /// <summary>The most products one call of the calendar read names (Octorate answers at most 20 products a call).</summary>
     internal const int MaxCalendarProducts = 20;
 
     /// <summary>The <c>type</c> of Octorate's 403 for an access token that is not valid (any more): refresh and retry once.</summary>
@@ -60,41 +56,29 @@ public sealed partial class OctorateApiClient(
     /// <summary>A number at or above this is a count of milliseconds since 1970 (as seconds it would be the year 5138).</summary>
     private const long EpochMillisecondsThreshold = 100_000_000_000;
 
-    /// <summary>The members of a product read by <see cref="GetRoomsAsync"/> (the v3 read answers 400 without <c>fields</c>).</summary>
     private const string RoomFields =
         "id,name,adults,children,bedroomQuantity,bathroomQuantity,bedQuantity,squareMetersSize,derivedRule";
 
-    /// <summary>The members of a connection read by <see cref="GetConnectionsAsync"/>: never its portal username or password.</summary>
     private const string ConnectionFields = "id,channelId,channelName,hotelId,status";
 
-    /// <summary>The member of an accommodation read by <see cref="GetPoliceAccountAsync"/>: the police account, as Octorate documents it (Q-002).</summary>
     private const string PoliceAccountFields = "policeAccount";
 
-    /// <summary>The members of a connection read by <see cref="GetOrgConnectionsAsync"/>: ids and state, never its portal username or password.</summary>
     private const string OrgConnectionFields = "id,channelId,hotelId,status,userLogged,loginAt,accommodationId";
 
-    /// <summary>The most digits of a connection id (Octorate's ids are 64-bit numbers).</summary>
     private const int MaxConnectionIdDigits = 19;
 
-    /// <summary>Octorate's answer of the availability check for a room that cannot be booked (OpenAPI: "Not available to book").</summary>
     internal const int NotAvailableStatus = 406;
 
-    /// <summary>Days back the lookup by reference reads the reservations created (a create retried later is still found).</summary>
     internal const int FindLookbackDays = 30;
 
-    /// <summary>Pages of the list the lookup by reference reads at most; a longer list is not a proof of absence.</summary>
     internal const int MaxFindPages = 10;
 
-    /// <summary>The longest reason of a refused availability check that is kept (one line, never a body).</summary>
     private const int MaxReasonLength = 200;
 
-    /// <summary>The pages of the messages of one thread read at most (a thread has far fewer); more is an answer that is not understood, not a short thread.</summary>
     internal const int MaxChatMessagePages = 200;
 
-    /// <summary>How an instant is written in the <c>createdAfter</c> of the chat messages: ISO 8601, UTC, milliseconds.</summary>
     private const string ChatInstantFormat = "yyyy-MM-dd'T'HH:mm:ss.fff'Z'";
 
-    /// <summary>The JSON of a partial change: camelCase, the members that are not set are left out.</summary>
     private static readonly JsonSerializerOptions PartialUpdateJson = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -135,7 +119,6 @@ public sealed partial class OctorateApiClient(
             }
             catch (OctorateException ex) when (page > 0 && ex is OctorateNotFoundException or OctorateRequestRejectedException)
             {
-                // Past the last page.
                 break;
             }
 
@@ -151,7 +134,6 @@ public sealed partial class OctorateApiClient(
                     }
                 }
 
-                // An empty page, or one that repeats what was read (an answer that ignores the page), is the end.
                 if (added == 0)
                     return [.. found];
             }
@@ -175,7 +157,6 @@ public sealed partial class OctorateApiClient(
         using var document = await GetJsonAsync(
             $"/rest/v1/accommodation/{Uri.EscapeDataString(id)}?fields={Uri.EscapeDataString(PoliceAccountFields)}", "police-account", ct);
 
-        // An answer that is not an accommodation is one CasaZen cannot read; an accommodation without a police account is not an error.
         var accommodation = Unwrap(document.RootElement);
         return accommodation.ValueKind == JsonValueKind.Object ? ReadPoliceAccount(accommodation) : throw new OctorateServerException(null);
     }
@@ -186,7 +167,6 @@ public sealed partial class OctorateApiClient(
         {
             var account = await GetPoliceAccountAsync(octorateAccommodationId, ct);
 
-            // The verdict hangs on `valid`: without it the account is not readable, whatever else the object holds.
             return account.Valid is null
                 ? OctoratePoliceAccountStatus.NotReadable
                 : new OctoratePoliceAccountStatus(true, account.Valid, account.Autorun, account.LastCron);
@@ -254,8 +234,6 @@ public sealed partial class OctorateApiClient(
             $"/rest/v1/reservation/{Uri.EscapeDataString(id)}?type={ReservationListTypeName(query.Type)}&startDate={query.From:yyyy-MM-dd}&endDate={query.To:yyyy-MM-dd}&size={query.PageSize}&page={query.Page}");
         using var document = await GetJsonAsync(path, "reservations", ct);
 
-        // An answer that is not a list is an answer CasaZen cannot read, not a list with nothing in it: the caller must not read "no
-        // reservation" into it and mark a listing as read. An item that cannot be read is left out of the page but counted in it.
         return OctorateReservationReader.ReadPage(document.RootElement) ?? throw new OctorateServerException(null);
     }
 
@@ -297,11 +275,9 @@ public sealed partial class OctorateApiClient(
             throw new OctorateSensitiveDataNotAllowedException(ex.OctorateStatusCode);
         }
 
-        // The answer is the guest's contact data: it is read and returned, never logged (not even on a parse failure).
         using var document = ParseJson(answer);
         var root = Unwrap(document.RootElement);
 
-        // A 200 that is not an object is an answer CasaZen does not know how to read: said so, never "the guest has no contact".
         if (root.ValueKind != JsonValueKind.Object)
             return new OctorateGuestContactInfo(null, null, Recognized: false);
 
@@ -312,19 +288,12 @@ public sealed partial class OctorateApiClient(
 
     private static readonly string[] GuestPhoneNames = ["phone", "phoneNumber", "mobile", "telephone"];
 
-    /// <summary>
-    /// The e-mail address and the phone number of an answer of <c>contactInfo</c>. The names are not proven by the sandbox (its guest contacts
-    /// need the static IP whitelist): the plain ones and their usual spellings are read, a member that is missing or empty is <c>null</c>.
-    /// The answer is <see cref="OctorateGuestContactInfo.Recognized"/> only when it has at least one of those members as a text, a number or a
-    /// <c>null</c>: an object with none of them (another wrapper, other names) is not "no contact", it is an answer that is not understood.
-    /// </summary>
     internal static OctorateGuestContactInfo ReadGuestContactInfo(JsonElement root)
     {
         var recognized = HasContactMember(root, GuestEmailNames) || HasContactMember(root, GuestPhoneNames);
         return new OctorateGuestContactInfo(OctorateJson.Text(root, GuestEmailNames), OctorateJson.Text(root, GuestPhoneNames), recognized);
     }
 
-    /// <summary>A member called one of <paramref name="names"/> that holds a text, a number or <c>null</c> (a member of another kind is not what is looked for).</summary>
     private static bool HasContactMember(JsonElement root, string[] names) =>
         OctorateJson.Find(root, names) is { } member && member.ValueKind is JsonValueKind.String or JsonValueKind.Number or JsonValueKind.Null;
 
@@ -348,7 +317,6 @@ public sealed partial class OctorateApiClient(
         {
             ct.ThrowIfCancellationRequested();
 
-            // `dateTo` is included, as Octorate documents it.
             var path = string.Create(
                 CultureInfo.InvariantCulture,
                 $"/rest/v1/calendar/{Uri.EscapeDataString(accommodation)}?dateFrom={from:yyyy-MM-dd}&dateTo={to:yyyy-MM-dd}&products={Uri.EscapeDataString(string.Join(',', chunk))}");
@@ -357,7 +325,6 @@ public sealed partial class OctorateApiClient(
             var read = OctorateCalendarReader.Read(document.RootElement, chunk);
             if (read.Count == 0)
             {
-                // A calendar with no day for a range that is not empty is an answer that was not understood: never an empty calendar.
                 logger.LogWarning(
                     "Octorate calendar of org {OrgId}: no day could be read from the answer for {Products} products", orgScope.OrgId, chunk.Length);
                 throw new OctorateServerException(null);
@@ -401,7 +368,6 @@ public sealed partial class OctorateApiClient(
             body = OctorateReservationRequests.CancelBody(current, target);
         }
 
-        // The documented path: PUT with the status CANCELLED (PATCH cannot move a confirmed reservation to cancelled).
         var accepted = false;
         try
         {
@@ -416,7 +382,6 @@ public sealed partial class OctorateApiClient(
         }
         catch (OctorateRequestRejectedException refused)
         {
-            // Octorate says the reservation cannot be cancelled that way (a refusal of the request itself): the way the sandbox proved is next.
             logger.LogInformation(
                 "Octorate reservation-cancel for org {OrgId}: the status change was refused (HTTP {StatusCode}), the reservation is deleted instead",
                 orgScope.OrgId,
@@ -439,7 +404,6 @@ public sealed partial class OctorateApiClient(
         await SendAsync(() => new HttpRequestMessage(HttpMethod.Delete, Address(path)), "reservation-delete", ct);
     }
 
-    /// <summary>The status Octorate holds for a reservation now (one read); <c>null</c> for a word that is none of the three.</summary>
     private async Task<OctorateBookingStatus?> StatusOfReservationAsync(string path, string reservationId, CancellationToken ct)
     {
         using var document = await GetJsonAsync(path, "reservation", ct);
@@ -476,9 +440,6 @@ public sealed partial class OctorateApiClient(
             var json = CheckInGuestJson(guest, existingId);
             try
             {
-                // Create with v1: the version the sandbox accepted on 2026-11-04. The v2 create runs a police prevalidation that refused the
-                // guest ("residence city not recognized") even with the police name of the comune, for a field (cityPoliceCode) CasaZen does
-                // not have yet (sandbox-run-results.md, open point 2).
                 var answer = existingId is null
                     ? await SendAsync(
                         () => new HttpRequestMessage(HttpMethod.Post, Address(path))
@@ -498,7 +459,6 @@ public sealed partial class OctorateApiClient(
                 var (answeredId, validated) = ReadCheckInGuestAnswer(answer.Body);
                 var guestId = existingId ?? answeredId;
                 results.Add(guestId is null
-                    // A creation whose answer names no guest cannot be followed: it is a failure, never a success without an id.
                     ? new OctorateCheckInGuestResult(guest.Position, null, false, null, CheckInErrorCodes.Server)
                     : new OctorateCheckInGuestResult(guest.Position, guestId, existingId is null, validated, null));
             }
@@ -539,18 +499,15 @@ public sealed partial class OctorateApiClient(
 
     public async Task<OctoratePlaceEntry[]> GetCheckInCitiesAsync(string country, CancellationToken ct)
     {
-        // The two-letter code of a country, nothing else: it goes into the address.
         if (country is not { Length: 2 } || !country.All(char.IsAsciiLetter))
             throw new ArgumentException("A country is its two-letter code.", nameof(country));
 
         using var document = await GetJsonAsync($"/rest/v2/checkin/city/{Uri.EscapeDataString(country.ToUpperInvariant())}", "checkin-cities", ct);
         var places = ReadCheckInCities(document.RootElement);
 
-        // An answer with no usable place is not "no place is recognized": the caller would hold every guest back for a table that was not read.
         return places.Length > 0 ? places : throw new OctorateServerException(null);
     }
 
-    /// <summary>The places of the answer of the check-in cities: a bare array or <c>{data: [...]}</c>; an item with no name or no police code is left out.</summary>
     internal static OctoratePlaceEntry[] ReadCheckInCities(JsonElement root) =>
     [
         .. Items(root)
@@ -562,7 +519,6 @@ public sealed partial class OctorateApiClient(
             .Where(place => place.Name.Length > 0 && place.PoliceCode.Length > 0),
     ];
 
-    /// <summary>The address of the guests of a reservation (v1).</summary>
     private static string CheckInGuestsPath(string accommodationId, string reservationId)
     {
         var accommodation = CheckedAccommodationId(accommodationId);
@@ -607,7 +563,6 @@ public sealed partial class OctorateApiClient(
         return JsonSerializer.Serialize(body.Where(member => member.Value is not null).ToDictionary(member => member.Key, member => member.Value));
     }
 
-    /// <summary>The id and the <c>validated</c> flag of the answer of a guest write; both null for an answer with no body or no object.</summary>
     internal static (string? Id, bool? Validated) ReadCheckInGuestAnswer(string body)
     {
         if (string.IsNullOrWhiteSpace(body))
@@ -674,13 +629,11 @@ public sealed partial class OctorateApiClient(
         var accommodation = CheckedAccommodationId(target.AccommodationId);
         var product = CheckedId(target.ProductId, nameof(target));
 
-        // The nights of the stay: the calendar of Octorate counts days with the last one included, and the departure day is not a night.
         var lastNight = to.AddDays(-1);
         var path = string.Create(
             CultureInfo.InvariantCulture,
             $"/rest/v1/calendar/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(product)}/availabilityCheck?startDate={from:yyyy-MM-dd}&endDate={lastNight:yyyy-MM-dd}");
 
-        // 406 is Octorate's "not available to book" (OpenAPI and sandbox): an answer, not an error. Every other refusal stays a typed error.
         var answer = await SendAsync(
             () => new HttpRequestMessage(HttpMethod.Get, Address(path)), "availability-check", ct, NotAvailableStatus);
         return answer.StatusCode == NotAvailableStatus
@@ -712,7 +665,6 @@ public sealed partial class OctorateApiClient(
             "reservation-create",
             ct);
 
-        // The reservation created, with its id: an answer without one is not taken as a success (the caller finds the reservation by its reference).
         using var document = ParseJson(answer);
         var root = document.RootElement;
         var item = root.ValueKind == JsonValueKind.Array ? root.EnumerateArray().FirstOrDefault() : Unwrap(root);
@@ -736,7 +688,6 @@ public sealed partial class OctorateApiClient(
         var accommodation = CheckedAccommodationId(target.AccommodationId);
         var reservation = CheckedId(reservationId, nameof(reservationId));
 
-        // A change Octorate could not take leaves nothing: the body is built before any call.
         var json = OctorateReservationRequests.UpdateBody(target, update);
         var path = $"/rest/v1/reservation/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(reservation)}";
 
@@ -747,9 +698,6 @@ public sealed partial class OctorateApiClient(
             var held = await GetReservationAsync(accommodation, reservation, ct);
             if (held.UpdatedAt is { } heldAt && heldAt != basedOn)
             {
-                // Another version, but one that already holds exactly the stay and the guests this change writes: the change was made already, by an
-                // earlier attempt whose answer was lost (a timeout, a 5xx on the read that checks it), which moved the updateTime itself. It is done: the
-                // version is returned and nothing is written over it (a second PATCH would only move the updateTime again).
                 if (HoldsTheStayOf(held, update))
                 {
                     logger.LogInformation(
@@ -795,10 +743,6 @@ public sealed partial class OctorateApiClient(
         return after;
     }
 
-    /// <summary>
-    /// Whether <paramref name="reservation"/> already holds what <paramref name="update"/> writes: the arrival, the departure and the guests are all
-    /// known and the same, and the price of the stay, when Octorate gives one, is the same to the cent. A member Octorate leaves out is not a match.
-    /// </summary>
     internal static bool HoldsTheStayOf(OctorateReservation reservation, OctorateReservationUpdate update)
     {
         var mapper = new BookingStateMapper();
@@ -859,11 +803,9 @@ public sealed partial class OctorateApiClient(
             if (found is not null)
                 return found;
 
-            // An item that could not be read may be the one looked for: the list is then not a proof that the reservation is not there.
             if (result.Unreadable > 0)
                 complete = false;
 
-            // The end of the list: a page with no item, or one that repeats what was read (an answer that ignores the page).
             var added = result.Reservations.Count(r => seen.Add(r.Id));
             if (result.ItemCount == 0 || added == 0)
             {
@@ -893,13 +835,11 @@ public sealed partial class OctorateApiClient(
         var accommodation = CheckedAccommodationId(accommodationId);
         ArgumentOutOfRangeException.ThrowIfNegative(offset);
 
-        // `filterReadStatus=false` asks for the threads whatever their read state ("Read All Threads" in the collection of Octorate).
         var path = string.Create(
             CultureInfo.InvariantCulture,
             $"/rest/v1/chat/{Uri.EscapeDataString(accommodation)}/threads?offset={offset}&filterReadStatus=false");
         using var document = await GetChatJsonAsync(path, "chat-threads", ct);
 
-        // An answer that is not a list is one CasaZen cannot read, not a list with nothing in it: the caller must not read "no thread" into it.
         var page = OctorateChatReader.ReadThreadPage(document.RootElement) ?? throw new OctorateServerException(null);
         if (page.Unreadable > 0)
         {
@@ -935,7 +875,6 @@ public sealed partial class OctorateApiClient(
             var query = string.Join('&', new[] { after, page > 0 ? string.Create(CultureInfo.InvariantCulture, $"page={page}") : null }.OfType<string>());
             using var document = await GetChatJsonAsync(query.Length > 0 ? $"{basePath}?{query}" : basePath, "chat-messages", ct);
 
-            // An answer that is not a list is one CasaZen cannot read, not a thread with no message.
             var read = OctorateChatReader.ReadMessagePage(document.RootElement) ?? throw new OctorateServerException(null);
             if (read.ItemCount > read.Messages.Count)
             {
@@ -956,8 +895,6 @@ public sealed partial class OctorateApiClient(
                 }
             }
 
-            // A bare list, an empty page or the last page the wrapper announces is the end. A wrapper that announces more pages and gives the same
-            // page again ignores the page asked for: the thread was not read whole, and that is never taken for a whole thread.
             if (read.ItemCount == 0 || read.TotalPages is null || page + 1 >= read.TotalPages)
                 return [.. messages];
 
@@ -991,7 +928,6 @@ public sealed partial class OctorateApiClient(
 
     public async Task<OctoratePortal[]> GetPortalsAsync(CancellationToken ct)
     {
-        // A partner-level call: no org, the partner token, the bucket "platform". The answer is a bare array (v1) or {data: [...]}.
         using var document = await GetPlatformJsonAsync("/rest/v1/meta/portals", "portals", ct);
         return [.. Items(document.RootElement).Select(ReadPortal).OfType<OctoratePortal>()];
     }
@@ -1000,12 +936,10 @@ public sealed partial class OctorateApiClient(
     {
         var accommodation = CheckedAccommodationId(accommodationId);
 
-        // The record is the one the reservation names (the same read and the same reader as every other member of the reservation).
         var customerId = (await GetReservationAsync(accommodation, reservationId, ct)).InvoiceHolderId;
         if (customerId is null)
             return null;
 
-        // Sensitive data: nothing of the answer is logged, and a refusal before the outbound IPs are whitelisted is an OctorateAuthException.
         using var document = await GetJsonAsync(
             $"/rest/v1/guests/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(customerId)}", "customer-billing", ct);
         return OctorateBillingMapping.Read(Unwrap(document.RootElement));
@@ -1020,7 +954,6 @@ public sealed partial class OctorateApiClient(
         if (json == OctorateBillingMapping.EmptyBody)
             throw new ArgumentException("Billing data with nothing to write is not sent.", nameof(data));
 
-        // A reservation that names no customer record has nothing to write to, and no record is made for it: nothing was sent.
         var customerId = (await GetReservationAsync(accommodation, reservationId, ct)).InvoiceHolderId;
         if (customerId is null)
             return false;
@@ -1039,8 +972,6 @@ public sealed partial class OctorateApiClient(
 
     public async Task<OctorateConnectionSummary[]> GetOrgConnectionsAsync(CancellationToken ct)
     {
-        // The connections of every accommodation of the org's token in one call; only the ids and the state are asked for, so the portal
-        // username and password of a connection never reach CasaZen.
         using var document = await GetJsonAsync(
             $"/rest/v1/connection?fields={Uri.EscapeDataString(OrgConnectionFields)}", "org-connections", ct);
         var root = document.RootElement;
@@ -1133,10 +1064,6 @@ public sealed partial class OctorateApiClient(
         return SendAsync(createRequest, operation, caller, ct, translateError: translateError);
     }
 
-    /// <summary>
-    /// The call itself, for whoever <paramref name="caller"/> is: its token, its bucket, its refresh of a refused token. With <paramref name="binary"/>
-    /// the content of a success is read as bytes (a PDF, E06/F03/US02/T01) and an error as text, as always.
-    /// </summary>
     private async Task<OctorateAnswer> SendAsync(
         Func<HttpRequestMessage> createRequest,
         string operation,
@@ -1193,7 +1120,6 @@ public sealed partial class OctorateApiClient(
 
                 var body = await OctorateHttp.ReadBodyAsync(response, ct);
                 var elapsedMs = (long)timeProvider.GetElapsedTime(started).TotalMilliseconds;
-                // 304: a PATCH or a PUT whose content is identical to what Octorate holds answers "not modified" (S25, D13): it is done.
                 if (response.IsSuccessStatusCode || status == 304 || status == answerStatus)
                 {
                     logger.LogDebug(
@@ -1219,11 +1145,9 @@ public sealed partial class OctorateApiClient(
                     continue;
                 }
 
-                // An operation may give a status its own meaning (the refused data of a new accommodation, an unknown network) before the generic mapping.
                 if (translateError?.Invoke(status, body) is { } translated)
                     throw translated;
 
-                // The operation may know a refusal that is its own (a chat call without the module in the license); else the common mapping.
                 throw mapError?.Invoke(status, errorType, body) ?? ErrorOf(status, errorType, body);
             }
         }
@@ -1235,10 +1159,6 @@ public sealed partial class OctorateApiClient(
         return ParseJson(answer);
     }
 
-    /// <summary>
-    /// A read of the chat of an accommodation: the common errors, plus the refusal of a license without the <c>chat</c> module (<see cref="ChatErrorOf"/>,
-    /// or the <paramref name="mapError"/> of an operation that gets another answer, <see cref="RecentChatErrorOf"/>).
-    /// </summary>
     private async Task<JsonDocument> GetChatJsonAsync(
         string pathAndQuery,
         string operation,
@@ -1272,7 +1192,6 @@ public sealed partial class OctorateApiClient(
             ? OctorateAuthException.ChatNotLicensed(status)
             : ChatErrorOf(status, errorType, body);
 
-    /// <summary>The id of a thread, trimmed: a number of 1 to <see cref="MaxConnectionIdDigits"/> digits, as the specification declares it (<c>int64</c>).</summary>
     internal static string CheckedThreadId(string threadId)
     {
         var id = threadId?.Trim();
@@ -1282,11 +1201,9 @@ public sealed partial class OctorateApiClient(
         return id!;
     }
 
-    /// <summary>An instant as a UTC instant: a local time is converted, a time of unknown kind is taken as UTC.</summary>
     private static DateTime AsUtcInstant(DateTime instant) =>
         instant.Kind == DateTimeKind.Local ? instant.ToUniversalTime() : DateTime.SpecifyKind(instant, DateTimeKind.Utc);
 
-    /// <summary>A read for the application itself (the partner-level calls): see <see cref="SendAsPlatformAsync"/>.</summary>
     private async Task<JsonDocument> GetPlatformJsonAsync(string pathAndQuery, string operation, CancellationToken ct)
     {
         var answer = await SendAsPlatformAsync(() => new HttpRequestMessage(HttpMethod.Get, Address(pathAndQuery)), operation, ct);
@@ -1307,13 +1224,11 @@ public sealed partial class OctorateApiClient(
 
     private Uri Address(string pathAndQuery) => OctorateHttp.Address(OctorateHttp.ApiBaseUrl(configuration), pathAndQuery);
 
-    /// <summary>The typed error of an Octorate answer that is not a success (and not retried).</summary>
     internal static OctorateException ErrorOf(int status, string? errorType, string body) => status switch
     {
         404 => new OctorateNotFoundException(),
         409 => new OctorateConflictException(),
         429 => new OctorateRateLimitException(status),
-        // A quota that is used up is a 403 of its own type (OCT-13): not a refusal of the access, a wait.
         403 when IsQuotaExhausted(errorType, body) => new OctorateRateLimitException(status, quotaExhausted: true),
         401 or 403 when IsWrongEnvironment(errorType, body) => new OctorateWrongEnvironmentException(status),
         401 or 403 => OctorateAuthException.Refused(status),
@@ -1329,7 +1244,6 @@ public sealed partial class OctorateApiClient(
         string.Equals(errorType, OctorateWrongEnvironmentException.OctorateErrorType, StringComparison.OrdinalIgnoreCase)
         || body.Contains(OctorateWrongEnvironmentException.OctorateErrorType, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>The accommodation id of a call, trimmed: never empty, never longer than <see cref="MaxAccommodationIdLength"/>.</summary>
     internal static string CheckedAccommodationId(string accommodationId)
     {
         var id = accommodationId?.Trim();
@@ -1339,7 +1253,6 @@ public sealed partial class OctorateApiClient(
         return id;
     }
 
-    /// <summary>The id of a reservation or of a product, trimmed: never empty, never longer than <see cref="MaxAccommodationIdLength"/>.</summary>
     internal static string CheckedId(string value, string parameterName)
     {
         var id = value?.Trim();
@@ -1349,10 +1262,6 @@ public sealed partial class OctorateApiClient(
         return id;
     }
 
-    /// <summary>
-    /// The id of a connection, trimmed: a number of 1 to <see cref="MaxConnectionIdDigits"/> digits, as the specification declares it
-    /// (<c>integer</c>, <c>int64</c>). Anything else is refused before a call leaves.
-    /// </summary>
     internal static string CheckedConnectionId(string connectionId)
     {
         var id = connectionId?.Trim();
@@ -1365,7 +1274,6 @@ public sealed partial class OctorateApiClient(
     private static bool IsNumericId(string? id) =>
         !string.IsNullOrEmpty(id) && id.Length <= MaxConnectionIdDigits && id.All(char.IsAsciiDigit);
 
-    /// <summary>The <c>action</c> of the connection operation, as Octorate spells it.</summary>
     internal static string D6OperationName(OctorateD6Operation operation) => operation switch
     {
         OctorateD6Operation.ImportRooms => "IMPORT_ROOMS",
@@ -1398,14 +1306,12 @@ public sealed partial class OctorateApiClient(
             [.. list.EnumerateArray().Select(ReadImportedMapping).OfType<OctorateImportedMapping>()]);
     }
 
-    /// <summary>True when the wrapper of an answer says, in <c>additionalInfo.actionPerformed</c>, that it is the answer of this operation.</summary>
     private static bool NamesTheAction(JsonElement wrapper, OctorateD6Operation operation) =>
         wrapper.TryGetProperty("additionalInfo", out var info)
         && info.ValueKind == JsonValueKind.Object
         && OctorateHttp.StringOf(info, "actionPerformed") is { } performed
         && string.Equals(performed, D6OperationName(operation), StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>A mapping of an answer of an operation of the D6 sequence, or <c>null</c> when the item lacks the product or the external id.</summary>
     internal static OctorateImportedMapping? ReadImportedMapping(JsonElement item)
     {
         if (item.ValueKind != JsonValueKind.Object)
@@ -1418,10 +1324,6 @@ public sealed partial class OctorateApiClient(
             : new OctorateImportedMapping(product, external);
     }
 
-    /// <summary>
-    /// A connection of an answer of <c>connection</c> without an accommodation filter, or <c>null</c> when the item has no numeric id, no
-    /// channel or no accommodation (the id is also read from <c>accommodation.id</c> when the answer nests it).
-    /// </summary>
     internal static OctorateConnectionSummary? ReadConnectionSummary(JsonElement item)
     {
         if (item.ValueKind != JsonValueKind.Object)
@@ -1451,7 +1353,6 @@ public sealed partial class OctorateApiClient(
             DateTimeOf(item, "loginAt"));
     }
 
-    /// <summary>The <c>type</c> of the list of reservations, as Octorate spells it.</summary>
     internal static string ReservationListTypeName(OctorateReservationListType type) => type switch
     {
         OctorateReservationListType.ModifiedBetween => "MODIFIED_BETWEEN",
@@ -1461,7 +1362,6 @@ public sealed partial class OctorateApiClient(
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Not a kind of list of reservations."),
     };
 
-    /// <summary>The <c>status</c> of the check-in status operation, as Octorate spells it.</summary>
     internal static string CheckInStatusName(OctorateCheckInStatus status) => status switch
     {
         OctorateCheckInStatus.CheckInEnd => "CHECKIN_END",
@@ -1470,7 +1370,6 @@ public sealed partial class OctorateApiClient(
         _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Not a check-in status."),
     };
 
-    /// <summary>An accommodation of an answer, or <c>null</c> when the item has no usable id.</summary>
     internal static OctorateProperty? ReadProperty(JsonElement item)
     {
         if (item.ValueKind != JsonValueKind.Object)
@@ -1525,7 +1424,6 @@ public sealed partial class OctorateApiClient(
         };
     }
 
-    /// <summary>A product of an answer of <c>roomrates</c>, or <c>null</c> when the item has no usable id.</summary>
     internal static OctorateRoom? ReadRoom(JsonElement item)
     {
         if (item.ValueKind != JsonValueKind.Object)
@@ -1551,7 +1449,6 @@ public sealed partial class OctorateApiClient(
         };
     }
 
-    /// <summary>A channel connection of an answer of <c>connection</c>; <c>null</c> for an item that is not an object.</summary>
     internal static OctorateChannelConnection? ReadConnection(JsonElement item) =>
         item.ValueKind != JsonValueKind.Object
             ? null
@@ -1562,7 +1459,6 @@ public sealed partial class OctorateApiClient(
                 OctorateHttp.StringOf(item, "hotelId"),
                 OctorateHttp.StringOf(item, "status"));
 
-    /// <summary>A PMS room of an answer of <c>pms</c>, or <c>null</c> when the item has no usable id.</summary>
     internal static OctoratePmsRoom? ReadPmsRoom(JsonElement item)
     {
         if (item.ValueKind != JsonValueKind.Object)
@@ -1574,7 +1470,6 @@ public sealed partial class OctorateApiClient(
             : new OctoratePmsRoom(id, OctorateHttp.StringOf(item, "parentId"), OctorateHttp.StringOf(item, "name"));
     }
 
-    /// <summary>The id of the payment in the answer of a payment registration (<c>{"id": 21575084, ...}</c>); <c>null</c> when it has none.</summary>
     internal static string? PaymentIdOf(string body)
     {
         if (string.IsNullOrWhiteSpace(body))
@@ -1622,10 +1517,8 @@ public sealed partial class OctorateApiClient(
         return line.Length <= MaxReasonLength ? line : line[..MaxReasonLength];
     }
 
-    /// <summary>The names under which Octorate gives the reason of a refusal, most specific first.</summary>
     private static readonly string[] ReasonMembers = ["message", "description", "error", "type"];
 
-    /// <summary>The names under which a portal's identifier may come, most specific first; a number is read as its text.</summary>
     private static readonly string[] PortalCodeMembers = ["portalCode", "channelId", "portalId", "id", "code"];
 
     /// <summary>
@@ -1671,7 +1564,6 @@ public sealed partial class OctorateApiClient(
         };
     }
 
-    /// <summary>The first of <paramref name="names"/> that <paramref name="element"/> has with a text (or a number), trimmed.</summary>
     private static string? FirstStringOf(JsonElement element, string[] names)
     {
         foreach (var name in names)
@@ -1683,7 +1575,6 @@ public sealed partial class OctorateApiClient(
         return null;
     }
 
-    /// <summary>A flag Octorate sends as a JSON boolean, as <c>"true"</c>/<c>"false"</c> text or as a number; <c>null</c> when absent or unclear.</summary>
     private static bool? FlagOf(JsonElement element, string name)
     {
         if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out var value))
@@ -1710,7 +1601,6 @@ public sealed partial class OctorateApiClient(
             : null;
     }
 
-    /// <summary>The items of a list answer: a bare array (v1) or the <c>data</c> array of a <c>{data, page}</c> answer (v2, v3).</summary>
     internal static IEnumerable<JsonElement> Items(JsonElement root)
     {
         if (root.ValueKind == JsonValueKind.Array)
@@ -1722,7 +1612,6 @@ public sealed partial class OctorateApiClient(
         return [];
     }
 
-    /// <summary>The object of a single answer: the <c>data</c> object of a <c>{data: {...}}</c> answer, or the answer itself.</summary>
     internal static JsonElement Unwrap(JsonElement root) =>
         root.ValueKind == JsonValueKind.Object && root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object
             ? data
@@ -1762,10 +1651,6 @@ public sealed partial class OctorateApiClient(
         };
     }
 
-    /// <summary>
-    /// A moment of an answer, in UTC: an ISO text (a text without a zone is taken as UTC) or a number of epoch milliseconds (of seconds,
-    /// when it is too small to be milliseconds). <c>null</c> when the member is missing or is none of these: never a guess.
-    /// </summary>
     internal static DateTime? DateTimeOf(JsonElement element, string name)
     {
         if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out var value))
@@ -1794,13 +1679,8 @@ public sealed partial class OctorateApiClient(
         return null;
     }
 
-    /// <summary>A successful answer: Octorate's status and its text, or its bytes for a binary read (empty text then).</summary>
     internal sealed record OctorateAnswer(int StatusCode, string Body, byte[]? Bytes = null);
 
-    /// <summary>
-    /// Who a call is made for: an org (its token, its bucket) or the platform (the partner token, the bucket <c>platform</c>). The label is
-    /// what the log says; it is an id or a fixed word, never a name.
-    /// </summary>
     private sealed record Caller(
         string Label,
         Func<CancellationToken, Task<string>> GetTokenAsync,

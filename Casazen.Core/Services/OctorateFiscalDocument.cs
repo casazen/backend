@@ -33,7 +33,6 @@ public sealed record OctorateFiscalDocument(
     bool PdfAvailable,
     string? RecipientName);
 
-/// <summary>The eight types of the documents of Octorate (S24), and the ones CasaZen does not know.</summary>
 public enum OctorateFiscalDocumentType
 {
     Unknown = 0,
@@ -45,6 +44,5 @@ public enum OctorateFiscalDocumentType
     CreditNote = 6,
     Proforma = 7,
 
-    /// <summary>A summary that is not a fiscal document: never imported.</summary>
     SummaryDocument = 8,
 }

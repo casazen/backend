@@ -48,20 +48,15 @@ public sealed record FatturaPaInput(
     public FatturaPaParty? ThirdPartyIssuer { get; init; }
 }
 
-/// <summary>Who issues a FatturaPA document (<c>SoggettoEmittente</c>).</summary>
 public enum FatturaPaIssuedBy
 {
-    /// <summary>The cedente itself: no <c>SoggettoEmittente</c>.</summary>
     Issuer = 0,
 
-    /// <summary><c>TZ</c>: a third party issues on behalf of the cedente (the agency for its owner).</summary>
     ThirdParty = 1,
 
-    /// <summary><c>CC</c>: the recipient issues the document (a self-billed invoice, TD17).</summary>
     Recipient = 2,
 }
 
-/// <summary>A fiscal id of FatturaPA: the country and the code.</summary>
 public sealed record FatturaPaId(string CountryCode, string Code);
 
 /// <summary>
@@ -77,10 +72,8 @@ public sealed record FatturaPaParty(
     FatturaPaAddress Address,
     string? RegimeCode = null);
 
-/// <summary>A structured address (<c>Sede</c>).</summary>
 public sealed record FatturaPaAddress(string Street, string? Civic, string PostalCode, string City, string? Province, string CountryCode);
 
-/// <summary>The document a credit note credits (<c>DatiFattureCollegate</c>).</summary>
 public sealed record FatturaPaRelatedDocument(string Number, DateOnly? IssueDate);
 
 /// <summary>The fixed rules of the parties of FatturaPA (Specifiche tecniche FatturaPA 1.4, the schema 1.2.3).</summary>
@@ -89,6 +82,5 @@ public static class FatturaPaParties
     /// <summary>The <c>IdCodice</c> of a recipient abroad who has no VAT number (a private person): eleven nines, with the country as <c>IdPaese</c>.</summary>
     public const string ForeignPrivateCode = "99999999999";
 
-    /// <summary>The <c>CAP</c> of an address abroad: the schema wants five digits, the specifications five zeros.</summary>
     public const string ForeignPostalCode = "00000";
 }

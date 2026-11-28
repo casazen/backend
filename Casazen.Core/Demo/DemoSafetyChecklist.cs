@@ -3,10 +3,6 @@ using Casazen.Core.Regulatory;
 
 namespace Casazen.Core.Demo;
 
-/// <summary>
-/// A safety checklist that <see cref="SafetyChecklistRules.Evaluate"/> accepts: not a business, no gas and no
-/// combustion (the detectors do not apply), one floor, one extinguisher, the BDSR declaration and the confirmation.
-/// </summary>
 public static class DemoSafetyChecklist
 {
     public const string Actor = "demo-seed";

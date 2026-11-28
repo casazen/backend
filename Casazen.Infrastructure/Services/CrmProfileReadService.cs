@@ -62,8 +62,6 @@ public sealed class CrmProfileReadService(
         if (scope.IsOrgWide)
             return reached;
 
-        // A limited caller reaches a profile in full when none of its guests, and none of the guests who gave its contacts, is without a booking at a
-        // property it reaches: the two sub-queries are in the same statement as the scope of the profile.
         var orgId = scope.OrgId;
         var stays = BookingsInScope(scope);
         var guests = db.Guests.Where(guest => guest.OrgId == orgId && guest.GuestCrmProfileId != null);
@@ -228,7 +226,6 @@ public sealed class CrmProfileReadService(
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db, cancellationToken, (PostgresAdvisoryLocks.Scope.CrmProfileMerge, orgId.ToString("N")));
 
-        // The profile first: whoever does not reach it is told it is not there, whatever the tags say.
         if (!await ProfilesInScope(scope).AnyAsync(candidate => candidate.Id == profileId, cancellationToken))
             throw ProfileNotFound();
 
@@ -250,9 +247,6 @@ public sealed class CrmProfileReadService(
         logger.LogInformation("Tags of CRM profile {ProfileId} of org {OrgId} replaced: {Count} tags", profileId, orgId, normalized.Count);
     }
 
-    // ---- the list: filters and order ----------------------------------------------------------------------------------------------
-
-    /// <summary>The profiles of the scope that match every filter given.</summary>
     private async Task<IQueryable<GuestCrmProfile>> FilteredAsync(HostScope scope, CrmProfileFilter filter, CancellationToken cancellationToken)
     {
         var orgId = scope.OrgId;
@@ -278,7 +272,6 @@ public sealed class CrmProfileReadService(
 
         if (Clean(filter.Channel, MaxFilterLength) is { } channel)
         {
-            // A channel that is not a source of booking matches nobody.
             if (!CrmProfileRules.TryParseChannel(channel, out var source))
                 return query.Where(profile => false);
 
@@ -301,7 +294,6 @@ public sealed class CrmProfileReadService(
 
         if (filter.ReachableByEmail is { } reachable)
         {
-            // The contacts a screen may show (not those given by an erased guest): the filter and the item of the list say the same thing.
             var marketable = CrmProfileContactReader.Visible(db, orgId).Where(CrmContactRules.MarketableEmail);
             query = reachable
                 ? query.Where(profile => marketable.Any(contact => contact.GuestCrmProfileId == profile.Id))
@@ -314,10 +306,6 @@ public sealed class CrmProfileReadService(
         return query;
     }
 
-    /// <summary>
-    /// The profiles whose guest has the words in the name, or that have a contact (or a phone) with exactly that e-mail address or number. The
-    /// contacts are found by the keyed hash of the normalized value, in a query of their own that returns only ids.
-    /// </summary>
     private async Task<IQueryable<GuestCrmProfile>> SearchedAsync(
         IQueryable<GuestCrmProfile> query,
         HostScope scope,
@@ -337,13 +325,6 @@ public sealed class CrmProfileReadService(
         return query.Where(profile => matched.Contains(profile.Id) || guests.Any(guest => guest.GuestCrmProfileId == profile.Id));
     }
 
-    /// <summary>
-    /// The profiles of the org that have a contact with this exact e-mail address or phone number (or this phone as their own key). The contacts
-    /// are those a screen may show (<see cref="CrmProfileContactReader.Visible"/>): the address or the number of an erased guest finds nothing.
-    /// The phone key of the profile itself is a hash on the profile, not a contact, and cannot be told from whom it came: it stays as it was, until
-    /// the erasure reaches the CRM (task E07/F06/US02/T01). Empty when the text is neither, or when the keyed index has no key (outside
-    /// Development and Testing, with the module closed).
-    /// </summary>
     private async Task<List<Guid>> ProfilesOfExactContactAsync(Guid orgId, string search, CancellationToken cancellationToken)
     {
         var ids = new List<Guid>();
@@ -385,10 +366,6 @@ public sealed class CrmProfileReadService(
         return ids.Distinct().ToList();
     }
 
-    /// <summary>
-    /// The order of the page. The name sorts by the guest the name is shown from. A caller who reaches the whole org sorts by the totals stored on
-    /// the profile; a limited one by the stays, spend and last arrival at the properties it reaches, as sub-queries of the same statement.
-    /// </summary>
     private IQueryable<GuestCrmProfile> Ordered(IQueryable<GuestCrmProfile> query, HostScope scope, CrmProfileSort sort)
     {
         if (sort == CrmProfileSort.Name)
@@ -440,14 +417,9 @@ public sealed class CrmProfileReadService(
         };
     }
 
-    /// <summary>The stays that happened at the properties the caller reaches (<see cref="GuestMatchRules.StayOf"/>).</summary>
     private IQueryable<Booking> StaysInScope(HostScope scope) =>
         BookingsInScope(scope).Where(GuestMatchRules.StayOf(timeProvider.TodayInRome()));
 
-    /// <summary>
-    /// The guests of the org that give a profile its name and that the caller reaches (a guest that is erased gives none): the guests of a limited
-    /// caller are the ones with a booking at a property it reaches, as everywhere (<c>InScope</c>).
-    /// </summary>
     private IQueryable<Guest> NamedGuests(HostScope scope)
     {
         var orgId = scope.OrgId;
@@ -460,12 +432,6 @@ public sealed class CrmProfileReadService(
             .InScope(scope, db.Bookings);
     }
 
-    // ---- the items of a page ------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// The list items of the profiles <paramref name="ids"/> that the caller reaches, in that order: the data of the profiles, then the guests,
-    /// bookings, contacts and proposals of all of them at once.
-    /// </summary>
     private async Task<List<CrmProfileListItem>> BuildItemsAsync(HostScope scope, List<Guid> ids, CancellationToken cancellationToken)
     {
         if (ids.Count == 0)
@@ -558,7 +524,6 @@ public sealed class CrmProfileReadService(
         return items;
     }
 
-    /// <summary>The guests that give the profiles their names, among those the caller reaches.</summary>
     private async Task<List<GuestNameRow>> GuestNamesAsync(HostScope scope, List<Guid> profileIds, CancellationToken cancellationToken)
     {
         return await NamedGuests(scope)
@@ -568,7 +533,6 @@ public sealed class CrmProfileReadService(
             .ToListAsync(cancellationToken);
     }
 
-    /// <summary>The bookings, not cancelled, that the caller reaches, of the guests of these profiles: the rows the figures of a page are made of.</summary>
     private async Task<List<BookingRow>> BookingRowsAsync(HostScope scope, List<Guid> profileIds, CancellationToken cancellationToken)
     {
         return await BookingsInScope(scope)
@@ -586,7 +550,6 @@ public sealed class CrmProfileReadService(
             .ToListAsync(cancellationToken);
     }
 
-    /// <summary>The reviews of these bookings that are public or reported (not the ones the staff took down), the mark and the date only.</summary>
     private async Task<CrmReviewSummary> ReviewsOfAsync(Guid orgId, List<Guid> bookingIds, CancellationToken cancellationToken)
     {
         if (bookingIds.Count == 0)
@@ -609,11 +572,6 @@ public sealed class CrmProfileReadService(
                 .ToList());
     }
 
-    /// <summary>
-    /// For each of these profiles, the merge proposals waiting for a person that the caller may decide: both profiles of the proposal reached in
-    /// full (<see cref="ProfilesWhollyInScope"/>, the rule of the merge). A proposal with a profile the caller does not reach, or reaches only in
-    /// part, is not counted, so a limited caller learns nothing of a duplicate it cannot see or could not decide.
-    /// </summary>
     private async Task<Dictionary<Guid, int>> ProposalCountsAsync(HostScope scope, List<Guid> profileIds, CancellationToken cancellationToken)
     {
         var orgId = scope.OrgId;
@@ -648,12 +606,6 @@ public sealed class CrmProfileReadService(
         return counts;
     }
 
-    // ---- the pieces of an item ----------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// The guest the name is shown from and the name: the primary guest of the profile when the caller reaches it, else the first guest it reaches
-    /// (the oldest record). Empty without any.
-    /// </summary>
     private static (Guid? GuestId, string Name) ChooseName(IEnumerable<GuestNameRow> guests, Guid? primaryGuestId)
     {
         var chosen = guests
@@ -668,10 +620,6 @@ public sealed class CrmProfileReadService(
         return (chosen.GuestId, string.Join(' ', parts));
     }
 
-    /// <summary>
-    /// The name a lead gave on the welcome page, for a profile that has no guest to take a name from: the oldest contact that has a name. Asked
-    /// for a caller who reaches the whole org only, the only scope a lead is in.
-    /// </summary>
     private static string LeadName(IEnumerable<GuestContact> contacts) =>
         contacts
             .Where(contact => !string.IsNullOrWhiteSpace(contact.DisplayName))
@@ -680,10 +628,6 @@ public sealed class CrmProfileReadService(
             .Select(contact => contact.DisplayName!.Trim())
             .FirstOrDefault() ?? string.Empty;
 
-    /// <summary>
-    /// The contact of the channel the profile is shown by: the one that may receive marketing, else a contact that is not suppressed, not an
-    /// OTA forward, with the strongest basis, the oldest first. <c>null</c> without a contact on the channel.
-    /// </summary>
     private static GuestContact? BestContact(IEnumerable<GuestContact> contacts, GuestContactChannel channel) =>
         contacts
             .Where(contact => contact.Channel == channel)
@@ -715,7 +659,6 @@ public sealed class CrmProfileReadService(
                 CrmContactRules.ReachabilityReason(contact)))
             .ToList();
 
-    /// <summary>The totals over the stays that happened (the caller reaches their properties).</summary>
     private static CrmProfileTotals TotalsOf(List<StayRow> stays)
     {
         if (stays.Count == 0)
@@ -762,8 +705,6 @@ public sealed class CrmProfileReadService(
 
     private static NotFoundException ProfileNotFound() =>
         new("CRM profile not found.") { Code = "crm_profile_not_found", MessageKey = "CrmProfileNotFound" };
-
-    // ---- the rows read ------------------------------------------------------------------------------------------------------------
 
     private sealed record ProfileRow(
         Guid Id,

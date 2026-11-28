@@ -18,20 +18,16 @@ namespace Casazen.Core.Suppliers;
 /// </remarks>
 public static class SupplierEarningsCsv
 {
-    /// <summary>The content type of the file.</summary>
     public const string ContentType = "text/csv";
 
-    /// <summary>The columns, in order.</summary>
     public static IReadOnlyList<string> Columns { get; } =
     [
         "completed_on", "paid_on", "service_request_id", "service", "client", "state", "payment_mode", "paid_via", "currency",
         "gross_cents", "commission_percent", "commission_cents", "net_cents", "refunded_cents",
     ];
 
-    /// <summary>The file name: <c>incassi-2026-10-17.csv</c>, the day of the export in Rome.</summary>
     public static string FileName(DateOnly today) => $"incassi-{today.Year:D4}-{today.Month:D2}-{today.Day:D2}.csv";
 
-    /// <summary>The CSV text of the export: the header, then one line per row, each ended by CRLF.</summary>
     public static string Write(IReadOnlyList<SupplierEarningRow> rows)
     {
         ArgumentNullException.ThrowIfNull(rows);

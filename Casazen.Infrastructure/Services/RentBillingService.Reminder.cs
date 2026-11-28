@@ -24,8 +24,6 @@ public sealed partial class RentBillingService
         var intervalHours = RentCharges.GetReminderIntervalHours(configuration);
         var lease = await LoadLeaseAsync(leaseId, cancellationToken);
 
-        // Record the reminder and release the lease lock before calling Meta. A slow or failed send must not block a
-        // payment on this lease, and an accepted message must stay recorded when a later recipient fails.
         ReminderClaim claim;
         string property;
         string due;
@@ -75,7 +73,6 @@ public sealed partial class RentBillingService
                 }
                 catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
                 {
-                    // One recipient's timeout or unreadable response does not undo a message Meta already accepted.
                     logger.LogWarning(
                         "WhatsApp rent reminder of installment {InstallmentId} was not accepted ({ExceptionType})",
                         installmentId,
@@ -92,7 +89,6 @@ public sealed partial class RentBillingService
 
         if (sent == 0)
         {
-            // Nothing was accepted: the reminder did not happen, so it is not recorded and can be tried again.
             await RestoreReminderAsync(leaseId, installmentId, claim, cancellationToken);
             throw new DomainRuleException(RentRegisterErrorCodes.ReminderNotSent, "RentWhatsAppReminderNotSent");
         }
@@ -113,7 +109,6 @@ public sealed partial class RentBillingService
         string? token = null;
         await using (var transaction = await LockLeaseAsync(leaseId, cancellationToken))
         {
-            // Read again under the lock: a payment, a reminder or the end of the schedule may have come meanwhile.
             var entry = await FindEntryAsync(leaseId, installmentId, cancellationToken);
             var schedule = await db.RentSchedules.AsNoTracking().SingleAsync(s => s.Id == entry.RentScheduleId, cancellationToken);
             EnsurePayable(entry, schedule);
@@ -121,7 +116,6 @@ public sealed partial class RentBillingService
             if (Tenants(lease).Count == 0)
                 throw new DomainRuleException(RentBillingErrorCodes.NoTenantEmail, "RentNoTenantEmail");
 
-            // The microsecond precision of the database: the value compared back after a round trip is the one written.
             var now = TruncateToMicroseconds(UtcNow);
             if (entry.LastReminderAt is { } last && now < last.AddHours(intervalHours))
             {
@@ -131,8 +125,6 @@ public sealed partial class RentBillingService
 
             claim = new ReminderClaim(now, entry.LastReminderAt, entry.ReminderCount, entry.PaymentTokenHash, entry.PaymentRequestedAt);
 
-            // With Connect the reminder carries a new personal link (the previous one stops working, as for the payment
-            // request); without it the tenant pays the way agreed with the landlord (D30).
             if (OnlinePaymentsAvailable(lease.Org))
                 token = IssueToken(entry);
 
@@ -155,13 +147,10 @@ public sealed partial class RentBillingService
         var recipients = QueueReminder(lease, installmentId, facts, token, cleanNote);
         if (recipients == 0)
         {
-            // Nothing left the platform (email provider not configured, queue down): the reminder did not happen, so it is not
-            // recorded, and the link that was just replaced works again.
             await RestoreReminderAsync(leaseId, installmentId, claim, cancellationToken);
             throw new DomainRuleException(RentRegisterErrorCodes.ReminderNotSent, "RentReminderNotSent");
         }
 
-        // Ids and counts only: no name, address nor note in the log.
         logger.LogInformation(
             "Rent reminder {ReminderCount} of installment {InstallmentId} (lease {LeaseId}) queued for {Recipients} tenants, link {WithLink}",
             claim.ReminderCount,
@@ -173,7 +162,6 @@ public sealed partial class RentBillingService
             installmentId, claim.SentAt, claim.ReminderCount, recipients, token is not null, claim.SentAt.AddHours(intervalHours));
     }
 
-    /// <summary>The note trimmed, <c>null</c> when blank; 422 when longer than <see cref="RentCharges.MaxReminderNoteLength"/>.</summary>
     private static string? NormalizeReminderNote(string? note)
     {
         var text = note?.Trim();
@@ -185,10 +173,6 @@ public sealed partial class RentBillingService
         return text;
     }
 
-    /// <summary>
-    /// Tenants who can receive WhatsApp: not anonymized (LT-12), with a phone, one message per number. An email address
-    /// is not required.
-    /// </summary>
     private static List<Party> WhatsAppTenants(LeaseContract lease) =>
         lease.Parties
             .Where(p => p.Role == PartyRole.Tenant && p.AnonymizedAt == null && !string.IsNullOrWhiteSpace(p.ContactPhone))
@@ -196,7 +180,6 @@ public sealed partial class RentBillingService
             .DistinctBy(p => p.ContactPhone!.Trim(), StringComparer.Ordinal)
             .ToList();
 
-    /// <summary>Queues the reminder to every tenant with an address; the number of emails queued.</summary>
     private int QueueReminder(LeaseContract lease, Guid installmentId, InstallmentFacts facts, string? token, string? note)
     {
         var payUrl = token is null ? null : links.RentPayment(installmentId, token);
@@ -252,7 +235,6 @@ public sealed partial class RentBillingService
     private static DateTime TruncateToMicroseconds(DateTime value) =>
         new(value.Ticks - value.Ticks % (TimeSpan.TicksPerMillisecond / 1000), DateTimeKind.Utc);
 
-    /// <summary>What the installment was before the reminder, to put it back if the email cannot be queued.</summary>
     private sealed record ReminderClaim(
         DateTime SentAt,
         DateTime? PreviousReminderAt,
@@ -260,13 +242,10 @@ public sealed partial class RentBillingService
         string? PreviousTokenHash,
         DateTime? PreviousRequestedAt)
     {
-        /// <summary>Reminders recorded with this one (after the increment).</summary>
         public int ReminderCount { get; init; }
 
-        /// <summary>Hash of the link issued with the reminder; <c>null</c> when the reminder carries no link.</summary>
         public string? NewTokenHash { get; init; }
     }
 
-    /// <summary>What the email says about the installment.</summary>
     private sealed record InstallmentFacts(DateOnly PeriodStart, DateOnly PeriodEnd, DateOnly DueDate, decimal Amount, bool Overdue);
 }

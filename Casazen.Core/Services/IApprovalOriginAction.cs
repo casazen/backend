@@ -21,10 +21,8 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IApprovalOriginAction
 {
-    /// <summary>The <see cref="ApprovalQueueItem.ItemType"/> the action serves; one action for each type.</summary>
     string ItemType { get; }
 
-    /// <summary>The name of what it does (<see cref="ApprovalOriginActions"/>), stored in <see cref="ApprovalQueueItem.OriginAction"/>.</summary>
     string OriginAction { get; }
 
     /// <summary>
@@ -51,10 +49,8 @@ public interface IApprovalOriginAction
 /// </summary>
 public sealed record ApprovalActionResult(bool Succeeded, string? State = null, string? ErrorCode = null)
 {
-    /// <summary>The action ran; <paramref name="state"/> says how far it went.</summary>
     public static ApprovalActionResult Executed(string? state = null) => new(true, state);
 
-    /// <summary>The action did not run (or did not finish): <paramref name="errorCode"/> is why, a stable code of at most <see cref="ApprovalQueueItem.OriginActionErrorMaxLength"/> characters.</summary>
     public static ApprovalActionResult Failed(string errorCode)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(errorCode);
@@ -62,12 +58,7 @@ public sealed record ApprovalActionResult(bool Succeeded, string? State = null, 
     }
 }
 
-/// <summary>
-/// The registry of the actions, resolved by <see cref="IApprovalOriginAction.ItemType"/> (E05/F04/US01/T02): every <see cref="IApprovalOriginAction"/> of the
-/// container, once for each type. A type with two actions is a mistake of the registration and stops the first use, never a silent choice of one of them.
-/// </summary>
 public interface IApprovalOriginActionRegistry
 {
-    /// <summary>The action of <paramref name="itemType"/>, or <c>null</c> when the type is a pure decision.</summary>
     IApprovalOriginAction? Find(string itemType);
 }

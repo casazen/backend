@@ -36,7 +36,6 @@ public sealed class OwnerIssuedDocumentsExport(
     IOptions<DocumentArchiveOptions> options,
     ILogger<OwnerIssuedDocumentsExport> logger) : IOwnerIssuedDocumentsExport
 {
-    /// <summary>The longest name a file of a document is offered under.</summary>
     private const int FileNameMaxLength = 100;
 
     public async Task<IReadOnlyList<OwnerIssuedDocumentInfo>> ListAsync(
@@ -109,7 +108,6 @@ public sealed class OwnerIssuedDocumentsExport(
         await RequireOwnersAsync(asked, ct);
         var profiles = await ProfilesOfAsync(asked, ct);
 
-        // A period with more documents than the caps allow is refused before one is read: each document is at least one file.
         var count = await IssuedBy([.. profiles.Keys], period).CountAsync(ct);
         if (year)
         {
@@ -140,12 +138,6 @@ public sealed class OwnerIssuedDocumentsExport(
         return new AccountantPackageResult(plan.Documents, written.Files, written.Bytes, []);
     }
 
-    // ---------------------------------------------------------------- what goes in the ZIP
-
-    /// <summary>
-    /// The files of one owner: the register of the documents issued in its name and the documents (always), and for a year their summary and the invoices of the agency to the owner with their
-    /// recharges. <paramref name="number"/> is the place of the owner among several (each is then a folder of its own), <c>null</c> for one.
-    /// </summary>
     private async Task PlanOwnerAsync(
         AccountantPackageService.Plan plan,
         OwnerIssuedDocumentsOwner owner,
@@ -161,7 +153,6 @@ public sealed class OwnerIssuedDocumentsExport(
             : null;
         var ownerName = await OwnerNameAsync(owner, ct);
 
-        // The issuer of a document that has no snapshot (and of an empty period): the owner as its profile says now; an owner with no profile has no document, and is told by its name.
         var fallback = profile is null ? new FiscalIssuerSnapshot { LegalName = ownerName } : FiscalIssuerSnapshot.From(profile, org);
         var current = AccountantPackageFacts.IssuerOf(fallback);
         var documents = profileId is { } issuing ? await Project(IssuedBy([issuing], period)).ToListAsync(ct) : [];
@@ -185,7 +176,6 @@ public sealed class OwnerIssuedDocumentsExport(
         if (period.Kind != AccountantPackagePeriodKind.Year)
             return;
 
-        // The year: what was issued in the owner's name, month by month, and what the agency invoiced to the owner (its commission, its recharges and the expenses it advanced).
         var invoices = await Project(InvoicesOfTheAgencyTo(owner, period)).ToListAsync(ct);
         plan.AddTables(prefix + OwnerIssuedDocumentsStructure.AnnualSummaryFolder, "documenti-emessi", OwnerIssuedDocumentTables.AnnualSummary(documents, period, t));
         plan.AddTables(prefix + OwnerIssuedDocumentsStructure.AnnualSummaryFolder, "fatture-agenzia-e-riaddebiti", OwnerIssuedDocumentTables.AgencyInvoices(invoices, period, t));
@@ -198,7 +188,6 @@ public sealed class OwnerIssuedDocumentsExport(
         plan.Documents += invoices.Count;
     }
 
-    /// <summary>The PDF of a document CasaZen issued and its XML when it has one: the files the screens download, made when their turn comes.</summary>
     private void PlanDocumentFiles(AccountantPackageService.Plan plan, string folder, Guid orgId, PackageDocument document, bool agencyInvoice, PackageTexts t)
     {
         var stem = $"{DocumentArchiveExport.Date(document.IssueDate)}-{DocumentArchiveExport.Sanitize(document.Number ?? document.Id.ToString("N"))}";
@@ -217,12 +206,6 @@ public sealed class OwnerIssuedDocumentsExport(
         }
     }
 
-    // ---------------------------------------------------------------- what is read
-
-    /// <summary>
-    /// The issuer profile of each owner asked for, by the id of the profile: the profile of an owner of that org (<c>PropertyOwnerId</c>), never the organization's. An owner that has no
-    /// profile issues nothing and is not in the answer.
-    /// </summary>
     internal async Task<Dictionary<Guid, OwnerIssuedDocumentsOwner>> ProfilesOfAsync(IReadOnlyCollection<OwnerIssuedDocumentsOwner> owners, CancellationToken ct)
     {
         if (owners.Count == 0)
@@ -237,17 +220,12 @@ public sealed class OwnerIssuedDocumentsExport(
             .Select(p => new { p.Id, p.OrgId, OwnerId = p.PropertyOwnerId!.Value })
             .ToListAsync(ct);
 
-        // The pairs, not the two lists: an owner of one agency is not the owner of another that happens to be asked for in the same breath.
         var wanted = owners.ToHashSet();
         return found
             .Where(p => wanted.Contains(new OwnerIssuedDocumentsOwner(p.OrgId, p.OwnerId)))
             .ToDictionary(p => p.Id, p => new OwnerIssuedDocumentsOwner(p.OrgId, p.OwnerId));
     }
 
-    /// <summary>
-    /// The documents issued on the issuer profiles <paramref name="profileIds"/> (an empty list is no document, never all): the issued ones of a stay that CasaZen made, a credit note
-    /// included, a draft, a discarded one and a proforma never; the ones issued in <paramref name="period"/> when it is given.
-    /// </summary>
     internal IQueryable<FiscalDocument> IssuedBy(IReadOnlyCollection<Guid> profileIds, AccountantPackagePeriod? period)
     {
         var query = db.FiscalDocuments
@@ -265,7 +243,6 @@ public sealed class OwnerIssuedDocumentsExport(
         return query.Where(d => d.IssueDate >= from && d.IssueDate <= to);
     }
 
-    /// <summary>What the list shows of a document, with the issuer profile it was issued on (the owner it is issued in the name of).</summary>
     internal sealed record IssuedRow(
         Guid Id,
         Guid OrgId,
@@ -278,7 +255,6 @@ public sealed class OwnerIssuedDocumentsExport(
         string SdiStatus,
         bool HasXml);
 
-    /// <summary>The rows of the list: the documents of <see cref="IssuedBy"/>, the newest first (the day, then the series and the number), at most <paramref name="limit"/>.</summary>
     internal IQueryable<IssuedRow> ListRows(IReadOnlyCollection<Guid> profileIds, AccountantPackagePeriod? period, int limit)
     {
         return IssuedBy(profileIds, period)
@@ -300,14 +276,12 @@ public sealed class OwnerIssuedDocumentsExport(
                 d.FatturaPaXml != null));
     }
 
-    /// <summary>One document of <see cref="IssuedBy"/>, as stored, with its lines when asked.</summary>
     internal IQueryable<FiscalDocument> OneOf(IReadOnlyCollection<Guid> profileIds, Guid documentId, bool withLines)
     {
         var query = IssuedBy(profileIds, null).Where(d => d.Id == documentId);
         return withLines ? query.Include(d => d.Lines) : query;
     }
 
-    /// <summary>The invoices (and credit notes) the agency issued to the owner on a day of the period: the documents with the purpose owner invoice made out to it.</summary>
     internal IQueryable<FiscalDocument> InvoicesOfTheAgencyTo(OwnerIssuedDocumentsOwner owner, AccountantPackagePeriod period)
     {
         var orgId = owner.OrgId;
@@ -322,10 +296,8 @@ public sealed class OwnerIssuedDocumentsExport(
                         && d.IssueDate != null && d.IssueDate >= from && d.IssueDate <= to);
     }
 
-    /// <summary>The documents as the accountant package reads them (what each stores, with its lines), oldest first: the day of the issue, then the series and the number.</summary>
     internal IQueryable<PackageDocument> Project(IQueryable<FiscalDocument> issued)
     {
-        // The subquery is built outside the projection: an expression tree cannot hold the list of the filters to ignore.
         var all = db.FiscalDocuments.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]);
         return issued
             .OrderBy(d => d.IssueDate)
@@ -361,10 +333,6 @@ public sealed class OwnerIssuedDocumentsExport(
                     .ToList()));
     }
 
-    /// <summary>
-    /// One document issued in the name of one of <paramref name="owners"/>, as stored, with its lines when asked; <c>null</c> for anything else (the same answer for a document of another
-    /// owner, of the agency, a draft and one that does not exist).
-    /// </summary>
     private async Task<FiscalDocument?> FindAsync(IReadOnlyCollection<OwnerIssuedDocumentsOwner> owners, Guid documentId, bool withLines, CancellationToken ct)
     {
         var profiles = await ProfilesOfAsync(owners, ct);
@@ -375,7 +343,6 @@ public sealed class OwnerIssuedDocumentsExport(
         return document?.IssuerProfileId is { } profileId && profiles.TryGetValue(profileId, out var owner) && owner.OrgId == document.OrgId ? document : null;
     }
 
-    /// <summary>A document of the org, as stored, with its lines (the ZIP asks for the ones it listed).</summary>
     private async Task<FiscalDocument> LoadAsync(Guid orgId, Guid documentId, CancellationToken ct)
     {
         return await db.FiscalDocuments
@@ -385,7 +352,6 @@ public sealed class OwnerIssuedDocumentsExport(
             .FirstAsync(d => d.Id == documentId && d.OrgId == orgId, ct);
     }
 
-    /// <summary>The owners exist, each in its org (404 <c>owner_not_found</c>); an anonymized owner is still there, its documents being kept for the legal retention.</summary>
     private async Task RequireOwnersAsync(IReadOnlyList<OwnerIssuedDocumentsOwner> owners, CancellationToken ct)
     {
         var ownerIds = owners.Select(o => o.OwnerId).Distinct().ToList();
@@ -404,7 +370,6 @@ public sealed class OwnerIssuedDocumentsExport(
         }
     }
 
-    /// <summary>The name the agency keeps for the owner (the legal name, else first and last name); <c>null</c> for an owner whose data was anonymized.</summary>
     private async Task<string?> OwnerNameAsync(OwnerIssuedDocumentsOwner owner, CancellationToken ct)
     {
         var orgId = owner.OrgId;
@@ -421,18 +386,11 @@ public sealed class OwnerIssuedDocumentsExport(
         return !string.IsNullOrWhiteSpace(found.LegalName) ? found.LegalName.Trim() : $"{found.FirstName} {found.LastName}".Trim();
     }
 
-    // ---------------------------------------------------------------- the files
-
-    /// <summary>
-    /// The PDF of an issued document: the issuer of the snapshot of the issue (the owner's profile of today only for a document issued before the snapshot existed), the payment state the
-    /// current one, the name of the property of the stay; the very content <c>FiscalDocumentService</c> renders for the agency.
-    /// </summary>
     private async Task<byte[]> PdfOfAsync(FiscalDocument document, string? language, CancellationToken ct)
     {
         var orgId = document.OrgId;
         await ApplyCurrentPaymentStateAsync(document, ct);
 
-        // The tourist tax of a portal booking that the collection of the stay records as collected is not «to collect» here either: the owner gets what the agency's PDF says (the portal has no tenant, so the org is named).
         await FiscalDocumentService.ApplyCollectedTouristTaxAsync(db, document, ct, orgId);
         var credited = document.CreditedDocumentId is { } creditedId
             ? await db.FiscalDocuments.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking().FirstOrDefaultAsync(d => d.Id == creditedId && d.OrgId == orgId, ct)
@@ -450,7 +408,6 @@ public sealed class OwnerIssuedDocumentsExport(
         return pdfRenderer.Render(FiscalDocumentPdfs.Pdf(document, issuer, documentTexts, DocumentLanguages.Normalize(language), credited, propertyName));
     }
 
-    /// <summary>The payment state of a document of CasaZen is the current one, read from the payments of its booking: the PDF the owner gets never says «to collect» of what was paid.</summary>
     private async Task ApplyCurrentPaymentStateAsync(FiscalDocument document, CancellationToken ct)
     {
         if (!FiscalDocumentService.IsPaymentStateReadFromPayments(document.Source, document.Kind, document.BookingId, document.PaymentChannel))
@@ -471,7 +428,6 @@ public sealed class OwnerIssuedDocumentsExport(
         return FiscalIssuerSnapshot.From(profile, org);
     }
 
-    /// <summary>The XML of an issued document of the org, as stored at the issue.</summary>
     private async Task<string> XmlOfAsync(Guid orgId, Guid documentId, CancellationToken ct)
     {
         var xml = await db.FiscalDocuments
@@ -483,13 +439,11 @@ public sealed class OwnerIssuedDocumentsExport(
         return string.IsNullOrEmpty(xml) ? throw XmlUnavailable(documentId) : xml;
     }
 
-    /// <summary>The PDF of a document of the org the ZIP listed (the ones issued in the owner's name), in the language of the package.</summary>
     private async Task<byte[]> IssuedPdfAsync(Guid orgId, Guid documentId, CancellationToken ct)
     {
         return await PdfOfAsync(await LoadAsync(orgId, documentId, ct), PackageTexts.PackageLanguage, ct);
     }
 
-    /// <summary>The PDF of an invoice of the agency to the owner: the one the owner downloads in its portal.</summary>
     private async Task<byte[]> AgencyInvoicePdfAsync(Guid orgId, Guid documentId, CancellationToken ct)
     {
         var file = await statementDocuments.GetOwnerInvoicePdfAsync(orgId, documentId, PackageTexts.PackageLanguage, ct)
@@ -515,11 +469,6 @@ public sealed class OwnerIssuedDocumentsExport(
     }
 }
 
-/// <summary>
-/// The tables of the ZIP of the documents issued in the name of an owner that the accountant package has not (E17/F02/US01/T01, acceptance step D2): the totals of the period with the stamp
-/// duty, the annual summary of the documents and the invoices of the agency to the owner with their recharges. The words are the resource files' (<see cref="PackageTexts"/>); an amount is a
-/// number to the cent in the currency of its own column, a credit note is negative and nothing is worked out again: every figure is added up from what the documents store.
-/// </summary>
 internal static class OwnerIssuedDocumentTables
 {
     /// <summary>The documents, the taxable amount, the VAT, the stamp duty and the total of a set of documents for each currency (credit notes taken away): the figures the register adds up to.</summary>

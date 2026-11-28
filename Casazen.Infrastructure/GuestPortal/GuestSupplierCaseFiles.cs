@@ -10,7 +10,6 @@ namespace Casazen.Infrastructure.GuestPortal;
 
 public enum GuestCaseActor { Guest, Supplier, Host, Staff }
 
-/// <summary>Private case evidence. Raw photos and personal narratives never enter an AI integration.</summary>
 public sealed class GuestSupplierCaseFiles(AppDbContext db, IFileStorage storage, TimeProvider clock)
 {
     public const int MaxBytes = 4 * 1024 * 1024;

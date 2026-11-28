@@ -9,8 +9,6 @@ internal sealed class MarketplacePortalConfiguration : IEntityTypeConfiguration<
 {
     public void Configure(EntityTypeBuilder<MarketplacePortal> entity)
     {
-        // ─── Marketplace (E09/F01, NF-54, NF-56, NF-57, NF-59) ───────────────────
-        // The portals of the channel manager are platform data refreshed once a day, unique by the code Octorate gives them.
         entity.HasIndex(p => p.PortalCode)
             .IsUnique()
             .HasDatabaseName(MarketplacePortal.PortalCodeIndexName);
@@ -21,8 +19,6 @@ internal sealed class MarketplacePartnerConfiguration : IEntityTypeConfiguration
 {
     public void Configure(EntityTypeBuilder<MarketplacePartner> entity)
     {
-        // A partner is a row the platform admin enters: unique by its slug, read in the order of its work. Its texts go with it. The checks
-        // keep a code that is not a lowercase slug and a site that is not https out of the table, whoever writes the row.
         entity.HasIndex(p => p.Code)
             .IsUnique()
             .HasDatabaseName(MarketplacePartner.CodeIndexName);
@@ -43,7 +39,6 @@ internal sealed class MarketplacePartnerTextConfiguration : IEntityTypeConfigura
 {
     public void Configure(EntityTypeBuilder<MarketplacePartnerText> entity)
     {
-        // One row of texts per partner and language (it or en).
         entity.Property(t => t.FaqJson).HasColumnType("jsonb");
         entity.HasIndex(t => new { t.PartnerId, t.Language })
             .IsUnique()

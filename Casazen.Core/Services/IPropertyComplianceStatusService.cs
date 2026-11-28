@@ -36,12 +36,6 @@ public interface IPropertyComplianceStatusService
         Property property,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// <see cref="GetBlockingStepsAsync"/> for many properties at once (the host's list, SR-07a): the very same rules, applied to
-    /// facts read for all of them together — the documents of all, the safety checklists of all and the comuni list once — so the
-    /// number of queries is fixed whatever the number of properties. The answer holds one entry for each property given, each
-    /// equal to what <see cref="GetBlockingStepsAsync"/> says for that property alone. Read only.
-    /// </summary>
     Task<IReadOnlyDictionary<Guid, IReadOnlyList<ComplianceActivationStep>>> GetBlockingStepsManyAsync(
         IReadOnlyCollection<Property> properties,
         CancellationToken cancellationToken = default);
@@ -82,7 +76,6 @@ public interface IPropertyComplianceStatusService
     /// </exception>
     Task<PropertyComplianceCheck> ActivateAsync(Guid propertyId, HostActivation host, CancellationToken cancellationToken = default);
 
-    /// <summary>Code of the 409 of a host activation with compliance reminders open and not acknowledged.</summary>
     const string RemindersAcknowledgementRequiredCode = "activation_reminders_ack_required";
 
     /// <summary>
@@ -94,20 +87,8 @@ public interface IPropertyComplianceStatusService
     Task<PropertyComplianceRecalculation?> RecalculateAllAsync(bool dryRun, CancellationToken cancellationToken = default);
 }
 
-/// <summary>A host activating a property (<see cref="IPropertyComplianceStatusService.ActivateAsync(Guid, HostActivation, CancellationToken)"/>).</summary>
-/// <param name="UserId">Who activates (<c>User.Id</c>): the actor of the activity line.</param>
-/// <param name="RemindersAcknowledged">
-/// The host declared to know that the reminders still open (documents, safety checklist) are their own obligations and to complete
-/// them later. Needed only when some are open.
-/// </param>
 public sealed record HostActivation(string UserId, bool RemindersAcknowledged);
 
-/// <summary>Outcome of one evaluation of a property.</summary>
-/// <param name="PropertyId">The property.</param>
-/// <param name="PreviousStatus">Status before the evaluation.</param>
-/// <param name="Status">Status after the evaluation.</param>
-/// <param name="IncompleteSteps">Blocking steps still incomplete (empty when not evaluated: pending).</param>
-/// <param name="HostNotified">True when this call queued the suspension email to the host.</param>
 public sealed record PropertyComplianceCheck(
     Guid PropertyId,
     PropertyComplianceStatus PreviousStatus,
@@ -115,10 +96,8 @@ public sealed record PropertyComplianceCheck(
     IReadOnlyList<ComplianceActivationStep> IncompleteSteps,
     bool HostNotified)
 {
-    /// <summary>This call moved the property from active to suspended.</summary>
     public bool Suspended => PreviousStatus == PropertyComplianceStatus.Active && Status == PropertyComplianceStatus.Suspended;
 
-    /// <summary>This call moved the property from suspended back to active.</summary>
     public bool Reactivated => PreviousStatus == PropertyComplianceStatus.Suspended && Status == PropertyComplianceStatus.Active;
 }
 

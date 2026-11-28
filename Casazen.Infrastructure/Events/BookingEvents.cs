@@ -50,11 +50,6 @@ public static class BookingEvents
         };
     }
 
-    /// <summary>
-    /// Records the events of a booking that is being created, not saved yet: <c>BookingCreated</c>, and <c>BookingConfirmed</c> when
-    /// it is created confirmed (a booking entered by the host, a stay made from a channel's block). A booking is created once, so its
-    /// keys cannot be taken.
-    /// </summary>
     public static void RecordCreated(IDomainEventRecorder? recorder, Booking booking, BookingEventOrigin origin)
     {
         if (recorder is null)
@@ -65,10 +60,6 @@ public static class BookingEvents
             Add(recorder, DomainEventType.BookingConfirmed, booking, origin, DedupKeyOf(DomainEventType.BookingConfirmed, booking));
     }
 
-    /// <summary>
-    /// Records the event of a transition of a booking that exists, not saved yet, once (see the remarks of the class). The booking is
-    /// as it is after the change: its status, its dates and its <c>UpdatedAt</c>.
-    /// </summary>
     public static async Task RecordAsync(
         IDomainEventRecorder? recorder,
         AppDbContext db,
@@ -84,7 +75,6 @@ public static class BookingEvents
         var key = DedupKeyOf(type, booking);
         if (await IsTakenAsync(db, booking.OrgId, key, cancellationToken))
         {
-            // Only a confirmation or a cancellation can come back for the same booking: that one is a new event.
             if (type is not (DomainEventType.BookingConfirmed or DomainEventType.BookingCancelled))
                 return;
 
@@ -96,10 +86,6 @@ public static class BookingEvents
         Add(recorder, type, booking, origin, key);
     }
 
-    /// <summary>
-    /// Takes back the events recorded for <paramref name="bookingId"/> in the current unit of work that are not saved: the change they
-    /// describe was refused, so no later save of the same context may write them (ADR-022-R1).
-    /// </summary>
     public static void Withdraw(AppDbContext db, Guid bookingId)
     {
         ArgumentNullException.ThrowIfNull(db);
@@ -115,7 +101,6 @@ public static class BookingEvents
     private static void Add(IDomainEventRecorder recorder, DomainEventType type, Booking booking, BookingEventOrigin origin, string key) =>
         recorder.Record(type, booking.Id, BookingEventPayload.Of(booking, origin), key, booking.OrgId);
 
-    /// <summary>The key is in the outbox of the org already, or in the events of this unit of work.</summary>
     private static async Task<bool> IsTakenAsync(AppDbContext db, Guid orgId, string key, CancellationToken cancellationToken)
     {
         if (db.ChangeTracker.Entries<OutboxEvent>().Any(e =>
@@ -124,7 +109,6 @@ public static class BookingEvents
             return true;
         }
 
-        // The org is named, so the tenant filter of the caller (a job, a webhook, an admin) does not decide what is taken.
         return await db.OutboxEvents
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()

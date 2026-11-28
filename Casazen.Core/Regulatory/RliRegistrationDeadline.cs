@@ -19,13 +19,8 @@ namespace Casazen.Core.Regulatory;
 /// </remarks>
 public static class RliRegistrationDeadline
 {
-    /// <summary>Days from the stipula, or from the start date if earlier (rule L1).</summary>
     public const int DaysFromStipulaOrStart = 30;
 
-    /// <summary>
-    /// <c>min(stipula, start) + 30</c> days, as midnight UTC of the Europe/Rome calendar date. Both values may be
-    /// date-only values (midnight UTC) or instants: each is taken as its Europe/Rome calendar date.
-    /// </summary>
     public static DateTime Compute(DateTime stipulaDate, DateTime startDate)
     {
         var stipula = RomeCalendar.DateInRome(stipulaDate);
@@ -34,7 +29,6 @@ public static class RliRegistrationDeadline
         return ToStoredDate(from.AddDays(DaysFromStipulaOrStart));
     }
 
-    /// <summary>The Europe/Rome calendar date of <paramref name="value"/>, as midnight UTC (storage convention).</summary>
     public static DateTime ToStoredDate(DateTime value) => ToStoredDate(RomeCalendar.DateInRome(value));
 
     /// <summary>
@@ -64,25 +58,18 @@ public static class RliRegistrationDeadline
             : null;
     }
 
-    /// <inheritdoc cref="Resolve(LeaseStatus, DateTime?, DateTime, DateTime)"/>
     public static DateTime? Resolve(LeaseContract lease, DateTime todayInRome)
     {
         ArgumentNullException.ThrowIfNull(lease);
         return Resolve(lease.Status, lease.StipulaDate, lease.StartDate, todayInRome);
     }
 
-    /// <summary>Calendar days from <paramref name="todayInRome"/> to <paramref name="deadline"/>: 0 on the deadline day, negative once it has passed.</summary>
     public static int DaysRemaining(DateTime deadline, DateTime todayInRome) =>
         RomeCalendar.DateInRome(deadline).DayNumber - RomeCalendar.DateInRome(todayInRome).DayNumber;
 
-    /// <summary>The contract is not signed by every party yet: no stipula has happened in CasaZen.</summary>
     public static bool IsBeforeFullSignature(LeaseStatus status) =>
         status is LeaseStatus.Draft or LeaseStatus.AwaitingSignature or LeaseStatus.PartiallySigned;
 
-    /// <summary>
-    /// The lease still has to be registered: every status before <see cref="LeaseStatus.Registered"/>, signed or not.
-    /// <see cref="LeaseStatus.Rejected"/> (a contract that will not be registered) is excluded.
-    /// </summary>
     public static bool AwaitsRegistration(LeaseStatus status) =>
         status is not (LeaseStatus.Registered or LeaseStatus.Rejected);
 

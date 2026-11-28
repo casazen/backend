@@ -15,13 +15,8 @@ namespace Casazen.Infrastructure.Email.Templates;
 /// </remarks>
 public static partial class EmailTemplates
 {
-    /// <summary>One supplier offered in a mail: what its showcase says about it, and the link to its page.</summary>
     public sealed record EmailAlternative(ShowcaseAlternative Supplier, string Url);
 
-    /// <summary>
-    /// The block of the alternatives. <c>null</c> adds nothing (they were not looked for, or could not be); an empty list says that there is no other
-    /// supplier to suggest for now.
-    /// </summary>
     private static void AppendAlternatives(EmailHtmlBuilder builder, CultureInfo culture, IReadOnlyList<EmailAlternative>? alternatives)
     {
         if (alternatives is null)
@@ -38,7 +33,6 @@ public static partial class EmailTemplates
             .LinkList(alternatives.Select(alternative => (alternative.Supplier.Name, alternative.Url, (string?)AlternativeDetail(culture, alternative.Supplier))));
     }
 
-    /// <summary>What is said after the name of an alternative: «Verificato», the typical time to answer and the «da €» of its service, as far as they are known.</summary>
     internal static string AlternativeDetail(CultureInfo culture, ShowcaseAlternative supplier)
     {
         ArgumentNullException.ThrowIfNull(supplier);

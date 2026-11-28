@@ -67,7 +67,6 @@ public sealed class MarketplacePartnerActivationService(
         MarketplaceReads.EnsureSameOrg(orgId, scope);
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
-        // The day is judged on the calendar of Rome, the host's: it does not depend on a tenant, so it is checked before anything is read.
         if (declaredOn > timeProvider.TodayInRomeAsDateOnly())
             throw DeclaredDateInvalid();
 
@@ -99,7 +98,6 @@ public sealed class MarketplacePartnerActivationService(
             {
                 if (row is null)
                 {
-                    // The collection of the DbSet, not the navigation of another entity: a row with an id of its own is added, never attached as modified.
                     row = new MarketplaceActivation
                     {
                         OrgId = orgId,
@@ -128,7 +126,6 @@ public sealed class MarketplacePartnerActivationService(
             }
             catch (DbUpdateException) when (attempt < 2)
             {
-                // Two declarations at once: the other one wrote the row first. Read it again; an Active row is returned as it is.
                 ForgetTrackedRows();
                 continue;
             }
@@ -174,7 +171,6 @@ public sealed class MarketplacePartnerActivationService(
             if (row.Status == MarketplaceActivationStatus.Deactivated)
                 return Describe(row);
 
-            // The row stays as history: only its status moves, and the problem it carried is closed with it.
             row.Status = MarketplaceActivationStatus.Deactivated;
             row.LastErrorCode = null;
             row.LastErrorAt = null;
@@ -187,7 +183,6 @@ public sealed class MarketplacePartnerActivationService(
             }
             catch (DbUpdateException) when (attempt < 2)
             {
-                // Another request changed the same row meanwhile: read it again, a Deactivated row is returned as it is.
                 ForgetTrackedRows();
                 continue;
             }
@@ -198,8 +193,6 @@ public sealed class MarketplacePartnerActivationService(
             return Describe(row);
         }
     }
-
-    // ─── The checks every method shares ──────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// What the caller reaches. A property must be one of the org inside the caller's scope (the 404 of a property that does not exist otherwise). With no
@@ -218,10 +211,6 @@ public sealed class MarketplacePartnerActivationService(
             throw new DomainForbiddenException(MarketplacePartnerErrorCodes.NeedsWholeOrg, "MarketplacePartnerNeedsWholeOrg");
     }
 
-    /// <summary>
-    /// The partner of the catalog the org may see (<see cref="MarketplaceVisibility"/>). A code nobody has, a hidden partner and one the plan or the
-    /// country of the org does not allow are the same 404, so a code cannot be guessed.
-    /// </summary>
     private async Task<MarketplacePartner> VisiblePartnerAsync(Guid orgId, string? partnerCode, CancellationToken ct)
     {
         var code = partnerCode?.Trim();
@@ -281,9 +270,6 @@ public sealed class MarketplacePartnerActivationService(
             ct);
     }
 
-    // ─── The row ─────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The org's row of the partner for the property, or its org-level row when no property is named, tracked; <c>null</c> when there is none.</summary>
     private async Task<MarketplaceActivation?> TrackedRowAsync(Guid orgId, Guid? propertyId, string partnerCode, CancellationToken ct)
     {
         var rows = db.MarketplaceActivations.Where(a => a.OrgId == orgId && a.Kind == MarketplaceActivationKind.Partner && a.TargetCode == partnerCode);
@@ -292,7 +278,6 @@ public sealed class MarketplacePartnerActivationService(
             : await rows.FirstOrDefaultAsync(a => a.PropertyId == null, ct);
     }
 
-    /// <summary>The rows are read again after a failed save: nothing tracked from the failed attempt may be kept.</summary>
     private void ForgetTrackedRows()
     {
         foreach (var entry in db.ChangeTracker.Entries<MarketplaceActivation>().ToList())
@@ -302,7 +287,6 @@ public sealed class MarketplacePartnerActivationService(
     private static MarketplacePartnerActivation Describe(MarketplaceActivation row) =>
         new(row.Id, row.TargetCode, row.PropertyId, row.Status, row.IsDeclared, row.DeclaredAt, row.VerifiedAt);
 
-    /// <summary>The lines of a text, trimmed, without the empty ones: how a checklist is stored in one column.</summary>
     private static List<string> Lines(string? text) =>
         string.IsNullOrWhiteSpace(text)
             ? []

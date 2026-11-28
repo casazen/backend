@@ -27,7 +27,6 @@ internal static class CrmProfileContactReader
         return db.GuestContacts.Where(contact => contact.OrgId == orgId && !erased.Any(guest => guest.Id == contact.GuestId));
     }
 
-    /// <summary>The contacts of the profiles <paramref name="profileIds"/> of the org, without those given by an erased guest.</summary>
     public static async Task<List<GuestContact>> LoadAsync(
         AppDbContext db,
         Guid orgId,

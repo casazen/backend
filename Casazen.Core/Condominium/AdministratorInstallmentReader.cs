@@ -4,7 +4,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Core.Condominium;
 
-/// <summary>Proposes unambiguous date/amount rows. The caller must review the apartment share before posting.</summary>
 public static partial class AdministratorInstallmentReader
 {
     public sealed record Reading(IReadOnlyList<CustomOwnerInstallment> Installments, string Excerpt, IReadOnlyList<string> NotExtracted);

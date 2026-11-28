@@ -29,18 +29,15 @@ internal sealed class OtaMessageThreadConfiguration : IEntityTypeConfiguration<O
             .HasForeignKey(t => t.OrgId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // A thread of Octorate is one row of the organization, whoever delivers it and however many times.
         entity.HasIndex(t => new { t.OrgId, t.OctorateThreadId })
             .IsUnique()
             .HasDatabaseName(OtaMessageThread.OrgThreadIndexName);
 
-        // The list of the threads of a property (and the unassigned ones, PropertyId null) by last message; the threads of a booking.
         entity.HasIndex(t => new { t.OrgId, t.PropertyId, t.LastMessageAt })
             .HasDatabaseName("IX_OtaMessageThreads_OrgId_PropertyId_LastMessageAt");
         entity.HasIndex(t => new { t.OrgId, t.BookingId })
             .HasDatabaseName("IX_OtaMessageThreads_OrgId_BookingId");
 
-        // The threads whose booking CasaZen did not hold yet: linked by the reservation Octorate gave, without a call to Octorate.
         entity.HasIndex(t => new { t.OrgId, t.OctorateReservationId })
             .HasFilter("\"BookingId\" IS NULL AND \"OctorateReservationId\" IS NOT NULL")
             .HasDatabaseName("IX_OtaMessageThreads_OrgId_OctorateReservationId_Unlinked");

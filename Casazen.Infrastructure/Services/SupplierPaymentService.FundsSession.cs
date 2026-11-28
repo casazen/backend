@@ -61,7 +61,6 @@ public sealed partial class SupplierPaymentService
                     throw NotPayable();
             }
 
-            // Requested or Failed: the supplier must still be able to be paid, or the money would be collected for nobody.
             var supplier = await ReadSupplierAsync(payment.SupplierOrgId, cancellationToken);
             if (!supplier.CanReceivePayments)
                 throw SupplierNotReady();
@@ -89,7 +88,6 @@ public sealed partial class SupplierPaymentService
                 {
                     if (current is null || current.Status == "canceled")
                     {
-                        // Canceled, or gone: nothing to reuse and nothing the payer could still pay.
                         payment.StripePaymentIntentId = null;
                     }
                     else
@@ -151,7 +149,6 @@ public sealed partial class SupplierPaymentService
         return session!;
     }
 
-    /// <summary>The PaymentIntent is still the right one: the amount and the currency of the payment, and no application fee.</summary>
     private static bool HeldIntentMatches(PlatformCharge current, ServiceRequestPayment payment) =>
         current.AmountCents == payment.AmountCents
         && string.Equals(current.Currency, payment.Currency, StringComparison.OrdinalIgnoreCase)

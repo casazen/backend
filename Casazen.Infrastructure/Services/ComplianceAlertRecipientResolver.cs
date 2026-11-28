@@ -41,7 +41,6 @@ public sealed class ComplianceAlertRecipientResolver(
 
     public async Task<ComplianceAlertRecipients> ForOrganizationAsync(Guid orgId, CancellationToken ct)
     {
-        // No property: the audience is the administrators of the org (the owner and the Admins), never somebody limited to some properties.
         var people = await preferences.ResolveAsync(new NotificationEventContext(orgId, NotificationEventType.LegalDeadline, PropertyId: null), ct);
         var emails = (await OrganizationAddressAsync(orgId, ct))
             .Concat(people.Select(p => p.Email))
@@ -55,10 +54,8 @@ public sealed class ComplianceAlertRecipientResolver(
     private static List<string> UserIdsOf(IReadOnlyList<NotificationRecipient> people) =>
         people.Select(p => p.UserId).Distinct(StringComparer.Ordinal).ToList();
 
-    /// <summary>The contact address of the organization (zero or one address): the address every email of the stay alerts goes to.</summary>
     private async Task<List<string>> OrganizationAddressAsync(Guid orgId, CancellationToken ct)
     {
-        // Background job: no tenant filter; the org id is the caller's own.
         var address = await db.Orgs
             .AsNoTracking()
             .Where(o => o.Id == orgId)

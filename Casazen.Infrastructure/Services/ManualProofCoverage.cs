@@ -29,10 +29,6 @@ internal sealed record CoveredProof(Guid Id, Guid PropertyId, ManualProofKind Ki
 /// </remarks>
 internal static class ManualProofCoverage
 {
-    /// <summary>
-    /// The proofs that cover any of <paramref name="propertyIds"/>, one row for each (proof, flat) pair, for the days from <paramref name="from"/> to
-    /// <paramref name="to"/> (both included; <c>null</c> = no last day). Empty for no flat: it never means «every flat».
-    /// </summary>
     public static async Task<List<CoveredProof>> ReadAsync(
         AppDbContext db,
         Guid orgId,
@@ -49,7 +45,6 @@ internal static class ManualProofCoverage
 
         var flats = propertyIds.Distinct().ToList();
 
-        // The flat the proof was filed under.
         var filed = db.ManualComplianceProofs
             .AsNoTracking()
             .Where(p => p.OrgId == orgId && flats.Contains(p.PropertyId) && p.Day >= from);
@@ -60,7 +55,6 @@ internal static class ManualProofCoverage
             .Select(p => new CoveredProof(p.Id, p.PropertyId, p.Kind, p.Day, p.UploadedAt))
             .ToListAsync(ct);
 
-        // The flats it also covers.
         var covered = db.ManualComplianceProofProperties
             .AsNoTracking()
             .Where(link => link.OrgId == orgId && flats.Contains(link.PropertyId) && link.Proof.Day >= from);

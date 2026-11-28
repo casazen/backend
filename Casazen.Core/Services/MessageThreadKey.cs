@@ -3,24 +3,16 @@ using System.Globalization;
 
 namespace Casazen.Core.Services;
 
-/// <summary>Where the rows of a conversation (or of a review) of the hub of messages are kept (E05/F02/US01/T01, E05/F06/US01/T03, ADR-032).</summary>
 public enum MessageThreadSource
 {
-    /// <summary>A conversation with the guest of a direct booking: <c>GuestThread</c> and <c>GuestMessage</c>, one thread per booking.</summary>
     Direct = 0,
 
-    /// <summary>A conversation of a channel (Airbnb, Booking.com, Vrbo, Expedia) copied from the channel manager: <c>OtaMessageThread</c>.</summary>
     Ota = 1,
 
     Storefront = 2,
 
-    /// <summary>
-    /// The review of a stay of a channel, as the channel manager reports it (E05/F06/US01/T03): <c>OtaReview</c>. It is not a conversation: the hub lists it under the filter
-    /// «Reviews» and opens it with its own detail (<c>GET api/messages/reviews/{key}</c>), never with the endpoints of a conversation.
-    /// </summary>
     OtaReview = 3,
 
-    /// <summary>The review a guest of a direct booking wrote on the booking site (E05/F06/US01/T03): <c>Review</c>. Not a conversation, as <see cref="OtaReview"/>.</summary>
     Review = 4,
 }
 
@@ -40,45 +32,30 @@ public enum MessageThreadSource
 /// <param name="Id">The id of the <c>OtaMessageThread</c>, of the <c>OtaReview</c> or of the <c>Review</c>, or of the booking for a direct conversation.</param>
 public readonly record struct MessageThreadKey(MessageThreadSource Source, Guid Id)
 {
-    /// <summary>Start of the key of a conversation of a channel.</summary>
     public const string OtaPrefix = "ota:";
 
-    /// <summary>Start of the key of a conversation with the guest of a direct booking.</summary>
     public const string DirectPrefix = "direct:";
 
-    /// <summary>The stable <c>code</c> of the 400 a malformed key answers with.</summary>
     public const string InvalidCode = "thread_key_invalid";
 
     public const string StorefrontPrefix = "site:";
 
-    /// <summary>Start of the key of the review of a channel (E05/F06/US01/T03).</summary>
     public const string OtaReviewPrefix = "otareview:";
 
-    /// <summary>Start of the key of the review of the booking site (E05/F06/US01/T03).</summary>
     public const string ReviewPrefix = "review:";
 
-    /// <summary>The longest key there is: the longest prefix (<see cref="OtaReviewPrefix"/>) and a guid with dashes. Anything longer is not parsed.</summary>
     public const int MaxLength = 10 + 36;
 
-    /// <summary>The key is the one of a review (of a channel or of the booking site), not of a conversation.</summary>
     public bool IsReview => Source is MessageThreadSource.OtaReview or MessageThreadSource.Review;
 
-    /// <summary>The key of the conversation of a channel stored in the row <paramref name="threadId"/>.</summary>
     public static MessageThreadKey ForOta(Guid threadId) => new(MessageThreadSource.Ota, threadId);
 
-    /// <summary>The key of the conversation with the guest of the direct booking <paramref name="bookingId"/>.</summary>
     public static MessageThreadKey ForDirect(Guid bookingId) => new(MessageThreadSource.Direct, bookingId);
 
-    /// <summary>The key of the review of a channel stored in the row <paramref name="otaReviewId"/>.</summary>
     public static MessageThreadKey ForOtaReview(Guid otaReviewId) => new(MessageThreadSource.OtaReview, otaReviewId);
 
-    /// <summary>The key of the review of the booking site stored in the row <paramref name="reviewId"/>.</summary>
     public static MessageThreadKey ForReview(Guid reviewId) => new(MessageThreadSource.Review, reviewId);
 
-    /// <summary>
-    /// Reads a key: the prefix in lower case and a guid with dashes (any case of the hexadecimal digits), nothing else, not the empty guid.
-    /// False for anything that is not exactly that.
-    /// </summary>
     public static bool TryParse([NotNullWhen(true)] string? value, out MessageThreadKey key)
     {
         key = default;
@@ -124,11 +101,9 @@ public readonly record struct MessageThreadKey(MessageThreadSource Source, Guid 
         return true;
     }
 
-    /// <summary>Reads a key; <see cref="FormatException"/> when <see cref="TryParse"/> says it is not one (the API answers 400 <see cref="InvalidCode"/> before it gets here).</summary>
     public static MessageThreadKey Parse(string? value) =>
         TryParse(value, out var key) ? key : throw new FormatException("The text is not the key of a message thread.");
 
-    /// <summary>The key as text: <c>ota:{id}</c>, <c>direct:{id}</c>, <c>otareview:{id}</c> or <c>review:{id}</c>, the guid with dashes in lower case.</summary>
     public override string ToString() =>
         (Source switch
         {

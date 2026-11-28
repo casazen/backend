@@ -9,23 +9,13 @@ public interface IPropertyService
 {
     Task<Property?> GetPropertyAsync(Guid id);
 
-    /// <summary>
-    /// The property row alone (no bookings, OTA integrations or documents), tracked: for <c>GET /properties/{id}</c>
-    /// and its update (A2-32, A2-04).
-    /// </summary>
     Task<Property?> GetPropertyRecordAsync(Guid id);
 
-    /// <summary>The cancellation policies a property can reference (A2-04).</summary>
     Task<IReadOnlyList<CancellationPolicyOptionDto>> GetCancellationPoliciesAsync();
     Task<IEnumerable<Property>> GetOwnerPropertiesAsync(string ownerId);
 
-    /// <summary>Active properties of <paramref name="scope"/> (built by the web layer from the caller, TN-3).</summary>
     Task<IEnumerable<Property>> GetPropertiesAsync(HostScope scope);
 
-    /// <summary>
-    /// Active properties of <paramref name="scope"/> in <paramref name="mode"/> only (PM-01, <c>GET /api/properties?mode=</c>);
-    /// without the filter use <see cref="GetPropertiesAsync(HostScope)"/>, which lists them all.
-    /// </summary>
     Task<IEnumerable<Property>> GetPropertiesAsync(HostScope scope, RentalMode mode);
     Task<Property> CreatePropertyAsync(Property property);
 
@@ -46,18 +36,8 @@ public interface IPropertyService
     /// <summary>Reactivates a paused property (PC-03, A2-05). Idempotent when already active.</summary>
     Task<Property> ActivatePropertyAsync(Property property);
 
-    /// <summary>
-    /// Soft-deletes the property (PC-05, A2-18): the row and its bookings, payments and fiscal data are kept, the
-    /// property leaves every normal read and frees its plan slot. A paused property (PC-03) can be deleted too.
-    /// Refused with 409 (<c>DomainConflictException</c>) while a stay or a lease is still to come. False when there is
-    /// nothing to delete.
-    /// </summary>
     Task<bool> DeletePropertyAsync(Guid id);
 
-    /// <summary>
-    /// The public search across orgs (BK-20, A8-13): published properties of active orgs matching
-    /// <paramref name="criteria"/>, cheapest first within a city, at most 50. Each result carries its org's slug.
-    /// </summary>
     Task<IEnumerable<PublicPropertyDto>> SearchAsync(PublicPropertySearchCriteria criteria);
     Task<IEnumerable<PublicPropertyDto>> SearchByOrgAsync(Guid orgId, CancellationToken cancellationToken = default);
     Task<PublicPropertyDetailDto?> GetPublicPropertyAsync(Guid id);
@@ -71,14 +51,9 @@ public interface IPropertyService
     Task<OwnerCinComplianceResult> GetCinComplianceAsync(HostScope scope, string? cinStatus, int page, int pageSize);
     Task UpdatePropertyCinAsync(Guid propertyId, string? cinCode);
 
-    /// <summary>
-    /// Sets the cadastral identification of the unit (LT-10): trimmed, empty values cleared, category upper-case.
-    /// Only lengths are checked; the formats are not validated.
-    /// </summary>
     Task UpdateCadastralDataAsync(Guid propertyId, PropertyCadastralData data);
 }
 
-/// <summary>Cadastral identification of a property (catasto fabbricati): foglio, particella, subalterno, categoria, rendita.</summary>
 public sealed record PropertyCadastralData(
     string? Sheet,
     string? Parcel,

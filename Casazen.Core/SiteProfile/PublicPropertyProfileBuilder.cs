@@ -4,10 +4,6 @@ using Casazen.Core.Enums;
 
 namespace Casazen.Core.SiteProfile;
 
-/// <summary>
-/// The columns of a property the public profile is made of: the fields of the wizard (SR-07a) and the site profile (DB-11a), as the public
-/// queries read them.
-/// </summary>
 public sealed record PublicProfileSource(
     string? ListingTitle,
     AccommodationType? AccommodationType,
@@ -32,17 +28,12 @@ public sealed record PublicProfileSource(
     string? SiteProfileJson,
     IReadOnlyCollection<PropertyAmenity> Amenities);
 
-/// <summary>
-/// Builds the public profile of a property (DB-11a): only what the host said, nothing invented, nothing exact. One place for the property
-/// page of both routes (by id and by org and slug).
-/// </summary>
 public static class PublicPropertyProfileBuilder
 {
     public static PublicPropertyProfileDto Build(PublicProfileSource source)
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        // The page reads the texts in Italian and English only: the other languages of the listing (NF-31) are for the channels.
         var document = SitePropertyProfileJson.ParseForPublicPage(source.SiteProfileJson);
         var video = SiteEmbedUrls.NormalizeVideo(source.VideoUrl);
         var tour = SiteEmbedUrls.NormalizeTour(source.TourUrl);
@@ -73,13 +64,11 @@ public static class PublicPropertyProfileBuilder
 
     private static PublicPropertyRulesDto? BuildRules(PublicProfileSource source, SitePropertyProfileDocument document)
     {
-        // A latest arrival that is not after the earliest one (the wizard moved the earliest later) says nothing a guest can use.
         var checkInTo = source.CheckInTo is { } latest && source.CheckInFrom is { } earliest && latest <= earliest ? null : source.CheckInTo;
         var checkIn = source.CheckInFrom is null && checkInTo is null && document.CheckInMethod is null
             ? null
             : new PublicCheckInDto(source.CheckInFrom, checkInTo, document.CheckInMethod);
 
-        // Quiet hours are a pair: one end alone is not shown.
         var quietHours = source.QuietHoursFrom is { } from && source.QuietHoursTo is { } to ? new PublicQuietHoursDto(from, to) : null;
 
         var rules = new PublicPropertyRulesDto

@@ -15,15 +15,11 @@ public interface IFatturaPaXmlBuilder
     string Build(FatturaPaInput input);
 }
 
-/// <summary>The stable codes of the errors of the XML, with the keys of their messages in <c>SharedResources</c>.</summary>
 public static class FatturaPaErrors
 {
-    /// <summary>422: the XML does not validate against the official schema.</summary>
     public const string XmlInvalid = "fatturapa_xml_invalid";
 
-    /// <summary>422: the official schema is not installed in this build, so no XML can be validated (and none is produced).</summary>
     public const string SchemaUnavailable = "fatturapa_schema_unavailable";
 
-    /// <summary>How many errors the message of <see cref="XmlInvalid"/> lists.</summary>
     public const int ListedErrors = 5;
 }

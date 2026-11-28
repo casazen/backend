@@ -2,19 +2,12 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// How a performance report (<see cref="IHostDashboardService.GetPerformanceAsync"/>) or a trend
-/// (<see cref="IHostDashboardService.GetTrendAsync"/>) is cut (NF-96).
-/// </summary>
 public enum HostPerformanceGroupBy
 {
-    /// <summary>The whole scope: the total only.</summary>
     None,
 
-    /// <summary>One row, or one series, for each property.</summary>
     Property,
 
-    /// <summary>One row, or one series, for each channel: where the booking came from (<see cref="Booking.Source"/>).</summary>
     Channel,
 }
 
@@ -61,19 +54,12 @@ public sealed record HostPerformanceFigures(
     int StayCount,
     int RevenueNights)
 {
-    /// <summary>
-    /// False for the figures of a channel: the nights available belong to a property, so a channel has no occupancy, no closed nights and
-    /// no RevPAR (the three nights above are then zero and mean nothing).
-    /// </summary>
     public bool HasNights { get; init; } = true;
 
-    /// <summary>Occupied / available (0..1); null when nothing is available, and for a channel.</summary>
     public decimal? OccupancyRate => HasNights && AvailableNights > 0 ? (decimal)OccupiedNights / AvailableNights : null;
 
-    /// <summary>Average daily rate: <see cref="Revenue"/> over <see cref="RevenueNights"/>, to the cent; null without a revenue night.</summary>
     public decimal? Adr => HostPerformanceRules.Adr(Revenue, RevenueNights);
 
-    /// <summary>Revenue per available night: <see cref="Revenue"/> over <see cref="AvailableNights"/>, to the cent; null when nothing is available, and for a channel.</summary>
     public decimal? RevPar => HasNights ? HostPerformanceRules.RevPar(Revenue, AvailableNights) : null;
 }
 
@@ -110,25 +96,15 @@ public sealed record HostPerformanceReport(
     IReadOnlyList<HostPerformanceRow> Rows,
     HostPerformanceRow Total);
 
-/// <summary>The size of the buckets of a trend.</summary>
 public enum HostTrendBucketUnit
 {
-    /// <summary>Weeks up to <see cref="HostReportRules.MaxWeeklyTrendDays"/> days, months beyond.</summary>
     Auto,
 
-    /// <summary>ISO weeks, from Monday.</summary>
     Week,
 
-    /// <summary>Calendar months.</summary>
     Month,
 }
 
-/// <summary>What a trend asks of <see cref="IHostDashboardService.GetTrendAsync"/>: the same as a performance report, and the size of the buckets.</summary>
-/// <param name="Bucket">The size of the buckets; <see cref="HostTrendBucketUnit.Auto"/> chooses by the length of the period.</param>
-/// <param name="MaxSeries">
-/// The most lines the answer has (<see cref="HostPerformanceRules.MaxTrendSeries"/> by default); the rest is summed in the one called
-/// <see cref="HostPerformanceRules.OtherSeriesKey"/>. A caller that weights each property by itself (the owner portal) asks for all of them.
-/// </param>
 public sealed record HostTrendQuery(
     DateOnly From,
     DateOnly To,
@@ -147,8 +123,6 @@ public sealed record HostTrendQuery(
 /// <param name="PreviousYearTo">The day after the last night of the same days one year earlier; null unless the trend compared.</param>
 public sealed record HostTrendBucket(string Label, DateTime From, DateTime To, DateTime? PreviousYearFrom, DateTime? PreviousYearTo);
 
-/// <summary>The figures of one bucket of one series.</summary>
-/// <param name="Bucket">The label of the bucket it belongs to (<see cref="HostTrendBucket.Label"/>).</param>
 public sealed record HostTrendPoint(string Bucket, HostPerformanceFigures Figures);
 
 /// <summary>One line of a trend: the whole scope, a property or a channel (or <c>other</c>, the sum of the rest).</summary>
@@ -165,7 +139,6 @@ public sealed record HostTrendSeries(
     IReadOnlyList<HostTrendPoint> Points,
     IReadOnlyList<HostTrendPoint?> PreviousYear)
 {
-    /// <summary>The property of a property series; null for any other.</summary>
     public Guid? PropertyId { get; init; }
 }
 
@@ -185,30 +158,20 @@ public sealed record HostTrendReport(
     IReadOnlyList<HostTrendBucket> Buckets,
     IReadOnlyList<HostTrendSeries> Series)
 {
-    /// <summary>The unit of the buckets: the weeks or the months of <see cref="Period"/>.</summary>
     public HostOverviewSeriesUnit Unit { get; init; }
 }
 
-/// <summary>
-/// The rules of ADR, RevPAR and of the differences the reports show, worked out once on the server (NF-96): a client never recomputes
-/// them from rounded numbers. The differences are the Home's (<see cref="HostOverviewRules"/>), not a second copy.
-/// </summary>
 public static class HostPerformanceRules
 {
-    /// <summary>The most lines a trend has; the rest of the properties or channels are summed in one more, never dropped.</summary>
     public const int MaxTrendSeries = 25;
 
-    /// <summary>Key of the series that holds what does not fit in <see cref="MaxTrendSeries"/>.</summary>
     public const string OtherSeriesKey = "other";
 
-    /// <summary>Key of the row and of the series that stand for the whole scope.</summary>
     public const string TotalKey = "total";
 
-    /// <summary>Average daily rate: revenue over the nights the revenue is made of, to the cent; null (never zero) without a night.</summary>
     public static decimal? Adr(decimal revenue, decimal revenueNights) =>
         revenueNights <= 0m ? null : Math.Round(revenue / revenueNights, 2, MidpointRounding.AwayFromZero);
 
-    /// <summary>Revenue per available night: revenue over the nights available, to the cent; null (never zero) when nothing is available.</summary>
     public static decimal? RevPar(decimal revenue, decimal availableNights) =>
         availableNights <= 0m ? null : Math.Round(revenue / availableNights, 2, MidpointRounding.AwayFromZero);
 
@@ -220,11 +183,6 @@ public static class HostPerformanceRules
     public static decimal? DeltaPercent(decimal? current, decimal? previous) =>
         current is { } now && previous is { } before && before != 0m ? HostOverviewRules.RevenueDeltaPercent(now, before) : null;
 
-    /// <summary>
-    /// The rate <paramref name="currentRate"/> minus <paramref name="previousRate"/> (both 0..1), in percentage points to one decimal,
-    /// as the Home does for the occupancy (<see cref="HostOverviewRules.OccupancyDeltaPoints"/>); null when either has no rate. A
-    /// previous rate of zero is a rate: the difference in points is still a number.
-    /// </summary>
     public static decimal? DeltaPoints(decimal? currentRate, decimal? previousRate) =>
         currentRate is { } now && previousRate is { } before
             ? Math.Round((now - before) * 100m, 1, MidpointRounding.AwayFromZero)

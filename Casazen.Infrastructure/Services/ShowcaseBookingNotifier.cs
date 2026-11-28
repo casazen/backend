@@ -42,12 +42,6 @@ public sealed class ShowcaseBookingNotifier(
 {
     private sealed record SupplierContact(string Email, string LegalName, string? Slug);
 
-    // ─── The booking is made: the customer checks the address ────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The verification e-mail, rendered <b>before</b> the hold is saved: a missing <c>App:PublicSiteBaseUrl</c> is a configuration
-    /// error that must stop the booking, not a wrong link in an e-mail.
-    /// </summary>
     public EmailContent RenderVerification(
         SupplierProfile supplier,
         ShowcaseBookingPayload payload,
@@ -64,14 +58,8 @@ public sealed class ShowcaseBookingNotifier(
             validMinutes,
             publicSiteLinks.SupplierBookingConfirmation(SlugOf(supplier), holdId, token));
 
-    /// <summary>
-    /// Queues the e-mail rendered by <see cref="RenderVerification"/> to the address the customer gave. <c>false</c> when it could
-    /// not be queued (the e-mail provider is not configured, the queue is down): the booking then lets the hold go.
-    /// </summary>
     public bool QueueVerification(string to, EmailContent email) =>
         emailQueue.Enqueue(to, email, EmailTemplates.Names.SupplierBookingVerification);
-
-    // ─── The address is checked: the receipt and the new request ─────────────────────────────────────────────────────
 
     /// <summary>
     /// The address is checked and the request exists: the receipt to the customer, and the new request to the supplier (e-mail
@@ -92,8 +80,6 @@ public sealed class ShowcaseBookingNotifier(
             var serviceName = request.ServiceNameSnapshot ?? EmailTemplates.ServiceCategoryLabel(culture, request.Category);
             var start = request.ScheduledStartUtc!.Value;
 
-            // SP-15c-a: a request born paid inside CasaZen has the customer's card blocked for the total; its mails say so, and never "you pay
-            // nothing now" or an estimate the supplier may change.
             var cardBlocked = request.PaymentMode == ServiceRequestPaymentMode.Online;
 
             emailQueue.Enqueue(
@@ -144,12 +130,6 @@ public sealed class ShowcaseBookingNotifier(
         }
     }
 
-    // ─── The request on measure (SP-10b) ─────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The verification e-mail of a request on measure, rendered <b>before</b> the inquiry is saved: a missing <c>App:PublicSiteBaseUrl</c> is
-    /// a configuration error that must stop the request, not a wrong link in an e-mail.
-    /// </summary>
     public EmailContent RenderInquiryVerification(
         SupplierProfile supplier,
         ShowcaseInquiryPayload payload,
@@ -163,17 +143,9 @@ public sealed class ShowcaseBookingNotifier(
             publicSiteLinks.SupplierInquiryConfirmation(SlugOf(supplier), inquiryId, token),
             validMinutes);
 
-    /// <summary>
-    /// Queues the e-mail rendered by <see cref="RenderInquiryVerification"/> to the address the customer gave. <c>false</c> when it could not
-    /// be queued (the e-mail provider is not configured, the queue is down): the request then lets the inquiry go.
-    /// </summary>
     public bool QueueInquiryVerification(string to, EmailContent email) =>
         emailQueue.Enqueue(to, email, EmailTemplates.Names.SupplierInquiryVerification);
 
-    /// <summary>
-    /// The address is checked and the request on measure exists: the receipt to the customer, and the new request to the supplier (e-mail and
-    /// push, comune and "Nome C." only — never a word of the message). Never throws.
-    /// </summary>
     public async Task QueueInquiryReceivedAsync(
         SupplierProfile supplier,
         ServiceRequest request,
@@ -232,12 +204,6 @@ public sealed class ShowcaseBookingNotifier(
         }
     }
 
-    // ─── What the supplier did, or CasaZen did for it: the customer ──────────────────────────────────────────────────
-
-    /// <summary>
-    /// The status of the request changed by the supplier (taken, refused, cancelled) or by CasaZen (no answer in time): the mail to
-    /// the customer. Started, completed and paid send nothing. Never throws.
-    /// </summary>
     public async Task NotifyCustomerOfStatusAsync(ServiceRequest request, CancellationToken cancellationToken)
     {
         try
@@ -245,8 +211,6 @@ public sealed class ShowcaseBookingNotifier(
             if (request.Status is not (ServiceRequestStatus.PresoInCarico or ServiceRequestStatus.Rifiutato or ServiceRequestStatus.Annullato))
                 return;
 
-            // A cancellation the customer itself made is not told back like the supplier's: it gets its own receipt
-            // (NotifyCancelledByCustomerAsync, SP-11).
             if (request.Status == ServiceRequestStatus.Annullato
                 && request.CancelledBy is not (ServiceRequestActorParty.Supplier or ServiceRequestActorParty.System))
             {
@@ -265,7 +229,6 @@ public sealed class ShowcaseBookingNotifier(
                     ? await FindAlternativesAsync(request, cancellationToken)
                     : null);
 
-            // A request on measure has no day and no time to tell (SP-10b): its own mails.
             if (request.Kind == ServiceRequestKind.Custom)
             {
                 QueueInquiryStatus(request, contact, supplier, culture, alternativeLinks);
@@ -306,7 +269,6 @@ public sealed class ShowcaseBookingNotifier(
 
                 case ServiceRequestStatus.Annullato when request.CancelledBy == ServiceRequestActorParty.System
                                                          && request.CancellationReason == ServiceRequestCancellationReasons.ProposalNotAnswered:
-                    // The supplier did answer, with another time: it is the customer who did not (decision D24).
                     emailQueue.Enqueue(
                         contact.Email,
                         EmailTemplates.SupplierBookingProposalExpired(culture, contact.FullName, supplier.LegalName, serviceName, start, showcaseUrl),
@@ -315,7 +277,6 @@ public sealed class ShowcaseBookingNotifier(
 
                 case ServiceRequestStatus.Annullato when request.CancelledBy == ServiceRequestActorParty.System
                                                          && request.CancellationReason == ServiceRequestCancellationReasons.QuoteNotAnswered:
-                    // The supplier did answer, with a quote: it is the customer who did not (decision D24).
                     emailQueue.Enqueue(
                         contact.Email,
                         EmailTemplates.SupplierBookingQuoteExpired(culture, contact.FullName, supplier.LegalName, serviceName, start, showcaseUrl),
@@ -344,7 +305,6 @@ public sealed class ShowcaseBookingNotifier(
         }
     }
 
-    /// <summary>The supplier proposed another time: the mail to the customer, with the time by which it has to answer. Never throws.</summary>
     public async Task NotifyCustomerOfProposalAsync(ServiceRequest request, CancellationToken cancellationToken)
     {
         if (request is not { ProposedStartUtc: not null, ResponseDueAt: { } answerBy })
@@ -377,7 +337,6 @@ public sealed class ShowcaseBookingNotifier(
         }
     }
 
-    /// <summary>The supplier sent a quote (SP-04b): the mail to the customer, with the lines, the total and the time by which it has to answer. Never throws.</summary>
     public async Task NotifyCustomerOfQuoteAsync(ServiceRequest request, ServiceRequestQuote quote, CancellationToken cancellationToken)
     {
         try
@@ -408,8 +367,6 @@ public sealed class ShowcaseBookingNotifier(
             logger.LogError(ex, "Customer e-mail for the quote on showcase request {Id} could not be queued", request.Id);
         }
     }
-
-    // ─── The day before: the reminder ────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// The reminder of the day before to the customer of a request the supplier took. <c>false</c> when it could not be queued
@@ -443,8 +400,6 @@ public sealed class ShowcaseBookingNotifier(
         }
     }
 
-    // ─── What the customer does: the supplier (and the customer's receipt) ───────────────────────────────────────────
-
     /// <summary>
     /// The customer cancelled its request: the supplier is told (e-mail and push, in Italian, comune and "Nome C." only, the reason
     /// the customer wrote, and — for a request the supplier had taken — that the notice was short when it was), and the customer
@@ -473,7 +428,6 @@ public sealed class ShowcaseBookingNotifier(
                 var comune = request.LocationCity ?? string.Empty;
                 if (request.Kind == ServiceRequestKind.Custom)
                 {
-                    // A request on measure has no day and no time to tell (SP-10b).
                     emailQueue.Enqueue(
                         supplier.Email,
                         EmailTemplates.SupplierInquiryClosedByCustomer(
@@ -517,7 +471,6 @@ public sealed class ShowcaseBookingNotifier(
 
         try
         {
-            // The receipt of the cancellation speaks of a day and a time: a request on measure has none, and the customer closed it itself.
             if (supplier is not null && contact is not null && request.Kind != ServiceRequestKind.Custom)
             {
                 var culture = EmailTemplates.CultureOf(contact.Locale);
@@ -541,10 +494,6 @@ public sealed class ShowcaseBookingNotifier(
         }
     }
 
-    /// <summary>
-    /// The customer moved a new request to another time: the supplier is told, with both times, that the request waits again and
-    /// until when it has to answer, and — when it had proposed another time — that its proposal no longer applies. Never throws.
-    /// </summary>
     public async Task NotifyRescheduledByCustomerAsync(
         ServiceRequest request,
         DateTime previousStartUtc,
@@ -643,7 +592,6 @@ public sealed class ShowcaseBookingNotifier(
             logger.LogError(ex, "Supplier notification for the answer of the customer to the time proposed for {Id} could not be queued", request.Id);
         }
 
-        // The customer who accepts the time has taken the request on the supplier's behalf: it gets the e-mail of a request taken.
         if (accepted)
             await NotifyCustomerOfStatusAsync(request, cancellationToken);
     }
@@ -699,15 +647,10 @@ public sealed class ShowcaseBookingNotifier(
             logger.LogError(ex, "Supplier notification for the answer of the customer to the quote of {Id} could not be queued", request.Id);
         }
 
-        // The customer who accepts the quote has taken the request on the supplier's behalf: it gets the e-mail of a request taken.
         if (accepted)
             await NotifyCustomerOfStatusAsync(request, cancellationToken);
     }
 
-    /// <summary>
-    /// The customer did not answer the quote and the request was cancelled by CasaZen (SP-04b): the supplier is told (e-mail and push) that
-    /// it is the customer who did not answer. The customer's own e-mail is <see cref="NotifyCustomerOfStatusAsync"/>. Never throws.
-    /// </summary>
     public async Task NotifySupplierOfLapsedQuoteAsync(ServiceRequest request, CancellationToken cancellationToken)
     {
         try
@@ -783,8 +726,6 @@ public sealed class ShowcaseBookingNotifier(
         }
     }
 
-    // ─── The supplier is reminded to answer (SP-10c) ──────────────────────────────────────────────────────────────────
-
     /// <summary>
     /// A request on measure that nobody answered yet: the supplier is reminded by e-mail and push (Italian, the comune and "Nome C." only, the time to
     /// answer by, never the words of the customer) — at half of the time it has, and ten minutes before the deadline when <paramref name="lastCall"/>
@@ -824,8 +765,6 @@ public sealed class ShowcaseBookingNotifier(
             logger.LogError(ex, "Reminder to answer the showcase request on measure {Id} could not be queued", request.Id);
         }
     }
-
-    // ─── The conversation of a request on measure (SP-10b) ───────────────────────────────────────────────────────────
 
     /// <summary>
     /// What the customer of a request on measure is told when the status changes by the act of the supplier or of CasaZen: the request was taken
@@ -867,7 +806,6 @@ public sealed class ShowcaseBookingNotifier(
                 break;
 
             case ServiceRequestStatus.Annullato when request.CancelledBy == ServiceRequestActorParty.Supplier && request.ScheduledStartUtc is { } cancelledStart:
-                // The supplier cancelled a job it had agreed: the mail of a booking cancelled by its supplier.
                 emailQueue.Enqueue(
                     contact.Email,
                     EmailTemplates.SupplierBookingCancelled(
@@ -876,7 +814,6 @@ public sealed class ShowcaseBookingNotifier(
                 break;
 
             case ServiceRequestStatus.Annullato when request.CancelledBy == ServiceRequestActorParty.Supplier:
-                // The supplier gave the request up before any offer was accepted: it cannot do it, as when it refuses.
                 emailQueue.Enqueue(
                     contact.Email,
                     EmailTemplates.SupplierInquiryDeclined(
@@ -886,7 +823,6 @@ public sealed class ShowcaseBookingNotifier(
 
             case ServiceRequestStatus.Annullato when request.CancelledBy == ServiceRequestActorParty.System
                                                      && request.CancellationReason == ServiceRequestCancellationReasons.QuoteNotAnswered:
-                // The supplier did answer, with an offer: it is the customer who did not (decision D24).
                 emailQueue.Enqueue(
                     contact.Email,
                     EmailTemplates.SupplierInquiryOfferExpired(culture, contact.FullName, supplier.LegalName, SupplierPageOf(supplier)),
@@ -902,10 +838,6 @@ public sealed class ShowcaseBookingNotifier(
         }
     }
 
-    /// <summary>
-    /// The customer accepted an offer paid inside CasaZen and blocked its card, but the request could not be taken (the time is gone, or the card could
-    /// not be charged): the customer is told, in its language, that nothing was charged and where to go on. Never throws.
-    /// </summary>
     public async Task NotifyOfferNotCompletedAsync(ServiceRequest request, bool timeGone, CancellationToken cancellationToken)
     {
         try
@@ -952,7 +884,6 @@ public sealed class ShowcaseBookingNotifier(
                 return;
             }
 
-            // The customer wrote: the supplier is told in Italian, with the comune and "Nome C." only (decision D9) and never the words.
             emailQueue.Enqueue(
                 supplier.Email,
                 EmailTemplates.SupplierInquiryMessage(
@@ -969,12 +900,6 @@ public sealed class ShowcaseBookingNotifier(
         }
     }
 
-    // ─── Helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The other suppliers to offer the customer of a request CasaZen closed for want of an answer (SP-10c): <c>null</c> when they cannot be looked for
-    /// (nothing is said about them), an empty list when none qualifies (the mail says so). Never throws.
-    /// </summary>
     private async Task<IReadOnlyList<ShowcaseAlternative>?> FindAlternativesAsync(ServiceRequest request, CancellationToken cancellationToken)
     {
         if (alternatives is null)
@@ -993,7 +918,6 @@ public sealed class ShowcaseBookingNotifier(
         }
     }
 
-    /// <summary>The alternatives as the mails show them: each with the link to its public page.</summary>
     private IReadOnlyList<EmailTemplates.EmailAlternative>? AlternativeLinks(IReadOnlyList<ShowcaseAlternative>? found) =>
         found?.Select(alternative => new EmailTemplates.EmailAlternative(alternative, publicSiteLinks.SupplierShowcase(alternative.Slug))).ToList();
 
@@ -1008,7 +932,6 @@ public sealed class ShowcaseBookingNotifier(
         return (contact, await TryFindSupplierAsync(request, cancellationToken));
     }
 
-    /// <summary>The customer of the request when there is somebody to write to; <c>null</c> for no customer, an anonymized one, or one with no address.</summary>
     private async Task<ServiceCustomerContact?> TryFindCustomerAsync(ServiceRequest request, CancellationToken cancellationToken)
     {
         if (request.CustomerId is not { } customerId)
@@ -1018,7 +941,6 @@ public sealed class ShowcaseBookingNotifier(
         return contact is null || contact.Anonymized || string.IsNullOrWhiteSpace(contact.Email) ? null : contact;
     }
 
-    // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the request's supplier org.
     private Task<SupplierContact?> TryFindSupplierAsync(ServiceRequest request, CancellationToken cancellationToken) =>
         db.SupplierProfiles
             .AsNoTracking()
@@ -1026,22 +948,15 @@ public sealed class ShowcaseBookingNotifier(
             .Select(sp => new SupplierContact(sp.Email, sp.LegalName, sp.ShowcaseSlug))
             .FirstOrDefaultAsync(cancellationToken);
 
-    /// <summary>The name of the service on the request, else the label of its category in <paramref name="culture"/>.</summary>
     private static string ServiceNameOf(ServiceRequest request, System.Globalization.CultureInfo culture) =>
         request.ServiceNameSnapshot ?? EmailTemplates.ServiceCategoryLabel(culture, request.Category);
 
-    /// <summary>"Nome C." (decision D9) — empty when there is no customer to name, and then the mail leaves the line out.</summary>
     private static string ShortNameOf(ServiceCustomerContact? contact) =>
         contact is null ? string.Empty : ShowcaseBookingRules.AbbreviateName(contact.FullName);
 
-    /// <summary>The reason a person wrote; <c>null</c> for a reason that is one of the codes (a code is not a sentence).</summary>
     private static string? TextOfReason(string? reason) =>
         string.IsNullOrWhiteSpace(reason) || ServiceRequestCancellationReasons.IsCode(reason) ? null : reason;
 
-    /// <summary>
-    /// The free cancellation notice (hours) the customer did not give, for a request the supplier had taken; <c>null</c> when it
-    /// gave it, when the request was never taken (nothing was agreed, so nothing was short) and when there is no notice to give.
-    /// </summary>
     private int? ShortNoticeHours(ServiceRequest request)
     {
         var hours = options.Value.FreeCancellationHours;

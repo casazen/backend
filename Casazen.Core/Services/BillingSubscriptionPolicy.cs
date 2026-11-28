@@ -13,7 +13,6 @@ public static class BillingSubscriptionPolicy
     /// <summary>Problem <c>code</c> of a checkout refused because the org already has a subscription (409).</summary>
     public const string AlreadySubscribedCode = "already_subscribed";
 
-    /// <summary><c>SharedResources</c> key of the <see cref="AlreadySubscribedCode"/> message.</summary>
     public const string AlreadySubscribedMessageKey = "AlreadySubscribed";
 
     /// <summary>
@@ -46,10 +45,6 @@ public static class BillingSubscriptionPolicy
             or SubscriptionStatus.Unpaid
             or SubscriptionStatus.Incomplete;
 
-    /// <summary>
-    /// <c>true</c> when a subscription read from Stripe forbids a new checkout: every status except the terminal
-    /// <c>canceled</c> and <c>incomplete_expired</c> (unknown future statuses included, fail-closed).
-    /// </summary>
     public static bool BlocksNewCheckout(string? stripeStatus) =>
         stripeStatus is not ("canceled" or "incomplete_expired");
 }

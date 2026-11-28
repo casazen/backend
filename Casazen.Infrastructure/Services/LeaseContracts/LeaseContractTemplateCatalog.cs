@@ -8,23 +8,17 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services.LeaseContracts;
 
-/// <summary>State of the template of a fiscal regime, from the least to the most usable.</summary>
 public enum LeaseContractTemplateStatus
 {
-    /// <summary>No version configured or no file for it.</summary>
     Missing,
 
-    /// <summary>The file exists but a required section has no text, a placeholder is wrong or the title is missing.</summary>
     Incomplete,
 
-    /// <summary>Complete, but not approved (or the approval lacks a real version or its evidence).</summary>
     NotApproved,
 
-    /// <summary>Complete and approved: the only state that generates the final contract.</summary>
     Approved,
 }
 
-/// <summary>Template of a variant (a fiscal regime, or the transitory model) as loaded at startup, with the reasons it cannot be used.</summary>
 public sealed record LeaseContractTemplateState(
     LeaseTemplateVariant Variant,
     string? VersionId,
@@ -38,7 +32,6 @@ public sealed record LeaseContractTemplateState(
 {
     public bool IsApproved => Status == LeaseContractTemplateStatus.Approved;
 
-    /// <summary>Everything that keeps the template from being approved, for logs and startup errors.</summary>
     public IEnumerable<string> Problems =>
         MissingSections.Select(id => $"section '{id}' has no text")
             .Concat(Issues)
@@ -49,16 +42,9 @@ public interface ILeaseContractTemplateCatalog
 {
     LeaseContractTemplateState Get(LeaseTemplateVariant variant);
 
-    /// <summary>The template of a canone libero or concordato: the variant that has the name of <paramref name="regime"/>.</summary>
     LeaseContractTemplateState Get(FiscalRegime regime) => Get(LeaseTemplateVariants.Of(regime));
 }
 
-/// <summary>
-/// Loads the template files of the product owner, one per variant (<c>{TemplatesDirectory}/{Variant}/{VersionId}.md</c>: the three
-/// fiscal regimes of the canone libero and concordato, and the transitory model), and computes their state against the required
-/// structure (<see cref="LeaseContractTemplateStructure"/>) and the approval rules (<see cref="LeaseTemplateApproval"/>). Files are read
-/// once per process: restart after changing them.
-/// </summary>
 public sealed class LeaseContractTemplateCatalog(
     IOptions<LeaseTemplateOptions> options,
     IHostEnvironment environment,
@@ -79,11 +65,9 @@ public sealed class LeaseContractTemplateCatalog(
         return Path.IsPathRooted(directory) ? directory : Path.Combine(contentRootPath, directory);
     }
 
-    /// <summary>Loads and checks the template of the canone libero or concordato of <paramref name="regime"/> (pure apart from reading the file).</summary>
     public static LeaseContractTemplateState Load(FiscalRegime regime, LeaseTemplateOptions options, string contentRootPath) =>
         Load(LeaseTemplateVariants.Of(regime), options, contentRootPath);
 
-    /// <summary>Loads and checks the template of <paramref name="templateVariant"/> (pure apart from reading the file).</summary>
     public static LeaseContractTemplateState Load(LeaseTemplateVariant templateVariant, LeaseTemplateOptions options, string contentRootPath)
     {
         var variant = options.Variants.TryGetValue(templateVariant.ToString(), out var configured)

@@ -31,31 +31,23 @@ namespace Casazen.Core.Entities;
 [Table("GuestContacts")]
 public class GuestContact : ITenantOwned
 {
-    /// <summary>Column length of <see cref="ValueHash"/>: an HMAC-SHA256 in lowercase hex.</summary>
     public const int ValueHashLength = 64;
 
-    /// <summary>Column length of <see cref="Language"/>, the one of <c>GuestCrmProfile.Language</c>.</summary>
     public const int LanguageMaxLength = 10;
 
-    /// <summary>Column length of <see cref="BasisVersion"/>, the one of <c>GuestConsentRecord.Version</c>.</summary>
     public const int BasisVersionMaxLength = 100;
 
-    /// <summary>Column length of <see cref="ConsentIpAddress"/>, the one of <c>GuestConsentRecord.IpAddress</c>.</summary>
     public const int ConsentIpMaxLength = 50;
 
-    /// <summary>Column length of <see cref="SuppressedSource"/>, the one of <c>SuppressionListEntry.Source</c>.</summary>
     public const int SuppressedSourceMaxLength = 50;
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row: the org of the guest (TN-2). Server-set, never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The CRM profile the contact belongs to; <c>null</c> for a lead from the welcome page that has no profile yet.</summary>
     public Guid? GuestCrmProfileId { get; set; }
 
-    /// <summary>The guest the contact was given by; <c>null</c> when it did not come from a guest record (a lead, a manual entry).</summary>
     public Guid? GuestId { get; set; }
 
     public GuestContactChannel Channel { get; set; }
@@ -67,17 +59,11 @@ public class GuestContact : ITenantOwned
     [Required]
     public string Value { get; set; } = string.Empty;
 
-    /// <summary>
-    /// HMAC-SHA256 (lowercase hex, 64 characters) of the normalized <see cref="Value"/>, keyed by <c>Crm:ContactIndexKey</c>: the index the
-    /// contact is found by (unique with <see cref="OrgId"/> and <see cref="Channel"/>) without decrypting anything.
-    /// </summary>
     [Required, MaxLength(ValueHashLength)]
     public string ValueHash { get; set; } = string.Empty;
 
-    /// <summary>The name that goes with the contact, when the person gave one. <b>Encrypted at rest</b> like <see cref="Value"/>.</summary>
     public string? DisplayName { get; set; }
 
-    /// <summary>The language of the page the person was on when they gave the contact (<c>it</c>, <c>en</c>...): the language of the messages to them.</summary>
     [MaxLength(LanguageMaxLength)]
     public string Language { get; set; } = string.Empty;
 
@@ -85,38 +71,26 @@ public class GuestContact : ITenantOwned
 
     public GuestContactConfirmation Confirmation { get; set; } = GuestContactConfirmation.Unconfirmed;
 
-    /// <summary>UTC instant of the last confirmation message sent to the contact; <c>null</c> = none sent.</summary>
     public DateTime? ConfirmationSentAt { get; set; }
 
-    /// <summary>How many confirmation messages were sent to the contact.</summary>
     public int ConfirmationSentCount { get; set; }
 
-    /// <summary>UTC instant the person confirmed; <c>null</c> = not confirmed.</summary>
     public DateTime? ConfirmedAt { get; set; }
 
     public GuestContactLegalBasis LegalBasis { get; set; } = GuestContactLegalBasis.None;
 
-    /// <summary>
-    /// Version of the text the basis rests on: the consent text of a <see cref="GuestContactLegalBasis.Consent"/>, the notice of a
-    /// <see cref="GuestContactLegalBasis.SoftOptIn"/>. Empty while there is none.
-    /// </summary>
     [MaxLength(BasisVersionMaxLength)]
     public string BasisVersion { get; set; } = string.Empty;
 
-    /// <summary>UTC instant the current basis was recorded; <c>null</c> while <see cref="LegalBasis"/> is <see cref="GuestContactLegalBasis.None"/>.</summary>
     public DateTime? BasisRecordedAt { get; set; }
 
-    /// <summary>Where the consent or the notice was given (the check-in portal, the welcome page...); <c>null</c> when the basis was not given by the person.</summary>
     public GuestConsentSource? ConsentSource { get; set; }
 
-    /// <summary>Client address of the person's own consent action, as evidence; <c>null</c> when there is none. Cleared on anonymization.</summary>
     [MaxLength(ConsentIpMaxLength)]
     public string? ConsentIpAddress { get; set; }
 
-    /// <summary>The person asked not to be written to on this channel (unsubscribe, request, erasure): no marketing, whatever the basis.</summary>
     public bool IsSuppressed { get; set; }
 
-    /// <summary>UTC instant of the suppression; <c>null</c> while the contact is not suppressed.</summary>
     public DateTime? SuppressedAt { get; set; }
 
     /// <summary>How it was suppressed, as <c>SuppressionListEntry.Source</c> (<c>unsubscribe</c>, <c>manual</c>, <c>gdpr</c>); <c>null</c> while the contact is not suppressed.</summary>

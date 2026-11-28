@@ -22,7 +22,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public static class StayLifecycleRules
 {
-    /// <summary>The error that stops the arrival registration of a booking, or null when it can be registered.</summary>
     public static DomainException? ArrivalError(Booking booking, DateTime todayInRome)
     {
         ArgumentNullException.ThrowIfNull(booking);

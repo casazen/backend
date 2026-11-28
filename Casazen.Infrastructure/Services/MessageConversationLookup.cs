@@ -36,7 +36,6 @@ internal sealed record ConversationFacts(
     string? HostName,
     string OrgDisplayName)
 {
-    /// <summary>The first name of the guest as a template writes it; <c>null</c> when the conversation does not know it or the guest was erased.</summary>
     public string? GuestFirstNameForTemplates
     {
         get
@@ -51,19 +50,12 @@ internal sealed record ConversationFacts(
         }
     }
 
-    /// <summary>How the host is called in a template: the name it chose for the site, else the name of the organization (not the placeholder of one that never chose).</summary>
     public string? HostNameForTemplates =>
         !string.IsNullOrWhiteSpace(HostName) ? HostName.Trim()
         : !string.IsNullOrWhiteSpace(OrgDisplayName) && !string.Equals(OrgDisplayName.Trim(), Org.PlaceholderName, StringComparison.Ordinal) ? OrgDisplayName.Trim()
         : null;
 }
 
-/// <summary>
-/// The one place the composer's helpers find the conversation of a key (E05/F02/US02/T02), in the reach of the caller: the same rule as the hub. The org of
-/// the scope is named in every query and <c>InScope</c> narrows it to the properties the caller reaches, so a conversation of another org, or out of the
-/// reach of a collaborator «Solo alcuni», or one with no property for a scope that does not reach every property, is a 404 <c>thread_not_found</c> and
-/// reveals nothing about itself.
-/// </summary>
 internal static class MessageConversationLookup
 {
     public static async Task<ConversationFacts> FindAsync(AppDbContext db, HostScope scope, MessageThreadKey key, CancellationToken ct)
@@ -71,7 +63,6 @@ internal static class MessageConversationLookup
         ArgumentNullException.ThrowIfNull(db);
         ArgumentNullException.ThrowIfNull(scope);
 
-        // The key of a review is never read as the one of a conversation: it is a conversation that is not there (E05/F06/US01/T03).
         if (key.IsReview)
             throw ThreadNotFound();
 
@@ -115,11 +106,9 @@ internal static class MessageConversationLookup
         var property = thread.PropertyId is { } propertyId ? await PropertyOfAsync(db, scope.OrgId, propertyId, ct) : null;
         var booking = thread.BookingId is { } bookingId ? await BookingOfAsync(db, scope.OrgId, bookingId, ct) : null;
 
-        // A booking of another house than the conversation's is not the stay it is about (the hub applies the same rule to its card).
         if (booking is not null && thread.PropertyId is { } threadProperty && booking.PropertyId != threadProperty)
             booking = null;
 
-        // The property of a conversation with no property is the one of its booking, only for a scope that reaches every property (it is the one that sees it).
         property ??= booking is null ? null : await PropertyOfAsync(db, scope.OrgId, booking.PropertyId, ct);
 
         return Build(scope.OrgId, key, thread.Id, thread.OctorateThreadId, thread.OctorateAccommodationId, property, booking, thread.GuestDisplayName, thread.Anonymized, hostName, orgDisplayName);

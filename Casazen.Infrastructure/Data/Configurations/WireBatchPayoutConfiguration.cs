@@ -4,11 +4,6 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Casazen.Infrastructure.Data.Configurations;
 
-/// <summary>
-/// The payouts of a wire batch (E16/F01/US01/T01): the batch holds its rows (cascade), the payout and the owner restrict (a payout is evidence), a payout is in
-/// <b>one batch only</b> (the unique index on the payout: the database refuses a second row for it whatever two requests do at the same moment), the end-to-end id
-/// is unique in its batch and the amount of a transfer is positive.
-/// </summary>
 internal sealed class WireBatchPayoutConfiguration : IEntityTypeConfiguration<WireBatchPayout>
 {
     public void Configure(EntityTypeBuilder<WireBatchPayout> entity)

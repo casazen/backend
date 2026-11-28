@@ -10,31 +10,20 @@ namespace Casazen.Core.Services;
 /// </summary>
 public static class OtaReviewPollSchedule
 {
-    /// <summary>Days after the check-out day the reviews of a stay are read at all.</summary>
     public const int WindowDays = 60;
 
-    /// <summary>Days after the check-out in which the booking is read every <see cref="FastInterval"/>.</summary>
     public const int FastDays = 14;
 
-    /// <summary>The reading of a booking in the first <see cref="FastDays"/> days.</summary>
     public static readonly TimeSpan FastInterval = TimeSpan.FromHours(6);
 
-    /// <summary>The reading of a booking after them, until day <see cref="WindowDays"/>.</summary>
     public static readonly TimeSpan SlowInterval = TimeSpan.FromHours(24);
 
-    /// <summary>How long a failed read waits when the cause is not going to pass by itself soon (no permission, a refusal of the request): one day.</summary>
     public static readonly TimeSpan FailureBackoff = TimeSpan.FromHours(24);
 
-    /// <summary>The least time between two reads of one booking asked for by a person (<c>POST api/bookings/{id}/reviews/refresh</c>): ten minutes.</summary>
     public static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(10);
 
-    /// <summary>How long a reply or a host's review whose outcome is not known waits to be found on the channel before it is turned into an error the host can act on: one hour.</summary>
     public static readonly TimeSpan UnconfirmedActionWindow = TimeSpan.FromHours(1);
 
-    /// <summary>
-    /// The stay is one whose reviews are read now: its check-out was before <paramref name="nowUtc"/> (nobody reviews a stay that is not over) and not more than
-    /// <see cref="WindowDays"/> days ago.
-    /// </summary>
     public static bool IsInWindow(DateTime checkOutUtc, DateTime nowUtc) =>
         checkOutUtc <= nowUtc && nowUtc < checkOutUtc.AddDays(WindowDays);
 
@@ -55,11 +44,9 @@ public static class OtaReviewPollSchedule
         OtaReviewActionState replyState,
         OtaReviewActionState hostReviewState)
     {
-        // An action whose outcome is not confirmed is read again at the next run, whatever the window says: it is how it ends.
         if (replyState == OtaReviewActionState.ManualVerify || hostReviewState == OtaReviewActionState.ManualVerify)
             return nowUtc;
 
-        // The guest's review is out and the host's own is sent or closed: there is nothing left to wait for.
         if (guestReviewPublished && hostReviewWindow is HostReviewWindow.Sent or HostReviewWindow.Closed)
             return null;
 

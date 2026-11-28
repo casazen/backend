@@ -41,16 +41,10 @@ public sealed class DocumentIssuerService(
     TimeProvider timeProvider,
     ILogger<DocumentIssuerService> logger) : IDocumentIssuerService
 {
-    /// <summary>Attempts of a save when another writer made the same row at the same moment.</summary>
     private const int MaxAttempts = 3;
 
-    /// <summary>A regime code of FatturaPA is letters and digits, at most 4 (<c>RF01</c>).</summary>
     private static readonly Regex RegimeCodePattern = new("^[A-Z0-9]{1,4}$", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250));
 
-    /// <summary>
-    /// A series pattern is written into the number of a document: letters, digits, a few separators and the placeholder <c>{year}</c>, at most 10
-    /// characters (<see cref="OrgFiscalIssuerProfile.SeriesMaxLength"/>).
-    /// </summary>
     private static readonly Regex SeriesPattern = new("^(?:[A-Za-z0-9._/-]|\\{year\\})+$", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250));
 
     private DateTime UtcNow => timeProvider.GetUtcNow().UtcDateTime;
@@ -71,7 +65,6 @@ public sealed class DocumentIssuerService(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        // The modes Octorate and accountant were retired on 2026-11-14: refused before anything else, nothing is saved.
         if (FiscalDocumentRules.IsRetiredMode(command.Mode))
         {
             logger.LogInformation("Issuer setting of org {OrgId} refused: the mode {Mode} is retired", orgId, command.Mode);
@@ -95,7 +88,6 @@ public sealed class DocumentIssuerService(
         if (failures.Count > 0)
             throw FieldsInvalid(failures);
 
-        // The country decides the regimes: a Swiss regime only in Switzerland, an Italian one only outside it.
         if (command.Regime is { } chosenRegime && !FiscalDocumentRules.IsRegimeOfCountry(chosenRegime, data.CountryCode))
         {
             throw new DomainRuleException(
@@ -113,7 +105,6 @@ public sealed class DocumentIssuerService(
         var effectiveRegimeCode = data.FatturaPaRegimeCode ?? Empty(rule?.FatturaPaRegimeCode);
         var missing = FiscalDocumentRules.MissingIssuerFields(data, command.Regime, effectiveRegimeCode, identity.VatNumber, identity.FiscalCode);
 
-        // The wizard is completed only when nothing is missing; a profile that cannot issue yet is saved as a draft.
         if (command.Confirmed && missing.Count > 0)
         {
             throw new DomainRuleException(DocumentIssuerErrorCodes.ProfileIncomplete, DocumentIssuerErrorCodes.MessageKeyOf(DocumentIssuerErrorCodes.ProfileIncomplete))
@@ -155,7 +146,6 @@ public sealed class DocumentIssuerService(
             }
             catch (DbUpdateException ex) when (created && attempt < MaxAttempts && OrgTeamAccess.IsUniqueViolation(ex, OrgFiscalIssuerProfile.OrgIndexName))
             {
-                // Another save made the profile of this org first: the same, as an update of the row it made.
                 db.Entry(profile).State = EntityState.Detached;
             }
         }
@@ -172,7 +162,6 @@ public sealed class DocumentIssuerService(
         if (lockedToOctorate)
             return new IssuerDecision(IssuerDecisionKind.Octorate, IssuerReasons.IssuerLockedOctorate);
 
-        // Every other booking, whatever its source, is CasaZen's while the issuance is on.
         return featureFlags.IsEnabled(FeatureFlags.FiscalDocumentIssuance)
             ? new IssuerDecision(IssuerDecisionKind.CasaZen, IssuerReasons.IssuerCasazen)
             : new IssuerDecision(IssuerDecisionKind.None, IssuerReasons.IssuanceOff);
@@ -198,8 +187,6 @@ public sealed class DocumentIssuerService(
             if (rows.FirstOrDefault(row => row.Issuer != kind) is { } other)
                 throw IssuerConflict(other.Issuer);
 
-            // One row for each document (E17/F01/US01/T02): the row of this document again changes nothing; a legacy row of a lock made before any document is
-            // the one the first document completes.
             var existing = documentId is { } id
                 ? rows.FirstOrDefault(row => row.LockedByDocumentId == id) ?? rows.FirstOrDefault(row => row.LockedByDocumentId is null)
                 : rows.FirstOrDefault();
@@ -238,13 +225,11 @@ public sealed class DocumentIssuerService(
             }
             catch (DbUpdateException ex) when (attempt < MaxAttempts && OrgTeamAccess.IsUniqueViolation(ex, BookingDocumentIssuer.DocumentIndexName))
             {
-                // Another lock of this document won: read it and answer as for a row that was there.
                 db.Entry(row).State = EntityState.Detached;
             }
         }
     }
 
-    /// <summary>The tax rule in force today (a Europe/Rome calendar day) for a country, a regime and the treatments, or <c>null</c> when none applies.</summary>
     private FiscalTaxRule? RuleInForceToday(string? countryCode, DocumentRegime? regime, StayVatTreatment stay, CleaningFeeTreatment cleaning) =>
         taxRules.TryResolve(countryCode, regime, stay, cleaning, timeProvider.TodayInRomeAsDateOnly());
 
@@ -256,7 +241,6 @@ public sealed class DocumentIssuerService(
             .FirstOrDefaultAsync(ct)
         ?? throw new NotFoundException($"Booking {bookingId} was not found") { Code = "booking_not_found", MessageKey = "BookingNotFound" };
 
-    /// <summary>The issuer rows of the booking: the ones staged in this unit of work (a document issued in the same transaction) and the stored ones.</summary>
     private async Task<IReadOnlyList<BookingDocumentIssuer>> RowsOfAsync(Guid bookingId, CancellationToken ct)
     {
         var staged = db.ChangeTracker.Entries<BookingDocumentIssuer>()
@@ -311,7 +295,6 @@ public sealed class DocumentIssuerService(
             rule);
     }
 
-    /// <summary>The normalized data written on the profile, as a whole.</summary>
     internal static void Apply(OrgFiscalIssuerProfile profile, IssuerData data)
     {
         profile.LegalName = data.LegalName;
@@ -335,8 +318,6 @@ public sealed class DocumentIssuerService(
         profile.AutoIssueGuestDocuments = data.AutoIssueGuestDocuments;
         profile.EmailGuestDocuments = data.EmailGuestDocuments;
 
-        // The channels are written only when the save carried them (an empty list confirms that no portal collects the tax); left out, the saved choice
-        // stays, confirmed or not (E11/F01/US01/T04).
         if (data.PlatformCollectedTouristTaxChannelsConfirmed)
             profile.ConfirmPlatformCollectedTouristTaxChannels(data.PlatformCollectedTouristTaxChannels);
 
@@ -345,7 +326,6 @@ public sealed class DocumentIssuerService(
         profile.VirtualStampConfirmed = data.VirtualStampConfirmed;
     }
 
-    /// <summary>The data of the command written the way it is stored, and the failures of the values that are not valid (nothing is stored then).</summary>
     internal static IssuerData Normalize(SaveIssuerSettingsCommand command, List<InvoiceDataFailure> failures)
     {
         var legalName = Text(command.LegalName, OrgFiscalIssuerProfile.LegalNameMaxLength, IssuerFields.LegalName, failures);
@@ -359,12 +339,10 @@ public sealed class DocumentIssuerService(
 
         var swiss = FiscalDocumentRules.IsSwiss(country);
 
-        // The Italian province, or the canton of a Swiss issuer: two letters.
         var province = Empty(command.Province)?.ToUpperInvariant();
         if (province is not null && (province.Length != OrgFiscalIssuerProfile.ProvinceMaxLength || !province.All(char.IsAsciiLetter)))
             failures.Add(new InvoiceDataFailure(DocumentIssuerErrorCodes.FieldInvalid, IssuerFields.Province));
 
-        // An Italian postal code is five digits and a Swiss one four, without spaces; another country's keeps its spaces.
         var postalCode = country is FiscalDocumentRules.Italy or FiscalDocumentRules.Switzerland
             ? Empty(command.PostalCode)?.Replace(" ", string.Empty, StringComparison.Ordinal)
             : Collapse(command.PostalCode)?.ToUpperInvariant();
@@ -381,8 +359,6 @@ public sealed class DocumentIssuerService(
             failures.Add(new InvoiceDataFailure(DocumentIssuerErrorCodes.FieldInvalid, IssuerFields.PostalCode));
         }
 
-        // The codes of the Italian electronic invoice belong to an Italian issuer, the UID to a Swiss one: the data of the other country is dropped (a
-        // wizard that changed country may still send it), the data of the issuer's own country is checked.
         var regimeCode = swiss ? null : Empty(command.FatturaPaRegimeCode)?.ToUpperInvariant();
         if (regimeCode is not null && !RegimeCodePattern.IsMatch(regimeCode))
             failures.Add(new InvoiceDataFailure(DocumentIssuerErrorCodes.FieldInvalid, IssuerFields.FatturaPaRegimeCode));
@@ -395,7 +371,6 @@ public sealed class DocumentIssuerService(
         if (pec is not null && !InvoiceDataFormats.IsValidPec(pec))
             failures.Add(new InvoiceDataFailure(DocumentIssuerErrorCodes.FieldInvalid, IssuerFields.IssuerPec));
 
-        // The UID of a Swiss issuer: the format CHE-123.456.789 and the check digit of eCH-0097.
         string? swissVatNumber = null;
         if (swiss && Empty(command.SwissVatNumber) is { } uid)
         {
@@ -414,7 +389,6 @@ public sealed class DocumentIssuerService(
             vatRegistered = expected;
         }
 
-        // The bank accounts: an IBAN that is not a QR-IBAN, and the QR-IBAN of the QR-bill (CH or LI, institution 30000 to 31999).
         string? iban = null;
         if (Empty(command.Iban) is { } typedIban)
         {
@@ -472,7 +446,6 @@ public sealed class DocumentIssuerService(
         };
     }
 
-    /// <summary>A series pattern: at most 10 characters of letters, digits, <c>. _ / -</c> and <c>{year}</c>; <c>null</c> when blank (the default).</summary>
     private static string? Series(string? value, string field, List<InvoiceDataFailure> failures)
     {
         var series = Empty(value);
@@ -482,7 +455,6 @@ public sealed class DocumentIssuerService(
         return series;
     }
 
-    /// <summary>A text trimmed and collapsed, <c>null</c> when blank; longer than <paramref name="maxLength"/> is a failure.</summary>
     private static string? Text(string? value, int maxLength, string field, List<InvoiceDataFailure> failures)
     {
         var text = Collapse(value);
@@ -492,7 +464,6 @@ public sealed class DocumentIssuerService(
         return text;
     }
 
-    /// <summary>Every run of white space becomes one space and the ends are trimmed; <c>null</c> when nothing is left.</summary>
     private static string? Collapse(string? value) =>
         Empty(value) is { } trimmed ? string.Join(' ', trimmed.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)) : null;
 

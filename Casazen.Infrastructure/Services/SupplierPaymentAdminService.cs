@@ -39,8 +39,6 @@ public sealed class SupplierPaymentAdminService(
         ServicePaymentStatus.Refunded,
     ];
 
-    // ─── The list and the detail ────────────────────────────────────────────────────────────────────────────────────
-
     public async Task<(IReadOnlyList<AdminServicePaymentItem> Items, int Total)> ListAsync(
         AdminServicePaymentQuery query,
         CancellationToken cancellationToken = default)
@@ -101,14 +99,12 @@ public sealed class SupplierPaymentAdminService(
     {
         var orgIds = payments.SelectMany(p => new[] { (Guid?)p.SupplierOrgId, p.PayerOrgId }).OfType<Guid>().Distinct().ToList();
 
-        // Org is the tenant itself (no tenant filter, TN-2 allow-list); read by the ids of this page.
         var orgs = await db.Orgs
             .AsNoTracking()
             .Where(o => orgIds.Contains(o.Id))
             .Select(o => new { o.Id, o.Name, o.DisplayName })
             .ToListAsync(cancellationToken);
 
-        // SupplierProfile is keyed by the supplier org and not tenant-filtered; read by the supplier ids of this page.
         var supplierIds = payments.Select(p => p.SupplierOrgId).Distinct().ToList();
         var profiles = await db.SupplierProfiles
             .AsNoTracking()
@@ -162,8 +158,6 @@ public sealed class SupplierPaymentAdminService(
         p.CardDisputeStatus,
         p.CardDisputeAt);
 
-    // ─── The commission of a supplier ───────────────────────────────────────────────────────────────────────────────
-
     public async Task<SupplierCommissionSetting> GetCommissionAsync(Guid supplierOrgId, CancellationToken cancellationToken = default)
     {
         var profile = await ReadProfileAsync(supplierOrgId, cancellationToken);
@@ -193,11 +187,9 @@ public sealed class SupplierPaymentAdminService(
         var now = Now();
         DateTime? end = until is { } at ? DateTime.SpecifyKind(at.Kind == DateTimeKind.Local ? at.ToUniversalTime() : at, DateTimeKind.Utc) : null;
 
-        // A period needs the percentage it applies to, and has to end in the future: an end that has passed would change nothing.
         if (end is { } endsAt && (percent is null || endsAt <= now))
             throw new DomainRuleException(ServicePaymentErrors.CommissionUntilInvalid, ServicePaymentErrors.CommissionUntilInvalidMessageKey);
 
-        // Tracked: this is the one write of the admin tools. SupplierProfile is keyed by the supplier org and not tenant-filtered.
         var profile = await db.SupplierProfiles.Where(sp => sp.OrgId == supplierOrgId).FirstOrDefaultAsync(cancellationToken)
             ?? throw SupplierNotFound(supplierOrgId);
 
@@ -255,28 +247,22 @@ public sealed class SupplierPaymentAdminService(
         MessageKey = SupplierAdminErrorCodes.SupplierNotFoundMessageKey,
     };
 
-    // ─── The monthly export ─────────────────────────────────────────────────────────────────────────────────────────
-
     public async Task<CommissionExport> ExportCommissionsAsync(int year, int month, CancellationToken cancellationToken = default)
     {
         var today = RomeCalendar.DateInRome(Now());
         if (year is < 2000 or > 9999 || month is < 1 or > 12 || new DateOnly(year, month, 1) > today)
             throw new DomainRuleException(ServicePaymentErrors.ExportMonthInvalid, ServicePaymentErrors.ExportMonthInvalidMessageKey);
 
-        // The month of the invoice is the calendar month in Rome.
         var first = new DateOnly(year, month, 1);
         var fromUtc = RomeCalendar.StartOfDayUtc(first);
         var toUtc = RomeCalendar.StartOfDayUtc(first.AddMonths(1));
 
-        // Payments collected through Stripe in the month (an offline payment carries no commission and is not in the file). Direct charges
-        // only: the commission CasaZen keeps from the money it holds is exported below, as "retained" (SP-15c-b), when it becomes CasaZen's.
         var paid = await db.ServiceRequestPayments
             .AsNoTracking()
             .Where(p => p.FundsModel == ServiceFundsModel.DirectCharge
                         && p.PaidVia == ServicePaymentChannel.Stripe && p.PaidAt >= fromUtc && p.PaidAt < toUtc && PaidStatuses.Contains(p.Status))
             .ToListAsync(cancellationToken);
 
-        // Refunds that succeeded in the month, of payments collected through Stripe: the commission that went back.
         var refunds = await db.ServiceRequestPaymentRefunds
             .AsNoTracking()
             .Where(r => r.Status == ServicePaymentRefundStatus.Succeeded && r.CompletedAt >= fromUtc && r.CompletedAt < toUtc
@@ -374,10 +360,6 @@ public sealed class SupplierPaymentAdminService(
         return new CommissionExport(year, month, options.Value.CommissionVatPercent, ordered);
     }
 
-    /// <summary>
-    /// The line of the commission CasaZen retained from the money it held (SP-15c-b): what stayed with CasaZen of the payer's money (the price
-    /// minus what was given back), CasaZen's whole commission, and what the supplier got (the rest: nothing when it was at fault).
-    /// </summary>
     private static CommissionExportRow RetainedRow(ServiceRequestPayment p, DateTime at, Names names)
     {
         long gross = p.AmountCents - p.RefundedCents;

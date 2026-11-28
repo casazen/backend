@@ -225,7 +225,6 @@ public sealed class BankLinkService(
 
         if (StatusOf(paymentEvent.EventType) is { } status)
         {
-            // Only a debit still in Processing may change. A late event must not reopen a finished one, nor the due.
             if (row.Status == BankLinkPaymentStatus.Processing)
             {
                 row.Status = status;
@@ -366,10 +365,6 @@ public sealed class BankLinkService(
         return Started(row, confirmed.ClientSecret, confirmed.Status);
     }
 
-    /// <summary>
-    /// Starts or resumes the SEPA debit of one installment under the same lease lock as the card payment session.
-    /// A card PaymentIntent that can still be paid is canceled first. One that is already in flight refuses the debit.
-    /// </summary>
     private async Task<BankLinkPaymentStarted> DebitInstallmentAsync(
         RentLedgerEntry entry,
         string? token,

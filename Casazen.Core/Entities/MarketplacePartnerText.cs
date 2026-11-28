@@ -16,13 +16,10 @@ namespace Casazen.Core.Entities;
 [Table("MarketplacePartnerTexts")]
 public class MarketplacePartnerText
 {
-    /// <summary>Name of the unique index on (<see cref="PartnerId"/>, <see cref="Language"/>).</summary>
     public const string PartnerLanguageIndexName = "UIX_MarketplacePartnerTexts_PartnerId_Language";
 
-    /// <summary>Name of the check that keeps <see cref="Language"/> to the two languages of the product.</summary>
     public const string LanguageCheckName = "CK_MarketplacePartnerTexts_Language";
 
-    /// <summary>An empty JSON array, the value of <see cref="FaqJson"/> with no question in it.</summary>
     public const string EmptyJsonArray = "[]";
 
     public const string Italian = "it";
@@ -37,54 +34,43 @@ public class MarketplacePartnerText
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The partner (FK, cascade).</summary>
     public Guid PartnerId { get; set; }
 
-    /// <summary><c>it</c> or <c>en</c>.</summary>
     [Required]
     [MaxLength(LanguageMaxLength)]
     public string Language { get; set; } = Italian;
 
-    /// <summary>The one-line benefit of the card.</summary>
     [Required]
     [MaxLength(BenefitMaxLength)]
     public string Benefit { get; set; } = string.Empty;
 
-    /// <summary>For whom the partner is.</summary>
     [Required]
     [MaxLength(AudienceMaxLength)]
     public string Audience { get; set; } = string.Empty;
 
-    /// <summary>What the partner does.</summary>
     [Required]
     [MaxLength(LongTextMaxLength)]
     public string Description { get; set; } = string.Empty;
 
-    /// <summary>What the host needs to activate it, one requirement per line.</summary>
     [Required]
     [MaxLength(LongTextMaxLength)]
     public string Requirements { get; set; } = string.Empty;
 
-    /// <summary>What it costs, in words; <c>null</c> when the cost is not known.</summary>
     [MaxLength(CostTextMaxLength)]
     public string? CostText { get; set; }
 
-    /// <summary>What data is shared with the partner, one plain sentence per line.</summary>
     [Required]
     [MaxLength(LongTextMaxLength)]
     public string DataShared { get; set; } = string.Empty;
 
-    /// <summary>How to deactivate it.</summary>
     [Required]
     [MaxLength(LongTextMaxLength)]
     public string Deactivation { get; set; } = string.Empty;
 
-    /// <summary>The guide the hand-off wizard shows while the host activates the partner on its own site.</summary>
     [Required]
     [MaxLength(LongTextMaxLength)]
     public string ActivationGuide { get; set; } = string.Empty;
 
-    /// <summary>The questions and answers, a JSON array of <c>{ "q": "...", "a": "..." }</c> (jsonb).</summary>
     [Required]
     public string FaqJson { get; set; } = EmptyJsonArray;
 }

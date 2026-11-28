@@ -2,7 +2,6 @@ using System.Text.Json;
 
 namespace Casazen.Core.GuestPortal;
 
-/// <summary>The host's saved choices for one accommodation.</summary>
 public sealed record GuestPortalSetup
 {
     public bool BrandConfirmed { get; init; }

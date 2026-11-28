@@ -26,10 +26,8 @@ public sealed partial record AssistantClassification(
     string? Language,
     decimal SituationMatch)
 {
-    /// <summary>The most intent flags kept from an answer.</summary>
     public const int MaxIntentFlags = 10;
 
-    /// <summary>The words of the categories in the answer (lower case, the separators taken out), and the category each one is.</summary>
     private static readonly IReadOnlyDictionary<string, SensitiveCategory> CategoryWords = new Dictionary<string, SensitiveCategory>(StringComparer.Ordinal)
     {
         ["money"] = SensitiveCategory.Money,
@@ -43,7 +41,6 @@ public sealed partial record AssistantClassification(
 
     private static readonly JsonDocumentOptions ReadOptions = new() { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip, MaxDepth = 8 };
 
-    /// <summary>The classification of an answer that cannot be used: <see cref="AssistantSituation.Other"/>, a match of 0, normal urgency, no category, no flag, no language.</summary>
     public static AssistantClassification Unreadable { get; } = new(AssistantSituation.Other, AssistantUrgency.Normal, SensitiveCategory.None, [], null, 0m);
 
     /// <summary>
@@ -74,11 +71,6 @@ public sealed partial record AssistantClassification(
             : new AssistantClassification(AssistantSituation.Other, urgency, categories, flags, language, 0m);
     }
 
-    /// <summary>
-    /// The JSON object of the answer the caller reads, parsed (the caller disposes it): the objects that follow a reasoning (<see cref="AiAnswerText.JsonObjectsLastFirst"/>,
-    /// the last one first), and of them the first that has <paramref name="member"/>, else the first that is an object at all; <c>null</c> when the answer holds none.
-    /// Trying each object in turn is what keeps a brace inside a string of the answer (the <c>{{guest_name}}</c> of a draft) or an object in a reasoning from hiding the answer.
-    /// </summary>
     internal static JsonDocument? DocumentOf(string? answer, string member)
     {
         JsonDocument? anyObject = null;
@@ -109,11 +101,9 @@ public sealed partial record AssistantClassification(
         return anyObject;
     }
 
-    /// <summary>The string of <paramref name="name"/> in <paramref name="root"/> (in any case of the name); <c>null</c> when it is missing or not a string.</summary>
     internal static string? String(JsonElement root, string name) =>
         Member(root, name) is { ValueKind: JsonValueKind.String } value ? value.GetString() : null;
 
-    /// <summary>The member <paramref name="name"/> of <paramref name="root"/>, in any case of the name.</summary>
     internal static JsonElement? Member(JsonElement root, string name)
     {
         foreach (var property in root.EnumerateObject())

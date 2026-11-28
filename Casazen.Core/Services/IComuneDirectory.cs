@@ -10,10 +10,8 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IComuneDirectory
 {
-    /// <summary>Rows, active rows and last import of the list.</summary>
     Task<ComuneDatasetStatus> GetStatusAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>True when the list has at least one active comune.</summary>
     Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -44,22 +42,13 @@ public interface IComuneDirectory
         IEnumerable<string> identifiers,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The active comuni of these (name, province) pairs, e.g. the pilots of the SEO pages; a pair that is not in the
-    /// list is absent.
-    /// </summary>
     Task<IReadOnlyList<Comune>> FindByNamesAndProvincesAsync(
         IEnumerable<(string Name, string ProvinceCode)> pairs,
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>State of the comuni list.</summary>
-/// <param name="TotalRows">Every comune ever imported, active or not.</param>
-/// <param name="ActiveRows">Comuni that can be selected.</param>
-/// <param name="LastImport">The most recent import (by reference date, then by time); null when nothing was imported.</param>
 public sealed record ComuneDatasetStatus(int TotalRows, int ActiveRows, ComuneImportInfo? LastImport)
 {
-    /// <summary>True when there is a list to search: at least one active comune.</summary>
     public bool Available => ActiveRows > 0;
 }
 

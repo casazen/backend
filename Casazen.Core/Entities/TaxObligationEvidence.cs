@@ -35,14 +35,12 @@ public class TaxObligationEvidence : ITenantOwned, IAppendOnlyRecord
 
     public Guid OwnerStatementVersionId { get; set; }
 
-    /// <summary>One decision per payout (<c>payout:{id}</c>) and one reversal per decision (<c>rev:{id}</c>).</summary>
     [Required]
     [MaxLength(KeyMaxLength)]
     public string IdempotencyKey { get; set; } = string.Empty;
 
     public TaxDecision Decision { get; set; }
 
-    /// <summary>Why: <c>applicable</c>, <c>rule_without_withholding</c>, <c>no_collection_or_intervention</c>, <c>not_qualifying_short_let</c>.</summary>
     [Required]
     [MaxLength(CodeMaxLength)]
     public string ReasonCode { get; set; } = string.Empty;
@@ -59,36 +57,29 @@ public class TaxObligationEvidence : ITenantOwned, IAppendOnlyRecord
     [MaxLength(RuleMaxLength)]
     public string RuleVersion { get; set; } = string.Empty;
 
-    /// <summary>The gross base at the payment (the components the rule names); <c>null</c> when not applicable.</summary>
     [Precision(18, 2)]
     public decimal? GrossBase { get; set; }
 
     [Precision(7, 4)]
     public decimal? RatePercent { get; set; }
 
-    /// <summary>The rounding of the rule (<c>half_up</c>, <c>half_even</c>).</summary>
     [MaxLength(CodeMaxLength)]
     public string? Rounding { get; set; }
 
-    /// <summary>The withholding; <c>null</c> when not applicable (never a zero obligation).</summary>
     [Precision(18, 2)]
     public decimal? Amount { get; set; }
 
-    /// <summary>The F24 tax code the rule gives; <c>null</c> when not applicable.</summary>
     [MaxLength(TaxCodeMaxLength)]
     public string? TaxCode { get; set; }
 
     public DateOnly PaidOn { get; set; }
 
-    /// <summary>The month of the payment: the period of the F24.</summary>
     public int PeriodYear { get; set; }
 
     public int PeriodMonth { get; set; }
 
-    /// <summary>The bookings (stays) of the payout (JSON array of ids).</summary>
     public string? StayIdsJson { get; set; }
 
-    /// <summary>The facts the decision was taken on (JSON).</summary>
     [Required]
     public string FactsJson { get; set; } = "{}";
 

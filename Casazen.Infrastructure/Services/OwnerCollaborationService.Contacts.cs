@@ -14,10 +14,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// The delegated contacts of the owners (E07/F07/US01/T02, AC-NF111-4): invited by the owner for one owner profile, accepted with the contact's own account,
-/// holding only the permissions given; withdrawn by the owner or the agency, effective at the next request (the access is resolved at every request).
-/// </summary>
 public sealed partial class OwnerCollaborationService
 {
     private static readonly EmailAddressAttribute EmailRule = new();
@@ -48,11 +44,8 @@ public sealed partial class OwnerCollaborationService
         RequireContact(lastName.Length is > 0 and <= OwnerPortalContact.NameMaxLength, "lastName");
         var permissions = OwnerPortalPermissions.Parse(command.Permissions);
 
-        // The address is encrypted at rest: it is found, and kept unique for the owner profile, by its keyed hash (never by the address).
         var emailHash = contactIndex.HashEmail(email);
 
-        // The link is built before anything is saved: a missing public address leaves no contact behind. E40/F01/US01/T03: on the agency's own
-        // domain only once the owner sign-in works there.
         var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         var acceptUrl = (await agencyLinks.ForOrgOrPlatformAsync(links, orgId, cancellationToken)).OwnerContactAccept(token);
 
@@ -65,7 +58,6 @@ public sealed partial class OwnerCollaborationService
                 .Where(c => c.OrgId == orgId && c.PropertyOwnerId == propertyOwnerId && c.Status != OwnerPortalContactStatus.Revoked)
                 .ToListAsync(cancellationToken);
 
-            // An invitation that lapsed for the same address is closed and replaced; a live one, or an active contact, is the same person already.
             foreach (var lapsed in inForce.Where(c => c.EmailHash == emailHash && c.Status == OwnerPortalContactStatus.Invited && c.InvitationExpiresAt <= now))
                 Close(lapsed, now, access.Actor);
             if (inForce.Any(c => c.EmailHash == emailHash && c.Status != OwnerPortalContactStatus.Revoked))
@@ -105,7 +97,6 @@ public sealed partial class OwnerCollaborationService
                 UpdatedAt = now,
             };
 
-            // Through the DbSet: the Guid of the row is preset, so a row attached any other way would be tracked as modified.
             db.OwnerPortalContacts.Add(contact);
             Audit(orgId, contact.Id, OwnerPortalParts.Contact, OwnerPortalAuditStatuses.Invited, access.Actor);
             await db.SaveChangesAsync(cancellationToken);
@@ -113,7 +104,6 @@ public sealed partial class OwnerCollaborationService
                 await transaction.CommitAsync(cancellationToken);
         }
 
-        // The e-mail is queued after the save; one that cannot be queued withdraws the invitation, so nobody is «invited» who was never written to.
         var agencyName = await db.Orgs.AsNoTracking().Where(o => o.Id == orgId).Select(o => o.Name).FirstOrDefaultAsync(cancellationToken) ?? string.Empty;
         var ownerName = (await OwnerUserNamesAsync([access.OwnerUserId], cancellationToken)).GetValueOrDefault(access.OwnerUserId, string.Empty);
         var content = EmailTemplates.OwnerContactInvitation(
@@ -189,7 +179,6 @@ public sealed partial class OwnerCollaborationService
         var head = await Contacts().AsNoTracking().Where(c => c.TokenHash == hash).Select(c => new { c.Id, c.OrgId }).FirstOrDefaultAsync(cancellationToken)
             ?? throw Gone(OwnerCollaborationErrors.InvitationInvalid, OwnerCollaborationErrors.InvitationInvalidMessageKey);
 
-        // The locks of the owner invitations: the org of the contact, then the account (one identity per account, whichever invitation it accepts first).
         Guid ownerUserId;
         bool alreadyAccepted;
         await using (var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
@@ -204,7 +193,6 @@ public sealed partial class OwnerCollaborationService
             switch (contact.Status)
             {
                 case OwnerPortalContactStatus.Active when existing is not null && contact.OwnerUserId == existing.Id:
-                    // A repeat by the same account: the same answer, nothing written.
                     alreadyAccepted = true;
                     ownerUserId = existing.Id;
                     break;
@@ -220,7 +208,6 @@ public sealed partial class OwnerCollaborationService
                     if (!string.Equals(contact.Email, (command.Email ?? string.Empty).Trim().ToLowerInvariant(), StringComparison.Ordinal))
                         throw new DomainForbiddenException(OwnerCollaborationErrors.EmailMismatch, OwnerCollaborationErrors.EmailMismatchMessageKey);
 
-                    // Its own account, never the owner's: an identity of the portal is created for it when it has none.
                     var user = existing;
                     if (user is null)
                     {
@@ -251,7 +238,6 @@ public sealed partial class OwnerCollaborationService
                 await transaction.CommitAsync(cancellationToken);
         }
 
-        // The claims of the portal for every ownership and delegation of the account now, handed to the identity provider outside the locks.
         var access = await accessResolver.ResolveAsync(ownerUserId, cancellationToken);
         var agencyIds = access.Grants.Select(g => g.OrgId).Distinct().Order().ToList();
         var propertyIds = access.Grants.Select(g => g.PropertyId).Distinct().Order().ToList();
@@ -267,12 +253,8 @@ public sealed partial class OwnerCollaborationService
         return new OwnerContactAccepted(ownerUserId, agencyIds, propertyIds, alreadyAccepted, refresh);
     }
 
-    // ---------------------------------------------------------------- shared
-
     private IQueryable<OwnerPortalContact> Contacts() => db.OwnerPortalContacts.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]);
 
-    /// <summary>The owner profiles the caller owns itself (not through a delegation): only an owner manages its contacts.</summary>
-    /// <exception cref="DomainForbiddenException"><see cref="OwnerCollaborationErrors.ContactOwnerOnly"/>.</exception>
     private static HashSet<(Guid OrgId, Guid PropertyOwnerId)> OwnProfiles(OwnerPortalAccess access)
     {
         var profiles = access.Grants.Where(g => g.ContactId is null).Select(g => (g.OrgId, g.PropertyOwnerId)).ToHashSet();
@@ -281,7 +263,6 @@ public sealed partial class OwnerCollaborationService
         return profiles;
     }
 
-    /// <summary>The owner profile of the agency named, or the only one; 422 when the agency is needed or is not one of the caller's.</summary>
     private static (Guid OrgId, Guid PropertyOwnerId) ProfileFor(IReadOnlyCollection<(Guid OrgId, Guid PropertyOwnerId)> profiles, Guid? agencyId)
     {
         var candidates = agencyId is { } wanted ? profiles.Where(p => p.OrgId == wanted).ToList() : profiles.ToList();
@@ -290,7 +271,6 @@ public sealed partial class OwnerCollaborationService
         return candidates[0];
     }
 
-    /// <summary>A contact of an owner profile the caller owns; another owner's, or a missing one, is the same 404.</summary>
     private async Task<OwnerPortalContact> OwnContactAsync(OwnerPortalAccess access, Guid contactId, CancellationToken cancellationToken)
     {
         var profiles = OwnProfiles(access);
@@ -312,7 +292,6 @@ public sealed partial class OwnerCollaborationService
         return ContactView(contact);
     }
 
-    /// <summary>Withdraws a contact (staged, with its line of the activity log): it grants nothing from the next request on.</summary>
     private void Close(OwnerPortalContact contact, DateTime now, string? actor)
     {
         contact.Status = OwnerPortalContactStatus.Revoked;

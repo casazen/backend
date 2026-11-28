@@ -52,25 +52,20 @@ public interface IOwnerOnboardingService
     Task<OwnerReadinessReport> GetReadinessAsync(HostScope scope, CancellationToken ct, bool listEveryOwner = false, Guid? propertyId = null);
 }
 
-/// <summary>The names of the columns of the owner file in the answer (cross-repo contract): never rename one.</summary>
 public static class OwnerImportColumns
 {
     public const string PropertyId = BulkImportColumns.PropertyId;
     public const string CinCode = BulkImportColumns.CinCode;
 
-    /// <summary>The CasaZen id of the owner: the manual choice when a fiscal identifier matches more than one owner.</summary>
     public const string OwnerId = "ownerId";
 
-    /// <summary>The key the agency gave the owner in its own system.</summary>
     public const string OwnerKey = "ownerKey";
 
     public const string LegalName = "legalName";
     public const string Email = "email";
 
-    /// <summary><c>person</c> or <c>company</c> (Italian and English names are understood).</summary>
     public const string EntityKind = "entityKind";
 
-    /// <summary>ISO 3166-1 alpha-2 country of the tax residence.</summary>
     public const string TaxResidence = "taxResidence";
 
     public const string FiscalCode = "fiscalCode";
@@ -82,13 +77,10 @@ public static class OwnerImportColumns
     public const string BillingProvince = "billingProvince";
     public const string BillingCountry = "billingCountry";
 
-    /// <summary>The share of the property, 0.01 to 100.00, at most two decimals.</summary>
     public const string SharePercent = "sharePercent";
 
-    /// <summary>The first day of the ownership (the mandate period of the agency is the ownership period).</summary>
     public const string OwnershipStart = "ownershipStart";
 
-    /// <summary>The last day of the ownership; empty = still in force.</summary>
     public const string OwnershipEnd = "ownershipEnd";
 
     public const string SettlementCurrency = "settlementCurrency";
@@ -96,7 +88,6 @@ public static class OwnerImportColumns
     public const string Bic = "bic";
 }
 
-/// <summary>The status of a row of the owner file (cross-repo contract): <c>ok</c>, or the first of its errors. Never rename one.</summary>
 public static class OwnerImportRowCodes
 {
     public const string Ok = BulkImportRowCodes.Ok;
@@ -106,30 +97,20 @@ public static class OwnerImportRowCodes
 
     public const string PropertyAmbiguous = BulkImportRowCodes.PropertyAmbiguous;
 
-    /// <summary>The same property, owner and first day were already on an earlier row of the file.</summary>
     public const string DuplicateRow = BulkImportRowCodes.DuplicateRow;
 
-    /// <summary>The row has neither a key nor a fiscal identifier of the owner: an e-mail address alone does not identify anybody.</summary>
     public const string OwnerIdentityMissing = "owner_identity_missing";
 
     public const string OwnerKeyInvalid = "owner_key_invalid";
 
-    /// <summary>The <c>ownerId</c> of the row is not an owner of the caller's org (also one outside the reach).</summary>
     public const string OwnerNotFound = "owner_not_found";
 
-    /// <summary>The fiscal identifier of the row matches more than one owner: the row lists them and the agency picks one with <c>ownerId</c>.</summary>
     public const string OwnerAmbiguous = "owner_ambiguous";
 
-    /// <summary>The key of the row and the fiscal identifier of the row point to two different owners, or the owner already has another key.</summary>
     public const string OwnerIdentityConflict = "owner_identity_conflict";
 
-    /// <summary>The owner is known and holds a different value for a field the file also gives: the import fills what is empty and never overwrites.</summary>
     public const string OwnerFieldConflict = "owner_field_conflict";
 
-    /// <summary>
-    /// The owner also holds properties outside the reach of the caller, so its data is not the caller's to complete: a row of a caller with a partial
-    /// reach may add a period of the owner on a property it reaches, but not give the owner a value it lacks.
-    /// </summary>
     public const string OwnerSharedOutsideReach = "owner_shared_outside_reach";
 
     public const string LegalNameRequired = "legal_name_required";
@@ -146,41 +127,32 @@ public static class OwnerImportRowCodes
     public const string ShareInvalid = "share_invalid";
     public const string DateInvalid = "date_invalid";
 
-    /// <summary>The ownership ends before it starts.</summary>
     public const string PeriodInvalid = "period_invalid";
 
     public const string OwnershipStartRequired = "ownership_start_required";
 
-    /// <summary>The same owner would hold the same property twice on the same days.</summary>
     public const string OwnershipOverlap = "ownership_overlap";
 
-    /// <summary>The row would rewrite a period that already ended, or change the share of a period in force.</summary>
     public const string OwnershipPeriodConflict = "ownership_period_conflict";
 
-    /// <summary>After the file the shares of the property would not add up to exactly 100.00 on every day from the first it touches.</summary>
     public const string OwnershipSharesInvalid = "ownership_shares_invalid";
 
-    /// <summary>A mandate of the agency already stored for the ownership would end up outside the period of the row.</summary>
     public const string MandateOutsideOwnership = "mandate_outside_ownership";
 }
 
-/// <summary>What the import would do, or did, with the owner and with the ownership of a row (cross-repo contract).</summary>
 public static class OwnerImportActions
 {
     public const string CreateOwner = "create_owner";
     public const string MatchOwner = "match_owner";
     public const string CreateOwnership = "create_ownership";
 
-    /// <summary>A period that has not started yet, or one in force that is closed, changes.</summary>
     public const string UpdateFuturePeriod = "update_future_period";
 
-    /// <summary>The owner or the period holds what the row says already: nothing is written.</summary>
     public const string Unchanged = "unchanged";
 
     public const string Conflict = "conflict";
 }
 
-/// <summary>How a row found its owner (cross-repo contract).</summary>
 public static class OwnerMatchKinds
 {
     public const string OwnerId = "owner_id";
@@ -188,7 +160,6 @@ public static class OwnerMatchKinds
     public const string FiscalIdentifier = "fiscal_identifier";
 }
 
-/// <summary>An owner a row could be: its id, its key and the name the agency keeps for it (never a fiscal identifier).</summary>
 public sealed record OwnerImportCandidate(Guid OwnerId, string? ExternalKey, string DisplayName);
 
 /// <summary>
@@ -219,10 +190,8 @@ public sealed record OwnerImportRow(
     IReadOnlyList<OwnerImportCandidate> Candidates,
     bool Applied);
 
-/// <summary>The stretch of days where the shares of a property would be wrong after the file.</summary>
 public sealed record OwnerImportPropertyIssue(Guid PropertyId, IReadOnlyList<OwnershipIssue> Issues);
 
-/// <summary>How many rows the file has and what the valid ones do.</summary>
 public sealed record OwnerImportSummary(
     int Rows,
     int Valid,
@@ -251,7 +220,6 @@ public sealed record OwnerImportResult(
     IReadOnlyList<OwnerImportRow> Rows,
     IReadOnlyList<OwnerImportPropertyIssue> PropertyIssues);
 
-/// <summary>The six things the readiness tells apart (cross-repo contract): never rename one.</summary>
 public static class OwnerReadinessDimensions
 {
     public const string Registry = "registry";
@@ -264,53 +232,43 @@ public static class OwnerReadinessDimensions
     public static IReadOnlyList<string> All { get; } = [Registry, Ownership, Mandate, FiscalProfile, Payment, Portal];
 }
 
-/// <summary>The facts a readiness reason names (cross-repo contract): never rename one. A fact is missing or wrong, never shown.</summary>
 public static class OwnerReadinessReasons
 {
-    // registry
     public const string LegalNameMissing = "legal_name_missing";
     public const string EntityKindMissing = "entity_kind_missing";
 
-    // ownership (per property)
     public const string OwnershipMissing = "ownership_missing";
     public const string SharesGap = "shares_gap";
     public const string SharesShortfall = "shares_shortfall";
     public const string SharesExcess = "shares_excess";
     public const string OwnerOverlap = "owner_overlap";
 
-    // mandate (per property)
     public const string MandateMissing = "mandate_missing";
     public const string MandateDocumentMissing = "mandate_document_missing";
     public const string MandateOutsideOwnership = "mandate_outside_ownership";
 
-    // fiscal profile
     public const string TaxResidenceMissing = "tax_residence_missing";
     public const string FiscalIdMissing = "fiscal_id_missing";
     public const string FiscalCodeInvalid = "fiscal_code_invalid";
     public const string VatNumberInvalid = "vat_number_invalid";
     public const string BillingAddressIncomplete = "billing_address_incomplete";
 
-    // payment
     public const string IbanMissing = "iban_missing";
     public const string IbanInvalid = "iban_invalid";
     public const string BicMissing = "bic_missing";
     public const string BicInvalid = "bic_invalid";
     public const string SettlementCurrencyMissing = "settlement_currency_missing";
 
-    // portal
     public const string EmailMissing = "email_missing";
     public const string EmailInvalid = "email_invalid";
     public const string RegistryNotReady = "registry_not_ready";
     public const string OwnershipNotReady = "ownership_not_ready";
 }
 
-/// <summary>One missing or wrong fact: its dimension, its code, the field it is about (a column name, never a value) and the property it is about, when it is per property.</summary>
 public sealed record OwnerReadinessReason(string Dimension, string Code, string? Field = null, Guid? PropertyId = null);
 
-/// <summary>For which of the six dimensions the owner is ready.</summary>
 public sealed record OwnerReadinessFlags(bool Registry, bool Ownership, bool Mandate, bool FiscalProfile, bool Payment, bool Portal);
 
-/// <summary>The lifecycle of the portal invitation of an owner (cross-repo contract): <c>notReady</c> is the state before <c>ready</c>.</summary>
 public static class OwnerPortalStates
 {
     public const string NotReady = "notReady";
@@ -321,10 +279,6 @@ public static class OwnerPortalStates
     public const string Revoked = "revoked";
 }
 
-/// <summary>
-/// One owner of the readiness. <paramref name="DisplayName"/> is the name the agency keeps for it (the legal name, else the first and last
-/// name). <paramref name="AccountingReady"/> is registry, ownership, mandate, fiscal profile and payment all ready.
-/// </summary>
 public sealed record OwnerReadinessOwner(
     Guid OwnerId,
     string? ExternalKey,
@@ -342,13 +296,8 @@ public sealed record OwnerReadinessOwner(
     public IReadOnlyList<OwnerReadinessWarning> Warnings { get; init; } = [];
 }
 
-/// <summary>The warnings the readiness gives (cross-repo contract): never rename one.</summary>
 public static class OwnerReadinessWarnings
 {
-    /// <summary>
-    /// The owner lets short more apartments than the limit allows a private person, counting the ones it declared outside the agency (⚖ I8): the activity is presumed to be a
-    /// business, the withholding facts treat the owner as one and an issuer profile as a business is suggested.
-    /// </summary>
     public const string ShortLetBusinessPresumed = "short_let_business_presumed";
 }
 
@@ -365,7 +314,6 @@ public static class OwnerReadinessSuggestions
 /// </summary>
 public sealed record OwnerReadinessWarning(string Code, int ManagedUnits, int ExternalUnits, int MaxUnits, string? Suggestion);
 
-/// <summary>One property of the readiness that is not ready: its owners' shares, with the days that are wrong.</summary>
 public sealed record OwnerReadinessProperty(
     Guid PropertyId,
     string Name,
@@ -373,11 +321,8 @@ public sealed record OwnerReadinessProperty(
     IReadOnlyList<OwnerReadinessReason> Reasons,
     IReadOnlyList<OwnershipIssue> Issues);
 
-/// <summary>How many owners are ready and how many are to complete, for each dimension.</summary>
 public sealed record OwnerReadinessCount(int Ready, int ToComplete);
 
-/// <summary>The counts of the readiness.</summary>
-/// <param name="FinancialReady">True only when there is at least one owner, every owner is ready for the accounting and every property has its shares right: the owner accounting can start.</param>
 public sealed record OwnerReadinessSummary(
     int Owners,
     int Properties,
@@ -404,12 +349,9 @@ public sealed record OwnerReadinessReport(
     IReadOnlyList<OwnerReadinessProperty> Properties,
     bool Truncated);
 
-/// <summary>The limits of the owner onboarding.</summary>
 public static class OwnerOnboardingLimits
 {
-    /// <summary>The most owners (and the most properties) a readiness lists.</summary>
     public const int MaxListed = 2_000;
 
-    /// <summary>The most candidates a row of the import lists.</summary>
     public const int MaxCandidates = 5;
 }

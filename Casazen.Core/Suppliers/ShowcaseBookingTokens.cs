@@ -11,11 +11,9 @@ namespace Casazen.Core.Suppliers;
 /// </summary>
 public static class ShowcaseBookingTokens
 {
-    /// <summary>A new token: 32 random bytes, base64url, 43 characters.</summary>
     public static string New() =>
         Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
-    /// <summary>What is stored for a token: SHA-256, lowercase hex (64 characters).</summary>
     public static string Hash(string token)
     {
         ArgumentNullException.ThrowIfNull(token);

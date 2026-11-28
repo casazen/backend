@@ -15,16 +15,13 @@ namespace Casazen.Core.Regulatory;
 /// </remarks>
 public static class EuMemberStates
 {
-    /// <summary>ISO 3166-1 alpha-2 codes of the 27 EU member states.</summary>
     public static IReadOnlySet<string> Codes { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
         "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GR", "HR", "HU",
         "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PL", "PT", "RO", "SE", "SI", "SK",
     };
 
-    /// <summary>The citizenship code in its stored form: trimmed and upper-case.</summary>
     public static string NormalizeCode(string? citizenship) => (citizenship ?? string.Empty).Trim().ToUpperInvariant();
 
-    /// <summary>True when <paramref name="citizenship"/> is the code of an EU member state (case and spaces ignored).</summary>
     public static bool IsEuCitizenship(string? citizenship) => Codes.Contains(NormalizeCode(citizenship));
 }

@@ -83,7 +83,6 @@ public sealed class GuestMessageService(
         string? guideAnswer,
         CancellationToken cancellationToken = default,
         string? localDraft = null) =>
-        // Portal chat may contain personal data. External drafting requires its own anonymization pipeline.
         SendGuestMessageAsync(booking, text, idempotencyKey, guideAnswer, queueDraft: false, cancellationToken, localDraft);
 
     private async Task<SentGuestMessage> SendGuestMessageAsync(
@@ -131,7 +130,6 @@ public sealed class GuestMessageService(
                     set.SetProperty(t => t.LastGuestMessageAt, t => t.LastGuestMessageAt > now ? t.LastGuestMessageAt : now);
                     if (answersFromGuide)
                     {
-                        // Keep an earlier unanswered question in the human queue.
                         set.SetProperty(t => t.LastHostMessageAt,
                             t => t.LastGuestMessageAt == null || (t.LastHostMessageAt != null && t.LastGuestMessageAt <= t.LastHostMessageAt)
                                 ? (t.LastHostMessageAt > now ? t.LastHostMessageAt : now) : t.LastHostMessageAt);
@@ -195,10 +193,6 @@ public sealed class GuestMessageService(
         CancellationToken cancellationToken = default) =>
         ReplyOfAsync(bookingId, text, idempotencyKey, null, MessageOrigin.Automation, cancellationToken);
 
-    /// <summary>
-    /// A message of the host side. A person (or the assistant) who writes answers the guest: the thread is answered and what the guest wrote is read. A message of <see cref="MessageOrigin.Automation"/> (the
-    /// one a routine planned) answers nobody, as on the channels: it is the latest message of the thread and nothing more, so a question of the guest still waits for its answer.
-    /// </summary>
     private async Task<SentGuestMessage> ReplyOfAsync(
         Guid bookingId,
         string? text,
@@ -229,7 +223,6 @@ public sealed class GuestMessageService(
             return new SentGuestMessage(message, false, true);
         }
 
-        // Answering is reading: whatever the guest wrote up to now is no longer «unread». A message nobody wrote answers nobody: it only moves the last message of the thread.
         await db.GuestThreads
             .Where(t => t.Id == threadId)
             .ExecuteUpdateAsync(
@@ -251,10 +244,6 @@ public sealed class GuestMessageService(
         return new SentGuestMessage(message, false, false);
     }
 
-    /// <summary>
-    /// Tells every <see cref="IThreadReplyObserver"/> that a person answered the conversation of the booking (an answer with no user is not a person's: the assistant's own send closes
-    /// nothing). After the message is saved: an observer that fails is logged and never fails the answer.
-    /// </summary>
     private async Task TellReplyObserversAsync(Guid orgId, Guid bookingId, string? userId)
     {
         if (string.IsNullOrWhiteSpace(userId))
@@ -295,7 +284,6 @@ public sealed class GuestMessageService(
         pageSize = Math.Clamp(pageSize, 1, GuestMessageRules.MaxPageSize);
         var now = Now();
 
-        // A thread is open while its check-out day is not more than seven days behind today (Europe/Rome): the same rule as StateOf.
         var openFrom = RomeCalendar.TodayAt(new DateTimeOffset(now)).AddDays(-GuestMessageRules.ClosedAfterCheckOutDays);
 
         var threads = db.GuestThreads
@@ -377,7 +365,6 @@ public sealed class GuestMessageService(
         ArgumentNullException.ThrowIfNull(scope);
         var openFrom = RomeCalendar.TodayAt(new DateTimeOffset(Now())).AddDays(-GuestMessageRules.ClosedAfterCheckOutDays);
 
-        // Same threads as the list (direct, confirmed, in the caller's scope), only the open ones, only those with something unread.
         var rows = await db.GuestThreads
             .AsNoTracking()
             .Where(t => t.OrgId == scope.OrgId && t.LastGuestMessageAt != null && t.Booking.CheckOutDate >= openFrom)
@@ -402,7 +389,6 @@ public sealed class GuestMessageService(
     private static bool NeedsReply(DateTime? lastGuestMessageAt, DateTime? lastHostMessageAt) =>
         lastGuestMessageAt is not null && (lastHostMessageAt is null || lastHostMessageAt < lastGuestMessageAt);
 
-    /// <summary>The latest messages of the thread of a booking, oldest first.</summary>
     private async Task<IReadOnlyList<GuestThreadMessage>> ReadMessagesAsync(Guid bookingId, CancellationToken cancellationToken)
     {
         var latest = await db.GuestMessages
@@ -417,7 +403,6 @@ public sealed class GuestMessageService(
         return latest;
     }
 
-    /// <summary>The id of the thread of the booking; the first message of either side creates it (two at once: the loser reads the winner's).</summary>
     private async Task<Guid> EnsureThreadAsync(Booking booking, DateTime now, CancellationToken cancellationToken)
     {
         var existing = await FindThreadIdAsync(booking.Id, cancellationToken);
@@ -457,10 +442,6 @@ public sealed class GuestMessageService(
             .Select(t => (Guid?)t.Id)
             .FirstOrDefaultAsync(cancellationToken);
 
-    /// <summary>
-    /// Writes the message, or finds the one the same key wrote before (a retried send): <c>Replayed</c> is then true. <paramref name="received"/> is the event of a message of the guest,
-    /// recorded in the same save as the message (one per message: its key is the message), or <c>null</c>.
-    /// </summary>
     private async Task<(GuestThreadMessage Message, bool Replayed)> WriteAsync(
         Guid threadId,
         Guid orgId,
@@ -536,7 +517,6 @@ public sealed class GuestMessageService(
         }
         catch (DbUpdateException ex) when (IsUniqueViolation(ex))
         {
-            // The same send twice at the same moment: the other call wrote it first.
             db.ChangeTracker.Clear();
             var winner = await FindByKeyAsync(threadId, key, cancellationToken);
             if (winner is null)
@@ -579,10 +559,6 @@ public sealed class GuestMessageService(
         }
     }
 
-    /// <summary>
-    /// The host read the thread (or answered it): the user's unread guest-message notifications of the booking are read too, and the
-    /// user's open sessions get the new count. Best effort, like the push: a failure is logged and never fails the call.
-    /// </summary>
     private async Task ClearNotificationsAsync(Guid bookingId, string? userId, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(userId))
@@ -600,17 +576,13 @@ public sealed class GuestMessageService(
         }
     }
 
-    /// <summary>The email to the guest: «the host answered», without the text, at most one every ten minutes per thread. Best effort, like the alert to the hosts.</summary>
     private async Task NotifyGuestAsync(Booking booking, Guid threadId, DateTime now, CancellationToken cancellationToken)
     {
         try
         {
-            // An erased guest keeps a placeholder address that is never deliverable (GuestDataEraser).
             if (booking.Guest.DataAnonymizedDate is not null || string.IsNullOrWhiteSpace(booking.Guest.Email))
                 return;
 
-            // E40/F01/US01/T03: the booking area of the agency's own domain when its guest area is served there. Read before the claim below, so
-            // nothing can stop between the claim and the e-mail.
             var portalUrl = PortalEnabled && stayLinks is not null
                 ? await stayLinks.UrlAsync(booking.OrgId, booking.Id, cancellationToken) : null;
             var bookingArea = portalUrl ?? (links.IsConfigured
@@ -625,9 +597,7 @@ public sealed class GuestMessageService(
                 return;
 
             var hostName = string.IsNullOrWhiteSpace(booking.Org.DisplayName) ? booking.Property.Name : booking.Org.DisplayName.Trim();
-            // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
             var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId, cancellationToken);
-            // E50/F01/US03/T02: with the guest portal on, in the language of the guest (the check-in page, the country, the account of the host); without it, in Italian as ever.
             var culture = await emailLanguage.CultureOrAsync(booking.OrgId, booking.Id, EmailTemplates.DefaultCulture, cancellationToken: cancellationToken);
             var content = EmailTemplates.HostReplyToGuest(
                 culture,
@@ -662,7 +632,6 @@ public sealed class GuestMessageService(
 
     private static DomainConflictException ThreadClosed() => new("thread_closed", "GuestThreadClosed");
 
-    /// <summary>The 404 of the guest area: the same for a booking that is not the guest's and for one that has no thread.</summary>
     private static NotFoundException GuestNotFound() =>
         new("No booking of the site matches the booking code and email")
         {
@@ -673,7 +642,6 @@ public sealed class GuestMessageService(
     private static bool IsUniqueViolation(DbUpdateException ex) =>
         ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
 
-    /// <summary>Now, cut to the microsecond PostgreSQL keeps, so what is written and what is read back compare equal.</summary>
     private DateTime Now()
     {
         var utc = _clock.GetUtcNow().UtcDateTime;

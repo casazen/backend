@@ -23,14 +23,8 @@ public sealed record BookingSyncStatus(
     bool CanRetry,
     OctorateVersionSnapshot? OctorateVersion);
 
-/// <summary>Reads the mirror of a booking on Octorate for the booking answer (E08/F03/US03/T02).</summary>
 public interface IBookingOctorateSyncReader
 {
-    /// <summary>
-    /// The mirror of the booking <paramref name="bookingId"/> of the org <paramref name="orgId"/>; <c>null</c> when the booking has no row, which means
-    /// that it is not mirrored (a booking of another org has none either: the org is part of the question). The caller has already checked that the
-    /// user may read the booking.
-    /// </summary>
     Task<BookingSyncStatus?> GetAsync(Guid orgId, Guid bookingId, CancellationToken cancellationToken = default);
 }
 
@@ -51,7 +45,6 @@ public sealed record OctorateVersionSnapshot(DateOnly? CheckIn, DateOnly? CheckO
     private static readonly string[] CheckOutNames = ["checkOut", "checkOutDate"];
     private static readonly string[] GuestsNames = ["guests", "numberOfGuests", "totalGuests", "totalGuest"];
 
-    /// <summary>The stored form of the snapshot: only the members that are known.</summary>
     public string ToJson()
     {
         var members = new Dictionary<string, object>(StringComparer.Ordinal);
@@ -67,11 +60,6 @@ public sealed record OctorateVersionSnapshot(DateOnly? CheckIn, DateOnly? CheckO
         return JsonSerializer.Serialize(members);
     }
 
-    /// <summary>
-    /// The snapshot stored in <paramref name="json"/>, or <c>null</c> when there is none or nothing in it can be read. The member names are read in any
-    /// case; a day is only a plain <c>yyyy-MM-dd</c> date (a time is not guessed into a stay day), the guests a whole number of at least one. A member
-    /// that cannot be read is left <c>null</c>, never invented.
-    /// </summary>
     public static OctorateVersionSnapshot? Parse(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))

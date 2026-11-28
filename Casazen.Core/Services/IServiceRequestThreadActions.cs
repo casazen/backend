@@ -13,11 +13,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IServiceRequestThreadActions
 {
-    /// <summary>
-    /// The thread of the request, with the messages of the customer marked as read by the supplier. Reading is allowed to a supplier that
-    /// is no longer active (it can read what it was told), writing is not.
-    /// </summary>
-    /// <exception cref="Exceptions.NotFoundException">Not a request on measure of this supplier.</exception>
     Task<ServiceRequestThread> GetThreadAsSupplierAsync(Guid id, Guid supplierOrgId, CancellationToken cancellationToken = default);
 
     /// <summary>

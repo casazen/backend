@@ -3,30 +3,20 @@ using Casazen.Core.Utilities;
 
 namespace Casazen.Core.Suppliers;
 
-// ─── What a supplier sends (read from the request, nothing checked yet) ──────────
-
-/// <summary>A band of one day in <c>PUT api/supplier/availability/hours</c>: minutes after midnight, Europe/Rome wall clock.</summary>
 public sealed record SupplierHoursBandInput(int? StartMinute, int? EndMinute);
 
-/// <summary>A day of the week with its bands; no band is a rest day.</summary>
 public sealed record SupplierHoursDayInput(DayOfWeek? Weekday, IReadOnlyList<SupplierHoursBandInput?>? Bands);
 
-/// <summary>The weekly working hours: the days sent; a weekday that is not sent has no hours.</summary>
 public sealed record SupplierHoursInput(IReadOnlyList<SupplierHoursDayInput?>? Days);
 
-/// <summary>A time off to add: first and last day (both included), reason, optional label.</summary>
 public sealed record SupplierTimeOffInput(DateOnly? FromDate, DateOnly? ToDate, SupplierTimeOffReason? Reason, string? Label);
 
-/// <summary>A time off after <see cref="SupplierAgendaRules.NormalizeTimeOff"/>: checked, label trimmed.</summary>
 public sealed record SupplierTimeOffContent(DateOnly FromDate, DateOnly ToDate, SupplierTimeOffReason Reason, string? Label);
 
-/// <summary>A block or an extra opening to add: kind, first and last instant (UTC), optional label.</summary>
 public sealed record SupplierBlockInput(SupplierBusyWindowKind? Kind, DateTime? StartUtc, DateTime? EndUtc, string? Label);
 
-/// <summary>A block or an extra opening after <see cref="SupplierAgendaRules.NormalizeBlock"/>: checked, instants in UTC, label trimmed.</summary>
 public sealed record SupplierBlockContent(SupplierBusyWindowKind Kind, DateTime StartUtc, DateTime EndUtc, string? Label);
 
-/// <summary>The rules a supplier edits: every one of the five is needed (<c>PUT</c> replaces them).</summary>
 public sealed record SupplierRulesInput(
     int? BufferMinutes,
     int? MaxJobsPerDay,
@@ -34,7 +24,6 @@ public sealed record SupplierRulesInput(
     int? HorizonDays,
     int? SlotStepMinutes);
 
-/// <summary>The rules after <see cref="SupplierAgendaRules.NormalizeRules"/>: all present and inside their limits.</summary>
 public sealed record SupplierRulesContent(
     int BufferMinutes,
     int MaxJobsPerDay,
@@ -42,22 +31,8 @@ public sealed record SupplierRulesContent(
     int HorizonDays,
     int SlotStepMinutes);
 
-/// <summary>
-/// What is a valid value of the supplier's agenda (SP-03): the weekly hours, a time off, a block or an extra opening, the
-/// rules. The limits are in <see cref="SupplierAgendaLimits"/>. Pure functions, testable without a database. Every value that
-/// is not valid is collected and refused together: 422 <see cref="SupplierAgendaRuleException"/> naming all the fields at
-/// fault (JSON names, a day or a band by its position).
-/// </summary>
 public static class SupplierAgendaRules
 {
-    /// <summary>
-    /// Checks the weekly hours and returns the bands in Monday-first order, then by start. A rest day is a day with no band
-    /// (or a weekday that is not sent). Refused (422 <see cref="SupplierAgendaErrors.HoursInvalid"/>): <c>days</c> missing or
-    /// with more than 7 entries; a day that is missing, without a weekday, with a weekday that is not one or that is repeated;
-    /// more than <see cref="SupplierAgendaLimits.MaxBandsPerDay"/> bands in a day; a start outside 0-1439; an end outside
-    /// 1-1440 or not after its start; two bands of a day that overlap (bands that only touch are allowed: the planner joins
-    /// them).
-    /// </summary>
     public static IReadOnlyList<SupplierWeeklyBand> NormalizeHours(SupplierHoursInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -130,14 +105,6 @@ public static class SupplierAgendaRules
             .ToList();
     }
 
-    /// <summary>
-    /// Checks a time off against <paramref name="today"/> (the Europe/Rome calendar day). Refused (422
-    /// <see cref="SupplierAgendaErrors.TimeOffInvalid"/>): a date that is missing; a last day before the first or more than
-    /// <see cref="SupplierAgendaLimits.MaxTimeOffDays"/> days from it; a last day already over; a first day more than
-    /// <see cref="SupplierAgendaLimits.MaxAdvanceDays"/> days ahead; a reason that is not one; a label of more than
-    /// <see cref="SupplierAgendaLimits.LabelMaxLength"/> characters or with control characters. A reason that is left out is
-    /// <see cref="SupplierTimeOffReason.Vacation"/>.
-    /// </summary>
     public static SupplierTimeOffContent NormalizeTimeOff(SupplierTimeOffInput input, DateOnly today)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -274,13 +241,8 @@ public static class SupplierAgendaRules
         return new SupplierRulesContent(buffer, maxJobs, notice, horizon, step);
     }
 
-    /// <summary>Position of a weekday in an Italian week: Monday 0 ... Sunday 6 (<see cref="DayOfWeek"/> starts on Sunday).</summary>
     public static int MondayFirst(DayOfWeek day) => ((int)day + 6) % 7;
 
-    /// <summary>
-    /// True when the stretch from <paramref name="startUtc"/> to <paramref name="endUtc"/> is inside the Europe/Rome calendar
-    /// day of its start (it may end at the midnight that closes that day): an extra opening is a band of one day.
-    /// </summary>
     public static bool IsInsideOneRomeDay(DateTime startUtc, DateTime endUtc)
     {
         var dayEnd = RomeCalendar.StartOfDayUtc(RomeCalendar.DateInRome(startUtc).AddDays(1));
@@ -296,7 +258,6 @@ public static class SupplierAgendaRules
         return 0;
     }
 
-    /// <summary>A label: trimmed, <c>null</c> when empty; refused when too long or with control characters (no line break either).</summary>
     private static string? OptionalLabel(string? value, List<string> invalid)
     {
         var text = value?.Trim();

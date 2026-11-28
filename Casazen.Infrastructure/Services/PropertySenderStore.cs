@@ -30,10 +30,8 @@ public sealed class PropertySenderStore(
     IHostEnvironment hostEnvironment,
     TimeProvider? timeProvider = null) : IPropertySenderStore
 {
-    /// <summary>The error code of a write that lost to another one setting another sender.</summary>
     public const string ChangedConcurrentlyCode = "sender_changed_concurrently";
 
-    /// <summary>The error code of a property outside Italy.</summary>
     public const string NotApplicableCode = "sender_not_applicable";
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -51,10 +49,6 @@ public sealed class PropertySenderStore(
     public Task<IReadOnlyDictionary<Guid, PropertySenderInfo>> GetManyForHistoryAsync(IReadOnlyCollection<Guid> propertyIds, CancellationToken ct) =>
         ReadManyAsync(propertyIds, includeDeleted: true, ct);
 
-    /// <summary>
-    /// The senders of the properties asked for. With <paramref name="includeDeleted"/> the soft-delete filter is lifted (the history of a deleted
-    /// property is kept, PC-05); the tenant filter never is, so the properties of another org are left out either way.
-    /// </summary>
     private async Task<IReadOnlyDictionary<Guid, PropertySenderInfo>> ReadManyAsync(
         IReadOnlyCollection<Guid> propertyIds,
         bool includeDeleted,
@@ -92,9 +86,8 @@ public sealed class PropertySenderStore(
         if (row?.DirectAlloggiatiFrom != null || row?.DirectIstatFrom != null)
             throw new DomainConflictException("direct_route_managed_separately", "SenderChangedConcurrently");
         if (row is not null && row.AlloggiatiSender == sender && row.IstatSender == sender)
-            return Stored(row); // The same sender again: nothing changes, nothing is recorded.
+            return Stored(row);
 
-        // The sender before the change: the stored one, or the default the property had until now.
         var from = row?.AlloggiatiSender ?? (await ReadAsync([property], ct))[property.Id].AlloggiatiSender;
         var now = Now();
         if (row is null)
@@ -126,7 +119,6 @@ public sealed class PropertySenderStore(
         catch (DbUpdateException ex) when (ex is DbUpdateConcurrencyException
                                            || OrgTeamAccess.IsUniqueViolation(ex, PropertyComplianceSender.PropertyIndexName))
         {
-            // Another write set the sender of the property between the read and the save: nothing of this one was written.
             Forget(row);
             var current = await db.PropertyComplianceSenders
                 .AsNoTracking()
@@ -147,7 +139,6 @@ public sealed class PropertySenderStore(
     internal static bool IsItalian(string? country) =>
         string.IsNullOrWhiteSpace(country) || string.Equals(country, "IT", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>The senders of properties already found: stored, inherited from the account, by default, or not applicable. Three queries at most.</summary>
     private async Task<Dictionary<Guid, PropertySenderInfo>> ReadAsync(IReadOnlyList<PropertyRef> properties, CancellationToken ct)
     {
         var senders = new Dictionary<Guid, PropertySenderInfo>(properties.Count);
@@ -190,10 +181,6 @@ public sealed class PropertySenderStore(
         return senders;
     }
 
-    /// <summary>
-    /// The properties whose listing is confirmed (<see cref="OctorateMappingStatus.Confirmed"/>) on a connection of the org of the property,
-    /// of this environment and connected (PO-02): the channel manager sends for them by default.
-    /// </summary>
     private async Task<HashSet<Guid>> ChannelManagedAsync(IReadOnlyCollection<PropertyRef> properties, CancellationToken ct)
     {
         var environment = OctorateEnvironments.Of(hostEnvironment);
@@ -215,7 +202,6 @@ public sealed class PropertySenderStore(
             .ToHashSet();
     }
 
-    /// <summary>A property the caller's org has (tenant and soft-delete filters), with what the sender depends on.</summary>
     private Task<PropertyRef?> FindPropertyAsync(Guid propertyId, CancellationToken ct) =>
         db.Properties
             .AsNoTracking()
@@ -223,7 +209,6 @@ public sealed class PropertySenderStore(
             .Select(p => new PropertyRef(p.Id, p.OrgId, p.Country))
             .FirstOrDefaultAsync(ct);
 
-    /// <summary>Drops what <see cref="SetAsync"/> staged (the row and its activity line) after a lost save.</summary>
     private void Forget(PropertyComplianceSender row)
     {
         db.Entry(row).State = EntityState.Detached;
@@ -249,9 +234,7 @@ public sealed class PropertySenderStore(
     private static NotFoundException PropertyNotFound(Guid propertyId) =>
         new($"Property {propertyId} not found.") { Code = "property_not_found", MessageKey = "PropertyNotFound" };
 
-    /// <summary>Now, cut to the microsecond PostgreSQL keeps, so what is written and what is read back compare equal.</summary>
     private DateTime Now() => UtcDateTime.TruncateToMicroseconds(_clock.GetUtcNow().UtcDateTime);
 
-    /// <summary>A property and what its sender depends on: its org and its country.</summary>
     private sealed record PropertyRef(Guid Id, Guid OrgId, string? Country);
 }

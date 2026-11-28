@@ -38,10 +38,8 @@ public sealed record DocumentFormatRejection(string FileName, string ReasonCode)
 /// </summary>
 public sealed class DocumentFormatRegistry
 {
-    /// <summary>The largest format file that is read, in bytes: a format is a few kilobytes.</summary>
     private const int MaxFileBytes = 262_144;
 
-    /// <summary>The tolerance of the sum of a position and a size when they are compared with the edge of the card (rounding of the decimal numbers of the files).</summary>
     private const double EdgeTolerance = 1e-9;
 
     private readonly IOptions<IdentityVerificationOptions> _options;
@@ -49,13 +47,11 @@ public sealed class DocumentFormatRegistry
     private readonly string _baseDirectory;
     private readonly Lazy<Loaded> _loaded;
 
-    /// <summary>The registry of the application: the folder of the formats is read from the application folder.</summary>
     public DocumentFormatRegistry(IOptions<IdentityVerificationOptions> options, ILogger<DocumentFormatRegistry> logger)
         : this(options, logger, AppContext.BaseDirectory)
     {
     }
 
-    /// <summary>The registry with the folder a relative <c>FormatsDirectory</c> starts from: what the tests use.</summary>
     internal DocumentFormatRegistry(IOptions<IdentityVerificationOptions> options, ILogger<DocumentFormatRegistry> logger, string baseDirectory)
     {
         _options = options;
@@ -64,13 +60,10 @@ public sealed class DocumentFormatRegistry
         _loaded = new Lazy<Loaded>(Load, LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
-    /// <summary>Every format that is valid, by id in ordinal order. Read once; empty when the folder is missing.</summary>
     public IReadOnlyList<DocumentFormat> All => _loaded.Value.Formats;
 
-    /// <summary>The files that were skipped, and why. Read once.</summary>
     public IReadOnlyList<DocumentFormatRejection> Rejected => _loaded.Value.Rejected;
 
-    /// <summary>The format with this id (as written in its file, case sensitive); null when there is none.</summary>
     public DocumentFormat? Get(string? id)
     {
         return id is not null && _loaded.Value.ById.TryGetValue(id.Trim(), out var format) ? format : null;
@@ -101,8 +94,6 @@ public sealed class DocumentFormatRegistry
             if (!string.Equals(format.Mrz.Type, type, StringComparison.Ordinal) || !string.Equals(format.Mrz.IssuingState, state, StringComparison.Ordinal))
                 continue;
 
-            // A code the format excludes is not of this format although a prefix of the format matches it (the Italian card claims the codes that start with I, and IR
-            // is the residence permit): the format is out for this document, and with no other format that claims the code the answer is null.
             if (format.ExcludedDocumentCodes is { } excluded && excluded.Any(prefix => code.StartsWith(prefix, StringComparison.Ordinal)))
                 continue;
 
@@ -188,7 +179,6 @@ public sealed class DocumentFormatRegistry
 
         foreach (var (kind, level) in format.Assurance)
         {
-            // A browser reads no chip: it can never give the cryptographic level, whatever a file says.
             if (!DocumentFormatChannels.Kinds.Contains(kind)
                 || !IdentityAssuranceLevels.All.Contains(level)
                 || (kind == DocumentFormatChannels.Web && level != IdentityAssuranceLevels.Consistency))
@@ -200,10 +190,6 @@ public sealed class DocumentFormatRegistry
         return DocumentFormatStatuses.All.Contains(format.Status) ? null : DocumentFormatReasonCodes.FormatStatusInvalid;
     }
 
-    /// <summary>
-    /// The excluded codes of a format are valid when none is repeated, each is one or two capital letters, each starts with one of the document codes (else it would
-    /// exclude nothing) and none is a document code itself (else it would exclude what the format claims). An empty list is valid and excludes nothing.
-    /// </summary>
     private static bool AreValidExcludedCodes(IReadOnlyList<string> excluded, IReadOnlyList<string> documentCodes)
     {
         if (excluded.Count > 8 || excluded.Distinct(StringComparer.Ordinal).Count() != excluded.Count)
@@ -227,7 +213,6 @@ public sealed class DocumentFormatRegistry
             return DocumentFormatReasonCodes.FormatLayoutInvalid;
         }
 
-        // The layout has one entry for each side of the format, and no other.
         if (layout.Sides.Count != format.Sides.Count || format.Sides.Any(side => !layout.Sides.ContainsKey(side)))
             return DocumentFormatReasonCodes.FormatLayoutInvalid;
 
@@ -235,12 +220,9 @@ public sealed class DocumentFormatRegistry
         var regions = new List<DocumentFormatRegion>();
         foreach (var (side, sideLayout) in layout.Sides)
         {
-            // The reader refuses a null member of a record but not a null INSIDE a dictionary or a list (System.Text.Json does not check the items of a collection
-            // against their nullability): a side whose layout is null, or a field that is null, is an invalid layout, not an exception that would hide every format.
             if (sideLayout is null)
                 return DocumentFormatReasonCodes.FormatLayoutInvalid;
 
-            // The MRZ is on one side and has its region there, and on no other.
             if ((side == format.Mrz.Side) != (sideLayout.MrzRegion is not null))
                 return DocumentFormatReasonCodes.FormatLayoutInvalid;
 
@@ -266,7 +248,6 @@ public sealed class DocumentFormatRegistry
                 regions.Add(sideLayout.MrzRegion);
         }
 
-        // The portrait check needs the portrait on one side; a format that does not check it may have none, and never two.
         if (portraits > 1 || (portraits == 0 && format.RequiredChecks.Contains(DocumentFormatChecks.Portrait)))
             return DocumentFormatReasonCodes.FormatLayoutInvalid;
 
@@ -290,7 +271,6 @@ public sealed class DocumentFormatRegistry
         return value is { Length: > 0 and <= 40 } && char.IsAsciiLetterLower(value[0]) && value.All(char.IsAsciiLetterOrDigit);
     }
 
-    /// <summary>A field of an MRZ as the registry compares it: no filler, no spaces, capitals.</summary>
     private static string NormalizeMrzField(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -314,7 +294,6 @@ public sealed class DocumentFormatRegistry
         }
         catch (Exception ex)
         {
-            // Never an exception to a caller: whatever went wrong, no format is known and every document goes to a person. The type only, never the message.
             _logger.LogError("The identity formats could not be loaded ({ErrorType}); every document goes to a person", ex.GetType().Name);
             return Loaded.Empty;
         }
@@ -347,7 +326,6 @@ public sealed class DocumentFormatRegistry
                 candidates.Add((name, format));
         }
 
-        // Which of two files of one id is meant cannot be told: neither is used.
         var duplicated = candidates.GroupBy(candidate => candidate.Format.Id, StringComparer.Ordinal).Where(group => group.Count() > 1).Select(group => group.Key).ToHashSet(StringComparer.Ordinal);
         foreach (var candidate in candidates.Where(candidate => duplicated.Contains(candidate.Format.Id)))
             rejected.Add(new DocumentFormatRejection(candidate.FileName, DocumentFormatReasonCodes.FormatIdDuplicate));
@@ -397,7 +375,6 @@ public sealed class DocumentFormatRegistry
             return (null, DocumentFormatReasonCodes.FormatUnreadable);
         }
 
-        // The strict reading shared with the policy: no comments, no trailing comma, no repeated member, no member the format does not have, none missing.
         if (!IdentityConfigurationJson.TryCanonicalize(bytes, out var canonical))
             return (null, DocumentFormatReasonCodes.FormatJsonInvalid);
 

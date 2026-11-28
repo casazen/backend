@@ -12,17 +12,14 @@ namespace Casazen.Core.DTOs;
 /// </summary>
 public sealed class PublicPropertyProfileDto
 {
-    /// <summary>The headline of the listing (SR-07a), when the host wrote one different from the name.</summary>
     public string? Headline { get; init; }
 
     public AccommodationType? AccommodationType { get; init; }
 
     public int? Beds { get; init; }
 
-    /// <summary>Living area in square metres.</summary>
     public int? AreaSqm { get; init; }
 
-    /// <summary>The floor, 0 = ground floor.</summary>
     public int? FloorLevel { get; init; }
 
     public LocalizedText? FloorNote { get; init; }
@@ -31,50 +28,37 @@ public sealed class PublicPropertyProfileDto
 
     public int? RenovatedYear { get; init; }
 
-    /// <summary>The energy class (and index) the host stated from the APE; <c>null</c> when they stated none. Never filled in by the system.</summary>
     public PublicPropertyEnergyDto? Energy { get; init; }
 
-    /// <summary>What kind of place the house stands in; <c>null</c> = not said.</summary>
     public PropertyAreaKind? AreaKind { get; init; }
 
     public LocalizedText? Zone { get; init; }
 
     public LocalizedText? Near { get; init; }
 
-    /// <summary>The labels of the house: the ones the host chose and the ones its data give, in the order of the vocabulary.</summary>
     public IReadOnlyList<string> Tags { get; init; } = [];
 
     public IReadOnlyList<SiteHighlight> Highlights { get; init; } = [];
 
     public IReadOnlyList<LocalizedText> SafetyNotes { get; init; } = [];
 
-    /// <summary>The rules and times; <c>null</c> when the host said none of them.</summary>
     public PublicPropertyRulesDto? Rules { get; init; }
 
-    /// <summary>The video, embeddable after the visitor's click; <c>null</c> = none.</summary>
     public PublicPropertyEmbedDto? Video { get; init; }
 
-    /// <summary>The 360° tour, embeddable after the visitor's click; <c>null</c> = none.</summary>
     public PublicPropertyEmbedDto? Tour { get; init; }
 
-    /// <summary>The levels of the floor plan, lowest level first; empty = the host uploaded none.</summary>
     public IReadOnlyList<PublicFloorPlanDto> FloorPlans { get; set; } = [];
 
-    /// <summary>The points of interest around the house, in the order the host gave; empty = none. Never an exact position (see <see cref="PublicPoiDto"/>).</summary>
     public IReadOnlyList<PublicPoiDto> Pois { get; set; } = [];
 }
 
-/// <summary>The energy class of the APE as the host stated it.</summary>
-/// <param name="Class"><c>A4</c> to <c>G</c>.</param>
-/// <param name="Index">The global performance index in kWh/m² per year; <c>null</c> = not given.</param>
 public sealed record PublicPropertyEnergyDto(string Class, decimal? Index);
 
-/// <summary>The rules and times of the house. Each member is <c>null</c> when the host never said it.</summary>
 public sealed class PublicPropertyRulesDto
 {
     public PublicCheckInDto? CheckIn { get; init; }
 
-    /// <summary>The time by which guests must leave.</summary>
     public TimeOnly? CheckOutBy { get; init; }
 
     public PublicQuietHoursDto? QuietHours { get; init; }
@@ -85,20 +69,15 @@ public sealed class PublicPropertyRulesDto
 
     public PartiesPolicy? Parties { get; init; }
 
-    /// <summary><c>true</c> = children are welcome, <c>false</c> = the house is not suited to them.</summary>
     public bool? ChildrenWelcome { get; init; }
 
-    /// <summary>A note the host adds to the rules.</summary>
     public LocalizedText? Note { get; init; }
 }
 
-/// <summary>When and how guests arrive. <paramref name="From"/> and <paramref name="To"/> are on the clock of the property.</summary>
 public sealed record PublicCheckInDto(TimeOnly? From, TimeOnly? To, LocalizedText? Method);
 
-/// <summary>The quiet hours of the house, on the clock of the property.</summary>
 public sealed record PublicQuietHoursDto(TimeOnly From, TimeOnly To);
 
-/// <summary>A video or a tour as an address the page can embed (the canonical embed of one of three providers).</summary>
 public sealed record PublicPropertyEmbedDto(string Url, SiteEmbedProvider Provider);
 
 /// <summary>

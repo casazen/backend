@@ -18,17 +18,10 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public static partial class MessageChannelRules
 {
-    /// <summary>The text has a link, an e-mail address or a phone number that the channel does not take yet (422), or the channel takes no answer at all.</summary>
     public const string ContactDetailsCode = "channel_rule_violation";
 
-    /// <summary>The text is empty or longer than <see cref="GuestMessageRules.TextMaxLength"/> (422).</summary>
     public const string TextInvalidCode = "message_text_invalid";
 
-    /// <summary>
-    /// The code of the first rule that <paramref name="text"/> breaks for a conversation of <paramref name="channel"/> of <paramref name="kind"/>, else
-    /// <c>null</c>: first the text itself (<see cref="TextInvalidCode"/>), then what the channel allows (<see cref="ContactDetailsCode"/>). A channel or a
-    /// kind the table does not know allows nothing (<see cref="OtaChannelCapabilities"/> is closed by default).
-    /// </summary>
     public static string? CheckOutgoing(OtaChannel channel, OtaThreadKind kind, string? text)
     {
         var clean = GuestMessageRules.NormalizeText(text);
@@ -42,14 +35,9 @@ public static partial class MessageChannelRules
         return !capability.ContactDetailsAllowed && ContainsContactDetails(clean) ? ContactDetailsCode : null;
     }
 
-    /// <summary>True when <paramref name="text"/> holds an e-mail address, a link or a phone number.</summary>
     public static bool ContainsContactDetails(string? text) =>
         !string.IsNullOrEmpty(text) && (EmailAddress().IsMatch(text) || Link().IsMatch(text) || PhoneNumber().IsMatch(text));
 
-    /// <summary>
-    /// The e-mail addresses, links and phone numbers <paramref name="text"/> holds, as they are written, each once: what <see cref="ContainsContactDetails"/> looks for. The assistant's
-    /// confidence (E05/F05/US02) checks that each of them is one of the facts of the property.
-    /// </summary>
     public static IReadOnlyList<string> ContactDetailsIn(string? text)
     {
         if (string.IsNullOrEmpty(text))
@@ -64,7 +52,6 @@ public static partial class MessageChannelRules
             .ToList();
     }
 
-    // something@something.tld, with a space allowed around the sign.
     [GeneratedRegex(@"[A-Za-z0-9._%+\-]+[ ]?@[ ]?[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}", RegexOptions.CultureInvariant)]
     private static partial Regex EmailAddress();
 
@@ -76,8 +63,6 @@ public static partial class MessageChannelRules
         RegexOptions.CultureInvariant)]
     private static partial Regex Link();
 
-    // Nine digits or more, with the usual separators between them (a space, a dash, a dot, brackets), after a + or 00 or not; not inside a longer word.
-    // A date (2026-11-06) has eight digits and a time has a colon, so neither is a number.
     [GeneratedRegex(@"(?<![\d\w])(?:\+|00)?\d(?:[ \-.()]{0,2}\d){8,}(?!\d)", RegexOptions.CultureInvariant)]
     private static partial Regex PhoneNumber();
 }

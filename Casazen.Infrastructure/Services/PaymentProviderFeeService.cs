@@ -25,10 +25,6 @@ public sealed class PaymentProviderFeeService(
     TimeProvider timeProvider,
     ILogger<PaymentProviderFeeService> logger) : IPaymentProviderFeeService
 {
-    /// <summary>
-    /// The statuses of a card payment that settled at the provider, so it has a balance transaction to read: the payments the capture is for, and the
-    /// ones the reports of the money (NF-97, NF-98) read the stored figures of. One list, for the capture and for what reads its result.
-    /// </summary>
     internal static readonly PaymentStatus[] SettledStatuses = [PaymentStatus.Completed, PaymentStatus.Refunded, PaymentStatus.PartiallyRefunded];
 
     public async Task<IReadOnlyList<Guid>> DuePaymentIdsAsync(int max, CancellationToken ct = default)
@@ -89,7 +85,6 @@ public sealed class PaymentProviderFeeService(
             return PaymentProviderFeeOutcome.NotAvailableYet;
         }
 
-        // Only the provider columns: Amount, RefundedAmount and Status are never written here.
         payment.ProviderFeeAmount = PaymentRefundService.FromCents(transaction.FeeMinor);
         payment.ProviderNetAmount = PaymentRefundService.FromCents(transaction.NetMinor);
         payment.ProviderBalanceCurrency = transaction.Currency.Trim().ToUpperInvariant();
@@ -101,7 +96,6 @@ public sealed class PaymentProviderFeeService(
         return PaymentProviderFeeOutcome.Captured;
     }
 
-    /// <summary>One more attempt; at the last one the capture gives up on the payment with one line in the log (the id only).</summary>
     private async Task CountMissAsync(Payment payment, CancellationToken ct)
     {
         payment.ProviderFeeFetchAttempts++;

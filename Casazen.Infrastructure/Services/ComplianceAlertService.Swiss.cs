@@ -70,7 +70,6 @@ public sealed partial class ComplianceAlertService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // One property or day that cannot be processed never stops the others; its stage stays unclaimed when the failure came before the claim, and the next run tries again.
                 logger.LogError(ex, "Swiss notification alert of property {PropertyId} for {Day} could not be processed", day.PropertyId, day.Day);
             }
             finally
@@ -101,7 +100,6 @@ public sealed partial class ComplianceAlertService
             return null;
         }
 
-        // The day is still to notify under the regime that raised it: a day that closed, or a property that changed canton, is not alerted.
         if (detail.PendingDays.All(p => p.Day != day.Day || p.RegimeCode != day.RegimeCode))
             return null;
 
@@ -114,7 +112,6 @@ public sealed partial class ComplianceAlertService
         return step with { Alert = step.Alert with { MissingFields = missing } };
     }
 
-    /// <summary>The last stage sent for each arrival day of these properties (the state rows of <see cref="ComplianceAlertType.SwissNotification"/>).</summary>
     private async Task<Dictionary<(Guid PropertyId, string Day), int>> SwissStagesAsync(IReadOnlyCollection<Guid> propertyIds, CancellationToken ct)
     {
         var ids = propertyIds.ToList();

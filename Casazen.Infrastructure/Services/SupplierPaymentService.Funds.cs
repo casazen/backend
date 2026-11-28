@@ -26,28 +26,20 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed partial class SupplierPaymentService
 {
-    /// <summary>What the cancellation of a block found on Stripe.</summary>
     private enum AuthorizationOutcome
     {
-        /// <summary>The block is released: the payment is <c>Canceled</c>.</summary>
         Canceled,
 
-        /// <summary>The card had been charged meanwhile: the payment is <c>Held</c> now and the money must be given back, not dropped.</summary>
         Captured,
 
-        /// <summary>The PaymentIntent is still a block: the cancellation did not take effect, try again later.</summary>
         Pending,
     }
 
-    // ─── The card of a booking, before the request exists ────────────────────────────────────────────────────────────
-
     public async Task<bool> CanAuthorizeAsync(Guid supplierOrgId, int amountCents, CancellationToken cancellationToken = default)
     {
-        // The flag stops the creation only: what is in flight is followed whatever it says.
         if (!features.IsEnabled(FeatureFlags.SupplierOnlinePayments) || amountCents < options.Value.MinAmountCents)
             return false;
 
-        // Without the publishable key the browser cannot confirm the card: the booking goes on as it always did.
         if (string.IsNullOrWhiteSpace(configuration["Stripe:PublishableKey"]) || platformGateway is null)
             return false;
 
@@ -86,7 +78,6 @@ public sealed partial class SupplierPaymentService
 
         var charge = await ReadPlatformIntentAsync(paymentIntentId, cancellationToken);
 
-        // Only a PaymentIntent the customer can still pay is given back: a secret of one that is blocked or canceled is of no use.
         return charge is not null && ServiceCharges.IsPayable(charge.Status) ? ToAuthorization(charge) : null;
     }
 
@@ -102,13 +93,11 @@ public sealed partial class SupplierPaymentService
         }
         catch (Stripe.StripeException ex) when (ex.StripeError?.Code == "resource_missing")
         {
-            // Gone with nothing to release.
             return;
         }
 
         if (charge.Status == "succeeded")
         {
-            // A block of a hold is never charged by CasaZen before the request exists; if it was, somebody did it outside: say so loudly.
             logger.LogError(
                 "Hold {HoldId}: PaymentIntent {PaymentIntentId} could not be released because it was charged. Refund it on the Stripe Dashboard",
                 holdId, paymentIntentId);
@@ -128,7 +117,6 @@ public sealed partial class SupplierPaymentService
                 (int)Math.Min(charge.AmountCents, int.MaxValue),
                 charge.Currency.ToUpperInvariant());
 
-    /// <summary>The PaymentIntent on the platform as Stripe has it now, or null when it no longer exists. Any other Stripe failure is rethrown.</summary>
     private async Task<PlatformCharge?> ReadPlatformIntentAsync(string paymentIntentId, CancellationToken cancellationToken)
     {
         try
@@ -142,8 +130,6 @@ public sealed partial class SupplierPaymentService
         }
     }
 
-    // ─── The payment born with the request ───────────────────────────────────────────────────────────────────────────
-
     public async Task<ServiceRequestPayment> AddAuthorizedPaymentAsync(
         ServiceRequest request,
         AuthorizedPaymentInput input,
@@ -154,7 +140,6 @@ public sealed partial class SupplierPaymentService
         ArgumentException.ThrowIfNullOrWhiteSpace(input.PaymentIntentId);
         ArgumentOutOfRangeException.ThrowIfLessThan(input.AmountCents, 1);
 
-        // The commission is snapshotted now, with the percentage in force now (the supplier's own, else the platform's).
         var percent = await ReadCommissionPercentAsync(request.SupplierOrgId, cancellationToken);
         var fee = SupplierCommission.FeeCents(input.AmountCents, percent);
         var (payerKind, payerOrgId) = PayerOf(request);
@@ -170,7 +155,6 @@ public sealed partial class SupplierPaymentService
             Currency = ServiceCharges.Currency,
             CommissionPercent = percent,
 
-            // The commission CasaZen keeps: nothing is sent to Stripe as a fee, it is the part that is not transferred.
             ApplicationFeeCents = fee,
             NetCents = SupplierCommission.NetCents(input.AmountCents, fee),
             Status = ServicePaymentStatus.Authorized,
@@ -186,15 +170,12 @@ public sealed partial class SupplierPaymentService
             UpdatedAt = now,
         };
 
-        // The request is paid inside CasaZen from its birth: the supplier's take charges the card, and nothing can be marked paid by hand.
         request.PaymentMode = ServiceRequestPaymentMode.Online;
         db.ServiceRequestPayments.Add(payment);
         return payment;
     }
 
     public DateTime LatestResponseAt(DateTime authorizedAt) => HeldPaymentRules.LatestResponseAt(authorizedAt, options.Value.AuthorizationValidity);
-
-    // ─── Reading ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
     public async Task<bool> HasHeldPaymentAsync(Guid requestId, CancellationToken cancellationToken = default) =>
         await db.ServiceRequestPayments
@@ -209,7 +190,6 @@ public sealed partial class SupplierPaymentService
             .OrderByDescending(p => p.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
 
-    /// <summary>The most recent payment of the request that CasaZen holds (whatever its status, even a canceled block), as a reference.</summary>
     private async Task<(Guid Id, ServicePaymentStatus Status)?> FindLatestHeldAsync(Guid requestId, CancellationToken cancellationToken)
     {
         var row = await db.ServiceRequestPayments
@@ -221,7 +201,6 @@ public sealed partial class SupplierPaymentService
         return row is null ? null : (row.Id, row.Status);
     }
 
-    /// <summary>The status of the request, whoever it belongs to; null when it does not exist. The request has two parties and no tenant filter: scoped by its id.</summary>
     private async Task<ServiceRequestStatus?> ReadRequestStatusAsync(Guid requestId, CancellationToken cancellationToken) =>
         await db.ServiceRequests
             .IgnoreQueryFilters()
@@ -229,8 +208,6 @@ public sealed partial class SupplierPaymentService
             .Where(r => r.Id == requestId)
             .Select(r => (ServiceRequestStatus?)r.Status)
             .FirstOrDefaultAsync(cancellationToken);
-
-    // ─── Completing the work ─────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// The plan of a showcase request that is completed: with a payment held by CasaZen, nothing is created (the payment exists since the
@@ -251,11 +228,9 @@ public sealed partial class SupplierPaymentService
             return new ServicePaymentPlan(ServiceRequestPaymentMode.Manual, null, null);
         }
 
-        // The price is what the customer blocked on the card; a different total, or extras, would be money nobody agreed to.
         if (finalAmountCents != payment.AmountCents)
             throw new DomainRuleException(ServicePaymentErrors.AmountLocked, ServicePaymentErrors.AmountLockedMessageKey);
 
-        // A block that was never charged (the take did not charge it) is charged now: the work is done, the money must be held.
         if (payment.Status == ServicePaymentStatus.Authorized)
         {
             await CaptureForTakeAsync(request, cancellationToken);
@@ -264,8 +239,6 @@ public sealed partial class SupplierPaymentService
                 .FirstAsync(cancellationToken);
         }
 
-        // A complaint stopped the money (typically the no-show: the work was never marked completed): the supplier replies to it, and a decision for
-        // the supplier completes the job for it. Completing from here would let the work be declared done while the payer says it was not.
         if (payment.Status == ServicePaymentStatus.Disputed)
             throw ServiceDisputeErrors.CompletionBlockedByDispute();
 
@@ -283,18 +256,14 @@ public sealed partial class SupplierPaymentService
         return new ServicePaymentPlan(ServiceRequestPaymentMode.Online, null, null);
     }
 
-    // ─── Charging the card when the supplier accepts ─────────────────────────────────────────────────────────────────
-
     public async Task CaptureForTakeAsync(ServiceRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        // Cheap, and the usual answer: most requests (every host's, every booking without a card) have no held payment.
         var latest = await FindLatestHeldAsync(request.Id, cancellationToken);
         if (latest is not { } known)
             return;
 
-        // A block that was dropped (lapsed, canceled, refused) leaves a booking nobody pays: it cannot be accepted as a manual one.
         if (known.Status == ServicePaymentStatus.Canceled)
             throw AuthorizationExpired();
 
@@ -325,11 +294,10 @@ public sealed partial class SupplierPaymentService
         var now = Now();
         if (!HeldPaymentRules.CanCapture(payment.Status, payment.AuthorizationExpiresAt, now))
         {
-            // The block outlived its usable time: it is released, and the booking cannot be accepted.
             logger.LogInformation("Payment {PaymentId}: the block lapsed before the supplier accepted, it is released", payment.Id);
             var lapsed = await DropBlockAsync(payment, now, transaction, cancellationToken);
             if (lapsed == AuthorizationOutcome.Captured)
-                return; // charged just now by somebody else: the money is held, nothing is refused
+                return;
 
             throw AuthorizationExpired();
         }
@@ -346,8 +314,6 @@ public sealed partial class SupplierPaymentService
                 ex, "Payment {PaymentId}: the card could not be charged ({StripeCode}); the request is not accepted",
                 payment.Id, ex.StripeError?.Code ?? ex.StripeError?.Type ?? $"http_{(int)ex.HttpStatusCode}");
 
-            // A refusal that will not change (the bank, an expired block) drops the block; a failure of the moment (the network,
-            // a busy Stripe) leaves it, and the supplier can try again.
             if (IsDefinitiveCaptureFailure(ex))
             {
                 _ = await DropBlockAsync(payment, now, transaction, cancellationToken);
@@ -369,7 +335,6 @@ public sealed partial class SupplierPaymentService
                 await CommitAsync(transaction, cancellationToken);
                 throw AuthorizationExpired();
             default:
-                // Still a block, or in a state a card never reaches here: nothing was charged, the take is refused.
                 logger.LogWarning("Payment {PaymentId}: after the capture the PaymentIntent is {Status}", payment.Id, charge.Status);
                 throw CaptureFailed();
         }
@@ -377,7 +342,6 @@ public sealed partial class SupplierPaymentService
         var mismatches = HeldChargeVerification.CaptureMismatches(ExpectationOf(payment), ObservationOf(charge));
         if (mismatches.Count > 0)
         {
-            // Money moved in a way nobody planned: held for an admin, the take is refused, the request is not shown as paid.
             var code = ServiceChargeVerification.ReviewCode(mismatches);
             payment.Status = ServicePaymentStatus.NeedsReview;
             payment.FailureCode = Truncate(code, 100);
@@ -423,11 +387,6 @@ public sealed partial class SupplierPaymentService
         }
     }
 
-    /// <summary>
-    /// The card was charged: the money is held. <c>PaidAt</c> is the day the payer paid; it moves to the day of the release. A host pays after the
-    /// work is done (its payment is created when the supplier completes, SP-15c-b), so the moment the supplier is due is the charge plus the window
-    /// (R3: the later of the completion and the charge, plus the window); a showcase customer pays before the work, and completing fixes it.
-    /// </summary>
     private void RecordCaptured(ServiceRequestPayment payment, string? chargeId, DateTime now)
     {
         payment.Status = ServicePaymentStatus.Held;
@@ -442,7 +401,6 @@ public sealed partial class SupplierPaymentService
             payment.ReleaseAt ??= HeldPaymentRules.ReleaseAt(payment.CreatedAt, payment.CapturedAt.Value, options.Value.ReleaseAfter);
     }
 
-    /// <summary>A refusal of the capture that a second try will not change: the bank's, or a block that expired.</summary>
     private static bool IsDefinitiveCaptureFailure(Stripe.StripeException ex) =>
         ex.StripeError?.Type == "card_error" || ex.StripeError?.Code is "charge_expired_for_capture" or "payment_intent_unexpected_state";
 
@@ -469,7 +427,6 @@ public sealed partial class SupplierPaymentService
         }
         catch (Stripe.StripeException ex) when (ex.StripeError?.Code == "resource_missing")
         {
-            // Gone: nothing is blocked any more.
             charge = null;
         }
 
@@ -500,8 +457,6 @@ public sealed partial class SupplierPaymentService
         return AuthorizationOutcome.Pending;
     }
 
-    // ─── Giving the money back when the request closes ───────────────────────────────────────────────────────────────
-
     public async Task SettleClosedRequestAsync(Guid requestId, CancellationToken cancellationToken = default)
     {
         try
@@ -512,7 +467,6 @@ public sealed partial class SupplierPaymentService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The request is closed already and must stay so: the funds job settles the money on its next run.
             DetachPendingPaymentChanges();
             logger.LogError(
                 ex, "The money of the closed request {RequestId} could not be settled now; the funds job will try again", requestId);
@@ -540,8 +494,6 @@ public sealed partial class SupplierPaymentService
             var now = Now();
             switch (payment.Status)
             {
-                // SP-10b-b: the card of an offer that never came (a PaymentIntent still waiting for a card) is dropped like a block. Only the private
-                // payer's: a host's payment waiting for its link belongs to a job that was completed, which no closed request has.
                 case ServicePaymentStatus.Authorized or ServicePaymentStatus.Requested or ServicePaymentStatus.Failed
                     when payment.Status == ServicePaymentStatus.Authorized || payment.PayerKind == ServicePayerKind.Private:
                     var outcome = await TryCancelAuthorizationAsync(payment, now, cancellationToken);
@@ -553,7 +505,6 @@ public sealed partial class SupplierPaymentService
                         return true;
                     }
 
-                    // Charged meanwhile: the money is held now, and goes back below.
                     refundAll = outcome == AuthorizationOutcome.Captured;
                     break;
 
@@ -562,7 +513,6 @@ public sealed partial class SupplierPaymentService
                     break;
 
                 default:
-                    // Released (the work was paid), refunded, in dispute, in review: not for an automatic refund.
                     return false;
             }
         }
@@ -580,7 +530,6 @@ public sealed partial class SupplierPaymentService
         return true;
     }
 
-    /// <summary>Forgets the unsaved changes of payments and refunds left in the context by a step that failed: the caller's other work is untouched.</summary>
     private void DetachPendingPaymentChanges()
     {
         foreach (var entry in db.ChangeTracker.Entries()
@@ -590,8 +539,6 @@ public sealed partial class SupplierPaymentService
             entry.State = EntityState.Detached;
         }
     }
-
-    // ─── Errors ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
     private static DomainConflictException CaptureFailed() =>
         new(ServicePaymentErrors.CaptureFailed, ServicePaymentErrors.CaptureFailedMessageKey);

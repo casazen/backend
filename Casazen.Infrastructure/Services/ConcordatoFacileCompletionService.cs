@@ -12,41 +12,27 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>Where the lease of the guided service stands after <see cref="IConcordatoFacileCompletionService.SyncAsync"/> (CF-DONE).</summary>
 public static class CfCompletionStates
 {
-    /// <summary>Not a lease of the guided service: nothing was done.</summary>
     public const string NotApplicable = "NotApplicable";
 
-    /// <summary>No contract document is uploaded yet: the person uploads the one the service delivered.</summary>
     public const string WaitingForContract = "WaitingForContract";
 
-    /// <summary>The contract document is being read (also when it was put back to be read into the draft).</summary>
     public const string ReadingContract = "ReadingContract";
 
-    /// <summary>The practice does not say yet that the contract is signed: the lease waits for it.</summary>
     public const string WaitingForSignature = "WaitingForSignature";
 
-    /// <summary>
-    /// The contract cannot be imported by itself: what the import needs is not all there (data, the day of the signature), or the status of
-    /// the practice cannot be read. The person completes the import, asked only for what is missing.
-    /// </summary>
     public const string ContractNeedsData = "ContractNeedsData";
 
-    /// <summary>The contract is imported (Signed); the receipt of the registration is not uploaded yet.</summary>
     public const string WaitingForReceipt = "WaitingForReceipt";
 
-    /// <summary>The receipt of the registration is being read.</summary>
     public const string ReadingReceipt = "ReadingReceipt";
 
-    /// <summary>The receipt cannot declare the registration by itself (a scan, a discarded request, no code or day): the person declares it.</summary>
     public const string ReceiptNotUsable = "ReceiptNotUsable";
 
-    /// <summary>The lease is registered: the procedure is over.</summary>
     public const string Completed = "Completed";
 }
 
-/// <summary>The outcome of a sync: where the lease stands and its status now.</summary>
 public sealed record CfCompletionResult(string State, LeaseStatus LeaseStatus);
 
 /// <summary>
@@ -65,19 +51,16 @@ public interface IConcordatoFacileCompletionService
     Task<CfCompletionResult> SyncAsync(Guid leaseId, Guid orgId, string actorUserId, CancellationToken cancellationToken = default);
 }
 
-/// <summary>Puts a document of a lease back to be read (the job <see cref="ExtractLeaseDocumentDataJob"/>): apart, so a test needs no Hangfire.</summary>
 public interface ILeaseDocumentReadQueue
 {
     void Enqueue(Guid documentId);
 }
 
-/// <inheritdoc />
 public sealed class HangfireLeaseDocumentReadQueue : ILeaseDocumentReadQueue
 {
     public void Enqueue(Guid documentId) => ExtractLeaseDocumentDataJob.EnqueueAsync(documentId);
 }
 
-/// <inheritdoc />
 public sealed class ConcordatoFacileCompletionService(
     AppDbContext db,
     IConcordatoFacileStatusCacheService statuses,
@@ -91,7 +74,6 @@ public sealed class ConcordatoFacileCompletionService(
     /// <summary>A document still being read after this long has lost its job: it is read again, once, instead of being waited for.</summary>
     public static readonly TimeSpan StaleReadingAfter = TimeSpan.FromMinutes(15);
 
-    /// <summary>The states of a practice in which the contract is signed by the parties (ADR-008-R21, in the order of the practice).</summary>
     private static readonly CfPracticeStatus[] SignedStates =
         [CfPracticeStatus.SignedReceived, CfPracticeStatus.SentToAssociation, CfPracticeStatus.Attested, CfPracticeStatus.Registered];
 
@@ -104,7 +86,6 @@ public sealed class ConcordatoFacileCompletionService(
 
         var lease = await db.LeaseContracts.FirstAsync(l => l.Id == leaseId, cancellationToken);
 
-        // A concordato draft whose guided form was opened before the mark existed (CF-DONE) becomes the service's draft here as well.
         if (!lease.IsConcordatoFacileSource && await FormOpenedAsync(leaseId, cancellationToken) && lease.MarkAsServiceDraft())
         {
             await db.SaveChangesAsync(cancellationToken);
@@ -130,8 +111,6 @@ public sealed class ConcordatoFacileCompletionService(
         };
     }
 
-    // ---- the signed contract --------------------------------------------------------------------------------------------
-
     /// <summary>
     /// Imports the draft as signed when it can: the contract document read into the draft, a practice that says the contract is signed, the
     /// day of the signature and nothing blocking in the review. Null once the lease is no longer a draft; the state it waits in otherwise.
@@ -152,8 +131,6 @@ public sealed class ConcordatoFacileCompletionService(
             (d.Status is LeaseDocumentExtractionStatus.Completed or LeaseDocumentExtractionStatus.NeedsReview) && IsReadIntoDraft(d.Result));
         if (read is null)
         {
-            // Read the way a document of an existing lease is (before the draft was the service's), skipped as a copy of one already there,
-            // or lost with its job: read again, this time into the draft. A reading that failed is not tried again: it would fail the same way.
             var again = contracts.FirstOrDefault(d => d.Status != LeaseDocumentExtractionStatus.Failed);
             if (again is null)
                 return CfCompletionStates.ContractNeedsData;
@@ -162,8 +139,6 @@ public sealed class ConcordatoFacileCompletionService(
             return CfCompletionStates.ReadingContract;
         }
 
-        // The state of the lease follows the practice: the contract is recorded as signed only once the practice says it is. A practice that
-        // cannot be read leaves the import to the person, who knows it.
         var practice = await statuses.GetPracticesAsync(leaseId, orgId, cancellationToken);
         if (!practice.IsAvailable)
             return CfCompletionStates.ContractNeedsData;
@@ -181,12 +156,10 @@ public sealed class ConcordatoFacileCompletionService(
         }
         catch (DomainConflictException ex) when (ex.Code == LeaseDraftErrorCodes.NotDraft)
         {
-            // Imported in the meantime (by hand, or by another call of this): the lease goes on from its new status.
             return null;
         }
         catch (Exception ex) when (ex is DomainException or NotFoundException)
         {
-            // Data the reading did not find, a period another lease of the house takes, a file gone: the person completes the import.
             logger.LogInformation(
                 "The service's contract could not be imported by itself. LeaseId={LeaseId} Reason={Reason}",
                 leaseId, (ex as DomainException)?.Code ?? "document_not_found");
@@ -197,7 +170,6 @@ public sealed class ConcordatoFacileCompletionService(
         return null;
     }
 
-    /// <summary>The document is put back to be read: its reading is «being read» until the job writes the new one.</summary>
     private async Task ReadAgainAsync(Guid documentId, CancellationToken cancellationToken)
     {
         var document = await db.LeaseDocuments.FirstAsync(d => d.Id == documentId, cancellationToken);
@@ -219,9 +191,6 @@ public sealed class ConcordatoFacileCompletionService(
         return practice is not null && SignedStates.Contains(practice.Status);
     }
 
-    // ---- the registration -----------------------------------------------------------------------------------------------
-
-    /// <summary>Declares the registration with the receipt of the Agenzia uploaded to the lease, when it is read as one with its code and day.</summary>
     private async Task<CfCompletionResult> TryRegisterAsync(Guid leaseId, string actorUserId, CancellationToken cancellationToken)
     {
         var receipt = await NewestReceiptAsync(leaseId, cancellationToken);
@@ -257,7 +226,6 @@ public sealed class ConcordatoFacileCompletionService(
         return new CfCompletionResult(CfCompletionStates.Completed, LeaseStatus.Registered);
     }
 
-    /// <summary>The day of the signature the receipt states (the Agenzia's own record), when the contract did not say it.</summary>
     private async Task<DateTime?> StipulationOfReceiptAsync(Guid leaseId, CancellationToken cancellationToken)
     {
         var receipt = await NewestReceiptAsync(leaseId, cancellationToken);
@@ -268,7 +236,6 @@ public sealed class ConcordatoFacileCompletionService(
         return reading is { State: LeaseDocumentReadingStates.Read, Receipt: { Outcome: "Registered" } read } ? ParseDay(read.StipulationDate) : null;
     }
 
-    /// <summary>The newest receipt of the lease that is not a copy of another one (a duplicate is skipped: its twin is the one read).</summary>
     private async Task<ContractDocument?> NewestReceiptAsync(Guid leaseId, CancellationToken cancellationToken) =>
         await db.LeaseDocuments.AsNoTracking()
             .Where(d => d.LeaseContractId == leaseId && d.Kind == LeaseDocumentKind.Registration
@@ -277,9 +244,6 @@ public sealed class ConcordatoFacileCompletionService(
             .Select(d => new ContractDocument(d.Id, d.ExtractionStatus, null, d.ExtractionStartedAt ?? d.UploadedAt))
             .FirstOrDefaultAsync(cancellationToken);
 
-    // ---- small reads ----------------------------------------------------------------------------------------------------
-
-    /// <summary>A document of the lease with what the sync needs of its reading: never a value of a person.</summary>
     private sealed record ContractDocument(Guid Id, LeaseDocumentExtractionStatus Status, string? Result, DateTime Since);
 
     private static bool IsBeingRead(ContractDocument d) =>
@@ -293,13 +257,11 @@ public sealed class ConcordatoFacileCompletionService(
     private Task<LeaseStatus> StatusOfAsync(Guid leaseId, CancellationToken cancellationToken) =>
         db.LeaseContracts.AsNoTracking().Where(l => l.Id == leaseId).Select(l => l.Status).FirstAsync(cancellationToken);
 
-    /// <summary>The result the reading of a contract writes when it reads it into a draft (version 3, kind contract), not an older one.</summary>
     private static bool IsReadIntoDraft(string? extractionResult) =>
         ReadResult(extractionResult, root =>
             root.TryGetProperty("version", out var version) && version.TryGetInt32(out var number) && number >= 3
             && root.TryGetProperty("kind", out var kind) && kind.ValueKind == JsonValueKind.String && kind.GetString() == "contract");
 
-    /// <summary>The day of the signature the reading of the contract accepted, if it did.</summary>
     private static DateTime? StipulaOf(string? extractionResult)
     {
         DateTime? day = null;

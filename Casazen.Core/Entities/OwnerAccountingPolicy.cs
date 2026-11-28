@@ -20,7 +20,6 @@ namespace Casazen.Core.Entities;
 [Table("OwnerAccountingPolicies")]
 public class OwnerAccountingPolicy : ITenantOwned
 {
-    /// <summary>Unique (<see cref="OrgId"/>, <see cref="RuleCode"/>, <see cref="Version"/>).</summary>
     public const string RuleVersionIndexName = "UIX_OwnerAccountingPolicies_OrgId_RuleCode_Version";
 
     public const int JurisdictionMaxLength = 8;
@@ -37,43 +36,33 @@ public class OwnerAccountingPolicy : ITenantOwned
 
     public Guid OrgId { get; set; }
 
-    /// <summary>Where the rule applies: an ISO 3166-1 country (<c>IT</c>, <c>CH</c>), or a country and a region (<c>CH-TI</c>).</summary>
     [Required, MaxLength(JurisdictionMaxLength)]
     public string Jurisdiction { get; set; } = string.Empty;
 
-    /// <summary>The code of the rule set (<c>IT-STR-WITHHOLDING</c>...).</summary>
     [Required, MaxLength(RuleCodeMaxLength)]
     public string RuleCode { get; set; } = string.Empty;
 
     [Required, MaxLength(VersionMaxLength)]
     public string Version { get; set; } = string.Empty;
 
-    /// <summary>The first day the rule applies (Europe/Rome calendar day).</summary>
     public DateOnly ValidFrom { get; set; }
 
-    /// <summary>The last day the rule applies; <c>null</c> while it is in force.</summary>
     public DateOnly? ValidTo { get; set; }
 
-    /// <summary>The official source of the rule (a law, a circular, the guidance of the tax office).</summary>
     [Required, MaxLength(SourceUrlMaxLength)]
     public string SourceUrl { get; set; } = string.Empty;
 
-    /// <summary>The SHA-256 of the source document, 64 hexadecimal characters.</summary>
     [Required, MaxLength(SourceSha256Length)]
     public string SourceSha256 { get; set; } = string.Empty;
 
-    /// <summary>The parameters of the rule as JSON (<c>OwnerAccountingRuleParameters</c>): the rates and the applicability are data.</summary>
     [Required, MaxLength(ParametersMaxLength)]
     public string ParametersJson { get; set; } = "{}";
 
-    /// <summary>When the qualified accountant's approval was recorded (UTC); <c>null</c>: not usable.</summary>
     public DateTime? ApprovedAt { get; set; }
 
-    /// <summary>Who recorded the approval.</summary>
     [MaxLength(UserIdMaxLength)]
     public string? ApprovedByUserId { get; set; }
 
-    /// <summary>The qualified accountant who approved the rule (name and registration, as they gave it).</summary>
     [MaxLength(ApproverNameMaxLength)]
     public string? ApprovedByName { get; set; }
 

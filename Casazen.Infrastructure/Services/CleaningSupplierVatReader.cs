@@ -22,14 +22,8 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 internal static class CleaningSupplierVatReader
 {
-    /// <summary>The day of the cleaning, whose rate «Sì» uses: the day it was completed (the payment, then the last change, for a row that has none), on the Europe/Rome calendar.</summary>
     public static DateOnly DayOf(DateTime? completedAt, DateTime? paidAt, DateTime updatedAt) => RomeCalendar.DateInRome(completedAt ?? paidAt ?? updatedAt);
 
-    /// <summary>
-    /// The rule of the owner invoices of the organization on <paramref name="day"/> (the last day of a month): its own issuer profile and the catalog, as the owner invoice
-    /// resolves it; <c>null</c> without a profile, without a rule in the catalog or without the resolver. Whether the question is asked depends on it
-    /// (<see cref="CleaningVatRules.IsAskedUnder"/>).
-    /// </summary>
     public static async Task<FiscalTaxRule?> OwnerInvoiceRuleAsync(AppDbContext db, IFiscalTaxRuleResolver? taxRules, Guid orgId, DateOnly day, CancellationToken ct)
     {
         if (taxRules is null)
@@ -41,7 +35,6 @@ internal static class CleaningSupplierVatReader
             : taxRules.TryResolve(profile.CountryCode, profile.DocumentRegime, profile.StayVatTreatment, profile.CleaningFeeTreatment, day);
     }
 
-    /// <summary>The country of each of the properties of the organization (deleted ones too: the cleaning stays the owner's), upper case; an empty list is an empty answer.</summary>
     public static async Task<IReadOnlyDictionary<Guid, string>> CountriesAsync(AppDbContext db, Guid orgId, IReadOnlyCollection<Guid> propertyIds, CancellationToken ct)
     {
         if (propertyIds.Count == 0)
@@ -124,7 +117,6 @@ internal static class CleaningSupplierVatReader
                 continue;
             }
 
-            // «Sì» for the company: the standard rate of the country of this cleaning on its day, when the table has one; else the request stays to be answered.
             if (VatRates.Find(country, VatRateKind.Standard, DayOf(request.CompletedAt, request.PaidAt, request.UpdatedAt)) is { } rate)
                 stated[request.Id] = new StatedCleaningVat(CleaningSupplierVat.Applied, rate.Percent, country, FromCompany: true);
         }

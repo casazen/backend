@@ -2,7 +2,6 @@ using System.Buffers.Binary;
 
 namespace Casazen.Core.Branding;
 
-/// <summary>Raster formats accepted for uploaded branding images.</summary>
 public enum ImageFormat
 {
     Png,
@@ -10,7 +9,6 @@ public enum ImageFormat
     WebP,
 }
 
-/// <summary>Format and pixel size of an image, read from its header.</summary>
 public sealed record ImageHeaderInfo(ImageFormat Format, int Width, int Height)
 {
     public string ContentType => Format switch
@@ -20,7 +18,6 @@ public sealed record ImageHeaderInfo(ImageFormat Format, int Width, int Height)
         _ => "image/webp",
     };
 
-    /// <summary>File extension of the stored object, from the detected format (never the client's file name).</summary>
     public string Extension => Format switch
     {
         ImageFormat.Png => ".png",
@@ -29,10 +26,6 @@ public sealed record ImageHeaderInfo(ImageFormat Format, int Width, int Height)
     };
 }
 
-/// <summary>
-/// Detects PNG, JPEG and WebP from their signature and reads the pixel size from the header, without decoding the
-/// image (no imaging dependency). Anything else, or a truncated header, gives <c>null</c>.
-/// </summary>
 public static class ImageHeaderReader
 {
     private static ReadOnlySpan<byte> PngSignature => [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
@@ -50,7 +43,6 @@ public static class ImageHeaderReader
 
     private static ImageHeaderInfo? ReadPng(ReadOnlySpan<byte> data)
     {
-        // Signature (8) + IHDR chunk length (4) + "IHDR" (4) + width (4, BE) + height (4, BE).
         if (data.Length < 24 || !data.Slice(12, 4).SequenceEqual("IHDR"u8))
             return null;
 
@@ -70,16 +62,14 @@ public static class ImageHeaderReader
             var marker = data[position + 1];
             if (marker == 0xFF)
             {
-                position++; // fill byte
+                position++;
                 continue;
             }
 
             position += 2;
-            // Standalone markers carry no length.
             if (marker == 0x01 || (marker >= 0xD0 && marker <= 0xD7))
                 continue;
 
-            // Start of scan or end of image before any frame header: not a usable JPEG.
             if (marker == 0xDA || marker == 0xD9)
                 return null;
 
@@ -89,7 +79,6 @@ public static class ImageHeaderReader
             if (segmentLength < 2)
                 return null;
 
-            // SOF0..SOF15 except DHT (C4), JPG (C8) and DAC (CC): precision (1), height (2), width (2).
             if (marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC)
             {
                 if (position + 7 > data.Length)
@@ -113,7 +102,6 @@ public static class ImageHeaderReader
         var chunk = data.Slice(12, 4);
         if (chunk.SequenceEqual("VP8 "u8))
         {
-            // Lossy: frame tag (3) + start code 9D 01 2A + width/height (14 bits each, LE).
             if (data[23] != 0x9D || data[24] != 0x01 || data[25] != 0x2A)
                 return null;
             var width = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(26, 2)) & 0x3FFF;
@@ -123,7 +111,6 @@ public static class ImageHeaderReader
 
         if (chunk.SequenceEqual("VP8L"u8))
         {
-            // Lossless: signature 0x2F + 14 bits width-1 + 14 bits height-1 (LE).
             if (data[20] != 0x2F)
                 return null;
             var bits = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(21, 4));
@@ -132,7 +119,6 @@ public static class ImageHeaderReader
 
         if (chunk.SequenceEqual("VP8X"u8))
         {
-            // Extended: flags (4) + canvas width-1 (24 bits LE) + canvas height-1 (24 bits LE).
             var width = (uint)(data[24] | (data[25] << 8) | (data[26] << 16)) + 1;
             var height = (uint)(data[27] | (data[28] << 8) | (data[29] << 16)) + 1;
             return Create(ImageFormat.WebP, width, height);

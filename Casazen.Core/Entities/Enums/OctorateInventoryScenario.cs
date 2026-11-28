@@ -8,27 +8,19 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum OctorateInventoryScenario
 {
-    /// <summary>The structures are already on Octorate: the consent of the account finds them and they are mapped (<c>onOctorate</c>).</summary>
     OnOctorate = 1,
 
-    /// <summary>
-    /// The listings already exist on one or more OTAs, or in another channel manager: the access to each channel is given in the Octorate
-    /// panel and the existing inventory is imported, keeping its identifiers. Nothing is created or published (<c>onOtas</c>).
-    /// </summary>
     OnOtas = 2,
 
-    /// <summary>The listings were never published: the only scenario in which CasaZen creates them (<c>newInventory</c>).</summary>
     NewInventory = 3,
 }
 
-/// <summary>The codes the API speaks for <see cref="OctorateInventoryScenario"/> (cross-repo contract with the web wizard).</summary>
 public static class OctorateInventoryScenarioCodes
 {
     public const string OnOctorate = "onOctorate";
     public const string OnOtas = "onOtas";
     public const string NewInventory = "newInventory";
 
-    /// <summary>The code of <paramref name="scenario"/>.</summary>
     public static string CodeOf(OctorateInventoryScenario scenario) => scenario switch
     {
         OctorateInventoryScenario.OnOctorate => OnOctorate,
@@ -37,7 +29,6 @@ public static class OctorateInventoryScenarioCodes
         _ => throw new ArgumentOutOfRangeException(nameof(scenario), scenario, "Not an inventory scenario."),
     };
 
-    /// <summary>The scenario of a code (compared without regard to case); <c>false</c> for anything else, an empty value included.</summary>
     public static bool TryParse(string? code, out OctorateInventoryScenario scenario)
     {
         var trimmed = code?.Trim();

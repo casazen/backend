@@ -7,15 +7,12 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum OwnerLoginHostState
 {
-    /// <summary>Nobody asked for the owner sign-in on the domain (the default).</summary>
     NotRequested = 0,
 
     /// <summary>The agency turned the owner portal on for its domain and the registration waits (automatic with <c>Auth0HostSync</c>, by CasaZen otherwise).</summary>
     Pending = 1,
 
-    /// <summary>The domain is registered: owners sign in there and their links may point there.</summary>
     Ready = 2,
 
-    /// <summary>The registration failed and can be retried; nothing is half registered.</summary>
     Failed = 3,
 }

@@ -99,20 +99,14 @@ public sealed class AlertRouter(
             return;
         }
 
-        // The alert is stored: a push that fails (the publisher never throws) is only a hint lost, the page load reads it anyway.
         await publisher.PublishAsync(user, alert.Id, type, kind, entityId, urgency, ct);
     }
 
-    /// <summary>
-    /// The instant a new alert has to wait for, or <c>null</c> to deliver it now: the end of the quiet hours of the user when the alert
-    /// is not legal and <paramref name="now"/> is inside them.
-    /// </summary>
     private static DateTime? HoldUntil(AlertType type, UserNotificationPreferences preferences, DateTime now)
     {
         if (PopupAlert.IsLegal(type))
             return null;
 
-        // The one definition of the quiet hours, shared with the preferences of the notifications (NF-65).
         return NotificationPreferenceRules.QuietHoursEndUtc(preferences.QuietHoursStart, preferences.QuietHoursEnd, now);
     }
 
@@ -129,7 +123,6 @@ public sealed class AlertRouter(
                      && a.DismissedAt == null,
                 ct);
 
-    /// <summary>The preferences of the user in the org, created with the defaults (22:00-08:00) when there are none yet.</summary>
     private async Task<UserNotificationPreferences> PreferencesAsync(Guid orgId, string userId, CancellationToken ct)
     {
         if (await ReadPreferences(orgId, userId).FirstOrDefaultAsync(ct) is { } existing)
@@ -144,7 +137,6 @@ public sealed class AlertRouter(
         }
         catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex, UserNotificationPreferences.OncePerUserIndexName))
         {
-            // A parallel call created the row first (UIX_UserNotificationPreferences_OrgId_UserId): that row is the one.
             db.Entry(created).State = EntityState.Detached;
             return await ReadPreferences(orgId, userId).FirstAsync(ct);
         }
@@ -156,7 +148,6 @@ public sealed class AlertRouter(
             .AsNoTracking()
             .Where(p => p.OrgId == orgId && p.UserId == userId);
 
-    /// <summary>The value trimmed; blank or longer than <paramref name="maxLength"/> is a programming error of the caller.</summary>
     private static string Bounded(string? value, int maxLength, string name)
     {
         var trimmed = value?.Trim();
@@ -168,7 +159,6 @@ public sealed class AlertRouter(
             : throw new ArgumentException($"{name} is longer than {maxLength} characters.", name);
     }
 
-    /// <summary>A deadline as a UTC instant: a value without a kind counts as UTC (the storage convention), a local one is converted.</summary>
     private static DateTime AsUtc(DateTime value) => value.Kind switch
     {
         DateTimeKind.Local => value.ToUniversalTime(),

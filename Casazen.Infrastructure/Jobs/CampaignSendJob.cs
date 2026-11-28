@@ -14,11 +14,6 @@ public class CampaignSendJob(ICampaignService campaignService)
 {
     public const int MaxAttempts = 3;
 
-    /// <summary>
-    /// Send a scheduled campaign. Called by Hangfire at the scheduled time.
-    /// </summary>
-    /// <param name="campaignId">Campaign ID to send.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
     [AutomaticRetry(Attempts = MaxAttempts, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
     public async Task SendCampaignAsync(Guid campaignId, CancellationToken cancellationToken = default)
     {

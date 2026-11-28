@@ -16,7 +16,6 @@ public sealed class DoorCheckInFailureTracker(
     int limit = DoorCheckInRules.FailureLimit,
     TimeSpan? window = null) : IDoorCheckInFailureTracker
 {
-    /// <summary>Doors in the table past which the ones that have no failure left in the window are dropped.</summary>
     private const int CleanupThreshold = 1024;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -61,7 +60,6 @@ public sealed class DoorCheckInFailureTracker(
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(doorToken)), 0, 16);
     }
 
-    /// <summary>Drops the failures that are out of the window.</summary>
     private void Prune(List<DateTime> failures)
     {
         var oldest = _clock.GetUtcNow().UtcDateTime - _window;

@@ -8,12 +8,9 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum OctorateBookingStatus
 {
-    /// <summary><c>WAITING</c>: the reservation is made and waits for a confirmation (a pending booking in CasaZen).</summary>
     Waiting = 1,
 
-    /// <summary><c>CONFIRMED</c>.</summary>
     Confirmed = 2,
 
-    /// <summary><c>CANCELLED</c>.</summary>
     Cancelled = 3,
 }

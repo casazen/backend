@@ -28,11 +28,9 @@ public static class OrgOwnerRoles
                 [AccountContext.RoleKeys.Owner, AccountContext.RoleKeys.Admin], StringComparer.OrdinalIgnoreCase),
         };
 
-    /// <summary>Every owner role, as <c>(context, role key)</c>: what the tests compare with the seeded roles.</summary>
     public static IEnumerable<(string ContextKey, string RoleKey)> All =>
         RoleKeysByContext.SelectMany(context => context.Value.Select(roleKey => (context.Key, roleKey)));
 
-    /// <summary>True when <paramref name="roleKey"/> is an owner's (or administrator's, or platform admin's) role of <paramref name="contextKey"/>.</summary>
     public static bool IsOwnerRole(string contextKey, string roleKey) =>
         RoleKeysByContext.TryGetValue(contextKey, out var roleKeys) && roleKeys.Contains(roleKey);
 

@@ -12,14 +12,10 @@ namespace Casazen.Infrastructure.Services;
 public sealed partial class IdentityVerificationFlowService
 {
     private static readonly TimeSpan ChallengeLifetime = TimeSpan.FromMinutes(2);
-    // The deployed database serializes on the session row, across application instances.
-    // In-memory providers used by local check-in and unit tests have no row locks.
     private static readonly SemaphoreSlim[] LocalPoseLocks = Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
 
     public Task<SelfieChallenge?> IssueSelfieChallengeAsync(GuestCheckInSession session, CancellationToken ct)
     {
-        // E73/F01/US01/T02: with the self-hosted flow on the two-frame selfie is closed (the routes answer presence_sequence_required): no pose challenge is issued, the presence
-        // sequence takes its place.
         if (SelfHostedOn)
             return Task.FromResult<SelfieChallenge?>(null);
 
@@ -49,7 +45,6 @@ public sealed partial class IdentityVerificationFlowService
     {
         var stale = new SelfieStepResult(SelfieStepStatus.ChallengeRequired, IdentityVerificationGuestResults.Retry, [], 0, null);
 
-        // E73/F01/US01/T02: with the self-hosted flow on the weaker two-frame check is never run, whatever is sent: nothing is read, compared or written.
         if (SelfHostedOn)
             return stale;
 

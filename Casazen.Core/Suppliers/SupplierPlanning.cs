@@ -19,7 +19,6 @@ public sealed record SupplierPlanningRules(
     int SlotStepMinutes,
     int ParallelJobs)
 {
-    /// <summary>What a supplier that never saved a rule gets (<see cref="SupplierAgendaDefaults"/>).</summary>
     public static SupplierPlanningRules Default { get; } = new(
         SupplierAgendaDefaults.BufferMinutes,
         SupplierAgendaDefaults.MaxJobsPerDay,
@@ -29,16 +28,10 @@ public sealed record SupplierPlanningRules(
         SupplierAgendaDefaults.ParallelJobs);
 }
 
-/// <summary>
-/// One band of the weekly working hours: minutes after midnight on the wall clock of Europe/Rome, <c>EndMinute</c> up to 1440
-/// (midnight). The planner turns it into UTC for each date (<see cref="Utilities.RomeCalendar.ToUtc(DateOnly, int)"/>).
-/// </summary>
 public readonly record struct SupplierWeeklyBand(DayOfWeek Weekday, int StartMinute, int EndMinute);
 
-/// <summary>Days from <paramref name="From"/> to <paramref name="To"/>, both included (Europe/Rome calendar days).</summary>
 public readonly record struct SupplierDateRange(DateOnly From, DateOnly To);
 
-/// <summary>A stretch of time in UTC: <c>[StartUtc, EndUtc)</c>.</summary>
 public readonly record struct SupplierInterval(DateTime StartUtc, DateTime EndUtc)
 {
     /// <summary>
@@ -52,19 +45,14 @@ public readonly record struct SupplierInterval(DateTime StartUtc, DateTime EndUt
     public bool Overlaps(SupplierInterval other) => StartUtc < other.EndUtc && other.StartUtc < EndUtc;
 }
 
-/// <summary>What takes a supplier's time, for <see cref="SupplierOccupancy"/>.</summary>
 public enum SupplierOccupancyKind
 {
-    /// <summary>A service request that counts (Richiesto, PresoInCarico or InCorso), with its hours when it has them.</summary>
     Request,
 
-    /// <summary>A booking from the public showcase waiting for the customer's e-mail check (SP-10); it lapses at its expiry.</summary>
     Hold,
 
-    /// <summary>Hours the supplier blocked by hand.</summary>
     Block,
 
-    /// <summary>An engagement of the supplier's own calendar (the iCal feed, SP-05).</summary>
     External,
 }
 
@@ -114,71 +102,42 @@ public sealed record SupplierOccupancy
     /// </summary>
     public Guid? SourceId { get; }
 
-    /// <summary>
-    /// True for a job the supplier has taken (<c>PresoInCarico</c>, <c>InCorso</c>). The planner never reads it; the conflict
-    /// detector (SP-03b) does: what is still waiting for an answer never counts against a job already taken.
-    /// </summary>
     public bool Committed { get; }
 
-    /// <summary>First instant (UTC); <c>null</c> for a request that only has a day.</summary>
     public DateTime? StartUtc { get; }
 
-    /// <summary>Instant it ends (UTC), after <see cref="StartUtc"/>; <c>null</c> for a request that only has a day.</summary>
     public DateTime? EndUtc { get; }
 
-    /// <summary>The Europe/Rome day of a request without hours; <c>null</c> for the others.</summary>
     public DateOnly? Day { get; }
 
-    /// <summary>When a <see cref="SupplierOccupancyKind.Hold"/> lapses; <c>null</c> for the others.</summary>
     public DateTime? ExpiresAtUtc { get; }
 
-    /// <summary>True when it has hours the slots must avoid.</summary>
     public bool HasInterval => StartUtc is not null && EndUtc is not null;
 
-    /// <summary>True for a request and a hold: they count for <c>MaxJobsPerDay</c>.</summary>
     public bool CountsTowardsDailyMax => Kind is SupplierOccupancyKind.Request or SupplierOccupancyKind.Hold;
 
-    /// <summary>
-    /// True for what still waits for an answer: a booking waiting for its e-mail check and a request the supplier has not taken. The
-    /// planner counts it like anything else; the conflict detector (SP-03b) never counts it against a job already taken.
-    /// </summary>
     public bool IsWaiting => Kind == SupplierOccupancyKind.Hold || (Kind == SupplierOccupancyKind.Request && !Committed);
 
-    /// <summary>The hours it takes as an interval; <c>null</c> for a request that only has a day.</summary>
     public SupplierInterval? Interval =>
         StartUtc is { } start && EndUtc is { } end ? new SupplierInterval(start, end) : null;
 
-    /// <summary>
-    /// The hours it takes widened by <paramref name="buffer"/> before and after (the pause the supplier keeps between two things);
-    /// <c>null</c> for a request that only has a day. <b>One definition</b> for the planner (what is in the way of a slot) and
-    /// the conflict detector (what is too close to a job).
-    /// </summary>
     public SupplierInterval? Widened(TimeSpan buffer) =>
         Interval is { } interval ? new SupplierInterval(interval.StartUtc - buffer, interval.EndUtc + buffer) : null;
 
-    /// <summary>False for a hold that had lapsed by <paramref name="nowUtc"/>: it no longer holds a place and is ignored altogether.</summary>
     public bool IsLive(DateTime nowUtc) => !(Kind == SupplierOccupancyKind.Hold && ExpiresAtUtc <= nowUtc);
 
-    /// <summary>
-    /// A request with hours (accepted or not yet: it holds the place as soon as it exists). <paramref name="requestId"/> and
-    /// <paramref name="committed"/> (the supplier took it) are for the conflict detector.
-    /// </summary>
     public static SupplierOccupancy TimedRequest(DateTime startUtc, DateTime endUtc, Guid? requestId = null, bool committed = false) =>
         new(SupplierOccupancyKind.Request, startUtc, RequireAfter(startUtc, endUtc), null, null, requestId, committed);
 
-    /// <summary>A request that only has a day (a host's request before the time is agreed): no hour is taken, the day's count goes up.</summary>
     public static SupplierOccupancy DatedRequest(DateOnly day, Guid? requestId = null, bool committed = false) =>
         new(SupplierOccupancyKind.Request, null, null, day, null, requestId, committed);
 
-    /// <summary>A booking of the public showcase waiting for the e-mail check, until <paramref name="expiresAtUtc"/>.</summary>
     public static SupplierOccupancy Hold(DateTime startUtc, DateTime endUtc, DateTime expiresAtUtc) =>
         new(SupplierOccupancyKind.Hold, startUtc, RequireAfter(startUtc, endUtc), null, expiresAtUtc, null, false);
 
-    /// <summary>Hours the supplier blocked (<paramref name="windowId"/>: the window of the agenda, for the conflict detector).</summary>
     public static SupplierOccupancy Block(DateTime startUtc, DateTime endUtc, Guid? windowId = null) =>
         new(SupplierOccupancyKind.Block, startUtc, RequireAfter(startUtc, endUtc), null, null, windowId, false);
 
-    /// <summary>An engagement of the supplier's own calendar (<paramref name="windowId"/>: its window, for the conflict detector).</summary>
     public static SupplierOccupancy External(DateTime startUtc, DateTime endUtc, Guid? windowId = null) =>
         new(SupplierOccupancyKind.External, startUtc, RequireAfter(startUtc, endUtc), null, null, windowId, false);
 
@@ -233,51 +192,30 @@ public sealed record SupplierPlanningInput(
 /// </param>
 public sealed record SupplierSlotQuery(int DurationMinutes, int? MinNoticeHours = null, int? WeekdaysMask = null, bool Urgent = false);
 
-/// <summary>A free slot: the work can start at <see cref="StartUtc"/> and ends at <see cref="EndUtc"/> (UTC).</summary>
 public readonly record struct SupplierSlot(DateTime StartUtc, DateTime EndUtc);
 
-/// <summary>
-/// Why a day has no slot at all (SP-03). Checked in this order, so a day closed for several reasons shows the first.
-/// </summary>
 public enum SupplierDayClosure
 {
-    /// <summary>The day is before today (Europe/Rome).</summary>
     Past,
 
-    /// <summary>The supplier is off (time off).</summary>
     TimeOff,
 
-    /// <summary>The day is closed by hand or by the supplier's calendar feed (<c>SupplierAvailability</c> false).</summary>
     DayClosed,
 
-    /// <summary>The service is not offered on that weekday (<c>SupplierServiceListing.WeekdaysMask</c>).</summary>
     ServiceNotOffered,
 
-    /// <summary>No working band that weekday and no extra opening that day.</summary>
     NoHours,
 
-    /// <summary><c>MaxJobsPerDay</c> is reached: the day is full.</summary>
     MaxJobsReached,
 
-    /// <summary>The whole day is inside the notice: it ends before the earliest start (now plus the notice).</summary>
     WithinNotice,
 
-    /// <summary>The day is further away than the horizon (for an urgent plan: later than tomorrow).</summary>
     BeyondHorizon,
 
-    /// <summary>
-    /// Only for a plan of urgent slots (SP-04c): the supplier does not accept urgent requests. Checked right after
-    /// <see cref="Past"/>, so every day from today on shows it.
-    /// </summary>
     UrgentNotOffered,
 }
 
-/// <summary>
-/// The plan of one Europe/Rome day: why it is closed (<see cref="Closure"/>), or its free slots in start order. An open day
-/// can have no free slot (everything is taken): it is then full of work, not closed.
-/// </summary>
 public sealed record SupplierDayPlan(DateOnly Day, SupplierDayClosure? Closure, IReadOnlyList<SupplierSlot> Slots)
 {
-    /// <summary>True when the day has no slot for a structural reason (<see cref="Closure"/> says which).</summary>
     public bool IsClosed => Closure is not null;
 }

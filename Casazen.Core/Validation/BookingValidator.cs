@@ -5,9 +5,6 @@ namespace Casazen.Core.Validation;
 
 public static class BookingValidator
 {
-    /// <param name="booking">Booking to validate.</param>
-    /// <param name="allowPastCheckIn">Skip the "check-in in the past" rule (e.g. unchanged dates on update).</param>
-    /// <param name="today">Calendar "today" in Europe/Rome as midnight UTC; defaults to the system clock.</param>
     public static BookingValidationResult ValidateBooking(
         Booking booking,
         bool allowPastCheckIn = false,
@@ -16,7 +13,6 @@ public static class BookingValidator
         var errors = new List<string>();
         var referenceToday = today ?? TimeProvider.System.TodayInRome();
 
-        // Validate dates
         if (!allowPastCheckIn && booking.CheckInDate.Date < referenceToday)
         {
             errors.Add("Check-in date cannot be in the past");
@@ -27,19 +23,16 @@ public static class BookingValidator
             errors.Add("Check-out date must be after check-in date");
         }
 
-        // Validate price
         if (booking.TotalPrice < 0)
         {
             errors.Add("Total price cannot be negative");
         }
 
-        // Validate number of guests
         if (booking.NumberOfGuests <= 0)
         {
             errors.Add("Number of guests must be at least 1");
         }
 
-        // Validate IDs
         if (booking.PropertyId == Guid.Empty)
         {
             errors.Add("Property ID is required");
@@ -57,7 +50,6 @@ public static class BookingValidator
     {
         var errors = new List<string>();
 
-        // Cannot change booking dates if already checked in or completed
         if (existingBooking.Status == BookingStatus.CheckedIn ||
             existingBooking.Status == BookingStatus.CheckedOut)
         {
@@ -68,7 +60,6 @@ public static class BookingValidator
             }
         }
 
-        // Cannot modify cancelled bookings
         if (existingBooking.Status == BookingStatus.Cancelled)
         {
             errors.Add("Cannot modify cancelled bookings");

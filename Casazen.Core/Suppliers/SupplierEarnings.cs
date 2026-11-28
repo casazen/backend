@@ -3,48 +3,24 @@ using Casazen.Core.Utilities;
 
 namespace Casazen.Core.Suppliers;
 
-/// <summary>
-/// The <c>state</c> of a row of the supplier's earnings (SP-16a), derived once by the server so no screen repeats the rule. <b>An open set</b>: the held
-/// payments of SP-15c will add values (blocked, held, released, in dispute), and a client shows a generic wording for a value it does not know.
-/// </summary>
-/// <remarks>
-/// The rule: <b>a payment record, when the job has one, says where the money is; the job says it only when there is no record</b> (a job paid outside
-/// CasaZen by the host's hand has none). <see cref="Of"/> is the one place that decides it and the read model writes the same test in SQL for the tabs of
-/// <see cref="SupplierEarningsTabs"/> (<c>SupplierPaymentReadModels</c>): change them together.
-/// </remarks>
 public static class SupplierEarningStates
 {
-    /// <summary>Completed and not paid yet: nobody asked for the payment, it is in progress, or it failed and can be tried again.</summary>
     public const string ToCollect = "to_collect";
 
-    /// <summary>Paid: through CasaZen, recorded by the supplier as received outside it, or marked paid by the host (no record, no commission).</summary>
     public const string Paid = "paid";
 
-    /// <summary>Asked for, not paid, and past the days after which a payment is flagged late (<c>SupplierPayments:LateAfterDays</c>).</summary>
     public const string Late = "late";
 
-    /// <summary>Stripe reported something that does not match what CasaZen asked for: CasaZen looks at it, the supplier does nothing.</summary>
     public const string InReview = "in_review";
 
-    /// <summary>Paid, then given back in full.</summary>
     public const string Refunded = "refunded";
 
-    /// <summary>Paid, then given back in part (<c>refundedCents</c> says how much).</summary>
     public const string PartiallyRefunded = "partially_refunded";
 
-    /// <summary>
-    /// The customer paid and CasaZen holds the money (SP-15c-a): it reaches the supplier when the customer says "all fine" or an hour after the
-    /// work, whichever comes first. Also a release that is being retried. Counts as still to be collected.
-    /// </summary>
     public const string Held = "held";
 
-    /// <summary>The customer complained and CasaZen has not decided yet (SP-15c-c): the money stays held. Counts as still to be collected.</summary>
     public const string InDispute = "in_dispute";
 
-    /// <summary>
-    /// The state of a completed or paid job: <paramref name="paymentStatus"/> is the status of its live payment record (null when it has none) and
-    /// <paramref name="lateAt"/> the moment that record was flagged late. A late flag is never cleared, so it counts only while the payer still owes.
-    /// </summary>
     public static string Of(ServiceRequestStatus requestStatus, ServicePaymentStatus? paymentStatus, DateTime? lateAt) => paymentStatus switch
     {
         null => requestStatus == ServiceRequestStatus.Pagato ? Paid : ToCollect,
@@ -59,26 +35,19 @@ public static class SupplierEarningStates
     };
 }
 
-/// <summary>The tabs of the earnings list (<c>tab</c> of <c>GET api/supplier/earnings</c>): sets of states, and they may overlap.</summary>
 public enum SupplierEarningsTab
 {
-    /// <summary><c>tutti</c>: every completed or paid job.</summary>
     All,
 
-    /// <summary><c>da-incassare</c>: what is still to be collected: <c>to_collect</c>, <c>late</c>, <c>in_review</c>, and the money CasaZen holds (<c>held</c>, <c>in_dispute</c>).</summary>
     ToCollect,
 
-    /// <summary><c>pagati</c>: what was paid: <c>paid</c>, and the ones refunded afterwards (<c>refunded</c>, <c>partially_refunded</c>).</summary>
     Paid,
 
-    /// <summary><c>in-ritardo</c>: <c>late</c> (also in <see cref="ToCollect"/>).</summary>
     Late,
 
-    /// <summary><c>da-verificare</c>: <c>in_review</c> (also in <see cref="ToCollect"/>).</summary>
     ToVerify,
 }
 
-/// <summary>The <c>tab</c> values of the earnings list.</summary>
 public static class SupplierEarningsTabs
 {
     public const string AllValue = "tutti";
@@ -87,7 +56,6 @@ public static class SupplierEarningsTabs
     public const string LateValue = "in-ritardo";
     public const string ToVerifyValue = "da-verificare";
 
-    /// <summary>The tab named <paramref name="value"/> (any case, <c>_</c> or <c>-</c>); a missing value is <c>tutti</c>. False for any other value, including numbers.</summary>
     public static bool TryParse(string? value, out SupplierEarningsTab tab)
     {
         switch (value?.Trim().Replace('_', '-').ToLowerInvariant())
@@ -114,16 +82,12 @@ public static class SupplierEarningsTabs
     }
 }
 
-/// <summary>The bounds of the earnings of a supplier (SP-16a).</summary>
 public static class SupplierEarningsLimits
 {
-    /// <summary>Largest page of the list.</summary>
     public const int MaxPageSize = 100;
 
-    /// <summary>Most rows of one export file: a larger selection is refused (422), the supplier narrows the period.</summary>
     public const int MaxExportRows = 20_000;
 
-    /// <summary>Months of the series: the last one is the current month in Rome, the others the seven before it.</summary>
     public const int SeriesMonths = 8;
 }
 
@@ -181,13 +145,10 @@ public sealed record SupplierEarningRow(
     int RefundedCents,
     DateTime? LateSince);
 
-/// <summary>What is still to be collected, in cents and in jobs (the same definition as the home, see the runbook).</summary>
 public sealed record SupplierToCollect(long Cents, int Jobs);
 
-/// <summary>A payment that was paid: when, the commission CasaZen kept and what the supplier got.</summary>
 public sealed record SupplierPaidPayment(DateTime PaidAt, int CommissionCents, int NetCents);
 
-/// <summary>The net paid in a Europe/Rome month: <paramref name="Month"/> is <c>yyyy-MM</c>.</summary>
 public sealed record SupplierEarningsMonth(string Month, long NetCents);
 
 /// <summary>
@@ -214,19 +175,12 @@ public sealed record SupplierEarningsTotals(
     SupplierCommissionInfo Commission,
     bool OnlinePayments);
 
-/// <summary>A page of the earnings with the figures above it.</summary>
 public sealed record SupplierEarningsPage(IReadOnlyList<SupplierEarningRow> Items, int Total, SupplierEarningsTotals Totals);
 
-/// <summary>A Europe/Rome calendar month as a UTC interval.</summary>
 public sealed record SupplierEarningMonthWindow(string Month, DateTime FromUtc, DateTime ToUtc);
 
-/// <summary>The months of the series: calendar months in Rome, so the changes of the clock are handled by the zone.</summary>
 public static class SupplierEarningMonths
 {
-    /// <summary>
-    /// The <paramref name="count"/> months that end with the one that holds <paramref name="today"/> (Europe/Rome), the oldest first, each as
-    /// <c>[00:00 Rome of its first day, 00:00 Rome of the first day of the next month)</c> in UTC.
-    /// </summary>
     public static IReadOnlyList<SupplierEarningMonthWindow> Last(DateOnly today, int count)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);

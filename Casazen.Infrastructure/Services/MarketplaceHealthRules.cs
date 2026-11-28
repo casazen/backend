@@ -2,23 +2,17 @@ using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>What the status of a connection says about the activation that holds it (E09/F03/US01/T01).</summary>
 internal enum MarketplaceConnectionHealth
 {
-    /// <summary>A word CasaZen has not met (or no word): nothing is concluded from it and the activation is left as it is.</summary>
     Unrecognised = 0,
 
-    /// <summary>The connection works: the activation is Active.</summary>
     Healthy = 1,
 
-    /// <summary>The connection is still being set up (importing, waiting for the access or for the mapping): the activation is Pending.</summary>
     Waiting = 2,
 
-    /// <summary>The connection does not work: the activation is To fix with <see cref="MarketplaceConnectionVerdict.ErrorCode"/>.</summary>
     Broken = 3,
 }
 
-/// <summary>The verdict on the status of a connection, and, for a broken one, the code of the problem.</summary>
 internal readonly record struct MarketplaceConnectionVerdict(MarketplaceConnectionHealth Health, string? ErrorCode);
 
 /// <summary>
@@ -28,13 +22,10 @@ internal readonly record struct MarketplaceConnectionVerdict(MarketplaceConnecti
 /// </summary>
 internal static class MarketplaceHealthRules
 {
-    /// <summary>The <c>status</c> of a connection that is waiting for the access, the import or the mapping.</summary>
     internal const string WaitingStatus = "WAITING";
 
-    /// <summary>The <c>status</c> of a connection that was switched off on the channel manager.</summary>
     internal const string DisabledStatus = "DISABLED";
 
-    /// <summary>The verdict on a connection status, compared without regard to case or the spaces around it.</summary>
     public static MarketplaceConnectionVerdict Classify(string? status)
     {
         var word = status?.Trim();
@@ -50,10 +41,6 @@ internal static class MarketplaceHealthRules
         return new MarketplaceConnectionVerdict(MarketplaceConnectionHealth.Unrecognised, null);
     }
 
-    /// <summary>
-    /// The quota as the panel shows it, from the configuration Octorate reported: <c>quotaStatus</c> counts the units used and <c>quotaLimit</c> is what the quota
-    /// allows. <c>null</c> when either is missing or the limit is not a positive number: a quota that cannot be read is not guessed.
-    /// </summary>
     public static MarketplaceQuota? QuotaOf(OctorateConfiguration configuration, int warnPercent, DateTime readAt)
     {
         ArgumentNullException.ThrowIfNull(configuration);
@@ -63,6 +50,5 @@ internal static class MarketplaceHealthRules
         return new MarketplaceQuota(used, limit, IsWarning(used, limit, warnPercent), readAt);
     }
 
-    /// <summary>True when <paramref name="used"/> reached <paramref name="warnPercent"/> percent of <paramref name="limit"/>.</summary>
     public static bool IsWarning(int used, int limit, int warnPercent) => limit > 0 && (long)used * 100 >= (long)limit * warnPercent;
 }

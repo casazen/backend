@@ -14,9 +14,7 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IFlowActivationReader
 {
-    /// <summary>True when <paramref name="flow"/> is active on <paramref name="propertyId"/>.</summary>
     Task<bool> IsActiveAsync(Guid propertyId, OnboardingFlow flow, CancellationToken ct);
 
-    /// <summary>The active flows of each of <paramref name="propertyIds"/>; a property with none is left out of the answer.</summary>
     Task<IReadOnlyDictionary<Guid, IReadOnlySet<OnboardingFlow>>> GetActiveFlowsAsync(IReadOnlyCollection<Guid> propertyIds, CancellationToken ct);
 }

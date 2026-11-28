@@ -1,25 +1,16 @@
 namespace Casazen.Core.Leases.Reading;
 
-/// <summary>The three kinds of section a document that holds the contract and what goes with it (CF-DOCS-REAL) is made of.</summary>
 public enum DocumentSectionKind
 {
-    /// <summary>The contract itself, as it was signed.</summary>
     Contract = 0,
 
-    /// <summary>The attestation of conformity ("Attestazione di Rispondenza") the associations release for a canone concordato.</summary>
     Attestation = 1,
 
-    /// <summary>The sheet that works out the rent from the territorial agreement ("Scheda Riepilogativa Canone").</summary>
     CalculationSheet = 2,
 }
 
-/// <summary>A run of pages of one kind: <see cref="FirstPage"/> and <see cref="LastPage"/> count from 1 and are both part of it.</summary>
 public sealed record DocumentSection(DocumentSectionKind Kind, int FirstPage, int LastPage);
 
-/// <summary>
-/// What <see cref="ContractDocumentSections"/> made of a document: its sections, the pages that hold no readable text and whether the
-/// sections came in a strange order. Holds page numbers and nothing of the text: it can be kept with the document.
-/// </summary>
 public sealed record RecognizedSections(IReadOnlyList<DocumentSection> Sections, IReadOnlyList<int> UnreadablePages, bool OutOfOrder)
 {
     public bool Contains(DocumentSectionKind kind) => Sections.Any(section => section.Kind == kind);
@@ -29,7 +20,6 @@ public sealed record RecognizedSections(IReadOnlyList<DocumentSection> Sections,
     public bool ContainsCalculationSheet => Contains(DocumentSectionKind.CalculationSheet);
 }
 
-/// <summary>The stable names the sections have in what is kept with a document and in what the API says.</summary>
 public static class DocumentSectionKinds
 {
     public const string Contract = "contract";
@@ -60,10 +50,8 @@ public static class DocumentSectionKinds
 /// </remarks>
 public static class ContractDocumentSections
 {
-    /// <summary>A page with fewer letters and digits than this has nothing readable on it.</summary>
     private const int UnreadableBelow = 25;
 
-    /// <summary>The part of the top of a page, in letters, where a title may stand (a stray mark or a stamp may come before it).</summary>
     private const int TitleZone = 240;
 
     private const int TitleAtTheTop = 80;
@@ -72,7 +60,6 @@ public static class ContractDocumentSections
     private const double BodyCap = 8;
     private const double SwitchPenalty = 5;
 
-    /// <summary>A page that shows nothing goes to the contract: the person said it is one.</summary>
     private const double ContractBias = 0.5;
 
     private const int BodyReach = 6000;
@@ -103,7 +90,6 @@ public static class ContractDocumentSections
         ],
     ];
 
-    /// <summary>The sections of a document, from the text of each of its pages (the first page is page 1).</summary>
     public static RecognizedSections Recognize(IReadOnlyList<string> pages)
     {
         ArgumentNullException.ThrowIfNull(pages);
@@ -125,7 +111,6 @@ public static class ContractDocumentSections
         return new RecognizedSections(Runs(labels), unreadable, IsOutOfOrder(labels));
     }
 
-    /// <summary>The text of the pages of one kind, in the order they come, page after page.</summary>
     public static string TextOf(IReadOnlyList<string> pages, RecognizedSections sections, DocumentSectionKind kind)
     {
         ArgumentNullException.ThrowIfNull(pages);
@@ -148,7 +133,6 @@ public static class ContractDocumentSections
         var zone = compact.Length > TitleZone ? compact[..TitleZone] : compact;
         var reach = compact.Length > BodyReach ? compact[..BodyReach] : compact;
 
-        // The title that stands first at the top of the page is the page's; one that comes after it is a mention.
         var titleKind = -1;
         var titleEnd = int.MaxValue;
         for (var kind = 0; kind < Titles.Length; kind++)
@@ -210,7 +194,6 @@ public static class ContractDocumentSections
         return count switch { 0 => 0, 1 => 3, _ => 5 };
     }
 
-    /// <summary>The kind of each page that makes the total score highest, with a cost for every change of kind (the Viterbi path).</summary>
     private static int[] Best(double[,] emission, int pages)
     {
         var total = new double[pages, 3];
@@ -270,7 +253,6 @@ public static class ContractDocumentSections
         return runs;
     }
 
-    /// <summary>The kinds come contract, attestation, sheet; one that comes again after another, or before one that should precede it, is out of order.</summary>
     private static bool IsOutOfOrder(int[] labels)
     {
         var highest = -1;

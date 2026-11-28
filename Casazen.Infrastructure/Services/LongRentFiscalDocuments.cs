@@ -14,12 +14,10 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public static class LongRentFiscalDocuments
 {
-    /// <summary>First row of the file: what it is, and that it has to be checked by the accountant.</summary>
     public const string Warning = "Stima da validare con il commercialista";
 
     private const string Total = "Totale";
 
-    // The base of each number, one row under the title: no figure travels without its label.
     private const string Bases =
         "Competenza: i mesi dell'anno in cui il contratto è in vigore (mesi interi) per il canone mensile, fino alla fine del periodo in corso. "
         + "Incassato: i canoni pagati nell'anno e registrati in CasaZen, a partire dal mese indicato in «Registro dal». "
@@ -70,7 +68,6 @@ public static class LongRentFiscalDocuments
         return CsvWriter.Write(rows);
     }
 
-    /// <summary>The name of the file: the estimate and the year, nothing about a person (<c>casazen-stima-fiscale-affitti-lunghi-2026.csv</c>).</summary>
     public static string FileName(int year) =>
         $"casazen-stima-fiscale-affitti-lunghi-{year.ToString(CultureInfo.InvariantCulture)}.csv";
 

@@ -20,7 +20,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IOwnerDirectoryService
 {
-    /// <summary>The owners of the org of <paramref name="scope"/> inside its reach, by last name and first name.</summary>
     Task<IReadOnlyList<OwnerDirectoryRow>> ListAsync(HostScope scope, CancellationToken ct = default);
 }
 

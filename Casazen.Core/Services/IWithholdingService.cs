@@ -67,10 +67,6 @@ public sealed record F24MonthData(int Year, int Month, IReadOnlyList<F24TaxLine>
 /// </summary>
 public sealed record F24TaxLine(string TaxCode, int ReferenceMonth, int ReferenceYear, decimal Amount, DateOnly DueDate, int EvidenceCount);
 
-/// <summary>
-/// One decision of the month, or the reversal of one (<paramref name="Reversal"/>, with the opposite amounts): the owner, the payout (its reference and day, its
-/// currency, its gross, the withholding it kept and its net, in that currency), the tax code and the version of the rule, the base, the rate and the amount in euro.
-/// </summary>
 public sealed record F24PayoutLine(
     Guid OwnerId,
     string OwnerName,
@@ -88,7 +84,6 @@ public sealed record F24PayoutLine(
     decimal PayoutWithheld,
     decimal PayoutNet);
 
-/// <summary>The dates of the F24 of the withholding.</summary>
 public static class F24Dates
 {
     /// <summary>The due date of the F24 of a month: the 16th of the month after it (ADR-018-R8), 16 January of the next year for December.</summary>

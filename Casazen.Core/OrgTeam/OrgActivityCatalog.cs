@@ -5,22 +5,17 @@ using Casazen.Core.Services;
 
 namespace Casazen.Core.OrgTeam;
 
-/// <summary>The keys a detail of an activity line may have (<see cref="OrgActivityEntry.DetailsJson"/>). A closed list: a new key is a decision, with a reason, here.</summary>
 public static class OrgActivityDetailKeys
 {
-    /// <summary>The org role of the person the line is about (<c>Admin</c>, <c>Collaborator</c>...).</summary>
     public const string Role = "role";
 
     public const string FromRole = "fromRole";
     public const string ToRole = "toRole";
 
-    /// <summary>The property scope a member now has (<c>All</c> or <c>Selected</c>).</summary>
     public const string Scope = "scope";
 
-    /// <summary>How many properties were given to the member in one change.</summary>
     public const string Granted = "granted";
 
-    /// <summary>How many properties were taken away from the member in one change.</summary>
     public const string Revoked = "revoked";
 
     /// <summary>
@@ -33,31 +28,19 @@ public static class OrgActivityDetailKeys
     public const string FromTier = "fromTier";
     public const string ToTier = "toTier";
 
-    /// <summary>Who or what changed the plan: <see cref="PlanChangeSource"/>.</summary>
     public const string Source = "source";
 
-    /// <summary>The area or page a member asked access to (<see cref="OrgAccessRequestRules.Areas"/>): a code of a closed list.</summary>
     public const string RequestedArea = "requestedArea";
 
     public const string FromMode = "fromMode";
     public const string ToMode = "toMode";
 
-    /// <summary>The day (<c>yyyy-MM-dd</c>) a scheduled change takes effect.</summary>
     public const string EffectiveOn = "effectiveOn";
 
-    /// <summary>
-    /// The areas (rental contexts) a member worked in before a change of its areas, as <see cref="OrgActivityDetails.AreasCode"/>
-    /// writes them: <c>short-rent</c>, <c>long-rent</c> or <c>long-rent.short-rent</c> (AM-02c).
-    /// </summary>
     public const string FromAreas = "fromAreas";
 
-    /// <summary>The areas the member works in after the change, written like <see cref="FromAreas"/> (AM-02c).</summary>
     public const string ToAreas = "toAreas";
 
-    /// <summary>
-    /// The compliance reminders a host acknowledged when activating a property: the ids of the steps still open, joined by a dot
-    /// (<c>documents</c>, <c>safety</c> or <c>documents.safety</c>).
-    /// </summary>
     public const string Reminders = "reminders";
 
     /// <summary>
@@ -66,7 +49,6 @@ public static class OrgActivityDetailKeys
     /// </summary>
     public const string FromSender = "fromSender";
 
-    /// <summary>Who sends them after the change, written like <see cref="FromSender"/>.</summary>
     public const string ToSender = "toSender";
 
     /// <summary>
@@ -78,13 +60,10 @@ public static class OrgActivityDetailKeys
     /// <summary>The compliance topic a verification handed to the channel manager is about: <c>Alloggiati</c> or <c>Istat</c> (E03/F05/US01/T01).</summary>
     public const string Topic = "topic";
 
-    /// <summary>The id of the booking a verification was started from: a GUID, an opaque id like the subject (E03/F05/US01/T01).</summary>
     public const string Booking = "booking";
 
-    /// <summary>The period a verification is about, a month <c>yyyy-MM</c> or a day <c>yyyy-MM-dd</c> (E03/F05/US01/T01).</summary>
     public const string Period = "period";
 
-    /// <summary>The random id of a handoff, returned to the client and kept with the line so the two can be matched (E03/F05/US01/T01).</summary>
     public const string Handoff = "handoff";
 
     /// <summary>
@@ -93,37 +72,16 @@ public static class OrgActivityDetailKeys
     /// </summary>
     public const string Purpose = "purpose";
 
-    /// <summary>
-    /// The code of the part of the activation plan a «Do it for me» request is about (<c>compliance</c>, <c>channels</c>...): a code of a closed list
-    /// (E10/F01/US03/T01); or what an item of the owner portal operations is (<c>OwnerPortalParts</c>: <c>stay</c>, <c>stayRule</c>, ..., E07/F07/US01); or, on a line
-    /// <see cref="OrgActivityType.OrgSettingsChanged"/>, the one setting it names: <c>portalCommissionRechargeWaiver</c>, the acknowledged waiver of the recharge of the portal
-    /// commissions (<c>PortalAccountErrors.RechargeWaiverActivityPart</c>, FIX/BE-V2-NO-RECHARGE).
-    /// </summary>
     public const string Part = "part";
 
-    /// <summary>
-    /// What a «Do it for me» request asked help with (<c>panelPolice</c>, <c>panelIstat</c>, <c>panelChannelAccess</c>, <c>part</c>): a code of the closed list
-    /// <c>OnboardingAssistContexts</c>, never a text (E10/F01/US03/T01).
-    /// </summary>
     public const string Context = "context";
 
-    /// <summary>
-    /// Where a «Do it for me» request stands after the event (<c>requested</c>, <c>inProgress</c>, <c>done</c>, <c>cancelled</c>), a code (E10/F01/US03/T01); or
-    /// what happened to an invitation of a property owner (<c>sent</c>, <c>resent</c>, <c>accepted</c>, <c>revoked</c>, E10/F02/US02); or what happened to
-    /// an item of the owner portal operations (<c>requested</c>, <c>approved</c>, <c>syncFailed</c>, ..., E07/F07/US01).
-    /// </summary>
     public const string Status = "status";
 
-    /// <summary>How many rows an owner file had (a count, E10/F02/US02).</summary>
     public const string Rows = "rows";
 
-    /// <summary>How many of the rows of an owner file changed something (a count, E10/F02/US02).</summary>
     public const string Applied = "applied";
 
-    /// <summary>
-    /// The first 32 characters (lower case hex) of the fingerprint of an owner file: a hash of the org and of the normalized content, which says
-    /// nothing of what the file holds and lets two lines of the log be matched to the same file (E10/F02/US02).
-    /// </summary>
     public const string Fingerprint = "fingerprint";
 
     /// <summary>
@@ -145,37 +103,26 @@ public static class OrgActivityDetailKeys
     ];
 }
 
-/// <summary>The purposes a read of the contact of a guest can have (the <c>purpose</c> detail of <see cref="OrgActivityType.ContactInfoRead"/>): a closed list of codes.</summary>
 public static class ContactReadPurposes
 {
-    /// <summary>The host writes to the guest of a booking that has no conversation, by e-mail (E05/F02/US02/T01).</summary>
     public const string MessageToGuest = "message_to_guest";
 
-    /// <summary>
-    /// CasaZen reads the e-mail address of the guest of a booking of a portal, once, to send it the check-in link (E23/F01/US01/T02, <c>IGuestContactInfoService</c>): the
-    /// system does it, so the line has no actor, and it is never a read for the CRM.
-    /// </summary>
     public const string CheckInLink = "check_in_link";
 
     public static IReadOnlyList<string> All { get; } = [MessageToGuest, CheckInLink];
 }
 
-/// <summary>Who or what changed the plan of an org (the <c>source</c> detail of <see cref="OrgActivityType.PlanChanged"/>).</summary>
 public enum PlanChangeSource
 {
-    /// <summary>The org's own billing administrator (<c>PUT /api/orgs/me/plan</c>).</summary>
     Org = 1,
 
-    /// <summary>CasaZen staff (<c>PATCH /api/admin/orgs/{id}/plan</c>).</summary>
     Staff = 2,
 
-    /// <summary>The subscription: Stripe's webhook gave the tier of the price, or the subscription stopped paying and the plan fell back to Starter.</summary>
     Subscription = 3,
 }
 
 public static class PlanChangeSourceExtensions
 {
-    /// <summary>The code written in the log: <c>org</c>, <c>staff</c> or <c>subscription</c>.</summary>
     public static string Code(this PlanChangeSource source) => source switch
     {
         PlanChangeSource.Org => "org",
@@ -210,15 +157,12 @@ public sealed record OrgActivityTypeInfo(
 /// </remarks>
 public static partial class OrgActivityCatalog
 {
-    /// <summary>The longest id (an actor or a subject) a line holds.</summary>
     public const int MaxIdLength = 255;
 
-    /// <summary>The longest value of a detail.</summary>
     public const int MaxDetailValueLength = 40;
 
     private static readonly OrgActivityTypeInfo[] Entries =
     [
-        // People.
         new(OrgActivityType.MemberInvited, OrgActivityArea.Account, OrgActivitySubjectType.Invitation, [OrgActivityDetailKeys.Role]),
         new(OrgActivityType.InvitationRevoked, OrgActivityArea.Account, OrgActivitySubjectType.Invitation, [OrgActivityDetailKeys.Role]),
         new(OrgActivityType.InvitationAccepted, OrgActivityArea.Account, OrgActivitySubjectType.Invitation, [OrgActivityDetailKeys.Role]),
@@ -232,15 +176,12 @@ public static partial class OrgActivityCatalog
         new(OrgActivityType.MemberAreasChanged, OrgActivityArea.Account, OrgActivitySubjectType.Member,
             [OrgActivityDetailKeys.FromAreas, OrgActivityDetailKeys.ToAreas, OrgActivityDetailKeys.Released]),
 
-        // Plan and organization.
         new(OrgActivityType.PlanChanged, OrgActivityArea.Account, OrgActivitySubjectType.Org,
             [OrgActivityDetailKeys.FromTier, OrgActivityDetailKeys.ToTier, OrgActivityDetailKeys.Source]),
         new(OrgActivityType.OrgNameChanged, OrgActivityArea.Account, OrgActivitySubjectType.Org, []),
         new(OrgActivityType.OrgSlugChanged, OrgActivityArea.Account, OrgActivitySubjectType.Org, []),
         new(OrgActivityType.TierAssigned, OrgActivityArea.Account, OrgActivitySubjectType.Org,
             [OrgActivityDetailKeys.ToTier], Reserved: true),
-        // The other settings of the org: the fact, never a value; the one part it names is the acknowledged waiver of the recharge of the portal commissions
-        // (FIX/BE-V2-NO-RECHARGE, a renunciation the agency has to be able to show: who and when are the line's). The catalog is at its cap: a line of this event, not a new one.
         new(OrgActivityType.OrgSettingsChanged, OrgActivityArea.Account, OrgActivitySubjectType.Org, [OrgActivityDetailKeys.Part]),
 
         // The mode change of a property (PM-02, written by PropertyModeService since AM-02c). The area is the one of the property,
@@ -252,15 +193,12 @@ public static partial class OrgActivityCatalog
         new(OrgActivityType.PropertyModeChanged, OrgActivityArea.ShortRent, OrgActivitySubjectType.Property,
             [OrgActivityDetailKeys.FromMode, OrgActivityDetailKeys.ToMode, OrgActivityDetailKeys.Released]),
 
-        // The activation with the compliance reminders still open, acknowledged by the host (PropertyComplianceStatusService).
         new(OrgActivityType.PropertyActivatedWithReminders, OrgActivityArea.ShortRent, OrgActivitySubjectType.Property,
             [OrgActivityDetailKeys.Reminders]),
 
-        // Reserved: the trusted suppliers of the host.
         new(OrgActivityType.TrustedSupplierAdded, OrgActivityArea.Supplier, OrgActivitySubjectType.Supplier, [], Reserved: true),
         new(OrgActivityType.TrustedSupplierRemoved, OrgActivityArea.Supplier, OrgActivitySubjectType.Supplier, [], Reserved: false),
 
-        // ConcordatoFacile gift.
         new(OrgActivityType.AdminGrantedConcordatoFacileGift, OrgActivityArea.Account, OrgActivitySubjectType.Org, []),
 
         // The police and ISTAT communications (E03/F01/US05/T02): who sends them for a property (ADR-029-R4), and the delegation of the
@@ -288,32 +226,22 @@ public static partial class OrgActivityCatalog
         // asked and what for (the booking is the subject, the person is the actor). Never the address, the number or a word of the message.
         new(OrgActivityType.ContactInfoRead, OrgActivityArea.ShortRent, OrgActivitySubjectType.Booking, [OrgActivityDetailKeys.Purpose]),
 
-        // The owner portfolio of an agency (E10/F02/US02): an owner file that changed something, and every change of an owner invitation
-        // (ADR-011-R11). Counts, a hash and a status code: never a name, an address, an identifier or a link.
         new(OrgActivityType.OwnerImportApplied, OrgActivityArea.Account, OrgActivitySubjectType.Org,
             [OrgActivityDetailKeys.Rows, OrgActivityDetailKeys.Applied, OrgActivityDetailKeys.Fingerprint]),
         new(OrgActivityType.OwnerInvitationChanged, OrgActivityArea.Account, OrgActivitySubjectType.OwnerInvitation, [OrgActivityDetailKeys.Status]),
 
-        // The owner portal operations (E07/F07/US01, NF-111): one event for the owner stays, their rules and, with the collaboration of the portal, what it
-        // records; the part says what the subject id is. Codes only: never a name, a date of a guest, a text or an amount.
         new(OrgActivityType.OwnerPortalChanged, OrgActivityArea.Account, OrgActivitySubjectType.OwnerPortalItem,
             [OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Status]),
 
-        // A reviewer opened a picture of the evidence of an identity verification (E73/F01/US02/T02, NF-195, D9): who, which booking and the kind of the picture as
-        // its part (documentPortrait or frame). Never the picture or its address.
         new(OrgActivityType.IdentityEvidenceViewed, OrgActivityArea.ShortRent, OrgActivitySubjectType.Booking, [OrgActivityDetailKeys.Part]),
     ];
 
-    /// <summary>Every event the log can record, in the order of the runbook.</summary>
     public static IReadOnlyList<OrgActivityTypeInfo> All => Entries;
 
     public static OrgActivityTypeInfo Describe(OrgActivityType type) =>
         Entries.FirstOrDefault(e => e.Type == type)
         ?? throw new ArgumentException($"'{type}' is not an event of the activity log.", nameof(type));
 
-    // ─── The codes the API speaks ───────────────────────────────────────────────────────────────────────
-
-    /// <summary>The code of an area in the API and the CSV: the key of the context (<c>account</c>, <c>short-rent</c>, <c>long-rent</c>) or <c>supplier</c>.</summary>
     public static string AreaCode(OrgActivityArea area) => area switch
     {
         OrgActivityArea.Account => "account",
@@ -323,7 +251,6 @@ public static partial class OrgActivityCatalog
         _ => throw new ArgumentOutOfRangeException(nameof(area), area, "Unknown activity area"),
     };
 
-    /// <summary>The area with this code (<see cref="AreaCode"/>, case-insensitive).</summary>
     public static bool TryParseArea(string? code, out OrgActivityArea area)
     {
         foreach (var candidate in Enum.GetValues<OrgActivityArea>())
@@ -339,7 +266,6 @@ public static partial class OrgActivityCatalog
         return false;
     }
 
-    /// <summary>The event named <paramref name="name"/> (its code, case-insensitive: <c>MemberRoleChanged</c>). A number is not a name.</summary>
     public static bool TryParseType(string? name, out OrgActivityType type)
     {
         foreach (var entry in Entries)
@@ -355,9 +281,6 @@ public static partial class OrgActivityCatalog
         return false;
     }
 
-    // ─── The rules that keep personal data out ──────────────────────────────────────────────────────────
-
-    /// <summary>A short code: letters, digits and <c>. _ -</c>, starting with a letter or a digit. No space, no <c>@</c>, no sentence.</summary>
     [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$")]
     private static partial Regex DetailValuePattern();
 

@@ -27,13 +27,10 @@ public class OrgActivityEntry : ITenantOwned
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The org the line belongs to (the tenant). Server-set, never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>UTC, to the microsecond (what PostgreSQL keeps).</summary>
     public DateTime When { get; set; }
 
-    /// <summary>Who did it (<c>User.Id</c>); <c>null</c> when nobody did: a job, a webhook, the system.</summary>
     [MaxLength(255)]
     public string? ActorUserId { get; set; }
 
@@ -43,14 +40,9 @@ public class OrgActivityEntry : ITenantOwned
 
     public OrgActivitySubjectType SubjectType { get; set; }
 
-    /// <summary>The id of the thing it is about, as <see cref="SubjectType"/> says. An opaque id, never a name.</summary>
     [Required, MaxLength(255)]
     public string SubjectId { get; set; } = string.Empty;
 
-    /// <summary>
-    /// A JSON object of at most a few keys with a short code each (<c>{"fromRole":"Collaborator","toRole":"Admin"}</c>), the keys
-    /// allowed for the <see cref="Type"/> by <c>OrgActivityCatalog</c>. <c>{}</c> when the type has no details.
-    /// </summary>
     [Required, Column(TypeName = "jsonb")]
     public string DetailsJson { get; set; } = "{}";
 }

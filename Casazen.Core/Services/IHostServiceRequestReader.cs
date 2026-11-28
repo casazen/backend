@@ -4,20 +4,16 @@ using Casazen.Core.Suppliers;
 
 namespace Casazen.Core.Services;
 
-/// <summary>The stay a request is for, as its host reads it (SR-08a). The supplier never gets this: the guest is the host's.</summary>
 public sealed record HostRequestStay(Guid BookingId, string GuestName, DateOnly CheckIn, DateOnly CheckOut);
 
-/// <summary>How to reach the supplier of a request, from the moment it took it (SR-08a). Never before: until then the supplier owes the host no contact.</summary>
 public sealed record HostRequestSupplierContact(string? Phone, string? Email);
 
-/// <summary>What a request says to its host besides the request itself: the city, the stay, the contact, and what the host can do.</summary>
 public sealed record HostServiceRequestExtras(
     string? PropertyCity,
     HostRequestStay? Stay,
     HostRequestSupplierContact? SupplierContact,
     HostServiceRequestAction Action);
 
-/// <summary>A page of the host's requests, each with its <see cref="HostServiceRequestExtras"/> (by request id).</summary>
 public sealed record HostServiceRequestPage(
     IReadOnlyList<ServiceRequest> Items,
     IReadOnlyDictionary<Guid, HostServiceRequestExtras> Extras,
@@ -38,19 +34,10 @@ public sealed record HostServiceRequestPage(
 /// </remarks>
 public interface IHostServiceRequestReader
 {
-    /// <summary>The requests that pass <paramref name="query"/>, the page asked for.</summary>
     Task<HostServiceRequestPage> ListAsync(HostScope scope, HostServiceRequestQuery query, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// How many requests are in each chip, for those that pass the filters of <paramref name="query"/> but the chip (<c>View</c>), the
-    /// page and the order. One aggregate statement.
-    /// </summary>
     Task<HostServiceRequestCounts> CountAsync(HostScope scope, HostServiceRequestQuery query, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The extras of requests the caller already read (the detail, the answer of an action of the host). Requests of another org are
-    /// left out: the host org is a predicate of the reads, never trusted from the requests.
-    /// </summary>
     Task<IReadOnlyDictionary<Guid, HostServiceRequestExtras>> DescribeAsync(
         Guid hostOrgId,
         IReadOnlyCollection<ServiceRequest> requests,

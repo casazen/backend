@@ -45,12 +45,6 @@ public sealed partial class ServiceRequestNotifier(
 {
     private sealed record SupplierContact(string Email, string LegalName);
 
-    // ─── New request: the supplier ───────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The email to the supplier for a new request, rendered <b>before</b> the request is saved: a missing
-    /// <c>App:PublicSiteBaseUrl</c> is a configuration error that must stop the request, not a wrong link in an email.
-    /// </summary>
     public EmailContent RenderCreatedEmail(ServiceRequest request, string supplierName, string comune) =>
         EmailTemplates.ServiceRequestCreated(
             EmailTemplates.DefaultCulture,
@@ -132,15 +126,8 @@ public sealed partial class ServiceRequestNotifier(
         }
     }
 
-    // ─── What the supplier did: the host ─────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Email and push to the host after a status change made by the supplier (take, start, completion, rejection) or by CasaZen
-    /// (cancellation for no answer), or a cancellation by the supplier. The push key is the transition, so the host gets one push.
-    /// </summary>
     public async Task NotifyHostAsync(ServiceRequest request, CancellationToken cancellationToken)
     {
-        // No host behind a showcase request: its customer is told (e-mail only).
         if (request.RentalContext == ServiceRequestRentalContext.Showcase)
         {
             await showcase.NotifyCustomerOfStatusAsync(request, cancellationToken);
@@ -210,10 +197,6 @@ public sealed partial class ServiceRequestNotifier(
         }
     }
 
-    /// <summary>
-    /// The supplier proposed another time (SP-04): email and push to the host. The email links to the page of the stay when the
-    /// request has one.
-    /// </summary>
     public async Task NotifyTimeProposedAsync(ServiceRequest request, CancellationToken cancellationToken)
     {
         if (request is not { ProposedStartUtc: { } start, ProposedEndUtc: { } end, ProposedAt: { } proposedAt })
@@ -250,12 +233,6 @@ public sealed partial class ServiceRequestNotifier(
         }
     }
 
-    // ─── The quote (SP-04b) ──────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The supplier sent a quote: email and push to the host (the email links to the page of the stay when the request has one), or, for
-    /// a showcase request, the email to its customer. The request is the one just saved, with the quote on it. Never throws.
-    /// </summary>
     public async Task NotifyQuoteSentAsync(ServiceRequest request, CancellationToken cancellationToken)
     {
         if (ServiceRequestQuoteRules.PendingOf(request) is not { } quote)
@@ -305,10 +282,6 @@ public sealed partial class ServiceRequestNotifier(
         }
     }
 
-    /// <summary>
-    /// The host accepted or turned down the quote (SP-04b): email and push to the supplier. <paramref name="quote"/> is the quote that was
-    /// answered (the request does not keep it anymore); an accepted one names the time the request has now.
-    /// </summary>
     public async Task NotifyQuoteAnsweredAsync(ServiceRequest request, bool accepted, ServiceRequestQuote quote, CancellationToken cancellationToken)
     {
         try
@@ -343,8 +316,6 @@ public sealed partial class ServiceRequestNotifier(
         }
     }
 
-    // ─── What the host did: the supplier ─────────────────────────────────────────────────────────────────────────────
-
     /// <summary>
     /// Email and push to the supplier when the request was cancelled by the host, or by CasaZen because nobody answered in
     /// time (<see cref="ServiceRequest.CancelledBy"/> says which). The supplier is told whatever its status.
@@ -369,7 +340,6 @@ public sealed partial class ServiceRequestNotifier(
             return;
         }
 
-        // The same for a quote the customer did not answer (SP-04b): the supplier answered, and it is the customer who did not.
         if (request.RentalContext == ServiceRequestRentalContext.Showcase
             && cancelledBy == ServiceRequestActorParty.System
             && request.CancellationReason == ServiceRequestCancellationReasons.QuoteNotAnswered)
@@ -378,8 +348,6 @@ public sealed partial class ServiceRequestNotifier(
             return;
         }
 
-        // The customer's own cancellation tells the supplier and the customer in one go (NotifyShowcaseCancelledByCustomerAsync): the
-        // host texts below would call it "the host".
         if (cancelledBy == ServiceRequestActorParty.Customer)
             return;
 
@@ -413,26 +381,18 @@ public sealed partial class ServiceRequestNotifier(
         }
     }
 
-    // ─── What the customer of a public showcase does (SP-11): the supplier, and the customer's receipt ───────────────
-
-    /// <summary>
-    /// A party wrote in the thread of a request on measure (SP-10b): the other one is told by e-mail, with a link and never the words.
-    /// </summary>
     public Task NotifyShowcaseThreadMessageAsync(
         ServiceRequest request,
         ServiceRequestMessageAuthor author,
         CancellationToken cancellationToken) =>
         showcase.NotifyThreadMessageAsync(request, author, cancellationToken);
 
-    /// <summary>The acceptance of an offer paid inside CasaZen could not be completed after the card was blocked: the customer is told that nothing was charged (SP-10b-b).</summary>
     public Task NotifyShowcaseOfferNotCompletedAsync(ServiceRequest request, bool timeGone, CancellationToken cancellationToken) =>
         showcase.NotifyOfferNotCompletedAsync(request, timeGone, cancellationToken);
 
-    /// <summary>The customer cancelled its showcase request: the supplier is told, and the customer gets the receipt.</summary>
     public Task NotifyShowcaseCancelledByCustomerAsync(ServiceRequest request, CancellationToken cancellationToken) =>
         showcase.NotifyCancelledByCustomerAsync(request, cancellationToken);
 
-    /// <summary>The customer moved its new showcase request to another time: the supplier is told.</summary>
     public Task NotifyShowcaseRescheduledAsync(
         ServiceRequest request,
         DateTime previousStartUtc,
@@ -440,7 +400,6 @@ public sealed partial class ServiceRequestNotifier(
         CancellationToken cancellationToken) =>
         showcase.NotifyRescheduledByCustomerAsync(request, previousStartUtc, proposalDropped, cancellationToken);
 
-    /// <summary>The customer accepted or turned down the time the supplier proposed: the supplier is told (and the customer, on acceptance).</summary>
     public Task NotifyShowcaseProposalAnsweredAsync(
         ServiceRequest request,
         bool accepted,
@@ -448,7 +407,6 @@ public sealed partial class ServiceRequestNotifier(
         CancellationToken cancellationToken) =>
         showcase.NotifyProposalAnsweredByCustomerAsync(request, accepted, proposedAt, cancellationToken);
 
-    /// <summary>The customer accepted or turned down the quote (SP-04b): the supplier is told (and the customer, on acceptance).</summary>
     public Task NotifyShowcaseQuoteAnsweredAsync(
         ServiceRequest request,
         bool accepted,
@@ -485,10 +443,6 @@ public sealed partial class ServiceRequestNotifier(
         }
     }
 
-    /// <summary>
-    /// The host accepted or declined the time the supplier proposed (SP-04): email and push to the supplier.
-    /// <paramref name="proposedAt"/> is the instant of the proposal that was answered (the request does not keep it anymore).
-    /// </summary>
     public async Task NotifyProposalAnsweredAsync(
         ServiceRequest request,
         bool accepted,
@@ -518,11 +472,6 @@ public sealed partial class ServiceRequestNotifier(
         }
     }
 
-    /// <summary>
-    /// Email and push to the supplier after the host marked a request as paid (SU-09). The supplier is notified whatever its
-    /// status: a suspended supplier is still owed what it completed. It is the notice «Pagamenti ricevuti»
-    /// (<see cref="SupplierNotificationKind.PaymentReceived"/>, SP-16d): a supplier that turned it off is not sent it.
-    /// </summary>
     public async Task NotifySupplierPaidAsync(ServiceRequest request, CancellationToken cancellationToken)
     {
         try
@@ -558,8 +507,6 @@ public sealed partial class ServiceRequestNotifier(
         }
     }
 
-    // ─── The day before: the supplier (SP-16d) ───────────────────────────────────────────────────────────────────────
-
     /// <summary>
     /// The reminder of tomorrow's job to the supplier (SP-16d), for a request of any context: e-mail and push, in Italian, with the service,
     /// the time and the comune, and a link to the request. <b>Never the address or the contact of the customer</b>: they are in the console,
@@ -578,7 +525,6 @@ public sealed partial class ServiceRequestNotifier(
             if (!await SupplierNotificationPreferences.AllowsAsync(db, request.SupplierOrgId, SupplierNotificationKind.DayBeforeReminder, cancellationToken))
                 return null;
 
-            // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the request's supplier org.
             var supplier = await db.SupplierProfiles
                 .AsNoTracking()
                 .Where(sp => sp.OrgId == request.SupplierOrgId)
@@ -587,7 +533,6 @@ public sealed partial class ServiceRequestNotifier(
             if (supplier is null)
                 return false;
 
-            // A suspended supplier takes no work: it is not reminded of a job it cannot do.
             if (supplier.Status != SupplierStatus.Active)
                 return null;
 
@@ -614,18 +559,10 @@ public sealed partial class ServiceRequestNotifier(
         }
     }
 
-    // ─── Helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The comune the supplier is told: the property's for a host's request (decision D9: never the property's name), the one the
-    /// customer wrote on the request for a showcase one.
-    /// </summary>
     private static string ComuneOf(ServiceRequest request) => request.Property?.City ?? request.LocationCity ?? string.Empty;
 
-    /// <summary>The host's own name of the property, empty for a request that has none (only a host's request is told to a host).</summary>
     private static string PropertyNameOf(ServiceRequest request) => request.Property?.Name ?? string.Empty;
 
-    // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the request's supplier org.
     private Task<SupplierContact?> FindSupplierAsync(ServiceRequest request, CancellationToken cancellationToken) =>
         db.SupplierProfiles
             .AsNoTracking()
@@ -633,18 +570,9 @@ public sealed partial class ServiceRequestNotifier(
             .Select(sp => new SupplierContact(sp.Email, sp.LegalName))
             .FirstOrDefaultAsync(cancellationToken);
 
-    /// <summary>
-    /// A request tied to a stay opens it; one without a stay opens the property list: the app has no service request screen
-    /// (MO-03, A6-19).
-    /// </summary>
     private static string HostRoute(ServiceRequest request) =>
         request.BookingId is { } bookingId ? PushRoutes.Booking(bookingId) : PushRoutes.Properties;
 
-    /// <summary>
-    /// A push to the supplier org (A6-08). The stay belongs to the host (the supplier cannot open it), so the push carries no
-    /// booking and opens the request in the supplier area of the app (<c>/supplier/requests/{id}</c>); <c>serviceRequestId</c> is in the
-    /// data too.
-    /// </summary>
     private void QueueSupplierPush(ServiceRequest request, string deliveryKey, string type, PushText text)
     {
         try

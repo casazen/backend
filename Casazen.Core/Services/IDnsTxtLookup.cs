@@ -7,6 +7,5 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IDnsTxtLookup
 {
-    /// <summary>Returns all TXT record values for <paramref name="host"/>, or an empty list on miss/timeout.</summary>
     Task<IReadOnlyList<string>> LookupTxtAsync(string host, CancellationToken cancellationToken = default);
 }

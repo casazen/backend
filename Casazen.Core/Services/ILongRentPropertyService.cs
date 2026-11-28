@@ -4,26 +4,19 @@ using Casazen.Core.Leases;
 
 namespace Casazen.Core.Services;
 
-/// <summary>Which properties of the long-term area the list holds: all of them, the let ones, or the ones that are not let.</summary>
 public enum LongRentPropertyView
 {
-    /// <summary>Every property of the caller's reach (the default).</summary>
     All = 0,
 
-    /// <summary>The properties a lease holds now (<see cref="LongRentPropertyStatus.Rented"/>).</summary>
     Rented = 1,
 
-    /// <summary>The properties no lease holds: free, or with a lease still being prepared.</summary>
     Free = 2,
 }
 
-/// <summary>What the list asks for: a view and a text looked for, without regard to case, in the name, address, city and unit.</summary>
 public sealed record LongRentPropertyQuery(LongRentPropertyView View = LongRentPropertyView.All, string? Search = null)
 {
-    /// <summary>Longest search text taken into account (a longer one is cut).</summary>
     public const int MaxSearchLength = 100;
 
-    /// <summary>The search text trimmed and cut, or <c>null</c> when there is nothing to look for.</summary>
     public string? NormalizedSearch
     {
         get
@@ -36,11 +29,6 @@ public sealed record LongRentPropertyQuery(LongRentPropertyView View = LongRentP
     }
 }
 
-/// <summary>
-/// Where a property of the long-term area stands. <see cref="Rented"/> has a lease in force (stage <c>Active</c> or <c>Expiring</c>: registered
-/// and not over); <see cref="InPreparation"/> has none but a lease on its way (draft, in review, out for signature, signed and still to
-/// register): it is free to let and the page says who is coming; <see cref="Free"/> has nothing. Serialized by name.
-/// </summary>
 public enum LongRentPropertyStatus
 {
     Free,
@@ -67,18 +55,10 @@ public enum LongRentApeStatus
 /// </summary>
 public sealed record LongRentPropertyLease(Guid LeaseId, LeaseStage? Stage, DateTime CurrentTermEndDate, DateTime? NoticeOn, DateOnly? FreeFrom);
 
-/// <summary>The lease on its way of a property that has none in force: which one, and where it stands on the path.</summary>
 public sealed record LongRentPreparingLease(Guid LeaseId, LeaseStage? Stage);
 
-/// <summary>A change of rental mode programmed for the property (PM-02): the mode it goes to and its first day.</summary>
 public sealed record LongRentScheduledModeChange(RentalMode ToMode, DateTime EffectiveDate);
 
-/// <summary>
-/// One property of the long-term area with what the lists of properties and leases do not say (LR-07a). <c>Status</c>, <c>CurrentLease</c>
-/// and <c>PreparingLease</c> are <c>null</c> when the caller may not read the leases: nothing is guessed. <c>ApeValid</c> is an identified
-/// certificate; <c>ApeClass</c> the energy class of the latest one that has it; <c>CadastralComplete</c> the rule of the contract (sheet,
-/// parcel, category and income).
-/// </summary>
 public sealed record LongRentPropertyRow(
     Guid Id,
     string Name,
@@ -102,10 +82,6 @@ public sealed record LongRentPropertyRow(
 /// </summary>
 public interface ILongRentPropertyService
 {
-    /// <summary>
-    /// The active properties in long-term mode of the scope, ordered by name. <paramref name="includeLeases"/> is whether the caller may read
-    /// the leases: without it nothing is said of them (status and leases are <c>null</c>, and a view other than <c>All</c> holds nothing).
-    /// </summary>
     Task<IReadOnlyList<LongRentPropertyRow>> GetPropertiesAsync(
         HostScope scope, LongRentPropertyQuery query, bool includeLeases, CancellationToken cancellationToken = default);
 }

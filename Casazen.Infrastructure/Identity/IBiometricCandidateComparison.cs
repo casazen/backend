@@ -2,13 +2,10 @@ using Casazen.Infrastructure.Services;
 
 namespace Casazen.Infrastructure.Identity;
 
-/// <summary>What a case of the comparison of a candidate model with the reference asks of the models.</summary>
 public enum CandidateCaseKind
 {
-    /// <summary>The portrait of a document against the frames chosen from a presence sequence: the recognition model (the reference SFace and the recognition candidate).</summary>
     Match,
 
-    /// <summary>One frame of a presence sequence: the anti-spoofing model (the reference MiniFASNetV2 and the anti-spoofing candidate).</summary>
     Liveness,
 }
 
@@ -28,17 +25,13 @@ public abstract class CandidateCase
         Kind = kind;
     }
 
-    /// <summary>The label of the case in the report of the qualification.</summary>
     public string Id { get; }
 
-    /// <summary>Which models the case is for.</summary>
     public CandidateCaseKind Kind { get; }
 }
 
-/// <summary>A document portrait and the frames compared with it: what the recognition model is asked (the same comparison as <see cref="PresenceMatcher"/>, one similarity per frame).</summary>
 public sealed class MatchCase : CandidateCase
 {
-    /// <summary>The case of <paramref name="documentFront"/> against <paramref name="frames"/>, which are the pictures the server chose from a sequence.</summary>
     public MatchCase(string id, RasterImage documentFront, IReadOnlyList<RasterImage> frames)
         : base(id, CandidateCaseKind.Match)
     {
@@ -51,17 +44,13 @@ public sealed class MatchCase : CandidateCase
         Frames = frames;
     }
 
-    /// <summary>The front of the document, where the portrait is found.</summary>
     public RasterImage DocumentFront { get; }
 
-    /// <summary>The frames compared with the portrait, in order.</summary>
     public IReadOnlyList<RasterImage> Frames { get; }
 }
 
-/// <summary>One frame, as the JPEG or PNG bytes of the picture: what the anti-spoofing model is asked (the same reading as <see cref="SequenceLivenessEvaluator"/> gives the service of the check-in).</summary>
 public sealed class LivenessCase : CandidateCase
 {
-    /// <summary>The case of the frame <paramref name="encodedFrame"/> (the encoded bytes, as <see cref="SequenceFrame.Jpeg"/> keeps them).</summary>
     public LivenessCase(string id, byte[] encodedFrame)
         : base(id, CandidateCaseKind.Liveness)
     {
@@ -72,29 +61,19 @@ public sealed class LivenessCase : CandidateCase
         EncodedFrame = encodedFrame;
     }
 
-    /// <summary>The bytes of the frame, read and never changed.</summary>
     public byte[] EncodedFrame { get; }
 }
 
-/// <summary>The codes of a run of a model that did not give scores (<see cref="CandidateModelRun.FailureCode"/>): codes only, never a message.</summary>
 public static class CandidateRunCodes
 {
-    /// <summary>The reference models are not available: nothing could be compared.</summary>
     public const string Unavailable = "biometrics_unavailable";
 
-    /// <summary>No face in the portrait of the document, or in the frame of a liveness case.</summary>
     public const string NoFace = "no_face";
 
-    /// <summary>The model gave no score: it did not run, it found nothing to cut, or its answer was not one (a score of 0 is what a model that did not run gives).</summary>
     public const string NotScored = "not_scored";
 
-    /// <summary>The run failed (the type of the failure is not told: a message could carry what was being read).</summary>
     public const string Error = "error";
 
-    /// <summary>
-    /// The candidate is configured and the store has not looked at it yet: the store is ready as soon as the three models are loaded and loads the candidates after them, so for a moment (longer for a large
-    /// file) it is ready and its <c>Candidates</c> is empty. The reference ran; the candidate has no scores yet, and the runner waits and compares again. It is not «no candidate».
-    /// </summary>
     public const string CandidateLoading = "candidate_loading";
 }
 
@@ -114,7 +93,6 @@ public static class CandidateRunCodes
 /// <param name="FailureCode">Why there are no scores, a code of <see cref="CandidateRunCodes"/>; null when the model ran.</param>
 public sealed record CandidateModelRun(string Role, string Name, string Version, string? WeightHash, IReadOnlyList<double> Scores, double LatencyMs, string? FailureCode)
 {
-    /// <summary>True when the model ran and has its scores.</summary>
     public bool Ran => FailureCode is null;
 }
 

@@ -55,7 +55,6 @@ public sealed class MarketplaceHealthService(
     TimeProvider timeProvider,
     ILogger<MarketplaceHealthService> logger) : IMarketplaceHealthService
 {
-    /// <summary>The kind of entity the «To do» items are about (<c>InternalActivity.EntityType</c>): the activation, whose id is the entity id.</summary>
     public const string TodoEntityType = nameof(MarketplaceActivation);
 
     /// <summary>
@@ -64,24 +63,16 @@ public sealed class MarketplaceHealthService(
     /// </summary>
     public static readonly TimeSpan NewConnectionGrace = TimeSpan.FromMinutes(10);
 
-    /// <summary>
-    /// How long a first pass that found every connection of CasaZen missing from the list waits for a second one to confirm it: a run is every 30 minutes, so a few runs
-    /// may be skipped (a rate limit, a failure of that property) and the second pass still counts; a first pass older than this is a first pass again.
-    /// </summary>
     public static readonly TimeSpan MissConfirmationWindow = TimeSpan.FromHours(3);
 
-    /// <summary>How long the quota of a sync is kept in memory (the sync runs every 30 minutes): an older reading is not shown.</summary>
     private static readonly TimeSpan QuotaLifetime = TimeSpan.FromHours(3);
 
-    /// <summary>The kinds the health covers: a partner is activated on its own site and has no connection to read.</summary>
     private static readonly MarketplaceActivationKind[] HealthKinds =
     [
         MarketplaceActivationKind.Channel,
         MarketplaceActivationKind.Tool,
         MarketplaceActivationKind.LicensedFunction,
     ];
-
-    // ─── The read ────────────────────────────────────────────────────────────────────────────────────────────
 
     public async Task<MarketplaceHealth> GetHealthAsync(
         Guid orgId,
@@ -93,7 +84,6 @@ public sealed class MarketplaceHealthService(
         MarketplaceReads.EnsureSameOrg(orgId, scope);
         var lang = MarketplaceLanguages.Normalize(language);
 
-        // What goes through the channel manager does not exist for anybody while the connector is off.
         if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
             return new MarketplaceHealth([]);
 
@@ -140,10 +130,6 @@ public sealed class MarketplaceHealthService(
         return new MarketplaceHealth(items);
     }
 
-    /// <summary>
-    /// The activations the caller reaches that the health covers and that are not turned off, never tracked. A property outside the scope has none; a row with no
-    /// property is the whole org's, and «no property named» is never «inside the scope» for a caller limited to some properties.
-    /// </summary>
     private IQueryable<MarketplaceActivation> ReachableRows(Guid orgId, HostScope scope, Guid? propertyId)
     {
         var rows = db.MarketplaceActivations.AsNoTracking()
@@ -165,10 +151,6 @@ public sealed class MarketplaceHealthService(
         return portalNames.TryGetValue(row.TargetCode, out var name) && !string.IsNullOrWhiteSpace(name) ? name : row.TargetCode;
     }
 
-    /// <summary>
-    /// The problem in simple words: the code and the text of the resource files for it. A code nobody listed has no text of its own and gets the generic one, which says
-    /// only that the connection needs a look. What the channel manager itself said about the failure is never read, so it cannot reach the page.
-    /// </summary>
     private MarketplaceHealthError? ErrorOf(string? code, string lang)
     {
         if (string.IsNullOrWhiteSpace(code))
@@ -185,10 +167,7 @@ public sealed class MarketplaceHealthService(
     private MarketplaceQuota? QuotaOf(Guid orgId) =>
         cache.TryGetValue(QuotaKey(orgId), out MarketplaceQuota? quota) ? quota : null;
 
-    /// <summary>The org is in the key: the quota of two orgs can never meet.</summary>
     private static string QuotaKey(Guid orgId) => $"marketplace-quota:{orgId:N}";
-
-    // ─── Which orgs ──────────────────────────────────────────────────────────────────────────────────────────
 
     public async Task<IReadOnlyList<Guid>> ListOrgsToSyncAsync(CancellationToken ct = default)
     {
@@ -202,7 +181,6 @@ public sealed class MarketplaceHealthService(
             .Where(c => c.Environment == environment && c.Status == OctorateConnectionStatus.Connected)
             .Select(c => c.OrgId);
 
-        // A system read over every org: the reach of a caller does not apply, and no row is returned, only the orgs that have something to sync.
         var rows = await db.MarketplaceActivations
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -223,14 +201,11 @@ public sealed class MarketplaceHealthService(
         ];
     }
 
-    // ─── The sync ────────────────────────────────────────────────────────────────────────────────────────────
-
     public async Task<MarketplaceSyncResult> SyncAsync(Guid orgId, CancellationToken ct = default)
     {
         if (orgId == Guid.Empty)
             throw new ArgumentException("A sync is for an organization.", nameof(orgId));
 
-        // Nothing is read or written while the connector is off, or for an org that has no connected account in this environment.
         if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector) || await ConnectedAccountAsync(orgId, ct) is not { } connectionKey)
             return MarketplaceSyncResult.Empty;
 
@@ -248,7 +223,6 @@ public sealed class MarketplaceHealthService(
             }
             catch (OctorateRateLimitException)
             {
-                // The run stops here: the items of this property are brought in line with what is known, and the rest is left to the next run.
                 await ReconcileTodosAsync(orgId, plan.PropertyId, run, ct);
                 logger.LogWarning(
                     "Marketplace sync of org {OrgId} stopped by the rate limit at property {PropertyId}: {Properties} properties read, the rest is left to the next run",
@@ -268,10 +242,6 @@ public sealed class MarketplaceHealthService(
         return result;
     }
 
-    /// <summary>
-    /// The properties to sync, the least recently synced first: each with the accommodation of its confirmed listing (<c>null</c> when it has none), and whether it has a
-    /// channel or a tool to read and a function of the license to reconcile. A property that was deleted is not there (nobody can act on it).
-    /// </summary>
     private async Task<List<PropertyPlan>> PlanAsync(Guid orgId, Guid connectionKey, CancellationToken ct)
     {
         var existing = db.Properties.Where(p => p.OrgId == orgId).Select(p => p.Id);
@@ -318,10 +288,6 @@ public sealed class MarketplaceHealthService(
         ];
     }
 
-    /// <summary>
-    /// Reads and brings in line one property. <c>false</c> when the org's own token was refused (the other properties would fail alike). A rate limit is raised;
-    /// any other failure of Octorate is logged with its code, counted, and left for the next run.
-    /// </summary>
     private async Task<bool> SyncPropertyAsync(Guid orgId, PropertyPlan plan, RunCounts run, CancellationToken ct)
     {
         if (plan.AccommodationId is not { } accommodationId)
@@ -386,8 +352,6 @@ public sealed class MarketplaceHealthService(
                          && string.Equals(c.PortalCode, row.TargetCode, StringComparison.Ordinal))))
             .ToList();
 
-        // None of the connections CasaZen made is in the list: that says more about the list (empty, late, a shape nobody has met that was read as empty) than about the
-        // connections, so one pass concludes nothing from it (see ApplyMissing).
         var noneListed = matches.All(match => match.Connection is null);
         var updated = 0;
         foreach (var (row, connection) in matches)
@@ -411,7 +375,6 @@ public sealed class MarketplaceHealthService(
         }
         catch (DbUpdateConcurrencyException)
         {
-            // Somebody wrote these rows while the list was out (the wizard, a deactivation): what they wrote is newer than this read, so it stays and the next run reads again.
             ForgetTrackedRows();
             run.Skipped++;
             logger.LogInformation(
@@ -419,9 +382,6 @@ public sealed class MarketplaceHealthService(
         }
     }
 
-    /// <summary>
-    /// Brings one row in line with its connection (or with its absence). <c>true</c> when its status or its problem changed. The rows are not saved here.
-    /// </summary>
     private bool Apply(MarketplaceActivation row, OctorateConnectionInfo? connection, bool noneListed, DateTime now, RunCounts run)
     {
         if (connection is null)
@@ -440,8 +400,6 @@ public sealed class MarketplaceHealthService(
                 return MarkToFix(row, verdict.ErrorCode!, now);
 
             default:
-                // A word CasaZen has not met: nothing is concluded from it, not even the moment of the read (the connection is listed, so a first pass that found it missing is
-                // forgotten all the same).
                 ForgetMiss(row);
                 run.Unrecognised++;
                 logger.LogWarning(
@@ -478,7 +436,6 @@ public sealed class MarketplaceHealthService(
         if (row.LastErrorAt is { } firstMiss && now - firstMiss >= NewConnectionGrace && now - firstMiss <= MissConfirmationWindow)
             return MarkToFix(row, MarketplaceHealthErrorCodes.ConnectionMissing, now);
 
-        // The first pass (or one so long after the first that it is a first again): remembered, nothing concluded.
         if (row.LastErrorAt is null || now - row.LastErrorAt.Value > MissConfirmationWindow)
             row.LastErrorAt = now;
 
@@ -502,7 +459,6 @@ public sealed class MarketplaceHealthService(
         return false;
     }
 
-    /// <summary>The connection was listed: a first pass that found it missing is forgotten, so a later gap is a first pass again. A row with a problem keeps the moment of it.</summary>
     private static void ForgetMiss(MarketplaceActivation row)
     {
         if (row.LastErrorCode is null)
@@ -511,7 +467,6 @@ public sealed class MarketplaceHealthService(
 
     private static bool MarkHealthy(MarketplaceActivation row, MarketplaceActivationStatus status, DateTime now)
     {
-        // The moment alone (the first pass of a connection that was missing, see ApplyMissing) is not a problem: clearing it changes nothing the host sees.
         var changed = row.Status != status || row.LastErrorCode is not null;
         row.Status = status;
         row.LastErrorCode = null;
@@ -519,7 +474,6 @@ public sealed class MarketplaceHealthService(
         row.LastSyncedAt = now;
         if (status == MarketplaceActivationStatus.Active)
         {
-            // Octorate shows it working: it is proven, no longer only declared.
             row.IsDeclared = false;
             row.VerifiedAt ??= now;
         }
@@ -545,10 +499,6 @@ public sealed class MarketplaceHealthService(
         return changed;
     }
 
-    /// <summary>
-    /// The license of the property is read and its function rows brought in line with it by the service of the licensed functions, which also decides what a row that
-    /// went off becomes. Only a refusal of Octorate is raised from here; an org that disconnected meanwhile leaves nothing read or written for it.
-    /// </summary>
     private async Task ReconcileLicenseAsync(Guid orgId, Guid propertyId, RunCounts run, CancellationToken ct)
     {
         try
@@ -564,10 +514,6 @@ public sealed class MarketplaceHealthService(
         }
     }
 
-    /// <summary>
-    /// Reads the quota of the application once for the run and keeps it in memory for the health read. A reading that cannot be had (a failure of Octorate) leaves the
-    /// one of the last run, whose <c>ReadAt</c> says how old it is; only the rate limit is raised.
-    /// </summary>
     private async Task ReadQuotaAsync(Guid orgId, RunCounts run, CancellationToken ct)
     {
         try
@@ -602,12 +548,6 @@ public sealed class MarketplaceHealthService(
         }
     }
 
-    // ─── The «To do» items ───────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Brings the «To do» items of a property in line with its activations, in the database only: one is raised for an activation that is To fix and has none (the
-    /// service returns the one that is open, if any), and the one an activation holds is closed by the system when the activation is no longer To fix.
-    /// </summary>
     private async Task ReconcileTodosAsync(Guid orgId, Guid propertyId, RunCounts run, CancellationToken ct)
     {
         var rows = await db.MarketplaceActivations
@@ -633,7 +573,6 @@ public sealed class MarketplaceHealthService(
                     }
                     catch (NotFoundException)
                     {
-                        // The property was deleted meanwhile: nobody is left to act on it.
                         logger.LogInformation("Marketplace activation {ActivationId} of org {OrgId}: no To do raised, its property is gone", row.Id, orgId);
                     }
 
@@ -647,7 +586,6 @@ public sealed class MarketplaceHealthService(
                 }
                 catch (NotFoundException)
                 {
-                    // The item is gone: there is nothing to close, and the activation forgets it.
                     logger.LogInformation("Marketplace activation {ActivationId} of org {OrgId}: its To do is gone, the reference is cleared", row.Id, orgId);
                 }
 
@@ -670,20 +608,15 @@ public sealed class MarketplaceHealthService(
         {
             Type = ActivityType.IntegrationError,
 
-            // The activation wizard at the failing step: the entity type below tells the client which wizard (ADR-026-R6, the To do action map of the activity center).
             Action = ActivityAction.ResumeWizard,
             EntityType = TodoEntityType,
             EntityId = row.Id,
             PropertyId = row.PropertyId,
 
-            // A channel that stops sends no more bookings: High. A tool or a function of the license is a loss of convenience: Medium.
             Urgency = row.Kind == MarketplaceActivationKind.Channel ? ActivityUrgency.High : ActivityUrgency.Medium,
             Reason = row.LastErrorCode,
         };
 
-    // ─── Shared ──────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The id of the org's connected account in this environment; <c>null</c> while the org is not connected.</summary>
     private async Task<Guid?> ConnectedAccountAsync(Guid orgId, CancellationToken ct)
     {
         var environment = OctorateEnvironments.Of(hostEnvironment);
@@ -693,14 +626,12 @@ public sealed class MarketplaceHealthService(
             .FirstOrDefaultAsync(ct);
     }
 
-    /// <summary>The rows are read again after a conflict: nothing tracked from the failed attempt may be kept.</summary>
     private void ForgetTrackedRows()
     {
         foreach (var entry in db.ChangeTracker.Entries<MarketplaceActivation>().ToList())
             entry.State = EntityState.Detached;
     }
 
-    /// <summary>A word of Octorate's as one short printable token for a log line: no line break, no control character, at most 40 characters.</summary>
     private static string Printable(string? word)
     {
         var text = word?.Trim();
@@ -715,7 +646,6 @@ public sealed class MarketplaceHealthService(
 
     private sealed record PropertyPlan(Guid PropertyId, string? AccommodationId, bool HasConnections, bool HasFunctions);
 
-    /// <summary>The counts of one run, for its log line and its result.</summary>
     private sealed class RunCounts
     {
         public int Properties { get; set; }

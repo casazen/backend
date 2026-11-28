@@ -5,51 +5,20 @@ using Casazen.Core.Services;
 
 namespace Casazen.Core.Suppliers;
 
-/// <summary>The stable values of <c>ServiceRequest.CancellationReason</c> that are codes and not text a person wrote.</summary>
 public static class ServiceRequestCancellationReasons
 {
-    /// <summary>
-    /// The automatic cancellation (decision D8, job <c>service-request-auto-cancel</c>): the supplier did not answer before
-    /// <c>ResponseDueAt</c>. Stored with <c>CancelledBy = System</c>; the client translates it, it is not a sentence.
-    /// </summary>
     public const string NoResponse = "NoResponse";
 
-    /// <summary>
-    /// A request from the public showcase whose supplier had proposed another time and whose customer did not answer before
-    /// the deadline (SP-11, <c>Suppliers:Showcase:ProposalResponseMinutes</c>): cancelled by CasaZen (<c>CancelledBy = System</c>),
-    /// but the supplier did answer — it is the customer who did not. Its own code, so no party is told the other one stayed
-    /// silent (decision D24). The client translates it, it is not a sentence.
-    /// </summary>
     public const string ProposalNotAnswered = "ProposalNotAnswered";
 
-    /// <summary>
-    /// The customer of the public showcase cancelled its own booking without giving a reason (SP-11, <c>CancelledBy = Customer</c>).
-    /// When the customer wrote a reason, the text is stored instead. The client translates the code, it is not a sentence.
-    /// </summary>
     public const string CancelledByCustomer = "CancelledByCustomer";
 
-    /// <summary>
-    /// SP-BKP, a backup supplier's request: the primary supplier took the job, so the backup request was closed by CasaZen
-    /// (<c>CancelledBy = System</c>). The client translates it, it is not a sentence.
-    /// </summary>
     public const string PrimaryTookIt = "PrimaryTookIt";
 
-    /// <summary>
-    /// SP-BKP: a backup took the job first, so this request of the group (another backup's, or the primary's that did not answer in
-    /// time and is cancelled with <see cref="NoResponse"/> instead) was closed by CasaZen. The client translates it.
-    /// </summary>
     public const string TakenByBackup = "TakenByBackup";
 
-    /// <summary>
-    /// SP-BKP, a backup supplier's request: the host cancelled the request, so there is no job to take (<c>CancelledBy = Host</c>). The
-    /// host's own words are never shown to a backup, which did not take the request. The client translates it.
-    /// </summary>
     public const string RequestCancelledByHost = "RequestCancelledByHost";
 
-    /// <summary>
-    /// SP-BKP, a backup that had accepted: when the job came to it, its time was no longer free (a job it took meanwhile, a time off), so
-    /// this request was closed by CasaZen. The client translates it.
-    /// </summary>
     public const string BackupSlotUnavailable = "BackupSlotUnavailable";
 
     /// <summary>
@@ -59,85 +28,47 @@ public static class ServiceRequestCancellationReasons
     /// </summary>
     public const string BackupRaceClosed = "BackupRaceClosed";
 
-    /// <summary>
-    /// A request from the public showcase whose supplier had sent a quote and whose customer did not answer before the deadline
-    /// (SP-04b, <c>Suppliers:Showcase:ProposalResponseMinutes</c>): cancelled by CasaZen (<c>CancelledBy = System</c>), but the supplier did
-    /// answer — it is the customer who did not. Its own code, so no party is told the other one stayed silent (decision D24). The client
-    /// translates it, it is not a sentence.
-    /// </summary>
     public const string QuoteNotAnswered = "QuoteNotAnswered";
 
-    /// <summary>True for a value of <c>CancellationReason</c> that is one of the codes above and not text a person wrote.</summary>
     public static bool IsCode(string? reason) =>
         reason is NoResponse or ProposalNotAnswered or CancelledByCustomer or QuoteNotAnswered or PrimaryTookIt or TakenByBackup
             or RequestCancelledByHost or BackupSlotUnavailable or BackupRaceClosed;
 }
 
-/// <summary>The kinds of line of <see cref="ServiceRequestPriceLine"/>.</summary>
 public static class ServiceRequestPriceLineKinds
 {
-    /// <summary>The agreed price of the work (the quote, else the estimate).</summary>
     public const string Base = "base";
 
-    /// <summary>Platform commission added to the host payment for a marketplace supplier.</summary>
     public const string PlatformFee = "platformFee";
 
-    /// <summary>An extra the supplier added when it completed the work (a bathroom more, extra linen).</summary>
     public const string Extra = "extra";
 
-    /// <summary>A line of the quote the customer accepted (SP-04b): the lines of an accepted quote are the price of the work.</summary>
     public const string Quote = "quote";
 }
 
-/// <summary>
-/// One line of the price of a completed request (<c>ServiceRequest.PriceLinesJson</c>); the lines add up to the final amount.
-/// <paramref name="Quantity"/> and <paramref name="UnitAmountCents"/> are there only for a line that came from the offer on a request on measure
-/// (SP-10b-b), whose amount is their product; every other line has neither (they are left out of the JSON when null).
-/// </summary>
 public sealed record ServiceRequestPriceLine(string Kind, string Label, int AmountCents, int? Quantity = null, int? UnitAmountCents = null);
 
-/// <summary>An extra the supplier asks for on top of the agreed price when it completes the work.</summary>
 public sealed record ServiceRequestExtra(string Label, int AmountCents);
 
-/// <summary>An option (supplement) of the catalog the customer picked, snapshotted on the request (<c>ServiceRequest.OptionsJson</c>).</summary>
 public sealed record ServiceRequestOption(string Code, string Label, int AmountCents, string Per, int Quantity);
 
-/// <summary>The codes of the entries of <c>ServiceRequest.OptionsJson</c> that are not a supplement of the price list (SP-10).</summary>
 public static class ServiceRequestOptionCodes
 {
-    /// <summary>
-    /// The quantity the customer chose for a price per hour, per set or per square meter (the base of the estimate): the label is
-    /// the name of the service, <c>Per</c> the unit, <c>AmountCents</c> the price of one unit, <c>Quantity</c> how many.
-    /// </summary>
     public const string Quantity = "quantity";
 
-    /// <summary><c>Per</c> of the quantity of a price per square meter (the supplements have <see cref="SupplierServiceSupplementUnits"/>).</summary>
     public const string SquareMeter = "sqm";
 
-    /// <summary>
-    /// The surcharge of an urgent request (SP-04c): the label is <see cref="SupplierQuoteLabels.Urgent"/>, <c>AmountCents</c> the
-    /// surcharge, <c>Quantity</c> 1. Present only when the booking was urgent and the surcharge above zero; it adds up with the other
-    /// choices to the estimate of the request. The request itself is <c>Urgency = High</c>.
-    /// </summary>
     public const string Urgent = "urgent";
 }
 
-/// <summary>A photo of the work in the private bucket (<c>ServiceRequest.WorkPhotosJson</c>): the id is what the download endpoint takes.</summary>
 public sealed record ServiceRequestPhoto(Guid Id, string Key, DateTime UploadedAt);
 
-/// <summary>The price of a completed request: the total, and the lines that add up to it.</summary>
 public sealed record ServiceRequestFinalPrice(int? FinalAmountCents, IReadOnlyList<ServiceRequestPriceLine> Lines);
 
-/// <summary>
-/// The price rules of a service request (SP-04): which amount is the reference of a request, how the final price is made
-/// of the agreed price and the extras, and when the final price is too far above the quote (decision D7).
-/// </summary>
 public static class ServiceRequestPricing
 {
-    /// <summary>The default tolerance of decision D7: a final amount more than 20 % above the quote needs the customer's confirmation.</summary>
     public const int DefaultTolerancePercent = 20;
 
-    /// <summary>The price the customer was given: what the supplier quoted when it took the request, else the estimate.</summary>
     public static int? ReferenceAmount(int? quotedAmountCents, int? estimatedAmountCents) => quotedAmountCents ?? estimatedAmountCents;
 
     /// <summary>
@@ -215,11 +146,8 @@ public static class ServiceRequestPricing
         return new ServiceRequestFinalPrice(total > 0 ? (int)total : null, lines);
     }
 
-    /// <summary>True for an amount a request may carry: from 1 cent to the bound of the catalog.</summary>
     public static bool IsValidAmount(long amountCents) => amountCents is >= 1 and <= ServiceRequestLimits.MaxAmountCents;
 
-    /// <summary>Refuses an amount a request may not carry.</summary>
-    /// <exception cref="DomainRuleException"><see cref="ServiceRequestErrorCodes.AmountInvalid"/>.</exception>
     public static void EnsureValidAmount(int amountCents)
     {
         if (!IsValidAmount(amountCents))
@@ -256,7 +184,6 @@ public static class ServiceRequestPricing
             ServiceRequestLimits.ExtraLabelMaxLength);
 }
 
-/// <summary>Reads and writes the JSON columns of <c>ServiceRequest</c> (<c>OptionsJson</c>, <c>PriceLinesJson</c>, <c>WorkPhotosJson</c>): camelCase.</summary>
 public static class ServiceRequestJson
 {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
@@ -264,22 +191,16 @@ public static class ServiceRequestJson
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    /// <summary>The JSON array of <paramref name="items"/>.</summary>
     public static string Serialize<T>(IEnumerable<T> items) => JsonSerializer.Serialize(items, Options);
 
-    /// <summary>The price lines stored in <paramref name="json"/>; an empty list for a missing or unreadable value.</summary>
     public static IReadOnlyList<ServiceRequestPriceLine> ReadPriceLines(string? json) => Read<ServiceRequestPriceLine>(json);
 
-    /// <summary>The options stored in <paramref name="json"/>; an empty list for a missing or unreadable value.</summary>
     public static IReadOnlyList<ServiceRequestOption> ReadOptions(string? json) => Read<ServiceRequestOption>(json);
 
-    /// <summary>The photos stored in <paramref name="json"/>; an empty list for a missing or unreadable value.</summary>
     public static IReadOnlyList<ServiceRequestPhoto> ReadPhotos(string? json) => Read<ServiceRequestPhoto>(json);
 
-    /// <summary>The lines of a quote stored in <paramref name="json"/> (SP-04b); an empty list for a missing or unreadable value.</summary>
     public static IReadOnlyList<ServiceRequestQuoteLine> ReadQuoteLines(string? json) => Read<ServiceRequestQuoteLine>(json);
 
-    /// <summary>The events of the quotes of a request stored in <paramref name="json"/> (SP-04b), oldest first; an empty list for a missing or unreadable value.</summary>
     public static IReadOnlyList<ServiceRequestQuoteEvent> ReadQuoteEvents(string? json) => Read<ServiceRequestQuoteEvent>(json);
 
     private static List<T> Read<T>(string? json)

@@ -15,12 +15,10 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public static partial class SdiFileNames
 {
-    /// <summary>The length of the progressive.</summary>
     public const int ProgressiveLength = 5;
 
     private const string Alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-    /// <summary>The progressive of <paramref name="documentId"/>: five characters of <c>0-9A-Z</c>, always the same for the same document.</summary>
     public static string Progressive(Guid documentId)
     {
         Span<byte> bytes = stackalloc byte[16];
@@ -37,7 +35,6 @@ public static partial class SdiFileNames
         return new string(characters);
     }
 
-    /// <summary>The name of the file of <paramref name="documentId"/> sent by the transmitter <paramref name="transmitterId"/> of <paramref name="countryCode"/>.</summary>
     public static string Of(string countryCode, string transmitterId, Guid documentId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(countryCode);
@@ -47,7 +44,6 @@ public static partial class SdiFileNames
         return IsValid(name) ? name : throw new ArgumentException("The transmitter does not make a valid name of file.", nameof(transmitterId));
     }
 
-    /// <summary>True when <paramref name="fileName"/> has the form the SDI accepts.</summary>
     public static bool IsValid(string? fileName) => fileName is not null && Pattern().IsMatch(fileName);
 
     [GeneratedRegex(@"^[A-Z]{2}[A-Za-z0-9]{1,28}_[A-Za-z0-9]{1,5}\.xml$", RegexOptions.CultureInvariant)]

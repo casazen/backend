@@ -28,29 +28,20 @@ namespace Casazen.Infrastructure.Octorate;
 /// </remarks>
 internal static class OctorateChatReader
 {
-    /// <summary>The attribute of a message that holds its words.</summary>
     internal const string TextAttribute = "TEXT";
 
-    /// <summary>The attribute of a message that says which way it goes: <c>TO</c> the channel, or <c>FROM</c> it.</summary>
     internal const string FlowDirectionAttribute = "OTA_FLOW_DIRECTION";
 
-    /// <summary>The attribute of a thread that carries the details of an Airbnb booking.</summary>
     internal const string AirbnbBookingDetailsAttribute = "AIRBNB_BOOKING_DETAILS";
 
-    /// <summary>The processor of an internal note of the team, which is not part of the conversation with the guest.</summary>
     internal const string NoteProcessor = "NOTE";
 
-    /// <summary>The attribute of a message that holds its translations: a map from a language to its text (E05/F02/US02/T02).</summary>
     internal const string TranslationMapAttribute = "TRANSLATION_MAP";
 
     private const int TemplateNameMaxLength = 200;
 
     private const int ExternalThreadIdMaxLength = 200;
 
-    /// <summary>
-    /// The page of threads an answer holds: a bare list (v1) or the array of a wrapper. <c>null</c> when the answer is neither, so a caller can
-    /// tell an empty list from an answer it cannot read. An item without a usable id is left out but counted.
-    /// </summary>
     internal static OctorateChatThreadPage? ReadThreadPage(JsonElement root)
     {
         if (OctorateReservationReader.ListItems(root) is not { } items)
@@ -60,9 +51,6 @@ internal static class OctorateChatReader
         return new OctorateChatThreadPage([.. listed.Select(item => ReadThread(item)).OfType<OctorateChatThread>()], listed.Count);
     }
 
-    /// <summary>The thread of <paramref name="item"/>, or <c>null</c> when it is not an object or has no usable id.</summary>
-    /// <param name="item">One thread of an answer.</param>
-    /// <param name="fallbackId">The id the call asked for, used when the answer does not repeat it.</param>
     internal static OctorateChatThread? ReadThread(JsonElement item, string? fallbackId = null)
     {
         if (item.ValueKind != JsonValueKind.Object)
@@ -109,11 +97,6 @@ internal static class OctorateChatReader
         return new OctorateChatSendResult(id, DeliveryStateOf(OctorateJson.Text(message, "status"), OtaMessageDirection.Outbound));
     }
 
-    /// <summary>
-    /// The templates an answer holds (<c>MailTemplateDTO</c>: <c>id</c>, <c>name</c>, <c>language</c>, <c>text</c>): a bare list or the array of a
-    /// wrapper. <c>null</c> when the answer is not a list, so a caller can tell an empty list from an answer it cannot read. An item without an id or
-    /// without a body is left out.
-    /// </summary>
     internal static OctorateChatTemplate[]? ReadTemplates(JsonElement root)
     {
         if (OctorateReservationReader.ListItems(root) is not { } items)
@@ -163,7 +146,6 @@ internal static class OctorateChatReader
 
     private static string Clip(string value, int maxLength) => value.Length <= maxLength ? value : value[..maxLength];
 
-    /// <summary>The id of the thread on the channel: the first <c>externalId</c> of <c>chatThreadExternals</c>.</summary>
     private static string? ExternalThreadIdOf(JsonElement thread)
     {
         if (OctorateJson.Find(thread, "chatThreadExternals") is not { ValueKind: JsonValueKind.Array } externals)
@@ -178,7 +160,6 @@ internal static class OctorateChatReader
         return null;
     }
 
-    /// <summary>The first member of the thread that is a user of the channel manager (it has a <c>userId</c>): the id of the person the host's messages are written as.</summary>
     private static string? HostPersonIdOf(JsonElement thread)
     {
         if (OctorateJson.Find(thread, "persons") is not { ValueKind: JsonValueKind.Array } persons)
@@ -198,10 +179,6 @@ internal static class OctorateChatReader
         return null;
     }
 
-    /// <summary>
-    /// The messages an answer holds, with the number of items it had and the number of pages it says there are (<c>page.totalPages</c>, when
-    /// the answer is the wrapper). <c>null</c> when the answer is not a list.
-    /// </summary>
     internal static ChatMessagePage? ReadMessagePage(JsonElement root)
     {
         if (OctorateReservationReader.ListItems(root) is not { } items)
@@ -215,7 +192,6 @@ internal static class OctorateChatReader
         return new ChatMessagePage([.. listed.Select(ReadMessage).OfType<OctorateChatMessage>()], listed.Count, totalPages);
     }
 
-    /// <summary>The message of <paramref name="item"/>, or <c>null</c> when it is not an object or has no usable id or time.</summary>
     internal static OctorateChatMessage? ReadMessage(JsonElement item)
     {
         if (item.ValueKind != JsonValueKind.Object)
@@ -250,13 +226,8 @@ internal static class OctorateChatReader
         };
     }
 
-    /// <summary>One page of messages as read from an answer.</summary>
-    /// <param name="Messages">The messages that could be read.</param>
-    /// <param name="ItemCount">How many items the answer had, the unreadable ones included.</param>
-    /// <param name="TotalPages">The pages the wrapper says there are; <c>null</c> for a bare list.</param>
     internal sealed record ChatMessagePage(IReadOnlyList<OctorateChatMessage> Messages, int ItemCount, int? TotalPages);
 
-    /// <summary>The direction of a message (see the remarks of the class).</summary>
     internal static OtaMessageDirection DirectionOf(JsonElement message, JsonElement sender, JsonElement externalSender)
     {
         switch (AttributeOf(message, FlowDirectionAttribute)?.ToUpperInvariant())
@@ -297,7 +268,6 @@ internal static class OctorateChatReader
         };
     }
 
-    /// <summary>The value of the first attribute of <paramref name="element"/> of the given type, <c>null</c> when it has none or it is blank.</summary>
     private static string? AttributeOf(JsonElement element, string type)
     {
         if (OctorateJson.Find(element, "attributes") is not { ValueKind: JsonValueKind.Array } attributes)
@@ -315,14 +285,12 @@ internal static class OctorateChatReader
         return null;
     }
 
-    /// <summary>The element has an attribute of the given type, whatever its value.</summary>
     private static bool HasAttribute(JsonElement element, string type) =>
         OctorateJson.Find(element, "attributes") is { ValueKind: JsonValueKind.Array } attributes
         && attributes.EnumerateArray().Any(attribute =>
             attribute.ValueKind == JsonValueKind.Object
             && string.Equals(OctorateJson.Text(attribute, "type"), type, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>The name of a person as people read it (first name, last name), else the descriptive name of the answer, else the user name.</summary>
     private static string? NameOf(JsonElement person)
     {
         var first = OctorateJson.Text(person, "firstname", "firstName");
@@ -333,7 +301,6 @@ internal static class OctorateChatReader
             : OctorateJson.Text(person, "fullname", "fullName") ?? OctorateJson.Text(person, "username");
     }
 
-    /// <summary>The name of the first member of the thread that is a guest and not a user.</summary>
     private static string? GuestNameOf(JsonElement thread)
     {
         if (OctorateJson.Find(thread, "persons") is not { ValueKind: JsonValueKind.Array } persons)

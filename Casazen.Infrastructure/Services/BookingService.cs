@@ -64,15 +64,10 @@ public class BookingService(
         if (booking.OrgId == Guid.Empty)
             throw new ArgumentException("A manual booking must carry the org of its property.", nameof(booking));
 
-        // PM-01: a property in long-term mode takes no stay (422). The host endpoint refuses it earlier, with the property
-        // it has already read; this is the check of the service that writes the booking. A property that is not found is
-        // left to the checks below and to the foreign key, as before.
         var property = await propertyRepository.GetRecordAsync(booking.PropertyId);
         if (property is not null)
             PropertyRentalModeRules.EnsureShortRent(property);
 
-        // A booking entered by the host is a confirmed stay from the start: it occupies its dates on the booking site
-        // and in the iCal export, and the checkout hold expiry never cancels it (PC-01, A2-01).
         booking.Status = BookingStatus.Confirmed;
         booking.ConfirmedAt = _clock.GetUtcNow().UtcDateTime;
         booking.Source = BookingSource.Manual;
@@ -96,7 +91,6 @@ public class BookingService(
             throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
         }
 
-        // E08/F01/US02/T01 (NF-80): the channel manager is asked too, before anything is written (it may save the room of the mapping).
         await EnsureChannelManagerAcceptsAsync(booking.OrgId, booking.PropertyId, booking.CheckInDate, booking.CheckOutDate, booking.NumberOfGuests);
 
         // The guest snapshot is written only once the dates are known to be free, and removed again if a concurrent
@@ -105,8 +99,6 @@ public class BookingService(
         try
         {
             logger.LogInformation("Creating manual booking for property {PropertyId}", booking.PropertyId);
-            // The host entered it, confirmed from the start: created and confirmed, saved with the booking by the repository (the
-            // events of a booking the repository refuses go with it, ADR-022-R1).
             BookingEvents.RecordCreated(domainEvents, booking, BookingEventOrigin.Host);
             return await repository.AddAsync(booking);
         }
@@ -148,7 +140,6 @@ public class BookingService(
                 DirectBookingErrorCodes.MarketingConsentUnavailable, "DirectBookingMarketingConsentUnavailable");
         }
 
-        // A consent on a channel needs the address of that channel: WhatsApp needs a phone number the CRM can store and reach.
         if (whatsAppConsent && CrmNormalizer.NormalizePhone(input.Guest.Phone, DefaultCallingCode()) is null)
             throw new DomainRuleException(DirectBookingErrorCodes.WhatsAppRequiresPhone, "DirectBookingWhatsAppRequiresPhone");
 
@@ -156,7 +147,6 @@ public class BookingService(
         // the guest read is not the notice we would record as presented.
         var softOptInNoticeVersion = ResolveSoftOptInNotice(input.SoftOptInNoticeVersion);
 
-        // DB-03b: the optional expected arrival time is a note for the host: only its shape is checked, before anything is written.
         if (!ArrivalTimeRules.TryNormalize(input.ExpectedArrivalTime, out var expectedArrivalTime))
             throw new DomainRuleException(DirectBookingErrorCodes.ArrivalTimeInvalid, "DirectBookingArrivalTimeInvalid");
 
@@ -171,7 +161,6 @@ public class BookingService(
         var totalGuests = input.NumberOfAdults + input.NumberOfChildren;
         var (checkIn, checkOut) = await ValidateStayAsync(property, input.CheckInDate, input.CheckOutDate, totalGuests);
 
-        // A3-06: a "pay at the property" request holds its dates with no guarantee: its length is capped.
         if (input.PaymentOption == PaymentOption.OnSite)
         {
             var maxNights = OnSiteRequests.GetMaxNights(configuration);
@@ -179,7 +168,6 @@ public class BookingService(
                 throw new DomainRuleException(OnSiteRequestErrorCodes.TooManyNights, "OnSiteRequestTooManyNights", maxNights);
         }
 
-        // Same price as the checkout quote (BK-03, R-05): computed before any write, so a missing age leaves nothing behind.
         var price = await PriceStayAsync(
             property, checkIn, checkOut, input.NumberOfAdults, input.NumberOfChildren, input.ChildrenAges);
         if (price.TouristTax.Status == TouristTaxQuoteStatus.ChildAgesRequired)
@@ -187,7 +175,6 @@ public class BookingService(
             throw new DomainRuleException(DirectBookingErrorCodes.ChildAgesRequired, "TouristTaxChildAgesRequired");
         }
 
-        // A3-16: "Paga alla scadenza" only when its charge day is still ahead (the checkout offers it from the same quote).
         if (input.PaymentOption == PaymentOption.OnCancellationDeadline && !price.PaymentOptions.DeferredPaymentAvailable)
         {
             throw new DomainRuleException(
@@ -200,9 +187,6 @@ public class BookingService(
         var guest = NewGuestSnapshotWithConsent(
             property.OrgId, input.Guest, input.ConsentVersion, input.ConsentIpAddress);
 
-        // DB-03 / NF-90: the optional marketing consents (one row for each channel the guest ticked) and the soft opt-in notice that was
-        // presented are recorded in the append-only register of the privacy history (version of the text, time, source, IP), in the same
-        // insert as the booking and the guest; the e-mail consent is also recorded on the guest.
         var consentAt = _clock.GetUtcNow().UtcDateTime;
         var consentRecords = RecordCheckoutConsents(
             guest, emailConsent, whatsAppConsent, marketingVersion, softOptInNoticeVersion, input.ConsentIpAddress, consentAt);
@@ -212,12 +196,8 @@ public class BookingService(
         var totalPrice = price.TotalPrice;
         var currency = price.Currency;
         var freeRefundDeadline = price.FreeRefundDeadline;
-        // Only the guest who made the checkout reads its outcome and resumes its payment (BK-07): the token is returned
-        // once, the database keeps its hash.
         var checkoutToken = CheckoutOutcomes.NewToken();
 
-        // E27/F01/US01/T01 (NF-123): where the guest came from, kept as marketing tokens only. What does not pass the rules is dropped here, never an error:
-        // a stray parameter of a link must not cost the guest the booking, and nothing personal reaches the table.
         var attribution = BookingAttribution.Sanitize(input.Attribution);
 
         var booking = new Booking
@@ -251,8 +231,6 @@ public class BookingService(
             UpdatedAt = DateTime.UtcNow,
         };
 
-        // D5 (BK-06): a "pay at the property" request is never confirmed here. It holds its dates until the guest confirms
-        // the email (link in the "request received" email), then until the host answers (OnSiteRequests).
         string? onSiteEmailToken = null;
         if (input.PaymentOption == PaymentOption.OnSite)
         {
@@ -277,15 +255,11 @@ public class BookingService(
             throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
         }
 
-        // E08/F01/US02/T01 (NF-80): the channel manager is asked too, before the hold is written and its event recorded (the lookup may save
-        // the room of the mapping, which must not carry the pending rows of the checkout with it).
         await EnsureChannelManagerAcceptsAsync(property.OrgId, input.PropertyId, checkIn, checkOut, totalGuests);
 
         Booking createdBooking;
         try
         {
-            // The hold is created (Pending): its event is saved with it, in the same insert (a checkout whose payment cannot be started
-            // is removed with its events, BK-18). The confirmation follows with the payment.
             var selections = input.Extras ?? [];
             if (selections.Count > 0 && hostExtras is null)
                 throw new DomainConflictException("guest_host_extra_unavailable", "GuestHostExtraUnavailable");
@@ -350,8 +324,6 @@ public class BookingService(
             throw;
         }
 
-        // NF-90: the guest has a payment to complete (or a request to confirm), so the attempt is a booking: the consents they ticked become
-        // contacts of the CRM and the double opt-in e-mail goes out. Best effort: the privacy history is already saved with the booking.
         await RecordCrmConsentsAsync(
             guest,
             property.OrgId,
@@ -415,8 +387,6 @@ public class BookingService(
 
         PropertyRentalModeRules.EnsureShortRent(property);
 
-        // The rule is read from PublicListing, never copied: a property the host switched off the site (SR-07a) is as unbookable as
-        // a paused one.
         if (!PublicListing.Includes(property))
             throw new NotFoundException("Property not bookable") { MessageKey = "PropertyNotFound" };
 
@@ -434,8 +404,6 @@ public class BookingService(
     {
         ArgumentNullException.ThrowIfNull(property);
 
-        // PM-01: the stays of a property in long-term mode are not priced nor entered (host quote, new and changed manual
-        // booking). Before the guests check: a long-term property has no guest capacity, "0 guests" would hide the reason.
         PropertyRentalModeRules.EnsureShortRent(property);
 
         if (numberOfAdults + numberOfChildren > property.MaxGuests)
@@ -480,7 +448,6 @@ public class BookingService(
             throw new DomainRuleException(DirectBookingErrorCodes.InvalidStay, "DirectBookingInvalidStay");
         }
 
-        // The nights are the calendar dates the stay is stored with; the rules are read once for the arrival and the departure day.
         var arrival = RomeCalendar.DateInRome(checkIn);
         var departure = RomeCalendar.DateInRome(checkOut);
         var rules = DayRuleStayChecks.NoRules;
@@ -517,8 +484,6 @@ public class BookingService(
         IReadOnlyList<int>? childrenAges,
         CancellationToken cancellationToken = default)
     {
-        // The stay is priced, and later charged and refunded, in the currency of its property (CHF-MONEY): the quote carries it, and the
-        // PaymentIntent of the checkout takes it from the quote. A currency the product does not take is refused before any price is given.
         var currency = StayCurrency.ForProperty(property);
         if (!StayCurrency.IsSupported(currency))
             throw new DomainRuleException(DirectBookingErrorCodes.CurrencyNotSupported, "DirectBookingCurrencyNotSupported");
@@ -526,8 +491,6 @@ public class BookingService(
         var nights = (checkOut - checkIn).Days;
         var checkInDate = RomeCalendar.DateInRome(checkIn);
 
-        // PC-15: a price the host confirmed for a date is the price of that night (neither the rate nor the weekend surcharge
-        // of DB-03 applies to it); the nights without one cost the rate, plus the surcharge on a Friday or a Saturday.
         var hostPrices = await pricingAdapterService.GetAppliedNightlyPricesAsync(
             property.Id, checkInDate, checkInDate.AddDays(nights), cancellationToken);
 
@@ -553,9 +516,6 @@ public class BookingService(
                 NightlyPrices: StayPricing.NightPrices(checkInDate, lodging)),
             cancellationToken);
 
-        // DB-08a: the policy of THIS stay (the catalog policy with the host's overrides for a stay under 28 nights), the one the
-        // cancellation will apply, so the day of the deferred charge and the free cancellation shown are true. It is stored on the
-        // booking as it is at creation: the bookings made before keep the day they were given.
         var effectivePolicy = CancellationRefundPolicy.EffectivePolicy(property, nights);
         var freeRefundDeadline = DirectBookingPaymentRules.FreeRefundDeadline(checkIn, effectivePolicy);
 
@@ -573,7 +533,6 @@ public class BookingService(
             freeRefundDeadline,
             DirectBookingPaymentRules.OptionsFor(freeRefundDeadline, _clock.TodayInRome(), effectivePolicy),
             lodging,
-            // DB-03b: the structured dates of the same policy (the last whole days, Europe/Rome), for the page to draw «fino al…».
             PublicCancellation.StayOf(effectivePolicy, checkIn, _clock.TodayInRomeAsDateOnly()));
     }
 
@@ -669,11 +628,6 @@ public class BookingService(
         return setupIntent.ClientSecret ?? string.Empty;
     }
 
-    /// <summary>
-    /// "Pay at the property" (D5, BK-06): the booking stays Pending as a request. The payment row records the amount due
-    /// at the property; the guest gets the "request received" email with the link that confirms the address and sends
-    /// the request to the host.
-    /// </summary>
     private async Task OpenOnSiteRequestAsync(Booking booking, string emailToken)
     {
         var payment = new Payment
@@ -754,7 +708,6 @@ public class BookingService(
 
     public async Task<IEnumerable<Booking>> GetCalendarAsync(Guid propertyId, DateTime startDate, DateTime endDate)
     {
-        // Read only: expired checkout holds are left out (they no longer take their dates) and cancelled by the job.
         return await repository.GetByDateRangeAsync(propertyId, startDate, endDate, GetPendingDirectTtlMinutes());
     }
 
@@ -788,10 +741,6 @@ public class BookingService(
         throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
     }
 
-    /// <summary>
-    /// Removes a checkout whose payment could not be started (BK-18). Best effort: when the removal fails too, the attempt
-    /// stays a pending hold that the checkout hold expiry cancels, and the original error is still the answer.
-    /// </summary>
     private async Task DiscardFailedCheckoutAsync(Guid bookingId)
     {
         try
@@ -975,7 +924,6 @@ public class BookingService(
         }
     }
 
-    /// <summary>The guest of a direct checkout with its consent, not saved: it is written with its booking.</summary>
     private static Guest NewGuestSnapshotWithConsent(
         Guid orgId,
         DirectBookingGuestInput guestInput,

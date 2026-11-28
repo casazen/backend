@@ -3,11 +3,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Core.Condominium;
 
-/// <summary>
-/// The owner's rate plan (CondoLedger <c>rate-plan.js</c>). Ordinary, prior-year balance and extraordinary are separate
-/// columns. Building the plan the first time fills them. Applying a recovery choice afterwards changes only the prior
-/// column, or adds one prior-only row. Ordinary and extraordinary of issued rows stay put.
-/// </summary>
 public static class OwnerInstallmentPlan
 {
     private static readonly string[] Months = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
@@ -94,13 +89,6 @@ public static class OwnerInstallmentPlan
             row.DueDate, row.Ordinary, i == 0 ? prior : 0m, row.Extraordinary)).ToList();
     }
 
-    /// <summary>
-    /// Applies the owner's recovery choice. Ordinary and extraordinary of issued rows stay as they are.
-    /// A paid rate is left as it was: its prior is not cleared and the same balance is not written onto another rate.
-    /// What is not already on a paid rate is cleared from the open rates and written once, on the next unpaid rate
-    /// or on one separate row. A cancelled separate row is that one row; a paid separate row is not reused.
-    /// Carry-forward and refund add nothing further.
-    /// </summary>
     public static IReadOnlyList<Row> ApplyRecovery(
         IReadOnlyList<Row> issued,
         decimal amount,
@@ -143,7 +131,6 @@ public static class OwnerInstallmentPlan
         return rows.Select(row => row.SlotIndex == target.SlotIndex ? row with { Prior = amount } : row).ToList();
     }
 
-    /// <summary>The open separate row, or a new slot when the previous one is paid. A paid row is not overwritten.</summary>
     private static Row SeparateRow(IReadOnlyList<Row> issued, decimal amount, DateOnly due)
     {
         var existing = issued.FirstOrDefault(row => row.IsPriorOnly && !row.Paid);

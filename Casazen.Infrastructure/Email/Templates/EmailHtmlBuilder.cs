@@ -24,15 +24,12 @@ public sealed class EmailHtmlBuilder(CultureInfo culture)
     private const string MutedStyle = "font-size:13px;color:#71717a;";
     private const string CodeStyle = "font-size:22px;letter-spacing:2px;";
 
-    // Keeps accented letters readable; still encodes <, >, &, quotes and control characters.
     private static readonly HtmlEncoder Encoder = HtmlEncoder.Create(UnicodeRanges.All);
 
     private readonly StringBuilder _body = new();
 
-    /// <summary>The cleaned brand of the host of a guest e-mail; <c>null</c> for every other e-mail, which keeps the CasaZen layout.</summary>
     private readonly GuestEmailBranding? _branding;
 
-    /// <summary>The layout of an e-mail to a guest with the brand of its host (see the remarks of the type); <c>null</c> or an unusable brand is the CasaZen layout.</summary>
     public EmailHtmlBuilder(CultureInfo culture, GuestEmailBranding? branding)
         : this(culture)
     {
@@ -41,7 +38,6 @@ public sealed class EmailHtmlBuilder(CultureInfo culture)
 
     public CultureInfo Culture { get; } = culture;
 
-    /// <summary>HTML-encodes a dynamic value.</summary>
     public static string Encode(string? value) => string.IsNullOrEmpty(value) ? string.Empty : Encoder.Encode(value);
 
     public EmailHtmlBuilder Heading(string key, params object?[] args) =>
@@ -52,13 +48,8 @@ public sealed class EmailHtmlBuilder(CultureInfo culture)
     public EmailHtmlBuilder Muted(string key, params object?[] args) =>
         Append($"<p style=\"{MutedStyle}\">{Format(key, args)}</p>");
 
-    /// <summary>
-    /// A short value the reader has to type or copy (a lock code), large and spaced, in a paragraph of its own. It has no words of its own, so
-    /// it is not a text of <see cref="EmailTexts"/> (it would be the same in Italian and English). The value is HTML-encoded.
-    /// </summary>
     public EmailHtmlBuilder Code(string? value) => Append($"<p><strong style=\"{CodeStyle}\">{Encode(value)}</strong></p>");
 
-    /// <summary>A highlighted free-text value (host notes, invite message) under a label; skipped when empty.</summary>
     public EmailHtmlBuilder Quote(string labelKey, string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -70,7 +61,6 @@ public sealed class EmailHtmlBuilder(CultureInfo culture)
             + $"<strong>{Text(labelKey)}</strong><br />{string.Join("<br />", lines)}</p>");
     }
 
-    /// <summary>A bulleted list with one localized line per entry (e.g. the amounts of a booking); skipped when empty.</summary>
     public EmailHtmlBuilder List(IEnumerable<(string Key, object?[] Args)> lines)
     {
         var items = lines.Select(line => $"<li>{Format(line.Key, line.Args)}</li>").ToList();
@@ -79,7 +69,6 @@ public sealed class EmailHtmlBuilder(CultureInfo culture)
             : Append($"<ul style=\"padding-left:20px;\">{string.Concat(items)}</ul>");
     }
 
-    /// <summary>A bulleted list of dynamic values (e.g. property names), each HTML-encoded; skipped when empty.</summary>
     public EmailHtmlBuilder ValueList(IEnumerable<string?> values)
     {
         var items = values
@@ -91,10 +80,6 @@ public sealed class EmailHtmlBuilder(CultureInfo culture)
             : Append($"<ul style=\"padding-left:20px;\">{string.Concat(items)}</ul>");
     }
 
-    /// <summary>
-    /// A bulleted list of links, each with a short detail after it (e.g. the suppliers offered to a customer): the label and the detail are
-    /// HTML-encoded and every link has to be an absolute http(s) URL; skipped when empty.
-    /// </summary>
     public EmailHtmlBuilder LinkList(IEnumerable<(string Label, string Url, string? Detail)> items)
     {
         var rows = items
@@ -112,28 +97,20 @@ public sealed class EmailHtmlBuilder(CultureInfo culture)
             $"<p><a href=\"{EncodeUrl(url)}\" style=\"display:inline-block;padding:12px 20px;background:{Accent};"
             + $"color:{AccentText};text-decoration:none;border-radius:6px;font-weight:bold;\">{Text(key)}</a></p>");
 
-    /// <summary>The raw link under a short explanation, for clients that do not render buttons.</summary>
     public EmailHtmlBuilder LinkFallback(string key, string url)
     {
         var encoded = EncodeUrl(url);
         return Append($"<p style=\"{MutedStyle}\">{Text(key)}<br /><a href=\"{encoded}\">{encoded}</a></p>");
     }
 
-    /// <summary>Date of a stay (date-only value stored as midnight UTC: no time zone conversion).</summary>
     public string FormatDate(DateTime date) => date.ToString(Text("Format_Date"), Culture);
 
-    /// <summary>A UTC instant shown in Italian time (Europe/Rome).</summary>
     public string FormatInstant(DateTime utc)
     {
         var asUtc = utc.Kind == DateTimeKind.Utc ? utc : DateTime.SpecifyKind(utc, DateTimeKind.Utc);
         return TimeZoneInfo.ConvertTimeFromUtc(asUtc, RomeCalendar.TimeZone).ToString(Text("Format_DateTime"), Culture);
     }
 
-    /// <summary>
-    /// Wraps the blocks in the layout. The subject is plain text (values are not HTML-encoded there). With the brand of a host (guest e-mails) the layout has its header and
-    /// the «powered by CasaZen» footer, and the content carries the host's name as the sender's display name and the host as reply-to (<see cref="EmailContent.FromName"/>,
-    /// <see cref="EmailContent.ReplyTo"/>); without one it is the CasaZen layout, as ever.
-    /// </summary>
     public EmailContent Build(string subjectKey, params object?[] subjectArgs)
     {
         var subject = SingleLine(string.Format(Culture, Text(subjectKey), subjectArgs.Select(ToText).ToArray<object?>()));
@@ -154,7 +131,6 @@ public sealed class EmailHtmlBuilder(CultureInfo culture)
     /// <summary>The color of the buttons (and of the header) of this e-mail: the one of the host's brand, otherwise the CasaZen blue they have always had.</summary>
     private string Accent => _branding?.Accent ?? GuestEmailBranding.DefaultAccent;
 
-    /// <summary>The color of the text of a button: the one that reads better on <see cref="Accent"/>.</summary>
     private string AccentText => _branding?.AccentText ?? GuestEmailBranding.DefaultAccentText;
 
     /// <summary>

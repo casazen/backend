@@ -27,24 +27,20 @@ namespace Casazen.Infrastructure.Identity;
 /// </remarks>
 public static class IdentityChannelClassifier
 {
-    /// <summary>The characters of the header that are read; the rest is ignored (a real header is a few hundred characters).</summary>
     public const int MaxReadLength = 1024;
 
-    /// <summary>The tokens that make a browser of Android something other than Chrome.</summary>
     private static readonly string[] NotAndroidChrome =
     [
         "; wv)", "Version/", "SamsungBrowser/", "EdgA/", "OPR/", "Opera", "YaBrowser/", "UCBrowser/", "MiuiBrowser/", "HuaweiBrowser/", "Vivaldi", "DuckDuckGo/",
         "Firefox/", "HeadlessChrome",
     ];
 
-    /// <summary>The tokens that make a desktop header with <c>Chrome/</c> something other than a browser built on Chromium a guest uses.</summary>
     private static readonly string[] NotDesktopChromium = ["Edge/", "HeadlessChrome", "Electron/"];
 
     private static readonly string[] DesktopSystems = ["Windows NT", "Macintosh", "X11", "CrOS"];
 
     private static readonly string[] IosDevices = ["iPhone", "iPad", "iPod"];
 
-    /// <summary>The family of the browser that sent <paramref name="userAgent"/>, always a code of <see cref="IdentityChannels.All"/>.</summary>
     public static string Classify(string? userAgent)
     {
         if (string.IsNullOrWhiteSpace(userAgent))

@@ -86,32 +86,23 @@ public interface IMarketplaceLicensedFunctionService
     Task ReconcileAsync(Guid orgId, Guid propertyId, CancellationToken ct = default);
 }
 
-/// <summary>The stable codes of the licensed functions (E09/F02/US02/T01, NF-56): the answers of the request, and the code kept on a row.</summary>
 public static class MarketplaceFunctionErrorCodes
 {
-    /// <summary>409: the license already shows the module on, so there is nothing to ask the channel manager.</summary>
     public const string AlreadyActive = "marketplace_function_already_active";
 
-    /// <summary>404: the code is not one of the modules of <see cref="MarketplaceLicensedFunctions.Codes"/>.</summary>
     public const string Unknown = "marketplace_function_unknown";
 
-    /// <summary>Kept in <c>MarketplaceActivation.LastErrorCode</c> of a function that was Active and that the license no longer shows on.</summary>
     public const string LicenseModuleOff = "license_module_off";
 }
 
-/// <summary>Where a function stands for a property: the states of the page of the licensed functions.</summary>
 public enum MarketplaceFunctionStatus
 {
-    /// <summary>The license does not show it on and nobody asked for it (no activation row, or a turned off one).</summary>
     NotActive = 1,
 
-    /// <summary>The host asked the channel manager for it and the license does not show it yet; declared by the host, not proven.</summary>
     Requested = 2,
 
-    /// <summary>The license shows it on.</summary>
     Active = 3,
 
-    /// <summary>It was on and the license no longer shows it: the host has to ask again or check with the channel manager.</summary>
     ToFix = 4,
 }
 

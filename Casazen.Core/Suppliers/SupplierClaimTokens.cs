@@ -9,15 +9,11 @@ namespace Casazen.Core.Suppliers;
 /// </summary>
 public static class SupplierClaimTokens
 {
-    /// <summary>How long a claim token can be used: the same as an admin invite.</summary>
     public static readonly TimeSpan Validity = TimeSpan.FromDays(7);
 
-    /// <inheritdoc cref="SupplierInviteTokens.Generate"/>
     public static string Generate() => SupplierInviteTokens.Generate();
 
-    /// <inheritdoc cref="SupplierInviteTokens.TryNormalize"/>
     public static bool TryNormalize(string? value, out string token) => SupplierInviteTokens.TryNormalize(value, out token);
 
-    /// <inheritdoc cref="SupplierInviteTokens.Hash"/>
     public static string Hash(string token) => SupplierInviteTokens.Hash(token);
 }

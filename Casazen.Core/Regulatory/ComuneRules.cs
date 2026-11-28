@@ -20,10 +20,8 @@ public static partial class ComuneRules
     /// <summary>ISTAT code of a comune: 3 digits of the province and 3 of the comune, as text (leading zeros matter).</summary>
     public const string IstatCodePattern = "^[0-9]{6}$";
 
-    /// <summary>Cadastral (Belfiore) code: one upper-case letter and three digits.</summary>
     public const string CadastralCodePattern = "^[A-Z][0-9]{3}$";
 
-    /// <summary>Province plate code: two upper-case letters.</summary>
     public const string ProvinceCodePattern = "^[A-Z]{2}$";
 
     [GeneratedRegex(IstatCodePattern, RegexOptions.CultureInvariant)]
@@ -35,10 +33,8 @@ public static partial class ComuneRules
     [GeneratedRegex(ProvinceCodePattern, RegexOptions.CultureInvariant)]
     private static partial Regex ProvinceRegex();
 
-    /// <summary>True for six ASCII digits, nothing else (no spaces, no sign).</summary>
     public static bool IsIstatCode(string? value) => value is not null && IstatRegex().IsMatch(value);
 
-    /// <summary>True for a cadastral code in upper case.</summary>
     public static bool IsCadastralCode(string? value) => value is not null && CadastralRegex().IsMatch(value);
 
     public static bool IsProvinceCode(string? value) => value is not null && ProvinceRegex().IsMatch(value);
@@ -50,7 +46,6 @@ public static partial class ComuneRules
         return IsIstatCode(trimmed) ? trimmed : null;
     }
 
-    /// <summary>The cadastral code trimmed and in upper case, or <c>null</c> when it is not one.</summary>
     public static string? NormalizeCadastralCode(string? value)
     {
         var upper = value?.Trim().ToUpperInvariant();

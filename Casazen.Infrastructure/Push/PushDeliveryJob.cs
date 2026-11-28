@@ -37,10 +37,6 @@ public sealed class PushDeliveryJob(
 {
     public const int MaxAttempts = 5;
 
-    /// <summary>
-    /// Android notification channel created by the app before it asks for the permission (MO-03,
-    /// <c>mobile/src/notifications/push-registration.ts</c>). Ignored on iOS.
-    /// </summary>
     public const string AndroidChannelId = "default";
 
     [AutomaticRetry(Attempts = MaxAttempts, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
@@ -127,7 +123,6 @@ public sealed class PushDeliveryJob(
                 return 0;
 
             case ExpoSendOutcome.Unknown:
-                // Expo may have taken them: left "Sending" and never repeated (at most once per device and event).
                 logger.LogWarning(
                     "Push {Type} (key {DeliveryKey}): outcome of {Count} messages unknown ({Error}), not repeated",
                     push.Type,
@@ -216,7 +211,6 @@ public sealed class PushDeliveryJob(
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            // Another run of the same key claimed some of these devices first: take what is in the table now.
             db.ChangeTracker.Clear();
             logger.LogInformation("Push key {DeliveryKey} claimed concurrently: rows re-read", deliveryKey);
             return await db.PushDeliveries
@@ -225,7 +219,6 @@ public sealed class PushDeliveryJob(
         }
     }
 
-    /// <summary>Devices of the audience, one per push token.</summary>
     private async Task<IReadOnlyList<(Guid Id, string PushToken)>> ResolveDevicesAsync(
         PushAudience audience,
         CancellationToken cancellationToken)
@@ -238,8 +231,6 @@ public sealed class PushDeliveryJob(
             PushAudienceKind.VerificationOperators => await VerificationOperatorDevicesAsync(audience.Id, cancellationToken),
             PushAudienceKind.User => await UserDevicesAsync(audience.Id, audience.UserId, cancellationToken),
 
-            // The app has no screen of the platform staff, nor of the domain of an org (E40/F01/US02/T01): HangfirePushQueue queues no push for
-            // them, and a job that names one sends to nobody.
             PushAudienceKind.PlatformStaff or PushAudienceKind.OrgAdmins => [],
             _ => throw new ArgumentOutOfRangeException(nameof(audience), audience.Kind, "Unknown push audience."),
         };
@@ -256,7 +247,6 @@ public sealed class PushDeliveryJob(
 
     private async Task<List<DeviceRegistration>> BookingHostDevicesAsync(Guid bookingId, CancellationToken cancellationToken)
     {
-        // IgnoreQueryFilters: background job without a tenant; the recipients are limited to the booking's org.
         var booking = await db.Bookings
             .AsNoTracking()
             .IgnoreQueryFilters()
@@ -272,13 +262,8 @@ public sealed class PushDeliveryJob(
         return await HostDevicesAsync(booking.OrgId, booking.PropertyId, booking.ResponsibleUserId, booking.OwnerId, cancellationToken);
     }
 
-    /// <summary>
-    /// The devices of the users who decide the identity verification of the booking's guest (E03/F04/US02/T03): they hold
-    /// <c>verification.decision</c> and reach the property (<see cref="VerificationOperatorAudience"/>), registered in that org.
-    /// </summary>
     private async Task<List<DeviceRegistration>> VerificationOperatorDevicesAsync(Guid bookingId, CancellationToken cancellationToken)
     {
-        // IgnoreQueryFilters: background job without a tenant; the recipients are limited to the booking's org.
         var booking = await db.Bookings
             .AsNoTracking()
             .IgnoreQueryFilters()
@@ -334,7 +319,6 @@ public sealed class PushDeliveryJob(
 
     private async Task<List<DeviceRegistration>> PropertyHostDevicesAsync(Guid propertyId, NotificationPermission? requiredPermission, CancellationToken cancellationToken)
     {
-        // IgnoreQueryFilters: background job without a tenant; the recipients are limited to the property's org.
         var property = await db.Properties
             .AsNoTracking()
             .IgnoreQueryFilters()
@@ -389,12 +373,6 @@ public sealed class PushDeliveryJob(
             .ToListAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// Hosts of a property (AM-03): the member in charge of it (its creator while nobody is named) and the org's administrators
-    /// (<see cref="HostNotificationAudience"/>), active, with devices registered in that org (a phone registered under another
-    /// org does not get this org's pushes). No longer the users whose <c>User.Role</c> is Admin or PropertyManager. The person in
-    /// charge is told only while they still reach the property (AM-03b).
-    /// </summary>
     private Task<List<DeviceRegistration>> HostDevicesAsync(
         Guid orgId,
         Guid propertyId,
@@ -412,10 +390,6 @@ public sealed class PushDeliveryJob(
             .OrderBy(d => d.CreatedAt)
             .ToListAsync(cancellationToken);
 
-    /// <summary>
-    /// Active users who operate the supplier org's inbox (linked by <c>User.SupplierOrgId</c>, or members whose org is
-    /// the supplier org), every device they registered.
-    /// </summary>
     private Task<List<DeviceRegistration>> SupplierDevicesAsync(Guid supplierOrgId, CancellationToken cancellationToken) =>
         db.DeviceRegistrations
             .AsNoTracking()
@@ -451,7 +425,6 @@ public sealed class PushDeliveryJob(
         if (push.ServiceRequestId is Guid serviceRequestId)
             message.Data["serviceRequestId"] = serviceRequestId.ToString();
 
-        // E05/F04: the alert of an item waiting for approval names the item (the app opens it, and its buttons act on it) and the category with the buttons.
         if (push.ApprovalItemId is Guid approvalItemId)
             message.Data["approvalItemId"] = approvalItemId.ToString();
         if (!string.IsNullOrWhiteSpace(push.CategoryId))
@@ -464,17 +437,14 @@ public sealed class PushDeliveryJob(
 /// <summary>Expo did not take the messages: rethrown so Hangfire retries the job.</summary>
 public sealed class PushDeliveryException(string message) : Exception(message);
 
-/// <summary>Expo error codes the backend acts on.</summary>
 public static class ExpoPushErrors
 {
-    /// <summary>The token is no longer valid (app uninstalled, token rotated): its device registration is removed.</summary>
     public const string DeviceNotRegistered = "DeviceNotRegistered";
 
     public static bool IsDeviceNotRegistered(string? error) =>
         string.Equals(error, DeviceNotRegistered, StringComparison.OrdinalIgnoreCase);
 }
 
-/// <summary>Removal of the device registrations whose token Expo reports as <c>DeviceNotRegistered</c>.</summary>
 internal static class PushDeviceCleanup
 {
     public static async Task<int> RemoveUnregisteredAsync(

@@ -12,7 +12,6 @@ namespace Casazen.Infrastructure.Storage;
 /// </summary>
 public sealed class FileSystemFileStorage : IFileStorage
 {
-    /// <summary>Request path at which the API serves the public folder (Development/Testing only).</summary>
     public const string PublicRequestPath = "/storage/public";
 
     private readonly StorageOptions _options;
@@ -59,7 +58,6 @@ public sealed class FileSystemFileStorage : IFileStorage
         {
             File.Delete(path);
 
-            // The key of a guest's document names the org and the guest: it is never written in a log (E20/F02/US01/T02, NF-121); the line says that one was deleted, without it.
             if (StorageKeys.IsGuestDocument(key))
                 _logger.LogDebug("Deleted an object of the guests' documents from local {Bucket} folder", bucket);
             else
@@ -74,7 +72,6 @@ public sealed class FileSystemFileStorage : IFileStorage
 
     public string? TryGetPublicKey(string url) => PublicUrls.TryGetKey(_options.PublicBaseUrl!, url);
 
-    /// <summary>The filesystem provider cannot sign URLs: callers fall back to the authenticated download.</summary>
     public Task<Uri?> GetSignedReadUrlAsync(
         string key, TimeSpan lifetime, string? downloadFileName, CancellationToken cancellationToken = default) =>
         Task.FromResult<Uri?>(null);

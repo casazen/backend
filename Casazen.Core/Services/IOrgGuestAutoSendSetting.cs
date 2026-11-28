@@ -12,12 +12,7 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IOrgGuestAutoSendSetting
 {
-    /// <summary>Whether the org asked for it. <c>false</c> for an org that does not exist. Reads by the org given, whatever the request.</summary>
     Task<bool> GetAsync(Guid orgId, CancellationToken ct);
 
-    /// <summary>
-    /// Sets it, recording who and when. Setting the value it already has changes and records nothing. Answers whether the value changed. Throws
-    /// <c>NotFoundException</c> (<c>org_not_found</c>) for an org that does not exist.
-    /// </summary>
     Task<bool> SetAsync(Guid orgId, bool enabled, string userId, CancellationToken ct);
 }

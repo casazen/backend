@@ -38,5 +38,4 @@ public sealed record ManualPaymentCommand(
     bool? ApplyOtaWithholding = null,
     decimal? ManualWithholdingTax = null);
 
-/// <summary>The payment, and whether this call wrote it (<c>false</c>: the same key had already been recorded).</summary>
 public sealed record ManualPaymentResult(Payment Payment, bool Created);

@@ -15,36 +15,26 @@ public class OwnerUser
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Auth0 user ID (sub claim). Unique per owner.</summary>
     [Required]
     [MaxLength(128)]
     public string Auth0Sub { get; set; } = string.Empty;
 
-    /// <summary>Owner email address. Used for invitation and login.</summary>
     [Required]
     [MaxLength(255)]
     [EmailAddress]
     public string Email { get; set; } = string.Empty;
 
-    /// <summary>Owner first name.</summary>
     [Required]
     [MaxLength(100)]
     public string FirstName { get; set; } = string.Empty;
 
-    /// <summary>Owner last name.</summary>
     [Required]
     [MaxLength(100)]
     public string LastName { get; set; } = string.Empty;
 
-    /// <summary>When this OwnerUser was created (UTC).</summary>
     public DateTime CreatedAt { get; set; }
 
-    /// <summary>When this owner last logged in to the owner portal (UTC). Null if never logged in.</summary>
     public DateTime? LastLoginAt { get; set; }
 
-    /// <summary>
-    /// The person asked not to get an e-mail when the agency writes in the owner inbox (E07/F07/US01/T02, the notification preference of the inbox). Off by
-    /// default: the e-mail says only that there is a message and links to the portal.
-    /// </summary>
     public bool InboxEmailOptOut { get; set; }
 }

@@ -47,10 +47,8 @@ public sealed partial class SelfBillingService(
     ILogger<SelfBillingService> logger,
     IInternalActivityService? activities = null) : ISelfBillingService
 {
-    /// <summary>The most TD17 one call of the list answers (the newest periods first).</summary>
     public const int MaxListRows = 1000;
 
-    /// <summary>The language of the lines of a document (the descriptions are stored with it, as for the other documents CasaZen issues).</summary>
     private const string LineLanguage = DocumentLanguages.Italian;
 
     private DateTime UtcNow => time.GetUtcNow().UtcDateTime;
@@ -58,11 +56,6 @@ public sealed partial class SelfBillingService(
     public Task<SelfBillingGeneration> CreateDraftsForPeriodAsync(Guid orgId, int year, int month, string? userId, CancellationToken ct = default) =>
         GenerateDraftsAsync(orgId, year, month, userId, onlyMissing: false, ct);
 
-    /// <summary>
-    /// The generation of the drafts of a month. With <paramref name="onlyMissing"/> (the monthly run) a holder and portal that already has a TD17 of the month in <b>any</b> state (a draft, an
-    /// issued one, one a person discarded) is left alone: no draft is made again, updated or dropped, so a draft a person discarded stays discarded; only the holders that have none get a draft,
-    /// which is how the ones refused by an earlier run are tried again without a second draft for the others. Without it (a person's click) the drafts are made again from the ledger.
-    /// </summary>
     private async Task<SelfBillingGeneration> GenerateDraftsAsync(Guid orgId, int year, int month, string? userId, bool onlyMissing, CancellationToken ct)
     {
         if (year is < 2000 or > 2100 || month is < 1 or > 12)
@@ -93,7 +86,6 @@ public sealed partial class SelfBillingService(
             if (existing is not null)
                 matched.Add(existing.Id);
 
-            // The monthly run makes what is missing and nothing else: whoever has a TD17 of the month in any state (a discarded one included) is not made again.
             if (onlyMissing && existing is not null)
                 continue;
 
@@ -113,7 +105,6 @@ public sealed partial class SelfBillingService(
             };
             if (existing is not null)
             {
-                // The lines of a draft that exists are replaced: the old ones are removed, the new ones added through their set, never left to the collection.
                 foreach (var line in draft.Lines.ToList())
                     db.FiscalDocumentLines.Remove(line);
             }
@@ -167,8 +158,6 @@ public sealed partial class SelfBillingService(
         if (transaction is not null)
             await transaction.CommitAsync(ct);
 
-        // The «Da fare» of the month follows the drafts that are left: a generation that dropped the last one closes it (it never raises it: that is the monthly run's), and its words follow the
-        // holders refused now.
         await TrySyncDraftsTodoAsync(orgId, year, month, plan.Failed.Count, ct);
 
         logger.LogInformation(
@@ -185,8 +174,6 @@ public sealed partial class SelfBillingService(
     {
         ArgumentNullException.ThrowIfNull(criteria);
 
-        // The drafts and the issued ones, the originals a correction replaced (discarded, a draft or an issued TD17 holds their number) and the replacement drafts closed as «non più dovuta» (discarded, they keep their
-        // number reserved): the history of a number is never hidden from the list. A discarded draft nothing replaces and nobody closed is not listed.
         var query = db.FiscalDocuments.AsNoTracking()
             .Where(d => d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.SelfBilling && d.Kind != DocumentKind.CreditNote
                         && (d.Status != FiscalDocumentStatus.Discarded || d.ClosedNotDueAt != null || db.FiscalDocuments.Any(r => r.OrgId == orgId && r.ReplacesDocumentId == d.Id)));
@@ -261,7 +248,6 @@ public sealed partial class SelfBillingService(
 
         var issued = await documents.IssueSelfBillingAsync(draft.Id, composition.Rule, options.Value.EffectiveSeriesPattern, userId, ct);
 
-        // The last draft of the month issued: its «Da fare» to check and issue is done.
         await TrySyncDraftsTodoAsync(orgId, year, month, null, ct);
         return await DetailOfAsync(orgId, issued, 0m, ct);
     }
@@ -276,14 +262,10 @@ public sealed partial class SelfBillingService(
 
         await documents.DiscardSelfBillingDraftAsync(documentId, ct);
 
-        // The last draft of the month discarded: its «Da fare» to check and issue is done.
         if (found.PeriodYear is { } year && found.PeriodMonth is { } month)
             await TrySyncDraftsTodoAsync(orgId, year, month, null, ct);
     }
 
-    // ---------------------------------------------------------------- the plan: who needs a TD17 for which commissions
-
-    /// <summary>One group of commissions that makes one TD17: a holder, a portal entity, the net of each property and what is known of the amounts.</summary>
     private sealed class Group(HolderOfAccount holder, SelfBillingPortal portal)
     {
         public HolderOfAccount Holder { get; } = holder;
@@ -299,10 +281,8 @@ public sealed partial class SelfBillingService(
         public decimal Taxable => PropertyNets.Values.Where(net => net > 0m).Sum();
     }
 
-    /// <summary>The issuer a TD17 is made for: the agency (<see cref="OwnerId"/> <c>null</c>) or an owner, with the issuer profile it is issued on.</summary>
     private sealed record HolderOfAccount(SelfBillingHolderKind Kind, Guid? OwnerId, OrgFiscalIssuerProfile Profile);
 
-    /// <summary>What a holder is for the TD17: ready, not subject to it (the reason), or subject and not able yet (the code and the fields it misses).</summary>
     private sealed record HolderCheck(HolderOfAccount? Holder, string? NotDue, string? FailureCode, IReadOnlyList<string> Fields, SelfBillingHolderKind Kind, Guid? OwnerId)
     {
         public static HolderCheck Ready(HolderOfAccount holder) => new(holder, null, null, [], holder.Kind, holder.OwnerId);
@@ -364,8 +344,6 @@ public sealed partial class SelfBillingService(
                 continue;
             }
 
-            // The ledger is posted by hand: the line of a stay that was cancelled or marked no-show after the posting is alive until the next one. Only an active stay (the one definition
-            // of the code, as the owner ledger plans it) is integrated, so the draft and the issue never invoice a commission nobody owes.
             if (!AlloggiatiStatusRules.ActiveBookingStatuses.Contains(stay.Status) || stay.NoShowAt is not null)
             {
                 AddNotDue(SelfBillingNotDueReasons.StayNotActive, stay.Source.ToString());
@@ -385,7 +363,6 @@ public sealed partial class SelfBillingService(
                 continue;
             }
 
-            // The holder of the account of this listing on this portal (⚖ I10): the agency, or the owner who signs for the property on the check-out day.
             var propertyId = stayFees.First().PropertyId;
             HolderCheck check;
             if (holderMap.Resolve(propertyId, channel) == PortalAccountHolder.Agency)
@@ -425,7 +402,6 @@ public sealed partial class SelfBillingService(
             group.PropertyNets[propertyId] = group.PropertyNets.GetValueOrDefault(propertyId) + amount;
             group.Stays.Add(stayFees.Key);
 
-            // What did not come from the figure of the portal itself (a rule of the agency, the default of the channel) is an estimate: the host checks it before the issue.
             group.Estimated += -stayFees.Where(f => OwnerReconciliationRules.SourceOf(f.RuleVersion) != ChannelCommissionSource.Portal).Sum(f => f.Amount);
 
             void AddNotDue(string why, string channelName)
@@ -436,7 +412,6 @@ public sealed partial class SelfBillingService(
             }
         }
 
-        // A TD17 needs something to invoice: the groups whose commissions net to nothing (a stay fully reversed) are no document.
         plan.Groups.AddRange(groups.Values
             .Where(g => g.Taxable > 0m)
             .OrderBy(g => g.Holder.Kind)
@@ -505,7 +480,6 @@ public sealed partial class SelfBillingService(
     private static bool IsItalian(OrgFiscalIssuerProfile profile) =>
         string.Equals(profile.CountryCode?.Trim(), FiscalDocumentRules.Italy, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>The ownerships and the mandates of the properties of the month, the issuer profiles and the registry of their owners.</summary>
     private sealed record OwnerContext(
         IReadOnlyDictionary<Guid, List<OwnershipFacts>> OwnershipsByProperty,
         IReadOnlyList<OwnerMandate> Mandates,
@@ -532,10 +506,6 @@ public sealed partial class SelfBillingService(
         return new OwnerContext(ownerships.GroupBy(o => o.PropertyId).ToDictionary(g => g.Key, g => g.ToList()), mandates, profiles, owners);
     }
 
-    /// <summary>
-    /// The owner who signs for the property on <paramref name="day"/> (the rule of the document plan); without an ownership in force the smallest owner id among the owners the
-    /// ledger shared the commission with, so a stay is never left without a holder.
-    /// </summary>
     private static Guid SignatoryOf(OwnerContext context, Guid propertyId, DateOnly day, IEnumerable<Guid> ledgerOwners)
     {
         var active = context.OwnershipsByProperty.GetValueOrDefault(propertyId, [])
@@ -544,8 +514,6 @@ public sealed partial class SelfBillingService(
             .ToList();
         return DocumentPlanRules.SignatoryOf(active, context.Mandates, day)?.OwnerId ?? ledgerOwners.Min();
     }
-
-    // ---------------------------------------------------------------- the document
 
     /// <summary>What a draft is made of: the rule of the TD17 and its amounts (the net of each property, the VAT integrated on top).</summary>
     private sealed record Composition(FiscalTaxRule Rule, FiscalDocumentAmounts Amounts);
@@ -559,7 +527,6 @@ public sealed partial class SelfBillingService(
         var rate = rule.RateOf(FiscalLineType.Commission);
         var period = FiscalDocumentPdfs.PeriodLabel(year, month);
 
-        // One line for each property, by name: the net commission of its stays of the month (what nets to nothing or less is not something to integrate).
         var lines = group.PropertyNets
             .Where(net => net.Value > 0m)
             .OrderBy(net => names.GetValueOrDefault(net.Key, string.Empty), StringComparer.Ordinal)
@@ -619,7 +586,6 @@ public sealed partial class SelfBillingService(
         FiscalDocumentService.ApplyAmounts(draft, composition.Amounts);
     }
 
-    /// <summary>The document is the live TD17 of <paramref name="group"/>: made on the profile of its holder, for the legal entity of its portal.</summary>
     private static bool IsDocumentOf(FiscalDocument document, Group group) =>
         document.IssuerProfileId == group.Holder.Profile.Id
         && string.Equals(SelfBillingRules.PortalKey(document.RecipientCountryCode, document.RecipientVatNumber), group.Portal.Key, StringComparison.Ordinal);
@@ -664,9 +630,6 @@ public sealed partial class SelfBillingService(
     private static bool SamePortalName(string? a, string? b) =>
         !string.IsNullOrWhiteSpace(a) && string.Equals(a.Trim(), b?.Trim(), StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// The drafts the generation kept (<paramref name="held"/>: they hold the number of a rejected TD17 and no group of the plan took them) with the reason each cannot be issued now.
-    /// </summary>
     private async Task<IReadOnlyList<SelfBillingKept>> KeptOfAsync(Guid orgId, IReadOnlyList<FiscalDocument> held, Plan plan, CancellationToken ct)
     {
         if (held.Count == 0)
@@ -697,10 +660,6 @@ public sealed partial class SelfBillingService(
         return failure?.Code ?? SelfBillingKeptReasons.NotInLedger;
     }
 
-    /// <summary>
-    /// The drafts of <paramref name="held"/> (they hold the number of a rejected TD17) that the drafts of their month would keep, and why: the month is read as the generation reads it (the plan, the live
-    /// documents, <see cref="MatchGroups"/>), once for each month that has one, and nothing is changed. A draft the month would make again (adopted) has no reason.
-    /// </summary>
     private async Task<IReadOnlyDictionary<Guid, string>> KeptReasonsAsync(Guid orgId, IReadOnlyList<FiscalDocument> held, CancellationToken ct)
     {
         var reasons = new Dictionary<Guid, string>();
@@ -768,9 +727,6 @@ public sealed partial class SelfBillingService(
         EstimateOf(group),
         changedSinceIssue);
 
-    // ---------------------------------------------------------------- rows
-
-    /// <summary>The holder of a TD17 as its row shows it: agency or owner, and the legal name.</summary>
     private sealed record HolderInfo(SelfBillingHolderKind Kind, Guid? OwnerId, string Name);
 
     private async Task<SelfBillingDetail> DetailOfAsync(Guid orgId, FiscalDocument document, decimal estimated, CancellationToken ct)
@@ -779,12 +735,6 @@ public sealed partial class SelfBillingService(
         return new SelfBillingDetail(document, RowOf(document, info, await CorrectionFactsAsync(orgId, [document], ct)), estimated);
     }
 
-    /// <summary>
-    /// What a row says about the correction of a TD17 (FIX/BE-TD17-CORRECTION): the rejected documents that have an issued credit note (they are not corrected), for each discarded original, the
-    /// TD17 that replaces it (the newest, when a replacement was itself rejected and replaced), and for each draft that holds the number of a rejected TD17 and that the drafts of its month would
-    /// keep (nothing gives it a TD17 now), the reason it cannot be issued, and the name of the person who closed each draft closed as «non più dovuta» (FIX/BE-TD17-JOB-EXIT; the id of the user is stored, the
-    /// row shows the name).
-    /// </summary>
     private sealed record CorrectionFacts(
         IReadOnlySet<Guid> Credited,
         IReadOnlyDictionary<Guid, Guid> ReplacedBy,
@@ -826,10 +776,6 @@ public sealed partial class SelfBillingService(
         return new CorrectionFacts(credited, replacedBy, await KeptReasonsAsync(orgId, held, ct), await ClosersOfAsync(found, ct));
     }
 
-    /// <summary>
-    /// The name of each person who closed a document of <paramref name="found"/> as «non più dovuta» (FIX/BE-TD17-JOB-EXIT), by the id of the user the closing recorded: the first and the last name of the user
-    /// (never the e-mail); a user that is gone (or has no name) is not in the answer, and the row says nothing of who closed it. One read, only when a document was closed.
-    /// </summary>
     private async Task<IReadOnlyDictionary<string, string>> ClosersOfAsync(IReadOnlyCollection<FiscalDocument> found, CancellationToken ct)
     {
         var ids = found.Where(d => d.ClosedNotDueAt != null && d.ClosedNotDueByUserId != null).Select(d => d.ClosedNotDueByUserId!).Distinct(StringComparer.Ordinal).ToList();
@@ -843,10 +789,6 @@ public sealed partial class SelfBillingService(
             .ToDictionary(u => u.Id, u => u.Name, StringComparer.Ordinal);
     }
 
-    /// <summary>
-    /// The estimate of a draft as the plan gives it now (the figure the issue asks to accept), recomputed as the issue does; 0 for a document that is not a draft and for a draft the ledger no
-    /// longer supports (the next generation drops it, or keeps it when it holds the number of a rejected TD17: <see cref="SelfBillingRow.KeptReason"/>).
-    /// </summary>
     private async Task<decimal> EstimatedAmountOfAsync(Guid orgId, FiscalDocument document, CancellationToken ct)
     {
         if (document.Status != FiscalDocumentStatus.Draft || document.PeriodYear is not { } year || document.PeriodMonth is not { } month)
@@ -857,7 +799,6 @@ public sealed partial class SelfBillingService(
         return group is null ? 0m : EstimateOf(group);
     }
 
-    /// <summary>The part of the taxable amount of a group that is an estimate (a rule of the agency or a default, not the figure of the portal), never more than what is invoiced.</summary>
     private static decimal EstimateOf(Group group) => Math.Clamp(group.Estimated, 0m, group.Taxable);
 
     private async Task<IReadOnlyDictionary<Guid, HolderInfo>> HolderInfoAsync(Guid orgId, IReadOnlyCollection<FiscalDocument> found, CancellationToken ct)
@@ -883,7 +824,6 @@ public sealed partial class SelfBillingService(
     {
         var holder = HolderOf(document, info);
 
-        // An issued document names its holder as it was at the issue, never as the profile says today: the original a correction discarded was issued, so it does too.
         var wasIssued = document.Status is FiscalDocumentStatus.Issued or FiscalDocumentStatus.Discarded;
         var name = wasIssued && FiscalIssuerSnapshot.FromJson(document.IssuerSnapshot) is { } snapshot && snapshot.DisplayName.Length > 0
             ? snapshot.DisplayName
@@ -925,8 +865,6 @@ public sealed partial class SelfBillingService(
                 .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
                 .Where(p => p.OrgId == orgId && propertyIds.Contains(p.Id))
                 .ToDictionaryAsync(p => p.Id, p => p.Name, ct);
-
-    // ---------------------------------------------------------------- helpers
 
     /// <summary>
     /// The month is over (Europe/Rome, as the close of an owner's month asks): a TD17 integrates the commissions of a whole month and an issued one is not completed afterwards, so neither the

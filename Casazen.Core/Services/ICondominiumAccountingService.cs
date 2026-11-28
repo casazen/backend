@@ -4,10 +4,6 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// The owner's condominium book (CondoLedger), inside CasaZen. The rent ledger does not read these tables:
-/// tenant charges stay on the rent ledger until a later posting step calls this service.
-/// </summary>
 public interface ICondominiumAccountingService
 {
     Task<IReadOnlyList<PropertyCondominiumView>> ListPropertiesAsync(HostScope scope, CancellationToken cancellationToken = default);
@@ -39,14 +35,9 @@ public interface ICondominiumAccountingService
     /// </summary>
     Task<TenantBudgetBasis> GetTenantBudgetBasisAsync(HostScope scope, Guid propertyId, CancellationToken cancellationToken = default);
 
-    /// <summary>The amount still due on one owner installment. The bank-link payments API debits this, not the contract.</summary>
     Task<CondominiumInstallmentDue> GetInstallmentDueAsync(
         HostScope scope, Guid condominiumId, Guid installmentId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Records a SEPA debit that Stripe has confirmed, once. The same <paramref name="externalSourceHash"/> does not
-    /// post a second payment.
-    /// </summary>
     Task<CondominiumPaymentView> RecordBankLinkInstallmentPaymentAsync(
         HostScope scope,
         Guid installmentId,

@@ -33,7 +33,6 @@ internal static class CuDatasetBuilder
         var propertyIds = lines.Where(l => l.PropertyId is not null).Select(l => l.PropertyId!.Value).Distinct().ToList();
         var owners = await ReportingOwners.ReadAsync(db, orgId, propertyIds, cancellationToken);
 
-        // Each piece goes to the owner the withholding is reported on: the one who was paid, or the signatory of its property.
         var placed = lines
             .Select(line =>
             {
@@ -64,8 +63,6 @@ internal static class CuDatasetBuilder
                 Lines = cuLines,
             };
 
-            // A recipient whose withholding was reversed in the same year (in the same month or in a later one) is withheld nothing: no Certificazione Unica is due to it, so no record and none of its
-            // offsetting lines. A reversal in a later year is a record of its own with the opposite amounts.
             if (record.GrossBase != 0m || record.Withheld != 0m)
                 records.Add(record);
         }
@@ -79,10 +76,6 @@ internal static class CuDatasetBuilder
             hash);
     }
 
-    /// <summary>
-    /// The pieces as the lines of a record: those of one stay of one owner paid in one month are one line (a decision and its reversal in the same month cancel out and leave none),
-    /// by month, check-in and property.
-    /// </summary>
     private static List<CuLine> Aggregate(IReadOnlyList<EvidenceLine> pieces) =>
         pieces
             .GroupBy(l => (l.OwnerId, l.Month, l.BookingId, l.PropertyId, l.CheckIn, l.CheckOut, l.Nights))
@@ -106,10 +99,6 @@ internal static class CuDatasetBuilder
             .ThenBy(l => l.SourceOwnerId)
             .ToList();
 
-    /// <summary>
-    /// Evidence of another owner on the record (the signatory with its co-owners, or alone with the payout of the one co-owner that was paid in the year): the signatory; none: an owner on
-    /// its own, or a co-owner that kept its own share.
-    /// </summary>
     private static string AttributionOf(Guid recipient, IReadOnlyList<(Guid Source, bool OwnShare)> sources)
     {
         if (sources.Any(s => s.Source != recipient))
@@ -118,10 +107,6 @@ internal static class CuDatasetBuilder
         return sources.Any(s => s.OwnShare) ? CuAttributions.Share : CuAttributions.Owner;
     }
 
-    /// <summary>
-    /// What each owner puts into a record that carries the evidence of another owner (the signatory with its co-owners, or with the one co-owner that was paid in the year); nothing for a record that
-    /// is all its own owner's.
-    /// </summary>
     private static List<CuShare> SharesOf(Guid recipient, IReadOnlyList<EvidenceLine> pieces, TaxReportingPeople people)
     {
         if (pieces.All(l => l.OwnerId == recipient))
@@ -142,7 +127,6 @@ internal static class CuDatasetBuilder
         return codes.Count == 0 ? null : string.Join(", ", codes);
     }
 
-    /// <summary>The day the profile of the recipient is read on: the last payment of the record inside the year (never after its end), so the data is the one in force when it was paid.</summary>
     private static DateOnly PaymentDayOf(IReadOnlyList<EvidenceLine> pieces, int year)
     {
         var last = pieces.Max(l => l.PaidOn);

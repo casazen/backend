@@ -55,7 +55,6 @@ internal static class OnboardingAssistOutcomeNotice
             return;
         }
 
-        // Each administrator is told on its own: a failure for one (its bell row, its push) is logged and the others are still told.
         var told = 0;
         var failed = 0;
         foreach (var userId in administrators.Order(StringComparer.Ordinal))
@@ -77,7 +76,6 @@ internal static class OnboardingAssistOutcomeNotice
             request.Id, request.OrgId, outcome, told, failed);
     }
 
-    /// <summary>One administrator: the push to its phone, the entry of its bell and the live update. False when its bell entry was there already.</summary>
     private static async Task<bool> TellOneAsync(
         AppDbContext db,
         IPushNotificationService pushNotifications,
@@ -103,7 +101,6 @@ internal static class OnboardingAssistOutcomeNotice
         return true;
     }
 
-    /// <summary>Writes the entry of the bell of the person, once for each «Fatto». False when it was there already.</summary>
     private static async Task<bool> WriteBellAsync(
         AppDbContext db,
         OnboardingAssistRequest request,
@@ -137,13 +134,11 @@ internal static class OnboardingAssistOutcomeNotice
         }
         catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex, InAppNotification.OncePerEventAndUserIndexName))
         {
-            // The same «Fatto» written for the person at the same moment: that row is the one.
             db.Entry(row).State = EntityState.Detached;
             return false;
         }
         catch (Exception)
         {
-            // A row that could not be saved must not stay in the tracker, or every later save of this context would try it again.
             db.Entry(row).State = EntityState.Detached;
             throw;
         }

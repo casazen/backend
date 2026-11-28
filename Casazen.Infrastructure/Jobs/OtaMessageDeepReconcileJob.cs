@@ -35,10 +35,8 @@ public class OtaMessageDeepReconcileJob(
 {
     public const string RecurringJobId = "ota-message-deep-reconcile";
 
-    /// <summary>Every day at 02:30 (UTC).</summary>
     public const string Cron = "30 2 * * *";
 
-    /// <summary>The seconds a run waits for the previous one: <c>JobLockTimeouts.DefaultSeconds</c>, for the jobs that run once a day.</summary>
     public const int LockTimeoutSeconds = 300;
 
     /// <summary>The overlap of the windows: the retry window of the webhook of Octorate (OCT-09).</summary>

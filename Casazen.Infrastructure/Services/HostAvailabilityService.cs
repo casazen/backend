@@ -47,17 +47,13 @@ public sealed class HostAvailabilityService(
 
         var own = await CheckOwnNightsAsync(property, from, to, channel, cancellationToken);
 
-        // Nothing to ask for dates that cannot be a stay, nor for a portal's reservation the host completes with the guest's name: that
-        // reservation is what Octorate would answer with, and the host is not creating a second booking.
         if (channelManager is null || own.State is HostAvailabilityState.Invalid or HostAvailabilityState.LinkableBlock)
             return own;
 
-        // The capacity stays CasaZen's own check: the question of Octorate takes no occupancy, one guest asks it.
         var answer = await channelManager.CheckAsync(property.Id, property.OrgId, from, to, 1, cancellationToken);
         return WithChannelManager(own, answer, from, to);
     }
 
-    // CasaZen's own read of the stay: the bookings and the blocks that take its nights.
     private async Task<HostStayAvailability> CheckOwnNightsAsync(
         Property property,
         DateOnly from,
@@ -65,7 +61,6 @@ public sealed class HostAvailabilityService(
         BookingChannel? channel,
         CancellationToken cancellationToken)
     {
-        // PM-01: a property in long-term mode takes no stay, the same answer as the quote of the host.
         PropertyRentalModeRules.EnsureShortRent(property);
 
         var today = _clock.TodayInRomeAsDateOnly();
@@ -145,7 +140,6 @@ public sealed class HostAvailabilityService(
                 below ? HostAvailabilityState.BelowMinimum : HostAvailabilityState.Ok, null, nights, minNights, [], null, null);
         }
 
-        // A reservation of a portal that sits on exactly these dates and nothing else: the host completes it, not a second booking.
         if (conflicts.Count == 1 && linkable.Count == 1 && linkable[0].Id == conflicts[0].Id)
             return new HostStayAvailability(HostAvailabilityState.LinkableBlock, null, nights, minNights, conflicts, null, linkable[0].Id);
 
@@ -181,8 +175,6 @@ public sealed class HostAvailabilityService(
         return own with { State = HostAvailabilityState.Occupied, Conflicts = conflicts, ChannelManagerChecked = true };
     }
 
-    // The block of a portal's calendar that the host can turn into the stay: exactly these dates, not yet a stay (OtaStays.IsConvertible),
-    // and, when the host says which portal, the calendar of that portal.
     private static bool IsLinkable(BlockRow block, DateOnly from, DateOnly to, DateOnly today, BookingChannel? channel)
     {
         if (Day(block.Start) != from || Day(block.End) != to)
@@ -209,7 +201,6 @@ public sealed class HostAvailabilityService(
         _ => BookingChannel.Other,
     };
 
-    // Stay dates are calendar dates, kept as midnight UTC: the date of the stored value, as PropertyOccupancy reads them in SQL.
     private static DateOnly Day(DateTime value) => DateOnly.FromDateTime(value);
 
     private static DateTime Utc(DateOnly day) => DateTime.SpecifyKind(day.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);

@@ -20,19 +20,15 @@ public class SupplierTimeOff
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The supplier org (<see cref="SupplierProfile.OrgId"/>).</summary>
     [Required]
     public Guid OrgId { get; set; }
 
-    /// <summary>First closed day (a calendar day of Europe/Rome).</summary>
     public DateOnly FromDate { get; set; }
 
-    /// <summary>Last closed day, not before <see cref="FromDate"/> (the same day for a single day off).</summary>
     public DateOnly ToDate { get; set; }
 
     public SupplierTimeOffReason Reason { get; set; } = SupplierTimeOffReason.Vacation;
 
-    /// <summary>What the supplier calls it ("Ferie (ponte di Ognissanti)"); optional, shown only in the supplier's console.</summary>
     [MaxLength(SupplierAgendaLimits.LabelMaxLength)]
     public string? Label { get; set; }
 

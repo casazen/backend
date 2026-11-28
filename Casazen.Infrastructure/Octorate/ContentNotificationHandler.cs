@@ -40,7 +40,6 @@ public sealed class ContentNotificationHandler(
             return;
         }
 
-        // The mapping the controller resolved the org from: it must still be confirmed, and still be that accommodation's.
         var mapping = await db.OctorateListingMappings
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()

@@ -15,10 +15,6 @@ namespace Casazen.Infrastructure.Services;
 // from what the supplier did or from the end of the race are always sent.
 public sealed partial class ServiceRequestNotifier
 {
-    /// <summary>
-    /// The backups of a new request are told they are backups (SP-BKP): the job is theirs only if the primary supplier does not take it by
-    /// <paramref name="primaryDueAtUtc"/>, and they can accept as a backup right away. One email and one push each.
-    /// </summary>
     public async Task NotifyBackupsInvitedAsync(
         IReadOnlyList<(ServiceRequest Request, SupplierProfile Supplier)> backups,
         string comune,
@@ -57,7 +53,6 @@ public sealed partial class ServiceRequestNotifier
         }
     }
 
-    /// <summary>The second window of the group opened (SP-BKP): the backup can take the job now, until <paramref name="backupDueAtUtc"/>.</summary>
     public async Task NotifyBackupActiveAsync(ServiceRequest request, DateTime backupDueAtUtc, CancellationToken cancellationToken)
     {
         try
@@ -86,7 +81,6 @@ public sealed partial class ServiceRequestNotifier
         }
     }
 
-    /// <summary>The job went to this backup, which had accepted (SP-BKP): it did not act at that moment, so it is told.</summary>
     public async Task NotifyBackupWonAsync(ServiceRequest request, CancellationToken cancellationToken)
     {
         try
@@ -118,7 +112,6 @@ public sealed partial class ServiceRequestNotifier
         }
     }
 
-    /// <summary>A backup's request was closed (SP-BKP): the job went to the primary or to another backup, the host cancelled, or its time was no longer free.</summary>
     public async Task NotifyBackupClosedAsync(ServiceRequest request, ServiceRequestBackupClosedKind kind, CancellationToken cancellationToken)
     {
         try
@@ -144,11 +137,6 @@ public sealed partial class ServiceRequestNotifier
         }
     }
 
-    /// <summary>
-    /// Nobody took the job of a group (SP-BKP), to the host: the "nobody answered" email and push of a request cancelled by CasaZen, also when
-    /// the request the host follows is one the primary supplier refused earlier (its own status stays <c>Rifiutato</c>, but the host has not
-    /// been told that the backups did not take the job either). Same push key as the cancellation, so a request is told once.
-    /// </summary>
     public async Task NotifyHostNoResponseAsync(ServiceRequest request, CancellationToken cancellationToken)
     {
         if (request.RentalContext == ServiceRequestRentalContext.Showcase)
@@ -195,11 +183,6 @@ public sealed partial class ServiceRequestNotifier
         }
     }
 
-    /// <summary>
-    /// A backup took the job the primary supplier did not take in time (SP-BKP), to the host: who has it now. It takes the place of the
-    /// "taken" email and push of <see cref="NotifyHostAsync"/> (same push type and key, so the host gets one push for the take).
-    /// <paramref name="request"/> is the request that was taken, with its property and its supplier org.
-    /// </summary>
     public async Task NotifyHostBackupTookOverAsync(ServiceRequest request, CancellationToken cancellationToken)
     {
         try

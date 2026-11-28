@@ -35,14 +35,12 @@ public class Property : ITenantOwned
     [MaxLength(255)]
     public string? ResponsibleUserId { get; set; }
 
-    /// <summary>Tenant key (AC2). Server-set from the caller's org; never client-supplied.</summary>
     public Guid OrgId { get; set; }
     public virtual Org Org { get; set; } = null!;
 
     [Required, MaxLength(100)]
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>URL-friendly identifier unique within the org for direct booking links.</summary>
     [MaxLength(100)]
     public string? Slug { get; set; }
 
@@ -64,12 +62,6 @@ public class Property : ITenantOwned
     [Required, MaxLength(500)]
     public string Address { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Interno / scala of the apartment inside the building (PC-06, A2-19): free text such as <c>int. 5</c> or
-    /// <c>Scala B int. 5</c>, trimmed with inner spaces collapsed (<see cref="PropertyAddress.NormalizeUnit"/>). Null for
-    /// a property that has no unit (a house, the only apartment of the address). Part of the address uniqueness: several
-    /// apartments of the same building are different properties of the org.
-    /// </summary>
     [MaxLength(PropertyAddress.UnitMaxLength)]
     public string? Unit { get; set; }
 
@@ -88,20 +80,11 @@ public class Property : ITenantOwned
     [MaxLength(Casazen.Core.Regulatory.ComuneRules.IstatCodeLength)]
     public string? ComuneIstatCode { get; set; }
 
-    /// <summary>
-    /// CasaZen's code of the region (<c>LOM</c>, <c>LAZ</c>) of <see cref="ComuneIstatCode"/>, set together with it from the
-    /// official list; the key of <c>Compliance:RequiredDocuments</c>. Null while no comune is chosen.
-    /// </summary>
     [MaxLength(10)]
     public string? RegionCode { get; set; }
 
-    /// <summary>
-    /// WGS84 latitude in degrees, -90 to 90, stored with <see cref="PropertyAddress.CoordinateScale"/> decimals (about
-    /// 0.1 m, PC-06, A2-33). <c>0</c> together with a longitude of <c>0</c> = not set.
-    /// </summary>
     public decimal Latitude { get; set; }
 
-    /// <summary>WGS84 longitude in degrees, -180 to 180, same precision as <see cref="Latitude"/>.</summary>
     public decimal Longitude { get; set; }
 
     [Range(0, 100, ErrorMessage = "PropertyBedroomsRange")]
@@ -110,25 +93,13 @@ public class Property : ITenantOwned
     [Range(1, 50, ErrorMessage = "PropertyBathroomsRange")]
     public int Bathrooms { get; set; }
 
-    /// <summary>
-    /// Short-stay guests; <c>0</c> = not set. Before PM-01 this and <see cref="NightlyRate"/> at <c>0</c> were the only,
-    /// implicit marker of a long-term property (A7-06); the marker is now <see cref="RentalMode"/>.
-    /// </summary>
     [Range(0, 100, ErrorMessage = "PropertyMaxGuestsRange")]
     public int MaxGuests { get; set; }
 
-    /// <summary>Short-stay nightly rate; <c>0</c> = none (see <see cref="MaxGuests"/>).</summary>
     [Precision(18, 2)]
     [Range(0, 100000, ErrorMessage = "PropertyNightlyRateRange")]
     public decimal NightlyRate { get; set; }
 
-    /// <summary>
-    /// Fewest nights the public booking site accepts for a stay (DB-03): <c>null</c> = no minimum, which is what every
-    /// property had before the column existed. When set it is between <see cref="PropertyStayRules.MinMinNights"/> and
-    /// <see cref="PropertyStayRules.MaxMinNights"/> (30 nights is the longest short-term let). It is a rule of the guests'
-    /// quote and checkout (422 <c>direct_booking_min_nights_not_met</c>), not of the host: a stay the host enters by hand can
-    /// be shorter.
-    /// </summary>
     [Range(PropertyStayRules.MinMinNights, PropertyStayRules.MaxMinNights, ErrorMessage = "PropertyMinNightsRange")]
     public int? MinNights { get; set; }
 
@@ -181,21 +152,14 @@ public class Property : ITenantOwned
     // that existed before them, and nothing reads them to decide a booking, a price or a refund. Only PublishedOnSite changes
     // what the public site shows, and it starts true, so every property keeps the visibility it has today.
 
-    /// <summary>The kind of accommodation (<see cref="Enums.AccommodationType"/>); null = never chosen.</summary>
     public AccommodationType? AccommodationType { get; set; }
 
-    /// <summary>Number of beds, <see cref="PropertyHouseRules.MinBeds"/> to <see cref="PropertyHouseRules.MaxBeds"/>; null = not set.</summary>
     [Range(PropertyHouseRules.MinBeds, PropertyHouseRules.MaxBeds, ErrorMessage = "PropertyBedsRange")]
     public int? Beds { get; set; }
 
-    /// <summary>Living area in square metres, <see cref="PropertyHouseRules.MinAreaSqm"/> to <see cref="PropertyHouseRules.MaxAreaSqm"/>; null = not set.</summary>
     [Range(PropertyHouseRules.MinAreaSqm, PropertyHouseRules.MaxAreaSqm, ErrorMessage = "PropertyAreaSqmRange")]
     public int? AreaSqm { get; set; }
 
-    /// <summary>
-    /// The headline of the listing, at most <see cref="PropertyHouseRules.ListingTitleMaxLength"/> characters, trimmed; null = the
-    /// listing uses the name of the property. The longer text of the listing is <see cref="Description"/>.
-    /// </summary>
     [MaxLength(PropertyHouseRules.ListingTitleMaxLength)]
     public string? ListingTitle { get; set; }
 
@@ -208,38 +172,22 @@ public class Property : ITenantOwned
     /// </summary>
     public bool PublishedOnSite { get; set; } = true;
 
-    /// <summary>The earliest time guests can arrive, on the property's clock (<see cref="Timezone"/>); null = not set. Whole minutes.</summary>
     public TimeOnly? CheckInFrom { get; set; }
 
-    /// <summary>The time by which guests must leave, on the property's clock; null = not set. Whole minutes.</summary>
     public TimeOnly? CheckOutBy { get; set; }
 
-    /// <summary>What the house rules say about smoking; null = never said. The amenity <see cref="PropertyAmenity.SmokingAllowed"/> follows it.</summary>
     public SmokingPolicy? SmokingPolicy { get; set; }
 
-    /// <summary>What the house rules say about pets; null = never said. The amenity <see cref="PropertyAmenity.PetFriendly"/> follows it.</summary>
     public PetsPolicy? PetsPolicy { get; set; }
 
-    /// <summary>What the house rules say about parties and events; null = never said.</summary>
     public PartiesPolicy? PartiesPolicy { get; set; }
 
-    /// <summary>
-    /// What the house rules say about children (NF-37); null = never said. It is the structured rule the channels receive, next to pets,
-    /// smoking, parties and the quiet hours; the public page keeps reading <see cref="ChildrenWelcome"/> of the site profile.
-    /// </summary>
     public ChildrenPolicy? ChildrenPolicy { get; set; }
 
-    /// <summary>Quiet hours start, on the property's clock; null = none. Always set together with <see cref="QuietHoursTo"/>. Whole minutes.</summary>
     public TimeOnly? QuietHoursFrom { get; set; }
 
-    /// <summary>Quiet hours end, on the property's clock; null = none. Always set together with <see cref="QuietHoursFrom"/>. Whole minutes.</summary>
     public TimeOnly? QuietHoursTo { get; set; }
 
-    /// <summary>
-    /// What the host asks, per night, for each guest beyond the usual number of guests, in euros, 0 to
-    /// <see cref="PropertyHouseRules.MaxExtraGuestFeePerNight"/>; null = extra guests are not accepted. A house rule the
-    /// listing states: the booking site does not add it to the price of a stay (<c>StayPricing</c> does not read it).
-    /// </summary>
     [Precision(18, 2)]
     [Range(typeof(decimal), "0", "1000", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
         ErrorMessage = "PropertyExtraGuestFeeRange")]
@@ -250,37 +198,25 @@ public class Property : ITenantOwned
     // existed before them; nothing here is read to decide a booking, a price or a refund, and none can hold an address or an exact
     // position. The fields of the wizard (SR-07a) above keep their one owner; the public page reads both.
 
-    /// <summary>The floor of the unit, <see cref="SitePropertyProfileLimits.MinFloorLevel"/> to <see cref="SitePropertyProfileLimits.MaxFloorLevel"/>, 0 = ground floor; null = not set.</summary>
     public int? FloorLevel { get; set; }
 
-    /// <summary>The year the house was last renovated; null = not set. Never in the future.</summary>
     public int? RenovatedYear { get; set; }
 
-    /// <summary>
-    /// The energy class printed on the APE, <c>A4</c>…<c>G</c>, upper-case; null = the host did not say. Never filled in by the
-    /// system and never guessed (DB-D18): the APE document of the property is private and is not copied here.
-    /// </summary>
     [MaxLength(SitePropertyProfileLimits.EnergyClassMaxLength)]
     public string? EnergyClass { get; set; }
 
-    /// <summary>The global energy performance index of the APE, in kWh/m² per year, two decimals; null = not said. Only with an <see cref="EnergyClass"/>.</summary>
     [Precision(7, 2)]
     public decimal? EnergyIndex { get; set; }
 
-    /// <summary>What kind of place the house stands in (the local map and the label of the site); null = not set.</summary>
     public PropertyAreaKind? AreaKind { get; set; }
 
-    /// <summary>The house rules about children: <c>true</c> = children are welcome, <c>false</c> = not suited to them; null = never said.</summary>
     public bool? ChildrenWelcome { get; set; }
 
-    /// <summary>The latest time guests may arrive, on the property's clock, whole minutes; null = no limit given. The earliest is <see cref="CheckInFrom"/>.</summary>
     public TimeOnly? CheckInTo { get; set; }
 
-    /// <summary>The video of the house as an embeddable address of YouTube (nocookie) or Vimeo, in its canonical form; null = none. Never uploaded.</summary>
     [MaxLength(SitePropertyProfileLimits.EmbedUrlMaxLength)]
     public string? VideoUrl { get; set; }
 
-    /// <summary>The virtual tour (360°) of the house as an embeddable Matterport address, in its canonical form; null = none.</summary>
     [MaxLength(SitePropertyProfileLimits.EmbedUrlMaxLength)]
     public string? TourUrl { get; set; }
 
@@ -296,111 +232,65 @@ public class Property : ITenantOwned
 
     public string? RequiredActivationPortalsJson { get; set; }
 
-    /// <summary>
-    /// The alternative text of the photos of the gallery: a JSON map from the URL of a photo to its text in Italian and English
-    /// (and, once known, its width and height); null = none written. Kept in step with <see cref="PhotoUrls"/> by the photo
-    /// service: a photo that leaves the gallery leaves the map.
-    /// </summary>
     [JsonIgnore]
     [Column(TypeName = "jsonb")]
     public string? PhotoAltJson { get; set; }
 
-    // Italian regulatory compliance - D.L. 145/2023
     [MaxLength(25)]
     [CinCode]
-    public string? CinCode { get; set; } // Normalized CIN, e.g. IT058091C27G5FFZDZ (see CinFormat)
+    public string? CinCode { get; set; }
 
-    // Cadastral identification of the unit (catasto fabbricati), used by the lease contract (LT-03, LT-10). Free text
-    // within a length: the formats are not validated beyond that (no invented patterns).
-
-    /// <summary>Foglio: also finds the canone concordato zone of comuni zoned by sheet (LT-10).</summary>
     [MaxLength(PropertyCadastralLimits.SheetMaxLength)]
     public string? CadastralSheet { get; set; }
 
-    /// <summary>Particella (mappale).</summary>
     [MaxLength(PropertyCadastralLimits.ParcelMaxLength)]
     public string? CadastralParcel { get; set; }
 
-    /// <summary>Subalterno; some units have none.</summary>
     [MaxLength(PropertyCadastralLimits.SubalternMaxLength)]
     public string? CadastralSubaltern { get; set; }
 
-    /// <summary>Categoria catastale as written in the visura (e.g. "A/2").</summary>
     [MaxLength(PropertyCadastralLimits.CategoryMaxLength)]
     public string? CadastralCategory { get; set; }
 
-    /// <summary>Rendita catastale in euros.</summary>
     [Precision(12, 2)]
     public decimal? CadastralIncome { get; set; }
 
-    /// <summary>
-    /// Complete for the contract: sheet, parcel, category and income (the subaltern is optional, LT-10).
-    /// </summary>
     public bool HasCadastralData => IsCadastralDataComplete(CadastralSheet, CadastralParcel, CadastralCategory, CadastralIncome);
 
-    /// <summary>
-    /// The rule of <see cref="HasCadastralData"/> for four values read without the property (a query that selects only the columns, like the
-    /// list of the long-term properties, LR-07a): the one rule of the contract.
-    /// </summary>
     public static bool IsCadastralDataComplete(string? sheet, string? parcel, string? category, decimal? income) =>
         !string.IsNullOrWhiteSpace(sheet)
         && !string.IsNullOrWhiteSpace(parcel)
         && !string.IsNullOrWhiteSpace(category)
         && income is not null;
 
-    /// <summary>
-    /// ISO 3166-1 alpha-2 country code (e.g. "IT", "CH"). Non-null, default IT (ADR-001-R7).
-    /// </summary>
     [Required, MaxLength(2)]
     public string Country { get; set; } = "IT";
 
-    /// <summary>
-    /// ISO 4217 currency code (e.g. "EUR", "CHF"). Non-null, default EUR (ADR-001-R7).
-    /// </summary>
     [Required, MaxLength(3)]
     public string Currency { get; set; } = "EUR";
 
-    // Timezone for booking date handling (IANA timezone ID)
     [MaxLength(50)]
-    public string Timezone { get; set; } = "Europe/Rome"; // Default for Italian properties
+    public string Timezone { get; set; } = "Europe/Rome";
 
-    /// <summary>
-    /// Swiss municipality code (official BFS number) for properties in Switzerland (Country = 'CH').
-    /// Null for non-Swiss properties. Foreign key to SwissMunicipalities table (ADR-001-R9, NF-02).
-    /// </summary>
     [MaxLength(10)]
     public string? SwissMunicipalityCode { get; set; }
 
-    /// <summary>
-    /// The «Numero identificativo LEAR / NO-LEAR» Ticino Turismo gives the structure when it registers (casazen/backend#979), stored
-    /// normalized (<see cref="Regulatory.TicinoStructureId"/>): the first field of every row of the file for the Ticino police portal.
-    /// Null until the host enters it; meaningful only for a property in canton Ticino.
-    /// </summary>
     [MaxLength(Regulatory.TicinoStructureId.MaxLength)]
     public string? TicinoStructureId { get; set; }
 
-    /// <summary>
-    /// What the host decided about notifying the guests of this property to the authority of its canton (E29/F02/US01/T01, NF-125, decision D12): stored
-    /// as the number of <see cref="Enums.GuestNotificationOverride"/>; <c>null</c> = follow the regime of the place (the default, and every row that existed
-    /// before the column). Meaningful only for a property in Switzerland, and read only while <c>Features:GuestRegistrationRegimes</c> is on.
-    /// </summary>
     public GuestNotificationOverride? GuestNotificationOverride { get; set; }
 
     [ForeignKey("CancellationPolicy")]
     public Guid? CancellationPolicyId { get; set; }
     public virtual CancellationPolicy? CancellationPolicy { get; set; }
 
-    /// <summary>Host override of the catalog full-refund window (hours before check-in). Null = catalog. Ignored for stays of 28+ nights.</summary>
     public int? CancellationFullRefundHours { get; set; }
 
-    /// <summary>Host override of the catalog partial-refund window (hours before check-in). Null = catalog. Ignored for stays of 28+ nights.</summary>
     public int? CancellationPartialRefundHours { get; set; }
 
-    /// <summary>Host override of the catalog partial-refund percent. Null = catalog. Ignored for stays of 28+ nights.</summary>
     [Precision(18, 2)]
     public decimal? CancellationPartialRefundPercent { get; set; }
 
-    /// <summary>Host refund type (percent of stay vs non-refundable). Ignored for stays of 28+ nights.</summary>
     public HostCancellationRefundType CancellationRefundType { get; set; } = HostCancellationRefundType.Percent;
 
     public bool IsActive { get; set; } = true;
@@ -414,16 +304,10 @@ public class Property : ITenantOwned
     /// </summary>
     public bool IsPaused { get; set; }
 
-    /// <summary>UTC instant the host paused the property (<see cref="IsPaused"/>); null when not paused. Cleared on reactivation.</summary>
     public DateTime? PausedAt { get; set; }
 
-    /// <summary>
-    /// The row was created or completed with invented data for the test environment (demo seed). Real host data stays
-    /// <c>false</c>. The showcase reset deletes only rows marked this way and recorded as showcase.
-    /// </summary>
     public bool IsTestData { get; set; }
 
-    /// <summary>Compliance activation gate for public listing (US-019 / #295).</summary>
     public PropertyComplianceStatus ComplianceStatus { get; set; } = PropertyComplianceStatus.Pending;
 
     public DateTime? ComplianceCompletedAt { get; set; }
@@ -435,10 +319,6 @@ public class Property : ITenantOwned
     /// </summary>
     public DateTime? ComplianceSuspendedAt { get; set; }
 
-    /// <summary>
-    /// Stable codes of the activation blockers that suspended the property (e.g. <c>activation_cin_missing</c>,
-    /// <c>safety_confirmation_missing</c>), as they were at the suspension; null when it is not suspended.
-    /// </summary>
     public List<string>? ComplianceSuspensionReasons { get; set; }
 
     /// <summary>
@@ -469,13 +349,11 @@ public class Property : ITenantOwned
     /// </summary>
     public bool IsDeleted { get; set; }
 
-    /// <summary>UTC instant the property was soft-deleted (PC-05); null while it is not.</summary>
     public DateTime? DeletedAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    // Navigation
     public virtual ICollection<Booking> Bookings { get; set; } = new List<Booking>();
     public virtual ICollection<OtaIntegration> OtaIntegrations { get; set; } = new List<OtaIntegration>();
     public virtual ICollection<PropertyDocument> PropertyDocuments { get; set; } = new List<PropertyDocument>();
@@ -488,7 +366,6 @@ public class Property : ITenantOwned
     public virtual ICollection<PropertyMemberAccess> MemberAccesses { get; set; } = new List<PropertyMemberAccess>();
 }
 
-/// <summary>Lengths of the cadastral fields of <see cref="Property"/> (LT-10).</summary>
 public static class PropertyCadastralLimits
 {
     public const int SheetMaxLength = 10;

@@ -40,6 +40,5 @@ public interface IGuestDocumentPurgeService
 /// <param name="Scans">The objects of the legacy scans of a booker deleted from the storage (a reference cleared while another guest record still points to the object is not one).</param>
 public sealed record GuestDocumentPurgeResult(bool Enabled, int Stays, int Images, int Scans)
 {
-    /// <summary>The answer of a run while the flag is off.</summary>
     public static GuestDocumentPurgeResult Off { get; } = new(false, 0, 0, 0);
 }

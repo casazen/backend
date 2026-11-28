@@ -30,44 +30,28 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 internal static class Pain001Checks
 {
-    /// <summary>The document has no initiation message, no group header or no payment at all.</summary>
     public const string Initiation = "CstmrCdtTrfInitn";
 
-    /// <summary>The number of operations is not the number of the transfers (or not the one of the batch).</summary>
     public const string NumberOfTransactions = "NbOfTxs";
 
-    /// <summary>The control sum is not the sum of the amounts (or not the total of the batch).</summary>
     public const string ControlSum = "CtrlSum";
 
-    /// <summary>An amount is not a positive number with two decimals.</summary>
     public const string InstructedAmount = "InstdAmt";
 
-    /// <summary>The currency of an amount is missing or is not the one of the batch.</summary>
     public const string Currency = "Ccy";
 
-    /// <summary>A transfer has no end-to-end id, or two of them have the same.</summary>
     public const string EndToEndId = "EndToEndId";
 
-    /// <summary>A payment of the EUR file has not the service level of the SEPA credit transfer (<c>PmtTpInf/SvcLvl/Cd</c> is not <c>SEPA</c>).</summary>
     public const string ServiceLevel = "SvcLvl";
 
-    /// <summary>A payment of the EUR file has not the charge bearer of the SEPA credit transfer (<c>ChrgBr</c> is not <c>SLEV</c>).</summary>
     public const string ChargeBearer = "ChrgBr";
 
-    /// <summary>A debtor or a creditor of the EUR file has no structured or hybrid postal address (a town and a country, at most two free lines).</summary>
     public const string PostalAddress = "PstlAdr";
 
-    /// <summary>The most free lines of a hybrid address (<c>AdrLine</c>).</summary>
     private const int MaxAddressLines = 2;
 
-    // \z, not $: a text that ends with a line break is not an amount.
     private static readonly Regex AmountText = new(@"^\d{1,16}\.\d{2}\z", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    /// <summary>
-    /// The names of the elements whose rule <paramref name="xml"/> breaks, in the order they were found and each once; empty when the file is what its lines
-    /// say and follows the rules of its message. <paramref name="expectedTotal"/> and <paramref name="expectedCount"/> are the total and the number of transfers of
-    /// the batch the file was written for.
-    /// </summary>
     public static IReadOnlyList<string> Violations(string xml, string currency, decimal expectedTotal, int expectedCount)
     {
         ArgumentNullException.ThrowIfNull(xml);
@@ -137,11 +121,6 @@ internal static class Pain001Checks
         return violations;
     }
 
-    /// <summary>
-    /// The rules of the SEPA credit transfer of the EPC for one payment of the EUR file (the file CasaZen writes has the service level and the charge bearer in
-    /// the payment, never in a transfer): the service level <c>SEPA</c>, the charge bearer <c>SLEV</c>, and a structured or hybrid address for the debtor and for every
-    /// creditor.
-    /// </summary>
     private static void SepaRules(XElement payment, XNamespace ns, Action<string> broken)
     {
         var serviceLevels = payment.Element(ns + "PmtTpInf")?.Elements(ns + "SvcLvl").Select(s => s.Element(ns + "Cd")?.Value) ?? [];
@@ -156,10 +135,6 @@ internal static class Pain001Checks
             broken(PostalAddress);
     }
 
-    /// <summary>
-    /// True for a postal address that is structured or hybrid: a town and a country, and at most two free lines (an address made of free lines alone, the
-    /// unstructured form, has neither a town nor a country of its own).
-    /// </summary>
     private static bool IsStructuredOrHybrid(XElement? address, XNamespace ns)
     {
         return address is not null
@@ -168,7 +143,6 @@ internal static class Pain001Checks
                && address.Elements(ns + "AdrLine").Count() <= MaxAddressLines;
     }
 
-    /// <summary>True for a plain decimal number with exactly two decimals (digits, a point, two digits: no sign, no exponent, no group separator).</summary>
     private static bool TryAmount(string? text, out decimal value)
     {
         value = 0m;
@@ -177,7 +151,6 @@ internal static class Pain001Checks
                && decimal.TryParse(text, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out value);
     }
 
-    /// <summary>True for a count written with digits only.</summary>
     private static bool TryCount(string? text, out int value)
     {
         value = 0;

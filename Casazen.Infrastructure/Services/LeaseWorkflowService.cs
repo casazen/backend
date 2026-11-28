@@ -12,10 +12,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Lease drafting and reads. The signature (offline or provider, LT-02) is <see cref="LeaseSigningService"/>, the RLI
-/// registration (provider or manual, LT-01) is <see cref="RliRegistrationService"/>.
-/// </summary>
 public class LeaseWorkflowService(
     ILeaseContractRepository leaseRepository,
     ILeaseEventRepository eventRepository,
@@ -30,8 +26,6 @@ public class LeaseWorkflowService(
 
     public async Task<LeaseContract> CreateDraftAsync(Guid propertyId, CreateLeaseRequest request)
     {
-        // Who may create a lease on the property (owner or org-wide member with lease.create) is decided by the
-        // caller with the TN-3 resource check; the tenant filter keeps other orgs' properties invisible here.
         var property = await propertyRepository.GetByIdAsync(propertyId)
             ?? throw new InvalidOperationException($"Property {propertyId} not found.");
 
@@ -39,7 +33,6 @@ public class LeaseWorkflowService(
 
         var (contractType, taxRegime) = ResolveContractTerms(request);
 
-        // Term from the dates, checked for the contract type (LT-10, A7-13): 4+4, 3+2, transitorio 1-18 months.
         LeaseContractTerms.EnsureTerm(contractType, request.StartDate, request.EndDate);
         var term = LeaseTerm.Between(request.StartDate, request.EndDate)!.Value;
 
@@ -47,7 +40,6 @@ public class LeaseWorkflowService(
             ? await AssessConcordatoRentAsync(propertyId, request, term)
             : null;
 
-        // LT-14 (A7-28): one or more landlords and tenants, each with a valid fiscal code, none twice.
         var parties = request.Parties.ToList();
         LeasePartyRules.Ensure(parties.Select(p => (p.Role, (string?)p.FiscalCode)).ToList());
 
@@ -60,14 +52,12 @@ public class LeaseWorkflowService(
             MonthlyRent = request.MonthlyRent,
             SecurityDeposit = request.SecurityDeposit,
             ConcordatoAssessment = concordato,
-            // Created complete in one call: every data step has its values (LR-12), as if the landlord had been through them.
             WizardMaxStep = LeaseDraftDefaults.LastDataStep,
             // No stipula yet: the RLI deadline is fixed when every party has signed (LT-04, A7-04). No retention date
             // either: it is computed from the end date and Gdpr:Retention:LeaseParties (LT-12, LeasePartyPrivacyService).
             Parties = parties.Select((p, index) => new Party
             {
                 Role = p.Role,
-                // Order among the parties of the same role, as entered.
                 Position = parties.Take(index).Count(previous => previous.Role == p.Role),
                 FirstName = p.FirstName,
                 LastName = p.LastName,
@@ -90,7 +80,6 @@ public class LeaseWorkflowService(
 
         if (concordato is { RentWithinRange: false })
         {
-            // Only an indicative range (Partial data) lets a rent outside it through (A7-23): logged, shown to the host.
             logger.LogWarning(
                 "Lease draft created with a rent outside the indicative canone concordato range ({Completeness} data). LeaseId={LeaseId} PropertyId={PropertyId}",
                 concordato.DataCompleteness, lease.Id, propertyId);
@@ -103,7 +92,6 @@ public class LeaseWorkflowService(
 
     public async Task<IReadOnlyList<LeaseSummaryDto>> GetLeasesAsync(HostScope scope, Guid? propertyId = null)
     {
-        // The deadline of a lease not signed yet depends on today (LT-04): resolved here, not stored.
         var today = _clock.TodayInRome();
         var summaries = await leaseRepository.GetSummariesAsync(scope, propertyId);
         return WithResolvedDeadline(summaries, today);
@@ -113,7 +101,6 @@ public class LeaseWorkflowService(
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        // The views, the overdue installments and the deadline of a lease not signed yet all depend on today (Rome).
         var today = _clock.TodayInRome();
         var summaries = await leaseRepository.GetSummariesAsync(scope, query, today);
         return WithResolvedDeadline(summaries, today);
@@ -130,10 +117,6 @@ public class LeaseWorkflowService(
     public Task<LeaseContract?> GetLeaseDetailAsync(Guid leaseId)
         => leaseRepository.GetByIdWithDetailsAsync(leaseId);
 
-    /// <summary>
-    /// Contract type and tax regime of the request (LT-10): the new fields, or the legacy combined value when a client
-    /// sends only that. 422 when neither is given, or the contract type comes without a tax regime.
-    /// </summary>
     private static (LeaseContractType Type, LeaseTaxRegime? TaxRegime) ResolveContractTerms(CreateLeaseRequest request)
     {
         if (request.ContractType is { } contractType)
@@ -152,12 +135,6 @@ public class LeaseWorkflowService(
         throw new DomainRuleException(LeaseTermErrorCodes.ContractTypeRequired, "LeaseContractTypeRequired");
     }
 
-    /// <summary>
-    /// Canone concordato range recomputed on the server from the declared characteristics and the real term (A7-12).
-    /// Verified agreement data (Complete): a rent outside the range is refused (422). Unconfirmed data (Partial): the
-    /// range is indicative, the lease is created and the assessment records that the rent is outside it (A7-23). The
-    /// calculation is <see cref="LeaseConcordatoAssessor"/>, shared with the guided draft (LR-12).
-    /// </summary>
     private async Task<LeaseConcordatoAssessment> AssessConcordatoRentAsync(
         Guid propertyId, CreateLeaseRequest request, LeaseTerm term)
     {

@@ -32,17 +32,13 @@ public class ComplianceProofRetentionJob(
 {
     public const string RecurringJobId = "compliance-proof-retention";
 
-    /// <summary>Every day at 03:40 UTC, after the other retention jobs of the night.</summary>
     public const string Cron = "40 3 * * *";
 
-    /// <summary>Proofs removed by one save.</summary>
     public const int BatchSize = 100;
 
     [AutomaticRetry(Attempts = 3)]
     public async Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        // RetainUntil is the upload plus five years and is not stored, so a proof is due when its upload is older than five years from today. Taking
-        // the five years off today can only be a day late for a proof uploaded on 29 February, never early.
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var cutoff = now.AddYears(-ManualComplianceProof.RetentionYears);
 
@@ -92,7 +88,6 @@ public class ComplianceProofRetentionJob(
             removed,
             failed.Count);
 
-        // Nothing past its time is kept in silence: the run fails (and is repeated) while a file could not be deleted; what was removed stays removed.
         if (failed.Count > 0)
         {
             throw new InvalidOperationException(

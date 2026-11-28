@@ -15,7 +15,6 @@ internal sealed class CheckInLinkDeliveryConfiguration : IEntityTypeConfiguratio
 {
     public void Configure(EntityTypeBuilder<CheckInLinkDelivery> entity)
     {
-        // The row goes with its booking; the session (the link) and the message of the chat it names may go without it.
         entity.HasOne<Booking>()
             .WithMany()
             .HasForeignKey(d => d.BookingId)
@@ -33,15 +32,12 @@ internal sealed class CheckInLinkDeliveryConfiguration : IEntityTypeConfiguratio
             .HasForeignKey(d => d.OrgId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // The column says what it holds: the encrypted token. There is no plaintext column for the link.
         entity.Property(d => d.LinkToken).HasColumnName("LinkTokenEncrypted");
 
-        // One per booking: the daily job starts the row again for a new link, it never makes a second one.
         entity.HasIndex(d => d.BookingId)
             .IsUnique()
             .HasDatabaseName(CheckInLinkDelivery.BookingIndexName);
 
-        // The rows the hourly job looks at: not ended, still waiting or failed.
         entity.HasIndex(d => new { d.OrgId, d.State })
             .HasFilter("\"EndedAt\" IS NULL")
             .HasDatabaseName("IX_CheckInLinkDeliveries_OrgId_State_Open");

@@ -28,7 +28,6 @@ public sealed class SiteConnectionService(
     TimeProvider clock,
     ILogger<SiteConnectionService> logger) : ISiteConnectionService
 {
-    /// <inheritdoc />
     public async Task<SiteConnectionAuthorization?> AuthorizeAsync(
         Guid orgId,
         string userId,
@@ -47,7 +46,6 @@ public sealed class SiteConnectionService(
             || !SiteConnectionRules.IsValidCodeChallenge(codeChallenge)
             || !SiteConnectionRules.IsS256(codeChallengeMethod))
         {
-            // Nothing of the request in the log: the addresses may carry a query, the state and the challenge are the plugin's.
             logger.LogInformation("Site connection request of org {OrgId} refused: it breaks a rule of the request", orgId);
             return null;
         }
@@ -77,7 +75,6 @@ public sealed class SiteConnectionService(
         return new SiteConnectionAuthorization(SiteConnectionRules.RedirectUrl(returnUri, code, state), site, row.ExpiresAt);
     }
 
-    /// <inheritdoc />
     public async Task<SiteConnectionGrant?> ExchangeAsync(
         string? code,
         string? codeVerifier,
@@ -132,7 +129,6 @@ public sealed class SiteConnectionService(
         return new SiteConnectionGrant(credential, connection.Id, new SiteConnectionOrg(org.Id, org.Slug, displayName));
     }
 
-    /// <inheritdoc />
     public async Task<IReadOnlyList<SiteConnectionSummary>> ListAsync(Guid orgId, CancellationToken cancellationToken = default) =>
         await db.SiteConnections.AsNoTracking()
             .Where(c => c.OrgId == orgId && c.RevokedAt == null)
@@ -140,7 +136,6 @@ public sealed class SiteConnectionService(
             .Select(c => new SiteConnectionSummary(c.Id, c.SiteUrl, c.CreatedAt, c.LastUsedAt))
             .ToListAsync(cancellationToken);
 
-    /// <inheritdoc />
     public async Task<bool> RevokeAsync(Guid orgId, Guid connectionId, CancellationToken cancellationToken = default)
     {
         var connection = await db.SiteConnections.FirstOrDefaultAsync(c => c.Id == connectionId && c.OrgId == orgId, cancellationToken);
@@ -151,7 +146,6 @@ public sealed class SiteConnectionService(
         return true;
     }
 
-    /// <inheritdoc />
     public async Task<bool> RevokeAsync(Guid connectionId, CancellationToken cancellationToken = default)
     {
         // The id comes from the credential of the request, whose org is the tenant of the request (the scheme SiteToken sets it).
@@ -163,7 +157,6 @@ public sealed class SiteConnectionService(
         return true;
     }
 
-    /// <inheritdoc />
     public async Task<SiteConnectionPrincipal?> AuthenticateAsync(string? credential, CancellationToken cancellationToken = default)
     {
         if (!SiteConnectionTokens.IsCredential(credential))
@@ -185,7 +178,6 @@ public sealed class SiteConnectionService(
         return new SiteConnectionPrincipal(found.Id, found.OrgId);
     }
 
-    /// <summary>Spends the code with the hash <paramref name="codeHash"/>: true for the one request that did, false when it is unknown or was spent already.</summary>
     private async Task<bool> SpendCodeAsync(string codeHash, DateTime now, CancellationToken cancellationToken)
     {
         if (db.Database.IsRelational())
@@ -241,7 +233,6 @@ public sealed class SiteConnectionService(
         }
     }
 
-    /// <summary>Revokes the active connections of the org and site of <paramref name="connection"/> and adds it, in one transaction; the number revoked.</summary>
     private async Task<int> SaveReplacingAsync(SiteConnection connection, DateTime now, CancellationToken cancellationToken)
     {
         var active = AllConnections()
@@ -301,10 +292,6 @@ public sealed class SiteConnectionService(
             revokedBy);
     }
 
-    /// <summary>
-    /// Deletes the codes of every org expired for more than <see cref="SiteConnectionRules.ExpiredCodeRetention"/>: such a code opens nothing and holds no
-    /// personal data, and there is no job to do it. On the in-memory database the rows go with the next save.
-    /// </summary>
     private async Task DeleteLongExpiredCodesAsync(DateTime now, CancellationToken cancellationToken)
     {
         var cutoff = now - SiteConnectionRules.ExpiredCodeRetention;
@@ -320,7 +307,6 @@ public sealed class SiteConnectionService(
 
     private SiteConnectionGrant? Refused(Guid? orgId, string reason)
     {
-        // The reason stays in the log; the caller gets one answer whatever it is.
         logger.LogInformation("Site connection exchange refused ({Reason}) for org {OrgId}", reason, orgId);
         return null;
     }

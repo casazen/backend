@@ -4,7 +4,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc cref="IPropertyComuneResolver" />
 public class PropertyComuneResolver(IComuneDirectory directory) : IPropertyComuneResolver
 {
     public async Task<PropertyComune> ResolveAsync(string istatCode, CancellationToken cancellationToken = default)

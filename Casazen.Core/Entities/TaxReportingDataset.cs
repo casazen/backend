@@ -20,7 +20,6 @@ public class TaxReportingDataset : ITenantOwned
     public const int HashLength = 64;
     public const int UserIdMaxLength = 255;
 
-    /// <summary>The annual Certificazione Unica of the withholding.</summary>
     public const string CertificazioneUnica = "cu";
 
     [Key]
@@ -42,7 +41,6 @@ public class TaxReportingDataset : ITenantOwned
 
     public int EvidenceCount { get; set; }
 
-    /// <summary>SHA-256 of the evidence ids and amounts the data was built from.</summary>
     [Required]
     [MaxLength(HashLength)]
     public string EvidenceSha256 { get; set; } = string.Empty;
@@ -57,11 +55,9 @@ public class TaxReportingDataset : ITenantOwned
 
     public TaxFilingState FilingState { get; set; } = TaxFilingState.Generated;
 
-    /// <summary>The reference of the controlled manual handoff (who sent it, through which channel).</summary>
     [MaxLength(ReferenceMaxLength)]
     public string? HandoffReference { get; set; }
 
-    /// <summary>The receipt of the authority once accepted.</summary>
     [MaxLength(ReferenceMaxLength)]
     public string? ReceiptReference { get; set; }
 
@@ -78,6 +74,5 @@ public class TaxReportingDataset : ITenantOwned
     [MaxLength(UserIdMaxLength)]
     public string? FilingUpdatedByUserId { get; set; }
 
-    /// <summary>The PostgreSQL <c>xmin</c> of the row.</summary>
     public uint RowVersion { get; set; }
 }

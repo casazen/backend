@@ -35,16 +35,8 @@ public interface IWireTransferService
         DateOnly executionDate,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Mark a batch of the org as downloaded. Updates Status to Downloaded and sets DownloadedAt. A batch of another org is not found; a batch that pays a payout
-    /// reversed after it was made is refused (<see cref="WireTransferErrors.BatchPayoutsReversed"/>).
-    /// </summary>
     Task ConfirmDownloadAsync(Guid orgId, Guid batchId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Mark a batch of the org as paid. Updates Status to Paid and sets PaidAt. A batch of another org is not found; a batch that pays a payout reversed after it was
-    /// made is refused (<see cref="WireTransferErrors.BatchPayoutsReversed"/>), so a batch is never «paid» with a reversed payout in it.
-    /// </summary>
     Task ConfirmPaidAsync(Guid orgId, Guid batchId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -60,10 +52,6 @@ public interface IWireTransferService
         Guid batchId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The batches of the org, newest first (at most <see cref="WireTransferErrors.ListedBatches"/>): state, currency, number of transfers and total, with no IBAN,
-    /// no name and no file.
-    /// </summary>
     Task<IReadOnlyList<WireBatchSummary>> ListBatchesAsync(Guid orgId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -76,18 +64,9 @@ public interface IWireTransferService
     /// </summary>
     Task<IReadOnlyList<WirePayoutSummary>> ListPayablePayoutsAsync(Guid orgId, string? currency, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// A batch of the org (its state, with no IBAN, no name and no file) and the payouts it pays, with the same members as <see cref="ListPayablePayoutsAsync"/>, in the order of
-    /// the transfers of its file. A payout reversed after the batch was made is in the list and says so. A batch of before the payouts (made from statements) has no payout
-    /// rows: its list is empty. A batch of another org does not exist for the caller (404).
-    /// </summary>
     Task<WireBatchPayoutsSummary> GetBatchPayoutsAsync(Guid orgId, Guid batchId, CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// A batch as the list shows it: the state, the currency, how many transfers and how much, when it was made, downloaded and paid, and the message and the date it
-/// asks of the bank. <b>No IBAN, no name and no file</b>: the type has no member that could carry one.
-/// </summary>
 public sealed record WireBatchSummary(
     Guid Id,
     string Currency,
@@ -100,12 +79,6 @@ public sealed record WireBatchSummary(
     DateTime? DownloadedAt,
     DateTime? PaidAt);
 
-/// <summary>
-/// A payout as the wire page shows it, in the list of the payable ones and in the payouts of a batch: who is paid (the owner, by id and name), which statement it pays (the
-/// year and the month of its period), how much (<see cref="Amount"/>: the net after the withholding, the amount of the transfer) in which currency, when it was confirmed, whether
-/// it is still confirmed (a payout reversed after its batch was made stays in the batch and says <see cref="OwnerPayoutStatus.Reversed"/>) and whether the owner has an IBAN
-/// now, <b>as a yes or a no</b>. The type has no member that could carry an IBAN, an address or a file.
-/// </summary>
 public sealed record WirePayoutSummary(
     Guid PayoutId,
     Guid OwnerId,
@@ -118,28 +91,16 @@ public sealed record WirePayoutSummary(
     OwnerPayoutStatus Status,
     bool OwnerHasIban);
 
-/// <summary>A batch as the list shows it and the payouts it pays (<see cref="IWireTransferService.GetBatchPayoutsAsync"/>).</summary>
 public sealed record WireBatchPayoutsSummary(WireBatchSummary Batch, IReadOnlyList<WirePayoutSummary> Payouts);
 
-/// <summary>The messages a wire batch can be (<see cref="WireBatch.MessageFormat"/>).</summary>
 public static class WireMessageFormats
 {
-    /// <summary>The Swiss credit transfer of the Swiss Payment Standards, ISO 20022 <c>pain.001.001.09</c> with the Swiss implementation guidelines (CHF).</summary>
     public const string Pain001V09Ch03 = "pain.001.001.09.ch.03";
 
-    /// <summary>
-    /// The ISO 20022 <c>pain.001.001.09</c> customer credit transfer with the rules of the SEPA credit transfer of the EPC (EUR): service level <c>SEPA</c>, charge
-    /// bearer <c>SLEV</c>, IBAN only, structured addresses.
-    /// </summary>
     public const string Pain001V09Sepa = "pain.001.001.09";
 
-    /// <summary>
-    /// The ISO 20022 <c>pain.001.001.03</c> SEPA credit transfer: the message of the EUR batches made before E16/F01/US02/T01. It is no longer written; the batches
-    /// that have it keep their stored file and are listed and downloaded as they are.
-    /// </summary>
     public const string Pain001V03Sepa = "pain.001.001.03";
 
-    /// <summary>The message of the file of <paramref name="currency"/>, or <c>null</c> for a currency that has no wire file.</summary>
     public static string? Of(string? currency) => (currency ?? string.Empty).Trim().ToUpperInvariant() switch
     {
         WireTransferErrors.SwissCurrency => Pain001V09Ch03,
@@ -156,108 +117,65 @@ public static class WireMessageFormats
 /// </summary>
 public static class WireTransferErrors
 {
-    /// <summary>The file does not validate against the official schema of its currency.</summary>
     public const string XmlInvalid = "wire_batch_xml_invalid";
 
-    /// <summary>The official schema of the currency is not installed in this build: no file can be validated, so none is produced.</summary>
     public const string SchemaUnavailable = "wire_batch_schema_unavailable";
 
-    /// <summary>
-    /// The file validates but is not what its lines say, or not what its message requires beyond the schema: the number of operations, the control sum, an amount, a
-    /// currency or an end-to-end id, and in the EUR file the service level, the charge bearer or the structure of an address.
-    /// </summary>
     public const string ContentInvalid = "wire_batch_content_invalid";
 
-    /// <summary>The currency of the payouts is not one of the wire files (EUR for the SEPA file, CHF for the Swiss one).</summary>
     public const string CurrencyNotSupported = "wire_currency_not_supported";
 
-    /// <summary>The amount of a transfer is zero, negative or has more than two decimals.</summary>
     public const string AmountInvalid = "wire_amount_invalid";
 
-    /// <summary>The request is the one of before the payouts: it asks for a batch of statements and names a debit account. Refused, nothing is saved.</summary>
     public const string FromStatementRetired = "wire_batch_from_statement_retired";
 
-    /// <summary>The request names no payout. An empty list is never «all the payouts».</summary>
     public const string NoPayoutsProvided = "no_payouts_provided";
 
-    /// <summary>The request names more payouts than a batch holds (<see cref="MaxTransfers"/>).</summary>
     public const string BatchTooLarge = "wire_batch_too_large";
 
-    /// <summary>A payout does not exist in the org (or belongs to another one).</summary>
     public const string PayoutsNotFound = "payouts_not_found_or_not_owned";
 
-    /// <summary>A payout is not confirmed: it was reversed.</summary>
     public const string PayoutsNotConfirmed = "wire_payouts_not_confirmed";
 
-    /// <summary>A payout is of a statement version that was never published to the owner.</summary>
     public const string PayoutsNotPublished = "wire_payouts_not_published";
 
-    /// <summary>A payout is already paid by a batch.</summary>
     public const string PayoutsAlreadyInBatch = "payouts_already_in_batch";
 
-    /// <summary>
-    /// A payout of the batch was reversed after the batch was made, and its file would still pay it: the batch is neither downloaded nor marked as paid
-    /// (a paid batch stays readable). The ids of the payouts are in the <c>payoutIds</c> member of the problem.
-    /// </summary>
     public const string BatchPayoutsReversed = "wire_batch_payouts_reversed";
 
-    /// <summary>The payouts are in more than one currency: a batch is one currency.</summary>
     public const string MixedCurrencies = "mixed_currencies_not_allowed";
 
-    /// <summary>The execution date is missing, before today or more than a year ahead.</summary>
     public const string ExecutionDateInvalid = "wire_execution_date_invalid";
 
-    /// <summary>The issuer profile of the org has no legal name or no complete structured address: the debtor of the file cannot be written.</summary>
     public const string DebtorIncomplete = "wire_debtor_incomplete";
 
-    /// <summary>The issuer profile of the org has no IBAN: there is no account to debit.</summary>
     public const string DebitAccountMissing = "wire_debit_account_missing";
 
-    /// <summary>The IBAN of the issuer profile does not pass the check digits.</summary>
     public const string DebitAccountInvalid = "invalid_debit_account_iban";
 
-    /// <summary>
-    /// The IBAN of the issuer profile, the account that is debited, is not Swiss or Liechtenstein while the batch is in CHF: the Swiss file is a domestic payment
-    /// that a Swiss bank executes from an account it holds, and the writer cannot name the bank of a foreign account. A EUR batch takes any valid debit IBAN.
-    /// </summary>
     public const string DebitIbanNotSwiss = "wire_debit_iban_not_swiss";
 
-    /// <summary>An owner has no complete structured address (street, postal code, town and country): the creditor of the file cannot be written. Lists the owner ids.</summary>
     public const string OwnerAddressMissing = "wire_owner_address_missing";
 
-    /// <summary>An owner has no IBAN. Lists the owner ids.</summary>
     public const string OwnerIbanMissing = "wire_owner_iban_missing";
 
-    /// <summary>An owner has an IBAN that does not pass the check digits. Lists the owner ids.</summary>
     public const string OwnerIbanInvalid = "owner_invalid_iban";
 
-    /// <summary>The IBAN of an owner is a QR-IBAN, which is the account of a QR-bill and never the creditor account of a normal transfer. Lists the owner ids.</summary>
     public const string OwnerQrIban = "wire_owner_qr_iban";
 
-    /// <summary>The IBAN of an owner is not Swiss or Liechtenstein, so a CHF transfer to it is not a domestic payment of this file. Lists the owner ids.</summary>
     public const string OwnerIbanNotSwiss = "wire_owner_iban_not_swiss";
 
-    /// <summary>
-    /// The IBAN of an owner is not in the SEPA area, so a EUR transfer to it is not a SEPA credit transfer, which is what the EUR file is (E16/F01/US02/T01). Lists the
-    /// owner ids.
-    /// </summary>
     public const string OwnerIbanNotSepa = "wire_owner_iban_not_sepa";
 
-    /// <summary>How many errors the message of <see cref="XmlInvalid"/> lists.</summary>
     public const int ListedErrors = 5;
 
-    /// <summary>The most transfers a batch holds.</summary>
     public const int MaxTransfers = 1000;
 
-    /// <summary>The most batches the list returns (the newest ones).</summary>
     public const int ListedBatches = 200;
 
-    /// <summary>The most payable payouts the list of a currency returns (the oldest ones): a batch holds at most <see cref="MaxTransfers"/> of them.</summary>
     public const int ListedPayablePayouts = MaxTransfers;
 
-    /// <summary>The currency of the SEPA file.</summary>
     public const string SepaCurrency = "EUR";
 
-    /// <summary>The currency of the Swiss file.</summary>
     public const string SwissCurrency = "CHF";
 }

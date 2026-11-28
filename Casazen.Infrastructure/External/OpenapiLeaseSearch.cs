@@ -5,7 +5,6 @@ using Casazen.Core.Leases;
 
 namespace Casazen.Infrastructure.External;
 
-/// <summary>The verified DocuEngine registration schema, not a positional guess. Files are resolved by the preparation service.</summary>
 public static class OpenapiLeaseSearch
 {
     public static readonly string[] DefaultFieldOrder = OpenapiRegistrationSchema.Current.Fields.Select(f => f.Name).ToArray();
@@ -44,7 +43,6 @@ public static class OpenapiLeaseSearch
             ["contractStartDate"] = lease.StartDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             ["contractEndDate"] = lease.EndDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             ["contractDate"] = lease.StipulaDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
-            // Sub-year contracts need the consideration for the whole term, explicitly entered by the holder.
             ["annualFee"] = lease.EndDate.AddDays(1) >= lease.StartDate.AddYears(1)
                 ? (lease.MonthlyRent * 12m).ToString("0.00", CultureInfo.InvariantCulture) : "",
             ["taxRegime"] = lease.TaxRegime switch { LeaseTaxRegime.CedolareSecca => "CEDOLARE", LeaseTaxRegime.Ordinario => "ORDINARIO", _ => "" },

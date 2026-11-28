@@ -27,7 +27,6 @@ public sealed partial class CfSimulatorService(
     TimeProvider timeProvider,
     ILogger<CfSimulatorService> logger) : ICfSimulatorService
 {
-    /// <summary>The reasons ConcordatoFacile gives for closing a practice without attestation (specification v0.2 §5).</summary>
     public static readonly IReadOnlyList<string> CloseReasons = ["duplicate", "withdrawn", "not_compliant", "other"];
 
     private const string DuplicateReason = "duplicate";
@@ -47,7 +46,6 @@ public sealed partial class CfSimulatorService(
         if (check.LeaseId is not { } leaseId)
             return new CfSimulatorLinkResult(false, check.Reason, null, comune, provincia, []);
 
-        // Only a good link tells what the contract already has: the practices come with the lease, never without its signature.
         var practices = await db.CfSimulatedPractices
             .AsNoTracking()
             .Where(p => p.LeaseId == leaseId)
@@ -62,7 +60,6 @@ public sealed partial class CfSimulatorService(
     {
         ArgumentNullException.ThrowIfNull(link);
 
-        // The module is filled in whatever the link: a link that is not good gives a practice with no lease (v0.2 §1).
         var check = CfSimulatorLinkVerifier.Verify(link, LinkSecret(), timeProvider.GetUtcNow());
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var token = NewControlToken();
@@ -80,7 +77,6 @@ public sealed partial class CfSimulatorService(
 
         if (practice.LeaseId is { } leaseId)
         {
-            // A second practice for the same contract: the first, if it is not over, is closed as a duplicate (v0.2 §6).
             var notOver = await db.CfSimulatedPractices
                 .Where(p => p.LeaseId == leaseId
                     && p.Status != CfPracticeStatus.Registered
@@ -150,15 +146,12 @@ public sealed partial class CfSimulatorService(
 
         var pdf = pdfRenderer.Render(content);
 
-        // The contract comes as the real service sends it: a scan (pictures of the pages, no text), so the reading on the test environment is the
-        // OCR's. Where the tools to make the pictures are not installed the PDF with its text goes out: it reads all the same, without OCR.
         if (kind == CfSimulatorDocumentKind.Contract)
             pdf = await ScannedPdf.FromAsync(pdf, cancellationToken) ?? pdf;
 
         return new CfSimulatorDocument(pdf, $"{name}-{practice.PracticeId}.pdf");
     }
 
-    /// <summary>The practice, only when the number is well formed and the token is its own (the same <c>null</c> for every other case).</summary>
     private async Task<CfSimulatedPractice?> FindOwnedAsync(string practiceId, string? controlToken, CancellationToken cancellationToken)
     {
         if (!TryNormalizePracticeId(practiceId, out var number) || string.IsNullOrWhiteSpace(controlToken))
@@ -173,13 +166,11 @@ public sealed partial class CfSimulatorService(
         return CryptographicOperations.FixedTimeEquals(offered, stored) ? practice : null;
     }
 
-    /// <summary>The house a practice speaks about: that of its lease, or any house when it has none.</summary>
     private async Task<CfSimulatorHouse> HouseOfAsync(CfSimulatedPractice practice, CancellationToken cancellationToken)
     {
         if (practice.LeaseId is not { } leaseId)
             return CfSimulatorHouse.Generic(practice.Comune, practice.Provincia);
 
-        // The endpoint is anonymous: no tenant filter applies, and the lease is the one of the signed link the practice was born from.
         var property = await (
                 from lease in db.LeaseContracts.IgnoreQueryFilters()
                 join house in db.Properties.IgnoreQueryFilters() on lease.PropertyId equals house.Id
@@ -205,7 +196,6 @@ public sealed partial class CfSimulatorService(
             found?.ProvinceCode ?? string.Empty);
     }
 
-    /// <summary>The key of the signature: the same secret that signs the links (the variable wins over the configuration, as in the link service).</summary>
     private string? LinkSecret() => Environment.GetEnvironmentVariable("CONCORDATOFACILE_LINK_SECRET") ?? options.Value.LinkSecret;
 
     private static CfSimulatorPracticeView ToView(CfSimulatedPractice practice) => new(
@@ -217,7 +207,6 @@ public sealed partial class CfSimulatorService(
         practice.ComuneDiffersFromLink(),
         practice.CloseReason);
 
-    /// <summary><c>P-</c> and 16 hexadecimal characters, in the form the simulator writes them (lowercase).</summary>
     internal static bool TryNormalizePracticeId(string? practiceId, out string number)
     {
         number = string.Empty;
@@ -234,10 +223,8 @@ public sealed partial class CfSimulatorService(
 
     private static string Hash(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
 
-    /// <summary>A state never goes back in time (v0.2 §5: <c>statusChangedAt</c> never goes backwards).</summary>
     private static DateTime Later(DateTime now, DateTime previous) => now > previous ? now : previous;
 
-    /// <summary>The text of a parameter of the link, trimmed and cut to what the column holds; null when there is none.</summary>
     private static string? Clean(string? value, int maxLength)
     {
         var text = value?.Trim();

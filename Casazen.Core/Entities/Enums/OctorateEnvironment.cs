@@ -8,9 +8,7 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum OctorateEnvironment
 {
-    /// <summary>The Octorate sandbox (<c>environment</c> = <c>SANDBOX</c>), the only one of the test environment of CasaZen.</summary>
     Test = 1,
 
-    /// <summary>Octorate production (<c>environment</c> = <c>PRODUCTION</c>), the only one of the production of CasaZen.</summary>
     Production = 2,
 }

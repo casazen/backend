@@ -26,7 +26,6 @@ public sealed class CheckoutOutcomeService(
     ILogger<CheckoutOutcomeService> logger,
     TimeProvider? timeProvider = null) : ICheckoutOutcomeService
 {
-    /// <summary>Intent states in which the guest can still pay (again): nothing was collected yet.</summary>
     private static readonly HashSet<string> PayableIntentStatuses = new(StringComparer.Ordinal)
     {
         "requires_payment_method",
@@ -65,7 +64,6 @@ public sealed class CheckoutOutcomeService(
             booking.TotalPrice,
             StayCurrency.ForProperty(booking.Property),
             CheckoutOutcomes.ExpiresAt(booking, state, ttlMinutes, DeferredCharges.GetCancelAfterDays(configuration)),
-            // Once the deferred charge is collected the page shows "paid online", not a charge still to come (BK-08).
             booking.PaymentOption == PaymentOption.OnCancellationDeadline &&
             booking.FreeRefundDeadline is { } deadline &&
             (deferredPayment is null || !DeferredCharges.IsCollected(deferredPayment.Status))
@@ -96,8 +94,6 @@ public sealed class CheckoutOutcomeService(
 
         if (DeferredCharges.AwaitsGuestPayment(booking))
         {
-            // Confirmed "Paga alla scadenza" whose off-session charge failed (BK-08): the guest confirms the same
-            // PaymentIntent on-session (3-D Secure, or another payment method), so it can never be paid twice.
             var deferredPayment = DeferredCharges.FindPayment(booking, booking.Payments)!;
             var deferredAccount = deferredPayment.StripeAccountId ?? booking.Org.StripeConnectedAccountId;
             if (PaymentRefundService.PaymentIntentIdOf(deferredPayment) is not { } deferredIntentId ||
@@ -148,7 +144,6 @@ public sealed class CheckoutOutcomeService(
 
     private async Task<Booking> LoadAsync(Guid bookingId, string token, CancellationToken cancellationToken)
     {
-        // Anonymous request: the tenant filter is off, the token is the access check.
         var booking = await db.Bookings
             .AsNoTracking()
             .Include(b => b.Property)
@@ -156,8 +151,6 @@ public sealed class CheckoutOutcomeService(
             .Include(b => b.Payments)
             .FirstOrDefaultAsync(b => b.Id == bookingId, cancellationToken);
 
-        // The checkout of the booking site, or the payment link of a booking the host entered (E08/F01/US01/T05): any other booking, even
-        // with a token, is not a checkout.
         if (booking is null ||
             (booking.Source != BookingSource.Direct && !HostPaymentLinks.IsHostPaymentLink(booking)) ||
             !CheckoutOutcomes.TokenMatches(booking.CheckoutTokenHash, token))
@@ -175,7 +168,6 @@ public sealed class CheckoutOutcomeService(
     private HoldExpiryCutoff CutoffNow(int ttlMinutes) =>
         CheckoutHolds.CutoffAt(_clock.GetUtcNow().UtcDateTime, ttlMinutes);
 
-    /// <summary>The outcome of the payment link of a host booking: the state of its balance, no expiry (it is not a hold).</summary>
     private static CheckoutOutcome HostLinkOutcome(Booking booking) =>
         new(
             booking.Id,
@@ -226,10 +218,6 @@ public sealed class CheckoutOutcomeService(
         return new CheckoutPaymentSession(booking.Id, booking.PaymentOption, intent.ClientSecret, null, publishableKey, account, null);
     }
 
-    /// <summary>
-    /// A cancelled intent belongs to an expired hold (the expiry job cancels it first); one that succeeded or is processing
-    /// was already paid: the webhook will confirm the booking.
-    /// </summary>
     private void EnsurePayable(Guid bookingId, string? intentStatus)
     {
         if (intentStatus is not null && PayableIntentStatuses.Contains(intentStatus))

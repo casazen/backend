@@ -6,7 +6,6 @@ public static partial class EmailTemplates
 {
     public static partial class Names
     {
-        /// <summary>The payment link of the balance of a booking the host entered (NF-74, E08/F01/US01/T05).</summary>
         public const string BookingPaymentLink = "booking-payment-link";
     }
 

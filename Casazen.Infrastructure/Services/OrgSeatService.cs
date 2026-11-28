@@ -24,7 +24,6 @@ public sealed class OrgSeatService(
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    /// <summary>The key of the seats lock of an org (<see cref="PostgresAdvisoryLocks.Scope.OrgSeats"/>).</summary>
     internal static (PostgresAdvisoryLocks.Scope Scope, string Key) SeatsLock(Guid orgId) =>
         (PostgresAdvisoryLocks.Scope.OrgSeats, orgId.ToString("N"));
 

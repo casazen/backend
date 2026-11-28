@@ -5,10 +5,6 @@ using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// A preventivo or consuntivo. A correction inserts a new revision and marks the previous one
-/// <see cref="CondominiumStatementStatus.Superseded"/>. Amounts on the previous row are never rewritten.
-/// </summary>
 [Table("CondominiumStatements")]
 public class CondominiumStatement : ITenantOwned
 {

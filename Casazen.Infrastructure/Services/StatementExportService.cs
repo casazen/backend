@@ -95,7 +95,6 @@ public sealed class StatementExportService(
             .Select(o => o.Name)
             .FirstOrDefaultAsync(ct) ?? string.Empty;
 
-        // The log carries the ids and the year: never the name, the fiscal code or the address of the recipient.
         logger.LogInformation("Draft CU of owner {OwnerId} for {Year} exported as PDF", ownerId, year);
         return new StatementExportFile(
             pdfRenderer.Render(TaxReportingExports.CuProspect(year, record, stored.Dataset.FilingState, orgName, texts, language)),
@@ -103,10 +102,6 @@ public sealed class StatementExportService(
             TaxReportingExports.CuProspectFileName(year, ownerId));
     }
 
-    /// <summary>
-    /// What the files print besides the statement, as stored: the number of the owner's current statement version of the month once approved or
-    /// published (E06/F05/US02/T02), and the wire transfers that paid the statement with their state. Nothing is computed here.
-    /// </summary>
     private async Task<StatementExportData> EvidenceOfAsync(OwnerStatement statement, CancellationToken ct)
     {
         var version = await db.OwnerStatementVersions
@@ -116,7 +111,6 @@ public sealed class StatementExportService(
                 && (v.Status == OwnerStatementVersionStatus.Approved || v.Status == OwnerStatementVersionStatus.Published))
             .OrderByDescending(v => v.VersionNumber)
             .FirstOrDefaultAsync(ct);
-        // The statement is not a fiscal document; the owner invoice of the month is, and the statement names its number in the commission (E14/F01/US01/T01).
         var invoiceNumber = version is null
             ? null
             : await db.FiscalDocuments

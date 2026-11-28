@@ -37,10 +37,8 @@ public sealed class OwnerInvoiceService(
     TimeProvider time,
     ILogger<OwnerInvoiceService> logger) : IOwnerInvoiceService
 {
-    /// <summary>The most invoices one call of the list answers (the newest periods first).</summary>
     public const int MaxListRows = 1000;
 
-    /// <summary>The language of the lines of a document (the descriptions are stored with it, as for the documents of the guests).</summary>
     private const string LineLanguage = DocumentLanguages.Italian;
 
     private DateTime UtcNow => time.GetUtcNow().UtcDateTime;
@@ -117,7 +115,6 @@ public sealed class OwnerInvoiceService(
 
     public async Task<FiscalDocument> GetAsync(Guid orgId, Guid documentId, CancellationToken ct = default)
     {
-        // The org and the purpose are asked of the row itself, so a document of another org and a document of a guest are the 404 of one that does not exist.
         return await db.FiscalDocuments.AsNoTracking()
                 .Include(d => d.Lines)
                 .FirstOrDefaultAsync(d => d.Id == documentId && d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.OwnerInvoice, ct)
@@ -173,7 +170,6 @@ public sealed class OwnerInvoiceService(
         if (year is < 2000 or > 2100 || month is < 1 or > 12)
             throw new DomainRuleException(OwnerAccountingErrors.PeriodInvalid, "OwnerPeriodInvalid");
 
-        // An issuer that cannot issue stops the whole call before anything is written: every draft would be refused for the same reason.
         var profile = await RequireIssuerAsync(orgId, ct);
         RuleOf(profile, new DateOnly(year, month, 1).AddMonths(1).AddDays(-1));
 
@@ -212,7 +208,6 @@ public sealed class OwnerInvoiceService(
             }
             catch (DomainException ex)
             {
-                // The owner is told in the answer with the code of the reason; what this owner left in the unit of work is dropped so the next owner saves alone.
                 db.ChangeTracker.Clear();
                 failed.Add(new OwnerInvoiceFailure(version.PropertyOwnerId, ex.Code));
             }
@@ -224,12 +219,9 @@ public sealed class OwnerInvoiceService(
         return new OwnerInvoiceGeneration(year, month, current.Count, created, updated, alreadyIssued, nothing, failed);
     }
 
-    // ---------------------------------------------------------------- composition
-
     /// <summary>What a draft is made of: the rule and the kind, the amounts with the lines, the recipient and the VAT the issue posts to the ledger.</summary>
     private sealed record Composition(FiscalTaxRule Rule, DocumentKind Kind, FiscalDocumentAmounts Amounts, Recipient Recipient, decimal VatToPost);
 
-    /// <summary>The owner as the recipient of the invoice: the fiscal profile in force on the last day of the month, else the registry of the owner.</summary>
     private sealed record Recipient(
         InvoiceRecipientKind Kind,
         string Name,
@@ -248,7 +240,6 @@ public sealed class OwnerInvoiceService(
     /// </summary>
     private sealed record InvoiceLine(FiscalLineType Type, int Order, string Description, decimal Amount, CleaningRechargeVat? Vat = null);
 
-    /// <summary>What the descriptions of the lines name: the properties and the stays of the ledger lines.</summary>
     private sealed record LineFacts(IReadOnlyDictionary<Guid, string> Properties, IReadOnlyDictionary<Guid, StayFacts> Stays);
 
     private sealed record StayFacts(BookingSource Source, string BookingCode, DateTime CheckOut, string? ChannelLabel);
@@ -260,7 +251,6 @@ public sealed class OwnerInvoiceService(
         var rule = RuleOf(profile, last);
         var kind = rule.DocumentKind == RuleDocumentKind.Receipt ? DocumentKind.Receipt : DocumentKind.Invoice;
 
-        // The ledger lines the version is made of: the owner's lines of the month posted up to its cut-off.
         var entries = await db.OwnerLedgerEntries.AsNoTracking()
             .Where(e => e.OrgId == version.OrgId && e.PropertyOwnerId == version.PropertyOwnerId && e.PeriodYear == version.PeriodYear
                 && e.PeriodMonth == version.PeriodMonth && e.PostedAt <= version.CutoffAt)
@@ -338,11 +328,9 @@ public sealed class OwnerInvoiceService(
     {
         var lines = new List<InvoiceLine>();
 
-        // The commission of the agency, one line per property.
         foreach (var group in entries.Where(e => e.EntryType == OwnerLedgerEntryType.AgencyCommission).GroupBy(e => e.PropertyId))
             Add(FiscalLineType.Commission, 0, Text("OwnerInvoiceLineCommission", PropertyName(group.Key), period), group);
 
-        // The flat fees of the mandate (E13): a recharge for each stay and kind.
         foreach (var group in entries
                      .Where(e => e.EntryType == OwnerLedgerEntryType.OwnerCharge && e.SourceType == OwnerLedgerSourceType.MandateFlatFee)
                      .GroupBy(e => (e.SourceId, e.SourceReference, e.PropertyId)))
@@ -366,7 +354,6 @@ public sealed class OwnerInvoiceService(
             Add(FiscalLineType.Recharge, 1, Dashed(Text("OwnerInvoiceCleaningRecharge"), PropertyName(group.Key.PropertyId), request), group, cleaningVat(group.Key.SourceId));
         }
 
-        // The approved charges, and the charges of any other source: a recharge for each, with its own description and day.
         foreach (var group in entries
                      .Where(e => e.EntryType == OwnerLedgerEntryType.OwnerCharge && e.SourceType != OwnerLedgerSourceType.MandateFlatFee
                          && e.SourceType != OwnerLedgerSourceType.CleaningRequest)
@@ -383,8 +370,6 @@ public sealed class OwnerInvoiceService(
             Add(FiscalLineType.Recharge, 3, Text("OwnerInvoiceLineCardFees", PropertyName(group.Key), period), group);
         }
 
-        // The commissions of the portals whose account the agency holds (V2), when the organization recharges them (⚖ I10, I11): one line per portal. A listing
-        // whose account the owner holds (V1, the default) has none: the portal invoices the owner itself.
         foreach (var group in entries
                      .Where(e => e.EntryType == OwnerLedgerEntryType.ChannelFee && e.PropertyId is not null && e.SourceId is { } stay && facts.Stays.ContainsKey(stay))
                      .Select(e => (Entry: e, Stay: facts.Stays[e.SourceId!.Value]))
@@ -406,7 +391,6 @@ public sealed class OwnerInvoiceService(
 
         void Add(FiscalLineType type, int order, string description, IEnumerable<OwnerLedgerEntry> group, CleaningRechargeVat? vat = null)
         {
-            // A debit of the owner is negative in the ledger; what nets to nothing (a reversed line) or to a credit is not something the agency charges.
             var amount = -group.Sum(e => e.Amount);
             if (amount > 0m)
                 lines.Add(new InvoiceLine(type, order, Truncate(description, FiscalDocumentLine.DescriptionMaxLength), amount, vat));
@@ -483,10 +467,6 @@ public sealed class OwnerInvoiceService(
             country is { Length: FiscalDocument.RecipientCountryCodeMaxLength } ? country : null);
     }
 
-    /// <summary>
-    /// What the invoice still needs of its recipient: the name always; for an Italian electronic invoice also the identification and the address, as for a
-    /// guest (<see cref="FiscalDocumentService.MissingInvoiceData"/>).
-    /// </summary>
     private static List<string> MissingRecipientData(Recipient recipient, bool nameOnly)
     {
         var missing = new List<string>();
@@ -506,12 +486,6 @@ public sealed class OwnerInvoiceService(
         return missing;
     }
 
-    // ---------------------------------------------------------------- the draft
-
-    /// <summary>
-    /// The draft written: the live invoice of the owner and period made again, or a new one. A new one that another request made first (the unique index of the
-    /// live owner invoices) is read and made again instead. 409 <c>document_already_issued</c> when the live one is issued.
-    /// </summary>
     private async Task<(FiscalDocument Draft, bool Created)> SaveDraftAsync(OwnerStatementVersion version, Composition composition, string? userId, CancellationToken ct)
     {
         for (var attempt = 0; ; attempt++)
@@ -534,7 +508,6 @@ public sealed class OwnerInvoiceService(
             }
             else
             {
-                // The lines of a draft that exists are new rows of a tracked document: added through their set, never left to the collection.
                 foreach (var line in draft.Lines)
                     db.FiscalDocumentLines.Add(line);
             }
@@ -623,7 +596,6 @@ public sealed class OwnerInvoiceService(
         static bool Same(string? a, string? b) => string.Equals(a ?? string.Empty, b ?? string.Empty, StringComparison.Ordinal);
     }
 
-    /// <summary>The live owner invoice of an owner and period (neither discarded, nor a credit note, nor credited in full), with its lines.</summary>
     private async Task<FiscalDocument?> LiveInvoiceAsync(Guid orgId, Guid ownerId, int year, int month, bool tracked, CancellationToken ct)
     {
         var query = db.FiscalDocuments.Include(d => d.Lines)
@@ -631,8 +603,6 @@ public sealed class OwnerInvoiceService(
                 && d.PeriodMonth == month && d.Status != FiscalDocumentStatus.Discarded && d.Kind != DocumentKind.CreditNote && !d.CreditedInFull);
         return await (tracked ? query : query.AsNoTracking()).OrderByDescending(d => d.CreatedAt).FirstOrDefaultAsync(ct);
     }
-
-    // ---------------------------------------------------------------- rules and helpers
 
     private FiscalTaxRule RuleOf(OrgFiscalIssuerProfile profile, DateOnly lastDay) =>
         taxRules.Resolve(profile.CountryCode, profile.DocumentRegime, profile.StayVatTreatment, profile.CleaningFeeTreatment, lastDay);
@@ -664,10 +634,6 @@ public sealed class OwnerInvoiceService(
 
     private string Text(string key, params object[] args) => texts.Get(key, LineLanguage, args);
 
-    /// <summary>
-    /// The three parts of the description of a recharge (what it is, the property, the stay or the day) with a dash between them: no word of its own, so no text of the
-    /// resource files (a text that reads the same in Italian and in English is no resource, and the lines of a document are in Italian anyway).
-    /// </summary>
     private static string Dashed(string first, string second, string third) => $"{first} - {second} - {third}";
 
     private static string DescriptionOf(IEnumerable<OwnerLedgerEntry> group) =>

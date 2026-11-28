@@ -34,13 +34,10 @@ public class OctorateBookingImportJob(
 {
     public const string RecurringJobId = "octorate-booking-import";
 
-    /// <summary>Every day at 02:00; the registration gives the zone (Europe/Rome).</summary>
     public const string Cron = "0 2 * * *";
 
-    /// <summary>The seconds a run waits for the previous one: <c>JobLockTimeouts.DefaultSeconds</c>, for the jobs that run every hour or less often.</summary>
     public const int LockTimeoutSeconds = 300;
 
-    /// <summary>Reads the newly mapped property immediately; a rejected, disconnected or moved mapping is no longer eligible.</summary>
     [AutomaticRetry(Attempts = 3)]
     public async Task ExecutePropertyAsync(Guid orgId, Guid propertyId, CancellationToken cancellationToken)
     {
@@ -51,7 +48,6 @@ public class OctorateBookingImportJob(
 
         using (orgScope.Use(orgId))
         {
-            // A failed read must remain retryable; the importer advances its checkpoint only after a complete read.
             var result = target.ImportedThrough is { } through
                 ? await import.ImportIncrementalAsync(propertyId, through - OctorateBookingRuns.Overlap, cancellationToken)
                 : await import.ImportAllAsync(propertyId, cancellationToken);

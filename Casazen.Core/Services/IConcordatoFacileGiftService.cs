@@ -1,17 +1,11 @@
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// Result of consuming a ConcordatoFacile gift (ADR-006-R5).
-/// </summary>
 public enum CfGiftConsumeResult
 {
-    /// <summary>Gift consumed successfully for this lease</summary>
     Success,
 
-    /// <summary>Gift already consumed for the same lease (re-entry allowed, ADR-006-R6)</summary>
     AlreadyConsumedForThisLease,
 
-    /// <summary>Gift already consumed for another lease (409 conflict)</summary>
     AlreadyConsumedForOtherLease
 }
 

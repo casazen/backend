@@ -15,7 +15,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IOctorateBookingTargets
 {
-    /// <summary>The target of <paramref name="propertyId"/>, or why there is none. A property the caller cannot see is not mirrored.</summary>
     Task<OctorateTargetLookup> LookupAsync(Guid propertyId, CancellationToken ct);
 
     /// <summary>
@@ -26,31 +25,21 @@ public interface IOctorateBookingTargets
     Task<string?> AccommodationOfAsync(Guid propertyId, CancellationToken ct);
 }
 
-/// <summary>Why a property has no target in Octorate (<see cref="IOctorateBookingTargets.LookupAsync"/>).</summary>
 public enum OctorateTargetGap
 {
-    /// <summary>The property has a target.</summary>
     None = 0,
 
-    /// <summary>No connected account, no confirmed mapping, or a mapping still to decide: the property is not mirrored on Octorate.</summary>
     NotMirrored = 1,
 
-    /// <summary>The mapping is confirmed but its accommodation has no single room: the host chooses it in the mapping step.</summary>
     RoomNotChosen = 2,
 }
 
-/// <summary>
-/// The answer of <see cref="IOctorateBookingTargets.LookupAsync"/>: the target, or <c>null</c> with the <see cref="Gap"/> that says why.
-/// </summary>
 public sealed record OctorateTargetLookup(OctorateBookingTarget? Target, OctorateTargetGap Gap)
 {
-    /// <summary>The property is not mirrored on Octorate: nothing is written for it.</summary>
     public static OctorateTargetLookup NotMirrored { get; } = new(null, OctorateTargetGap.NotMirrored);
 
-    /// <summary>The room of the confirmed mapping is not chosen: nothing is written until the host chooses it.</summary>
     public static OctorateTargetLookup RoomNotChosen { get; } = new(null, OctorateTargetGap.RoomNotChosen);
 
-    /// <summary>The property books into <paramref name="target"/>.</summary>
     public static OctorateTargetLookup Of(OctorateBookingTarget target)
     {
         ArgumentNullException.ThrowIfNull(target);

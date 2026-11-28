@@ -3,11 +3,6 @@ using Casazen.Core.Utilities;
 
 namespace Casazen.Infrastructure.Email.Templates;
 
-/// <summary>
-/// The text of the one message that carries the check-in link in the reservation thread of the portal chat (E23/F01/US01/T01, NF-122): plain text (a chat has no markup),
-/// short, in the language of the guest (Italian, English, German, French or Spanish: <c>GuestCheckInChat_Body</c> of the five <c>EmailTexts</c> files), with the stay, the
-/// link and its validity. It names no portal, no supplier and no assistant: it is a message of the host's house, written by CasaZen on its behalf.
-/// </summary>
 public static partial class EmailTemplates
 {
     /// <summary>
@@ -40,7 +35,6 @@ public static partial class EmailTemplates
             : message + "\n" + string.Format(culture, EmailTexts.Get("GuestCheckInChat_StayLink", culture), stayUrl);
     }
 
-    /// <summary>The day an instant falls on in Europe/Rome, in full, in the culture.</summary>
     private static string RomeDay(DateTime instantUtc, CultureInfo culture) =>
         RomeCalendar.DateInRome(instantUtc).ToDateTime(TimeOnly.MinValue).ToString("D", culture);
 }

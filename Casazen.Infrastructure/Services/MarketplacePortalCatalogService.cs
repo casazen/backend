@@ -54,7 +54,6 @@ public sealed class MarketplacePortalCatalogService(
 
         if (offered.Count == 0)
         {
-            // An empty answer is not a decision to hide everything: it is more likely a fault, and an empty cache is worse than a stale one.
             logger.LogWarning(
                 "Marketplace portal refresh: Octorate returned {Received} portals and none of a known category, {WithoutCategory} without one: the cache is kept as it was",
                 received.Length, withoutCategory);
@@ -98,7 +97,6 @@ public sealed class MarketplacePortalCatalogService(
     public Task<bool> HasListedPortalsAsync(CancellationToken ct) =>
         db.MarketplacePortals.AsNoTracking().AnyAsync(p => p.IsListed && p.Enabled, ct);
 
-    /// <summary>The category the marketplace shows for what Octorate calls <paramref name="portalCategory"/>; <c>null</c> for any other.</summary>
     internal static MarketplacePortalCategory? CategoryOf(string? portalCategory)
     {
         if (string.Equals(portalCategory, OctoratePortalCategories.Ota, StringComparison.OrdinalIgnoreCase))

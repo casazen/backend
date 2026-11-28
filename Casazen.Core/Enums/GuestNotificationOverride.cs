@@ -13,9 +13,7 @@ namespace Casazen.Core.Enums;
 /// </remarks>
 public enum GuestNotificationOverride
 {
-    /// <summary>The host says the guests of this property must be notified: the duty is raised whatever the regime says.</summary>
     Required = 1,
 
-    /// <summary>The host says the guests of this property need not be notified: nothing is raised, whatever the regime says.</summary>
     NotRequired = 2,
 }

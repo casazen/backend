@@ -11,11 +11,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IBookingPaymentLinkService
 {
-    /// <summary>
-    /// Checks, before a booking is written, that the org can take a payment link: a connected Stripe account that takes charges, a public
-    /// site address for the link and a slug.
-    /// </summary>
-    /// <exception cref="Exceptions.DomainRuleException">422 <see cref="BookingPaymentLinkErrorCodes.Unavailable"/>.</exception>
     Task EnsureAvailableAsync(Guid orgId, CancellationToken ct);
 
     /// <summary>
@@ -32,10 +27,8 @@ public interface IBookingPaymentLinkService
     /// </exception>
     Task<BookingPaymentLink> CreateAsync(Guid bookingId, CancellationToken ct);
 
-    /// <summary>Reads the direct stay balance of a booking already authorized by a guest portal token.</summary>
     Task<GuestStayBalance?> ReadGuestBalanceAsync(Guid orgId, Guid bookingId, CancellationToken ct);
 
-    /// <summary>Prepares the balance PaymentIntent without changing the booking checkout token or sending e-mail.</summary>
     Task<GuestStayBalanceIntent> PrepareGuestBalanceAsync(Guid orgId, Guid bookingId, CancellationToken ct);
 }
 
@@ -51,19 +44,13 @@ public sealed record GuestStayBalanceIntent(string ClientSecret, string StripeAc
 /// <param name="EmailQueued">The e-mail to the guest was queued (false when the guest has no address or e-mail is not configured).</param>
 public sealed record BookingPaymentLink(Guid BookingId, string Url, decimal Amount, string Currency, DateTime SentAt, bool EmailQueued);
 
-/// <summary>The stable codes of the payment link of a host booking.</summary>
 public static class BookingPaymentLinkErrorCodes
 {
-    /// <summary>The link cannot be made: no Stripe account ready, nothing to pay, not a host booking, cancelled, a payment in progress.</summary>
     public const string Unavailable = "payment_link_unavailable";
 
-    /// <summary>The resource key of <see cref="Unavailable"/>.</summary>
     public const string UnavailableMessageKey = "PaymentLinkUnavailable";
 }
 
-/// <summary>
-/// The rules of the payment link of a host booking (E08/F01/US01/T05), the same for the link, the checkout page and the payment webhook. Pure.
-/// </summary>
 public static class HostPaymentLinks
 {
     /// <summary>
@@ -80,7 +67,6 @@ public static class HostPaymentLinks
                && booking.HostPaymentArrangement == HostPaymentArrangement.PaymentLink;
     }
 
-    /// <summary>What is still to pay: the total minus what came in (refunds taken off), never below zero; the figure of "Registra incasso".</summary>
     public static decimal BalanceOf(Booking booking, IEnumerable<Payment> payments)
     {
         ArgumentNullException.ThrowIfNull(booking);
@@ -90,7 +76,6 @@ public static class HostPaymentLinks
         return Math.Max(0m, booking.TotalPrice - paid);
     }
 
-    /// <summary>The PaymentIntent of the link the guest can still pay: the newest payment with a PaymentIntent that is pending or failed.</summary>
     public static Payment? OpenLinkPayment(IEnumerable<Payment> payments)
     {
         ArgumentNullException.ThrowIfNull(payments);
@@ -101,10 +86,6 @@ public static class HostPaymentLinks
             .FirstOrDefault();
     }
 
-    /// <summary>
-    /// Where the payment of a host booking stands for its guest on the checkout page: cancelled; being paid (Stripe said so); paid
-    /// (<see cref="CheckoutOutcomeState.Confirmed"/>, nothing left); the last attempt failed; or waiting for the payment. Needs the payments.
-    /// </summary>
     public static CheckoutOutcomeState StateOf(Booking booking)
     {
         ArgumentNullException.ThrowIfNull(booking);

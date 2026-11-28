@@ -13,10 +13,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Stages a CondoLedger snapshot and, once a house is tied to a verified property, posts it through the condominium book.
-/// Rows that are still unmapped are left staged and are not read back as balances.
-/// </summary>
 public sealed class CondominiumHistoricalImportService(
     AppDbContext db,
     ICondominiumAccountingService condominiums,

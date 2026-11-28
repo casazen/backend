@@ -14,7 +14,6 @@ namespace Casazen.Core.Regulatory;
 /// </remarks>
 public static class SwissUid
 {
-    /// <summary>The prefix of the UID of an enterprise.</summary>
     public const string Prefix = "CHE";
 
     private static readonly int[] Weights = [5, 4, 3, 2, 7, 6, 5, 4];
@@ -51,10 +50,8 @@ public static class SwissUid
         return $"{Prefix}-{digits[..3]}.{digits[3..6]}.{digits[6..]}";
     }
 
-    /// <summary>True when <paramref name="value"/> is a UID with a right check digit (see <see cref="Normalize"/>).</summary>
     public static bool IsValid(string? value) => Normalize(value) is not null;
 
-    /// <summary>The check digit of the eight digits of a UID, or <c>null</c> when the computation gives 10 (a number never assigned).</summary>
     public static int? CheckDigit(string eightDigits)
     {
         ArgumentNullException.ThrowIfNull(eightDigits);
@@ -71,22 +68,14 @@ public static class SwissUid
     }
 }
 
-/// <summary>The bank accounts of an issuer: an IBAN of any country, and the QR-IBAN of the Swiss QR-bill.</summary>
 public static class IssuerBankAccounts
 {
-    /// <summary>The lowest institution id of a QR-IBAN (positions 5 to 9 of a Swiss or Liechtenstein IBAN).</summary>
     public const int QrInstitutionIdFrom = 30000;
 
-    /// <summary>The highest institution id of a QR-IBAN.</summary>
     public const int QrInstitutionIdTo = 31999;
 
-    /// <summary>
-    /// The IBAN in its stored form (upper case, no spaces), or <c>null</c> when it has not the length and the mod-97 check digits of an IBAN
-    /// (<see cref="BankValues.IsValidIban"/>).
-    /// </summary>
     public static string? NormalizeIban(string? value) => BankValues.NormalizeIban(value);
 
-    /// <summary>True when <paramref name="normalizedIban"/> is a QR-IBAN: an IBAN of CH or LI whose institution id is 30000 to 31999.</summary>
     public static bool IsQrIban(string normalizedIban)
     {
         ArgumentNullException.ThrowIfNull(normalizedIban);
@@ -97,7 +86,6 @@ public static class IssuerBankAccounts
                && institution is >= QrInstitutionIdFrom and <= QrInstitutionIdTo;
     }
 
-    /// <summary>The IBAN with only its country, its check digits and its last four characters visible (<c>CH93…2957</c>); <c>null</c> for none.</summary>
     public static string? Mask(string? normalizedIban)
     {
         if (string.IsNullOrWhiteSpace(normalizedIban))

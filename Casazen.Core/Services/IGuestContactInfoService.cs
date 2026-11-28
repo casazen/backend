@@ -18,38 +18,25 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IGuestContactInfoService
 {
-    /// <summary>
-    /// Reads the contact of the guest of <paramref name="bookingId"/> (a booking of <paramref name="orgId"/>) for the check-in link. The caller decides whether it may be
-    /// asked again (<see cref="Entities.CheckInLinkDelivery.ContactReadAt"/>): this method asks whenever it is called and the booking qualifies. A transient failure of
-    /// the channel manager (a limit, an outage) is thrown, not turned into «no contact».
-    /// </summary>
     Task<GuestContactInfoOutcome> ReadForCheckInLinkAsync(Guid orgId, Guid bookingId, CancellationToken ct = default);
 }
 
-/// <summary>What <see cref="IGuestContactInfoService.ReadForCheckInLinkAsync"/> did.</summary>
 public enum GuestContactInfoStatus
 {
-    /// <summary>The flag, or the connector, is off: nothing was asked.</summary>
     Disabled = 0,
 
-    /// <summary>The booking does not qualify (not a stay from a portal on Octorate, not an active stay, an erased guest, no confirmed listing): nothing was asked.</summary>
     NotApplicable = 1,
 
-    /// <summary>The guest already has an e-mail address: nothing was asked.</summary>
     AlreadyHasEmail = 2,
 
-    /// <summary>The channel manager holds no e-mail address for the guest (an Airbnb guest has none), or gave none that can be used: the read was made (or not needed).</summary>
     NoEmailAtChannel = 3,
 
-    /// <summary>The address was read and written on the guest of the booking.</summary>
     EmailFilled = 4,
 
-    /// <summary>The channel manager refused (401 or 403): the static IP addresses are not registered, or the application has no permission. Nothing was released.</summary>
     StaticIpsRequired = 5,
 
     /// <summary>The channel manager does not know the reservation, or rejected the request: nothing was released, and a retry does not help.</summary>
     NotAvailable = 6,
 }
 
-/// <summary>The outcome of a read of the contact: the <paramref name="Status"/>, and for <see cref="GuestContactInfoStatus.NotAvailable"/> the stable code of the error.</summary>
 public sealed record GuestContactInfoOutcome(GuestContactInfoStatus Status, string? ErrorCode = null);

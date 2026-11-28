@@ -1,13 +1,7 @@
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// Result of creating a ConcordatoFacile checkout session.
-/// </summary>
 public sealed record CheckoutResult(string SessionId, string SessionUrl, bool Reused);
 
-/// <summary>
-/// Creates Stripe Checkout sessions for ConcordatoFacile one-time payments (ADR-005).
-/// </summary>
 public interface IConcordatoFacileCheckoutService
 {
     /// <summary>

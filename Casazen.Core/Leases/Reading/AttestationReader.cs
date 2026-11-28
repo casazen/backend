@@ -3,31 +3,21 @@ using System.Text.RegularExpressions;
 
 namespace Casazen.Core.Leases.Reading;
 
-/// <summary>What an attestation or a calculation sheet says about the rent: it is within the territorial agreement, or it is not.</summary>
 public enum ConformityVerdict
 {
-    /// <summary>The text does not say, or says both.</summary>
     Unknown = 0,
 
-    /// <summary>The rent is within the values of the territorial agreement.</summary>
     Conform = 1,
 
-    /// <summary>The rent is outside the values of the territorial agreement.</summary>
     NotConform = 2,
 }
 
-/// <summary>
-/// What <see cref="AttestationReader"/> read in the section of the attestation of conformity (CF-DOCS-REAL): the municipality and the
-/// territorial agreement, the organizations that attest, whether the rent conforms, the rent they attest and the dates. It is kept only
-/// while the document is checked against the contract: nothing of it is stored with the document, which keeps the names of the fields.
-/// </summary>
 public sealed record AttestationReading
 {
     public string? Comune { get; init; }
 
     public string? Province { get; init; }
 
-    /// <summary>The area the territorial agreement covers ("Garbagnate Milanese"), as written.</summary>
     public string? AgreementArea { get; init; }
 
     public DateOnly? AgreementDate { get; init; }
@@ -38,7 +28,6 @@ public sealed record AttestationReading
 
     public ConformityVerdict Verdict { get; init; }
 
-    /// <summary>The monthly rent the attestation says the parties agreed.</summary>
     public decimal? MonthlyRent { get; init; }
 
     public decimal? RangeMinimum { get; init; }
@@ -59,16 +48,12 @@ public sealed record AttestationReading
 
     public int? TermMonths { get; init; }
 
-    /// <summary>The day written next to "Luogo e data", when it can be read (it is often handwritten).</summary>
     public DateOnly? SignedOn { get; init; }
 
-    /// <summary>The number of the attestation, when it carries one.</summary>
     public string? Number { get; init; }
 
-    /// <summary>The valid fiscal codes of the people the attestation names, to be compared with the contract's.</summary>
     public IReadOnlyList<string> FiscalCodes { get; init; } = [];
 
-    /// <summary>The names of the things that were read, never a value: what is kept with the document.</summary>
     public IReadOnlyList<string> FieldNames()
     {
         var names = new List<string>();
@@ -103,15 +88,12 @@ public static partial class AttestationReader
     private const RegexOptions Options = RegexOptions.CultureInvariant | RegexOptions.IgnoreCase;
     private const int Timeout = 2000;
 
-    // "— Comune di Bollate (MI)"
     [GeneratedRegex(@"\bcomune\s+di\s+(?<c>\p{L}[\p{L}'. \-]{1,38}?)\s*[(\[]\s*(?<p>[A-Za-z]{2})\s*[)\]]", Options, Timeout)]
     private static partial Regex ComuneWithProvince();
 
-    // "rientrano nei valori previsti dall'Accordo territoriale vigente per il Comune di Bollate"
     [GeneratedRegex(@"\b(?i:per\s+il\s+comune\s+di)\s+(?<c>\p{Lu}[\p{L}'\-]+(?: \p{Lu}[\p{L}'\-]+){0,2})", RegexOptions.CultureInvariant, Timeout)]
     private static partial Regex ComuneAfterFor();
 
-    // "Accordo locale per i Comuni dell'ambito di Garbagnate Milanese, sottoscritto in Milano il 20 maggio 2025"
     [GeneratedRegex(
         @"\baccordo\s+(?:locale|territoriale)\s+per\s+i\s+comuni\s+dell\W{0,2}\s*ambito\s+di\s+(?<a>\p{L}[\p{L}'\- ]{1,48}?)\s*,\s*sottoscritto",
         Options,
@@ -160,7 +142,6 @@ public static partial class AttestationReader
     [GeneratedRegex(@"\battestazione\s+(?:numero|n)\b\W{0,3}(?<n>[A-Za-z0-9][A-Za-z0-9\-/]{2,24})", Options, Timeout)]
     private static partial Regex NumberText();
 
-    /// <summary>Reads the attestation from the text of its section (empty or without the attestation: nothing is read, nothing is invented).</summary>
     public static AttestationReading Read(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -223,7 +204,6 @@ public static partial class AttestationReader
         if (ReadingText.Date(raw) is { } numeric)
             return numeric;
 
-        // "20 maggio 2025"
         var parts = raw.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length != 3 || !int.TryParse(parts[0], CultureInfo.InvariantCulture, out var day) || !int.TryParse(parts[2], CultureInfo.InvariantCulture, out var year))
             return null;
@@ -244,7 +224,6 @@ public static partial class AttestationReader
         return within == not ? ConformityVerdict.Unknown : within ? ConformityVerdict.Conform : ConformityVerdict.NotConform;
     }
 
-    /// <summary>The sub-band the text names most often ("collocata nella sub-fascia 3"): the table lists all of them once, the verdict repeats one.</summary>
     internal static int? MostFrequentSubBand(string flat)
     {
         var counts = SubBandText().Matches(flat)

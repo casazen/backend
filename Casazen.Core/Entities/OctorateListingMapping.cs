@@ -21,10 +21,8 @@ namespace Casazen.Core.Entities;
 [Table("OctorateListingMappings")]
 public class OctorateListingMapping : ITenantOwned
 {
-    /// <summary>Name of the unique index on (<see cref="OrgId"/>, <see cref="ConnectionId"/>, <see cref="OctorateAccommodationId"/>).</summary>
     public const string AccommodationIndexName = "UIX_OctorateListingMappings_OrgId_ConnectionId_Accommodation";
 
-    /// <summary>Name of the unique index on (<see cref="OrgId"/>, <see cref="PropertyId"/>) of the confirmed rows.</summary>
     public const string ConfirmedPropertyIndexName = "UIX_OctorateListingMappings_OrgId_PropertyId_Confirmed";
 
     public const int AccommodationIdMaxLength = 64;
@@ -34,27 +32,21 @@ public class OctorateListingMapping : ITenantOwned
     public const int SnapshotCityMaxLength = 100;
     public const int UserIdMaxLength = 255;
 
-    /// <summary>An empty JSON array, the value of a list column with nothing in it.</summary>
     public const string EmptyJsonArray = "[]";
 
-    /// <summary>An empty JSON object, the value of <see cref="ChannelIdsJson"/> before the identifiers are read.</summary>
     public const string EmptyJsonObject = "{}";
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant: the org of the connection the listing was found through.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The connection the listing was found through (FK, RESTRICT: a connection with mappings is never deleted).</summary>
     public Guid ConnectionId { get; set; }
 
-    /// <summary>The accommodation id on Octorate.</summary>
     [Required]
     [MaxLength(AccommodationIdMaxLength)]
     public string OctorateAccommodationId { get; set; } = string.Empty;
 
-    /// <summary>The name of the listing as Octorate says it, so the mapping screen does not call Octorate each time.</summary>
     [MaxLength(SnapshotNameMaxLength)]
     public string? SnapshotName { get; set; }
 
@@ -64,13 +56,8 @@ public class OctorateListingMapping : ITenantOwned
     [MaxLength(SnapshotCityMaxLength)]
     public string? SnapshotCity { get; set; }
 
-    /// <summary>The most guests a room of the listing takes, when Octorate says it.</summary>
     public int? SnapshotMaxGuests { get; set; }
 
-    /// <summary>
-    /// The rooms (products) of the accommodation as JSON (jsonb): <c>[{ "id": "956528", "name": "Double Room", "maxGuests": 2 }]</c>,
-    /// the choice of <see cref="OctorateProductId"/>.
-    /// </summary>
     [Required]
     public string SnapshotRoomsJson { get; set; } = EmptyJsonArray;
 
@@ -82,15 +69,12 @@ public class OctorateListingMapping : ITenantOwned
     [MaxLength(ProductIdMaxLength)]
     public string? OctorateProductId { get; set; }
 
-    /// <summary>The CasaZen property: proposed (<see cref="OctorateMappingStatus.Proposed"/>) or confirmed. FK, SET NULL.</summary>
     public Guid? PropertyId { get; set; }
 
     public OctorateMappingStatus Status { get; set; } = OctorateMappingStatus.Proposed;
 
-    /// <summary>The score of the best candidate, 0 to 100.</summary>
     public int MatchScore { get; set; }
 
-    /// <summary>The candidate properties of an ambiguous row, as a JSON array of ids (jsonb).</summary>
     [Required]
     public string CandidatePropertyIdsJson { get; set; } = EmptyJsonArray;
 
@@ -101,11 +85,9 @@ public class OctorateListingMapping : ITenantOwned
     [Required]
     public string ChannelIdsJson { get; set; } = EmptyJsonObject;
 
-    /// <summary>Who confirmed the mapping (the user id), <c>null</c> until then.</summary>
     [MaxLength(UserIdMaxLength)]
     public string? ConfirmedByUserId { get; set; }
 
-    /// <summary>When the mapping was confirmed (UTC).</summary>
     public DateTime? ConfirmedAt { get; set; }
 
     /// <summary>

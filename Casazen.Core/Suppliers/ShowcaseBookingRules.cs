@@ -45,11 +45,6 @@ public sealed record ShowcaseBookingInput(
     string? ConsentIp,
     bool Urgent = false);
 
-/// <summary>A booking after <see cref="ShowcaseBookingRules.Normalize"/>: every value trimmed and checked.</summary>
-/// <param name="Quote">The choices of the estimate, ready for <see cref="SupplierQuoteCalculator.Validate"/>.</param>
-/// <param name="Email">The address as typed (trimmed): the e-mails go to it. The index is made of its lowercase form.</param>
-/// <param name="Phone">Digits and an optional leading plus.</param>
-/// <param name="Locale">One of <see cref="ServiceCustomerLocales"/>.</param>
 public sealed record ShowcaseBookingContent(
     Guid ClientRequestId,
     string ServiceSlug,
@@ -68,12 +63,6 @@ public sealed record ShowcaseBookingContent(
     string PrivacyNoticeVersion,
     string ConsentIp);
 
-/// <summary>
-/// The rules on the values of a booking from a showcase (SP-10): which are required, how long they can be, what shape they
-/// have. Pure functions, no clock and no database. A value that is not valid is collected with the others and refused together
-/// (422 <see cref="ShowcaseBookingErrors.Invalid"/> naming all the fields); a consent that is missing or not of the current
-/// version has its own 422.
-/// </summary>
 public static class ShowcaseBookingRules
 {
     /// <summary>
@@ -86,14 +75,6 @@ public static class ShowcaseBookingRules
         startUtc >= nowUtc.AddDays(-ShowcaseBookingLimits.SlotWindowBehindDays)
         && startUtc <= nowUtc.AddDays(ShowcaseBookingLimits.SlotWindowAheadDays);
 
-    /// <summary>
-    /// Checks and trims <paramref name="input"/>. <paramref name="currentPrivacyVersion"/> is the version the notice has now
-    /// (<c>Suppliers:Showcase:PrivacyNoticeVersion</c>): the consent has to name exactly it.
-    /// </summary>
-    /// <exception cref="ShowcaseBookingRuleException">The fields that are not valid.</exception>
-    /// <exception cref="Exceptions.DomainRuleException">
-    /// <see cref="ShowcaseBookingErrors.ConsentRequired"/> or <see cref="ShowcaseBookingErrors.ConsentOutdated"/>.
-    /// </exception>
     public static ShowcaseBookingContent Normalize(ShowcaseBookingInput input, string currentPrivacyVersion)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -116,7 +97,6 @@ public static class ShowcaseBookingRules
         else
         {
             start = UtcDateTime.Normalize(requested);
-            // The slots of the planner start on a whole minute: anything else is not one of them.
             if (start.Ticks % TimeSpan.TicksPerMinute != 0)
                 invalid.Add(ShowcaseBookingFields.StartUtc);
         }
@@ -172,20 +152,12 @@ public static class ShowcaseBookingRules
             Truncate(input.ConsentIp, ShowcaseBookingLimits.ConsentIpMaxLength));
     }
 
-    /// <summary>
-    /// The e-mail address in the form the index and the comparisons use: trimmed and lowercase. Two spellings of one address
-    /// (<c>Mario@Example.it</c>, <c>mario@example.it</c>) are one customer.
-    /// </summary>
     public static string NormalizeEmail(string email)
     {
         ArgumentNullException.ThrowIfNull(email);
         return email.Trim().ToLowerInvariant();
     }
 
-    /// <summary>
-    /// The name shown to a supplier that has not taken the request yet (decision D9): the first name and the initial of the last
-    /// one, <c>Mario Rossi</c> → <c>Mario R.</c>. A one-word name is shown as it is; nothing is made up for a missing name.
-    /// </summary>
     public static string AbbreviateName(string? fullName)
     {
         var parts = (fullName ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -209,7 +181,6 @@ public static class ShowcaseBookingRules
         return string.Empty;
     }
 
-    // The checks of the values a customer types, shared with the request on measure (ShowcaseInquiryRules, SP-10b).
     internal static string? Text(string? value, int maxLength, bool required, string field, List<string> invalid)
     {
         var text = Collapse(value);
@@ -235,7 +206,6 @@ public static class ShowcaseBookingRules
         if (string.IsNullOrEmpty(text))
             return null;
 
-        // A note may have lines; any other control character (and anything too long) is refused.
         if (text.Length > ShowcaseBookingLimits.AccessNotesMaxLength || text.Any(c => char.IsControl(c) && c != '\n' && c != '\t'))
         {
             invalid.Add(ShowcaseBookingFields.AccessNotes);
@@ -281,7 +251,6 @@ public static class ShowcaseBookingRules
         var plus = text is not null && text.StartsWith('+');
         var digits = new string((text ?? string.Empty).Where(c => c is >= '0' and <= '9').ToArray());
 
-        // Spaces, dots, dashes, brackets and slashes are only how people write a number; any other character is not a phone.
         var onlyPhoneCharacters = text is not null && text.All(c => c is >= '0' and <= '9' or ' ' or '.' or '-' or '(' or ')' or '/' or '+');
         var plusOnlyFirst = text is not null && text.LastIndexOf('+') <= 0;
         if (!onlyPhoneCharacters
@@ -296,7 +265,6 @@ public static class ShowcaseBookingRules
         return plus ? "+" + digits : digits;
     }
 
-    /// <summary>Trimmed, with every run of whitespace turned into one space.</summary>
     private static string Collapse(string? value) =>
         string.Join(' ', (value ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 

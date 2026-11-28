@@ -3,15 +3,12 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
-/// <summary>Outcome of a plan change requested outside Stripe (see <see cref="PlanChangePolicy"/>).</summary>
 public enum ManualPlanChangeOutcome
 {
     Allowed,
 
-    /// <summary>A live Stripe subscription drives the plan: it changes only through Stripe (portal and webhooks).</summary>
     ManagedByStripe,
 
-    /// <summary>The requested tier is above the effective one and no subscription pays for it.</summary>
     SubscriptionRequired,
 }
 

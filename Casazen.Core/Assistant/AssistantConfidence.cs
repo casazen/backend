@@ -29,7 +29,6 @@ public sealed record AssistantConfidenceInput(
     EffectiveAssistantRules Rules,
     string? ChannelRefusal);
 
-/// <summary>The confidence of a draft: the score and its three components, each 0 to 1 with three decimals, and the codes of the rules the draft broke.</summary>
 public sealed record AssistantConfidenceScore(decimal Score, decimal SituationMatch, decimal FactCoverage, decimal RuleCompliance, IReadOnlyList<string> BrokenRules);
 
 /// <summary>
@@ -48,10 +47,8 @@ public sealed record AssistantConfidenceScore(decimal Score, decimal SituationMa
 /// </remarks>
 public static partial class AssistantConfidence
 {
-    /// <summary>The longest draft that breaks no rule, in characters (the signature is not counted).</summary>
     public const int DraftMaxLength = 800;
 
-    /// <summary>What each soft rule broken takes off the compliance.</summary>
     public const decimal SoftRulePenalty = 0.25m;
 
     public const string TooLongRule = "draft_too_long";
@@ -61,10 +58,8 @@ public static partial class AssistantConfidence
     public const string SignatureRule = "signature_missing";
     public const string AiDisclosureRule = "ai_disclosed";
 
-    /// <summary>The hard rule: the channel refuses the text (the compliance is 0).</summary>
     public const string ChannelRule = "channel_refused";
 
-    /// <summary>The score of a draft and its components (see the remarks of the class).</summary>
     public static AssistantConfidenceScore Compute(AssistantConfidenceInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -79,7 +74,6 @@ public static partial class AssistantConfidence
         return new AssistantConfidenceScore(Round(match * coverage * compliance), Round(match), Round(coverage), Round(compliance), broken);
     }
 
-    /// <summary>The topics the situation requires that have a fact, over the topics it requires; 1 when it requires none; halved when a fact was reported missing.</summary>
     public static decimal FactCoverageOf(AssistantSituation situation, IReadOnlyCollection<KnowledgeTopic> covered, bool missingFacts)
     {
         ArgumentNullException.ThrowIfNull(covered);
@@ -89,7 +83,6 @@ public static partial class AssistantConfidence
         return missingFacts ? coverage / 2m : coverage;
     }
 
-    /// <summary>The codes of the rules <paramref name="input"/> breaks: the soft ones, and <see cref="ChannelRule"/> when the channel refuses the text.</summary>
     public static IReadOnlyList<string> BrokenRulesOf(AssistantConfidenceInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -119,10 +112,6 @@ public static partial class AssistantConfidence
         return broken;
     }
 
-    /// <summary>
-    /// True when <paramref name="text"/> holds a link, an e-mail address or a phone number that none of <paramref name="facts"/> holds, or a placeholder of a datum that was taken out
-    /// before the call (<see cref="AssistantPromptBuilder.Placeholders"/>): the model was told to write neither.
-    /// </summary>
     public static bool HasForeignContactDetail(string text, IReadOnlyList<string> facts)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -135,17 +124,14 @@ public static partial class AssistantConfidence
             .Any(detail => !facts.Any(fact => Compact(fact).Contains(Compact(detail), StringComparison.OrdinalIgnoreCase)));
     }
 
-    /// <summary>True when <paramref name="text"/> says, in Italian or in English, that it was written by an AI, a bot or an automatic assistant.</summary>
     public static bool DisclosesAi(string? text) => !string.IsNullOrEmpty(text) && AiDisclosure().IsMatch(text);
 
     private static decimal Clamp(decimal value) => Math.Min(1m, Math.Max(0m, value));
 
     private static decimal Round(decimal value) => Math.Round(value, 3, MidpointRounding.AwayFromZero);
 
-    /// <summary>A text without its spaces, so a number written «333 123 4567» is found in a fact that writes it «3331234567».</summary>
     private static string Compact(string value) => string.Concat(value.Where(c => !char.IsWhiteSpace(c)));
 
-    // The words of a message that tell the guest it was written by a machine, in Italian and in English.
     [GeneratedRegex(
         @"\b(?:intelligenza\s+artificiale|assistente\s+(?:virtuale|automatico|digitale)|risposta\s+automatica|messaggio\s+automatico|modello\s+linguistico|sono\s+un\s+(?:bot|robot|programma)"
         + @"|artificial\s+intelligence|virtual\s+assistant|language\s+model|automated\s+(?:reply|response|message|assistant)|as\s+an\s+ai|i\s+am\s+an\s+ai|i'?m\s+an\s+ai"

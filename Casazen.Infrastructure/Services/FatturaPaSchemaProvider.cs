@@ -19,10 +19,8 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed class FatturaPaSchemaProvider
 {
-    /// <summary>The prefix of the logical names of the embedded schemas.</summary>
     public const string ResourcePrefix = "Casazen.Infrastructure.Fiscal.Schemas.";
 
-    /// <summary>The target namespace of FatturaPA 1.2.</summary>
     public const string FatturaPaNamespace = "http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2";
 
     private static readonly Lazy<XmlSchemaSet?> Cached = new(Load, LazyThreadSafetyMode.ExecutionAndPublication);
@@ -49,7 +47,6 @@ public sealed class FatturaPaSchemaProvider
     /// <summary>True when the official schema of FatturaPA is embedded in this build.</summary>
     public static bool HasOfficialSchema => Cached.Value is not null;
 
-    /// <summary>The compiled schemas; 422 <c>fatturapa_schema_unavailable</c> when they are not installed.</summary>
     public XmlSchemaSet GetSchemas() =>
         Cached.Value ?? throw new DomainRuleException(FatturaPaErrors.SchemaUnavailable, "FatturaPaSchemaUnavailable");
 
@@ -65,11 +62,8 @@ public sealed class FatturaPaSchemaProvider
 
         var set = new XmlSchemaSet { XmlResolver = null };
 
-        // The embedded schemas are files of this build, never input: the internal DTD of the W3C signature schema is parsed (its entities are
-        // internal), nothing external is ever resolved and the expansion is bounded. The documents themselves are read with the DTD prohibited.
         var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Parse, XmlResolver = null, MaxCharactersFromEntities = 4096 };
 
-        // The signature schema first: the FatturaPA schema imports its namespace.
         foreach (var name in names.OrderBy(n => n.Contains("xmldsig", StringComparison.OrdinalIgnoreCase) ? 0 : 1))
         {
             using var stream = assembly.GetManifestResourceStream(name)!;
@@ -81,7 +75,6 @@ public sealed class FatturaPaSchemaProvider
         return set.Contains(FatturaPaNamespace) ? set : null;
     }
 
-    /// <summary>The names of the embedded schemas (for the runbook check of the checksums).</summary>
     public static IReadOnlyList<string> EmbeddedSchemaNames() =>
         Assembly.GetAssembly(typeof(FatturaPaSchemaProvider))!.GetManifestResourceNames()
             .Where(n => n.StartsWith(ResourcePrefix, StringComparison.Ordinal))
@@ -89,5 +82,4 @@ public sealed class FatturaPaSchemaProvider
             .ToList();
 }
 
-/// <summary>An official schema file embedded in the build: its file name, version, the address it was taken from and the SHA-256 of its bytes (lower case hex).</summary>
 public sealed record FatturaPaSchemaFile(string FileName, string Version, string SourceUrl, string Sha256);

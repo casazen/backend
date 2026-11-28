@@ -21,7 +21,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 internal static class TicinoDeclarationLiveRefresh
 {
-    /// <summary>Queues the push of a declaration (<paramref name="declared"/> true) or of its undo; nothing without a queue.</summary>
     public static void Tell(
         IPushNotificationService? push,
         Guid orgId,
@@ -55,10 +54,6 @@ internal static class TicinoDeclarationLiveRefresh
         }
     }
 
-    /// <summary>
-    /// The same for the notification of a canton other than Ticino (E31/F02/US01/T01): the push of a declaration (<paramref name="declared"/> true) or of its undo, of type
-    /// <see cref="PushTypes.SwissNotificationDeclared"/>; nothing without a queue.
-    /// </summary>
     public static void TellSwiss(
         IPushNotificationService? push,
         Guid orgId,

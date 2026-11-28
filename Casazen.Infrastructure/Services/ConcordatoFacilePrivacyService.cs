@@ -10,20 +10,12 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// The privacy notice a landlord accepts for a lease before the guided contract form is opened (CF-BE). The acceptance is the lease event
-/// <see cref="LeaseEventType.ConcordatoFacilePrivacyAccepted"/> with the payload <c>{ "policyVersion": ... }</c>: the version of the notice that
-/// was current (<c>Legal:Documents:Privacy:Version</c>, <see cref="ILegalDocumentService"/>), nothing about the person. It counts for the
-/// lease and for that version only: a new version of the notice asks for the acceptance again. The signed link
-/// (<see cref="ConcordatoFacileLinkService"/>) is refused without it, for the platform admin too.
-/// </summary>
 public sealed class ConcordatoFacilePrivacyService(
     AppDbContext db,
     ILegalDocumentService legalDocuments,
     ILogger<ConcordatoFacilePrivacyService> logger,
     TimeProvider? timeProvider = null) : IConcordatoFacilePrivacyService
 {
-    /// <summary>409 code of the link asked before the privacy notice is accepted.</summary>
     public const string NotAcceptedCode = "concordatofacile_privacy_not_accepted";
 
     private const string NotAcceptedKey = "ConcordatoFacilePrivacyNotAccepted";
@@ -32,7 +24,6 @@ public sealed class ConcordatoFacilePrivacyService(
 
     public async Task<CfPrivacyState> GetStateAsync(Guid leaseId, Guid orgId, CancellationToken cancellationToken = default)
     {
-        // The events hang off the lease and have no tenant of their own: the lease must be the org's before anything about it is read.
         var leaseOfTheOrg = await db.LeaseContracts.AnyAsync(l => l.Id == leaseId && l.OrgId == orgId, cancellationToken);
         return leaseOfTheOrg ? await ReadStateAsync(leaseId, cancellationToken) : CfPrivacyState.None;
     }
@@ -41,7 +32,6 @@ public sealed class ConcordatoFacilePrivacyService(
     {
         await db.EnsureLeaseOfOrgAsync(leaseId, orgId, cancellationToken);
 
-        // One request at a time per lease: a double click writes one event (the second one finds the first).
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db,
             cancellationToken,
@@ -62,7 +52,6 @@ public sealed class ConcordatoFacilePrivacyService(
             await db.SaveChangesAsync(cancellationToken);
             state = state with { Accepted = true, AcceptedAt = now };
 
-            // The lease and the version of the notice: no name, no address, no user.
             logger.LogInformation(
                 "Privacy notice {PolicyVersion} accepted for the guided contract of lease {LeaseId}",
                 version,
@@ -87,7 +76,6 @@ public sealed class ConcordatoFacilePrivacyService(
         }
     }
 
-    /// <summary>The acceptance of the current version (the earliest, there is one) and the last time the link was made, read without tracking.</summary>
     private async Task<CfPrivacyState> ReadStateAsync(Guid leaseId, CancellationToken cancellationToken)
     {
         var events = await db.LeaseEvents
@@ -129,6 +117,5 @@ public sealed class ConcordatoFacilePrivacyService(
         }
     }
 
-    /// <summary>The payload of the event: the version of the notice, and nothing else.</summary>
     private sealed record AcceptancePayload([property: JsonPropertyName("policyVersion")] string? PolicyVersion);
 }

@@ -59,16 +59,12 @@ public interface INotificationService
     Task SendVerificationRequiredAlertAsync(VerificationAlert alert, CancellationToken cancellationToken = default);
 }
 
-/// <summary>Which moment of a scheduled change of rental mode a <see cref="PropertyModeNotice"/> is about.</summary>
 public enum PropertyModeNoticeKind
 {
-    /// <summary>The change was programmed (to confirm it and say how to withdraw it).</summary>
     Scheduled = 0,
 
-    /// <summary>The property changed mode, on its day.</summary>
     Applied = 1,
 
-    /// <summary>The change could not be applied on its day; the property kept its mode.</summary>
     Failed = 2,
 }
 
@@ -82,17 +78,10 @@ public sealed record PropertyModeNotice(
     PropertyModeNoticeKind Kind,
     DateTime? EarliestDate = null);
 
-/// <summary>
-/// An OTA stay to check (CO-21): <paramref name="ChannelCheckIn"/> and <paramref name="ChannelCheckOut"/> are the dates
-/// the channel now shows, for <see cref="Entities.Enums.OtaStayReviewReason.BlockDatesChanged"/>.
-/// </summary>
 public sealed record OtaStayReviewAlert(
     Guid BookingId,
     Entities.Enums.OtaStayReviewReason Reason,
     DateTime? ChannelCheckIn = null,
     DateTime? ChannelCheckOut = null);
 
-/// <summary>
-/// A booking that requires manual biometric verification (NF-12, ADR-013).
-/// </summary>
 public sealed record VerificationAlert(Guid BookingId);

@@ -51,7 +51,6 @@ public class LeaseSigningService(
 
     private const string PdfContentType = "application/pdf";
 
-    /// <summary>The name of the signed copy in the Documents section when the file had no sound name (as long as <c>LeaseDocument.FileName</c> allows).</summary>
     private const string DefaultDocumentFileName = "contratto-firmato.pdf";
 
     private const int MaxDocumentFileNameLength = 240;
@@ -68,7 +67,6 @@ public class LeaseSigningService(
         EnsureNotSignedYet(lease);
         await EnsureSignableAsync(lease);
 
-        // Template gate (LT-03): 422 without an approved, complete template; the preview is the BOZZA endpoint.
         return await templateService.GeneratePdfAsync(lease);
     }
 
@@ -93,10 +91,8 @@ public class LeaseSigningService(
         var lease = await LoadLeaseAsync(leaseId, cancellationToken);
         EnsureNotSignedYet(lease);
         await EnsureSignableAsync(lease);
-        // An offline signature is a signature of the final contract: never from a template that is not approved (LT-03).
         templateService.EnsureFinalContractAvailable(lease);
 
-        // File first, in the private bucket: a failed upload changes nothing; a failed database update removes it.
         var key = StorageKeys.LeaseSignedContract(lease.OrgId, lease.Id, StorageKeys.NewFileName(".pdf"));
         await storage.PutAsync(StorageBucket.Private, key, signedContract, PdfContentType, cancellationToken);
 
@@ -110,10 +106,10 @@ public class LeaseSigningService(
 
             var now = UtcNow();
             lease.Status = LeaseStatus.Signed;
-            lease.DraftData = null; // the typed state of the wizard (LR-12) is only for a draft; the parties' rows are the contract's data
+            lease.DraftData = null;
             lease.SignedPdfStoragePath = key;
             lease.RecordStipula(stipula);
-            LeaseRenewal.ConcludeIfEnded(lease, _clock.TodayInRome()); // signed after its last day: concluded, never renewed (LR-14)
+            LeaseRenewal.ConcludeIfEnded(lease, _clock.TodayInRome());
             lease.StipulaDeclaredByUserId = userId;
             lease.UpdatedAt = now;
             await MarkEveryPartySignedAsync(lease, LeaseSignatureMethod.Offline, lease.StipulaDate!.Value, now, cancellationToken);
@@ -159,7 +155,6 @@ public class LeaseSigningService(
                 "LeaseSignedContractInvalid",
                 LeaseSigningLimits.MaxSignedContractBytes / (1024 * 1024));
 
-        // A request that is going to be refused writes nothing to the bucket: the same checks run again under the row lock.
         var lease = await LoadLeaseAsync(leaseId, cancellationToken);
         EnsureImportable(lease);
 
@@ -199,8 +194,6 @@ public class LeaseSigningService(
 
         var stipula = EnsureStipulaDateNotInFuture(declaration.StipulaDate);
 
-        // The document has to be a contract document of THIS lease and of its org (stated here, not left to the filter of the request):
-        // the contract of another lease, a document of another kind, one that names another org, are not there.
         var orgId = await db.LeaseContracts
                 .AsNoTracking()
                 .Where(l => l.Id == leaseId)
@@ -222,11 +215,9 @@ public class LeaseSigningService(
                 "LeaseSignedContractInvalid",
                 LeaseSigningLimits.MaxSignedContractBytes / (1024 * 1024));
 
-        // A request that is going to be refused writes nothing to the bucket: the same checks run again under the row lock.
         var lease = await LoadLeaseAsync(leaseId, cancellationToken);
         EnsureImportable(lease);
 
-        // Only the signed copy of the lease is new: the document keeps the file it has, and is the Contract document of the Documents section.
         var signedKey = StorageKeys.LeaseSignedContract(lease.OrgId, lease.Id, StorageKeys.NewFileName(".pdf"));
         try
         {
@@ -279,16 +270,13 @@ public class LeaseSigningService(
 
             LeaseContractTerms.EnsureTerm(lease.ContractType, lease.StartDate, lease.EndDate);
 
-            // LR-OVERLAP: a contract signed elsewhere takes its days only if no other lease of the property has them (409). A lease that had
-            // already ended is a record of the past all the same: it too must not sit on the days of another one.
             await EnsurePeriodFreeAsync(lease, cancellationToken);
 
             var now = UtcNow();
             lease.Status = LeaseStatus.Signed;
-            lease.DraftData = null; // the typed state of the wizard is only for a draft; the rows of the parties are the contract's data
+            lease.DraftData = null;
             lease.SignedPdfStoragePath = signedKey;
             lease.RecordStipula(stipula);
-            // A contract brought in after its last day is a lease that is over: concluded, never renewed (LR-14, no retroactive renewal).
             LeaseRenewal.ConcludeIfEnded(lease, _clock.TodayInRome());
             lease.StipulaDeclaredByUserId = userId;
             lease.UpdatedAt = now;
@@ -296,7 +284,6 @@ public class LeaseSigningService(
 
             if (existingDocumentId is { } existing)
             {
-                // The contract document the owner uploaded: still there, under the lock (the draft is the lease's own).
                 if (!await db.LeaseDocuments.AnyAsync(d => d.Id == existing && d.LeaseContractId == leaseId && d.Kind == LeaseDocumentKind.Contract, cancellationToken))
                     throw DocumentNotFound();
             }
@@ -321,7 +308,6 @@ public class LeaseSigningService(
                 OccurredAt = now,
                 Payload = ImportedEventPayload,
             });
-            // A microsecond later (what the database keeps), so the timeline, which is ordered by instant, always lists the two the same way.
             db.LeaseEvents.Add(new LeaseEvent
             {
                 LeaseContractId = lease.Id,
@@ -345,12 +331,6 @@ public class LeaseSigningService(
         }
     }
 
-    /// <summary>
-    /// The lease can be imported: a draft (409 <c>lease_not_draft</c>), declared as an imported contract when it was created (422
-    /// <c>lease_import_not_imported_origin</c>: a contract made in CasaZen is signed through the models, decision LR-D28), with nothing
-    /// blocking in the review of what was typed (422 <c>lease_review_blocked</c>). Returns the values read, which the caller projects.
-    /// The lease is loaded with its property and its parties.
-    /// </summary>
     private LeaseDraftValues EnsureImportable(LeaseContract lease)
     {
         if (lease.Status != LeaseStatus.Draft)
@@ -359,8 +339,6 @@ public class LeaseSigningService(
         if (lease.Origin != LeaseOrigin.Imported)
             throw new DomainRuleException(LeaseSigningErrorCodes.ImportNotImported, "LeaseImportNotImported");
 
-        // The same review the draft shows: the blocks are the needs of the first four steps. For an imported contract the missing APE
-        // and cadastral data are warnings, the template is not asked for and the range of a concordato is not checked.
         var values = LeaseDraftProjection.ReadValues(lease);
         var input = new LeaseDraftProgressInput
         {
@@ -438,7 +416,6 @@ public class LeaseSigningService(
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw LeaseNotFound(leaseId);
 
-        // A path left by the old e-sign stub (a provider path, not a key of the private bucket) is not a file we hold.
         if (!StorageKeys.IsValid(lease.SignedPdfStoragePath))
         {
             throw new NotFoundException($"No signed contract for lease {leaseId}.")
@@ -484,14 +461,12 @@ public class LeaseSigningService(
             .SingleOrDefaultAsync(l => l.Id == leaseId, cancellationToken)
             ?? throw LeaseNotFound(leaseId);
 
-        // The final contract exists only before the signature and from a complete, approved template (LT-03).
         var contractBlocker = RliRegistrationDeadline.IsBeforeFullSignature(lease.Status)
             ? templateService.GetFinalContractBlocker(lease)
             : LeaseSigningErrorCodes.AlreadySigned;
         return new LeaseSigningStateDto(IsProviderSigningAvailable, contractBlocker is null, contractBlocker, ToSigners(lease));
     }
 
-    /// <summary>One entry per party (parties and signers loaded): the persisted signer, or the offline state.</summary>
     private IReadOnlyList<LeaseSignerDto> ToSigners(LeaseContract lease)
     {
         var now = UtcNow();
@@ -505,7 +480,6 @@ public class LeaseSigningService(
                 var signer = lease.Signers.FirstOrDefault(s => s.PartyId == party.Id);
                 if (signer is null)
                 {
-                    // No signature path started for this party: it signs offline (paper or its own digital signature).
                     return new LeaseSignerDto(
                         party.Id, party.Role, party.FirstName, party.LastName,
                         LeaseSignatureMethod.Offline,
@@ -531,7 +505,6 @@ public class LeaseSigningService(
 
     public async Task<IReadOnlyList<LeaseSignerDto>> InitiateProviderSigningAsync(Guid leaseId, CancellationToken cancellationToken = default)
     {
-        // Flag off or no configured provider: nothing is recorded and nothing reaches a provider.
         if (!IsProviderSigningAvailable)
             throw new DomainConflictException(LeaseSigningErrorCodes.ProviderUnavailable, "ESignProviderUnavailable");
 
@@ -544,7 +517,6 @@ public class LeaseSigningService(
         await EnsurePeriodFreeAsync(lease, cancellationToken);
         var pdf = await templateService.GeneratePdfAsync(lease);
 
-        // From here on a client that disconnects must not lose the provider's session: no cancellation.
         SigningSessionResult session;
         try
         {
@@ -577,7 +549,7 @@ public class LeaseSigningService(
 
             var now = UtcNow();
             lease.Status = LeaseStatus.AwaitingSignature;
-            lease.DraftData = null; // the lease leaves the draft: no typed state of the wizard stays behind (LR-12)
+            lease.DraftData = null;
             lease.ExternalSigningSessionId = session.ExternalSessionId;
             lease.UpdatedAt = now;
 
@@ -614,8 +586,6 @@ public class LeaseSigningService(
 
     public async Task HandleProviderEventAsync(string payload, CancellationToken cancellationToken = default)
     {
-        // Events queued before the flag was turned off (or without a provider client) are dropped: nothing reaches a
-        // provider and nothing changes.
         if (!IsProviderSigningAvailable)
         {
             logger.LogWarning("E-sign webhook event ignored: the provider signing path is not available");
@@ -659,7 +629,6 @@ public class LeaseSigningService(
             await CompleteProviderSigningAsync(lease.Id, lease.OrgId, providerEvent.ExternalSessionId, cancellationToken);
     }
 
-    /// <summary>One party signed through the provider: its signer is Signed and the lease PartiallySigned.</summary>
     private async Task RecordProviderSignatureAsync(Guid leaseId, string? externalSignerId, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(externalSignerId))
@@ -685,7 +654,6 @@ public class LeaseSigningService(
             return;
         }
 
-        // Replayed event: the signature is already recorded.
         if (signer.Status == LeaseSignerStatus.Signed)
             return;
 
@@ -744,13 +712,11 @@ public class LeaseSigningService(
                 return;
             }
 
-            // The provider reports no signing time: the stipula is the Rome day on which CasaZen records the last
-            // signature, the same instant as the AllPartiesSigned event (LT-04).
             var now = UtcNow();
             lease.Status = LeaseStatus.Signed;
             lease.SignedPdfStoragePath = key;
             lease.RecordStipula(now);
-            LeaseRenewal.ConcludeIfEnded(lease, _clock.TodayInRome()); // signed after its last day: concluded, never renewed (LR-14)
+            LeaseRenewal.ConcludeIfEnded(lease, _clock.TodayInRome());
             lease.UpdatedAt = now;
             await db.Entry(lease).Collection(l => l.Parties).LoadAsync(cancellationToken);
             await MarkEveryPartySignedAsync(lease, LeaseSignatureMethod.Provider, now, now, cancellationToken);
@@ -777,11 +743,9 @@ public class LeaseSigningService(
         }
     }
 
-    /// <summary>Provider events move only a lease whose signature is in progress (A7-20).</summary>
     private static bool AcceptsProviderEvents(LeaseStatus status) =>
         status is LeaseStatus.AwaitingSignature or LeaseStatus.PartiallySigned;
 
-    /// <summary>Every party's signer row Signed with <paramref name="signedAt"/> (kept when already recorded).</summary>
     private async Task MarkEveryPartySignedAsync(
         LeaseContract lease, LeaseSignatureMethod method, DateTime signedAt, DateTime now, CancellationToken cancellationToken)
     {
@@ -811,7 +775,6 @@ public class LeaseSigningService(
         return signer;
     }
 
-    /// <summary>Checks shared by every signature path: the term of the contract type (LT-10, 422) and a valid APE.</summary>
     private async Task EnsureSignableAsync(LeaseContract lease)
     {
         LeaseContractTerms.EnsureTerm(lease.ContractType, lease.StartDate, lease.EndDate);
@@ -832,14 +795,12 @@ public class LeaseSigningService(
     private Task EnsurePeriodFreeAsync(LeaseContract lease, CancellationToken cancellationToken) =>
         LeasePeriodGuard.EnsureFreeAsync(db, lease.PropertyId, lease.Id, lease.StartDate, LeasePeriodRules.EffectiveEnd(lease), cancellationToken);
 
-    /// <summary>The contract is not signed by every party yet (Draft, AwaitingSignature, PartiallySigned).</summary>
     private static void EnsureNotSignedYet(LeaseContract lease)
     {
         if (!RliRegistrationDeadline.IsBeforeFullSignature(lease.Status))
             throw new DomainConflictException(LeaseSigningErrorCodes.AlreadySigned, "LeaseAlreadySigned");
     }
 
-    /// <summary>A later stipula declaration: only a lease signed by every party whose stipula was never recorded.</summary>
     private static void EnsureStipulaCanBeDeclared(LeaseContract lease)
     {
         if (RliRegistrationDeadline.IsBeforeFullSignature(lease.Status))
@@ -849,7 +810,6 @@ public class LeaseSigningService(
             throw new DomainConflictException(LeaseSigningErrorCodes.StipulaAlreadyRecorded, "LeaseStipulaAlreadyRecorded");
     }
 
-    /// <summary>The stipula is a calendar date (Europe/Rome) not after today.</summary>
     private DateTime EnsureStipulaDateNotInFuture(DateTime stipulaDate)
     {
         if (RomeCalendar.DateInRome(stipulaDate) > _clock.TodayInRomeAsDateOnly())
@@ -936,7 +896,6 @@ public class LeaseSigningService(
             .ToListAsync(cancellationToken);
     }
 
-    /// <summary>The lease as stored now (a tracked instance is refreshed: its values may predate the lock).</summary>
     private async Task<LeaseContract?> ReloadLeaseAsync(Guid leaseId, CancellationToken cancellationToken)
     {
         var lease = await db.LeaseContracts.SingleOrDefaultAsync(l => l.Id == leaseId, cancellationToken);

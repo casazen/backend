@@ -2,12 +2,8 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Authorization;
 
-/// <summary>A role of a context (<c>Roles.ContextKey</c> and <c>RoleKey</c>) that a membership row points to.</summary>
 public sealed record ProjectedRole(string ContextKey, string RoleKey);
 
-/// <summary>
-/// A role row seeded by the migration <c>AddOrgMembership</c> (<c>HasData</c>), with the permissions it holds.
-/// </summary>
 public sealed record SeededRole(int Id, string ContextKey, string RoleKey, IReadOnlyList<string> Permissions);
 
 /// <summary>
@@ -42,28 +38,19 @@ public static class OrgRoleCatalog
     public const string ShortRent = "short-rent";
     public const string LongRent = "long-rent";
 
-    /// <summary>Role key of the owner of the short-rent context (<c>property_owner</c>).</summary>
     public const string ShortRentOwnerRoleKey = "property_owner";
 
-    /// <summary>Role key of the owner of the long-rent context (<c>long_term_landlord</c>).</summary>
     public const string LongRentOwnerRoleKey = "long_term_landlord";
 
     public const string PropertyManagerRoleKey = "property_manager";
     public const string StaffRoleKey = "staff";
     public const string AccountantRoleKey = "accountant";
 
-    /// <summary>The contexts a person works in (the <i>areas</i> they are added to).</summary>
     public static IReadOnlyList<string> RentalContexts { get; } = [ShortRent, LongRent];
 
     public static bool IsRentalContext(string contextKey) =>
         RentalContexts.Contains(contextKey, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// The one rental mode a member works in, when it works in a single area; <c>null</c> when it works in both, or in none that
-    /// is known (AM-02c). A collaborator «Solo alcuni» reaches the properties it was given only while their mode is one of its
-    /// areas: with a single area the other mode is out, with both nothing narrows the grants, and with none known (a drift the
-    /// reconcile reports; the member holds no context permission then) the grants are not narrowed either.
-    /// </summary>
     public static RentalMode? SingleModeOf(IEnumerable<string> rentalContexts)
     {
         ArgumentNullException.ThrowIfNull(rentalContexts);
@@ -72,7 +59,6 @@ public static class OrgRoleCatalog
         return areas.Count == 1 ? (areas[0] == LongRent ? RentalMode.Long : RentalMode.Short) : null;
     }
 
-    /// <summary>The role key of <paramref name="role"/> in the account context; <c>null</c> when the role has no account membership.</summary>
     public static string? AccountRoleKey(OrgRole role) => role switch
     {
         OrgRole.Owner => AccountContext.RoleKeys.Owner,
@@ -82,7 +68,6 @@ public static class OrgRoleCatalog
         _ => null,
     };
 
-    /// <summary>The role key of <paramref name="role"/> in the rental context <paramref name="rentalContext"/>.</summary>
     public static string HostRoleKey(OrgRole role, string rentalContext)
     {
         if (!IsRentalContext(rentalContext))
@@ -100,10 +85,6 @@ public static class OrgRoleCatalog
         };
     }
 
-    /// <summary>
-    /// The membership rows <paramref name="role"/> implies for a person who works in <paramref name="rentalContexts"/>:
-    /// the account row of the role, if it has one, then one row per rental context.
-    /// </summary>
     public static IReadOnlyList<ProjectedRole> ProjectionOf(OrgRole role, IEnumerable<string> rentalContexts)
     {
         var projection = new List<ProjectedRole>();
@@ -166,9 +147,6 @@ public static class OrgRoleCatalog
         new(5, AccountContext.Key, AccountContext.RoleKeys.Admin, AccountContext.Permissions.All),
         new(6, AccountContext.Key, AccountContext.RoleKeys.Accountant, [AccountContext.Permissions.BillingRead]),
 
-        // Property manager: everything operational, plus the org's trusted suppliers; no billing, no team. E03/F04/US02/T01: it decides
-        // the identity verifications of the guests too (the owner's role 1 gets it from the seed of AppDbContext; neither the
-        // collaborator nor the accountant has it). E50/F01/US01/T01: it sets up the guest portal («Portale ospiti»), like the owner.
         new(7, ShortRent, PropertyManagerRoleKey,
             [
                 .. ShortRentOperational,
@@ -184,12 +162,9 @@ public static class OrgRoleCatalog
             ["property.read", "booking.read", "guest.read", "guest.write", HostPermissions.ServiceRequestWrite]),
         new(10, LongRent, StaffRoleKey, ["property.read"]),
 
-        // Accountant: reads, never writes. Its invoices are in the account context (org.billing.read).
         new(11, ShortRent, AccountantRoleKey, ["property.read", "booking.read", "payment.read"]),
         new(12, LongRent, AccountantRoleKey, ["property.read", "lease.read"]),
 
-        // Property manager in the account context (AM-02c, decision AM-D12): «Fornitori» and nothing else of the area. It holds
-        // neither org.members.manage nor org.billing.*, so it never passes OrgBillingAdmin or the team endpoints.
         new(13, AccountContext.Key, AccountContext.RoleKeys.Manager, [AccountContext.Permissions.SuppliersManage]),
     ];
 }

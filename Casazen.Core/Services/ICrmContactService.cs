@@ -19,13 +19,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface ICrmContactService
 {
-    /// <summary>
-    /// Creates the contact or changes the one with the same keyed value (org, channel, hash). Fills the profile, the guest, the display name and
-    /// the language when the contact has none; sets the basis the origin gives (<see cref="CrmContactRules.ResolveBasis"/>) when it is stronger
-    /// than the one the contact has. An e-mail address that arrives with an OTA booking, or is on a relay domain of <c>Crm:OtaForwardDomains</c>,
-    /// is stored as <see cref="GuestContactOrigin.OtaForward"/> and service only. An address already on the suppression list is flagged
-    /// suppressed. Returns <c>null</c> when the value is not an e-mail address or a phone number that can be stored; nothing is written then.
-    /// </summary>
     Task<GuestContact?> UpsertContactAsync(CrmContactInput input, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -82,11 +75,6 @@ public interface ICrmContactService
     Task<IReadOnlyList<GuestContact>> SyncFromGuestAsync(Guid guestId, CancellationToken cancellationToken = default);
 }
 
-/// <summary>What a basis rests on: the version of the text or of the notice the person saw, when, where, and from which address.</summary>
-/// <param name="Version">Version of the consent text or of the soft opt-in notice; at most 100 characters.</param>
-/// <param name="RecordedAt">When the person saw it or gave it (UTC).</param>
-/// <param name="Source">Where it happened, as the privacy history records it; <c>null</c> when not known.</param>
-/// <param name="IpAddress">Address of the person's connection, as evidence; <c>null</c> when there is none; at most 50 characters.</param>
 public sealed record CrmBasisEvidence(string Version, DateTime RecordedAt, GuestConsentSource? Source = null, string? IpAddress = null);
 
 /// <summary>A contact to create or to change (<see cref="ICrmContactService.UpsertContactAsync"/>).</summary>

@@ -30,8 +30,6 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        // One query whatever the number of bookings (A2-17): org and scope filters in SQL, property and guest joined,
-        // never a lookup per row. Read only, so nothing is tracked.
         var query = context.Bookings
             .AsNoTracking()
             .Where(b => b.OrgId == scope.OrgId)
@@ -68,8 +66,6 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         DateTime checkOut,
         int? directPendingTtlMinutes = null)
     {
-        // Normalize to date-only to prevent time-component false conflicts (e.g. same-day turnover).
-        // A checkout on Apr 5 at 10:00 and a checkin on Apr 5 at 15:00 is a valid same-day turnover.
         var checkInDate = checkIn.Date;
         var checkOutDate = checkOut.Date;
 
@@ -91,7 +87,6 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         if (consents.Count == 0)
             throw new ArgumentException("At least one record of the privacy history is expected.", nameof(consents));
 
-        // The records belong to the guest snapshot written with the booking: a record of another guest is a bug, not a row.
         if (consents.Any(consent => consent.GuestId != booking.GuestId))
             throw new ArgumentException("Every record must belong to the guest of the booking.", nameof(consents));
 
@@ -106,7 +101,6 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             (await HasActiveOverlapAsync(booking.PropertyId, booking.CheckInDate.Date, booking.CheckOutDate.Date) ||
              await HasBlockingCalendarBlockAsync(booking)))
         {
-            // The booking is refused: the events its caller recorded for it go with it, not into the next save of this context.
             BookingEvents.Withdraw(context, booking.Id);
             throw new InvalidOperationException(PropertyUnavailableMessage);
         }
@@ -138,8 +132,6 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             throw new InvalidOperationException(PropertyUnavailableMessage);
         }
 
-        // A booking loaded by this context is saved with its changed columns only: Update() would mark the whole graph
-        // (property, guest, payments) modified and write back values another request may have changed meanwhile.
         if (context.Entry(booking).State == EntityState.Detached)
             context.Bookings.Update(booking);
         await context.SaveChangesAsync();
@@ -182,14 +174,12 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             x.OrgId == booking.OrgId && x.BookingId == booking.Id).ToListAsync());
         context.Payments.RemoveRange(booking.Payments);
         context.Bookings.Remove(booking);
-        // The attempt was never a booking (BK-18): the events of its creation, not published yet, go with it.
         context.OutboxEvents.RemoveRange(await context.OutboxEvents
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(e => e.OrgId == booking.OrgId && e.EntityId == bookingId && e.DispatchedAt == null)
             .ToListAsync());
         await context.SaveChangesAsync();
 
-        // IgnoreQueryFilters: a reference from any org keeps the guest, as the Restrict foreign keys count every row.
         var guestStillReferenced =
             await context.Bookings.IgnoreQueryFilters().AnyAsync(b => b.GuestId == guestId) ||
             await context.AlloggiatiWebReports.IgnoreQueryFilters().AnyAsync(r => r.GuestId == guestId);
@@ -243,10 +233,6 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         return await BookingsTakingNights(context, propertyId, checkInDate, checkOutDate, pendingCutoff, excludeBookingId).AnyAsync();
     }
 
-    /// <summary>
-    /// Whether a booking other than <paramref name="bookingId"/> takes a night of the stay: the check <see cref="UpdateAsync"/> makes under the
-    /// property lock, readable before it, so the edit of a booking can refuse dates that are taken before any money moves (E08/F02/US01/T01).
-    /// </summary>
     internal static Task<bool> TakesNightsOfAnotherBookingAsync(
         AppDbContext context,
         Guid bookingId,
@@ -264,9 +250,6 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         HoldExpiryCutoff? pendingCutoff,
         Guid? excludeBookingId)
     {
-        // With a cutoff, expired checkout holds do not count (availability); without one (the final check under the
-        // property lock before an insert or update) every booking that is not cancelled does. The nights are those of the
-        // public availability (PropertyOccupancy, BK-05).
         var query = context.Bookings
             .Where(PropertyOccupancy.BookingTakesNightIn(propertyId, checkInDate, checkOutDate))
             .Where(CheckoutHolds.OccupiesDates(pendingCutoff));

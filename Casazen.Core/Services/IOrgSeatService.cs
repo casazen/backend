@@ -12,22 +12,17 @@ namespace Casazen.Core.Services;
 /// <param name="PendingInvitations">Invitations still pending whose expiry has not passed: each holds a seat.</param>
 public sealed record OrgSeatUsage(int Max, int ActiveMembers, int PendingInvitations)
 {
-    /// <summary>Seats in use: active members plus open invitations.</summary>
     public int Used => ActiveMembers + PendingInvitations;
 
     public bool IsUnlimited => Max == int.MaxValue;
 
-    /// <summary>Free seats (never negative); <see cref="int.MaxValue"/> when unlimited.</summary>
     public int Available => IsUnlimited ? int.MaxValue : Math.Max(0, Max - Used);
 
-    /// <summary>True when one more person can be invited.</summary>
     public bool CanInvite => IsUnlimited || Used < Max;
 }
 
-/// <summary>Stable codes of the refusals about seats (409), translated by the clients.</summary>
 public static class OrgSeatErrors
 {
-    /// <summary>409: the plan has no free seat for another person (a new invitation, or the reactivation of a member).</summary>
     public const string LimitReached = "org_seat_limit_reached";
 }
 
@@ -39,7 +34,6 @@ public static class OrgSeatErrors
 /// </summary>
 public interface IOrgSeatService
 {
-    /// <summary>The seats of <paramref name="orgId"/> right now.</summary>
     Task<OrgSeatUsage> GetUsageAsync(Guid orgId, CancellationToken cancellationToken = default);
 
     /// <summary>

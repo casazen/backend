@@ -13,13 +13,10 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>Where a message the host is alerted about comes from: a conversation of a channel or the guest area of a direct booking.</summary>
 public enum HostMessageSource
 {
-    /// <summary>A conversation copied from the channel manager (<see cref="OtaMessageThread"/>, key <c>ota:{guid}</c>).</summary>
     Ota = 1,
 
-    /// <summary>The conversation of a direct booking (<see cref="GuestThread"/>, key <c>direct:{guid}</c>).</summary>
     Direct = 2,
 }
 
@@ -41,7 +38,6 @@ public sealed record HostMessageAlert(
     Guid MessageId,
     DateTime OccurredAtUtc)
 {
-    /// <summary>The key of the conversation in the hub of messages.</summary>
     public string ThreadKey => (Source == HostMessageSource.Ota ? "ota:" : "direct:") + ThreadId.ToString("D");
 }
 
@@ -80,21 +76,14 @@ public sealed class HostMessageAlertDelivery(
     PublicSiteLinks links,
     ILogger<HostMessageAlertDelivery> logger)
 {
-    /// <summary>
-    /// The permission that opens the conversations of the hub (the policy <c>BookingRead</c> of <c>api/messages</c>): who cannot open a
-    /// thread is not told about it. In the context <see cref="OrgRoleCatalog.ShortRent"/>.
-    /// </summary>
     public const string MessageReadPermission = "booking.read";
 
     private const string Tenant = AppDbContext.TenantQueryFilter;
 
-    /// <summary>How long an email slot is kept after its last use before the next claim of the person deletes it.</summary>
     private static readonly TimeSpan SlotRetention = TimeSpan.FromDays(7);
 
-    /// <summary>How long a failed alert of a direct message waits before the job delivers it again (a passing error has time to pass).</summary>
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
 
-    /// <summary>Alerts every host the preferences select. Throws, after trying everybody, when a person could not be alerted.</summary>
     public async Task DeliverAsync(HostMessageAlert alert, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(alert);
@@ -125,7 +114,6 @@ public sealed class HostMessageAlertDelivery(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // Never the user id in the log: the thread and the org tell where to look.
                 logger.LogError(ex, "Message alert {ThreadKey} of org {OrgId}: a person could not be alerted", alert.ThreadKey, alert.OrgId);
                 failures.Add(ex);
             }
@@ -199,8 +187,6 @@ public sealed class HostMessageAlertDelivery(
         }
     }
 
-    // ─── One person ───
-
     private async Task DeliverToAsync(HostMessageAlert alert, Subject subject, NotificationRecipient recipient, CancellationToken ct)
     {
         if (recipient.NowChannels.HasFlag(NotificationChannels.CounterOnly))
@@ -213,7 +199,6 @@ public sealed class HostMessageAlertDelivery(
         if (recipient.DeferredChannels == NotificationChannels.None || recipient.DueAtUtc is not { } due)
             return;
 
-        // An email that waits holds the slot of the conversation until it is due: the other messages of the night queue no second one.
         var deferred = recipient.DeferredChannels;
         var claimedEmail = false;
         if (deferred.HasFlag(NotificationChannels.Email))
@@ -245,16 +230,11 @@ public sealed class HostMessageAlertDelivery(
         }
         catch (Exception) when (claimedEmail)
         {
-            // Nothing is waiting for the slot: give it back, so the event delivered again can claim it and schedule the email.
             await ReleaseEmailSlotAsync(alert, recipient.UserId, due, ct);
             throw;
         }
     }
 
-    /// <summary>
-    /// The push and the email of one person. <paramref name="claimedAtUtc"/> is the instant the email slot was already claimed for (an email that
-    /// waited for the quiet hours to end); <c>null</c> means the slot is claimed here, at the instant of the message.
-    /// </summary>
     private async Task SendHeldChannelsAsync(
         HostMessageAlert alert,
         Subject subject,
@@ -285,14 +265,10 @@ public sealed class HostMessageAlertDelivery(
         var content = EmailOf(alert, subject);
         if (!emailQueue.Enqueue(email, content, TemplateOf(alert)))
         {
-            // Not queued (no provider, no address): give the slot back, so the next message tries again.
             await ReleaseEmailSlotAsync(alert, userId, slotAt, ct);
         }
     }
 
-    // ─── Counter ───
-
-    /// <summary>Writes the notification of the bell for the person, once per event, and tells its open sessions. False when it was there already.</summary>
     private async Task<bool> WriteBellAsync(HostMessageAlert alert, Subject subject, string userId, CancellationToken ct)
     {
         var key = KeyOf(alert, userId);
@@ -320,7 +296,6 @@ public sealed class HostMessageAlertDelivery(
         }
         catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex, InAppNotification.OncePerEventAndUserIndexName))
         {
-            // The same event written by another run at the same moment: that row is the one.
             db.Entry(row).State = EntityState.Detached;
             return false;
         }
@@ -331,20 +306,12 @@ public sealed class HostMessageAlertDelivery(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The row is stored: the real-time update is a hint, the bell reads the count on its next poll.
             logger.LogWarning(ex, "Message alert {ThreadKey}: the real-time update of the bell failed", alert.ThreadKey);
         }
 
         return true;
     }
 
-    // ─── Email slot ───
-
-    /// <summary>
-    /// Claims the slot of the person and the conversation at <paramref name="atUtc"/>: true when no email went (or waits) in the last
-    /// <see cref="GuestMessageRules.NotifyIntervalMinutes"/> minutes. One conditional statement, so two messages at the same moment queue one
-    /// email, and an event delivered again (after another person of the same event failed) finds the slot taken and emails nobody twice.
-    /// </summary>
     private async Task<bool> ClaimEmailSlotAsync(HostMessageAlert alert, string userId, DateTime atUtc, CancellationToken ct)
     {
         var at = UtcDateTime.TruncateToMicroseconds(UtcDateTime.Normalize(atUtc));
@@ -361,7 +328,6 @@ public sealed class HostMessageAlertDelivery(
         }
         else
         {
-            // EF InMemory (unit tests) has no conditional statement: the tracked row is changed and saved.
             var free = await slots
                 .Where(s => s.OrgId == alert.OrgId && s.UserId == userId && s.ThreadKey == threadKey && s.LastEmailAt <= cutoff)
                 .FirstOrDefaultAsync(ct);
@@ -376,7 +342,6 @@ public sealed class HostMessageAlertDelivery(
 
         if (!claimed)
         {
-            // Either the slot is taken, or there is none yet.
             if (await slots.AsNoTracking().AnyAsync(s => s.OrgId == alert.OrgId && s.UserId == userId && s.ThreadKey == threadKey, ct))
                 return false;
 
@@ -388,7 +353,6 @@ public sealed class HostMessageAlertDelivery(
             }
             catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex, NotificationEmailSlot.OncePerUserAndThreadIndexName))
             {
-                // Another message created it first: that one has the slot.
                 db.Entry(created).State = EntityState.Detached;
                 return false;
             }
@@ -398,7 +362,6 @@ public sealed class HostMessageAlertDelivery(
         return true;
     }
 
-    /// <summary>Gives the slot back after an email that could not be queued: the row of this very claim goes, so the next message is free.</summary>
     private async Task ReleaseEmailSlotAsync(HostMessageAlert alert, string userId, DateTime atUtc, CancellationToken ct)
     {
         var at = UtcDateTime.TruncateToMicroseconds(UtcDateTime.Normalize(atUtc));
@@ -416,7 +379,6 @@ public sealed class HostMessageAlertDelivery(
         await db.SaveChangesAsync(ct);
     }
 
-    /// <summary>The slots of the person not used for a week are of conversations long over: they go with the next claim.</summary>
     private async Task PruneEmailSlotsAsync(Guid orgId, string userId, DateTime atUtc, CancellationToken ct)
     {
         var limit = atUtc - SlotRetention;
@@ -433,8 +395,6 @@ public sealed class HostMessageAlertDelivery(
         await db.SaveChangesAsync(ct);
     }
 
-    // ─── Deferral ───
-
     private void Schedule(QueuedMessageAlert queued, DateTime dueUtc)
     {
         var due = new DateTimeOffset(DateTime.SpecifyKind(dueUtc, DateTimeKind.Utc));
@@ -448,8 +408,6 @@ public sealed class HostMessageAlertDelivery(
             jobId);
     }
 
-    // ─── What the alert is about ───
-
     private NotificationEventContext ContextOf(HostMessageAlert alert, Subject subject, DateTime? atUtc, string? onlyUserId = null) =>
         new(
             alert.OrgId,
@@ -459,15 +417,10 @@ public sealed class HostMessageAlertDelivery(
             OnlyUserId: onlyUserId,
             AtUtc: atUtc);
 
-    /// <summary>
-    /// What the texts of the alert need, read from the thread in its org; <c>null</c> when the thread (or, for a channel, the inbound message)
-    /// is not there any more: nothing to tell about. The property is the one of the thread <b>now</b>, so the audience follows a mapping that changed.
-    /// </summary>
     private async Task<Subject?> SubjectAsync(HostMessageAlert alert, CancellationToken ct)
     {
         if (alert.Source == HostMessageSource.Ota)
         {
-            // The inbound message of the event, in the org: read as a subquery (a collection expression cannot be in an expression tree).
             var messages = db.OtaMessages.IgnoreQueryFilters([Tenant]);
             var thread = await db.OtaMessageThreads
                 .AsNoTracking()
@@ -513,7 +466,6 @@ public sealed class HostMessageAlertDelivery(
                 direct.CheckOutDate);
     }
 
-    /// <summary>What an alert reads from its thread. <c>ChannelName</c> is set for a channel, the guest and the stay for a direct booking.</summary>
     private sealed record Subject(
         Guid? PropertyId,
         string? PropertyName,
@@ -523,22 +475,15 @@ public sealed class HostMessageAlertDelivery(
         DateTime? CheckIn,
         DateTime? CheckOut)
     {
-        /// <summary>The booking the push names: a direct thread's, none for a channel's.</summary>
         public Guid? BookingIdForPush(HostMessageAlert alert) => alert.Source == HostMessageSource.Direct ? BookingId : null;
     }
 
-    /// <summary>The kind of the notification and of the push (<c>data.type</c>).</summary>
     private static string TypeOf(HostMessageAlert alert) =>
         alert.Source == HostMessageSource.Ota ? PushTypes.OtaMessage : PushTypes.GuestMessage;
 
-    /// <summary>The entity of the notification: the thread for a channel, the booking for a direct thread (reading the thread clears it).</summary>
     private static Guid EntityOf(HostMessageAlert alert, Subject subject) =>
         alert.Source == HostMessageSource.Ota ? alert.ThreadId : subject.BookingId ?? alert.ThreadId;
 
-    /// <summary>
-    /// The delivery key of the notification and of the push: one per message, and per person for a channel. The urgent alert the assistant raises for a message (E05/F05/US02/T01) has a
-    /// key of its own, per message and person: under the key of the new message it would find the push and the notification that message already had, and tell nobody.
-    /// </summary>
     private static string KeyOf(HostMessageAlert alert, string userId) =>
         alert.EventType == NotificationEventType.UrgentGuestMessage
             ? PushDeliveryKeys.UrgentGuestMessage(alert.MessageId, userId)

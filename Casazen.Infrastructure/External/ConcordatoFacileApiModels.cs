@@ -25,7 +25,6 @@ public sealed record LeasePracticesDto
 /// </summary>
 public sealed record PracticeDto
 {
-    /// <summary><c>P-</c> and 16 hexadecimal characters.</summary>
     [JsonPropertyName("practiceId")]
     public required string PracticeId { get; init; }
 
@@ -42,21 +41,12 @@ public sealed record PracticeDto
     [JsonPropertyName("comune")]
     public string? Comune { get; init; }
 
-    /// <summary>
-    /// <c>true</c> when the comune of the practice is not the one of the link, <c>false</c> when it is; <c>null</c> when the link did not
-    /// name a comune or the practice is not linked to a lease (v0.2 §4).
-    /// </summary>
     [JsonPropertyName("comuneDiffersFromLink")]
     public bool? ComuneDiffersFromLink { get; init; }
 
-    /// <summary>
-    /// Only with <see cref="CfPracticeStatus.ClosedWithoutAttestation"/>: <c>duplicate</c>, <c>withdrawn</c>, <c>not_compliant</c> or
-    /// <c>other</c> (v0.2 §5). Kept as received: a value added later is shown as it comes.
-    /// </summary>
     [JsonPropertyName("closeReason")]
     public string? CloseReason { get; init; }
 
-    /// <summary>Only in <c>GET /v1/practices/{practiceId}</c>; <c>null</c> when the practice is not linked to a lease (v0.2 §4, §6).</summary>
     [JsonPropertyName("leaseId")]
     public Guid? LeaseId { get; init; }
 }
@@ -86,7 +76,6 @@ internal sealed class CfPracticeStatusJsonConverter : JsonConverter<CfPracticeSt
             return CfPracticeStatus.Unknown;
         }
 
-        // Try to parse the value; if it fails or is not defined, return Unknown
         if (Enum.TryParse<CfPracticeStatus>(value, ignoreCase: true, out var status) && Enum.IsDefined(status))
         {
             return status;

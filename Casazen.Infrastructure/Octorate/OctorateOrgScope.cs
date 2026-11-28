@@ -23,7 +23,6 @@ public sealed class OctorateOrgScope(ITenantContext tenantContext) : IOctorateOr
         if (orgId == Guid.Empty)
             throw new ArgumentException("An Octorate call is made for an organization.", nameof(orgId));
 
-        // Inside an authenticated request the calls are the request's org's: never another one, also by mistake.
         if (tenantContext.FilterEnabled && tenantContext.OrgId != orgId)
             throw new InvalidOperationException("An authenticated request cannot make Octorate calls for another organization.");
 

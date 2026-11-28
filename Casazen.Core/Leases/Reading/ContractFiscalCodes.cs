@@ -5,46 +5,31 @@ using Casazen.Core.Regulatory;
 
 namespace Casazen.Core.Leases.Reading;
 
-/// <summary>A fiscal code found in the text of a contract: the valid code, where it starts and how long it was written.</summary>
-/// <param name="Repaired">The code failed as printed; one character the OCR confuses with another was put right, or one it added was taken out.</param>
 public readonly record struct FoundFiscalCode(string Code, int Index, int Length, bool Repaired);
 
-/// <summary>
-/// Finds the fiscal codes of the people in the text of a contract (NL-DOCS) and tells whether a name goes with one. A code counts only
-/// if it passes <see cref="ItalianFiscalCode"/> (structure, month, day and check character): a string of sixteen letters and digits that
-/// is anything else is not a person. An OCR that read a <c>0</c> as an <c>O</c> (or the other way round) in a place where only the
-/// other can be is put right when exactly one correction makes the check character pass; so is a code the OCR wrote with one character too
-/// many (seventeen), when taking out one character leaves exactly one valid code. Pure, no I/O.
-/// </summary>
 public static partial class ContractFiscalCodes
 {
     private const RegexOptions Options = RegexOptions.CultureInvariant;
     private const string OmocodiaLetters = "LMNPQRSTUV";
 
-    /// <summary>Positions (0-based) of the 16-character code that hold a digit (or its omocodia letter).</summary>
     private static readonly int[] DigitPositions = [6, 7, 9, 10, 12, 13, 14];
 
-    /// <summary>What a digit looks like when it is read as a letter (letter positions), best guess first.</summary>
     private const string LettersLikeDigits = "0:OQD,1:IL,2:Z,4:A,5:S,6:G,7:T,8:B";
 
-    /// <summary>What a letter looks like when it is read as a digit (digit positions).</summary>
     private const string DigitsLikeLetters = "O:0,Q:0,D:0,I:1,Z:2,A:4,S:5,G:6,T:7,B:8";
 
     [GeneratedRegex(@"(?<![A-Za-z0-9])[A-Za-z0-9]{16}(?![A-Za-z0-9])", Options, 2000)]
     private static partial Regex Token();
 
-    // A scan can put one character too many in a code (a stray letter before, inside or after it): seventeen, with nothing alphanumeric around.
     [GeneratedRegex(@"(?<![A-Za-z0-9])[A-Za-z0-9]{17}(?![A-Za-z0-9])", Options, 2000)]
     private static partial Regex TokenWithOneTooMany();
 
-    // After its label, where an OCR may have put a space inside the code.
     [GeneratedRegex(
         @"(?:\bc\s?\.?\s?f\s?\.?|\bcod(?:ice|\.)?\s*fisc(?:ale|\.)?)\s*[:.\-]?\s*(?<code>(?:[A-Za-z0-9]\s?){15}[A-Za-z0-9])(?![A-Za-z0-9])",
         Options | RegexOptions.IgnoreCase,
         2000)]
     private static partial Regex Labelled();
 
-    /// <summary>The valid fiscal codes of natural persons in <paramref name="text"/>, in the order of their first appearance, each code once.</summary>
     public static IReadOnlyList<FoundFiscalCode> Find(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -63,8 +48,6 @@ public static partial class ContractFiscalCodes
                 found.Add(new FoundFiscalCode(repaired, index, length, true));
         }
 
-        // A code with one character too many counts only if exactly one code results from taking one character out and it passes every check:
-        // a stray letter put there by the OCR leaves the person's code, anything else of seventeen characters is not a person.
         void ConsiderWithOneTooMany(string raw, int index, int length)
         {
             var printed = new string(raw.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
@@ -83,7 +66,6 @@ public static partial class ContractFiscalCodes
                 found.Add(new FoundFiscalCode(code, index, length, true));
         }
 
-        // The sixteen-character tokens and the seventeen-character ones in the order of the text, so a person's code counts where it first appears.
         var tokens = Token().Matches(text).Select(m => (m.Index, m.Length, m.Value, OneTooMany: false))
             .Concat(TokenWithOneTooMany().Matches(text).Select(m => (m.Index, m.Length, m.Value, OneTooMany: true)))
             .OrderBy(t => t.Index);
@@ -101,11 +83,6 @@ public static partial class ContractFiscalCodes
         return found.OrderBy(f => f.Index).ToList();
     }
 
-    /// <summary>
-    /// The code with the one correction that makes it valid, or <c>null</c>. Only the places that cannot hold what is printed are
-    /// touched (a digit where a letter must be, a letter that is not an omocodia letter where a digit must be): at most two, and only
-    /// if exactly one combination of the usual confusions passes the check character.
-    /// </summary>
     private static string? TryRepair(string code)
     {
         var wrong = new List<int>();
@@ -166,16 +143,12 @@ public static partial class ContractFiscalCodes
         return [];
     }
 
-    // ---- a name and its code -----------------------------------------------------------------------------------------
-
-    /// <summary>The three letters of the surname in a fiscal code: its consonants, then its vowels, padded with X.</summary>
     public static string SurnameCode(string surname)
     {
         var (consonants, vowels) = Letters(surname);
         return Pad(consonants + vowels);
     }
 
-    /// <summary>The three letters of the name in a fiscal code: the first, third and fourth consonant when there are four or more, else as the surname.</summary>
     public static string NameCode(string name)
     {
         var (consonants, vowels) = Letters(name);

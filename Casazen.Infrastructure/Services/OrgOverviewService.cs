@@ -25,7 +25,6 @@ public sealed class OrgOverviewService(
     IOrgActivityService activity,
     TimeProvider? timeProvider = null) : IOrgOverviewService
 {
-    /// <summary>The lines of people the home shows.</summary>
     internal const int RecentActivityCount = 3;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -60,13 +59,11 @@ public sealed class OrgOverviewService(
             seatsSection = new OrgOverviewSeats(usage.Used, usage.Max, usage.IsUnlimited);
             invitations = await InvitationsAsync(orgId, now, cancellationToken);
 
-            // The queue of the requests for access arrives with AM-02d: nobody is waiting before that.
             accessRequests = new OrgOverviewAccessRequests(0);
             properties = await PropertiesAsync(orgId, scope, cancellationToken);
             alloggiati = await AlloggiatiAsync(orgId, scope, cancellationToken);
         }
 
-        // The trusted suppliers arrive with AM-10: the field exists from the start, that task fills it.
         var suppliers = accountPermissions.Contains(OrgOverviewSections.Suppliers) ? new OrgOverviewSuppliers(0) : null;
 
         IReadOnlyList<OrgActivityItem>? recent = null;
@@ -97,8 +94,6 @@ public sealed class OrgOverviewService(
 
     internal async Task<OrgOverviewInvitations> InvitationsAsync(Guid orgId, DateTime now, CancellationToken cancellationToken)
     {
-        // The same rule as the seats: pending and not past its expiry (an expired one the job has not marked yet is already out).
-        // IgnoreQueryFilters like the seats do: the org is the caller's own (passed in, read from its account), explicit below.
         var open = db.OrgInvitations.IgnoreQueryFilters().AsNoTracking()
             .Where(i => i.OrgId == orgId && i.Status == OrgInvitationStatus.Pending && i.ExpiresAt > now);
 

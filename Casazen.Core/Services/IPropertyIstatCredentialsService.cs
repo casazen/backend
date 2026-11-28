@@ -22,7 +22,6 @@ public interface IPropertyIstatCredentialsService
         IstatCredentialsInput credentials,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Removes the credentials of the property; false when there were none.</summary>
     Task<bool> DeleteAsync(Guid propertyId, CancellationToken cancellationToken = default);
 }
 
@@ -32,7 +31,6 @@ public interface IPropertyIstatCredentialsService
 /// <param name="StructureCode">The code of the structure in the regional system (CIR, CUSR...); <c>null</c> or blank when the portal asks for none.</param>
 public sealed record IstatCredentialsInput(string Username, string Password, string? StructureCode)
 {
-    /// <summary>Hides the values from logs and debugger output.</summary>
     public override string ToString() => nameof(IstatCredentialsInput) + " { *** }";
 }
 

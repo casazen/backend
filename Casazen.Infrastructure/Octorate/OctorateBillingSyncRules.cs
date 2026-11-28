@@ -13,10 +13,6 @@ internal static class OctorateBillingSyncRules
 {
     private static readonly JsonSerializerOptions PayloadOptions = new() { PropertyNameCaseInsensitive = true };
 
-    /// <summary>
-    /// True while the sync runs: the Octorate connector is on <b>and</b> the sync of the billing data is (<c>Features:OctorateBillingSync</c>, off until
-    /// the customer endpoints are proven in the sandbox). Either one off and the handlers read and write nothing.
-    /// </summary>
     public static bool IsOn(IFeatureFlags featureFlags)
     {
         ArgumentNullException.ThrowIfNull(featureFlags);
@@ -24,7 +20,6 @@ internal static class OctorateBillingSyncRules
         return featureFlags.IsEnabled(FeatureFlags.OctorateConnector) && featureFlags.IsEnabled(FeatureFlags.OctorateBillingSync);
     }
 
-    /// <summary>The calls the pre-fill of one booking makes to Octorate: the reservation (for the customer record it names) and the record itself.</summary>
     public const int PrefillCalls = 2;
 
     /// <summary>
@@ -69,7 +64,6 @@ internal static class OctorateBillingSyncRules
         return exception is OctorateServerException or OctorateRateLimitException or OctorateAuthException { IsNotConnected: false };
     }
 
-    /// <summary>The payload of <paramref name="domainEvent"/> as <typeparamref name="T"/>, or <c>null</c> when it is not that.</summary>
     public static T? PayloadOf<T>(DomainEvent domainEvent)
         where T : class
     {

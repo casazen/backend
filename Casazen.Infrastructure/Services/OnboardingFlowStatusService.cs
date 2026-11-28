@@ -26,10 +26,8 @@ public sealed class OnboardingFlowStatusService(
     AppDbContext db,
     IEnumerable<IFlowReadinessProvider> providers) : IOnboardingFlowStatusService
 {
-    /// <summary>The most property ids a provider or the activation query is given at once.</summary>
     public const int EvaluationBatchSize = 200;
 
-    /// <summary>The longest search text taken: a longer one is cut.</summary>
     public const int SearchMaxLength = 100;
 
     private static readonly OnboardingFlow[] AllFlows = [.. Enum.GetValues<OnboardingFlow>().OrderBy(flow => (int)flow)];
@@ -92,14 +90,12 @@ public sealed class OnboardingFlowStatusService(
 
         if (wantedState is null)
         {
-            // The page is cut in SQL, then only its properties are evaluated.
             var total = await query.CountAsync(ct);
             var rows = await query.Skip(skipped).Take(pageSize).ToListAsync(ct);
             var items = rows.Count == 0 ? [] : await EvaluateAsync(scope.OrgId, rows, [flow], ct);
             return new FlowPropertyPage(items, total, page, pageSize);
         }
 
-        // The state is derived: evaluate the whole scope (in batches) and cut the page from the ones in the wanted state.
         var matching = new List<FlowPropertyStatus>();
         foreach (var batch in (await query.ToListAsync(ct)).Chunk(EvaluationBatchSize))
         {
@@ -137,7 +133,6 @@ public sealed class OnboardingFlowStatusService(
         foreach (var batch in (await ReachableFacts(scope, search: null, ids).ToListAsync(ct)).Chunk(EvaluationBatchSize))
             statuses.AddRange(await EvaluateAsync(scope.OrgId, batch, wanted, ct));
 
-        // EvaluateAsync gives the statuses flow by flow: back to property by property, in the order of the list.
         var order = statuses.Select(status => status.PropertyId).Distinct().Select((id, index) => (id, index)).ToDictionary(x => x.id, x => x.index);
         return [.. statuses.OrderBy(status => order[status.PropertyId]).ThenBy(status => wanted.IndexOf(status.Flow))];
     }
@@ -171,10 +166,6 @@ public sealed class OnboardingFlowStatusService(
             .Select(p => new FlowPropertyFacts(p.Id, p.Name, p.City, p.RentalMode, p.IsActive));
     }
 
-    /// <summary>
-    /// The status of each of <paramref name="flows"/> on each of <paramref name="properties"/> (at most a batch), property by property in the
-    /// order given. The activation rows are one query; each provider is asked once, about the short-rent, active properties.
-    /// </summary>
     private async Task<IReadOnlyList<FlowPropertyStatus>> EvaluateAsync(
         Guid orgId,
         IReadOnlyList<FlowPropertyFacts> properties,
@@ -209,7 +200,6 @@ public sealed class OnboardingFlowStatusService(
         return statuses;
     }
 
-    /// <summary>What the provider of the flow says about the properties: the one with the highest order; none means «not provided».</summary>
     private async Task<IReadOnlyDictionary<Guid, FlowReadiness>> ReadinessAsync(
         Guid orgId,
         OnboardingFlow flow,

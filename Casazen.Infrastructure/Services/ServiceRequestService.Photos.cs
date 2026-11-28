@@ -8,9 +8,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-// The photos of the work (SP-04): the supplier adds them while the work is on, the host and the supplier read them. They live in
-// the PRIVATE bucket of IFileStorage under service-requests/{requestId}/photos/ and are read only through an authenticated
-// endpoint (the controller authorizes the request, this service opens the file of that request).
 public partial class ServiceRequestService
 {
     public async Task<ServiceRequest> AddWorkPhotosAsync(
@@ -25,7 +22,6 @@ public partial class ServiceRequestService
 
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
 
-        // The photos are the evidence of the work: added while it is on, before it is completed.
         if (request.Status is not (ServiceRequestStatus.PresoInCarico or ServiceRequestStatus.InCorso))
         {
             throw new DomainRuleException(
@@ -43,7 +39,6 @@ public partial class ServiceRequestService
                 photos.Count);
         }
 
-        // All or none: every file is checked on its content before any of them is stored.
         var contentTypes = new List<string>(photos.Count);
         foreach (var photo in photos)
             contentTypes.Add(await ValidatePhotoAsync(photo, cancellationToken));
@@ -86,7 +81,6 @@ public partial class ServiceRequestService
         if (position < 0)
             return null;
 
-        // Only an object of this request's own folder of the private bucket is ever read.
         var key = photos[position].Key;
         if (!StorageKeys.IsValid(key) || !key.StartsWith($"service-requests/{request.Id}/photos/", StringComparison.Ordinal))
         {
@@ -104,11 +98,6 @@ public partial class ServiceRequestService
         return new ServiceRequestPhotoContent(content, StorageKeys.ContentTypeFor(key), $"lavoro-{position + 1}{Path.GetExtension(key)}");
     }
 
-    /// <summary>
-    /// 422 <see cref="ServiceRequestErrorCodes.PhotoInvalid"/> for a file that is empty, too large, not JPEG/PNG/WebP by
-    /// extension or declared type, or whose content is not the image it claims to be (the declared type and the extension are
-    /// the client's word: the content decides). Returns the content type found in the file.
-    /// </summary>
     private async Task<string> ValidatePhotoAsync(IFormFile file, CancellationToken cancellationToken)
     {
         var name = DisplayName(file);
@@ -145,7 +134,6 @@ public partial class ServiceRequestService
         return name.Length > 100 ? name[..100] : name;
     }
 
-    /// <summary>Removes objects stored by an upload that failed, so none is left that no request lists. Best effort.</summary>
     private async Task RemoveObjectsAsync(IReadOnlyList<ServiceRequestPhoto> stored)
     {
         foreach (var photo in stored)

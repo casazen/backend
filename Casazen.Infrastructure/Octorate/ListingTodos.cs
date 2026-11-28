@@ -16,16 +16,12 @@ namespace Casazen.Infrastructure.Octorate;
 /// </summary>
 public sealed class ListingTodos(AppDbContext db, IInternalActivityService activities)
 {
-    /// <summary>The kind of entity the items are about.</summary>
     public const string EntityType = nameof(ListingChannelState);
 
-    /// <summary>The kind of entity the item about the photos that the channel manager did not name is about: the photos of a property, one item for each property.</summary>
     public const string PhotosEntityType = "ListingPhotos";
 
-    /// <summary>The reason of that item: the channel manager took photos and did not say how it names them, so removing one in CasaZen cannot remove it there.</summary>
     public const string PhotoNotNamedReason = "listing_photo_not_named";
 
-    /// <summary>The reason of the item about a photo that could not be removed on the channel manager (one item for each photo).</summary>
     public const string PhotoNotRemovedReason = "listing_photo_not_removed";
 
     /// <summary>Raises the item for the channel row (idempotent while one is open) and returns its id.</summary>
@@ -82,7 +78,6 @@ public sealed class ListingTodos(AppDbContext db, IInternalActivityService activ
     /// <summary>Closes one item by its id (idempotent: an item already closed stays as it was closed the first time).</summary>
     public Task CloseItemAsync(Guid activityId, string closedBy, CancellationToken ct) => activities.CloseAsync(activityId, closedBy, ct);
 
-    /// <summary>Closes the open items of that kind for the channel row; nothing happens when there is none.</summary>
     public async Task CloseAsync(ActivityType type, ListingChannelState row, string closedBy, CancellationToken ct)
     {
         var name = type.ToString();

@@ -72,7 +72,6 @@ public sealed class HostInviteService(
             ExpiresAt = now.Add(HostInviteRules.Validity),
         };
 
-        // Rendered before saving: a missing App:PublicSiteBaseUrl is a configuration error, not an invite with a wrong link.
         var inviterName = actor.IsAdmin ? null : await InviterDisplayNameAsync(actor, inviter?.FirstName, inviter?.LastName, cancellationToken);
         var content = BuildEmail(invite, token, inviterName);
 
@@ -138,7 +137,6 @@ public sealed class HostInviteService(
             .Take(pageSize)
             .ToListAsync(cancellationToken);
 
-        // Who invited is shown to the admin only: a host sees its own invites, it knows who invited.
         var inviters = actor.IsAdmin ? await InvitersAsync(rows, cancellationToken) : [];
         return (rows.Select(i => ToItem(i, now, inviters.GetValueOrDefault(i.Id))).ToList(), total);
     }
@@ -165,7 +163,6 @@ public sealed class HostInviteService(
         var tokenHash = SupplierInviteTokens.Hash(token);
         var previouslyPending = HostInviteRules.StateOf(invite, now) == HostInviteState.Pending;
 
-        // The new link is rendered before anything changes (a missing public URL is a configuration error).
         var expiresAt = now.Add(HostInviteRules.Validity);
         var content = BuildEmail(invite, token, inviterName, expiresAt);
 
@@ -173,7 +170,6 @@ public sealed class HostInviteService(
         await using (var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
                          db, cancellationToken, (PostgresAdvisoryLocks.Scope.HostInviteQuota, LockKey(invite.InvitedByOrgId is null ? actor : new HostInviteActor(invite.InvitedByUserId, invite.InvitedByOrgId, false)))))
         {
-            // The quota is the host org's; an admin has none, so an admin's resend neither is blocked by it nor uses it.
             if (!actor.IsAdmin && invite.InvitedByOrgId is { } orgId)
             {
                 await EnsureQuotaAsync(orgId, now, cancellationToken);
@@ -298,7 +294,6 @@ public sealed class HostInviteService(
 
         if (invite.IsUsed)
         {
-            // Sending the same acceptance twice finds it done; another account finds it taken.
             if (string.Equals(invite.UsedByUserId, request.UserId, StringComparison.Ordinal))
                 return;
             throw new DomainConflictException(HostInviteErrors.Used, HostInviteErrors.UsedMessageKey);
@@ -332,8 +327,6 @@ public sealed class HostInviteService(
             invite.Id, request.UserId, invite.InvitedByUserId, invite.InvitedByOrgId);
     }
 
-    // ─── helpers ───
-
     private HostInviteOptions Options => options.Value;
 
     private DateTime Now() => timeProvider.GetUtcNow().UtcDateTime;
@@ -361,7 +354,6 @@ public sealed class HostInviteService(
         OccurredAt = now,
     };
 
-    /// <summary>The invite of an id, for the actor: a host reaches only its own (404 for any other, as for an unknown id).</summary>
     private async Task<HostInviteRecord> FindForActorAsync(HostInviteActor actor, Guid inviteId, CancellationToken cancellationToken)
     {
         var invite = await db.HostInviteRecords.FirstOrDefaultAsync(i => i.Id == inviteId, cancellationToken);
@@ -405,17 +397,11 @@ public sealed class HostInviteService(
         }
     }
 
-    /// <summary>True when the inviter already has a pending invite for the email (another than <paramref name="exceptId"/>).</summary>
     private Task<bool> HasPendingFromAsync(string inviterUserId, string email, Guid? exceptId, DateTime now, CancellationToken cancellationToken) =>
         db.HostInviteRecords.AsNoTracking()
             .Where(HostInviteRules.StatePredicate(HostInviteState.Pending, now))
             .AnyAsync(i => i.InvitedByUserId == inviterUserId && i.Email == email && (exceptId == null || i.Id != exceptId), cancellationToken);
 
-    /// <summary>
-    /// Whether the email of the invite may be mailed: true when no account has it. When one does, a platform admin gets the
-    /// explicit 409 <c>host_email_taken</c>; a host gets <c>false</c> and its request goes on as if the email went out (see the class
-    /// remarks).
-    /// </summary>
     private async Task<bool> EmailAllowsSendingAsync(HostInviteActor actor, string email, CancellationToken cancellationToken)
     {
         var taken = await db.Users.AsNoTracking().AnyAsync(u => u.Email.Trim().ToLower() == email, cancellationToken);
@@ -428,7 +414,6 @@ public sealed class HostInviteService(
         return false;
     }
 
-    /// <summary>Name shown to the invitee for a host inviter: its own name, else the name of its org.</summary>
     private async Task<string?> InviterDisplayNameAsync(
         HostInviteActor actor, string? firstName, string? lastName, CancellationToken cancellationToken)
     {

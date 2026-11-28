@@ -2,19 +2,12 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Core.Regulatory;
 
-/// <summary>
-/// Whether a comune is "ad alta tensione abitativa" (ATA) for the canone concordato reliefs, as far as CasaZen knows
-/// (<see cref="HighTensionAreaComune"/>). The list is incomplete: a comune missing from it may still be ATA.
-/// </summary>
 public enum HighTensionAreaStatus
 {
-    /// <summary>The comune is not in CasaZen's ATA list: its status is unknown.</summary>
     NotListed = 0,
 
-    /// <summary>The comune is an ATA candidate whose listing was not checked on the official text.</summary>
     Unverified = 1,
 
-    /// <summary>The ATA listing was checked on the official text (<see cref="HighTensionAreaComune.VerifiedDirectly"/>).</summary>
     Verified = 2,
 }
 
@@ -37,9 +30,7 @@ public static class HighTensionArea
         _ => HighTensionAreaStatus.Unverified,
     };
 
-    /// <summary>True only for a verified ATA comune.</summary>
     public static bool ReliefsApply(HighTensionAreaStatus status) => status == HighTensionAreaStatus.Verified;
 
-    /// <summary>True only for a verified ATA comune.</summary>
     public static bool ReliefsApply(HighTensionAreaComune? comune) => ReliefsApply(StatusOf(comune));
 }

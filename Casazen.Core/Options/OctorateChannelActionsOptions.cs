@@ -24,7 +24,6 @@ public sealed class OctorateChannelActionsOptions
 
     public OctorateChannelActionOptions Agoda { get; set; } = new();
 
-    /// <summary>The entry of <paramref name="source"/>; <c>null</c> for a source that has none (a portal with no value of its own, a source that is no channel): it is closed.</summary>
     public OctorateChannelActionOptions? EntryOf(BookingSource source) => source switch
     {
         BookingSource.Airbnb => Airbnb,
@@ -44,15 +43,11 @@ public sealed class OctorateChannelActionsOptions
 /// </summary>
 public sealed class OctorateChannelActionOptions
 {
-    /// <summary>The channel lets the host change the reservation from CasaZen.</summary>
     public bool CanModify { get; set; }
 
-    /// <summary>The channel lets the host cancel the reservation from CasaZen.</summary>
     public bool CanCancel { get; set; }
 
-    /// <summary>Key of the sentence that says how to ask for a change on the channel.</summary>
     public string? ModifyGuidanceKey { get; set; }
 
-    /// <summary>Key of the sentence that says how to ask for a cancellation on the channel.</summary>
     public string? CancelGuidanceKey { get; set; }
 }

@@ -7,12 +7,8 @@ using Casazen.Core.Services;
 
 namespace Casazen.Core.Regulatory;
 
-/// <summary>One thing wrong in the invoice data of a booking: a stable code (<see cref="InvoiceDataErrorCodes"/>) and the field it is about.</summary>
-/// <param name="Code">One of the codes of <see cref="InvoiceDataErrorCodes"/>.</param>
-/// <param name="Field">The name of the field in the API (<see cref="InvoiceDataFields"/>), camel case.</param>
 public sealed record InvoiceDataFailure(string Code, string Field);
 
-/// <summary>The names of the fields of the invoice data as the API says them (camel case), in each error that names a field.</summary>
 public static class InvoiceDataFields
 {
     public const string RecipientKind = "recipientKind";
@@ -29,13 +25,8 @@ public static class InvoiceDataFields
     public const string Pec = "pec";
 }
 
-/// <summary>
-/// The stable codes of the errors of the invoice data of a booking (E06/F02/US01/T02), each with its message in <c>SharedResources</c> (Italian and
-/// English). Every response that carries one names the field it is about (<see cref="InvoiceDataFields"/>).
-/// </summary>
 public static class InvoiceDataErrorCodes
 {
-    /// <summary>The fiscal code is not valid for its country (Italy: <see cref="ItalianFiscalCode"/>).</summary>
     public const string FiscalCodeInvalid = "invoice_data_fiscal_code_invalid";
 
     /// <summary>The VAT number is not valid: Italian with its check digit, another country by its shape.</summary>
@@ -44,16 +35,13 @@ public static class InvoiceDataErrorCodes
     /// <summary>The code of the recipient on the SDI is not 7 upper case letters or digits.</summary>
     public const string RecipientCodeInvalid = "invoice_data_recipient_code_invalid";
 
-    /// <summary>The PEC is not an e-mail address.</summary>
     public const string PecInvalid = "invoice_data_pec_invalid";
 
     /// <summary>The recipient is not identified: a company needs a VAT number or a fiscal code, a private person in Italy a fiscal code.</summary>
     public const string RecipientRequired = "invoice_data_recipient_required";
 
-    /// <summary>Any other field is too long or has a shape the field cannot have (province, country, postal code, kind of recipient).</summary>
     public const string FieldInvalid = "invoice_data_field_invalid";
 
-    /// <summary>The key in <c>SharedResources</c> of the message of <paramref name="code"/>.</summary>
     public static string MessageKeyOf(string code) => code switch
     {
         FiscalCodeInvalid => "InvoiceDataFiscalCodeInvalid",
@@ -65,10 +53,6 @@ public static class InvoiceDataErrorCodes
         _ => throw new ArgumentOutOfRangeException(nameof(code), code, "Not a code of the invoice data."),
     };
 
-    /// <summary>
-    /// The 422 for <paramref name="failures"/> (at least one): the code and the message of the first, its field as <c>field</c>, and every failure as
-    /// <c>errors</c> (<c>[{ field, code }]</c>), so a form can mark each field at once. Ids and codes only, never a value the person typed.
-    /// </summary>
     public static DomainRuleException ToException(IReadOnlyList<InvoiceDataFailure> failures)
     {
         ArgumentNullException.ThrowIfNull(failures);
@@ -129,7 +113,6 @@ public static class InvoiceDataFormats
     /// <summary>True for exactly 7 upper case letters or digits: the code of the recipient on the SDI. <see cref="NormalizeRecipientCode"/> raises the case first.</summary>
     public static bool IsValidRecipientCode(string? code) => code is not null && RecipientCode.IsMatch(code);
 
-    /// <summary>True for an e-mail address of at most <see cref="BookingInvoiceData.PecMaxLength"/> characters: one at sign, a name before it and a domain with a dot after it.</summary>
     public static bool IsValidPec(string? pec)
     {
         if (string.IsNullOrEmpty(pec) || pec.Length > BookingInvoiceData.PecMaxLength || !EmailAddress.IsMatch(pec))
@@ -245,7 +228,6 @@ public static class InvoiceDataFormats
         };
     }
 
-    /// <summary>The country of the recipient once <paramref name="command"/> is applied to a row whose country is <paramref name="storedCountry"/>.</summary>
     public static string EffectiveCountry(SaveInvoiceDataCommand command, string? storedCountry)
     {
         ArgumentNullException.ThrowIfNull(command);
@@ -272,14 +254,8 @@ public static class InvoiceDataFormats
         return (country == "GR" ? "EL" : country) + vat;
     }
 
-    /// <summary>The code of the recipient trimmed and in upper case.</summary>
     public static string NormalizeRecipientCode(string? code) => (code ?? string.Empty).Trim().ToUpperInvariant();
 
-    /// <summary>
-    /// Reads the kind of recipient a client wrote: <c>Guest</c> or <c>Company</c>, in any case. Nothing written is no kind (<c>true</c> and
-    /// <paramref name="kind"/> <c>null</c>); anything else, a number included, is <c>false</c>: the caller answers 422 <c>invoice_data_field_invalid</c>
-    /// on <see cref="InvoiceDataFields.RecipientKind"/>.
-    /// </summary>
     public static bool TryParseRecipientKind(string? text, out InvoiceRecipientKind? kind)
     {
         kind = null;
@@ -310,7 +286,6 @@ public static class InvoiceDataFormats
             failures.Add(new InvoiceDataFailure(InvoiceDataErrorCodes.FieldInvalid, field));
     }
 
-    /// <summary>Trimmed, with every run of white space collapsed into one space; <c>null</c> stays <c>null</c>.</summary>
     private static string? Text(string? value)
     {
         if (value is null)
@@ -335,7 +310,6 @@ public static class InvoiceDataFormats
         return text.ToString();
     }
 
-    /// <summary>Upper case with no white space, dot, dash or slash.</summary>
     private static string Compact(string? value)
     {
         var text = new StringBuilder((value ?? string.Empty).Length);

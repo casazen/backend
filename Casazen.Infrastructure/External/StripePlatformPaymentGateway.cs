@@ -50,7 +50,6 @@ public class StripePlatformPaymentGateway(
             Description = request.Description,
             TransferGroup = request.TransferGroup,
 
-            // Cards only: a block exists only for them, and the Payment Element still handles 3-D Secure (VT-D22).
             PaymentMethodTypes = ["card"],
         };
 
@@ -73,7 +72,6 @@ public class StripePlatformPaymentGateway(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(paymentIntentId);
 
-        // The charge is expanded for capture_before, the moment the card network stops guaranteeing the block (informative).
         var paymentIntent = await new PaymentIntentService(Client).GetAsync(
             paymentIntentId,
             new PaymentIntentGetOptions { Expand = ["latest_charge"] },
@@ -89,7 +87,6 @@ public class StripePlatformPaymentGateway(
 
         try
         {
-            // The whole block: no AmountToCapture (the amount of a held payment is the amount blocked, VT-D18).
             var captured = await new PaymentIntentService(Client).CaptureAsync(
                 paymentIntentId,
                 new PaymentIntentCaptureOptions(),
@@ -123,7 +120,6 @@ public class StripePlatformPaymentGateway(
         }
         catch (StripeException ex) when (ex.StripeError?.Code == PaymentIntentUnexpectedStateCode)
         {
-            // Charged meanwhile (or already canceled): the caller must see what it really is, and give the money back if it was charged.
             logger.LogInformation("Held service payment intent {PaymentIntentId} could not be canceled, it changed state meanwhile", paymentIntentId);
             return await GetAsync(paymentIntentId, cancellationToken);
         }
@@ -135,7 +131,6 @@ public class StripePlatformPaymentGateway(
         ArgumentException.ThrowIfNullOrWhiteSpace(request.PaymentIntentId);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.IdempotencyKey);
 
-        // The refund leaves CasaZen's balance. There is no commission to give back with it: CasaZen sent none to Stripe.
         var refund = await new RefundService(Client).CreateAsync(
             new RefundCreateOptions
             {
@@ -213,7 +208,6 @@ public class StripePlatformPaymentGateway(
         return transfers;
     }
 
-    /// <summary>A Stripe transfer as CasaZen reads it; also used by the webhook handler for the <c>transfer.*</c> events.</summary>
     public static ServiceTransfer MapTransfer(Transfer transfer)
     {
         ArgumentNullException.ThrowIfNull(transfer);
@@ -229,7 +223,6 @@ public class StripePlatformPaymentGateway(
             transfer.Metadata is null ? new Dictionary<string, string>() : new Dictionary<string, string>(transfer.Metadata));
     }
 
-    /// <summary>A Stripe PaymentIntent of the platform as CasaZen reads it; also used by the webhook handler for the <c>payment_intent.*</c> events.</summary>
     public static PlatformCharge Map(PaymentIntent paymentIntent)
     {
         ArgumentNullException.ThrowIfNull(paymentIntent);

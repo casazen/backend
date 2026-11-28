@@ -13,7 +13,6 @@ public class OwnerPortalOptions
 {
     public const string SectionName = "OwnerPortal";
 
-    /// <summary>Shortest accepted key, in characters: 32 random bytes written as text are 44.</summary>
     public const int MinContactIndexKeyLength = 32;
 
     /// <summary>
@@ -52,7 +51,6 @@ public sealed class OwnerPortalOptionsValidator(IFeatureFlags featureFlags, IHos
             }
             else if (key.Length < OwnerPortalOptions.MinContactIndexKeyLength)
             {
-                // A key that is set is the key of every hash from then on: it cannot be corrected later, so a short one is refused now.
                 failures.Add(
                     $"OwnerPortal__ContactIndexKey is too short: use at least {OwnerPortalOptions.MinContactIndexKeyLength} random characters.");
             }
@@ -61,7 +59,6 @@ public sealed class OwnerPortalOptionsValidator(IFeatureFlags featureFlags, IHos
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 
-    /// <summary>True where the key cannot be left out: every environment except Development and Testing.</summary>
     public static bool RequiresKey(IHostEnvironment environment) =>
         !environment.IsDevelopment() && !environment.IsEnvironment("Testing");
 }

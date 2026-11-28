@@ -39,7 +39,6 @@ public sealed class BookingCleaningActivityHandler(
     TimeProvider timeProvider,
     ILogger<BookingCleaningActivityHandler> logger) : IEventHandler<DomainEvent>
 {
-    /// <summary>A next arrival within this time makes the cleaning urgent.</summary>
     internal static readonly TimeSpan UrgentWithin = TimeSpan.FromHours(48);
 
     public async Task HandleAsync(DomainEvent domainEvent, CancellationToken ct)
@@ -83,7 +82,6 @@ public sealed class BookingCleaningActivityHandler(
         if (cleaningRequested)
             return;
 
-        // E24/F01/US01/T02: a staff activity of type Cleaning (the automation assigns one to a member of the staff) is a cleaning planned like a request.
         var staffCleaningPlanned = await db.InternalActivities
             .AsNoTracking()
             .AnyAsync(
@@ -151,7 +149,6 @@ public sealed class BookingCleaningActivityHandler(
         }
     }
 
-    /// <summary>High within <see cref="UrgentWithin"/> of <paramref name="now"/> (or already past), Medium later, Low with no arrival booked.</summary>
     internal static ActivityUrgency UrgencyOf(DateTime? deadline, DateTime now) =>
         deadline is not { } due
             ? ActivityUrgency.Low

@@ -31,7 +31,6 @@ public sealed class OwnerIssuerProfileService(
     TimeProvider timeProvider,
     ILogger<OwnerIssuerProfileService> logger) : IOwnerIssuerProfileService
 {
-    /// <summary>Attempts of a save when another writer made the same row at the same moment.</summary>
     private const int MaxAttempts = 3;
 
     public async Task<OwnerIssuerProfileView> GetAsync(HostScope scope, Guid ownerId, CancellationToken ct = default)
@@ -59,8 +58,6 @@ public sealed class OwnerIssuerProfileService(
         if (command.StayVatTreatment is { } stay && !Enum.IsDefined(stay))
             failures.Add(new InvoiceDataFailure(DocumentIssuerErrorCodes.FieldInvalid, IssuerFields.StayVatTreatment));
 
-        // What an owner shares with an organization is checked by the issuer setting itself; the rest of the setting (bank accounts, automation, the owner
-        // invoices, the reminders of the wizard) is not an owner's and stays empty.
         var data = DocumentIssuerService.Normalize(
             new SaveIssuerSettingsCommand
             {
@@ -124,7 +121,6 @@ public sealed class OwnerIssuerProfileService(
                 ? userId[..Math.Min(userId.Length, OrgFiscalIssuerProfile.UpdatedByUserIdMaxLength)]
                 : null;
 
-            // Complete or not, the profile is saved (a draft says what is missing); it is ready from the moment nothing is missing.
             var missing = MissingFieldsOf(profile);
             profile.ConfirmedAt = missing.Count == 0 ? profile.ConfirmedAt ?? now : null;
 
@@ -138,13 +134,11 @@ public sealed class OwnerIssuerProfileService(
             }
             catch (DbUpdateException ex) when (created && attempt < MaxAttempts && OrgTeamAccess.IsUniqueViolation(ex, OrgFiscalIssuerProfile.OwnerIndexName))
             {
-                // Another save made the profile of this owner first: the same, as an update of the row it made.
                 db.Entry(profile).State = EntityState.Detached;
             }
         }
     }
 
-    /// <summary>The view of the profile of an owner; the empty one (no id, everything missing) while it has none.</summary>
     private OwnerIssuerProfileView ViewOf(Guid ownerId, OrgFiscalIssuerProfile? profile)
     {
         if (profile is null)
@@ -174,7 +168,6 @@ public sealed class OwnerIssuerProfileService(
     private IReadOnlyList<string> MissingFieldsOf(OrgFiscalIssuerProfile profile) =>
         OwnerIssuerProfileRules.MissingFields(profile, RuleInForceToday(profile)?.FatturaPaRegimeCode);
 
-    /// <summary>The tax rule in force today (a Europe/Rome calendar day) for the country, the regime and the stay treatment of the owner; the cleaning follows the stay.</summary>
     private FiscalTaxRule? RuleInForceToday(OrgFiscalIssuerProfile profile) =>
         taxRules.TryResolve(profile.CountryCode, profile.DocumentRegime, profile.StayVatTreatment, CleaningFeeTreatment.FollowsStay, timeProvider.TodayInRomeAsDateOnly());
 
@@ -206,7 +199,6 @@ public sealed class OwnerIssuerProfileService(
             throw OwnerNotFound(ownerId);
     }
 
-    /// <summary>The Italian fiscal code of the owner, normalized; a code that is not one (of a person or of a company) is a failure on <c>fiscalCode</c>.</summary>
     private static string? FiscalCodeOf(string? value, List<InvoiceDataFailure> failures)
     {
         if (Empty(value) is null)

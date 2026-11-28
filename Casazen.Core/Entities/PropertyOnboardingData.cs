@@ -17,22 +17,17 @@ namespace Casazen.Core.Entities;
 [Table("PropertyOnboardingData")]
 public class PropertyOnboardingData : ITenantOwned
 {
-    /// <summary>Name of the unique index on <see cref="PropertyId"/>: a property has one row.</summary>
     public const string PropertyIndexName = "UIX_PropertyOnboardingData_PropertyId";
 
-    /// <summary>Most room numbers a property may hold in <see cref="AlloggiatiRoomNumbersJson"/>.</summary>
     public const int MaxRoomNumbers = 20;
 
-    /// <summary>Longest user id: the column length of <c>User.Id</c>, the Auth0 subject.</summary>
     public const int UserIdMaxLength = 255;
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row, copied from the property when it is created (TN-2).</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The property (FK, CASCADE: the data goes with the property).</summary>
     public Guid PropertyId { get; set; }
 
     /// <summary>
@@ -44,7 +39,6 @@ public class PropertyOnboardingData : ITenantOwned
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>Who changed the row last: the Auth0 subject of the account.</summary>
     [Required]
     [MaxLength(UserIdMaxLength)]
     public string UpdatedByUserId { get; set; } = string.Empty;

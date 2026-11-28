@@ -32,12 +32,10 @@ public sealed class LongRentTenantService(
     ILogger<LongRentTenantService> logger,
     TimeProvider? timeProvider = null) : ILongRentTenantService
 {
-    /// <summary>The installments the sheet lists.</summary>
     private const int PaymentsShown = 6;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    /// <summary>A tenant party of a lease of the scope, with the two dates that order the leases of a person.</summary>
     private sealed record PartyRow(
         Guid PartyId,
         Guid LeaseId,
@@ -49,16 +47,11 @@ public sealed class LongRentTenantService(
         DateTime LeaseCreatedAt,
         DateTime LeaseStartDate);
 
-    /// <summary>
-    /// A person: their party rows (one per lease). <c>Id</c> is the party row of the oldest lease, so it stays the same when the person
-    /// gets another lease; <c>Latest</c> is the row of the lease they started last, which names them on the page.
-    /// </summary>
     private sealed record Person(Guid Id, IReadOnlyList<PartyRow> Rows, PartyRow Latest)
     {
         public List<Guid> LeaseIds => Rows.Select(r => r.LeaseId).Distinct().ToList();
     }
 
-    /// <summary>A person with the leases of the scope they are on (newest first) and whether all of them concluded.</summary>
     private sealed record PersonView(Person Person, IReadOnlyList<TenantLease> Leases, bool IsFormer);
 
     private sealed record LedgerRow(Guid Id, Guid LeaseId, DateOnly DueDate, decimal Amount, RentLedgerStatus Status, DateOnly? PaidOn);
@@ -77,7 +70,6 @@ public sealed class LongRentTenantService(
         var summaries = await LoadSummariesAsync(scope, todayDate);
         var views = people.Select(person => ViewOf(person, summaries)).ToList();
 
-        // The search narrows every count; the view only narrows the list.
         if (query.NormalizedSearch is { } term)
             views = views.Where(view => Matches(view, term)).ToList();
 
@@ -97,7 +89,6 @@ public sealed class LongRentTenantService(
             .Take(pageSize)
             .ToList();
 
-        // The ledger of the people on this page only.
         var onTimeDays = OnTimeDays();
         var ledger = await LoadLedgerAsync(scope, ordered.SelectMany(v => v.Person.LeaseIds).Distinct().ToList(), today, cancellationToken);
         var items = ordered.Select(view => RowOf(view, ledger, onTimeDays)).ToList();
@@ -176,7 +167,6 @@ public sealed class LongRentTenantService(
         if (person is null)
             return null;
 
-        // The person's own party row of each lease, and nothing of the other parties of it.
         var rows = person.Rows.Where(r => allowedLeaseIds.Contains(r.LeaseId)).ToList();
         var leaseIds = rows.Select(r => r.LeaseId).Distinct().ToList();
         var partyIds = rows.Select(r => r.PartyId).ToList();
@@ -216,7 +206,6 @@ public sealed class LongRentTenantService(
                 .Select(e => new { e.LeaseContractId, e.DueDate, e.PeriodStart, e.PeriodEnd, e.AmountDue, e.Status, e.PaidOn, e.PaidVia })
                 .ToListAsync(cancellationToken))
             .ToLookup(e => e.LeaseContractId);
-        // The type and the day of each event, never its payload.
         var events = (await db.LeaseEvents
                 .AsNoTracking()
                 .Where(e => leaseIds.Contains(e.LeaseContractId))
@@ -311,12 +300,6 @@ public sealed class LongRentTenantService(
         return new TenantErasureResult(results);
     }
 
-    // ─── Reading the people ────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The tenant parties (not anonymized) of the leases of the scope that satisfy <paramref name="filter"/>. The filter is applied in SQL
-    /// on the party, before the projection; the leases are narrowed by the scope in the same statement.
-    /// </summary>
     private async Task<List<PartyRow>> LoadPartyRowsAsync(
         HostScope scope, Expression<Func<Party, bool>>? filter, CancellationToken cancellationToken)
     {
@@ -349,10 +332,6 @@ public sealed class LongRentTenantService(
             .ToList();
     }
 
-    /// <summary>
-    /// The person a party row stands for, with all their rows in the scope; <c>null</c> when the row is not a tenant of the scope (another
-    /// org, a property out of reach, anonymized or not there). Any party row of a person resolves to the same person.
-    /// </summary>
     private async Task<Person?> ResolveAsync(HostScope scope, Guid tenantId, CancellationToken cancellationToken)
     {
         var seed = (await LoadPartyRowsAsync(scope, p => p.Id == tenantId, cancellationToken)).FirstOrDefault();
@@ -377,7 +356,6 @@ public sealed class LongRentTenantService(
             })
             .ToList();
 
-    /// <summary>The lease list of the area, one row per lease with its stage: the same read the lease list page makes.</summary>
     private async Task<Dictionary<Guid, LeaseSummaryDto>> LoadSummariesAsync(HostScope scope, DateTime todayInRome) =>
         (await leaseRepository.GetSummariesAsync(scope, new LeaseListQuery(), todayInRome)).ToDictionary(s => s.Id);
 
@@ -393,7 +371,6 @@ public sealed class LongRentTenantService(
         return new PersonView(person, leases, LongRentTenantRules.IsFormer(leases.Select(l => l.Stage).ToList()));
     }
 
-    /// <summary>The name, in either order, or the property of any of the person's leases, without regard to case.</summary>
     private static bool Matches(PersonView view, string term) =>
         view.Person.Rows.Any(r =>
             $"{r.FirstName} {r.LastName}".Contains(term, StringComparison.OrdinalIgnoreCase)
@@ -420,10 +397,6 @@ public sealed class LongRentTenantService(
             punctuality);
     }
 
-    /// <summary>
-    /// The installments of the leases that count for punctuality: due on or before <paramref name="today"/> and not cancelled. One
-    /// statement for all the leases asked for, restricted to the scope like every other read.
-    /// </summary>
     private async Task<List<LedgerRow>> LoadLedgerAsync(
         HostScope scope, List<Guid> leaseIds, DateOnly today, CancellationToken cancellationToken)
     {

@@ -14,10 +14,6 @@ public class PublicPropertyDetailDto : PublicPropertyDto
     /// </summary>
     public Services.PublicCancellationPolicy? CancellationPolicy { get; set; }
 
-    /// <summary>
-    /// Fewest nights a guest can book (DB-03, <c>Property.MinNights</c>), or null for no minimum. The quote and the checkout
-    /// refuse a shorter stay with 422 <c>direct_booking_min_nights_not_met</c>.
-    /// </summary>
     public int? MinNights { get; set; }
 
     /// <summary>
@@ -28,13 +24,10 @@ public class PublicPropertyDetailDto : PublicPropertyDto
     /// </summary>
     public decimal WeekendSurchargePercent { get; set; }
 
-    /// <summary>A guest can book now: the org of the property can take a payment (same value as <c>PublicOrgDto.AcceptsBookings</c>, DB-03).</summary>
     public bool AcceptsBookings { get; set; }
 
-    /// <summary>How the host is named on the site (same value as <c>PublicOrgDto.HostName</c>, DB-03), or null.</summary>
     public string? HostName { get; set; }
 
-    /// <summary>The phone number the host chose to publish (same value as <c>PublicOrgDto.PublicPhone</c>, DB-03), or null.</summary>
     public string? PublicPhone { get; set; }
 
     /// <summary>
@@ -51,21 +44,12 @@ public class PublicPropertyDetailDto : PublicPropertyDto
     /// </summary>
     public PublicPropertyProfileDto Profile { get; set; } = new();
 
-    /// <summary>
-    /// The photos of the gallery in display order (the first is the cover), each with its alternative text and size (DB-11a). Lists the same
-    /// addresses as <see cref="PublicPropertyDto.PhotoUrls"/>, which stays.
-    /// </summary>
     public IReadOnlyList<PublicPropertyPhotoDto> Photos { get; set; } = [];
 
-    /// <summary>
-    /// The number and the average mark of the public reviews of the property (DB-12a), set by the endpoint. <b>Absent</b> from the JSON
-    /// (not <c>null</c>, not zero) while the property has no review: a page never shows stars or «0 recensioni».
-    /// </summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public PublicRatingSummaryDto? RatingSummary { get; set; }
 }
 
-/// <summary>The count and the average (one decimal, 1 to 5) of the public reviews of a property.</summary>
 public class PublicRatingSummaryDto
 {
     public int Count { get; set; }

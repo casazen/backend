@@ -6,7 +6,6 @@ using Casazen.Core.Utilities;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>A published statement of an owner as the list of the package shows it: what the version stores, never recomputed.</summary>
 internal sealed record PackageStatement(
     Guid VersionId,
     Guid OwnerId,
@@ -24,10 +23,8 @@ internal sealed record PackageStatement(
     DateTime PublishedAt,
     string? PublishedSha256);
 
-/// <summary>The withholding the payouts of an owner in a month decided: the evidence added up (a reversal is a row with the opposite amounts).</summary>
 internal sealed record PackageWithholding(string? OwnerName, int Year, int Month, string? TaxCode, int Payouts, decimal GrossBase, decimal Withheld);
 
-/// <summary>The data of the Certificazione Unica of one owner, from the annual dataset.</summary>
 internal sealed record PackageCuRow(string? OwnerName, decimal GrossBase, decimal Withheld, int Evidence);
 
 /// <summary>
@@ -40,7 +37,6 @@ internal sealed record PackageCuRow(string? OwnerName, decimal GrossBase, decima
 /// <param name="SelfBilled">The self-billed invoices (TD17) are in the tables of an Italian issuer (owner accounting: the file says so when they are not).</param>
 internal sealed record VatCoverage(bool OwnerInvoices, bool PortalCommissions, bool SelfBilled)
 {
-    /// <summary>Everything is in.</summary>
     public static VatCoverage Whole { get; } = new(true, true, true);
 }
 
@@ -52,16 +48,10 @@ internal sealed record VatCoverage(bool OwnerInvoices, bool PortalCommissions, b
 /// </summary>
 internal static class AccountantPackageDocuments
 {
-    /// <summary>
-    /// The two words of the header of the index that read the same in Italian and in English («File», «SHA-256»): not texts to translate, so they are not in the resource files
-    /// (the localization test wants a different English text for every key).
-    /// </summary>
     public const string IndexFileHeader = "File";
 
-    /// <inheritdoc cref="IndexFileHeader"/>
     public const string IndexHashHeader = "SHA-256";
 
-    /// <summary>The words that tell an issuer: its name, its country and its tax number.</summary>
     public static string IssuerLabel(AgencyIssuer issuer)
     {
         ArgumentNullException.ThrowIfNull(issuer);
@@ -69,16 +59,10 @@ internal static class AccountantPackageDocuments
         return string.IsNullOrWhiteSpace(issuer.TaxId) ? $"{issuer.Name} ({issuer.CountryCode})" : $"{issuer.Name} ({issuer.CountryCode} {issuer.TaxId})";
     }
 
-    /// <summary>A day as the files write it in their titles: <c>dd/MM/yyyy</c>.</summary>
     public static string Day(DateOnly day) => day.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
 
-    /// <summary>The word of a kind of document (invoice, receipt, credit note): the one of the fiscal documents and their list.</summary>
     public static string KindLabel(FiscalDocumentKind kind, PackageTexts t) => FiscalDocumentPdfs.KindLabel(kind, t.Source, t.Language);
 
-    /// <summary>
-    /// The word of a document: its kind, except for a self-billed invoice (TD17), which is «Autofattura TD17» whatever its kind (the export of the list of the documents says the same): its recipient
-    /// is the foreign supplier it integrates, never a customer, so it is never read as an invoice to somebody.
-    /// </summary>
     public static string KindLabel(PackageDocument document, PackageTexts t)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -86,10 +70,7 @@ internal static class AccountantPackageDocuments
         return document.Purpose == FiscalDocumentPurpose.SelfBilling ? t["FiscalExportKindSelfBilling"] : KindLabel(document.Kind, t);
     }
 
-    /// <summary>The name of an owner, or the word for an owner whose data was anonymized.</summary>
     public static string OwnerLabel(string? name, PackageTexts t) => string.IsNullOrWhiteSpace(name) ? t.Get("OwnerAnonymizedLabel") : name;
-
-    // ---------------------------------------------------------------- the registers of the documents
 
     /// <summary>
     /// The register of the documents of one issuer: one row for each document (its kind, number, day, recipient, amounts, currency and, for the guests, who collected the
@@ -249,7 +230,6 @@ internal static class AccountantPackageDocuments
         return [table];
     }
 
-    /// <summary>The words of a reason of a closing as the accountant reads them; a reason that is none of the known ones (never written by CasaZen) is given as it is stored.</summary>
     public static string CloseReasonLabel(string reason, PackageTexts t)
     {
         ArgumentNullException.ThrowIfNull(t);
@@ -374,8 +354,6 @@ internal static class AccountantPackageDocuments
         return table;
     }
 
-    // ---------------------------------------------------------------- the VAT of an issuer
-
     /// <summary>
     /// The VAT tables of one issuer (NF-101, D11). A Swiss issuer: the base of the quarterly return (the taxable turnover and the VAT due for each rate, by the quarter of the
     /// day of the issue), what is outside the VAT (the tourist tax, the expenses advanced) and, for information only, the commissions of the portals whose account the agency holds
@@ -414,7 +392,6 @@ internal static class AccountantPackageDocuments
 
     private static ReportCell RateOrUnknown(decimal? ratePercent, PackageTexts t) => ratePercent is { } rate ? ReportCell.Percent(rate / 100m) : t[PackageLabels.RateUnknown];
 
-    /// <summary>The table that says what a file does not hold for the caller: its title and the reason.</summary>
     private static ReportTable OwnerInvoicesNote(PackageTexts t)
     {
         var note = new ReportTable(t[PackageLabels.VatOwnerInvoicesOmittedTitle], [t[PackageLabels.IndexColReason]]);
@@ -485,7 +462,6 @@ internal static class AccountantPackageDocuments
         foreach (var row in portalCommissions)
             portals.Add(FiscalReportDocuments.ChannelLabel(row.Source.ToString()), ReportCell.Money(row.Amount), row.Currency);
 
-        // The portal commissions come from the owner ledger: a caller who may not read the owner accounting is told, the table is not left empty as if there were none.
         if (!coverage.PortalCommissions)
             portals.Add(t[PackageLabels.OmittedOwnerAccounting]);
 
@@ -566,7 +542,6 @@ internal static class AccountantPackageDocuments
         return regime == DocumentRegime.VatFlatRate ? SalesClass.FlatRate : SalesClass.Ordinary;
     }
 
-    /// <summary>The classes of the sales register of an Italian issuer.</summary>
     internal enum SalesClass
     {
         Ordinary = 1,
@@ -604,9 +579,6 @@ internal static class AccountantPackageDocuments
         _ => t[PackageLabels.OutsideOther],
     };
 
-    // ---------------------------------------------------------------- statements, withholding, tourist tax
-
-    /// <summary>The list of the published statements: one row for each owner and month (its latest published version), with what the version stores and the hash of its published file.</summary>
     public static ReportTable Statements(IReadOnlyList<PackageStatement> statements, PackageTexts t)
     {
         var table = new ReportTable(
@@ -645,7 +617,6 @@ internal static class AccountantPackageDocuments
         return table;
     }
 
-    /// <summary>The withholding of the Italian owners for each month of the period: the base and the amount the payouts decided, with the tax code of the rule.</summary>
     public static ReportTable Withholding(IReadOnlyList<PackageWithholding> rows, PackageTexts t)
     {
         var table = new ReportTable(
@@ -686,7 +657,6 @@ internal static class AccountantPackageDocuments
         return table;
     }
 
-    /// <summary>The data of the Certificazione Unica of a year for each owner (not the official certificate); with no dataset (a month, a year not generated) the table is only its header.</summary>
     public static ReportTable CertificazioneUnica(int year, IReadOnlyList<PackageCuRow> rows, PackageTexts t)
     {
         var table = new ReportTable(
@@ -698,7 +668,6 @@ internal static class AccountantPackageDocuments
         return table;
     }
 
-    /// <summary>The Swiss tourist tax the documents collected for each canton and currency (credit notes taken away).</summary>
     public static ReportTable SwissTouristTax(IReadOnlyList<AgencySwissTouristTaxRow> rows, PackageTexts t)
     {
         var table = new ReportTable(
@@ -710,13 +679,6 @@ internal static class AccountantPackageDocuments
         return table;
     }
 
-    // ---------------------------------------------------------------- the index
-
-    /// <summary>
-    /// The index of the package: every file with its description, its rows and its SHA-256, then the folders left out, each with its reason: the owner accounting a caller may not read
-    /// (<paramref name="omittedFolders"/>) and the folders the agency did not choose for the package it sends every month (<paramref name="notSelectedFolders"/>). A file that is not a table
-    /// (a PDF, an XML) has no rows. The index does not list itself: its hash would be the hash of the file that holds it.
-    /// </summary>
     public static IReadOnlyList<ReportTable> Index(
         AccountantPackagePeriod period,
         IReadOnlyList<PackageIndexEntry> entries,
@@ -743,15 +705,12 @@ internal static class AccountantPackageDocuments
         return [files, omitted];
     }
 
-    // ---------------------------------------------------------------- shared
-
     private static IEnumerable<(PackageDocument Document, PackageVatRow Row)> RateRows(IEnumerable<PackageDocument> documents) =>
         documents.SelectMany(d => AccountantPackageFacts.VatOf(d).Select(r => (Document: d, Row: r)));
 
     /// <summary>The rate of a VAT row as a percentage cell; empty for a rate that is not stated.</summary>
     public static ReportCell RateCell(PackageVatRow row) => RateCell(row.RatePercent);
 
-    /// <summary>A rate in percent as a percentage cell (8.1 is 8,10%); empty for a rate that is not stated.</summary>
     public static ReportCell RateCell(decimal? ratePercent) => ratePercent is { } rate ? ReportCell.Percent(rate / 100m) : ReportCell.Empty;
 
     private static ReportCell NatureOf(PackageVatRow row, PackageTexts t) => row.RatePercent is null ? t[PackageLabels.RateUnknown] : row.NatureCode;
@@ -768,5 +727,4 @@ internal static class AccountantPackageDocuments
     };
 }
 
-/// <summary>One line of the index of the package: the file, what it is, its rows (a table; <c>null</c> for a PDF or an XML) and its SHA-256.</summary>
 internal sealed record PackageIndexEntry(string Path, string Description, int? Rows, string Sha256);

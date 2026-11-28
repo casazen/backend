@@ -42,7 +42,6 @@ public sealed class MarketplaceChangeService(
     TimeProvider timeProvider,
     ILogger<MarketplaceChangeService> logger) : IMarketplaceChangeService
 {
-    /// <summary>The sentences of the preview of a deactivation: <c>Marketplace.Deactivate.{kind}.Effect1</c> to <c>Effect{n}</c>.</summary>
     private static readonly IReadOnlyDictionary<MarketplaceActivationKind, int> EffectCounts = new Dictionary<MarketplaceActivationKind, int>
     {
         [MarketplaceActivationKind.Channel] = 3,
@@ -65,7 +64,6 @@ public sealed class MarketplaceChangeService(
 
         var activation = await FindAsync(orgId, scope, activationId, track: true, ct);
 
-        // A channel or a tool is always a property's; a row that is not (or that was turned off) has no connection to change.
         if (activation.Kind is not (MarketplaceActivationKind.Channel or MarketplaceActivationKind.Tool)
             || activation.Status == MarketplaceActivationStatus.Deactivated
             || activation.PropertyId is not { } propertyId)
@@ -84,7 +82,6 @@ public sealed class MarketplaceChangeService(
         }
         catch (OctorateNotFoundException)
         {
-            // The channel manager no longer has the connection: nothing was changed there, and the activation has to start again.
             throw ConnectionMissing();
         }
 
@@ -134,7 +131,6 @@ public sealed class MarketplaceChangeService(
         MarketplaceReads.EnsureSameOrg(orgId, scope);
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
-        // Before anything is read or asked of the channel manager: without a yes nothing happens.
         if (!confirmed)
             throw new DomainRuleException(MarketplaceChangeErrorCodes.ConfirmationRequired, "MarketplaceConfirmationRequired");
 
@@ -144,7 +140,6 @@ public sealed class MarketplaceChangeService(
             MarketplaceActivationKind.Channel or MarketplaceActivationKind.Tool => await DeactivateConnectionAsync(orgId, activation, userId, ct),
             MarketplaceActivationKind.Partner => await DeactivatePartnerAsync(orgId, scope, activation, userId, ct),
 
-            // A function is in the license of the channel manager, which CasaZen only reads: the host asks for the change instead (RequestFunctionChangeAsync).
             _ => throw NotSupported(),
         };
     }
@@ -160,7 +155,6 @@ public sealed class MarketplaceChangeService(
         MarketplaceReads.EnsureSameOrg(orgId, scope);
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
-        // The note is the host's own words and is not kept: it is only kept short. Checked before the row is read, like the confirmation of a deactivation.
         if (note is { Length: > MarketplaceChangeLimits.MaxNoteLength })
             throw new DomainRuleException(MarketplaceChangeErrorCodes.NoteInvalid, "MarketplaceChangeNoteTooLong");
 
@@ -168,7 +162,6 @@ public sealed class MarketplaceChangeService(
         if (activation.Kind != MarketplaceActivationKind.LicensedFunction || activation.Status == MarketplaceActivationStatus.Deactivated)
             throw NotSupported();
 
-        // One request is open at a time: the license answers it (the reconciliation clears it when the state of the function changes).
         if (activation.ChangeRequestedAt is not null)
             throw AlreadyRequested();
 
@@ -181,7 +174,6 @@ public sealed class MarketplaceChangeService(
         }
         catch (DbUpdateConcurrencyException)
         {
-            // The row was written meanwhile, perhaps by the same request made twice: read it again, and a request that is there is the answer.
             await db.Entry(activation).ReloadAsync(ct);
             if (activation.ChangeRequestedAt is not null)
                 throw AlreadyRequested();
@@ -197,23 +189,16 @@ public sealed class MarketplaceChangeService(
         return OutcomeOf(activation);
     }
 
-    // ─── Deactivation by kind ────────────────────────────────────────────────────────────────────────────────
-
     private async Task<MarketplaceActivationOutcome> DeactivateConnectionAsync(Guid orgId, MarketplaceActivation activation, string userId, CancellationToken ct)
     {
-        // Already turned off: there is nothing to delete, and asking twice changes nothing.
         if (activation.Status == MarketplaceActivationStatus.Deactivated)
             return OutcomeOf(activation);
 
-        // A channel or a tool is always a property's: the connection is the one of that property's listing.
         if (activation.PropertyId is not { } propertyId)
             throw NotSupported();
 
-        // Only the connection CasaZen knows it made is deleted, never one found by guessing: a row without its id has nothing to delete, so it needs neither the account of the
-        // org nor the listing of the property (the host can turn it off whatever state they are in), and its «To do» is closed with it.
         if (activation.OctorateConnectionId is { Length: > 0 } connectionId)
         {
-            // The connection is deleted on the accommodation of the property's confirmed listing, through the org's connected account.
             var link = await RequireLinkAsync(orgId, propertyId, ct);
             try
             {
@@ -222,7 +207,6 @@ public sealed class MarketplaceChangeService(
             }
             catch (OctorateNotFoundException)
             {
-                // The channel manager no longer has it (removed on its panel, or deleted by a request that was made twice): what was asked is done.
                 logger.LogInformation(
                     "Marketplace activation {ActivationId} of org {OrgId}: its connection was no longer on the channel manager, the activation is turned off all the same",
                     activation.Id, orgId);
@@ -234,7 +218,6 @@ public sealed class MarketplaceChangeService(
                 "Marketplace activation {ActivationId} of org {OrgId}: it has no connection to delete, it is turned off", activation.Id, orgId);
         }
 
-        // The problem it carried is closed with it: the item of the «To do» list goes, closed by the person who turned the activation off.
         await CloseTodoAsync(activation, userId, ct);
 
         var now = Now();
@@ -261,12 +244,10 @@ public sealed class MarketplaceChangeService(
     private async Task<MarketplaceActivationOutcome> DeactivatePartnerAsync(
         Guid orgId, HostScope scope, MarketplaceActivation activation, string userId, CancellationToken ct)
     {
-        // The reach was decided above (an org-level row only for a caller who reaches the whole org), so the service finds the row and never answers its 403.
         var turnedOff = await partners.UndeclareAsync(orgId, scope, activation.TargetCode, activation.PropertyId, userId, ct);
         return new MarketplaceActivationOutcome(turnedOff.ActivationId, MarketplaceActivationKind.Partner, turnedOff.PartnerCode, turnedOff.PropertyId, turnedOff.Status, null);
     }
 
-    /// <summary>Closes the open item of the activation's «To do», if it has one; an item that is gone is nothing to close.</summary>
     private async Task CloseTodoAsync(MarketplaceActivation activation, string userId, CancellationToken ct)
     {
         if (activation.TodoActivityId is not { } todoId)
@@ -282,15 +263,8 @@ public sealed class MarketplaceChangeService(
         }
     }
 
-    // ─── The checks every method shares ──────────────────────────────────────────────────────────────────────
-
-    /// <summary>The listing a property is confirmed to: its accommodation id, which is the <c>acc</c> of every call.</summary>
     private sealed record Link(string AccommodationId);
 
-    /// <summary>
-    /// The activation of the caller. Another org's, one outside the scope, one of a property that was deleted and one that does not exist are the same 404, and so is one
-    /// that goes through Octorate while the connector is off. A row with no property is the whole org's: a caller limited to some properties does not reach it.
-    /// </summary>
     private async Task<MarketplaceActivation> FindAsync(Guid orgId, HostScope scope, Guid activationId, bool track, CancellationToken ct)
     {
         MarketplaceReads.EnsureSameOrg(orgId, scope);
@@ -298,7 +272,6 @@ public sealed class MarketplaceChangeService(
         var activation = await rows.FirstOrDefaultAsync(a => a.Id == activationId && a.OrgId == orgId, ct)
                          ?? throw ActivationNotFound();
 
-        // What goes through Octorate does not exist for anybody while the connector is off; only the partners are not behind the flag.
         if (activation.Kind != MarketplaceActivationKind.Partner && !featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
             throw ActivationNotFound();
 
@@ -312,14 +285,9 @@ public sealed class MarketplaceChangeService(
         return reachable ? activation : throw ActivationNotFound();
     }
 
-    /// <summary>The org is connected (the connector is on and it has a connected account in this environment) and the property has its confirmed listing.</summary>
     private async Task<Link> RequireLinkAsync(Guid orgId, Guid propertyId, CancellationToken ct) =>
         new Link(await MarketplaceReads.RequireLinkedAccommodationAsync(db, featureFlags, hostEnvironment, orgId, propertyId, ct));
 
-    /// <summary>
-    /// What goes to the channel manager: only what the portal asks for (the identifier of the property, the username and the password) and the host gave, trimmed; anything
-    /// more is dropped. A portal that asks for none of them has nothing to change, and a change that names nothing is never «everything».
-    /// </summary>
     private async Task<OctorateConnectionPatch> PatchOfAsync(MarketplaceActivation activation, MarketplaceSettingsChange settings, CancellationToken ct)
     {
         var portal = await db.MarketplacePortals.AsNoTracking().FirstOrDefaultAsync(p => p.PortalCode == activation.TargetCode, ct);
@@ -339,7 +307,6 @@ public sealed class MarketplaceChangeService(
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    /// <summary>The names of the members a change sets, for the log: never their values.</summary>
     private static string MembersOf(OctorateConnectionPatch patch)
     {
         var members = new List<string>();
@@ -352,7 +319,6 @@ public sealed class MarketplaceChangeService(
         return string.Join(", ", members);
     }
 
-    /// <summary>The name that goes into the sentences: the portal as the cache has it, the partner as the catalog has it, the function in the language asked; the code when none is known.</summary>
     private async Task<string> NameOfAsync(MarketplaceActivation activation, string lang, CancellationToken ct)
     {
         switch (activation.Kind)

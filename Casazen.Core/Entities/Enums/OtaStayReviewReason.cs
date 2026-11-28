@@ -8,9 +8,7 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum OtaStayReviewReason
 {
-    /// <summary>The block is gone from the feed while the stay was not over (reservation cancelled or moved on the channel).</summary>
     BlockRemoved = 1,
 
-    /// <summary>The block now has other dates on the channel than the stay.</summary>
     BlockDatesChanged = 2,
 }

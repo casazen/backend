@@ -15,22 +15,16 @@ namespace Casazen.Infrastructure.Octorate;
 /// </summary>
 public static class OctorateHttp
 {
-    /// <summary>Configuration key of the base address (<c>Octorate__ApiBaseUrl</c>).</summary>
     public const string ApiBaseUrlKey = "Octorate:ApiBaseUrl";
 
-    /// <summary>The longest answer read from Octorate; a longer one is cut (lists are paged, a single object is small).</summary>
     private const int MaxBodyChars = 4 * 1024 * 1024;
 
-    /// <summary>Timeout of every call (ADR-023-R5).</summary>
     public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
 
-    /// <summary>The JSON of Octorate: camelCase names read without regard to case, numbers also from strings.</summary>
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    /// <summary><c>CasaZen/{version}</c>, the version of this build.</summary>
     public static readonly ProductInfoHeaderValue UserAgent = new("CasaZen", Version());
 
-    /// <summary>The timeout, the User-Agent and the JSON accept header of a client that calls Octorate.</summary>
     public static void Configure(HttpClient client)
     {
         ArgumentNullException.ThrowIfNull(client);
@@ -41,8 +35,6 @@ public static class OctorateHttp
         client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
     }
 
-    /// <summary>The configured base address, absolute and https, without a trailing slash.</summary>
-    /// <exception cref="InvalidOperationException">The address is missing, not absolute or not https: no call leaves.</exception>
     public static string ApiBaseUrl(IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
@@ -58,10 +50,8 @@ public static class OctorateHttp
         return value.TrimEnd('/');
     }
 
-    /// <summary>The address of <paramref name="pathAndQuery"/> (starting with <c>/rest/</c>) on the base address.</summary>
     public static Uri Address(string apiBaseUrl, string pathAndQuery) => new(apiBaseUrl + pathAndQuery, UriKind.Absolute);
 
-    /// <summary>The text of an answer, cut at <see cref="MaxBodyChars"/>.</summary>
     public static async Task<string> ReadBodyAsync(HttpResponseMessage response, CancellationToken ct)
     {
         var body = await response.Content.ReadAsStringAsync(ct);
@@ -92,12 +82,6 @@ public static class OctorateHttp
         }
     }
 
-    /// <summary>
-    /// The tokens of an answer of <c>/rest/v1/identity/token</c> or <c>/rest/v1/identity/refresh</c>:
-    /// <c>access_token</c> (or <c>accessToken</c>), <c>refresh_token</c>, and the expiry from <c>expires_in</c> (seconds) or
-    /// <c>expireDate</c>.
-    /// </summary>
-    /// <exception cref="OctorateServerException">The answer is not a JSON object.</exception>
     public static OctorateTokenResponse ReadTokens(string body, DateTime nowUtc, int? octorateStatusCode)
     {
         try
@@ -128,7 +112,6 @@ public static class OctorateHttp
         }
     }
 
-    /// <summary>A string member of <paramref name="element"/> (a number is read as its text), <c>null</c> when absent or blank.</summary>
     public static string? StringOf(JsonElement element, string name)
     {
         if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out var value))
@@ -143,7 +126,6 @@ public static class OctorateHttp
         return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
     }
 
-    /// <summary>A whole number from a JSON number or a numeric string.</summary>
     public static bool TryReadLong(JsonElement value, out long number)
     {
         number = 0;

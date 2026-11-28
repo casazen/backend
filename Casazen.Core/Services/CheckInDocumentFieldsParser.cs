@@ -4,10 +4,6 @@ using Casazen.Core.Regulatory;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// Turns the JSON answer of the document reader into fields. Values that are missing or implausible are dropped;
-/// the raw text of the document is never kept.
-/// </summary>
 public static class CheckInDocumentFieldsParser
 {
     public static CheckInDocumentFields? Parse(string? content, DateOnly today)
@@ -61,7 +57,6 @@ public static class CheckInDocumentFieldsParser
         }
     }
 
-    /// <summary>The first JSON object in the answer, without a markdown fence around it.</summary>
     public static string? ExtractObject(string? content)
     {
         if (string.IsNullOrWhiteSpace(content))

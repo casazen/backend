@@ -42,5 +42,4 @@ public interface IFiscalDocumentCorrectionService
     Task<FiscalDocument> StartSelfBillingCorrectionAsync(Guid orgId, Guid documentId, string? userId, CancellationToken ct = default);
 }
 
-/// <summary>The payload of <c>FiscalDocumentCorrected</c>: the two documents and their booking, ids only.</summary>
 public sealed record FiscalDocumentCorrectedPayload(Guid RejectedDocumentId, Guid ReplacementDocumentId, Guid? BookingId);

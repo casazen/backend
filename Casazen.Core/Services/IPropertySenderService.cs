@@ -107,57 +107,40 @@ public interface IPropertySenderService
     Task<PropertySenderView> DeclareActivatedAsync(Guid propertyId, string userId, CancellationToken ct);
 }
 
-/// <summary>The state of a sender, as the host reads it. «Active» is shown only for a sender that was verified.</summary>
 public enum SenderState
 {
-    /// <summary>Octorate says the police account is valid and its automatic send is on: verified.</summary>
     Active = 1,
 
-    /// <summary>The host said it saw «Activated» in the Octorate panel and Octorate does not tell: the host's word, not verified.</summary>
     Declared = 2,
 
-    /// <summary>The channel manager sends, but nothing proves it: Octorate does not expose it (or cannot be reached) and the host did not declare it.</summary>
     Unverified = 3,
 
-    /// <summary>The sender chosen does not send: Octorate says the police account is not valid or its automatic send is off (or the sender is not available).</summary>
     Inactive = 4,
 
-    /// <summary>No automatic sender is set up: the host sends the file (manual), or the property is outside Italy.</summary>
     NotConfigured = 5,
 }
 
-/// <summary>How the state of a sender is known.</summary>
 public enum SenderVerification
 {
-    /// <summary>Read from Octorate just now (the state can be Active or Inactive).</summary>
     Verified = 1,
 
-    /// <summary>The host's declaration; nothing confirmed it.</summary>
     UserDeclared = 2,
 
-    /// <summary>CasaZen cannot know: the API does not expose it or could not be reached.</summary>
     Unverifiable = 3,
 
-    /// <summary>There is no automatic sender to verify.</summary>
     NotApplicable = 4,
 }
 
-/// <summary>The answer of the connection test of a sender.</summary>
 public enum SenderConnectionTestOutcome
 {
-    /// <summary>Octorate says the police account is valid and its automatic send is on.</summary>
     Verified = 1,
 
-    /// <summary>Octorate says the police account is not valid or its automatic send is off: the host has to fix it in the panel.</summary>
     Inactive = 2,
 
-    /// <summary>The API does not expose the police account, or could not be reached: the host can declare what it saw.</summary>
     Unverifiable = 3,
 
-    /// <summary>Manual sender (or a property outside Italy): there is nothing to test.</summary>
     NotApplicable = 4,
 
-    /// <summary>The sender «CasaZen sends» cannot be activated or tested in this release.</summary>
     NotAvailable = 5,
 }
 
@@ -231,23 +214,18 @@ public sealed record SenderConnectionTestResult(
 /// <param name="New">The sender asked.</param>
 public sealed record SenderSwitchCheck(ComplianceSenderType Current, ComplianceSenderType New)
 {
-    /// <summary>True when the switch would change the sender in effect (the other one would go off).</summary>
     public bool WouldChange => Current != New;
 }
 
-/// <summary>The stable codes of the errors of the sender endpoints (<c>code</c> of the problem the API answers with).</summary>
 public static class SenderErrorCodes
 {
-    /// <summary>409: the sender really changes and the host did not confirm that the other one will be off.</summary>
     public const string SwitchConfirmationRequired = "sender_switch_confirmation_required";
 
     /// <summary>422: ISTAT always follows Alloggiati Web; a request that names another sender for ISTAT is refused (ADR-029-R5).</summary>
     public const string IstatMismatch = "sender_istat_mismatch";
 
-    /// <summary>403: an automatic sender needs the delegation of the transmission accepted first (ADR-015-R10).</summary>
     public const string DelegationRequired = "alloggiati_delegation_required";
 
-    /// <summary>422: the consent to the delegation does not say which version of the text the person read.</summary>
     public const string DelegationTextVersionRequired = "alloggiati_delegation_text_version_required";
 
     /// <summary>
@@ -256,38 +234,25 @@ public static class SenderErrorCodes
     /// </summary>
     public const string DelegationTextOutdated = "alloggiati_delegation_text_outdated";
 
-    /// <summary>422: the sender «CasaZen sends» is not available in this release.</summary>
     public const string CasaZenNotAvailable = "sender_casazen_not_available";
 
-    /// <summary>422: the channel manager cannot send for this property (no confirmed listing on a connected account, or the connector is off).</summary>
     public const string ChannelManagerNotAvailable = "sender_channel_manager_not_available";
 
-    /// <summary>422: the declaration «Activated» is about the channel manager only.</summary>
     public const string DeclarationNotApplicable = "sender_declaration_not_applicable";
 }
 
-/// <summary>The stable codes that say why a sender is not simply Active (<see cref="PropertySenderView.Reason"/>, <see cref="SenderConnectionTestResult.Reason"/>).</summary>
 public static class SenderReasonCodes
 {
-    /// <summary>Octorate says the police account of the accommodation is not valid.</summary>
     public const string PoliceAccountInvalid = "octorate_police_account_invalid";
 
-    /// <summary>The police account is valid but Octorate's daily automatic send is off.</summary>
     public const string PoliceAutorunOff = "octorate_police_autorun_off";
 
-    /// <summary>
-    /// Octorate answered without the police account, or without the state of its automatic send (<c>valid</c> true and <c>autorun</c> left out):
-    /// the API does not expose it for this accommodation, so nothing is proven.
-    /// </summary>
     public const string PoliceNotExposed = "octorate_police_not_exposed";
 
-    /// <summary>There is no usable connection to Octorate for the property (not connected, not mapped, or the connector is off).</summary>
     public const string NotConnected = "octorate_not_connected";
 
-    /// <summary>Octorate could not be reached or refused the call: try again later.</summary>
     public const string Unavailable = "octorate_unavailable";
 
-    /// <summary>The sender «CasaZen sends» is not available in this release.</summary>
     public const string CasaZenNotAvailable = "sender_casazen_not_available";
 }
 
@@ -299,9 +264,7 @@ public static class SenderReasonCodes
 /// </summary>
 public static class AlloggiatiDelegationTexts
 {
-    /// <summary>The version of the delegation text in force (a code of at most 40 characters, see <see cref="IAlloggiatiDelegationService"/>).</summary>
     public const string CurrentVersion = "2026-11-v1";
 
-    /// <summary>The longest version code a client may send back with the consent (the limit the delegation service puts on a version).</summary>
     public const int VersionMaxLength = 40;
 }

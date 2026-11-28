@@ -36,7 +36,6 @@ public sealed class OnboardingBulkImportService(
     TimeProvider timeProvider,
     ILogger<OnboardingBulkImportService> logger) : IOnboardingBulkImportService
 {
-    /// <summary>The longest text of the reference a row names its property by that the answer echoes.</summary>
     private const int MaxReferenceLength = 64;
 
     public async Task<BulkImportResult> ImportAsync(
@@ -62,7 +61,6 @@ public sealed class OnboardingBulkImportService(
             var now = UtcDateTime.TruncateToMicroseconds(timeProvider.GetUtcNow().UtcDateTime);
             foreach (var row in rows.Where(r => r.Errors.Count == 0))
             {
-                // Applied is what changed something: a valid row that holds what is stored already, or that has only its key, writes nothing.
                 var written = await ApplyAsync(scope, actorUserId, row, now, ct);
                 if (written == RowWrite.Written)
                     applied.Add(row.Number);
@@ -84,7 +82,6 @@ public sealed class OnboardingBulkImportService(
         var valid = answer.Count(row => row.Status == BulkImportRowCodes.Ok);
         var summary = new BulkImportSummary(answer.Count, valid, answer.Count - valid, applied.Count);
 
-        // Counts only: no cell of the file, no name, no code.
         logger.LogInformation(
             "Bulk import for org {OrgId}: {Rows} rows, {Valid} valid, {Applied} written, nothing written {DryRun}",
             scope.OrgId,
@@ -95,12 +92,6 @@ public sealed class OnboardingBulkImportService(
         return new BulkImportResult(dryRun, summary, parsed.UnknownColumns, answer);
     }
 
-    // ---------------------------------------------------------------- the file
-
-    /// <summary>
-    /// The table of the file, or the refusal: 415 for a name that is not <c>.csv</c> or <c>.xlsx</c> and for content that is not the type the name
-    /// says (an archive called <c>.csv</c>, a text called <c>.xlsx</c>), 413 for more than 2 MB. The file is read from memory and not kept.
-    /// </summary>
     internal static List<ImportTableRow> ReadTable(string fileName, byte[] content)
     {
         var extension = Path.GetExtension(fileName ?? string.Empty).ToLowerInvariant();
@@ -124,8 +115,6 @@ public sealed class OnboardingBulkImportService(
 
     private static DomainUnsupportedMediaTypeException Unsupported() =>
         new(BulkImportCodes.FileTypeUnsupported, "OnboardingImportFileTypeUnsupported");
-
-    // ---------------------------------------------------------------- validation
 
     private async Task<List<EvaluatedRow>> EvaluateAsync(HostScope scope, ParsedImport parsed, CancellationToken ct)
     {
@@ -173,10 +162,6 @@ public sealed class OnboardingBulkImportService(
         return evaluated;
     }
 
-    /// <summary>
-    /// The comuni the rows name, from the official list the property wizard uses. When a row names a comune and the list is not imported, nothing can
-    /// be judged on it: 422, not a status that would blame the row.
-    /// </summary>
     private async Task<IReadOnlyDictionary<string, Comune>> FindComuniAsync(ParsedImport parsed, CancellationToken ct)
     {
         if (parsed.Rows.All(row => row.Comune is null))
@@ -228,14 +213,12 @@ public sealed class OnboardingBulkImportService(
         if (evaluated.Property is null && evaluated.Errors.Count == 0)
             evaluated.Errors.Add(new BulkImportRowError(evaluated.KeyColumn, BulkImportRowCodes.PropertyNotFound));
 
-        // The same property twice: only the first row is judged and written, the others say so and nothing more.
         if (evaluated.Property is { } property && !seen.Add(property.Id))
         {
             evaluated.Errors.Add(new BulkImportRowError(evaluated.KeyColumn, BulkImportRowCodes.DuplicateRow));
             return evaluated;
         }
 
-        // The comune: an active comune of the official list whose region CasaZen knows.
         string? comuneRegion = null;
         if (row.Comune is { } rawComune)
         {
@@ -253,8 +236,6 @@ public sealed class OnboardingBulkImportService(
             }
         }
 
-        // The region has to be the comune's: the comune of the row, or, when the row has none, the one the property already has. A region the
-        // property cannot be checked against (no comune anywhere) is refused. A comune that is itself an error is not judged again here.
         if (row.Region is { } rawRegion)
         {
             var named = ItalianRegions.FindByCode(rawRegion);
@@ -289,7 +270,6 @@ public sealed class OnboardingBulkImportService(
             }
         }
 
-        // The lock code: 3 to 20 characters, none of them a control character. The only place it is read.
         if (row.LockCode is { } rawLock)
         {
             if (rawLock.Length is >= BulkImportLimits.LockCodeMinLength and <= BulkImportLimits.LockCodeMaxLength && !rawLock.Any(char.IsControl))
@@ -305,8 +285,6 @@ public sealed class OnboardingBulkImportService(
         room.Length is >= 1 and <= BulkImportLimits.RoomNumberMaxLength && room.All(ch => char.IsAsciiLetterOrDigit(ch) || ch == '-');
 
     private static string Clip(string value) => value.Length <= MaxReferenceLength ? value : value[..MaxReferenceLength];
-
-    // ---------------------------------------------------------------- writing
 
     /// <summary>
     /// Writes one valid row in one unit of work: the property (comune and region), its onboarding data (room numbers) and its access code (lock
@@ -328,7 +306,6 @@ public sealed class OnboardingBulkImportService(
             && (!string.Equals(property.ComuneIstatCode, row.Comune.IstatCode, StringComparison.Ordinal)
                 || !string.Equals(property.RegionCode, row.Comune.RegionCode, StringComparison.Ordinal)))
         {
-            // The region follows the comune, as in the wizard (Property.RegionCode is set together with Property.ComuneIstatCode).
             property.ComuneIstatCode = row.Comune.IstatCode;
             property.RegionCode = row.Comune.RegionCode;
             property.UpdatedAt = now;
@@ -340,7 +317,6 @@ public sealed class OnboardingBulkImportService(
             var data = await db.PropertyOnboardingData.FirstOrDefaultAsync(d => d.OrgId == scope.OrgId && d.PropertyId == propertyId, ct);
             if (data is null)
             {
-                // Through the DbSet: the Guid of the row is preset, so a row attached any other way would be tracked as modified.
                 db.PropertyOnboardingData.Add(new PropertyOnboardingData
                 {
                     OrgId = scope.OrgId,
@@ -365,7 +341,6 @@ public sealed class OnboardingBulkImportService(
             var access = await db.PropertyAccessCodes.FirstOrDefaultAsync(a => a.OrgId == scope.OrgId && a.PropertyId == propertyId, ct);
             if (access is null)
             {
-                // The EF converter of the column encrypts it on the way in (purpose of the access codes); nothing here logs or returns it.
                 db.PropertyAccessCodes.Add(new PropertyAccessCode
                 {
                     OrgId = scope.OrgId,
@@ -386,7 +361,6 @@ public sealed class OnboardingBulkImportService(
         if (changed)
             await db.SaveChangesAsync(ct);
 
-        // One unit of work for each row: nothing of this one stays tracked for the next.
         db.ChangeTracker.Clear();
         return changed ? RowWrite.Written : RowWrite.Unchanged;
     }
@@ -413,16 +387,12 @@ public sealed class OnboardingBulkImportService(
         }
     }
 
-    /// <summary>What <see cref="ApplyAsync"/> did with a valid row.</summary>
     private enum RowWrite
     {
-        /// <summary>The property is not there any more (or no longer within the reach of the caller): nothing was written.</summary>
         PropertyGone,
 
-        /// <summary>The property holds what the row says already, or the row says nothing but the key: nothing was written.</summary>
         Unchanged,
 
-        /// <summary>At least one value differed from the stored one and was written.</summary>
         Written,
     }
 

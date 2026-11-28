@@ -38,16 +38,12 @@ public sealed class MessageTranslationService(
     IFeatureFlags featureFlags,
     ILogger<MessageTranslationService> logger) : IMessageTranslationService
 {
-    /// <summary>Stable code of the 422 of a text no translator could translate now.</summary>
     public const string UnavailableCode = "translation_unavailable";
 
-    /// <summary>Stable code of the 422 of a language that is not one of the 14.</summary>
     public const string LanguageInvalidCode = "translation_language_invalid";
 
-    /// <summary>Stable code of the 422 of a request that names a message and a text, or neither.</summary>
     public const string InputInvalidCode = "translation_input_invalid";
 
-    /// <summary>The longest translation kept: a message is at most <see cref="GuestMessageRules.TextMaxLength"/> characters, and a translation is not twice as long.</summary>
     public const int MaxTranslationLength = 2 * GuestMessageRules.TextMaxLength;
 
     public async Task<MessageTranslation> TranslateAsync(
@@ -65,7 +61,6 @@ public sealed class MessageTranslationService(
         if ((messageId is null) == string.IsNullOrWhiteSpace(text))
             throw new DomainRuleException(InputInvalidCode, "MessageTranslationInputInvalid");
 
-        // The conversation in the reach of the caller, then the message in that conversation: another org's, or another conversation's, is a 404.
         var conversation = await MessageConversationLookup.FindAsync(db, scope, threadKey, ct);
         var source = messageId is { } id
             ? await MessageOfAsync(scope, conversation, id, ct)
@@ -73,8 +68,6 @@ public sealed class MessageTranslationService(
         if (source.Text is not { Length: > 0 and <= GuestMessageRules.TextMaxLength } original)
             throw new DomainRuleException(MessageChannelRules.TextInvalidCode, "GuestMessageTextInvalid");
 
-        // The AI only behind its own flag (FD-21, AI-06): what a guest wrote is personal data and the provider is an external sub-processor. With the flag
-        // off nothing of the text reaches the provider and the memory of its answers is not even read.
         if (featureFlags.IsEnabled(FeatureFlags.MessageTranslationAi)
             && await TryAiAsync(scope.OrgId, conversation, original, language, ct) is { } byAi)
         {
@@ -92,10 +85,6 @@ public sealed class MessageTranslationService(
         throw new DomainRuleException(UnavailableCode, "MessageTranslationUnavailable");
     }
 
-    /// <summary>
-    /// The text of a message of the conversation, and its id on the channel manager when it has one. The words of a message of a channel are encrypted at
-    /// rest and are read through the entity; a message of another conversation or another org is not found.
-    /// </summary>
     private async Task<SourceText> MessageOfAsync(HostScope scope, ConversationFacts conversation, Guid messageId, CancellationToken ct)
     {
         if (conversation.OtaThreadId is { } threadId)
@@ -119,7 +108,6 @@ public sealed class MessageTranslationService(
         return new SourceText(GuestMessageRules.NormalizeText(direct), null);
     }
 
-    /// <summary>The translation by CasaZen's AI, or <c>null</c> when it cannot be used (see the remarks of the class).</summary>
     private async Task<string?> TryAiAsync(Guid orgId, ConversationFacts conversation, string text, string language, CancellationToken ct)
     {
         // The names the conversation knows: the guest (unless it was erased: its name is gone) and the person who hosts. The name of the organization is
@@ -147,7 +135,6 @@ public sealed class MessageTranslationService(
                 translatedScrubbed = Clean(result.Content) ?? string.Empty;
                 if (translatedScrubbed.Length == 0 || translatedScrubbed.Length > MaxTranslationLength)
                 {
-                    // The sizes, never the text: it is the model's, and it may repeat what it should not.
                     logger.LogWarning("The AI answer to a message translation is not usable ({Length} characters)", result.Content?.Length ?? 0);
                     return null;
                 }
@@ -167,16 +154,11 @@ public sealed class MessageTranslationService(
         }
         catch (Exception ex)
         {
-            // A timeout of the provider is a TaskCanceledException too: it is the provider that did not answer, not the caller who left.
             logger.LogWarning(ex, "The AI provider failed to translate a message");
             return null;
         }
     }
 
-    /// <summary>
-    /// The translation by the channel manager, for a message that it holds, or <c>null</c> when it cannot be asked or does not answer. A refusal, an
-    /// outage and a license without the chat module are all "not available": the answer of the endpoint is the same 422.
-    /// </summary>
     private async Task<string?> TryChannelManagerAsync(ConversationFacts conversation, string? octorateMessageId, string language, CancellationToken ct)
     {
         if (octorateMessageId is null
@@ -210,7 +192,6 @@ public sealed class MessageTranslationService(
         }
     }
 
-    /// <summary>The answer of a translator as text: trimmed, without the quotation marks a model sometimes puts around it. <c>null</c> when nothing is left.</summary>
     private static string? Clean(string? answer)
     {
         var text = answer?.Trim();
@@ -228,6 +209,5 @@ public sealed class MessageTranslationService(
 
     private sealed record SourceText(string? Text, string? OctorateMessageId);
 
-    /// <summary>The translation of a scrubbed text, as the memory of the AI answers keeps it (names still as tokens).</summary>
     private sealed record TranslatedText(string Text);
 }

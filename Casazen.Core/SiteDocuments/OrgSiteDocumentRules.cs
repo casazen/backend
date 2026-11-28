@@ -24,13 +24,10 @@ public static partial class OrgSiteDocumentRules
     public const string UrlRequiredCode = "org_document_url_required";
     public const string UrlInvalidCode = "org_document_url_invalid";
 
-    /// <summary>Longest text, in characters after normalization: a long privacy notice is about 15,000.</summary>
     public const int ContentMaxLength = 50_000;
 
-    /// <summary>Longest external address (the usual browser limit).</summary>
     public const int ExternalUrlMaxLength = 2048;
 
-    /// <summary>Public route names of the kinds (<c>/api/public/orgs/{slug}/documents/{kind}</c>).</summary>
     public static string RouteName(OrgSiteDocumentKind kind) => kind switch
     {
         OrgSiteDocumentKind.Privacy => "privacy",
@@ -38,7 +35,6 @@ public static partial class OrgSiteDocumentRules
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
-    /// <summary>The kind of a route name (<c>privacy</c>, <c>terms</c>, case-insensitive); false for anything else.</summary>
     public static bool TryParseKind(string? routeName, out OrgSiteDocumentKind kind)
     {
         switch (routeName?.Trim().ToLowerInvariant())
@@ -55,11 +51,6 @@ public static partial class OrgSiteDocumentRules
         }
     }
 
-    /// <summary>
-    /// The text as stored: line breaks unified, control characters removed, outer blank space trimmed and runs of
-    /// blank lines reduced to one. Throws <see cref="DomainRuleException"/> when it is empty, longer than
-    /// <see cref="ContentMaxLength"/>, contains raw HTML or has a link that is not http, https or mailto.
-    /// </summary>
     public static string NormalizeContent(string? content)
     {
         if (string.IsNullOrWhiteSpace(content))
@@ -112,12 +103,6 @@ public static partial class OrgSiteDocumentRules
         return normalized;
     }
 
-    /// <summary>
-    /// HTML of a normalized text, built from encoded text only: paragraphs (a line break inside a paragraph becomes
-    /// <c>&lt;br&gt;</c>), headings (<c>#</c>, <c>##</c>, <c>###</c> → h2, h3, h4: the page title is the h1), bullet lists
-    /// (<c>- </c> or <c>* </c>), <c>**bold**</c>, <c>*italic*</c> and <c>[text](https://…)</c> links. Numbered lines
-    /// stay paragraphs, so clause numbers are kept exactly as written.
-    /// </summary>
     public static string ToHtml(string normalizedContent)
     {
         var html = new StringBuilder();
@@ -195,7 +180,6 @@ public static partial class OrgSiteDocumentRules
         Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri)
         && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeMailto);
 
-    /// <summary>Encodes the text, then turns links and emphasis into tags; emphasis is never applied inside an address.</summary>
     private static string Inline(string text)
     {
         var encoded = Encode(text);
@@ -217,10 +201,6 @@ public static partial class OrgSiteDocumentRules
         return result.ToString();
     }
 
-    /// <summary>
-    /// The five characters that can open markup or end an attribute become entities; letters and symbols stay as they are
-    /// (<c>WebUtility.HtmlEncode</c> would write "à" as <c>&amp;#224;</c>, which is valid but unreadable in the stored HTML).
-    /// </summary>
     private static string Encode(string text) =>
         text.Replace("&", "&amp;", StringComparison.Ordinal)
             .Replace("<", "&lt;", StringComparison.Ordinal)
@@ -243,7 +223,6 @@ public static partial class OrgSiteDocumentRules
     [GeneratedRegex(@"\n[ \t]*\n(?:[ \t]*\n)+")]
     private static partial Regex BlankLines();
 
-    /// <summary>An HTML start or end tag (<c>&lt;p&gt;</c>, <c>&lt;a href="x"&gt;</c>, <c>&lt;/div&gt;</c>), a comment or a processing instruction. <c>&lt;https://x&gt;</c> is not one.</summary>
     [GeneratedRegex(@"</?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?/?>|<[!?]")]
     private static partial Regex HtmlTag();
 

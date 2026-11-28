@@ -1,28 +1,18 @@
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// One period of ownership of one property, in Rome days, both ends included (ADR-012-R4, NF-109): <paramref name="OwnerId"/> holds
-/// <paramref name="SharePercent"/> from <paramref name="Start"/> to <paramref name="End"/> (<c>null</c> = still in force).
-/// </summary>
 public readonly record struct OwnershipPeriod(Guid OwnerId, decimal SharePercent, DateOnly Start, DateOnly? End)
 {
-    /// <summary>True when the period is in force on <paramref name="day"/>.</summary>
     public bool Covers(DateOnly day) => Start <= day && (End is not { } end || end >= day);
 }
 
-/// <summary>What is wrong with the shares of a property on a stretch of days (<see cref="OwnerOwnershipTimeline.Analyze"/>).</summary>
 public enum OwnershipIssueKind
 {
-    /// <summary>Nobody holds the property: the shares add up to 0.</summary>
     Gap = 1,
 
-    /// <summary>Somebody holds it, but the shares add up to less than 100.00.</summary>
     Shortfall = 2,
 
-    /// <summary>The shares add up to more than 100.00.</summary>
     Excess = 3,
 
-    /// <summary>The same owner holds the property twice on the same days.</summary>
     OwnerOverlap = 4,
 }
 
@@ -49,7 +39,6 @@ public sealed record OwnershipIssue(OwnershipIssueKind Kind, DateOnly From, Date
 /// </remarks>
 public static class OwnerOwnershipTimeline
 {
-    /// <summary>The whole property.</summary>
     public const decimal FullShare = 100.00m;
 
     /// <summary>
@@ -82,7 +71,6 @@ public static class OwnerOwnershipTimeline
         if (start > last)
             return Ordered(issues);
 
-        // Every day the total can change: a period starts, or the day after one ends.
         var boundaries = new SortedSet<DateOnly> { start };
         foreach (var period in periods)
         {
@@ -120,7 +108,6 @@ public static class OwnerOwnershipTimeline
         return Ordered(issues);
     }
 
-    /// <summary>True when the shares in force on <paramref name="day"/> add up to exactly 100.00.</summary>
     public static bool IsComplete(IReadOnlyList<OwnershipPeriod> periods, DateOnly day)
     {
         ArgumentNullException.ThrowIfNull(periods);
@@ -132,7 +119,6 @@ public static class OwnerOwnershipTimeline
 
     private static DateOnly Latest(DateOnly a, DateOnly b, DateOnly c) => a >= b && a >= c ? a : b >= c ? b : c;
 
-    /// <summary>The same owner twice on the same days: for each owner, each period against the ones before it (by start).</summary>
     private static IEnumerable<OwnershipIssue> Overlaps(IReadOnlyList<OwnershipPeriod> periods)
     {
         foreach (var owner in periods.GroupBy(p => p.OwnerId))
@@ -148,7 +134,6 @@ public static class OwnerOwnershipTimeline
                     if (current.Start > earlierEnd)
                         continue;
 
-                    // The overlap runs from the start of the later period to the end of the one that stops first.
                     var currentEnd = current.End ?? DateOnly.MaxValue;
                     var overlapEnd = currentEnd < earlierEnd ? currentEnd : earlierEnd;
                     yield return new OwnershipIssue(

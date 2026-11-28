@@ -45,21 +45,18 @@ public sealed class CalendarPushService(
     TimeProvider timeProvider,
     ILogger<CalendarPushService> logger) : ICalendarPushService
 {
-    /// <summary>What of a property the entries are made from.</summary>
     private sealed record PropertyRow(decimal NightlyRate, decimal WeekendSurchargePercent, int? MinNights, string Timezone);
 
     private DateTime UtcNow => timeProvider.GetUtcNow().UtcDateTime;
 
     public async Task RunAsync(Guid processId, CancellationToken cancellationToken = default)
     {
-        // Nothing leaves while the connector is off: the chunks wait, and the job that picks them up is not scheduled either.
         if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
         {
             logger.LogInformation("Calendar change {ProcessId} not sent: the Octorate connector is off", processId);
             return;
         }
 
-        // The job has no tenant: the process is found by its id, and its org is the one every other query names.
         var process = await db.CalendarChangeProcesses.FirstOrDefaultAsync(p => p.Id == processId, cancellationToken);
         if (process is null || !IsToSend(process.State))
             return;
@@ -72,7 +69,6 @@ public sealed class CalendarPushService(
             return;
         }
 
-        // Read again inside the lock: the run that held it may have settled the process while this one waited.
         await db.Entry(process).ReloadAsync(cancellationToken);
         if (!IsToSend(process.State))
             return;
@@ -105,14 +101,10 @@ public sealed class CalendarPushService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Not the channel manager's error (those are recorded on the chunk): a bug or the database. It goes up, and the process is left with a later
-            // attempt so the recurring job does not hit it every minute.
             await PostponeAfterFailureAsync(process, cancellationToken);
             throw;
         }
     }
-
-    // --- One chunk ---------------------------------------------------------------------------------------------------------------
 
     private async Task SendAsync(Guid orgId, CalendarChangeChunk chunk, RunState run, CancellationToken ct)
     {
@@ -147,7 +139,6 @@ public sealed class CalendarPushService(
                 return;
             }
 
-            // The days before today of the property are never sent: a chunk that waited past its last day has nothing to send.
             var today = DayRuleRules.TodayOf(property.Timezone, timeProvider.GetUtcNow());
             if (CalendarChangeRules.PushWindow(today, chunk.FromDate, chunk.ToDate) is not { } window)
             {
@@ -164,7 +155,6 @@ public sealed class CalendarPushService(
                 return;
             }
 
-            // The quota is read once for the run, and what the run has already used is added to it: a chunk that does not fit waits, it never fails.
             var units = CalendarChunkPlanner.EstimateQuotaUnits(window.From, window.To, settings.MaxDays, settings.RoomDaysPerUnit);
             if (!run.QuotaRead)
             {
@@ -188,7 +178,6 @@ public sealed class CalendarPushService(
             chunk.Attempts++;
             chunk.LastAttemptAt = UtcNow;
 
-            // An answer with no process id wrote nothing (a room with no license answers 200 so): it is never an acceptance.
             if (result.ProcessIds.Count == 0)
             {
                 Settle(chunk, CalendarChunkState.Failed, CalendarPushErrorCodes.RoomNotLicensed);
@@ -219,19 +208,16 @@ public sealed class CalendarPushService(
         }
         catch (OctorateAuthException ex) when (ex.IsNotConnected)
         {
-            // The connection of the org is gone: nothing is sent for any chunk of this run, and nothing is claimed.
             logger.LogWarning("Calendar change {ProcessId}: the org has no connection to the channel manager any more", chunk.ProcessId);
             await SettleRestAsync(orgId, chunk, run, CalendarChunkState.Skipped, null, ct);
         }
         catch (OctorateException ex) when (ex is OctorateAuthException or OctorateWrongEnvironmentException)
         {
-            // The same token serves every chunk of the org: they would all be refused, so none is sent.
             logger.LogWarning("Calendar change {ProcessId}: the access of CasaZen was refused ({Code})", chunk.ProcessId, ex.Code);
             await SettleRestAsync(orgId, chunk, run, CalendarChunkState.Failed, CalendarPushErrorCodes.NotAuthorized, ct);
         }
         catch (OctorateException ex)
         {
-            // Octorate refused this request (a 4xx, or an answer that says it did not take it): not tried again by itself, the host can ask again.
             logger.LogWarning(
                 "Calendar change {ProcessId}: refused by the channel manager ({Code}, HTTP {Status})", chunk.ProcessId, ex.Code, ex.OctorateStatusCode);
             chunk.Attempts++;
@@ -248,11 +234,6 @@ public sealed class CalendarPushService(
         }
     }
 
-    /// <summary>
-    /// A rate limit, a 5xx or a timeout: the chunk stays <c>Pending</c> with one more attempt and the next one a back-off later (1, 2, 4, 8 minutes), and the run
-    /// stops (the channel manager is not answering, the next chunks would only be refused); after the fifth attempt the chunk is <c>Failed</c> with
-    /// <c>octorate_unavailable</c>.
-    /// </summary>
     private async Task RecordTransientAsync(CalendarChangeChunk chunk, RunState run, OctorateException error, CancellationToken ct)
     {
         chunk.Attempts++;
@@ -279,7 +260,6 @@ public sealed class CalendarPushService(
         await db.SaveChangesAsync(ct);
     }
 
-    /// <summary>This chunk and every pending chunk of the process settled the same way, and the run stopped.</summary>
     private async Task SettleRestAsync(
         Guid orgId,
         CalendarChangeChunk chunk,
@@ -306,12 +286,6 @@ public sealed class CalendarPushService(
         chunk.UpdatedAt = UtcNow;
     }
 
-    // --- What is sent ------------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// The entries of the nights of a chunk as they are now: the rules and the prices the host set, the nights its manual blocks close, and the nights something
-    /// else holds (a booking, a hold, a block of a channel), whose sale is not written.
-    /// </summary>
     private async Task<IReadOnlyList<OctorateCalendarUpdate>> BuildEntriesAsync(
         Guid orgId,
         Guid propertyId,
@@ -325,7 +299,6 @@ public sealed class CalendarPushService(
         var rules = await dayRules.GetRulesAsync(new HostScope(orgId), propertyId, from, toExclusive, ct);
         var hostPrices = await pricing.GetAppliedNightlyPricesAsync(propertyId, from, toExclusive, ct);
 
-        // The nights the manual blocks close (a mode change block is a manual block too).
         var start = from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var end = toExclusive.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var blocks = await db.CalendarBlocks
@@ -338,7 +311,6 @@ public sealed class CalendarPushService(
             .SelectMany(b => OctorateClosedNights.NightsIn(b.StartUtc, b.EndUtc, from, to))
             .ToHashSet();
 
-        // What is taken by anything else is left alone: the public definition of a taken night, less the nights our own blocks close.
         var occupancy = new PublicOccupancyReader(db, configuration, timeProvider);
         var taken = await occupancy.TakenNightsAsync([propertyId], start, end, ct);
         var held = taken.TryGetValue(propertyId, out var nights)
@@ -356,8 +328,6 @@ public sealed class CalendarPushService(
             held,
             options.Value);
     }
-
-    // --- The process -------------------------------------------------------------------------------------------------------------
 
     private async Task FinishAsync(CalendarChangeProcess process, RunState run, CancellationToken ct)
     {
@@ -383,8 +353,6 @@ public sealed class CalendarPushService(
                     ? chunks.Where(c => c.State == CalendarChunkState.Failed).OrderBy(c => c.FromDate).Select(c => c.ErrorCode).FirstOrDefault()
                     : null;
 
-        // When the job asks again: a quota that is nearly used waits five minutes, an attempt that failed waits its back-off, what was accepted is
-        // followed (CalendarChangeRunner) until the channel manager confirms it or the window of the confirmation is over.
         if (states.Contains(CalendarChunkState.Pending))
         {
             process.NextAttemptAt = run.Postponed
@@ -409,8 +377,6 @@ public sealed class CalendarPushService(
             run.Postponed ? " (waiting for quota)" : string.Empty);
     }
 
-    // After a failure that is not the channel manager's: the next attempt a back-off later, so a bug is not retried every minute. A save that fails
-    // as well is logged and the first error is the one that goes up.
     private async Task PostponeAfterFailureAsync(CalendarChangeProcess process, CancellationToken ct)
     {
         try
@@ -429,7 +395,6 @@ public sealed class CalendarPushService(
 
     private static DateTime Earliest(DateTime? current, DateTime candidate) => current is { } known && known < candidate ? known : candidate;
 
-    /// <summary>What a run learns and decides as it goes.</summary>
     private sealed class RunState
     {
         public bool Stop { get; set; }

@@ -79,7 +79,6 @@ public sealed class OnSiteBookingRequestService(
         if (forwarded)
             await notifier.HostNewRequestAsync(booking.Id, cancellationToken);
 
-        // A second click on the link answers the current state (waiting, accepted, declined or expired).
         return new OnSiteRequestSnapshot(
             booking.Id,
             booking.Status,
@@ -120,8 +119,6 @@ public sealed class OnSiteBookingRequestService(
         {
             booking = await LoadAwaitingHostAsync(bookingId, cancellationToken);
 
-            // The request was not exported to the OTAs while waiting: an OTA booking imported meanwhile (iCal block) wins,
-            // the host can only decline (A3-06, no overbooking on acceptance).
             if (await propertyICalSyncService.HasOverlappingBlockAsync(
                     booking.PropertyId, booking.CheckInDate, booking.CheckOutDate, cancellationToken))
             {
@@ -133,7 +130,6 @@ public sealed class OnSiteBookingRequestService(
             booking.ConfirmedAt = now;
             booking.RequestExpiresAt = null;
             booking.UpdatedAt = now;
-            // The host's acceptance: the confirmation is recorded by the save that confirms the booking (ADR-022-R1).
             await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingConfirmed, booking, BookingEventOrigin.Host, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             if (transaction is not null)
@@ -141,7 +137,6 @@ public sealed class OnSiteBookingRequestService(
         }
 
         logger.LogInformation("On-site request {BookingId} accepted by the host: booking confirmed", booking.Id);
-        // The standard confirmation (BK-10) with "pay at the property"; the host, who accepted, is not emailed.
         await bookingNotifier.BookingConfirmedAsync(booking.Id, BookingConfirmationKind.OnSite, cancellationToken);
         return booking;
     }
@@ -159,7 +154,6 @@ public sealed class OnSiteBookingRequestService(
             booking.CancellationReason = BookingCancellationReason.OnSiteRequestDeclined;
             booking.RequestExpiresAt = null;
             booking.UpdatedAt = now;
-            // Nothing was collected: the "pay at the property" row is closed like any uncollected payment (BK-02, BK-21).
             foreach (var payment in await db.Payments
                          .Where(p => p.BookingId == booking.Id &&
                                      (p.Status == PaymentStatus.Pending || p.Status == PaymentStatus.Failed))
@@ -169,7 +163,6 @@ public sealed class OnSiteBookingRequestService(
                 payment.UpdatedAt = now;
             }
 
-            // A request turned down is a cancellation made by the rules of the request, not a cancellation of a stay: origin System.
             await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingCancelled, booking, BookingEventOrigin.System, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             if (transaction is not null)
@@ -266,7 +259,6 @@ public sealed class OnSiteBookingRequestService(
         return transaction;
     }
 
-    /// <summary>Wrong booking or token: the same 404 either way, so the link tells nothing about other bookings.</summary>
     private static NotFoundException LinkInvalid() =>
         new("On-site request confirmation link not valid")
         {

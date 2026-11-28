@@ -11,10 +11,8 @@ namespace Casazen.Infrastructure.Data.Configurations;
 /// </summary>
 internal sealed class SwissNotificationFileEventConfiguration : IEntityTypeConfiguration<SwissNotificationFileEvent>
 {
-    /// <summary>Name of the check that bounds <see cref="SwissNotificationFileEvent.Format"/>.</summary>
     public const string FormatCheckName = "CK_SwissNotificationFileEvents_Format";
 
-    /// <summary>Name of the check that keeps <see cref="SwissNotificationFileEvent.RowCount"/> from being negative.</summary>
     public const string RowCountCheckName = "CK_SwissNotificationFileEvents_RowCount";
 
     public void Configure(EntityTypeBuilder<SwissNotificationFileEvent> entity)

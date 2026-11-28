@@ -16,7 +16,6 @@ public class IdentityEvidencePurgeJob(IdentityRetentionService retention, TimePr
 {
     public const string RecurringJobId = "identity-evidence-purge";
 
-    /// <summary>Every hour at minute 40 UTC, away from the jobs of the full hour and of minute 20.</summary>
     public const string Cron = "40 * * * *";
 
     [AutomaticRetry(Attempts = 3)]

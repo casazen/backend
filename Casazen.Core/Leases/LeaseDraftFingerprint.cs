@@ -6,13 +6,6 @@ using Casazen.Core.Regulatory;
 
 namespace Casazen.Core.Leases;
 
-/// <summary>
-/// The impression of the values of the five data steps (LR-12): a SHA-256 of the values read in a fixed order and form, saved when
-/// the landlord confirms the review. The next save recomputes it; the confirmation holds only if it is the same, so the autosave
-/// that repeats the values already confirmed (or writes a space more, a lower-case fiscal code, the same number with another
-/// notation) leaves the review as it is, and a real change withdraws it. Nothing personal can be read back from a hash, and none of
-/// the ids of the entries enters it: deleting an entry and typing the same data again is not a change.
-/// </summary>
 public static class LeaseDraftFingerprint
 {
     public static string Compute(LeaseDraftValues values)
@@ -42,9 +35,6 @@ public static class LeaseDraftFingerprint
 
         Field(text, "start", LeaseDraftRules.ParseDate(values.StartDate)?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? LeaseDraftRules.Clean(values.StartDate));
 
-        // A transitory contract states its own end, who has its need, the need and the documentation of it (TR): all of them are printed in the
-        // contract, so a change withdraws the review. They are left out for every other type, which keeps the impression of the reviews
-        // already confirmed exactly as it was.
         if (LeaseDraftRules.ParseContractType(values.ContractType) == LeaseContractType.Transitorio)
         {
             Field(text, "end", LeaseDraftRules.ParseDate(values.EndDate)?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? LeaseDraftRules.Clean(values.EndDate));
@@ -71,7 +61,6 @@ public static class LeaseDraftFingerprint
         }
     }
 
-    /// <summary>One line, with the length of the value first: no value can be mistaken for the end of another.</summary>
     private static void Field(StringBuilder text, string name, string? value) =>
         text.Append(name).Append('=').Append(value?.Length.ToString(CultureInfo.InvariantCulture) ?? "-").Append(':').Append(value).Append('\n');
 

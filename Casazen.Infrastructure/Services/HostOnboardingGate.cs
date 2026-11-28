@@ -27,7 +27,6 @@ public sealed class HostOnboardingGate(
         return Evaluate(snapshot, legalDocuments);
     }
 
-    /// <summary>The gate's decision for an already loaded snapshot.</summary>
     public static HostOnboardingStatus Evaluate(UserAuthorizationSnapshot snapshot, ILegalDocumentService legalDocuments)
     {
         if (!snapshot.Exists)

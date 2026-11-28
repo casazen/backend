@@ -6,11 +6,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// How the issued owner invoices are paid (E14/F01/US01/T01, T02): offset in the statement, to pay, or credited (<see cref="OwnerInvoiceSettlements"/>), read now
-/// from the owner ledger and the credit notes, as the payment state of a guest document is read from its payments. The one reader of the list, the PDF and the
-/// QR-bill.
-/// </summary>
 internal static class OwnerInvoiceSettlementReader
 {
     /// <summary>
@@ -37,7 +32,6 @@ internal static class OwnerInvoiceSettlementReader
             .Select(g => new { Id = g.Key, Total = g.Sum(d => d.Total) })
             .ToDictionaryAsync(x => x.Id, x => x.Total, ct);
 
-        // The balance of the owner, month by month: a line for information only (the commission of a portal the agency bears) is in none of it.
         var months = await db.OwnerLedgerEntries.AsNoTracking()
             .CountingInBalance()
             .Where(e => orgs.Contains(e.OrgId) && owners.Contains(e.PropertyOwnerId))

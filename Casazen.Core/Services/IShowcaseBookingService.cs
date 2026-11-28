@@ -63,7 +63,6 @@ public sealed record ShowcaseHoldAuthorization(
     HeldChargeObservation Observed,
     DateTime? AuthorizedAt);
 
-/// <summary>What is sent once the transaction that made a request out of a hold has committed: the receipt to the customer, the news to the supplier.</summary>
 public sealed record ShowcaseHoldCompletion(SupplierProfile Supplier, ServiceRequest Request, ServiceCustomer Customer);
 
 /// <summary>What the booking service did with the card block of a hold.</summary>
@@ -74,7 +73,6 @@ public sealed record ShowcaseHoldCompletion(SupplierProfile Supplier, ServiceReq
 /// <param name="Completion">Set when the block completed the booking and the request now exists: send it after the commit.</param>
 public sealed record ShowcaseHoldAuthorizationResult(bool Handled, ShowcaseHoldCompletion? Completion = null)
 {
-    /// <summary>The PaymentIntent is not the block of a waiting hold.</summary>
     public static ShowcaseHoldAuthorizationResult NotAHold { get; } = new(false);
 }
 
@@ -138,7 +136,6 @@ public interface IShowcaseBookingService
         ShowcaseHoldAuthorization authorization,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The receipt and the news of the request that <see cref="ApplyHoldAuthorizationAsync"/> created, after the webhook transaction committed. Never throws.</summary>
     Task CompleteHoldAuthorizationAsync(ShowcaseHoldCompletion completion, CancellationToken cancellationToken = default);
 
     /// <summary>

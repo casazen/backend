@@ -3,19 +3,14 @@ using System.Text.Json.Nodes;
 
 namespace Casazen.Core.Services;
 
-/// <summary>The groups of the content of a listing that CasaZen reads back from the channel manager and compares (E02/F03/US01/T02, T07).</summary>
 public static class ListingContentGroups
 {
-    /// <summary>The accommodation: name, address, position.</summary>
     public const string Property = "property";
 
-    /// <summary>The descriptions and the house rules in every language.</summary>
     public const string Descriptions = "descriptions";
 
-    /// <summary>The rooms with their beds.</summary>
     public const string Rooms = "rooms";
 
-    /// <summary>The groups, in the order they are read and listed.</summary>
     public static IReadOnlyList<string> All { get; } = [Property, Descriptions, Rooms];
 }
 
@@ -37,13 +32,10 @@ public sealed record ListingChannelBaseline(
 
     private const string ChangedKey = "_changed";
 
-    /// <summary>A row with nothing kept.</summary>
     public static ListingChannelBaseline Empty { get; } = new(new Dictionary<string, string>(), null, []);
 
-    /// <summary>True once a push was accepted and its content read back.</summary>
     public bool HasBaseline => Hashes.Count > 0;
 
-    /// <summary>What a column holds. A column that cannot be read gives <see cref="Empty"/>: never a failure.</summary>
     public static ListingChannelBaseline Parse(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -84,7 +76,6 @@ public sealed record ListingChannelBaseline(
         }
     }
 
-    /// <summary>The column for this baseline; <c>null</c> when it holds nothing at all.</summary>
     public string? ToJson()
     {
         if (Hashes.Count == 0 && ProcessId is null && ChangedGroups.Count == 0)
@@ -109,16 +100,10 @@ public sealed record ListingChannelBaseline(
         return root.ToJsonString();
     }
 
-    /// <summary>The same baseline following another process.</summary>
     public ListingChannelBaseline WithProcess(string? processId) => this with { ProcessId = processId };
 
-    /// <summary>The same baseline with the groups found changed (empty clears them).</summary>
     public ListingChannelBaseline WithChanged(IReadOnlyList<string> groups) => this with { ChangedGroups = groups };
 
-    /// <summary>
-    /// The groups whose hash in <paramref name="current"/> differs from the baseline. Only the groups both hold are compared: a group that was not
-    /// read this time says nothing about a change.
-    /// </summary>
     public IReadOnlyList<string> Differences(IReadOnlyDictionary<string, string> current)
     {
         ArgumentNullException.ThrowIfNull(current);

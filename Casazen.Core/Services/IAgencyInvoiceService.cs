@@ -19,15 +19,5 @@ public interface IAgencyInvoiceService
     /// </exception>
     Task<string?> GetInvoiceXmlAsync(Guid invoiceId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Generates a PDF courtesy copy of the invoice (ADR-019-R10, AC-NF20-6).
-    /// </summary>
-    /// <param name="invoiceId">ID of the invoice.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>PDF byte array.</returns>
-    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
-    /// 404 invoice_not_found: invoice does not exist or not in caller's org.
-    /// 422 invoice_not_finalized: invoice is still in Draft status (cannot generate PDF).
-    /// </exception>
     Task<byte[]> GetInvoicePdfAsync(Guid invoiceId, CancellationToken cancellationToken = default);
 }

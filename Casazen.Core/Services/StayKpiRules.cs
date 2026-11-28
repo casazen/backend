@@ -17,15 +17,9 @@ namespace Casazen.Core.Services;
 /// </summary>
 public static class StayKpiRules
 {
-    /// <summary>
-    /// A confirmed stay: <see cref="BookingStatus.Confirmed"/>, <see cref="BookingStatus.CheckedIn"/> or
-    /// <see cref="BookingStatus.CheckedOut"/>. A cancelled booking, a checkout hold or a "pay at the property" request
-    /// still waiting for the host (<see cref="BookingStatus.Pending"/>) is not one: no revenue, no arrival, no departure.
-    /// </summary>
     public static Expression<Func<Booking, bool>> IsConfirmedStay() =>
         b => b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn || b.Status == BookingStatus.CheckedOut;
 
-    /// <summary>A confirmed stay (<see cref="IsConfirmedStay"/>) whose check-in date is <paramref name="romeDay"/>.</summary>
     public static Expression<Func<Booking, bool>> ArrivesOn(DateTime romeDay)
     {
         var (start, end) = DayBounds(romeDay);
@@ -33,7 +27,6 @@ public static class StayKpiRules
             && b.CheckInDate >= start && b.CheckInDate < end;
     }
 
-    /// <summary>A confirmed stay (<see cref="IsConfirmedStay"/>) whose check-out date is <paramref name="romeDay"/>.</summary>
     public static Expression<Func<Booking, bool>> DepartsOn(DateTime romeDay)
     {
         var (start, end) = DayBounds(romeDay);
@@ -66,23 +59,12 @@ public static class StayKpiRules
                 || (b.Status == BookingStatus.Confirmed && b.CheckInDate < start));
     }
 
-    /// <summary>
-    /// A departure still to come on <paramref name="todayInRome"/> or later: a confirmed or checked-in stay whose
-    /// check-out date is today or later.
-    /// </summary>
     public static Expression<Func<Booking, bool>> UpcomingCheckOut(DateTime todayInRome)
     {
         var (start, _) = DayBounds(todayInRome);
         return b => (b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn) && b.CheckOutDate >= start;
     }
 
-    /// <summary>
-    /// Revenue of a confirmed stay in a period, pro rata per night: <paramref name="basePrice"/> (lodging plus cleaning,
-    /// tourist tax excluded, see <see cref="Booking.BasePrice"/>) times the nights of the stay that fall from
-    /// <paramref name="fromDate"/> (included) to <paramref name="toDate"/> (excluded), over the nights of the stay
-    /// (<see cref="PropertyOccupancy"/>). A stay across two months counts in each for its nights there; a stay without
-    /// nights counts nothing. Not rounded: round the total.
-    /// </summary>
     public static decimal RevenueInPeriod(decimal basePrice, DateTime checkIn, DateTime checkOut, DateTime fromDate, DateTime toDate)
     {
         var stayNights = (checkOut.Date - checkIn.Date).Days;
@@ -93,18 +75,9 @@ public static class StayKpiRules
         return nightsInPeriod == stayNights ? basePrice : basePrice * nightsInPeriod / stayNights;
     }
 
-    /// <summary>
-    /// The stays with at least one night from <paramref name="fromDate"/> (included) to <paramref name="toDate"/> (excluded): the
-    /// ones the revenue of that period counts (SR-03b: the KPI and the chart read the same rows).
-    /// </summary>
     public static IEnumerable<HostRevenueStay> WithNightsIn(IEnumerable<HostRevenueStay> stays, DateTime fromDate, DateTime toDate) =>
         stays.Where(stay => PropertyOccupancy.NightsIn(stay.CheckIn, stay.CheckOut, fromDate, toDate).Any());
 
-    /// <summary>
-    /// Revenue of the confirmed <paramref name="stays"/> from <paramref name="fromDate"/> (included) to <paramref name="toDate"/>
-    /// (excluded): the sum of <see cref="RevenueInPeriod"/> over the stays that have a night there, rounded to the cent on the
-    /// total.
-    /// </summary>
     public static decimal RevenueOf(IEnumerable<HostRevenueStay> stays, DateTime fromDate, DateTime toDate) =>
         Math.Round(
             WithNightsIn(stays, fromDate, toDate)
@@ -112,11 +85,6 @@ public static class StayKpiRules
             2,
             MidpointRounding.AwayFromZero);
 
-    /// <summary>
-    /// A stay that arrives from <paramref name="firstDay"/> (included) to <paramref name="lastDayExcluded"/> (excluded), both
-    /// Europe/Rome calendar dates (SR-03b): the check-in date falls on one of those days. Not a filter on the status: combine it
-    /// with <see cref="IsConfirmedStay"/> or <see cref="OnSiteRequests.IsAwaitingHostApproval"/>.
-    /// </summary>
     public static Expression<Func<Booking, bool>> ArrivesBetween(DateTime firstDay, DateTime lastDayExcluded)
     {
         var start = RomeCalendar.StartOfDayUtc(firstDay.Date);
@@ -124,11 +92,9 @@ public static class StayKpiRules
         return b => b.CheckInDate >= start && b.CheckInDate < end;
     }
 
-    /// <summary>The Rome calendar date of a stored stay date, as midnight UTC (date-only convention).</summary>
     public static DateTime RomeDateOf(DateTime value) =>
         RomeCalendar.DateInRome(value).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
-    // The UTC instants between which a stored value falls on this Rome calendar date.
     private static (DateTime Start, DateTime End) DayBounds(DateTime romeDay)
     {
         var day = romeDay.Date;

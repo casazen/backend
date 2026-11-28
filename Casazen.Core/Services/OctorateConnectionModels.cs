@@ -40,15 +40,10 @@ public sealed record OctorateConnectionInfo(
     bool? PullReservations = null,
     string? HotelId = null)
 {
-    /// <summary>The <c>status</c> of a connection that works.</summary>
     public const string EnabledStatus = OctorateConnectionSummary.EnabledStatus;
 
-    /// <summary>Octorate shows the connection as working: its status is <c>ENABLED</c>. Nothing else is taken for connected.</summary>
     public bool IsConnected => string.Equals(Status?.Trim(), EnabledStatus, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// The provider reports the connection as enabled. A login alone can also be returned for a waiting connection with an invalid listing ID.
-    /// </summary>
     public bool PanelAccessDone => IsConnected;
 
     /// <summary>
@@ -84,43 +79,30 @@ public sealed record OctorateConnectionCreate(string PortalCode, string? HotelId
 /// </summary>
 public sealed record OctorateConnectionPatch
 {
-    /// <summary>Octorate sends calendar, prices and availability to the channel.</summary>
     public bool? UpdateCalendar { get; init; }
 
-    /// <summary>Octorate pulls the reservations of the channel.</summary>
     public bool? PullReservations { get; init; }
 
-    /// <summary>Octorate pulls only the reservations of the rooms that are mapped.</summary>
     public bool? PullMappedOnly { get; init; }
 
-    /// <summary>Octorate sends the content of the listing (texts, photos) to the channel.</summary>
     public bool? Content { get; init; }
 
-    /// <summary>Octorate e-mails the account when the connection fails.</summary>
     public bool? MailOnError { get; init; }
 
-    /// <summary>The share of the availability that is sent to the channel (0 to 100).</summary>
     public int? AvailabilityPercentage { get; init; }
 
-    /// <summary>The price correction applied to the channel, as a percentage.</summary>
     public decimal? CorrectionRatio { get; init; }
 
-    /// <summary>The price correction is a fixed amount, not a percentage.</summary>
     public bool? CorrectionFixed { get; init; }
 
-    /// <summary>The corrected price is rounded.</summary>
     public bool? CorrectionRound { get; init; }
 
-    /// <summary>The identifier of the property on the portal.</summary>
     public string? HotelId { get; init; }
 
-    /// <summary>The username on the portal.</summary>
     public string? Username { get; init; }
 
-    /// <summary>The password on the portal.</summary>
     public string? Password { get; init; }
 
-    /// <summary>True when no member is set: there is nothing to send.</summary>
     public bool IsEmpty =>
         UpdateCalendar is null && PullReservations is null && PullMappedOnly is null && Content is null && MailOnError is null
         && AvailabilityPercentage is null && CorrectionRatio is null && CorrectionFixed is null && CorrectionRound is null
@@ -140,25 +122,16 @@ public sealed record OctorateConnectionPatch
     }
 }
 
-/// <summary>
-/// The operations a connection runs (<c>POST /rest/v1/connection/{action}/{acc}/{connection}</c>, E09/F02/US01/T01). None of them creates or
-/// publishes a listing on the channel. Documented by Octorate, not run on a real channel (the sandbox has none).
-/// </summary>
 public enum OctorateConnectionAction
 {
-    /// <summary><c>IMPORT_ROOMS</c>: Octorate reads the rooms of the existing listing on the channel, ready to be mapped.</summary>
     ImportRooms = 1,
 
-    /// <summary><c>IMPORT_RESERVATIONS</c>: Octorate reads the future reservations of the channel.</summary>
     ImportReservations = 2,
 
-    /// <summary><c>IMPORT_CALENDAR</c>: Octorate reads the calendar of the channel.</summary>
     ImportCalendar = 3,
 
-    /// <summary><c>MARK_CONNECTED</c>: tells Octorate, and the channel when needed, that the connection is ready.</summary>
     MarkConnected = 4,
 
-    /// <summary><c>COMMIT_MAPPING_AS_COMPLETED</c>: tells Octorate the mapping of the rooms is complete.</summary>
     CommitMappingAsCompleted = 5,
 }
 

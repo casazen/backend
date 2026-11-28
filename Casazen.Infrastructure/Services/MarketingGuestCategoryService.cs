@@ -24,7 +24,6 @@ public sealed class MarketingGuestCategoryService(AppDbContext db, ICrmProfileRe
 {
     private static readonly string[] TripTypes = ["single", "family", "couple", "group", "business", "withPets"];
 
-    // Only the keys of this dictionary and their counts may leave CasaZen. The raw text stays in the request's memory.
     private static readonly Dictionary<string, string[]> Topics = new(StringComparer.OrdinalIgnoreCase)
     {
         ["music"] = ["music", "musica", "concerto", "concert", "jazz", "musik"],

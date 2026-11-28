@@ -7,12 +7,9 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum ChildrenPolicy
 {
-    /// <summary>Non adatto ai bambini.</summary>
     No = 0,
 
-    /// <summary>Su richiesta.</summary>
     OnRequest = 1,
 
-    /// <summary>Benvenuti.</summary>
     Yes = 2,
 }

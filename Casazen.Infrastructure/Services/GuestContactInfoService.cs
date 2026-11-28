@@ -45,12 +45,10 @@ public sealed class GuestContactInfoService(
     ILogger<GuestContactInfoService> logger,
     TimeProvider? timeProvider = null) : IGuestContactInfoService
 {
-    /// <summary>The longest e-mail address and phone number of a guest (the columns of <see cref="Guest"/>).</summary>
     private const int EmailMaxLength = 255;
 
     private const int PhoneMaxLength = 20;
 
-    /// <summary>The code of an answer of the channel manager that CasaZen could not read (not an object, none of the members of a contact).</summary>
     public const string UnrecognizedCode = "octorate_contact_info_unrecognized";
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -78,7 +76,6 @@ public sealed class GuestContactInfoService(
         if (await targets.AccommodationOfAsync(booking.PropertyId, ct) is not { } accommodation)
             return new GuestContactInfoOutcome(GuestContactInfoStatus.NotApplicable);
 
-        // The reservation first: it says, with flags and no data, whether the channel manager holds an address at all.
         OctorateReservation reservation;
         try
         {
@@ -105,7 +102,6 @@ public sealed class GuestContactInfoService(
         }
         catch (OctorateSensitiveDataNotAllowedException)
         {
-            // The static IP addresses of CasaZen are not registered with the channel manager (or the application has no permission): nothing was released.
             logger.LogWarning(
                 "The contact of the guest of booking {BookingId} (org {OrgId}) was refused by the channel manager: the static IP addresses are not registered", bookingId, orgId);
             return new GuestContactInfoOutcome(GuestContactInfoStatus.StaticIpsRequired);
@@ -116,7 +112,6 @@ public sealed class GuestContactInfoService(
             return new GuestContactInfoOutcome(GuestContactInfoStatus.NotAvailable, ((OctorateException)ex).Code);
         }
 
-        // The channel manager answered, so it recorded the read and so does CasaZen: the booking and the purpose, nobody as the actor, never the address.
         activityLog.Record(OrgActivity.Of(
             orgId,
             OrgActivityType.ContactInfoRead,
@@ -143,7 +138,6 @@ public sealed class GuestContactInfoService(
             guest.UpdatedAt = now;
         }
 
-        // The phone number is for the host's view of the booking only, and only where the guest had none.
         var phone = contact.Phone?.Trim();
         if (string.IsNullOrWhiteSpace(guest.PhoneNumber) && !string.IsNullOrEmpty(phone) && phone.Length <= PhoneMaxLength)
         {

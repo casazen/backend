@@ -11,7 +11,6 @@ namespace Casazen.Core.Models;
 /// </summary>
 public sealed record GuestDataExport
 {
-    /// <summary>Version of this layout; the first export (a flat dictionary, before CO-15) was version 1.</summary>
     public const string CurrentSchemaVersion = "casazen.guest-data-export/2";
 
     public string SchemaVersion { get; init; } = CurrentSchemaVersion;
@@ -32,25 +31,12 @@ public sealed record GuestDataExport
     public required GuestExportConsents Consents { get; init; }
     public required GuestExportProcessing Processing { get; init; }
 
-    /// <summary>
-    /// The per-channel marketing consents of the check-in (NF-05, <see cref="MarketingConsentRecord"/>), oldest first: the channels ticked,
-    /// the marketing e-mail, whether it was confirmed, the version of the text, the time and the IP. E07/F06/US02/T01 (NF-95, NF-20).
-    /// </summary>
     public IReadOnlyList<GuestExportMarketingChannel> MarketingChannels { get; init; } = [];
 
-    /// <summary>
-    /// The profile the CRM keeps for the guest (<see cref="GuestCrmProfile"/>), or <c>null</c> when it has none. Never the keyed hashes, the
-    /// proposals of merge or the data of another guest (see <see cref="GuestExportCrmProfile.SharedWithOtherGuests"/>).
-    /// </summary>
     public GuestExportCrmProfile? CrmProfile { get; init; }
 
-    /// <summary>
-    /// The contacts of the guest in the CRM (<see cref="GuestContact"/>): e-mail, phone and WhatsApp, with where each came from, whether it was
-    /// confirmed, the legal basis, the version of the text, the time and whether the person asked not to be written to.
-    /// </summary>
     public IReadOnlyList<GuestExportContact> Contacts { get; init; } = [];
 
-    /// <summary>The messages the guest exchanged with the host on its bookings (<see cref="GuestMessage"/>), oldest first.</summary>
     public IReadOnlyList<GuestExportMessage> Messages { get; init; } = [];
 }
 
@@ -163,8 +149,6 @@ public sealed record GuestExportCheckInSession(
 
 public sealed record GuestExportAlloggiatiCommunication(Guid BookingId, AlloggiatiWebStatus Status, DateTime? ReportedAt);
 
-/// <param name="PrivacyNoticeVersion">Version stored on the guest record (direct booking checkout, before CO-15 also the check-in).</param>
-/// <param name="History">Every event of <see cref="GuestConsentRecord"/>, oldest first, IP included.</param>
 public sealed record GuestExportConsents(
     string PrivacyNoticeVersion,
     DateTime? PrivacyNoticeDate,
@@ -242,13 +226,8 @@ public sealed record GuestExportCrmProfile(
     public IReadOnlyList<GuestExportMergedProfile> MergedProfiles { get; init; } = [];
 }
 
-/// <summary>What the CRM still holds in a profile that was merged into the guest's profile (a tombstone): language, country and tags.</summary>
-/// <param name="Language">The language the profile had.</param>
-/// <param name="Country">The country the profile had.</param>
-/// <param name="Tags">The tags the hosts gave the profile.</param>
 public sealed record GuestExportMergedProfile(string Language, string Country, IReadOnlyList<string> Tags);
 
-/// <summary>One contact of the guest in the CRM (<see cref="GuestContact"/>), decrypted: the guest's own address or number.</summary>
 public sealed record GuestExportContact(
     GuestContactChannel Channel,
     string Value,
@@ -267,7 +246,6 @@ public sealed record GuestExportContact(
     string? SuppressedSource,
     DateTime CreatedAt);
 
-/// <summary>A message of the guest's conversation with the host on one booking (<see cref="GuestMessage"/>).</summary>
 public sealed record GuestExportMessage(Guid BookingId, GuestMessageSender Sender, string Text, DateTime CreatedAt);
 
 /// <summary>
@@ -302,13 +280,10 @@ public sealed record GuestPrivacySummary(
     bool HasDocumentScan,
     bool HasOpenBookings);
 
-/// <param name="Version">Version of the text of the consent in force (latest grant), empty when given before CO-15.</param>
 public sealed record GuestMarketingConsentState(bool Granted, DateTime? Since, string Version);
 
-/// <summary>Latest privacy notice presented (check-in portal) or stored on the record (direct booking checkout).</summary>
 public sealed record GuestPrivacyNoticeState(string Version, DateTime? PresentedAt);
 
-/// <summary>A consent event as the host sees it: no IP address.</summary>
 public sealed record GuestConsentHistoryItem(
     GuestConsentPurpose Purpose,
     GuestConsentAction Action,
@@ -317,7 +292,6 @@ public sealed record GuestConsentHistoryItem(
     DateTime RecordedAt,
     string? Note);
 
-/// <summary>Outcome of one run of the retention job (CO-15).</summary>
 public sealed record GuestRetentionRunResult(IReadOnlyList<GuestRetentionCategoryResult> Categories);
 
 /// <param name="Configured">False: nothing of the category was deleted (see the warning in the logs).</param>

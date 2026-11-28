@@ -4,10 +4,6 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Casazen.Infrastructure.Data.Configurations;
 
-/// <summary>
-/// The rules of the owner stays (E07/F07/US01/T01): one row for the property and at most one for each of its owners (two filtered unique indexes), the
-/// values bounded by check constraints, the blocked dates as jsonb. The rows go with their property (cascade); the org restricts.
-/// </summary>
 internal sealed class OwnerStayRuleConfiguration : IEntityTypeConfiguration<OwnerStayRule>
 {
     public void Configure(EntityTypeBuilder<OwnerStayRule> entity)
@@ -30,10 +26,6 @@ internal sealed class OwnerStayRuleConfiguration : IEntityTypeConfiguration<Owne
     }
 }
 
-/// <summary>
-/// The owner stays (E07/F07/US01/T01): the property and the owner profile restrict (a stay is history and audit), the departure after the arrival.
-/// The reconciliation reads the stays by state; the calendar and the conflicts read them by property and dates.
-/// </summary>
 internal sealed class OwnerStayRequestConfiguration : IEntityTypeConfiguration<OwnerStayRequest>
 {
     public void Configure(EntityTypeBuilder<OwnerStayRequest> entity)
@@ -49,7 +41,6 @@ internal sealed class OwnerStayRequestConfiguration : IEntityTypeConfiguration<O
     }
 }
 
-/// <summary>The documents shared with the owners (E07/F07/US01/T02): the owner profile and the property restrict (the audit outlives them).</summary>
 internal sealed class OwnerDocumentConfiguration : IEntityTypeConfiguration<OwnerDocument>
 {
     public void Configure(EntityTypeBuilder<OwnerDocument> entity)
@@ -61,7 +52,6 @@ internal sealed class OwnerDocumentConfiguration : IEntityTypeConfiguration<Owne
     }
 }
 
-/// <summary>The files of the shared documents: one number per document, the dates in order; append-only (the context refuses a change).</summary>
 internal sealed class OwnerDocumentVersionConfiguration : IEntityTypeConfiguration<OwnerDocumentVersion>
 {
     public void Configure(EntityTypeBuilder<OwnerDocumentVersion> entity)
@@ -77,7 +67,6 @@ internal sealed class OwnerDocumentVersionConfiguration : IEntityTypeConfigurati
     }
 }
 
-/// <summary>The downloads of the shared documents (the download audit): append-only, exactly one downloader.</summary>
 internal sealed class OwnerDocumentDownloadConfiguration : IEntityTypeConfiguration<OwnerDocumentDownload>
 {
     public void Configure(EntityTypeBuilder<OwnerDocumentDownload> entity)
@@ -109,7 +98,6 @@ internal sealed class OwnerPortalContactConfiguration : IEntityTypeConfiguration
     }
 }
 
-/// <summary>The conversations of the owner inbox: the owner profile restricts; read by owner profile and last message.</summary>
 internal sealed class OwnerConversationConfiguration : IEntityTypeConfiguration<OwnerConversation>
 {
     public void Configure(EntityTypeBuilder<OwnerConversation> entity)
@@ -120,7 +108,6 @@ internal sealed class OwnerConversationConfiguration : IEntityTypeConfiguration<
     }
 }
 
-/// <summary>The messages of the owner inbox: append-only, with their conversation (restrict: kept as written).</summary>
 internal sealed class OwnerMessageConfiguration : IEntityTypeConfiguration<OwnerMessage>
 {
     public void Configure(EntityTypeBuilder<OwnerMessage> entity)

@@ -18,27 +18,12 @@ public class ConcordatoFacileOptions
     /// </summary>
     public string? StripePriceId { get; set; }
 
-    /// <summary>
-    /// Secret key for generating signed links to the ConcordatoFacile portal (NF-05).
-    /// Used to create time-limited, tamper-proof URLs.
-    /// </summary>
     public string? LinkSecret { get; set; }
 
-    /// <summary>
-    /// Base URL of the web application for constructing Stripe Checkout return URLs.
-    /// Example: https://app.casazen.it or https://localhost:5173 in development
-    /// </summary>
     public string? BaseUrl { get; set; }
 
-    /// <summary>
-    /// Stripe API key (optional, can also come from environment variable STRIPE_SECRET_KEY).
-    /// </summary>
     public string? StripeApiKey { get; set; }
 
-    /// <summary>
-    /// Stripe Price IDs for biennial subscriptions that grant a ConcordatoFacile gift (ADR-006-R1, ADR-006-R2).
-    /// Required in Production (ADR-006-R8). Example: ["price_123abc", "price_456def"]
-    /// </summary>
     public string[]? BiennialPriceIds { get; set; }
 
     /// <summary>
@@ -73,31 +58,22 @@ public class ConcordatoFacileOptions
     /// </summary>
     public string? FormBypassSecret { get; set; }
 
-    /// <summary>Settings of the simulated module and status API (CF-SIM); read only with <see cref="ConcordatoFacileFormMode.Simulated"/>.</summary>
     public ConcordatoFacileSimulatorOptions Simulator { get; set; } = new();
 }
 
-/// <summary>How the signed link of ConcordatoFacile is served (<see cref="ConcordatoFacileOptions.FormMode"/>).</summary>
 public enum ConcordatoFacileFormMode
 {
-    /// <summary>The real module and status API of ConcordatoFacile. The only mode allowed in Production.</summary>
     Real = 0,
 
-    /// <summary>A simulation of both, for the test environment only (CF-SIM). Never in Production.</summary>
     Simulated = 1,
 }
 
-/// <summary>Settings of the simulator of ConcordatoFacile (CF-SIM): nothing here has an effect with <see cref="ConcordatoFacileFormMode.Real"/>.</summary>
 public class ConcordatoFacileSimulatorOptions
 {
     /// <summary>How long (seconds) the cache of the status keeps what it read from the simulator, so that a person who changes a state sees it at once.</summary>
     public int StatusTtlSeconds { get; set; } = 5;
 }
 
-/// <summary>
-/// Validates ConcordatoFacileOptions at startup (ADR-005-R10).
-/// In Production, StripePriceId must be configured or the app refuses to start.
-/// </summary>
 public sealed class ConcordatoFacileOptionsValidator(IHostEnvironment environment) : IValidateOptions<ConcordatoFacileOptions>
 {
     public ValidateOptionsResult Validate(string? name, ConcordatoFacileOptions options)
@@ -106,7 +82,6 @@ public sealed class ConcordatoFacileOptionsValidator(IHostEnvironment environmen
 
         var failures = new List<string>();
 
-        // StripePriceId is required in Production (ADR-005-R10)
         if (IsProductionEnvironment() && string.IsNullOrWhiteSpace(options.StripePriceId))
         {
             failures.Add(
@@ -114,7 +89,6 @@ public sealed class ConcordatoFacileOptionsValidator(IHostEnvironment environmen
                 "Configure the Stripe Price ID for the ConcordatoFacile one-time payment.");
         }
 
-        // BiennialPriceIds is required in Production (ADR-006-R8)
         if (IsProductionEnvironment() && (options.BiennialPriceIds is null || options.BiennialPriceIds.Length == 0))
         {
             failures.Add(
@@ -122,7 +96,6 @@ public sealed class ConcordatoFacileOptionsValidator(IHostEnvironment environmen
                 "Configure the Stripe Price IDs for biennial subscriptions that grant a ConcordatoFacile gift.");
         }
 
-        // ADR-007-R3: LinkSecret is required in Production (can come from env var or config)
         var linkSecret = Environment.GetEnvironmentVariable("CONCORDATOFACILE_LINK_SECRET")
             ?? options.LinkSecret;
 
@@ -133,7 +106,6 @@ public sealed class ConcordatoFacileOptionsValidator(IHostEnvironment environmen
                 "Set CONCORDATOFACILE_LINK_SECRET environment variable or configure ConcordatoFacile:LinkSecret.");
         }
 
-        // ADR-007-R4: LinkSecret must be >= 32 characters
         if (!string.IsNullOrWhiteSpace(linkSecret) && linkSecret.Length < 32)
         {
             failures.Add(
@@ -171,7 +143,6 @@ public sealed class ConcordatoFacileOptionsValidator(IHostEnvironment environmen
                 $"Remove {ConcordatoFacileOptions.SectionName}__FormMode or set it to Real.");
         }
 
-        // The signed link of the simulated module is an address of the CasaZen web app: without it there is nowhere to send the person.
         if (!Uri.TryCreate(options.BaseUrl?.Trim(), UriKind.Absolute, out var baseUrl)
             || (baseUrl.Scheme != Uri.UriSchemeHttps && baseUrl.Scheme != Uri.UriSchemeHttp))
         {

@@ -41,16 +41,13 @@ public class LeaseMaintenanceRequest : ITenantOwned
     [MaxLength(ReasonMaxLength)]
     public string? RejectionReason { get; set; }
 
-    /// <summary>Euros agreed when the request was approved. The debit uses this amount. Null until then. Not a paid flag.</summary>
     public long? AmountCents { get; set; }
 
     [Required, MaxLength(CurrencyMaxLength)]
     public string Currency { get; set; } = "eur";
 
-    /// <summary>The latest bank-link debit for this request. A succeeded one is what makes <see cref="Status"/> paid.</summary>
     public Guid? BankLinkPaymentId { get; set; }
 
-    /// <summary>JSON array of stored photos. Empty when the tenant attached none.</summary>
     public string PhotosJson { get; set; } = "[]";
 
     [Required, MaxLength(UserIdMaxLength)]

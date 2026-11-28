@@ -15,66 +15,31 @@ public class ShowcaseBookingOptions
 {
     public const string SectionName = "Suppliers:Showcase";
 
-    /// <summary>Shortest and longest time a customer has to check the e-mail, in minutes (5 minutes to a day).</summary>
     public const int MinEmailVerificationMinutes = 5;
 
-    /// <inheritdoc cref="MinEmailVerificationMinutes"/>
     public const int MaxEmailVerificationMinutes = 24 * 60;
 
-    /// <summary>Shortest and longest time a customer has to answer another time the supplier proposed, in minutes (30 minutes to a week).</summary>
     public const int MinProposalResponseMinutes = 30;
 
-    /// <inheritdoc cref="MinProposalResponseMinutes"/>
     public const int MaxProposalResponseMinutes = 7 * 24 * 60;
 
-    /// <summary>Shortest and longest free cancellation notice, in hours (0 is "free until the work starts"; a month at most).</summary>
     public const int MinFreeCancellationHours = 0;
 
-    /// <inheritdoc cref="MinFreeCancellationHours"/>
     public const int MaxFreeCancellationHours = 24 * 30;
 
-    /// <summary>
-    /// Minutes a booking waits for the customer to check the e-mail (30): the slot is held for that long and the link works
-    /// for that long. Env var <c>Suppliers__Showcase__EmailVerificationMinutes</c>.
-    /// </summary>
     public int EmailVerificationMinutes { get; set; } = 30;
 
-    /// <summary>
-    /// Minutes the customer has to answer another time the supplier proposed for a booking (a day): the request waits that long
-    /// for the answer (SP-11: <c>proposal/accept</c> and <c>proposal/reject</c>), then it lapses with the reason
-    /// <c>ProposalNotAnswered</c> and both parties are told. Env var <c>Suppliers__Showcase__ProposalResponseMinutes</c>.
-    /// </summary>
     public int ProposalResponseMinutes { get; set; } = 24 * 60;
 
-    /// <summary>
-    /// Minutes a supplier has to answer a request on measure (SP-10b), counted from the moment the customer checks its e-mail: one hour,
-    /// the promise of the product. After it the request lapses with the reason <c>NoResponse</c> and the customer is told (the
-    /// <c>service-request-expiry</c> job, the one of the bookings); the first message of the supplier stops the clock. Env var
-    /// <c>Suppliers__Showcase__InquiryResponseMinutes</c>.
-    /// </summary>
     public int InquiryResponseMinutes { get; set; } = ShowcaseInquiryLimits.DefaultResponseMinutes;
 
-    /// <summary>
-    /// Hours before the work in which the customer can still cancel a booking <b>for free</b> (24, SP-11). In v1 a cancellation
-    /// after that costs nothing either (decision D6: no exit cost), so the number only decides what the customer is told
-    /// ("free until …") and whether the supplier is told the notice was short; it is the value a later fee would read. Elapsed
-    /// hours, not hours of the clock: 24 hours before 08:00 of the Sunday the clocks go back (25 October 2026) is 09:00 of the
-    /// Saturday, on the clock of that day. Env var <c>Suppliers__Showcase__FreeCancellationHours</c>.
-    /// </summary>
     public int FreeCancellationHours { get; set; } = 24;
 
-    /// <summary>
-    /// The version of the privacy notice a customer accepts when it books (the text the web app shows): the booking is refused
-    /// (422 <c>supplier_booking_consent_outdated</c>) when the customer accepted another one. <b>No default.</b> Env var
-    /// <c>Suppliers__Showcase__PrivacyNoticeVersion</c>.
-    /// </summary>
     public string? PrivacyNoticeVersion { get; set; }
 
-    /// <summary>The configured version, trimmed, or <c>null</c> when it is missing.</summary>
     public string? CurrentPrivacyNoticeVersion =>
         string.IsNullOrWhiteSpace(PrivacyNoticeVersion) ? null : PrivacyNoticeVersion.Trim();
 
-    /// <summary>Configuration errors, empty when the section is valid.</summary>
     public IReadOnlyList<string> Validate(bool bookingEnabled)
     {
         var failures = new List<string>();
@@ -105,8 +70,6 @@ public class ShowcaseBookingOptions
         if (CurrentPrivacyNoticeVersion is { Length: > 50 })
             failures.Add("Suppliers__Showcase__PrivacyNoticeVersion is longer than 50 characters.");
 
-        // The flag decides: while it is off nobody can book, so the version is not needed; with it on, a booking without the
-        // version of the notice the customer accepted cannot be recorded, and the application must not run like that.
         if (bookingEnabled && CurrentPrivacyNoticeVersion is null)
         {
             failures.Add(
@@ -126,13 +89,10 @@ public class ShowcaseBookingOptions
 /// </summary>
 public class ServiceCustomerIndexOptions
 {
-    /// <summary>The section that holds the key: <c>Suppliers</c> (the key sits next to the sections of the suppliers).</summary>
     public const string SectionName = "Suppliers";
 
-    /// <summary>Shortest accepted key, in characters: 32 random bytes written as text are 44.</summary>
     public const int MinKeyLength = 32;
 
-    /// <summary>Env var <c>Suppliers__CustomerIndexKey</c>: at least <see cref="MinKeyLength"/> characters, random, never reused.</summary>
     public string? CustomerIndexKey { get; set; }
 }
 
@@ -171,7 +131,6 @@ public sealed class ShowcaseBookingOptionsValidator(IFeatureFlags featureFlags, 
         return ValidateOptionsResult.Success;
     }
 
-    /// <summary>True where the key cannot be left out: every environment except Development and Testing.</summary>
     public static bool RequiresKey(IHostEnvironment environment) =>
         !environment.IsDevelopment() && !environment.IsEnvironment("Testing");
 }

@@ -8,7 +8,6 @@ using Stripe;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>A page of platform invoices for the admin e-invoicing queue.</summary>
 public sealed record PlatformInvoicePage(IReadOnlyList<PlatformInvoice> Items, int TotalCount);
 
 /// <summary>
@@ -115,7 +114,6 @@ public sealed class PlatformInvoiceService(
         if (!sdiProvider.IsConfigured)
             return;
 
-        // System context (Stripe webhook job): the invoice is read by id across orgs, as the event concerns one org.
         var invoice = await dbContext.PlatformInvoices
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Include(i => i.Org)
@@ -162,7 +160,6 @@ public sealed class PlatformInvoiceService(
         int pageSize,
         CancellationToken cancellationToken = default)
     {
-        // AdminOnly: the platform e-invoicing queue spans every org, so the tenant filter is bypassed on purpose.
         var query = dbContext.PlatformInvoices
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -188,7 +185,6 @@ public sealed class PlatformInvoiceService(
         string reference,
         CancellationToken cancellationToken = default)
     {
-        // AdminOnly, platform-wide queue: the tenant filter is bypassed on purpose.
         var invoice = await dbContext.PlatformInvoices
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Include(i => i.Org)

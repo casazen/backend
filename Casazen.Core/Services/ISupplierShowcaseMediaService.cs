@@ -21,9 +21,6 @@ public sealed record ShowcaseMediaItem(
     int? Height,
     DateTime CreatedAt);
 
-/// <summary>What one run of the cleanup of the images of the showcases did.</summary>
-/// <param name="Skipped">Another run was in progress: nothing was done.</param>
-/// <param name="Removed">The files removed (the object and its row).</param>
 public sealed record ShowcaseMediaCleanupResult(bool Skipped, int Removed)
 {
     public static ShowcaseMediaCleanupResult SkippedRun { get; } = new(true, 0);
@@ -48,23 +45,8 @@ public sealed record ShowcaseMediaCleanupResult(bool Skipped, int Removed)
 /// </remarks>
 public interface ISupplierShowcaseMediaService
 {
-    /// <summary>
-    /// Stores an image of the supplier's showcase and returns it. <paramref name="kind"/> is the text of the form (<c>logo</c>, <c>cover</c>,
-    /// <c>work</c> or <c>before</c>).
-    /// </summary>
-    /// <exception cref="Exceptions.DomainRuleException">
-    /// 422 <c>showcase_media_none</c>, <c>_kind_invalid</c>, <c>_invalid_image</c>, <c>_dimensions</c> or <c>_limit_reached</c>.
-    /// </exception>
-    /// <exception cref="Exceptions.DomainPayloadTooLargeException">413 <c>showcase_media_too_large</c>.</exception>
-    /// <exception cref="Exceptions.DomainUnsupportedMediaTypeException">415 <c>showcase_media_unsupported_type</c>.</exception>
     Task<ShowcaseMediaItem> UploadAsync(Guid supplierOrgId, string? kind, IFormFile? file, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Removes an image of the supplier (the object and its row) when nothing refers to it: not the draft, not the published version, not the one
-    /// published before it.
-    /// </summary>
-    /// <exception cref="Exceptions.NotFoundException"><c>showcase_media_not_found</c>: no image of this supplier has this id.</exception>
-    /// <exception cref="Exceptions.DomainConflictException"><c>showcase_media_in_use</c>.</exception>
     Task DeleteAsync(Guid supplierOrgId, Guid mediaId, CancellationToken cancellationToken = default);
 
     /// <summary>

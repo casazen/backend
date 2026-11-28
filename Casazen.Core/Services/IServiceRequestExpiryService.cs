@@ -25,7 +25,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IServiceRequestExpiryService
 {
-    /// <summary>One run. Never throws for a hold or a request it cannot handle: it counts it, and the next run goes on.</summary>
     Task<ServiceRequestExpiryRun> RunAsync(CancellationToken cancellationToken = default);
 }
 
@@ -38,6 +37,5 @@ public interface IServiceRequestExpiryService
 /// <param name="RemindersSent">Reminders to answer queued for the suppliers of requests on measure (SP-10c).</param>
 public sealed record ServiceRequestExpiryRun(bool Skipped, int HoldsDeleted, int RequestsCancelled, int Conflicts, int Failed, int RemindersSent = 0)
 {
-    /// <summary>Another run is in progress.</summary>
     public static ServiceRequestExpiryRun LockTaken { get; } = new(Skipped: true, 0, 0, 0, 0);
 }

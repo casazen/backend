@@ -46,11 +46,6 @@ internal sealed class InternalActivityConfiguration : IEntityTypeConfiguration<I
 {
     public void Configure(EntityTypeBuilder<InternalActivity> entity)
     {
-        // ─── Internal activities: the staff work (NF-22) and the "To do" list (ADR-026) ───
-        // An organization-level To do has no property, so the property is optional; deleting a property still deletes its
-        // activities, as when it was required. The action is stored by name (the members are appended by later tasks).
-        // The list reads the open To do rows of an org (Action set, CompletedAt null) on every page of the shell; the unique index
-        // keeps one open item per type and entity, so a second CreateAsync, even a parallel one, returns the first.
         entity.HasOne(a => a.Property)
             .WithMany()
             .HasForeignKey(a => a.PropertyId)
@@ -59,8 +54,6 @@ internal sealed class InternalActivityConfiguration : IEntityTypeConfiguration<I
         entity.Property(a => a.Action)
             .HasConversion<string>()
             .HasMaxLength(50);
-        // Kept on its own: the two indexes below are partial (open To do rows only), so they cannot serve the staff rows,
-        // the closed items or the cascade of an org.
         entity.HasIndex(a => a.OrgId);
         entity.HasIndex(a => new { a.OrgId, a.Urgency, a.Deadline })
             .HasFilter("\"Action\" IS NOT NULL AND \"CompletedAt\" IS NULL")

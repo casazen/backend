@@ -26,21 +26,12 @@ public class ServiceRequestGroup
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The host org the requests belong to.</summary>
     public Guid OrgId { get; set; }
 
     public ServiceRequestGroupPhase Phase { get; set; } = ServiceRequestGroupPhase.PrimaryWindow;
 
-    /// <summary>
-    /// The end of the primary's window: the instant after which the work goes to the backup that accepted first. Moved forward when
-    /// the host turns down a time the primary proposed and the window had already passed (the same rule as a single request).
-    /// </summary>
     public DateTime PrimaryDueAt { get; set; }
 
-    /// <summary>
-    /// The end of the second window, when every supplier still waiting can take the job: <c>null</c> until the group enters
-    /// <see cref="ServiceRequestGroupPhase.BackupWindow"/>. After it the requests that nobody took lapse.
-    /// </summary>
     public DateTime? BackupDueAt { get; set; }
 
     /// <summary>
@@ -52,7 +43,6 @@ public class ServiceRequestGroup
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>When the group was closed; <c>null</c> while it is open.</summary>
     public DateTime? ClosedAt { get; set; }
 
     /// <summary>

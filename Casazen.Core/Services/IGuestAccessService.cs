@@ -2,9 +2,6 @@ using Casazen.Core.Authorization;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// Verifies guest access scoped to an organization and to the properties the caller reaches (IDOR guard, TN-1; SR-04b).
-/// </summary>
 public interface IGuestAccessService
 {
     /// <summary>

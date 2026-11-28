@@ -19,46 +19,36 @@ public class PlatformInvoice : ITenantOwned
     [Required, MaxLength(255)]
     public string StripeInvoiceId { get; set; } = string.Empty;
 
-    /// <summary>Stripe invoice number (shown on the Stripe PDF), when finalized.</summary>
     [MaxLength(100)]
     public string? StripeInvoiceNumber { get; set; }
 
-    /// <summary>ISO currency of the amounts (lowercase, as Stripe sends it).</summary>
     [MaxLength(3)]
     public string? Currency { get; set; }
 
-    /// <summary>Taxable amount: Stripe <c>total_excluding_tax</c> (after discounts, before tax).</summary>
     [Column(TypeName = "decimal(18,2)")]
     public decimal AmountExVat { get; set; }
 
-    /// <summary>Tax charged: sum of Stripe <c>total_taxes</c>.</summary>
     [Column(TypeName = "decimal(18,2)")]
     public decimal VatAmount { get; set; }
 
-    /// <summary>Stripe <c>total</c>: what the customer paid.</summary>
     [Column(TypeName = "decimal(18,2)")]
     public decimal TotalAmount { get; set; }
 
-    /// <summary>One of <c>PlatformInvoiceVatTreatments</c> (legacy rows: <c>IT_22</c>, <c>EU_OSS</c>, ...).</summary>
     [Required, MaxLength(32)]
     public string VatTreatment { get; set; } = string.Empty;
 
     /// <summary>True when Stripe Tax charged the VAT of an EU country other than Italy (OSS).</summary>
     public bool OssApplied { get; set; }
 
-    /// <summary>Country of the customer's billing address on the invoice (ISO 3166-1 alpha-2).</summary>
     [MaxLength(2)]
     public string? CustomerCountry { get; set; }
 
-    /// <summary>Country of the tax rate Stripe applied (single rate only).</summary>
     [MaxLength(2)]
     public string? TaxCountry { get; set; }
 
-    /// <summary>Effective rate (percent) Stripe applied, copied from its tax rate (single rate only).</summary>
     [Column(TypeName = "decimal(7,4)")]
     public decimal? VatRatePercent { get; set; }
 
-    /// <summary>Stripe taxability reasons of the invoice taxes, comma separated (e.g. <c>standard_rated</c>, <c>reverse_charge</c>).</summary>
     [MaxLength(200)]
     public string? TaxabilityReasons { get; set; }
 
@@ -66,11 +56,9 @@ public class PlatformInvoice : ITenantOwned
     [MaxLength(32)]
     public string? CustomerVatIdVerification { get; set; }
 
-    /// <summary>Set when the invoice needs a check (one of <c>PlatformInvoiceTaxReviewReasons</c>).</summary>
     [MaxLength(64)]
     public string? TaxReviewReason { get; set; }
 
-    /// <summary>One of <c>PlatformInvoiceSdiStatuses</c>. Rows written before PL-13 may still read <c>pending</c>.</summary>
     [Required, MaxLength(32)]
     public string SdiStatus { get; set; } = "manual_required";
 
@@ -78,7 +66,6 @@ public class PlatformInvoice : ITenantOwned
     [MaxLength(255)]
     public string? SdiTransmissionId { get; set; }
 
-    /// <summary>Last SDI provider error (no PII).</summary>
     [MaxLength(500)]
     public string? SdiError { get; set; }
 

@@ -42,8 +42,6 @@ public sealed class HostCollectionsReportService(
         var period = HostReportRules.PeriodOf(query.From, query.To);
         await EnsurePropertyInScopeAsync(scope, query.PropertyId, cancellationToken);
 
-        // What came in on those days, by cash: the Home's rule, with only the columns the cuts and the credits need. The payments are read one at a time and added up as
-        // they come, never all held: a period with many payments needs the memory of one with a few.
         var sums = new HostCollectionsSums(period);
         var cardPayments = 0;
         var cardPaymentsWithoutFigures = 0;
@@ -88,8 +86,6 @@ public sealed class HostCollectionsReportService(
         var now = _clock.GetUtcNow();
         var today = DateOnly.FromDateTime(RomeCalendar.TodayAt(now));
 
-        // The stays that hold their dates: not cancelled and not a checkout hold that expired (the one definition of the booking site), and not ended before the horizon of
-        // the report (24 months, like every report): the list does not grow with the whole history of the host.
         var cutoff = CheckoutHolds.CutoffAt(now.UtcDateTime, CheckoutHolds.GetTtlMinutes(configuration));
         var since = HostCollectionsRules.BalancesSince(today);
         var firstCheckOut = RomeCalendar.StartOfDayUtc(since);
@@ -97,8 +93,6 @@ public sealed class HostCollectionsReportService(
             .Where(CheckoutHolds.OccupiesDates(cutoff))
             .Where(b => b.CheckOutDate >= firstCheckOut);
 
-        // CasaZen's money: the total of the stay against what its payments collected (the Home's rule), added up in SQL. A portal collects the money of its
-        // stays itself, so a stay of a channel is never here.
         var ofCasaZen = await holding
             .Where(HostCollectionsRules.HoldsCasaZenMoney(db.OctorateBookingSyncs))
             .Where(b => b.TotalPrice > b.Payments.AsQueryable().Where(PaymentCashRules.IsCollected()).Sum(PaymentCashRules.CollectedAmount()))
@@ -149,8 +143,6 @@ public sealed class HostCollectionsReportService(
         return new HostBalancesToCollect(today, rows, HostCollectionsRules.TotalsOf(rows), since);
     }
 
-    // What the card provider credited on the days of the report, from the figures the capture stored on the payments (nothing is asked of Stripe here).
-    // The payments collected in the period that have no figures yet are counted, not shown as zero.
     private async Task<HostStripeCredits> GetStripeCreditsAsync(
         HostScope scope,
         HostReportQuery query,
@@ -158,7 +150,6 @@ public sealed class HostCollectionsReportService(
         int cardPaymentsWithoutFigures,
         CancellationToken cancellationToken)
     {
-        // The day of a credit is the date the provider reported (UTC), as the payment ledger shows it.
         var first = DateTime.SpecifyKind(query.From.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
         var end = DateTime.SpecifyKind(query.To.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
         var settled = await PaymentsInScope(scope, query.PropertyId)
@@ -174,8 +165,6 @@ public sealed class HostCollectionsReportService(
             cardPaymentsWithoutFigures);
     }
 
-    // What the channels collected for the stays that arrive in the period, as the channel manager reports it: the net of each stay the channel collected
-    // itself (companyCollect). Only the import writes those figures; most stay empty until Octorate documents a net amount.
     private async Task<HostChannelCredits> GetChannelCreditsAsync(
         HostScope scope,
         HostReportQuery query,
@@ -229,7 +218,6 @@ public sealed class HostCollectionsReportService(
             HostBalanceBasis.ChannelManager);
     }
 
-    // The payments of the scope, optionally of one property: the very query of the Home's collected figure.
     private IQueryable<Payment> PaymentsInScope(HostScope scope, Guid? propertyId)
     {
         var payments = db.Payments.AsNoTracking().Where(p => p.OrgId == scope.OrgId).InScope(scope);
@@ -243,7 +231,6 @@ public sealed class HostCollectionsReportService(
         return propertyId is { } id ? bookings.Where(b => b.PropertyId == id) : bookings;
     }
 
-    // One 404 for a property that is missing, another org's or not reached by the caller: nothing tells them apart.
     private async Task EnsurePropertyInScopeAsync(HostScope scope, Guid? propertyId, CancellationToken cancellationToken)
     {
         if (propertyId is not { } id)

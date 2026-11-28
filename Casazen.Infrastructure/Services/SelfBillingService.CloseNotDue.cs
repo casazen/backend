@@ -33,17 +33,14 @@ public sealed partial class SelfBillingService
 {
     public async Task<SelfBillingDetail> CloseNotDueAsync(Guid orgId, Guid documentId, string? reason, string? note, string? userId, CancellationToken ct = default)
     {
-        // The reason is mandatory and is one of the three the screen offers; a note, when there is one, is short. Nothing is read before this: a refusal changes nothing.
         var closeReason = SelfBillingCloseReasons.Normalize(reason)
             ?? throw new DomainRuleException(SelfBillingErrors.CloseReasonRequired, "SelfBillingCloseReasonRequired");
         var closeNote = Clean(note);
         if (closeNote is { Length: > FiscalDocument.ClosedNotDueNoteMaxLength })
             throw new DomainRuleException(SelfBillingErrors.CloseNoteTooLong, "SelfBillingCloseNoteTooLong", FiscalDocument.ClosedNotDueNoteMaxLength);
 
-        // The decision and what it reads (the month the draft would be kept in) are taken under the lock of the generation of the organization.
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, ct, (PostgresAdvisoryLocks.Scope.SelfBilling, orgId.ToString("N")));
 
-        // The TD17 of the organization asked for: a document of another organization, a credit note, a document that is not a TD17 and an imported one are not found (404), never refused.
         var document = await db.FiscalDocuments
             .Include(d => d.Lines)
             .FirstOrDefaultAsync(
@@ -61,7 +58,6 @@ public sealed partial class SelfBillingService
             return await DetailOfAsync(orgId, document, 0m, ct);
         }
 
-        // Only the replacement of a rejected TD17, still a draft and still holding its number, whose month no longer gives it a TD17 (the reason the list and the detail show as keptReason).
         if (document.Status != FiscalDocumentStatus.Draft
             || !FiscalDocumentService.HoldsAReplacedNumber(document)
             || document.PeriodYear is not { } year
@@ -71,7 +67,6 @@ public sealed partial class SelfBillingService
             throw NotClosable();
         }
 
-        // The draft leaves, and its number stays where it is: series, sequence number and display number are not touched (a closed draft without its number would be refused by the table).
         var now = UtcNow;
         document.Status = FiscalDocumentStatus.Discarded;
         document.ClosedNotDueReason = closeReason;
@@ -90,7 +85,6 @@ public sealed partial class SelfBillingService
             closeReason,
             document.ClosedNotDueByUserId);
 
-        // The last open draft of the month closed: its «Da fare» to check and issue is done (best effort after the change is saved, as for a discard).
         await TrySyncDraftsTodoAsync(orgId, year, month, null, ct);
         return await DetailOfAsync(orgId, document, 0m, ct);
     }

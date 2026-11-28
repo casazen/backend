@@ -11,7 +11,6 @@ public static class MarketplaceCommission
 {
     public const string PercentSetting = "Marketplace:CommissionPercent";
 
-    /// <summary>Product default: 3.5% withheld on the portal for supplier payments.</summary>
     public const decimal DefaultPercent = 3.5m;
 
     public static decimal GetPercent(IConfiguration configuration)
@@ -20,7 +19,6 @@ public static class MarketplaceCommission
         return percent < 0 ? 0 : percent;
     }
 
-    /// <summary>Stripe application-fee cents for a charge of <paramref name="amountCents"/> at <paramref name="percent"/>.</summary>
     public static long ApplicationFeeCents(long amountCents, decimal percent)
     {
         if (amountCents <= 0 || percent <= 0)

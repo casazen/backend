@@ -60,7 +60,6 @@ public class RliExportService(
         if (lease.SecurityDeposit is { } deposit)
             sb.AppendLine($"Deposito cauzionale: {deposit:0.00} EUR");
         sb.AppendLine($"Decorrenza: {lease.StartDate:yyyy-MM-dd} - {lease.EndDate:yyyy-MM-dd}");
-        // LT-04: min(stipula, decorrenza) + 30 giorni; "da determinare" finche' manca la data di stipula.
         sb.AppendLine(lease.StipulaDate is { } stipula
             ? $"Data di stipula: {stipula:yyyy-MM-dd}"
             : "Data di stipula: non disponibile");
@@ -86,7 +85,6 @@ public class RliExportService(
             sb.AppendLine($"Subalterno: {property.CadastralSubaltern}");
         sb.AppendLine();
         sb.AppendLine("Contraenti:");
-        // Every landlord, then every tenant, in the order entered (LT-14): the RLI needs all of them.
         foreach (var party in lease.Parties.OrderBy(p => p.Role).ThenBy(p => p.Position))
         {
             sb.AppendLine($"- {party.Role}: {party.FirstName} {party.LastName} ({party.Citizenship}) CF:{party.FiscalCode}");

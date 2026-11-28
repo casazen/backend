@@ -29,14 +29,12 @@ public sealed class OwnerDirectoryService(AppDbContext db, TimeProvider time, IL
         var orgId = scope.OrgId;
         var today = time.TodayInRomeAsDateOnly();
 
-        // An ownership is stored with the last instant of its last day (Rome): it is not ended today when it has no end or its end is not before the first instant of today.
         var startOfToday = RomeCalendar.StartOfDayUtc(today);
         var existing = db.Properties.Where(p => p.OrgId == orgId).Select(p => p.Id);
 
         var owners = db.PropertyOwners.AsNoTracking().Where(o => o.OrgId == orgId);
         if (!scope.IsOrgWide)
         {
-            // Every period of the owner on a property the scope reaches, and at least one: an owner with no period is never in a partial reach.
             var reachable = db.Properties.Where(p => p.OrgId == orgId).InScope(scope).Select(p => p.Id);
             owners = owners.Where(o =>
                 db.PropertyOwnerships.Any(po => po.OrgId == orgId && po.PropertyOwnerId == o.Id)
@@ -63,7 +61,6 @@ public sealed class OwnerDirectoryService(AppDbContext db, TimeProvider time, IL
                     .Distinct()
                     .Count(),
 
-                // The profile in force today, else the newest: one ordered sub-query for each of the two facts, so a missing profile is a plain null and never a half-built object.
                 EntityKind = db.OwnerFiscalProfiles
                     .Where(p => p.OrgId == orgId && p.PropertyOwnerId == o.Id)
                     .OrderByDescending(p => p.ValidFrom <= today && (p.ValidTo == null || p.ValidTo >= today))
@@ -77,7 +74,6 @@ public sealed class OwnerDirectoryService(AppDbContext db, TimeProvider time, IL
                     .Select(p => p.SettlementCurrency)
                     .FirstOrDefault(),
 
-                // The mandate in force today: the owner's own versions (no ownership), the latest start. Its id says whether there is one; the other facts are of that same version.
                 MandateId = db.OwnerMandates
                     .Where(m => m.OrgId == orgId && m.PropertyOwnerId == o.Id && m.PropertyOwnershipId == null && m.ValidFrom <= today && (m.ValidTo == null || m.ValidTo >= today))
                     .OrderByDescending(m => m.ValidFrom)

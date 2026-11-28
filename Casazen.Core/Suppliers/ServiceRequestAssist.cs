@@ -2,39 +2,26 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Suppliers;
 
-/// <summary>Limits of «Descrivi di cosa hai bisogno» in the guided request (WIZ-AI-REQUEST).</summary>
 public static class ServiceRequestAssistLimits
 {
-    /// <summary>The shortest description worth asking the AI about.</summary>
     public const int MinTextLength = 8;
 
-    /// <summary>The longest description the AI reads (the host's own words, scrubbed, are all that goes to the provider).</summary>
     public const int MaxTextLength = 600;
 
-    /// <summary>The summary the AI writes for the supplier: it becomes the notes of the request, which the host reads and changes.</summary>
     public const int MaxSummaryLength = 300;
 
-    /// <summary>The sentence that tells the host why the AI chose what it chose.</summary>
     public const int MaxExplanationLength = 160;
 }
 
-/// <summary>Who the request goes to, as the AI proposes it. The rule is not the AI's: CasaZen suppliers come first whenever one covers the property.</summary>
 public static class ServiceRequestAssistChannels
 {
-    /// <summary>At least one active CasaZen supplier covers the comune of the property for the category.</summary>
     public const string CasaZen = "casazen";
 
-    /// <summary>No CasaZen supplier does (or the property has no comune yet): the partners are proposed instead.</summary>
     public const string External = "external";
 }
 
-/// <summary>
-/// Why there is no suggestion when <see cref="ServiceRequestAssist.AiUsed"/> is false: the four reasons every AI suggestion shares
-/// (<see cref="Casazen.Core.Services.AiSuggestionFallbackReasons"/>) and the one of this endpoint.
-/// </summary>
 public static class ServiceRequestAssistReasons
 {
-    /// <summary>The model answered, and said it could not tell what the work is: the host chooses the service as before.</summary>
     public const string NotUnderstood = "ai_not_understood";
 }
 
@@ -60,6 +47,5 @@ public sealed record ServiceRequestAssist(
     string? Channel,
     int CasazenSuppliers)
 {
-    /// <summary>No suggestion, and why.</summary>
     public static ServiceRequestAssist Without(string reason) => new(false, reason, null, null, null, null, null, 0);
 }

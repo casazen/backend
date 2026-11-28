@@ -14,26 +14,19 @@ public enum ServicePaymentRefundStatus
     /// </summary>
     Pending = 0,
 
-    /// <summary>Stripe confirmed the refund (the answer of the call, or a webhook).</summary>
     Succeeded = 1,
 
-    /// <summary>Stripe refused it, or it failed afterwards. Nothing was given back; the amount is free again.</summary>
     Failed = 2,
 
-    /// <summary>Stripe canceled it. Nothing was given back; the amount is free again.</summary>
     Canceled = 3,
 
-    /// <summary>Stripe needs an action of the payer's bank before it completes. The amount stays reserved.</summary>
     RequiresAction = 4,
 }
 
-/// <summary>Who started a refund of a service payment (<see cref="ServiceRequestPaymentRefund.Origin"/>). Stored as an integer: append only.</summary>
 public enum ServicePaymentRefundOrigin
 {
-    /// <summary>A platform admin, from <c>POST api/admin/service-payments/{id}/refund</c>.</summary>
     Admin = 0,
 
-    /// <summary>Made outside CasaZen (Stripe Dashboard or API) and learnt from a webhook: recorded so the payment reflects it.</summary>
     Stripe = 1,
 
     /// <summary>

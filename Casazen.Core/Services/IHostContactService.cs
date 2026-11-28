@@ -25,7 +25,6 @@ public interface IHostContactService
 /// <param name="Lang">The language of the site the visitor was reading, <c>it</c> or <c>en</c>, when given: the host answers in it.</param>
 public sealed record HostContactMessage(string Email, string Message, string? Name, Guid? PropertyId, string? Lang);
 
-/// <summary>Limits and codes of the host contact form.</summary>
 public static class HostContactRules
 {
     public const int MessageMinLength = 5;
@@ -33,16 +32,12 @@ public static class HostContactRules
     public const int NameMaxLength = 100;
     public const int EmailMaxLength = 254;
 
-    /// <summary>400: the visitor did not accept that the message and the address go to the host.</summary>
     public const string ConsentRequiredCode = "host_contact_consent_required";
 
-    /// <summary>400: the address is not a plain email address.</summary>
     public const string EmailInvalidCode = "host_contact_email_invalid";
 
-    /// <summary>400: the message is shorter than 5 or longer than 2000 characters once trimmed.</summary>
     public const string MessageInvalidCode = "host_contact_message_invalid";
 
-    /// <summary>The site languages a message can come from; anything else is dropped.</summary>
     public static string? NormalizeLang(string? lang) =>
         lang?.Trim().ToLowerInvariant() switch
         {
@@ -51,7 +46,6 @@ public static class HostContactRules
             _ => null,
         };
 
-    /// <summary>The text with its line breaks as <c>\n</c>, trimmed, or <c>null</c> when it is shorter or longer than the limits.</summary>
     public static string? NormalizeMessage(string? message)
     {
         var text = message?.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Trim();

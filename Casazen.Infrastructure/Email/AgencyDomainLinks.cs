@@ -28,7 +28,6 @@ public sealed class AgencyDomainLinks(
     IFeatureFlags featureFlags,
     ILogger<AgencyDomainLinks> logger)
 {
-    /// <summary>The links of <paramref name="orgId"/>: read once per message, then used for every link of it.</summary>
     public async Task<AgencyLinks> ForOrgAsync(Guid orgId, CancellationToken cancellationToken = default)
     {
         if (!featureFlags.IsEnabled(FeatureFlags.WhiteLabelHost) || !platform.IsConfigured)
@@ -45,11 +44,9 @@ public sealed class AgencyDomainLinks(
             return AgencyLinks.Platform(platform);
         }
 
-        // The resolver serves no host of an org that is not active (OrgService.GetByVerifiedCustomDomainAsync): its links stay on the CasaZen domain, the one that opens.
         if (org is null || !org.IsActive)
             return AgencyLinks.Platform(platform);
 
-        // The embeddable pages are no link: SiteEmbed plays no part here.
         var surfaces = HostSurfaceRules.Evaluate(org, siteUrls.ServedMode(org), whiteLabelHost: true, siteEmbed: false);
         var host = siteUrls.OwnHost(org);
         return new AgencyLinks(
@@ -58,10 +55,6 @@ public sealed class AgencyDomainLinks(
             surfaces.OwnerLinksOnOwnDomain ? host : null);
     }
 
-    /// <summary>
-    /// The fields of the rule and of the served host only. The org is the tenant itself, with no tenant filter: an anonymous page, a job and a
-    /// host request read it the same way.
-    /// </summary>
     private async Task<Org?> ReadAsync(Guid orgId, CancellationToken cancellationToken)
     {
         var row = await db.Orgs.AsNoTracking()
@@ -121,50 +114,39 @@ public sealed class AgencyLinks
         OwnerHost = ownerHost;
     }
 
-    /// <summary>The host the guest links are built on, or <c>null</c>: the CasaZen domain.</summary>
     public string? GuestHost { get; }
 
-    /// <summary>The host the owner links are built on, or <c>null</c>: the CasaZen domain.</summary>
     public string? OwnerHost { get; }
 
-    /// <summary>Every link on the CasaZen domain, as before E40 (also the links of a caller built without <see cref="AgencyDomainLinks"/>).</summary>
     public static AgencyLinks Platform(PublicSiteLinks platform)
     {
         ArgumentNullException.ThrowIfNull(platform);
         return new AgencyLinks(platform, null, null);
     }
 
-    /// <summary>The guest's check-in page (<see cref="PublicSiteLinks.GuestCheckIn"/>).</summary>
     public string GuestCheckIn(string token) =>
         GuestHost is { } host ? OnHost(host, PublicSitePaths.HostGuestCheckIn(token)) : _platform.GuestCheckIn(token);
 
-    /// <summary>«Le mie prenotazioni» (<see cref="PublicSiteLinks.GuestBookings"/>); <paramref name="orgSlug"/> is only for the platform path.</summary>
     public string GuestBookings(string orgSlug, string? bookingCode = null) =>
         GuestHost is { } host ? OnHost(host, PublicSitePaths.HostGuestBookings(bookingCode)) : _platform.GuestBookings(orgSlug, bookingCode);
 
-    /// <summary>The page where an owner accepts the invitation of its agency (<see cref="PublicSiteLinks.OwnerInvitationAccept"/>).</summary>
     public string OwnerInvitationAccept(string inviteToken) =>
         OwnerHost is { } host ? OnHost(host, PublicSitePaths.HostOwnerInvitationAccept(inviteToken)) : _platform.OwnerInvitationAccept(inviteToken);
 
-    /// <summary>The page where a contact an owner invited accepts it (<see cref="PublicSiteLinks.OwnerContactAccept"/>).</summary>
     public string OwnerContactAccept(string inviteToken) =>
         OwnerHost is { } host ? OnHost(host, PublicSitePaths.HostOwnerContactAccept(inviteToken)) : _platform.OwnerContactAccept(inviteToken);
 
-    /// <summary>A conversation of the owner inbox (<see cref="PublicSiteLinks.OwnerPortalConversation"/>).</summary>
     public string OwnerPortalConversation(Guid conversationId) =>
         OwnerHost is { } host ? OnHost(host, PublicSitePaths.HostOwnerPortalConversation(conversationId)) : _platform.OwnerPortalConversation(conversationId);
 
-    /// <summary>The page «Contabilità» of the owner portal (<see cref="PublicSiteLinks.OwnerPortalAccounting"/>).</summary>
     public string OwnerPortalAccounting() =>
         OwnerHost is { } host ? OnHost(host, PublicSitePaths.HostOwnerPortalAccounting) : _platform.OwnerPortalAccounting();
 
     private static string OnHost(string host, string pathAndQuery) => $"https://{host}{pathAndQuery}";
 }
 
-/// <summary>The links of a caller that may have been built without <see cref="AgencyDomainLinks"/> (a test that builds it by hand).</summary>
 public static class AgencyDomainLinksExtensions
 {
-    /// <summary>The links of <paramref name="orgId"/>, or the platform links when there is no builder.</summary>
     public static Task<AgencyLinks> ForOrgOrPlatformAsync(
         this AgencyDomainLinks? builder,
         PublicSiteLinks platform,

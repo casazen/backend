@@ -5,14 +5,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc cref="IComplianceMissingService"/>
-/// <remarks>
-/// Nothing here decides anything: a property lacks what <see cref="IPropertyComplianceStatusService.GetBlockingStepsAsync"/>
-/// says blocks its activation (the same evaluation the wizard shows), a stay lacks what
-/// <see cref="AlloggiatiRecordRules.MissingFields"/> and <see cref="AlloggiatiRecordRules.CompositionErrors"/> find in its
-/// guests (the same rule that put it in the cockpit: <c>IAlloggiatiWebService.IsStayDataCompleteAsync</c>). The others have
-/// one thing left, which the action already names.
-/// </remarks>
 public sealed class ComplianceMissingService(
     AppDbContext db,
     IPropertyComplianceStatusService complianceStatus,
@@ -57,7 +49,6 @@ public sealed class ComplianceMissingService(
         Func<ComplianceSummaryItem, IReadOnlyList<ComplianceMissing>> missing) =>
         new(section.Count, section.Items.Select(item => item with { Missing = missing(item) }).ToList());
 
-    // The blockers of the activation wizard, per property: a few queries each, so only for the first properties of the cockpit.
     private async Task<Dictionary<Guid, IReadOnlyList<ComplianceMissing>>> DescribePropertiesAsync(
         IReadOnlyList<ComplianceSummaryItem> items,
         CancellationToken cancellationToken)
@@ -71,14 +62,11 @@ public sealed class ComplianceMissingService(
         foreach (var property in properties)
         {
             var steps = await complianceStatus.GetBlockingStepsAsync(property, cancellationToken);
-            // Only what blocks: the reminders (documents, safety checklist) are acknowledged at the activation, they do not keep
-            // the property from it.
             var blockers = steps
                 .Where(step => step.Blocker)
                 .SelectMany(step => step.Blockers.Select(blocker => new ComplianceMissing(blocker.Code, step.Id)))
                 .ToList();
 
-            // Every requirement is met: what is left is to confirm the activation (accept the terms).
             described[property.Id] = blockers.Count > 0
                 ? blockers
                 : [new ComplianceMissing(ComplianceMissingCodes.ActivationNotConfirmed)];
@@ -112,7 +100,6 @@ public sealed class ComplianceMissingService(
             if (AlloggiatiRecordRules.CompositionErrors(guests.Select(g => g.Type).ToList()).Count > 0)
                 missing.Add(new ComplianceMissing(ComplianceMissingCodes.GuestCompositionInvalid, "guests"));
 
-            // In the order of the record, with how many guests lack each field.
             missing.AddRange(guests
                 .SelectMany(guest => AlloggiatiRecordRules.MissingFields(guest))
                 .GroupBy(field => field)

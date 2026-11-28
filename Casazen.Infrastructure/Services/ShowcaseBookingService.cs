@@ -85,23 +85,15 @@ public sealed class ShowcaseBookingService(
         if (!bookingSettings.OnlineBookingEnabled)
             throw ShowcaseBookingErrors.OfflineSupplier();
 
-        // An urgent slot (SP-04c) is for a service and a supplier that both accept urgent requests: the terms (and the surcharge the
-        // estimate adds) are worked out from the supplier's settings, read only for an urgent booking. A booking that is not urgent
-        // reads nothing more than before.
         if (content.Quote.Urgent)
             service = service.WithUrgent(await agenda.GetUrgentAsync(orgId, cancellationToken));
 
-        // What the customer chose has to fit the service; the supplier covers comuni, not postal codes (decision D10). An urgent slot
-        // for a service that does not offer one is a 422 on the field `urgent`, like in the estimate.
         var choices = SupplierQuoteCalculator.Validate(service, content.Quote);
         if (!await comuneMatcher.CoversAsync(supplier, new ComuneTarget(content.ComuneIstat, content.City), cancellationToken))
             throw ShowcaseBookingErrors.OutsideSupplierZone();
 
-        // With the code of the comune the supplier reads the official name, not the text typed next to it, which decided nothing
-        // once the code covered the zone: it reaches the supplier before the take, in an e-mail sent by CasaZen.
         var city = await ComuneNameAsync(content.ComuneIstat, content.City, cancellationToken);
 
-        // The same function that priced the page prices the booking: the total the customer saw is the total the request carries.
         var quote = SupplierQuoteCalculator.Calculate(service, choices, insideArea: true);
 
         // SP-15c-a: a booking with a total is paid inside CasaZen when the flag is on and the supplier can be paid: the customer's card is
@@ -116,8 +108,6 @@ public sealed class ShowcaseBookingService(
         var query = service.ToSlotQuery(choices.Urgent) ?? throw ServiceNotFound();
         var start = content.StartUtc;
 
-        // A start the planner could never offer — in the past, beyond the largest horizon, or at an end of the calendar, where the
-        // date arithmetic of the planner would overflow — is a slot that is not free: the same 409, with nothing computed from it.
         if (!ShowcaseBookingRules.IsWithinSlotWindow(start, _clock.GetUtcNow().UtcDateTime))
         {
             logger.LogInformation("Supplier {OrgId}: a showcase booking asked for a time no slot can have", orgId);
@@ -132,8 +122,6 @@ public sealed class ShowcaseBookingService(
         var validMinutes = config.EmailVerificationMinutes;
         if (choices.Urgent)
         {
-            // An urgent slot is 30 minutes away at the soonest: the hold and its link never outlive the start of the work (a request
-            // born after the time it is for would be no use to anybody). With the 30 minutes of the configuration, nothing changes.
             var minutesToStart = (int)Math.Floor((start - _clock.GetUtcNow().UtcDateTime).TotalMinutes);
             validMinutes = Math.Clamp(minutesToStart, 1, validMinutes);
         }
@@ -159,8 +147,6 @@ public sealed class ShowcaseBookingService(
             content.ConsentIp,
             choices.Urgent);
 
-        // Rendered before the hold is saved: a missing App:PublicSiteBaseUrl is a configuration error that has to stop the
-        // booking, not a wrong link in an e-mail that holds a slot for nothing.
         var verification = notifier.RenderVerification(supplier, payload, start, holdId, token, validMinutes);
 
         // A retry of a booking whose card was already asked for: its block is read from Stripe here, before the lock, so that a call to Stripe
@@ -181,7 +167,6 @@ public sealed class ShowcaseBookingService(
         ShowcaseBookingHold created;
         await using (var transaction = await LockSupplierCalendarAsync(orgId, cancellationToken))
         {
-            // Everything from here on is read after the lock: what the previous holder committed is there.
             var now = UtcDateTime.TruncateToMicroseconds(_clock.GetUtcNow().UtcDateTime);
 
             var existing = await HoldsOf(db, orgId)
@@ -215,8 +200,6 @@ public sealed class ShowcaseBookingService(
                 throw new ShowcaseBookingTooManyHoldsException(waiting[0] - now);
             }
 
-            // The slot is judged here, by the planner, on the agenda as it is now: requests with hours, blocks, calendar
-            // engagements and the holds of every other customer. No cache: the one of the public slots is advisory.
             var day = RomeCalendar.DateInRome(start);
             var plans = await agenda.PlanAsync(orgId, day, day, query, cancellationToken);
             if (!plans.SelectMany(plan => plan.Slots).Any(slot => slot.StartUtc == start))
@@ -257,7 +240,6 @@ public sealed class ShowcaseBookingService(
         if (paidInside && blockCents is { } amountToBlock)
             result = result with { Payment = await BlockCardAsync(created, service.Name, amountToBlock, cancellationToken) };
 
-        // After the commit: an e-mail for a booking that was not saved would be a link to nothing.
         if (!notifier.QueueVerification(content.Email, verification))
         {
             // The customer cannot be written to (provider not configured, queue down): a hold nobody can check would keep the
@@ -271,10 +253,6 @@ public sealed class ShowcaseBookingService(
         return result;
     }
 
-    /// <summary>
-    /// Deletes a hold nobody can check (see <see cref="CreateHoldAsync"/>), and the block on the card it asked for if one was made; a failure
-    /// here only leaves it to lapse (and a hold that lapses releases its block, <see cref="ReleaseExpiredHoldAsync"/>).
-    /// </summary>
     private async Task ReleaseAsync(ShowcaseBookingHold hold, CancellationToken cancellationToken)
     {
         // The customer was never given the secret of this block (the caller's answer is an error), so nobody can confirm it with a card: letting
@@ -327,7 +305,6 @@ public sealed class ShowcaseBookingService(
             throw;
         }
 
-        // The PaymentIntent and its amount are recorded together (the table checks that they are), before the secret leaves.
         hold.StripePaymentIntentId = block.PaymentIntentId;
         hold.PaymentAmountCents = amountCents;
         try
@@ -373,7 +350,6 @@ public sealed class ShowcaseBookingService(
         {
             var hold = await HoldsOf(db, orgId).Where(h => h.Id == holdId).FirstOrDefaultAsync(cancellationToken);
 
-            // One answer for a booking that does not exist, one of another supplier and a wrong token.
             if (hold is null || !ShowcaseBookingTokens.Matches(hold.TokenHash, token))
                 throw ShowcaseBookingErrors.InvalidLink();
 
@@ -386,7 +362,6 @@ public sealed class ShowcaseBookingService(
             if (hold.ExpiresAt <= now)
                 throw ShowcaseBookingErrors.ExpiredLink();
 
-            // A supplier suspended meanwhile takes no new request (the profile is read again under the lock).
             var status = await db.SupplierProfiles
                 .AsNoTracking()
                 .Where(sp => sp.OrgId == orgId)
@@ -456,8 +431,6 @@ public sealed class ShowcaseBookingService(
         SupplierProfile supplier;
         await using (var transaction = await LockSupplierCalendarAsync(orgId, cancellationToken))
         {
-            // Read after the lock: whoever held it before is seen. The hold is the one the PaymentIntent was made for, by the supplier org in
-            // its metadata and the PaymentIntent recorded on the hold; anything else is not the block of a waiting hold.
             var hold = await HoldsOf(db, orgId).Where(h => h.Id == authorization.HoldId).FirstOrDefaultAsync(cancellationToken);
             if (hold is null
                 || hold.ConsumedAt is not null
@@ -493,8 +466,6 @@ public sealed class ShowcaseBookingService(
 
             if (payload is null || hold.ExpiresAt <= now || status != SupplierStatus.Active)
             {
-                // The e-mail is still to be checked (the check will create the request), or the hold lapsed, or the supplier is not active
-                // anymore: the block is recorded and nothing else happens. A hold that lapsed releases its block with the next run.
                 await SaveAsync(cancellationToken);
                 await CommitAsync(transaction, cancellationToken);
                 logger.LogInformation(
@@ -503,7 +474,6 @@ public sealed class ShowcaseBookingService(
                 return new ShowcaseHoldAuthorizationResult(Handled: true);
             }
 
-            // The e-mail was checked first: the block completes the booking now, exactly as the check of the e-mail does when it comes last.
             born = await CreateRequestFromHoldAsync(orgId, hold, payload, now, cancellationToken);
             await SaveAsync(cancellationToken);
             await CommitAsync(transaction, cancellationToken);
@@ -519,7 +489,6 @@ public sealed class ShowcaseBookingService(
     {
         ArgumentNullException.ThrowIfNull(completion);
 
-        // The notifier never throws: the request exists, the customer's receipt and the supplier's news are a courtesy that must not undo it.
         if (completion.Request.ResponseDueAt is { } respondBy)
             await notifier.QueueRequestReceivedAsync(completion.Supplier, completion.Request, completion.Customer, respondBy, cancellationToken);
     }
@@ -532,7 +501,6 @@ public sealed class ShowcaseBookingService(
         if (hold is null)
             return true;
 
-        // Read after the lock: a hold that became a request meanwhile belongs to the request now, and its PaymentIntent to the payment.
         var now = UtcDateTime.TruncateToMicroseconds(_clock.GetUtcNow().UtcDateTime);
         if (hold.ConsumedAt is not null || hold.ExpiresAt > now)
             return false;
@@ -551,7 +519,6 @@ public sealed class ShowcaseBookingService(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // Kept: the customer's card must not stay blocked, so the next run tries again.
                 db.ChangeTracker.Clear();
                 logger.LogWarning(ex, "Showcase hold {HoldId}: its card block could not be released now; the next run tries again", hold.Id);
                 return false;
@@ -573,7 +540,6 @@ public sealed class ShowcaseBookingService(
         }
     }
 
-    /// <summary>The request and the customer a hold became.</summary>
     private sealed record BornRequest(ServiceRequest Request, ServiceCustomer Customer);
 
     /// <summary>
@@ -598,8 +564,6 @@ public sealed class ShowcaseBookingService(
         if (payload.Urgent && hold.StartUtc < responseDueAt)
             responseDueAt = hold.StartUtc;
 
-        // SP-15c-a: a request whose card is blocked is answered while the block is still usable, however long the supplier's own time is:
-        // the customer reads an answer time that is true, and the request closes (the block is released) before the block lapses.
         if (hold.StripePaymentIntentId is not null && funds is not null)
         {
             var latest = funds.LatestResponseAt(hold.PaymentAuthorizedAt ?? now);
@@ -616,8 +580,6 @@ public sealed class ShowcaseBookingService(
             PropertyId = null,
             BookingId = null,
             Category = payload.Category,
-            // An urgent slot (SP-04c) is an urgent request: the supplier reads it in `urgency`, and the surcharge is already in
-            // the estimate and in the options below.
             Urgency = payload.Urgent ? ServiceRequestUrgency.High : ServiceRequestUrgency.Normal,
             Notes = string.Empty,
             Status = ServiceRequestStatus.Richiesto,
@@ -641,9 +603,6 @@ public sealed class ShowcaseBookingService(
         };
         db.ServiceRequests.Add(request);
 
-        // The payment is born with the request, with the PaymentIntent that blocks the card, the amount the customer saw and the commission in
-        // force now; the request is paid inside CasaZen from its first moment (AddAuthorizedPaymentAsync sets it). A hold that has a block
-        // but no funds service to record it cannot become a request: the customer's card would be blocked for a request nobody can charge.
         if (hold.StripePaymentIntentId is { } intent && hold.PaymentAmountCents is { } amount)
         {
             if (funds is null)
@@ -660,8 +619,6 @@ public sealed class ShowcaseBookingService(
                 cancellationToken);
         }
 
-        // The hold becomes the request in the same save: it stops counting for the planner as the request starts counting.
-        // The payload goes: the data moved to the customer and the request. The token hash stays for the replay.
         hold.ConsumedAt = now;
         hold.ServiceRequestId = request.Id;
         hold.Payload = null;
@@ -677,14 +634,9 @@ public sealed class ShowcaseBookingService(
     internal static IQueryable<ShowcaseBookingHold> HoldsOf(AppDbContext db, Guid orgId) =>
         db.ShowcaseBookingHolds.Where(h => h.OrgId == orgId);
 
-    /// <summary>
-    /// The customer of <paramref name="orgId"/> with the e-mail index <paramref name="emailHash"/> (at most one: they are unique
-    /// together). Static and internal like <see cref="HoldsOf"/>.
-    /// </summary>
     internal static IQueryable<ServiceCustomer> CustomerByEmailOf(AppDbContext db, Guid orgId, string emailHash) =>
         db.ServiceCustomers.Where(c => c.OrgId == orgId && c.EmailHash == emailHash);
 
-    /// <summary>The service as the booking needs it (id included), or the 404 the public gives for a service that is not published.</summary>
     private async Task<SupplierBookableService> FindServiceAsync(Guid orgId, string slug, CancellationToken cancellationToken)
     {
         var normalized = SupplierShowcaseSlug.Normalize(slug);
@@ -708,7 +660,6 @@ public sealed class ShowcaseBookingService(
         return string.IsNullOrWhiteSpace(comune?.Name) ? typed : comune.Name;
     }
 
-    /// <summary>The customer of this address for this supplier, created or brought up to date with what the customer just wrote.</summary>
     private async Task<ServiceCustomer> UpsertCustomerAsync(
         Guid orgId,
         ShowcaseBookingHold hold,
@@ -729,8 +680,6 @@ public sealed class ShowcaseBookingService(
         }
         else if (!ServiceCustomerEmails.SameAddress(customer.Email, payload.Email))
         {
-            // The index says it is the same address and the address says it is not: a collision or a key that changed under
-            // existing customers. A request must never be attached to somebody else: stop, loudly.
             logger.LogError("Customer {CustomerId} of supplier {OrgId} has the e-mail index of another address", customer.Id, orgId);
             throw new InvalidOperationException("The e-mail index of a customer does not match its address.");
         }
@@ -746,10 +695,8 @@ public sealed class ShowcaseBookingService(
         return customer;
     }
 
-    /// <summary>What a second check of the same link answers: the booking, with the request as it is now.</summary>
     private async Task<ShowcaseBookingConfirmation> ReplayAsync(ShowcaseBookingHold hold, Guid orgId, CancellationToken cancellationToken)
     {
-        // ServiceRequest is not tenant-filtered (two parties, TN-2 allow-list); scoped by the explicit supplier org.
         var request = await db.ServiceRequests
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -768,10 +715,6 @@ public sealed class ShowcaseBookingService(
             AlreadyConfirmed: true);
     }
 
-    /// <summary>
-    /// A code no hold and no request of the supplier has. 50 random bits: the first try is enough; the check is the guarantee,
-    /// under the lock that every hold and every request of the supplier is created under.
-    /// </summary>
     private async Task<string> NewPublicCodeAsync(Guid orgId, CancellationToken cancellationToken)
     {
         for (var attempt = 0; attempt < ShowcaseBookingLimits.PublicCodeAttempts; attempt++)
@@ -846,6 +789,5 @@ public sealed class ShowcaseBookingService(
     private static DomainConflictException SlotUnavailable() =>
         new(ServiceRequestErrorCodes.SlotUnavailable, ServiceRequestErrorCodes.SlotUnavailableMessageKey);
 
-    /// <summary>The generic code of a 404 (the web layer's <c>ProblemCodes.NotFound</c>, which Infrastructure cannot name).</summary>
     private const string ProblemNotFound = "not_found";
 }

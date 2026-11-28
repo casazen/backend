@@ -11,7 +11,6 @@ public class PropertyDetailResponse
     public string Description { get; set; } = string.Empty;
     public string Address { get; set; } = string.Empty;
 
-    /// <summary>Interno / scala (PC-06); null when the property has none.</summary>
     public string? Unit { get; set; }
     public string City { get; set; } = string.Empty;
     public string PostalCode { get; set; } = string.Empty;
@@ -21,10 +20,8 @@ public class PropertyDetailResponse
     public int MaxGuests { get; set; }
     public decimal NightlyRate { get; set; }
 
-    /// <summary>Fewest nights the public site accepts (DB-03); null = no minimum.</summary>
     public int? MinNights { get; set; }
 
-    /// <summary>Percent added to the nightly rate on the Friday and Saturday nights (DB-03); 0 = none.</summary>
     public decimal WeekendSurchargePercent { get; set; }
     public decimal CleaningFee { get; set; }
     public decimal DamageDeposit { get; set; }
@@ -40,7 +37,6 @@ public class PropertyDetailResponse
     /// <summary>ISTAT code of the comune chosen from the official list; null until chosen.</summary>
     public string? ComuneIstatCode { get; set; }
 
-    /// <summary>CasaZen's region code of <see cref="ComuneIstatCode"/> (<c>LOM</c>); null until a comune is chosen.</summary>
     public string? RegionCode { get; set; }
     public string Timezone { get; set; } = "Europe/Rome";
     public IReadOnlyList<string> Amenities { get; set; } = [];
@@ -48,13 +44,10 @@ public class PropertyDetailResponse
     public string HouseRules { get; set; } = string.Empty;
     public bool IsActive { get; set; }
 
-    /// <summary>Host-set pause (PC-03, A2-05): hidden from public bookings until reactivated, own slot and history kept.</summary>
     public bool IsPaused { get; set; }
 
-    /// <summary>UTC instant the property was paused; null when not paused.</summary>
     public DateTime? PausedAt { get; set; }
 
-    /// <summary>How the property is let (PM-01): <c>Short</c> (short stays) or <c>Long</c> (long-term leases), exclusive.</summary>
     public RentalMode RentalMode { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
@@ -71,30 +64,17 @@ public class PropertyDocumentDto
     public string FileName { get; set; } = string.Empty;
     public string FileType { get; set; } = string.Empty;
 
-    /// <summary>Kind of document (e.g. <c>Ape</c>): the lease form needs it to know whether the APE is on file (A7-06).</summary>
     public DocumentType DocumentType { get; set; }
     public DateTime UploadedAt { get; set; }
 
-    /// <summary>Code printed on the APE (only for <c>Ape</c> documents, LT-10); null until the landlord enters it.</summary>
     public string? ApeCode { get; set; }
 
-    /// <summary>Energy class printed on the APE (only for <c>Ape</c> documents, LT-10).</summary>
     public string? ApeEnergyClass { get; set; }
 
-    /// <summary>
-    /// API path of the authenticated download (<c>GET /api/properties/{id}/documents/{docId}/download</c>):
-    /// call it with the bearer token; it is not a public link.
-    /// </summary>
     public string DownloadUrl { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Only in the answer of an APE upload or reading (<c>POST .../ape/read</c>): what the automatic reading found (<c>Verified</c>,
-    /// <c>Incomplete</c>, <c>NotRecognized</c>, <c>NotChecked</c>, <c>Expired</c> on a reading, see
-    /// <see cref="Casazen.Core.Services.ApeUploadCheck"/>); null in every other answer.
-    /// </summary>
     public string? ApeCheck { get; set; }
 
-    /// <summary>Only with <see cref="ApeCheck"/> <c>Incomplete</c>: the data that were not read, in words of the request language.</summary>
     public IReadOnlyList<string>? ApeUnreadFields { get; set; }
 
     /// <summary>
@@ -114,34 +94,23 @@ public class OtaIntegrationSummaryDto
     public OtaSyncStatus? SyncStatus { get; set; }
 }
 
-/// <summary>
-/// Bookings KPIs of the property detail (A2-36), on the rules of the host dashboard (<c>StayKpiRules</c>): Europe/Rome
-/// calendar dates, never a cancelled booking nor a pending request.
-/// </summary>
 public class BookingsSummaryDto
 {
-    /// <summary>Confirmed stays: confirmed, checked in or checked out.</summary>
     public int TotalBookings { get; set; }
 
-    /// <summary>Confirmed check-ins from today on (today's arrivals until the host registers them).</summary>
     public int UpcomingBookings { get; set; }
 
-    /// <summary>Stays in progress today, up to their departure day included.</summary>
     public int ActiveBookings { get; set; }
 
-    /// <summary>Europe/Rome date (midnight UTC) of the next confirmed check-in, today included.</summary>
     public DateTime? NextCheckIn { get; set; }
 
-    /// <summary>Europe/Rome date (midnight UTC) of the next check-out of a confirmed or checked-in stay, today included.</summary>
     public DateTime? NextCheckOut { get; set; }
 }
 
-/// <summary>Seasonal price suggestions of the property (PC-15): on/off, last computation, next due Rome date.</summary>
 public class PricingAdapterSummaryDto
 {
     public bool IsEnabled { get; set; }
     public DateTime? LastAdaptedAt { get; set; }
 
-    /// <summary>Europe/Rome date from which the next automatic computation is due; <c>null</c> when disabled or never computed.</summary>
     public DateOnly? NextRunOn { get; set; }
 }

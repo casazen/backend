@@ -33,17 +33,11 @@ public interface IOnboardingPanelStepService
     /// </summary>
     Task<PanelStepStart> StartAsync(HostScope scope, string userId, PanelStepStartRequest request, CancellationToken ct);
 
-    /// <summary>The stored state of the step, after a verification if one is due (never more than the schedule allows).</summary>
     Task<PanelStepView> GetStatusAsync(HostScope scope, Guid stepId, CancellationToken ct);
 
     /// <summary>The explicit trigger of a verification (focus, close of the window): runs it when the previous check is old enough, otherwise answers the stored state.</summary>
     Task<PanelStepView> VerifyAsync(HostScope scope, Guid stepId, CancellationToken ct);
 
-    /// <summary>
-    /// The person says the step is done, after a verification stored that CasaZen cannot tell. Completes the step and closes its "To do".
-    /// 409 <see cref="OnboardingPanelStepCodes.VerificationRequired"/>, <see cref="OnboardingPanelStepCodes.NotValid"/> or
-    /// <see cref="OnboardingPanelStepCodes.AssistOpen"/>.
-    /// </summary>
     Task<PanelStepView> ConfirmAsync(HostScope scope, string userId, Guid stepId, CancellationToken ct);
 
     /// <summary>
@@ -53,7 +47,6 @@ public interface IOnboardingPanelStepService
     /// </summary>
     Task<PanelStepView> CompleteCallbackAsync(HostScope scope, Guid stepId, string? state, CancellationToken ct);
 
-    /// <summary>The steps of the org the scope reaches, the most recently started first.</summary>
     Task<IReadOnlyList<PanelStepView>> ListAsync(HostScope scope, CancellationToken ct);
 }
 
@@ -72,7 +65,6 @@ public sealed record PanelStepStartRequest(
     Guid? ResumeDraftEntityId = null,
     string? ResumeStepCode = null);
 
-/// <summary>The point of a wizard a step comes back to (a reference to the draft, never its content).</summary>
 public sealed record PanelStepResume(WizardType? WizardType, Guid? DraftEntityId, string? StepCode);
 
 /// <summary>
@@ -116,17 +108,10 @@ public sealed record PanelStepView(
 /// </summary>
 public sealed record PanelStepStart(PanelStepView Step, string PanelUrl, string? CallbackUrl);
 
-/// <summary>The kinds of panel step as the code defines them: their code, the context of a «Do it for me» request that stands for them and the part of the plan they belong to.</summary>
-/// <param name="Kind">The kind.</param>
-/// <param name="Code">The stable code the API speaks (<c>policeConnection</c>...).</param>
-/// <param name="Context">The <see cref="OnboardingAssistContexts"/> code of a request for this kind, also the key of its instructions.</param>
-/// <param name="Part">The part of the activation plan the kind belongs to.</param>
 public sealed record PanelStepKindInfo(PanelStepKind Kind, string Code, string Context, OnboardingPartKey Part);
 
-/// <summary>The three kinds of panel step (NF-107) and the names the API gives to the kinds, the statuses and the hand-over modes.</summary>
 public static class PanelStepCatalog
 {
-    /// <summary>The kinds, in the order of the plan.</summary>
     public static IReadOnlyList<PanelStepKindInfo> All { get; } =
     [
         new(PanelStepKind.PoliceConnection, "policeConnection", OnboardingAssistContexts.PanelPolice, OnboardingPartKey.Compliance),
@@ -134,20 +119,16 @@ public static class PanelStepCatalog
         new(PanelStepKind.ChannelAccess, "channelAccess", OnboardingAssistContexts.PanelChannelAccess, OnboardingPartKey.Channels),
     ];
 
-    /// <summary>The description of <paramref name="kind"/>.</summary>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="kind"/> is not a kind of panel step.</exception>
     public static PanelStepKindInfo Of(PanelStepKind kind) =>
         All.FirstOrDefault(info => info.Kind == kind)
         ?? throw new ArgumentOutOfRangeException(nameof(kind), kind, "Not a kind of panel step.");
 
-    /// <summary>The kind a «Do it for me» request of <paramref name="context"/> stands for; false for <see cref="OnboardingAssistContexts.Part"/> and anything else.</summary>
     public static bool TryOfContext(string? context, [NotNullWhen(true)] out PanelStepKindInfo? info)
     {
         info = All.FirstOrDefault(candidate => string.Equals(candidate.Context, context, StringComparison.Ordinal));
         return info is not null;
     }
 
-    /// <summary>The name the API gives to a member of an enum of the panel steps: the member name in camel case (<c>notValid</c>, <c>managedWindow</c>).</summary>
     public static string CodeOf<TEnum>(TEnum value)
         where TEnum : struct, Enum
     {
@@ -156,10 +137,8 @@ public static class PanelStepCatalog
     }
 }
 
-/// <summary>The stable codes of the panel steps: errors, the "To do" entity and its reason. Never rename one.</summary>
 public static class OnboardingPanelStepCodes
 {
-    /// <summary>404: no such step, or one the caller does not reach (the same answer).</summary>
     public const string NotFound = "panel_step_not_found";
 
     /// <summary>409: the confirmation is refused because no verification has found that CasaZen cannot tell.</summary>
@@ -168,56 +147,39 @@ public static class OnboardingPanelStepCodes
     /// <summary>409: the confirmation is refused because the last verification found the step not done or not valid.</summary>
     public const string NotValid = "panel_step_not_valid";
 
-    /// <summary>409: the step is with CasaZen support («Do it for me»): the person does not confirm it.</summary>
     public const string AssistOpen = "panel_step_assist_open";
 
-    /// <summary>409: the step has no callback (it is a managed window).</summary>
     public const string CallbackUnsupported = "panel_step_callback_unsupported";
 
-    /// <summary>422: the state of a callback is unknown, used, expired or not of this step (always this one answer).</summary>
     public const string StateInvalid = "panel_step_state_invalid";
 
-    /// <summary>422: the kind of step is not one of the three.</summary>
     public const string KindInvalid = "panel_step_kind_invalid";
 
-    /// <summary>422: a channel access names no valid channel, or another kind names one.</summary>
     public const string ChannelInvalid = "panel_step_channel_invalid";
 
-    /// <summary>422: the point to resume is not valid (a step code too long, a wizard that does not exist).</summary>
     public const string ResumeInvalid = "panel_step_resume_invalid";
 
-    /// <summary>403: a step or a request of the whole org needs a scope over the whole org.</summary>
     public const string NeedsWholeOrg = "onboarding_needs_whole_org";
 
-    /// <summary>The entity type of the "To do" of a step (its id is the id of the <see cref="OnboardingPanelStep"/>).</summary>
     public const string TodoEntityType = "OnboardingPanelStep";
 
-    /// <summary>The reason of the "To do" of a step started and not completed.</summary>
     public const string ReasonPending = "onboarding_panel_step_pending";
 }
 
-/// <summary>The limits of the verification and of the callback of the panel steps. Not configurable: they protect the quota of Octorate.</summary>
 public static class PanelStepLimits
 {
-    /// <summary>Seconds before the first check of a step; the wait doubles at each check.</summary>
     public const int FirstCheckSeconds = 30;
 
-    /// <summary>The longest wait between two checks, in seconds.</summary>
     public const int MaxCheckIntervalSeconds = 600;
 
-    /// <summary>The least time between two checks when the person asks for one (<see cref="IOnboardingPanelStepService.VerifyAsync"/>), in seconds.</summary>
     public const int ExplicitCheckMinGapSeconds = 10;
 
-    /// <summary>The most steps the list of an org answers.</summary>
     public const int MaxListed = 200;
 
-    /// <summary>Minutes a callback state is valid from the hand-over.</summary>
     public const int StateLifetimeMinutes = 30;
 
-    /// <summary>A longer state is refused without being compared.</summary>
     public const int StateMaxLength = 128;
 
-    /// <summary>The wait after the <paramref name="attempt"/>-th check (from 1): <see cref="FirstCheckSeconds"/>, doubled at each check, never longer than <see cref="MaxCheckIntervalSeconds"/>.</summary>
     public static TimeSpan BackoffAfter(int attempt)
     {
         var seconds = (double)FirstCheckSeconds;

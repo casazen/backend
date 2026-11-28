@@ -4,7 +4,6 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>A reserved monthly slot persists before the provider call, including when its outcome is unknown.</summary>
 [Index(nameof(CampaignId), nameof(ProfileId), IsUnique = true)]
 [Index(nameof(OrgId), nameof(ProfileId), nameof(Month), nameof(Slot), IsUnique = true)]
 public class CampaignDelivery : ITenantOwned

@@ -26,10 +26,8 @@ public sealed class BookingConfirmationEmailJob(
     IBackgroundJobClient backgroundJobClient,
     ILogger<BookingConfirmationEmailJob> logger)
 {
-    /// <summary>Attempts of one e-mail, the first one included.</summary>
     public const int MaxAttempts = 5;
 
-    /// <summary>Delay before attempt 2, 3, 4 and 5.</summary>
     public static readonly TimeSpan[] RetryDelays =
     [
         TimeSpan.FromMinutes(1),

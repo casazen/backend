@@ -3,10 +3,6 @@ using System.Text;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// A page in gray as <c>pdftoppm -gray</c> writes it (binary PGM, <c>P5</c>, one byte per pixel): enough to turn it into its negative
-/// and to cut a part of it for the OCR, with no image library. Width and height are bounded by the rendering (2400 px at most).
-/// </summary>
 internal sealed class GrayImage
 {
     private const int MaxSide = 10_000;
@@ -24,7 +20,6 @@ internal sealed class GrayImage
 
     public byte[] Pixels { get; }
 
-    /// <summary>Reads a binary PGM with 8-bit samples; anything else is not a page this reader made (<see cref="InvalidDataException"/>).</summary>
     public static GrayImage Read(byte[] pgm)
     {
         var position = 0;
@@ -48,7 +43,7 @@ internal sealed class GrayImage
             || Token() != "255"
             || width is < 1 or > MaxSide || height is < 1 or > MaxSide)
             throw new InvalidDataException("Unsupported page image.");
-        position++; // the single whitespace after the maximum value
+        position++;
         if (pgm.Length - position < (long)width * height)
             throw new InvalidDataException("Truncated page image.");
         return new GrayImage(width, height, pgm.AsSpan(position, width * height).ToArray());
@@ -63,7 +58,6 @@ internal sealed class GrayImage
         return bytes;
     }
 
-    /// <summary>White text on a dark band (the title, the header with the code, the box of the class) becomes dark text on white.</summary>
     public GrayImage Negated()
     {
         var pixels = new byte[Pixels.Length];
@@ -71,7 +65,6 @@ internal sealed class GrayImage
         return new GrayImage(Width, Height, pixels);
     }
 
-    /// <summary>The part from (<paramref name="left"/>, <paramref name="top"/>) to (<paramref name="right"/>, <paramref name="bottom"/>), cut to the page; null when nothing is left.</summary>
     public GrayImage? Crop(int left, int top, int right, int bottom)
     {
         left = Math.Clamp(left, 0, Width);
@@ -89,10 +82,8 @@ internal sealed class GrayImage
     }
 }
 
-/// <summary>A word tesseract found, with its box in pixels of the page (a row of its <c>tsv</c> output).</summary>
 internal sealed record OcrWord(string Text, int Left, int Top, int Width, int Height)
 {
-    /// <summary>The words of a tesseract <c>tsv</c> file: <c>level page block par line word left top width height conf text</c>.</summary>
     public static IReadOnlyList<OcrWord> ParseTsv(string tsv)
     {
         var words = new List<OcrWord>();
@@ -111,10 +102,6 @@ internal sealed record OcrWord(string Text, int Left, int Top, int Width, int He
     }
 }
 
-/// <summary>
-/// Where to read again, around the labels of the data a contract needs: on a photo the automatic layout of tesseract loses the box of
-/// the class or the line of the date among the tables, the same zone cut alone and read as one block gives it back.
-/// </summary>
 internal static class ApeAnchors
 {
     private const int MaxCropsPerPage = 6;
@@ -130,10 +117,8 @@ internal static class ApeAnchors
                 continue;
             (int, int, int, int)? box =
                 key.StartsWith("CLASSE", StringComparison.Ordinal)
-                    // The box of the class: the label, the big letter under it, EP gl,nren under that; narrow, so the scale stays out.
                     ? (word.Left - word.Width / 4, word.Top - 4 * h, word.Left + word.Width + word.Width / 4, word.Top + 8 * h)
                 : key.StartsWith("EMISSION", StringComparison.Ordinal) || key.StartsWith("VALIDO", StringComparison.Ordinal) || key.StartsWith("FINO", StringComparison.Ordinal)
-                    // The line of a date: the label and the date written after it.
                     ? (word.Left - 10 * h, word.Top - h, word.Left + 26 * h, word.Top + 2 * h)
                 : key.StartsWith("CODICE", StringComparison.Ordinal) || key.StartsWith("IDENTIFICATIVO", StringComparison.Ordinal)
                     ? (word.Left - h, word.Top - h, word.Left + 40 * h, word.Top + 3 * h)
@@ -147,7 +132,6 @@ internal static class ApeAnchors
         return boxes;
     }
 
-    /// <summary>The same zone found twice (in the page and in its negative): it is read once.</summary>
     private static bool Overlaps((int Left, int Top, int Right, int Bottom) a, (int Left, int Top, int Right, int Bottom) b)
     {
         var width = Math.Min(a.Right, b.Right) - Math.Max(a.Left, b.Left);

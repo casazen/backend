@@ -23,19 +23,14 @@ public interface IChannelManagerAvailability
     Task<ChannelManagerAvailability> CheckAsync(Guid propertyId, Guid orgId, DateOnly from, DateOnly to, int guests, CancellationToken ct);
 }
 
-/// <summary>What the channel manager said of a stay (<see cref="IChannelManagerAvailability.CheckAsync"/>).</summary>
 public enum ChannelManagerAnswer
 {
-    /// <summary>Nothing to ask: the property is not mirrored on the channel manager (no connected account, no confirmed mapping, the connector is off).</summary>
     NotMirrored = 0,
 
-    /// <summary>Octorate answered that the nights can be booked.</summary>
     Available = 1,
 
-    /// <summary>Octorate answered that the nights cannot be booked (it refuses them, or they are taken there).</summary>
     NotAvailable = 2,
 
-    /// <summary>The property is mirrored but Octorate could not be asked (timeout, rate limit, server error, a room not chosen): no answer, no refusal.</summary>
     Unanswered = 3,
 }
 
@@ -44,16 +39,10 @@ public enum ChannelManagerAnswer
 /// <param name="Reason">Octorate's short reason of a refusal, when it gives one; never shown to a guest.</param>
 public sealed record ChannelManagerAvailability(ChannelManagerAnswer Answer, string? Reason = null)
 {
-    /// <summary>The property is not mirrored: nothing was asked.</summary>
     public static ChannelManagerAvailability NotMirrored { get; } = new(ChannelManagerAnswer.NotMirrored);
 
-    /// <summary>The property is mirrored and Octorate could not be asked.</summary>
     public static ChannelManagerAvailability Unanswered { get; } = new(ChannelManagerAnswer.Unanswered);
 
-    /// <summary>
-    /// The member <c>channelManagerChecked</c> of the host availability: <c>null</c> when nothing was asked (not mirrored), <c>true</c> when
-    /// Octorate answered, <c>false</c> when it could not be asked.
-    /// </summary>
     public bool? Checked => Answer switch
     {
         ChannelManagerAnswer.NotMirrored => null,
@@ -61,6 +50,5 @@ public sealed record ChannelManagerAvailability(ChannelManagerAnswer Answer, str
         _ => true,
     };
 
-    /// <summary>Octorate said the nights cannot be booked: the only answer that refuses a booking.</summary>
     public bool IsNotAvailable => Answer == ChannelManagerAnswer.NotAvailable;
 }

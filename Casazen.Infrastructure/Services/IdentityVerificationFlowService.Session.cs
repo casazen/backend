@@ -30,7 +30,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed partial class IdentityVerificationFlowService
 {
-    /// <summary>The self-hosted flow is on: <c>Features:CheckInIdentityVerification</c> AND <c>Features:CheckInIdentitySelfHosted</c>.</summary>
     private bool SelfHostedOn =>
         featureFlags is not null
         && featureFlags.IsEnabled(FeatureFlags.CheckInIdentityVerification)
@@ -52,8 +51,6 @@ public sealed partial class IdentityVerificationFlowService
             if (session.IdentityClosedAt is not null)
                 return new IdentityOpenResult(IdentityOpenStatus.Closed, State(session, context));
 
-            // The notice of the identity step is the text of the biometric consent the registry serves now: the same version for every language of the session
-            // (the registry serves the closest language of the active version, its Italian reference always included).
             var served = context.ActiveConsentText;
             var named = noticeVersion?.Trim();
             if (served is null || string.IsNullOrEmpty(named) || !string.Equals(served.Version, named, StringComparison.Ordinal))
@@ -71,11 +68,6 @@ public sealed partial class IdentityVerificationFlowService
         }, ct);
     }
 
-    /// <summary>
-    /// The terminal outcome code of a hand-off to a person, from the reason of its alert (<see cref="VerificationAlertReasons"/>): a review or the attempts used are
-    /// <c>review</c>, a refused consent <c>consent_refused</c>, the guest's request <c>assisted</c>, a technical failure <c>technical_error</c>, a verification switched off
-    /// or without an approved legal text <c>unavailable</c>, a minor <c>minor_excluded</c>. A reason this does not know is a person reviewing: <c>review</c>.
-    /// </summary>
     internal static string IdentityOutcomeOf(string alertReason)
     {
         return alertReason switch
@@ -156,10 +148,6 @@ public sealed partial class IdentityVerificationFlowService
         session.UpdatedAt = now;
     }
 
-    /// <summary>
-    /// Closes the self-hosted verification of an opened session with <paramref name="outcomeCode"/> (a code of <see cref="IdentityOutcomeCodes"/>), once: a closed one
-    /// keeps its first code, a session never opened is not closed, and with the self-hosted flow off nothing is written. Nothing is saved here.
-    /// </summary>
     private void CloseIdentitySession(GuestCheckInSession session, string outcomeCode)
     {
         if (!SelfHostedOn || session.IdentityOpenedAt is null || session.IdentityClosedAt is not null)
@@ -172,14 +160,12 @@ public sealed partial class IdentityVerificationFlowService
         logger.LogInformation("Identity verification of session {SessionId} closed: outcome={Outcome}", session.Id, outcomeCode);
     }
 
-    /// <summary>The guest of the stay the verification is bound to: the row that stands for the bound <see cref="Guest"/> (the booker), else the row with the bound id; null when gone.</summary>
     private static StayGuest? BoundGuestOf(IReadOnlyList<StayGuest> guests, Guid bound)
     {
         return guests.FirstOrDefault(guest => guest.GuestId == bound)
             ?? guests.FirstOrDefault(guest => guest.Id != Guid.Empty && guest.Id == bound);
     }
 
-    /// <summary>The id the opening binds for <paramref name="verifying"/>: the booker it stands for, else its own row, else (no guest at all) the booker of the booking.</summary>
     private static Guid BindingIdOf(StayGuest? verifying, Booking booking)
     {
         if (verifying?.GuestId is { } guestId)

@@ -27,10 +27,6 @@ public static class PersonalDataMasking
         return new string(MaskChar, value.Length - FiscalCodeVisibleChars) + value[^FiscalCodeVisibleChars..];
     }
 
-    /// <summary>
-    /// First character of the local part plus the domain: <c>mario.rossi@example.it</c> becomes
-    /// <c>m***@example.it</c>. A value that is not an address is hidden completely.
-    /// </summary>
     public static string MaskEmail(string? email)
     {
         if (string.IsNullOrWhiteSpace(email))
@@ -44,10 +40,6 @@ public static class PersonalDataMasking
         return $"{value[0]}{new string(MaskChar, 3)}{value[at..]}";
     }
 
-    /// <summary>
-    /// The last three digits of a phone number, whatever its spaces and signs: <c>+393331234567</c> becomes <c>*********567</c>. A value with
-    /// three digits or fewer, or none, is hidden completely.
-    /// </summary>
     public static string MaskPhone(string? phone)
     {
         if (string.IsNullOrWhiteSpace(phone))

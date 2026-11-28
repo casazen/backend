@@ -22,16 +22,12 @@ public class BankLinkPayment : ITenantOwned
 
     public Guid OrgId { get; set; }
 
-    /// <summary>Set when the payer is the tenant of that lease, or when the landlord pays one installment of it.</summary>
     public Guid? LeaseContractId { get; set; }
 
-    /// <summary>The rent due this debit was started for. Null for a transfer that is not a rent installment.</summary>
     public Guid? RentLedgerEntryId { get; set; }
 
-    /// <summary>The condominium installment this debit pays. Null when the debit is not for the condominium.</summary>
     public Guid? CondominiumInstallmentId { get; set; }
 
-    /// <summary>The tenant maintenance request this debit pays. Null when the debit is not for maintenance.</summary>
     public Guid? LeaseMaintenanceRequestId { get; set; }
 
     public BankLinkPayer Payer { get; set; }
@@ -45,7 +41,6 @@ public class BankLinkPayment : ITenantOwned
     [MaxLength(StripeIdMaxLength)]
     public string? StripePaymentMethodId { get; set; }
 
-    /// <summary>Stripe PaymentMethod type used for the debit (<c>sepa_debit</c>).</summary>
     [Required, MaxLength(PaymentMethodTypeMaxLength)]
     public string PaymentMethodType { get; set; } = string.Empty;
 

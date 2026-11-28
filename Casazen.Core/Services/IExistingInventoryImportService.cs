@@ -45,10 +45,6 @@ public interface IExistingInventoryImportService
         ExistingInventoryScope scope,
         CancellationToken ct);
 
-    /// <summary>
-    /// The batch as stored, after reading the result of the channel access of each channel that is waiting for it (a check of the access is
-    /// made at most when its backoff is due). A verified access moves the channel on to the room import.
-    /// </summary>
     Task<ExistingInventoryBatchView> GetBatchAsync(ExistingInventoryCaller caller, Guid batchId, CancellationToken ct);
 
     /// <summary>
@@ -81,10 +77,6 @@ public interface IExistingInventoryImportService
         IReadOnlyCollection<ExistingInventoryConnectTarget> accommodations,
         CancellationToken ct);
 
-    /// <summary>
-    /// The person says the access was given. Accepted only after the check stored «could not tell» for the channel; refused (409
-    /// <c>panel_step_verification_required</c>) before it and after a check that found the access not valid (409 <c>panel_step_not_valid</c>).
-    /// </summary>
     Task<ExistingInventoryBatchView> ConfirmChannelAccessAsync(ExistingInventoryCaller caller, Guid batchId, string channelCode, CancellationToken ct);
 
     /// <summary>
@@ -126,7 +118,6 @@ public interface IExistingInventoryImportService
         IReadOnlyCollection<InventoryIntentAssignment> assignments,
         CancellationToken ct);
 
-    /// <summary>The intents of the org the caller reaches (the properties it reaches; those of the groups with no property only when it reaches the whole org).</summary>
     Task<IReadOnlyList<InventoryIntentView>> ListIntentsAsync(ExistingInventoryCaller caller, CancellationToken ct);
 }
 
@@ -151,7 +142,6 @@ public sealed record ExistingInventoryConnectTarget(string? AccommodationId, str
 /// </summary>
 public interface IInventoryScenarioGuard
 {
-    /// <summary>The scenario declared for the property of the org; <c>null</c> when nobody declared one.</summary>
     Task<OctorateInventoryScenario?> GetScenarioAsync(Guid orgId, Guid propertyId, CancellationToken ct);
 
     /// <summary>
@@ -176,7 +166,6 @@ public interface IChannelAccessHandoff
     /// </summary>
     Task<ChannelAccessHandoffStart> StartAsync(Guid orgId, string channelCode, ChannelAccessResumePoint resume, CancellationToken ct);
 
-    /// <summary>The stored state of the step; when <paramref name="verifyIfDue"/> and the backoff is due, one check of the access runs first.</summary>
     Task<ChannelAccessSnapshot> GetAsync(Guid orgId, string channelCode, bool verifyIfDue, CancellationToken ct);
 
     /// <summary>
@@ -186,7 +175,6 @@ public interface IChannelAccessHandoff
     Task ConfirmAsync(Guid orgId, string userId, string channelCode, CancellationToken ct);
 }
 
-/// <summary>Where the person comes back to after the panel: the batch and the channel of the import.</summary>
 public sealed record ChannelAccessResumePoint(Guid BatchId, string ChannelCode);
 
 /// <summary>What the client needs to open the panel: how, where, and the step it will come back to.</summary>
@@ -200,41 +188,23 @@ public sealed record ChannelAccessHandoffStart(Guid StepId, PanelHandoffMode Han
 /// <param name="State">Where the access stands.</param>
 public sealed record ChannelAccessSnapshot(Guid? StepId, ChannelAccessState State)
 {
-    /// <summary>The access is given: seen by CasaZen, or confirmed by the person after CasaZen could not check it.</summary>
     public bool IsComplete => State is ChannelAccessState.Verified or ChannelAccessState.Confirmed;
 }
 
-/// <summary>The answer of the start of the access to a channel: the only place the address of the panel is ever returned.</summary>
-/// <param name="ChannelCode">The channel.</param>
-/// <param name="AlreadyComplete">The access was already given: nothing to open.</param>
-/// <param name="HandoffMode">How the panel is opened; <c>null</c> when <paramref name="AlreadyComplete"/>.</param>
-/// <param name="PanelUrl">The address to open; <c>null</c> when <paramref name="AlreadyComplete"/>.</param>
 public sealed record ChannelAccessStartResult(string ChannelCode, bool AlreadyComplete, PanelHandoffMode? HandoffMode, string? PanelUrl);
 
-/// <summary>Which properties a batch is about; build it with the factories.</summary>
-/// <param name="Kind">The kind of scope.</param>
-/// <param name="PropertyIds">The properties named, for <see cref="OctorateInventoryScopeKind.Properties"/>.</param>
-/// <param name="Group">The named group, for <see cref="OctorateInventoryScopeKind.Group"/>.</param>
 public sealed record ExistingInventoryScope(OctorateInventoryScopeKind Kind, IReadOnlyList<Guid> PropertyIds, string? Group)
 {
-    /// <summary>Every property of the org: the caller must reach the whole org.</summary>
     public static ExistingInventoryScope AllInventory { get; } = new(OctorateInventoryScopeKind.AllInventory, [], null);
 
-    /// <summary>The properties named: each one of the org and within the reach of the caller.</summary>
     public static ExistingInventoryScope ForProperties(IReadOnlyList<Guid> propertyIds) =>
         new(OctorateInventoryScopeKind.Properties, propertyIds, null);
 
-    /// <summary>A named group of the mixed portfolio.</summary>
     public static ExistingInventoryScope ForGroup(string group) => new(OctorateInventoryScopeKind.Group, [], group);
 }
 
-/// <summary>One assignment of a scenario: a property (or, with none, a named group of properties not in CasaZen yet) and what the person declared.</summary>
-/// <param name="PropertyId">The CasaZen property; <c>null</c> for a group that has no property yet.</param>
-/// <param name="Scenario">The declared scenario.</param>
-/// <param name="Group">The named group of the mixed portfolio; required when there is no property.</param>
 public sealed record InventoryIntentAssignment(Guid? PropertyId, OctorateInventoryScenario Scenario, string? Group);
 
-/// <summary>An intent as the API shows it.</summary>
 public sealed record InventoryIntentView(Guid? PropertyId, OctorateInventoryScenario Scenario, string? Group, DateTime UpdatedAt);
 
 /// <summary>An import batch as the API shows it: progress, counts, stable error codes and safe ids; never a credential or a payload.</summary>
@@ -250,10 +220,6 @@ public sealed record ExistingInventoryBatchView(
     DateTime? CompletedAt,
     IReadOnlyList<ExistingInventoryChannelView> Channels);
 
-/// <summary>
-/// A channel of a batch: where it stands, the counts of its listings and the listings themselves. <see cref="ConnectedAccommodationIds"/> are the
-/// Octorate accommodations «Collega da CasaZen» connected to the channel for the batch, or found already connected (ordered, empty when none).
-/// </summary>
 public sealed record ExistingInventoryChannelView(
     string ChannelCode,
     OctorateInventoryImportStatus Status,
@@ -292,7 +258,6 @@ public sealed record ExistingInventoryCounts(
     int Connected,
     int Failed);
 
-/// <summary>Which operations of the D6 sequence are verified for the channel: an operation that is not stops with <c>d6_operation_unverified</c> and stays guided.</summary>
 public sealed record ExistingInventoryCapabilities(bool ImportRooms, bool ImportReservations, bool ImportCalendar, bool MarkConnected);
 
 /// <summary>

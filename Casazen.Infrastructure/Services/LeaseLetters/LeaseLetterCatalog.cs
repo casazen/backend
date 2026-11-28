@@ -8,23 +8,17 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services.LeaseLetters;
 
-/// <summary>State of the text of a letter, from the least to the most usable.</summary>
 public enum LeaseLetterStatus
 {
-    /// <summary>The file of the version is not there (or cannot be read).</summary>
     Missing,
 
-    /// <summary>The file exists but a required section has no text, a placeholder is wrong or the title is missing.</summary>
     Incomplete,
 
-    /// <summary>Complete, but not approved by the product owner (or the approval is not valid): printed with a watermark.</summary>
     NotApproved,
 
-    /// <summary>Complete and approved: printed without the watermark.</summary>
     Approved,
 }
 
-/// <summary>The text of one letter as loaded from its file, with the reasons it cannot be used or approved.</summary>
 public sealed record LeaseLetterState(
     LeaseLetterKind Kind,
     string VersionId,
@@ -38,10 +32,8 @@ public sealed record LeaseLetterState(
 {
     public bool IsApproved => Status == LeaseLetterStatus.Approved;
 
-    /// <summary>A letter can be built from a complete text, approved or not.</summary>
     public bool IsUsable => Status is LeaseLetterStatus.NotApproved or LeaseLetterStatus.Approved;
 
-    /// <summary>Everything that keeps the text from being used or approved, for logs and startup errors.</summary>
     public IEnumerable<string> Problems =>
         MissingSections.Select(id => $"section '{id}' has no text")
             .Concat(Issues)
@@ -53,12 +45,6 @@ public interface ILeaseLetterCatalog
     LeaseLetterState Get(LeaseLetterKind kind);
 }
 
-/// <summary>
-/// Loads the files of the letters (<c>{LettersDirectory}/{Kind}/{VersionId}.md</c>, same grammar as the contract templates) and computes
-/// their state against the required sections (<see cref="LeaseLetterStructure"/>) and the approval rules (<see cref="LeaseTemplateApproval"/>,
-/// the same as for a contract). Without a <c>VersionId</c> the draft shipped with the API is used, and it is not approved; the product owner
-/// names the version a lawyer reviewed and approves it on the host. Files are read once per process.
-/// </summary>
 public sealed class LeaseLetterCatalog(
     IOptions<LeaseLetterOptions> options,
     IHostEnvironment environment,
@@ -79,7 +65,6 @@ public sealed class LeaseLetterCatalog(
         return Path.IsPathRooted(directory) ? directory : Path.Combine(contentRootPath, directory);
     }
 
-    /// <summary>Loads and checks the text of <paramref name="kind"/> (pure apart from reading the file).</summary>
     public static LeaseLetterState Load(LeaseLetterKind kind, LeaseLetterOptions options, string contentRootPath)
     {
         var variant = options.Variants.TryGetValue(kind.ToString(), out var configured)

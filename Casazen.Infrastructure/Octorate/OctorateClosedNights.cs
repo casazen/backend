@@ -19,21 +19,13 @@ namespace Casazen.Infrastructure.Octorate;
 /// </remarks>
 internal static class OctorateClosedNights
 {
-    /// <summary>The note on a block: the name of the service, not a text of a language. Shown to the host only, never exported.</summary>
     internal const string BlockSummary = "Octorate";
 
-    /// <summary>Prefix of the UID of a block: the key <c>(PropertyId, ExternalUid)</c> of the blocks read from the Octorate calendar.</summary>
     internal const string UidPrefix = "octorate:";
 
-    /// <summary>The UID of the block that starts with <paramref name="firstNight"/>: the same closure keeps its row from one run to the next.</summary>
     internal static string UidOf(DateOnly firstNight) =>
         string.Create(CultureInfo.InvariantCulture, $"{UidPrefix}{firstNight:yyyy-MM-dd}");
 
-    /// <summary>
-    /// The days of <paramref name="productId"/>, or, when the answer holds days of one product only and it does not carry the id that was asked
-    /// for (a unit named by another of its ids), all of them: the call asked for one room, so a single unit in the answer is that room. Days of
-    /// several products none of which is the one asked for are not its days: none.
-    /// </summary>
     internal static List<OctorateCalendarDay> DaysOf(IReadOnlyCollection<OctorateCalendarDay> days, string productId)
     {
         var own = days.Where(d => string.Equals(d.ProductId, productId, StringComparison.Ordinal)).ToList();
@@ -55,10 +47,6 @@ internal static class OctorateClosedNights
         return days.Any(d => d.Date == from) && days.Any(d => d.Date == to);
     }
 
-    /// <summary>
-    /// The closed nights from <paramref name="from"/> to <paramref name="to"/> (both included), in order and once each, less the nights in
-    /// <paramref name="takenElsewhere"/>.
-    /// </summary>
     internal static List<DateOnly> Of(
         IEnumerable<OctorateCalendarDay> days,
         DateOnly from,
@@ -75,7 +63,6 @@ internal static class OctorateClosedNights
             .Order()];
     }
 
-    /// <summary>The runs of consecutive nights of <paramref name="nights"/> (in order, once each): one block for each.</summary>
     internal static List<NightRun> Runs(IReadOnlyList<DateOnly> nights)
     {
         ArgumentNullException.ThrowIfNull(nights);
@@ -99,7 +86,6 @@ internal static class OctorateClosedNights
         return runs;
     }
 
-    /// <summary>The nights from <paramref name="start"/> (included) to <paramref name="end"/> (excluded) that fall in [<paramref name="from"/>, <paramref name="to"/>], both included.</summary>
     internal static IEnumerable<DateOnly> NightsIn(DateTime start, DateTime end, DateOnly from, DateOnly to)
     {
         var night = DateOnly.FromDateTime(start);
@@ -112,5 +98,4 @@ internal static class OctorateClosedNights
     }
 }
 
-/// <summary>A run of closed nights: from <paramref name="FirstNight"/> (included) to <paramref name="CheckOut"/> (excluded).</summary>
 internal readonly record struct NightRun(DateOnly FirstNight, DateOnly CheckOut);

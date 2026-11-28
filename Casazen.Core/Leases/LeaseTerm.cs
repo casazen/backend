@@ -10,7 +10,6 @@ public readonly record struct LeaseTerm(int Months, int Days)
 {
     public bool IsWholeYears => Days == 0 && Months > 0 && Months % 12 == 0;
 
-    /// <summary>Term between <paramref name="startDate"/> and the inclusive <paramref name="endDate"/>; null when the end is before the start.</summary>
     public static LeaseTerm? Between(DateTime startDate, DateTime endDate)
     {
         var from = startDate.Date;
@@ -26,7 +25,6 @@ public readonly record struct LeaseTerm(int Months, int Days)
         return new LeaseTerm(months, days);
     }
 
-    /// <summary>Italian wording used in the contract: "4 anni", "18 mesi", "1 anno", "2 mesi e 10 giorni".</summary>
     public string ToItalianText()
     {
         var parts = new List<string>(2);

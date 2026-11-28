@@ -46,14 +46,11 @@ public sealed class ComplianceArchiveService(
 {
     private const int ReadChunkBytes = 81920;
 
-    /// <summary>A page number beyond this is a mistake (it would overflow the offset of the query).</summary>
     private const int MaxPage = 100_000;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     private ComplianceArchiveOptions Archive => options.Value.Archive;
-
-    // ---------------------------------------------------------------- the list
 
     public async Task<ComplianceArchivePage> ListAsync(HostScope scope, ComplianceArchiveQuery query, CancellationToken ct)
     {
@@ -125,14 +122,11 @@ public sealed class ComplianceArchiveService(
                 .ToList());
     }
 
-    // ---------------------------------------------------------------- download
-
     public async Task<ComplianceArchiveDownload> OpenDownloadAsync(HostScope scope, Guid proofId, bool moneyProofs, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(scope);
         var orgId = scope.OrgId;
 
-        // The same boundary as the list: the org, the reach, the deleted properties kept, and a record of money only for who may read money.
         var proof = await ProofsInScope(scope, null, null, null, null, moneyProofs)
             .Where(p => p.Id == proofId)
             .Select(p => new { p.Kind, p.Day, p.FileKey, p.ContentType })
@@ -146,12 +140,10 @@ public sealed class ComplianceArchiveService(
             throw ProofNotFound();
         }
 
-        // Never a public address: a signed one of the private bucket that lives for a few minutes, made for this download.
         var signed = await storage.GetSignedReadUrlAsync(proof.FileKey, Archive.SignedUrlLifetime, fileName, ct);
         if (signed is not null)
             return new ComplianceArchiveDownload(signed, null, fileName, proof.ContentType);
 
-        // The storage that cannot sign (development, tests) hands the content through the authenticated endpoint.
         var content = await storage.OpenReadAsync(StorageBucket.Private, proof.FileKey, ct);
         if (content is null)
         {
@@ -161,8 +153,6 @@ public sealed class ComplianceArchiveService(
 
         return new ComplianceArchiveDownload(null, content, fileName, proof.ContentType);
     }
-
-    // ---------------------------------------------------------------- export
 
     public async Task<ComplianceArchiveExportFile> ExportAsync(HostScope scope, ComplianceArchiveExportQuery query, CancellationToken ct)
     {
@@ -177,7 +167,6 @@ public sealed class ComplianceArchiveService(
         var fileLimit = settings.ExportFileLimit;
         var byteLimit = settings.ExportByteLimit;
 
-        // One more than the limit tells the export is too big without counting the rest.
         var rows = await ProofsInScope(scope, query.PropertyId, null, query.From, query.To, query.MoneyProofs)
             .OrderBy(p => p.Day)
             .ThenBy(p => p.UploadedAt)
@@ -202,7 +191,6 @@ public sealed class ComplianceArchiveService(
                     var entry = ToEntry(new ProofRow(row.Id, row.Kind, row.PropertyId, row.PropertyName, row.Day, row.ContentType, row.UploadedAt));
                     string? name = null;
 
-                    // A proof whose file is no longer in the bucket stays in the index, said so: the host sees what is missing, nothing is invented.
                     if (StorageKeys.IsValid(row.FileKey)
                         && await storage.OpenReadAsync(StorageBucket.Private, row.FileKey, ct) is { } source)
                     {
@@ -252,8 +240,6 @@ public sealed class ComplianceArchiveService(
         }
     }
 
-    // ---------------------------------------------------------------- coverage report
-
     public async Task<ComplianceCoverageReport> GetCoverageReportAsync(HostScope scope, ComplianceReportQuery query, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(scope);
@@ -264,13 +250,11 @@ public sealed class ComplianceArchiveService(
         var orgId = scope.OrgId;
         await EnsurePropertyInScopeAsync(scope, query.PropertyId, ct);
 
-        // The obligations and their proofs are the traffic light's: decided by ComplianceLightRules, over the days of the report.
         var evaluation = await status.EvaluateAsync(scope, new ComplianceStatusWindow(query.From, query.To, query.PropertyId), ct);
         var items = evaluation.Items
             .Where(i => i.Kind is ComplianceItemKind.Alloggiati or ComplianceItemKind.Istat or ComplianceItemKind.TouristTax)
             .ToList();
 
-        // The stays that owe nothing: a no-show has nobody to communicate, and every reader of the status says so (AlloggiatiStatusRules).
         var from = query.From.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var to = query.To.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var noShowQuery = db.Bookings
@@ -334,7 +318,6 @@ public sealed class ComplianceArchiveService(
             ComplianceReportReasons.NoShow,
             null)));
 
-        // The stays first by arrival day, then the months; inside a day or a month by property, so the report reads the same each time.
         var ordered = rows
             .OrderBy(r => r.Day is null ? 1 : 0)
             .ThenBy(r => r.Day)
@@ -350,7 +333,6 @@ public sealed class ComplianceArchiveService(
             ordered.Count(r => r.EvidenceClass == ComplianceEvidenceClass.Missing),
             ordered.Count(r => r.EvidenceClass == ComplianceEvidenceClass.NotApplicable));
 
-        // Complete only when nothing applicable is left without its proof: a row held only by Octorate is not a proof.
         var complete = counts.ExternalVerificationRequired == 0 && counts.Missing == 0;
         return new ComplianceCoverageReport(
             query.From, query.To, query.PropertyId, _clock.GetUtcNow().UtcDateTime, complete, counts, ordered);
@@ -367,7 +349,6 @@ public sealed class ComplianceArchiveService(
         if (format == ComplianceReportFormat.Csv)
             return new ComplianceReportFile(ComplianceArchiveDocuments.Csv(report), "text/csv", name);
 
-        // The properties the report is about, as the document names them: the one asked for, else those the person who made it can reach.
         var scopeLabel = "quelli accessibili a chi ha generato il rapporto";
         if (query.PropertyId is { } propertyId && await PropertyNameAsync(scope.OrgId, propertyId, ct) is { Length: > 0 } propertyName)
             scopeLabel = propertyName;
@@ -375,8 +356,6 @@ public sealed class ComplianceArchiveService(
         var content = ComplianceArchiveDocuments.Pdf(report, scopeLabel);
         return new ComplianceReportFile(pdfRenderer.Render(content), "application/pdf", name);
     }
-
-    // ---------------------------------------------------------------- upload
 
     public async Task<ComplianceArchiveEntry> UploadProofAsync(
         HostScope scope,
@@ -389,7 +368,6 @@ public sealed class ComplianceArchiveService(
         ArgumentNullException.ThrowIfNull(content);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.UploadedByUserId);
 
-        // What needs nothing from the database or the file comes first.
         if (!Enum.IsDefined(request.Kind))
             throw new DomainRuleException(ComplianceArchiveErrorCodes.ProofKindInvalid, "ComplianceProofKindInvalid");
         if (request.Day > _clock.TodayInRomeAsDateOnly() || request.Day.Year < ComplianceArchiveLimits.MinYear)
@@ -402,12 +380,10 @@ public sealed class ComplianceArchiveService(
         var flats = await ResolveFlatsAsync(scope, flatIds, ct);
         var property = flats[0];
 
-        // The stays the receipt proves, counted before anything is stored (the answer tells the host how many it turned in order).
         int? coveredStays = null;
         if (request.Kind == ManualProofKind.AlloggiatiReceipt)
             coveredStays = (await CountStaysAsync(scope, request.Day, flatIds, ct)).Values.Sum();
 
-        // The file is read to the end and judged on its content before anything is stored.
         var (file, kind) = await ReadProofAsync(content, Archive.UploadMaxBytes, ct);
         await using (file)
         {
@@ -415,7 +391,6 @@ public sealed class ComplianceArchiveService(
             var now = _clock.GetUtcNow().UtcDateTime;
             var key = StorageKeys.ManualComplianceProof(orgId, id, StorageKeys.NewFileName(kind.Extension));
 
-            // The file first, in the private bucket: a failed upload changes nothing, and a failed save removes the file.
             await storage.PutAsync(StorageBucket.Private, key, file, kind.ContentType, ct);
             var proof = new ManualComplianceProof
             {
@@ -434,8 +409,6 @@ public sealed class ComplianceArchiveService(
             {
                 db.ManualComplianceProofs.Add(proof);
 
-                // One line for each flat the proof covers, the flat it was filed under included. Added through the set, never only to a collection of the
-                // proof: a line with a preset id attached that way would be tracked as modified and the save would update a row that is not there.
                 foreach (var flat in flats)
                     db.ManualComplianceProofProperties.Add(new ManualComplianceProofProperty { OrgId = orgId, ProofId = id, PropertyId = flat.Id });
 
@@ -491,7 +464,6 @@ public sealed class ComplianceArchiveService(
         if (day > _clock.TodayInRomeAsDateOnly() || day.Year < ComplianceArchiveLimits.MinYear)
             throw new DomainRuleException(ComplianceArchiveErrorCodes.ProofDayInvalid, "ComplianceProofDayInvalid");
 
-        // A list of flats is asked for here: an empty one is never «every flat».
         if (propertyIds.Count == 0 || propertyIds.Count > ComplianceArchiveLimits.MaxCoveredProperties)
             throw CoverageInvalid();
 
@@ -503,8 +475,6 @@ public sealed class ComplianceArchiveService(
             counts.Values.Sum(),
             flats.Select(flat => new ComplianceReceiptCoverageProperty(flat.Id, flat.Name, counts.GetValueOrDefault(flat.Id))).ToList());
     }
-
-    // ---------------------------------------------------------------- reads
 
     /// <summary>
     /// The proofs of the caller's org, in the reach of its scope, the history of deleted properties included, narrowed as asked. The one place
@@ -529,7 +499,6 @@ public sealed class ComplianceArchiveService(
         if (!moneyProofs)
             proofs = proofs.Where(p => !ComplianceArchiveRules.MoneyKinds.Contains(p.Kind));
 
-        // The proofs of a flat are those that cover it, the flat they were filed under or another one of their receipt (E20/F02/US01/T01).
         if (propertyId is { } property)
             proofs = proofs.Where(p => p.PropertyId == property || p.CoveredProperties.Any(link => link.PropertyId == property));
         if (kind is { } proofKind)
@@ -592,7 +561,6 @@ public sealed class ComplianceArchiveService(
         var orgId = scope.OrgId;
         var flats = db.Properties.AsNoTracking().Where(p => p.OrgId == orgId);
 
-        // One flat is the common case and the statement it always was; several are one statement too, never one query for each.
         if (ids.Count == 1)
         {
             var only = ids[0];
@@ -699,10 +667,6 @@ public sealed class ComplianceArchiveService(
             .FirstOrDefaultAsync(ct)
         ?? string.Empty;
 
-    /// <summary>
-    /// The names of the people of the caller's own org who declared a send. <c>User</c> is not tenant-filtered, so the org is in the predicate: a
-    /// person of another org (or none) is nobody here, and the log shows no name for it.
-    /// </summary>
     private async Task<Dictionary<string, string>> NamesOfMembersAsync(Guid orgId, IEnumerable<string?> userIds, CancellationToken ct)
     {
         var ids = userIds.Where(id => !string.IsNullOrEmpty(id)).Select(id => id!).Distinct().ToList();
@@ -719,8 +683,6 @@ public sealed class ComplianceArchiveService(
             .Where(u => u.Name.Length > 0)
             .ToDictionary(u => u.Id, u => u.Name);
     }
-
-    // ---------------------------------------------------------------- shapes
 
     private static ComplianceArchiveEntry ToEntry(
         ProofRow row,
@@ -740,10 +702,6 @@ public sealed class ComplianceArchiveService(
             covered,
             coveredStays);
 
-    /// <summary>
-    /// One obligation of the traffic light as a row of the report. A stay is named by its code and arrival day, never by its guest (the label
-    /// of the status item is the guest's name and stays out). A proven row has nothing left to do.
-    /// </summary>
     private static ComplianceReportRow ToRow(ComplianceStatusItem item, string propertyName, string? bookingCode, DateOnly? arrival)
     {
         var verdict = item.Verdict;
@@ -765,17 +723,10 @@ public sealed class ComplianceArchiveService(
             verdict.HandoffTopic);
     }
 
-    /// <summary>The name of a proof in the ZIP: the day, the kind and the start of its id, so two proofs of a day never meet.</summary>
     private static string ZipName(ExportRow row) =>
         $"prove/{row.Day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}_{ComplianceArchiveRules.SlugOf(row.Kind)}_{row.Id.ToString("N")[..8]}"
         + ComplianceArchiveRules.ExtensionOf(row.ContentType);
 
-    // ---------------------------------------------------------------- the file
-
-    /// <summary>
-    /// The whole content when it is a PDF, a JPEG or a PNG (by its first bytes) of at most <paramref name="limit"/>, positioned at the start.
-    /// Nothing is trusted about the size or the type: the content is counted while it is read and judged by its signature.
-    /// </summary>
     private static async Task<(MemoryStream Content, TouristTaxReceiptKind Kind)> ReadProofAsync(Stream source, long limit, CancellationToken ct)
     {
         var buffer = new MemoryStream();
@@ -809,7 +760,6 @@ public sealed class ComplianceArchiveService(
         }
     }
 
-    /// <summary>Copies <paramref name="source"/> to <paramref name="target"/>, counting what it copies: beyond <paramref name="room"/> bytes the export is too big.</summary>
     private static async Task<long> CopyBoundedAsync(Stream source, Stream target, long room, CancellationToken ct)
     {
         var chunk = new byte[ReadChunkBytes];
@@ -858,8 +808,6 @@ public sealed class ComplianceArchiveService(
 
     private static DomainRuleException CoverageInvalid() =>
         new(ComplianceArchiveErrorCodes.ProofCoverageInvalid, "ComplianceProofCoverageInvalid");
-
-    // ---------------------------------------------------------------- rows
 
     private sealed record FlatRow(Guid Id, string Name, string Country);
 
