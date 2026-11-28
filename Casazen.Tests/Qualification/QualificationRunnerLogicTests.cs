@@ -174,10 +174,10 @@ internal sealed class MarkerMrzReader : IMrzExtractionService
         await imageStream.CopyToAsync(copy, cancellationToken);
         using var picture = RasterImage.Decode(copy.ToArray(), 1_000_000);
         _reads.Enqueue((picture.Width, picture.Height));
-        if (SideLevelOf(picture) < 128)
+        if (StampLevelAt(picture, PixelCode.CardSideX + 4, PixelCode.CardMarkY + 4) < 128)
             return new MrzReading(null, []);
 
-        var person = PixelCode.PersonOfLevel(PixelCode.Level(picture, PixelCode.CardPersonX + 4, PixelCode.CardMarkY + 4));
+        var person = PixelCode.PersonOfLevel(StampLevelAt(picture, PixelCode.CardPersonX + 4, PixelCode.CardMarkY + 4));
         return new MrzReading(
             new MrzExtractionResult
             {
@@ -200,14 +200,14 @@ internal sealed class MarkerMrzReader : IMrzExtractionService
     }
 
     // The runner hands the reader the card cut out of the picture, so the stamp is read where the whole picture has it or where the card has it.
-    private static int SideLevelOf(RasterImage picture)
+    private static int StampLevelAt(RasterImage picture, int x, int y)
     {
         if (PixelCode.IsCard(picture))
-            return PixelCode.Level(picture, PixelCode.CardSideX + 4, PixelCode.CardMarkY + 4);
+            return PixelCode.Level(picture, x, y);
 
         var place = DocumentImageFactory.WholeCard;
         if (Math.Abs(picture.Width - place.Width) <= 4 && Math.Abs(picture.Height - place.Height) <= 4)
-            return PixelCode.Level(picture, PixelCode.CardSideX + 4 - place.Left, PixelCode.CardMarkY + 4 - place.Top);
+            return PixelCode.Level(picture, x - place.Left, y - place.Top);
 
         return -1;
     }
@@ -439,7 +439,7 @@ public sealed class QualificationRunnerLogicTests(QualificationLogicFixture run)
             Assert.True(genuine.StageMs[stage] >= 0, stage);
 
         Assert.Contains(genuine.Document!.Fields, field => field.Field == "surname" && field.Total >= 1 && field.Exact == 0);
-        Assert.Contains(genuine.Document.Fields, field => field.Field == "documentNumber.mrz" && field.Exact == 0);
+        Assert.Contains(genuine.Document.Fields, field => field.Field == "documentNumber.mrz" && field.Total >= 1 && field.Exact == field.Total);
         Assert.Equal(run.Results.Metrics.Latency.Select(stage => stage.Stage), QualificationStages.All.Where(stage => run.Results.Metrics.Latency.Any(entry => entry.Stage == stage)));
         Assert.All(run.Results.Metrics.Latency, stage => Assert.True(stage.P95Ms >= stage.P50Ms && stage.MaxMs >= stage.P95Ms));
         Assert.DoesNotContain("ZQSURNAME", run.Results.ToJson(), StringComparison.OrdinalIgnoreCase);
