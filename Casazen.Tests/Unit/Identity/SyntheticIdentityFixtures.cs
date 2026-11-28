@@ -411,7 +411,7 @@ internal sealed class SyntheticIdentityWorld : IAsyncDisposable
         return session;
     }
 
-    public async Task<GuestCheckInSession> ConsentedStayAsync()
+    public async Task<GuestCheckInSession> ConsentedStayAsync(Action<Guest>? describe = null)
     {
         var now = PresenceClosureKit.Now.UtcDateTime;
         var guest = new Guest
@@ -423,6 +423,7 @@ internal sealed class SyntheticIdentityWorld : IAsyncDisposable
             Email = "zefirino@example.com",
             DateOfBirth = new DateTime(1987, 3, 19),
         };
+        describe?.Invoke(guest);
         var booking = new Booking
         {
             Id = Guid.NewGuid(),

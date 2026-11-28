@@ -38,7 +38,7 @@ public sealed class SelfHostedIdentityScenarioTests(CasazenWebApplicationFactory
         var attempt = await scenario.AttemptAsync(guest, stay, scenario.Genuine, liveness: 0.99, similarity: 0.99);
 
         Assert.Equal(HttpStatusCode.OK, attempt.Status);
-        Assert.Equal(IdentityVerificationGuestResults.Ok, attempt.Result);
+        await scenario.AssertApprovedAsync(stay, attempt);
         Assert.Equal(SelfHostedIdentityScenario.LockCode, attempt.LockCode);
         Assert.Empty(attempt.Guidance);
         var state = attempt.Body.GetProperty("state");
@@ -87,6 +87,7 @@ public sealed class SelfHostedIdentityScenarioTests(CasazenWebApplicationFactory
         Assert.Equal(Operator, attempt.Result);
         Assert.Null(attempt.LockCode);
         var row = Assert.Single(await scenario.LogRowsAsync(stay.BookingId));
+        SelfHostedIdentityScenario.AssertShadowApproves(row);
         Assert.Equal((BiometricOutcome.Escalate, BiometricOutcome.Accept, IdentityDecisionMode.Observation), (row.Outcome, row.ShadowOutcome, row.DecisionMode));
         Assert.True(HasReason(row, VerificationReasons.Checks.ObservationMode, IdentitySegmentReasonCodes.AutoApprovalDisabled));
         await AssertNothingWasApprovedAsync(scenario, stay);
@@ -102,7 +103,7 @@ public sealed class SelfHostedIdentityScenarioTests(CasazenWebApplicationFactory
         await scenario.OpenAndConsentAsync(guest, first);
         await scenario.CompleteDocumentAsync(guest, first);
         var approved = await scenario.AttemptAsync(guest, first, scenario.Genuine, liveness: 0.99, similarity: 0.99);
-        Assert.Equal(IdentityVerificationGuestResults.Ok, approved.Result);
+        await scenario.AssertApprovedAsync(first, approved);
 
         scenario.Store.ChangeWeights(BiometricModelRoles.FaceRecognition);
         var (weights, weightsGuest) = await scenario.ReadyStayAsync(first.OwnerId);
@@ -122,7 +123,7 @@ public sealed class SelfHostedIdentityScenarioTests(CasazenWebApplicationFactory
         await other.QualifySegmentAsync(policy);
         var (again, againGuest) = await other.ReadyStayAsync(first.OwnerId);
         var restored = await other.AttemptAsync(againGuest, again, other.Genuine, liveness: 0.99, similarity: 0.99);
-        Assert.Equal(IdentityVerificationGuestResults.Ok, restored.Result);
+        await other.AssertApprovedAsync(again, restored);
     }
 
     [Fact]
@@ -479,6 +480,7 @@ public sealed class SelfHostedIdentityScenarioTests(CasazenWebApplicationFactory
     private static async Task AssertObservationBecauseAsync(SelfHostedIdentityScenario scenario, ScenarioStay stay, string reasonCode)
     {
         var row = Assert.Single(await scenario.LogRowsAsync(stay.BookingId));
+        SelfHostedIdentityScenario.AssertShadowApproves(row);
         Assert.Equal((BiometricOutcome.Escalate, BiometricOutcome.Accept, IdentityDecisionMode.Observation), (row.Outcome, row.ShadowOutcome, row.DecisionMode));
         Assert.True(HasReason(row, VerificationReasons.Checks.ObservationMode, reasonCode));
         await AssertNothingWasApprovedAsync(scenario, stay);
@@ -596,6 +598,7 @@ internal static class SelfHostedIdentityScripts
         Assert.True(state.GetProperty("operatorPathOpen").GetBoolean());
 
         var row = Assert.Single(await scenario.LogRowsAsync(stay.BookingId));
+        SelfHostedIdentityScenario.AssertShadowApproves(row);
         Assert.Equal(
             (BiometricOutcome.Escalate, BiometricOutcome.Accept, IdentityDecisionMode.Observation, VerificationMethod.Biometric),
             (row.Outcome, row.ShadowOutcome, row.DecisionMode, row.Method));
@@ -726,6 +729,7 @@ internal static class SelfHostedIdentityScripts
             ];
         }
 
+        await scenario.AssertApprovedAsync(stay, answers[0]);
         Assert.All(answers, answer =>
         {
             Assert.Equal(HttpStatusCode.OK, answer.Status);

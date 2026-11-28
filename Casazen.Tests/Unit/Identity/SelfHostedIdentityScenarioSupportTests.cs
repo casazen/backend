@@ -1,3 +1,4 @@
+using Casazen.Core.Identity;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Identity;
@@ -73,6 +74,49 @@ public sealed class SelfHostedIdentityScenarioSupportTests : IDisposable
         Assert.Equal(before.PolicyHash, after.PolicyHash);
         Assert.NotEqual(before.WeightsHash, after.WeightsHash);
         Assert.NotEqual(before.Fingerprint, after.Fingerprint);
+    }
+
+    [Fact]
+    public void ScenarioSupport_TheCardAndTheHolderOfTheScenario_PassEveryCheckTheFormatRequires()
+    {
+        var (_, _, policy) = SelfHostedIdentityScenario.WriteCalibratedPolicy(_directory, Version);
+
+        var report = SelfHostedIdentityScenario.CheckTheCard(policy);
+
+        Assert.True(
+            report.AllPassed(DocumentStepSelfHostedTests.Cie.RequiredChecks),
+            $"Not passed: {SelfHostedIdentityScenario.NotPassed(report.Checks)}");
+    }
+
+    [Fact]
+    public async Task ScenarioSupport_TheRealDocumentStep_OnTheCardAndTheHolderOfTheScenario_PassesEveryCheckTheFormatRequires()
+    {
+        await using var world = await SyntheticIdentityWorld.CreateAsync();
+        var session = await world.ConsentedStayAsync(SelfHostedIdentityScenario.DescribeTheHolder);
+        var back = SelfHostedIdentityScenario.BackPicture();
+        world.DocumentMrz.Add(back, DocumentStepSelfHostedTests.CieMrz());
+        world.DocumentZones.Fields[DocumentSide.Front] = SelfHostedIdentityScenario.PerfectFrontFields();
+
+        await world.DocumentFlow().SubmitDocumentAsync(session, new MemoryStream(SelfHostedIdentityScenario.FrontPicture()), DocumentSide.Front, CancellationToken.None);
+        var second = await world.DocumentFlow().SubmitDocumentAsync(session, new MemoryStream(back), DocumentSide.Back, CancellationToken.None);
+
+        Assert.True(second.Acceptable);
+        SelfHostedIdentityScenario.AssertTheCardPassedEveryCheck(await world.ReadBackAsync(session.Id));
+    }
+
+    [Fact]
+    public void ScenarioSupport_ACardWithoutItsIssueDate_OrAHolderWithoutADocumentNumber_IsNeverAPass()
+    {
+        var (_, _, policy) = SelfHostedIdentityScenario.WriteCalibratedPolicy(_directory, Version);
+        var format = DocumentStepSelfHostedTests.Cie;
+
+        var noIssueDate = SelfHostedIdentityScenario.CheckTheCard(policy, front: DocumentStepSelfHostedTests.FrontFields());
+        var noDocumentNumber = SelfHostedIdentityScenario.CheckTheCard(policy, edit: guest => guest.DocumentNumber = string.Empty);
+
+        Assert.False(noIssueDate.AllPassed(format.RequiredChecks));
+        Assert.Equal(DocumentCoherenceResults.Unknown, noIssueDate.Summary(DocumentFormatChecks.FieldCoherence));
+        Assert.False(noDocumentNumber.AllPassed(format.RequiredChecks));
+        Assert.Equal(DocumentCoherenceResults.Unknown, noDocumentNumber.Summary(DocumentFormatChecks.BookingConsistency));
     }
 
     [Fact]

@@ -122,6 +122,10 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
 
     public const string FormatId = "it-cie-3.0";
 
+    public const string IssueDay = "2023-07-01";
+
+    public const string TypedCitizenship = "Italia";
+
     private const string StaffUserId = "auth0|identity-staff";
 
     private static readonly CancellationToken Ct = CancellationToken.None;
@@ -243,8 +247,41 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
 
     public HttpClient Admin() => Operator($"auth0|identity-admin-{Guid.NewGuid():N}", "Admin");
 
-    // The Agency plan is the one with the identity verification on by default; the names and the birth date of the guest are those of the scripted MRZ,
-    // or the document would conflict with the booking.
+    // A front that does not print its issue date leaves field_coherence unknown, and an unknown check is never a pass: the card of the scenario prints all it can.
+    internal static IReadOnlyList<ZonedField> PerfectFrontFields() =>
+    [
+        .. DocumentStepSelfHostedTests.FrontFields(),
+        new ZonedField(ZonedFieldNames.IssueDate, IssueDay, DocumentSide.Front, ZonedFieldNames.IssueDate, DocumentOcrService.FallbackConfidence, ZonedFieldSources.Viz),
+    ];
+
+    // booking_consistency stays unknown for a document number or a citizenship nobody typed, and an unknown check is never a pass: the guest typed all of it, as the card says.
+    internal static void DescribeTheHolder(Guest guest)
+    {
+        guest.FirstName = DocumentStepSelfHostedTests.GivenNames;
+        guest.LastName = DocumentStepSelfHostedTests.Surname;
+        guest.DateOfBirth = new DateTime(1987, 3, 19, 0, 0, 0, DateTimeKind.Utc);
+        guest.DocumentNumber = DocumentStepSelfHostedTests.DocumentNumber;
+        guest.Nationality = TypedCitizenship;
+    }
+
+    // The real checker on the card and on the guest of the scenario, as the document step feeds it: the identity is the one the flow reads from the booker.
+    internal static DocumentCoherenceReport CheckTheCard(IdentityDecisionPolicy policy, IReadOnlyList<ZonedField>? front = null, Action<Guest>? edit = null)
+    {
+        var guest = new Guest();
+        DescribeTheHolder(guest);
+        edit?.Invoke(guest);
+        var typed = StayGuest.FromBooker(new Booking { NumberOfGuests = 1 }, guest);
+        var identity = new CheckInIdentity(
+            typed.FirstName, typed.LastName, typed.DateOfBirth is { } born ? DateOnly.FromDateTime(born) : null, typed.DocumentNumber, typed.CitizenshipName);
+        var context = new DocumentCoherenceContext(new DateOnly(2026, 11, 28), identity);
+        var mrz = new MrzReading(DocumentStepSelfHostedTests.CieMrz(), []);
+        return new DocumentCoherenceChecker().Check(front ?? PerfectFrontFields(), mrz, context, DocumentStepSelfHostedTests.Cie, policy);
+    }
+
+    internal static string NotPassed(IEnumerable<DocumentCoherenceCheck> entries) =>
+        string.Join(", ", entries.Where(entry => entry.Result != DocumentCoherenceResults.Passed).Select(entry => entry.Field is null ? entry.Check : $"{entry.Check}/{entry.Field}={entry.Result}"));
+
+    // The Agency plan is the one with the identity verification on by default.
     public async Task<ScenarioStay> SeedStayAsync(string? ownerId = null)
     {
         ownerId ??= $"auth0|identity-owner-{Guid.NewGuid():N}";
@@ -256,9 +293,7 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         var guest = await db.Guests.IgnoreQueryFilters().SingleAsync(g => g.Id == seed.GuestId, Ct);
         org.PlanTier = PlanTier.Agency;
         booking.NumberOfGuests = 1;
-        guest.FirstName = DocumentStepSelfHostedTests.GivenNames;
-        guest.LastName = DocumentStepSelfHostedTests.Surname;
-        guest.DateOfBirth = new DateTime(1987, 3, 19, 0, 0, 0, DateTimeKind.Utc);
+        DescribeTheHolder(guest);
         await db.SaveChangesAsync(Ct);
 
         var token = await new GuestCheckInService(db, NullLogger<GuestCheckInService>.Instance).CreateSessionAsync(booking.Id, booking.OrgId);
@@ -381,14 +416,39 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         var front = FrontPicture();
         var back = BackPicture();
         Mrz.Add(back, DocumentStepSelfHostedTests.CieMrz());
-        Zones.Fields[DocumentSide.Front] = DocumentStepSelfHostedTests.FrontFields();
+        Zones.Fields[DocumentSide.Front] = PerfectFrontFields();
 
         var first = await UploadDocumentAsync(guest, stay, "front", front);
         Assert.False(first.GetProperty("acceptable").GetBoolean());
         var second = await UploadDocumentAsync(guest, stay, "back", back);
         Assert.True(second.GetProperty("acceptable").GetBoolean());
         Models.UseDocument(front);
+        await AssertTheCardPassedEveryCheckAsync(stay);
     }
+
+    private async Task AssertTheCardPassedEveryCheckAsync(ScenarioStay stay) => AssertTheCardPassedEveryCheck(await SessionAsync(stay.SessionId));
+
+    internal static void AssertTheCardPassedEveryCheck(GuestCheckInSession session)
+    {
+        var stored = JsonSerializer.Deserialize<StoredDocumentCheck>(session.DocumentCheckJson!, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var entries = stored.Coherence ?? [];
+        Assert.True(
+            DocumentCoherenceReport.FromChecks(entries).AllPassed(DocumentStepSelfHostedTests.Cie.RequiredChecks),
+            $"The card of the scenario did not pass every check of its format; not passed: {NotPassed(entries)}");
+    }
+
+    // The reasons of a log row are check names and results, never a value of the document.
+    public async Task AssertApprovedAsync(ScenarioStay stay, PresenceAttempt attempt)
+    {
+        if (attempt.Result == IdentityVerificationGuestResults.Ok)
+            return;
+
+        var reasons = (await LogRowsAsync(stay.BookingId)).Select(row => row.ReasonsJson);
+        Assert.Fail($"The attempt was not approved (result {attempt.Result}); reasons: {string.Join(" | ", reasons)}");
+    }
+
+    public static void AssertShadowApproves(BiometricVerificationLog row) =>
+        Assert.True(row.ShadowOutcome == BiometricOutcome.Accept, $"The policy would not approve ({row.ShadowOutcome}); reasons: {row.ReasonsJson}");
 
     public async Task<JsonElement> UploadDocumentAsync(HttpClient guest, ScenarioStay stay, string side, byte[] picture)
     {
