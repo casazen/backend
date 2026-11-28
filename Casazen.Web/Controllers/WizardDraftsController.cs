@@ -33,19 +33,8 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.Authenticated)]
 public class WizardDraftsController(IWizardDraftService drafts, IOrgContextResolver orgContextResolver) : ControllerBase
 {
-    /// <summary>
-    /// Bytes a save may send: twice the data a draft may hold (<see cref="WizardDraftLimits.MaxDataBytes"/>), for the members around it
-    /// and for a client that escapes its text. A draft over the limit is refused by the service with 413 <c>wizard_draft_too_large</c>.
-    /// </summary>
     public const int MaxBodyBytes = 2 * WizardDraftLimits.MaxDataBytes;
 
-    /// <summary>
-    /// The caller's draft of the wizard, with the typed data put together again. <c>entityId</c>: what the wizard edits; none, the draft of
-    /// a new entity.
-    /// </summary>
-    /// <response code="200"><c>{ type, entityId, version, data, lastSavedAt }</c>.</response>
-    /// <response code="400"><c>wizard_type_unknown</c>.</response>
-    /// <response code="404"><c>wizard_draft_not_found</c>: none saved, it expired, or it is another person's (the same answer); or the caller has no org.</response>
     [HttpGet]
     [ProducesResponseType(typeof(WizardDraftResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -103,7 +92,6 @@ public class WizardDraftsController(IWizardDraftService drafts, IOrgContextResol
         if (request.Data is not { } data)
             return DataInvalid();
 
-        // The document of the body lives as long as the request.
         Response.RegisterForDispose(data);
         if (data.RootElement.ValueKind != JsonValueKind.Object || WizardDraftPii.HasNullCharacter(data.RootElement))
             return DataInvalid();
@@ -152,10 +140,6 @@ public class WizardDraftsController(IWizardDraftService drafts, IOrgContextResol
         return NoContent();
     }
 
-    /// <summary>
-    /// The 409 <c>draft_conflict</c> through the API error contract, with the draft of the server and its version as members of the
-    /// problem (<see cref="WizardDraftConflictResponse"/>), as <c>lease_period_overlaps</c> carries the lease in the way.
-    /// </summary>
     private ObjectResult DraftConflict(WizardDraftResult result)
     {
         var problem = this.ApiProblem(StatusCodes.Status409Conflict, WizardDraftErrors.Conflict, "WizardDraftConflict");
@@ -177,7 +161,6 @@ public class WizardDraftsController(IWizardDraftService drafts, IOrgContextResol
     private ObjectResult DataInvalid() =>
         this.ApiProblem(StatusCodes.Status400BadRequest, WizardDraftErrors.DataInvalid, "WizardDraftDataInvalid");
 
-    /// <summary>A caller with no host org (a supplier-only account, or before the onboarding) has no drafts.</summary>
     private ObjectResult NoOrganization() =>
         this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
 

@@ -7,11 +7,6 @@ using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.DTOs;
 
-/// <summary>
-/// Body of <c>POST /api/tourist-tax-rates</c> (create) and <c>PUT /api/tourist-tax-rates/{id}</c> (update).
-/// It has no id on purpose: the server generates it on create and takes it from the route on update (A5-06).
-/// Error messages are keys of <c>Resources/SharedResources.resx</c>.
-/// </summary>
 public class TouristTaxRateRequest : IValidatableObject
 {
     [Required(ErrorMessage = "TaxRateCityRequired")]
@@ -25,27 +20,18 @@ public class TouristTaxRateRequest : IValidatableObject
     [RegularExpression("^[0-9]{6}$", ErrorMessage = "TaxRateIstatCodeInvalid")]
     public string? IstatCode { get; set; }
 
-    /// <summary>Accommodation category as named by the comune; empty for every accommodation.</summary>
     [MaxLength(100, ErrorMessage = "TaxRateCategoryTooLong")]
     public string? AccommodationCategory { get; set; }
 
-    /// <summary>First day of the yearly season, <c>MM-dd</c>; with <see cref="SeasonEnd"/>, or both empty (all year).</summary>
     public string? SeasonStart { get; set; }
 
-    /// <summary>Last day of the season (included), <c>MM-dd</c>.</summary>
     public string? SeasonEnd { get; set; }
 
-    /// <summary>Fixed amount (default) or percentage of the night price.</summary>
     public TouristTaxCalculationMethod? CalculationMethod { get; set; }
 
-    /// <summary>
-    /// Euro per person per night, at least 0,01 for a fixed rate (ignored for a percentage rate). The upper bound is only
-    /// a guard against typos, not a legal limit.
-    /// </summary>
     [TouristTaxRateAmount(ErrorMessage = "TaxRateAmountOutOfRange")]
     public decimal RatePerPersonPerNight { get; set; }
 
-    /// <summary>Percentage of the night price per person (percentage rate only), e.g. 10.5.</summary>
     [Range(
         typeof(decimal),
         "0.01",
@@ -55,7 +41,6 @@ public class TouristTaxRateRequest : IValidatableObject
         ErrorMessage = "TaxRatePercentOutOfRange")]
     public decimal? PercentOfNightlyPrice { get; set; }
 
-    /// <summary>Cap per person per night of a percentage rate, optional.</summary>
     [Range(
         typeof(decimal),
         "0.01",
@@ -68,22 +53,13 @@ public class TouristTaxRateRequest : IValidatableObject
     [Range(1, 365, ErrorMessage = "TaxRateMaxNightsOutOfRange")]
     public int? MaxNights { get; set; }
 
-    /// <summary>
-    /// Guests younger than this are exempt. Required: there is no default age valid for every comune. At most 18:
-    /// adults are never exempt by age.
-    /// </summary>
     [Required(ErrorMessage = "TaxRateMinimumAgeRequired")]
     [Range(0, 18, ErrorMessage = "TaxRateMinimumAgeOutOfRange")]
     public int? MinimumAge { get; set; }
 
-    /// <summary>
-    /// Last age (included) of the reduced band that starts at <see cref="MinimumAge"/>; with
-    /// <see cref="ReducedRatePerPersonPerNight"/>, fixed rates only.
-    /// </summary>
     [Range(0, 17, ErrorMessage = "TaxRateReducedRateInvalid")]
     public int? ReducedRateMaxAge { get; set; }
 
-    /// <summary>Amount per person per night of the reduced band, as published by the comune.</summary>
     [Range(
         typeof(decimal),
         "0.01",
@@ -93,10 +69,8 @@ public class TouristTaxRateRequest : IValidatableObject
         ErrorMessage = "TaxRateReducedRateInvalid")]
     public decimal? ReducedRatePerPersonPerNight { get; set; }
 
-    /// <summary>Active unless explicitly false.</summary>
     public bool? IsActive { get; set; }
 
-    /// <summary>Date-only values (<c>2026-01-01</c>) are stored as UTC midnight by the global date handling (FD-06).</summary>
     [Required(ErrorMessage = "TaxRateEffectiveFromRequired")]
     public DateTime? EffectiveFrom { get; set; }
 
@@ -105,7 +79,6 @@ public class TouristTaxRateRequest : IValidatableObject
     [MaxLength(500, ErrorMessage = "TaxRateNotesTooLong")]
     public string? Notes { get; set; }
 
-    /// <summary>URL of the page or act of the comune the rate comes from (http or https).</summary>
     [MaxLength(500, ErrorMessage = "TaxRateSourceUrlInvalid")]
     public string? SourceUrl { get; set; }
 
@@ -177,11 +150,6 @@ public class TouristTaxRateRequest : IValidatableObject
         && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp);
 }
 
-/// <summary>
-/// Amount of <see cref="TouristTaxRateRequest.RatePerPersonPerNight"/>: 0,01-1000 for a fixed rate, 0-1000 for a
-/// percentage rate (which has no fixed amount). A property-level check, so it is reported together with the other
-/// field errors.
-/// </summary>
 [AttributeUsage(AttributeTargets.Property)]
 public sealed class TouristTaxRateAmountAttribute : ValidationAttribute
 {
@@ -197,7 +165,6 @@ public sealed class TouristTaxRateAmountAttribute : ValidationAttribute
         if (amount >= minimum && amount <= 1000m)
             return ValidationResult.Success;
 
-        // MVC localizes only the built-in attributes: a custom one translates its key itself (SharedResources).
         var key = ErrorMessageString;
         var localizer = validationContext.GetService(typeof(IStringLocalizer<SharedResources>)) as IStringLocalizer;
         return new ValidationResult(localizer?[key].Value ?? key, [validationContext.MemberName ?? string.Empty]);

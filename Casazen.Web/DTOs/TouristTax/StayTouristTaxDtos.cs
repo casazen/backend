@@ -6,18 +6,12 @@ using Casazen.Web.DTOs.CheckIn;
 
 namespace Casazen.Web.DTOs.TouristTax;
 
-/// <summary>
-/// The tourist tax of a stay guest by guest (<c>GET api/bookings/{id}/tourist-tax</c>, NF-46). No name, no document: positions only. When no
-/// rate is known <see cref="MissingRate"/> is true and the amounts are null, never 0.
-/// </summary>
 public sealed class StayTouristTaxDto
 {
     public Guid BookingId { get; init; }
 
-    /// <summary><c>Calculated</c>, <c>RateUnavailable</c>, <c>CategoryRequired</c>, <c>ChildAgesRequired</c> or <c>NightlyPriceRequired</c>.</summary>
     public TouristTaxQuoteStatus Status { get; init; }
 
-    /// <summary><c>Official</c>, <c>HostDeclared</c> (the org's own rate) or <c>None</c>.</summary>
     public TouristTaxRateSource RateSource { get; init; }
 
     public bool MissingRate { get; init; }
@@ -30,18 +24,14 @@ public sealed class StayTouristTaxDto
     /// <summary>What the host must collect: 0 when the channel collects it, the total otherwise.</summary>
     public decimal? AmountDue { get; init; }
 
-    /// <summary><c>Channel</c>, <c>Host</c> or null while unknown.</summary>
     public TouristTaxCollector? Collector { get; init; }
 
-    /// <summary><c>ChannelRule</c>, <c>HostDeclared</c> or <c>Default</c>.</summary>
     public TouristTaxCollectorSource CollectorSource { get; init; }
 
-    /// <summary>A channel stay with no rule and no declaration: ask the host who collected (<c>PUT …/tourist-tax/collector</c>).</summary>
     public bool CollectorNeeded { get; init; }
 
     public IReadOnlyList<StayTouristTaxGuestDto> Guests { get; init; } = [];
 
-    /// <summary>The reasons the host may choose (active, not automatic): the code and the i18n key of its label.</summary>
     public IReadOnlyList<TouristTaxExemptionReasonDto> Reasons { get; init; } = [];
 
     public DateTime? ConfirmedAt { get; init; }
@@ -49,10 +39,6 @@ public sealed class StayTouristTaxDto
     /// <summary>The confirmed tax no longer matches the stay (rates, guests, exemptions or collector changed since).</summary>
     public bool Stale { get; init; }
 
-    /// <summary>
-    /// The collection of the tax (E25/F01/US01/T01): what is still to collect, what the guest paid online, what is owed back. <c>null</c> while
-    /// <c>Features:TouristTaxOnlinePayment</c> is off, and in the answers of the check-in wizard.
-    /// </summary>
     public TouristTaxCollectionDto? Collection { get; init; }
 
     /// <param name="view">The tax of the stay.</param>
@@ -92,20 +78,16 @@ public sealed class StayTouristTaxDto
     };
 }
 
-/// <summary>The tax of one guest: a position of the stay, never a person.</summary>
 public sealed class StayTouristTaxGuestDto
 {
     public int Position { get; init; }
     public int Nights { get; init; }
     public int TaxableNights { get; init; }
 
-    /// <summary>Null when the tax of the stay is not calculated.</summary>
     public decimal? Amount { get; init; }
 
-    /// <summary><c>None</c>, <c>Age</c> (automatic) or <c>Host</c> (a reason the host chose).</summary>
     public TouristTaxExemptionKind ExemptionKind { get; init; }
 
-    /// <summary>The reason of the exemption; <c>null</c> for a caller without <c>guest.read</c> (it can reveal a health condition).</summary>
     public string? ExemptionCode { get; init; }
 }
 
@@ -115,7 +97,6 @@ public sealed class TouristTaxExemptionReasonDto
     public string LabelKey { get; init; } = string.Empty;
 }
 
-/// <summary>The exemptions the host chooses (<c>PUT api/bookings/{id}/tourist-tax/exemptions</c>); a null code clears one.</summary>
 public sealed class SetTouristTaxExemptionsRequest
 {
     [Required(ErrorMessage = "TouristTaxFieldRequired")]
@@ -131,21 +112,17 @@ public sealed class GuestExemptionDto
     public string? Code { get; set; }
 }
 
-/// <summary>Who collected the tax of a channel stay with no channel rule (<c>PUT api/bookings/{id}/tourist-tax/collector</c>); null clears it.</summary>
 public sealed class SetTouristTaxCollectorRequest
 {
-    /// <summary><c>Channel</c> (the channel collected and pays the comune) or <c>Host</c>.</summary>
     public TouristTaxCollector? Collector { get; set; }
 }
 
-/// <summary>The comune of a property for its tourist tax and the rate the org declared for it (<c>GET api/properties/{id}/tourist-tax-rate</c>).</summary>
 public sealed class MunicipalityRateDto
 {
     public Guid PropertyId { get; init; }
     public string? IstatCode { get; init; }
     public string? City { get; init; }
 
-    /// <summary>An official rate is in force in the comune today: no rate can be declared, the official one applies.</summary>
     public bool OfficialRateInForce { get; init; }
 
     public OrgTouristTaxRateDto? Rate { get; init; }
@@ -184,10 +161,6 @@ public sealed class OrgTouristTaxRateDto
     public DateTime UpdatedAt { get; init; }
 }
 
-/// <summary>
-/// The rate the org declares for a comune with no official one (<c>PUT api/properties/{id}/tourist-tax-rate</c>): a fixed amount per person per
-/// night (0.01 to 50), the cap of nights, the exemption age (0 to 18), the season (<c>MM-dd</c>, both or none), the first day and the source.
-/// </summary>
 public sealed class SaveMunicipalityRateRequest
 {
     [Required(ErrorMessage = "TouristTaxFieldRequired")]
@@ -219,10 +192,6 @@ public sealed class SaveMunicipalityRateRequest
         SourceNote);
 }
 
-/// <summary>
-/// A channel rule of a comune (<c>PUT api/admin/tourist-tax/channel-rules</c>): which channel collects the tourist tax there, from which official
-/// source. Upserted by channel and comune.
-/// </summary>
 public sealed class UpsertTouristTaxChannelRuleRequest
 {
     [Required(ErrorMessage = "TouristTaxFieldRequired")]
@@ -273,10 +242,8 @@ public sealed class TouristTaxChannelRuleDto
     };
 }
 
-/// <summary>The Octorate code and the state of an exemption reason (<c>PUT api/admin/tourist-tax/exemption-reasons/{code}</c>).</summary>
 public sealed class UpdateTouristTaxExemptionReasonRequest
 {
-    /// <summary>The Octorate <c>cityTaxExemption</c> reason this one matches; null: no known match.</summary>
     [MaxLength(TouristTaxExemptionReason.OctorateCodeMaxLength, ErrorMessage = "TouristTaxFieldMaxLength")]
     public string? OctorateExemptionCode { get; set; }
 

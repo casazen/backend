@@ -16,6 +16,5 @@ public class OnboardingRequestDto
     public string? PlanTier { get; set; }
     public Casazen.Core.Services.CommercialSignup? CommercialSignup { get; set; }
 
-    /// <summary>Legal consents captured during first-run onboarding.</summary>
     public OnboardingConsentsDto? Consents { get; set; }
 }

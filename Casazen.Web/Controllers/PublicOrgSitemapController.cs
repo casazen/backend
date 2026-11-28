@@ -14,25 +14,16 @@ namespace Casazen.Web.Controllers;
 [AllowAnonymous]
 public class PublicOrgSitemapController(IPublicSeoService seoService) : ControllerBase
 {
-    /// <summary>
-    /// Sitemap index: one sitemap per org that has a published property (<c>/book/{slug}/sitemap.xml</c> on the web
-    /// app). Declared in <c>robots.txt</c> next to the compliance sitemap.
-    /// </summary>
     [HttpGet("api/public/sitemap-book.xml")]
     [Produces("application/xml")]
     public async Task<IActionResult> GetIndex(CancellationToken cancellationToken) =>
         Xml(await seoService.BuildOrgSitemapIndexAsync(cancellationToken));
 
-    /// <summary>Sitemap of the supplier showcases (<c>/sitemap-supplier.xml</c> on the web app). Declared in <c>robots.txt</c>.</summary>
     [HttpGet("api/public/sitemap-supplier.xml")]
     [Produces("application/xml")]
     public async Task<IActionResult> GetSupplierSitemap(CancellationToken cancellationToken) =>
         Xml(await seoService.BuildSupplierSitemapAsync(cancellationToken));
 
-    /// <summary>
-    /// Sitemap of one org: its landing page and its published properties. 404 for an unknown or inactive org, an old
-    /// slug (the sitemap of the current slug is the one to read) and an org with nothing published: it is not indexed.
-    /// </summary>
     [HttpGet("api/public/orgs/{orgSlug}/sitemap.xml")]
     [Produces("application/xml")]
     [ProducesResponseType(StatusCodes.Status200OK)]

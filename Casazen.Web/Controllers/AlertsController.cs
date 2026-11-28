@@ -37,17 +37,10 @@ public class AlertsController(
     IOrgContextResolver orgContextResolver,
     TimeProvider timeProvider) : ControllerBase
 {
-    /// <summary>Code of the 400 for a snooze that ends after the legal deadline of the alert (ADR-025-R10).</summary>
     public const string CannotSnoozePastDeadlineCode = "cannot_snooze_past_deadline";
 
-    /// <summary>Resource key of the text of <see cref="CannotSnoozePastDeadlineCode"/> (<c>SharedResources</c>, Italian and English).</summary>
     public const string CannotSnoozePastDeadlineMessageKey = "PopupAlertCannotSnoozePastDeadline";
 
-    /// <summary>
-    /// The alerts that are pending for the caller: its own, not dismissed, not snoozed (or snoozed until an instant that has passed), in
-    /// its org and in its scope. The most urgent first (<c>High</c>, <c>Normal</c>, <c>Low</c>), then the oldest first.
-    /// </summary>
-    /// <response code="200">The alerts (an empty array when the caller has none, no org or no scope).</response>
     [HttpGet("pending")]
     [ProducesResponseType(typeof(IReadOnlyList<PendingAlertDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -69,8 +62,6 @@ public class AlertsController(
                         && a.DismissedAt == null
                         && (a.RemindAt == null || a.RemindAt <= now));
 
-        // A scope limited to some properties reaches the alerts about a booking or a property it reaches, in the same statement: an alert
-        // about anything else (an org-level one) is outside it, as an org-level row always is.
         if (!scope.IsOrgWide)
         {
             var bookings = db.Bookings.Where(b => b.OrgId == orgId).InScope(scope);
@@ -80,7 +71,6 @@ public class AlertsController(
                 || (a.EntityType == PopupAlert.PropertyEntityType && properties.Any(p => p.Id == a.EntityId)));
         }
 
-        // Urgency is stored as its number (High = 3), so the descending order puts the most urgent first.
         var alerts = await pending
             .OrderByDescending(a => a.Urgency)
             .ThenBy(a => a.CreatedAt)
@@ -118,14 +108,6 @@ public class AlertsController(
         return NoContent();
     }
 
-    /// <summary>
-    /// «Remind me later»: the alert comes back at <c>remindAt</c> (<c>RemindAt</c> is set, <c>DeliveredAt</c> cleared, so the job that
-    /// pushes the alerts that fell due pushes it again when the snooze ends). A snooze past the legal deadline of the alert is refused
-    /// (ADR-025-R10). An alert already dismissed stays dismissed and answers 204 without changing.
-    /// </summary>
-    /// <response code="204">Snoozed.</response>
-    /// <response code="400"><c>cannot_snooze_past_deadline</c>: the alert has a legal deadline and <c>remindAt</c> is after it; <c>validation_error</c>: no <c>remindAt</c>.</response>
-    /// <response code="404">The caller has no such alert: another user's, another org's or unknown.</response>
     [HttpPatch("{id:guid}/remind")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -136,7 +118,6 @@ public class AlertsController(
         if (User.GetUserId() is not { Length: > 0 } userId)
             return Unauthorized();
 
-        // The [Required] of the body already answers 400 (validation_error) before the action runs; this is the same answer if it is called without.
         if (request?.RemindAt is not { } requested)
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "PopupAlertRemindAtRequired");
 
@@ -154,7 +135,6 @@ public class AlertsController(
         return NoContent();
     }
 
-    /// <summary>The alert of the caller in its org (tracked, to change it); a 404 for any other, whatever the reason.</summary>
     private async Task<PopupAlert> OwnAlertAsync(Guid id, string userId, CancellationToken cancellationToken)
     {
         if (await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken) is not { } orgId)
@@ -164,7 +144,6 @@ public class AlertsController(
                ?? throw new NotFoundException("Alert not found.");
     }
 
-    /// <summary>The caller's scope on its org, or <c>null</c> when it has no org or reaches nothing (never widened).</summary>
     private async Task<HostScope?> ScopeAsync(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);

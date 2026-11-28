@@ -19,10 +19,8 @@ public static class ScheduledMessagesServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        // E05/F07/US01/T02: the send window and the times of the plan (section Messaging:ScheduledMessages).
         services.AddOptions<ScheduledMessageOptions>().BindConfiguration(ScheduledMessageOptions.SectionName);
 
-        // E05/F07/US01/T02: the plan, the timeline, edit, skip and «Send now», and the door the routine engine uses; the handler that plans on a booking event and its job (behind the flag).
         services.AddScoped<IScheduledMessageService, ScheduledMessageService>();
         services.AddScoped<IEventHandler<DomainEvent>, ScheduledMessageBookingHandler>();
         services.AddScoped<ScheduledMessagePlanJob>();

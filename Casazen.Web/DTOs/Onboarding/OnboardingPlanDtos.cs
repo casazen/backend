@@ -2,20 +2,14 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Web.DTOs.Onboarding;
 
-/// <summary>
-/// The plan of the activation of the caller's org (<c>GET api/onboarding/plan</c>, NF-104): the twelve parts in order, the five codes of «What
-/// you need», the connected path of UX-10 and whether the org is activated. Codes, counts and ids only: the client translates the codes.
-/// </summary>
 public sealed class OnboardingPlanDto
 {
     public List<OnboardingPlanPartDto> Parts { get; set; } = [];
 
-    /// <summary>The five codes of «What you need»: <c>alloggiatiCredentials</c>, <c>istatCredentials</c>, <c>fiscalData</c>, <c>otaAccess</c>, <c>lockCode</c>.</summary>
     public List<string> Needs { get; set; } = [];
 
     public OnboardingPathDto Path { get; set; } = new();
 
-    /// <summary>True when every property the caller reaches has every flow that applies to it active.</summary>
     public bool Activated { get; set; }
 }
 
@@ -47,23 +41,15 @@ public sealed class OnboardingPlanPartDto
 
     public List<string> Needs { get; set; } = [];
 
-    /// <summary>When the "To do" of a deferral or an exit is due (UTC); <c>null</c> when there is none.</summary>
     public DateTime? RemindAt { get; set; }
 
-    /// <summary>The open «Do it for me» request of the part, if any.</summary>
     public OnboardingAssistDto? Assist { get; set; }
 
     public string LaunchTarget { get; set; } = string.Empty;
 
-    /// <summary>The properties that lack something of this part, with the reason and the step to reopen; empty when the part does not say or is done.</summary>
     public List<OnboardingPartMissingDto> Missing { get; set; } = [];
 }
 
-/// <summary>
-/// One property that lacks something of a part (<c>missing</c> of <see cref="OnboardingPlanPartDto"/>): <c>propertyId</c>; <c>reason</c>, the stable code
-/// (<c>swiss_municipality_missing</c>, <c>ticino_structure_id_missing</c>); <c>code</c>, the step of the activation wizard of the property the frontend
-/// reopens (<c>guest-registration</c>). Ids and codes only.
-/// </summary>
 public sealed class OnboardingPartMissingDto
 {
     public Guid PropertyId { get; set; }
@@ -73,7 +59,6 @@ public sealed class OnboardingPartMissingDto
     public string Code { get; set; } = string.Empty;
 }
 
-/// <summary>An open «Do it for me» request: its id, where it stands (<c>Requested</c>, <c>InProgress</c>), what it is about and when it was asked.</summary>
 public sealed class OnboardingAssistDto
 {
     public Guid Id { get; set; }
@@ -85,10 +70,6 @@ public sealed class OnboardingAssistDto
     public DateTime RequestedAt { get; set; }
 }
 
-/// <summary>
-/// The connected path of UX-10 (<c>GET api/onboarding/path</c>, NF-10): its six steps mapped to the parts of the plan, and <c>next</c>, the first
-/// visible step (<c>null</c> when none is).
-/// </summary>
 public sealed class OnboardingPathDto
 {
     public string Code { get; set; } = string.Empty;
@@ -98,10 +79,6 @@ public sealed class OnboardingPathDto
     public string? Next { get; set; }
 }
 
-/// <summary>
-/// One step of the path: <c>connectChannels</c>, <c>checkListings</c>, <c>pricesCalendar</c>, <c>checkInCompliance</c>, <c>messagesAi</c>,
-/// <c>fiscalDocuments</c>. <c>visible</c> is true only while there is something to do in it.
-/// </summary>
 public sealed class OnboardingPathStepDto
 {
     public string Code { get; set; } = string.Empty;
@@ -115,16 +92,11 @@ public sealed class OnboardingPathStepDto
     public bool Visible { get; set; }
 }
 
-/// <summary>The body of <c>POST api/onboarding/parts/{key}/defer</c>: the reminder (UTC), or nothing for tomorrow at 09:00 in Rome.</summary>
 public sealed class DeferOnboardingPartDto
 {
     public DateTime? RemindAt { get; set; }
 }
 
-/// <summary>
-/// What a deferral, an exit or a resume left on a part: <c>state</c> <c>deferred</c> or <c>open</c>, the reminder and the "To do" that stands for
-/// the part (<c>null</c> after a resume).
-/// </summary>
 public sealed class OnboardingPartChangeDto
 {
     public string Code { get; set; } = string.Empty;

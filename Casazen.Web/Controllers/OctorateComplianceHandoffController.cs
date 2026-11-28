@@ -72,7 +72,6 @@ public sealed class OctorateComplianceHandoffController(
                 request.ReturnPath),
             cancellationToken);
 
-        // A prepared handoff belongs to the caller who asked: neither a cache nor a shared copy keeps it.
         Response.Headers.CacheControl = "private, no-store";
         return Ok(OctorateComplianceHandoffResponse.From(handoff, localizer));
     }

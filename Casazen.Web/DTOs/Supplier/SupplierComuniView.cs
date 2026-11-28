@@ -3,15 +3,12 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Web.DTOs.Supplier;
 
-/// <summary>The comuni of a supplier profile as they are shown (SU-04): chosen from the official list, then written as text.</summary>
 public static class SupplierComuniView
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
-    /// <summary>ISTAT codes of the comuni chosen from the official list.</summary>
     public static IReadOnlyList<string> IstatCodes(SupplierProfile profile) => ReadStrings(profile.ComuneIstatCodesJson);
 
-    /// <summary>What the supplier wrote as text.</summary>
     public static IReadOnlyList<string> Written(SupplierProfile profile) => ReadStrings(profile.ComuniJson);
 
     /// <summary>

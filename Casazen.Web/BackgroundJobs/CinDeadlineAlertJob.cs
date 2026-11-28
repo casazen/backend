@@ -13,7 +13,6 @@ public class CinDeadlineAlertJob(ICinDeadlineAlertService cinDeadlineAlertServic
 {
     public const string RecurringJobId = "cin-deadline-alert";
 
-    /// <summary>08:00 UTC (09:00 or 10:00 in Italy).</summary>
     public const string Cron = "0 8 * * *";
 
     [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]

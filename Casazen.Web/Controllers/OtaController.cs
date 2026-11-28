@@ -10,10 +10,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// OTA partner API (Airbnb / Booking.com, #31-35): in freeze behind <see cref="FeatureFlags.OtaPartnerApi"/> (D10),
-/// 404 while the flag is off. iCal import/export does not go through this controller.
-/// </summary>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Policy = "RequireContext:short-rent:ota.read")]

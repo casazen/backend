@@ -144,18 +144,12 @@ public sealed record SwissNotificationGuestResponse(
     }
 }
 
-/// <summary>A guest (or a whole stay, <c>position</c> null) that still lacks something, and the codes of what it lacks.</summary>
 public sealed record SwissNotificationIssueResponse(Guid BookingId, int? Position, string GuestName, IReadOnlyList<string> Missing);
 
-/// <summary>An arrival day still to notify; <c>dueAt</c> is <c>null</c> where the regime has no deadline.</summary>
 public sealed record SwissPendingDayResponse(DateOnly Day, int StayCount, DateTime? DueAt);
 
-/// <summary>
-/// Body of <c>POST /api/properties/{propertyId}/swiss/notification-declare</c> (E31/F02/US01/T01, NF-131, decision D10): the arrival day the host notified to the authority.
-/// </summary>
 public sealed class DeclareSwissNotificationRequest
 {
-    /// <summary>The arrival day, a calendar day (<c>yyyy-MM-dd</c>) in Switzerland (Europe/Zurich), not after today.</summary>
     [Required(ErrorMessage = "SwissArrivalDayRequired")]
     public DateOnly? ArrivalDay { get; set; }
 }

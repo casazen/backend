@@ -27,12 +27,6 @@ public class SupplierShowcaseMediaController(
     ISupplierShowcaseMediaService media,
     ISupplierOrgContextResolver supplierOrgContextResolver) : ControllerBase
 {
-    /// <summary>
-    /// Uploads an image of the showcase (multipart: <c>kind</c>, <c>logo</c>, <c>cover</c>, <c>work</c> or <c>before</c>, and <c>file</c>). The type
-    /// is read from the content (PNG, JPEG or WebP; an SVG is refused), the file is stored <b>without its metadata</b> (EXIF with the GPS position,
-    /// XMP, comments) under a name nobody can guess, and the answer carries the address to put into the content. A logo is 200 KB at most, a photo
-    /// 10 MB. All or nothing.
-    /// </summary>
     [HttpPost]
     [Consumes("multipart/form-data")]
     [EnableRateLimiting(RateLimitPolicies.SupplierShowcaseMedia)]
@@ -53,10 +47,6 @@ public class SupplierShowcaseMediaController(
         return Ok(ShowcaseMediaDto.From(item));
     }
 
-    /// <summary>
-    /// Removes an image of the supplier when nothing refers to it: not the draft, not the published version, not the one before it (409
-    /// <c>showcase_media_in_use</c>: take it out of the content first). The files nobody uses are also removed by themselves each night.
-    /// </summary>
     [HttpDelete("{id:guid}")]
     [EnableRateLimiting(RateLimitPolicies.SupplierShowcaseMedia)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

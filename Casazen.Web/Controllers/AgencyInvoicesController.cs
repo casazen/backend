@@ -9,11 +9,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// The agency invoices for property owners (ADR-019 amended, E06/F01/US02/T05, E14/F01/US01/T01): <c>generate</c> makes the drafts of the owner invoices of a
-/// period (fiscal documents made from the statement versions, behind <c>Features:OwnerInvoicing</c>); the historical rows of the retired generator stay readable,
-/// marked <c>legacy_unverified</c>. Every action is scoped to the caller's agency org: an invoice of another org answers 404.
-/// </summary>
 [ApiController]
 [Route("api/agency-invoices")]
 [Authorize(Policy = CasazenPolicies.AgencyInvoiceManage)]
@@ -24,13 +19,6 @@ public class AgencyInvoicesController(
     IHostScopeResolver hostScopeResolver,
     ILogger<AgencyInvoicesController> logger) : ControllerBase
 {
-    /// <summary>
-    /// The drafts of the owner invoices of a period (<c>{ year, month }</c>), one for every owner with a statement version of it that is not superseded: made, or
-    /// made again, with the counts (owners, made, made again, issued already, nothing to invoice) and the owners whose draft could not be made with the code of
-    /// the reason. 404 while <c>Features:OwnerInvoicing</c> is off; 403 for a caller restricted to some properties; 422 <c>owner_period_invalid</c>,
-    /// <c>issuer_profile_incomplete</c>, <c>document_rule_not_configured</c> (nothing is written).
-    /// </summary>
-    /// <param name="request">The period.</param>
     [HttpPost("generate")]
     [FeatureGate(FeatureFlags.OwnerInvoicing)]
     [ProducesResponseType(typeof(OwnerInvoiceGenerationDto), StatusCodes.Status200OK)]

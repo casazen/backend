@@ -51,7 +51,6 @@ public sealed class MarketplaceHealthController(
         return Ok(MarketplaceHealthDto.From(result));
     }
 
-    /// <summary>The caller's org and scope; <c>null</c> when it has no org or reaches nothing in it.</summary>
     private async Task<Caller?> CallerAsync(CancellationToken cancellationToken)
     {
         if (await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken) is not { } orgId

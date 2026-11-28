@@ -3,18 +3,10 @@ using Casazen.Infrastructure.Services;
 
 namespace Casazen.Web.DTOs.Admin;
 
-/// <summary>
-/// The models of the identity verification as the platform administrators see them (E22/F01/US01/T01, <c>GET api/admin/biometrics/status</c>): whether
-/// the feature is on, the state of the set (<c>disabled</c>, <c>loading</c>, <c>ready</c>, <c>unavailable</c>) with the reason code the store gave, and
-/// one entry per model. The shape is closed on purpose: a model is named by its role, version and licence, and says whether its SHA-256 is pinned; there
-/// is no path, no hash and no download address here, so a status can be read aloud or pasted into a ticket.
-/// </summary>
 public sealed class BiometricsStatusDto
 {
-    /// <summary><c>Features:CheckInIdentityVerification</c>.</summary>
     public bool Enabled { get; set; }
 
-    /// <summary><c>disabled</c>, <c>loading</c>, <c>ready</c> or <c>unavailable</c> (at least one model cannot be used: every verification goes to the operator).</summary>
     public string State { get; set; } = string.Empty;
 
     /// <summary>Why the set is unavailable, as a code (<c>config_invalid</c>, <c>hash_not_configured</c>, <c>file_missing</c>, ...); null otherwise.</summary>
@@ -22,10 +14,6 @@ public sealed class BiometricsStatusDto
 
     public IReadOnlyList<BiometricModelStatusDto> Models { get; set; } = [];
 
-    /// <summary>
-    /// The verifiable deletion of what the self-hosted verification keeps (E73/F01/US02/T03, NF-195, AC-NF195-4): what is overdue now and the last run of the hourly purge.
-    /// Null only for a status built without it.
-    /// </summary>
     public IdentityRetentionStatusDto? Retention { get; set; }
 
     public static BiometricsStatusDto From(BiometricModelsStatus status, IdentityRetentionStatus? retention = null) => new()
@@ -38,13 +26,6 @@ public sealed class BiometricsStatusDto
     };
 }
 
-/// <summary>
-/// The retention of the self-hosted identity verification as a platform administrator checks it (E73/F01/US02/T03): <c>overdueEvidence</c> are the pictures kept for a
-/// reviewer past their expiry and not deleted, <c>overdueDocumentImages</c> the kept pictures of documents that no session is still using; both read from the database, across
-/// every organization, and both 0 when nothing overdue remains (the hourly purge deletes the evidence past its time whatever the flags say, and the kept pictures while one of the
-/// two flags of the self-hosted verification is on). <c>lastRunAt</c> and <c>lastRunCounts</c> are the last run of this process (null after a start until the first run). Counts and a
-/// time only.
-/// </summary>
 public sealed class IdentityRetentionStatusDto
 {
     public int OverdueEvidence { get; set; }
@@ -64,7 +45,6 @@ public sealed class IdentityRetentionStatusDto
     };
 }
 
-/// <summary>What one run of the identity retention deleted, per category, and how many organizations it could not finish (counts only).</summary>
 public sealed class IdentityRetentionCountsDto
 {
     public int ExpiredEvidence { get; set; }
@@ -115,10 +95,8 @@ public sealed class QualifyIdentitySegmentDto
     public string? RequiredAssurance { get; set; }
 }
 
-/// <summary>One model of <see cref="BiometricsStatusDto"/>.</summary>
 public sealed class BiometricModelStatusDto
 {
-    /// <summary><c>face_detector</c>, <c>anti_spoofing</c>, <c>face_recognition</c> or <c>mrz_ocr</c> (<see cref="BiometricModelRoles"/>).</summary>
     public string Role { get; set; } = string.Empty;
 
     public string Name { get; set; } = string.Empty;
@@ -127,13 +105,11 @@ public sealed class BiometricModelStatusDto
 
     public string License { get; set; } = string.Empty;
 
-    /// <summary><c>disabled</c>, <c>loading</c>, <c>ready</c>, <c>present</c> (the OCR-B file: pinned and on disk) or <c>failed</c>.</summary>
     public string State { get; set; } = string.Empty;
 
     /// <summary>The failure code when <see cref="State"/> is <c>failed</c> (<c>hash_not_configured</c>, <c>file_missing</c>, <c>hash_mismatch</c>, <c>download_failed</c>, ...); null otherwise.</summary>
     public string? Code { get; set; }
 
-    /// <summary>The SHA-256 of the file is pinned in the configuration (a well-formed value): without it the file is never used.</summary>
     public bool Pinned { get; set; }
 
     public static BiometricModelStatusDto From(BiometricModelStatus model) => new()

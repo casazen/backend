@@ -35,12 +35,6 @@ public sealed class OnboardingActivationController(
     IHostScopeResolver hostScopeResolver,
     IOptions<OnboardingOptions> options) : ControllerBase
 {
-    /// <summary>
-    /// Activates <c>flow</c> (a member name of <c>OnboardingFlow</c>) on each property of the body whose prerequisites the server verifies now.
-    /// </summary>
-    /// <response code="200">One outcome per property: <c>activated</c>, <c>alreadyActive</c>, <c>prerequisitesNotMet</c>, <c>notAvailable</c>, <c>notFound</c>.</response>
-    /// <response code="400"><c>onboarding_flow_unknown</c>.</response>
-    /// <response code="422"><c>onboarding_property_ids_empty</c>, <c>onboarding_property_ids_too_many</c>.</response>
     [HttpPost("flows/{flow}/activate")]
     [ProducesResponseType(typeof(FlowActivationResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -55,10 +49,6 @@ public sealed class OnboardingActivationController(
         return await ChangeAsync(flow, body, activate: true, cancellationToken);
     }
 
-    /// <summary>Deactivates <c>flow</c> on each property of the body where it stands activated (the row stays, with when and who).</summary>
-    /// <response code="200">One outcome per property: <c>deactivated</c>, <c>alreadyInactive</c>, <c>notFound</c>.</response>
-    /// <response code="400"><c>onboarding_flow_unknown</c>.</response>
-    /// <response code="422"><c>onboarding_property_ids_empty</c>, <c>onboarding_property_ids_too_many</c>.</response>
     [HttpPost("flows/{flow}/deactivate")]
     [ProducesResponseType(typeof(FlowActivationResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

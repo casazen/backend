@@ -9,11 +9,6 @@ using Microsoft.AspNetCore.RateLimiting;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// A member who cannot do something asks the administrators of its org for access (AM-02b). Any active member may ask, whatever
-/// its role, so the endpoint needs only a signed-in account; the service checks that the account is an active member of the
-/// org. Runbook <c>docs/runbooks/org-team.md</c>.
-/// </summary>
 [ApiController]
 [Route("api/orgs/me/access-requests")]
 public class OrgAccessRequestsController(

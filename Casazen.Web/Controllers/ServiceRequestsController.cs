@@ -75,12 +75,6 @@ public class ServiceRequestsController(
         return Ok(MapMatchResult(result));
     }
 
-    /// <summary>
-    /// Sends a short-rent request for a stay of the property to a supplier. 400 <c>validation_error</c> for a malformed
-    /// body (empty ids, notes over 1000 characters, no category); 404 <c>property_not_found</c> /
-    /// <c>supplier_not_found</c>; 422 for the rules (category code, the stay, when given, being one of the property, supplier active and
-    /// covering the comune, <c>chargeToGuest</c>), with the codes of <see cref="ServiceRequestErrorCodes"/>.
-    /// </summary>
     [HttpPost]
     [Authorize(Policy = CasazenPolicies.ServiceRequestWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status201Created)]
@@ -117,7 +111,6 @@ public class ServiceRequestsController(
             cancellationToken);
 
         var dto = await HostDtoAsync(created, orgId.Value, cancellationToken);
-        // The host named no time: the request got the default one, and the answer says so (it may be tomorrow's 10:00).
         dto.ScheduleDefaulted = request.ScheduledStartUtc is null;
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, dto);
     }
@@ -181,7 +174,6 @@ public class ServiceRequestsController(
             var (items, total) = await serviceRequestService.ListForSupplierAsync(
                 supplierOrgId.Value, openOnly, page, pageSize, cancellationToken);
 
-            // The supplier reads its requests through the supplier mapping: before the take, no property name and no notes (D9).
             return Ok(new ServiceRequestListResponse
             {
                 Items = items.Select(MapDtoForSupplier),
@@ -219,12 +211,6 @@ public class ServiceRequestsController(
         });
     }
 
-    /// <summary>
-    /// How many requests are in each chip of the host's list (SR-08a): <c>{ all, pending, active, toPay, done, needsAction }</c> for the
-    /// requests that satisfy the filters of <c>GET api/service-requests</c> but the chip (<c>view</c>), the page and the order. The first
-    /// four add up to <c>all</c>; <c>needsAction</c> overlaps them. One aggregate statement, filtered by the caller's org and scope like
-    /// the list. Same 400s as the list for the filters it takes, same 404 and 403 for <c>propertyId</c> and <c>bookingId</c>.
-    /// </summary>
     [HttpGet("counts")]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
     [ProducesResponseType(typeof(ServiceRequestCountsDto), StatusCodes.Status200OK)]
@@ -260,8 +246,6 @@ public class ServiceRequestsController(
         return Ok(ServiceRequestCountsDto.From(await hostReader.CountAsync(scope, filters, cancellationToken)));
     }
 
-    // The filters of a request as a query, or the 400 that says which one is not understood (the same words for the list and for the
-    // counters of its chips). The page and its size are the caller's to add.
     private ObjectResult? TryReadHostFilters(
         string? view,
         ServiceRequestStatus? status,
@@ -297,10 +281,6 @@ public class ServiceRequestsController(
         return null;
     }
 
-    /// <summary>
-    /// A request of the caller's supplier org (<see cref="CasazenPolicies.Supplier"/>) or of the caller's host scope
-    /// (<c>property.read</c>); 404 when it is in neither.
-    /// </summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -353,7 +333,6 @@ public class ServiceRequestsController(
         var userId = User.GetUserId();
         if (supplierOrgId is null || userId is null) return NotFound();
 
-        // No body (or an empty one) accepts the request as it is; the time and the price are what the supplier adds (SP-04).
         var command = request is null
             ? null
             : new TakeServiceRequestCommand(request.ScheduledStartUtc, request.ScheduledEndUtc, request.QuotedAmountCents);
@@ -440,12 +419,6 @@ public class ServiceRequestsController(
         return Ok(MapDtoForSupplier(updated));
     }
 
-    /// <summary>
-    /// The supplier adds photos of the work to a request it took and has not completed (multipart field <c>photos</c>, JPEG, PNG
-    /// or WebP checked on their content, at most 6 per request, 10 MB each). All or none. The files are private: the host and
-    /// the supplier read them with <c>GET {id}/photos/{photoId}</c>. 422 <c>service_request_photo_invalid</c> /
-    /// <c>service_request_photo_limit_reached</c>; 413 for a request larger than 6 files of 10 MB.
-    /// </summary>
     [HttpPost("{id:guid}/photos")]
     [Authorize(Policy = CasazenPolicies.Supplier)]
     [Consumes("multipart/form-data")]
@@ -601,12 +574,6 @@ public class ServiceRequestsController(
         return Ok(MapDtoForSupplier(updated));
     }
 
-    /// <summary>
-    /// The host accepts the time the supplier proposed (SP-04): it becomes the time of the request, which the supplier member who
-    /// proposed it takes (<c>Richiesto → PresoInCarico</c>); the supplier is told. <c>property.write</c> on the property. The time
-    /// is checked again with the supplier's agenda (409 <c>supplier_slot_unavailable</c>); 422 <c>service_request_no_proposal</c>
-    /// when there is none to answer; 404 <c>service_request_not_found</c> outside the caller's scope.
-    /// </summary>
     [HttpPost("{id:guid}/proposal/accept")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
@@ -617,10 +584,6 @@ public class ServiceRequestsController(
     public Task<ActionResult<ServiceRequestDto>> AcceptProposal(Guid id, CancellationToken cancellationToken) =>
         HostActionAsync(id, hostOrgId => serviceRequestService.AcceptProposalAsync(id, hostOrgId, cancellationToken), cancellationToken);
 
-    /// <summary>
-    /// The host turns the proposed time down (SP-04): the request stays <c>Richiesto</c> as it was and the supplier is told, who
-    /// can still take it as it is, propose another time or reject it. Same errors as <see cref="AcceptProposal"/>.
-    /// </summary>
     [HttpPost("{id:guid}/proposal/reject")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
@@ -670,10 +633,6 @@ public class ServiceRequestsController(
         return Ok(MapDtoForSupplier(updated));
     }
 
-    /// <summary>
-    /// The supplier takes its quote back (SP-04b): the request is "to answer" again. 422 <c>service_request_no_quote</c> when none waits.
-    /// Same errors as <see cref="Take"/>.
-    /// </summary>
     [HttpPost("{id:guid}/quote/withdraw")]
     [Authorize(Policy = CasazenPolicies.Supplier)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
@@ -690,13 +649,6 @@ public class ServiceRequestsController(
         return Ok(MapDtoForSupplier(updated));
     }
 
-    /// <summary>
-    /// The host accepts the quote the supplier sent (SP-04b): the request is taken on the supplier's behalf at the time of the quote,
-    /// with its total as the price agreed and its lines as the price lines (kind <c>quote</c>); the supplier is told. <c>property.write</c>
-    /// on the property. The body repeats <c>quote.sentAt</c> as read: another quote is 409 <c>service_request_quote_changed</c>, nothing
-    /// changes. The time is checked again with the supplier's agenda: 409 <c>supplier_slot_unavailable</c> / <c>supplier_commitment_conflict</c>
-    /// and the quote stays. 422 <c>service_request_no_quote</c> when none waits; 404 <c>service_request_not_found</c> outside the caller's scope.
-    /// </summary>
     [HttpPost("{id:guid}/quote/accept")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
@@ -712,10 +664,6 @@ public class ServiceRequestsController(
         HostActionAsync(
             id, hostOrgId => serviceRequestService.AcceptQuoteAsync(id, hostOrgId, request.QuoteSentAt!.Value, cancellationToken), cancellationToken);
 
-    /// <summary>
-    /// The host turns the quote down (SP-04b): it goes, the request stays <c>Richiesto</c> as it was and the supplier is told, who can send
-    /// another quote, propose another time, take it as it is or reject it. Same errors as <see cref="AcceptQuote"/>, but for the time.
-    /// </summary>
     [HttpPost("{id:guid}/quote/reject")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
@@ -731,11 +679,6 @@ public class ServiceRequestsController(
         HostActionAsync(
             id, hostOrgId => serviceRequestService.RejectQuoteAsync(id, hostOrgId, request.QuoteSentAt!.Value, cancellationToken), cancellationToken);
 
-    /// <summary>
-    /// The host reminds the supplier to answer a new request (SP-04): the supplier is told by email and push. At most one
-    /// reminder every 6 hours (422 <c>service_request_remind_too_soon</c>); only while the request is new and the supplier has
-    /// not proposed a time (422 <c>service_request_invalid_transition</c>). <c>property.write</c> on the property.
-    /// </summary>
     [HttpPost("{id:guid}/remind")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
@@ -746,11 +689,6 @@ public class ServiceRequestsController(
     public Task<ActionResult<ServiceRequestDto>> Remind(Guid id, CancellationToken cancellationToken) =>
         HostActionAsync(id, hostOrgId => serviceRequestService.RemindAsync(id, hostOrgId, cancellationToken), cancellationToken);
 
-    /// <summary>
-    /// Runs a host action on a short-rent request of the caller's scope: 404 for a request outside it (or a long-rent one), 403
-    /// when the caller may not write the request's property (<c>property.write</c> as a <see cref="HostResource"/>), then
-    /// <paramref name="action"/> with the host org.
-    /// </summary>
     private async Task<ActionResult<ServiceRequestDto>> HostActionAsync(
         Guid id,
         Func<Guid, Task<ServiceRequest>> action,
@@ -771,13 +709,6 @@ public class ServiceRequestsController(
         return Ok(await HostDtoAsync(await action(scope.OrgId), scope.OrgId, cancellationToken));
     }
 
-    /// <summary>
-    /// The host confirms the final amount the supplier asked, when it is above the quote by more than the tolerance (SP-15a,
-    /// decision D7, <c>price.needsCustomerConfirmation</c>): <c>property.write</c> on the request's property. A request paid inside
-    /// CasaZen gets its payment now, and the payment link is emailed to the host's address; the request no longer needs the
-    /// confirmation. Confirming twice is not an error. 404 <c>service_request_not_found</c> outside the caller's scope; 422
-    /// <c>service_request_no_confirmation_needed</c> when there is nothing to confirm; 409 <c>service_request_state_changed</c>.
-    /// </summary>
     [HttpPost("{id:guid}/final-amount/confirm")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
@@ -816,7 +747,6 @@ public class ServiceRequestsController(
             !await authorizationService.IsAuthorizedAsync(User, resource, PropertyOperations.Write))
             return Forbid();
 
-        // The answer carries a client secret: never cached.
         Response.Headers.CacheControl = "private, no-store";
         return Ok(ServicePaymentSessionDto.From(await supplierPayments.CreateHostSessionAsync(id, scope.OrgId, cancellationToken)));
     }
@@ -885,7 +815,6 @@ public class ServiceRequestsController(
         return Ok(await HostDtoAsync(updated, scope.OrgId, cancellationToken));
     }
 
-    /// <summary>404 <c>service_request_not_found</c> (FD-05), also for a request outside the caller's scope.</summary>
     internal static ObjectResult ServiceRequestNotFound(ControllerBase controller) =>
         controller.ApiProblem(
             StatusCodes.Status404NotFound, ServiceRequestErrorCodes.NotFound, ServiceRequestErrorCodes.NotFoundMessageKey);
@@ -901,10 +830,6 @@ public class ServiceRequestsController(
         return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
     }
 
-    /// <summary>
-    /// The stay and the property a host list filters on (SU-07): 404 when not in the caller's org, 403 when the caller
-    /// may not read them.
-    /// </summary>
     private async Task<ActionResult?> AuthorizeListFiltersAsync(
         Guid? propertyId,
         Guid? bookingId,
@@ -925,7 +850,6 @@ public class ServiceRequestsController(
             : null;
     }
 
-    /// <summary>404 when the property is not in the caller's org, 403 when the operation is not allowed on it.</summary>
     private async Task<ActionResult?> AuthorizePropertyAsync(
         Guid propertyId,
         HostOperationRequirement operation,
@@ -938,14 +862,8 @@ public class ServiceRequestsController(
         return await authorizationService.IsAuthorizedAsync(User, property, operation) ? null : Forbid();
     }
 
-    /// <summary>The request as its host sees it: everything the host wrote and the supplier did.</summary>
     internal static ServiceRequestDto MapDto(ServiceRequest r) => Map(r, forSupplier: false);
 
-    /// <summary>
-    /// The requests as their host sees them, with the group of backup suppliers of each one that has one (SP-BKP): one read for all the groups
-    /// of the page, scoped by the host org. The order of <paramref name="requests"/> is kept. For the contexts without the extras of SR-08a
-    /// (long-rent).
-    /// </summary>
     internal static async Task<List<ServiceRequestDto>> MapForHostAsync(
         IServiceRequestService service,
         Guid hostOrgId,
@@ -957,10 +875,6 @@ public class ServiceRequestsController(
         return [.. items.Select(item => item.Dto)];
     }
 
-    /// <summary>
-    /// Puts the group of backup suppliers (SP-BKP) in the DTO of each request that belongs to one: a single read for all the groups of the
-    /// page, scoped by the host org, and none at all when no request has a group.
-    /// </summary>
     internal static async Task AttachGroupsAsync(
         IServiceRequestService service,
         Guid hostOrgId,
@@ -1008,8 +922,6 @@ public class ServiceRequestsController(
         return dto;
     }
 
-    // The request of the host with its extras: one read for the stay and one for the contact, whatever the request, and the group of backup
-    // suppliers when it belongs to one (SP-BKP).
     private async Task<ServiceRequestDto> HostDtoAsync(ServiceRequest request, Guid hostOrgId, CancellationToken cancellationToken)
     {
         var extras = await hostReader.DescribeAsync(hostOrgId, [request], cancellationToken);
@@ -1018,17 +930,11 @@ public class ServiceRequestsController(
         return dto;
     }
 
-    /// <summary>
-    /// The request as the supplier it was sent to sees it, in the shape of the host endpoints (the answers of its own actions and
-    /// the legacy <c>GET api/service-requests/{id}</c> and <c>?view=supplier</c>): until the supplier takes the request, no name of
-    /// the property and no host notes (decision D9, <see cref="SupplierJobDisclosure"/>).
-    /// </summary>
     internal static ServiceRequestDto MapDtoForSupplier(ServiceRequest r) => Map(r, forSupplier: true);
 
     private static ServiceRequestDto Map(ServiceRequest r, bool forSupplier)
     {
         var disclosed = !forSupplier || SupplierJobDisclosure.IsDisclosed(r.Status);
-        // The supplier reads the photos at the shared endpoint; a host at the one of its rental context.
         var photosPath = forSupplier || r.RentalContext == ServiceRequestRentalContext.ShortRent
             ? ServiceRequestDtoParts.ShortRentBasePath
             : ServiceRequestDtoParts.LongRentBasePath;

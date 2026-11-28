@@ -13,13 +13,12 @@ public class AlloggiatiWebReportJob(
     IAlloggiatiReportScheduler scheduler,
     ILogger<AlloggiatiWebReportJob> logger)
 {
-    [DisableConcurrentExecution("AlloggiatiWebReportJob.ReportGuestAsync:{1}", JobLockTimeouts.DefaultSeconds)] // one submission per booking at a time
+    [DisableConcurrentExecution("AlloggiatiWebReportJob.ReportGuestAsync:{1}", JobLockTimeouts.DefaultSeconds)]
     public async Task ReportGuestAsync(Guid guestId, Guid bookingId)
     {
         var outcome = await alloggiatiWebService.ProcessScheduledReportAsync(bookingId, guestId);
         logger.LogInformation("Alloggiati job of booking {BookingId}: {Outcome}", bookingId, outcome);
 
-        // Check-in date moved later, or a job queued before the report existed: schedule it for the arrival day.
         if (outcome is AlloggiatiProcessOutcome.NotYetDue or AlloggiatiProcessOutcome.NotReserved)
             await scheduler.EnsureScheduledAsync(bookingId);
     }

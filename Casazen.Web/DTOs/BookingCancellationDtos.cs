@@ -5,10 +5,6 @@ using Casazen.Web.DTOs.Payments;
 
 namespace Casazen.Web.DTOs;
 
-/// <summary>
-/// Body of <c>POST /api/bookings/{id}/cancel</c>. <see cref="RefundAmount"/> is required when something was paid
-/// through Stripe (0 = no refund), between the minimum and the refundable amount of the quote.
-/// </summary>
 public sealed class CancelBookingRequest
 {
     [Range(0d, 1_000_000d, ErrorMessage = "RefundAmountInvalid")]
@@ -18,7 +14,6 @@ public sealed class CancelBookingRequest
     public string? Reason { get; set; }
 }
 
-/// <summary>What cancelling the booking now would do (<c>GET /api/bookings/{id}/cancellation</c>).</summary>
 public sealed record BookingCancellationQuoteDto(
     Guid BookingId,
     BookingStatus Status,
@@ -54,7 +49,6 @@ public sealed record BookingCancellationQuoteDto(
         quote.RequiresRefundDecision);
 }
 
-/// <summary>Outcome of a cancellation: the refunds as Stripe left them (succeeded, pending or failed).</summary>
 public sealed record CancelBookingResponse(
     Guid BookingId,
     BookingStatus Status,

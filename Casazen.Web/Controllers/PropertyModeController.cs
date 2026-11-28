@@ -35,10 +35,6 @@ public class PropertyModeController(
     IAuthorizationService authorizationService,
     ILogger<PropertyModeController> logger) : ControllerBase
 {
-    /// <summary>The mode of the property, the change waiting for its day and the last one that is over.</summary>
-    /// <response code="200">The state.</response>
-    /// <response code="403">The caller may not read this property.</response>
-    /// <response code="404">No property with this id in the caller's org.</response>
     [HttpGet]
     [ProducesResponseType(typeof(PropertyModeStateResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -95,12 +91,6 @@ public class PropertyModeController(
         return Ok(PropertyModePreviewResponse.From(preview));
     }
 
-    /// <summary>
-    /// Programs the change: 201 with the change (<c>Scheduled</c>). The host gets an e-mail. To long-term the calendar closes
-    /// from the night before the day. 404 <c>property_not_found</c>; 409 <c>property_mode_change_exists</c>,
-    /// <c>property_mode_blocked_by_bookings</c>, <c>property_mode_blocked_by_lease</c>, <c>property_mode_blocked_by_draft_lease</c>;
-    /// 422 <c>property_mode_unchanged</c>, <c>property_mode_date_too_early</c>, <c>property_mode_date_too_far</c>.
-    /// </summary>
     [HttpPost("change")]
     [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
     [ProducesResponseType(typeof(PropertyModeChangeDto), StatusCodes.Status201Created)]
@@ -122,17 +112,12 @@ public class PropertyModeController(
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized();
 
-        // Logged by the service, with the day and both modes.
         var change = await modeService.ScheduleAsync(
             propertyId, request.To!.Value, AsStayDate(request.EffectiveDate!.Value), userId, cancellationToken);
 
         return Created($"/api/properties/{propertyId}/mode", PropertyModeChangeDto.From(change));
     }
 
-    /// <summary>
-    /// Withdraws a change that is still waiting for its day: 204. 404 <c>property_mode_change_not_found</c> (also a change of
-    /// another property); 409 <c>property_mode_change_not_scheduled</c> when it is already applied, cancelled or failed.
-    /// </summary>
     [HttpDelete("change/{changeId:guid}")]
     [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -149,16 +134,13 @@ public class PropertyModeController(
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized();
 
-        // Logged by the service.
         await modeService.CancelAsync(propertyId, changeId, userId, cancellationToken);
 
         return NoContent();
     }
 
-    /// <summary>A date from the client as a stay date: midnight UTC of that day (the storage convention).</summary>
     private static DateTime AsStayDate(DateOnly day) => DateTime.SpecifyKind(day.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
 
-    /// <summary>TN-3: 404 when the property is not visible (another org), 403 when it is but the operation is not allowed.</summary>
     private async Task<ActionResult?> AuthorizeAsync(
         Guid propertyId,
         HostOperationRequirement operation,

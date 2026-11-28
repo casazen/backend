@@ -20,7 +20,6 @@ public sealed class UtcDateTimeJsonConverter : JsonConverter<DateTime>
     {
         var value = reader.GetDateTime();
 
-        // With an offset the default parser returns a server-local value: re-read the exact instant.
         return value.Kind == DateTimeKind.Local
             ? reader.GetDateTimeOffset().UtcDateTime
             : UtcDateTime.Normalize(value);

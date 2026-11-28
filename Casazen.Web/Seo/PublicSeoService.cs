@@ -45,10 +45,8 @@ public sealed class PublicSeoService(
     IFeatureFlags featureFlags,
     IComuneDirectory comuneDirectory) : IPublicSeoService
 {
-    /// <summary>Brand of the platform pages (<c>og:site_name</c>, publisher of the guides).</summary>
     public const string PlatformName = "CasaZen";
 
-    /// <summary>Most properties an org landing page lists, like the booking site itself.</summary>
     public const int MaxListedProperties = 50;
 
     private const int MaxImages = 8;
@@ -67,8 +65,6 @@ public sealed class PublicSeoService(
 
     public async Task<SeoPageResult> RenderHostPageAsync(string host, string path, CancellationToken cancellationToken = default)
     {
-        // The host is only compared: a value that is not a host name, a host of nobody (the platform itself, a preview, a
-        // custom domain still waiting for its verification) and a domain no longer paid for are all "unknown host".
         var normalizedHost = PublicSiteHosts.Normalize(host);
         var resolved = normalizedHost is null ? null : await hostResolver.ResolveAsync(normalizedHost, cancellationToken);
         if (resolved is null)
@@ -173,7 +169,6 @@ public sealed class PublicSeoService(
             return NotFound();
 
         var result = await RenderPropertyPageAsync(org, propertySlugOrId, requestHost, ownHostPaths: false, cancellationToken);
-        // An old slug of the org: the same page under the current one (the property was found by its own id or slug).
         return result.Status == SeoPageStatus.Ok && !string.Equals(org.Slug, orgSlug, StringComparison.Ordinal)
             ? Moved(PublicSitePaths.Property(org.Slug, propertySlugOrId))
             : result;
@@ -191,8 +186,6 @@ public sealed class PublicSeoService(
         if (row is null)
             return NotFound();
 
-        // A property reached by id when it has a slug lives at the slug path: permanent redirect, on the same host and in
-        // the same path scheme (own host: /property/{slug}, platform: /book/{org}/property/{slug}).
         var segment = PropertySegment(row);
         if (!string.Equals(segment, propertySlugOrId, StringComparison.OrdinalIgnoreCase))
         {
@@ -301,7 +294,6 @@ public sealed class PublicSeoService(
         if (!SupplierShowcaseSlug.IsLookupable(normalized, PublicShowcaseLimits.SlugMaxLength))
             return NotFound();
 
-        // Same rule as the public API: only an Active supplier; pending, suspended and unknown are one 404.
         var profile = await db.SupplierProfiles.AsNoTracking()
             .FirstOrDefaultAsync(p => p.ShowcaseSlug == normalized && p.Status == SupplierStatus.Active, cancellationToken);
         if (profile is null)
@@ -350,7 +342,6 @@ public sealed class PublicSeoService(
             Title = T("SeoSupplierTitle", name),
             Description = SeoHtml.Truncate(string.IsNullOrEmpty(bio) ? SupplierDescription(name, categories, comuni) : bio),
             CanonicalUrl = canonical,
-            // A showcase with no category and no text is as thin as a booking site without properties.
             Indexable = SupplierHasContent(profile),
             SiteName = PlatformName,
             ImageUrl = photos.FirstOrDefault(),
@@ -453,7 +444,6 @@ public sealed class PublicSeoService(
             Title = title,
             Description = description,
             CanonicalUrl = hub.CanonicalUrl,
-            // A hub with nothing to list is as thin as a booking site without properties.
             Indexable = entries.Count > 0,
             SiteName = PlatformName,
             ImageUrl = BrandImageUrl(),
@@ -468,10 +458,6 @@ public sealed class PublicSeoService(
         });
     }
 
-    /// <summary>
-    /// The description of the hub from what it really lists: four of its comuni by name, those with both a guide and a tourist tax
-    /// page first (the pages with the most to say), then by name.
-    /// </summary>
     private string HubDescription(IReadOnlyList<SeoPublishedPageDto> pages)
     {
         var names = pages
@@ -488,8 +474,6 @@ public sealed class PublicSeoService(
         links.EnsureConfigured();
 
         var org = await orgService.GetPublicBySlugAsync(orgSlug, cancellationToken);
-        // An org with its own host has its sitemap there (/sitemap.xml of that host): a sitemap may only list URLs of its own
-        // host, and the canonical URLs of such an org are not on the platform.
         if (org is null || !string.Equals(org.Slug, orgSlug, StringComparison.Ordinal) || urls.OwnHost(org) is not null)
             return null;
 
@@ -510,7 +494,6 @@ public sealed class PublicSeoService(
         return new HostSitemap(true, await BuildOrgUrlSetAsync(org, cancellationToken));
     }
 
-    /// <summary>The landing page and the published properties of an org, on the URLs its pages declare as canonical.</summary>
     private async Task<string?> BuildOrgUrlSetAsync(Org org, CancellationToken cancellationToken)
     {
         var properties = await PublishedProperties(org.Id)
@@ -536,7 +519,6 @@ public sealed class PublicSeoService(
     {
         links.EnsureConfigured();
 
-        // IgnoreQueryFilters: a public read across every org, with the published rule as its filter.
         var published = await db.Properties
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(PublicListing.IsPublished)
@@ -552,7 +534,6 @@ public sealed class PublicSeoService(
             .ToListAsync(cancellationToken);
         var lastModifiedByOrg = published.ToDictionary(p => p.OrgId, p => p.LastModified);
 
-        // The orgs with their own host are not listed: their sitemap is on their host, not under the platform path.
         return SeoSitemaps.Index(orgs
             .Where(o => urls.OwnHost(o) is null)
             .Select(o => (links.PublicPage(PublicSitePaths.OrgSitemap(o.Slug)),
@@ -562,17 +543,12 @@ public sealed class PublicSeoService(
     private static EmailConfigurationException NotConfigured() =>
         new("App:PublicSiteBaseUrl is missing or invalid: public links cannot be built.");
 
-    // ─── Editorial pages (/p/*) ──────────────────────────────────────────────────────────────────────
-
-    /// <summary>Longest title the page gets from its data; a comune with a long name keeps the title the page was approved with.</summary>
     private const int MaxMetaTitleLength = 70;
 
-    /// <summary>Pages of the same kind and region listed under «Vedi anche».</summary>
     private const int MaxNeighbours = 6;
 
     private static readonly StringComparer ItalianCollator = StringComparer.Create(CultureInfo.GetCultureInfo("it-IT"), ignoreCase: true);
 
-    /// <summary>A question of the page and its answer, both built from data the page really has (never from the AI).</summary>
     private sealed record FaqItem(string Question, string Answer, string? SourceUrl = null, string? SourceLabel = null);
 
     private async Task<SeoDocument> BuildEditorialDocumentAsync(SeoPagePublicDto page, CancellationToken cancellationToken)
@@ -584,7 +560,6 @@ public sealed class PublicSeoService(
         var homeUrl = HomeUrl();
         var regionName = RegionName(page.RegionSlug) ?? page.RegionCode;
         var (title, description) = EditorialMeta(page, facts, culture);
-        // The questions are the tourist tax ones, so they live on the page of the tax; the guide only shows the summary.
         var faq = page.PageType == SeoPageType.TouristTaxCalc && facts is not null ? BuildFaq(page, facts, culture) : [];
 
         var body = new StringBuilder();
@@ -596,10 +571,8 @@ public sealed class PublicSeoService(
             .Append("</p>\n<h1>").Append(SeoHtml.Encode(page.Title)).Append("</h1>\n</header>\n");
         if (facts is not null)
             AppendFactsBlock(body, page, facts, culture);
-        // Sanitized when it was approved and again on read (FD-15); once more here, as this is the last step before HTML.
         body.Append(SeoHtmlSanitizer.Sanitize(page.BodyHtml)).Append('\n');
         AppendFaqBlock(body, faq);
-        // SEO-INVITE: no link to the signup while CasaZen is on private invitation (flag SeoSignupCta off).
         if (page.Cta is not null && featureFlags.IsEnabled(FeatureFlags.SeoSignupCta))
         {
             body.Append("<p><a href=\"").Append(SeoHtml.Encode(page.Cta.SignupUrl)).Append("\">")
@@ -611,7 +584,6 @@ public sealed class PublicSeoService(
             : T("SeoDisclaimerLastUpdatedUnknown");
         body.Append("<footer>\n<p>").Append(SeoHtml.Encode(lastUpdated)).Append("</p>\n<p>")
             .Append(SeoHtml.Encode(T("SeoDisclaimerNotLegalAdvice"))).Append("</p>\n");
-        // EU AI Act transparency (A8-27): only for text that the AI generated, never a constant.
         if (page.AiGenerated)
             body.Append("<p>").Append(SeoHtml.Encode(T("SeoDisclaimerAiGenerated"))).Append("</p>\n");
         body.Append("</footer>\n</article>\n");
@@ -619,8 +591,6 @@ public sealed class PublicSeoService(
         body.Append("</main>\n");
         body.Append(SeoPageChrome.Footer(T("SeoFooterTagline"), T("SeoNavFooterLabel"), SiteLinks()));
 
-        // Indexable under the same rule as the sitemap: it has text and, for a calculator, a tourist tax rate in force
-        // (the page itself is only served with an approved revision, SE-01).
         var indexable = !string.IsNullOrWhiteSpace(page.BodyHtml)
             && (page.PageType != SeoPageType.TouristTaxCalc || page.TouristTaxRates.Count > 0);
 
@@ -637,7 +607,6 @@ public sealed class PublicSeoService(
             SeoJsonLd.WebSite(PlatformName, homeAbsolute, language),
             SeoJsonLd.Organization(PlatformName, homeAbsolute, BrandImageUrl(), null),
         };
-        // The markup says what the visible questions say: both come from the same list.
         if (faq.Count > 0)
             jsonLd.Add(SeoJsonLd.FaqPage(faq.Select(item => (item.Question, item.Answer))));
 
@@ -657,11 +626,6 @@ public sealed class PublicSeoService(
         };
     }
 
-    /// <summary>
-    /// The title and the description a search result shows. The title carries the comune, what the page is and the year it was last
-    /// verified; the description says the real figure when the page has one. Without those data (no refresh date, several or no
-    /// rate, a title that would be too long) the page keeps what it was approved with.
-    /// </summary>
     private (string Title, string? Description) EditorialMeta(SeoPagePublicDto page, SeoTouristTaxFacts? facts, CultureInfo culture)
     {
         var title = page.Title;
@@ -690,15 +654,11 @@ public sealed class PublicSeoService(
         return (title, description);
     }
 
-    // ── What the page can say from its data: the facts of the tax, the questions, the related pages ──
-
     private static string Euro(decimal amount, CultureInfo culture) => amount.ToString("0.00", culture) + " €";
 
-    /// <summary>The rate in a sentence: «3,00 € a persona per notte».</summary>
     private string RateSentence(SeoTouristTaxFacts facts, CultureInfo culture) =>
         T("SeoFactRateFixed", Euro(facts.RatePerPersonPerNight, culture));
 
-    /// <summary>The rate with the nights it applies to, when the comune caps them.</summary>
     private string RateSummary(SeoTouristTaxFacts facts, CultureInfo culture) =>
         facts.MaxNights is { } nights
             ? $"{RateSentence(facts, culture)}, {T("SeoFactNightsValue", nights)}"
@@ -760,10 +720,6 @@ public sealed class PublicSeoService(
         body.Append("</section>\n");
     }
 
-    /// <summary>
-    /// «Vedi anche»: the other page of the same comune (the guide from the tax page and back) and the hub, then the pages of the
-    /// same kind in the same region. A page used to have no link to any of them.
-    /// </summary>
     private IReadOnlyList<SeoLinkGroup> SeeAlsoGroups(SeoPagePublicDto page, IReadOnlyList<SeoPublishedPageDto> published, string regionName)
     {
         var isGuide = page.PageType != SeoPageType.TouristTaxCalc;
@@ -784,10 +740,6 @@ public sealed class PublicSeoService(
 
     private string PageUrl(SeoPublishedPageDto page) => links.TryPublicPage(page.Path) ?? page.Path;
 
-    /// <summary>
-    /// The pages of the same kind in the same region, starting from the one after this comune in alphabetical order and wrapping
-    /// round: every page links to different neighbours, and every page is linked from several others.
-    /// </summary>
     private static List<SeoPublishedPageDto> Neighbours(IReadOnlyList<SeoPublishedPageDto> published, SeoPagePublicDto page)
     {
         var sameKind = published
@@ -804,7 +756,6 @@ public sealed class PublicSeoService(
             .ToList();
     }
 
-    /// <summary>The name of a region for the page («Lombardia»); the official list writes bilingual regions with both names, the first is used.</summary>
     private static string? RegionName(string? slug)
     {
         var name = ItalianRegions.FindBySlug(slug)?.Name;
@@ -815,14 +766,10 @@ public sealed class PublicSeoService(
         return slash > 0 ? name[..slash].Trim() : name.Trim();
     }
 
-    // ── The chrome shared by the editorial pages ──
-
     private string HomeUrl() => links.TryPublicPage(SeoPagePaths.SiteHome) ?? SeoPagePaths.SiteHome;
 
-    /// <summary>The brand image as an absolute URL; <c>null</c> when the public URL is not configured (an image needs one).</summary>
     private string? BrandImageUrl() => links.TryPublicPage(SeoPagePaths.BrandImage);
 
-    /// <summary>The pages of the public site, as the header of the site shows them (the guides included).</summary>
     private IReadOnlyList<SeoLink> SiteLinks()
     {
         string Url(string path) => links.TryPublicPage(path) ?? path;
@@ -836,7 +783,6 @@ public sealed class PublicSeoService(
         ];
     }
 
-    /// <summary>The hub's lists, one block per region (a long flat list says nothing about where the pages are).</summary>
     private static void AppendHubSection(
         StringBuilder body,
         string heading,
@@ -862,12 +808,6 @@ public sealed class PublicSeoService(
         body.Append("</section>\n");
     }
 
-    // ─── Booking sites ───────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The published properties of an org. IgnoreQueryFilters: a public read of one org's published data, filtered by
-    /// its id and by the published rule, so a signed-in host of another org gets the same page as an anonymous visitor.
-    /// </summary>
     private IQueryable<Property> PublishedProperties(Guid orgId) =>
         db.Properties
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -954,7 +894,6 @@ public sealed class PublicSeoService(
             : T("SeoPropertyDescriptionBasic", row.Name, row.City);
     }
 
-    /// <summary>The last segment of the property's public path: its slug, the id only when it has none.</summary>
     private static string PropertySegment(SeoPropertyRow row) =>
         string.IsNullOrWhiteSpace(row.Slug) ? row.Id.ToString() : row.Slug;
 
@@ -979,8 +918,6 @@ public sealed class PublicSeoService(
         return label.ResourceNotFound ? amenity.ToString() : label.Value;
     }
 
-    // ─── Results and texts ───────────────────────────────────────────────────────────────────────────
-
     private SeoPageResult Ok(SeoDocument document) => new(SeoPageStatus.Ok, SeoHtmlRenderer.Render(document));
 
     private SeoPageResult Moved(string path) =>
@@ -993,7 +930,6 @@ public sealed class PublicSeoService(
             BodyHtml = $"<main>\n<p><a href=\"{SeoHtml.Encode(path)}\">{SeoHtml.Encode(path)}</a></p>\n</main>\n",
         }), path);
 
-    /// <summary>A host that serves no org site: a real 404 the crawler function tells apart from a missing page.</summary>
     private SeoPageResult UnknownHost() => NotFound() with { Status = SeoPageStatus.UnknownHost };
 
     private SeoPageResult NotFound() =>
@@ -1015,7 +951,6 @@ public sealed class PublicSeoService(
     private static string Language() =>
         string.Equals(CultureInfo.CurrentUICulture.TwoLetterISOLanguageName, "en", StringComparison.OrdinalIgnoreCase) ? "en" : "it";
 
-    /// <summary>An amount of a property for a crawler page: <c>€120</c> for the euro, <c>CHF 120</c> for any other code (CHF-MONEY).</summary>
     private static string Money(decimal amount, string? currency, CultureInfo culture)
     {
         var number = amount % 1m == 0m ? amount.ToString("0", culture) : amount.ToString("0.00", culture);
@@ -1023,7 +958,6 @@ public sealed class PublicSeoService(
         return code == StayCurrency.Euro ? "€" + number : code + " " + number;
     }
 
-    /// <summary>The columns of a published property that the crawler pages read.</summary>
     internal sealed class SeoPropertyRow
     {
         public Guid Id { get; init; }
@@ -1046,7 +980,6 @@ public sealed class PublicSeoService(
         public string HouseRules { get; init; } = string.Empty;
         public string CancellationPolicySummary { get; init; } = string.Empty;
 
-        // What the host said (SR-07a), for the structured data of the page (DB-11a).
         public int? AreaSqm { get; init; }
         public TimeOnly? CheckInFrom { get; init; }
         public TimeOnly? CheckOutBy { get; init; }

@@ -68,7 +68,6 @@ public class SelfBillingMonthlyDraftsJob(
             return;
         }
 
-        // The month that ended, by the calendar of Rome: every day from the 5th to the 14th of November runs October.
         var today = _clock.TodayInRomeAsDateOnly();
         var period = new DateOnly(today.Year, today.Month, 1).AddMonths(-1);
 
@@ -89,7 +88,6 @@ public class SelfBillingMonthlyDraftsJob(
                 scope.ServiceProvider.GetRequiredService<IBackgroundTenantScope>().EnterOrg(orgId);
                 var run = await scope.ServiceProvider.GetRequiredService<ISelfBillingService>().RunMonthlyDraftsAsync(orgId, period.Year, period.Month, ct);
 
-                // «Made» is what got a draft in this run, not what the run looked at; the holders refused are counted too (their codes are logged by the run, for each organization).
                 if (run.Created > 0)
                     made++;
                 if (run.Refused > 0)
@@ -120,7 +118,6 @@ public class SelfBillingMonthlyDraftsJob(
             failures.Count);
         if (refusedHolders > 0)
         {
-            // Not a month done: somebody needs a TD17 and cannot have one yet. The run does not fail for it (the next run, or the page of the self-billed invoices, makes the missing drafts).
             logger.LogWarning(
                 "Self-billed drafts of {Year}-{Month}: {Organizations} organizations have {Holders} holders that need a TD17 and could not get one; they are tried again by the next run",
                 period.Year,

@@ -17,10 +17,8 @@ public static class CheckInLinkDeliveryServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        // E23/F01/US01/T01: the delivery record of a booking and the ways to the guest; the daily job guest-checkin-send, the host's endpoint and the completion of the check-in ask it.
         services.AddScoped<ICheckInLinkDeliveryService, CheckInLinkDeliveryService>();
 
-        // E23/F01/US01/T02: the e-mail address of the guest of one booking, read from the channel manager for the check-in link only (never into the CRM).
         services.AddScoped<IGuestContactInfoService, GuestContactInfoService>();
 
         // E23/F01/US01/T01, T02: the hourly retry of what waits (scheduled only while a flag of the module is on, see RecurringJobsRegistration).

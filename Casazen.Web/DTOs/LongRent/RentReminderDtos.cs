@@ -14,17 +14,12 @@ public class RentReminderRequest
     public string? Note { get; set; }
 }
 
-/// <summary>
-/// The reminder of several installments at once (<c>POST api/long-rent/rents/reminders</c>): from one to
-/// <see cref="RentCharges.MaxBulkReminders"/> installment ids, the same optional note for all of them.
-/// </summary>
 public sealed class RentBulkReminderRequest : RentReminderRequest
 {
     [Required(ErrorMessage = "RentReminderBatchInvalid")]
     public List<Guid>? InstallmentIds { get; set; }
 }
 
-/// <summary>An installment of a bulk reminder that was not reminded, and why (the stable code of the error it would have answered).</summary>
 public sealed record RentReminderSkipped(Guid InstallmentId, string Code);
 
 /// <summary>

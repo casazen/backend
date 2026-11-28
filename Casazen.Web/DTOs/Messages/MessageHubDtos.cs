@@ -65,10 +65,6 @@ public sealed class MessageHubThreadDto
     };
 }
 
-/// <summary>
-/// The conversations with something unread (<c>GET api/messages/unread?includeOta=true</c>): one item per conversation with its key, the booking
-/// it is about when there is one and how many messages of the guest the host has not read. Counters only: no name, no text.
-/// </summary>
 public sealed class MessageHubUnreadDto
 {
     public IReadOnlyList<MessageHubUnreadItemDto> Items { get; init; } = [];
@@ -81,7 +77,6 @@ public sealed class MessageHubUnreadDto
 
 public sealed record MessageHubUnreadItemDto(string ThreadKey, Guid? BookingId, int UnreadCount);
 
-/// <summary>What is still unread in a conversation after the host marked it read (<c>POST api/messages/threads/{threadKey}/read</c>).</summary>
 public sealed class MessageReadDto
 {
     public string ThreadKey { get; init; } = string.Empty;
@@ -94,7 +89,6 @@ public sealed class MessageReadDto
     };
 }
 
-/// <summary>The file of a message: its type only. The client opens it with <c>GET api/messages/{messageId}/attachment</c>; the address on the channel is never sent.</summary>
 public sealed class MessageAttachmentDto
 {
     public string ContentType { get; init; } = string.Empty;
@@ -135,10 +129,6 @@ public sealed class MessageHubMessageDto
     };
 }
 
-/// <summary>
-/// The amounts of the booking in <c>Currency</c> of its card. A figure that is not available is left out, not zero (a channel often sends the
-/// commission late, and the net and the balance only when it documents them). The whole object is absent for a caller who may not read payments.
-/// </summary>
 public sealed class MessageBookingAmountsDto
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -166,11 +156,6 @@ public sealed class MessageBookingAmountsDto
     };
 }
 
-/// <summary>
-/// The booking beside a conversation: the code as the guest reads it (<c>XXXXX-XXXXX</c>), the guest, the stay as Rome dates, how many people, the
-/// state (<c>Pending</c>, <c>Confirmed</c>, <c>CheckedIn</c>, <c>CheckedOut</c>, <c>Cancelled</c>), where it came from (<c>Source</c>, with the name the
-/// channel manager gives in <c>ChannelLabel</c> for a portal CasaZen has no value for) and the amounts.
-/// </summary>
 public sealed class MessageBookingCardDto
 {
     public Guid BookingId { get; init; }
@@ -207,7 +192,6 @@ public sealed class MessageBookingCardDto
     };
 }
 
-/// <summary>The link to the profile of the customer: the id of the guest of the booking. The route of the profile is built by the client.</summary>
 public sealed class MessageCustomerDto
 {
     public Guid GuestId { get; init; }
@@ -238,11 +222,6 @@ public sealed class MessageThreadActionsDto
     };
 }
 
-/// <summary>
-/// One conversation with everything the screen shows beside it (<c>GET api/messages/threads/{threadKey}</c>): the latest messages oldest first
-/// (<c>HasEarlierMessages</c> when there are more), the <c>Booking</c> card when the conversation is about a booking CasaZen holds, the <c>Customer</c>
-/// link (absent for a request, which has no booking) and the <c>AllowedActions</c>.
-/// </summary>
 public sealed class MessageThreadDto
 {
     public string ThreadKey { get; init; } = string.Empty;

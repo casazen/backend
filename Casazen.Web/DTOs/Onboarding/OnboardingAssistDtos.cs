@@ -2,9 +2,6 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Web.DTOs.Onboarding;
 
-// The guided steps of the Octorate panel and the «Do it for me» requests (NF-107, NF-15, E10/F01/US03/T01). Codes, ids and instants only:
-// no credential, no nonce, no draft, no person.
-
 /// <summary>
 /// The body of <c>POST api/onboarding/panel-steps</c>: the kind (<c>policeConnection</c>, <c>istatConnection</c>, <c>channelAccess</c>), the
 /// property the step is about (none for the whole org), the channel of a channel access, and the point of the wizard to come back to (the draft is
@@ -18,7 +15,6 @@ public sealed class StartPanelStepDto
 
     public string? ChannelCode { get; set; }
 
-    /// <summary>The wizard the host leaves; the activation when the body names a step or a draft and no wizard.</summary>
     public WizardType? ResumeWizardType { get; set; }
 
     public Guid? ResumeDraftEntityId { get; set; }
@@ -26,13 +22,11 @@ public sealed class StartPanelStepDto
     public string? ResumeStepCode { get; set; }
 }
 
-/// <summary>The body of <c>POST api/onboarding/panel-steps/{id}/callback</c>: the state the panel sent the person back with.</summary>
 public sealed class PanelStepCallbackDto
 {
     public string? State { get; set; }
 }
 
-/// <summary>The point of a wizard a step comes back to: a reference to the draft, never its content.</summary>
 public sealed class PanelStepResumeDto
 {
     public WizardType? WizardType { get; set; }
@@ -66,7 +60,6 @@ public class PanelStepDto
 
     public string InstructionsKey { get; set; } = string.Empty;
 
-    /// <summary>The "To do" that stands for the step while it is open.</summary>
     public Guid? ActivityId { get; set; }
 
     public DateTime? NextCheckAt { get; set; }
@@ -111,7 +104,6 @@ public sealed class CreateAssistRequestDto
     public string? ChannelCode { get; set; }
 }
 
-/// <summary>A «Do it for me» request as the host reads it. <c>status</c>: <c>Requested</c>, <c>InProgress</c>, <c>Done</c>, <c>Cancelled</c>.</summary>
 public sealed class AssistRequestDto
 {
     public Guid Id { get; set; }
@@ -122,10 +114,6 @@ public sealed class AssistRequestDto
 
     public string Context { get; set; } = string.Empty;
 
-    /// <summary>
-    /// The channel of a <c>panelChannelAccess</c> request (the portal code of the catalog): each portal has its own request, so the wizard shows it on
-    /// the row of that portal only. <c>null</c> for every other context.
-    /// </summary>
     public string? ChannelCode { get; set; }
 
     public OnboardingAssistStatus Status { get; set; }
@@ -136,26 +124,17 @@ public sealed class AssistRequestDto
 
     public DateTime? CompletedAt { get; set; }
 
-    /// <summary>The note of CasaZen support: at most 500 characters, no e-mail address.</summary>
     public string? StaffNote { get; set; }
 
-    /// <summary>The "To do" that stands for the request while it is open.</summary>
     public Guid? ActivityId { get; set; }
 
-    /// <summary>
-    /// What «Fatto» recorded (E20/F03/US01/T02): <c>verified</c> («Il collegamento è attivo»: CasaZen read it on the panel) or <c>declared</c> («Il supporto
-    /// dichiara di aver collegato …»: the panel could not be read); <c>null</c> while the request is open or after it was cancelled.
-    /// </summary>
     public string? Outcome { get; set; }
 
-    /// <summary>What the host wrote when it reopened the request («Non funziona»).</summary>
     public string? HostNote { get; set; }
 
-    /// <summary>When the host last reopened the request (UTC).</summary>
     public DateTime? ReopenedAt { get; set; }
 }
 
-/// <summary>The body of <c>PUT api/admin/onboarding/assist-requests/{id}</c>: <c>inProgress</c>, <c>done</c> or <c>cancelled</c>, and an optional note.</summary>
 public sealed class UpdateAssistRequestDto
 {
     public OnboardingAssistStatus? Status { get; set; }
@@ -163,10 +142,6 @@ public sealed class UpdateAssistRequestDto
     public string? Note { get; set; }
 }
 
-/// <summary>
-/// The body of <c>POST api/onboarding/assist-requests/{id}/reopen</c> («Non funziona», E20/F03/US01/T02): what does not work, at most 500 characters, no
-/// e-mail address. Required.
-/// </summary>
 public sealed class ReopenAssistRequestDto
 {
     public string? Note { get; set; }
@@ -183,12 +158,6 @@ public sealed class AdminAssistRequestDetailDto
     public List<AssistChecklistPropertyDto> Checklist { get; set; } = [];
 }
 
-/// <summary>
-/// What support needs for one property of a request, or for the org itself (<c>propertyId</c> <c>null</c>). <c>panelUser</c>: the user of the channel
-/// manager panel of the structure in the support vault. <c>policeCredentials</c>, <c>istatCredentials</c> (with <c>requirement</c>: <c>required</c>,
-/// <c>notRequired</c>, <c>toVerify</c>) and <c>sender</c> are <c>null</c> for the org itself; <c>sender</c> is <c>null</c> too when nothing is stored (the
-/// default applies). <c>steps</c>: the panel steps the request is about.
-/// </summary>
 public sealed class AssistChecklistPropertyDto
 {
     public string? Country { get; set; }
@@ -234,12 +203,6 @@ public sealed class AssistSenderDto
     public bool ActivationDeclared { get; set; }
 }
 
-/// <summary>
-/// One panel step to do: <c>kind</c> (<c>policeConnection</c>, <c>istatConnection</c>, <c>channelAccess</c>), the channel of a channel access,
-/// <c>instructionsKey</c> (the guide the client shows: <c>panelPolice</c>, <c>panelIstat</c>, <c>panelChannelAccess</c>), <c>state</c>
-/// (<c>notStarted</c>, <c>started</c>, <c>verified</c>, <c>confirmed</c>, <c>notValid</c>, <c>assistRequested</c>), what its last check found and when it
-/// was completed.
-/// </summary>
 public sealed class AssistChecklistStepDto
 {
     public string Kind { get; set; } = string.Empty;
@@ -275,7 +238,6 @@ public sealed class AdminAssistRequestDto
 
     public string Context { get; set; } = string.Empty;
 
-    /// <summary>The portal code of a <c>panelChannelAccess</c> request, so support knows which portal to connect; <c>null</c> for every other context.</summary>
     public string? ChannelCode { get; set; }
 
     public OnboardingAssistStatus Status { get; set; }
@@ -294,12 +256,9 @@ public sealed class AdminAssistRequestDto
 
     public Guid? DraftEntityId { get; set; }
 
-    /// <summary>What «Fatto» recorded: <c>verified</c> or <c>declared</c> (E20/F03/US01/T02); <c>null</c> while open or after a cancellation.</summary>
     public string? Outcome { get; set; }
 
-    /// <summary>What the host wrote when it reopened the request («Non funziona»): at most 500 characters, no e-mail address.</summary>
     public string? HostNote { get; set; }
 
-    /// <summary>When the host last reopened the request (UTC).</summary>
     public DateTime? ReopenedAt { get; set; }
 }

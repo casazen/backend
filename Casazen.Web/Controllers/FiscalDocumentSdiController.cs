@@ -106,7 +106,6 @@ public class FiscalDocumentSdiController(
         if (IsOwnerInvoice(document))
             return OwnerInvoiceRefused();
 
-        // A declaration with no kind is the one invalid field the service names (it never guesses what was meant).
         var declaration = new SdiDeclaration(request.Kind ?? default, request.Date, request.Reference, request.ErrorCode, request.ErrorText);
         var state = await sdi.DeclareManuallyAsync(id, declaration, HttpContext.RequestAborted);
         logger.LogInformation("Fiscal document {DocumentId}: SDI state declared by the host ({Kind})", id, declaration.Kind);
@@ -161,7 +160,6 @@ public class FiscalDocumentSdiController(
         return Ok(new SdiIssuersDto(provider.IsConfigured, issuers.Select(i => new SdiIssuerRegistrationDto(i.IssuerProfileId, i.PropertyOwnerId, i.State)).ToList()));
     }
 
-    /// <summary>The document when the caller reaches it: through its booking, or the whole org for a document without a booking (as <see cref="FiscalDocumentsController"/>).</summary>
     private Task<FiscalDocument?> ReachableAsync(Guid id, HostOperationRequirement operation) =>
         FiscalDocumentReach.ReachableAsync(
             User, id, operation, documents, hostResources, authorizationService, orgContextResolver, hostScopeResolver, HttpContext.RequestAborted);

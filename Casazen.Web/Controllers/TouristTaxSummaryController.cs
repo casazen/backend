@@ -47,10 +47,8 @@ public class TouristTaxSummaryController(
     /// <summary>The labels of the files of the year-end exports (E18/F01/US02/T03): the resource files, in the language of the request. The dependency injection always passes them; optional so that what builds the controller for the older actions keeps compiling.</summary>
     private readonly IDocumentTexts _documentTexts = documentTexts ?? new ResxDocumentTexts();
 
-    /// <summary>Code of a <c>by</c> of the account of the agent that is neither <c>month</c> nor <c>quarter</c> (E18/F01/US02/T03).</summary>
     public const string AccountInvalidPeriodCode = "tourist_tax_account_invalid_period";
 
-    /// <summary>The language of the CSV and of the Excel file: Italian, whatever the language the caller asked in.</summary>
     private static readonly CultureInfo ItalianCulture = CultureInfo.GetCultureInfo("it-IT");
 
     /// <summary>
@@ -60,12 +58,6 @@ public class TouristTaxSummaryController(
     /// </summary>
     private const int MaxRequestBytes = (int)TouristTaxRemittanceLimits.MaxReceiptBytes + (64 * 1024);
 
-    /// <summary>
-    /// The tax owed, paid and receipted per comune for the period: for each comune with stays (check-in in the period) or with payments
-    /// (whose period lies inside it), the owed amount (the one recorded on the stays, with the stays that have none counted apart), the
-    /// paid amount, the balance, the status and the payments; and the totals. As JSON, or as a CSV or an Excel file to download. For a caller who reaches only
-    /// some of the properties: only the owed amount of those properties, with <c>paymentsHidden</c> true and the rest null.
-    /// </summary>
     [HttpGet("summary")]
     [ProducesResponseType(typeof(TouristTaxSummaryDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -144,11 +136,6 @@ public class TouristTaxSummaryController(
         }
     }
 
-    /// <summary>
-    /// The account of the agent («conto giudiziale») for the year as a CSV or an Excel file, or, with <c>format=json</c>, as the data itself (<see cref="TouristTaxAgentAccountDto"/>) (E18/F01/US02/T03, acceptance step C9):
-    /// for each comune the tax collected and remitted by <c>by=month</c> (the default) or <c>by=quarter</c>, a line for the year and every payment with its day, period and reference. The format a comune asks
-    /// varies: the file carries every field. Same gate, reach and errors as the declaration; 400 <c>tourist_tax_account_invalid_period</c> for a <c>by</c> that is neither.
-    /// </summary>
     [HttpGet("year-end/{year:int}/agent-account")]
     [FeatureGate(FeatureFlags.TaxReportingExports)]
     [ProducesResponseType(typeof(TouristTaxAgentAccountDto), StatusCodes.Status200OK)]
@@ -188,12 +175,6 @@ public class TouristTaxSummaryController(
         }
     }
 
-    /// <summary>
-    /// The yearly count of the nights per property in Ticino for the year as a CSV or an Excel file, or, with <c>format=json</c>, as the data itself (<see cref="TicinoYearlyCountDto"/>, with <c>cantonUnknownCount</c>, the
-    /// number of the properties whose canton is not known: they stay in the count, flagged <c>cantonUnknown</c>) (E18/F01/US02/T03, acceptance step D3), due by 5 January of the next year: the stays and the nights
-    /// of the year, the taxed and untaxed ones by their documents, those with no document issued yet (told apart) and the tourist tax of the documents in francs. Same gate, reach and errors as the
-    /// declaration.
-    /// </summary>
     [HttpGet("year-end/{year:int}/ticino")]
     [FeatureGate(FeatureFlags.TaxReportingExports)]
     [ProducesResponseType(typeof(TicinoYearlyCountDto), StatusCodes.Status200OK)]
@@ -251,7 +232,6 @@ public class TouristTaxSummaryController(
         if (!TouristTaxSummaryRules.TryParseAmount(form.PaidAmount, out var amount))
             return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, TouristTaxErrorCodes.AmountInvalid, "TouristTaxAmountInvalid");
 
-        // No file chosen is an empty part with no name (a plain HTML form); an empty file that has a name is a receipt, and an invalid one.
         var file = form.Receipt is { } sent && !(sent.Length == 0 && string.IsNullOrEmpty(sent.FileName)) ? sent : null;
         var request = new RecordRemittanceRequest(
             form.Comune ?? string.Empty,
@@ -315,16 +295,11 @@ public class TouristTaxSummaryController(
         return NoContent();
     }
 
-    /// <summary>
-    /// The format of a year-end read (E18/F01/US02/T03, FIX/BE-YEAREND-JSON): <c>csv</c> or <c>xlsx</c> for the files and <c>json</c> for the data a screen shows. The format has to be named: a request that names none is
-    /// refused as it always was, so the default has not changed and no current client changes. 400 <c>report_invalid_format</c> for none or anything else, before anything is read.
-    /// </summary>
     private ObjectResult? YearEndFormat(string? format, out ReportFormat fileFormat)
     {
         if (this.CheckFormat(format, out fileFormat) is { } problem)
             return problem;
 
-        // CheckFormat takes a blank format for the JSON default of the other reports; the year-end reads have none.
         return string.IsNullOrWhiteSpace(format)
             ? this.ApiProblem(StatusCodes.Status400BadRequest, ReportRequestChecks.InvalidFormatCode, "ReportInvalidFormat")
             : null;
@@ -347,10 +322,6 @@ public class TouristTaxSummaryController(
         return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
     }
 
-    /// <summary>
-    /// The words the CSV takes from the resources, read in Italian: the file is Italian (title, header, statuses) whatever the language the
-    /// caller asked in, so a file for the accountant never mixes two languages. The language is set for these two lookups only.
-    /// </summary>
     private TouristTaxCsvTexts CsvTexts()
     {
         var previous = CultureInfo.CurrentUICulture;

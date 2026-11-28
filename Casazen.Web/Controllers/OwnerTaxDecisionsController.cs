@@ -27,10 +27,6 @@ public class OwnerTaxDecisionsController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
-    /// <summary>
-    /// The stays of a company tenant in the Italian property of a private owner inside the reach of the caller, with the decision in force, the most recent check-out first (at
-    /// most 200). <c>state</c> keeps only the ones still <c>Pending</c> or only the ones <c>Decided</c>.
-    /// </summary>
     [HttpGet("api/owner-tax-decisions")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialRead)]
     [ProducesResponseType(typeof(IReadOnlyList<CompanyTenantCase>), StatusCodes.Status200OK)]
@@ -65,10 +61,6 @@ public class OwnerTaxDecisionsController(
         return Ok(ShortLetTaxDecisionDto.From(decision));
     }
 
-    /// <summary>
-    /// The limit of units of an owner today: the apartments the agency manages for it, the ones it declared outside the agency, the limit and whether a private person is past it
-    /// (presumed a business). 404 <c>owner_not_found</c> (also an owner outside the reach).
-    /// </summary>
     [HttpGet("api/owners/{ownerId:guid}/tax-checks")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerView)]
     [ProducesResponseType(typeof(OwnerUnitsCheckDto), StatusCodes.Status200OK)]
@@ -82,10 +74,6 @@ public class OwnerTaxDecisionsController(
         return Ok(OwnerUnitsCheckDto.From(await checks.GetUnitsCheckAsync(scope, ownerId, HttpContext.RequestAborted)));
     }
 
-    /// <summary>
-    /// Saves how many apartments the owner lets short outside the agency (<c>{ units }</c>, 0 to 1000, required) and answers the new check. 404 <c>owner_not_found</c>; 422
-    /// <c>owner_external_units_invalid</c> (with the <c>field</c>).
-    /// </summary>
     [HttpPut("api/owners/{ownerId:guid}/external-short-let-units")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
     [ProducesResponseType(typeof(OwnerUnitsCheckDto), StatusCodes.Status200OK)]
@@ -102,7 +90,6 @@ public class OwnerTaxDecisionsController(
         return Ok(OwnerUnitsCheckDto.From(check));
     }
 
-    /// <summary>The caller's reach on its org; <c>null</c> without an org or a reach (never widened to the whole org).</summary>
     private async Task<HostScope?> ScopeAsync()
     {
         var ct = HttpContext.RequestAborted;

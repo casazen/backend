@@ -21,11 +21,6 @@ public class IndexNowController(IOptions<IndexNowOptions> options, ILogger<Index
 {
     private readonly IndexNowOptions _options = options.Value;
 
-    /// <summary>
-    /// Queue URLs for IndexNow submission. Called internally when org or property content changes.
-    /// </summary>
-    /// <param name="request">URLs to notify search engines about.</param>
-    /// <param name="cancellationToken">Cancels the operation.</param>
     [HttpPost("api/indexnow/notify")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -53,20 +48,12 @@ public class IndexNowController(IOptions<IndexNowOptions> options, ILogger<Index
     }
 }
 
-/// <summary>Configuration for IndexNow notifications.</summary>
 public sealed class IndexNowOptions
 {
-    /// <summary>
-    /// The API key for IndexNow verification. Must be published at the root of the public site
-    /// (e.g., https://example.com/{ApiKey}.txt containing the key).
-    /// </summary>
     public string ApiKey { get; set; } = string.Empty;
 
-    /// <summary>The IndexNow submission endpoint (defaults to Bing's endpoint which forwards to other engines).</summary>
     public string SubmitUrl { get; set; } = "https://api.indexnow.org/indexnow";
 }
 
-/// <summary>Request to notify search engines about URL changes via IndexNow.</summary>
-/// <param name="UrlList">The URLs that changed (published, updated, or deleted).</param>
 public sealed record IndexNowRequest(
     [property: Required, MinLength(1), MaxLength(10000)] List<string> UrlList);

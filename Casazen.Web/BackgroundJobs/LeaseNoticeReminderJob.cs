@@ -46,10 +46,8 @@ public class LeaseNoticeReminderJob(
 {
     public const string RecurringJobId = "lease-notice-reminder";
 
-    /// <summary>Every day at 08:30 UTC (09:30 or 10:30 in Italy), after the hourly renewal of the leases, which runs at minute 15.</summary>
     public const string Cron = "30 8 * * *";
 
-    /// <summary>Leases reminded at most in one run, the nearest last day first; the next run takes the rest.</summary>
     public const int MaxLeasesPerRun = 500;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -79,12 +77,10 @@ public class LeaseNoticeReminderJob(
             }
             catch (Exception ex)
             {
-                // One lease that fails (the database, the provider) must not stop the ones behind it; the next run tries it again.
                 logger.LogError(ex, "Failed lease notice reminder for LeaseId={LeaseId}", leaseId);
             }
             finally
             {
-                // Nothing of one lease stays tracked for the next, and an event that could not be saved is not saved again with it.
                 db.ChangeTracker.Clear();
             }
         }
@@ -93,10 +89,6 @@ public class LeaseNoticeReminderJob(
             logger.LogInformation("Lease notice reminders: {Leases} leases due, {Emails} emails sent", due.Count, emails);
     }
 
-    /// <summary>
-    /// The leases that can still give notice (registered and not ended, no notice, not ended early, parties not anonymized), read across
-    /// every org: the job has no tenant, on purpose.
-    /// </summary>
     private IQueryable<LeaseContract> LeasesThatCanGiveNotice(DateOnly today) =>
         db.LeaseContracts
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -104,10 +96,6 @@ public class LeaseNoticeReminderJob(
             .Where(LeaseListViews.Predicate(LeaseListView.Active, today.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc)))
             .Where(l => l.NoticeOn == null && l.TerminatedOn == null && l.PartiesAnonymizedAt == null);
 
-    /// <summary>
-    /// The ids of the leases whose last day to give notice is within the first threshold, the nearest day first. A few scalars per lease;
-    /// the last day comes from <see cref="LongRentDeadlineRules.NoticeDate(LeaseContractType, DateTime)"/>, which also tells the types that have none.
-    /// </summary>
     private async Task<List<Guid>> DueLeaseIdsAsync(DateOnly today)
     {
         var leases = await LeasesThatCanGiveNotice(today)
@@ -162,7 +150,6 @@ public class LeaseNoticeReminderJob(
             if (recorded.Contains(landlordPayload))
                 continue;
 
-            // Already inside a Hangfire job: sent directly, not through the queue (FD-13).
             content ??= EmailTemplates.LeaseNoticeReminder(
                 EmailTemplates.DefaultCulture,
                 lease.Property?.Name ?? string.Empty,
@@ -173,7 +160,6 @@ public class LeaseNoticeReminderJob(
             var result = await emailService.SendEmailAsync(landlord.ContactEmail.Trim(), content.Subject, content.HtmlBody);
             if (!result.Success)
             {
-                // Not recorded: the same threshold is tried again for this landlord at the next run.
                 logger.LogWarning(
                     "Lease notice reminder {Threshold} for LeaseId={LeaseId} PartyId={PartyId} not sent: {ErrorDetail}",
                     threshold,
@@ -203,20 +189,12 @@ public class LeaseNoticeReminderJob(
         return sent;
     }
 
-    /// <summary>
-    /// Reminder thresholds of the last day to give notice: 30 days before, 7 days before and the day itself. Product choice, not a
-    /// regulatory value (the figures asked for LR-11c-a; the brief of LR-11c recommends 7 days and the day itself).
-    /// </summary>
     public static class Thresholds
     {
         public const string Days30 = "notice-t-30";
         public const string Days7 = "notice-t-7";
         public const string LastDay = "notice-t-0";
 
-        /// <summary>
-        /// The most urgent threshold reached with <paramref name="daysRemaining"/> days to the last day: the day itself at 0, up to 7, up to
-        /// 30; <c>null</c> earlier, and <c>null</c> once the day has passed (nothing is sent after it).
-        /// </summary>
         public static string? Reached(int daysRemaining) => daysRemaining switch
         {
             < 0 => null,
@@ -226,7 +204,6 @@ public class LeaseNoticeReminderJob(
             _ => null,
         };
 
-        /// <summary>Event payload of a threshold sent for <paramref name="lastDay"/>, before the landlord: <c>notice-t-30:2027-04-15</c>.</summary>
         public static string Payload(string threshold, DateOnly lastDay) =>
             $"{threshold}:{lastDay.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}";
     }

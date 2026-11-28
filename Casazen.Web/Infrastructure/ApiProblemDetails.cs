@@ -25,11 +25,9 @@ public static class ApiProblemDetails
     public const string CodeExtension = "code";
     public const string TraceIdExtension = "traceId";
 
-    // English titles set by ASP.NET Core defaults; replaced by the localized title.
     private const string FrameworkValidationTitle = "One or more validation errors occurred.";
     private const string FrameworkServerErrorTitle = "An error occurred while processing your request.";
 
-    // No generic detail: the client shows the field "errors" when "detail" is empty.
     private static readonly StatusTexts ValidationTexts = new(
         "ValidationError", null, "https://tools.ietf.org/html/rfc9110#section-15.5.1");
 
@@ -51,7 +49,6 @@ public static class ApiProblemDetails
     private static readonly StatusTexts OtherClientErrorTexts = new("RequestFailed", "RequestFailedDetail", null);
     private static readonly StatusTexts OtherServerErrorTexts = new("InternalServerError", "InternalServerErrorDetail", null);
 
-    /// <summary>Trace id written in the response and in the error log.</summary>
     public static string GetTraceId(HttpContext httpContext) => Activity.Current?.Id ?? httpContext.TraceIdentifier;
 
     /// <summary>

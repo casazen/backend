@@ -20,43 +20,31 @@ public class UpdateBookingRequest : IValidatableObject
     [Required]
     public DateTime? CheckOutDate { get; set; }
 
-    /// <summary>All guests, minors included.</summary>
     [Range(1, 100)]
     public int NumberOfGuests { get; set; }
 
-    /// <summary>Minors among <see cref="NumberOfGuests"/>.</summary>
     [Range(0, 99)]
     public int NumberOfChildren { get; set; }
 
-    /// <summary>Age of each minor at check-in (0-17), asked when the tourist tax of the comune depends on it.</summary>
     public List<int>? ChildrenAges { get; set; }
 
     [MaxLength(1000)]
     public string? SpecialRequests { get; set; }
 
-    /// <summary>Read-only: the commission of the channel. A value other than the stored one is refused (422 <c>ota_amounts_readonly</c>).</summary>
     public decimal? OtaCommission { get; set; }
 
-    /// <summary>Read-only: the net of the channel. A value other than the stored one is refused (422 <c>ota_amounts_readonly</c>).</summary>
     public decimal? OtaNetAmount { get; set; }
 
-    /// <summary>Read-only: what the guest paid on the channel. A value other than the stored one is refused (422 <c>ota_amounts_readonly</c>).</summary>
     public decimal? OtaPaidAmount { get; set; }
 
-    /// <summary>Read-only: the balance of the channel. A value other than the stored one is refused (422 <c>ota_amounts_readonly</c>).</summary>
     public decimal? OtaBalanceAmount { get; set; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) =>
         BookingGuestsValidation.Validate(validationContext, NumberOfGuests, NumberOfChildren, ChildrenAges);
 }
 
-/// <summary>
-/// Answer of <c>PUT /api/bookings/{id}</c> (E08/F02/US01/T01, NF-75): the booking as the edit left it, and what happened to the money
-/// (<see cref="Settlement"/>). A booking whose price did not change, or that is not one of the booking site, answers the action <c>none</c>.
-/// </summary>
 public sealed class UpdateBookingResponse : BookingResponseDto
 {
-    /// <summary>What the edit did with the difference between the new price and what the guest had paid.</summary>
     public BookingEditSettlementDto Settlement { get; set; } = BookingEditSettlementDto.From(BookingEditSettlement.NotNeeded("EUR"));
 }
 
@@ -96,7 +84,6 @@ public sealed class BookingEditSettlementDto
         };
     }
 
-    /// <summary>The name of an action in the API: <c>refund</c>, <c>chargeSavedCard</c>, <c>paymentLink</c>, <c>none</c>.</summary>
     internal static string ActionName(BookingSettlementAction action) => action switch
     {
         BookingSettlementAction.Refund => "refund",
@@ -106,10 +93,6 @@ public sealed class BookingEditSettlementDto
     };
 }
 
-/// <summary>
-/// Answer of <c>POST /api/bookings/{id}/edit-quote</c> (E08/F02/US01/T01, NF-75): what the edit would do with the money, worked out and not done. The
-/// host reads it before confirming. <c>difference</c> is <c>newTotal</c> minus <c>paidSoFar</c>.
-/// </summary>
 public sealed class BookingEditQuoteDto
 {
     public string Currency { get; init; } = "EUR";
@@ -122,13 +105,10 @@ public sealed class BookingEditQuoteDto
 
     public decimal Difference { get; init; }
 
-    /// <summary><c>refund</c>, <c>chargeSavedCard</c>, <c>paymentLink</c> or <c>none</c>.</summary>
     public string Action { get; init; } = "none";
 
-    /// <summary>The money that moves online (the refund, the charge or the payment link); zero for <c>none</c>.</summary>
     public decimal Amount { get; init; }
 
-    /// <summary>The part of an overpayment that cannot go back online: the host gives it back.</summary>
     public decimal OfflineRefundDue { get; init; }
 
     public static BookingEditQuoteDto From(BookingEditQuote quote)
@@ -149,10 +129,6 @@ public sealed class BookingEditQuoteDto
     }
 }
 
-/// <summary>
-/// Body of <c>POST /api/bookings/quote</c>: price of a stay the host is entering or changing, with the tourist tax of
-/// BK-03 (same answer as the public quote, for any property of the host, listed or not).
-/// </summary>
 public class HostBookingQuoteRequest : IValidatableObject
 {
     [Required]
@@ -164,25 +140,18 @@ public class HostBookingQuoteRequest : IValidatableObject
     [Required]
     public DateTime? CheckOutDate { get; set; }
 
-    /// <summary>All guests, minors included.</summary>
     [Range(1, 100)]
     public int NumberOfGuests { get; set; }
 
-    /// <summary>Minors among <see cref="NumberOfGuests"/>.</summary>
     [Range(0, 99)]
     public int NumberOfChildren { get; set; }
 
-    /// <summary>Age of each minor at check-in (0-17).</summary>
     public List<int>? ChildrenAges { get; set; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) =>
         BookingGuestsValidation.Validate(validationContext, NumberOfGuests, NumberOfChildren, ChildrenAges);
 }
 
-/// <summary>
-/// Guests of a host booking: at least one adult (minors fewer than the guests) and, when given, one age of 0-17 per
-/// minor (message keys <c>BookingGuestsInvalid</c>, <c>TouristTaxChildAgesInvalid</c>).
-/// </summary>
 public static class BookingGuestsValidation
 {
     public static IEnumerable<ValidationResult> Validate(
@@ -215,15 +184,7 @@ public sealed class ArrivalRegisteredResponse : BookingResponseDto
     public bool GuestDataComplete { get; set; }
 }
 
-/// <summary>
-/// Optional body of <c>POST /api/bookings/{id}/check-out</c> and <c>POST /api/bookings/{id}/checkout-wizard/start</c>
-/// (CO-08). No body is the same as <c>registerArrival: false</c>.
-/// </summary>
 public sealed class StayCheckOutRequest
 {
-    /// <summary>
-    /// The host confirms that the guest arrived: a confirmed booking whose arrival was never registered is checked in
-    /// first ("registra arrivo e procedi"). Without it such a booking answers 409 <c>booking_arrival_not_registered</c>.
-    /// </summary>
     public bool RegisterArrival { get; set; }
 }

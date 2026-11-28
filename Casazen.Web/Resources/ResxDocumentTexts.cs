@@ -4,11 +4,6 @@ using Casazen.Core.Documents;
 
 namespace Casazen.Web.Resources;
 
-/// <summary>
-/// <see cref="IDocumentTexts"/> over <c>SharedResources.resx</c> (Italian, the default) and <c>SharedResources.en.resx</c> (English): the label of
-/// a key in the language the caller names. English falls back to the Italian text of the same key if a key has no English one; a key that
-/// exists in neither is returned as it is.
-/// </summary>
 public sealed class ResxDocumentTexts : IDocumentTexts
 {
     private static readonly ResourceManager Manager = new(typeof(SharedResources).FullName!, typeof(SharedResources).Assembly);

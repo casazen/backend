@@ -14,7 +14,6 @@ public class SupplierShowcaseMediaCleanupJob(ISupplierShowcaseMediaService media
 {
     public const string RecurringJobId = "supplier-showcase-media-cleanup";
 
-    /// <summary>Every day at 04:20 UTC (after the retention jobs of 03:xx).</summary>
     public const string Cron = "20 4 * * *";
 
     [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]

@@ -3,10 +3,6 @@ using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
 
-/// <summary>
-/// Monthly delta of already profiled comuni against the MEF <c>nuova_at</c> CSV (1st of the month, 05:00 UTC).
-/// Does not replace <see cref="OfficialReferenceDataRefreshJob"/> or <see cref="FiscalRatesUpdateJob"/>.
-/// </summary>
 public class ComuneOfficialProfileRefreshJob(IComuneOfficialProfileService profiles)
 {
     public const string RecurringJobId = "comune-official-profile-refresh";

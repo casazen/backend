@@ -1,52 +1,23 @@
 namespace Casazen.Web.Infrastructure;
 
-/// <summary>
-/// Names of the rate limiting policies of the anonymous endpoints (<c>[EnableRateLimiting(...)]</c>). Every policy is
-/// partitioned by client IP (<see cref="ClientIp.GetRateLimitKey"/>); the guest check-in policies also by token, and
-/// <see cref="OrgAccessRequest"/> and <see cref="GlobalSearch"/>, the ones of signed-in endpoints, by person.
-/// Limits and windows come from configuration: see
-/// <see cref="Extensions.RateLimitingServiceCollectionExtensions"/> and <c>docs/runbooks/proxy-ip.md</c>.
-/// </summary>
 public static class RateLimitPolicies
 {
     public const string StorefrontChatRead = "storefront-chat-read";
     public const string StorefrontChatWrite = "storefront-chat-write";
-    /// <summary>Anonymous catalogue reads: public org, its properties, property search/detail, availability, supplier showcase.</summary>
     public const string PublicRead = "PublicRead";
 
-    /// <summary>Direct booking creation (<c>POST api/public/bookings</c>).</summary>
     public const string PublicBookingCreate = "PublicBookingCreate";
 
-    /// <summary>Checkout outcome polling, payment resume and email confirmation of the public checkout, separate from creation.</summary>
     public const string PublicBookingLookup = "PublicBookingLookup";
 
-    /// <summary>
-    /// "Le mie prenotazioni": booking code + email lookup and check-in link resend (BK-11). Tighter than
-    /// <see cref="PublicBookingLookup"/> and paired with a per-email limit (<see cref="GuestBookingEmailRateLimiter"/>).
-    /// </summary>
     public const string PublicGuestBookingLookup = "PublicGuestBookingLookup";
 
-    /// <summary>
-    /// Opening a guest session (<c>POST api/public/guest/session</c>, DB-06a): the same proof as <see cref="PublicGuestBookingLookup"/>
-    /// (booking code + email), so the same default (10 per 5 minutes per client IP), with a budget of its own. Paired with the per-email
-    /// limit of "Le mie prenotazioni" (<see cref="GuestBookingEmailRateLimiter"/>, shared with the lookup) and a per-code limit
-    /// (<see cref="GuestSessionCodeRateLimiter"/>). Reading the booking with the token uses <see cref="PublicBookingLookup"/>.
-    /// </summary>
     public const string PublicGuestSession = "PublicGuestSession";
 
-    /// <summary>
-    /// The guest cancelling a booking (<c>POST api/public/guest/bookings/{code}/cancel</c> from the guest area and
-    /// <c>POST api/public/bookings/{id}/cancel?token=</c> with the host's link, DB-08a): it moves money and frees the dates, so it is
-    /// tight (10 per 10 minutes per client IP) and paired with a limit per booking (<see cref="GuestBookingCancelRateLimiter"/>, 5 per
-    /// 15 minutes). The cancel link used <see cref="GuestCheckIn"/> before, which partitions by a <c>{token}</c> route value that the
-    /// cancel route does not have (its token is in the query), so it counted by IP alone. The previews use <see cref="PublicBookingLookup"/>.
-    /// </summary>
     public const string GuestBookingCancel = "GuestBookingCancel";
 
-    /// <summary>Guest check-in form reads (partitioned by IP and token hash).</summary>
     public const string GuestCheckIn = "GuestCheckIn";
 
-    /// <summary>Guest check-in submission (partitioned by IP and token hash).</summary>
     public const string GuestCheckInSubmit = "GuestCheckInSubmit";
 
     /// <summary>
@@ -57,76 +28,32 @@ public static class RateLimitPolicies
     /// </summary>
     public const string GuestIdentity = "GuestIdentity";
 
-    /// <summary>
-    /// The upload of a presence sequence (<c>POST api/public/checkin/{token}/presence</c>, ADR-013-R17): each call carries up to
-    /// <c>IdentityVerification:Presence:MaxSequenceBytes</c> of frames and runs the models in the request, so it is the tightest of the identity limits: 6 a minute
-    /// for each client IP and token, partitioned like <see cref="GuestCheckIn"/>. The picture of a document (<c>POST api/public/checkin/{token}/document</c>, E71/F01/US03/T01) takes
-    /// the same budget, whatever the flags: it runs the geometry of the card and the OCR of its zones in the request too.
-    /// </summary>
     public const string GuestIdentityUpload = "GuestIdentityUpload";
 
-    /// <summary>
-    /// The guest at the door (<c>POST api/public/checkin/door/{doorToken}</c>, E22/F01/US02/T01): a booking code (or a surname) and a date open the check-in link of a stay, so it is the tightest
-    /// of the check-in limits: 5 a minute for each client IP and door token (the partition holds a hash of the <c>{doorToken}</c> of the route, never the token itself).
-    /// </summary>
     public const string PublicDoorCheckIn = "PublicDoorCheckIn";
 
-    /// <summary>Public tourist tax calculator.</summary>
     public const string PublicTouristTaxCalc = "PublicTouristTaxCalc";
 
-    /// <summary>Events of the SEO funnel (<c>POST api/public/seo/events</c>, SE-04): one per CTA click or signup start.</summary>
     public const string PublicSeoEvents = "PublicSeoEvents";
 
-    /// <summary>Host → tenant resolution for custom domains and subdomains.</summary>
     public const string PublicResolveHost = "PublicResolveHost";
 
-    /// <summary>Public iCal export feeds polled by the OTAs.</summary>
     public const string PublicIcal = "PublicIcal";
 
-    /// <summary>Anonymous sign-ups (<c>api/suppliers/register</c>).</summary>
     public const string PublicRegistration = "PublicRegistration";
 
-    /// <summary>Search of the official comuni list for the pickers (<c>api/comuni</c>, SU-04): one request per pause in typing.</summary>
     public const string PublicComuni = "PublicComuni";
 
-    /// <summary>
-    /// The search of a booking site and its calendar (<c>GET api/public/orgs/{slug}/stays</c> and <c>…/calendar</c>, DB-07a): the heaviest
-    /// anonymous reads, each prices every house of the site for the dates (the answer is kept a few seconds), so they have a limit of their own,
-    /// tighter than <see cref="PublicRead"/>.
-    /// </summary>
     public const string PublicStaySearch = "PublicStaySearch";
 
-    /// <summary>
-    /// Free slots of a supplier's service (<c>GET api/public/suppliers/{slug}/slots</c>, SP-09): each read runs the slot planner
-    /// (cached 30 seconds per service), so it has a limit of its own, tighter than <see cref="PublicRead"/>.
-    /// </summary>
     public const string PublicSupplierSlots = "PublicSupplierSlots";
 
-    /// <summary>
-    /// Price estimate of a supplier's service (<c>POST api/public/suppliers/{slug}/quote</c>, SP-09): the form asks again at
-    /// every change of an option, and every call may look up the comune, so it has a limit of its own.
-    /// </summary>
     public const string PublicSupplierQuote = "PublicSupplierQuote";
 
-    /// <summary>
-    /// Booking of a supplier from its public showcase (<c>POST api/public/suppliers/{slug}/bookings</c>, SP-10): each call holds a
-    /// slot of the supplier's agenda for the minutes of the e-mail check, so it is the tightest of the public limits (5 per 10
-    /// minutes per client IP), and it is paired with a limit per e-mail address and supplier (<see cref="SupplierBookingEmailRateLimiter"/>,
-    /// 3 per hour). The check of the e-mail itself uses <see cref="PublicBookingLookup"/>.
-    /// </summary>
     public const string PublicSupplierBookingCreate = "PublicSupplierBookingCreate";
 
-    /// <summary>
-    /// The guest's review of a stay (<c>POST api/public/bookings/{id}/review</c>, DB-12a): the only anonymous call that publishes text
-    /// on a public page, so it is tight (10 per 10 minutes per client IP). Opening the review link uses <see cref="PublicBookingLookup"/>.
-    /// </summary>
     public const string PublicReviewSubmit = "PublicReviewSubmit";
 
-    /// <summary>
-    /// The guest writing to the host (<c>POST api/public/guest/bookings/{code}/messages</c>, DB-14a): free text that ends in an email to
-    /// the host, so it is bounded per client IP (30 per 10 minutes) and, with <see cref="GuestMessageSessionRateLimiter"/>, per guest
-    /// session and booking (20 per hour). Reading the thread uses <see cref="PublicBookingLookup"/>.
-    /// </summary>
     public const string GuestMessageSend = "GuestMessageSend";
 
     /// <summary>
@@ -135,18 +62,8 @@ public static class RateLimitPolicies
     /// </summary>
     public const string HostMessageSend = "HostMessageSend";
 
-    /// <summary>
-    /// A visitor of the booking site writing to the host (<c>POST api/public/orgs/{slug}/contact</c>, DB-03b): anonymous free text that ends
-    /// in an email to somebody else, so it is the tightest of the public limits together with the bookings (5 per 10 minutes per client IP),
-    /// paired with a limit per address and org (<see cref="HostContactEmailRateLimiter"/>, 3 per day).
-    /// </summary>
     public const string PublicContact = "PublicContact";
 
-    /// <summary>
-    /// What an org invitation link is for (<c>POST api/org-invitations/lookup</c>, AM-02): anonymous, a token in the body.
-    /// Tighter than <see cref="PublicRead"/>: a page asks once, and the token is 256 random bits, so nobody has a reason
-    /// to ask often.
-    /// </summary>
     public const string PublicInvitationLookup = "PublicInvitationLookup";
 
     /// <summary>
@@ -200,26 +117,10 @@ public static class RateLimitPolicies
     /// </summary>
     public const string SupplierShowcaseSave = "SupplierShowcaseSave";
 
-    /// <summary>
-    /// The upload and the removal of the images of the showcase (<c>POST</c> and <c>DELETE api/supplier/showcase/media</c>, SP-13b). A policy of a
-    /// signed-in endpoint, partitioned by <b>person</b> like <see cref="SupplierShowcaseSave"/>: each upload reads a file of up to 10 MB, checks it,
-    /// rewrites it and stores it, so it has a limit of its own. A full gallery is 24 photos, a logo and a cover: 40 in ten minutes leave room for
-    /// trying a few more, and no more than a script could waste.
-    /// </summary>
     public const string SupplierShowcaseMedia = "SupplierShowcaseMedia";
 
-    /// <summary>
-    /// The reads of the signed-in guest of the mobile app (<c>GET api/guest/bookings</c> and <c>GET api/guest/bookings/{id}</c>): the list of
-    /// the account's bookings across the booking sites and one of them. A policy of a signed-in endpoint, partitioned by <b>person</b> like
-    /// <see cref="GlobalSearch"/>: the app reads on opening a screen and on a pull to refresh, and the people of one network share an address.
-    /// </summary>
     public const string GuestAccountRead = "GuestAccountRead";
 
-    /// <summary>
-    /// Opening a guest-area session for a booking of the account (<c>POST api/guest/bookings/{id}/session</c>): it mints the token that opens
-    /// the cancellation and the messages of the booking. Partitioned by <b>person</b>; the app opens one when the guest enters those screens and
-    /// keeps it until it ends (2 hours by default), so a handful in ten minutes is plenty.
-    /// </summary>
     public const string GuestAccountSession = "GuestAccountSession";
 
     /// <summary>
@@ -238,37 +139,14 @@ public static class RateLimitPolicies
     /// </summary>
     public const string PublicMarketingConsent = "PublicMarketingConsent";
 
-    /// <summary>
-    /// The simulator of the assistant (<c>POST api/assistant/simulate</c>, E05/F05/US02/T01): each call asks the AI provider twice and spends the budget of the platform, so it is
-    /// partitioned by <b>person</b> and bounded at 20 an hour, on top of the per-user and per-org limits of the AI endpoints.
-    /// </summary>
     public const string AssistantSimulate = "AssistantSimulate";
 
-    /// <summary>
-    /// The reads and the light calls of the owner portal operations (<c>api/owner-portal/…</c>, <c>api/owner-contacts/accept</c> and, for the agency,
-    /// <c>api/owner-stays</c> and <c>api/owner-collaboration</c>, E07/F07/US01): the default of those controllers. A policy of a signed-in endpoint,
-    /// partitioned by <b>person</b>: the owners are people outside the organization, and the people of one network share an address.
-    /// </summary>
     public const string OwnerPortalRead = "OwnerPortalRead";
 
-    /// <summary>
-    /// The invitation of a delegated contact by an owner (<c>POST api/owner-portal/contacts</c>): each call sends an e-mail to an address and with names the
-    /// owner chose, so it is tight and partitioned by <b>person</b>; next to it a cap of invitations a day counts the ones withdrawn too
-    /// (<c>OwnerCollaborationRules.MaxContactInvitationsPerDay</c>).
-    /// </summary>
     public const string OwnerPortalInvite = "OwnerPortalInvite";
 
-    /// <summary>
-    /// What writes in the owner portal: opening a conversation and writing a message with its file (<c>POST api/owner-portal/conversations[/{id}/messages]</c>
-    /// and the same of the agency), sharing a document or a new version of it (<c>POST api/owner-collaboration/documents[/{id}/versions]</c>). Each call can read a
-    /// file of up to 10 MB, scans it and stores it, and ends in an e-mail to the other side. Partitioned by <b>person</b>.
-    /// </summary>
     public const string OwnerPortalWrite = "OwnerPortalWrite";
 
-    /// <summary>
-    /// The download of the files of the owner portal (the file of a document, the attachment of a message, for the owner and for the agency): each call writes a
-    /// line of the download audit of the document and streams a file of up to 10 MB. Partitioned by <b>person</b>.
-    /// </summary>
     public const string OwnerPortalDownload = "OwnerPortalDownload";
 
     /// <summary>
@@ -278,11 +156,6 @@ public static class RateLimitPolicies
     /// </summary>
     public const string PublicFiscalDocumentDownload = "PublicFiscalDocumentDownload";
 
-    /// <summary>
-    /// The link of the package that the accountant got by e-mail (<c>GET api/public/accountant-package/{orgId}/{period}</c>, E15/F01/US02/T02): anonymous, the signature in the address, and every link that does not
-    /// open answers the same 404. Per client IP, like the other anonymous policies; each valid call streams a ZIP of up to tens of MB, and an accountant opens its link a few times, so 20 in ten minutes leave
-    /// room for that and for the people of one office behind one address, and no more than a script could waste.
-    /// </summary>
     public const string PublicAccountantPackage = "PublicAccountantPackage";
 
     /// <summary>
@@ -300,10 +173,6 @@ public static class RateLimitPolicies
     /// </summary>
     public const string GuestPortal = "GuestPortal";
 
-    /// <summary>
-    /// What the guest writes in the portal (the later epics put it on their writing endpoints): 30 a minute for each client IP and token, partitioned
-    /// like <see cref="GuestPortal"/>.
-    /// </summary>
     public const string GuestPortalWrite = "GuestPortalWrite";
 
     /// <summary>
@@ -319,10 +188,6 @@ public static class RateLimitPolicies
     /// </summary>
     public const string SiteConnectAuthorize = "SiteConnectAuthorize";
 
-    /// <summary>
-    /// The plugin exchanges its code for a credential (<c>POST api/public/site-connections/token</c>, S022): anonymous, the code and the verifier in the body,
-    /// one answer for every code that does not open. Per client IP like the other anonymous policies: twenty in ten minutes.
-    /// </summary>
     public const string SiteConnectToken = "SiteConnectToken";
 
     /// <summary>
@@ -331,9 +196,5 @@ public static class RateLimitPolicies
     /// </summary>
     public const string SiteApi = "SiteApi";
 
-    /// <summary>
-    /// The check of the agency's domain by the plugin (<c>POST api/site/v1/domain/verify</c>, S023, site integration plan §10.4): each call asks DNS and the Vercel Domains API,
-    /// so it has a budget of its own on top of <see cref="SiteApi"/> and it is tight: 20 in ten minutes. Partitioned by <b>credential</b> like <see cref="SiteApi"/>.
-    /// </summary>
     public const string SiteDomainVerify = "SiteDomainVerify";
 }

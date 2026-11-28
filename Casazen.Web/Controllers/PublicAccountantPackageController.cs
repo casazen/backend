@@ -30,10 +30,6 @@ namespace Casazen.Web.Controllers;
 [PrivateAnswer]
 public class PublicAccountantPackageController(IAccountantPackageDeliveryService delivery) : ControllerBase
 {
-    /// <summary>
-    /// The ZIP of the package, <c>application/zip</c>, <c>casazen-commercialista-{period}.zip</c>. 404 <c>accountant_package_link_invalid</c> for every link that does not open it. <paramref name="orgId"/> is
-    /// read here and not by the router, so a malformed one is the same answer as any other link that does not open.
-    /// </summary>
     [HttpGet("{orgId}/{period}")]
     [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

@@ -15,7 +15,6 @@ public class PropertyModeChangeJob(IPropertyModeService propertyModeService)
 {
     public const string RecurringJobId = "property-mode-change";
 
-    /// <summary>Every hour, at minute 0 UTC (the same as <c>Hangfire.Cron.Hourly()</c>, <c>stay-alerts</c>): midnight of Rome is minute 0 of 22:00 or 23:00 UTC.</summary>
     public const string Cron = "0 * * * *";
 
     // Idempotent on its own (a change leaves "Scheduled" in the transaction of its effect, under the property lock), and one

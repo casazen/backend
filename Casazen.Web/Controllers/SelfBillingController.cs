@@ -58,7 +58,6 @@ public class SelfBillingController(
         return Ok(rows.Select(SelfBillingListItemDto.From).ToList());
     }
 
-    /// <summary>One TD17 with its lines (one for each property). 404 <c>fiscal_document_not_found</c> for a document of another org or one that is not a TD17.</summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(SelfBillingDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -71,12 +70,6 @@ public class SelfBillingController(
         return Ok(SelfBillingDto.From(await selfBilling.GetAsync(orgId, id, HttpContext.RequestAborted)));
     }
 
-    /// <summary>
-    /// The drafts of a month (<c>{ period: "yyyy-MM" }</c>) for every holder and portal that needs a TD17: made, or made again, with the counts, one row for each TD17 (with the
-    /// part of its amount that is an estimate), the holders that need one and cannot get one yet (<c>failed</c>) and the commissions that are not self-billed (<c>notDue</c>) with the
-    /// reason, and <c>ledgerPosted</c> (false: the owner ledger of the month has no line yet, post the month first). 422 <c>self_billing_period_invalid</c>,
-    /// <c>self_billing_period_not_ended</c> (the month is not over), <c>self_billing_not_configured</c>.
-    /// </summary>
     [HttpPost("drafts")]
     [ProducesResponseType(typeof(SelfBillingGenerationDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -118,10 +111,6 @@ public class SelfBillingController(
         return Ok(SelfBillingDto.From(issued));
     }
 
-    /// <summary>
-    /// The draft of a TD17 discarded (no number is consumed): its holder, portal and month are free for a new draft. 404 for a document of another org or one that is not a TD17;
-    /// 422 <c>document_not_draft</c>.
-    /// </summary>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -187,7 +176,6 @@ public class SelfBillingController(
         return Ok(SelfBillingDto.From(closed));
     }
 
-    /// <summary>The caller's org, only when its reach is the whole org.</summary>
     private Task<Guid?> OrgAsync() =>
         HostCallerResolver.OrgWideAsync(User, orgContextResolver, hostScopeResolver, HttpContext.RequestAborted);
 }

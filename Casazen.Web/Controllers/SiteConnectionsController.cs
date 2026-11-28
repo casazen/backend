@@ -25,7 +25,6 @@ public class SiteConnectionsController(
     IOrgContextResolver orgContextResolver,
     ISiteConnectionService connections) : ControllerBase
 {
-    /// <summary>The largest body of a request of authorization: the two addresses and the PKCE fields.</summary>
     public const int MaxAuthorizeRequestBytes = 8 * 1024;
 
     /// <summary>
@@ -72,7 +71,6 @@ public class SiteConnectionsController(
             : Ok(SiteConnectionAuthorizeResponse.From(authorization));
     }
 
-    /// <summary>The active connected sites of the org (address, when, last use), the newest first; the revoked ones are not listed.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<SiteConnectionDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -90,10 +88,6 @@ public class SiteConnectionsController(
         return Ok(active.Select(SiteConnectionDto.From).ToList());
     }
 
-    /// <summary>
-    /// «Scollega»: the credential of the site stops working at once (the next call of the plugin is 401). 204, also for a connection of the org revoked
-    /// already; 404 <c>site_connection_not_found</c> for a connection that is not one of the org.
-    /// </summary>
     [HttpDelete("{connectionId:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -113,7 +107,6 @@ public class SiteConnectionsController(
             : this.ApiProblem(StatusCodes.Status404NotFound, SiteConnectionErrorCodes.NotFound, "SiteConnectionNotFound");
     }
 
-    /// <summary>The IDOR check of <see cref="OrgDomainController"/>: 404 without an org, 403 for another org's id.</summary>
     private async Task<ActionResult?> EnsureCallerOrgAsync(Guid orgId, CancellationToken cancellationToken)
     {
         var callerOrgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);

@@ -54,11 +54,6 @@ public class OrgMembersController(
         return Ok(new MarketingGrant(target.MarketingGranted));
     }
 
-    /// <summary>
-    /// The properties of the org with, for this member, whether it reaches each one, and for each property how many active
-    /// people do («chi può accedere»). <c>scopeSupported</c> is false for a member who is not a collaborator (it reaches
-    /// every property). 404 <c>org_member_not_found</c>.
-    /// </summary>
     [HttpGet("{id:guid}/properties")]
     [ProducesResponseType(typeof(OrgMemberPropertiesDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -71,13 +66,6 @@ public class OrgMembersController(
         return Ok(OrgMemberPropertiesDto.From(await propertyAccess.GetAsync(caller.OrgId, id, cancellationToken)));
     }
 
-    /// <summary>
-    /// Sets the properties a member reaches: <c>All</c> (every property, the ones added later too) or <c>Selected</c>
-    /// («Solo alcuni») with exactly the ids given, none meaning it sees nothing. Only a collaborator can be limited; the
-    /// change is seen at once by this API instance and within the authorization cache duration (60 s) by the others. 403
-    /// <c>org_owner_required</c> (only the owner touches an administrator), 404 <c>org_member_not_found</c>, 422
-    /// <c>org_member_scope_not_supported</c> and <c>org_member_property_unknown</c>.
-    /// </summary>
     [HttpPut("{id:guid}/properties")]
     [ProducesResponseType(typeof(OrgMemberPropertiesDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
@@ -103,7 +91,6 @@ public class OrgMembersController(
         return Ok(OrgMemberPropertiesDto.From(view));
     }
 
-    /// <summary>The org's people (owner first, then by name) and its seats: used, available, what the plan allows.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(OrgMembersResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<OrgMembersResponse>> List(CancellationToken cancellationToken)
@@ -115,10 +102,6 @@ public class OrgMembersController(
         return Ok(OrgMembersResponse.From(await team.ListAsync(caller.OrgId, cancellationToken)));
     }
 
-    /// <summary>
-    /// Gives the member another role; the areas it works in stay. 403 <c>org_owner_required</c> (only the owner makes or
-    /// touches an administrator), 404 <c>org_member_not_found</c>, 409 <c>org_last_owner</c>, 422 <c>org_owner_not_assignable</c>.
-    /// </summary>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(OrgMemberDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
@@ -138,13 +121,6 @@ public class OrgMembersController(
         return Ok(OrgMemberDto.From(member));
     }
 
-    /// <summary>
-    /// Sets the areas the member works in (AM-02c): <c>short-rent</c> and/or <c>long-rent</c>, at least one. Role and properties
-    /// stay as they are (a collaborator «Solo alcuni» keeps what it was given); the change is seen on the member's next request on
-    /// this API instance and within the authorization cache duration (60 s) on the others. 403 <c>org_owner_required</c> (only the
-    /// owner touches an administrator), 404 <c>org_member_not_found</c>, 409 <c>org_last_owner</c> (the owner's areas are not the
-    /// team's), 422 <c>org_member_area_required</c>.
-    /// </summary>
     [HttpPut("{id:guid}/areas")]
     [ProducesResponseType(typeof(OrgMemberDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
@@ -203,11 +179,6 @@ public class OrgMembersController(
         return Ok(OrgMemberDto.From(member));
     }
 
-    /// <summary>
-    /// Takes the person out of the org for good: its member row, every membership the org gave and the link of its account
-    /// to the org; the seat is free. The person can then onboard an org of its own or accept another invitation. 403
-    /// <c>org_owner_required</c>, 404 <c>org_member_not_found</c>, 409 <c>org_last_owner</c>.
-    /// </summary>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]

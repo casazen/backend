@@ -51,10 +51,6 @@ public class LongRentFiscalController(
         return Ok(await report.GetAsync(scope, checkedYear, cancellationToken));
     }
 
-    /// <summary>
-    /// The same report as a CSV to download (<c>format=csv</c>, the default; any other 400 <c>long_rent_fiscal_format_invalid</c>):
-    /// one row per lease and the total, with «Stima da validare con il commercialista» on its first row and the day it was made.
-    /// </summary>
     [HttpGet("export")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK, "text/csv")]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -75,7 +71,6 @@ public class LongRentFiscalController(
         return File(LongRentFiscalDocuments.Csv(fiscal), "text/csv", LongRentFiscalDocuments.FileName(checkedYear));
     }
 
-    // The year asked for, or the current one in Rome; null when it is not between the first year and the current one.
     private int? CheckYear(int? year)
     {
         var current = _clock.TodayInRomeAsDateOnly().Year;
@@ -83,7 +78,6 @@ public class LongRentFiscalController(
         return asked is >= LongRentFiscalRules.FirstYear && asked <= current ? asked : null;
     }
 
-    // Names of tenants and money of a landlord: neither a browser nor a proxy keeps a copy.
     private void NoStore() => Response.Headers.CacheControl = "private, no-store";
 
     private async Task<HostScope?> GetHostScopeAsync(CancellationToken cancellationToken)

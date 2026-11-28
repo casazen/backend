@@ -27,17 +27,10 @@ public partial class VerificationController(
     ILogger<VerificationController> logger,
     TimeProvider timeProvider) : ControllerBase
 {
-    /// <summary>The longest period of <see cref="GetMetrics"/>, in days.</summary>
     public const int MaxMetricsPeriodDays = 366;
 
-    /// <summary>The period of <see cref="GetMetrics"/> when none is given: the last 30 days, today included.</summary>
     public const int DefaultMetricsPeriodDays = 30;
 
-    /// <summary>
-    /// Get bookings pending manual verification within the caller's scope (AC-NF12-3).
-    /// Returns bookings where BiometricOutcome is Escalate or BiometricAttempts >= 3,
-    /// ordered by oldest check-in first.
-    /// </summary>
     [HttpGet("pending")]
     [ProducesResponseType(typeof(IReadOnlyList<PendingVerificationDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -76,11 +69,6 @@ public partial class VerificationController(
         }).ToList());
     }
 
-    /// <summary>
-    /// Request a new selfie photo from the guest (AC-NF12-5).
-    /// Generates a signed link and queues an email to the guest.
-    /// Returns 404 when the booking is outside the caller scope, has no active session or the guest has no email.
-    /// </summary>
     [HttpPost("{bookingId:guid}/request-photo")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -197,11 +185,6 @@ public partial class VerificationController(
         }
     }
 
-    /// <summary>
-    /// Reject the guest's check-in (AC-NF12-7).
-    /// Marks the verification as rejected with <paramref name="request.Reason"/> and prevents further attempts.
-    /// Returns 404 when the booking is outside the caller scope or has no pending verification.
-    /// </summary>
     [HttpPost("{bookingId:guid}/reject")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -227,7 +210,6 @@ public partial class VerificationController(
             if (!success)
                 return this.ApiProblem(StatusCodes.Status404NotFound, "no_pending_verification", "VerificationNoPending");
 
-            // The reason is the operator's free text: kept in the verification log, not in the application log.
             logger.LogInformation("User {UserId} rejected verification for booking {BookingId}", userId, bookingId);
 
             return Ok();
@@ -289,18 +271,12 @@ public partial class VerificationController(
             OperatorShare = metrics.OperatorShare,
         };
 
-        // The same org and the same reach as the figures above, the same period; nothing is read while a flag is off.
         if (SelfHostedIdentityOn(featureFlags))
             answer.Identity = IdentityVerificationMetricsDto.From(await identityMetrics.GetAsync(scope, fromUtc, toUtc, HttpContext.RequestAborted));
 
         return Ok(answer);
     }
 
-    /// <summary>
-    /// The period of <see cref="GetMetrics"/> and of the export of the pilot (<c>VerificationController.Export.cs</c>), one rule for both: <paramref name="from"/> to
-    /// <paramref name="to"/>, days in Europe/Rome, both included, by default the last <see cref="DefaultMetricsPeriodDays"/> days. False for a period that ends before it starts or is
-    /// longer than <see cref="MaxMetricsPeriodDays"/> days.
-    /// </summary>
     private bool TryResolvePeriod(DateOnly? from, DateOnly? to, out DateOnly first, out DateOnly last)
     {
         last = to ?? timeProvider.TodayInRomeAsDateOnly();
@@ -308,14 +284,9 @@ public partial class VerificationController(
         return first <= last && last.DayNumber - first.DayNumber + 1 <= MaxMetricsPeriodDays;
     }
 
-    /// <summary>
-    /// The self-hosted identity verification is on: <see cref="FeatureFlags.CheckInIdentityVerification"/> AND <see cref="FeatureFlags.CheckInIdentitySelfHosted"/>, the gate of the
-    /// counters of <see cref="GetMetrics"/> and of the export of the pilot.
-    /// </summary>
     private static bool SelfHostedIdentityOn(IFeatureFlags featureFlags) =>
         featureFlags.IsEnabled(FeatureFlags.CheckInIdentityVerification) && featureFlags.IsEnabled(FeatureFlags.CheckInIdentitySelfHosted);
 
-    /// <summary>The caller reach on host data (TN-3), null when the caller has no org.</summary>
     private async Task<HostScope?> ResolveScopeAsync(string userId)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync();

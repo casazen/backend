@@ -18,7 +18,6 @@ public class PropertyComplianceCheckJob(IPropertyComplianceStatusService complia
 {
     public const string RecurringJobId = "property-compliance-check";
 
-    /// <summary>04:00 UTC (05:00 or 06:00 in Italy): after the nightly maintenance jobs, before the hosts' day.</summary>
     public const string Cron = "0 4 * * *";
 
     public const string CommandName = "compliance:recalculate";
@@ -33,11 +32,6 @@ public class PropertyComplianceCheckJob(IPropertyComplianceStatusService complia
     public static bool IsRecalculateCommand(string[] args) =>
         args.Contains(CommandName, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// Runs <c>compliance:recalculate [--dry-run]</c> after the migrations: the same recalculation as the nightly job, now
-    /// (or, with <c>--dry-run</c>, only the report). Prints one summary line and returns the exit code: 0 done, 2 another
-    /// run in progress, 1 error.
-    /// </summary>
     public static async Task<int> RunRecalculateCommandAsync(WebApplication app, string[] args)
     {
         var dryRun = args.Contains(DryRunFlag, StringComparer.OrdinalIgnoreCase);

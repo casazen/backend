@@ -26,10 +26,8 @@ public class FiscalDocumentsDueJob(
 {
     public const string RecurringJobId = "fiscal-documents-due";
 
-    /// <summary>Every day at 05:10 (the registration gives it the Europe/Rome clock): after the night, before the host's day.</summary>
     public const string Cron = "10 5 * * *";
 
-    /// <summary>The most stays an organization gets looked at in one run.</summary>
     public const int MaxBookingsPerRun = 500;
 
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]

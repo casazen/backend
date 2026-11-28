@@ -157,7 +157,6 @@ public sealed class SwissNotificationController(
         return NoContent();
     }
 
-    /// <summary>TN-3: 404 when the property is not visible (another org), 403 when it is but the caller's scope or permission does not allow it.</summary>
     private async Task<ActionResult?> AuthorizeAsync(Guid propertyId, HostOperationRequirement operation, CancellationToken cancellationToken)
     {
         var property = await hostResources.ForPropertyAsync(propertyId, cancellationToken);

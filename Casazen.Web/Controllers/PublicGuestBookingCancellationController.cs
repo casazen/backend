@@ -21,11 +21,6 @@ public class PublicGuestBookingCancellationController(
     IGuestBookingCancellationService guestCancellationService,
     ILogger<PublicGuestBookingCancellationController> logger) : ControllerBase
 {
-    /// <summary>
-    /// What cancelling the booking would do now (DB-08a): the same answer as the preview of the guest area, for the page of the link. The
-    /// token is checked like the cancellation checks it but <b>not spent</b>; a booking already cancelled answers 200 with
-    /// <c>cancellable: false</c> and the outcome of its cancellation. Missing token → 400; invalid or expired → 422; booking not found → 404.
-    /// </summary>
     [HttpGet("{id:guid}/cancellation")]
     [EnableRateLimiting(RateLimitPolicies.PublicBookingLookup)]
     [PrivateAnswer]

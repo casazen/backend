@@ -41,47 +41,31 @@ public sealed record MarketplaceActivationPlanDto(
     }
 }
 
-/// <summary>
-/// Starts the activation (<c>POST api/marketplace/activations</c>). <c>hotelId</c>, <c>username</c> and <c>password</c> are request-only: the channel
-/// manager gets them in one call, CasaZen stores none of them, logs none of them and no answer carries them. Only what the portal asks for is used.
-/// </summary>
 public sealed class StartMarketplaceActivationRequest
 {
-    /// <summary><c>Channel</c> or <c>Tool</c>.</summary>
     [Required(ErrorMessage = "MarketplaceActivationKindRequired")]
     public MarketplaceActivationKind? Kind { get; set; }
 
-    /// <summary>The code of the portal in the catalog.</summary>
     [Required(ErrorMessage = "MarketplacePortalUnknown")]
     [MaxLength(100, ErrorMessage = "MarketplacePortalUnknown")]
     public string? Code { get; set; }
 
-    /// <summary>The property to connect.</summary>
     [Required(ErrorMessage = "OctorateMappingPropertyRequired")]
     public Guid? PropertyId { get; set; }
 
-    /// <summary>The identifier of the property on the portal, when the portal asks for it.</summary>
     [MaxLength(100, ErrorMessage = "MarketplaceCredentialsTooLong")]
     public string? HotelId { get; set; }
 
-    /// <summary>The username on the portal, when the portal asks for it.</summary>
     [MaxLength(200, ErrorMessage = "MarketplaceCredentialsTooLong")]
     public string? Username { get; set; }
 
-    /// <summary>The password on the portal, when the portal asks for it.</summary>
     [MaxLength(200, ErrorMessage = "MarketplaceCredentialsTooLong")]
     public string? Password { get; set; }
 
-    /// <summary>The start the service takes; the validation attributes made sure that the kind, the code and the property are there.</summary>
     public MarketplaceActivationStart ToStart() =>
         new(Kind ?? default, Code ?? string.Empty, PropertyId ?? Guid.Empty, HotelId, Username, Password);
 }
 
-/// <summary>
-/// Where an activation stands (<c>GET api/marketplace/activations/{id}</c> and the answer of every step). <c>status</c> is the one of the card;
-/// <c>connectionFound</c> and <c>connectionStatus</c> are what the channel manager said when the state was read; <c>panelAccessDone</c> is true once
-/// the person gave the access on the channel; <c>lastErrorCode</c> is a code the client turns into simple words. No credential, ever.
-/// </summary>
 public sealed record MarketplaceActivationStateDto(
     Guid ActivationId,
     MarketplaceActivationKind Kind,
@@ -143,7 +127,6 @@ public sealed record MarketplaceActivationMappingDto(
     }
 }
 
-/// <summary>A room of the listing on the channel.</summary>
 public sealed record MarketplaceChannelRoomDto(
     string ChannelRoomId,
     string Name,
@@ -152,28 +135,19 @@ public sealed record MarketplaceChannelRoomDto(
     string? MappedProductId,
     string? ProposedProductId);
 
-/// <summary>A product (room) of the property's listing on the channel manager.</summary>
 public sealed record MarketplaceProductDto(string ProductId, string? Name);
 
-/// <summary>
-/// Saves the mapping (<c>PUT api/marketplace/activations/{id}/mapping</c>): the rooms of the channel the person chose, each with the product of the
-/// listing. An empty or missing list is a 422, never «all the rooms».
-/// </summary>
 public sealed class SaveMarketplaceMappingRequest
 {
-    /// <summary>The choices: one room of the channel and the product it is mapped to.</summary>
     public List<MarketplaceRoomChoiceRequest>? Mappings { get; set; }
 }
 
-/// <summary>One room of the channel and the product of the listing it is mapped to.</summary>
 public sealed class MarketplaceRoomChoiceRequest
 {
-    /// <summary>The id of the room on the channel, as the mapping read gave it.</summary>
     [Required(ErrorMessage = "MarketplaceMappingInvalid")]
     [MaxLength(64, ErrorMessage = "MarketplaceMappingInvalid")]
     public string ChannelRoomId { get; set; } = string.Empty;
 
-    /// <summary>The product (room) of the property's listing.</summary>
     [Required(ErrorMessage = "MarketplaceMappingInvalid")]
     [MaxLength(64, ErrorMessage = "MarketplaceMappingInvalid")]
     public string ProductId { get; set; } = string.Empty;

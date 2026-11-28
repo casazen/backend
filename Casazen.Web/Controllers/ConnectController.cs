@@ -31,16 +31,12 @@ public class ConnectController(
     /// <summary>503: Stripe is temporarily unavailable (429, 5xx, network); retry after <see cref="RetryAfterSeconds"/>.</summary>
     public const string UnavailableCode = "stripe_connect_unavailable";
 
-    /// <summary>503: the platform's Stripe key is missing, invalid, expired or without permission.</summary>
     public const string NotConfiguredCode = "stripe_connect_not_configured";
 
-    /// <summary>502: Stripe refused the request for another reason.</summary>
     public const string FailedCode = "stripe_connect_failed";
 
-    /// <summary>409: the linked account disappeared while the link was being created.</summary>
     public const string AccountUnavailableCode = "stripe_connect_account_unavailable";
 
-    /// <summary>503: <c>App:PublicSiteBaseUrl</c>, base of the return pages, is not configured (Development/Testing only).</summary>
     public const string ReturnUrlNotConfiguredCode = "connect_return_url_not_configured";
 
     /// <summary>Seconds of the <c>Retry-After</c> header of <see cref="UnavailableCode"/>.</summary>
@@ -86,7 +82,6 @@ public class ConnectController(
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<OnboardingLinkResponseDto>> CreateOnboardingLink(CancellationToken cancellationToken)
     {
-        // Checked first: nothing is created on Stripe for a link that could not send the host back.
         if (!publicSiteLinks.IsConfigured)
         {
             return this.ApiProblem(
@@ -172,7 +167,6 @@ public class ConnectController(
         }
     }
 
-    /// <summary>The response of a failed Stripe call; the gateway already logged it with its cause.</summary>
     private ObjectResult StripeConnectProblem(StripeConnectException exception)
     {
         switch (exception.Failure)

@@ -23,7 +23,6 @@ public class OwnerWithholdingDraftSeedHostedService(
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var fiscal = scope.ServiceProvider.GetRequiredService<IOwnerFiscalProfileService>();
 
-            // The agencies with owners, whatever the tenant: the start reads every org on purpose.
             var orgs = await db.PropertyOwners.IgnoreQueryFilters().AsNoTracking()
                 .Select(o => o.OrgId)
                 .Distinct()

@@ -68,7 +68,6 @@ public class PublicSupplierBookingController(
         if (supplier is null)
             return SupplierNotFound();
 
-        // The trap for robots: answered like a booking, with an id that leads nowhere; nothing is stored, nothing is sent.
         if (!string.IsNullOrWhiteSpace(request.Website))
         {
             return StatusCode(
@@ -100,8 +99,6 @@ public class PublicSupplierBookingController(
         }
         catch (ShowcaseBookingTooManyHoldsException)
         {
-            // The same answer as the limit per address, to the second: the exact time the oldest booking of the address lapses
-            // (what the exception carries) would tell the client when someone booked with that address.
             return SupplierBookingEmailRateLimitFilter.RateLimitedResult(HttpContext, emailLimit.Window);
         }
     }
@@ -137,23 +134,19 @@ public class PublicSupplierBookingController(
         if (supplier is null)
             return SupplierNotFound();
 
-        // A wrong link is the NotFoundException of the service, answered as 404 supplier_booking_link_invalid by the error middleware.
         var confirmation = await bookings.ConfirmEmailAsync(supplier, id, request.Token, ct);
         return Ok(PublicSupplierBookingMapper.ToDto(confirmation));
     }
 
-    /// <summary>Not indexable, not cacheable: the answers belong to one customer.</summary>
     private void MarkPrivate()
     {
         Response.Headers["X-Robots-Tag"] = "noindex";
         Response.Headers.CacheControl = "no-store";
     }
 
-    /// <summary>The 404 of an unknown, pending or suspended supplier: one answer for the three.</summary>
     private ObjectResult SupplierNotFound() =>
         this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierShowcaseNotFound");
 
-    /// <summary>A 422 that names the fields at fault, as the estimate does.</summary>
     private ObjectResult RuleProblem(string code, string messageKey, IReadOnlyList<object> messageArgs, IReadOnlyList<string> fields)
     {
         var problem = ApiProblemDetails.Create(HttpContext, StatusCodes.Status422UnprocessableEntity, code, messageKey, messageArgs);

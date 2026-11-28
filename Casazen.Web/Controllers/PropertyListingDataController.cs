@@ -10,12 +10,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// The listing data of a unit that the channels ask for and CasaZen lacked (NF-34, NF-35): its rooms with their beds and its length-of-stay
-/// discounts. Short-rent only, like every short-stay side of a property: the permissions are <c>property.read</c> / <c>property.write</c> of the
-/// short-rent context and the row is authorized like the photos and the site profile (the property of the caller's org, a colleague's one only
-/// with a role that reaches it, TN-3): a property of another org answers 404.
-/// </summary>
 [ApiController]
 [Route("api/properties/{id:guid}")]
 [Authorize(Policy = CasazenPolicies.PropertyRead)]
@@ -27,10 +21,6 @@ public class PropertyListingDataController(
     IAdminAccessAuditService adminAccessAuditService,
     ILogger<PropertyListingDataController> logger) : ControllerBase
 {
-    /// <summary>The rooms of the unit in order, each with its beds; an empty list when the host listed none.</summary>
-    /// <response code="200">The rooms.</response>
-    /// <response code="403">The caller may not read this property.</response>
-    /// <response code="404">No property with this id in the caller's org.</response>
     [HttpGet("rooms")]
     [ProducesResponseType(typeof(IReadOnlyList<PropertyRoomView>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -80,10 +70,6 @@ public class PropertyListingDataController(
         return Ok(list);
     }
 
-    /// <summary>The length-of-stay discounts of the property in order of nights; an empty list when it has none.</summary>
-    /// <response code="200">The tiers.</response>
-    /// <response code="403">The caller may not read this property.</response>
-    /// <response code="404">No property with this id in the caller's org.</response>
     [HttpGet("stay-discounts")]
     [ProducesResponseType(typeof(IReadOnlyList<StayDiscountTier>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -132,10 +118,6 @@ public class PropertyListingDataController(
         return Ok(list);
     }
 
-    /// <summary>
-    /// TN-3 check, like the photo and the site profile endpoints: the property of the caller's org (the tenant filter hides another org's one, so
-    /// 404), the host permission for the row (403), and the audit of an org-wide role acting on a colleague's property.
-    /// </summary>
     private async Task<(Property? Property, ActionResult? Denied)> AuthorizeAsync(
         Guid id,
         HostOperationRequirement operation,

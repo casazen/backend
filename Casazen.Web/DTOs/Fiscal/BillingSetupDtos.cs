@@ -50,10 +50,6 @@ public sealed class BillingSetupSectionDto
 
     public required IReadOnlyList<BillingSetupItemDto> Missing { get; init; }
 
-    /// <summary>
-    /// The read-only members that sum up the properties of the whole organization (FIX/BE-IT-TOURISTTAX-DEFAULTS): the proposals for the comuni of its properties, the portals it confirmed for a
-    /// comune and the hint about the records of its stays. A caller who reaches only some of the properties does not get them (it may read the setup and may not change it).
-    /// </summary>
     public static IReadOnlySet<string> OrgWideValues { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
         ItalianTouristTaxSetupKeys.Proposals,
@@ -77,10 +73,6 @@ public sealed class BillingSetupSectionDto
     }
 }
 
-/// <summary>
-/// One thing still to do: <c>key</c> (the code the wizard maps to its step: <c>legal_name_missing</c>, <c>regime_missing</c>, <c>guest_series_unconfirmed</c>...),
-/// <c>section</c>, <c>reason</c> (<c>required</c>, <c>unconfirmed</c> or <c>unavailable</c>) and <c>count</c> when the item counts something.
-/// </summary>
 public sealed record BillingSetupItemDto(
     string Key,
     string Section,
@@ -124,7 +116,6 @@ public sealed class SaveBillingSetupSectionRequest
     /// <summary>The UID of a registered Swiss issuer (<c>CHE-123.456.789</c>, with or without separators or the suffix <c>MWST</c>/<c>TVA</c>/<c>IVA</c>).</summary>
     public string? SwissVatNumber { get; init; }
 
-    /// <summary><c>PrivatePerson</c>, <c>VatOrdinary</c>, <c>VatFlatRate</c> (Italy), <c>SwissVatRegistered</c> or <c>SwissNotRegistered</c> (Switzerland); blank = not sent.</summary>
     public string? Regime { get; init; }
 
     /// <summary>
@@ -135,17 +126,14 @@ public sealed class SaveBillingSetupSectionRequest
 
     public string? FatturaPaRegimeCode { get; init; }
 
-    /// <summary><c>Standard</c> or <c>ExemptArt10</c>; blank = not sent.</summary>
     public string? StayVatTreatment { get; init; }
 
-    /// <summary><c>FollowsStay</c> or <c>Service</c>; blank = not sent.</summary>
     public string? CleaningFeeTreatment { get; init; }
 
     public string? GuestDocumentSeries { get; init; }
 
     public string? OwnerInvoiceSeries { get; init; }
 
-    /// <summary>The names of the channels (<c>BookingSource</c>) whose portal collects the tourist tax itself; an empty list says that none does.</summary>
     public IReadOnlyList<string>? PlatformCollectedTouristTaxChannels { get; init; }
 
     public bool? AutoIssueGuestDocuments { get; init; }
@@ -158,7 +146,6 @@ public sealed class SaveBillingSetupSectionRequest
 
     public bool? VirtualStampConfirmed { get; init; }
 
-    /// <summary>The payload of the service. A regime or a treatment that is not one of the names above is 422 <c>issuer_field_invalid</c> on its field.</summary>
     public BillingSetupPayload ToPayload()
     {
         var failures = new List<InvoiceDataFailure>();
@@ -203,7 +190,6 @@ public sealed class SaveBillingSetupSectionRequest
         };
     }
 
-    /// <summary>The member the name says (never a number); <c>null</c> when the name is absent or blank (not sent) or is not a member (a failure on <paramref name="field"/>).</summary>
     private static T? ParseEnum<T>(string? name, string field, List<InvoiceDataFailure> failures)
         where T : struct, Enum
     {
@@ -226,10 +212,8 @@ public sealed class SaveBillingSetupSectionRequest
 /// </summary>
 public sealed class ConfirmPortalComuniRequest
 {
-    /// <summary>The (portal, comune) pairs, the whole list; absent is a refusal.</summary>
     public IReadOnlyList<PortalComuneRequest>? Comuni { get; init; }
 
-    /// <summary>The pairs of the service. A missing list, a channel that is not the name of a <c>BookingSource</c> or a blank comune is 422 <c>issuer_field_invalid</c> on <c>portalTouristTaxComuni</c>.</summary>
     public IReadOnlyList<PortalComune> ToComuni()
     {
         var comuni = new List<PortalComune>();
@@ -258,11 +242,9 @@ public sealed class ConfirmPortalComuniRequest
         };
     }
 
-    /// <summary>The field the refusals name (the one of the service).</summary>
     private const string FieldName = "portalTouristTaxComuni";
 }
 
-/// <summary>One portal confirmed for one comune: <c>channel</c> (the name of a <c>BookingSource</c>, a portal) and <c>comuneIstat</c> (six digits).</summary>
 public sealed class PortalComuneRequest
 {
     public string? Channel { get; init; }

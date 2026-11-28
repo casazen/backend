@@ -5,10 +5,6 @@ namespace Casazen.Web.BackgroundJobs;
 
 public static partial class RecurringJobsRegistration
 {
-    /// <summary>
-    /// The supplier side: the supplier orders of the guest portal, the service requests (auto-cancel, groups, expiry, reminders), the service
-    /// payments, the showcase media cleanup and the Octorate marketplace catalog and connections.
-    /// </summary>
     private static void RegisterSupplierJobs(IRecurringJobManager recurringJobManager, IFeatureFlags featureFlags)
     {
         recurringJobManager.AddOrUpdate<GuestSupplierAdjustmentJob>(
@@ -25,23 +21,16 @@ public static partial class RecurringJobsRegistration
 
         ConfigureServiceRequestAutoCancel(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.SupplierRequestAutoCancel));
 
-        // E09/F01/US01/T02 (ADR-023): the cache of the portal catalog of the marketplace is refreshed every day, only while the Octorate connector is on.
         ConfigureMarketplacePortalRefresh(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateConnector));
 
-        // E09/F03/US01/T01 (ADR-023, NF-57): the health of the active integrations is read from Octorate every 30 minutes, only while the Octorate connector is on.
         ConfigureMarketplaceConnectionSync(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateConnector));
 
-        // SP-BKP: the groups of backup suppliers are followed whatever the flag SupplierRequestBackups says (it only gates their creation): a
-        // group that exists has its windows, and turning the flag off must not leave its requests hanging. With no group a run finds nothing.
         recurringJobManager.AddOrUpdate<ServiceRequestGroupJob>(
             ServiceRequestGroupJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             ServiceRequestGroupJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-        // SP-10: the upkeep of the bookings from the suppliers' public showcases is registered whatever the flags say. A hold that
-        // was made while SupplierShowcaseBooking was on has to lapse, a request nobody answered has to be cancelled and a booking
-        // that exists keeps its reminder, also after the flag is turned off; with the flag off these runs just find nothing.
         recurringJobManager.AddOrUpdate<ServiceRequestExpiryJob>(
             ServiceRequestExpiryJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
@@ -56,8 +45,6 @@ public static partial class RecurringJobsRegistration
 
         ConfigureServicePayments(recurringJobManager);
 
-        // SP-13b: the images of the showcases that neither the draft, nor the published version, nor the one before it point to are removed
-        // after a day, every night. Always registered: a file that exists costs money whatever a flag says; with none to remove a run finds nothing.
         recurringJobManager.AddOrUpdate<SupplierShowcaseMediaCleanupJob>(
             SupplierShowcaseMediaCleanupJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
@@ -65,11 +52,6 @@ public static partial class RecurringJobsRegistration
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 
-    /// <summary>
-    /// Automatic cancellation of the service requests nobody answered (SP-04, D8): only with
-    /// <see cref="FeatureFlags.SupplierRequestAutoCancel"/> on. With the flag off no request is ever cancelled by time, and the
-    /// schedule of an earlier deploy is removed.
-    /// </summary>
     private static void ConfigureServiceRequestAutoCancel(IRecurringJobManager recurringJobManager, bool enabled)
     {
         if (!enabled)

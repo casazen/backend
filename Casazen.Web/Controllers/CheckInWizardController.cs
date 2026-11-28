@@ -32,7 +32,6 @@ public class CheckInWizardController(
     IStringLocalizer<SharedResources> localizer,
     ILogger<CheckInWizardController> logger) : ControllerBase
 {
-    /// <summary>The largest document photo accepted (10 MB), read in memory only.</summary>
     public const int MaxDocumentBytes = 10_000_000;
 
     private static readonly string[] DocumentContentTypes = ["image/jpeg", "image/jpg", "image/png"];
@@ -54,10 +53,6 @@ public class CheckInWizardController(
         return Ok(CheckInWizardStateDto.From(state, await CanReadGuestsAsync(bookingId, cancellationToken)));
     }
 
-    /// <summary>
-    /// Replaces the guests of the stay with the host as author, the exemption codes of the tourist tax included (the input is the whole truth).
-    /// Invalid data: 400 keyed <c>Guests[i].Field</c>, nothing saved.
-    /// </summary>
     [HttpPut("{bookingId:guid}/checkin-wizard/guests")]
     [Authorize(Policy = CasazenPolicies.AlloggiatiSubmit)]
     [ProducesResponseType(typeof(CheckInWizardStateDto), StatusCodes.Status200OK)]
@@ -87,10 +82,6 @@ public class CheckInWizardController(
         return Ok(CheckInWizardStateDto.From(result.State!, await CanReadGuestsAsync(bookingId, cancellationToken)));
     }
 
-    /// <summary>
-    /// Reads the photo of a document (multipart <c>document</c>, JPEG or PNG, at most 10 MB): MRZ first, then OCR, in memory only, never stored
-    /// (ADR-013-R6). Closed (404) while <c>Features:CheckInIdentityVerification</c> is off, like the public page: the reading is a placeholder.
-    /// </summary>
     [HttpPost("{bookingId:guid}/checkin-wizard/document-reading")]
     [Authorize(Policy = CasazenPolicies.AlloggiatiSubmit)]
     [FeatureGate(FeatureFlags.CheckInIdentityVerification)]

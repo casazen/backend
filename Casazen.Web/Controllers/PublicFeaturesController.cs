@@ -7,10 +7,6 @@ using Microsoft.AspNetCore.RateLimiting;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Feature flags for the frontend (FD-20): <c>{ "otaPartnerApi": false }</c>, one camelCase key per
-/// <see cref="FeatureFlags.All"/>. Anonymous: flags are not secret and the public pages may need them.
-/// </summary>
 [ApiController]
 [Route("api/public/features")]
 [AllowAnonymous]

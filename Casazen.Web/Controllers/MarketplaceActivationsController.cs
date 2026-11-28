@@ -88,9 +88,6 @@ public sealed class MarketplaceActivationsController(
         return Ok(MarketplaceActivationStateDto.From(state));
     }
 
-    /// <summary>The state of the activation, read from the channel manager: the status, whether the access on the panel is done, the last sync and the last error code.</summary>
-    /// <response code="200">The state.</response>
-    /// <response code="404"><c>marketplace_activation_not_found</c>.</response>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(MarketplaceActivationStateDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -104,13 +101,6 @@ public sealed class MarketplaceActivationsController(
         return Ok(MarketplaceActivationStateDto.From(await activations.GetStateAsync(caller.OrgId, caller.Scope, id, cancellationToken)));
     }
 
-    /// <summary>Requests room import ahead of mapping and returns the connection state.</summary>
-    /// <response code="200">The state.</response>
-    /// <response code="404"><c>marketplace_activation_not_found</c>.</response>
-    /// <response code="409">
-    /// <c>d6_operation_unverified</c> (an operation of the D6 sequence is not verified for the channel: it is not called), <c>marketplace_connection_missing</c>
-    /// (the connection is no longer on the channel manager: the activation is freed, start it again), <c>marketplace_panel_access_pending</c>.
-    /// </response>
     [HttpPost("{id:guid}/import")]
     [Authorize(Policy = CasazenPolicies.OtaWrite)]
     [ProducesResponseType(typeof(MarketplaceActivationStateDto), StatusCodes.Status200OK)]
@@ -125,10 +115,6 @@ public sealed class MarketplaceActivationsController(
         return Ok(MarketplaceActivationStateDto.From(await activations.ImportAsync(caller.OrgId, caller.Scope, id, cancellationToken)));
     }
 
-    /// <summary>The rooms of the listing on the channel with the proposals of CasaZen, and the products of the property's listing.</summary>
-    /// <response code="200">The mapping.</response>
-    /// <response code="404"><c>marketplace_activation_not_found</c>.</response>
-    /// <response code="409"><c>marketplace_connection_missing</c>.</response>
     [HttpGet("{id:guid}/mapping")]
     [ProducesResponseType(typeof(MarketplaceActivationMappingDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -142,11 +128,6 @@ public sealed class MarketplaceActivationsController(
         return Ok(MarketplaceActivationMappingDto.From(await activations.GetMappingAsync(caller.OrgId, caller.Scope, id, cancellationToken)));
     }
 
-    /// <summary>Saves the mapping the person chose and completes it on the channel manager.</summary>
-    /// <response code="200">The state.</response>
-    /// <response code="404"><c>marketplace_activation_not_found</c>.</response>
-    /// <response code="409"><c>marketplace_connection_missing</c>.</response>
-    /// <response code="422"><c>marketplace_mapping_required</c> (an empty or missing list), <c>marketplace_mapping_invalid</c>.</response>
     [HttpPut("{id:guid}/mapping")]
     [Authorize(Policy = CasazenPolicies.OtaWrite)]
     [ProducesResponseType(typeof(MarketplaceActivationStateDto), StatusCodes.Status200OK)]
@@ -191,7 +172,6 @@ public sealed class MarketplaceActivationsController(
         return Ok(MarketplaceActivationStateDto.From(await activations.ActivateAsync(caller.OrgId, caller.Scope, id, cancellationToken)));
     }
 
-    /// <summary>The caller's org and scope; <c>null</c> when it has no org or reaches nothing in it.</summary>
     private async Task<Caller?> CallerAsync(CancellationToken cancellationToken)
     {
         if (await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken) is not { } orgId
@@ -203,7 +183,6 @@ public sealed class MarketplaceActivationsController(
         return new Caller(orgId, scope);
     }
 
-    /// <summary>The kind named by its name (<c>channel</c>, <c>Tool</c>...), never by its number, and only a channel or a tool.</summary>
     private static bool TryParseKind(string? kind, out MarketplaceActivationKind parsed)
     {
         parsed = default;

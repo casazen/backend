@@ -62,7 +62,6 @@ public class OrgInvitationsController(
         return StatusCode(StatusCodes.Status201Created, OrgInvitationSentDto.From(sent));
     }
 
-    /// <summary>The org's invitations that are open or expired (the ones that can be sent again), newest first. Never the token.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<OrgInvitationDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<OrgInvitationDto>>> List(CancellationToken cancellationToken)
@@ -75,13 +74,6 @@ public class OrgInvitationsController(
         return Ok(items.Select(OrgInvitationDto.From).ToList());
     }
 
-    /// <summary>
-    /// Sends the invitation again: a new link (the previous one, the one of the first email, stops working) and seven more
-    /// days from now. An expired invitation comes back and takes a seat again. 404 <c>org_invitation_not_found</c>, 409
-    /// <c>org_invitation_not_pending</c> (accepted or revoked), <c>org_seat_limit_reached</c>, <c>org_invitation_already_pending</c>,
-    /// 429 <c>invitation_resend_too_soon</c> (one «reinvia» per invitation every <c>OrgTeam:ResendMinutes</c>, 60 by default) and
-    /// <c>invitation_daily_limit_reached</c> (the cap of the org on its invitation emails, see the creation).
-    /// </summary>
     [HttpPost("{id:guid}/resend")]
     [ProducesResponseType(typeof(OrgInvitationSentDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]

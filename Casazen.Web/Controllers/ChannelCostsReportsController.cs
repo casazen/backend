@@ -29,10 +29,6 @@ public class ChannelCostsReportsController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
-    /// <summary>
-    /// Gross, commission and net for each channel with a stay in the period, the cost rate, how the commission is settled and the stays without a reported cost, the
-    /// highest cost rate first, with the total.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(ChannelCostsReportDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

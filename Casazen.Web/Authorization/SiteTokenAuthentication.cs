@@ -8,22 +8,16 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Authorization;
 
-/// <summary>Names of the authentication scheme and the claims of a connected site (S022, PLG-BE-CONNECT, site integration plan §10.3).</summary>
 public static class SiteTokenDefaults
 {
-    /// <summary>The scheme of the credential of a connected site: only the policy <see cref="CasazenPolicies.SiteConnection"/> uses it.</summary>
     public const string AuthenticationScheme = "SiteToken";
 
-    /// <summary>The connection the credential is.</summary>
     public const string ConnectionIdClaim = "site_connection_id";
 
-    /// <summary>The org of the credential: the only org a call of the plugin acts on.</summary>
     public const string OrgIdClaim = "org_id";
 
-    /// <summary>The claim of what the credential may do.</summary>
     public const string ScopeClaim = "scope";
 
-    /// <summary>The one scope of a credential: the operations of the domain of its org (<c>api/site/v1/*</c>).</summary>
     public const string DomainScope = "site:domain";
 }
 
@@ -70,7 +64,6 @@ public sealed class SiteTokenAuthenticationHandler(
         }
         catch (InvalidOperationException)
         {
-            // The request already belongs to another org: never mix the two.
             return AuthenticateResult.Fail("The request belongs to another org.");
         }
 
@@ -84,7 +77,6 @@ public sealed class SiteTokenAuthenticationHandler(
         return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name));
     }
 
-    /// <summary>401 with <c>WWW-Authenticate: Bearer</c> and no detail; the body is the standard problem of an empty 401.</summary>
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)
     {
         Response.StatusCode = StatusCodes.Status401Unauthorized;
@@ -93,7 +85,6 @@ public sealed class SiteTokenAuthenticationHandler(
     }
 }
 
-/// <summary>What an endpoint of the plugin reads from its caller.</summary>
 public static class SiteTokenPrincipalExtensions
 {
     /// <summary>

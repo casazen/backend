@@ -5,45 +5,30 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs.Fiscal;
 
-/// <summary>
-/// How the fiscal documents of the organization are issued (FIS-02, NF-82, E06/F02/US02/T02, E11/F01/US01/T01): CasaZen issues; the regime and the data of
-/// the issuer, what CasaZen may do in this environment and what is still missing for it to issue. An organization that has saved nothing has no
-/// <c>mode</c>.
-/// </summary>
 public sealed class FiscalDocumentSettingsDto
 {
     /// <summary><c>CasaZen</c>, the only issuer since 2026-11-14; absent while the organization has saved nothing.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Mode { get; init; }
 
-    /// <summary>
-    /// <c>PrivatePerson</c>, <c>VatOrdinary</c> or <c>VatFlatRate</c> (Italy), <c>SwissVatRegistered</c> or <c>SwissNotRegistered</c> (Switzerland); absent
-    /// until the issuer says it.
-    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Regime { get; init; }
 
     public required IssuerDataDto Issuer { get; init; }
 
-    /// <summary>When the wizard was completed.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DateTime? ConfirmedAt { get; init; }
 
-    /// <summary>The flag <c>Features:FiscalDocumentIssuance</c>: the option «CasaZen issues» is available only while it is on.</summary>
     public bool CasazenIssuanceEnabled { get; init; }
 
-    /// <summary>The answer to D34 (<c>FiscalDocuments:OctorateIssuesAllBookings</c>): Octorate is the recommended issuer only while it is true.</summary>
     public bool OctorateIssuesAllBookings { get; init; }
 
-    /// <summary>The organization has an active Octorate connection in this environment (the mode Octorate needs it).</summary>
     public bool OctorateConnected { get; init; }
 
     public required SdiProviderDto Sdi { get; init; }
 
-    /// <summary>What the mode «CasaZen issues» would still need (the names of the fields, <c>vatNumber</c> and <c>fiscalCode</c> are those of the tax profile); empty when the profile is complete.</summary>
     public required IReadOnlyList<string> MissingFields { get; init; }
 
-    /// <summary>The tax rule in force today for the profile (country, regime, treatments); absent while there is no regime or no rule covers it.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public TaxRuleDto? Rule { get; init; }
 
@@ -82,7 +67,6 @@ public sealed class FiscalDocumentSettingsDto
     }
 }
 
-/// <summary>The data of the issuer. <c>vatNumber</c> and <c>fiscalCode</c> are read from the organization and are edited in its tax profile.</summary>
 public sealed class IssuerDataDto
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -105,11 +89,9 @@ public sealed class IssuerDataDto
 
     public string CountryCode { get; init; } = "IT";
 
-    /// <summary>The regime code the accountant chose; absent when the one of the rule is used.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? FatturaPaRegimeCode { get; init; }
 
-    /// <summary>The regime code that would be used: the one above, else the rule's.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? EffectiveRegimeCode { get; init; }
 
@@ -125,43 +107,30 @@ public sealed class IssuerDataDto
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? FiscalCode { get; init; }
 
-    /// <summary>The issuer is registered for the VAT (it follows the regime).</summary>
     public bool VatRegistered { get; init; }
 
-    /// <summary>The Swiss VAT number (UID) of a registered Swiss issuer, <c>CHE-123.456.789</c>.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? SwissVatNumber { get; init; }
 
-    /// <summary>
-    /// The IBAN the issuer is paid on (encrypted at rest). In full only for the caller who may change the setting (the whole organization and
-    /// <c>property.write</c>); the others get <see cref="IbanMasked"/>.
-    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Iban { get; init; }
 
-    /// <summary>The IBAN with only its country, its check digits and its last four characters visible; absent without an IBAN.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? IbanMasked { get; init; }
 
-    /// <summary>The QR-IBAN of a Swiss issuer. In full only for the caller who may change the setting; the others get <see cref="QrIbanMasked"/>.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? QrIban { get; init; }
 
-    /// <summary>The QR-IBAN masked as <see cref="IbanMasked"/>; absent without a QR-IBAN.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? QrIbanMasked { get; init; }
 
-    /// <summary><c>Standard</c> or <c>ExemptArt10</c> (⚖ I1).</summary>
     public string StayVatTreatment { get; init; } = nameof(Casazen.Core.Entities.Enums.StayVatTreatment.Standard);
 
-    /// <summary><c>FollowsStay</c> or <c>Service</c> (⚖ C2).</summary>
     public string CleaningFeeTreatment { get; init; } = nameof(Casazen.Core.Entities.Enums.CleaningFeeTreatment.FollowsStay);
 
-    /// <summary>The series pattern of the documents to the guests (<c>{year}</c> is the year); absent = the year.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? GuestDocumentSeries { get; init; }
 
-    /// <summary>The series pattern of the invoices to the owners; absent = <c>PM{year}</c>.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? OwnerInvoiceSeries { get; init; }
 
@@ -169,10 +138,8 @@ public sealed class IssuerDataDto
 
     public bool EmailGuestDocuments { get; init; }
 
-    /// <summary>The channels (<c>BookingSource</c> names) whose portal collects the tourist tax itself.</summary>
     public IReadOnlyList<string> PlatformCollectedTouristTaxChannels { get; init; } = [];
 
-    /// <summary>The authorization of the virtual stamp duty or the number of the physical stamp (Italy).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? StampDutyReference { get; init; }
 
@@ -234,12 +201,10 @@ public sealed class SdiProviderDto
 /// </summary>
 public sealed class TaxRuleDto
 {
-    /// <summary><c>IT</c> or <c>CH</c>.</summary>
     public required string Jurisdiction { get; init; }
 
     public required string Regime { get; init; }
 
-    /// <summary>The version stored on the documents made with the rule.</summary>
     public required string Version { get; init; }
 
     public DateOnly ValidFrom { get; init; }
@@ -250,10 +215,8 @@ public sealed class TaxRuleDto
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? SourceUrl { get; init; }
 
-    /// <summary><c>Receipt</c> or <c>Invoice</c>.</summary>
     public required string DocumentKind { get; init; }
 
-    /// <summary>The regime code of FatturaPA of the rule (Italy).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? FatturaPaRegimeCode { get; init; }
 
@@ -302,24 +265,16 @@ public sealed record TaxRuleStampDutyDto(decimal Threshold, decimal Amount, bool
 /// </summary>
 public sealed class SaveFiscalDocumentSettingsRequest
 {
-    /// <summary>The name of the old mode «CasaZen issues the direct bookings», read as <c>CasaZen</c> (the same number) for the clients that still send it.</summary>
     private const string LegacyCasazenModeName = "CasaZenDirectOnly";
 
-    /// <summary>
-    /// <c>CasaZen</c> (also when absent). <c>Octorate</c> and <c>Accountant</c> are retired: 422 <c>issuer_mode_retired</c>, and nothing is saved.
-    /// </summary>
     public string? Mode { get; init; }
 
-    /// <summary><c>PrivatePerson</c>, <c>VatOrdinary</c>, <c>VatFlatRate</c> (Italy), <c>SwissVatRegistered</c> or <c>SwissNotRegistered</c> (Switzerland).</summary>
     public string? Regime { get; init; }
 
     public SaveIssuerDataRequest? Issuer { get; init; }
 
     public bool Confirmed { get; init; }
 
-    /// <summary>
-    /// The command of the service. A mode, a regime or a treatment that is not one of the names above is 422 <c>issuer_field_invalid</c> on its field.
-    /// </summary>
     public SaveIssuerSettingsCommand ToCommand()
     {
         var failures = new List<InvoiceDataFailure>();
@@ -395,7 +350,6 @@ public sealed class SaveFiscalDocumentSettingsRequest
     }
 }
 
-/// <summary>The issuer's data of <see cref="SaveFiscalDocumentSettingsRequest"/>.</summary>
 public sealed class SaveIssuerDataRequest
 {
     public string? LegalName { get; init; }
@@ -418,7 +372,6 @@ public sealed class SaveIssuerDataRequest
 
     public string? IssuerPec { get; init; }
 
-    /// <summary>The old name of <see cref="GuestDocumentSeries"/>, still read when that one is absent.</summary>
     public string? DefaultSeries { get; init; }
 
     /// <summary>Registered for the VAT; absent = what the regime says. A value that contradicts the regime is 422 on <c>vatRegistered</c>.</summary>
@@ -431,10 +384,8 @@ public sealed class SaveIssuerDataRequest
 
     public string? QrIban { get; init; }
 
-    /// <summary><c>Standard</c> or <c>ExemptArt10</c>; absent = <c>Standard</c>.</summary>
     public string? StayVatTreatment { get; init; }
 
-    /// <summary><c>FollowsStay</c> or <c>Service</c>; absent = <c>FollowsStay</c>.</summary>
     public string? CleaningFeeTreatment { get; init; }
 
     public string? GuestDocumentSeries { get; init; }
@@ -445,7 +396,6 @@ public sealed class SaveIssuerDataRequest
 
     public bool EmailGuestDocuments { get; init; }
 
-    /// <summary>The names of the channels (<c>BookingSource</c>) whose portal collects the tourist tax itself.</summary>
     public IReadOnlyList<string>? PlatformCollectedTouristTaxChannels { get; init; }
 
     public string? StampDutyReference { get; init; }

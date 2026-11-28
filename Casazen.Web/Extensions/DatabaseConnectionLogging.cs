@@ -3,7 +3,6 @@ using Casazen.Web.Configuration;
 
 namespace Casazen.Web.Extensions;
 
-/// <summary>Startup log of the connection budget (HOSTING): no host, user or password.</summary>
 public static class DatabaseConnectionLogging
 {
     public static WebApplication LogDatabaseConnectionPlan(this WebApplication app)

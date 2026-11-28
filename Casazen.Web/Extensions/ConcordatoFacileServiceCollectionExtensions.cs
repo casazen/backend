@@ -17,7 +17,6 @@ public static class ConcordatoFacileServiceCollectionExtensions
 {
     public static IServiceCollection AddCasazenConcordatoFacileServices(this IServiceCollection services)
     {
-        // ConcordatoFacile one-time payment (ADR-005): Stripe Checkout with validated Price ID configuration.
         services.AddOptions<Casazen.Core.Options.ConcordatoFacileOptions>()
             .BindConfiguration(Casazen.Core.Options.ConcordatoFacileOptions.SectionName)
             .ValidateOnStart();
@@ -26,13 +25,8 @@ public static class ConcordatoFacileServiceCollectionExtensions
         services.AddScoped<IConcordatoFacileAccessService, ConcordatoFacileAccessService>();
         services.AddScoped<IConcordatoFacileGiftService, ConcordatoFacileGiftService>();
         services.AddScoped<IConcordatoFacileLinkService, ConcordatoFacileLinkService>();
-        // The privacy notice accepted for a lease before the guided form is opened; the signed link and the controller take it (CF-BE).
         services.AddScoped<IConcordatoFacilePrivacyService, ConcordatoFacilePrivacyService>();
-        // The practices of a lease and the lookup of a practice, read from the ConcordatoFacile status API and kept in memory (ADR-008). The
-        // controller of the module takes it in its constructor: without this registration every one of its actions fails (CF-FIX2).
         services.AddScoped<IConcordatoFacileStatusCacheService, ConcordatoFacileStatusCacheService>();
-        // The lease of the guided service follows its practice: the documents read into the draft, the contract imported as signed once the
-        // practice says it is, the registration declared from the receipt (CF-DONE; `POST …/concordatofacile/sync`).
         services.AddSingleton<ILeaseDocumentReadQueue, HangfireLeaseDocumentReadQueue>();
         services.AddScoped<IConcordatoFacileCompletionService, ConcordatoFacileCompletionService>();
         // The simulated module and status API of the test environment (CF-SIM). The status

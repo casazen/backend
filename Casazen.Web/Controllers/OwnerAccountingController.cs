@@ -43,7 +43,6 @@ public class OwnerAccountingController(
         return Ok(await accounting.PostPeriodAsync(orgId, year, month, User.GetUserId(), HttpContext.RequestAborted));
     }
 
-    /// <summary>The month-end readiness of the org and of each owner.</summary>
     [HttpGet("periods/{year:int}/{month:int}/readiness")]
     [ProducesResponseType(typeof(OwnerCloseReadiness), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
@@ -72,7 +71,6 @@ public class OwnerAccountingController(
         return Ok(await reconciliation.GetAsync(orgId, year, month, HttpContext.RequestAborted));
     }
 
-    /// <summary>A new version of the owner's statement from the ledger now. 409 <c>owner_period_closed</c>, <c>owner_statement_unchanged</c>.</summary>
     [HttpPost("periods/{year:int}/{month:int}/owners/{ownerId:guid}/versions")]
     [Authorize(Policy = CasazenPolicies.AgencyStatementManage)]
     [ProducesResponseType(typeof(OwnerStatementVersionDto), StatusCodes.Status201Created)]
@@ -86,7 +84,6 @@ public class OwnerAccountingController(
         return CreatedAtAction(nameof(Version), new { versionId = version.Id }, OwnerStatementVersionDto.From(version));
     }
 
-    /// <summary>The versions of the owner's month, the newest first.</summary>
     [HttpGet("periods/{year:int}/{month:int}/owners/{ownerId:guid}/versions")]
     [ProducesResponseType(typeof(List<OwnerStatementVersionDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -122,7 +119,6 @@ public class OwnerAccountingController(
             content.TouristTax.Select(OwnerPortalTouristTaxDto.From).ToList()));
     }
 
-    /// <summary>Approves a draft version. 422 <c>owner_statement_flagged</c>; 409 <c>owner_statement_not_draft</c>, <c>owner_period_dirty</c>.</summary>
     [HttpPost("versions/{versionId:guid}/approve")]
     [Authorize(Policy = CasazenPolicies.AgencyStatementManage)]
     [ProducesResponseType(typeof(OwnerStatementVersionDto), StatusCodes.Status200OK)]
@@ -136,7 +132,6 @@ public class OwnerAccountingController(
         return Ok(OwnerStatementVersionDto.From(await accounting.ApproveVersionAsync(orgId, versionId, User.GetUserId(), HttpContext.RequestAborted)));
     }
 
-    /// <summary>Publishes an approved version: its file and hash are stored for good. 422 <c>owner_statement_not_approved</c>; 409 <c>owner_period_dirty</c>.</summary>
     [HttpPost("versions/{versionId:guid}/publish")]
     [Authorize(Policy = CasazenPolicies.AgencyStatementPublish)]
     [ProducesResponseType(typeof(OwnerStatementVersionDto), StatusCodes.Status200OK)]
@@ -150,7 +145,6 @@ public class OwnerAccountingController(
         return Ok(OwnerStatementVersionDto.From(await accounting.PublishVersionAsync(orgId, versionId, User.GetUserId(), HttpContext.RequestAborted)));
     }
 
-    /// <summary>The published file of a version (JSON), as the owner received it, also after it was superseded. 404 <c>owner_statement_not_published</c>.</summary>
     [HttpGet("versions/{versionId:guid}/published")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -208,11 +202,6 @@ public class OwnerAccountingController(
         return File(file.Content, file.ContentType, file.FileName);
     }
 
-    /// <summary>
-    /// Closes the owner's month on its approved version, reconciled to the paid wires; a difference or a negative balance needs <c>waiverReason</c> and
-    /// <c>agency.owner.financial.manage</c>. 422 <c>owner_close_unreconciled</c> (with <c>due</c>, <c>paid</c>, <c>difference</c>),
-    /// <c>owner_statement_not_approved</c>; 403 <c>owner_close_waiver_forbidden</c>; 409 <c>owner_period_dirty</c>, <c>owner_period_closed</c>.
-    /// </summary>
     [HttpPost("periods/{year:int}/{month:int}/owners/{ownerId:guid}/close")]
     [Authorize(Policy = CasazenPolicies.AgencyStatementManage)]
     [ProducesResponseType(typeof(OwnerClosePeriodDto), StatusCodes.Status200OK)]
@@ -251,7 +240,6 @@ public class OwnerAccountingController(
         if (await OrgAsync() is not { } orgId)
             return Forbid();
 
-        // The permission of the step, as the single operation asks for it: the publication has its own, every other step is the management of the statements.
         var policy = request.Action == OwnerBulkAction.Publish ? CasazenPolicies.AgencyStatementPublish : CasazenPolicies.AgencyStatementManage;
         if (!(await authorizationService.AuthorizeAsync(User, policy)).Succeeded)
             return Forbid();
@@ -261,7 +249,6 @@ public class OwnerAccountingController(
         var ct = HttpContext.RequestAborted;
         var owners = await accounting.ResolveBulkOwnersAsync(orgId, year, month, action, request.OwnerIds, ct);
 
-        // The list was left out and the readiness of the month knows no owner: nothing to run is an empty run, not the refusal of an empty list (which is only for a list that was sent).
         if (owners.Count == 0)
             return Ok(new OwnerBulkRun(null, action, year, month, OwnerBulkRunStatus.Completed, 0, []));
 
@@ -304,7 +291,6 @@ public class OwnerAccountingController(
         return Ok(run);
     }
 
-    /// <summary>Sets or lifts the legal hold of the owner's month (<c>{ hold, reason }</c>). 422 <c>owner_legal_hold_reason_required</c>.</summary>
     [HttpPost("periods/{year:int}/{month:int}/owners/{ownerId:guid}/legal-hold")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
     [ProducesResponseType(typeof(OwnerClosePeriodDto), StatusCodes.Status200OK)]
@@ -318,7 +304,6 @@ public class OwnerAccountingController(
         return Ok(OwnerClosePeriodDto.From(row));
     }
 
-    /// <summary>The evidence of the owner's month: the close, every version with its published file, the lines and the charges.</summary>
     [HttpGet("periods/{year:int}/{month:int}/owners/{ownerId:guid}/evidence")]
     [ProducesResponseType(typeof(OwnerAccountingEvidenceDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -330,7 +315,6 @@ public class OwnerAccountingController(
         return Ok(OwnerAccountingEvidenceDto.From(evidence));
     }
 
-    /// <summary>The charges of the org, or of one property.</summary>
     [HttpGet("charges")]
     [ProducesResponseType(typeof(List<OwnerChargeDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<List<OwnerChargeDto>>> Charges([FromQuery] Guid? propertyId)
@@ -340,7 +324,6 @@ public class OwnerAccountingController(
         return Ok((await accounting.ListChargesAsync(orgId, propertyId, HttpContext.RequestAborted)).Select(OwnerChargeDto.From).ToList());
     }
 
-    /// <summary>A charge or an expense, pending approval. 422 <c>owner_charge_invalid</c> (with the <c>field</c>); 409 <c>owner_charge_duplicate</c>.</summary>
     [HttpPost("charges")]
     [Authorize(Policy = CasazenPolicies.AgencyStatementManage)]
     [ProducesResponseType(typeof(OwnerChargeDto), StatusCodes.Status201Created)]
@@ -355,7 +338,6 @@ public class OwnerAccountingController(
         return CreatedAtAction(nameof(Charges), new { propertyId = charge.PropertyId }, OwnerChargeDto.From(charge));
     }
 
-    /// <summary>Approves a pending charge. 409 <c>owner_charge_not_pending</c>.</summary>
     [HttpPost("charges/{chargeId:guid}/approve")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
     [ProducesResponseType(typeof(OwnerChargeDto), StatusCodes.Status200OK)]
@@ -368,7 +350,6 @@ public class OwnerAccountingController(
         return Ok(OwnerChargeDto.From(await accounting.ApproveChargeAsync(orgId, chargeId, User.GetUserId(), HttpContext.RequestAborted)));
     }
 
-    /// <summary>Cancels a charge and reverses what it posted in the open months. 409 <c>owner_charge_not_pending</c> when already cancelled.</summary>
     [HttpPost("charges/{chargeId:guid}/cancel")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
     [ProducesResponseType(typeof(OwnerChargeDto), StatusCodes.Status200OK)]
@@ -381,7 +362,6 @@ public class OwnerAccountingController(
         return Ok(OwnerChargeDto.From(await accounting.CancelChargeAsync(orgId, chargeId, User.GetUserId(), HttpContext.RequestAborted)));
     }
 
-    /// <summary>The exchange rates of the owner accounting.</summary>
     [HttpGet("fx-rates")]
     [ProducesResponseType(typeof(List<OwnerFxRateDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<List<OwnerFxRateDto>>> FxRates()
@@ -391,7 +371,6 @@ public class OwnerAccountingController(
         return Ok((await accounting.ListFxRatesAsync(orgId, HttpContext.RequestAborted)).Select(OwnerFxRateDto.From).ToList());
     }
 
-    /// <summary>An exchange rate with its source. 422 <c>owner_fx_rate_invalid</c> (with the <c>field</c>); 409 <c>owner_fx_rate_exists</c>.</summary>
     [HttpPost("fx-rates")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
     [ProducesResponseType(typeof(OwnerFxRateDto), StatusCodes.Status201Created)]
@@ -405,10 +384,6 @@ public class OwnerAccountingController(
         return CreatedAtAction(nameof(FxRates), new { }, OwnerFxRateDto.From(rate));
     }
 
-    /// <summary>
-    /// A manual correction with its reason (<c>description</c>); <c>replacesEntryId</c> reverses an earlier manual correction first. 422
-    /// <c>owner_correction_invalid</c> (with the <c>field</c>); 409 <c>owner_ledger_entry_already_reversed</c>, <c>owner_period_closed</c>.
-    /// </summary>
     [HttpPost("corrections")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
     [ProducesResponseType(typeof(OwnerLedgerEntryDto), StatusCodes.Status201Created)]
@@ -423,7 +398,6 @@ public class OwnerAccountingController(
         return StatusCode(StatusCodes.Status201Created, OwnerLedgerEntryDto.From(entry));
     }
 
-    /// <summary>The links of a version to the invoices of the agency's external fiscal system, the removed ones included (E06/F01/US02/T05).</summary>
     [HttpGet("versions/{versionId:guid}/external-documents")]
     [ProducesResponseType(typeof(List<OwnerExternalDocumentDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -454,7 +428,6 @@ public class OwnerAccountingController(
         return CreatedAtAction(nameof(ExternalDocuments), new { versionId }, OwnerExternalDocumentDto.From(reference));
     }
 
-    /// <summary>Records that the link was checked against the external system. 409 <c>owner_external_document_removed</c>.</summary>
     [HttpPost("external-documents/{referenceId:guid}/verify")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
     [ProducesResponseType(typeof(OwnerExternalDocumentDto), StatusCodes.Status200OK)]
@@ -467,7 +440,6 @@ public class OwnerAccountingController(
         return Ok(OwnerExternalDocumentDto.From(await accounting.VerifyExternalDocumentAsync(orgId, referenceId, User.GetUserId(), HttpContext.RequestAborted)));
     }
 
-    /// <summary>Removes a mistaken link with its reason (<c>{ reason }</c>): the link stays as evidence. 409 <c>owner_external_document_removed</c>.</summary>
     [HttpPost("external-documents/{referenceId:guid}/remove")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
     [ProducesResponseType(typeof(OwnerExternalDocumentDto), StatusCodes.Status200OK)]
@@ -482,21 +454,14 @@ public class OwnerAccountingController(
         return Ok(OwnerExternalDocumentDto.From(reference));
     }
 
-    /// <summary>The caller's org, only when its reach is the whole org (the owner accounting spans the properties of the owners).</summary>
     private Task<Guid?> OrgAsync() =>
         HostCallerResolver.OrgWideAsync(User, orgContextResolver, hostScopeResolver, HttpContext.RequestAborted);
 }
 
-/// <summary>
-/// The step of the month-end to run for many owners, and the owners it is for (E13/F01/US03/T01): <c>ownerIds</c> left out means every owner of the month, an empty list is
-/// refused (never «everyone»).
-/// </summary>
 public sealed record OwnerBulkRequest(OwnerBulkAction? Action, List<Guid>? OwnerIds);
 
-/// <summary>The removal of a mistaken link to an external invoice, with its reason.</summary>
 public sealed record OwnerExternalDocumentRemoval(string? Reason);
 
-/// <summary>A link of a version to an invoice issued by the agency's external fiscal system, with its audit facts.</summary>
 public sealed record OwnerExternalDocumentDto(
     Guid Id,
     Guid StatementVersionId,
@@ -521,14 +486,8 @@ public sealed record OwnerExternalDocumentDto(
         r.Status, r.VerifiedAt, r.VerifiedByUserId, r.RemovedAt, r.RemovedByUserId, r.RemovalReason, r.CreatedAt, r.CreatedByUserId);
 }
 
-/// <summary>The legal hold of a month: set with its reason, or lifted.</summary>
 public sealed record OwnerLegalHoldRequest(bool Hold, string? Reason);
 
-/// <summary>
-/// A line of the owner ledger with its source and the facts of its amount. <c>informational</c> is true for a line for information only (today the commission of a portal the
-/// agency bears, <see cref="OwnerLedgerEntryType.ChannelFeeBorneByAgency"/>, FIX/BE-V2-NO-RECHARGE): a client shows it and leaves it out of every total and balance of the
-/// owner (<see cref="OwnerLedgerBalance"/>), without having to know its type.
-/// </summary>
 public sealed record OwnerLedgerEntryDto(
     Guid Id,
     Guid OwnerId,
@@ -568,7 +527,6 @@ public sealed record OwnerLedgerEntryDto(
         e.Description, e.PostedAt, !OwnerLedgerBalance.Counts(e.EntryType));
 }
 
-/// <summary>A version of an owner statement, without its published file (<c>…/published</c>).</summary>
 public sealed record OwnerStatementVersionDto(
     Guid Id,
     Guid OwnerId,
@@ -604,16 +562,11 @@ public sealed record OwnerStatementVersionDto(
         v.PublishedAt, v.PublishedByUserId, v.PublishedSha256, v.SupersedesVersionId, v.SupersededByVersionId, v.CreatedAt);
 }
 
-/// <summary>
-/// A version with its lines and its tourist tax box: <c>touristTax</c> is the box the PDF, the CSV and the owner portal carry, in the same shape as the portal's
-/// (<see cref="OwnerPortalTouristTaxDto"/>), for information only and outside every total.
-/// </summary>
 public sealed record OwnerStatementVersionDetailDto(
     OwnerStatementVersionDto Version,
     IReadOnlyList<OwnerLedgerEntryDto> Entries,
     IReadOnlyList<OwnerPortalTouristTaxDto> TouristTax);
 
-/// <summary>The month of an owner: the close with its reconciliation or waiver, the retention and the legal hold.</summary>
 public sealed record OwnerClosePeriodDto(
     Guid OwnerId,
     int Year,
@@ -642,7 +595,6 @@ public sealed record OwnerClosePeriodDto(
         p.LegalHoldAt);
 }
 
-/// <summary>A charge or an expense of the owners of a property.</summary>
 public sealed record OwnerChargeDto(
     Guid Id,
     Guid PropertyId,
@@ -666,16 +618,13 @@ public sealed record OwnerChargeDto(
         c.AttachmentReference, c.Status, c.ApprovedAt, c.ApprovedByUserId, c.CancelledAt, c.CreatedAt);
 }
 
-/// <summary>An exchange rate of the owner accounting.</summary>
 public sealed record OwnerFxRateDto(Guid Id, string BaseCurrency, string QuoteCurrency, DateOnly RateDate, decimal Rate, string Source, DateTime CreatedAt)
 {
     public static OwnerFxRateDto From(OwnerFxRate r) => new(r.Id, r.BaseCurrency, r.QuoteCurrency, r.RateDate, r.Rate, r.Source, r.CreatedAt);
 }
 
-/// <summary>A published file of a version, with its hash.</summary>
 public sealed record OwnerPublishedFileDto(Guid VersionId, int Version, string Sha256, string Content);
 
-/// <summary>The evidence of an owner's month, exportable as it is.</summary>
 public sealed record OwnerAccountingEvidenceDto(
     Guid OwnerId,
     int Year,

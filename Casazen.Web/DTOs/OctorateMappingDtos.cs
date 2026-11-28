@@ -38,7 +38,6 @@ public sealed record OctorateListingDto(
     bool OfferedForImport,
     DateTime? ConfirmedAt)
 {
-    /// <summary>The DTO of a row, with only the candidates <paramref name="reaches"/> accepts.</summary>
     public static OctorateListingDto From(ChannelMappingRow row, Func<Guid, bool> reaches)
     {
         ArgumentNullException.ThrowIfNull(row);
@@ -61,45 +60,33 @@ public sealed record OctorateListingDto(
     }
 }
 
-/// <summary>A CasaZen property as the mapping screen names it.</summary>
 public sealed record OctoratePropertySummaryDto(Guid Id, string Name, string Address, string City)
 {
     public static OctoratePropertySummaryDto From(ChannelMappingProperty property) =>
         new(property.Id, property.Name, property.Address, property.City);
 }
 
-/// <summary>
-/// A channel of a listing: the channel code (142 Booking.com, 274 Airbnb, ...), the id of the listing on it exactly as Octorate gives it,
-/// and its state: <see cref="ConnectedState"/> when Octorate holds a connection of the listing to the channel.
-/// </summary>
 public sealed record OctorateChannelDto(string ChannelId, string ExternalId, string State)
 {
     public const string ConnectedState = "Connected";
 }
 
-/// <summary>A room of a listing: the Octorate product id, its name and the guests it takes.</summary>
 public sealed record OctorateRoomDto(string Id, string? Name, int? MaxGuests);
 
-/// <summary>Confirms a listing to a CasaZen property (<c>PUT api/octorate/mapping/{octorateAccommodationId}</c>).</summary>
 public sealed class ConfirmMappingRequest
 {
-    /// <summary>The CasaZen property of the listing.</summary>
     [Required(ErrorMessage = "OctorateMappingPropertyRequired")]
     public Guid? PropertyId { get; set; }
 
-    /// <summary>The Octorate room, for a listing with several rooms; left out, the only room is set (or none).</summary>
     [MaxLength(64, ErrorMessage = "OctorateRoomInvalid")]
     public string? OctorateProductId { get; set; }
 }
 
-/// <summary>Chooses the Octorate room of a confirmed listing (<c>PUT api/octorate/mapping/{octorateAccommodationId}/room</c>).</summary>
 public sealed class SetRoomRequest
 {
-    /// <summary>The Octorate room: one of the rooms of the listing.</summary>
     [Required(ErrorMessage = "OctorateRoomRequired")]
     [MaxLength(64, ErrorMessage = "OctorateRoomInvalid")]
     public string OctorateProductId { get; set; } = string.Empty;
 }
 
-/// <summary>The CasaZen property created from a listing (<c>POST api/octorate/mapping/{octorateAccommodationId}/import</c>).</summary>
 public sealed record ImportListingResponse(Guid PropertyId);

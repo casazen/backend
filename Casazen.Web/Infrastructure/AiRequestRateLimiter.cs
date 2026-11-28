@@ -40,7 +40,6 @@ public sealed class AiRequestRateLimiter : IDisposable
         _orgs = PartitionedRateLimiter.Create<string, string>(key => RateLimitPartition.GetFixedWindowLimiter(key, _ => orgOptions));
     }
 
-    /// <summary>Takes one permit for <paramref name="userKey"/> and, when known, for <paramref name="orgId"/>.</summary>
     public AiRateLimitDecision TryAcquire(string userKey, Guid? orgId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userKey);
@@ -71,7 +70,6 @@ public sealed class AiRequestRateLimiter : IDisposable
         lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter) ? retryAfter : window;
 }
 
-/// <summary>Outcome of <see cref="AiRequestRateLimiter.TryAcquire"/>; <see cref="Policy"/> names the exhausted limit.</summary>
 public readonly record struct AiRateLimitDecision(bool IsAllowed, TimeSpan RetryAfter, string? Policy)
 {
     public static AiRateLimitDecision Allowed { get; } = new(true, TimeSpan.Zero, null);
@@ -117,7 +115,6 @@ public sealed class AiRateLimitFilter(
             [retryAfterSeconds]);
         problem.Extensions["retryAfterSeconds"] = retryAfterSeconds;
 
-        // No user id or IP in the log: the policy, the route and the trace id identify the event.
         logger.LogWarning(
             "AI rate limit exceeded: policy {Policy} on {Method} {Route}. TraceId={TraceId}",
             decision.Policy,

@@ -22,11 +22,6 @@ public class ComplianceSitemapController(ISeoContentService seoContentService, I
 {
     public const string Route = "api/public/sitemap.xml";
 
-    /// <summary>
-    /// The sitemap of the web app's guides. With <paramref name="host"/> (BK-16: the Host the crawler used, sent by the web
-    /// app's function) a host that serves an org's own site gets that org's sitemap on its own URLs instead, 404 when it has
-    /// nothing published; any other host, or no host, gets the guides sitemap as before.
-    /// </summary>
     [HttpGet(Route)]
     [Produces("application/xml")]
     [ProducesResponseType(StatusCodes.Status200OK)]

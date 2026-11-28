@@ -27,11 +27,6 @@ public sealed class OwnerContactAcceptanceController(
     IOwnerCollaborationService collaboration,
     IAccountEmailResolver accountEmails) : ControllerBase
 {
-    /// <summary>
-    /// The signed-in account accepts the invitation and becomes the contact. 403 <c>owner_contact_email_not_verified</c> and
-    /// <c>owner_contact_email_mismatch</c>; 410 <c>owner_contact_invitation_invalid</c>, <c>_expired</c>, <c>_used</c>, <c>_revoked</c>. Sending it twice
-    /// finds it done and answers the same. The answer carries the claims of the portal and whether they reached the identity provider.
-    /// </summary>
     [HttpPost("accept")]
     [Authorize(Policy = CasazenPolicies.Authenticated)]
     [ProducesResponseType(typeof(OwnerContactAccepted), StatusCodes.Status200OK)]
@@ -51,5 +46,4 @@ public sealed class OwnerContactAcceptanceController(
     }
 }
 
-/// <summary>The secret of the link of the invitation.</summary>
 public sealed record AcceptOwnerContactBody(string? Token);

@@ -20,10 +20,8 @@ public class CheckoutHoldExpiryJob(
 {
     public const string RecurringJobId = "checkout-hold-expiry";
 
-    /// <summary>Every 5 minutes: with the 15-minute TTL a hold is released at most 5 minutes late.</summary>
     public const string Cron = "*/5 * * * *";
 
-    // One run at a time; a second run started anyway (e.g. from the dashboard) skips the holds the first one has locked.
     [DisableConcurrentExecution(JobLockTimeouts.FrequentSeconds)]
     public async Task ExecuteAsync(CancellationToken cancellationToken)
     {
@@ -62,8 +60,6 @@ public class CheckoutHoldExpiryJob(
             }
         }
 
-        // Last, the payments a cancelled booking left open (cancelled by an older cleanup, or by any path that did not carry its
-        // payments): a payment of a cancelled booking is never money to collect, so it must not be listed as such for ever.
         var closed = await expiryService.CloseOpenPaymentsOfCancelledBookingsAsync(cancellationToken);
         if (closed == CancelledBookingPaymentsRun.Empty)
             return;

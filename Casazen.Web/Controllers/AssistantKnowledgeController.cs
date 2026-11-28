@@ -29,12 +29,6 @@ public sealed class AssistantKnowledgeController(
     IOrgContextResolver orgContextResolver,
     IAuthorizationService authorizationService) : ControllerBase
 {
-    /// <summary>
-    /// The knowledge base of a property in <c>language</c> (<c>it</c> or <c>en</c>, Italian when not given): <c>facts</c> read from the listing, <c>entries</c> of the property and
-    /// of the organization (<c>inherited</c>), and <c>topicsWithoutData</c>.
-    /// </summary>
-    /// <response code="200">The knowledge base.</response>
-    /// <response code="404"><c>property_not_found</c>: not in the caller's organization, or not within the caller's reach.</response>
     [HttpGet("properties/{propertyId:guid}/knowledge")]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
     [ProducesResponseType(typeof(AssistantKnowledgeViewDto), StatusCodes.Status200OK)]
@@ -54,10 +48,6 @@ public sealed class AssistantKnowledgeController(
         return Ok(AssistantKnowledgeViewDto.From(await knowledge.GetViewAsync(caller.OrgId, propertyId, language, cancellationToken)));
     }
 
-    /// <summary>Creates an entry of the property.</summary>
-    /// <response code="201">The entry.</response>
-    /// <response code="404"><c>property_not_found</c>.</response>
-    /// <response code="422"><c>assistant_entry_invalid</c>: no topic or kind, a text that is empty or over 1,000 characters, a FAQ with no question, a language that is not a code.</response>
     [HttpPost("properties/{propertyId:guid}/knowledge")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [RequestSizeLimit(16384)]
@@ -80,10 +70,6 @@ public sealed class AssistantKnowledgeController(
         return StatusCode(StatusCodes.Status201Created, KnowledgeEntryDto.From(created));
     }
 
-    /// <summary>Changes an entry of the property (one that came from a lesson too).</summary>
-    /// <response code="200">The entry.</response>
-    /// <response code="404"><c>property_not_found</c>, or <c>assistant_entry_not_found</c>: no such entry <b>of this property</b>.</response>
-    /// <response code="422"><c>assistant_entry_invalid</c>.</response>
     [HttpPut("properties/{propertyId:guid}/knowledge/{entryId:guid}")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [RequestSizeLimit(16384)]
@@ -107,9 +93,6 @@ public sealed class AssistantKnowledgeController(
         return Ok(KnowledgeEntryDto.From(updated));
     }
 
-    /// <summary>Deletes an entry of the property.</summary>
-    /// <response code="204">Deleted.</response>
-    /// <response code="404"><c>property_not_found</c>, or <c>assistant_entry_not_found</c>.</response>
     [HttpDelete("properties/{propertyId:guid}/knowledge/{entryId:guid}")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -127,8 +110,6 @@ public sealed class AssistantKnowledgeController(
         return NoContent();
     }
 
-    /// <summary>The entries of the whole organization (no property), by topic, active or not.</summary>
-    /// <response code="200">The entries.</response>
     [HttpGet("knowledge")]
     [Authorize(Policy = CasazenPolicies.BookingRead)]
     [ProducesResponseType(typeof(IReadOnlyList<KnowledgeEntryDto>), StatusCodes.Status200OK)]
@@ -142,9 +123,6 @@ public sealed class AssistantKnowledgeController(
         return Ok(entries.Select(KnowledgeEntryDto.From).ToList());
     }
 
-    /// <summary>Creates an entry of the whole organization: it applies to every property that has no entry of its own with the same topic and kind.</summary>
-    /// <response code="201">The entry.</response>
-    /// <response code="422"><c>assistant_entry_invalid</c>.</response>
     [HttpPost("knowledge")]
     [Authorize(Policy = CasazenPolicies.BookingRead)]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
@@ -161,10 +139,6 @@ public sealed class AssistantKnowledgeController(
         return StatusCode(StatusCodes.Status201Created, KnowledgeEntryDto.From(created));
     }
 
-    /// <summary>Changes an entry of the whole organization.</summary>
-    /// <response code="200">The entry.</response>
-    /// <response code="404"><c>assistant_entry_not_found</c>: no such entry of the organization (an entry of a property is not one).</response>
-    /// <response code="422"><c>assistant_entry_invalid</c>.</response>
     [HttpPut("knowledge/{entryId:guid}")]
     [Authorize(Policy = CasazenPolicies.BookingRead)]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
@@ -185,9 +159,6 @@ public sealed class AssistantKnowledgeController(
         return Ok(KnowledgeEntryDto.From(updated));
     }
 
-    /// <summary>Deletes an entry of the whole organization.</summary>
-    /// <response code="204">Deleted.</response>
-    /// <response code="404"><c>assistant_entry_not_found</c>.</response>
     [HttpDelete("knowledge/{entryId:guid}")]
     [Authorize(Policy = CasazenPolicies.BookingRead)]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
@@ -203,7 +174,6 @@ public sealed class AssistantKnowledgeController(
         return NoContent();
     }
 
-    /// <summary>The caller's id and organization; <c>null</c> when it has no organization.</summary>
     private async Task<Caller?> CallerAsync(CancellationToken cancellationToken)
     {
         if (User.GetUserId() is not { Length: > 0 } userId

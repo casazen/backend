@@ -5,9 +5,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Authorization;
 
-/// <summary>
-/// Requirement for owner portal access (ADR-011-R5).
-/// </summary>
 public sealed class OwnerPortalRequirement : IAuthorizationRequirement;
 
 /// <summary>
@@ -30,17 +27,14 @@ public class OwnerPortalAuthorizationHandler : AuthorizationHandler<OwnerPortalR
         if (context.User.Identity?.IsAuthenticated != true)
             return Task.CompletedTask;
 
-        // Check for context=owner_portal claim (ADR-011-R5)
         var contextClaim = context.User.FindFirstValue(OwnerPortalClaims.Type(_customClaimNamespace, OwnerPortalClaims.Context, "context"));
         if (contextClaim != "owner_portal")
             return Task.CompletedTask;
 
-        // Verify owner_id claim exists (ADR-011-R7)
         var ownerIdClaim = context.User.FindFirstValue(OwnerPortalClaims.Type(_customClaimNamespace, OwnerPortalClaims.OwnerId, "owner_id"));
         if (string.IsNullOrWhiteSpace(ownerIdClaim) || !Guid.TryParse(ownerIdClaim, out _))
             return Task.CompletedTask;
 
-        // MUST NOT include host roles (PropertyOwner, Staff, Manager) per ADR-011-R5
         var roles = context.User.Claims
             .Where(c => c.Type == ClaimTypes.Role || c.Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/role")
             .Select(c => c.Value)
@@ -69,10 +63,6 @@ public static class OwnerPortalClaims
     public const string AgencyIds = "https://casazen.app/agency_ids";
     public const string OwnedPropertyIds = "https://casazen.app/owned_property_ids";
 
-    /// <summary>
-    /// The claim type to read: the documented full name, or <c>{override}/{name}</c> when a namespace override is
-    /// configured (tests, <see cref="Casazen.Web.Configuration.Auth0Options.CustomClaimNamespace"/>).
-    /// </summary>
     public static string Type(string? customClaimNamespace, string documentedClaim, string name) =>
         string.IsNullOrWhiteSpace(customClaimNamespace) ? documentedClaim : $"{customClaimNamespace}/{name}";
 }
@@ -104,8 +94,6 @@ public static class OwnerPortalPrincipalExtensions
     {
         ArgumentNullException.ThrowIfNull(user);
 
-        // The Auth0 Action sets an ARRAY (auth0.md 6.1) and the JWT handler turns an array into one claim per element, as it does for the roles (read with FindAll):
-        // every claim of the type is read, each one as a single id, a JSON array or a comma-separated list (E40/F01/US01/T02: an owner of several agencies keeps all of them).
         var claimType = OwnerPortalClaims.Type(customClaimNamespace, OwnerPortalClaims.AgencyIds, "agency_ids");
         var agencyIds = new List<Guid>();
         foreach (var claim in user.FindAll(claimType))
@@ -114,7 +102,6 @@ public static class OwnerPortalPrincipalExtensions
         return agencyIds.Distinct().ToList();
     }
 
-    /// <summary>The ids of ONE claim value: a JSON array (<c>["uuid1","uuid2"]</c>), a comma-separated list or a single id; what is not an id is left out.</summary>
     private static List<Guid> ParseIds(string? claimValue)
     {
         if (string.IsNullOrWhiteSpace(claimValue))
@@ -124,7 +111,6 @@ public static class OwnerPortalPrincipalExtensions
         {
             var value = claimValue.Trim();
 
-            // Try JSON array first (e.g., ["uuid1","uuid2"])
             if (value.StartsWith('['))
             {
                 var ids = System.Text.Json.JsonSerializer.Deserialize<string[]>(value);
@@ -136,7 +122,6 @@ public static class OwnerPortalPrincipalExtensions
                           .ToList();
             }
 
-            // Fallback to comma-separated (a single id is a list of one)
             return value.Split(',', StringSplitOptions.RemoveEmptyEntries)
                 .Select(id => Guid.TryParse(id.Trim(), out var guid) ? guid : Guid.Empty)
                 .Where(id => id != Guid.Empty)

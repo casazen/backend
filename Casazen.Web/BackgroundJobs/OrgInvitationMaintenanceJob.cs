@@ -14,7 +14,6 @@ public class OrgInvitationMaintenanceJob(IOrgInvitationMaintenanceService mainte
 {
     public const string RecurringJobId = "org-invitation-maintenance";
 
-    /// <summary>Every hour at minute 10 (the other hourly jobs run on the hour).</summary>
     public const string Cron = "10 * * * *";
 
     [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]

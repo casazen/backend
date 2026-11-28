@@ -15,7 +15,6 @@ public sealed class Auth0Options
     /// <summary>Login domain of the tenant, host only (e.g. <c>tenant.eu.auth0.com</c>): the JWT issuer is <c>https://{Domain}/</c>.</summary>
     public string? Domain { get; set; }
 
-    /// <summary>API identifier expected in the <c>aud</c> claim.</summary>
     public string? Audience { get; set; }
 
     /// <summary>
@@ -29,7 +28,6 @@ public sealed class Auth0Options
 
     public string? ManagementClientSecret { get; set; }
 
-    /// <summary>Deprecated static Management API token (FD-14): read only when no M2M client is configured.</summary>
     public string? ManagementApiToken { get; set; }
 
     public bool HasManagementClient =>
@@ -39,7 +37,6 @@ public sealed class Auth0Options
         !HasManagementClient && !RequiredConfiguration.IsMissing(ManagementApiToken);
 }
 
-/// <summary>Validates the settings JWT validation depends on (registered with <c>ValidateOnStart</c> where required).</summary>
 public sealed class Auth0OptionsValidator : IValidateOptions<Auth0Options>
 {
     public ValidateOptionsResult Validate(string? name, Auth0Options options)

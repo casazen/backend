@@ -8,12 +8,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// The payment ledger (FIS-05, NF-85, E06/F04/US01/T03): one list of everything collected for a booking and for a period, card, manual and channel
-/// payments, each paid or to collect and linked to the fiscal document of its booking. Needs <c>payment.read</c>; a booking is authorized like
-/// <c>GET api/payments?bookingId=</c> (another org's booking, or one the caller may not read the payments of, is a 404) and the period list is narrowed in
-/// SQL to the caller's scope.
-/// </summary>
 [ApiController]
 [Route("api/payment-ledger")]
 [Authorize(Policy = CasazenPolicies.PaymentRead)]
@@ -24,7 +18,6 @@ public class PaymentLedgerController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
-    /// <summary>Code of a <c>from</c> after <c>to</c>.</summary>
     public const string InvalidRangeCode = "payment_ledger_invalid_range";
 
     /// <summary>
@@ -56,11 +49,6 @@ public class PaymentLedgerController(
                 result.Degraded));
     }
 
-    /// <summary>
-    /// One page of the lines of a period, newest first: <c>propertyId</c>, <c>bookingId</c> (404 when the caller may not read their payments),
-    /// <c>from</c>/<c>to</c> (Europe/Rome days, both included), <c>page</c> from 1 and <c>pageSize</c> (20 when missing, at most 100).
-    /// 400 <c>payment_ledger_invalid_range</c>.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(PaymentLedgerPageDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

@@ -35,7 +35,6 @@ public class SiteApiController(
     IOrgDomainService orgDomain,
     IStringLocalizer<SharedResources> localizer) : ControllerBase
 {
-    /// <summary>The largest body of a request that has one: a domain name (253 characters) or three switches.</summary>
     public const int MaxBodyBytes = 4 * 1024;
 
     /// <summary>
@@ -60,12 +59,6 @@ public class SiteApiController(
         return failure ?? Ok(account);
     }
 
-    /// <summary>
-    /// <c>{ "customDomain": "prenota.example.com" }</c> sets the org's custom domain, <c>{ "customDomain": null }</c> takes it back to the address of CasaZen (the
-    /// console's «CasaZen path» mode). The member is required, <c>null</c> included. Same outcomes as the console: 400 <c>org_domain_invalid</c>, 409
-    /// <c>org_domain_in_use</c>, 403 <c>plan_required</c> (with <c>requiredPlan</c>). The answer is the whole account, with the DNS records to create under
-    /// <c>domain.dnsInstructions</c>.
-    /// </summary>
     [HttpPut("domain")]
     [SiteDomainAccess]
     [RequestSizeLimit(MaxBodyBytes)]
@@ -84,7 +77,6 @@ public class SiteApiController(
         if (User.GetSiteConnection() is not { } site)
             return Unauthorized();
 
-        // A body that lost the member (a client that dropped its empty values) must not read as «go back to CasaZen»: the member is required, null included.
         if (!request.CustomDomainSpecified)
             return this.ApiProblem(StatusCodes.Status400BadRequest, OrgDomainController.DomainInvalidCode, "OrgDomainInvalid");
 
@@ -122,7 +114,6 @@ public class SiteApiController(
         if (this.DomainFailure(result) is { } refused)
             return refused;
 
-        // The check changes what the org stores (the status, the detail, the records): the account is read after it.
         var (account, failure) = await BuildAccountAsync(site, domain: null, cancellationToken);
         if (failure is not null)
             return failure;
@@ -130,11 +121,6 @@ public class SiteApiController(
         return Ok(new SiteDomainVerifyResponse(OrgDomainMapper.ToDto(result.Verification!, localizer), account!));
     }
 
-    /// <summary>
-    /// What passes from the org's own domain: the guest area, the owner portal and the links of the e-mails (the three choices, all required). Behind
-    /// <c>WhiteLabelHost</c> as the console's endpoint is (404 while it is off), and the answer is the whole account, <c>domain.surfaces</c> updated. Same outcomes
-    /// as the console: 400 <c>org_domain_not_configured</c> without a custom domain, 403 <c>plan_required</c>.
-    /// </summary>
     [HttpPut("domain/surfaces")]
     [FeatureGate(FeatureFlags.WhiteLabelHost)]
     [SiteDomainAccess]
@@ -185,10 +171,6 @@ public class SiteApiController(
         return NoContent();
     }
 
-    /// <summary>
-    /// The account of the credential's org, once for every endpoint that answers it. <paramref name="domain"/> is the configuration the caller has just read or saved.
-    /// The failure is the answer to give (404 for an org that is gone, 503 while the address of CasaZen is not configured); <c>null</c> with the account.
-    /// </summary>
     private async Task<(SiteAccountDto? Account, ActionResult? Failure)> BuildAccountAsync(
         SiteConnectionPrincipal site,
         OrgDomainConfig? domain,
@@ -200,7 +182,6 @@ public class SiteApiController(
 
         if (built.Outcome == SiteAccountOutcome.PublicAddressNotConfigured)
         {
-            // Development and Testing only (elsewhere the startup fails): the org has no domain of its own served and the address of CasaZen is not configured.
             return (null, this.ApiProblem(
                 StatusCodes.Status503ServiceUnavailable,
                 SiteConnectionErrorCodes.PublicAddressNotConfigured,

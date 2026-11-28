@@ -23,7 +23,6 @@ public class SendPendingPaymentRequestsJob(ISupplierPaymentJobService payments)
         await payments.SendPendingRequestsAsync(supplierOrgId, cancellationToken);
 }
 
-/// <summary>Queues <see cref="SendPendingPaymentRequestsJob"/> for a supplier that has just become ready.</summary>
 public sealed class SupplierPaymentJobScheduler(
     IBackgroundJobClient backgroundJobClient,
     ILogger<SupplierPaymentJobScheduler> logger) : ISupplierPaymentJobScheduler
@@ -36,7 +35,6 @@ public sealed class SupplierPaymentJobScheduler(
         }
         catch (Exception ex)
         {
-            // The event is already applied and must not fail for this: the daily reminder job sends the pending payments too.
             logger.LogError(ex, "The pending payment requests of supplier {SupplierOrgId} could not be queued", supplierOrgId);
         }
     }

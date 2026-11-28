@@ -3,12 +3,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs;
 
-/// <summary>
-/// <c>GET api/marketplace/partners/{code}/brief</c> (E09/F02/US03/T01, NF-56, MKT-03): what the host takes to the partner's own site. <c>checklist</c> is
-/// what to choose and what to authorise there, one item per line of the activation guide, in the language asked (Italian when the partner has no text in
-/// it). <c>propertyData</c> is the fixed list of the property's fields the partner is likely to ask for, <c>null</c> when no property was named. It carries
-/// no guest, no booking, no price and no document: the page only shows it to the host, and CasaZen sends nothing to the partner.
-/// </summary>
 public sealed record MarketplacePartnerBriefDto(
     string Code,
     string Name,
@@ -50,15 +44,10 @@ public sealed record MarketplacePartnerPropertyDataDto(
     }
 }
 
-/// <summary>
-/// The body of <c>POST api/marketplace/partners/{code}/declare</c>: the host says it activated the partner on the partner's own site.
-/// </summary>
 public sealed class DeclareMarketplacePartnerRequest
 {
-    /// <summary>The property the partner was activated for; none = the whole org (only a caller who reaches the whole org may declare that).</summary>
     public Guid? PropertyId { get; set; }
 
-    /// <summary>The day the activation was done (<c>yyyy-MM-dd</c>), today or earlier in Rome. Missing or in the future is 422 <c>marketplace_declared_date_invalid</c>.</summary>
     public DateOnly? DeclaredOn { get; set; }
 }
 

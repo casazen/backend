@@ -12,7 +12,6 @@ namespace Casazen.Web.Infrastructure;
 /// </summary>
 public static class DocumentArchiveAccessResolver
 {
-    /// <summary>Separates the alternative contexts of a source (<c>short-rent|long-rent</c>).</summary>
     private const char ContextSeparator = '|';
 
     /// <summary>
@@ -33,7 +32,6 @@ public static class DocumentArchiveAccessResolver
         if (string.IsNullOrWhiteSpace(userId))
             return DocumentArchiveAccess.None;
 
-        // One question for each distinct permission, whatever the number of sources that share it.
         var answers = new Dictionary<(string Context, string Permission), bool>();
         var open = new HashSet<ArchiveDocumentType>();
         var closed = new HashSet<ArchiveDocumentType>();
@@ -63,7 +61,6 @@ public static class DocumentArchiveAccessResolver
         Dictionary<(string Context, string Permission), bool> answers,
         CancellationToken cancellationToken)
     {
-        // Any of the contexts of the source grants it (the property core is read in either rental context).
         foreach (var context in source.ContextKey.Split(ContextSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             var key = (context, source.PermissionKey);

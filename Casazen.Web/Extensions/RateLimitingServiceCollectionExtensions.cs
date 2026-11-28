@@ -25,16 +25,13 @@ public static class RateLimitingServiceCollectionExtensions
 {
     public const string SectionName = "RateLimiting";
 
-    /// <summary>The route value the check-in policies partition by: <c>{token}</c>.</summary>
     public const string DefaultTokenRouteValue = "token";
 
-    /// <summary>The route value of the door policy: <c>{doorToken}</c> of <c>api/public/checkin/door/{doorToken}</c>.</summary>
     public const string DoorTokenRouteValue = "doorToken";
 
     private static readonly TimeSpan OneMinute = TimeSpan.FromMinutes(1);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    /// <summary>Every policy with its default limit per client IP (the pre-FD-10 global limits, now per IP).</summary>
     public static IReadOnlyList<RateLimitPolicyDefinition> Policies { get; } =
     [
         new(RateLimitPolicies.PublicRead, 120, OneMinute),
@@ -45,11 +42,9 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.GuestCheckIn, 10, OneMinute, "CheckIn:RateLimitPermitLimit", PartitionByToken: true),
         new(RateLimitPolicies.GuestCheckInSubmit, 3, OneMinute, "CheckIn:SubmitRateLimitPermitLimit", PartitionByToken: true),
 
-        // The self-hosted identity step (E70/F01/US01/T01): the opening and the presence challenge, and the upload of a presence sequence, per client IP and token.
         new(RateLimitPolicies.GuestIdentity, 30, OneMinute, PartitionByToken: true),
         new(RateLimitPolicies.GuestIdentityUpload, 6, OneMinute, PartitionByToken: true),
 
-        // The guest at the door (E22/F01/US02/T01): a booking code or a surname and a date open the check-in link of a stay: 5 a minute per client IP and door token.
         new(RateLimitPolicies.PublicDoorCheckIn, 5, OneMinute, PartitionByToken: true, TokenRouteValue: DoorTokenRouteValue),
         new(RateLimitPolicies.PublicTouristTaxCalc, 30, OneMinute, "SeoTouristTax:RateLimitPermitLimit"),
         new(RateLimitPolicies.PublicSeoEvents, 60, OneMinute),
@@ -68,7 +63,6 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.PublicReviewSubmit, 10, TimeSpan.FromMinutes(10)),
         new(RateLimitPolicies.GuestMessageSend, 30, TimeSpan.FromMinutes(10)),
 
-        // The guest cancelling a booking, from the guest area or with the host's link (DB-08a): money and dates, so 10 per 10 minutes.
         new(RateLimitPolicies.GuestBookingCancel, 10, TimeSpan.FromMinutes(10)),
 
         // A policy of a signed-in endpoint: partitioned by person, since the request emails other people (AM-02b).
@@ -77,26 +71,20 @@ public static class RateLimitingServiceCollectionExtensions
         // The global search of the palette (UI-13a): per signed-in person as well, since the palette asks at every pause in typing.
         new(RateLimitPolicies.GlobalSearch, 60, OneMinute, PartitionByUser: true),
 
-        // The slots of a supplier's service read by the host (SR-08a): the planner runs for each read, per signed-in person as well.
         new(RateLimitPolicies.HostSupplierSlots, 60, OneMinute, PartitionByUser: true),
 
         // The host answering a guest (DB-14a): per signed-in person as well, since the answer is an email to somebody else.
         new(RateLimitPolicies.HostMessageSend, 60, TimeSpan.FromMinutes(10), PartitionByUser: true),
 
-        // The copy of a tenant's data and the erasure request (LR-09): per signed-in person, a handful in ten minutes is plenty.
         new(RateLimitPolicies.TenantPrivacy, 10, TimeSpan.FromMinutes(10), PartitionByUser: true),
 
-        // The import of a bank statement on the rents: per signed-in person, each call reads a file of up to 8 MB.
         new(RateLimitPolicies.RentBankImport, 30, TimeSpan.FromMinutes(10), PartitionByUser: true),
 
-        // The import of the per-property data of an agency from a CSV or Excel file (E10/F02/US01/T02): per signed-in person, each call parses a file
-        // of up to 2 MB and, without dryRun, writes up to a thousand rows.
         new(RateLimitPolicies.OnboardingBulkImport, 30, TimeSpan.FromMinutes(10), PartitionByUser: true),
 
         // The autosave of the showcase editor (SP-13a): per signed-in person as well, since the editor saves at every pause in typing.
         new(RateLimitPolicies.SupplierShowcaseSave, 120, OneMinute, PartitionByUser: true),
 
-        // The upload and the removal of the images of the showcase (SP-13b): per signed-in person, a full gallery in a sitting and little more.
         new(RateLimitPolicies.SupplierShowcaseMedia, 40, TimeSpan.FromMinutes(10), PartitionByUser: true),
 
         // The signed-in guest of the mobile app (GuestAccountController): per person, since the people of one network share an address.
@@ -106,11 +94,8 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.GuestAccountSession, 20, TimeSpan.FromMinutes(10), PartitionByUser: true),
         new(RateLimitPolicies.GuestAccountDelete, 5, TimeSpan.FromMinutes(10), PartitionByUser: true),
 
-        // The anonymous marketing consent calls (E07/F04/US01): the confirmation link, the welcome page and the guest page. Per client IP;
-        // each can queue an e-mail to an address somebody typed.
         new(RateLimitPolicies.PublicMarketingConsent, 60, TimeSpan.FromMinutes(10)),
 
-        // The simulator of the assistant (E05/F05/US02/T01): two calls to the AI provider each, per signed-in person, 20 an hour.
         new(RateLimitPolicies.AssistantSimulate, 20, TimeSpan.FromHours(1), PartitionByUser: true),
 
         // The owner portal operations (E07/F07/US01): per signed-in person, since an owner is a person outside the organization and the people of one network
@@ -121,29 +106,23 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.OwnerPortalWrite, 30, TimeSpan.FromMinutes(10), PartitionByUser: true),
         new(RateLimitPolicies.OwnerPortalDownload, 60, TimeSpan.FromMinutes(10), PartitionByUser: true),
 
-        // The page of the document the guest got by e-mail (E12/F01/US02/T01): anonymous, per client IP, the token in the body. A page asks once and the guest downloads the file a few times.
         new(RateLimitPolicies.PublicFiscalDocumentDownload, 20, OneMinute),
 
-        // The link of the package the accountant got by e-mail (E15/F01/US02/T02): anonymous, per client IP; each valid call streams a ZIP.
         new(RateLimitPolicies.PublicAccountantPackage, 20, TimeSpan.FromMinutes(10)),
 
         // «Send a test» of the package to the accountant (E15/F01/US02/T02): per signed-in person, since each call makes a package and sends an e-mail to a third party.
         new(RateLimitPolicies.AccountantPackageSend, 5, TimeSpan.FromMinutes(10), PartitionByUser: true),
 
-        // The guest portal (E50/F01/US01/T02): per client IP and a hash of the token of the route, like the check-in. The reads of a page, and what the guest writes.
         new(RateLimitPolicies.GuestPortal, 120, OneMinute, PartitionByToken: true),
         new(RateLimitPolicies.GuestPortalWrite, 30, OneMinute, PartitionByToken: true),
 
         // The agency's retry of the owner sign-in on its own domain (E40/F01/US02/T01): per signed-in person, since each call may read and write the Auth0 tenant that every host shares.
         new(RateLimitPolicies.OwnerLoginRetry, 5, TimeSpan.FromMinutes(10), PartitionByUser: true),
 
-        // The connection of a site to the org (S022, site integration plan §10.4): the confirmation per signed-in person, the exchange of the code per client IP,
-        // the calls of the plugin per credential.
         new(RateLimitPolicies.SiteConnectAuthorize, 10, TimeSpan.FromMinutes(10), PartitionByUser: true),
         new(RateLimitPolicies.SiteConnectToken, 20, TimeSpan.FromMinutes(10)),
         new(RateLimitPolicies.SiteApi, 120, OneMinute, PartitionBySiteConnection: true),
 
-        // The check of the agency's domain by the plugin (S023): it asks DNS and the Vercel Domains API, so it is tight and has a budget of its own, per credential.
         new(RateLimitPolicies.SiteDomainVerify, 20, TimeSpan.FromMinutes(10), PartitionBySiteConnection: true),
     ];
 
@@ -151,39 +130,26 @@ public static class RateLimitingServiceCollectionExtensions
     {
         services.AddRateLimiter(_ => { });
 
-        // Per user and per org limits of the endpoints that call an AI provider ([AiRateLimit], A8-01).
         services.AddSingleton<AiRequestRateLimiter>();
 
-        // Per email limit of "Le mie prenotazioni" ([GuestBookingEmailRateLimit], BK-11), next to its per-IP policy.
         services.AddSingleton<GuestBookingEmailRateLimiter>();
 
-        // Per booking code limit of the guest session ([GuestSessionCodeRateLimit], DB-06a), next to its per-IP policy and the per-email limit.
         services.AddSingleton<GuestSessionCodeRateLimiter>();
 
-        // Per guest session and booking limit of the messages ([GuestMessageSessionRateLimit], DB-14a), next to its per-IP policy.
         services.AddSingleton<GuestMessageSessionRateLimiter>();
 
-        // Per booking limit of the cancellation of the guest ([GuestBookingCancelRateLimit], DB-08a), next to its per-IP policy.
         services.AddSingleton<GuestBookingCancelRateLimiter>();
 
-        // Per email and supplier limit of the booking from a supplier's showcase ([SupplierBookingEmailRateLimit], SP-10), next to
-        // its per-IP policy.
         services.AddSingleton<SupplierBookingEmailRateLimiter>();
 
-        // Per email and org limit of the contact form of the booking site (DB-03b), next to its per-IP policy PublicContact.
         services.AddSingleton<HostContactEmailRateLimiter>();
 
-        // Per client IP limit of the doors of the properties, whatever the door token ([DoorCheckInIpRateLimit], E22/F01/US02), chained after its policy PublicDoorCheckIn.
         services.AddSingleton<DoorCheckInIpRateLimiter>();
 
-        // Per client IP limit of the stay links of the guest portal, whatever the token ([GuestPortalIpRateLimit] on GuestPortalControllerBase, E50/F01/US01/T02), chained after its policy GuestPortal.
         services.AddSingleton<GuestPortalIpRateLimiter>();
 
-        // Per email and supplier limit of the customer's own area of a booking ([SupplierBookingManageRateLimit], SP-11), next to the
-        // per-IP policy PublicGuestBookingLookup.
         services.AddSingleton<SupplierBookingManageEmailRateLimiter>();
 
-        // Read from the final configuration (IConfiguration from DI), not while Program.cs is still building it.
         services.AddOptions<RateLimiterOptions>()
             .Configure<IConfiguration>((options, configuration) =>
             {
@@ -211,7 +177,6 @@ public static class RateLimitingServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>Limit and window of <paramref name="definition"/>; throws on a non-positive value so a typo fails the startup.</summary>
     public static FixedWindowRateLimiterOptions ResolveOptions(RateLimitPolicyDefinition definition, IConfiguration configuration)
     {
         var section = configuration.GetSection($"{SectionName}:{definition.Name}");
@@ -249,13 +214,11 @@ public static class RateLimitingServiceCollectionExtensions
         string tokenRouteValue = DefaultTokenRouteValue,
         bool partitionBySiteConnection = false)
     {
-        // The id of a connection is no secret and no personal data; it is the credential's own budget.
         if (partitionBySiteConnection && httpContext.User.GetSiteConnection() is { } site)
             return "site:" + site.ConnectionId.ToString("N");
 
         if (partitionByUser && httpContext.User.GetUserId() is { Length: > 0 } userId)
         {
-            // Hash, so the partition table never holds the account id.
             return "user:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(userId)), 0, 16);
         }
 
@@ -266,7 +229,6 @@ public static class RateLimitingServiceCollectionExtensions
             return ipKey;
         }
 
-        // Hash, so the partition table never holds the raw check-in token.
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)), 0, 16);
         return $"{ipKey}|{hash}";
     }
@@ -287,7 +249,6 @@ public static class RateLimitingServiceCollectionExtensions
         httpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
         httpContext.Response.Headers.RetryAfter = retryAfterSeconds.ToString(CultureInfo.InvariantCulture);
 
-        // The endpoints that answer privately (a customer's own area, SP-11) answer so when they are limited too.
         if (httpContext.GetEndpoint()?.Metadata.GetMetadata<PrivateAnswerAttribute>() is not null)
             PrivateAnswerAttribute.Apply(httpContext.Response);
 
@@ -299,7 +260,6 @@ public static class RateLimitingServiceCollectionExtensions
             [retryAfterSeconds]);
         problem.Extensions["retryAfterSeconds"] = retryAfterSeconds;
 
-        // No client IP in the log (personal data): policy, route and trace id identify the event.
         httpContext.RequestServices.GetRequiredService<ILoggerFactory>()
             .CreateLogger(typeof(RateLimitingServiceCollectionExtensions).FullName!)
             .LogWarning(

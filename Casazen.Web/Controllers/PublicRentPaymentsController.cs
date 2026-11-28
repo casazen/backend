@@ -18,7 +18,6 @@ namespace Casazen.Web.Controllers;
 [AllowAnonymous]
 public class PublicRentPaymentsController(IRentBillingService rentBilling, IBankLinkService bankLinks) : ControllerBase
 {
-    /// <summary>The installment: property, landlord (org name), period, due date, amount and its real state.</summary>
     [HttpPost("{installmentId:guid}")]
     [EnableRateLimiting(RateLimitPolicies.PublicBookingLookup)]
     [ProducesResponseType(typeof(PublicRentPayment), StatusCodes.Status200OK)]
@@ -51,10 +50,6 @@ public class PublicRentPaymentsController(IRentBillingService rentBilling, IBank
         return Ok(new PublicRentPaymentSession(installmentId, session.ClientSecret, session.PublishableKey, session.StripeAccountId));
     }
 
-    /// <summary>
-    /// Financial Connections session for the tenant of this installment's lease. The token of the payment link is the
-    /// access check. No tenant screen is served by the API.
-    /// </summary>
     [HttpPost("{installmentId:guid}/bank-link/session")]
     [EnableRateLimiting(RateLimitPolicies.PublicBookingLookup)]
     [ProducesResponseType(typeof(BankLinkSession), StatusCodes.Status200OK)]
@@ -67,7 +62,6 @@ public class PublicRentPaymentsController(IRentBillingService rentBilling, IBank
         return Ok(await bankLinks.CreateLeaseSessionAsync(installmentId, request.Token, cancellationToken));
     }
 
-    /// <summary>Stores the tenant's Financial Connections account id on this lease only.</summary>
     [HttpPost("{installmentId:guid}/bank-link")]
     [EnableRateLimiting(RateLimitPolicies.PublicBookingLookup)]
     [ProducesResponseType(typeof(BankLinkAccount), StatusCodes.Status200OK)]
@@ -101,7 +95,6 @@ public class PublicRentPaymentsController(IRentBillingService rentBilling, IBank
     }
 }
 
-/// <summary>Body of the public rent payment endpoints: the token of the payment link.</summary>
 public sealed class RentPaymentTokenRequest
 {
     [Required(ErrorMessage = "RentPaymentLinkInvalid")]
@@ -109,7 +102,6 @@ public sealed class RentPaymentTokenRequest
     public string Token { get; set; } = string.Empty;
 }
 
-/// <summary>The tenant's linked account for the lease of this installment.</summary>
 public sealed class RentBankLinkAccountRequest
 {
     [Required(ErrorMessage = "RentPaymentLinkInvalid")]

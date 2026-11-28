@@ -40,7 +40,6 @@ public sealed class GuestPortalIpRateLimitFilter(
     GuestPortalIpRateLimiter limiter,
     ILogger<GuestPortalIpRateLimitFilter> logger) : IAsyncResourceFilter
 {
-    /// <summary>After <see cref="PrivateAnswerAttribute"/> (order 0) and before <see cref="GuestPortalTokenFilter"/> (<see cref="GuestPortalTokenFilter.FilterOrder"/>).</summary>
     public const int FilterOrder = 5;
 
     public async Task OnResourceExecutionAsync(ResourceExecutingContext context, ResourceExecutionDelegate next)
@@ -55,7 +54,6 @@ public sealed class GuestPortalIpRateLimitFilter(
             return;
         }
 
-        // No address and no token in the log: the policy, the route template and the trace id identify the event.
         logger.LogWarning(
             "Rate limit exceeded: policy {Policy} on {Method} {Route}. TraceId={TraceId}",
             limiter.PolicyName,

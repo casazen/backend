@@ -6,9 +6,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Trusted supplier management for the authorised organisation.
-/// </summary>
 [ApiController]
 [Route("api/trusted-suppliers")]
 [Authorize(Policy = CasazenPolicies.TrustedSupplierManage)]
@@ -47,10 +44,6 @@ public class TrustedSuppliersController(
         return Ok(new InviteSupplierResponse(result.InviteId, result.ExpiresAt));
     }
 
-    /// <summary>
-    /// Gets all trusted suppliers for the agency.
-    /// </summary>
-    /// <returns>List of trusted suppliers.</returns>
     [HttpGet]
     [ProducesResponseType(typeof(List<TrustedSupplierDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -77,11 +70,6 @@ public class TrustedSuppliersController(
         return Ok(dtos);
     }
 
-    /// <summary>
-    /// Updates marketplace visibility for a trusted supplier.
-    /// </summary>
-    /// <param name="id">Trusted supplier ID.</param>
-    /// <param name="request">New visibility state.</param>
     [HttpPut("{id}/visibility")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -99,10 +87,6 @@ public class TrustedSuppliersController(
         return NoContent();
     }
 
-    /// <summary>
-    /// Removes a trusted supplier relationship.
-    /// </summary>
-    /// <param name="id">Trusted supplier ID.</param>
     [HttpDelete("{id}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -121,7 +105,6 @@ public class TrustedSuppliersController(
     }
 }
 
-// DTOs
 public sealed record InviteSupplierRequestDto(string Email, List<Guid>? PropertyIds,
     [System.ComponentModel.DataAnnotations.MaxLength(32)] string? VatNumber = null,
     [System.ComponentModel.DataAnnotations.MaxLength(24)] string? FiscalCode = null,

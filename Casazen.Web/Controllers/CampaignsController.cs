@@ -15,11 +15,6 @@ using System.Text.Json;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Marketing campaigns and guest segments (NF-24, ADR-014).
-/// Supports segment creation, campaign drafting with AI option, approval workflow, scheduling, and sending.
-/// Behind <c>Features:CrmMarketing</c> (E07/F06/US01/T01): 404 while it is off, before authentication.
-/// </summary>
 [ApiController]
 [Route("api/campaigns")]
 [FeatureGate(FeatureFlags.CrmMarketing)]
@@ -45,9 +40,6 @@ public class CampaignsController(
 
     #region Segments
 
-    /// <summary>
-    /// Creates a guest segment (AC-NF24-1).
-    /// </summary>
     [HttpPost("segments")]
     [ProducesResponseType(typeof(GuestSegmentDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -60,7 +52,6 @@ public class CampaignsController(
         if (RejectInvalidCondition(request.Condition) is { } invalid)
             return invalid;
 
-        // Serialize condition to JSON (ADR-014-R1)
         var conditionJson = JsonSerializer.Serialize(request.Condition);
 
         var segment = new GuestSegment
@@ -83,9 +74,6 @@ public class CampaignsController(
         });
     }
 
-    /// <summary>
-    /// Gets all segments for the org.
-    /// </summary>
     [HttpGet("segments")]
     [ProducesResponseType(typeof(List<GuestSegmentDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<List<GuestSegmentDto>>> GetSegments()
@@ -110,9 +98,6 @@ public class CampaignsController(
         return Ok(dtos);
     }
 
-    /// <summary>
-    /// Previews recipient count for a segment (AC-NF24-3).
-    /// </summary>
     [HttpGet("segments/{id}/preview")]
     [ProducesResponseType(typeof(SegmentPreviewDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -131,9 +116,6 @@ public class CampaignsController(
         return Ok(new SegmentPreviewDto { Count = count });
     }
 
-    /// <summary>
-    /// Previews the recipient count of a condition before it is saved as a segment: the count the saved segment would get.
-    /// </summary>
     [HttpPost("segments/preview")]
     [ProducesResponseType(typeof(SegmentPreviewDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -164,9 +146,6 @@ public class CampaignsController(
 
     #region Campaigns
 
-    /// <summary>
-    /// Creates a draft campaign (AC-NF24-4).
-    /// </summary>
     [HttpPost]
     [ProducesResponseType(typeof(CampaignDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -187,9 +166,6 @@ public class CampaignsController(
         return Ok(MapToCampaignDto(campaign));
     }
 
-    /// <summary>
-    /// Gets all campaigns for the org.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(List<CampaignDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<List<CampaignDto>>> GetCampaigns()
@@ -209,9 +185,6 @@ public class CampaignsController(
         return Ok(dtos);
     }
 
-    /// <summary>
-    /// Gets a single campaign.
-    /// </summary>
     [HttpGet("{id}")]
     [ProducesResponseType(typeof(CampaignDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -232,9 +205,6 @@ public class CampaignsController(
         return Ok(MapToCampaignDto(campaign));
     }
 
-    /// <summary>
-    /// Submits a campaign for approval (AC-NF24-5).
-    /// </summary>
     [HttpPost("{id}/submit")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -251,9 +221,6 @@ public class CampaignsController(
         return NoContent();
     }
 
-    /// <summary>
-    /// Schedules an approved campaign (AC-NF24-6).
-    /// </summary>
     [HttpPost("{id}/schedule")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

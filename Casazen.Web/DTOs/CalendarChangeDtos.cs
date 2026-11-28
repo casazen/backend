@@ -16,10 +16,8 @@ public sealed class CalendarChangeDto
 {
     public Guid Id { get; init; }
 
-    /// <summary><c>DayRules</c>, <c>Block</c>, <c>Bulk</c> or <c>Publication</c>.</summary>
     public CalendarChangeKind Kind { get; init; }
 
-    /// <summary><c>Applied</c> (stays in CasaZen), <c>Queued</c>, <c>Sending</c>, <c>Sent</c> (accepted by the channel manager), <c>Confirmed</c>, <c>PartiallySent</c> or <c>Failed</c>.</summary>
     public CalendarChangeState State { get; init; }
 
     public DateTime RequestedAt { get; init; }
@@ -34,7 +32,6 @@ public sealed class CalendarChangeDto
 
     public int DayCount { get; init; }
 
-    /// <summary>The units of quota of the channel manager the change is expected to use: an estimate.</summary>
     public int QuotaUnitsEstimated { get; init; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -43,11 +40,9 @@ public sealed class CalendarChangeDto
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DateOnly? To { get; init; }
 
-    /// <summary>Why the process is not whole: a stable code (<c>octorate_quota_low</c>, <c>octorate_unavailable</c>, ...).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ErrorCode { get; init; }
 
-    /// <summary>The sentence of <see cref="ErrorCode"/> in the language of the caller.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ErrorMessage { get; init; }
 
@@ -81,17 +76,14 @@ public sealed class CalendarChangeDto
         };
     }
 
-    /// <summary>The sentence of a stable code of <see cref="CalendarPushErrorCodes"/>; <c>null</c> for no code or one that has none.</summary>
     internal static string? MessageOf(string? code, IStringLocalizer localizer) =>
         CalendarPushErrorCodes.MessageKeyOf(code) is { } key ? localizer[key].Value : null;
 }
 
-/// <summary>One property of a change with its state.</summary>
 public sealed class CalendarChangePropertyDto
 {
     public Guid PropertyId { get; init; }
 
-    /// <summary><c>Pending</c>, <c>Accepted</c>, <c>Confirmed</c>, <c>Failed</c> or <c>Skipped</c> (nothing is sent: the property is not on the channel manager).</summary>
     public CalendarChangePropertyState State { get; init; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -125,18 +117,14 @@ public sealed class CalendarChangePropertyDto
     }
 }
 
-/// <summary>What to do to one value of the rules of the nights: <c>Keep</c> it (the default), <c>Set</c> it to <c>value</c>, or <c>Clear</c> it.</summary>
-/// <typeparam name="T">The type of the value: a price, a number of nights or days, a flag.</typeparam>
 public sealed class FieldPatchDto<T>
     where T : struct
 {
-    /// <summary><c>Keep</c>, <c>Set</c> or <c>Clear</c>.</summary>
     public FieldPatchKind Action { get; init; } = FieldPatchKind.Keep;
 
     /// <summary>The value to set; required with <c>Set</c>, ignored otherwise.</summary>
     public T? Value { get; init; }
 
-    /// <summary>The patch; <c>false</c> for a <c>Set</c> without a value.</summary>
     public bool TryToPatch(out FieldPatch<T> patch)
     {
         switch (Action)
@@ -157,10 +145,6 @@ public sealed class FieldPatchDto<T>
     }
 }
 
-/// <summary>
-/// The body of <c>POST /api/calendar/changes/preview</c> and <c>POST /api/calendar/changes</c> (E08/F05/US02/T03): one to fifty properties, a period of at most 366 days
-/// (both days included), optionally only some weekdays, and a <c>{ action, value }</c> for each value of the rules of the nights. A value nobody mentions is kept.
-/// </summary>
 public sealed class CalendarChangeRequestDto
 {
     [Required]
@@ -172,7 +156,6 @@ public sealed class CalendarChangeRequestDto
     [Required]
     public DateOnly? To { get; init; }
 
-    /// <summary>Only the nights of these weekdays; absent for every day. An empty list is refused, never read as «all».</summary>
     public List<DayOfWeek>? DaysOfWeek { get; init; }
 
     public FieldPatchDto<decimal>? Price { get; init; }
@@ -189,7 +172,6 @@ public sealed class CalendarChangeRequestDto
 
     public FieldPatchDto<int>? MaxAdvanceDays { get; init; }
 
-    /// <summary>The request of the service; <c>false</c> when a <c>Set</c> has no value.</summary>
     public bool TryToRequest([NotNullWhen(true)] out CalendarChangeRequest? request)
     {
         request = null;
@@ -226,7 +208,6 @@ public sealed class CalendarChangeRequestDto
     }
 }
 
-/// <summary>What a night holds: the price a guest is quoted and the rules in force (the same members as a day of <c>GET /api/calendar/days</c>).</summary>
 public sealed class CalendarChangeValuesDto
 {
     public long PriceCents { get; init; }
@@ -263,7 +244,6 @@ public sealed class CalendarChangeValuesDto
     }
 }
 
-/// <summary>A night the change would change, with its values before and after.</summary>
 public sealed class CalendarChangeSampleDto
 {
     public DateOnly Date { get; init; }
@@ -273,14 +253,12 @@ public sealed class CalendarChangeSampleDto
     public CalendarChangeValuesDto After { get; init; } = new();
 }
 
-/// <summary>What the change would do to one property.</summary>
 public sealed class CalendarChangePreviewPropertyDto
 {
     public Guid PropertyId { get; init; }
 
     public string Name { get; init; } = string.Empty;
 
-    /// <summary>The property books into the channel manager: the change would be sent there.</summary>
     public bool Mirrored { get; init; }
 
     public int Days { get; init; }
@@ -289,22 +267,17 @@ public sealed class CalendarChangePreviewPropertyDto
 
     public int UnchangedDays { get; init; }
 
-    /// <summary>Nights taken by a booking, a hold, a request or a block, counted and not skipped: a rule on a booked night changes nothing for that booking.</summary>
     public int TakenDays { get; init; }
 
     public int SkippedPastDays { get; init; }
 
-    /// <summary>The first five changed nights with their values before and after.</summary>
     public IReadOnlyList<CalendarChangeSampleDto> Samples { get; init; } = [];
 
-    /// <summary>An estimate of the units of quota of the channel manager the change would use.</summary>
     public int EstimatedQuotaUnits { get; init; }
 }
 
-/// <summary>Something to know before applying: a stable code, the property and the sentence in the language of the caller.</summary>
 public sealed class CalendarChangeWarningDto
 {
-    /// <summary><c>property_not_mirrored</c> (the change stays in CasaZen) or <c>room_not_chosen</c> (nothing is sent until the room is chosen).</summary>
     public string Code { get; init; } = string.Empty;
 
     public Guid PropertyId { get; init; }
@@ -312,7 +285,6 @@ public sealed class CalendarChangeWarningDto
     public string Message { get; init; } = string.Empty;
 }
 
-/// <summary>The answer of <c>POST /api/calendar/changes/preview</c>: nothing was changed, and the quota is an estimate.</summary>
 public sealed class CalendarChangePreviewDto
 {
     public IReadOnlyList<CalendarChangePreviewPropertyDto> Properties { get; init; } = [];

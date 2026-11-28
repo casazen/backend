@@ -48,11 +48,6 @@ public class LeaseOperationsController(
         return Ok(await operations.GetAsync(id, cancellationToken));
     }
 
-    /// <summary>
-    /// The draft of the landlord's notice of non-renewal, as a PDF. At the first expiry <c>reason</c> is required (422
-    /// <c>lease_disdetta_reason_required</c>) and the letter states it; later it is ignored. 409 <c>lease_not_in_force</c>,
-    /// <c>lease_already_terminated</c>; 422 <c>lease_type_has_no_renewal</c> (a transitory lease ends by itself).
-    /// </summary>
     [HttpPost("{id:guid}/letters/disdetta")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> Disdetta(Guid id, [FromBody] DisdettaLetterDto dto, CancellationToken cancellationToken)
@@ -63,10 +58,6 @@ public class LeaseOperationsController(
         return Pdf(await operations.BuildDisdettaAsync(id, dto.Reason, cancellationToken));
     }
 
-    /// <summary>
-    /// The draft of the landlord's acknowledgement of the tenant's withdrawal, as a PDF, for a withdrawal received on <c>receivedOn</c> (a day
-    /// from the start of the lease up to today). It states the last day of the lease the way <c>POST withdrawal</c> would end it.
-    /// </summary>
     [HttpPost("{id:guid}/letters/presa-atto-recesso")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> PresaAttoRecesso(Guid id, [FromBody] PresaAttoRecessoLetterDto dto, CancellationToken cancellationToken)
@@ -92,10 +83,6 @@ public class LeaseOperationsController(
         return Pdf(await operations.BuildRinnovoAsync(id, dto.StartsOn!.Value, dto.EndsOn!.Value, dto.Agreed, cancellationToken));
     }
 
-    /// <summary>
-    /// The draft of the confirmation that the need of a transitory lease goes on, from the landlord to the tenant, as a PDF. 422
-    /// <c>lease_letter_not_applicable</c> when the lease is not a transitory one in force or the need is the tenant's.
-    /// </summary>
     [HttpPost("{id:guid}/letters/conferma-esigenza")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> ConfermaEsigenza(Guid id, CancellationToken cancellationToken)
@@ -150,11 +137,6 @@ public class LeaseOperationsController(
         return Pdf(await operations.BuildOpzioneCedolareAsync(id, dto.EffectiveFrom, cancellationToken));
     }
 
-    /// <summary>
-    /// The draft of the minutes of the handover of the property at the end of the lease, as a PDF, dated <c>handoverOn</c> when given. The
-    /// state of the property, the readings of the meters and the keys are lines the parties fill in by hand. 422
-    /// <c>lease_letter_not_applicable</c> when the lease is not ending, <c>lease_letter_effect_date_invalid</c>.
-    /// </summary>
     [HttpPost("{id:guid}/letters/riconsegna")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> Riconsegna(Guid id, [FromBody] RiconsegnaLetterDto dto, CancellationToken cancellationToken)
@@ -165,12 +147,6 @@ public class LeaseOperationsController(
         return Pdf(await operations.BuildRiconsegnaAsync(id, dto.HandoverOn, cancellationToken));
     }
 
-    /// <summary>
-    /// The statement of the return of the security deposit worked out from the legal interest rate of each year the deposit was held, the interest
-    /// already paid and the sums the landlord keeps. Nothing is written. 422 <c>lease_deposit_none</c>, <c>lease_letter_not_applicable</c> (the
-    /// lease is not ending), <c>lease_deposit_dates_invalid</c>, <c>lease_deposit_rate_invalid</c>, <c>lease_deposit_rate_missing</c>,
-    /// <c>lease_deposit_interest_paid_invalid</c>, <c>lease_deposit_deduction_invalid</c>, <c>lease_deposit_deductions_exceed</c>.
-    /// </summary>
     [HttpPost("{id:guid}/deposit/calculate")]
     [ProducesResponseType(typeof(LeaseDepositCalculationDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> CalculateDepositReturn(Guid id, [FromBody] DepositReturnInputDto dto, CancellationToken cancellationToken)
@@ -182,7 +158,6 @@ public class LeaseOperationsController(
         return Ok(await operations.CalculateDepositReturnAsync(id, dto.ToInput(), cancellationToken));
     }
 
-    /// <summary>The draft of the statement of the return of the deposit, as a PDF, with the same numbers as <c>deposit/calculate</c> for the same input.</summary>
     [HttpPost("{id:guid}/letters/restituzione-cauzione")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> RestituzioneCauzione(Guid id, [FromBody] DepositReturnInputDto dto, CancellationToken cancellationToken)
@@ -193,11 +168,6 @@ public class LeaseOperationsController(
         return Pdf(await operations.BuildRestituzioneCauzioneAsync(id, dto.ToInput(), cancellationToken));
     }
 
-    /// <summary>
-    /// Records that the landlord returned the deposit on <c>returnedOn</c> (a day from the start of the lease up to today) with the sums of the
-    /// statement the same input gives: an event in the history of the lease and nothing else (CasaZen moves no money; the deposit of the lease does not
-    /// change). 200 with the operations of the lease; 422 the codes of <c>deposit/calculate</c> and <c>lease_deposit_return_date_invalid</c>.
-    /// </summary>
     [HttpPost("{id:guid}/deposit/return")]
     [ProducesResponseType(typeof(LeaseOperationsDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> RecordDepositReturn(Guid id, [FromBody] DepositReturnInputDto dto, CancellationToken cancellationToken)
@@ -229,11 +199,8 @@ public class LeaseOperationsController(
         return Ok(await operations.GetAsync(id, cancellationToken));
     }
 
-    // ---- authorization and answer --------------------------------------------------------------------------------
-
     private IActionResult Pdf(LeaseLetterFile file)
     {
-        // The letter carries the residences of the parties: never cached.
         Response.Headers.CacheControl = "private, no-store";
         return File(file.Pdf, "application/pdf", file.FileName);
     }
@@ -255,41 +222,30 @@ public class LeaseOperationsController(
     }
 }
 
-/// <summary>The notice of non-renewal: the reason of the law at the first expiry (required then, ignored later).</summary>
 public sealed record DisdettaLetterDto([param: EnumDataType(typeof(LeaseDisdettaReason))] LeaseDisdettaReason? Reason = null);
 
-/// <summary>The acknowledgement of a withdrawal: the day it was received, why, and the months of notice when the contract gave the faculty.</summary>
 public sealed record PresaAttoRecessoLetterDto(
     [param: Required] DateOnly? ReceivedOn,
     [param: Required, EnumDataType(typeof(TenantWithdrawalReason))] TenantWithdrawalReason? Reason,
     int? NoticeMonths = null);
 
-/// <summary>The agreement to renew or extend the lease: the first and the last day of the period it adds, and whether it is an extension agreed on a day.</summary>
 public sealed record RinnovoLetterDto([param: Required] DateOnly? StartsOn, [param: Required] DateOnly? EndsOn, bool Agreed = false);
 
 /// <summary>The ISTAT update to work out: the variation of the FOI index (percent, above zero, two decimals at most) and the share of it the contract recognizes.</summary>
 public sealed record IstatCalculationInputDto([param: Required] decimal? FoiPercent, [param: Required] decimal? SharePercent);
 
-/// <summary>The request to update the rent: the same percentages and the day the new rent applies from.</summary>
 public sealed record AggiornamentoIstatLetterDto(
     [param: Required] decimal? FoiPercent, [param: Required] decimal? SharePercent, [param: Required] DateOnly? EffectiveFrom);
 
 /// <summary>The communication of the cedolare secca: the first day the option applies from, when the person says it.</summary>
 public sealed record OpzioneCedolareLetterDto(DateOnly? EffectiveFrom = null);
 
-/// <summary>The minutes of the handover: the day it takes place, when the person says it.</summary>
 public sealed record RiconsegnaLetterDto(DateOnly? HandoverOn = null);
 
-/// <summary>The legal interest rate, in percent per year, of one calendar year.</summary>
 public sealed record DepositRateDto([param: Required] int? Year, [param: Required] decimal? RatePercent);
 
-/// <summary>A sum the landlord keeps from the deposit and the reason he states.</summary>
 public sealed record DepositDeductionDto([param: Required, MaxLength(LeaseDepositRules.MaxReasonLength)] string? Reason, [param: Required] decimal? Amount);
 
-/// <summary>
-/// The statement of the return of the deposit: the day it is returned, the day it was paid (the start of the lease when not given), the legal rate of
-/// each calendar year it was held, the interest already paid to the tenant and the sums kept.
-/// </summary>
 public sealed record DepositReturnInputDto(
     [param: Required] DateOnly? ReturnedOn,
     DateOnly? DepositPaidOn,
@@ -300,14 +256,11 @@ public sealed record DepositReturnInputDto(
     public LeaseDepositReturnInput ToInput() => new(
         ReturnedOn!.Value,
         DepositPaidOn,
-        // A null item of a list is no rate and no sum (the validation reaches the members of an item, not an item that is null): it is left out, and the
-        // rules then say what is missing.
         (Rates ?? []).Where(r => r is not null).Select(r => new LeaseDepositRate(r.Year!.Value, r.RatePercent!.Value)).ToList(),
         InterestPaid ?? 0m,
         (Deductions ?? []).Where(d => d is not null).Select(d => new LeaseDepositDeduction(d.Reason!, d.Amount!.Value)).ToList());
 }
 
-/// <summary>A letter marked as sent: the day (<c>yyyy-MM-dd</c>, from the start of the lease up to today) and how.</summary>
 public sealed record MarkLetterSentDto(
     [param: Required] DateOnly? SentOn,
     [param: Required, EnumDataType(typeof(LeaseLetterMeans))] LeaseLetterMeans? Means);

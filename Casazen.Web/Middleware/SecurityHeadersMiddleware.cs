@@ -11,7 +11,6 @@ namespace Casazen.Web.Middleware;
 /// </summary>
 public class SecurityHeadersMiddleware(RequestDelegate next, IHostEnvironment environment)
 {
-    /// <summary>One year, subdomains of the API host included; no <c>preload</c> (it cannot be undone quickly).</summary>
     public const string StrictTransportSecurity = "max-age=31536000; includeSubDomains";
 
     public const string ContentSecurityPolicy = "frame-ancestors 'none'";

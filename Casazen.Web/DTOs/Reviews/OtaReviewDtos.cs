@@ -3,7 +3,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs.Reviews;
 
-/// <summary>One rating of a review: the category as the channel names it (<c>cleanliness</c>, <c>communication</c>, ...) and its value, 1 to 5.</summary>
 public sealed class ReviewCategoryRatingDto
 {
     public string Category { get; init; } = string.Empty;
@@ -12,7 +11,6 @@ public sealed class ReviewCategoryRatingDto
     public static ReviewCategoryRatingDto From(ReviewCategoryRating rating) => new() { Category = rating.Category, Value = rating.Value };
 }
 
-/// <summary>The host's reply to a review of a channel: <c>State</c> is <c>None</c>, <c>Sent</c>, <c>Error</c> (with its <c>ErrorCode</c>) or <c>ManualVerify</c> (the outcome is checked on the channel, never sent again by the call).</summary>
 public sealed class ReviewReplyDto
 {
     public OtaReviewActionState State { get; init; }
@@ -29,7 +27,6 @@ public sealed class ReviewReplyDto
     };
 }
 
-/// <summary>The host's own review of the guest: the <c>Window</c> (<c>Unknown</c>, <c>Open</c>, <c>Sent</c>, <c>Closed</c>), where the send stands, and what the host sent.</summary>
 public sealed class OtaHostReviewDto
 {
     public HostReviewWindow Window { get; init; }
@@ -52,11 +49,6 @@ public sealed class OtaHostReviewDto
     };
 }
 
-/// <summary>
-/// What a review allows its host now. <c>Reason</c> is the reason of the channel or of the property (<c>channel_not_integrated</c>, <c>mapping_not_confirmed</c>,
-/// <c>octorate_not_connected</c>, <c>no_reviews_for_booking_source</c>) and is absent while the channel allows; <c>ReplyReason</c> and <c>HostReviewReason</c> say why one action is closed
-/// while the other may be open (<c>ota_review_reply_already_sent</c>, <c>ota_review_window_closed</c>, <c>ota_review_action_unconfirmed</c>, <c>ota_review_not_published</c>).
-/// </summary>
 public sealed class OtaReviewCapabilitiesDto
 {
     public bool CanRead { get; init; }
@@ -143,7 +135,6 @@ public sealed class OtaReviewActionDto
     };
 }
 
-/// <summary>One review in the list of a booking: where it is kept (<c>Source</c> is <c>Review</c> for the booking site, <c>OtaReview</c> for a channel), the stars, the first words and what the host may do.</summary>
 public sealed class BookingReviewItemDto
 {
     public string ThreadKey { get; init; } = string.Empty;
@@ -195,27 +186,23 @@ public sealed class BookingReviewsDto
     };
 }
 
-/// <summary>The body of <c>POST api/reviews/ota/{id}/reply</c>: the text of the reply (1 to 800 characters).</summary>
 public sealed class ReplyOtaReviewRequest
 {
     public string? Text { get; init; }
 }
 
-/// <summary>One rating of the host's review: a category and a whole value from 1 to 5.</summary>
 public sealed class HostReviewRatingRequest
 {
     public string? Category { get; init; }
     public decimal Value { get; init; }
 }
 
-/// <summary>The body of <c>POST api/reviews/ota/{id}/host-review</c>: at least one rating, the public text, and the private text (shown to the guest only) when there is one.</summary>
 public sealed class SendHostReviewRequest
 {
     public IReadOnlyList<HostReviewRatingRequest>? Ratings { get; init; }
     public string? Text { get; init; }
     public string? PrivateText { get; init; }
 
-    /// <summary>The command the service takes; a rating without a category is kept with an empty one, which the service refuses.</summary>
     public OtaHostReviewCommand ToCommand() => new(
         (Ratings ?? []).Select(r => new ReviewCategoryRating(r.Category ?? string.Empty, r.Value)).ToList(),
         Text,

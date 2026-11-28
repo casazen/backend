@@ -6,10 +6,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Authorization;
 
-/// <summary>
-/// The second wall of the owner portal on an agency's own domain (E40/F01/US01/T02, NF-140): a requirement of the <c>OwnerPortal</c> policy
-/// of its own, so it is AND-ed with <see cref="OwnerPortalRequirement"/> (several handlers of one requirement would be OR-ed).
-/// </summary>
 public sealed class OwnerPortalHostOriginRequirement : IAuthorizationRequirement;
 
 /// <summary>
@@ -27,15 +23,12 @@ public sealed class OwnerPortalHostOriginAuthorizationHandler(
     IPublicHostResolver hostResolver,
     IOptions<Auth0Options> auth0Options) : AuthorizationHandler<OwnerPortalHostOriginRequirement>
 {
-    /// <summary>Why the call is refused: an owner token used from the domain of an agency the owner does not belong to.</summary>
     public const string OtherAgencyReason = "owner_portal_origin_of_another_agency";
 
     protected override async Task HandleRequirementAsync(
         AuthorizationHandlerContext context,
         OwnerPortalHostOriginRequirement requirement)
     {
-        // A caller nobody authenticated is refused by the first requirement of the policy (the challenge, 401): this wall does not look it up. The resolver runs a database
-        // lookup for every Origin it has not seen, and the authorization runs before the rate limiter, so without this anybody could make it run one per made-up Origin.
         if (context.User.Identity?.IsAuthenticated != true)
             return;
 

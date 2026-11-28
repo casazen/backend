@@ -3,10 +3,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs.Messages;
 
-/// <summary>
-/// The body of the edit of a scheduled message (<c>PUT api/scheduled-messages/{id}</c>): <c>Text</c>, plain text of 1 to 2000 characters, with the variables of a template; empty or missing goes back to the
-/// template of the routine. It carries no validation attribute on purpose: a text that is too long is a 422 <c>message_text_invalid</c> of the service (like the composer of the hub), not a 400 of the binder.
-/// </summary>
 public sealed class EditScheduledMessageRequest
 {
     public string? Text { get; set; }

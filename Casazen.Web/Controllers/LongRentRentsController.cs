@@ -38,12 +38,6 @@ public class LongRentRentsController(
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    /// <summary>
-    /// The installments whose due date is in <c>month</c> (<c>yyyy-MM</c>, default the current month in Rome), narrowed by
-    /// <c>status</c> (<c>All</c>, <c>Paid</c>, <c>Pending</c> or <c>Overdue</c>, default all), <c>pageSize</c> at a time
-    /// (default 25, at most 100), ordered by due date then id. <c>counters</c> are the numbers of the month, whatever the
-    /// status and the page: expected, collected, still to come and overdue. 400 for a month or a status that is not valid.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(RentRegisterPage), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -108,7 +102,6 @@ public class LongRentRentsController(
         return Ok(await rentBilling.SendReminderAsync(installment.LeaseId, id, request?.Note, cancellationToken));
     }
 
-    /// <summary>Sends the approved reminder template automatically through WhatsApp Business.</summary>
     [HttpPost("{id:guid}/reminder/whatsapp")]
     [Authorize(Policy = CasazenPolicies.LeaseCreate)]
     public async Task<ActionResult<RentWhatsAppReminderResult>> SendWhatsAppReminder(
@@ -144,7 +137,6 @@ public class LongRentRentsController(
 
         var found = (await register.FindInstallmentsAsync(ids, cancellationToken)).ToDictionary(i => i.InstallmentId);
 
-        // One authorization per property, however many of its installments are in the batch.
         var allowed = new Dictionary<Guid, bool>();
         async Task<bool> MayRemindAsync(Guid propertyId)
         {
@@ -163,7 +155,6 @@ public class LongRentRentsController(
         {
             if (!found.TryGetValue(id, out var installment) || !await MayRemindAsync(installment.PropertyId))
             {
-                // Not there, another org's, or of a property the caller may not handle: all the same to the caller.
                 skipped.Add(new RentReminderSkipped(id, InstallmentNotFoundCode));
                 continue;
             }
@@ -185,7 +176,6 @@ public class LongRentRentsController(
         return Ok(new RentBulkReminderResult(ids.Count, sent, skipped));
     }
 
-    /// <summary><c>yyyy-MM</c> between the years 2000 and 2100, as the first day of the month.</summary>
     private static bool TryParseMonth(string value, out DateOnly firstDay)
     {
         if (DateOnly.TryParseExact($"{value.Trim()}-01", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out firstDay)

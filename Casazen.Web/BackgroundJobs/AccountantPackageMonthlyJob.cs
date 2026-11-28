@@ -31,7 +31,6 @@ public class AccountantPackageMonthlyJob(
 {
     public const string RecurringJobId = "accountant-package-monthly";
 
-    /// <summary>Every day at 06:00 (the registration gives it the Europe/Rome clock): after the documents of the night (05:10) and before the day of the agency.</summary>
     public const string Cron = "0 6 * * *";
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;

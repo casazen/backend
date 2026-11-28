@@ -52,10 +52,6 @@ public class AdminPlatformInvoicesController(IPlatformInvoiceService platformInv
         });
     }
 
-    /// <summary>
-    /// Records that the e-invoice was issued by hand, with its reference. 404 for an unknown invoice, 409
-    /// <c>platform_invoice_sdi_already_issued</c> when it was already submitted or issued.
-    /// </summary>
     [HttpPost("{id:guid}/sdi-manual-issued")]
     [ProducesResponseType(typeof(PlatformInvoiceAdminDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
