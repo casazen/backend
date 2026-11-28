@@ -1,3 +1,4 @@
+using Casazen.Core.Entities;
 using Casazen.Core.Identity;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
@@ -86,6 +87,7 @@ public sealed class SelfHostedIdentityScenarioSupportTests : IDisposable
         Assert.True(
             report.AllPassed(DocumentStepSelfHostedTests.Cie.RequiredChecks),
             $"Not passed: {SelfHostedIdentityScenario.NotPassed(report.Checks)}");
+        Assert.Equal(IdentityDocumentCoherence.Passed, IdentityDocumentCoherences.Of(report, DocumentStepSelfHostedTests.Cie));
     }
 
     [Fact]
@@ -105,18 +107,80 @@ public sealed class SelfHostedIdentityScenarioSupportTests : IDisposable
     }
 
     [Fact]
-    public void ScenarioSupport_ACardWithoutItsIssueDate_OrAHolderWithoutADocumentNumber_IsNeverAPass()
+    public void ScenarioSupport_ACardWithoutItsIssueDate_IsNeverAPass()
     {
         var (_, _, policy) = SelfHostedIdentityScenario.WriteCalibratedPolicy(_directory, Version);
         var format = DocumentStepSelfHostedTests.Cie;
 
-        var noIssueDate = SelfHostedIdentityScenario.CheckTheCard(policy, front: DocumentStepSelfHostedTests.FrontFields());
-        var noDocumentNumber = SelfHostedIdentityScenario.CheckTheCard(policy, edit: guest => guest.DocumentNumber = string.Empty);
+        var report = SelfHostedIdentityScenario.CheckTheCard(policy, front: DocumentStepSelfHostedTests.FrontFields());
 
+        Assert.False(report.AllPassed(format.RequiredChecks));
+        Assert.Equal(DocumentCoherenceResults.Unknown, report.Summary(DocumentFormatChecks.FieldCoherence));
+        Assert.Equal(IdentityDocumentCoherence.Unknown, IdentityDocumentCoherences.Of(report, format));
+    }
+
+    [Fact]
+    public void ScenarioSupport_AHolderWithNoDocumentNumberAndNoCitizenshipDeclared_PassesByNotApplicable_OnlyWhenEveryOtherCheckPasses()
+    {
+        var (_, _, policy) = SelfHostedIdentityScenario.WriteCalibratedPolicy(_directory, Version);
+        var format = DocumentStepSelfHostedTests.Cie;
+        Action<Guest> declaresNeither = guest =>
+        {
+            guest.DocumentNumber = string.Empty;
+            guest.Nationality = string.Empty;
+        };
+
+        var perfectCard = SelfHostedIdentityScenario.CheckTheCard(policy, edit: declaresNeither);
+        var noIssueDate = SelfHostedIdentityScenario.CheckTheCard(policy, front: DocumentStepSelfHostedTests.FrontFields(), edit: declaresNeither);
+
+        Assert.Contains(new DocumentCoherenceCheck(DocumentFormatChecks.BookingConsistency, DocumentCoherenceResults.NotApplicable, ZonedFieldNames.DocumentNumber), perfectCard.Checks);
+        Assert.Contains(new DocumentCoherenceCheck(DocumentFormatChecks.BookingConsistency, DocumentCoherenceResults.NotApplicable, ZonedFieldNames.Nationality), perfectCard.Checks);
+        Assert.True(perfectCard.AllPassed(format.RequiredChecks), $"Not passed: {SelfHostedIdentityScenario.NotPassed(perfectCard.Checks)}");
+        Assert.Equal(IdentityDocumentCoherence.Passed, IdentityDocumentCoherences.Of(perfectCard, format));
         Assert.False(noIssueDate.AllPassed(format.RequiredChecks));
-        Assert.Equal(DocumentCoherenceResults.Unknown, noIssueDate.Summary(DocumentFormatChecks.FieldCoherence));
-        Assert.False(noDocumentNumber.AllPassed(format.RequiredChecks));
-        Assert.Equal(DocumentCoherenceResults.Unknown, noDocumentNumber.Summary(DocumentFormatChecks.BookingConsistency));
+        Assert.Equal(IdentityDocumentCoherence.Unknown, IdentityDocumentCoherences.Of(noIssueDate, format));
+    }
+
+    [Fact]
+    public void ScenarioSupport_AHolderWhoDeclaredNothing_IsNotComparedWithTheBooking_AndThePassSaysSo()
+    {
+        var (_, _, policy) = SelfHostedIdentityScenario.WriteCalibratedPolicy(_directory, Version);
+        var format = DocumentStepSelfHostedTests.Cie;
+        Action<Guest> declaresNothing = guest =>
+        {
+            guest.FirstName = string.Empty;
+            guest.LastName = string.Empty;
+            guest.DateOfBirth = null;
+            guest.DocumentNumber = string.Empty;
+            guest.Nationality = string.Empty;
+        };
+
+        var perfectCard = SelfHostedIdentityScenario.CheckTheCard(policy, edit: declaresNothing);
+        var noIssueDate = SelfHostedIdentityScenario.CheckTheCard(policy, front: DocumentStepSelfHostedTests.FrontFields(), edit: declaresNothing);
+
+        Assert.Equal(DocumentCoherenceResults.NotApplicable, perfectCard.Summary(DocumentFormatChecks.BookingConsistency));
+        Assert.True(perfectCard.AllPassed(format.RequiredChecks), $"Not passed: {SelfHostedIdentityScenario.NotPassed(perfectCard.Checks)}");
+        Assert.Equal(IdentityDocumentCoherence.PassedWithoutBooking, IdentityDocumentCoherences.Of(perfectCard, format));
+        Assert.False(noIssueDate.AllPassed(format.RequiredChecks));
+        Assert.Equal(IdentityDocumentCoherence.Unknown, IdentityDocumentCoherences.Of(noIssueDate, format));
+    }
+
+    [Fact]
+    public void ScenarioSupport_ADeclaredValueThatDiffers_IsABookingConflict_NeverAPass_WhateverTheFormatRequires()
+    {
+        var (_, _, policy) = SelfHostedIdentityScenario.WriteCalibratedPolicy(_directory, Version);
+        var format = DocumentStepSelfHostedTests.Cie;
+
+        var otherNumber = SelfHostedIdentityScenario.CheckTheCard(policy, edit: guest => guest.DocumentNumber = "ZZ0000000");
+        var otherSurname = SelfHostedIdentityScenario.CheckTheCard(policy, edit: guest => guest.LastName = "ROSSI");
+
+        foreach (var report in new[] { otherNumber, otherSurname })
+        {
+            Assert.Equal(DocumentCoherenceResults.Failed, report.Summary(DocumentFormatChecks.BookingConsistency));
+            Assert.False(report.AllPassed(format.RequiredChecks));
+            Assert.Equal(IdentityDocumentCoherence.BookingConflict, IdentityDocumentCoherences.Of(report, format));
+            Assert.Equal(IdentityDocumentCoherence.BookingConflict, IdentityDocumentCoherences.Of(report, null));
+        }
     }
 
     [Fact]
