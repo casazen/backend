@@ -1,18 +1,14 @@
-using Casazen.Core.Authorization;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Documents;
-using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
-using Casazen.Tests.Unit.Email;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;

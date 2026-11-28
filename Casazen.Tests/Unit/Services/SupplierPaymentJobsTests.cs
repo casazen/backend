@@ -5,7 +5,6 @@ using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Email.Templates;
-using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Stripe;
 using Xunit;

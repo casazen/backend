@@ -42,8 +42,6 @@ public interface IComuneDirectory
         IEnumerable<string> identifiers,
         CancellationToken cancellationToken = default);
 
-    Task<Comune?> FindByNameAndProvinceAsync(string name, string provinceCode, CancellationToken cancellationToken = default);
-
     Task<IReadOnlyList<Comune>> FindByNamesAndProvincesAsync(
         IEnumerable<(string Name, string ProvinceCode)> pairs,
         CancellationToken cancellationToken = default);

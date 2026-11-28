@@ -25,11 +25,6 @@ public sealed class SupplierRegistrationOptions
     public bool AnyComune { get; set; } = true;
 
     public bool SelfServeEnabled => PilotComuni.Count > 0;
-
-    public SupplierPilotComune? FindPilotComune(string? code) =>
-        string.IsNullOrWhiteSpace(code)
-            ? null
-            : PilotComuni.FirstOrDefault(c => string.Equals(c.Code.Trim(), code.Trim(), StringComparison.OrdinalIgnoreCase));
 }
 
 public sealed class SupplierPilotComune

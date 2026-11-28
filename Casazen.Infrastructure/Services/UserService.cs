@@ -1,10 +1,8 @@
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
@@ -30,11 +28,6 @@ public class UserService(
     public async Task<User?> GetUserAsync(string id)
     {
         return await repository.GetByIdAsync(id);
-    }
-
-    public async Task<User?> GetUserByEmailAsync(string email)
-    {
-        return await repository.GetByEmailAsync(email);
     }
 
     public async Task<User> UpdateUserAsync(User user)

@@ -41,10 +41,4 @@ public static class OpenableStayRules
         && !string.IsNullOrWhiteSpace(guestFirstName)
         && !string.IsNullOrWhiteSpace(guestLastName)
         && (guestDataComplete || checkOutDate.Date >= today.Date);
-
-    public static bool CanListProperty(string? name, string? address, string? city, string? cinCode) =>
-        !string.IsNullOrWhiteSpace(name)
-        && !string.IsNullOrWhiteSpace(address)
-        && !string.IsNullOrWhiteSpace(city)
-        && !string.IsNullOrWhiteSpace(cinCode);
 }

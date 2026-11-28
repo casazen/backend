@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Linq.Expressions;
 using System.Security.Cryptography;
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;

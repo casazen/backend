@@ -236,6 +236,11 @@ public class CampaignService(
     private async Task<List<string>> EligibleEmailsAsync(Guid segmentId, Guid orgId, HostScope scope, Guid? propertyId, CancellationToken cancellationToken)
     {
         var recipients = await ResolveAudienceAsync(segmentId, orgId, scope, propertyId, cancellationToken);
+        return await WithinMonthlyLimitAsync(recipients, orgId, cancellationToken);
+    }
+
+    private async Task<List<string>> WithinMonthlyLimitAsync(List<GuestContact> recipients, Guid orgId, CancellationToken cancellationToken)
+    {
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var month = now.Year * 100 + now.Month;
         var limit = await db.Set<MarketingStudioSettings>().Where(s => s.OrgId == orgId)
@@ -251,18 +256,27 @@ public class CampaignService(
         db.GuestContacts.AsNoTracking().Where(CrmContactRules.MarketableEmail)
             .Where(c => c.Confirmation == GuestContactConfirmation.Confirmed);
 
-    private async Task<List<GuestContact>> ResolveAudienceAsync(Guid segmentId, Guid orgId, HostScope scope,
-        Guid? propertyId, CancellationToken ct)
+    private static void CheckScope(Guid orgId, HostScope scope)
     {
         if (scope.OrgId != orgId)
             throw new DomainRuleException("invalid_scope", "marketing_invalid_scope");
+    }
+
+    private async Task<List<GuestContact>> ResolveAudienceAsync(Guid segmentId, Guid orgId, HostScope scope,
+        Guid? propertyId, CancellationToken ct)
+    {
+        CheckScope(orgId, scope);
         var segment = await db.GuestSegments.AsNoTracking().SingleOrDefaultAsync(s => s.Id == segmentId && s.OrgId == orgId, ct)
             ?? throw new DomainRuleException("segment_not_found", "segment_not_found");
         var condition = JsonSerializer.Deserialize<Condition>(segment.ConditionJson) ??
             throw new DomainRuleException("invalid_condition_json", "marketing_invalid_condition");
-        if (conditionEvaluator.ValidateCondition(condition).Count > 0 ||
-            condition.Groups.SelectMany(g => g.Rules).Any(rule => !MarketingSegmentRules.Fields.Any(f =>
-                f.FieldId == rule.FieldId && f.Operators.Contains(rule.Operator)))) return [];
+        return await ResolveConditionAudienceAsync(condition, orgId, scope, propertyId, ct);
+    }
+
+    private async Task<List<GuestContact>> ResolveConditionAudienceAsync(Condition condition, Guid orgId, HostScope scope,
+        Guid? propertyId, CancellationToken ct)
+    {
+        if (!MarketingSegmentRules.IsValid(condition, conditionEvaluator)) return [];
         HashSet<Guid>? properties = null;
         if (propertyId.HasValue || !scope.IsOrgWide)
         {
@@ -457,6 +471,18 @@ public class CampaignService(
         CancellationToken cancellationToken = default, Guid? propertyId = null)
     {
         var recipients = await EligibleEmailsAsync(segmentId, orgId, scope, propertyId, cancellationToken);
+        return recipients.Count;
+    }
+
+    public async Task<int> PreviewConditionCountAsync(
+        Condition condition,
+        Guid orgId,
+        HostScope scope,
+        CancellationToken cancellationToken = default, Guid? propertyId = null)
+    {
+        CheckScope(orgId, scope);
+        var audience = await ResolveConditionAudienceAsync(condition, orgId, scope, propertyId, cancellationToken);
+        var recipients = await WithinMonthlyLimitAsync(audience, orgId, cancellationToken);
         return recipients.Count;
     }
 

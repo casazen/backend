@@ -12,8 +12,6 @@ public interface IOrgService
 {
     Task<Org?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
-    Task<Org?> GetByUserIdAsync(string userId, CancellationToken cancellationToken = default);
-
     Task<Org?> GetPublicBySlugAsync(string slug, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -42,8 +40,6 @@ public interface IOrgService
         string? actorUserId = null,
         PlanChangeSource source = PlanChangeSource.Org,
         CancellationToken cancellationToken = default);
-
-    Task<Org?> GetByStripeCustomerIdAsync(string stripeCustomerId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Stores the billing country and the declared VAT id (PL-13: the VAT id is verified by Stripe at checkout, not

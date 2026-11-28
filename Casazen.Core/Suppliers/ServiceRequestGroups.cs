@@ -48,10 +48,6 @@ public static class ServiceRequestGroupRules
 
     public static IQueryable<ServiceRequest> OnlyHoldingSupplierTime(this IQueryable<ServiceRequest> requests) => requests.Where(HoldsSupplierTime);
 
-    /// <summary>True for a backup that has not taken the job and is not out of the group: the host does not see it, and it holds no slot unless it accepted.</summary>
-    public static bool IsWaitingBackup(ServiceRequestGroupRole role, ServiceRequestStatus status) =>
-        role == ServiceRequestGroupRole.Backup && status == ServiceRequestStatus.Richiesto;
-
     public static bool IsVisibleToHost(ServiceRequestGroupRole role) =>
         role is ServiceRequestGroupRole.None or ServiceRequestGroupRole.Primary or ServiceRequestGroupRole.PromotedBackup;
 

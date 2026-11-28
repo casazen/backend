@@ -1,5 +1,4 @@
 using System.Globalization;
-using Casazen.Infrastructure.Services.ICal;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services.ICal;

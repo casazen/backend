@@ -11,7 +11,6 @@ public interface IStripeService
         long amountCents,
         string currency,
         Dictionary<string, string> metadata);
-    Task<PaymentIntent> ConfirmPaymentAsync(string paymentIntentId);
 
     /// <summary>
     /// Creates an on-session PaymentIntent on the connected account (direct charge, automatic payment methods), sent with
@@ -242,22 +241,6 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
             paymentIntent.Id,
             connectedAccountId);
         return paymentIntent;
-    }
-
-    public async Task<PaymentIntent> ConfirmPaymentAsync(string paymentIntentId)
-    {
-        try
-        {
-            var service = new PaymentIntentService(Client);
-            var paymentIntent = await service.ConfirmAsync(paymentIntentId);
-            logger.LogInformation("Payment confirmed: {PaymentIntentId}", paymentIntentId);
-            return paymentIntent;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error confirming payment");
-            throw;
-        }
     }
 
     public async Task<Refund> CreateRefundAsync(StripeRefundCreateRequest request, CancellationToken cancellationToken = default)

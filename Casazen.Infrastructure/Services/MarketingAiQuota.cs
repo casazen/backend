@@ -1,4 +1,3 @@
-using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;

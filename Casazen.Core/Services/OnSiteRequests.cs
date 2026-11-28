@@ -28,11 +28,7 @@ public static class OnSiteRequests
 
     public const int DefaultApprovalHours = 24;
 
-    public const int ProvisionalApprovalHours = DefaultApprovalHours;
-
     public const int DefaultMaxNights = 30;
-
-    public const int ProvisionalMaxNights = DefaultMaxNights;
 
     public static int GetApprovalHours(IConfiguration configuration) =>
         Math.Max(1, configuration.GetValue(ApprovalHoursSetting, DefaultApprovalHours));

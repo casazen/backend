@@ -1,5 +1,3 @@
-using Casazen.Core.Services;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Octorate;

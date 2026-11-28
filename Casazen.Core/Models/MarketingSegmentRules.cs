@@ -13,6 +13,12 @@ public static class MarketingSegmentRules
         new("stage", ConditionFieldType.Enum, "field.stage", ["in", "notIn"]),
     ];
 
+    public static bool IsValid(Condition condition, Casazen.Core.Services.IConditionEvaluator evaluator) =>
+        evaluator.ValidateCondition(condition).Count == 0 && condition.Groups.SelectMany(group => group.Rules).All(IsAllowed);
+
+    private static bool IsAllowed(ConditionRule rule) =>
+        Fields.Any(field => field.FieldId == rule.FieldId && field.Operators.Contains(rule.Operator));
+
     public static string[] Strings(string json)
     {
         if (string.IsNullOrWhiteSpace(json)) return [];
@@ -25,7 +31,7 @@ public static class MarketingSegmentRules
 
     public static bool Matches(ConditionRule rule, GuestCrmProfile profile, DateTime today, string stage)
     {
-        if (!Fields.Any(field => field.FieldId == rule.FieldId && field.Operators.Contains(rule.Operator))) return false;
+        if (!IsAllowed(rule)) return false;
         var args = Arguments(rule.Value);
         if (args.Length == 0) return false;
         string[] values = rule.FieldId switch

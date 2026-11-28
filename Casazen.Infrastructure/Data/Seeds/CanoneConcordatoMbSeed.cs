@@ -108,46 +108,6 @@ public static class CanoneConcordatoMbSeed
         Ata("Cesano Maderno"),
     ];
 
-    /// <summary>
-    /// Comune offices receiving the IMU communication (LT-13, A7-22): destinatari, PEC and aliquota out of the code and
-    /// onto the database, an admin CRUD (<c>AdminCanoneConcordatoController</c>) away from a fix. Same uncertainty the
-    /// hand-written draft used to carry (a PEC seen in two channels for Seveso, a rate derived — not published — for
-    /// Cesano Maderno), now data instead of a literal in <c>ComuneImuNotificationService</c>.
-    /// </summary>
-    public static IReadOnlyList<ComuneImuChannel> BuildImuChannels() =>
-    [
-        new ComuneImuChannel
-        {
-            Id = IdFor("imu:Seveso"),
-            Comune = "Seveso",
-            Region = Region,
-            RecipientOffice = "Ufficio Tributi",
-            Email = "protocollo@comune.seveso.mb.it",
-            Pec = "comune.seveso@pec.it",
-            Instructions =
-                "Canale ufficiale NON univoco — la ricerca registra anche tributi@comune.seveso.mb.it e il portale " +
-                "SPID/CIE/CNS Servizi Sociali (Contratti di locazione a canone concordato). Verificare con l'Ufficio Tributi prima dell'invio.",
-            DataCompleteness = DataCompleteness.Partial,
-            SourceUrl = SourceUrl,
-        },
-        new ComuneImuChannel
-        {
-            Id = IdFor("imu:Cesano Maderno"),
-            Comune = "Cesano Maderno",
-            Region = Region,
-            RecipientOffice = "U.O. Risorse Tributarie",
-            Email = "risorse.tributarie@comune.cesano-maderno.mb.it",
-            Pec = "risorse.finanziarie@pec.comune.cesano-maderno.mb.it",
-            RatePercent = 1.04m,
-            EffectiveRatePercent = 0.78m,
-            RateYear = 2025,
-            RateKind = ImuRateKind.Derived,
-            RateNotes = "Valore derivato (aliquota 1,04% x riduzione nazionale 75% ex L. 160/2019 art. 1 c. 760), NON un'aliquota ufficiale pubblicata. Delibera 2026 non reperita alla data della ricerca.",
-            DataCompleteness = DataCompleteness.Partial,
-            SourceUrl = SourceUrl,
-        },
-    ];
-
     private static HighTensionAreaComune Ata(string comune) => new()
     {
         Id = IdFor("ata:" + comune),

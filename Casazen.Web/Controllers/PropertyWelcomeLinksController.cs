@@ -1,5 +1,4 @@
 using Casazen.Core.Authorization;
-using Casazen.Core.Entities;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Email;

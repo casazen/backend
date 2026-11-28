@@ -1,6 +1,5 @@
 using System.Globalization;
 using Casazen.Core.Documents;
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;

@@ -118,8 +118,6 @@ public sealed record TouristTaxStayFacts(
 
 public static class TouristTaxYearEndRules
 {
-    public const string TicinoCanton = SwissPlace.TicinoCantonCode;
-
     public static DateOnly TicinoCountDue(int year) => new(year + 1, 1, 5);
 
     public static string NoAmountReasonOf(TouristTaxStayFacts? facts)

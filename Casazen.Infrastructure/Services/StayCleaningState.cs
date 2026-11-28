@@ -13,28 +13,6 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 internal static class StayCleaningState
 {
-    internal static async Task<bool> IsPlannedAsync(AppDbContext db, Guid orgId, Guid bookingId, CancellationToken cancellationToken) =>
-        await db.ServiceRequests
-            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-            .AsNoTracking()
-            .AnyAsync(
-                r => r.OrgId == orgId
-                     && r.BookingId == bookingId
-                     && r.Category == ServiceCategories.Cleaning
-                     && r.Status != ServiceRequestStatus.Annullato
-                     && r.Status != ServiceRequestStatus.Rifiutato,
-                cancellationToken)
-        || await db.InternalActivities
-            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-            .AsNoTracking()
-            .AnyAsync(
-                a => a.OrgId == orgId
-                     && a.BookingId == bookingId
-                     && a.Action == null
-                     && a.ActivityType == InternalActivity.CleaningActivityType
-                     && a.Status != InternalActivity.StatusCancelled,
-                cancellationToken);
-
     internal static async Task<bool> IsDoneAsync(AppDbContext db, Guid orgId, Guid bookingId, CancellationToken cancellationToken) =>
         await db.ServiceRequests
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])

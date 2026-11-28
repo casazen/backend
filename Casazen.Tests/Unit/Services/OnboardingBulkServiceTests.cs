@@ -10,7 +10,6 @@ using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Events;
-using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Extensions;
 using Microsoft.EntityFrameworkCore;

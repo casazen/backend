@@ -2,7 +2,6 @@ using System.Data;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
-using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Infrastructure.Data;

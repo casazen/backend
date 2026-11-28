@@ -149,15 +149,6 @@ public class ComuneDirectory(AppDbContext db) : IComuneDirectory
         return result;
     }
 
-    public async Task<Comune?> FindByNameAndProvinceAsync(
-        string name,
-        string provinceCode,
-        CancellationToken cancellationToken = default)
-    {
-        var found = await FindByNamesAndProvincesAsync([(name, provinceCode)], cancellationToken);
-        return found.FirstOrDefault();
-    }
-
     public async Task<IReadOnlyList<Comune>> FindByNamesAndProvincesAsync(
         IEnumerable<(string Name, string ProvinceCode)> pairs,
         CancellationToken cancellationToken = default)

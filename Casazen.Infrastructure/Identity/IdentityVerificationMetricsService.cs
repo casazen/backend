@@ -1,5 +1,4 @@
 using Casazen.Core.Authorization;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Identity.Statistics;
 using Casazen.Core.Options;
 using Casazen.Core.Services;

@@ -1,5 +1,3 @@
-using Casazen.Core.Entities;
-
 namespace Casazen.Core.Services;
 
 public sealed record InviteSupplierRequest(string Email, List<Guid> PropertyIds, string? VatNumber = null, string? FiscalCode = null, string? Phone = null);

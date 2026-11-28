@@ -73,11 +73,6 @@ public class PropertyService(
         return await repository.GetByScopeAsync(scope, mode);
     }
 
-    public async Task<IEnumerable<Property>> GetAllPropertiesAsync()
-    {
-        return await repository.GetAllAsync();
-    }
-
     public async Task<Property> CreatePropertyAsync(Property property)
     {
         logger.LogInformation("Creating property: {Name}", property.Name);

@@ -4,7 +4,6 @@ using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
-using static Casazen.Tests.Unit.Services.ServicePaymentFlows;
 
 namespace Casazen.Tests.Unit.Services;
 

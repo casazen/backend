@@ -3,7 +3,6 @@ using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Http;
-using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Authorization;
 using Casazen.Web.Configuration;
 using Casazen.Web.Controllers;

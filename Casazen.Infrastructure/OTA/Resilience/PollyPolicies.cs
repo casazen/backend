@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Polly;
-using Polly.CircuitBreaker;
 using Polly.Extensions.Http;
 using Polly.Timeout;
 

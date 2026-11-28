@@ -55,8 +55,6 @@ public sealed record AccountantPackagePeriod
 
     public bool Contains(DateOnly day) => day >= From && day <= To;
 
-    public bool ContainsMonth(int year, int month) => (year * 100) + month >= (From.Year * 100) + From.Month && (year * 100) + month <= (To.Year * 100) + To.Month;
-
     public const int MinYear = HostDashboardPeriod.MinCustomYear;
 
     public const int MaxYear = HostDashboardPeriod.MaxCustomYear;

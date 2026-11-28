@@ -250,9 +250,6 @@ public interface IRentBillingService
 
     Task<PublicRentPayment> GetPublicPaymentAsync(Guid installmentId, string token, CancellationToken cancellationToken = default);
 
-    Task<PublicRentPaymentSession> CreatePaymentSessionAsync(
-        Guid installmentId, string token, CancellationToken cancellationToken = default);
-
     Task<RentPaymentNotice?> ApplyPaymentIntentEventAsync(RentPaymentIntentEvent paymentEvent, CancellationToken cancellationToken = default);
 
     Task<RentPaymentNotice?> ApplyLinkedBankPaymentAsync(RentPaymentIntentEvent paymentEvent, CancellationToken cancellationToken = default);

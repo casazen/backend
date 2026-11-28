@@ -16,18 +16,6 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
     public Task<Org?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
         dbContext.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
 
-    public async Task<Org?> GetByUserIdAsync(string userId, CancellationToken cancellationToken = default)
-    {
-        var orgId = await dbContext.Users.AsNoTracking()
-            .Where(u => u.Id == userId)
-            .Select(u => u.OrgId)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        return orgId is null
-            ? null
-            : await dbContext.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
-    }
-
     public async Task<Org?> GetPublicBySlugAsync(string slug, CancellationToken cancellationToken = default)
     {
         var orgId = await ResolveOrgIdBySlugAsync(dbContext, slug, cancellationToken);
@@ -207,10 +195,6 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
         await dbContext.SaveChangesAsync(cancellationToken);
         return org;
     }
-
-    public Task<Org?> GetByStripeCustomerIdAsync(string stripeCustomerId, CancellationToken cancellationToken = default) =>
-        dbContext.Orgs.AsNoTracking()
-            .FirstOrDefaultAsync(o => o.StripeCustomerId == stripeCustomerId, cancellationToken);
 
     public async Task<Org?> UpdateBillingProfileAsync(
         Guid orgId,

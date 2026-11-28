@@ -1,8 +1,6 @@
 using System.Net;
-using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Options;

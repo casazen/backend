@@ -1,10 +1,8 @@
 using Casazen.Core.Authorization;
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
-using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
 using Xunit;

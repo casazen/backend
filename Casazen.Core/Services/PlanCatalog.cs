@@ -1,4 +1,3 @@
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Validation;
 
@@ -22,9 +21,6 @@ public static class PlanCatalog
     ];
 
     public static IReadOnlyList<Entry> All => Entries;
-
-    public static int MaxPropertiesFor(PlanTier tier) =>
-        Entries.First(e => e.Tier == tier).MaxProperties;
 
     public static int MaxSeatsFor(PlanTier tier) =>
         Entries.First(e => e.Tier == tier).MaxSeats;

@@ -1,4 +1,3 @@
-using Casazen.Core.Entities;
 using Casazen.Core.GuestPortal;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
