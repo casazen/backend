@@ -7,15 +7,6 @@ using Casazen.Infrastructure.Services;
 
 namespace Casazen.Infrastructure.Identity;
 
-/// <summary>
-/// What the checker needs to know about the stay and the guest (E71/F01/US02/T02): the day the document must still be valid on, and what the guest typed in the
-/// data step. Nothing here is read from the document.
-/// </summary>
-/// <param name="CheckInDate">
-/// The calendar day of the check-in of the stay (a date, not an instant: the caller takes it from <c>RomeCalendar</c> on the injected <c>TimeProvider</c>). A document
-/// that expires before this day is expired; a birth after it, or more than 120 years before it, is impossible.
-/// </param>
-/// <param name="Declared">The first and last names, the date of birth, the document number and the citizenship the guest typed, or null while nothing is typed.</param>
 public sealed record DocumentCoherenceContext(DateOnly CheckInDate, CheckInIdentity? Declared = null)
 {
     /// <summary>
@@ -29,34 +20,7 @@ public sealed record DocumentCoherenceContext(DateOnly CheckInDate, CheckInIdent
     }
 }
 
-/// <summary>
-/// The coherence of the fields read on a document (E71/F01/US02/T02, NF-190, NF-191, decision D11): whether the MRZ and the visual zone agree on the fields that
-/// identify the holder, whether the dates are possible and the document still valid on the day of the stay, whether the check digits of the MRZ hold, and whether the
-/// document agrees with what the guest typed. A coherent photo can still show an altered document: this is coherence only, and where a cryptographic proof is required
-/// the photo alone goes to review (the segments of E70). <b>It decides nothing about the outcome</b> (the engine of E73 maps an identifying conflict and an invalid MRZ
-/// to a review) and <b>it never returns or logs a value</b>: the report has check names, results and field names, and the class has no logger.
-/// <para>
-/// Pure and without state: no I/O, no clock (the day comes with the context), no configuration; so it is a singleton and a test builds it with <c>new</c>.
-/// </para>
-/// <para>
-/// The flags and the codes of the report are derived from its entries (<see cref="DocumentCoherenceReport.FromChecks"/>): an <c>unknown</c> entry leaves its flag
-/// unknown (<c>null</c>), never «ok», and <see cref="DocumentCoherenceReport.AllPassed"/> is the one answer to whether the checks a format requires all passed.
-/// </para>
-/// <list type="bullet">
-/// <item><b>mrz_check_digits</b>: passed when the MRZ was read and every ICAO 9303 check digit holds, failed when one fails, unknown when no MRZ was read.</item>
-/// <item><b>expiry</b>: failed when the date of expiry (the MRZ one, digit-protected, else the printed one) is before the day of the stay; the day itself is valid.</item>
-/// <item><b>side_consistency</b>: for every field of <c>policy.Document.IdentifyingFields</c>, the value of the MRZ and the value of the visual zone (or two printed
-/// sides) must agree: names after the normalization of the MRZ (upper case, no diacritics, apostrophes, hyphens and spaces all the same as the filler; the German
-/// transliteration too; an MRZ name field cut at its length is not a conflict), dates as dates (the printed one has its century, the MRZ one has it inferred), the
-/// document number as letters and digits. A field read on one side only is unknown, never a conflict.</item>
-/// <item><b>field_coherence</b>: the dates are possible (the birth is not after the day of the stay and not more than 120 years before it, the issue is not after
-/// the expiry) and what the card prints a second time agrees with the MRZ: the expiry, the sex and the nationality, each when both were read (one read on a side only
-/// adds no entry), a difference being a classic sign of an altered print.</item>
-/// <item><b>booking_consistency</b>: the flags of <see cref="MrzCheckInConsistency"/> (names, birth date, document number, nationality), as they are; the nationality
-/// is compared after the name of the state the guest typed («ITALIA») is brought to its code through the explicit table of the check-in, and stays unknown for a
-/// name that table does not have (never guessed).</item>
-/// </list>
-/// </summary>
+// Pure: no I/O, no clock, no logger. The report holds check names, results and field names, never a value read or declared.
 public sealed class DocumentCoherenceChecker
 {
     private const int MaxPlausibleAgeYears = 120;
@@ -138,13 +102,8 @@ public sealed class DocumentCoherenceChecker
         foreach (var twice in PrintedAgainstMrz.Where(candidate => !identifying.Contains(candidate) && Comparable(candidate, machine, printed)))
             checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.FieldCoherence, CompareSides(twice, machine, printed, referenceMayBeCut: false), twice));
 
-        var booking = mrz?.Result is { } machineRead && context.Declared is { } declared
-            ? NationalityOnTheBooking(MrzCheckInConsistency.Compare(machineRead, declared), machineRead, declared)
-            : new MrzConsistency(null, null, null, null);
-        checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.BookingConsistency, Flag(booking.Names), DocumentCoherenceFields.Names));
-        checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.BookingConsistency, Flag(booking.BirthDate), ZonedFieldNames.BirthDate));
-        checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.BookingConsistency, Flag(booking.DocumentNumber), ZonedFieldNames.DocumentNumber));
-        checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.BookingConsistency, Flag(booking.Nationality), ZonedFieldNames.Nationality));
+        foreach (var (field, result) in BookingConsistency(mrz?.Result, context.Declared))
+            checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.BookingConsistency, result, field));
 
         return DocumentCoherenceReport.FromChecks(checks);
     }
@@ -324,6 +283,33 @@ public sealed class DocumentCoherenceChecker
     }
 
     private static string LettersOnly(string value) => new(value.ToUpperInvariant().Where(ch => ch is >= 'A' and <= 'Z').ToArray());
+
+    // Without an MRZ the check could not run: nothing declared can make it pass.
+    private static (string Field, string Result)[] BookingConsistency(MrzExtractionResult? machine, CheckInIdentity? declared)
+    {
+        if (machine is null)
+        {
+            return
+            [
+                (DocumentCoherenceFields.Names, DocumentCoherenceResults.Unknown),
+                (ZonedFieldNames.BirthDate, DocumentCoherenceResults.Unknown),
+                (ZonedFieldNames.DocumentNumber, DocumentCoherenceResults.Unknown),
+                (ZonedFieldNames.Nationality, DocumentCoherenceResults.Unknown),
+            ];
+        }
+
+        var typed = declared ?? new CheckInIdentity(null, null, null, null, null);
+        var flags = NationalityOnTheBooking(MrzCheckInConsistency.Compare(machine, typed), machine, typed);
+        return
+        [
+            (DocumentCoherenceFields.Names, Declared(!string.IsNullOrWhiteSpace(typed.FirstName) || !string.IsNullOrWhiteSpace(typed.LastName), flags.Names)),
+            (ZonedFieldNames.BirthDate, Declared(typed.DateOfBirth is not null, flags.BirthDate)),
+            (ZonedFieldNames.DocumentNumber, Declared(!string.IsNullOrWhiteSpace(typed.DocumentNumber), flags.DocumentNumber)),
+            (ZonedFieldNames.Nationality, Declared(!string.IsNullOrWhiteSpace(typed.Citizenship), flags.Nationality)),
+        ];
+    }
+
+    private static string Declared(bool declared, bool? agrees) => declared ? Flag(agrees) : DocumentCoherenceResults.NotApplicable;
 
     /// <summary>
     /// The flags of <see cref="MrzCheckInConsistency"/> with the nationality compared on the same footing. The check-in keeps the citizenship as the name of a state
