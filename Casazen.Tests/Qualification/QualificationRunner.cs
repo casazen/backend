@@ -636,7 +636,7 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
 
     private static string CoherenceCode(IdentityDocumentCoherence coherence) => coherence switch
     {
-        IdentityDocumentCoherence.Passed => QualificationDecisionCodes.CoherencePassed,
+        IdentityDocumentCoherence.Passed or IdentityDocumentCoherence.PassedWithoutBooking => QualificationDecisionCodes.CoherencePassed,
         IdentityDocumentCoherence.IdentifyingConflict => QualificationDecisionCodes.CoherenceIdentifyingConflict,
         IdentityDocumentCoherence.MrzInvalid => QualificationDecisionCodes.CoherenceMrzInvalid,
         IdentityDocumentCoherence.Expired => QualificationDecisionCodes.CoherenceExpired,

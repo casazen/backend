@@ -30,6 +30,8 @@ public sealed class BookingConsistencyDeclaredTests
     /// <summary>The day of the stay of the tests.</summary>
     private static readonly DateOnly Day = new(2026, 12, 10);
 
+    private static readonly VerificationReason NothingCompared = new(VerificationReasons.Checks.BookingConsistency, VerificationReasons.Results.NotApplicable);
+
     /// <summary>A booking that came with nothing the document can be compared with: no name, no birth date, no number, no citizenship.</summary>
     private static readonly CheckInIdentity NothingDeclared = new(null, " ", null, "", null);
 
@@ -65,7 +67,8 @@ public sealed class BookingConsistencyDeclaredTests
     public void NothingDeclared_ACoherentDocumentAMatchingFaceAndAPassedPresence_AreApprovedAutomatically_InAQualifiedSegment()
     {
         // AC1: the booking holds nothing comparable (nothing at all, or blanks), the card is coherent, the face matches and the presence passed; the segment is qualified for
-        // the policy and the weights in force on a policy that is not provisional (what EvidenceBundles.Allowed stands for). The automatic approval, with every reason passed.
+        // the policy and the weights in force on a policy that is not provisional (what EvidenceBundles.Allowed stands for). The automatic approval, with every reason passed
+        // but the one that says nothing was compared with the booking.
         foreach (var declared in new[] { null, NothingDeclared })
         {
             var report = Report(declared);
@@ -78,13 +81,15 @@ public sealed class BookingConsistencyDeclaredTests
             Assert.True(report.AllPassed(Cie.RequiredChecks));
 
             var coherence = IdentityDocumentCoherences.Of(report, Cie);
-            Assert.Equal(IdentityDocumentCoherence.Passed, coherence);
+            Assert.Equal(IdentityDocumentCoherence.PassedWithoutBooking, coherence);
 
             var decision = Decide(coherence, EvidenceBundles.Allowed);
             Assert.Equal(IdentityFinalDecision.AutoApproved, decision.Final);
             Assert.Equal((IdentityShadowDecision.Approve, IdentityDecisionMode.Automatic, IdentityOutcomeCodes.AutoApproved), (decision.Shadow, decision.Mode, decision.OutcomeCode));
             Assert.Equal((BiometricOutcome.Accept, BiometricOutcome.Accept), (decision.LogOutcome, decision.ShadowOutcome));
-            Assert.All(decision.Reasons, reason => Assert.Equal(VerificationReasons.Results.Passed, reason.Result));
+            Assert.Equal(1, decision.Reasons.Count(reason => reason == NothingCompared));
+            Assert.Contains(new VerificationReason(VerificationReasons.Checks.DocumentCoherence, VerificationReasons.Results.Passed), decision.Reasons);
+            Assert.All(decision.Reasons.Where(reason => reason != NothingCompared), reason => Assert.Equal(VerificationReasons.Results.Passed, reason.Result));
         }
     }
 
@@ -101,7 +106,10 @@ public sealed class BookingConsistencyDeclaredTests
         Assert.DoesNotContain(report.Checks, entry => entry.Result is DocumentCoherenceResults.Failed or DocumentCoherenceResults.Unknown);
         var coherence = IdentityDocumentCoherences.Of(report, Cie);
         Assert.Equal(IdentityDocumentCoherence.Passed, coherence);
-        Assert.Equal(IdentityFinalDecision.AutoApproved, Decide(coherence, EvidenceBundles.Allowed).Final);
+
+        var decision = Decide(coherence, EvidenceBundles.Allowed);
+        Assert.Equal(IdentityFinalDecision.AutoApproved, decision.Final);
+        Assert.DoesNotContain(NothingCompared, decision.Reasons);
     }
 
     [Theory]
@@ -194,6 +202,7 @@ public sealed class BookingConsistencyDeclaredTests
         });
         Assert.Equal((IdentityFinalDecision.Review, IdentityShadowDecision.Review), (incomplete.Final, incomplete.Shadow));
         Assert.Contains(new VerificationReason(VerificationReasons.Checks.DocumentCoherence, VerificationReasons.Results.NotRun), incomplete.Reasons);
+        Assert.DoesNotContain(NothingCompared, incomplete.Reasons);
     }
 
     [Theory]
@@ -209,7 +218,7 @@ public sealed class BookingConsistencyDeclaredTests
         // A provisional policy, a segment in observation, one not qualified (or for another policy or other weights), suspended, the platform permission off: the policy would
         // approve (the shadow decision), a person decides, and the reason says which condition of the segment failed.
         var coherence = IdentityDocumentCoherences.Of(Report(NothingDeclared), Cie);
-        Assert.Equal(IdentityDocumentCoherence.Passed, coherence);
+        Assert.Equal(IdentityDocumentCoherence.PassedWithoutBooking, coherence);
 
         var decision = Decide(coherence, EvidenceBundles.Observation with { ReasonCode = reason });
 
@@ -217,6 +226,7 @@ public sealed class BookingConsistencyDeclaredTests
         Assert.Equal(IdentityShadowDecision.Approve, decision.Shadow);
         Assert.Equal(IdentityDecisionMode.Observation, decision.Mode);
         Assert.Equal(IdentityOutcomeCodes.Review, decision.OutcomeCode);
+        Assert.Contains(NothingCompared, decision.Reasons);
         Assert.Equal(new VerificationReason(VerificationReasons.Checks.ObservationMode, reason), decision.Reasons[^1]);
     }
 
@@ -224,7 +234,7 @@ public sealed class BookingConsistencyDeclaredTests
     public void NotApplicable_SatisfiesTheRequirementOfTheBookingOnly_InTheRuleOfTheDecision()
     {
         // Proof (safety): over every check of the report and every result, a document whose every other entry passed is a pass for the decision only when that check passed or
-        // is the booking with nothing declared; not_applicable in any other check is never a pass (it is unknown), and failed is the conflict of its check.
+        // is the booking with nothing declared (the pass that says so); not_applicable in any other check is never a pass (it is unknown), and failed is the conflict of its check.
         var results = DocumentCoherenceResults.All.Append("maybe").ToList();
         foreach (var check in DocumentCoherenceReport.CarriedChecks)
         {
@@ -238,7 +248,13 @@ public sealed class BookingConsistencyDeclaredTests
                 var passes = result == DocumentCoherenceResults.Passed
                     || (result == DocumentCoherenceResults.NotApplicable && check == DocumentFormatChecks.BookingConsistency);
 
-                Assert.True(passes == (coherence == IdentityDocumentCoherence.Passed), $"{check}={result}: {coherence}");
+                Assert.True(passes == (coherence is IdentityDocumentCoherence.Passed or IdentityDocumentCoherence.PassedWithoutBooking), $"{check}={result}: {coherence}");
+                if (passes)
+                {
+                    var expectedPass = result == DocumentCoherenceResults.NotApplicable ? IdentityDocumentCoherence.PassedWithoutBooking : IdentityDocumentCoherence.Passed;
+                    Assert.True(expectedPass == coherence, $"{check}={result}: {coherence}");
+                }
+
                 if (result == DocumentCoherenceResults.NotApplicable && check != DocumentFormatChecks.BookingConsistency)
                     Assert.Equal(DocumentCoherenceResults.Unknown, report.Summary(check));
 
@@ -289,6 +305,7 @@ public sealed class BookingConsistencyDeclaredTests
         var accepted = Assert.Single(await world.LogRowsAsync(approved));
         Assert.Equal((BiometricOutcome.Accept, BiometricOutcome.Accept, IdentityDecisionMode.Automatic), (accepted.Outcome, accepted.ShadowOutcome, accepted.DecisionMode));
         Assert.Contains(new VerificationReason(VerificationReasons.Checks.DocumentCoherence, VerificationReasons.Results.Passed), VerificationReasons.Parse(accepted.ReasonsJson));
+        Assert.Contains(NothingCompared, VerificationReasons.Parse(accepted.ReasonsJson));
         var approvedSaved = await world.ReadBackAsync(approved.Id);
         Assert.Equal(IdentityOutcomeCodes.AutoApproved, approvedSaved.IdentityOutcomeCode);
         Assert.Null(approvedSaved.OperatorRequestedAt);
@@ -324,7 +341,7 @@ public sealed class BookingConsistencyDeclaredTests
         Assert.Equal(metrics.Opened, metrics.Outcomes.Total);
         Assert.Equal(metrics.Opened, IdentityOutcomeCategories.All.Sum(category => metrics.Outcomes.Of(category)));
 
-        // The pilot file: the same columns, one cell each, the conflict as a code of the review and nothing for the approval.
+        // The pilot file: the same columns, one cell each, the conflict as a code of the review and, for the approval, the code that says nothing was compared with the booking.
         Assert.Equal(
             [
                 "attempt_ref", "property_id", "opened_at", "closed_at", "format_id", "channel", "outcome_code", "decision_mode", "shadow_outcome", "reason_codes",
@@ -337,9 +354,18 @@ public sealed class BookingConsistencyDeclaredTests
             var cells = IdentityPilotExport.Line(record).Split(',');
             Assert.Equal(IdentityPilotExport.Columns.Count, cells.Length);
             if (record.Outcome == IdentityOutcomeCategory.AutoApproved)
-                Assert.Empty(cells[reasonColumn]);
+                Assert.Equal("booking_consistency:not_applicable", cells[reasonColumn]);
             else
                 Assert.Equal("document_coherence:booking_mismatch", cells[reasonColumn]);
+        }
+
+        // No value, declared or read, is in the reasons of the log or in a line of the file: codes only.
+        foreach (var text in records.SelectMany(record => new[] { IdentityPilotExport.Line(record), record.Decided?.ReasonsJson ?? string.Empty }))
+        {
+            Assert.DoesNotContain("CA99999ZZ", text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(IdentityTestDocuments.DocumentNumber, text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(IdentityTestDocuments.Surname, text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(IdentityTestDocuments.GivenNames, text, StringComparison.OrdinalIgnoreCase);
         }
     }
 

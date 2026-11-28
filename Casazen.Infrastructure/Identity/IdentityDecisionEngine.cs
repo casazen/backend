@@ -21,7 +21,7 @@ namespace Casazen.Infrastructure.Identity;
 /// Otherwise a person reviews: the same correctable defects after the guided retry are reviewed with their reasons.</description></item>
 /// <item><description><b>The document.</b> A coherence that is not a pass (an identifying conflict, an invalid MRZ, an expired document, a value declared for the booking that
 /// differs from the document, or a coherence that could not be told) or a document that is not complete: review, never correctable. Nothing declared for the booking is no
-/// conflict: the coherence passes on the document alone (<see cref="IdentityDocumentCoherences"/>).</description></item>
+/// conflict: the coherence passes on the document alone (<see cref="IdentityDocumentCoherences"/>) and the reasons say that nothing was compared (<c>booking_consistency:not_applicable</c>).</description></item>
 /// <item><description><b>The similarity.</b> In the review band, under the floor, a weak frame, no portrait, or no comparison at all: review, never correctable.</description></item>
 /// <item><description><b>The format and the assurance.</b> No format, or a format that does not give on the channel the assurance the segment requires
 /// (<c>assurance_requires_chip</c>): review with <c>assurance_level</c>.</description></item>
@@ -43,7 +43,7 @@ public sealed class IdentityDecisionEngine
 
         var presence = PresenceOf(bundle);
         var mode = bundle.Segment is { AutoApprovalAllowed: true } ? IdentityDecisionMode.Automatic : IdentityDecisionMode.Observation;
-        var documentPassed = bundle.DocumentComplete && bundle.DocumentCoherence == IdentityDocumentCoherence.Passed;
+        var documentPassed = bundle.DocumentComplete && bundle.DocumentCoherence is IdentityDocumentCoherence.Passed or IdentityDocumentCoherence.PassedWithoutBooking;
         var assurancePassed = AssuranceSatisfied(bundle);
         var reasons = Reasons(bundle, presence, assurancePassed);
 
@@ -192,7 +192,7 @@ public sealed class IdentityDecisionEngine
         };
     }
 
-    /// <summary>The reasons of the decision, one per check in a fixed order: the presence, the coherence of the document, the similarity, the format when there is none, the assurance.</summary>
+    /// <summary>The reasons of the decision, one per check in a fixed order: the presence, the coherence of the document (and the booking, when nothing was declared to compare it with), the similarity, the format when there is none, the assurance.</summary>
     private static List<VerificationReason> Reasons(IdentityEvidenceBundle bundle, List<CheckOutcome> presence, bool assurancePassed)
     {
         var reasons = new List<VerificationReason>(presence.Count + 5);
@@ -200,6 +200,11 @@ public sealed class IdentityDecisionEngine
             reasons.Add(new VerificationReason(check.Check, ResultOf(check.Status), Round(check.Value), check.Threshold));
 
         reasons.Add(new VerificationReason(VerificationReasons.Checks.DocumentCoherence, CoherenceResult(bundle)));
+
+        // The log outlives the checks kept on the session: this reason is the lasting trace that no value of the booking was compared with the document.
+        if (bundle.DocumentComplete && bundle.DocumentCoherence == IdentityDocumentCoherence.PassedWithoutBooking)
+            reasons.Add(new VerificationReason(VerificationReasons.Checks.BookingConsistency, VerificationReasons.Results.NotApplicable));
+
         reasons.Add(SimilarityReason(bundle.Match));
         if (string.IsNullOrWhiteSpace(bundle.FormatId))
             reasons.Add(new VerificationReason(VerificationReasons.Checks.DocumentFormat, VerificationReasons.Results.Failed));
@@ -232,7 +237,7 @@ public sealed class IdentityDecisionEngine
 
         return bundle.DocumentCoherence switch
         {
-            IdentityDocumentCoherence.Passed => VerificationReasons.Results.Passed,
+            IdentityDocumentCoherence.Passed or IdentityDocumentCoherence.PassedWithoutBooking => VerificationReasons.Results.Passed,
             IdentityDocumentCoherence.IdentifyingConflict => VerificationReasons.Results.Failed,
             IdentityDocumentCoherence.MrzInvalid => VerificationReasons.Results.CheckDigitsInvalid,
             IdentityDocumentCoherence.Expired => VerificationReasons.Results.Expired,

@@ -72,6 +72,8 @@ public static class VerificationReasons
         /// <summary>The fields read agree across the sides, the dates and the check digits (a conflict on an identifying field goes to review).</summary>
         public const string DocumentCoherence = "document_coherence";
 
+        public const string BookingConsistency = "booking_consistency";
+
         /// <summary>The format of the document is in the registry of the formats.</summary>
         public const string DocumentFormat = "document_format";
 
@@ -90,6 +92,8 @@ public static class VerificationReasons
 
         /// <summary>The check was not reached: an earlier step stopped the verification.</summary>
         public const string NotRun = "not_run";
+
+        public const string NotApplicable = "not_applicable";
 
         /// <summary>The similarity is above the escalate threshold and below the accept one: a person decides.</summary>
         public const string BetweenThresholds = "between_thresholds";

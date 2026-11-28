@@ -65,6 +65,9 @@ public enum IdentityDocumentCoherence
     /// format requires: a known conflict, never a pass (IDENT-DECLARED). Nothing declared is no conflict (<c>not_applicable</c>).
     /// </summary>
     BookingConflict = 5,
+
+    /// <summary>A pass with nothing declared to compare the document with, apart from <see cref="Passed"/> so that the log of the decision says so.</summary>
+    PassedWithoutBooking = 6,
 }
 
 /// <summary>Whether the models could run for the attempt. Anything but <see cref="None"/> is a fault, and a fault never approves (D8).</summary>

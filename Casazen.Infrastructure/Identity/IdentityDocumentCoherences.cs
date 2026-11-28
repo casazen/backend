@@ -11,7 +11,8 @@ namespace Casazen.Infrastructure.Identity;
 /// In this order, the first that applies: an identifying conflict between the sides, a failed check digit of the MRZ, an expired document, a known conflict with what was
 /// declared for the booking (<c>booking_consistency</c> failed, whatever the checks the format requires); then, for a format of the registry, a pass only when every check
 /// the format requires holds (<see cref="DocumentCoherenceReport.AllPassed"/>: <c>booking_consistency</c> may be <c>not_applicable</c> when nothing was declared, no other
-/// check may). Anything else, a format the registry does not hold included, is <see cref="IdentityDocumentCoherence.Unknown"/>: never a pass.
+/// check may), and then it is <see cref="IdentityDocumentCoherence.PassedWithoutBooking"/> when nothing was declared to compare the document with, <see cref="IdentityDocumentCoherence.Passed"/>
+/// otherwise. Anything else, a format the registry does not hold included, is <see cref="IdentityDocumentCoherence.Unknown"/>: never a pass.
 /// </remarks>
 public static class IdentityDocumentCoherences
 {
@@ -29,12 +30,13 @@ public static class IdentityDocumentCoherences
         if (report.Expired == true)
             return IdentityDocumentCoherence.Expired;
 
-        if (report.Summary(DocumentFormatChecks.BookingConsistency) == DocumentCoherenceResults.Failed)
+        var booking = report.Summary(DocumentFormatChecks.BookingConsistency);
+        if (booking == DocumentCoherenceResults.Failed)
             return IdentityDocumentCoherence.BookingConflict;
 
-        if (format is null)
+        if (format is null || !report.AllPassed(format.RequiredChecks))
             return IdentityDocumentCoherence.Unknown;
 
-        return report.AllPassed(format.RequiredChecks) ? IdentityDocumentCoherence.Passed : IdentityDocumentCoherence.Unknown;
+        return booking == DocumentCoherenceResults.NotApplicable ? IdentityDocumentCoherence.PassedWithoutBooking : IdentityDocumentCoherence.Passed;
     }
 }
