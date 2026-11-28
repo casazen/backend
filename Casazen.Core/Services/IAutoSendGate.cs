@@ -10,7 +10,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IAutoSendGate
 {
-    /// <summary>The verdict on one draft: allowed, or the codes of the conditions that failed (stable codes, recorded in the decision log).</summary>
     Task<AutoSendVerdict> EvaluateAsync(AutoSendContext context, CancellationToken ct);
 }
 
@@ -35,12 +34,9 @@ public sealed record AutoSendContext(
     bool Simulation,
     DateTime AtUtc);
 
-/// <summary>The verdict of the gate: <paramref name="Allowed"/>, or the codes of the conditions that failed.</summary>
 public sealed record AutoSendVerdict(bool Allowed, IReadOnlyList<string> FailureCodes)
 {
-    /// <summary>No real gate is registered: nothing is sent by itself.</summary>
     public const string NotEnabledCode = "auto_send_not_enabled";
 
-    /// <summary>A refusal with its codes.</summary>
     public static AutoSendVerdict Refused(params string[] codes) => new(false, codes);
 }

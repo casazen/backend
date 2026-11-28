@@ -46,13 +46,10 @@ public sealed record SupplierInboxQuery(
     bool? AwaitingCustomer = null,
     SupplierDateRange? WorkDays = null);
 
-/// <summary>The limits of the free text of the inbox (<c>q</c>, SP-04e).</summary>
 public static class SupplierInboxSearch
 {
-    /// <summary>Shortest text (after trimming): below it a search matches too much to mean anything.</summary>
     public const int MinLength = 2;
 
-    /// <summary>Longest text.</summary>
     public const int MaxLength = 60;
 
     /// <summary>
@@ -75,48 +72,30 @@ public static class SupplierInboxSearch
     }
 }
 
-/// <summary>The order of a page of the inbox.</summary>
 public enum SupplierInboxSort
 {
-    /// <summary>Newest activity first (completion, rejection or cancellation date, else the date received): history.</summary>
     Activity,
 
-    /// <summary>The request that has to be answered first comes first (<c>ResponseDueAt</c>, then the oldest): new requests.</summary>
     Urgency,
 
-    /// <summary>The job that is first in time comes first (the scheduled time, else the check-out day; undated last): jobs.</summary>
     WorkTime,
 }
 
-/// <summary>The tabs of the inbox (SP-04, <c>tab</c> of <c>GET api/supplier/inbox</c>): each one is a set of statuses and an order.</summary>
 public enum SupplierInboxTab
 {
-    /// <summary>"Nuove": waiting for the supplier's answer (<c>Richiesto</c>), the one to answer first on top.</summary>
     New,
 
-    /// <summary>"Programmate": taken or in progress (<c>PresoInCarico</c>, <c>InCorso</c>), the next job on top.</summary>
     Scheduled,
 
-    /// <summary>"Da incassare": completed and not paid yet (<c>Completato</c>), the latest on top.</summary>
     ToCollect,
 
-    /// <summary>"Archivio": over for the supplier (<c>Pagato</c>, <c>Rifiutato</c>, <c>Annullato</c>), the latest on top.</summary>
     Archive,
 
-    /// <summary>
-    /// "Da rispondere" (SP-04e): <c>Richiesto</c> with <b>no</b> proposed time (nor quote) waiting: the supplier still has to answer,
-    /// the one to answer first on top. The two tabs <see cref="ToAnswer"/> and <see cref="AwaitingCustomer"/> split <see cref="New"/>.
-    /// </summary>
     ToAnswer,
 
-    /// <summary>
-    /// "In attesa del cliente" (SP-04e): <c>Richiesto</c> <b>with</b> a proposed time (or a quote) the customer has not answered: the
-    /// supplier did its part, the one to expire first on top.
-    /// </summary>
     AwaitingCustomer,
 }
 
-/// <summary>The <c>tab</c> values of the inbox and what each one means.</summary>
 public static class SupplierInboxTabs
 {
     public const string NewValue = "nuove";
@@ -126,7 +105,6 @@ public static class SupplierInboxTabs
     public const string ToAnswerValue = "da-rispondere";
     public const string AwaitingCustomerValue = "in-attesa";
 
-    /// <summary>The tab named <paramref name="value"/> (any case, <c>_</c> or <c>-</c>); false for any other value, including numbers.</summary>
     public static bool TryParse(string? value, out SupplierInboxTab tab)
     {
         switch (value?.Trim().Replace('_', '-').ToLowerInvariant())
@@ -155,7 +133,6 @@ public static class SupplierInboxTabs
         }
     }
 
-    /// <summary>The statuses of a tab.</summary>
     public static IReadOnlyList<ServiceRequestStatus> StatusesOf(SupplierInboxTab tab) => tab switch
     {
         SupplierInboxTab.New or SupplierInboxTab.ToAnswer or SupplierInboxTab.AwaitingCustomer => [ServiceRequestStatus.Richiesto],
@@ -165,7 +142,6 @@ public static class SupplierInboxTabs
         _ => throw new ArgumentOutOfRangeException(nameof(tab), tab, "Unknown inbox tab."),
     };
 
-    /// <summary>The order of a tab: the urgent first for the new ones, the next job first for the scheduled ones, the latest first for the others.</summary>
     public static SupplierInboxSort SortOf(SupplierInboxTab tab) => tab switch
     {
         SupplierInboxTab.New or SupplierInboxTab.ToAnswer or SupplierInboxTab.AwaitingCustomer => SupplierInboxSort.Urgency,
@@ -173,11 +149,6 @@ public static class SupplierInboxTabs
         _ => SupplierInboxSort.Activity,
     };
 
-    /// <summary>
-    /// Whether a tab keeps only the requests the customer has to answer (<c>true</c>), only the ones the supplier has to (<c>false</c>), or
-    /// does not tell them apart (<c>null</c>): see <see cref="SupplierInboxQuery.AwaitingCustomer"/>. <see cref="SupplierInboxTab.New"/>
-    /// is the sum of the two and stays what it was.
-    /// </summary>
     public static bool? AwaitingCustomerOf(SupplierInboxTab tab) => tab switch
     {
         SupplierInboxTab.ToAnswer => false,
@@ -186,27 +157,21 @@ public static class SupplierInboxTabs
     };
 }
 
-/// <summary>The day of the job asked by the <c>when</c> filter of the inbox.</summary>
 public enum SupplierInboxWhen
 {
-    /// <summary>"oggi": today.</summary>
     Today,
 
-    /// <summary>"settimana": the next 7 days, today included.</summary>
     Week,
 
-    /// <summary>"mese": the current month.</summary>
     Month,
 }
 
-/// <summary>The <c>when</c> values of the inbox and the days they cover.</summary>
 public static class SupplierInboxWhens
 {
     public const string TodayValue = "oggi";
     public const string WeekValue = "settimana";
     public const string MonthValue = "mese";
 
-    /// <summary>The filter named <paramref name="value"/> (any case); false for any other value, including numbers.</summary>
     public static bool TryParse(string? value, out SupplierInboxWhen when)
     {
         switch (value?.Trim().ToLowerInvariant())
@@ -226,7 +191,6 @@ public static class SupplierInboxWhens
         }
     }
 
-    /// <summary>The Europe/Rome days (both included) the filter covers when today is <paramref name="today"/>.</summary>
     public static (DateOnly From, DateOnly To) RangeOf(SupplierInboxWhen when, DateOnly today) => when switch
     {
         SupplierInboxWhen.Today => (today, today),
@@ -253,7 +217,6 @@ public static class SupplierInboxStatusFilter
     public const string HistoryValue = "history";
     public const string AllValue = "all";
 
-    /// <summary>Requests the supplier still has to take or finish.</summary>
     public static readonly IReadOnlyList<ServiceRequestStatus> Open =
     [
         ServiceRequestStatus.Richiesto,
@@ -261,7 +224,6 @@ public static class SupplierInboxStatusFilter
         ServiceRequestStatus.InCorso,
     ];
 
-    /// <summary>Requests that are over for the supplier: completed, paid, rejected or cancelled.</summary>
     public static readonly IReadOnlyList<ServiceRequestStatus> History =
     [
         ServiceRequestStatus.Completato,
@@ -270,10 +232,6 @@ public static class SupplierInboxStatusFilter
         ServiceRequestStatus.Annullato,
     ];
 
-    /// <summary>
-    /// The statuses of <paramref name="value"/> (empty for <c>all</c>); a missing value is <c>open</c>. False for any
-    /// other value, including numbers.
-    /// </summary>
     public static bool TryParse(string? value, out IReadOnlyCollection<ServiceRequestStatus> statuses)
     {
         var text = value?.Trim();
@@ -295,7 +253,6 @@ public static class SupplierInboxStatusFilter
             return true;
         }
 
-        // Only names: Enum.TryParse would also accept "3" or "1,2".
         var status = Enum.GetValues<ServiceRequestStatus>()
             .Where(s => s.ToString().Equals(text, StringComparison.OrdinalIgnoreCase))
             .Select(s => (ServiceRequestStatus?)s)

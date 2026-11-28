@@ -26,7 +26,6 @@ public class SuppressionServiceTests
     private static SuppressionService Service(AppDbContext context, ICrmContactIndex? index = null) =>
         new(context, index ?? CrmTestIndex.Create(), NullLogger<SuppressionService>.Instance);
 
-    /// <summary>The plain SHA-256 of an address already normalized: the form of the entries made before the index had a key.</summary>
     private static string PlainSha256(string normalizedEmail) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedEmail))).ToLowerInvariant();
 
@@ -47,7 +46,6 @@ public class SuppressionServiceTests
     [Fact]
     public async Task SuppressionList_BlocksSend()
     {
-        // Arrange: Set up in-memory database with a suppression entry
         var options = NewOptions();
 
         var orgId = Guid.NewGuid();
@@ -57,11 +55,9 @@ public class SuppressionServiceTests
         {
             var service = Service(context);
 
-            // Add the email to the suppression list (one-click unsubscribe)
             await service.AddToSuppressionListAsync(orgId, suppressedEmail, "unsubscribe");
         }
 
-        // Act: Check if the email is suppressed in a fresh context (simulating a campaign send check)
         await using (var context = new AppDbContext(options))
         {
             var service = Service(context);
@@ -69,19 +65,17 @@ public class SuppressionServiceTests
             var isSuppressed = await service.IsSuppressedAsync(orgId, suppressedEmail);
             var isNotSuppressed = await service.IsSuppressedAsync(orgId, "allowed@example.com");
 
-            // Assert: Suppressed email MUST block sends
             Assert.True(isSuppressed,
                 "Suppressed email address must block marketing sends (one-click unsubscribe honored)");
             Assert.False(isNotSuppressed,
                 "Non-suppressed email address should not be blocked");
 
-            // Verify the suppression list entry exists
             var entry = await context.SuppressionListEntries
                 .Where(e => e.OrgId == orgId)
                 .FirstOrDefaultAsync();
             Assert.NotNull(entry);
             Assert.Equal("unsubscribe", entry.Source);
-            Assert.Equal(64, entry.EmailHash.Length); // SHA-256 and HMAC-SHA256 hex hashes are 64 chars
+            Assert.Equal(64, entry.EmailHash.Length);
         }
     }
 
@@ -91,7 +85,6 @@ public class SuppressionServiceTests
     [Fact]
     public async Task AddToSuppressionList_Idempotent()
     {
-        // Arrange
         var options = NewOptions();
 
         var orgId = Guid.NewGuid();
@@ -100,25 +93,18 @@ public class SuppressionServiceTests
         await using var context = new AppDbContext(options);
         var service = Service(context);
 
-        // Act: Add the same email twice
         await service.AddToSuppressionListAsync(orgId, email, "manual");
         await service.AddToSuppressionListAsync(orgId, email, "manual");
 
-        // Assert: Only one entry should exist
         var count = await context.SuppressionListEntries
             .Where(e => e.OrgId == orgId)
             .CountAsync();
         Assert.Equal(1, count);
     }
 
-    /// <summary>
-    /// Proof test: Email normalization (trim + lowercase) works correctly.
-    /// Two variants of the same email (different case, whitespace) produce the same hash.
-    /// </summary>
     [Fact]
     public async Task SuppressionList_NormalizesEmail()
     {
-        // Arrange
         var options = NewOptions();
 
         var orgId = Guid.NewGuid();
@@ -126,10 +112,8 @@ public class SuppressionServiceTests
         await using var context = new AppDbContext(options);
         var service = Service(context);
 
-        // Act: Suppress with lowercase
         await service.AddToSuppressionListAsync(orgId, "test@example.com", "unsubscribe");
 
-        // Assert: Uppercase variant is also suppressed (same hash)
         var isSuppressedUpper = await service.IsSuppressedAsync(orgId, "TEST@EXAMPLE.COM");
         var isSuppressedWithSpace = await service.IsSuppressedAsync(orgId, " test@example.com ");
 
@@ -137,10 +121,6 @@ public class SuppressionServiceTests
         Assert.True(isSuppressedWithSpace, "Email check should handle leading/trailing whitespace");
     }
 
-    /// <summary>
-    /// Proof test (privacy rule, NF-95 / AC-NF95-3): the value stored for a new entry is the HMAC of the normalized address keyed by
-    /// <c>Crm:ContactIndexKey</c>, not its plain SHA-256: a copy of the table cannot be used to test addresses, and another key gives another value.
-    /// </summary>
     [Fact]
     public async Task Suppression_NewEntry_StoresKeyedHashNotPlainSha256_Test()
     {
@@ -158,10 +138,6 @@ public class SuppressionServiceTests
         Assert.NotEqual(CrmTestIndex.Create(CrmTestIndex.Key + "-another").Hash("mario.rossi@example.com"), entry.EmailHash);
     }
 
-    /// <summary>
-    /// Proof test (data rule, AC-NF95-3 and AC-NF93-4): an opt-out stored before the change, as the plain SHA-256 of the address, keeps
-    /// blocking the send, so nobody who opted out is written to again; only for the org that holds it, and only for that address.
-    /// </summary>
     [Fact]
     public async Task Suppression_LegacyPlainHashEntry_StillSuppresses_Test()
     {
@@ -186,11 +162,6 @@ public class SuppressionServiceTests
         Assert.False(await service.IsSuppressedAsync(Guid.NewGuid(), "legacy@example.com"));
     }
 
-    /// <summary>
-    /// AC-NF95-3 and AC-NF89-4 for the signed link: the hash it carries is stored as given (keyed for a new link, the plain SHA-256 for an
-    /// older one), once however many times it is posted, and the contacts of the org with the same keyed hash are flagged as suppressed with the
-    /// source <c>unsubscribe</c>; the contact of another org with the same hash is not touched.
-    /// </summary>
     [Fact]
     public async Task AddByHash_StoresTheGivenHashOnce_AndFlagsTheContactsOfThatOrgWithTheSameKeyedHash()
     {
@@ -227,7 +198,6 @@ public class SuppressionServiceTests
         Assert.False(await verify.SuppressionListEntries.AnyAsync(e => e.OrgId == otherOrgId));
     }
 
-    /// <summary>The address added through the service flags the contact with its keyed hash in the same save; a malformed hash is refused.</summary>
     [Fact]
     public async Task AddToSuppressionList_FlagsTheContactOfTheAddress_AndAMalformedHashIsRefused()
     {
@@ -252,7 +222,6 @@ public class SuppressionServiceTests
         Assert.Equal("manual", contact.SuppressedSource);
     }
 
-    /// <summary>Outside Development and Testing, without the key, nothing is hashed with an empty key: the call fails and nothing is written.</summary>
     [Fact]
     public async Task AddToSuppressionList_WithoutTheKey_FailsAndWritesNothing()
     {
@@ -271,12 +240,6 @@ public class SuppressionServiceTests
         Assert.False(await verify.SuppressionListEntries.AnyAsync());
     }
 
-    /// <summary>
-    /// The public unsubscribe (<c>POST api/public/marketing/unsubscribe</c>, <see cref="ISuppressionService.AddByHashAsync"/>) computes no hash: the
-    /// signed link already carries it. So the opt-out is recorded where <c>Crm__ContactIndexKey</c> is missing too (the application starts without it
-    /// while <c>Features:CrmMarketing</c> is off), whether the hash is the keyed one of a link sent with the key or the plain SHA-256 of an older link,
-    /// and the contact with the same hash is flagged; read with the key, the list then blocks both addresses.
-    /// </summary>
     [Fact]
     public async Task AddByHash_WithoutTheKey_StillRecordsTheOptOut()
     {

@@ -18,16 +18,10 @@ namespace Casazen.Core.Regulatory.GuestRegistration;
 /// </remarks>
 public static class GuestRegistrationReadiness
 {
-    /// <summary>The municipality of a Swiss property is missing or ambiguous (the host chooses it in the property form).</summary>
     public const string MunicipalityMissing = "swiss_municipality_missing";
 
-    /// <summary>The property is in Ticino and has no valid «Numero identificativo LEAR / NO-LEAR».</summary>
     public const string TicinoStructureIdMissing = "ticino_structure_id_missing";
 
-    /// <summary>
-    /// The reasons a property lacks something, empty when it lacks nothing or is not Swiss. <paramref name="place"/> is where the one place resolver puts it
-    /// (<c>null</c>: none could be derived).
-    /// </summary>
     public static IReadOnlyList<string> MissingOf(string? country, SwissPlace? place, string? ticinoStructureId)
     {
         if (!SwissPlace.IsSwissCountry(country))

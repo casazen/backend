@@ -4,10 +4,6 @@ using Stripe;
 
 namespace Casazen.Web.BackgroundJobs;
 
-/// <summary>
-/// Background job for processing Stripe webhook events asynchronously
-/// Allows webhook endpoint to respond within 3-second timeout while processing happens in background
-/// </summary>
 public class StripeWebhookJob
 {
     private readonly StripeWebhookHandler _webhookHandler;
@@ -48,9 +44,6 @@ public class StripeWebhookJob
         }
     }
 
-    /// <summary>
-    /// Backward-compatible overload for callers that do not pass a webhook source.
-    /// </summary>
     public Task ProcessEventAsync(string eventId, string eventType, string eventJson) =>
         ProcessEventAsync(eventId, eventType, eventJson, WebhookSource.Platform);
 }

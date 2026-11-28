@@ -18,7 +18,6 @@ public class PlanCatalogTests
         Assert.Equal(expected, tier);
     }
 
-    /// <summary>Decision D13: Starter 2 people, Pro 10, Scale unlimited.</summary>
     [Theory]
     [InlineData(PlanTier.Starter, 2)]
     [InlineData(PlanTier.Pro, 10)]
@@ -38,7 +37,6 @@ public class PlanCatalogTests
         Assert.Equal(seats.Order().ToList(), seats);
     }
 
-    /// <summary>PL-07 (A1-35): only tier names, never their numbers or a comma-separated combination.</summary>
     [Theory]
     [InlineData(null)]
     [InlineData("")]

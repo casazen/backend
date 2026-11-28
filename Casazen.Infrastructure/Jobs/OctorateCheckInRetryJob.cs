@@ -50,30 +50,21 @@ public class OctorateCheckInRetryJob(
 {
     public const string RecurringJobId = "octorate-checkin-retry";
 
-    /// <summary>Every 15 minutes (UTC).</summary>
     public const string Cron = "*/15 * * * *";
 
-    /// <summary>The seconds a run waits for the previous one: <c>JobLockTimeouts.FrequentSeconds</c>.</summary>
     public const int LockTimeoutSeconds = 60;
 
     /// <summary>The bookings a run retries at most.</summary>
     public const int MaxBookingsPerRun = 200;
 
-    /// <summary>
-    /// The stays a run writes at most through the sweep (E20/F01/US01/T01): the next run takes the rest. Only a stay whose guests were really tried
-    /// spends one (<see cref="StayGuestsAutoSendResult.Attempted"/>): a stay that cannot go (not ready, not on the channel manager) takes no place.
-    /// </summary>
     public const int MaxSweepPerRun = 50;
 
-    /// <summary>The stays a run looks at at most through the sweep, to find the <see cref="MaxSweepPerRun"/> that can go.</summary>
     public const int MaxSweepLookedAtPerRun = 500;
 
-    /// <summary>The wait after each attempt: a write is due again 15 minutes times its attempts after the last one.</summary>
     public static readonly TimeSpan BackoffStep = TimeSpan.FromMinutes(15);
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    /// <summary>True when a write with <paramref name="attempts"/> attempts, the last at <paramref name="lastAttemptAt"/>, is due again.</summary>
     public static bool IsDue(int attempts, DateTime? lastAttemptAt, DateTime now) =>
         lastAttemptAt is not { } last || last <= now - (BackoffStep * Math.Max(1, attempts));
 
@@ -154,8 +145,6 @@ public class OctorateCheckInRetryJob(
         if (autoSend is null)
             return 0;
 
-        // The places of the run are spent on the stays whose guests were really tried: a stay that cannot go (its guests are not ready, the property is
-        // not on the channel manager, nothing is to send) costs a look and no place, so it never takes a place from a ready one behind it.
         var swept = 0;
         foreach (var (orgId, bookingId) in await autoSend.FindStaysToSweepAsync(MaxSweepLookedAtPerRun, cancellationToken))
         {
@@ -193,7 +182,6 @@ public class OctorateCheckInRetryJob(
         }
         finally
         {
-            // Each booking starts clean: nothing left half-changed by one is saved with the next.
             db.ChangeTracker.Clear();
         }
     }

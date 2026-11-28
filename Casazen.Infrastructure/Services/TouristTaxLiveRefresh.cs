@@ -17,11 +17,9 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 internal static class TouristTaxLiveRefresh
 {
-    /// <summary>The lock-screen text: fixed words of <c>SharedResources</c>, in the language of the organization.</summary>
     internal const string TitleKey = "TouristTaxPushPaidTitle";
     internal const string BodyKey = "TouristTaxPushPaidBody";
 
-    /// <summary>Queues the push of a tax paid online; nothing without a queue.</summary>
     public static void Tell(IPushNotificationService? push, IDocumentTexts texts, TouristTaxPaidNotice notice, ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(texts);

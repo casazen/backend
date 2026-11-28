@@ -25,10 +25,8 @@ public sealed class AssistantKnowledgeService(
     ILogger<AssistantKnowledgeService> logger,
     TimeProvider? timeProvider = null) : IAssistantKnowledgeService
 {
-    /// <summary>Stable code of the 404 of an entry that is not the one of the property (or organization) it was asked through.</summary>
     public const string EntryNotFoundCode = "assistant_entry_not_found";
 
-    /// <summary>Stable code of the 422 of an entry with no topic or kind, no text or too long a text, a FAQ with no question, or a language that is not a code.</summary>
     public const string EntryInvalidCode = "assistant_entry_invalid";
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -39,7 +37,6 @@ public sealed class AssistantKnowledgeService(
         var resolved = ListingKnowledgeBuilder.ResolveLanguage(language);
         var facts = ListingKnowledgeBuilder.Build(property, SitePropertyProfileJson.Parse(property.SiteProfileJson), resolved);
 
-        // The entries of the property and, under them, the organization's: the ones that apply to it.
         var entries = await db.PropertyKnowledgeEntries.AsNoTracking()
             .Where(e => e.OrgId == orgId && (e.PropertyId == propertyId || e.PropertyId == null))
             .OrderBy(e => e.Topic)
@@ -124,7 +121,6 @@ public sealed class AssistantKnowledgeService(
                       || stored.IsActive != clean.IsActive;
         if (changed)
         {
-            // The source and the lesson an entry came from stay: a person may edit what a lesson taught, and it is still the lesson's.
             stored.Topic = clean.Topic;
             stored.Kind = clean.Kind;
             stored.Title = clean.Title;
@@ -158,7 +154,6 @@ public sealed class AssistantKnowledgeService(
         string? language,
         CancellationToken ct = default)
     {
-        // No topics is no facts, never «all of them».
         if (topics is null || topics.Count == 0)
             return [];
 
@@ -186,7 +181,6 @@ public sealed class AssistantKnowledgeService(
 
         foreach (var topic in own.Concat(inherited).GroupBy(e => e.Topic))
         {
-            // The entries in the language asked (or in any), and only when a topic has none of those, the ones written in another language.
             var inLanguage = topic.Where(e => e.Language is null || e.Language.Equals(resolved, StringComparison.OrdinalIgnoreCase)).ToList();
             var chosen = inLanguage.Count > 0 ? inLanguage : topic.ToList();
             foreach (var entry in chosen)
@@ -204,7 +198,6 @@ public sealed class AssistantKnowledgeService(
         await db.Properties.AsNoTracking().FirstOrDefaultAsync(p => p.OrgId == orgId && p.Id == propertyId, ct)
         ?? throw AssistantStore.PropertyNotFound();
 
-    /// <summary>The entry asked for through its property (<c>null</c>: through the organization): tracked, so a change is saved with the new version.</summary>
     private Task<PropertyKnowledgeEntry?> FindEntryAsync(Guid orgId, Guid? propertyId, Guid entryId, CancellationToken ct) =>
         propertyId is { } id
             ? db.PropertyKnowledgeEntries.FirstOrDefaultAsync(e => e.OrgId == orgId && e.Id == entryId && e.PropertyId == id, ct)
@@ -223,7 +216,6 @@ public sealed class AssistantKnowledgeService(
         if (text is null || text.Length > PropertyKnowledgeEntry.TextMaxLength)
             throw Invalid();
 
-        // The question of a FAQ is one line.
         var title = input.Title?.Trim();
         if (string.IsNullOrEmpty(title))
             title = null;
@@ -233,7 +225,6 @@ public sealed class AssistantKnowledgeService(
         if (kind == KnowledgeEntryKind.Faq && title is null)
             throw Invalid();
 
-        // A language is a two-letter lower-case code, or none (any language).
         var language = string.IsNullOrWhiteSpace(input.Language) ? null : input.Language;
         if (language is not null && !(language.Length == 2 && language.All(c => c is >= 'a' and <= 'z')))
             throw Invalid();

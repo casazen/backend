@@ -23,7 +23,7 @@ public class NotificationPreferenceServiceTests : IDisposable
     private const string Manager = "auth0|manager";
 
     private readonly AppDbContext _db = OrgTeamTestData.NewDb();
-    private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 11, 6, 11, 0, 0, TimeSpan.Zero)); // 12:00 in Rome
+    private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 11, 6, 11, 0, 0, TimeSpan.Zero));
     private readonly Mock<IContextAuthorizationService> _permissions = new();
 
     public NotificationPreferenceServiceTests()
@@ -38,10 +38,6 @@ public class NotificationPreferenceServiceTests : IDisposable
     private NotificationPreferenceService Service() =>
         new(_db, _permissions.Object, _clock, NullLogger<NotificationPreferenceService>.Instance);
 
-    /// <summary>
-    /// A host org with an owner, a collaborator limited to the property A (named in charge of A and of B, granted A only) and a manager in charge
-    /// of nothing; the properties A, B and C (C has nobody in charge: its creator, the owner, stands in).
-    /// </summary>
     private async Task<World> SeedAsync()
     {
         var org = OrgTeamTestData.AddOrg(_db);
@@ -80,8 +76,6 @@ public class NotificationPreferenceServiceTests : IDisposable
 
     private static NotificationEventContext Event(Guid orgId, Guid? propertyId, NotificationEventType type = NotificationEventType.NewGuestMessage) =>
         new(orgId, type, propertyId);
-
-    // ─── Get and Save (AC-NF65-1, AC-NF65-2) ───
 
     [Fact]
     public async Task Get_ANewUser_GetsTheDefaultsOfPo10_MarkedAsDefaults()
@@ -186,7 +180,6 @@ public class NotificationPreferenceServiceTests : IDisposable
         var none = await Assert.ThrowsAsync<DomainRuleException>(() => Service().SaveAsync(Owner, new NotificationPreferencesUpdate(null, null), CancellationToken.None));
         var emptyList = await Assert.ThrowsAsync<DomainRuleException>(() => Service().SaveAsync(Owner, new NotificationPreferencesUpdate(null, []), CancellationToken.None));
 
-        // An empty list never means «everything»: it is nothing to save.
         Assert.Equal("notification_preferences_empty", none.Code);
         Assert.Equal("notification_preferences_empty", emptyList.Code);
     }
@@ -224,8 +217,6 @@ public class NotificationPreferenceServiceTests : IDisposable
         Assert.Equal(0, await _db.UserNotificationChannelSettings.CountAsync());
     }
 
-    // ─── Proof: a legal deadline is never fully off ───
-
     [Fact]
     public async Task NotificationPreferences_LegalDeadline_NeverFullyOff_Test()
     {
@@ -237,7 +228,6 @@ public class NotificationPreferenceServiceTests : IDisposable
         Assert.Equal("notification_legal_channel_required", error.Code);
         Assert.Equal(0, await _db.UserNotificationChannelSettings.CountAsync());
 
-        // Not even a row written some other way (by hand, an old release) leaves the person without the alert: the default applies.
         _db.UserNotificationChannelSettings.Add(new UserNotificationChannelSetting
         {
             OrgId = world.OrgId,
@@ -256,8 +246,6 @@ public class NotificationPreferenceServiceTests : IDisposable
         var owner = Assert.Single(recipients, r => r.UserId == Owner);
         Assert.NotEqual(NotificationChannels.None, owner.NowChannels);
     }
-
-    // ─── Resolve: who is told ───
 
     [Fact]
     public async Task Resolve_ADefaultUser_GetsPushAndCounterForANewGuestMessage()
@@ -322,15 +310,12 @@ public class NotificationPreferenceServiceTests : IDisposable
         Assert.Equal(NotificationChannels.CounterOnly, withoutEmail.NowChannels);
     }
 
-    // ─── Resolve: the scope of a collaborator (AC-NF65-4) ───
-
     [Fact]
     public async Task NotificationPreferences_CollaboratorWithSomeProperties_NeverToldAboutOthers_Test()
     {
         var world = await SeedAsync();
         var service = Service();
 
-        // The collaborator is named in charge of both A and B, but it was given A only.
         var forTheGivenOne = await service.ResolveAsync(Event(world.OrgId, world.PropertyA), CancellationToken.None);
         var forTheOtherOne = await service.ResolveAsync(Event(world.OrgId, world.PropertyB), CancellationToken.None);
 
@@ -338,7 +323,6 @@ public class NotificationPreferenceServiceTests : IDisposable
         Assert.DoesNotContain(forTheOtherOne, r => r.UserId == Collaborator);
         Assert.Contains(forTheOtherOne, r => r.UserId == Owner);
 
-        // Nor an event of the org, with no property, nor the property a caller names with the person in charge: the grants decide.
         var forTheOrg = await service.ResolveAsync(Event(world.OrgId, null), CancellationToken.None);
         var namedInCharge = await service.ResolveAsync(
             new NotificationEventContext(world.OrgId, NotificationEventType.NewGuestMessage, world.PropertyB, Collaborator, Owner),
@@ -406,7 +390,6 @@ public class NotificationPreferenceServiceTests : IDisposable
             .Setup(p => p.HasPermissionOrThrowAsync(Collaborator, "short-rent", "booking.read", It.IsAny<CancellationToken>()))
             .ThrowsAsync(new TimeoutException("the database does not answer"));
 
-        // Answering «no» would drop the person for good; the exception makes the event bus (or Hangfire) deliver the event again.
         await Assert.ThrowsAsync<TimeoutException>(() => Service().ResolveAsync(
             new NotificationEventContext(
                 world.OrgId,
@@ -416,13 +399,11 @@ public class NotificationPreferenceServiceTests : IDisposable
             CancellationToken.None));
     }
 
-    // ─── Resolve: quiet hours (AC-NF65-3) ───
-
     [Fact]
     public async Task Resolve_InTheQuietHours_PushWaitsAndTheCounterDoesNot()
     {
         var world = await SeedAsync();
-        _clock.SetUtcNow(new DateTimeOffset(2026, 11, 6, 22, 0, 0, TimeSpan.Zero)); // 23:00 in Rome
+        _clock.SetUtcNow(new DateTimeOffset(2026, 11, 6, 22, 0, 0, TimeSpan.Zero));
 
         var recipients = await Service().ResolveAsync(Event(world.OrgId, world.PropertyC), CancellationToken.None);
 
@@ -438,7 +419,6 @@ public class NotificationPreferenceServiceTests : IDisposable
         var world = await SeedAsync();
         var night = new DateTime(2026, 11, 6, 22, 0, 0, DateTimeKind.Utc);
 
-        // The clock says noon; the event happened at 23:00 in Rome: a redelivery splits the channels as the first delivery did.
         var recipients = await Service().ResolveAsync(Event(world.OrgId, world.PropertyC) with { AtUtc = night }, CancellationToken.None);
 
         Assert.Equal(NotificationChannels.MobilePush, Assert.Single(recipients, r => r.UserId == Owner).DeferredChannels);
@@ -449,7 +429,7 @@ public class NotificationPreferenceServiceTests : IDisposable
     {
         var world = await SeedAsync();
         await Service().SaveAsync(Owner, new NotificationPreferencesUpdate(new QuietHoursUpdate(new TimeOnly(13, 0), new TimeOnly(14, 0)), null), CancellationToken.None);
-        _clock.SetUtcNow(new DateTimeOffset(2026, 11, 6, 12, 30, 0, TimeSpan.Zero)); // 13:30 in Rome
+        _clock.SetUtcNow(new DateTimeOffset(2026, 11, 6, 12, 30, 0, TimeSpan.Zero));
 
         var recipients = await Service().ResolveAsync(Event(world.OrgId, world.PropertyC), CancellationToken.None);
 

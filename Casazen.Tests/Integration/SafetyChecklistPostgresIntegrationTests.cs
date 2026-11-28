@@ -32,7 +32,6 @@ public class SafetyChecklistPostgresIntegrationTests : IClassFixture<CasazenWebA
         var (hostId, propertyId) = await SeedPropertyReadyExceptSafetyAsync();
         using var client = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
 
-        // PO decision 2026-11-01 (option A): the safety checklist is a reminder, so without it the activation asks the acknowledgement.
         var before = await CompleteAsync(client, propertyId);
         Assert.Equal(HttpStatusCode.Conflict, before.StatusCode);
         Assert.Equal("activation_reminders_ack_required", (await ReadJsonAsync(before)).GetProperty("code").GetString());
@@ -84,7 +83,6 @@ public class SafetyChecklistPostgresIntegrationTests : IClassFixture<CasazenWebA
             ["safety_gas_detector_missing", "safety_co_detector_missing"],
             saved.GetProperty("blockers").EnumerateArray().Select(b => b.GetProperty("code").GetString()));
 
-        // PO decision 2026-11-01 (option A): the safety checklist is a reminder; the host acknowledges it once to activate.
         var refused = await CompleteAsync(client, propertyId);
 
         Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
@@ -192,7 +190,6 @@ public class SafetyChecklistPostgresIntegrationTests : IClassFixture<CasazenWebA
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        // Test scope without an authenticated org: read the row directly to check what the API stored.
         return await db.Properties.IgnoreQueryFilters().AsNoTracking().SingleAsync(p => p.Id == propertyId);
     }
 

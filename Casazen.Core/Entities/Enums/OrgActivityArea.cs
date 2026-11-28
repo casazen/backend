@@ -8,15 +8,11 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum OrgActivityArea
 {
-    /// <summary>The «Amministrazione» of the org: people, plan, organization.</summary>
     Account = 1,
 
-    /// <summary>Short-term rentals.</summary>
     ShortRent = 2,
 
-    /// <summary>Long-term rentals.</summary>
     LongRent = 3,
 
-    /// <summary>The suppliers of the org.</summary>
     Supplier = 4,
 }

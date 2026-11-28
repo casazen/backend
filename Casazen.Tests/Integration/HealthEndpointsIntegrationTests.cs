@@ -61,24 +61,18 @@ public class HealthEndpointsIntegrationTests : IClassFixture<HealthEndpointsInte
         Assert.Equal(
             new[] { "api-url", "auth0", "biometrics", "comuni", "database", "db-connections", "einvoicing", "email", "hangfire", "legal", "storage", "stripe", "vercel" },
             checks.Keys.Order().ToArray());
-        // Factory: Stripe secret key and Connect webhook secret are appsettings placeholders, no email provider,
-        // no Hangfire (no connection string at startup), no Auth0 M2M client, local-disk storage.
         Assert.Equal("degraded", checks["stripe"]);
         Assert.Equal("degraded", checks["email"]);
         Assert.Equal("degraded", checks["hangfire"]);
         Assert.Equal("degraded", checks["auth0"]);
-        // BK-17 (D9): no Vercel token and project, so custom domains cannot be activated.
         Assert.Equal("degraded", checks["vercel"]);
         Assert.Equal("degraded", checks["storage"]);
-        // LEGAL-TEXTS (D9): the versions in force (2026-06-v1) have no text, so the legal documents are not published.
-        // DEPLOY-CFG: the factory sets App:ApiBaseUrl (https) but publishes no legal text and no date in force.
         Assert.Equal("healthy", checks["api-url"]);
         Assert.Equal("degraded", checks["legal"]);
-        Assert.Equal("degraded", checks["einvoicing"]); // PL-13: no SDI provider in this build
+        Assert.Equal("degraded", checks["einvoicing"]);
         Assert.Equal(_factory.UsesPostgreSql ? "healthy" : "degraded", checks["database"]);
         // The factory loads the official sample of the ISTAT list (SU-04): a list in place and every configured pilot comune in it.
         Assert.Equal("healthy", checks["comuni"]);
-        // E22/F01/US01/T01: Features:CheckInIdentityVerification is off in the factory, so no model is expected and the entry is healthy (it is never unhealthy).
         Assert.Equal("healthy", checks["biometrics"]);
     }
 
@@ -177,7 +171,6 @@ public class HealthEndpointsIntegrationTests : IClassFixture<HealthEndpointsInte
         body.RootElement.GetProperty("checks").EnumerateArray()
             .ToDictionary(c => c.GetProperty("name").GetString()!, c => c.GetProperty("status").GetString());
 
-    /// <summary>Default factory with the commit variable Railway sets on GitHub deployments.</summary>
     public sealed class CommitShaFactory : CasazenWebApplicationFactory
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -188,7 +181,6 @@ public class HealthEndpointsIntegrationTests : IClassFixture<HealthEndpointsInte
         }
     }
 
-    /// <summary>The app's DbContext points at a PostgreSQL server that refuses connections.</summary>
     private sealed class UnreachableDatabaseFactory : CasazenWebApplicationFactory
     {
         public const string UnreachableDatabaseName = "fd12_unreachable";

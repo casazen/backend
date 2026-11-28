@@ -43,7 +43,6 @@ public class ServicePaymentsPostgresTests(ServicePaymentsFactory factory) : ICla
 
             Assert.All(responses, r => Assert.Equal(HttpStatusCode.OK, r.StatusCode));
             var secrets = await Task.WhenAll(responses.Select(async r => (await Json(r)).GetProperty("clientSecret").GetString()));
-            // One PaymentIntent for the two: the second request waited for the lock and found the one the first had made.
             Assert.Equal(secrets[0], secrets[1]);
             Assert.Single(factory.Gateway.Created, c => c.Metadata[ServiceCharges.PaymentMetadataKey] == paymentId.ToString());
             var payment = await PaymentAsync(paymentId);
@@ -92,7 +91,6 @@ public class ServicePaymentsPostgresTests(ServicePaymentsFactory factory) : ICla
         await WaitForAdvisoryLockWaitersAsync(1);
         var free = await anonymous.PostAsJsonAsync($"/api/public/service-payments/{otherPaymentId}/payment-session", new { token = otherToken });
 
-        // The other request is not held up by it, and the held one has not reached Stripe yet.
         Assert.Equal(HttpStatusCode.OK, free.StatusCode);
         Assert.False(blocked.IsCompleted);
         Assert.DoesNotContain(factory.Gateway.Created, c => c.Metadata[ServiceCharges.PaymentMetadataKey] == paymentId.ToString());
@@ -139,8 +137,6 @@ public class ServicePaymentsPostgresTests(ServicePaymentsFactory factory) : ICla
                 anonymous.PostAsJsonAsync($"/api/public/service-payments/{paymentId}/payment-session", new { token }),
                 supplier.PostAsJsonAsync($"/api/supplier/requests/{requestId}/payment/offline", new { reason = "Pagato a mano" }));
 
-            // Whoever got the lock first: the offline record always ends up paid, and the session is either served before it
-            // (and its PaymentIntent canceled by the record) or refused after it. Never a 500, never both payable.
             Assert.Equal(HttpStatusCode.OK, results[1].StatusCode);
             Assert.Contains(results[0].StatusCode, new[] { HttpStatusCode.OK, HttpStatusCode.Conflict });
             Assert.Equal(ServiceRequestStatus.Pagato, (await factory.LoadRequestAsync(requestId)).Status);
@@ -186,7 +182,6 @@ public class ServicePaymentsPostgresTests(ServicePaymentsFactory factory) : ICla
         var (_, requestId, paymentId, _) = await CompletedWithLinkAsync();
         var existing = await PaymentAsync(paymentId);
 
-        // A second live payment for the request is refused by the unique index, whatever the status of the new one.
         foreach (var status in new[] { ServicePaymentStatus.Requested, ServicePaymentStatus.Paid, ServicePaymentStatus.Failed })
         {
             var ex = await Assert.ThrowsAsync<DbUpdateException>(() => InsertAsync(Copy(existing, requestId, status)));
@@ -195,7 +190,6 @@ public class ServicePaymentsPostgresTests(ServicePaymentsFactory factory) : ICla
             Assert.Equal("UIX_ServiceRequestPayments_ServiceRequestId_Live", postgres.ConstraintName);
         }
 
-        // Once the first is canceled the request is free for a new one, and only one live payment exists at a time.
         await ChangePaymentAsync(paymentId, p => { p.Status = ServicePaymentStatus.Canceled; p.CanceledAt = DateTime.UtcNow; });
         await InsertAsync(Copy(existing, requestId, ServicePaymentStatus.Requested));
         await InsertAsync(Copy(existing, requestId, ServicePaymentStatus.Canceled));
@@ -220,8 +214,6 @@ public class ServicePaymentsPostgresTests(ServicePaymentsFactory factory) : ICla
         Assert.Equal("UIX_ServiceRequestPayments_StripePaymentIntentId", Assert.IsType<PostgresException>(ex.InnerException).ConstraintName);
         Assert.Equal(requestId, existing.ServiceRequestId);
     }
-
-    // ─── Helpers ───
 
     private async Task<ServiceRequestWorld> ReadyWorldAsync()
     {
@@ -290,7 +282,6 @@ public class ServicePaymentsPostgresTests(ServicePaymentsFactory factory) : ICla
         await db.SaveChangesAsync();
     }
 
-    /// <summary>A new row like <paramref name="source"/> for <paramref name="requestId"/> in <paramref name="status"/> (a paid one carries when and how).</summary>
     private static ServiceRequestPayment Copy(ServiceRequestPayment source, Guid requestId, ServicePaymentStatus status) => new()
     {
         ServiceRequestId = requestId,
@@ -316,7 +307,6 @@ public class ServicePaymentsPostgresTests(ServicePaymentsFactory factory) : ICla
         return scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.GetConnectionString()!;
     }
 
-    /// <summary>Another connection holding the payment lock of a request, as a webhook or a refund that is writing its payment would (SP-15b).</summary>
     private async Task<LockHolder> HoldTheLockAsync(Guid requestId)
     {
         var connection = new NpgsqlConnection(await ConnectionStringAsync());

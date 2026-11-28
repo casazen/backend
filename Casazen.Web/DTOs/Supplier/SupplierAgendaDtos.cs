@@ -12,111 +12,75 @@ namespace Casazen.Web.DTOs.Supplier;
 // checked by SupplierAgendaRules (422, with the fields at fault): a fourth band, an end before its start, a label of 81
 // characters are 422, not 400. A value left out is a missing value (422 naming the field), never a silent default.
 
-/// <summary>A band of one day in <c>PUT api/supplier/availability/hours</c>: minutes after midnight on the wall clock of Rome.</summary>
 public class SupplierHoursBandRequest
 {
-    /// <summary>When the band starts, in minutes after midnight (0 to 1439): 540 is 09:00.</summary>
     public int? StartMinute { get; set; }
 
-    /// <summary>When the band ends, in minutes after midnight, after the start (up to 1440, midnight): 1080 is 18:00.</summary>
     public int? EndMinute { get; set; }
 }
 
-/// <summary>A day of the week of <c>PUT api/supplier/availability/hours</c> with its bands (up to 3); no band is a rest day.</summary>
 public class SupplierHoursDayRequest
 {
-    /// <summary><c>Monday</c> ... <c>Sunday</c>; each weekday at most once.</summary>
     public DayOfWeek? Weekday { get; set; }
 
     [MaxLength(10)]
     public List<SupplierHoursBandRequest?>? Bands { get; set; }
 }
 
-/// <summary>Body of <c>PUT api/supplier/availability/hours</c>: the whole week. A weekday that is not in it becomes a rest day.</summary>
 public class SaveSupplierHoursRequest
 {
     [MaxLength(14)]
     public List<SupplierHoursDayRequest?>? Days { get; set; }
 }
 
-/// <summary>Body of <c>POST api/supplier/availability/time-off</c>.</summary>
 public class CreateSupplierTimeOffRequest
 {
-    /// <summary>First closed day, <c>yyyy-MM-dd</c> (a calendar day of Rome).</summary>
     public DateOnly? FromDate { get; set; }
 
-    /// <summary>Last closed day, not before the first (the same day for a single day off), at most 366 days in all.</summary>
     public DateOnly? ToDate { get; set; }
 
-    /// <summary><c>Vacation</c> (default), <c>Holiday</c>, <c>Illness</c> or <c>Other</c>: only a label for the supplier.</summary>
     public SupplierTimeOffReason? Reason { get; set; }
 
-    /// <summary>A name for the console ("Ferie (ponte di Ognissanti)"), at most 80 characters; never public.</summary>
     [MaxLength(400)]
     public string? Label { get; set; }
 }
 
-/// <summary>Body of <c>POST api/supplier/availability/blocks</c>: hours the supplier blocks, or opens on top of the weekly hours.</summary>
 public class CreateSupplierBlockRequest
 {
-    /// <summary><c>Block</c> or <c>ExtraOpening</c> (the engagements of the calendar feed are not created by the supplier).</summary>
     public SupplierBusyWindowKind? Kind { get; set; }
 
-    /// <summary>First instant, in UTC (ISO 8601, with <c>Z</c> or an offset).</summary>
     public DateTime? StartUtc { get; set; }
 
-    /// <summary>Instant it ends, in UTC, at least 15 minutes after the start; an extra opening stays inside one day of Rome.</summary>
     public DateTime? EndUtc { get; set; }
 
-    /// <summary>A name for the console ("Dentista"), at most 80 characters; never public.</summary>
     [MaxLength(400)]
     public string? Label { get; set; }
 }
 
-/// <summary>
-/// Body of <c>PUT api/supplier/availability/rules</c>: the five rules, all of them (<c>PUT</c> replaces them; one that is
-/// left out is a 422 naming it, never reset to its default).
-/// </summary>
 public class SaveSupplierRulesRequest
 {
-    /// <summary>Minutes kept free before and after every job (0 to 240, multiple of 5; default 30).</summary>
     public int? BufferMinutes { get; set; }
 
-    /// <summary>Jobs a day at most (1 to 50; default 3): the day then shows as full.</summary>
     public int? MaxJobsPerDay { get; set; }
 
-    /// <summary>Shortest notice in hours between a booking and its work (0 to 720; default 24).</summary>
     public int? MinNoticeHours { get; set; }
 
-    /// <summary>How many days ahead of today a customer can book (1 to 365; default 35).</summary>
     public int? HorizonDays { get; set; }
 
-    /// <summary>Minutes between two slots in the same working band (15 to 240, multiple of 5; default 60).</summary>
     public int? SlotStepMinutes { get; set; }
 }
 
-/// <summary>
-/// Body of <c>PUT api/supplier/availability/urgent</c> (SP-04c): the four urgent settings, all of them (<c>PUT</c> replaces them;
-/// one that is left out is a 422 <c>supplier_urgent_invalid</c> naming it, never reset to its default).
-/// </summary>
 public class SaveSupplierUrgentRequest
 {
-    /// <summary>The supplier accepts urgent requests, for the services that offer them too (off by default).</summary>
     public bool? Enabled { get; set; }
 
-    /// <summary>Where the urgent window starts, in minutes after midnight on the clock of Rome (0 to 1439; default 420 = 07:00).</summary>
     public int? FromMinute { get; set; }
 
-    /// <summary>Where it ends (1 to 1440, after <c>fromMinute</c>; default 1320 = 22:00). Outside the working hours too.</summary>
     public int? ToMinute { get; set; }
 
-    /// <summary>The supplier's default surcharge, in euro cents (0 to 50000), for a service with none of its own (default 0).</summary>
     public int? SurchargeCents { get; set; }
 }
 
-// ─── Responses ───────────────────────────────────────────────────────────────
-
-/// <summary>A band of working hours: minutes after midnight on the wall clock of Rome.</summary>
 public class SupplierHoursBandDto
 {
     public int StartMinute { get; set; }
@@ -124,25 +88,20 @@ public class SupplierHoursBandDto
     public int EndMinute { get; set; }
 }
 
-/// <summary>A weekday with its bands (in start order); no band is a rest day.</summary>
 public class SupplierHoursDayDto
 {
-    /// <summary><c>Monday</c> ... <c>Sunday</c>.</summary>
     public DayOfWeek Weekday { get; set; }
 
     public IReadOnlyList<SupplierHoursBandDto> Bands { get; set; } = [];
 }
 
-/// <summary>Body of <c>GET</c> and <c>PUT api/supplier/availability/hours</c>: the whole week, Monday first (seven days, rest days included).</summary>
 public class SupplierHoursDto
 {
     public IReadOnlyList<SupplierHoursDayDto> Days { get; set; } = [];
 
-    /// <summary>When the supplier last saved hours with at least one band; <c>null</c> while it has none.</summary>
     public DateTime? ConfiguredAt { get; set; }
 }
 
-/// <summary>A time off.</summary>
 public class SupplierTimeOffDto
 {
     public Guid Id { get; set; }
@@ -151,7 +110,6 @@ public class SupplierTimeOffDto
 
     public DateOnly ToDate { get; set; }
 
-    /// <summary><c>Vacation</c>, <c>Holiday</c>, <c>Illness</c> or <c>Other</c>.</summary>
     public SupplierTimeOffReason Reason { get; set; }
 
     public string? Label { get; set; }
@@ -159,50 +117,41 @@ public class SupplierTimeOffDto
     public DateTime CreatedAt { get; set; }
 }
 
-/// <summary>Body of <c>GET api/supplier/availability/time-off</c>: the time off that has not ended yet, by first day.</summary>
 public class SupplierTimeOffListResponse
 {
     public IReadOnlyList<SupplierTimeOffDto> Items { get; set; } = [];
 
     public int Total { get; set; }
 
-    /// <summary>How many time off entries a supplier can have that have not ended (<c>total</c> at the limit: no more can be added).</summary>
     public int Limit { get; set; } = SupplierAgendaLimits.MaxTimeOffEntries;
 }
 
-/// <summary>A block, an extra opening or an engagement of the supplier's calendar feed.</summary>
 public class SupplierBlockDto
 {
     public Guid Id { get; set; }
 
-    /// <summary><c>Block</c>, <c>ExtraOpening</c> or <c>External</c> (an engagement of the calendar feed).</summary>
     public SupplierBusyWindowKind Kind { get; set; }
 
-    /// <summary><c>Manual</c> (the supplier) or <c>ICalFeed</c> (the sync): only the manual ones can be deleted.</summary>
     public SupplierBusyWindowSource Source { get; set; }
 
     public DateTime StartUtc { get; set; }
 
     public DateTime EndUtc { get; set; }
 
-    /// <summary>Only the supplier's console shows it, never a public page.</summary>
     public string? Label { get; set; }
 
     public DateTime CreatedAt { get; set; }
 }
 
-/// <summary>Body of <c>GET api/supplier/availability/blocks</c>: the blocks and extra openings set by hand that have not ended yet, by start.</summary>
 public class SupplierBlockListResponse
 {
     public IReadOnlyList<SupplierBlockDto> Items { get; set; } = [];
 
     public int Total { get; set; }
 
-    /// <summary>How many blocks and extra openings a supplier can have that have not ended.</summary>
     public int Limit { get; set; } = SupplierAgendaLimits.MaxManualWindows;
 }
 
-/// <summary>Body of <c>GET</c> and <c>PUT api/supplier/availability/rules</c>: the five rules (the defaults while none was saved).</summary>
 public class SupplierRulesDto
 {
     public int BufferMinutes { get; set; }
@@ -216,69 +165,38 @@ public class SupplierRulesDto
     public int SlotStepMinutes { get; set; }
 }
 
-/// <summary>
-/// Body of <c>GET</c> and <c>PUT api/supplier/availability/urgent</c> (SP-04c): whether the supplier accepts urgent requests (today and
-/// tomorrow, 30 minutes of notice), the window of the day they are accepted in (outside its working hours too) and its default
-/// surcharge. Off, 07:00 to 22:00, no surcharge while none was saved. A service has its own switch and surcharge
-/// (<c>urgentEnabled</c>, <c>urgentSurchargeCents</c> of <c>api/supplier/services</c>); the supplier's switch comes first.
-/// </summary>
 public class SupplierUrgentDto
 {
     public bool Enabled { get; set; }
 
-    /// <summary>Minutes after midnight on the clock of Rome.</summary>
     public int FromMinute { get; set; }
 
-    /// <summary>Minutes after midnight on the clock of Rome (1440 is midnight).</summary>
     public int ToMinute { get; set; }
 
-    /// <summary>The surcharge in euro cents, a gross amount like the price (decision D4).</summary>
     public int SurchargeCents { get; set; }
 }
 
-/// <summary>A day closed by hand or by the supplier's calendar feed.</summary>
 public class SupplierClosedDayDto
 {
     public DateOnly Date { get; set; }
 
-    /// <summary><c>Manual</c> (the supplier) or <c>ICalFeed</c> (an event of the calendar feed).</summary>
     public SupplierAvailabilitySource Source { get; set; }
 }
 
-/// <summary>
-/// A service request as an item of the calendar: a whole-day item while its time is still to agree, a tile with hours once it
-/// has them (SP-04: <see cref="StartUtc"/> and <see cref="EndUtc"/>). No property, address or contact: those are in the
-/// request's detail, and only after the supplier took it.
-/// </summary>
 public class SupplierCalendarRequestDto
 {
     public Guid Id { get; set; }
 
-    /// <summary>
-    /// The Europe/Rome day of the work: the day of <see cref="StartUtc"/> when the request has a time, else the check-out day of
-    /// the stay of a short-rent request.
-    /// </summary>
     public DateOnly Date { get; set; }
 
-    /// <summary>First instant of the work (UTC); <c>null</c> for a request that only has a day (the time is to agree).</summary>
     public DateTime? StartUtc { get; set; }
 
-    /// <summary>Instant the work ends (UTC); <c>null</c> for a request that only has a day.</summary>
     public DateTime? EndUtc { get; set; }
 
-    /// <summary>
-    /// <c>Richiesto</c> (to confirm), <c>PresoInCarico</c>, <c>InCorso</c>, <c>Completato</c> or <c>Pagato</c>; a rejected or
-    /// cancelled request is not in the calendar.
-    /// </summary>
     public ServiceRequestStatus Status { get; set; }
 
-    /// <summary>A code of <c>GET /api/service-categories</c>.</summary>
     public string Category { get; set; } = string.Empty;
 
-    /// <summary>
-    /// The name of the catalog service the request is for, as it was when the request was made; <c>null</c> when the request is for a
-    /// category only (show <see cref="Category"/> then).
-    /// </summary>
     public string? ServiceName { get; set; }
 
     /// <summary>
@@ -288,21 +206,13 @@ public class SupplierCalendarRequestDto
     /// </summary>
     public string? ClientLabel { get; set; }
 
-    /// <summary>The comune of the work as written (never the street, the postal code or the name of the property).</summary>
     public string? Comune { get; set; }
 
-    /// <summary><c>casazen</c> (a host asked) or <c>showcase</c> (a customer booked from the supplier's public page).</summary>
     public string Source { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Where the request is in its life, derived by the server (one place for every read of the console):
-    /// <c>to_answer</c>, <c>proposal_pending</c>, <c>quote_pending</c>, <c>scheduled</c>, <c>in_progress</c>, <c>completed</c>,
-    /// <c>paid</c>. An open set: a client shows a value it does not know with a neutral label.
-    /// </summary>
     public string Phase { get; set; } = string.Empty;
 }
 
-/// <summary>Body of <c>GET api/supplier/calendar</c>: what the supplier's calendar shows for the days asked.</summary>
 public class SupplierCalendarDto
 {
     public IReadOnlyList<SupplierGuestOrderAppointment> GuestOrders { get; set; } = [];
@@ -311,26 +221,19 @@ public class SupplierCalendarDto
 
     public DateOnly To { get; set; }
 
-    /// <summary>The time zone of the hours and of the days: <c>Europe/Rome</c>.</summary>
     public string TimeZone { get; set; } = string.Empty;
 
-    /// <summary>The weekly working hours, Monday first (seven days, rest days included).</summary>
     public IReadOnlyList<SupplierHoursDayDto> WorkingHours { get; set; } = [];
 
-    /// <summary>The days in the range closed by hand or by the calendar feed.</summary>
     public IReadOnlyList<SupplierClosedDayDto> ClosedDays { get; set; } = [];
 
-    /// <summary>The time off that touches the range.</summary>
     public IReadOnlyList<SupplierTimeOffDto> TimeOff { get; set; } = [];
 
-    /// <summary>The blocks, extra openings and calendar engagements that touch the range, by start.</summary>
     public IReadOnlyList<SupplierBlockDto> Blocks { get; set; } = [];
 
-    /// <summary>The service requests with a day in the range, as whole-day items.</summary>
     public IReadOnlyList<SupplierCalendarRequestDto> Requests { get; set; } = [];
 }
 
-/// <summary>Maps the agenda rows to their responses and the requests to the input of the rules.</summary>
 public static class SupplierAgendaMapper
 {
     private static readonly DayOfWeek[] MondayFirst =
@@ -344,7 +247,6 @@ public static class SupplierAgendaMapper
         DayOfWeek.Sunday,
     ];
 
-    /// <summary>The week as seven days, Monday first: a weekday with no band is a rest day with an empty list.</summary>
     public static IReadOnlyList<SupplierHoursDayDto> ToWeek(IEnumerable<SupplierWeeklyBand> bands)
     {
         var byDay = bands.ToLookup(band => band.Weekday);

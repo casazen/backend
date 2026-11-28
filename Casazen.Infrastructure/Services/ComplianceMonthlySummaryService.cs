@@ -56,13 +56,11 @@ public sealed class ComplianceMonthlySummaryService(
             return new ComplianceMonthlySummaryRunResult(Skipped: true, Organizations: 0, Sent: 0);
         }
 
-        // The previous calendar month of the run date, as Europe/Rome days.
         var first = new DateOnly(runDate.Year, runDate.Month, 1).AddMonths(-1);
         var last = first.AddMonths(1).AddDays(-1);
         var yearMonth = ComplianceLightRules.PeriodKey(first);
         var monthEndUtc = RomeCalendar.StartOfDayUtc(last.AddDays(1));
 
-        // Background run: no tenant context, every org.
         var organizations = await db.Orgs
             .AsNoTracking()
             .Where(o => o.IsActive && o.OrgType == OrgType.Host && o.CreatedAt < monthEndUtc)
@@ -106,10 +104,8 @@ public sealed class ComplianceMonthlySummaryService(
         return new ComplianceMonthlySummaryRunResult(Skipped: false, organizations.Count, sent);
     }
 
-    /// <summary>The summary of one organization: true when it was handed to the email queue in this run.</summary>
     private async Task<bool> SendAsync(Guid orgId, string? language, DateOnly first, DateOnly last, string yearMonth, CancellationToken ct)
     {
-        // The row decides; looking first spares the work of a month that was already sent.
         if (await db.ComplianceMonthlySummaryLogs.AsNoTracking().AnyAsync(l => l.OrgId == orgId && l.YearMonth == yearMonth, ct))
             return false;
 
@@ -128,7 +124,6 @@ public sealed class ComplianceMonthlySummaryService(
             summary,
             links.IsConfigured ? links.HostCompliance() : null);
 
-        // The row and the enqueue are one step: the row goes in first, inside the transaction, and stays only if an email was queued.
         await using var transaction = await BeginTransactionAsync(ct);
         var row = new ComplianceMonthlySummaryLog
         {
@@ -145,7 +140,6 @@ public sealed class ComplianceMonthlySummaryService(
         }
         catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex, ComplianceMonthlySummaryLog.OrgMonthIndexName))
         {
-            // Another run sent it between the look and the insert: that row is the one.
             db.Entry(row).State = EntityState.Detached;
             logger.LogInformation("Compliance summary {YearMonth} of org {OrgId} was sent by another run", yearMonth, orgId);
             return false;
@@ -160,7 +154,6 @@ public sealed class ComplianceMonthlySummaryService(
 
         if (queued == 0)
         {
-            // Nothing could be queued (no provider, no valid address): the row goes, so a later run tries again.
             if (transaction is not null)
             {
                 await transaction.RollbackAsync(ct);
@@ -216,10 +209,6 @@ public sealed class ComplianceMonthlySummaryService(
         return string.IsNullOrWhiteSpace(address) ? [] : [address.Trim()];
     }
 
-    /// <summary>
-    /// A transaction for the insert of the row and the hand-over to the queue; <c>null</c> where there is none to begin: the provider is not relational (the tests
-    /// on InMemory), or the caller already has one open and commits it.
-    /// </summary>
     private async Task<IDbContextTransaction?> BeginTransactionAsync(CancellationToken ct)
     {
         if (!db.Database.IsRelational() || db.Database.CurrentTransaction is not null)

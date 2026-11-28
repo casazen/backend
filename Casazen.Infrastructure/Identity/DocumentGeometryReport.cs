@@ -8,15 +8,6 @@ namespace Casazen.Infrastructure.Identity;
 // levelled card of a card that was not held straight (IDENT-TILT): a copy in memory for the readers of the document step, which the owner of the report zeroes and which is
 // never logged, stored or sent.
 
-/// <summary>
-/// A rectangle of a picture: every member is a share of the width (<paramref name="X"/>, <paramref name="W"/>) or of the height (<paramref name="Y"/>,
-/// <paramref name="H"/>) of that picture, from 0 to 1, measured from its top left corner. The box of the card is in the picture the inspector was given (the
-/// upright picture, with the EXIF orientation applied), before any rotation.
-/// </summary>
-/// <param name="X">The distance of the left edge from the left border of the picture.</param>
-/// <param name="Y">The distance of the top edge from the top border of the picture.</param>
-/// <param name="W">The width.</param>
-/// <param name="H">The height.</param>
 public sealed record NormalizedBox(double X, double Y, double W, double H);
 
 /// <summary>
@@ -89,10 +80,8 @@ public sealed record DocumentGeometryReport(
     double TiltDegrees = 0,
     RasterImage? RectifiedCard = null) : IDisposable
 {
-    /// <summary>The value of <c>RasterImage.Oriented</c> that turns the picture by <see cref="RotationDegrees"/>: 1 upright, 6 a quarter turn clockwise, 3 a half turn, 8 a quarter turn counter-clockwise.</summary>
     public int ExifOrientation => ExifOrientationOf(RotationDegrees);
 
-    /// <summary>The value of <c>RasterImage.Oriented</c> that turns a picture by <paramref name="rotationDegrees"/> (0, 90, 180 or 270) clockwise.</summary>
     public static int ExifOrientationOf(int rotationDegrees) => rotationDegrees switch
     {
         90 => 6,
@@ -101,7 +90,6 @@ public sealed record DocumentGeometryReport(
         _ => 1,
     };
 
-    /// <summary>Zeroes the levelled card of the report (<see cref="RectifiedCard"/>, if there is one). Safe to call more than once.</summary>
     public void Dispose()
     {
         RectifiedCard?.Dispose();

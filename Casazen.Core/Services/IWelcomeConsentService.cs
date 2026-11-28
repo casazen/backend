@@ -21,10 +21,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IWelcomeConsentService
 {
-    /// <summary>
-    /// What the page shows, with no personal data: the org, the property and the version of the consent text. <c>null</c> when the token is unknown
-    /// or revoked, or the property was deleted or its org is not active.
-    /// </summary>
     Task<WelcomePage?> GetPageAsync(string token, CancellationToken cancellationToken = default);
 
     /// <summary>Records the consent the guest ticked and queues the double opt-in e-mail. Returns nothing: the answer never depends on what was stored.</summary>
@@ -61,22 +57,16 @@ public sealed record WelcomeConsentInput(
     string? ConsentVersion,
     string? Language);
 
-/// <summary>Stable <c>code</c> values of the welcome page errors: the frontend translates them.</summary>
 public static class WelcomeConsentErrorCodes
 {
-    /// <summary>404: the token is unknown or revoked (one answer for both, so a printed code that was replaced tells nothing).</summary>
     public const string LinkInvalid = "welcome_link_invalid";
 
-    /// <summary>422: the guest did not declare to be of age.</summary>
     public const string AdultRequired = "welcome_adult_required";
 
-    /// <summary>422: no channel was ticked.</summary>
     public const string ChannelRequired = "welcome_channel_required";
 
-    /// <summary>422: the e-mail address is missing or is not a plain address.</summary>
     public const string EmailInvalid = "welcome_email_invalid";
 
-    /// <summary>422: the phone number is missing or is not a number that can be stored.</summary>
     public const string PhoneInvalid = "welcome_phone_invalid";
 
     /// <summary>

@@ -6,15 +6,9 @@ public static partial class EmailTemplates
 {
     public static partial class Names
     {
-        /// <summary>Guest self-service cancellation link (BK-02, BK-07, PO 2026-10-08).</summary>
         public const string GuestCancelLink = "guest-cancel-link";
     }
 
-    /// <summary>
-    /// Tokenized self-cancellation link, to the guest (BK-02, BK-07, PO 2026-10-08).
-    /// Sent by the host (or automatically) when the guest wants to cancel a booking.
-    /// </summary>
-    /// <param name="expiresAtUtc">End of validity of the signed link (shown in Italian time).</param>
     public static EmailContent GuestCancelLink(
         CultureInfo culture,
         string guestName,

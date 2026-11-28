@@ -27,11 +27,9 @@ public static class TicinoCheckInFields
     public const string ResidenceCityName = nameof(StayGuest.ResidenceCityName);
     public const string ResidenceCountryName = nameof(StayGuest.ResidenceCountryName);
 
-    /// <summary>The fields a Ticino property asks, in the order of the form.</summary>
     public static IReadOnlyList<string> Required { get; } =
         [DocumentType, DocumentNumber, ResidenceStreet, ResidencePostalCode, ResidenceCityName, ResidenceCountryName];
 
-    /// <summary>The fields a property asks of its guests: the statistical ones its region requires, then the Ticino ones when it is in Ticino.</summary>
     public static IReadOnlyList<string> AskedOf(IReadOnlyList<string> statisticalFields, bool inTicino)
     {
         ArgumentNullException.ThrowIfNull(statisticalFields);

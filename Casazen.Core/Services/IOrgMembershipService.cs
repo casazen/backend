@@ -59,15 +59,6 @@ public interface IOrgMembershipService
         PropertyScope propertyScope = PropertyScope.All,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Gives <paramref name="userId"/> another role, keeping the contexts it works in: the account membership of the
-    /// role and the role key of every rental membership are re-pointed together with the <see cref="OrgMember"/> row.
-    /// </summary>
-    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">The new role is <see cref="OrgRole.Owner"/>.</exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
-    /// The member is the owner (<see cref="OrgMembershipErrors.LastOwner"/>): the owner keeps its role.
-    /// </exception>
-    /// <exception cref="Casazen.Core.Exceptions.NotFoundException">The user is not a member of any org.</exception>
     Task<OrgMember> ChangeRoleAsync(string userId, OrgRole role, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -140,7 +131,6 @@ public interface IOrgMembershipService
 /// <param name="Released">How many properties lost their person in charge because the member no longer reaches them (a collaborator «Solo alcuni» that gave up an area).</param>
 public sealed record OrgMemberAreasChange(OrgMember Member, IReadOnlyList<string> Before, IReadOnlyList<string> After, int Released)
 {
-    /// <summary>The areas are not the same as before.</summary>
     public bool Changed => !Before.SequenceEqual(After, StringComparer.Ordinal);
 
     /// <summary>
@@ -150,45 +140,31 @@ public sealed record OrgMemberAreasChange(OrgMember Member, IReadOnlyList<string
     public bool Matters => Changed || Released > 0;
 }
 
-/// <summary>Stable codes of the refusals of <see cref="IOrgMembershipService"/> (422 and 409), translated by the clients.</summary>
 public static class OrgMembershipErrors
 {
-    /// <summary>409: the owner cannot be deactivated, removed or given another role: an org always keeps its owner.</summary>
     public const string LastOwner = "org_last_owner";
 
-    /// <summary>422: the ownership is assigned only at the onboarding and is not transferable in this version (D15).</summary>
     public const string OwnerNotAssignable = "org_owner_not_assignable";
 
-    /// <summary>422: a member works in at least one area (short-rent, long-rent).</summary>
     public const string AreaRequired = "org_member_area_required";
 
-    /// <summary>409: the user already is a member of an org (a user belongs to one org only).</summary>
     public const string AlreadyMember = "org_member_already_member";
 
-    /// <summary>409: the user belongs to another org (<c>User.OrgId</c>): changing org is AM-02's flow, not an add.</summary>
     public const string OtherOrg = "org_member_other_org";
 
-    /// <summary>
-    /// 422: «Solo alcuni» (<see cref="Casazen.Core.Entities.Enums.PropertyScope.Selected"/>) is for the collaborator; the owner, the
-    /// administrators, the property managers and the accountants reach every property of the org (AM-03).
-    /// </summary>
     public const string ScopeNotSupported = "org_member_scope_not_supported";
 
-    /// <summary>422: a property given to a member is not a property of the org (AM-03).</summary>
     public const string PropertyUnknown = "org_member_property_unknown";
 }
 
-/// <summary>Codes of <see cref="OrgMembershipFix"/> and <see cref="OrgMembershipIssue"/> (listed in the runbook).</summary>
 public static class OrgMembershipReconcileCodes
 {
-    // Fixes: what a real run changes.
     public const string OwnerCreated = "owner_member_created";
     public const string AccountMembershipAdded = "account_membership_added";
     public const string AccountMembershipChanged = "account_membership_changed";
     public const string AccountMembershipRemoved = "account_membership_removed";
     public const string HostMembershipChanged = "host_membership_changed";
 
-    // Issues: what needs a decision, left untouched.
     public const string OwnerAmbiguous = "org_owner_ambiguous";
     public const string UserWithoutMember = "org_user_without_member";
     public const string SeveralOwners = "org_several_owners";
@@ -197,16 +173,10 @@ public static class OrgMembershipReconcileCodes
     public const string MemberWithoutHostMembership = "member_without_host_membership";
 }
 
-/// <summary>One change the reconcile makes (or, in a dry run, would make). Ids only, no names or emails.</summary>
 public sealed record OrgMembershipFix(string Code, string UserId, Guid? OrgId, string Detail);
 
-/// <summary>One situation the reconcile cannot decide and leaves as it is, with the users involved.</summary>
 public sealed record OrgMembershipIssue(string Code, Guid? OrgId, IReadOnlyList<string> UserIds, string Detail);
 
-/// <summary>Outcome of <see cref="IOrgMembershipService.ReconcileAsync"/>.</summary>
-/// <param name="DryRun">Nothing was saved.</param>
-/// <param name="HostOrgsScanned">Host orgs with at least one user.</param>
-/// <param name="MembersScanned"><see cref="OrgMember"/> rows read after the owners were created.</param>
 public sealed record OrgMembershipReconcileReport(
     bool DryRun,
     int HostOrgsScanned,

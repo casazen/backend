@@ -25,7 +25,6 @@ public static class PlatformInvoiceVatTreatments
     /// <summary>Automatic tax was off on the invoice (e.g. a subscription created before PL-13): no VAT computed.</summary>
     public const string AutomaticTaxDisabled = "automatic_tax_disabled";
 
-    /// <summary>Automatic tax was on but its calculation did not complete (missing location, Stripe error).</summary>
     public const string CalculationIncomplete = "tax_calculation_incomplete";
 }
 
@@ -44,12 +43,9 @@ public static class PlatformInvoiceTaxReviewReasons
     /// </summary>
     public const string ReverseChargeVatIdNotVerified = "reverse_charge_vat_id_not_verified";
 
-    /// <summary>No registration in the customer's jurisdiction: the customer's country may require one (fiscale.md P11).</summary>
     public const string NotCollecting = "not_collecting";
 
-    /// <summary>No VAT for a reason other than reverse charge or missing registration.</summary>
     public const string ZeroTax = "zero_tax";
 
-    /// <summary>More than one tax rate on the invoice: rate and jurisdiction are not stored, see the Stripe invoice.</summary>
     public const string MultipleTaxRates = "multiple_tax_rates";
 }

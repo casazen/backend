@@ -36,15 +36,8 @@ public sealed record ServiceRequestOffer(
 /// </summary>
 public static class ServiceRequestOfferRules
 {
-    /// <summary>Most units of one line (a number of hours, rooms or pieces; a typo for a thousand is not one).</summary>
     public const int MaxQuantity = 999;
 
-    /// <summary>
-    /// The lines of an offer, trimmed, as the lines of a quote, and what they add up to. From one to <see cref="ServiceRequestLimits.MaxQuoteLines"/>
-    /// lines, each with a description of at most <see cref="ServiceRequestLimits.QuoteLineLabelMaxLength"/> characters, a quantity from 1 to
-    /// <see cref="MaxQuantity"/> and a unit price from 1 cent; the amount of a line and the total are at most the bound of a request.
-    /// </summary>
-    /// <exception cref="DomainRuleException"><see cref="ServiceRequestOfferErrors.Invalid"/>.</exception>
     public static (IReadOnlyList<ServiceRequestQuoteLine> Lines, int TotalCents) Normalize(IReadOnlyList<ServiceRequestOfferLine>? lines)
     {
         if (lines is null || lines.Count is 0 or > ServiceRequestLimits.MaxQuoteLines)
@@ -81,10 +74,6 @@ public static class ServiceRequestOfferRules
         return (normalized, (int)total);
     }
 
-    /// <summary>
-    /// The offer that waits for the customer's answer on <paramref name="request"/>, or <c>null</c> when there is none: the request is a request on
-    /// measure, still new, and the supplier sent an offer (with the time it proposes, which an offer always has).
-    /// </summary>
     public static ServiceRequestOffer? PendingOf(ServiceRequest request) =>
         PendingOf(
             request.Kind,
@@ -97,10 +86,6 @@ public static class ServiceRequestOfferRules
             request.QuoteScheduledEndUtc,
             request.ResponseDueAt);
 
-    /// <summary>
-    /// <see cref="PendingOf(ServiceRequest)"/> from the columns, for the readers that select only what they need. <paramref name="responseDueAt"/>
-    /// is the deadline of the customer while an offer waits (a showcase request: the supplier answered, and the clock became the customer's).
-    /// </summary>
     public static ServiceRequestOffer? PendingOf(
         ServiceRequestKind kind,
         ServiceRequestStatus status,
@@ -150,10 +135,6 @@ public static class ServiceRequestOfferRules
         ServiceRequestJson.ReadQuoteEvents(quoteEventsJson) is { Count: > 0 } events
         && events[^1].Kind == ServiceRequestQuoteEventKinds.Rejected;
 
-    /// <summary>
-    /// True when the supplier may send an offer on a request on measure: the request is new, the conversation is open and the supplier is active.
-    /// (A request that is taken, refused or cancelled has no offer to send; one that is not a request on measure is answered with a quote.)
-    /// </summary>
     public static bool CanSend(ServiceRequestKind kind, ServiceRequestStatus status, bool supplierActive) =>
         kind == ServiceRequestKind.Custom && status == ServiceRequestStatus.Richiesto && supplierActive;
 }
@@ -168,22 +149,16 @@ public static class ServiceRequestOfferRules
 /// </summary>
 public static class ServiceRequestOfferErrors
 {
-    /// <summary>422: the offer is not valid: not from one to twenty lines, a line without a description, with a quantity or a price outside the limits, or a total above the bound of a request.</summary>
     public const string Invalid = "service_request_offer_invalid";
 
-    /// <summary>422: the supplier answers with an offer a request that is not waiting for its answer (taken, refused, cancelled, done).</summary>
     public const string CannotOffer = "service_request_cannot_offer";
 
-    /// <summary>422: there is no offer to withdraw (never sent, withdrawn, answered, or the request moved on).</summary>
     public const string NoOfferToWithdraw = "service_request_no_offer";
 
-    /// <summary>422: the booking has no offer to answer (never sent, withdrawn, answered, or the request moved on).</summary>
     public const string NoOffer = "supplier_booking_no_offer";
 
-    /// <summary>422: the time to answer the offer has passed; the request is cancelled by the next run of the upkeep job.</summary>
     public const string OfferExpired = "supplier_booking_offer_expired";
 
-    /// <summary>409: the supplier replaced or withdrew the offer after the customer read it, so the answer is not about the offer that waits: nothing was changed.</summary>
     public const string OfferChanged = "service_request_offer_changed";
 
     public const string InvalidMessageKey = "ServiceRequestOfferInvalid";
@@ -193,7 +168,6 @@ public static class ServiceRequestOfferErrors
     public const string OfferExpiredMessageKey = "SupplierBookingOfferExpired";
     public const string OfferChangedMessageKey = "ServiceRequestOfferChanged";
 
-    /// <summary>Every <c>SharedResources</c> key the offer raises (a test checks that each one exists in Italian and English).</summary>
     public static IReadOnlyList<string> MessageKeys { get; } =
     [
         InvalidMessageKey,
@@ -204,7 +178,6 @@ public static class ServiceRequestOfferErrors
         OfferChangedMessageKey,
     ];
 
-    /// <summary>422: the offer is not valid.</summary>
     public static DomainRuleException InvalidOffer() =>
         new(
             Invalid,
@@ -214,18 +187,13 @@ public static class ServiceRequestOfferErrors
             ServiceRequestOfferRules.MaxQuantity,
             ServiceRequestLimits.MaxAmountCents / 100);
 
-    /// <summary>422: the request does not wait for an offer.</summary>
     public static DomainRuleException CannotSendOffer() => new(CannotOffer, CannotOfferMessageKey);
 
-    /// <summary>422: there is no offer to take back.</summary>
     public static DomainRuleException NothingToWithdraw() => new(NoOfferToWithdraw, NoOfferToWithdrawMessageKey);
 
-    /// <summary>422: the booking has no offer to answer.</summary>
     public static DomainRuleException OfferMissing() => new(NoOffer, NoOfferMessageKey);
 
-    /// <summary>422: the time to answer the offer has passed.</summary>
     public static DomainRuleException OfferLapsed() => new(OfferExpired, OfferExpiredMessageKey);
 
-    /// <summary>409: the offer is not the one the customer read.</summary>
     public static DomainConflictException ChangedOffer() => new(OfferChanged, OfferChangedMessageKey);
 }

@@ -27,8 +27,6 @@ public class PublicCancellationPolicyIntegrationTests : IClassFixture<CasazenWeb
     [Fact]
     public async Task PublicPolicyAndQuoteDates_FollowThePolicyOfTheStay_AndSayNothingOfAWindowThatDoesNotExist()
     {
-        // «Contenuta»: full refund 14 days before (336 h), 50 % up to 7 days before (168 h). Three houses of one org: the catalog policy as it
-        // is, the same policy with the host's full-refund window moved to 20 days, and the same policy marked non-refundable by the host.
         var org = await SeedOrgAsync();
         var asIs = await SeedHouseAsync(org, p => p.CancellationPolicy = CatalogPolicies.Get(CatalogPolicies.Contenuta));
         var moved = await SeedHouseAsync(org, p =>
@@ -44,7 +42,6 @@ public class PublicCancellationPolicyIntegrationTests : IClassFixture<CasazenWeb
         using var client = _factory.CreateClient();
         var checkIn = TimeProvider.System.TodayInRome().AddDays(60);
 
-        // The policy on the public page of each house.
         var policyAsIs = (await GetPublicHouseAsync(client, org.Slug, asIs.Slug!)).GetProperty("cancellationPolicy");
         Assert.Equal((336, 168, 50m, false), (
             policyAsIs.GetProperty("fullRefundHours").GetInt32(),
@@ -57,7 +54,6 @@ public class PublicCancellationPolicyIntegrationTests : IClassFixture<CasazenWeb
         var policyMoved = (await GetPublicHouseAsync(client, org.Slug, moved.Slug!)).GetProperty("cancellationPolicy");
         Assert.Equal(480, policyMoved.GetProperty("fullRefundHours").GetInt32());
         Assert.True(policyMoved.GetProperty("hostOverrideApplies").GetBoolean());
-        // The catalog text would say something else once the host moved the window: it is not given.
         Assert.Equal(JsonValueKind.Null, policyMoved.GetProperty("description").ValueKind);
 
         var policyNever = (await GetPublicHouseAsync(client, org.Slug, never.Slug!)).GetProperty("cancellationPolicy");
@@ -65,7 +61,6 @@ public class PublicCancellationPolicyIntegrationTests : IClassFixture<CasazenWeb
         Assert.Equal(JsonValueKind.Null, policyNever.GetProperty("partialRefundHours").ValueKind);
         Assert.Equal(JsonValueKind.Null, policyNever.GetProperty("partialRefundPercent").ValueKind);
 
-        // The dates of the quote of a three-night stay on each.
         var quoteAsIs = (await QuoteAsync(client, asIs.Id, checkIn)).GetProperty("cancellation");
         Assert.Equal(LastWholeDay(checkIn, 336), quoteAsIs.GetProperty("fullRefundUntil").GetString());
         Assert.Equal(LastWholeDay(checkIn, 168), quoteAsIs.GetProperty("partialRefundUntil").GetString());
@@ -82,10 +77,6 @@ public class PublicCancellationPolicyIntegrationTests : IClassFixture<CasazenWeb
         Assert.Equal(JsonValueKind.Null, quoteNever.GetProperty("partialRefundPercent").ValueKind);
     }
 
-    /// <summary>
-    /// The last whole Europe/Rome day, <c>yyyy-MM-dd</c>, that ends at least <paramref name="hours"/> hours before the start of the check-in
-    /// day: found by looking at the instants, one day after the other.
-    /// </summary>
     private static string LastWholeDay(DateTime checkIn, int hours)
     {
         var day = DateOnly.FromDateTime(checkIn);

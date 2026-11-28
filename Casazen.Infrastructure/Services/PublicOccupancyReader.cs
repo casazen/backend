@@ -20,11 +20,6 @@ public sealed class PublicOccupancyReader(AppDbContext db, IConfiguration config
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    /// <summary>
-    /// For each of <paramref name="propertyIds"/>, the nights taken from <paramref name="fromDate"/> (included) to
-    /// <paramref name="toDate"/> (excluded), as midnight-UTC dates in order and without duplicates. A property with no taken night is
-    /// in the answer with an empty set.
-    /// </summary>
     public async Task<IReadOnlyDictionary<Guid, SortedSet<DateTime>>> TakenNightsAsync(
         IReadOnlyCollection<Guid> propertyIds,
         DateTime fromDate,
@@ -43,7 +38,6 @@ public sealed class PublicOccupancyReader(AppDbContext db, IConfiguration config
         var expiredHoldCutoff = CheckoutHolds.CutoffAt(
             _clock.GetUtcNow().UtcDateTime, CheckoutHolds.GetTtlMinutes(configuration));
 
-        // Dates only, never the guest or the source of a stay.
         var stays = await db.Bookings
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(b => ids.Contains(b.PropertyId))

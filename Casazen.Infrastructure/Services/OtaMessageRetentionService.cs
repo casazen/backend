@@ -38,8 +38,6 @@ public sealed class OtaMessageRetentionService(
 
     public async Task<OtaMessageRetentionResult> ApplyRetentionAsync(CancellationToken cancellationToken = default)
     {
-        // Whatever the period: a conversation that is marked as anonymized but holds a name or a link again is emptied again. It is no decision of the
-        // retention, it finishes the work of an erasure or of an earlier run that a read of the channel manager raced.
         var repaired = await RepairMarkedThreadsAsync(cancellationToken);
 
         var period = gdprOptions.Value.Retention.AlloggiatiData;
@@ -55,7 +53,6 @@ public sealed class OtaMessageRetentionService(
         var today = timeProvider.TodayInRome();
         var candidateStartBefore = period.CandidateStartBefore(today);
 
-        // The threads of a stay that is over: the period counts from the check-out.
         var stays = await db.OtaMessageThreads
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -67,7 +64,6 @@ public sealed class OtaMessageRetentionService(
             .Select(t => new { t.Id, t.Booking!.CheckOutDate })
             .ToListAsync(cancellationToken);
 
-        // The threads with no booking: there is no stay to count from, so the last message is the reference.
         var requests = await db.OtaMessageThreads
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -89,11 +85,6 @@ public sealed class OtaMessageRetentionService(
         return new OtaMessageRetentionResult(true, threads, messages);
     }
 
-    /// <summary>
-    /// The threads that are marked as anonymized while a message of theirs still has a sender's name or a link to an attachment (see
-    /// <see cref="GuestDataEraser.HoldingPersonalData"/>): a read of the channel manager that ran while the guest was erased stored it after the erasure
-    /// had read the thread, and neither waits for the other. Emptied again, whichever the period.
-    /// </summary>
     private async Task<(int Threads, int Messages)> RepairMarkedThreadsAsync(CancellationToken ct)
     {
         var marked = db.OtaMessageThreads

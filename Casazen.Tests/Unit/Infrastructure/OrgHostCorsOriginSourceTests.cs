@@ -8,10 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>
-/// E40/F01/US01/T02 (NF-140, AC-NF140-4): the CORS of a verified agency domain reaches the owner portal only for the agency whose owner portal is
-/// served there, and never a host-console endpoint; the public and legal endpoints (the guest area included) answer every org host as before.
-/// </summary>
 public class OrgHostCorsOriginSourceTests
 {
     private const string AgencyA = "prenota.agenzia-a.it";
@@ -45,7 +41,6 @@ public class OrgHostCorsOriginSourceTests
     [Fact]
     public async Task OwnerPortalPath_OtherOrgsVerifiedDomain_Refused()
     {
-        // The verified domain of another agency, served and paid for, whose owner portal is not on its domain.
         Assert.False(await AllowedAsync($"https://{AgencyB}", "/api/owner-portal/properties"));
         Assert.False(await AllowedAsync($"https://{AgencyB}", "/api/owner-invitations/accept"));
     }
@@ -66,7 +61,6 @@ public class OrgHostCorsOriginSourceTests
     [InlineData("null")]
     public async Task OwnerPortalPath_UnverifiedHost_Refused(string origin)
     {
-        // Unverified or unknown domains, a platform subdomain (never a surface), and the shapes TryGetHost refuses.
         Assert.False(await AllowedAsync(origin, "/api/owner-portal/properties"));
     }
 
@@ -93,7 +87,6 @@ public class OrgHostCorsOriginSourceTests
     [InlineData("/api/public/checkin/abc")]
     public async Task PublicAndGuestAreaPaths_EveryOrgHost_AllowedAsBefore(string path)
     {
-        // The guest area of an agency domain is under /api/public: no surface is needed, exactly as before E40.
         Assert.True(await AllowedAsync($"https://{AgencyA}", path));
         Assert.True(await AllowedAsync($"https://{SurfaceOff}", path));
         Assert.True(await AllowedAsync($"https://{Subdomain}", path));
@@ -102,7 +95,6 @@ public class OrgHostCorsOriginSourceTests
     [Fact]
     public void GuestAreaPrefixes_StayUnderThePublicPrefixes()
     {
-        // Pins the routes of the guest area: moving them out of /api/public would silently drop the CORS of the agency domains.
         Assert.Contains(OrgHostCorsOriginSource.PublicPathPrefixes, prefix => new PathString("/api/public/guest").StartsWithSegments(prefix));
         Assert.Contains(OrgHostCorsOriginSource.PublicPathPrefixes, prefix => new PathString("/api/public/checkin").StartsWithSegments(prefix));
     }

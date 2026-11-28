@@ -70,7 +70,6 @@ public class ConnectOnboardingService(
 
         var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken)
             ?? throw OrgNotFound(orgId);
-        // An instance tracked earlier in the request keeps the values read before the lock.
         await dbContext.Entry(org).ReloadAsync(cancellationToken);
 
         var country = await ResolveAccountCountryAsync(org, cancellationToken);
@@ -148,7 +147,6 @@ public class ConnectOnboardingService(
         }
         catch (StripeConnectException ex)
         {
-            // The account exists and is linked: its capabilities arrive with account.updated or the next status read.
             logger.LogWarning(
                 ex,
                 "Stripe account {AccountId} created but refresh failed for org {OrgId} ({Failure})",
@@ -218,7 +216,6 @@ public class ConnectOnboardingService(
             return ConnectAccountUpdate.None;
         }
 
-        // SP-15b: a supplier that could not take payments and now can has payment requests waiting for it.
         var couldReceivePayments = SupplierVerification.CanReceivePayments(
             org.StripeConnectedAccountId, org.ConnectChargesEnabled, org.ConnectPayoutsEnabled);
 

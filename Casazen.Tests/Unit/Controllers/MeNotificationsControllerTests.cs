@@ -15,10 +15,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// UI-12a: <c>api/me/notifications</c> acts for the caller only (the token's <c>sub</c>), with the routes the frontend will
-/// call; the rules about whose rows are in <see cref="IInAppNotificationService"/> and are tested there.
-/// </summary>
 public class MeNotificationsControllerTests
 {
     private const string UserId = "auth0|anna";
@@ -37,8 +33,6 @@ public class MeNotificationsControllerTests
             ControllerContext = new ControllerContext { HttpContext = http },
         };
     }
-
-    // ─── The contract ───
 
     [Fact]
     public void Controller_IsForSignedInUsersOnly_UnderApiMeNotifications()
@@ -79,7 +73,6 @@ public class MeNotificationsControllerTests
     [Fact]
     public void Actions_NeverTakeTheUserFromTheRequest()
     {
-        // The user is the caller's: no action has a parameter that could name another one.
         foreach (var method in typeof(MeNotificationsController).GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
         {
             Assert.DoesNotContain(
@@ -87,8 +80,6 @@ public class MeNotificationsControllerTests
                 p => p.Name!.Contains("user", StringComparison.OrdinalIgnoreCase) || p.Name.Contains("org", StringComparison.OrdinalIgnoreCase));
         }
     }
-
-    // ─── List ───
 
     [Fact]
     public async Task List_ReturnsThePageOfTheCaller_PrivateAndNeverCached()
@@ -133,8 +124,6 @@ public class MeNotificationsControllerTests
         _service.VerifyNoOtherCalls();
     }
 
-    // ─── Count ───
-
     [Fact]
     public async Task UnreadCount_ReturnsTheNumberOfTheCaller()
     {
@@ -156,8 +145,6 @@ public class MeNotificationsControllerTests
         _service.VerifyNoOtherCalls();
     }
 
-    // ─── Mark as read ───
-
     [Fact]
     public async Task MarkRead_MarksTheNotificationOfTheCaller_204()
     {
@@ -175,7 +162,6 @@ public class MeNotificationsControllerTests
     [Fact]
     public async Task MarkRead_ANotificationOfSomebodyElse_IsTheNotFoundOfTheService_NeverAForbidden()
     {
-        // The service raises NotFoundException (404 through the error middleware) for everything the caller does not own.
         var id = Guid.NewGuid();
         _service
             .Setup(s => s.MarkReadAsync(UserId, id, It.IsAny<CancellationToken>()))

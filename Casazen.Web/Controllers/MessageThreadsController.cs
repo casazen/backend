@@ -32,11 +32,6 @@ public class MessageThreadsController(
     IAuthorizationService authorizationService,
     IMessageReplyService? replies = null) : ControllerBase
 {
-    /// <summary>
-    /// The conversation: its latest messages oldest first, the booking card (stay, guests, state and, for a caller who may read payments, the amounts
-    /// in the currency of the property), the customer link (<c>{ guestId }</c>, for every conversation that has a booking) and the actions its channel
-    /// allows. 400 <c>thread_key_invalid</c>; 404 <c>thread_not_found</c>.
-    /// </summary>
     [HttpGet("threads/{threadKey}")]
     [ProducesResponseType(typeof(MessageThreadDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -51,7 +46,6 @@ public class MessageThreadsController(
         if (scope is null)
             return Forbidden();
 
-        // The money of the card is read only by a caller who may read payments (SR-D7), like the amounts of the booking itself.
         var includeAmounts = (await authorizationService.AuthorizeAsync(User, CasazenPolicies.PaymentRead)).Succeeded;
         return Ok(MessageThreadDto.From(await hub.GetThreadAsync(scope, key, includeAmounts, cancellationToken)));
     }
@@ -76,15 +70,10 @@ public class MessageThreadsController(
         if (scope is null)
             return Forbidden();
 
-        // The money of the booking card is read only by a caller who may read payments (SR-D7), like the amounts of the booking itself.
         var includeAmounts = (await authorizationService.AuthorizeAsync(User, CasazenPolicies.PaymentRead)).Succeeded;
         return Ok(ReviewThreadDto.From(await hub.GetReviewThreadAsync(scope, key, includeAmounts, cancellationToken)));
     }
 
-    /// <summary>
-    /// Marks the messages of the guest of the conversation as read by the host and answers what is still unread (nothing). A direct conversation also
-    /// clears the caller's notifications of it. 400 <c>thread_key_invalid</c>; 404 <c>thread_not_found</c>.
-    /// </summary>
     [HttpPost("threads/{threadKey}/read")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [ProducesResponseType(typeof(MessageReadDto), StatusCodes.Status200OK)]

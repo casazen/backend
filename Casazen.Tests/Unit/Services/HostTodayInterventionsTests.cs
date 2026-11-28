@@ -28,7 +28,6 @@ public class HostTodayInterventionsTests
     {
         var db = HostScopeScenario.NewInMemoryDb();
         var orgId = Guid.NewGuid();
-        // Both properties are active, so the day has no property to activate in it.
         var trullo = HostScopeScenario.NewProperty(orgId, "auth0|titolare-sr03b", "Trullo");
         trullo.ComplianceStatus = PropertyComplianceStatus.Active;
         var casaBianca = HostScopeScenario.NewProperty(orgId, "auth0|titolare-sr03b", "Casa Bianca");
@@ -78,8 +77,6 @@ public class HostTodayInterventionsTests
         };
     }
 
-    // --- The interventions of the day -------------------------------------------------------------------------
-
     [Fact]
     public async Task Services_TheInterventionsOfToday_InOrderOfTime_WithTheirSupplierAndProperty()
     {
@@ -90,17 +87,13 @@ public class HostTodayInterventionsTests
         world.Db.Bookings.AddRange(leavesToday, leavesTomorrow);
         await world.Db.SaveChangesAsync();
 
-        // 10:00 Rome; 08:00 Rome (so the first of them); half past midnight (the day starts at 22:00Z of the 8th); a request with no
-        // time of a stay that leaves today (the day of such a request has always been the check-out day of its stay).
         var morning = Request(world, world.Trullo, ServiceRequestStatus.PresoInCarico, At(10, 9, 8));
         var early = Request(world, world.CasaBianca, ServiceRequestStatus.InCorso, At(10, 9, 6), category: ServiceCategories.Maintenance);
         var justAfterMidnight = Request(world, world.Trullo, ServiceRequestStatus.Richiesto, At(10, 8, 22, 30));
         var withNoTime = Request(world, world.Trullo, ServiceRequestStatus.Richiesto, bookingId: leavesToday.Id);
-        // Not today: the last minute of the day before, the first of the day after, tomorrow's stay with no time.
         var yesterday = Request(world, world.Trullo, ServiceRequestStatus.Completato, At(10, 8, 21, 59));
         var tomorrow = Request(world, world.Trullo, ServiceRequestStatus.Richiesto, At(10, 9, 22));
         var noTimeTomorrow = Request(world, world.Trullo, ServiceRequestStatus.Richiesto, bookingId: leavesTomorrow.Id);
-        // Today, but nobody will do them.
         var refused = Request(world, world.Trullo, ServiceRequestStatus.Rifiutato, At(10, 9, 9));
         var cancelled = Request(world, world.Trullo, ServiceRequestStatus.Annullato, At(10, 9, 9));
         world.Db.ServiceRequests.AddRange(
@@ -119,7 +112,6 @@ public class HostTodayInterventionsTests
             (first.Category, first.ServiceName, first.ScheduledStart, first.ScheduledEnd, first.Status));
         Assert.Equal((world.Supplier.Id, "Splendore Pulizie"), (first.SupplierOrgId, first.SupplierName));
         Assert.Equal((world.CasaBianca.Id, "Casa Bianca"), (first.PropertyId, first.PropertyName));
-        // The one with no time says so: the client puts it after the others.
         var legacy = today.Services.Items[3];
         Assert.Null(legacy.ScheduledStart);
         Assert.Null(legacy.ScheduledEnd);
@@ -186,8 +178,6 @@ public class HostTodayInterventionsTests
         Assert.Empty(today.Services.Items);
     }
 
-    // --- Where the Alloggiati communication of each arrival stands ----------------------------------------------
-
     private static AlloggiatiWebReport Report(Booking booking, AlloggiatiWebStatus status) => new()
     {
         BookingId = booking.Id,
@@ -220,16 +210,11 @@ public class HostTodayInterventionsTests
         var today = await Service(world.Db).GetTodayAsync(new HostScope(world.OrgId), new HostTodayOptions());
 
         var byBooking = today.Arrivals.Items.Concat(today.Upcoming.Items).ToDictionary(s => s.Stay.BookingId, s => s.Alloggiati!);
-        // From the arrival day, nothing sent is "to send manually"; 24 hours from the start of the arrival day (midnight in Rome is
-        // 22:00Z of the day before), 6 hours for a stay of one night.
         Assert.Equal(new HostTodayAlloggiati(AlloggiatiWebStatus.DaInviareManualmente, At(10, 9, 22)), byBooking[untouched.Id]);
         Assert.Equal(new HostTodayAlloggiati(AlloggiatiWebStatus.DaInviareManualmente, At(10, 9, 4)), byBooking[oneNight.Id]);
-        // Sent, or declared sent: done, no term any more.
         Assert.Equal(new HostTodayAlloggiati(AlloggiatiWebStatus.Inviato, null), byBooking[sent.Id]);
         Assert.Equal(new HostTodayAlloggiati(AlloggiatiWebStatus.InviatoManualmente, null), byBooking[declared.Id]);
-        // A failure keeps its term, which runs from the arrival that was registered (08:00Z + 24 hours).
         Assert.Equal(new HostTodayAlloggiati(AlloggiatiWebStatus.Errore, At(10, 10, 8)), byBooking[failed.Id]);
-        // Tomorrow's arrival: not yet to send on the portal (it accepts today or yesterday only).
         Assert.Equal(new HostTodayAlloggiati(AlloggiatiWebStatus.DaInviare, At(10, 10, 22)), byBooking[tomorrow.Id]);
         Assert.All(today.Arrivals.Items.Concat(today.Upcoming.Items), stay => Assert.NotNull(stay.Alloggiati));
     }
@@ -237,7 +222,6 @@ public class HostTodayInterventionsTests
     [Fact]
     public async Task Arrivals_ANoShowOwesNoAlloggiatiCommunication_ItsRowSaysNothingOfIt()
     {
-        // NF-45: the guests never came. The row of the stay is still on the day, but it is not "to send manually", whatever its report says.
         var world = await SeedAsync();
         await using var _ = world.Db;
         var noShow = Stay(world, world.Trullo, BookingStatus.Confirmed, Day(10, 9), Day(10, 12));
@@ -269,8 +253,6 @@ public class HostTodayInterventionsTests
         Assert.Null(departure.CheckIn);
     }
 
-    // --- The cleaning of each departure ------------------------------------------------------------------------
-
     [Fact]
     public async Task Departures_EachOneCarriesItsLatestCleaningRequest_AndNullWhenItHasNone()
     {
@@ -295,15 +277,11 @@ public class HostTodayInterventionsTests
 
         var cleaning = today.Departures.Items.ToDictionary(s => s.Stay.BookingId, s => s.Cleaning);
         Assert.Equal(new HostTodayCleaning(done.Id, ServiceRequestStatus.Completato), cleaning[withCleaning.Id]);
-        // The request that replaced the one that was cancelled is the cleaning of the stay.
         Assert.Equal(new HostTodayCleaning(askedAgain.Id, ServiceRequestStatus.Richiesto), cleaning[withTwo.Id]);
         Assert.Null(cleaning[withoutAny.Id]);
         Assert.Null(cleaning[withMaintenanceOnly.Id]);
-        // An arrival has no cleaning to follow.
         Assert.All(today.Arrivals.Items, s => Assert.Null(s.Cleaning));
     }
-
-    // --- The things to do about an intervention ----------------------------------------------------------------
 
     private static async Task<(Fixture World, ServiceRequest Proposal, ServiceRequest Amount, ServiceRequest ToPay)> SeedInterventionsAsync()
     {
@@ -319,8 +297,6 @@ public class HostTodayInterventionsTests
         var toPay = Request(world, world.Trullo, ServiceRequestStatus.Completato, At(10, 6, 8));
         toPay.FinalAmountCents = 8_000;
 
-        // Nothing for the host: a new request nobody proposed anything on (a reminder, at most), one the supplier took, one under
-        // way, one paid, one cancelled, a long-term request, a showcase one.
         world.Db.ServiceRequests.AddRange(
             proposal,
             amount,
@@ -352,7 +328,6 @@ public class HostTodayInterventionsTests
             today.Todo.Items.Select(i => i.Action));
         Assert.Equal([1, 5, 6], today.Todo.Items.Select(i => i.Priority));
         Assert.Equal([proposal.Id, amount.Id, toPay.Id], today.Todo.Items.Select(i => i.ServiceRequestId));
-        // Whom it is about (the supplier), where (the property), never a path.
         Assert.All(today.Todo.Items, item => Assert.Equal("Splendore Pulizie", item.Label));
         Assert.Equal(["Trullo", "Casa Bianca", "Trullo"], today.Todo.Items.Select(i => i.PropertyName));
         Assert.Equal(
@@ -362,7 +337,6 @@ public class HostTodayInterventionsTests
                 new ComplianceMissing(ComplianceMissingCodes.ServiceNotPaid, "payment"),
             ],
             today.Todo.Items.Select(i => Assert.Single(i.Missing)));
-        // The answer is due before the work was to be done; the amount and the payment have no term of their own.
         Assert.Equal([At(10, 12, 8), null, null], today.Todo.Items.Select(i => i.DueAt));
         Assert.All(today.Todo.Items, item => Assert.Null(item.PaymentId));
     }
@@ -372,7 +346,6 @@ public class HostTodayInterventionsTests
     {
         var (world, proposal, _, _) = await SeedInterventionsAsync();
         await using var _ = world.Db;
-        // A request waiting for the host that expires after the proposal's term is due (the 12th at 08:00Z): same priority, later.
         var request = Stay(world, world.Trullo, BookingStatus.Pending, Day(11, 20), Day(11, 23));
         request.PaymentOption = PaymentOption.OnSite;
         request.GuestEmailVerifiedAt = At(10, 8, 12);
@@ -403,7 +376,6 @@ public class HostTodayInterventionsTests
         var withoutMoney = await Service(world.Db).GetTodayAsync(new HostScope(world.OrgId), new HostTodayOptions(IncludePayments: false));
         var withMoney = await Service(world.Db).GetTodayAsync(new HostScope(world.OrgId), new HostTodayOptions(IncludePayments: true));
 
-        // Paying a supplier is a collaborator's job (servicerequest.write), and the item carries no amount.
         Assert.Equal(3, withoutMoney.Todo.Count);
         Assert.Equal(3, withMoney.Todo.Count);
     }
@@ -466,7 +438,6 @@ public class HostTodayInterventionsTests
     {
         var world = await SeedAsync();
         await using var _ = world.Db;
-        // A property still to activate (the lowest priority), and a backlog of jobs to pay (the sixth) longer than the list.
         var toActivate = HostScopeScenario.NewProperty(world.OrgId, "auth0|titolare-sr03b", "Masseria");
         toActivate.CinCode = "IT058091C27G5FFZDZ";
         world.Db.Properties.Add(toActivate);
@@ -480,8 +451,6 @@ public class HostTodayInterventionsTests
         Assert.Equal(HostTodayService.ServiceTodoListSize, today.Todo.Items.Count(i => i.Action == HostTodoAction.PayServiceRequest));
         Assert.Contains(today.Todo.Items, i => i.Action == HostTodoAction.ActivateProperty && i.PropertyId == toActivate.Id);
     }
-
-    // --- The rule that says which request asks something of the host ---------------------------------------------
 
     [Theory]
     [InlineData(ServiceRequestStatus.Richiesto, true, false, HostTodoAction.RespondToServiceRequest)]
@@ -499,7 +468,6 @@ public class HostTodayInterventionsTests
         ServiceRequestStatus status, bool hasProposal, bool needsConfirmation, HostTodoAction? expected)
     {
         Assert.Equal(expected, HostServiceRequestTodoRules.ActionOf(status, hasProposal, needsConfirmation));
-        // The query that finds the requests agrees with the rule.
         var request = new ServiceRequest
         {
             Status = status,

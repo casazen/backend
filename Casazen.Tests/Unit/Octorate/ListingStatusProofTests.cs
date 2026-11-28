@@ -58,13 +58,11 @@ public class ListingStatusProofTests
         var propertyId = await SeedPropertyAsync(OrgA);
         await SeedRowAsync(propertyId, "homeaway", ChannelPublishStatus.Published, externalChange: true, changedGroups: ["descriptions"]);
 
-        // The status of a property of another org does not exist for the caller; the summary lists only the properties of its own scope.
         await using (var asOrgB = NewDb(new FixedTenant(OrgB)))
         {
             Assert.Null(await Status(asOrgB).GetAsync(propertyId, CancellationToken.None));
             Assert.Empty(await Status(asOrgB).GetSummaryAsync(new HostScope(OrgB), CancellationToken.None));
 
-            // The choice about a change is not reachable either: nothing is read from Octorate, nothing is published, nothing is adopted.
             await Assert.ThrowsAsync<NotFoundException>(
                 () => Outside(asOrgB).ResolveAsync(propertyId, "homeaway", OutsideChangeChoice.Take, Host, CancellationToken.None));
         }
@@ -86,8 +84,6 @@ public class ListingStatusProofTests
     [Fact]
     public async Task ListingStatus_Summary_ForACollaboratorGivenSomeProperties_ListsOnlyThoseItWasGiven_Test()
     {
-        // The collaborator «Solo alcuni» (AM-03): the list of the properties carries the state of the channels of the properties it reaches, and of no
-        // other property of the org; one given nothing sees nothing; the whole org sees both.
         var granted = await SeedPropertyAsync(OrgA);
         var hidden = await SeedPropertyAsync(OrgA);
         await SeedRowAsync(granted, "homeaway", ChannelPublishStatus.Published);
@@ -114,8 +110,6 @@ public class ListingStatusProofTests
     [InlineData(OutsideChangeChoice.Take)]
     public async Task ListingOutsideChange_PropertyOfTheOrgOutOfTheReachOfThePerson_NotFound_Test(OutsideChangeChoice choice)
     {
-        // A property of its own org that the person does not reach («Solo alcuni») is as absent as another org's: no republication, no text adopted,
-        // nothing read from Octorate, and the change stays flagged for somebody who reaches the property.
         var propertyId = await SeedPropertyAsync(OrgA);
         await SeedRowAsync(propertyId, "homeaway", ChannelPublishStatus.Published, externalChange: true, changedGroups: ["descriptions"]);
         _scope
@@ -138,7 +132,6 @@ public class ListingStatusProofTests
     [Fact]
     public async Task ListingOutsideChange_NotOverwrittenWithoutChoice_Test()
     {
-        // The content changed on Octorate: it is found and flagged with the groups, reading only; what CasaZen holds is not written over it.
         var propertyId = await SeedPropertyAsync(OrgA);
         var original = new OctorateDescriptions { Description = new Dictionary<string, string> { ["IT"] = "Un appartamento luminoso." } };
         var propertyOnOctorate = new OctorateProperty { Id = Accommodation, Name = "Casa del Lago", Address = "Via del Lago 1", City = "Como", PostalCode = "22100" };
@@ -172,7 +165,6 @@ public class ListingStatusProofTests
             a => a.CreateAsync(It.Is<CreateTodoRequest>(r => r.Type == ActivityType.ListingChangedOutside && r.EntityId == flagged.Id), It.IsAny<CancellationToken>()),
             Times.Once);
 
-        // Detection reads and nothing else: no operation of the client changes anything on Octorate.
         Assert.NotEmpty(_client.Invocations);
         Assert.All(_client.Invocations, call => Assert.StartsWith("Get", call.Method.Name, StringComparison.Ordinal));
     }
@@ -180,8 +172,6 @@ public class ListingStatusProofTests
     [Fact]
     public async Task DetectAsync_AReadThatWorks_ConfirmsThePublishedChannels_AndOnlyThem()
     {
-        // The alert of the 24 hours (ADR-034-R3): a published channel has no process left to follow, so the hourly read of the content is what keeps it
-        // confirmed; an accepted one is confirmed only by the process of its push, so a read of the content does not hide that it never was.
         var propertyId = await SeedPropertyAsync(OrgA);
         var (baseline, propertyOnOctorate, descriptions) = UnchangedOnOctorate();
         await SeedRowAsync(propertyId, "homeaway", ChannelPublishStatus.Published, baseline: baseline, lastSyncedHoursAgo: 30);
@@ -275,8 +265,6 @@ public class ListingStatusProofTests
     [Fact]
     public async Task SyncPropertyAsync_APhotoLeftUnsentByARunThatStopped_IsSentOnceItHasWaited_NotBefore()
     {
-        // The rate limit of the org stops the sending of the photos of a publication and leaves the rest Pending; only the follow-up reads them again,
-        // and not while a publication may still be sending them.
         var propertyId = await SeedPropertyAsync(OrgA);
         var photos = await AddPhotosAsync(propertyId, 2);
         await SeedPhotoTaskAsync(propertyId, photos[0], PhotoUploadStatus.Pending, minutesOld: 30);
@@ -339,7 +327,6 @@ public class ListingStatusProofTests
         Assert.Equal(["booking_xml"], view.CinNotSentTo);
     }
 
-    /// <summary>The listing as Octorate holds it, and the baseline a push of exactly that content left: a read finds no change.</summary>
     private static (ListingChannelBaseline Baseline, OctorateProperty Property, OctorateDescriptions Descriptions) UnchangedOnOctorate()
     {
         var property = new OctorateProperty { Id = Accommodation, Name = "Casa del Lago", Address = "Via del Lago 1", City = "Como", PostalCode = "22100" };
@@ -444,7 +431,6 @@ public class ListingStatusProofTests
         return property.Id;
     }
 
-    /// <summary>Puts <paramref name="count"/> photos in the folder of the property's own photos of the public bucket and returns their addresses.</summary>
     private async Task<List<string>> AddPhotosAsync(Guid propertyId, int count)
     {
         await using var db = NewDb();

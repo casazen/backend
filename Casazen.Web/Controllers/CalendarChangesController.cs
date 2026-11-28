@@ -40,12 +40,6 @@ public class CalendarChangesController(
     /// <summary>The header that says the list of a caller limited to some properties may leave out older changes of its own (<c>true</c>); absent otherwise.</summary>
     public const string TruncatedHeader = "X-Calendar-Changes-Truncated";
 
-    /// <summary>
-    /// The changes of the caller's org it reaches, newest first, at most 50, optionally only those in a <c>state</c> (<c>Applied</c>, <c>Queued</c>, <c>Sending</c>,
-    /// <c>Sent</c>, <c>Confirmed</c>, <c>PartiallySent</c>, <c>Failed</c>). Each is <see cref="CalendarChangeDto"/>. A caller that reaches only some properties reads the 500
-    /// newest changes of the org: when that was not enough to fill its list, the answer carries <see cref="TruncatedHeader"/> <c>true</c> (an older change of its own is still
-    /// read by its id, and a <c>state</c> narrows the read).
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<CalendarChangeDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -60,15 +54,12 @@ public class CalendarChangesController(
 
         var list = await queries.ListAsync(scope, new CalendarChangeListQuery(state, limit ?? CalendarChangeListQuery.MaxLimit), cancellationToken);
 
-        // A caller that reaches only some properties reads the newest changes of the org up to a bound: when the bound was reached before its list was full, older changes of its
-        // own may be left out, and the answer says so (the body stays the list; the header is exposed to the browser by the CORS policy).
         if (list.Truncated)
             Response.Headers[TruncatedHeader] = "true";
 
         return Ok(list.Items.Select(view => CalendarChangeDto.Of(view, localizer)).ToList());
     }
 
-    /// <summary>One change with the state of each property. 404 <c>calendar_change_not_found</c> for another org's, or one of a property the caller does not reach.</summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(CalendarChangeDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -113,12 +104,6 @@ public class CalendarChangesController(
         return updated is null ? ChangeNotFound() : Accepted(CalendarChangeDto.Of(updated, localizer));
     }
 
-    /// <summary>
-    /// What a change would do, and nothing else: per property how many days change, stay as they are, are taken or over, the first five changed days with their values before and
-    /// after, whether the property is on the channel manager and the quota it would use (an estimate), with warnings (<c>property_not_mirrored</c>, <c>room_not_chosen</c>).
-    /// The body is <see cref="CalendarChangeRequestDto"/>. 403 when one property cannot be written (nothing is read), 404 <c>property_not_found</c>, 422 with the stable code of
-    /// what is refused (<c>calendar_day_rule_*</c>, <c>calendar_too_many_properties</c>, <c>calendar_change_no_properties</c>).
-    /// </summary>
     [HttpPost("preview")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(CalendarChangePreviewDto), StatusCodes.Status200OK)]
@@ -165,14 +150,8 @@ public class CalendarChangesController(
         return Created($"/api/calendar/changes/{result.ProcessId}", CalendarChangeDto.Of(view, localizer));
     }
 
-    // --- Helpers -----------------------------------------------------------------------------------------------------------------
-
     private sealed record Prepared(HostScope? Scope, CalendarChangeRequest? Request, ActionResult? Error);
 
-    /// <summary>
-    /// The scope and the request of a preview or an application, or the answer to give instead: 400 for a body that cannot be a request, 403 for a caller with no reach, then
-    /// what the request must look like (422, before anything is read), then the write right on every property (403 for the whole request, 404 for a property that is not found).
-    /// </summary>
     private async Task<Prepared> PrepareAsync(CalendarChangeRequestDto body, CancellationToken cancellationToken)
     {
         if (!ModelState.IsValid || !body.TryToRequest(out var request))
@@ -181,17 +160,11 @@ public class CalendarChangesController(
         if (await ScopeAsync(cancellationToken) is not { } scope)
             return new Prepared(null, null, this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden"));
 
-        // The rules of the shape of the request first (a count of properties, the days, the weekdays, a patch that names a value): a request that cannot be applied
-        // is refused before a property is looked up one by one.
         var ids = CalendarChangeRules.EnsureValid(request);
         var denied = await AuthorizeWriteAsync(ids, cancellationToken);
         return denied is not null ? new Prepared(null, null, denied) : new Prepared(scope, request, null);
     }
 
-    /// <summary>
-    /// Authorizes <c>property.write</c> on every property before anything runs, as <see cref="ManualBlocksController"/> does for one: 404 <c>property_not_found</c> for a
-    /// property of another org (or one that does not exist), 403 for one the caller may not write. <c>null</c> when every property is allowed.
-    /// </summary>
     private async Task<ActionResult?> AuthorizeWriteAsync(IReadOnlyList<Guid> propertyIds, CancellationToken cancellationToken)
     {
         foreach (var propertyId in propertyIds.Distinct())

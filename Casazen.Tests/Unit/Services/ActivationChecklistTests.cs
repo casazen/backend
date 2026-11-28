@@ -4,10 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The activation checklist (PL-15, A1-37, A3-26, PLG-AC10): every step comes from stored state, and a start (a Connect
-/// onboarding begun, a property created) never counts as done.
-/// </summary>
 public class ActivationChecklistTests
 {
     private static OrgEntity ConfiguredOrg(
@@ -71,7 +67,6 @@ public class ActivationChecklistTests
     [Fact]
     public void Build_RoleNotChosenButOnboardingCompletedWithOrgAndConsents_AccountIsDone()
     {
-        // Same facts as HostOnboardingStatus.IsComplete (invite acceptance completes the onboarding without a rental type).
         var facts = new ActivationFacts(false, true, true, ConfiguredOrg(), ActivationPropertyFacts.None, false, true);
 
         var status = ActivationChecklist.Build(facts);
@@ -98,8 +93,6 @@ public class ActivationChecklistTests
 
         Assert.Equal(ActivationStepStates.Todo, Step(status, "account").State);
     }
-
-    // ─── Organization (name and slug) ────────────────────────────────────────────
 
     [Fact]
     public void Build_OrgWithGeneratedSlug_OrganizationIsTodo()
@@ -136,8 +129,6 @@ public class ActivationChecklistTests
         Assert.Null(step.Reason);
     }
 
-    // ─── Property and CIN ────────────────────────────────────────────────────────
-
     [Fact]
     public void Build_NoProperty_PropertyIsTodoAndCinAndSiteAreBlocked()
     {
@@ -168,8 +159,6 @@ public class ActivationChecklistTests
             expectedState == ActivationStepStates.Done ? null : ActivationStepReasons.CinMissingOrInvalid,
             step.Reason);
     }
-
-    // ─── Payments (Stripe Connect) ───────────────────────────────────────────────
 
     [Fact]
     public void Build_NoConnectedAccount_PaymentsIsTodo()
@@ -207,7 +196,6 @@ public class ActivationChecklistTests
     [Fact]
     public void Build_ChargesEnabledWithoutAConnectedAccount_PaymentsIsNotDone()
     {
-        // The checkout refuses it too (Org.CanTakeDirectPayments): a flag alone is no evidence.
         var org = ConfiguredOrg(connectedAccountId: null, chargesEnabled: true);
 
         var step = Step(ActivationChecklist.Build(Facts(org)), "payments");
@@ -224,8 +212,6 @@ public class ActivationChecklistTests
         Assert.Null(step.Reason);
     }
 
-    // ─── Site published ──────────────────────────────────────────────────────────
-
     [Fact]
     public void Build_PublishedPropertyAndChargesEnabled_SiteIsPublished()
     {
@@ -241,7 +227,6 @@ public class ActivationChecklistTests
     [Fact]
     public void Build_PublishedPropertyButChargesDisabled_SiteIsNotPublished()
     {
-        // A3-26: the link exists but every guest would get a 409 at the checkout.
         var org = ConfiguredOrg(chargesEnabled: false);
 
         var status = ActivationChecklist.Build(Facts(org, OnePublished()));
@@ -265,7 +250,6 @@ public class ActivationChecklistTests
     [Fact]
     public void Build_OnlyPausedProperties_SiteIsNotPublishedAndSaysTheyArePaused()
     {
-        // PC-03: a paused property is hidden from the public site, so it does not make a published site.
         var properties = new ActivationPropertyFacts(Total: 2, WithValidCin: 2, Published: 0, PausedByHost: 2, ComplianceNotActive: 0);
 
         var status = ActivationChecklist.Build(Facts(ConfiguredOrg(), properties));
@@ -331,8 +315,6 @@ public class ActivationChecklistTests
         Assert.Equal(ActivationStepStates.Blocked, Step(status, "sitePublished").State);
         Assert.Equal(ActivationStepReasons.OrgInactive, Step(status, "sitePublished").Reason);
     }
-
-    // ─── First booking and activation ────────────────────────────────────────────
 
     [Fact]
     public void Build_SiteNotPublished_FirstBookingIsBlocked()

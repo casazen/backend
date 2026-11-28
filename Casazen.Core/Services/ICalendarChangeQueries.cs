@@ -20,7 +20,6 @@ public interface ICalendarChangeQueries
     /// </summary>
     Task<CalendarChangeList> ListAsync(HostScope scope, CalendarChangeListQuery query, CancellationToken cancellationToken = default);
 
-    /// <summary>The process of the org of <paramref name="scope"/> with this id, or <c>null</c> when it is not there, is another org's or touches a property the caller does not reach.</summary>
     Task<CalendarChangeView?> GetAsync(HostScope scope, Guid id, CancellationToken cancellationToken = default);
 }
 
@@ -32,34 +31,23 @@ public interface ICalendarChangeQueries
 /// </param>
 public sealed record CalendarChangeList(IReadOnlyList<CalendarChangeView> Items, bool Truncated);
 
-/// <summary>What a list of changes is narrowed by.</summary>
-/// <param name="State">Only the processes in this state; <c>null</c> for every state.</param>
-/// <param name="Limit">How many at most (1 to <see cref="MaxLimit"/>); <see cref="MaxLimit"/> when it is out of range.</param>
 public sealed record CalendarChangeListQuery(CalendarChangeState? State = null, int Limit = CalendarChangeListQuery.MaxLimit)
 {
-    /// <summary>The most processes a list answers.</summary>
     public const int MaxLimit = 50;
 
-    /// <summary>The limit of the list: <see cref="Limit"/>, or <see cref="MaxLimit"/> when it is not between 1 and <see cref="MaxLimit"/>.</summary>
     public int EffectiveLimit => Limit is >= 1 and <= MaxLimit ? Limit : MaxLimit;
 }
 
-/// <summary>Where one property of a change stands, from its chunks.</summary>
 public enum CalendarChangePropertyState
 {
-    /// <summary>A chunk of the property is still to send.</summary>
     Pending = 0,
 
-    /// <summary>The channel manager accepted the property's chunks; none is confirmed yet.</summary>
     Accepted = 1,
 
-    /// <summary>The channel manager confirmed the chunks of the property.</summary>
     Confirmed = 2,
 
-    /// <summary>A chunk of the property failed (<see cref="CalendarChangePropertyView.ErrorCode"/> says why).</summary>
     Failed = 3,
 
-    /// <summary>Nothing was sent for the property: it is not on the channel manager, the change stays in CasaZen.</summary>
     Skipped = 4,
 }
 

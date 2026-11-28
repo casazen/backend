@@ -5,7 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Seo;
 
-/// <summary>The summary of the tourist tax a public page shows: only the simple, real case, never a choice among several rates.</summary>
 public class SeoTouristTaxFactsTests
 {
     private static PublicTouristTaxRateSummaryDto Rate(

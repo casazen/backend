@@ -51,7 +51,6 @@ public sealed partial class LeaseTemplateDraftsTests
     public async Task Autofill_MissingData_BlocksFinalAndMarksPreview(string field, string placeholder)
     {
         var lease = BuildAutofillLease(FiscalRegime.RegimeOrdinario);
-        // Only the second tenant is incomplete: the first one's data must not hide that omission.
         var tenant = lease.Parties.Single(p => p.Role == PartyRole.Tenant && p.Position == 1);
         switch (field)
         {

@@ -32,7 +32,6 @@ public class CheckInOctorateSyncServiceTests
     [Fact]
     public async Task OctorateCheckIn_DraftFalseOnlyWhenSenderIsChannelManager_Test()
     {
-        // The pure rule, for every sender there is.
         Assert.All(
             Enum.GetValues<ComplianceSenderType>(),
             sender => Assert.Equal(sender != ComplianceSenderType.ChannelManager, OctorateCheckInMapper.DraftFor(sender)));
@@ -61,7 +60,6 @@ public class CheckInOctorateSyncServiceTests
             if (sender != ComplianceSenderType.ChannelManager)
                 Assert.DoesNotContain(h.Sent, upsert => !upsert.Draft);
 
-            // The Octorate id of each guest is kept, with the way it was sent.
             await using var db = h.NewDb();
             var links = await db.StayGuestOctorateLinks.OrderBy(l => l.Position).ToListAsync();
             Assert.Equal(new[] { 0, 1 }, links.Select(l => l.Position));
@@ -94,8 +92,6 @@ public class CheckInOctorateSyncServiceTests
     [Fact]
     public async Task OctorateCheckIn_OnlyAStayThatOwesACommunicationSendsGuests_Test()
     {
-        // A request still waiting (WAITING on Octorate), a cancelled booking and a no-show owe no police communication: nothing leaves, even with
-        // the channel manager as sender, and no row is created.
         foreach (var (status, noShow) in new[] { (BookingStatus.Pending, false), (BookingStatus.Cancelled, false), (BookingStatus.Confirmed, true) })
         {
             var h = await Harness.CreateAsync(ComplianceSenderType.ChannelManager, status: status, noShow: noShow);
@@ -150,19 +146,16 @@ public class CheckInOctorateSyncServiceTests
             Assert.Null(line.Reference);
         }
 
-        // Nothing changed: nothing is sent, and no second line.
         var again = await h.Service().SendGuestsAsync(h.BookingId, CancellationToken.None);
         Assert.Equal(OctorateCheckInSendState.NothingToSend, again.State);
         await using (var db = h.NewDb())
             Assert.Single(await db.ComplianceSendLogEntries.ToListAsync());
 
-        // A guest changed after the send goes again: another send, another line.
         await h.ChangeGuestAsync(0, "Verdi");
         Assert.Equal(OctorateCheckInSendState.Sent, (await h.Service().SendGuestsAsync(h.BookingId, CancellationToken.None)).State);
         await using (var db = h.NewDb())
             Assert.Equal(2, await db.ComplianceSendLogEntries.CountAsync());
 
-        // A send Octorate refused writes no line.
         var failing = await Harness.CreateAsync(ComplianceSenderType.ChannelManager);
         failing.ClientFails(CheckInErrorCodes.Server);
         Assert.Equal(OctorateCheckInSendState.Failed, (await failing.Service().SendGuestsAsync(failing.BookingId, CancellationToken.None)).State);
@@ -189,14 +182,12 @@ public class CheckInOctorateSyncServiceTests
         await using (var db = partly.NewDb())
             Assert.Single(await db.ComplianceSendLogEntries.ToListAsync());
 
-        // A draft is not sent to the police (Octorate transmits what is not a draft): no line.
         var draft = await Harness.CreateAsync(ComplianceSenderType.Manual, sendWhenNotChannelManager: true);
         var drafted = await draft.Service().SendGuestsAsync(draft.BookingId, CancellationToken.None);
         Assert.True(drafted.Draft);
         await using (var db = draft.NewDb())
             Assert.Empty(await db.ComplianceSendLogEntries.ToListAsync());
 
-        // A stay that owes nothing sends nothing and writes nothing.
         var noShow = await Harness.CreateAsync(ComplianceSenderType.ChannelManager, noShow: true);
         await noShow.Service().SendGuestsAsync(noShow.BookingId, CancellationToken.None);
         await using (var db = noShow.NewDb())
@@ -216,7 +207,6 @@ public class CheckInOctorateSyncServiceTests
 
         var retried = await h.Service().RetryGuestsAsync(h.BookingId, CancellationToken.None);
 
-        // Only the failed position travels (created: it had no id); the changed guest and the added one are not pushed by the job.
         Assert.Equal(OctorateCheckInSendState.Sent, retried.State);
         Assert.False(retried.CorrectionAfterSend);
         Assert.Equal(1, Assert.Single(h.Sent).Position);
@@ -234,7 +224,6 @@ public class CheckInOctorateSyncServiceTests
         Assert.Equal(OctorateCheckInSendState.NothingToSend, again.State);
         Assert.Single(h.Sent);
 
-        // The confirmation of the wizard (the full send) is what sends the guest that changed and the one that was added.
         var confirmed = await h.Service().SendGuestsAsync(h.BookingId, CancellationToken.None);
         Assert.Equal(OctorateCheckInSendState.Sent, confirmed.State);
         Assert.Equal(new[] { 0, 2 }, h.Sent.Skip(1).Select(u => u.Position).Order());
@@ -265,7 +254,6 @@ public class CheckInOctorateSyncServiceTests
         await using (var db = arrived.NewDb())
             Assert.Empty(await db.OctorateStayStateSyncs.ToListAsync());
 
-        // The first push finds the arrival already registered: nothing is called and no row is made.
         var late = await Harness.CreateAsync(ComplianceSenderType.ChannelManager, status: BookingStatus.CheckedIn);
 
         var first = await late.Service().SetStayStateAsync(late.BookingId, OctorateStayState.NoShow, CancellationToken.None);
@@ -279,7 +267,6 @@ public class CheckInOctorateSyncServiceTests
     [Fact]
     public async Task OctorateCheckIn_ChangeAfterAGuestWasSentToThePolice_UpdatesOctorateAndWarnsTheHost_Test()
     {
-        // The channel manager is the sender: the guests go with draft = false, that is Octorate transmits them to the police.
         var h = await Harness.CreateAsync(ComplianceSenderType.ChannelManager);
         var first = await h.Service().SendGuestsAsync(h.BookingId, CancellationToken.None);
         var unchanged = await h.Service().SendGuestsAsync(h.BookingId, CancellationToken.None);
@@ -303,7 +290,6 @@ public class CheckInOctorateSyncServiceTests
         Assert.Equal("guest-1", update.OctorateGuestId);
         Assert.Equal("Verdi", update.FamilyName);
 
-        // A guest sent as a draft (another sender, with the switch on) was not transmitted: changing it warns nobody.
         var draft = await Harness.CreateAsync(ComplianceSenderType.Manual, sendWhenNotChannelManager: true);
         await draft.Service().SendGuestsAsync(draft.BookingId, CancellationToken.None);
         await draft.ChangeGuestAsync(1, "Verdi");
@@ -332,7 +318,6 @@ public class CheckInOctorateSyncServiceTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => h.Service().SendGuestsAsync(h.BookingId, CancellationToken.None));
 
-        // When the call was made both guests were already on record as pending, first attempt: nothing is lost if the call never comes back.
         Assert.Equal(new[] { (0, OctorateSyncStatus.Pending, 1), (1, OctorateSyncStatus.Pending, 1) }, during);
 
         // The retry job takes them up, and they go through.
@@ -347,7 +332,6 @@ public class CheckInOctorateSyncServiceTests
     [Fact]
     public async Task OctorateCheckIn_AStateIsSentOnce_Test()
     {
-        // NF-45, AC-NF45-1: a state of the stay goes to Octorate once; asked again, it answers that it was sent and calls nothing.
         var h = await Harness.CreateAsync(ComplianceSenderType.ChannelManager, noShow: true);
 
         var first = await h.Service().SetStayStateAsync(h.BookingId, OctorateStayState.NoShow, CancellationToken.None);
@@ -377,7 +361,6 @@ public class CheckInOctorateSyncServiceTests
         Assert.All(first.Guests.Concat(second.Guests), g => Assert.Equal(CheckInErrorCodes.Server, g.ErrorCode));
         h.Activities.Verify(a => a.CreateAsync(It.IsAny<CreateTodoRequest>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // The third attempt is the last: one "To do" for the booking (no guest data in it), and its id is kept on the links.
         await h.Service().RetryGuestsAsync(h.BookingId, CancellationToken.None);
         h.Activities.Verify(
             a => a.CreateAsync(
@@ -400,7 +383,6 @@ public class CheckInOctorateSyncServiceTests
         var exhausted = await h.Service().RetryGuestsAsync(h.BookingId, CancellationToken.None);
         Assert.Equal(OctorateCheckInSendState.NothingToSend, exhausted.State);
 
-        // The confirmation goes through at last: the guests are sent and the "To do" is closed.
         h.ClientSucceeds();
         var done = await h.Service().SendGuestsAsync(h.BookingId, CancellationToken.None);
 
@@ -429,11 +411,9 @@ public class CheckInOctorateSyncServiceTests
         h.Activities.Verify(a => a.CreateAsync(It.IsAny<CreateTodoRequest>(), It.IsAny<CancellationToken>()), Times.Never);
         var second = await h.Service().SetStayStateAsync(h.BookingId, OctorateStayState.NoShow, CancellationToken.None);
 
-        // Kept as failed with the code; the second attempt is the last, and raises the one "To do".
         Assert.Equal(OctorateStayStateOutcome.Failed, first.Outcome);
         Assert.Equal(CheckInErrorCodes.Server, first.ErrorCode);
         Assert.Equal(OctorateStayStateOutcome.Failed, second.Outcome);
-        // E20/F01/US01/T01: a state of the stay that keeps failing has its own reason (the arrival and the departure share it).
         h.Activities.Verify(
             a => a.CreateAsync(It.Is<CreateTodoRequest>(r => r.Reason == CheckInOctorateSyncService.StayStateTodoReason), It.IsAny<CancellationToken>()),
             Times.Once);
@@ -445,7 +425,6 @@ public class CheckInOctorateSyncServiceTests
             Assert.Equal(Harness.TodoId, failed.TodoActivityId);
         }
 
-        // It goes through at last: sent, and the "To do" is closed.
         h.Client
             .Setup(c => c.SetCheckInStatusAsync(Accommodation, Reservation, OctorateCheckInStatus.NoShow, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -462,19 +441,16 @@ public class CheckInOctorateSyncServiceTests
     [Fact]
     public async Task OctorateCheckIn_NoWriteWithoutConfirmedMapping_Test()
     {
-        // A listing only proposed, ambiguous or rejected: not mirrored.
         foreach (var status in new[] { OctorateMappingStatus.Proposed, OctorateMappingStatus.Ambiguous, OctorateMappingStatus.Rejected })
         {
             var h = await Harness.CreateAsync(ComplianceSenderType.ChannelManager, mappingStatus: status);
             await AssertNothingWrittenAsync(h, CheckInOctorateSyncService.ReasonMappingNotConfirmed);
         }
 
-        // A confirmed listing whose writes are blocked: not mirrored either.
         var blocked = await Harness.CreateAsync(ComplianceSenderType.ChannelManager, writesBlocked: true);
         await AssertNothingWrittenAsync(blocked, CheckInOctorateSyncService.ReasonWritesBlocked);
     }
 
-    /// <summary>No guest and no state of the stay leaves, no row is created, and the status says the booking is not mirrored.</summary>
     private static async Task AssertNothingWrittenAsync(Harness h, string reason)
     {
         var service = h.Service();
@@ -493,13 +469,8 @@ public class CheckInOctorateSyncServiceTests
         Assert.Empty(await db.OctorateStayStateSyncs.ToListAsync());
     }
 
-    /// <summary>
-    /// A confirmed stay of org A on a property of a connected org (sandbox), with a reservation on Octorate and two registered guests (a head of
-    /// family and a member); the sender of the property, the switch, the mapping and the write block are the test's.
-    /// </summary>
     private sealed class Harness
     {
-        /// <summary>The "To do" the activity service answers for the booking (the open one is returned each time, as the real service does).</summary>
         public static readonly Guid TodoId = Guid.Parse("7c1d9e20-3a4b-4c5d-8e6f-a1b2c3d4e5f6");
 
         private readonly string _database = $"octorate-checkin-{Guid.NewGuid():N}";
@@ -524,17 +495,14 @@ public class CheckInOctorateSyncServiceTests
 
         public Mock<IInternalActivityService> Activities { get; } = new();
 
-        /// <summary>Every guest payload the client received, in order of the calls.</summary>
         public List<OctorateCheckInGuestUpsert> Sent { get; } = [];
 
-        /// <summary>The attempts of a write before the "To do" is raised (<c>Octorate:CheckInMaxAttempts</c>).</summary>
         public Harness MaxAttempts(int attempts)
         {
             _maxAttempts = attempts;
             return this;
         }
 
-        /// <summary>The Octorate client accepts every guest: it creates the ones with no id and updates the others, and keeps what it was sent.</summary>
         public void ClientSucceeds() =>
             Client
                 .Setup(c => c.UpsertCheckInGuestsAsync(
@@ -547,7 +515,6 @@ public class CheckInOctorateSyncServiceTests
                         .ToArray();
                 });
 
-        /// <summary>The Octorate client refuses every guest with <paramref name="errorCode"/> (a typed Octorate error as the client reports it).</summary>
         public void ClientFails(string errorCode) =>
             Client
                 .Setup(c => c.UpsertCheckInGuestsAsync(
@@ -558,7 +525,6 @@ public class CheckInOctorateSyncServiceTests
                     return guests.Select(g => new OctorateCheckInGuestResult(g.Position, null, false, null, errorCode)).ToArray();
                 });
 
-        /// <summary>A guest of the stay added after the first registration.</summary>
         public async Task AddGuestAsync(int position)
         {
             await using var db = NewDb();
@@ -566,7 +532,6 @@ public class CheckInOctorateSyncServiceTests
             await db.SaveChangesAsync();
         }
 
-        /// <summary>The surname of a registered guest changed after it was sent.</summary>
         public async Task ChangeGuestAsync(int position, string lastName)
         {
             await using var db = NewDb();
@@ -575,7 +540,6 @@ public class CheckInOctorateSyncServiceTests
             await db.SaveChangesAsync();
         }
 
-        /// <summary>The link of a guest as an earlier send left it.</summary>
         public async Task AddLinkAsync(int position, OctorateSyncStatus status, int attempts, string payloadHash, string? octorateGuestId)
         {
             await using var db = NewDb();
@@ -594,7 +558,6 @@ public class CheckInOctorateSyncServiceTests
             await db.SaveChangesAsync();
         }
 
-        /// <summary>The row of a state of the stay as an earlier push left it.</summary>
         public async Task AddStateRowAsync(OctorateStayState state, OctorateSyncStatus status, int attempts)
         {
             await using var db = NewDb();

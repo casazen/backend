@@ -27,7 +27,6 @@ public sealed record OctorateConnectionSummary(
     bool? UserLogged,
     DateTime? LoginAt = null)
 {
-    /// <summary>The <c>status</c> of a connection that works.</summary>
     public const string EnabledStatus = "ENABLED";
 
     /// <summary>

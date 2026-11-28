@@ -30,8 +30,6 @@ public static partial class LegalDocumentTemplate
         var missing = new SortedSet<string>(StringComparer.Ordinal);
         var problems = new SortedSet<string>(StringComparer.Ordinal);
 
-        // HTML comments are the metadata of the file (draft notice, version, rules): they may mention "{{...}}" and are
-        // never part of the text.
         var text = CommentRegex().Replace(template, string.Empty);
         text = BlockRegex().Replace(text, match =>
         {
@@ -64,14 +62,12 @@ public static partial class LegalDocumentTemplate
             return value;
         });
 
-        // Anything left is a malformed placeholder (a nested or unclosed condition, a bad token): never shown to a reader.
         if (text.Contains("{{", StringComparison.Ordinal) || text.Contains("}}", StringComparison.Ordinal))
             problems.Add("malformed placeholder syntax (unclosed, nested or badly named)");
 
         return new Result(text, [.. missing], [.. problems]);
     }
 
-    /// <summary>Tokens (outside and inside conditions) the template refers to, for the checks of the texts.</summary>
     public static IReadOnlySet<string> TokensIn(string template)
     {
         var tokens = new HashSet<string>(StringComparer.Ordinal);

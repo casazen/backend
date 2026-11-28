@@ -26,17 +26,10 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IOwnerTaxChecks
 {
-    /// <summary>True while <c>Features:TaxReportingExports</c> is on: the warnings of the UI (readiness, statement flag, «Da fare», endpoints) are made.</summary>
     bool WarningsEnabled { get; }
 
-    /// <summary>
-    /// The check of the limit of units for each owner of <paramref name="orgId"/> among <paramref name="ownerIds"/> on <paramref name="asOf"/> (a Rome day): the apartments
-    /// the agency manages for the owner (an Italian property in short-rent mode with an ownership of the owner in force that day) plus the ones the owner declared outside
-    /// the agency. An owner that is not in the org is not in the answer; an empty list is an empty answer.
-    /// </summary>
     Task<IReadOnlyDictionary<Guid, OwnerUnitsCheck>> CheckUnitsAsync(Guid orgId, IReadOnlyCollection<Guid> ownerIds, DateOnly asOf, CancellationToken ct = default);
 
-    /// <summary>The check of the limit of units of one owner today. 404 <c>owner_not_found</c> (also an owner outside the reach of the caller).</summary>
     Task<OwnerUnitsCheck> GetUnitsCheckAsync(HostScope scope, Guid ownerId, CancellationToken ct = default);
 
     /// <summary>
@@ -54,10 +47,6 @@ public interface IOwnerTaxChecks
     /// </summary>
     Task<ShortLetTaxDecision> DecideAsync(HostScope scope, DecideShortLetTaxCommand command, string userId, CancellationToken ct = default);
 
-    /// <summary>
-    /// The stays of a company tenant in reach with their decision (the current one), the most recent check-out first, at most <see cref="OwnerTaxLimits.MaxCases"/>; with
-    /// <paramref name="state"/> only the ones still waiting for a decision or only the ones decided.
-    /// </summary>
     Task<IReadOnlyList<CompanyTenantCase>> ListCompanyTenantCasesAsync(HostScope scope, CompanyTenantCaseState? state, CancellationToken ct = default);
 
     /// <summary>
@@ -96,33 +85,22 @@ public sealed record OwnerUnitsCheck(
     int MaxUnits,
     bool PresumedBusiness);
 
-/// <summary>A decision about the regime of a stay: the booking, the regime and the note. The regime is required (never one by omission).</summary>
 public sealed record DecideShortLetTaxCommand
 {
-    /// <summary>The stay (a booking of the caller's org).</summary>
     public Guid BookingId { get; init; }
 
-    /// <summary>The regime to apply: <see cref="ShortLetTaxRegime.ShortLet"/> or <see cref="ShortLetTaxRegime.NotShortLet"/>. Required.</summary>
     public ShortLetTaxRegime? Regime { get; init; }
 
-    /// <summary>Why: 1 to <see cref="ShortLetTaxDecision.ReasonMaxLength"/> characters, no control characters. Required.</summary>
     public string? Reason { get; init; }
 }
 
-/// <summary>Which stays of a company tenant a list asks for.</summary>
 public enum CompanyTenantCaseState
 {
-    /// <summary>Still waiting for a decision.</summary>
     Pending = 1,
 
-    /// <summary>A decision was recorded (the current one is shown).</summary>
     Decided = 2,
 }
 
-/// <summary>
-/// A stay of a company tenant in the property of a private owner (<c>GET api/owner-tax-decisions</c>): what the person needs to find it (the code of the booking, the
-/// property, the dates) and the current decision, if any. Never the name of the tenant or its fiscal data.
-/// </summary>
 public sealed record CompanyTenantCase(
     Guid BookingId,
     string BookingCode,
@@ -148,49 +126,33 @@ public sealed record StayShortLetTreatment(
     ShortLetTaxRegime? Decision,
     DateTime? DecidedAt);
 
-/// <summary>The codes of the reason of a <see cref="StayShortLetTreatment"/> (cross-repo contract): never rename one.</summary>
 public static class ShortLetTreatmentReasons
 {
-    /// <summary>The stay is a short let: the default, also a company tenant nobody decided about.</summary>
     public const string ShortLet = "short_let";
 
-    /// <summary>The owner is past the limit of units: a business, no short-let regime.</summary>
     public const string OwnerPresumedBusiness = "owner_presumed_business";
 
-    /// <summary>A person decided that the stay of a company tenant stays a short let.</summary>
     public const string CompanyTenantShortLet = "company_tenant_short_let";
 
-    /// <summary>A person decided that the stay of a company tenant is not a short let.</summary>
     public const string CompanyTenantNotShortLet = "company_tenant_not_short_let";
 }
 
-/// <summary>The stable codes of the checks of the owners, with the keys of their messages in <c>SharedResources</c>.</summary>
 public static class OwnerTaxErrors
 {
-    /// <summary>422 (with the <c>field</c>): the decision names no booking, no regime of the enum or no usable reason.</summary>
     public const string DecisionInvalid = "owner_tax_decision_invalid";
 
-    /// <summary>422: the stay is not one of a company tenant in the property of a private owner, so it needs no decision.</summary>
     public const string DecisionNotApplicable = "owner_tax_decision_not_applicable";
 
-    /// <summary>422 (with the <c>field</c>): the number of apartments declared outside the agency is not a count.</summary>
     public const string ExternalUnitsInvalid = "owner_external_units_invalid";
 
-    /// <summary>404: no booking of the caller's org has that id (also one outside the reach).</summary>
     public const string BookingNotFound = "booking_not_found";
 }
 
-/// <summary>The limits of the checks of the owners.</summary>
 public static class OwnerTaxLimits
 {
-    /// <summary>The most stays of a company tenant a list answers: the most recent ones.</summary>
     public const int MaxCases = 200;
 }
 
-/// <summary>
-/// The rules of the two checks, pure (E18/F01/US03/T01): reading only what they are given, so the service, the readiness, the statement and the tests apply the same
-/// definition.
-/// </summary>
 public static class OwnerTaxRules
 {
     /// <summary>
@@ -225,11 +187,6 @@ public static class OwnerTaxRules
         return new OwnerUnitsCheck(ownerId, applies, managed, external, total, max, applies && inForce && total > max);
     }
 
-    /// <summary>
-    /// The stay needs a decision about its regime: it is active (<see cref="Regulatory.AlloggiatiStatusRules.ActiveBookingStatuses"/> and no no-show: the one definition),
-    /// in an Italian property, of at most <paramref name="maxStayNights"/> nights (beyond them it is no short let at all), its invoice data names a company, and one of the
-    /// owners on the day is a private natural person. A stay of a company owner, or one whose guest is a private person, needs none.
-    /// </summary>
     public static bool IsCompanyTenantCase(
         bool active,
         bool italianProperty,
@@ -248,7 +205,6 @@ public static class OwnerTaxRules
                && ownersOnTheDay.Any(o => IsNaturalPrivate(o.Kind, o.Regime));
     }
 
-    /// <summary>The decision in force for a stay: the latest (then the one with the greatest id, always the same). <c>null</c> without one.</summary>
     public static ShortLetTaxDecision? CurrentDecision(IEnumerable<ShortLetTaxDecision> decisions)
     {
         ArgumentNullException.ThrowIfNull(decisions);
@@ -283,6 +239,5 @@ public static class OwnerTaxRules
             current.DecidedAt);
     }
 
-    /// <summary>The nights of a stay: the days between the check-in and the check-out day.</summary>
     public static int Nights(DateTime checkIn, DateTime checkOut) => (DateOnly.FromDateTime(checkOut).DayNumber - DateOnly.FromDateTime(checkIn).DayNumber);
 }

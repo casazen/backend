@@ -4,10 +4,6 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Casazen.Infrastructure.Data.Configurations;
 
-/// <summary>
-/// The append-only owner ledger (E06/F05/US02/T02, AC-NF110-1): one key per org (the same facts are posted once), a line reversed at most once, the
-/// owner, the property and the reversed line restrict (a line is evidence).
-/// </summary>
 internal sealed class OwnerLedgerEntryConfiguration : IEntityTypeConfiguration<OwnerLedgerEntry>
 {
     public void Configure(EntityTypeBuilder<OwnerLedgerEntry> entity)
@@ -28,7 +24,6 @@ internal sealed class OwnerLedgerEntryConfiguration : IEntityTypeConfiguration<O
     }
 }
 
-/// <summary>The versions of the owner statements (E06/F05/US02/T02, AC-NF110-2): one number per owner and month, guarded by the row version.</summary>
 internal sealed class OwnerStatementVersionConfiguration : IEntityTypeConfiguration<OwnerStatementVersion>
 {
     public void Configure(EntityTypeBuilder<OwnerStatementVersion> entity)
@@ -45,7 +40,6 @@ internal sealed class OwnerStatementVersionConfiguration : IEntityTypeConfigurat
     }
 }
 
-/// <summary>The months of the owners (E06/F05/US02/T02, AC-NF110-3): one row per owner and month, guarded by the row version.</summary>
 internal sealed class OwnerClosePeriodConfiguration : IEntityTypeConfiguration<OwnerClosePeriod>
 {
     public void Configure(EntityTypeBuilder<OwnerClosePeriod> entity)
@@ -57,7 +51,6 @@ internal sealed class OwnerClosePeriodConfiguration : IEntityTypeConfiguration<O
     }
 }
 
-/// <summary>The charges and expenses of the owners (E06/F05/US02/T02): the property and the owner restrict, a positive amount, a valid range.</summary>
 internal sealed class OwnerChargeConfiguration : IEntityTypeConfiguration<OwnerCharge>
 {
     public void Configure(EntityTypeBuilder<OwnerCharge> entity)
@@ -73,10 +66,6 @@ internal sealed class OwnerChargeConfiguration : IEntityTypeConfiguration<OwnerC
     }
 }
 
-/// <summary>
-/// The links to the invoices of the external fiscal systems (E06/F01/US02/T05): the version and the owner restrict; one live link per version, provider
-/// and external id.
-/// </summary>
 internal sealed class OwnerExternalDocumentReferenceConfiguration : IEntityTypeConfiguration<OwnerExternalDocumentReference>
 {
     public void Configure(EntityTypeBuilder<OwnerExternalDocumentReference> entity)
@@ -90,7 +79,6 @@ internal sealed class OwnerExternalDocumentReferenceConfiguration : IEntityTypeC
     }
 }
 
-/// <summary>The payouts to the owners (E06/F05/US02/T03): one per org and key, the owner and the version restrict.</summary>
 internal sealed class OwnerPayoutConfiguration : IEntityTypeConfiguration<OwnerPayout>
 {
     public void Configure(EntityTypeBuilder<OwnerPayout> entity)
@@ -105,7 +93,6 @@ internal sealed class OwnerPayoutConfiguration : IEntityTypeConfiguration<OwnerP
     }
 }
 
-/// <summary>The withholding evidence (E06/F05/US02/T03): append-only, one decision per payout, a decision reversed at most once.</summary>
 internal sealed class TaxObligationEvidenceConfiguration : IEntityTypeConfiguration<TaxObligationEvidence>
 {
     public void Configure(EntityTypeBuilder<TaxObligationEvidence> entity)
@@ -123,7 +110,6 @@ internal sealed class TaxObligationEvidenceConfiguration : IEntityTypeConfigurat
     }
 }
 
-/// <summary>The annual tax datasets (E06/F05/US02/T03): one per org, kind and year.</summary>
 internal sealed class TaxReportingDatasetConfiguration : IEntityTypeConfiguration<TaxReportingDataset>
 {
     public void Configure(EntityTypeBuilder<TaxReportingDataset> entity)
@@ -133,7 +119,6 @@ internal sealed class TaxReportingDatasetConfiguration : IEntityTypeConfiguratio
     }
 }
 
-/// <summary>The exchange rates of the owner accounting (E06/F05/US02/T02): one per org, pair and day, positive.</summary>
 internal sealed class OwnerFxRateConfiguration : IEntityTypeConfiguration<OwnerFxRate>
 {
     public void Configure(EntityTypeBuilder<OwnerFxRate> entity)

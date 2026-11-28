@@ -71,7 +71,6 @@ public class SwissNotificationControllerTests
         SetUpService(GivenProperty);
         var controller = NewController(GivenPropertyOnly());
 
-        // The property it was given is served: the denial below comes from the scope, not from the wiring.
         Assert.IsNotType<ForbidResult>(await CallAsync(controller, endpoint, GivenProperty));
 
         var refused = await CallAsync(controller, endpoint, OtherProperty);
@@ -147,8 +146,6 @@ public class SwissNotificationControllerTests
     [Fact]
     public void TheDay_AsksToReadTheGuests_AndTheWholeController_AsksToReadTheBookingsBehindTheFlag()
     {
-        // The day lists the guests by name with the number of their document: guest.read on top of the class's booking.read; and the class is behind Features:GuestRegistrationRegimes
-        // (404 before authentication while it is off), like the card of the regime.
         var day = typeof(SwissNotificationController).GetMethod(nameof(SwissNotificationController.GetNotificationDay))!;
         Assert.Equal(CasazenPolicies.GuestRead, day.GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true).Cast<AuthorizeAttribute>().Single().Policy);
         Assert.Equal(
@@ -208,7 +205,6 @@ public class SwissNotificationControllerTests
     [Fact]
     public void TheJsonOfTheClients_KeepsTheNamesOfTheBrief()
     {
-        // The frontend slice (E31/F02/US02/T02) reads these names: they are the contract.
         var web = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } };
         var localizer = new Mock<IStringLocalizer<SharedResources>>();
         localizer.Setup(l => l[It.IsAny<string>()]).Returns((string key) => new LocalizedString(key, key));
@@ -243,8 +239,6 @@ public class SwissNotificationControllerTests
             ["arrivalDay", "created", "declaredAt", "declaredBy", "propertyId", "regimeCode"],
             answer.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
     }
-
-    // ─── Helpers ───
 
     private void VerifyNeverCalledFor(Guid propertyId)
     {

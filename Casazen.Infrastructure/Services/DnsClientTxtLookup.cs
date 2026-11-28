@@ -4,10 +4,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// DNS TXT lookup backed by <c>DnsClient</c> (#298). Kept behind <see cref="IDnsTxtLookup"/> so
-/// <see cref="DomainVerificationService"/> can be unit tested without real DNS traffic.
-/// </summary>
 public class DnsClientTxtLookup(ILogger<DnsClientTxtLookup> logger) : IDnsTxtLookup
 {
     private readonly LookupClient _lookupClient = new();

@@ -3,9 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services.ICal;
 
-/// <summary>
-/// PC-10 (A2-10, A2-12, A2-23, A9-13): the iCal reader on synthetic feeds, without network.
-/// </summary>
 public class ICalFeedParserTests
 {
     private static readonly DateOnly WindowFrom = new(2026, 9, 1);
@@ -77,18 +74,15 @@ public class ICalFeedParserTests
         Assert.Equal(new DateOnly(2026, 10, 12), stay.EndDate);
         Assert.Equal(new DateOnly(2026, 10, 11), stay.LastDay);
         var oneDay = result.Occurrences.Single(o => o.Uid == "one-day");
-        Assert.Equal(new DateOnly(2026, 10, 21), oneDay.EndDate); // no DTEND: one day (RFC 5545 3.6.1)
+        Assert.Equal(new DateOnly(2026, 10, 21), oneDay.EndDate);
     }
 
     [Theory]
-    // 23:30 UTC in summer is already the next day in Rome: the nights follow the Rome dates.
     [InlineData("DTSTART:20261010T233000Z\nDTEND:20261012T090000Z", "2026-10-11", "2026-10-12")]
     [InlineData("DTSTART;TZID=Europe/Rome:20261010T150000\nDTEND;TZID=Europe/Rome:20261012T100000", "2026-10-10", "2026-10-12")]
     [InlineData("DTSTART;TZID=America/New_York:20261010T200000\nDTEND;TZID=America/New_York:20261012T100000", "2026-10-11", "2026-10-12")]
-    // Floating times and unknown TZIDs are Rome wall clock, not the server's zone.
     [InlineData("DTSTART:20261010T150000\nDTEND:20261012T100000", "2026-10-10", "2026-10-12")]
     [InlineData("DTSTART;TZID=Not/AZone:20261010T150000\nDTEND;TZID=Not/AZone:20261012T100000", "2026-10-10", "2026-10-12")]
-    // Ends exactly at midnight in Rome: the night before is the last one.
     [InlineData("DTSTART:20261009T220000Z\nDTEND:20261011T220000Z", "2026-10-10", "2026-10-12")]
     public void Parse_TimedEvent_TakesTheNightsFromEuropeRomeDates(string dates, string expectedStart, string expectedEnd)
     {
@@ -116,7 +110,6 @@ public class ICalFeedParserTests
             "UID:weekend\nRECURRENCE-ID;VALUE=DATE:20261024\nDTSTART;VALUE=DATE:20261024\nDTEND;VALUE=DATE:20261026\nSTATUS:CANCELLED"));
 
         var starts = result.Occurrences.Where(o => o.Uid == "weekend").Select(o => o.StartDate).Order().ToList();
-        // 3 Oct and 31 Oct from the rule, 18 Oct moved by its override; 10 Oct excluded, 24 Oct cancelled.
         Assert.Equal([new DateOnly(2026, 10, 3), new DateOnly(2026, 10, 18), new DateOnly(2026, 10, 31)], starts);
         Assert.All(result.Occurrences.Where(o => o.StartDate != new DateOnly(2026, 10, 18)), o => Assert.Equal(2, o.EndDate.DayNumber - o.StartDate.DayNumber));
     }
@@ -131,7 +124,7 @@ public class ICalFeedParserTests
 
         Assert.NotEmpty(result.Occurrences);
         Assert.All(result.Occurrences, o => Assert.InRange(o.StartDate, new DateOnly(2026, 8, 31), new DateOnly(2026, 11, 30)));
-        Assert.Equal(13, result.Occurrences.Count); // Sundays from 6 Sep to 29 Nov 2026
+        Assert.Equal(13, result.Occurrences.Count);
     }
 
     [Fact]

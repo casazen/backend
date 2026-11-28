@@ -1,6 +1,5 @@
 namespace Casazen.Core.Entities.Enums;
 
-/// <summary>Where a calendar block comes from. Stored as an integer: a member is appended with the next number, never renumbered.</summary>
 public enum CalendarBlockSource
 {
     ICalImport = 0,

@@ -16,10 +16,6 @@ public class LeaseTermRenewalJob(ILeaseTermService leaseTerms)
 {
     public const string RecurringJobId = "lease-term-renewal";
 
-    /// <summary>
-    /// Every hour, at minute 15 UTC: the first run after midnight of Rome (minute 0 of 22:00 or 23:00 UTC is when a lease ends) renews what
-    /// ended the day before, a quarter of an hour after the other hourly jobs have started.
-    /// </summary>
     public const string Cron = "15 * * * *";
 
     // Idempotent on its own (a lease leaves "due" in the transaction of its renewal, under its row lock), and one run at a time by a session

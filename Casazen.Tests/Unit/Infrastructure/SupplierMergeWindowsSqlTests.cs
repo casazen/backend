@@ -35,14 +35,12 @@ public class SupplierMergeWindowsSqlTests
         var sql = Assert.Single(capture.Statements);
         Assert.StartsWith("UPDATE \"SupplierBusyWindows\"", sql, StringComparison.Ordinal);
         Assert.Contains("SET \"OrgId\" = ", sql, StringComparison.Ordinal);
-        // Only the duplicate's rows, and of those the ones with no UID (set by hand) or no twin at the keeper.
         Assert.Matches("WHERE \\w+\\.\"OrgId\" = @", sql);
         Assert.Contains("\"ExternalUid\" IS NULL OR NOT EXISTS", sql, StringComparison.Ordinal);
         Assert.Matches("\\.\"ExternalUid\" = \\w+\\.\"ExternalUid\"", sql);
         Assert.Matches("\\.\"StartUtc\" = \\w+\\.\"StartUtc\"", sql);
     }
 
-    /// <summary>Keeps the text of what would be sent, and sends nothing.</summary>
     private sealed class SqlCapture : DbCommandInterceptor, IDbConnectionInterceptor
     {
         private readonly List<string> _statements = [];

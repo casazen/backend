@@ -68,7 +68,6 @@ public sealed class TouristTaxCollectionEventHandler(
         }
     }
 
-    /// <summary>What a booking event asks of the collection; <c>null</c> for an event it does not hear.</summary>
     internal static StayChange? KindOf(DomainEventType type) => type switch
     {
         DomainEventType.BookingCancelled or DomainEventType.BookingNoShowMarked => StayChange.Ended,
@@ -76,7 +75,6 @@ public sealed class TouristTaxCollectionEventHandler(
         _ => null,
     };
 
-    /// <summary>The two things a booking event asks of the collection.</summary>
     internal enum StayChange
     {
         Ended = 1,

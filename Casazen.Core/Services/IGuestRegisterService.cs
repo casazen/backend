@@ -21,10 +21,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IGuestRegisterService
 {
-    /// <summary>
-    /// What the register of a period holds, before it is downloaded: the number of lines, the retention hint of the regime and its code. Throws <c>property_not_found</c> (no such property in
-    /// the org), <c>guest_register_not_available</c> (the property is not in Switzerland), <c>swiss_period_invalid</c> or <c>swiss_period_too_long</c>.
-    /// </summary>
     Task<GuestRegisterInfo> GetInfoAsync(Guid propertyId, DateOnly from, DateOnly to, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -64,7 +60,6 @@ public sealed record GuestRegisterInfo(Guid PropertyId, DateOnly From, DateOnly 
 public sealed record GuestRegisterDocument(
     byte[] Content, string FileName, string ContentType, string FileHash, int Rows, int? RetentionYears, string RegimeCode);
 
-/// <summary>The codes and message keys of the guest register.</summary>
 public static class GuestRegisterErrorCodes
 {
     /// <summary>404: the property is not in Switzerland (an Italian property's register is the Alloggiati file) or the catalog has no regime for its country.</summary>
@@ -72,7 +67,6 @@ public static class GuestRegisterErrorCodes
 
     public const string NotAvailableMessageKey = "GuestRegisterNotAvailable";
 
-    /// <summary>400: the format asked is not <c>csv</c>.</summary>
     public const string FormatInvalid = "guest_register_format_invalid";
 
     public const string FormatInvalidMessageKey = "GuestRegisterFormatInvalid";

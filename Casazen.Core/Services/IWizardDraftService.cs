@@ -35,7 +35,6 @@ public interface IWizardDraftService
     /// <exception cref="DomainPayloadTooLargeException">The data is over <see cref="WizardDraftLimits.MaxDataBytes"/>.</exception>
     Task<WizardDraftResult> SaveDraftAsync(Guid orgId, string userId, SaveDraftRequest request, CancellationToken ct);
 
-    /// <summary>The draft of the caller with the data put together again, or <c>null</c> when it has none (also: it expired, or it is another person's).</summary>
     Task<WizardDraftDto?> GetDraftAsync(Guid orgId, string userId, WizardType type, Guid? entityId, CancellationToken ct);
 
     /// <summary>
@@ -45,19 +44,8 @@ public interface IWizardDraftService
     Task DeleteDraftAsync(Guid orgId, string userId, WizardType type, Guid? entityId, CancellationToken ct);
 }
 
-/// <summary>A save of a draft.</summary>
-/// <param name="Type">The wizard.</param>
-/// <param name="EntityId">What the wizard edits; <c>null</c> for a wizard that creates something.</param>
-/// <param name="ClientVersion">The version of the draft the client last saw: 0 when it has none yet.</param>
-/// <param name="Data">The typed data of the wizard, a JSON object; the personal fields are split off at any depth.</param>
 public sealed record SaveDraftRequest(WizardType Type, Guid? EntityId, int ClientVersion, JsonDocument Data);
 
-/// <summary>A draft as the client reads it.</summary>
-/// <param name="Type">The wizard.</param>
-/// <param name="EntityId">What the wizard edits; <c>null</c> for a wizard that creates something.</param>
-/// <param name="Version">The counter of the draft: what the client sends back as <see cref="SaveDraftRequest.ClientVersion"/>.</param>
-/// <param name="Data">The plain data put together with the decrypted personal fields.</param>
-/// <param name="LastSavedAt">UTC instant of the last save.</param>
 public sealed record WizardDraftDto(WizardType Type, Guid? EntityId, int Version, JsonDocument Data, DateTime LastSavedAt);
 
 /// <summary>The outcome of a save.</summary>
@@ -72,25 +60,18 @@ public enum DraftStatus
     Conflict,
 }
 
-/// <summary>The <c>code</c> of the errors of the wizard drafts. Stable: the clients branch on them.</summary>
 public static class WizardDraftErrors
 {
-    /// <summary>409: the client is behind the server (another device saved first), or lost a parallel save; the problem carries <c>serverDraft</c> and <c>serverVersion</c>.</summary>
     public const string Conflict = "draft_conflict";
 
-    /// <summary>The data of a draft is not a JSON object.</summary>
     public const string DataInvalid = "wizard_draft_data_invalid";
 
-    /// <summary>413: the data of a draft is over <see cref="WizardDraftLimits.MaxDataBytes"/>.</summary>
     public const string TooLarge = "wizard_draft_too_large";
 
-    /// <summary>The wizard type is not a declared one.</summary>
     public const string TypeUnknown = "wizard_type_unknown";
 
-    /// <summary>The type in the body of a save is not the one of the address.</summary>
     public const string TypeMismatch = "wizard_type_mismatch";
 
-    /// <summary>404: the caller has no such draft (none saved, expired, or another person's: the same answer).</summary>
     public const string NotFound = "wizard_draft_not_found";
 }
 
@@ -105,14 +86,12 @@ public static class WizardDraftPiiFields
 {
     public static readonly IReadOnlySet<string> PII_FIELD_NAMES = new[]
     {
-        // The guest of a booking and the person to call in an emergency.
         "guestName",
         "guestEmail",
         "guestPhone",
         "guestFiscalCode",
         "emergencyContact",
 
-        // The names, the contacts and the address of a person, as the DTOs of the guests and of the check-in spell them.
         "firstName",
         "lastName",
         "fullName",
@@ -125,11 +104,9 @@ public static class WizardDraftPiiFields
         "address",
         "residence",
 
-        // Tax and bank data (the owner of a property).
         "fiscalCode",
         "iban",
 
-        // Birth and citizenship.
         "birthDate",
         "dateOfBirth",
         "birthPlace",
@@ -144,7 +121,6 @@ public static class WizardDraftPiiFields
         "citizenshipCode",
         "nationality",
 
-        // The identity document.
         "documentNumber",
         "documentType",
         "documentTypeCode",

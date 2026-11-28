@@ -12,14 +12,10 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Extensions;
 
-/// <summary>
-/// The JWT bearer sign-in of the hosts (Auth0), the scheme of the guest session and the scheme of the plugin of a connected site.
-/// </summary>
 public static class AuthenticationServiceCollectionExtensions
 {
     public static IServiceCollection AddCasazenAuthentication(this IServiceCollection services, IConfiguration configuration, IWebHostEnvironment environment)
     {
-        // Domain and Audience validate every JWT: outside Development/Testing the app does not start without them (FD-12).
         var auth0Options = services.AddOptions<Auth0Options>()
             .Bind(configuration.GetSection(Auth0Options.SectionName));
         if (RequiredConfiguration.IsEnforced(environment))
@@ -53,7 +49,6 @@ public static class AuthenticationServiceCollectionExtensions
                 {
                     OnMessageReceived = context =>
                     {
-                        // WebSockets and server-sent events carry the token of a SignalR connection in the query (hubs only).
                         if (context.Request.Headers.Authorization.Count == 0 && HubAccessToken.TryRead(context.Request, out var hubToken))
                         {
                             context.Token = hubToken;
@@ -90,7 +85,6 @@ public static class AuthenticationServiceCollectionExtensions
                     },
                     OnTokenValidated = async context =>
                     {
-                        // Map Auth0 custom roles claim to standard .NET role claims
                         if (context.Principal?.Identity is ClaimsIdentity identity)
                         {
                             var roles = Auth0RolesClaimParser.Parse(
@@ -121,8 +115,6 @@ public static class AuthenticationServiceCollectionExtensions
                                 {
                                     try
                                     {
-                                        // Cached per request and for a short time per user (A4-30):
-                                        // no DB round-trip on every authenticated call.
                                         var snapshots = context.HttpContext.RequestServices
                                             .GetRequiredService<IUserAuthorizationSnapshotStore>();
                                         var snapshot = await snapshots.GetAsync(
@@ -148,17 +140,14 @@ public static class AuthenticationServiceCollectionExtensions
                     }
                 };
 
-                // Disable HTTPS requirement in development only
                 if (environment.IsDevelopment())
                 {
                     options.RequireHttpsMetadata = false;
                 }
             })
-            // The guest of a booking site with no account (DB-06a): its own scheme, used only by the policy GuestSession.
             .AddScheme<AuthenticationSchemeOptions, GuestSessionAuthenticationHandler>(
                 GuestSessionDefaults.AuthenticationScheme,
                 _ => { })
-            // The plugin of a site connected to the org (S022): its own scheme, never the default, used only by the policy SiteConnection.
             .AddScheme<AuthenticationSchemeOptions, SiteTokenAuthenticationHandler>(
                 SiteTokenDefaults.AuthenticationScheme,
                 _ => { });

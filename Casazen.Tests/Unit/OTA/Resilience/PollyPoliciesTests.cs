@@ -19,7 +19,6 @@ public class PollyPoliciesTests
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task GetRetryPolicy_ShouldRetryOnTransientError()
     {
-        // Arrange
         var retryPolicy = PollyPolicies.GetRetryPolicy(3, _mockLogger.Object);
         var attemptCount = 0;
         var httpClient = new HttpClient(new MockHttpMessageHandler(async (request, token) =>
@@ -32,11 +31,9 @@ public class PollyPoliciesTests
             return new HttpResponseMessage(HttpStatusCode.OK);
         }));
 
-        // Act
         var response = await retryPolicy.ExecuteAsync(() =>
             httpClient.GetAsync("http://test.com"));
 
-        // Assert
         Assert.Equal(3, attemptCount);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
@@ -44,7 +41,6 @@ public class PollyPoliciesTests
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task GetCircuitBreakerPolicy_ShouldOpenCircuitAfterFailures()
     {
-        // Arrange
         var circuitBreakerPolicy = PollyPolicies.GetCircuitBreakerPolicy(
             failureThreshold: 2,
             durationOfBreak: TimeSpan.FromSeconds(1),
@@ -58,27 +54,23 @@ public class PollyPoliciesTests
             return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
         }));
 
-        // Act & Assert - First two failures should work
         await Assert.ThrowsAsync<HttpRequestException>(async () =>
             await circuitBreakerPolicy.ExecuteAsync(() => httpClient.GetAsync("http://test.com")));
         await Assert.ThrowsAsync<HttpRequestException>(async () =>
             await circuitBreakerPolicy.ExecuteAsync(() => httpClient.GetAsync("http://test.com")));
 
-        // Circuit should now be open, so third attempt should fail immediately without calling handler
         var attemptCountBeforeCircuitOpen = attemptCount;
         await Assert.ThrowsAsync<Polly.CircuitBreaker.BrokenCircuitException>(async () =>
             await circuitBreakerPolicy.ExecuteAsync(() => httpClient.GetAsync("http://test.com")));
 
-        Assert.Equal(attemptCountBeforeCircuitOpen, attemptCount); // No new attempt should be made
+        Assert.Equal(attemptCountBeforeCircuitOpen, attemptCount);
     }
 
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task GetTimeoutPolicy_ShouldTimeoutLongRunningRequests()
     {
-        // Arrange
         var timeoutPolicy = PollyPolicies.GetTimeoutPolicy(TimeSpan.FromMilliseconds(100), _mockLogger.Object);
 
-        // Act & Assert
         await Assert.ThrowsAsync<TimeoutRejectedException>(async () =>
             await timeoutPolicy.ExecuteAsync(async () =>
             {
@@ -90,7 +82,6 @@ public class PollyPoliciesTests
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task GetCombinedPolicy_ShouldApplyAllPolicies()
     {
-        // Arrange
         var combinedPolicy = PollyPolicies.GetCombinedPolicy(
             retryCount: 2,
             circuitBreakerFailures: 3,
@@ -105,24 +96,21 @@ public class PollyPoliciesTests
             attemptCount++;
             if (attemptCount == 1)
             {
-                return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable); // Will be retried
+                return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
             }
             return new HttpResponseMessage(HttpStatusCode.OK);
         }));
 
-        // Act
         var response = await combinedPolicy.ExecuteAsync(() =>
             httpClient.GetAsync("http://test.com"));
 
-        // Assert
-        Assert.Equal(2, attemptCount); // First attempt + 1 retry
+        Assert.Equal(2, attemptCount);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task GetRetryPolicy_ShouldLogRetryAttempts()
     {
-        // Arrange
         var retryPolicy = PollyPolicies.GetRetryPolicy(2, _mockLogger.Object);
         var attemptCount = 0;
         var httpClient = new HttpClient(new MockHttpMessageHandler(async (request, token) =>
@@ -131,7 +119,6 @@ public class PollyPoliciesTests
             return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
         }));
 
-        // Act
         try
         {
             await retryPolicy.ExecuteAsync(() => httpClient.GetAsync("http://test.com"));
@@ -152,7 +139,6 @@ public class PollyPoliciesTests
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task GetCircuitBreakerPolicy_ShouldLogCircuitStateChanges()
     {
-        // Arrange
         var circuitBreakerPolicy = PollyPolicies.GetCircuitBreakerPolicy(
             failureThreshold: 2,
             durationOfBreak: TimeSpan.FromSeconds(1),
@@ -164,7 +150,6 @@ public class PollyPoliciesTests
             return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
         }));
 
-        // Act
         try
         {
             await circuitBreakerPolicy.ExecuteAsync(() => httpClient.GetAsync("http://test.com"));
@@ -172,7 +157,6 @@ public class PollyPoliciesTests
         }
         catch { }
 
-        // Assert - Should log circuit breaker opening
         _mockLogger.Verify(
             x => x.Log(
                 LogLevel.Error,
@@ -184,9 +168,6 @@ public class PollyPoliciesTests
     }
 }
 
-/// <summary>
-/// Mock HTTP message handler for testing
-/// </summary>
 public class MockHttpMessageHandler : HttpMessageHandler
 {
     private readonly Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> _sendAsyncFunc;

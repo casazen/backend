@@ -17,7 +17,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 internal static class OtaReviewLiveRefresh
 {
-    /// <summary>Queues the push of a review that appeared.</summary>
     public static void TellReceived(IPushNotificationService push, OtaReview review, string propertyName, CultureInfo culture)
     {
         ArgumentNullException.ThrowIfNull(push);
@@ -30,10 +29,6 @@ internal static class OtaReviewLiveRefresh
             new PushNotificationPayload(text.Title, text.Body, PushTypes.OtaReviewReceived, review.BookingId, PushRoutes.Booking(review.BookingId)));
     }
 
-    /// <summary>
-    /// Queues the push of a reply or of a host's review that did not reach the channel: one for each attempt (<paramref name="requestedAt"/> is when it was saved), <paramref name="action"/>
-    /// is <c>reply</c> or <c>host-review</c>.
-    /// </summary>
     public static void TellFailed(IPushNotificationService push, OtaReview review, DateTime? requestedAt, string action, string propertyName, CultureInfo culture)
     {
         ArgumentNullException.ThrowIfNull(push);

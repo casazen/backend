@@ -43,7 +43,6 @@ public sealed class OnboardingRequiredAuthorizationResultHandler(
         await _default.HandleAsync(next, context, policy, authorizeResult);
     }
 
-    /// <summary>True when a requirement was refused by the host onboarding gate.</summary>
     public static bool IsOnboardingRequired(AuthorizationFailure? failure) =>
         failure is not null &&
         failure.FailureReasons.Any(r => string.Equals(r.Message, HostOnboarding.RequiredCode, StringComparison.Ordinal));

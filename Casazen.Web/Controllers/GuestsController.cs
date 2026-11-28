@@ -30,13 +30,10 @@ public class GuestsController(
     public const int DefaultPageSize = 20;
     public const int MaxPageSize = 100;
 
-    /// <summary>404: the guest has no document scan, or its file is not in the storage.</summary>
     public const string DocumentScanMissingCode = "guest_document_scan_missing";
 
-    /// <summary>404: the guest has no document number (<c>GET /api/guests/{id}/document-number</c>).</summary>
     public const string DocumentNumberMissingCode = "guest_document_number_missing";
 
-    /// <summary>Prefix of the private storage keys of guest document scans (<see cref="StorageKeys.GuestDocument"/>).</summary>
     private const string GuestDocumentKeyPrefix = "guest-documents/";
 
     [HttpGet]
@@ -47,7 +44,6 @@ public class GuestsController(
     {
         logger.LogInformation("Retrieving guests with search term: {HasSearch}", !string.IsNullOrWhiteSpace(search));
 
-        // No org yet, or no reach on it: nothing is listed and nothing is widened to the whole org.
         var scope = await ResolveScopeAsync();
         if (scope is null)
             return Forbid();
@@ -132,7 +128,6 @@ public class GuestsController(
         }
 
         var key = guest.DocumentScanUrl;
-        // Only keys of the private bucket: a legacy "/uploads/..." path not migrated yet is never read from disk.
         if (!StorageKeys.IsValid(key) || !key!.StartsWith(GuestDocumentKeyPrefix, StringComparison.Ordinal))
             return this.ApiProblem(StatusCodes.Status404NotFound, DocumentScanMissingCode, "GuestDocumentScanMissing");
 
@@ -196,8 +191,6 @@ public class GuestsController(
             UpdatedAt = DateTime.UtcNow
         };
 
-        // A duplicate e-mail in the same org raises DomainConflictException (409 guest_email_exists);
-        // the same e-mail in another org is a different guest and never surfaces here.
         var created = await guestService.CreateGuestAsync(orgId.Value, guest, HttpContext.RequestAborted);
         logger.LogInformation("Guest created: {GuestId}", created.Id);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, GuestDtoMapper.ToDto(created));
@@ -259,10 +252,6 @@ public class GuestsController(
     private Task<Guid?> ResolveOrgIdAsync() =>
         orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
 
-    /// <summary>
-    /// What the caller reaches in its org (AM-03): the whole org, or the properties it was given. <c>null</c> when it has no org yet
-    /// or no reach on it; that is never widened to the whole org, so the guest is then not found.
-    /// </summary>
     private async Task<HostScope?> ResolveScopeAsync()
     {
         var orgId = await ResolveOrgIdAsync();
@@ -271,7 +260,6 @@ public class GuestsController(
             : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted);
     }
 
-    /// <summary>The guest of the caller's org that the caller reaches (SR-04b); <c>null</c> for any other, answered as 404.</summary>
     private async Task<Guest?> FindGuestAsync(Guid guestId)
     {
         var scope = await ResolveScopeAsync();

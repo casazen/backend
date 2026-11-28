@@ -24,11 +24,6 @@ namespace Casazen.Core.Suppliers;
 /// </summary>
 public static class ServiceRequestAutoAccept
 {
-    /// <summary>
-    /// The statuses of a job the supplier took with a host and did not undo: taken, in progress, completed, paid. A request that was
-    /// refused or cancelled (by the host, by CasaZen, or <b>by the supplier after the take</b>, decision SP-D6) or that nobody answered
-    /// is not a job done with the host and does not count towards being a regular.
-    /// </summary>
     public static readonly ServiceRequestStatus[] JobStatuses =
     [
         ServiceRequestStatus.PresoInCarico,
@@ -37,14 +32,8 @@ public static class ServiceRequestAutoAccept
         ServiceRequestStatus.Pagato,
     ];
 
-    /// <summary>
-    /// True when what the host asked can be accepted without the supplier: a priced service of the catalog (<paramref name="service"/>
-    /// is not null and does not need a quote) whose time the planner checked (<paramref name="typedDurationMinutes"/> is null: the
-    /// published slots are not checked for a duration the host typed).
-    /// </summary>
     public static bool IsEligibleRequest(SupplierServiceForRequest? service, int? typedDurationMinutes) =>
         service is { RequiresQuote: false } && typedDurationMinutes is null;
 
-    /// <summary>True when <paramref name="jobsTaken"/> jobs already taken with the supplier make the host a regular (at least <paramref name="minJobs"/>).</summary>
     public static bool IsRegular(int jobsTaken, int minJobs) => jobsTaken >= minJobs;
 }

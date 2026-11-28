@@ -22,10 +22,8 @@ namespace Casazen.Core.Entities;
 [Table("PropertyKnowledgeEntries")]
 public class PropertyKnowledgeEntry : ITenantOwned
 {
-    /// <summary>Longest <see cref="Title"/>, the question of a FAQ.</summary>
     public const int TitleMaxLength = 200;
 
-    /// <summary>Longest <see cref="Text"/>, in characters of the clear text.</summary>
     public const int TextMaxLength = 1000;
 
     public const int LanguageMaxLength = 8;
@@ -35,10 +33,8 @@ public class PropertyKnowledgeEntry : ITenantOwned
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row. Never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The property the entry is about; <c>null</c> = the whole organization.</summary>
     public Guid? PropertyId { get; set; }
 
     public KnowledgeTopic Topic { get; set; }
@@ -47,24 +43,18 @@ public class PropertyKnowledgeEntry : ITenantOwned
 
     public KnowledgeSource Source { get; set; } = KnowledgeSource.Custom;
 
-    /// <summary>The question of a FAQ (a FAQ needs one); <c>null</c> for a fact or a rule.</summary>
     [MaxLength(TitleMaxLength)]
     public string? Title { get; set; }
 
-    /// <summary>What the assistant may say. <b>Encrypted at rest</b>; 1 to <see cref="TextMaxLength"/> characters.</summary>
     public string Text { get; set; } = string.Empty;
 
-    /// <summary>The language the text is written in (<c>it</c>, <c>en</c>…); <c>null</c> = any language.</summary>
     [MaxLength(LanguageMaxLength)]
     public string? Language { get; set; }
 
-    /// <summary>The lesson this entry was learnt from (<see cref="KnowledgeSource.Lesson"/>); <c>null</c> for an entry a person wrote. No foreign key.</summary>
     public Guid? LessonId { get; set; }
 
-    /// <summary>The assistant uses the entry; an inactive one is kept and left out. A person may switch off an entry that came from a lesson.</summary>
     public bool IsActive { get; set; } = true;
 
-    /// <summary>The user who wrote it, or who approved the lesson (<c>User.Id</c>), an opaque id with no foreign key.</summary>
     [Required, MaxLength(CreatedByUserIdMaxLength)]
     public string CreatedByUserId { get; set; } = string.Empty;
 

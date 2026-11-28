@@ -5,10 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// NF-100, E07/F03/US04/T02: the small rules of the tourist tax summary that cost if they are wrong, each with a short proof: what the CSV
-/// says about an amount that is missing, how an amount sent as text is read, what a receipt is, and what the first row of the file carries.
-/// </summary>
 public sealed class TouristTaxSummaryRulesTests
 {
     private static readonly FiscalReportPeriod FirstQuarter = new(new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 31));
@@ -41,11 +37,6 @@ public sealed class TouristTaxSummaryRulesTests
         Assert.DoesNotContain(csv, line => line.Contains("Niente da versare", StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>
-    /// PROOF TEST: money rule. An amount sent as text is read with the dot as the decimal point, whatever the culture of the request:
-    /// "12.50" is twelve euros and fifty cents (a culture where the dot groups thousands would read it as 1250 euros), "12" and "12.5" are
-    /// twelve euros and twelve euros fifty.
-    /// </summary>
     [Theory]
     [InlineData("12.50", 1250)]
     [InlineData("12.5", 1250)]
@@ -57,10 +48,6 @@ public sealed class TouristTaxSummaryRulesTests
         Assert.Equal(expectedCents, PaymentCashRules.ToCents(amount));
     }
 
-    /// <summary>
-    /// PROOF TEST: money rule. What is not digits with at most one dot and two decimals is refused and never guessed: a comma, an Italian
-    /// thousands separator, a sign, an exponent, a third decimal, a dot with nothing on one side, a space, nothing at all.
-    /// </summary>
     [Theory]
     [InlineData("12,50")]
     [InlineData("1.250,00")]
@@ -81,10 +68,6 @@ public sealed class TouristTaxSummaryRulesTests
         Assert.Equal(0m, amount);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. A receipt is what its first bytes say, never what its name or the type the client declared say: a PDF, a JPEG
-    /// and a PNG are recognised by their signatures; a text called ricevuta.pdf, a GIF, a Word file, a cut signature and an empty file are not.
-    /// </summary>
     [Fact]
     public void TouristTaxReceipt_IsWhatItsFirstBytesSay_Test()
     {
@@ -101,10 +84,6 @@ public sealed class TouristTaxSummaryRulesTests
         Assert.Null(TouristTaxReceiptRules.Sniff(ReadOnlySpan<byte>.Empty));
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (AC4 of the brief). The first row of the CSV carries the Italian title with its base and the days it covers, so
-    /// no figure of the file travels without its label.
-    /// </summary>
     [Fact]
     public void TouristTaxSummaryCsv_FirstRowCarriesTheItalianTitleWithItsBaseAndTheDays_Test()
     {
@@ -117,7 +96,6 @@ public sealed class TouristTaxSummaryRulesTests
             first);
     }
 
-    /// <summary>The rows of a CSV file as text: read through a reader that consumes the BOM.</summary>
     private static string[] Lines(byte[] csv)
     {
         using var reader = new StreamReader(new MemoryStream(csv), Encoding.UTF8);

@@ -9,10 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Assistant;
 
-/// <summary>
-/// E05/F05/US01/T02 (NF-66, AC-NF66-1, AC-NF67-1): the knowledge base of a property: the facts of the listing and the entries of the property and of the organization, the topics
-/// that have nothing, the retrieval the draft pipeline uses, and the version of the instructions that grows with every change in the same save.
-/// </summary>
 public class AssistantKnowledgeServiceTests
 {
     private const string User = "auth0|host";
@@ -21,8 +17,6 @@ public class AssistantKnowledgeServiceTests
     private static readonly Guid OtherOrg = Guid.Parse("22222222-bbbb-4bbb-8bbb-000000000002");
 
     private static async Task<int> VersionAsync(AppDbContext db) => (await AssistantTestKit.Rules(db).GetAsync(Org)).InstructionVersion;
-
-    // ─── the view ───
 
     [Fact]
     public async Task GetViewAsync_GivesTheFactsOfTheListing_TheEntriesOfThePropertyAndOfTheOrganization_AndNoGapWhenEveryTopicHasData()
@@ -47,7 +41,6 @@ public class AssistantKnowledgeServiceTests
         Assert.True(shownInherited.Inherited);
         Assert.Null(shownInherited.PropertyId);
 
-        // The listing covers every topic but the contacts, which the entry of the organization covers.
         Assert.Empty(view.TopicsWithoutData);
     }
 
@@ -62,7 +55,6 @@ public class AssistantKnowledgeServiceTests
 
         var view = await knowledge.GetViewAsync(Org, property.Id, null);
 
-        // The bare property has only its address: Directions has a fact, WiFi an entry, Parking an entry that is switched off.
         Assert.Equal(
             [KnowledgeTopic.CheckIn, KnowledgeTopic.CheckOut, KnowledgeTopic.Parking, KnowledgeTopic.HouseRules, KnowledgeTopic.Hours, KnowledgeTopic.Amenities,
              KnowledgeTopic.Pets, KnowledgeTopic.Contacts],
@@ -82,8 +74,6 @@ public class AssistantKnowledgeServiceTests
         Assert.Equal("en", view.Language);
         Assert.Contains(view.Facts, fact => fact.Text == "Check-out is by 10:00.");
     }
-
-    // ─── the entries ───
 
     [Fact]
     public async Task CreateEntryAsync_WritesTheEntryUnderTheOrganization_AndGrowsTheVersionInTheSameSave()
@@ -194,7 +184,6 @@ public class AssistantKnowledgeServiceTests
         var later = new FixedTimeProvider(AssistantTestKit.Now.AddHours(3));
         var editor = AssistantTestKit.Knowledge(db, later);
 
-        // The same values: nothing changes, not the version and not the time.
         var same = await editor.UpdateEntryAsync(Org, property.Id, created.Id, AssistantTestKit.Faq(), User);
         Assert.Equal(created.UpdatedAt, same.UpdatedAt);
         Assert.Equal(2, await VersionAsync(db));
@@ -272,7 +261,6 @@ public class AssistantKnowledgeServiceTests
         var version = await VersionAsync(db);
         var edit = AssistantTestKit.Faq(text: "Cambiato.");
 
-        // Each attempt is the same 404 as an id that does not exist, and changes nothing.
         foreach (var attempt in new Func<Task>[]
                  {
                      () => knowledge.UpdateEntryAsync(Org, second.Id, ofFirst.Id, edit, User),
@@ -308,8 +296,6 @@ public class AssistantKnowledgeServiceTests
         Assert.Equal([wide.Id], listed.Select(e => e.Id));
         Assert.All(listed, e => Assert.False(e.Inherited));
     }
-
-    // ─── what the draft pipeline retrieves ───
 
     [Fact]
     public async Task RetrieveAsync_NoTopics_IsNoFacts_NeverAllOfThem()
@@ -356,18 +342,15 @@ public class AssistantKnowledgeServiceTests
         var wideFact = await knowledge.CreateEntryAsync(Org, null, AssistantTestKit.Fact(KnowledgeTopic.Pets, "Cani di piccola taglia."), User);
         var wideRule = await knowledge.CreateEntryAsync(Org, null, AssistantTestKit.Fact(KnowledgeTopic.Pets, "Mai sui letti.", kind: KnowledgeEntryKind.Rule), User);
 
-        // No entry of its own: the organization's two apply.
         Assert.Equal(
             new[] { wideFact.Id, wideRule.Id }.Order(),
             (await knowledge.RetrieveAsync(Org, property.Id, [KnowledgeTopic.Pets], "it")).Select(f => f.EntryId!.Value).Order());
 
-        // An active fact of its own with the same topic: the organization's fact goes, its rule (another kind) stays.
         var ownFact = await knowledge.CreateEntryAsync(Org, property.Id, AssistantTestKit.Fact(KnowledgeTopic.Pets, "Nessun animale."), User);
         Assert.Equal(
             [ownFact.Id, wideRule.Id],
             (await knowledge.RetrieveAsync(Org, property.Id, [KnowledgeTopic.Pets], "it")).Select(f => f.EntryId!.Value));
 
-        // Switched off, it does not count as an entry of its own, and is left out itself.
         await knowledge.UpdateEntryAsync(Org, property.Id, ownFact.Id, AssistantTestKit.Fact(KnowledgeTopic.Pets, "Nessun animale.", isActive: false), User);
         Assert.Equal(
             new[] { wideFact.Id, wideRule.Id }.Order(),
@@ -399,13 +382,11 @@ public class AssistantKnowledgeServiceTests
         var inEnglish = await knowledge.RetrieveAsync(Org, property.Id, [KnowledgeTopic.CheckIn, KnowledgeTopic.Hours], "en");
         var inItalian = await knowledge.RetrieveAsync(Org, property.Id, [KnowledgeTopic.CheckIn], "it");
 
-        // English asked: the English entry and the one for any language; the Italian check-in entry is left out. The topic with an Italian entry only keeps it.
         Assert.DoesNotContain(inEnglish, f => f.EntryId == italian.Id);
         Assert.Contains(inEnglish, f => f.EntryId == any.Id);
         Assert.Contains(inEnglish, f => f.EntryId == onlyItalian.Id);
         Assert.Contains(inEnglish, f => f.EntryId == english.Id);
 
-        // Italian asked: the Italian entry and the one for any language; the English one is left out.
         Assert.Contains(inItalian, f => f.EntryId == italian.Id);
         Assert.Contains(inItalian, f => f.EntryId == any.Id);
         Assert.DoesNotContain(inItalian, f => f.EntryId == english.Id);

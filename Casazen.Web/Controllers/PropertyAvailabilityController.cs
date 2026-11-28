@@ -9,15 +9,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Whether a stay of one of the host's properties is free, said before the host enters a booking by hand (SR-06a). It reads what the
-/// calendar, the iCal export and the final check on a new booking read (<see cref="IHostAvailabilityService"/>): there is no second
-/// rule of occupancy.
-/// </summary>
-/// <remarks>
-/// TN-3: the same permission as entering the booking, <c>booking.write</c>, on the property. A property of another org, or one a
-/// collaborator limited to some properties does not reach, is 404, as for the host quote. Errors are ProblemDetails (FD-05).
-/// </remarks>
 [ApiController]
 [Route("api/properties/{propertyId:guid}/availability")]
 [Authorize(Policy = CasazenPolicies.BookingWrite)]
@@ -27,7 +18,6 @@ public class PropertyAvailabilityController(
     IAuthorizationService authorizationService,
     ILogger<PropertyAvailabilityController> logger) : ControllerBase
 {
-    /// <summary>First and last year a day may be asked for.</summary>
     private const int MinYear = 2000;
     private const int MaxYear = 2100;
 
@@ -76,7 +66,6 @@ public class PropertyAvailabilityController(
 
     private static bool InBounds(DateOnly day) => day.Year is >= MinYear and <= MaxYear;
 
-    // No channel is a valid answer; a word that is not the name of a channel is not.
     private static bool TryParseChannel(string? value, out BookingChannel? channel)
     {
         channel = null;

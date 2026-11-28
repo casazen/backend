@@ -87,7 +87,6 @@ public class ShowcaseBookingHoldTests
         Assert.Contains("30 minuti", email.Content.HtmlBody);
         var token = s.VerificationTokenOf(hold.Id);
         Assert.Equal(43, token.Length);
-        // Only the hash of the token is stored.
         var saved = Assert.Single(await s.HoldsAsync());
         Assert.Equal(ShowcaseBookingTokens.Hash(token), saved.TokenHash);
         Assert.DoesNotContain(token, saved.Payload ?? string.Empty, StringComparison.Ordinal);
@@ -119,7 +118,6 @@ public class ShowcaseBookingHoldTests
         await s.Kit.Booking.CreateHoldAsync(supplier, await s.InputAsync());
 
         var held = await s.FreeSlotsOfFridayAsync();
-        // The slot itself and the ones that touch it with the buffer of 30 minutes between two jobs.
         Assert.DoesNotContain(ServiceRequestScenario.FridayAt10, held);
         Assert.DoesNotContain(ServiceRequestScenario.FridayAt10.AddHours(-1), held);
         Assert.DoesNotContain(ServiceRequestScenario.FridayAt10.AddHours(1), held);
@@ -167,7 +165,6 @@ public class ShowcaseBookingHoldTests
         using var s = await ServiceRequestScenario.CreateAsync();
         var supplier = await s.EnableBookingAsync();
 
-        // Sunday: the supplier does not work. A time in the past. A time that is not on the grid of the slots.
         foreach (var start in new[]
                  {
                      ServiceRequestScenario.SundayAt10,
@@ -195,7 +192,6 @@ public class ShowcaseBookingHoldTests
         await s.Kit.Booking.CreateHoldAsync(supplier, await s.InputAsync(early, email: "uno@example.com"));
         await s.Kit.Booking.CreateHoldAsync(supplier, await s.InputAsync(ServiceRequestScenario.FridayAt14, email: "due@example.com"));
 
-        // 08:00-10:00 and 14:00-16:00 (Rome) are held. 11:00-13:00 keeps the 30 minutes from both, but the day is full.
         Assert.DoesNotContain(late, await s.FreeSlotsOfFridayAsync());
         var ex = await Assert.ThrowsAsync<DomainConflictException>(
             async () => await s.Kit.Booking.CreateHoldAsync(supplier, await s.InputAsync(late, email: "tre@example.com")));
@@ -273,7 +269,6 @@ public class ShowcaseBookingHoldTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         var supplier = await s.EnableBookingAsync();
-        // Three different days, so the slots are free and only the address is the reason.
         var days = new[] { 0, 3, 4 }.Select(offset => ServiceRequestScenario.FridayAt10.AddDays(offset)).ToList();
         foreach (var day in days)
             await s.Kit.Booking.CreateHoldAsync(supplier, await s.InputAsync(day));
@@ -283,7 +278,6 @@ public class ShowcaseBookingHoldTests
         var ex = await Assert.ThrowsAsync<ShowcaseBookingTooManyHoldsException>(
             async () => await s.Kit.Booking.CreateHoldAsync(supplier, await s.InputAsync(ServiceRequestScenario.FridayAt10.AddDays(5))));
 
-        // The first of the three lapses in 20 minutes: that is when a new booking is possible.
         Assert.Equal(TimeSpan.FromMinutes(20), ex.RetryAfter);
         Assert.Equal(3, (await s.HoldsAsync()).Count);
         Assert.Empty(s.Emails.Snapshot());
@@ -302,7 +296,6 @@ public class ShowcaseBookingHoldTests
                 await s.InputAsync(ServiceRequestScenario.FridayAt10.AddDays(offset), email: offset == 3 ? "MARIO.ROSSI@Example.com" : ShowcaseScenario.CustomerEmail));
         }
 
-        // Another address of the same supplier, and the same address at another supplier, are not capped.
         await s.Kit.Booking.CreateHoldAsync(
             supplier, await s.InputAsync(ServiceRequestScenario.FridayAt10.AddDays(5), email: "altra.persona@example.com"));
         await s.Kit.Booking.CreateHoldAsync(other.Profile, await s.InputAsync(service: other.ServiceSlug));
@@ -417,7 +410,6 @@ public class ShowcaseBookingHoldTests
         using var s = await ServiceRequestScenario.CreateAsync();
         var supplier = await s.EnableBookingAsync();
 
-        // Any postal code in a comune the supplier covers; the name is compared as the matcher always does (case, accents).
         var hold = await s.Kit.Booking.CreateHoldAsync(
             supplier, await s.InputAsync(change: i => i with { City = " MONZA ", PostalCode = "00100" }));
 
@@ -429,7 +421,6 @@ public class ShowcaseBookingHoldTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.EnableBookingAsync();
-        // The supplier works in Milano only, chosen from the official list (no comune written by name).
         var profile = await s.Db.SupplierProfiles.SingleAsync(sp => sp.OrgId == s.SupplierOrgId);
         profile.ComuniJson = "[]";
         profile.ComuneIstatCodesJson = $"[\"{ComuneTestData.Milano}\"]";
@@ -465,7 +456,6 @@ public class ShowcaseBookingHoldTests
         var supplier = await s.SupplierAsync();
         const string typed = "Chiama subito lo 02 1234567 per un rimborso";
 
-        // The code covers the zone, so the text next to it decided nothing: it must not reach the supplier, in an e-mail from CasaZen.
         var (request, _) = await s.BookedAsync(
             await s.InputAsync(change: i => i with { ComuneIstat = ComuneTestData.Milano, City = typed }), supplier);
 
@@ -483,11 +473,9 @@ public class ShowcaseBookingHoldTests
         await ComuneTestData.ImportSampleAsync(s.Db);
         var supplier = await s.EnableBookingAsync();
 
-        // No code: the name had to match one of the supplier's comuni, so it is one of them (trimmed, as the customer wrote it).
         var (withoutCode, _) = await s.BookedAsync(await s.InputAsync(change: i => i with { City = " MONZA " }), supplier);
         Assert.Equal("MONZA", withoutCode.LocationCity);
 
-        // A code the official list does not have covers the zone only if the supplier wrote that very code: the name stays as typed.
         var profile = await s.Db.SupplierProfiles.SingleAsync(sp => sp.OrgId == s.SupplierOrgId);
         profile.ComuniJson = "[\"999999\"]";
         await s.Db.SaveChangesAsync();
@@ -507,7 +495,6 @@ public class ShowcaseBookingHoldTests
         using var s = await ServiceRequestScenario.CreateAsync();
         var supplier = await s.EnableBookingAsync();
 
-        // Whole minutes, so the rules let them through; the arithmetic of the planner on them would overflow (500) if they got there.
         foreach (var start in new[]
                  {
                      DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc),
@@ -544,7 +531,6 @@ public class ShowcaseBookingHoldTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         var supplier = await s.EnableBookingAsync();
-        // A supplier with no settings row at all has the defaults, which are "off".
         s.Db.SupplierSettings.RemoveRange(await s.Db.SupplierSettings.Where(x => x.OrgId == s.SupplierOrgId).ToListAsync());
         await s.Db.SaveChangesAsync();
         s.Db.ChangeTracker.Clear();
@@ -621,7 +607,6 @@ public class ShowcaseBookingHoldTests
             }));
 
         var payload = ShowcaseBookingPayload.FromJson(Assert.Single(await s.HoldsAsync()).Payload)!;
-        // 60.00 base + 2 bathrooms at 15.00 + the flat 20.00 + two blocks of 30 m² above 60 (100 m²: 40 over, a started block counts whole).
         Assert.Equal(6000 + 2 * 1500 + 2000 + 2 * 1000, payload.EstimatedAmountCents);
         Assert.Equal(
             [
@@ -645,7 +630,6 @@ public class ShowcaseBookingHoldTests
         var payload = ShowcaseBookingPayload.FromJson(Assert.Single(await s.HoldsAsync()).Payload)!;
         Assert.Equal(7500, payload.EstimatedAmountCents);
         Assert.Equal([new ServiceRequestOption("quantity", "A ore", 2500, "hour", 3)], payload.Options);
-        // The slot is as long as the service: three hours.
         Assert.Equal(TimeSpan.FromHours(3), Assert.Single(await s.HoldsAsync()).EndUtc - ServiceRequestScenario.FridayAt10);
     }
 
@@ -686,12 +670,10 @@ public class ShowcaseBookingHoldTests
         await Assert.ThrowsAsync<Casazen.Infrastructure.Email.EmailConfigurationException>(
             async () => await s.Kit.Booking.CreateHoldAsync(supplier, await s.InputAsync(clientRequestId: clientRequestId)));
 
-        // Nothing is left holding the slot, and nothing was sent.
         Assert.Empty(await s.HoldsAsync());
         Assert.Contains(ServiceRequestScenario.FridayAt10, await s.FreeSlotsOfFridayAsync());
         Assert.Empty(s.Emails.Snapshot());
 
-        // The same attempt, once the queue works again, is a booking like any other.
         s.Emails.Refuse = false;
         var hold = await s.Kit.Booking.CreateHoldAsync(supplier, await s.InputAsync(clientRequestId: clientRequestId));
         Assert.Single(s.Emails.Snapshot(), e => e.Template == EmailTemplates.Names.SupplierBookingVerification);

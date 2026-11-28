@@ -46,16 +46,8 @@ public sealed class FiscalDocumentDeliveryService(
     IGuestEmailBrandingProvider? emailBranding = null,
     IGuestEmailLanguageProvider? emailLanguage = null) : IFiscalDocumentDeliveryService
 {
-    /// <summary>
-    /// The top-level names the standards keep for what is never delivered: <c>.invalid</c>, <c>.test</c> and <c>.example</c> (RFC 2606), <c>.localhost</c>, and <c>.local</c> (the placeholder of an erased
-    /// guest, <c>ANON-…@deleted.local</c>, is one). A name that ends in one has no mailbox: an e-mail to it can only bounce (FIX/RES-DOCS).
-    /// </summary>
     private static readonly string[] NeverDeliveredSuffixes = [".invalid", ".localhost", ".local", ".test", ".example"];
 
-    /// <summary>
-    /// The second-level names the standards keep for examples (RFC 2606): the name itself and every subdomain of it. The guests of the demo (<c>DemoShowcaseCatalog</c>) have <c>@example.com</c> addresses, and
-    /// a send to them is a real e-mail to a domain that bounces.
-    /// </summary>
     private static readonly string[] NeverDeliveredDomains = ["example.com", "example.org", "example.net"];
 
     /// <summary>How long this process remembers that it queued the e-mail of a document by itself, so that a second delivery of the issue event queues nothing (see the remarks).</summary>
@@ -83,7 +75,6 @@ public sealed class FiscalDocumentDeliveryService(
         if (!IsSendable(document))
             return FiscalDocumentSendOutcome.NotSendable;
 
-        // The choice of the organization itself, never the profile of one of its owners (E17/F01/US01/T01: they live in the same table).
         var asked = await db.OrgFiscalIssuerProfiles
             .AsNoTracking()
             .OfOrganization(document.OrgId)
@@ -92,8 +83,6 @@ public sealed class FiscalDocumentDeliveryService(
         if (!asked)
             return FiscalDocumentSendOutcome.NotAsked;
 
-        // An environment with no e-mail provider or no public address of the web app cannot send, whatever is tried again: that is its state, not a failure to deliver (outside Development and Testing the
-        // startup refuses such a configuration). A queue that says no while both are there is a failure, and is thrown for the outbox to deliver the event again.
         if (!emailOptions.Value.IsConfigured || !links.IsConfigured)
         {
             logger.LogWarning("Fiscal document {DocumentId} of org {OrgId} was not e-mailed: the e-mail provider or the public address of the web app is not configured", document.Id, document.OrgId);
@@ -127,8 +116,6 @@ public sealed class FiscalDocumentDeliveryService(
         if (document is null)
             return null;
 
-        // The one service that knows how to draw the document, as the host sees it, under the tenant of the document: the scope is new, so the person who opens the link, signed in or not, changes nothing
-        // of what it reads (the same way the jobs and the handlers of the event bus run).
         try
         {
             await using var scope = scopeFactory.CreateAsyncScope();
@@ -139,14 +126,10 @@ public sealed class FiscalDocumentDeliveryService(
         }
         catch (NotFoundException)
         {
-            // The document went away between the two reads: it is the same answer as for any link that does not open.
             return null;
         }
     }
 
-    // ---------------------------------------------------------------- the e-mail
-
-    /// <summary>The document as the send needs it: what it is, whose it is and what it says; read with the tenant filter of the caller.</summary>
     private async Task<DocumentFacts> ReadAsync(Guid documentId, CancellationToken ct)
     {
         var document = await db.FiscalDocuments
@@ -165,13 +148,11 @@ public sealed class FiscalDocumentDeliveryService(
         && document.BookingId is not null
         && document.Status == FiscalDocumentStatus.Issued;
 
-    /// <summary>The refusals of the host's send, in the order a person fixes them: what the document is, then what state it is in.</summary>
     private static void RequireSendable(DocumentFacts document)
     {
         if (document.Source != FiscalDocumentSource.CasaZen)
             throw new DomainRuleException(FiscalDocumentErrors.ReadOnly, "FiscalDocumentReadOnly");
 
-        // A self-billed invoice (TD17, E17/F01/US03) has no guest to send it to: it says so with its own code, never the one of the owner invoices.
         if (document.Purpose == FiscalDocumentPurpose.SelfBilling)
             throw new DomainRuleException(SelfBillingErrors.UseSelfBilling, "FiscalDocumentSelfBilling");
 
@@ -182,11 +163,8 @@ public sealed class FiscalDocumentDeliveryService(
             throw new DomainRuleException(FiscalDocumentDeliveryErrors.NotIssued, "FiscalDocumentNotIssued");
     }
 
-    /// <summary>The e-mail with the link of <paramref name="document"/>, queued for the guest of its booking.</summary>
     private async Task<FiscalDocumentDeliveryResult> QueueAsync(DocumentFacts document, CancellationToken ct)
     {
-        // The one place that sends: a guest of the demo (a row of the showcase seed) or an address of a reserved domain is a guest with no address, for the host's send and for the automatic one alike. Nothing
-        // is queued, nothing fails (the automatic send answers NoAddress), and the document stays on its page and in the package of the accountant.
         var guest = await db.Bookings
             .AsNoTracking()
             .Where(b => b.Id == document.BookingId)
@@ -200,7 +178,6 @@ public sealed class FiscalDocumentDeliveryService(
         if (guest is null || guest.IsDemo || !TryUseAddress(guest.Email, guest.AnonymizedAt, out var address))
             throw new DomainRuleException(FiscalDocumentDeliveryErrors.RecipientEmailInvalid, "DocumentRecipientEmailInvalid");
 
-        // Without the public address of the web app there is no link to write: nothing is sent, and the answer says so.
         if (!links.IsConfigured)
         {
             logger.LogWarning("Fiscal document {DocumentId} of org {OrgId} was not e-mailed: the public address of the web app is not configured", document.Id, document.OrgId);
@@ -209,9 +186,7 @@ public sealed class FiscalDocumentDeliveryService(
 
         var expiresAt = timeProvider.GetUtcNow() + FiscalDocumentLinkRules.Lifetime;
         var url = links.FiscalDocumentView(document.Id, tokens.Create(document.Id, expiresAt));
-        // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
         var branding = await emailBranding.ForOrgOrNullAsync(document.OrgId, ct);
-        // E50/F01/US03/T02: with the guest portal on, in the language of the guest (the check-in page, the country, the account of the host); without it, Italian or English by the country as ever.
         var culture = document.BookingId is { } documentBookingId
             ? await emailLanguage.CultureOrAsync(
                 document.OrgId, documentBookingId, MessageReplyService.EmailCultureOf(guest.Country), cancellationToken: ct)
@@ -242,7 +217,6 @@ public sealed class FiscalDocumentDeliveryService(
         return new FiscalDocumentDeliveryResult(document.Id, expiresAt.UtcDateTime);
     }
 
-    /// <summary>The name the e-mail says the document comes from: the issuer as it was at the issue, the organization for a document issued before the snapshot existed.</summary>
     private async Task<string> IssuerNameAsync(DocumentFacts document, CancellationToken ct)
     {
         var name = FiscalIssuerSnapshot.FromJson(document.IssuerSnapshot)?.DisplayName;
@@ -276,19 +250,12 @@ public sealed class FiscalDocumentDeliveryService(
         return true;
     }
 
-    /// <summary>The domain is one the standards keep for what is never delivered or for examples (see <see cref="NeverDeliveredSuffixes"/> and <see cref="NeverDeliveredDomains"/>).</summary>
     private static bool IsNeverDelivered(string domain) =>
         NeverDeliveredSuffixes.Any(suffix => domain.EndsWith(suffix, StringComparison.Ordinal))
         || NeverDeliveredDomains.Any(name => string.Equals(domain, name, StringComparison.Ordinal) || domain.EndsWith($".{name}", StringComparison.Ordinal));
 
     private static DomainRuleException NotSent() => new(FiscalDocumentDeliveryErrors.EmailNotSent, "FiscalDocumentEmailNotSent");
 
-    // ---------------------------------------------------------------- the public link
-
-    /// <summary>
-    /// The document a link opens, or <c>null</c>: one answer for every reason it does not (see <see cref="IFiscalDocumentDeliveryService"/>). The token is read first and costs no query; the
-    /// document is then found by the id the token was made for, with the tenant filter ignored, and only an issued guest document of CasaZen opens.
-    /// </summary>
     private async Task<LinkFacts?> OpenAsync(Guid documentId, string? token, CancellationToken ct)
     {
         if (!tokens.TryRead(token, out var tokenDocumentId) || tokenDocumentId != documentId)
@@ -304,11 +271,9 @@ public sealed class FiscalDocumentDeliveryService(
             .Select(d => new LinkFacts(d.Id, d.OrgId, d.Kind, d.Number, d.IssueDate, d.Total, d.Currency))
             .FirstOrDefaultAsync(ct);
 
-        // An issued document always has its number and its day: one that has not is not one a link opens.
         return document is { Number: not null, IssueDate: not null } ? document : null;
     }
 
-    /// <summary>The name of the PDF: <c>documento-</c> and the number with every character that is not a letter, a digit or a dash made a dash (<c>2026/12</c> is <c>2026-12</c>).</summary>
     private static string FileNameOf(string number) =>
         "documento-" + new string(number.Select(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' ? c : '-').ToArray()) + ".pdf";
 
@@ -324,10 +289,8 @@ public sealed class FiscalDocumentDeliveryService(
         DateOnly? IssueDate,
         string? IssuerSnapshot);
 
-    /// <param name="IsDemo">The guest is a row of the showcase seed (<c>TestDataMarkers</c>, origin <c>showcase</c>): an invented person, never e-mailed.</param>
     private sealed record GuestFacts(string FirstName, string Email, string Country, DateTime? AnonymizedAt, bool IsDemo);
 
-    /// <summary>The key of the memory of the documents whose e-mail was queued by the automatic send (see <see cref="AutomaticSendMemory"/>).</summary>
     private sealed record AutomaticSendKey(Guid DocumentId);
 
     private sealed record LinkFacts(Guid Id, Guid OrgId, FiscalDocumentKind Kind, string? Number, DateOnly? IssueDate, decimal Total, string Currency);

@@ -8,11 +8,6 @@ using static Casazen.Tests.Unit.Octorate.BookingImportTestKit;
 
 namespace Casazen.Tests.Unit.Octorate;
 
-/// <summary>
-/// Who collects the payment of a booking of a channel (E08/F03/US03/T02, NF-77, ADR-033-R3): <c>companyCollect</c> comes from the reservation,
-/// whether the commission is already taken out of the payments comes from the portal catalog the marketplace caches; both are <c>null</c> when
-/// they are not said, only a booking of a channel has them, and only the import writes them.
-/// </summary>
 public class BookingCollectionFlagsTests
 {
     private static readonly BookingStateMapper Mapper = new();
@@ -34,7 +29,6 @@ public class BookingCollectionFlagsTests
         var reservation = OctorateReservationReader.Read(document.RootElement)!;
 
         Assert.Equal(expected, reservation.CompanyCollect);
-        // The catalog flag is not a member of the reservation: the reader never sets it.
         Assert.Null(reservation.CommissionIncludedInPayments);
     }
 
@@ -69,15 +63,12 @@ public class BookingCollectionFlagsTests
         await using var db = h.NewDb();
         var service = h.Service(db);
 
-        // Created: the channel collects, and the portal (Airbnb, 274) pays the host net of its commission.
         h.Serve(Res("7001") with { CompanyCollect = "COMPANY" });
         var created = await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
         Assert.Equal(1, created.Created);
         var first = await h.ReadBookingAsync("7001");
         Assert.Equal((true, true), (first.OtaCompanyCollect, first.OtaCommissionIncludedInPayments));
 
-        // A newer version: the host collects now, and the catalog says the portal no longer takes its commission out. Nothing else changed, so
-        // the booking is saved with the flags and no modification of it is announced.
         await SetPortalFlagAsync(h, "274", commissionIncludedInPayments: false);
         h.Serve(Res("7001") with { UpdatedAt = SecondVersion, CompanyCollect = "HOTEL" });
         var updated = await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
@@ -97,7 +88,6 @@ public class BookingCollectionFlagsTests
         await using var db = h.NewDb();
         var service = h.Service(db);
 
-        // The sandbox sends no companyCollect on the reservations of a channel, and this portal (274) is not in the catalog cache.
         h.Serve(Res("7001"), Res("7002") with { CompanyCollect = "NONE" });
         await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
 
@@ -113,7 +103,6 @@ public class BookingCollectionFlagsTests
     public async Task BookingImport_ABookingThatDoesNotComeFromAChannel_NeverGetsTheFlags()
     {
         var h = new BookingImportHarness();
-        // The booking engine of the agency (270) counts as direct, whatever its reservation or the catalog say.
         await SeedPortalAsync(h, "270", commissionIncludedInPayments: true);
         var manual = await h.SeedBookingAsync("7010", source: BookingSource.Manual);
         await using var db = h.NewDb();
@@ -128,7 +117,6 @@ public class BookingCollectionFlagsTests
         Assert.Equal(BookingSource.Direct, direct.Source);
         Assert.Equal((null, null), (direct.OtaCompanyCollect, direct.OtaCommissionIncludedInPayments));
 
-        // A booking the host entered keeps no flag even when a reservation of a channel is read for its id.
         await using var read = h.NewDb();
         var entered = await read.Bookings.AsNoTracking().SingleAsync(b => b.Id == manual);
         Assert.Equal(BookingSource.Manual, entered.Source);
@@ -143,7 +131,6 @@ public class BookingCollectionFlagsTests
         var id = await h.SeedBookingAsync("7001", octorateUpdatedAt: FirstVersion.AddHours(-1));
         await using (var seed = h.NewDb())
         {
-            // A payment the host recorded on it: CasaZen owns its figures from now on.
             seed.Payments.Add(new Payment { BookingId = id, OrgId = OrgA, Amount = 50m, Status = PaymentStatus.Completed, Method = PaymentMethod.CashOnArrival });
             await seed.SaveChangesAsync();
         }
@@ -153,7 +140,6 @@ public class BookingCollectionFlagsTests
         await h.Service(db).ImportAllAsync(h.PropertyId, CancellationToken.None);
 
         var booking = await h.ReadBookingAsync("7001");
-        // The figures of Octorate do not replace the ones CasaZen owns; who collects is not a figure.
         Assert.Null(booking.OtaCommission);
         Assert.Equal(100m, booking.TotalPrice);
         Assert.Equal((true, true), (booking.OtaCompanyCollect, booking.OtaCommissionIncludedInPayments));

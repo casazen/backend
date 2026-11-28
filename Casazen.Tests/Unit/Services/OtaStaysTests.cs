@@ -5,7 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>CO-21 (decision D7): rules of the OTA stays created from iCal blocks.</summary>
 public class OtaStaysTests
 {
     private static readonly DateTime Today = new(2026, 10, 2, 0, 0, 0, DateTimeKind.Utc);
@@ -50,7 +49,6 @@ public class OtaStaysTests
 
         imported.BookingId = Guid.NewGuid();
         Assert.False(OtaStays.IsConvertible(imported, BookingStatus.Confirmed, Today));
-        // A block whose stay was cancelled can become a stay again.
         Assert.True(OtaStays.IsConvertible(imported, BookingStatus.Cancelled, Today));
     }
 

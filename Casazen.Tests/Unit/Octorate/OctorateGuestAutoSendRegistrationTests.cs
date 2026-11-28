@@ -40,10 +40,8 @@ public class OctorateGuestAutoSendRegistrationTests
 
         services.AddCasazenOctorate(new ConfigurationBuilder().Build());
 
-        // The sync service takes the places as an optional parameter: this registration is what turns the recognized names on.
         var descriptor = Assert.Single(services, d => d.ServiceType == typeof(IOctoratePlaceNames));
         Assert.Equal((typeof(OctoratePlaceNames), ServiceLifetime.Scoped), (descriptor.ImplementationType, descriptor.Lifetime));
-        // The handler of the guests has its own registration: the connector still registers the one handler of the arrival and the departure.
         Assert.Equal(
             [typeof(OctorateBookingStatePushHandler)],
             services.Where(d => d.ServiceType == typeof(IEventHandler<DomainEvent>)).Select(d => d.ImplementationType).ToList());

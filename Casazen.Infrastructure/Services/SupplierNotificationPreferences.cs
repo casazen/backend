@@ -18,7 +18,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public static class SupplierNotificationPreferences
 {
-    /// <summary>True when the supplier <paramref name="supplierOrgId"/> wants the notice of <paramref name="kind"/>.</summary>
     public static async Task<bool> AllowsAsync(
         AppDbContext db,
         Guid supplierOrgId,

@@ -21,46 +21,31 @@ public static class SignupAttributionRules
     public const int MaxLandingPathLength = 200;
     public const int MaxReferrerHostLength = 253;
 
-    /// <summary>The longest text of a value that is looked at at all: a longer one cannot be a token nor an address of a site, so it is never parsed.</summary>
     public const int MaxRawValueLength = 2048;
 
-    /// <summary>
-    /// The most digits a token may hold in a row: more is a phone number or an identity number, which is personal data and not a marketing value. The
-    /// separators <c>-</c>, <c>_</c> and <c>.</c> do not end the row (<c>333-123-4567</c> is ten digits, as a phone number written with them is); a letter does.
-    /// </summary>
     public const int MaxDigitRunInToken = 8;
 
-    /// <summary>ISTAT code of a comune: 6 digits.</summary>
     public const int ComuneCodeLength = 6;
 
-    /// <summary>Letters of any alphabet, digits, space and <c>- _ . ~ + | : , / ( ) !</c>.</summary>
     public const string UtmPattern = @"^[\p{L}\p{N} ._~+|:,/()!-]+$";
 
-    /// <summary>Slug of a comune (<c>como</c>, <c>reggio-emilia</c>) or its 6-digit ISTAT code.</summary>
     public const string ComunePattern = @"^([0-9]{6}|[a-z0-9]+(-[a-z0-9]+)*)$";
 
-    /// <summary>A path of the web app: starts with <c>/</c>; no query, fragment, percent-encoding or <c>@</c>.</summary>
     public const string LandingPathPattern = @"^/[A-Za-z0-9/._~-]*$";
 
-    /// <summary>A host name in lower case: no scheme, port, path or credentials.</summary>
     public const string ReferrerHostPattern = @"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$";
 
-    /// <summary>Resource key (SharedResources) of a value longer than allowed.</summary>
     public const string TooLongKey = "SignupAttributionTooLong";
 
-    /// <summary>Resource key of a value with characters outside the rule.</summary>
     public const string InvalidCharactersKey = "SignupAttributionInvalidCharacters";
 
-    /// <summary>Resource key of a comune that CasaZen does not know.</summary>
     public const string UnknownComuneKey = "SignupAttributionUnknownComune";
 
     // The 16 characters of a codice fiscale: six letters, two digits, a letter, two digits, a letter, three digits, a letter (L is a letter, D a digit).
     private const string FiscalCodeShape = "LLLLLLDDLDDLDDDL";
 
-    // When two people would get the same code the digits are replaced, from the right, by these letters (omocodia): 0 to 9 are l m n p q r s t u v.
     private const string FiscalCodeDigitLetters = "lmnpqrstuv";
 
-    /// <summary>Trimmed value, <c>null</c> when empty.</summary>
     public static string? Normalize(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
@@ -105,7 +90,6 @@ public static class SignupAttributionRules
         if (text is null)
             return null;
 
-        // A bare host (<c>www.agenzia.it/case</c>) is read as an address on https; any other scheme is an address that is not a page of a site.
         var candidate = text.Contains("://", StringComparison.Ordinal) ? text : "https://" + text;
         if (!Uri.TryCreate(candidate, UriKind.Absolute, out var uri)
             || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
@@ -131,7 +115,6 @@ public static class SignupAttributionRules
             : null;
     }
 
-    /// <summary>The characters a token may hold inside, between letters and digits: they join the parts of a token and end nothing.</summary>
     private static bool IsSeparator(char c) => c is '-' or '_' or '.';
 
     private static bool IsToken(string token)
@@ -150,7 +133,6 @@ public static class SignupAttributionRules
         return token.Length > 0;
     }
 
-    // The separators are not seen: 333-123-4567, 333.123.4567 and 333_123_4567 are ten digits in a row, as the phone number they write is. A letter ends the row.
     private static bool HasDigitRunLongerThan(string token, int limit)
     {
         var run = 0;
@@ -167,9 +149,6 @@ public static class SignupAttributionRules
         return false;
     }
 
-    // The token has the form of an Italian fiscal code, a personal identifier: 16 characters in the shape of FiscalCodeShape, each digit being a digit or,
-    // in the omocode forms, the letter that stands for it. The separators are not seen (rssmra-80a01-h501u is the same code). The token is already in lower
-    // case and holds only letters, digits and separators.
     private static bool LooksLikeItalianFiscalCode(string token)
     {
         var position = 0;

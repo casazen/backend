@@ -11,31 +11,18 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IDocumentArchiveService
 {
-    /// <summary>
-    /// A page of the documents the caller may read, newest day first and, for the same day, by id: the sources of the allowed types (and of the
-    /// types asked for) concatenated, filtered by days, property, booking and search, counted and paged in SQL.
-    /// </summary>
     Task<DocumentArchivePage> ListAsync(
         HostScope scope,
         DocumentArchiveAccess access,
         DocumentArchiveQuery query,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// How many documents each type the caller may read has, for the filters of <paramref name="query"/> except its type (so the chips of the
-    /// types show what choosing one would give). Every type the caller may read is there, with zero when it has no document.
-    /// </summary>
     Task<IReadOnlyList<ArchiveTypeCount>> CountByTypeAsync(
         HostScope scope,
         DocumentArchiveAccess access,
         DocumentArchiveQuery query,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The file of one document. 403 <c>archive_type_forbidden</c> for a type the caller may not read; 404 <c>archive_document_not_found</c>
-    /// for a row that is missing, of another org or outside the scope (the same row the list would show or not show); 404
-    /// <c>archive_document_has_no_file</c> for a row with no file (or whose file is gone). The caller disposes the stream.
-    /// </summary>
     Task<ArchiveFile> OpenAsync(
         HostScope scope,
         DocumentArchiveAccess access,

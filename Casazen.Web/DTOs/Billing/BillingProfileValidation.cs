@@ -10,7 +10,6 @@ namespace Casazen.Web.DTOs.Billing;
 /// </summary>
 public static class BillingProfileValidation
 {
-    /// <summary>Upper-case letters and digits without spaces, dots and dashes; null when empty.</summary>
     public static string? NormalizeCode(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -28,15 +27,12 @@ public static class BillingProfileValidation
         return normalized is null || (normalized.Length is >= 4 and <= 20 && IsAsciiAlphanumeric(normalized));
     }
 
-    /// <summary>Letters and digits, at most 7 characters (column <c>Orgs.BillingSdiRecipientCode</c>). Null or empty = none.</summary>
     public static bool IsValidSdiRecipientCode(string? normalized) =>
         string.IsNullOrEmpty(normalized) || (normalized.Length <= 7 && IsAsciiAlphanumeric(normalized));
 
-    /// <summary>Letters and digits, at most 16 characters (column <c>Orgs.BillingFiscalCode</c>). Null or empty = none.</summary>
     public static bool IsValidFiscalCode(string? normalized) =>
         string.IsNullOrEmpty(normalized) || (normalized.Length <= 16 && IsAsciiAlphanumeric(normalized));
 
-    /// <summary>A single e-mail address, at most 255 characters. Null or empty = none.</summary>
     public static bool IsValidPecEmail(string? pec)
     {
         if (string.IsNullOrEmpty(pec))

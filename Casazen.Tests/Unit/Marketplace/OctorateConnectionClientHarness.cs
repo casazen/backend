@@ -8,11 +8,6 @@ using Microsoft.Extensions.Configuration;
 
 namespace Casazen.Tests.Unit.Marketplace;
 
-/// <summary>
-/// The real <see cref="OctorateApiClient"/> over a stub HTTP handler, for the tests of the operations on a connection (E09/F02/US01/T01): the handler
-/// keeps every request (method, address, body) and answers what the test queued, so what is proven is what the client sends, reads and logs, not
-/// Octorate.
-/// </summary>
 internal sealed class OctorateConnectionClientHarness
 {
     public const string BaseAddress = "https://api.octorate.test/connect";
@@ -44,13 +39,11 @@ internal sealed class OctorateConnectionClientHarness
 
     public IReadOnlyList<RecordedRequest> Requests => Handler.Requests;
 
-    /// <summary>Queues the answer of the next call.</summary>
     public void Answer(HttpStatusCode status, string body) => Handler.Answers.Enqueue(() => new HttpResponseMessage(status)
     {
         Content = new StringContent(body, Encoding.UTF8, "application/json"),
     });
 
-    /// <summary>Queues a failure of the next call (no answer at all).</summary>
     public void Fail(Exception exception) => Handler.Answers.Enqueue(() => throw exception);
 
     public sealed record RecordedRequest(HttpMethod Method, Uri Uri, string Body);

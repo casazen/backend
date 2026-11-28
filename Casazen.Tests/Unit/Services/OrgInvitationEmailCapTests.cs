@@ -76,8 +76,6 @@ public class OrgInvitationEmailCapTests
         Assert.Equal(25, _kit.Emails.Snapshot().Count);
     }
 
-    // ─── «Reinvia»: one an hour for each invitation ─────────────────────────────────────────────────────
-
     [Fact]
     public async Task ResendAsync_ASecondSendWithinTheHour_Is429_WithTheMinutesLeft_AndTheFirstLinkStillWorks()
     {
@@ -89,7 +87,6 @@ public class OrgInvitationEmailCapTests
         var error = await Assert.ThrowsAsync<DomainTooManyRequestsException>(() => ResendAsync(orgId, sent.Invitation.Id));
 
         AssertTooMany(error, OrgInvitationErrors.ResendTooSoon, 30);
-        // Nothing was sent, nothing rotated: the link of the first email is still the invitation's.
         Assert.Single(_kit.Emails.Snapshot());
         await using var db = _kit.NewDb();
         Assert.NotNull(await _kit.Invitations(db).LookupAsync(firstToken));
@@ -104,7 +101,6 @@ public class OrgInvitationEmailCapTests
 
         _kit.Clock.Advance(TimeSpan.FromMinutes(59) + TimeSpan.FromSeconds(59));
         var tooSoon = await Assert.ThrowsAsync<DomainTooManyRequestsException>(() => ResendAsync(orgId, sent.Invitation.Id));
-        // A second short of the hour still says one minute: the wait is rounded up, never down to zero.
         AssertTooMany(tooSoon, OrgInvitationErrors.ResendTooSoon, 1);
 
         _kit.Clock.Advance(TimeSpan.FromSeconds(1));
@@ -148,23 +144,18 @@ public class OrgInvitationEmailCapTests
     [Fact]
     public async Task ResendAsync_AnInvitationNobodyHasTrackedYet_IsNeitherLimitedNorCounted()
     {
-        // Rows written before the send was tracked (LastSentAt null, an empty list): nothing is invented for them.
         var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Scale);
         var historic = new List<Guid>();
         for (var i = 0; i < 12; i++)
             historic.Add((await _kit.SeedInvitationAsync(org.Id, $"old{i}@example.com")).Invitation.Id);
 
-        // The twelve old ones do not use the cap of the day...
         var created = await InviteAsync(org.Id, "new@example.com");
-        // ...and any of them can be sent again at once (the first «reinvia» of a tracked invitation).
         var resent = await ResendAsync(org.Id, historic[0]);
 
         Assert.Equal(_kit.Now, created.Invitation.LastSentAt);
         Assert.Equal(_kit.Now, resent.Invitation.LastSentAt);
         Assert.Null((await _kit.ReadInvitationAsync(historic[1])).LastSentAt);
     }
-
-    // ─── What counts as a send ──────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task LastSentAt_IsTheCreationAndEveryResend_NotTheReminderNorTheCopyOfTheLink()
@@ -174,7 +165,6 @@ public class OrgInvitationEmailCapTests
         var created = _kit.Now;
         Assert.Equal(created, sent.Invitation.LastSentAt);
 
-        // The reminder of the third day is the system's: it moves neither the last send nor the list the cap counts.
         _kit.Clock.Advance(TimeSpan.FromDays(3) + TimeSpan.FromMinutes(1));
         await using (var db = _kit.NewDb())
             Assert.Equal(1, (await _kit.Maintenance(db).RunAsync()).Reminded);
@@ -184,11 +174,9 @@ public class OrgInvitationEmailCapTests
         Assert.Equal(created, afterReminder.LastSentAt);
         Assert.Equal([created], afterReminder.SendLog);
 
-        // A «reinvia» does.
         var resent = await ResendAsync(orgId, sent.Invitation.Id);
         Assert.Equal(_kit.Now, resent.Invitation.LastSentAt);
         var stored = await _kit.ReadInvitationAsync(sent.Invitation.Id);
-        // The creation, three days earlier, is out of the 24 hours the list keeps: only the last send is in it.
         Assert.Equal([_kit.Now], stored.SendLog);
     }
 
@@ -205,7 +193,6 @@ public class OrgInvitationEmailCapTests
 
         var log = (await _kit.ReadInvitationAsync(sent.Invitation.Id)).SendLog;
 
-        // The creation and the first four resends are past 24 hours from the last one; what is kept is the last day.
         Assert.All(log, at => Assert.True(at > _kit.Now - OrgInvitationRules.DailyWindow));
         Assert.Equal(4, log.Count);
     }
@@ -224,8 +211,6 @@ public class OrgInvitationEmailCapTests
         Assert.Equal(_kit.Now, item.LastSentAt);
     }
 
-    // ─── An email that never went out ───────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task CreateAsync_WhenTheEmailCannotBeQueued_TheAllowanceIsNotSpent()
     {
@@ -240,7 +225,6 @@ public class OrgInvitationEmailCapTests
         var stored = await _kit.ReadInvitationAsync(sent.Invitation.Id);
         Assert.Null(stored.LastSentAt);
         Assert.Empty(stored.SendLog);
-        // Nothing went out, so the cap of one a day is still free, and the invitation can be sent again at once.
         _kit.QueueAccepts = true;
         var resent = await ResendAsync(orgId, sent.Invitation.Id);
         Assert.True(resent.EmailQueued);
@@ -262,14 +246,11 @@ public class OrgInvitationEmailCapTests
         Assert.Equal(created, failed.Invitation.LastSentAt);
         Assert.Equal([created], (await _kit.ReadInvitationAsync(sent.Invitation.Id)).SendLog);
 
-        // The person can try again at once, and this time it goes out.
         _kit.QueueAccepts = true;
         var again = await ResendAsync(orgId, sent.Invitation.Id);
         Assert.True(again.EmailQueued);
         Assert.Equal(_kit.Now, again.Invitation.LastSentAt);
     }
-
-    // ─── Refusals are all or nothing ────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task ResendAsync_ARefusedSend_DoesNotRotateTheTokenNorMoveTheExpiry()
@@ -292,7 +273,6 @@ public class OrgInvitationEmailCapTests
         var sent = await InviteAsync(orgId, "anna@example.com");
         await RevokeAsync(orgId, sent.Invitation.Id);
 
-        // An invitation that is closed is a conflict, whatever the wait says.
         var error = await Assert.ThrowsAsync<DomainConflictException>(() => ResendAsync(orgId, sent.Invitation.Id));
 
         Assert.Equal(OrgInvitationErrors.NotPending, error.Code);

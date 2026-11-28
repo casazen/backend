@@ -24,7 +24,6 @@ public sealed class DirectAlloggiatiAccount(AppDbContext db, DirectAlloggiatiSoa
         {
             verified = false;
         }
-        // A change of credentials during the call invalidates the result.
         var written = await db.PropertyQuesturaCredentials.Where(c => c.Id == account.Id && c.UpdatedAt == account.UpdatedAt && c.CredentialVersion == account.CredentialVersion)
             .ExecuteUpdateAsync(set => set.SetProperty(c => c.LastVerificationOk, verified)
                 .SetProperty(c => c.LastVerifiedAt, clock.GetUtcNow().UtcDateTime)

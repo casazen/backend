@@ -23,10 +23,8 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed class CalendarChangeQueries(AppDbContext db) : ICalendarChangeQueries
 {
-    /// <summary>How many processes a page of candidates holds when the caller reaches only some properties.</summary>
     private const int PageSize = 100;
 
-    /// <summary>How many pages of candidates are read at most for a caller limited to some properties.</summary>
     private const int MaxPages = 5;
 
     private sealed record ChunkRow(Guid ProcessId, Guid PropertyId, CalendarChunkState State, string? ErrorCode, DateOnly From, DateOnly To);
@@ -46,7 +44,6 @@ public sealed class CalendarChangeQueries(AppDbContext db) : ICalendarChangeQuer
 
         var ordered = processes.OrderByDescending(p => p.CreatedAt).ThenBy(p => p.Id);
 
-        // The whole org reads one page of the size asked for; a caller limited to some properties reads pages of candidates until it has enough it may see.
         var size = scope.IsOrgWide ? limit : PageSize;
         var pages = scope.IsOrgWide ? 1 : MaxPages;
         var result = new List<CalendarChangeView>();
@@ -61,8 +58,6 @@ public sealed class CalendarChangeQueries(AppDbContext db) : ICalendarChangeQuer
             if (rows.Count < size)
                 break;
 
-            // The last page the bound allows was full and the caller still has not what it asked for: older changes of its own may follow, and are not in the list. Said, never
-            // silent.
             if (page == pages - 1 && result.Count < limit)
                 truncated = true;
         }
@@ -83,7 +78,6 @@ public sealed class CalendarChangeQueries(AppDbContext db) : ICalendarChangeQuer
         return (await VisibleViewsAsync(scope, [row], cancellationToken)).FirstOrDefault();
     }
 
-    /// <summary>The views of the processes of <paramref name="rows"/> the scope reaches, in the order of the rows.</summary>
     private async Task<List<CalendarChangeView>> VisibleViewsAsync(HostScope scope, IReadOnlyList<CalendarChangeProcess> rows, CancellationToken ct)
     {
         var processIds = rows.Select(r => r.Id).ToList();
@@ -97,7 +91,6 @@ public sealed class CalendarChangeQueries(AppDbContext db) : ICalendarChangeQuer
             r => r.Id,
             r => CalendarChangeSummary.PropertyIdsOf(r.SummaryJson).Union(chunksOf[r.Id].Select(c => c.PropertyId)).ToList());
 
-        // The properties the scope reaches, in SQL: the same narrowing as every list of the host.
         HashSet<Guid>? reachable = null;
         if (!scope.IsOrgWide)
         {
@@ -126,7 +119,6 @@ public sealed class CalendarChangeQueries(AppDbContext db) : ICalendarChangeQuer
 
     private static CalendarChangeView ViewOf(CalendarChangeProcess row, IReadOnlyList<Guid> propertyIds, IReadOnlyList<ChunkRow> chunks)
     {
-        // The dates the summary names, else the ones of the chunks.
         var dates = CalendarChangeSummary.DatesOf(row.SummaryJson);
         DateOnly? first = dates?.From;
         DateOnly? last = dates?.To;
@@ -153,10 +145,6 @@ public sealed class CalendarChangeQueries(AppDbContext db) : ICalendarChangeQuer
             propertyIds.Select(id => PropertyViewOf(id, chunks.Where(c => c.PropertyId == id).ToList())).ToList());
     }
 
-    /// <summary>
-    /// One property of a change from its chunks: failed when one failed (with the code of the first, by date), else pending, else accepted, else confirmed; a property
-    /// with no chunk, or only skipped ones, sent nothing.
-    /// </summary>
     private static CalendarChangePropertyView PropertyViewOf(Guid propertyId, IReadOnlyList<ChunkRow> chunks)
     {
         if (chunks.Count == 0)

@@ -15,7 +15,6 @@ public class OtaAdapterResilienceTests
     {
         var services = new ServiceCollection();
 
-        // Setup configuration
         var inMemorySettings = new Dictionary<string, string>
         {
             {"OTA:Resilience:Airbnb:RetryCount", "3"},
@@ -34,10 +33,8 @@ public class OtaAdapterResilienceTests
         services.AddSingleton<IConfiguration>(configuration);
         services.AddLogging(builder => builder.AddConsole());
 
-        // Register rate limiter
         services.AddSingleton<OtaRateLimiter>();
 
-        // Register HttpClient with Polly policies for Airbnb
         services.AddHttpClient<AirbnbAdapter>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(35);
@@ -63,11 +60,9 @@ public class OtaAdapterResilienceTests
     [Fact]
     public async Task AirbnbAdapter_ShouldUseRateLimiter()
     {
-        // Arrange
         var adapter = _serviceProvider.GetRequiredService<AirbnbAdapter>();
         var rateLimiter = _serviceProvider.GetRequiredService<OtaRateLimiter>();
 
-        // Act - Make multiple requests
         var tasks = new List<Task<bool>>();
         for (int i = 0; i < 3; i++)
         {
@@ -76,14 +71,12 @@ public class OtaAdapterResilienceTests
 
         var results = await Task.WhenAll(tasks);
 
-        // Assert - All should complete (rate limiter allows them)
         Assert.Equal(3, results.Length);
     }
 
     [Fact]
     public async Task AirbnbAdapter_ShouldHandleTransientFailuresWithRetry()
     {
-        // Arrange
         var adapter = _serviceProvider.GetRequiredService<AirbnbAdapter>();
 
         // Act - This will fail because it's a real HTTP call to invalid endpoint
@@ -97,16 +90,13 @@ public class OtaAdapterResilienceTests
     [Fact]
     public async Task MultipleAdapters_ShouldShareRateLimiter()
     {
-        // Arrange
         var rateLimiter = _serviceProvider.GetRequiredService<OtaRateLimiter>();
         var adapter1 = _serviceProvider.GetRequiredService<AirbnbAdapter>();
         var adapter2 = _serviceProvider.GetRequiredService<AirbnbAdapter>();
 
-        // Act - Both adapters should use the same rate limiter instance
         using var token1 = await rateLimiter.AcquireAsync("Airbnb");
         using var token2 = await rateLimiter.AcquireAsync("Airbnb");
 
-        // Assert - Both tokens acquired from same limiter
         Assert.NotNull(token1);
         Assert.NotNull(token2);
     }
@@ -114,10 +104,8 @@ public class OtaAdapterResilienceTests
     [Fact]
     public async Task AirbnbAdapter_ShouldRespectTimeout()
     {
-        // Arrange
         var adapter = _serviceProvider.GetRequiredService<AirbnbAdapter>();
 
-        // Act - Call to a very slow endpoint (will timeout)
         var startTime = DateTime.UtcNow;
         var result = await adapter.GetBookingsAsync(
             "test-property-id",
@@ -127,22 +115,18 @@ public class OtaAdapterResilienceTests
         var duration = DateTime.UtcNow - startTime;
 
         // Assert - Should complete within timeout + retries window (roughly 90 seconds max)
-        Assert.True(duration.TotalSeconds < 120); // Generous upper bound
-        Assert.Empty(result); // Should return empty list on failure
+        Assert.True(duration.TotalSeconds < 120);
+        Assert.Empty(result);
     }
 
     [Fact]
     public async Task AirbnbAdapter_ShouldLogResilienceEvents()
     {
-        // Arrange
         var adapter = _serviceProvider.GetRequiredService<AirbnbAdapter>();
         var logger = _serviceProvider.GetRequiredService<ILogger<AirbnbAdapter>>();
 
-        // Act
         await adapter.ValidateCredentialsAsync("test-key");
 
-        // Assert - Logging should have been called
-        // (This is a basic test; in real scenarios, you'd use a mock logger to verify specific log messages)
         Assert.NotNull(logger);
     }
 }

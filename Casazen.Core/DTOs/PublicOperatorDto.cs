@@ -11,7 +11,6 @@ namespace Casazen.Core.DTOs;
 /// </summary>
 public class PublicOperatorDto
 {
-    /// <summary>The company name or the name of the person who carries on the activity (<c>Org.LegalName</c>), or null.</summary>
     public string? LegalName { get; set; }
 
     /// <summary>
@@ -20,10 +19,8 @@ public class PublicOperatorDto
     /// </summary>
     public string? VatNumber { get; set; }
 
-    /// <summary>The registered office ("sede legale") in one line (<c>Org.RegisteredOffice</c>), or null.</summary>
     public string? RegisteredOffice { get; set; }
 
-    /// <summary>The operator data of <paramref name="org"/>, or <c>null</c> when it has none to show.</summary>
     public static PublicOperatorDto? FromOrg(Org org)
     {
         var legalName = NullIfBlank(org.LegalName);

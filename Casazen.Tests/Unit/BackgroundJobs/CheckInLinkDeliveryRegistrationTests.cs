@@ -53,7 +53,6 @@ public class CheckInLinkDeliveryRegistrationTests
             Assert.Equal(TimeZoneInfo.Utc, registered[CheckInLinkDeliveryRetryJob.RecurringJobId].Options.TimeZone);
         }
 
-        // The daily job that issues the links is registered whatever the flags say: it records why a link goes nowhere.
         Assert.Contains("guest-checkin-send", registered.Keys);
     }
 

@@ -40,7 +40,6 @@ public class ContextAuthorizationServiceTests
     [Fact]
     public async Task HasPermissionAsync_UserNotInDatabaseWithJwtPropertyOwner_DeniesHostContext()
     {
-        // PL-02 (A1-05): the JWT role alone (Auth0 sign-up, API or app without the onboarding) grants nothing host-side.
         await using var db = CreateDbContext();
         var httpContext = BuildHttpContext("auth0|jwt-only", ["PropertyOwner"]);
         var service = CreateService(db, httpContext);
@@ -63,7 +62,6 @@ public class ContextAuthorizationServiceTests
     [Fact]
     public async Task HasPermissionAsync_DefaultPropertyOwnerRoleWithoutOnboarding_DeniesShortRentWrite()
     {
-        // The pre-PL-02 default: DB role PropertyOwner, no JWT role, no onboarding, no consents.
         await using var db = CreateDbContext();
         db.Users.Add(new Core.Entities.User
         {
@@ -172,14 +170,11 @@ public class ContextAuthorizationServiceTests
     [Fact]
     public async Task HasPermissionOrThrowAsync_AnErrorReadingTheMemberships_IsThrown_WhileHasPermissionAsyncAnswersNo()
     {
-        // NF-65: the code that decides from the event bus or a job who is told something must not take a passing error for «no» (the person
-        // would be missed for good): the variant throws, so the event is delivered again. The policies of the requests keep failing closed.
         await using var db = CreateDbContext();
         await SeedOnboardedUserAsync(db, "auth0|passing-error");
         var service = CreateService(db, BuildHttpContext("auth0|passing-error", []));
         Assert.True(await service.HasPermissionOrThrowAsync("auth0|passing-error", "short-rent", "booking.read"));
 
-        // The store reads through this context: from now on every read fails.
         await db.DisposeAsync();
         var otherService = CreateService(db, BuildHttpContext("auth0|passing-error", []));
 
@@ -253,8 +248,6 @@ public class ContextAuthorizationServiceTests
         var httpContext = BuildHttpContext("auth0|long-only", ["LongTermLandlord"]);
         var service = CreateService(db, httpContext);
 
-        // property.* counts in the context that grants it (LT-05): the shared property endpoints accept either
-        // context in their policy, the short-rent ones (pricing, iCal, photos...) stay closed to a landlord.
         Assert.True(await service.HasPermissionAsync("auth0|long-only", "long-rent", "property.read"));
         Assert.True(await service.HasPermissionAsync("auth0|long-only", "long-rent", "property.write"));
         Assert.False(await service.HasPermissionAsync("auth0|long-only", "short-rent", "property.read"));
@@ -265,8 +258,6 @@ public class ContextAuthorizationServiceTests
     [Fact]
     public async Task HasPermissionAsync_LongRentMembership_WithStaleJwtRole_DoesNotGrantShortRentPropertyPermissions()
     {
-        // AM-01: the veto applies to an org member who already has a rental row. Without the org member the token
-        // still completes host contexts (legacy owners before the backfill).
         await using var db = CreateDbContext();
         if (!await db.AppContexts.AnyAsync(c => c.Key == "long-rent"))
         {

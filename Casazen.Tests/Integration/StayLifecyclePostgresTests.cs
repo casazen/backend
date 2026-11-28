@@ -125,7 +125,6 @@ public class StayLifecyclePostgresTests : IClassFixture<CasazenWebApplicationFac
         var afterStart = await LoadAsync(bookingId);
         var complete = await host.PostAsJsonAsync($"/api/bookings/{bookingId}/checkout-wizard/complete", new { confirmDeparture = true });
 
-        // Without the host's confirmation: a code the wizard turns into "registra arrivo e procedi", nothing changed.
         Assert.Equal("booking_arrival_not_registered", (await ProblemAsync(deadEnd, HttpStatusCode.Conflict)).GetProperty("code").GetString());
         Assert.Equal(HttpStatusCode.OK, start.StatusCode);
         Assert.Equal(BookingStatus.CheckedIn, afterStart.Status);
@@ -169,7 +168,6 @@ public class StayLifecyclePostgresTests : IClassFixture<CasazenWebApplicationFac
 
         foreach (var (name, status, checkIn, checkOut, registerArrival) in cases)
         {
-            // Two identical stays per case (seeded directly: the check-out never checks the dates against other stays).
             var viaWizard = await SeedBookingAsync(property, status, checkIn, checkOut);
             var viaEndpoint = await SeedBookingAsync(property, status, checkIn, checkOut);
 
@@ -189,7 +187,6 @@ public class StayLifecyclePostgresTests : IClassFixture<CasazenWebApplicationFac
     public async Task ComplianceSummary_CheckoutsDue_CountsTodaysDeparturesConfirmedOrCheckedInAndOpenStays()
     {
         var (hostId, property) = await SeedHostPropertyAsync();
-        // casazen/backend#978: the departures are the host's here; by default CasaZen registers today's departures itself and lists only the overdue ones.
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -217,7 +214,6 @@ public class StayLifecyclePostgresTests : IClassFixture<CasazenWebApplicationFac
             due.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).Order());
         Assert.NotEqual(hostId, otherHostId);
 
-        // Once checked out the departure is no longer due.
         using var closing = await host.PostAsJsonAsync($"/api/bookings/{confirmedToday}/check-out", new { registerArrival = true });
         Assert.Equal(HttpStatusCode.OK, closing.StatusCode);
         var after = await host.GetFromJsonAsync<JsonElement>("/api/compliance/summary");
@@ -268,7 +264,6 @@ public class StayLifecyclePostgresTests : IClassFixture<CasazenWebApplicationFac
         return body.TryGetProperty("code", out var code) ? code.GetString() : null;
     }
 
-    /// <summary>A host with its org and an active property in Rome.</summary>
     private async Task<(string HostId, Property Property)> SeedHostPropertyAsync()
     {
         var hostId = $"auth0|co08-{Guid.NewGuid():N}";

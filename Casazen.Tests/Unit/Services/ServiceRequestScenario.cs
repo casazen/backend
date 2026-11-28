@@ -13,13 +13,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// A host and a supplier ready for the service request flows of SP-04, on one in-memory database and a clock the test moves
-/// (<see cref="Clock"/>, Thursday 8 October 2026, 12:00 in Rome): a host org with a property (comune H501) and a stay, a supplier
-/// org that works Monday to Friday 08-13 and 14-18 and Saturday 08-14 with no notice, and one published service
-/// (<see cref="ListingId"/>, "Pulizia appartamento", 60 euro per job, two hours). Everything the services queue is recorded in
-/// <see cref="Emails"/> and <see cref="Pushes"/>.
-/// </summary>
 internal sealed class ServiceRequestScenario : IDisposable
 {
     public const string HostUserId = TestAuthHandler.DefaultUserId;
@@ -32,19 +25,14 @@ internal sealed class ServiceRequestScenario : IDisposable
     public const int ServicePriceCents = 6000;
     public const int ServiceMinutes = 120;
 
-    /// <summary>Thursday 8 October 2026, 12:00 in Rome (summer time).</summary>
     public static readonly DateTimeOffset Instant = new(2026, 10, 8, 10, 0, 0, TimeSpan.Zero);
 
-    /// <summary>Friday 9 October 2026, 10:00 in Rome: inside the morning hours, a free slot of a two hours service.</summary>
     public static readonly DateTime FridayAt10 = new(2026, 10, 9, 8, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>Friday 9 October 2026, 14:00 in Rome: the start of the afternoon hours.</summary>
     public static readonly DateTime FridayAt14 = new(2026, 10, 9, 12, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>Saturday 10 October 2026, 09:00 in Rome.</summary>
     public static readonly DateTime SaturdayAt09 = new(2026, 10, 10, 7, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>Sunday 11 October 2026, 10:00 in Rome: the supplier does not work on Sundays.</summary>
     public static readonly DateTime SundayAt10 = new(2026, 10, 11, 8, 0, 0, DateTimeKind.Utc);
 
     private readonly ServiceRequestTestKit _kit;
@@ -74,23 +62,18 @@ internal sealed class ServiceRequestScenario : IDisposable
 
     public SupplierServiceRequestReader Reader => _kit.Reader;
 
-    /// <summary>The supplier KPIs and the overview of the home (SP-04e), over the scenario's flags and payments.</summary>
     public SupplierKpiService Kpis => _kit.Kpis;
 
     public SupplierAgendaService Agenda => _kit.Agenda;
 
     public SupplierServiceCatalogService Catalog => _kit.Catalog;
 
-    /// <summary>The payment service of SP-15a, over <see cref="Gateway"/>.</summary>
     public SupplierPaymentService Payments => _kit.Payments;
 
-    /// <summary>The fake Stripe of the payments: nothing in a scenario reaches the real one.</summary>
     public FakeSupplierPaymentGateway Gateway => _kit.Gateway;
 
-    /// <summary>What would have been queued on Hangfire for the pending payment requests of a supplier (SP-15b).</summary>
     public RecordingSupplierPaymentJobScheduler JobScheduler => _kit.JobScheduler;
 
-    /// <summary>A platform admin who can receive the alerts about the payments that need them (SP-15b).</summary>
     public async Task<string> AddAdminAsync(string email = "admin@test.com", bool active = true)
     {
         var admin = new User
@@ -107,7 +90,6 @@ internal sealed class ServiceRequestScenario : IDisposable
         return admin.Id;
     }
 
-    /// <summary>The feature flags of the scenario: all off until a test (or <see cref="EnablePaymentsAsync"/>) switches one on.</summary>
     public TestFeatureFlags Flags => _kit.Flags;
 
     public Guid HostOrgId { get; private set; }
@@ -167,20 +149,14 @@ internal sealed class ServiceRequestScenario : IDisposable
         return scenario;
     }
 
-    /// <summary>The Stripe account the supplier of the scenario is connected to when <see cref="ConnectSupplierAsync"/> is not told another.</summary>
     public const string SupplierAccountId = "acct_supplier_scenario";
 
-    /// <summary>
-    /// Switches the payments flag on and connects the supplier's Stripe account: from here a request is paid inside CasaZen when the
-    /// supplier takes it (SP-15a). <paramref name="ready"/> false leaves the account without charges and payouts (the KYC is not done).
-    /// </summary>
     public async Task EnablePaymentsAsync(bool ready = true)
     {
         Flags.Set(Casazen.Core.Features.FeatureFlags.SupplierOnlinePayments, true);
         await ConnectSupplierAsync(ready);
     }
 
-    /// <summary>Gives the supplier org a connected account, with charges and payouts enabled when <paramref name="ready"/>.</summary>
     public async Task ConnectSupplierAsync(bool ready = true, string accountId = SupplierAccountId)
     {
         var org = await Db.Orgs.SingleAsync(o => o.Id == SupplierOrgId);
@@ -190,14 +166,9 @@ internal sealed class ServiceRequestScenario : IDisposable
         await Db.SaveChangesAsync();
     }
 
-    /// <summary>The payments of a request as saved, whatever the context tracks (canceled ones included).</summary>
     public async Task<List<ServiceRequestPayment>> PaymentsOfAsync(Guid requestId) =>
         await Db.ServiceRequestPayments.AsNoTracking().Where(p => p.ServiceRequestId == requestId).OrderBy(p => p.CreatedAt).ToListAsync();
 
-    /// <summary>
-    /// A request paid inside CasaZen that the supplier completed with <paramref name="finalAmountCents"/> (the payments enabled, the
-    /// supplier connected): the request, taken and completed through the service the way the API does.
-    /// </summary>
     public async Task<ServiceRequest> CompletedOnlineAsync(int? finalAmountCents = ServicePriceCents)
     {
         await EnablePaymentsAsync();
@@ -206,7 +177,6 @@ internal sealed class ServiceRequestScenario : IDisposable
             request.Id, SupplierOrgId, new CompleteServiceRequestCommand(FinalAmountCents: finalAmountCents));
     }
 
-    /// <summary>Forgets the emails and pushes queued so far, to assert only on what the next step queues.</summary>
     public void ForgetNotifications()
     {
         lock (Emails.Queued)
@@ -214,7 +184,6 @@ internal sealed class ServiceRequestScenario : IDisposable
         _pushes.Clear();
     }
 
-    /// <summary>A request of the host for the supplier, created through the service (the way the API does). Always timed.</summary>
     public Task<ServiceRequest> RequestAsync(
         DateTime? start = null,
         bool withService = true,
@@ -237,8 +206,6 @@ internal sealed class ServiceRequestScenario : IDisposable
             false,
             rentalContext,
             listingId,
-            // Default timed slot for catalog requests; null start uses Create's auto-assign (duration, no planner).
-            // Catalog + start without duration still goes through the published-slot planner.
             start ?? (listingId is null ? null : FridayAt10),
             durationMinutes ?? (listingId is null ? ServiceMinutes : null)));
     }
@@ -246,24 +213,19 @@ internal sealed class ServiceRequestScenario : IDisposable
     /// <summary>A request the supplier took (without a time of its own unless the request has one).</summary>
     public async Task<ServiceRequest> TakenAsync(DateTime? start = null, TakeServiceRequestCommand? command = null)
     {
-        // Explicit duration: payment and lifecycle helpers are not testing the published-slot planner, and many of them
-        // create several jobs on the same default Friday 10:00 (or after the clock has moved past that slot).
         var request = await RequestAsync(start, durationMinutes: ServiceMinutes);
         return await Service.TakeAsync(request.Id, SupplierOrgId, SupplierUserId, command);
     }
 
-    /// <summary>A request whose work has started.</summary>
     public async Task<ServiceRequest> StartedAsync(DateTime? start = null, TakeServiceRequestCommand? command = null)
     {
         var request = await TakenAsync(start, command);
         return await Service.StartAsync(request.Id, SupplierOrgId);
     }
 
-    /// <summary>The request as saved, whatever the context tracks.</summary>
     public async Task<ServiceRequest> ReadAsync(Guid id) =>
         await Db.ServiceRequests.IgnoreQueryFilters().AsNoTracking().SingleAsync(r => r.Id == id);
 
-    /// <summary>The reliability events of the supplier as saved (SP-REL), oldest first.</summary>
     public async Task<List<SupplierReliabilityEvent>> ReliabilityEventsAsync(Guid? supplierOrgId = null)
     {
         var supplier = supplierOrgId ?? SupplierOrgId;
@@ -275,7 +237,6 @@ internal sealed class ServiceRequestScenario : IDisposable
             .ToListAsync();
     }
 
-    /// <summary>A request written straight to the database in <paramref name="status"/>, for the states the flows reach slowly.</summary>
     public async Task<ServiceRequest> SeedAsync(
         ServiceRequestStatus status,
         Action<ServiceRequest>? change = null,
@@ -303,10 +264,6 @@ internal sealed class ServiceRequestScenario : IDisposable
         return request;
     }
 
-    /// <summary>
-    /// Legacy row without a schedule (create no longer allows this). Used only to exercise take/propose that still set a time
-    /// on a pre-migration request until the backfill runs.
-    /// </summary>
     public Task<ServiceRequest> SeedUntimedAsync(bool withService = true) =>
         SeedAsync(ServiceRequestStatus.Richiesto, r =>
         {
@@ -316,7 +273,6 @@ internal sealed class ServiceRequestScenario : IDisposable
             r.EstimatedAmountCents = ServicePriceCents;
         });
 
-    /// <summary>Writes a change straight to a request (a state the flows reach slowly), whatever the context tracks.</summary>
     public async Task ChangeRequestAsync(Guid id, Action<ServiceRequest> change)
     {
         var request = await Db.ServiceRequests.IgnoreQueryFilters().SingleAsync(r => r.Id == id);
@@ -332,7 +288,6 @@ internal sealed class ServiceRequestScenario : IDisposable
         await Db.SaveChangesAsync();
     }
 
-    /// <summary>Another supplier of the same comune, to check that nobody reaches the requests of someone else.</summary>
     public async Task<Guid> AddOtherSupplierAsync()
     {
         var org = new Casazen.Core.Entities.Org
@@ -360,7 +315,6 @@ internal sealed class ServiceRequestScenario : IDisposable
         return org.Id;
     }
 
-    /// <summary>A service of the supplier's catalog (written straight to the table, as the catalog tests do).</summary>
     public async Task<Guid> AddListingAsync(
         string name = "Servizio extra",
         string category = ServiceCategories.Cleaning,
@@ -484,14 +438,12 @@ internal sealed class ServiceRequestScenario : IDisposable
         BookingId = booking.Id;
         SupplierOrgId = supplierOrg.Id;
 
-        // 30 minutes between two jobs, 3 jobs a day, no notice, 35 days ahead, a slot every hour.
         await Agenda.ReplaceRulesAsync(SupplierOrgId, new SupplierRulesInput(30, 3, 0, 35, 60));
         await Agenda.ReplaceHoursAsync(SupplierOrgId, WorkingWeek());
 
         ListingId = await AddListingAsync(ServiceName);
     }
 
-    /// <summary>Monday to Friday 08:00-13:00 and 14:00-18:00, Saturday 08:00-14:00, Sunday off.</summary>
     public static SupplierHoursInput WorkingWeek() => new(
     [
         Day(DayOfWeek.Monday, Band(8, 13), Band(14, 18)),

@@ -5,17 +5,8 @@ using Casazen.Infrastructure.Email.Templates;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// The supplier invite email, shared by the creation of an invite (<see cref="SupplierService"/>) and its resending
-/// by an admin (<see cref="SupplierAdminService"/>, SU-12), so both send the same text.
-/// </summary>
 internal static class SupplierInviteEmails
 {
-    /// <summary>
-    /// The invite email for <paramref name="token"/> (the secret of the link, only ever sent by email). Rendered
-    /// before the invite is saved: a missing <c>App:PublicSiteBaseUrl</c> is a configuration error, not an invite with
-    /// a wrong link.
-    /// </summary>
     public static EmailContent Build(
         PublicSiteLinks publicSiteLinks,
         SupplierInviteRecord invite,
@@ -36,11 +27,6 @@ internal static class SupplierInviteEmails
         return string.IsNullOrWhiteSpace(name) ? code : $"{name.Trim()} ({code})";
     }
 
-    /// <summary>
-    /// Name of the comune of an invite code: the pilot comune or the comune of the official list (SU-04); <c>null</c> when it
-    /// is neither (the code is then shown as it is). <c>ItalianComuneRegistry</c> is gone: it knew 12 comuni and mapped F205 to
-    /// Firenze while F205 is Milano (A4-12).
-    /// </summary>
     public static async Task<string?> ResolveComuneNameAsync(
         ISupplierPilotComuni pilotComuni, IComuneDirectory comuneDirectory, string comuneCode, CancellationToken cancellationToken)
     {

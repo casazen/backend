@@ -23,8 +23,6 @@ public class SupplierReadModelsSqlTests
     private static readonly DateTime CurrentStart = new(2026, 9, 30, 22, 0, 0, DateTimeKind.Utc);
     private static readonly DateTime CurrentEnd = new(2026, 10, 8, 22, 0, 0, DateTimeKind.Utc);
 
-    // ─── The overview ───
-
     [Fact]
     public void OverviewCounts_AreCountedByTheDatabaseInOnePass_ForTheSupplierOnly()
     {
@@ -34,13 +32,12 @@ public class SupplierReadModelsSqlTests
 
         Assert.Matches("\"SupplierOrgId\" = @", sql);
         Assert.Matches("(?i)count\\(\\*\\)", sql);
-        // Arrived (CreatedAt), taken (TakenAt), refused (a final status and its last update), completed (CompletedAt).
         Assert.Contains("\"CreatedAt\" >= @", sql);
         Assert.Contains("\"TakenAt\" >= @", sql);
         Assert.Contains("\"UpdatedAt\" >= @", sql);
         Assert.Contains("\"CompletedAt\" >= @", sql);
-        Assert.Matches("\"Status\" = 5", sql); // Rifiutato
-        Assert.Matches("\"Status\" = 3|\"Status\" IN \\(3, 4\\)|\"Status\" = 4", sql); // Completato, Pagato
+        Assert.Matches("\"Status\" = 5", sql);
+        Assert.Matches("\"Status\" = 3|\"Status\" IN \\(3, 4\\)|\"Status\" = 4", sql);
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(sql, "FROM \"ServiceRequests\""));
     }
 
@@ -77,7 +74,6 @@ public class SupplierReadModelsSqlTests
         var sql = SupplierPaymentReadModels.PaidBetween(db, SupplierOrg, CurrentStart, CurrentEnd).ToQueryString();
 
         Assert.Matches("\"SupplierOrgId\" = @", sql);
-        // Paid, or released (SP-15c-a: the money CasaZen held has reached the supplier): nothing else is income.
         Assert.Matches($"\"Status\" IN \\({(int)ServicePaymentStatus.Paid}, {(int)ServicePaymentStatus.Released}\\)", sql);
         Assert.Contains("\"PaidAt\" >= @", sql);
         Assert.Contains("\"PaidAt\" < @", sql);
@@ -87,8 +83,6 @@ public class SupplierReadModelsSqlTests
         Assert.Contains("\"NetCents\"", sql);
         Assert.Contains("FROM \"ServiceRequestPayments\"", sql);
     }
-
-    // ─── The counters ───
 
     [Fact]
     public void TabCounts_AreCountedByTheDatabaseInOnePass_ForTheSupplierOnly()
@@ -102,11 +96,8 @@ public class SupplierReadModelsSqlTests
         Assert.Contains("\"ProposedStartUtc\" IS NULL", sql);
         Assert.Contains("\"ProposedStartUtc\" IS NOT NULL", sql);
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(sql, "FROM \"ServiceRequests\""));
-        // The counters read the requests only: no join with the property, the org, the booking or the customer.
         Assert.DoesNotContain("JOIN", sql, StringComparison.OrdinalIgnoreCase);
     }
-
-    // ─── The filters ───
 
     [Fact]
     public void InboxFilter_TheTabsOfTheProposal_UseTheProposedTimeOfTheRequest()
@@ -146,12 +137,9 @@ public class SupplierReadModelsSqlTests
         Assert.Matches("(?i)lower\\(", where);
         Assert.Contains("\"ServiceNameSnapshot\"", where);
         Assert.Contains("\"Category\"", where);
-        // The text is a parameter of a LIKE, and the provider escapes what it holds: a percent or an underscore typed by the supplier is
-        // the character it is, not a wildcard (PostgreSQL's escape character is the backslash).
         Assert.Contains("LIKE @term_contains", where);
         Assert.Contains("@term_contains='%a\\%b\\_c%'", sql);
         Assert.DoesNotContain("'%a%b_c%'", sql, StringComparison.Ordinal);
-        // What the take discloses is never searched.
         Assert.DoesNotContain("\"Notes\"", where, StringComparison.Ordinal);
         Assert.DoesNotContain("\"Address\"", where, StringComparison.Ordinal);
         Assert.DoesNotContain("\"LocationAddress\"", where, StringComparison.Ordinal);
@@ -160,7 +148,7 @@ public class SupplierReadModelsSqlTests
         Assert.DoesNotContain("\"FullName\"", where, StringComparison.Ordinal);
         Assert.DoesNotContain("\"DisplayName\"", where, StringComparison.Ordinal);
         Assert.DoesNotContain("\"Email\"", where, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"PublicCode\"", where, StringComparison.Ordinal); // a text is not a whole code
+        Assert.DoesNotContain("\"PublicCode\"", where, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -175,7 +163,6 @@ public class SupplierReadModelsSqlTests
         Assert.Matches("\"PublicCode\" = @", where);
         Assert.DoesNotContain("\"PublicCode\" LIKE", where, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("lower(s.\"PublicCode\")", where, StringComparison.Ordinal);
-        // The code that is compared is the stored form: no dash, upper case.
         Assert.Contains("@bookingCode='7Z9Q2X4W8V'", sql);
     }
 
@@ -218,13 +205,10 @@ public class SupplierReadModelsSqlTests
     [Fact]
     public void InboxRows_TheBookingCodeIsRead_OnlyToBeSearched_NeverNamedByTheViews()
     {
-        // PublicCode is a column of the row so the filter can compare it; the view of the console has no member for it.
         Assert.DoesNotContain(
             typeof(SupplierServiceRequestView).GetProperties(),
             property => property.Name.Contains("Code", StringComparison.OrdinalIgnoreCase));
     }
-
-    // ─── helpers ───
 
     private static SupplierInboxQuery Query(
         bool? awaitingCustomer = null,

@@ -38,11 +38,9 @@ public class SignupAttribution : ITenantOwned
     [MaxLength(SignupAttributionRules.ComuneCodeLength)]
     public string? ComuneCode { get; set; }
 
-    /// <summary>Path of the first page of the visit (e.g. <c>/p/affitti-brevi/lombardia/como</c>), without query.</summary>
     [MaxLength(SignupAttributionRules.MaxLandingPathLength)]
     public string? LandingPath { get; set; }
 
-    /// <summary>Host of the site the visitor came from (e.g. <c>www.google.com</c>), never the full URL.</summary>
     [MaxLength(SignupAttributionRules.MaxReferrerHostLength)]
     public string? ReferrerHost { get; set; }
 

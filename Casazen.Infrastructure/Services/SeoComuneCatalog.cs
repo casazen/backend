@@ -3,7 +3,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary><see cref="ISeoComuneCatalog"/> on the official ISTAT list (<see cref="IComuneDirectory"/>).</summary>
 public class SeoComuneCatalog(IComuneDirectory directory) : ISeoComuneCatalog
 {
     public async Task<ComuneInfo?> GetByCodeAsync(string? istatCode, CancellationToken cancellationToken = default)

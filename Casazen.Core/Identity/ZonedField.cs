@@ -2,9 +2,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Core.Identity;
 
-// E71/F01/US02/T01 (NF-190, decision D11): a value read on an identity document, bound to the side and to the zone of the format it was read from. A value lives
-// in memory for the length of one request and is never stored, logged or put in a job: only its name, its side, its zone and its source are ever spoken of.
-
 /// <summary>
 /// One value read on one side of an identity document, with the place it was read from (NF-190: «associa ogni valore alla zona letta»). The value is what the
 /// reader of the zone found next to its own label, or what the MRZ says; it is <b>personal data</b>: <see cref="ToString"/> leaves it out, so a record that is
@@ -27,10 +24,6 @@ public sealed record ZonedField(string Name, string Value, DocumentSide Side, st
     public override string ToString() => $"ZonedField {{ Name = {Name}, Side = {Side}, ZoneId = {ZoneId}, Source = {Source} }}";
 }
 
-/// <summary>
-/// The names of the fields a document reading yields (<see cref="ZonedField.Name"/>), in the vocabulary of the field zones of the format files and of the policy
-/// (<c>IdentityDecisionPolicy.Document.IdentifyingFields</c>). A code is never renamed or reused; a new one goes at the end of the class and of its <c>All</c> list.
-/// </summary>
 public static class ZonedFieldNames
 {
     public const string Surname = "surname";
@@ -44,27 +37,20 @@ public static class ZonedFieldNames
     public const string ExpiryDate = "expiryDate";
     public const string FiscalCode = "fiscalCode";
 
-    /// <summary>Every code, in this order.</summary>
     public static IReadOnlyList<string> All { get; } =
         [Surname, GivenNames, BirthDate, BirthPlace, Sex, Nationality, DocumentNumber, IssueDate, ExpiryDate, FiscalCode];
 }
 
-/// <summary>Where a value comes from (<see cref="ZonedField.Source"/>).</summary>
 public static class ZonedFieldSources
 {
-    /// <summary>The machine readable zone, with the check digits of ICAO 9303.</summary>
     public const string Mrz = "mrz";
 
-    /// <summary>The visual zone: what is printed next to its label, read locally.</summary>
     public const string Viz = "viz";
 
-    /// <summary>Every code, in this order.</summary>
     public static IReadOnlyList<string> All { get; } = [Mrz, Viz];
 }
 
-/// <summary>The zone of <see cref="ZonedField.ZoneId"/> that is not the zone of a field of the format.</summary>
 public static class ZonedFieldZones
 {
-    /// <summary>The machine readable zone, whatever the region the layout of the format gives it.</summary>
     public const string Mrz = "mrz";
 }

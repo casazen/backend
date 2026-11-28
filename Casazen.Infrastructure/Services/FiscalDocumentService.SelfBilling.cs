@@ -25,8 +25,6 @@ public sealed partial class FiscalDocumentService
         if (document.IssuerProfileId is not { } holderProfileId || document.PeriodYear is null || document.PeriodMonth is null)
             throw NotFound(documentId);
 
-        // The profile the draft was made for: the agency's own (it holds the account) or an owner's (an owner company issues through the agency). A profile that is gone is a
-        // draft whose holder no longer exists: it is never issued in the name of another.
         var (organization, org) = await RequireIssuerAsync(document.OrgId, ct);
         var holder = await db.OrgFiscalIssuerProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.Id == holderProfileId && p.OrgId == document.OrgId, ct)
             ?? throw new DomainRuleException(FiscalDocumentErrors.OwnerIssuerMissing, "FiscalDocumentOwnerIssuerMissing");
@@ -54,7 +52,6 @@ public sealed partial class FiscalDocumentService
         logger.LogInformation("Self-billed invoice draft {DocumentId} discarded", document.Id);
     }
 
-    /// <summary>The self-billing path takes only a self-billed invoice: any other document is not found there.</summary>
     private static void RequireSelfBilling(FiscalDocument document)
     {
         if (document.Purpose != FiscalDocumentPurpose.SelfBilling)

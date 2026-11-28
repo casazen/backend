@@ -3,7 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Entities;
 
-/// <summary>PC-06 (A2-19, A2-33): the unit as stored, and the range and precision of the coordinates.</summary>
 public class PropertyAddressTests
 {
     [Theory]
@@ -55,7 +54,6 @@ public class PropertyAddressTests
     [Fact]
     public void RoundCoordinate_SixDecimals_IsNotChanged()
     {
-        // The old column kept 2 decimals (about 1 km): a point such as 41.902782 must come back as it was sent.
         Assert.Equal(41.902782m, PropertyAddress.RoundCoordinate(41.902782m));
     }
 }

@@ -121,25 +121,14 @@ public interface IPlatformPaymentGateway
     /// </summary>
     Task<PlatformCharge> CreateAsync(PlatformChargeRequest request, CancellationToken cancellationToken = default);
 
-    /// <summary>The PaymentIntent as it is now on Stripe, with its charge. A missing PaymentIntent is a <c>StripeException</c> (<c>resource_missing</c>).</summary>
     Task<PlatformCharge> GetAsync(string paymentIntentId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Charges the whole block. A PaymentIntent that cannot be charged any more (already charged, canceled, expired) is returned as it is,
-    /// not an error: the caller sees the truth and the same key never charges twice.
-    /// </summary>
     Task<PlatformCharge> CaptureAsync(string paymentIntentId, string idempotencyKey, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Releases the block (or drops an unpaid PaymentIntent) and returns the PaymentIntent as it is afterwards. A PaymentIntent that cannot
-    /// be canceled any more (it was charged meanwhile) is returned as it is: the caller then gives the money back with a refund.
-    /// </summary>
     Task<PlatformCharge> CancelAsync(string paymentIntentId, string idempotencyKey, CancellationToken cancellationToken = default);
 
-    /// <summary>Gives money back to the payer from CasaZen's balance. A 4xx is a refusal (nothing was refunded); anything else leaves the outcome unknown and is repeated with the same key.</summary>
     Task<ServiceChargeRefund> CreateRefundAsync(PlatformRefundRequest request, CancellationToken cancellationToken = default);
 
-    /// <summary>Every refund Stripe has for a PaymentIntent of the platform.</summary>
     Task<IReadOnlyList<ServiceChargeRefund>> ListRefundsAsync(string paymentIntentId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -148,6 +137,5 @@ public interface IPlatformPaymentGateway
     /// </summary>
     Task<ServiceTransfer> CreateTransferAsync(ServiceTransferRequest request, CancellationToken cancellationToken = default);
 
-    /// <summary>The transfers of a transfer group: how the release finds out that a transfer exists although the answer that created it never came back.</summary>
     Task<IReadOnlyList<ServiceTransfer>> ListTransfersAsync(string transferGroup, CancellationToken cancellationToken = default);
 }

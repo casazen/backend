@@ -3,18 +3,8 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// Owner portal data access service (ADR-011).
-/// Filters by PropertyOwnership.OwnerUserId and active ownership period.
-/// All responses mask guest data per ADR-011-R3.
-/// </summary>
 public interface IOwnerPortalService
 {
-    /// <summary>
-    /// Gets properties owned by the owner with occupancy and revenue summaries (ADR-011-R2, ADR-011-R8).
-    /// Filters by ownership period: OwnershipStart &lt;= now AND (OwnershipEnd == null OR OwnershipEnd &gt;= now).
-    /// Guest data is masked in booking summaries.
-    /// </summary>
     Task<IReadOnlyList<OwnerPortalPropertyInfo>> GetOwnerPropertiesAsync(
         Guid ownerUserId,
         CancellationToken cancellationToken = default);
@@ -29,37 +19,20 @@ public interface IOwnerPortalService
         Guid ownerUserId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// One published statement with its lines grouped as in its PDF (<c>GET api/owner-portal/statements/{id}</c>). 404 <c>owner_statement_version_not_found</c> for a
-    /// statement that is not published, not the caller's, of another owner or missing (one answer for all); 403 as <see cref="GetOwnerStatementsAsync"/>.
-    /// </summary>
     Task<OwnerPortalStatementDetailInfo> GetOwnerStatementAsync(
         Guid ownerUserId,
         Guid statementId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The stored PDF of a published statement, exactly what was published (<c>GET api/owner-portal/statements/{id}/pdf</c>); the download is written first. The caller
-    /// disposes the stream. 404 as <see cref="GetOwnerStatementAsync"/>, and <c>owner_statement_pdf_not_available</c> when the version has no stored file.
-    /// </summary>
     Task<OwnerFileContent> OpenOwnerStatementPdfAsync(
         Guid ownerUserId,
         Guid statementId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The invoices of the property manager to the owner (<c>GET api/owner-portal/invoices</c>, E13/F01/US02/T02): the issued documents with the purpose owner invoice
-    /// whose recipient is an owner profile the caller holds <c>accounting.read</c> on, the newest first. Same flag, same empty list and same 403 as
-    /// <see cref="GetOwnerStatementsAsync"/>.
-    /// </summary>
     Task<IReadOnlyList<OwnerPortalInvoiceInfo>> GetOwnerInvoicesAsync(
         Guid ownerUserId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The PDF of one invoice of the owner (<c>GET api/owner-portal/invoices/{id}/pdf</c>), made from the document as it was issued, in <paramref name="language"/> (Italian
-    /// by default). 404 <c>owner_portal_invoice_not_found</c> for an invoice that is not the caller's, of another owner or missing.
-    /// </summary>
     Task<OwnerFileContent> OpenOwnerInvoicePdfAsync(
         Guid ownerUserId,
         Guid invoiceId,
@@ -78,11 +51,6 @@ public interface IOwnerPortalService
         AccountantPackagePeriod? period = null,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The PDF of one document issued in the name of the owner (<c>GET api/owner-portal/issued-documents/{id}/pdf</c>), made from the document and the issuer as they were at the issue, in
-    /// <paramref name="language"/> (Italian by default). 404 <c>owner_issued_document_not_found</c> for a document that is not one of the caller's (another owner's, the agency's, a
-    /// draft, missing: one answer) and with a flag off; 403 as <see cref="GetOwnerIssuedDocumentsAsync"/>.
-    /// </summary>
     Task<OwnerFileContent> OpenOwnerIssuedDocumentPdfAsync(
         Guid ownerUserId,
         Guid documentId,
@@ -98,12 +66,6 @@ public interface IOwnerPortalService
         Guid documentId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The ZIP for the accountant of the owner (<c>GET api/owner-portal/issued-documents/export?period=yyyy-MM|yyyy</c>), streamed to <paramref name="destination"/>: the PDF and the XML
-    /// of the documents issued in the owner's name in the month or the year, their register and an index with the SHA-256 of every file, and for a year also their summary and the invoices
-    /// of the property manager to the owner with their recharges. Every owner profile the caller holds <c>accounting.read</c> on (one folder each when more than one). 404
-    /// <c>owner_issued_documents_not_available</c> with a flag off or with no ownership in force; 403 as the list; 422 <c>accountant_package_too_large</c> before the first byte.
-    /// </summary>
     Task<AccountantPackageResult> ExportOwnerIssuedDocumentsAsync(
         Guid ownerUserId,
         AccountantPackagePeriod period,
@@ -149,12 +111,6 @@ public interface IOwnerPortalService
         OwnerOverviewQuery query,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The same figures week by week or month by month (NF-96, <c>GET /api/owner-portal/trend</c>), for all the owner's properties
-    /// together or one line for each (at most <see cref="HostPerformanceRules.MaxTrendSeries"/>, the rest summed in <c>other</c>), each
-    /// bucket next to its days one year earlier when asked. Same ownerships and same weights as <see cref="GetOwnerOverviewAsync"/>.
-    /// </summary>
-    /// <exception cref="Exceptions.NotFoundException">As <see cref="GetOwnerOverviewAsync"/>.</exception>
     Task<OwnerPortalTrend> GetOwnerTrendAsync(
         Guid ownerUserId,
         OwnerOverviewQuery query,
@@ -176,7 +132,6 @@ public sealed record OwnerOverviewQuery(
     HostPerformanceGroupBy GroupBy = HostPerformanceGroupBy.None,
     bool CompareYear = false)
 {
-    /// <summary>Only this property; null = every property of the owner. It must be one of the owner's.</summary>
     public Guid? PropertyId { get; init; }
 }
 
@@ -217,7 +172,6 @@ public sealed record OwnerPortalSeries(
     IReadOnlyList<OwnerPerformanceFigures> Points,
     IReadOnlyList<OwnerPerformanceFigures?> PreviousYear);
 
-/// <summary>The owner's trend (NF-96): the weeks or months of the period, the same buckets as the host's trend.</summary>
 public sealed record OwnerPortalTrend(
     HostDashboardPeriod Period,
     HostDashboardPeriod? PreviousYearPeriod,
@@ -225,9 +179,6 @@ public sealed record OwnerPortalTrend(
     IReadOnlyList<HostTrendBucket> Buckets,
     IReadOnlyList<OwnerPortalSeries> Series);
 
-/// <summary>
-/// Property information for owner portal with masked guest data (ADR-011-R3).
-/// </summary>
 public class OwnerPortalPropertyInfo
 {
     public Guid PropertyId { get; set; }
@@ -239,10 +190,6 @@ public class OwnerPortalPropertyInfo
     public IReadOnlyList<OwnerPortalBookingInfo> RecentBookings { get; set; } = [];
 }
 
-/// <summary>
-/// Booking information with guest data masked per ADR-011-R3.
-/// Names NULL, emails NULL, phones NULL. Only dates, channel, amounts.
-/// </summary>
 public class OwnerPortalBookingInfo
 {
     public Guid BookingId { get; set; }
@@ -283,9 +230,6 @@ public sealed record OwnerPortalStatementInfo(
     bool HasPdf,
     OwnerStatementTotals Totals);
 
-/// <summary>A published statement with what its PDF says: the lines grouped by part, the invoice of the property manager when one is linked, and the tourist tax box.</summary>
-/// <param name="Statement">The statement as the list shows it.</param>
-/// <param name="Content">What the statement says (the lines and the box).</param>
 public sealed record OwnerPortalStatementDetailInfo(OwnerPortalStatementInfo Statement, OwnerStatementContent Content);
 
 /// <summary>An invoice of the property manager to the owner (E13/F01/US02/T02): its number, day, kind, total and currency, and what it is made from.</summary>
@@ -341,30 +285,19 @@ public sealed record OwnerPortalIssuedDocumentInfo(
     string SdiStatus,
     bool HasXml);
 
-/// <summary>
-/// The withholding of the owner in a year (E18/F01/US02/T01): the total withheld, its details by agency, month and property, and the Certificazione Unica of the year of each owner profile once the
-/// agency reviewed it. Always in euro: the withholding of the Italian rule is decided and paid in euro.
-/// </summary>
 public class OwnerPortalWithholdingInfo
 {
     public int Year { get; set; }
 
-    /// <summary>The currency of every amount: always <c>EUR</c>.</summary>
     public string Currency { get; set; } = "EUR";
 
-    /// <summary>What was withheld in the year, the sum of <see cref="Details"/>.</summary>
     public decimal TotalWithheld { get; set; }
 
     public IReadOnlyList<OwnerPortalWithholdingDetailInfo> Details { get; set; } = [];
 
-    /// <summary>The Certificazione Unica of the year of each owner profile the caller reads, the agency having reviewed it; empty until then.</summary>
     public IReadOnlyList<OwnerPortalCuInfo> CuStatements { get; set; } = [];
 }
 
-/// <summary>
-/// What was withheld on the payouts of one month for one property (<see cref="AmountWithheld"/>, in euro, a reversal taking its decision away), on the base of <see cref="GrossBase"/>. A payout of
-/// before the facts were read from the ledger names no property: its line has an empty id and name.
-/// </summary>
 public class OwnerPortalWithholdingDetailInfo
 {
     public Guid AgencyId { get; set; }

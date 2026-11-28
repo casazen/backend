@@ -24,8 +24,6 @@ public class LegalDocumentTextsTests
     private static readonly LegalDocumentKind[] Kinds = [LegalDocumentKind.Tos, LegalDocumentKind.Privacy, LegalDocumentKind.Dpa];
     private static readonly string[] Languages = ["it", "en"];
 
-    // ─── The shipped drafts load and their values are replaced ───────────────────────────────────
-
     [Theory]
     [InlineData(LegalDocumentKind.Tos, "it")]
     [InlineData(LegalDocumentKind.Tos, "en")]
@@ -60,7 +58,6 @@ public class LegalDocumentTextsTests
             Assert.DoesNotContain("{{", html);
             Assert.DoesNotContain("}}", html);
             Assert.DoesNotContain("#if", html);
-            // The draft notice is metadata of the file (an HTML comment): it is not part of the page shown to hosts.
             Assert.DoesNotContain("agente AI", html);
             Assert.DoesNotContain("AI agent", html);
             Assert.DoesNotContain("<!--", html);
@@ -88,7 +85,6 @@ public class LegalDocumentTextsTests
         Assert.Contains("<td>199,00 €</td>", italian);
         Assert.Contains("<td>€29.00</td>", english);
         Assert.Contains("<td>€199.00</td>", english);
-        // The limits come from PlanCatalog: 3 and 50 properties, the last tier unlimited.
         Assert.Contains("<td>3</td>", italian);
         Assert.Contains("<td>50</td>", italian);
         Assert.Contains("<td>illimitati</td>", italian);
@@ -147,8 +143,6 @@ public class LegalDocumentTextsTests
         Assert.DoesNotContain("<b>S.r.l.</b>", html);
     }
 
-    // ─── The placeholder engine ───────────────────────────────────────────────────────────────────
-
     [Fact]
     public void Render_CommentMentioningPlaceholders_IsRemovedAndHarmless()
     {
@@ -203,8 +197,6 @@ public class LegalDocumentTextsTests
         Assert.Equal(new[] { "Legal__Controller__Pec" }, result.MissingConfiguration);
         Assert.DoesNotContain("Milano", string.Join(" ", result.MissingConfiguration.Concat(result.Problems)));
     }
-
-    // ─── Fail-closed (D9): no text, no placeholder, and the app says why ──────────────────────────
 
     [Theory]
     [InlineData("Legal:Controller:Name", "Legal__Controller__Name")]
@@ -353,8 +345,6 @@ public class LegalDocumentTextsTests
         Assert.Contains("numero REA MI-1234567", configured.GetText(LegalDocumentKind.Tos, "it")!.Html);
     }
 
-    // ─── Retention: the periods in force, or the honest "none" ────────────────────────────────────
-
     [Fact]
     public void GetText_NoRetentionConfigured_SaysThatNothingIsDeletedAutomatically()
     {
@@ -382,7 +372,6 @@ public class LegalDocumentTextsTests
         settings["Gdpr:Retention:DocumentScans:Months"] = "1";
         settings["Gdpr:Retention:DocumentScans:Days"] = "15";
         settings["Gdpr:Retention:DocumentScans:Source"] = "decision of the product owner";
-        // A period without a source is not applied by the retention job, so the text must not announce it.
         settings["Gdpr:Retention:FiscalData:Years"] = "10";
 
         var service = Service(settings);
@@ -408,8 +397,6 @@ public class LegalDocumentTextsTests
 
         Assert.Contains("nessun periodo applicato", html);
     }
-
-    // ─── Structure: Italian and English say the same, in the same order ───────────────────────────
 
     [Theory]
     [InlineData("tos")]
@@ -445,7 +432,6 @@ public class LegalDocumentTextsTests
 
             Assert.Equal(Enumerable.Range(1, sections.Count).Select(n => n.ToString()), sections);
             Assert.Equal(numbers.Count, numbers.Distinct().Count());
-            // Every article's paragraphs are consecutive from .1: no missing "3.4" between "3.3" and "3.5".
             foreach (var group in numbers.GroupBy(n => n.Split('.')[0]))
             {
                 var minor = group.Select(n => n.Split('.').Length > 1 ? int.Parse(n.Split('.')[1]) : 0).Where(m => m > 0).ToList();
@@ -479,19 +465,16 @@ public class LegalDocumentTextsTests
     [Fact]
     public void Terms_SpecificApprovalList_NamesOnlyExistingClauses()
     {
-        // Arts. 1341-1342 c.c.: the clauses the Customer approves specifically are listed by number (ToS 17.6).
         foreach (var language in Languages)
         {
             var raw = ReadRaw("tos", language);
             var existing = Headings(raw).Concat(ParagraphNumbers(raw)).ToHashSet();
             var approval = Regex.Match(raw, @"<p><strong>17\.6</strong>(?<list>.*?)</p>", RegexOptions.Singleline).Groups["list"].Value;
-            // After the colon the list is "2.2 (description); 3.6 and 3.7 (description); …": the descriptions hold no digits.
             var list = approval[(approval.IndexOf(':') + 1)..];
             var listed = Regex.Matches(list, @"(?<![\d.])(?<n>\d+(?:\.\d+)?)(?![\d])").Select(m => m.Groups["n"].Value).ToList();
 
             Assert.True(listed.Count >= 12, $"{language}: the approval list should name the onerous clauses, found {listed.Count}");
             Assert.All(listed, number => Assert.Contains(number, existing));
-            // The clauses that limit liability, suspend, withdraw, change unilaterally and fix the forum must be on the list.
             foreach (var required in new[] { "3.6", "6.6", "12", "13.3", "14", "15.1", "16.2" })
                 Assert.Contains(required, listed);
         }
@@ -550,7 +533,6 @@ public class LegalDocumentTextsTests
                 var raw = ReadRaw(folder, language);
 
                 Assert.Contains("{{Site.BaseUrl}}/legale/sub-responsabili", raw);
-                // Whole words: "Export" is not the provider "Expo".
                 foreach (var provider in new[] { "Supabase", "Auth0", "Resend", "Expo", "Railway", "Vercel", "DeepSeek", "SendGrid" })
                     Assert.DoesNotMatch($@"\b{provider}\b", raw);
             }
@@ -560,8 +542,6 @@ public class LegalDocumentTextsTests
     [Fact]
     public void Documents_CitedStatutes_AreOnlyTheVerifiedOnes()
     {
-        // Every statute the drafts cite was checked against a public source (see the runbook): a new reference needs a
-        // verification first, so this list changes only together with the runbook's table of verified sources.
         var allowedActs = new HashSet<string> { "206/2005", "2016/679", "2019/1150" };
         var allowedCivilCodeArticles = new HashSet<string> { "1229", "1341", "1342" };
 
@@ -591,8 +571,6 @@ public class LegalDocumentTextsTests
         Assert.Contains("Regulation (EU) 2019/1150", ReadRaw("tos", "en"));
     }
 
-    // ─── Activation: the deploy never forces the re-acceptance by itself ──────────────────────────
-
     [Fact]
     public void AppSettings_DefaultVersions_DoNotActivateTheDrafts()
     {
@@ -604,20 +582,17 @@ public class LegalDocumentTextsTests
         foreach (var key in new[] { "Tos", "Privacy", "Dpa" })
             Assert.NotEqual(LegalTextFixtures.DraftVersion, documents.GetProperty(key).GetProperty("Version").GetString());
 
-        // CF-BE: the privacy notice 2026-10-v2 (it names ConcordatoFacile) is a draft too, activated per environment with the Railway variable.
         Assert.NotEqual("2026-10-v2", documents.GetProperty("Privacy").GetProperty("Version").GetString());
     }
 
     [Fact]
     public void AppSettings_ProposedTerms_RespectTheMinimumNoticesOfRegulation20191150()
     {
-        // Regulation (EU) 2019/1150, if it applies to the Service: 15 days to notify changes, 30 days to terminate.
         using var settings = JsonDocument.Parse(File.ReadAllText(Path.Combine(LegalTextFixtures.RepositoryRoot(), "Casazen.Web", "appsettings.json")));
         var terms = settings.RootElement.GetProperty("Legal").GetProperty("Terms");
 
         Assert.True(terms.GetProperty("ChangeNoticeDays").GetInt32() >= 15);
         Assert.True(terms.GetProperty("TerminationNoticeDays").GetInt32() >= 30);
-        // Company data and the governing court have no default: a lawyer or the product owner provides them.
         foreach (var key in new[] { "Name", "Address", "VatId", "Pec", "PrivacyEmail" })
             Assert.Equal(string.Empty, settings.RootElement.GetProperty("Legal").GetProperty("Controller").GetProperty(key).GetString());
         Assert.Equal(string.Empty, terms.GetProperty("GoverningCourt").GetString());
@@ -641,14 +616,12 @@ public class LegalDocumentTextsTests
     {
         var accepted = Snapshot("2026-06-v1");
 
-        // Before the activation (current default): the hosts who accepted 2026-06-v1 stay in.
         var beforeSettings = LegalTextFixtures.CompleteConfiguration();
         foreach (var key in new[] { "Tos", "Privacy", "Dpa" })
             beforeSettings[$"Legal:Documents:{key}:Version"] = "2026-06-v1";
         var before = Service(beforeSettings);
         Assert.True(HostOnboardingGate.Evaluate(accepted, before).ConsentsAccepted);
 
-        // Activation (versions set): the same hosts must accept the new version, and only then are back in.
         var after = Service(LegalTextFixtures.CompleteConfiguration());
         Assert.False(HostOnboardingGate.Evaluate(accepted, after).ConsentsAccepted);
         Assert.True(HostOnboardingGate.Evaluate(Snapshot(LegalTextFixtures.DraftVersion), after).ConsentsAccepted);
@@ -674,8 +647,6 @@ public class LegalDocumentTextsTests
     [Fact]
     public void Evaluate_DocumentNotPublishedForMissingValues_VersionStillGatesTheHosts()
     {
-        // Fail-closed hides the text, not the consent: the gate follows the configured version, and the health check
-        // and the startup log tell the product owner what to set before announcing the new version.
         var settings = LegalTextFixtures.CompleteConfiguration();
         settings.Remove("Legal:Controller:Name");
         var service = Service(settings);
@@ -685,12 +656,9 @@ public class LegalDocumentTextsTests
         Assert.True(HostOnboardingGate.Evaluate(Snapshot(LegalTextFixtures.DraftVersion), service).ConsentsAccepted);
     }
 
-    // ─── Health check: degraded, with the variables to set and never their values ─────────────────
-
     [Fact]
     public void GetProblems_AllDocumentsPublished_IsEmpty()
     {
-        // The health check adds the dates in force and the subprocessor details (DEPLOY-CFG): not part of the texts.
         var problems = LegalDocumentsHealthCheck.GetProblems(Service(LegalTextFixtures.CompleteConfiguration()));
 
         Assert.Empty(problems);
@@ -731,8 +699,6 @@ public class LegalDocumentTextsTests
         Assert.Equal(HealthStatus.Degraded, result.Status);
         Assert.Contains("no text file for this version", result.Description);
     }
-
-    // ─── Helpers ──────────────────────────────────────────────────────────────────────────────────
 
     private static LegalDocumentService Service(Dictionary<string, string?> settings) =>
         new(LegalConfiguration(settings), NullLogger<LegalDocumentService>.Instance);

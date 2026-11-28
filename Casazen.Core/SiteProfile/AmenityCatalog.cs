@@ -2,17 +2,10 @@ using Casazen.Core.Enums;
 
 namespace Casazen.Core.SiteProfile;
 
-/// <summary>A group of the amenity list of the property page («Tutti i servizi»): the five of the design of the booking site.</summary>
-/// <param name="Id">Stable text: <c>comfort</c>, <c>kitchen</c>, <c>bedbath</c>, <c>outdoor</c>, <c>safety</c>.</param>
 public sealed record AmenityGroup(string Id, string LabelIt, string LabelEn);
 
-/// <summary>How the booking site names and draws one <see cref="PropertyAmenity"/>.</summary>
-/// <param name="Amenity">The amenity: its name is what the public DTOs carry in <c>amenities</c>.</param>
-/// <param name="Icon">An icon of the booking site's icon set.</param>
-/// <param name="Group">The <see cref="AmenityGroup.Id"/> it is listed under.</param>
 public sealed record AmenityCatalogEntry(PropertyAmenity Amenity, string Icon, string Group, string LabelIt, string LabelEn)
 {
-    /// <summary>What the public DTOs carry: the name of the enum member (<c>WiFi</c>, <c>Pool</c>...).</summary>
     public string Name => Amenity.ToString();
 }
 
@@ -42,7 +35,6 @@ public static class AmenityCatalog
 
     public static IReadOnlyList<AmenityCatalogEntry> Entries { get; } =
     [
-        // Comfort (connectivity, climate, laundry, access)
         new(PropertyAmenity.WiFi, "wifi", Comfort, "Wi-Fi", "Wi-Fi"),
         new(PropertyAmenity.TV, "tv", Comfort, "TV", "TV"),
         new(PropertyAmenity.CableTV, "tv", Comfort, "TV via cavo o satellite", "Cable or satellite TV"),
@@ -60,7 +52,6 @@ public static class AmenityCatalog
         new(PropertyAmenity.Sauna, "thermometer", Comfort, "Sauna", "Sauna"),
         new(PropertyAmenity.LongTermStaysAllowed, "calendar", Comfort, "Soggiorni lunghi ammessi", "Long stays allowed"),
 
-        // Kitchen
         new(PropertyAmenity.Kitchen, "utensils", Kitchen, "Cucina", "Kitchen"),
         new(PropertyAmenity.Refrigerator, "thermometer", Kitchen, "Frigorifero", "Fridge"),
         new(PropertyAmenity.Microwave, "flame", Kitchen, "Forno a microonde", "Microwave"),
@@ -70,11 +61,9 @@ public static class AmenityCatalog
         new(PropertyAmenity.Oven, "flame", Kitchen, "Forno", "Oven"),
         new(PropertyAmenity.DiningTable, "utensils", Kitchen, "Tavolo da pranzo", "Dining table"),
 
-        // Bedroom and bathroom
         new(PropertyAmenity.Crib, "bed", BedBath, "Culla", "Cot"),
         new(PropertyAmenity.HighChair, "smile", BedBath, "Seggiolone", "High chair"),
 
-        // Outdoors and location (outdoor spaces, parking, the rule about pets and smoking)
         new(PropertyAmenity.Pool, "waves", Outdoor, "Piscina", "Pool"),
         new(PropertyAmenity.HotTub, "droplet", Outdoor, "Vasca idromassaggio", "Hot tub"),
         new(PropertyAmenity.Garden, "trees", Outdoor, "Giardino", "Garden"),
@@ -91,7 +80,6 @@ public static class AmenityCatalog
         new(PropertyAmenity.PetFriendly, "paw", Outdoor, "Animali ammessi", "Pets allowed"),
         new(PropertyAmenity.SmokingAllowed, "alert-circle", Outdoor, "Si può fumare", "Smoking allowed"),
 
-        // Safety and arrival
         new(PropertyAmenity.SmokeDetector, "alert-circle", Safety, "Rilevatore di fumo", "Smoke detector"),
         new(PropertyAmenity.CarbonMonoxideDetector, "alert-circle", Safety, "Rilevatore di monossido di carbonio", "Carbon monoxide detector"),
         new(PropertyAmenity.FireExtinguisher, "shield", Safety, "Estintore", "Fire extinguisher"),

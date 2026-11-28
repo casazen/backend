@@ -29,10 +29,6 @@ public sealed class PropertyDoorQrController(
     PublicSiteLinks siteLinks,
     ILogger<PropertyDoorQrController> logger) : ControllerBase
 {
-    /// <summary>
-    /// The address of the door page of the property. The first time it is asked the token is made (the call is safe to repeat: it never changes a token that exists, <c>rotate</c> does).
-    /// 404 <c>property_not_found</c>; 403.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(DoorQrDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -43,16 +39,12 @@ public sealed class PropertyDoorQrController(
         if (denied is not null)
             return denied;
 
-        // A missing App:PublicSiteBaseUrl is a configuration error (500) before any token is made: never a wrong address.
         siteLinks.EnsureConfigured();
 
         var token = await doorCheckIn.GetOrCreateTokenAsync(resource!.OrgId, propertyId, cancellationToken);
         return token is null ? PropertyNotFound() : Ok(new DoorQrDto { Url = siteLinks.DoorCheckIn(token) });
     }
 
-    /// <summary>
-    /// Replaces the token: the printed code of the old one stops working at once (the public page answers it like a code that never existed). 404 <c>property_not_found</c>; 403.
-    /// </summary>
     [HttpPost("rotate")]
     [ProducesResponseType(typeof(DoorQrDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -73,7 +65,6 @@ public sealed class PropertyDoorQrController(
         return Ok(new DoorQrDto { Url = siteLinks.DoorCheckIn(token) });
     }
 
-    /// <summary>The property as the authorization sees it, or the answer to give: 404 when it is not one of the caller's org (the tenant filter hides it), 403 when the caller may not write it.</summary>
     private async Task<(HostResource? Property, ActionResult? Denied)> AuthorizeAsync(Guid propertyId, CancellationToken cancellationToken)
     {
         var property = await hostResources.ForPropertyAsync(propertyId, cancellationToken);

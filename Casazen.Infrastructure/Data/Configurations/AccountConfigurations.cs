@@ -10,14 +10,11 @@ internal sealed class OrgConfiguration : IEntityTypeConfiguration<Org>
 {
     public void Configure(EntityTypeBuilder<Org> entity)
     {
-        // ─── Multi-tenant Org boundary (US-004) ──────────────────────────────────
-        // Org tenant key with a unique Slug (AC1).
         entity.HasIndex(o => o.Slug)
             .IsUnique();
 
         entity.HasIndex(o => o.StripeCustomerId);
 
-        // The language of the account (AM-08b-b): the orgs that exist when the column is added get Italian, the language they have always had.
         entity.Property(o => o.DefaultLanguage)
             .HasDefaultValue(Casazen.Core.OrgTeam.OrgInvitationRules.DefaultLanguage);
     }
@@ -56,7 +53,6 @@ internal sealed class OrgSlugAliasConfiguration : IEntityTypeConfiguration<OrgSl
 {
     public void Configure(EntityTypeBuilder<OrgSlugAlias> entity)
     {
-        // Previous public slugs of an org (PL-04, A1-23): shared links keep resolving and the value stays reserved.
         entity.HasOne(a => a.Org)
             .WithMany()
             .HasForeignKey(a => a.OrgId)
@@ -124,8 +120,6 @@ internal sealed class AppContextEntityConfiguration : IEntityTypeConfiguration<A
 
     internal static void ConfigureSeedData2(EntityTypeBuilder<AppContextEntity> entity)
     {
-        // AM-01: the account context and the roles of the org team. OrgRoleCatalog is the source (ids 4 to 12); the tests
-        // compare this seed with it and with OrgOwnerRoles.
         entity.HasData(
             new AppContextEntity { Key = AccountContext.Key, DisplayName = AccountContext.DisplayName });
     }
@@ -184,15 +178,11 @@ internal sealed class RolePermissionConfiguration : IEntityTypeConfiguration<Rol
             new RolePermission { RoleId = 1, PermissionKey = "ota.write" },
             new RolePermission { RoleId = 1, PermissionKey = "guest.read" },
             new RolePermission { RoleId = 1, PermissionKey = "guest.write" },
-            // AM-03: carved out of property.write, guest.write and booking.write; the owner keeps doing all of it.
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.ServiceRequestWrite },
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.GuestManage },
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.AlloggiatiSubmit },
-            // E05/F04/US01/T01: the owner decides the items of the approval queue (AddApprovalDecisionAndOriginAction); the property manager's role follows the catalog.
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.ApprovalDecide },
-            // E03/F04/US02/T01: the owner decides the identity verifications of its guests (AddIdentityVerificationFields).
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.VerificationDecision },
-            // E50/F01/US01/T01: the owner always sets up its guest portal («Portale ospiti», AddGuestPortalLinks); the property manager's role follows the catalog.
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.GuestPortalManage },
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.Marketing },
             new RolePermission { RoleId = 2, PermissionKey = "property.read" },
@@ -256,8 +246,6 @@ internal sealed class AgencyInvoiceConfiguration : IEntityTypeConfiguration<Agen
 {
     public void Configure(EntityTypeBuilder<AgencyInvoice> entity)
     {
-        // The invoices of the retired agency-to-owner generator stay readable and are never called compliant (E06/F01/US02/T05): the rows that exist
-        // when the column is added get the legacy code.
         entity.Property(i => i.ComplianceStatus).HasDefaultValue(AgencyInvoiceCompliance.LegacyUnverified);
     }
 }

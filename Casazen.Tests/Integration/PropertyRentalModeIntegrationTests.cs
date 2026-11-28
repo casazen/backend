@@ -29,8 +29,6 @@ public class PropertyRentalModeIntegrationTests : IClassFixture<CasazenWebApplic
 
     public PropertyRentalModeIntegrationTests(CasazenWebApplicationFactory factory) => _factory = factory;
 
-    // ─── Public reads: 404 ──────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task PublicReads_LongProperty_Answer404AndTheShortOneKeepsAnswering()
     {
@@ -86,8 +84,6 @@ public class PropertyRentalModeIntegrationTests : IClassFixture<CasazenWebApplic
         Assert.DoesNotContain(longTerm.Slug!, sitemap);
         Assert.DoesNotContain(longTerm.Id.ToString(), sitemap);
     }
-
-    // ─── Bookings: 422 ──────────────────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("it-IT", "è in modalità affitto lungo")]
@@ -212,8 +208,6 @@ public class PropertyRentalModeIntegrationTests : IClassFixture<CasazenWebApplic
         Assert.Equal(PropertyComplianceStatus.Pending, (await LoadAsync(longTerm.Id)).ComplianceStatus);
     }
 
-    // ─── Host lists and records ─────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task HostList_ModeFilter_NarrowsTheListAndWithoutItNothingChanges()
     {
@@ -293,10 +287,7 @@ public class PropertyRentalModeIntegrationTests : IClassFixture<CasazenWebApplic
         Assert.False(entitlement.GetProperty("canAddProperty").GetBoolean());
     }
 
-    // ─── Creation and update ────────────────────────────────────────────────────────────────────────
-
     [Theory]
-    // The long-rent form of the landlords: no guests, no rate, no mode.
     [InlineData(0, 0, null, "Long")]
     [InlineData(4, 120, null, "Short")]
     [InlineData(0, 0, "Short", "Short")]
@@ -367,15 +358,11 @@ public class PropertyRentalModeIntegrationTests : IClassFixture<CasazenWebApplic
         Assert.Equal(stored, after.RentalMode);
     }
 
-    // ─── Seed and helpers ───────────────────────────────────────────────────────────────────────────
-
     private sealed record Host(string HostId, Guid OrgId, string OrgSlug);
 
     /// <summary>A host with an org that takes payments (so that a short-rent property is bookable and published).</summary>
     private async Task<Host> SeedHostAsync(string label)
     {
-        // No "auth0|" in the id: the factory names the org "test-org-{id}", and the SEO and sitemap routes refuse a slug that
-        // is not lower case letters, digits and hyphens.
         var hostId = $"pm01-{label}-{Guid.NewGuid():N}";
         var org = await _factory.SeedOrgForOwnerAsync(hostId);
         using var scope = _factory.Services.CreateScope();

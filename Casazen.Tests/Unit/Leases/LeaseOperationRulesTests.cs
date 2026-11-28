@@ -5,10 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Leases;
 
-/// <summary>
-/// LR-OPS-1: when the landlord's notice of non-renewal is on time and where a withdrawal of the tenant ends the lease. The months are the
-/// rules' (<see cref="LongRentDeadlineRules.NoticeMonthsBeforeEnd"/>), counted back from the end of the period the lease is in.
-/// </summary>
 public class LeaseOperationRulesTests
 {
     private static DateTime Utc(int year, int month, int day) => new(year, month, day, 0, 0, 0, DateTimeKind.Utc);
@@ -50,7 +46,7 @@ public class LeaseOperationRulesTests
         Assert.Null(transitory.LastDayToGiveNotice);
 
         var renewed = Lease(LeaseContractType.Libero, Utc(2029, 10, 31));
-        renewed.CurrentTermEndDate = Utc(2033, 10, 31); // the tacit renewal moved the end of the period, not the end the contract states
+        renewed.CurrentTermEndDate = Utc(2033, 10, 31);
         var facts = LeaseOperationRules.Disdetta(renewed, new DateOnly(2030, 1, 1));
         Assert.False(facts.FirstPeriod);
         Assert.Equal(new DateOnly(2033, 4, 30), facts.LastDayToGiveNotice);
@@ -76,7 +72,7 @@ public class LeaseOperationRulesTests
 
     [Theory]
     [InlineData(2026, 10, 1, 6, 2027, 4, 1)]
-    [InlineData(2026, 8, 31, 6, 2027, 2, 28)] // the day that does not exist in the shorter month is its last day
+    [InlineData(2026, 8, 31, 6, 2027, 2, 28)]
     [InlineData(2026, 10, 1, 3, 2027, 1, 1)]
     public void WithdrawalEffectiveOn_IsTheDayTheNoticeRunsOut(int year, int month, int day, int months, int endYear, int endMonth, int endDay) =>
         Assert.Equal(new DateOnly(endYear, endMonth, endDay), LeaseOperationRules.WithdrawalEffectiveOn(new DateOnly(year, month, day), months));
@@ -99,9 +95,8 @@ public class LeaseOperationRulesTests
         Assert.Equal(new DateOnly(2026, 11, 1), libero.StartsOn);
         Assert.Equal(new DateOnly(2030, 10, 31), libero.StandardEnd);
         Assert.Equal(LongRentRules.LiberoRenewalMonths, libero.StandardMonths);
-        Assert.Equal(new DateOnly(2026, 4, 30), libero.OpensOn); // the last day to give notice: from then the parties decide
+        Assert.Equal(new DateOnly(2026, 4, 30), libero.OpensOn);
 
-        // Before that stretch there is nothing to formalize: a renewal moves the end forward, so it cannot be recorded twice in a row.
         var early = LeaseOperationRules.Renewal(Lease(LeaseContractType.Libero, Utc(2029, 10, 31)), today);
         Assert.False(early.Available);
         Assert.Equal(new DateOnly(2029, 4, 30), early.OpensOn);
@@ -110,7 +105,6 @@ public class LeaseOperationRulesTests
         Assert.Equal(new DateOnly(2028, 10, 31), concordato.StandardEnd);
         Assert.Equal(LongRentRules.ConcordatoRenewalMonths, concordato.StandardMonths);
 
-        // A transitory lease never renews; a notice has to be taken back first; a period that is over is the hourly job's; an ended lease is ended.
         Assert.False(LeaseOperationRules.Renewal(Lease(LeaseContractType.Transitorio, Utc(2026, 12, 31)), today).Available);
         var withNotice = Lease(LeaseContractType.Libero, Utc(2026, 10, 31));
         withNotice.NoticeOn = Utc(2026, 4, 1);
@@ -135,13 +129,11 @@ public class LeaseOperationRulesTests
         Assert.Equal(PartyRole.Landlord, landlords.Holder);
         Assert.Equal(new DateOnly(2026, 12, 31), landlords.ConfirmBy);
 
-        // When the need is the tenant's the tenant confirms it: the lease applies, the landlord has no letter.
         lease.TransitoryParty = PartyRole.Tenant;
         var tenants = LeaseOperationRules.TransitoryConfirmation(lease, today);
         Assert.True(tenants.Applies);
         Assert.False(tenants.Available);
 
-        // A libero lease has no need to confirm.
         Assert.False(LeaseOperationRules.TransitoryConfirmation(Lease(LeaseContractType.Libero, Utc(2029, 10, 31)), today).Applies);
     }
 }

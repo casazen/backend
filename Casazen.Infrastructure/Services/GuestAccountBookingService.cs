@@ -40,8 +40,6 @@ public sealed class GuestAccountBookingService(
 
         var today = _clock.TodayInRomeAsDateOnly();
         var todayUtc = _clock.TodayInRome();
-        // A stored date is the midnight (UTC) of its day, and a value with a time of day is the Rome day at most one day after its UTC
-        // day: this prefilter keeps everything that can be in the scope, the exact comparison on the Rome days follows in memory.
         var upcomingFrom = todayUtc.AddDays(-1);
 
         var candidates = OwnBookings(email)
@@ -61,7 +59,6 @@ public sealed class GuestAccountBookingService(
                 GuestBookings.StatusOf(b, cutoff),
                 RomeCalendar.DateInRome(b.CheckInDate),
                 RomeCalendar.DateInRome(b.CheckOutDate)))
-            // A hold that lapsed and a payment that came when the dates were gone are dead ends for the guest: nothing to show or do.
             .Where(r => r.Status is not (GuestBookingStatus.Expired or GuestBookingStatus.DatesUnavailable))
             .Where(r => scope == GuestAccountBookingScope.Upcoming ? r.CheckOut >= today : r.CheckOut < today)
             .ToList();
@@ -91,7 +88,6 @@ public sealed class GuestAccountBookingService(
             .Where(b => b.Id == bookingId)
             .SingleOrDefaultAsync(cancellationToken) ?? throw GuestAccountBookings.NotFound();
 
-        // The projection of the anonymous "Le mie prenotazioni", unchanged: the same fields, so nothing private can be added to one and not the other.
         var view = await lookup.ViewOfAsync(booking, cancellationToken);
         return new GuestAccountBookingDetail(booking.Id, booking.Org.Slug, view);
     }
@@ -107,16 +103,11 @@ public sealed class GuestAccountBookingService(
             .Select(b => new { b.OrgId, b.BookingCode, OrgSlug = b.Org.Slug })
             .SingleOrDefaultAsync(cancellationToken) ?? throw GuestAccountBookings.NotFound();
 
-        // The token of the session of a booking code and an email, for the email of the account: the org of the site and the hash of the address.
         var expiresAt = _clock.GetUtcNow().UtcDateTime.AddMinutes(GuestSessionService.SessionMinutesOf(configuration));
         var token = tokens.Issue(own.OrgId, GuestSessionTicket.HashEmail(email), expiresAt);
         return new GuestAccountSessionOpened(token, expiresAt, BookingCodes.Format(own.BookingCode), own.OrgSlug);
     }
 
-    /// <summary>
-    /// The direct bookings, of any org, whose guest has <paramref name="email"/> (already trimmed and in lower case), read-only. The
-    /// tenant filter and the soft-delete filter of the property are ignored by name; the predicates are the access check.
-    /// </summary>
     private IQueryable<Booking> OwnBookings(string email) =>
         db.Bookings
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter, AppDbContext.SoftDeleteQueryFilter])
@@ -153,7 +144,6 @@ public sealed class GuestAccountBookingService(
             string.IsNullOrWhiteSpace(booking.Org.DisplayName) ? null : booking.Org.DisplayName.Trim());
     }
 
-    /// <summary>The first photo of the property's gallery that is a full https address (a path of the old uploads folder is not one), or null.</summary>
     internal static string? FirstPublicPhoto(IEnumerable<string>? urls) =>
         urls?
             .Select(url => url?.Trim())

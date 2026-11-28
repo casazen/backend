@@ -16,8 +16,6 @@ public class ComplianceAlertScheduleTests
     private static readonly Guid Property = Guid.Parse("00000000-0000-0000-0000-0000000000aa");
     private static readonly DateOnly Deadline = new(2026, 11, 10);
 
-    // ─── Period ───
-
     [Fact]
     public void DuePeriodStep_ThreeDaysBeforeTheDeadlineDayAt9Rome_IsTheDeadlineApproaching()
     {
@@ -38,7 +36,6 @@ public class ComplianceAlertScheduleTests
     [Fact]
     public void DuePeriodStep_TheWholeDeadlineDay_IsStillApproaching_AndTheMorningAfterIsOverdue()
     {
-        // The deadline day ends at midnight of Rome (23:00 UTC): the cockpit turns red the day after, so the alert never says «overdue» before.
         Assert.Equal(ComplianceAlertStage.DeadlineApproaching, Period(Utc(2026, 11, 10, 22, 59))!.Stage);
         Assert.Equal(ComplianceAlertStage.DeadlineApproaching, Period(Utc(2026, 11, 11, 7, 59))!.Stage);
 
@@ -114,8 +111,6 @@ public class ComplianceAlertScheduleTests
             ComplianceAlertType.ConnectionInactive, Property, "2026-10", Deadline, Defaults, Utc(2026, 11, 11, 8, 0)));
     }
 
-    // ─── Connection ───
-
     [Fact]
     public void DueConnectionStep_AtDetection_IsTheFirstStage()
     {
@@ -141,7 +136,6 @@ public class ComplianceAlertScheduleTests
         Assert.Equal(ComplianceAlertStage.ConnectionReminder, step!.Stage);
         Assert.Equal(1, step.Alert.ReminderNumber);
 
-        // Never a third, and never as a backlog.
         Assert.Null(ComplianceAlertSchedule.DueConnectionStep(Property, 2, first, Defaults, Utc(2026, 11, 8, 9, 0)));
         Assert.Null(ComplianceAlertSchedule.DueConnectionStep(Property, 1, first, Defaults, Utc(2026, 11, 6, 9, 0)));
     }
@@ -157,12 +151,10 @@ public class ComplianceAlertScheduleTests
         Assert.Null(ComplianceAlertSchedule.DueConnectionStep(Property, 1, null, options, Utc(2026, 11, 20, 9, 0)));
     }
 
-    // ─── The popup rule ───
-
     [Fact]
     public void IsLegalDeadlineNear_IsWithinTwentyFourHoursBeforeOrAfter()
     {
-        var deadline = ComplianceAlertSchedule.DeadlineEndUtc(Deadline); // 11 November 00:00 Rome = 10 November 23:00 UTC
+        var deadline = ComplianceAlertSchedule.DeadlineEndUtc(Deadline);
 
         Assert.Equal(Utc(2026, 11, 10, 23, 0), deadline);
         Assert.True(ComplianceAlertSchedule.IsLegalDeadlineNear(deadline, Utc(2026, 11, 9, 23, 0)));

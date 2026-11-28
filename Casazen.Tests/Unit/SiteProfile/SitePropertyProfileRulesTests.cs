@@ -5,11 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.SiteProfile;
 
-/// <summary>
-/// DB-11a: what the host writes for the property page is stored clean and within its limits, in Italian wherever there is a text, from
-/// the fixed vocabularies; a mistake is a 422 with a stable code and the field that broke it, and nothing half-valid is kept. The labels the
-/// site gives a house from its own data are decided here and nowhere else.
-/// </summary>
 public class SitePropertyProfileRulesTests
 {
     private const int Year = 2026;
@@ -61,7 +56,6 @@ public class SitePropertyProfileRulesTests
         Assert.Equal("Il giardino è recintato.\n\nNiente feste.", document.RulesNote!.It);
         Assert.Equal(new SiteHighlight("waves", new LocalizedText("Piscina privata", "Private pool"), new LocalizedText("Solo per voi.")), Assert.Single(document.Highlights));
         Assert.Equal(["Estintore", "Rilevatore di fumo"], document.SafetyNotes.Select(n => n.It));
-        // The vocabulary's order, each once.
         Assert.Equal(["mare", "piscina", "campagna"], document.Tags);
     }
 

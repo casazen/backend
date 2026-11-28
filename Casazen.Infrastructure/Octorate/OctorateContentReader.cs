@@ -20,7 +20,6 @@ namespace Casazen.Infrastructure.Octorate;
 /// </remarks>
 public sealed class OctorateContentReader(IOctorateApiClient client)
 {
-    /// <summary>The hash of each group of the content of the unit <paramref name="productId"/> of the accommodation.</summary>
     public async Task<IReadOnlyDictionary<string, string>> ReadAsync(string accommodationId, string productId, CancellationToken ct)
     {
         var property = await client.GetPropertyAsync(accommodationId, ct);
@@ -35,7 +34,6 @@ public sealed class OctorateContentReader(IOctorateApiClient client)
         };
     }
 
-    /// <summary>The SHA-256 of a canonical text, in lower-case hexadecimal.</summary>
     internal static string HashOf(string canonical) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical))).ToLowerInvariant();
 

@@ -52,12 +52,9 @@ public class SupplierPaymentsRepairPostgresTests(CasazenWebApplicationFactory fa
         Assert.Equal(keeper, request.SupplierOrgId);
         Assert.Equal(keeper, payment.SupplierOrgId);
         Assert.False(await db.Orgs.AnyAsync(o => o.Id == duplicate));
-        Assert.Equal(6_000, payment.AmountCents); // the snapshot of the payment is not touched
+        Assert.Equal(6_000, payment.AmountCents);
     }
 
-    // ─── helpers ───
-
-    /// <summary>Data written before the migration SupplierProfileEmailUnique: without its unique index.</summary>
     private async Task DropEmailIndexAsync()
     {
         await using var scope = factory.Services.CreateAsyncScope();
@@ -107,7 +104,6 @@ public class SupplierPaymentsRepairPostgresTests(CasazenWebApplicationFactory fa
             SupplierOrgId = supplierOrgId,
             Category = "cleaning",
             Status = ServiceRequestStatus.Completato,
-            // Long-rent: tied to the property only, no stay needed (D2).
             RentalContext = ServiceRequestRentalContext.LongRent,
             CompletedAt = DateTime.UtcNow,
             FinalAmountCents = 6_000,

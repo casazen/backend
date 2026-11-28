@@ -26,7 +26,6 @@ public interface IStripeBankLinkGateway
 
     Task<LinkedFinancialAccount> GetAccountAsync(string accountId, CancellationToken cancellationToken = default);
 
-    /// <summary>Creates the SEPA PaymentIntent without confirming it. The row is saved before <see cref="ConfirmDebitAsync"/>.</summary>
     Task<StartedBankDebit> CreateDebitAsync(BankDebitCommand command, CancellationToken cancellationToken = default);
 
     /// <summary>Confirms a PaymentIntent that already has a <c>BankLinkPayments</c> row. The idempotency key is the due's.</summary>
@@ -53,7 +52,6 @@ public sealed record LinkedFinancialAccount(
     string? SepaPaymentMethodId = null,
     string? IbanToken = null);
 
-/// <summary>What is needed to debit the linked account.</summary>
 public sealed record BankDebitCommand(
     string CustomerId,
     string FinancialConnectionsAccountId,
@@ -66,7 +64,6 @@ public sealed record BankDebitCommand(
     string? UserAgent,
     IReadOnlyDictionary<string, string> Metadata);
 
-/// <summary>The PaymentIntent Stripe created. <see cref="Status"/> is Stripe's, not a settled due.</summary>
 public sealed record StartedBankDebit(
     string PaymentIntentId,
     string? ClientSecret,
@@ -224,7 +221,6 @@ public sealed class StripeBankLinkGateway(
         }
         catch (StripeException ex)
         {
-            // The Stripe message can echo an IBAN. Keep the code only.
             throw ProviderFailure(ex);
         }
     }
@@ -414,7 +410,6 @@ public sealed class StripeBankLinkGateway(
         return new PaymentProcessingException($"Stripe bank-link call failed ({code}).");
     }
 
-    /// <summary>Stripe's message for the logs, with keys and IBANs removed. The client still gets the generic 503.</summary>
     internal static string Redact(string? text)
     {
         if (string.IsNullOrEmpty(text))
@@ -424,7 +419,6 @@ public sealed class StripeBankLinkGateway(
             text,
             @"\b(?:sk|rk|pk)_(?:test|live)_[A-Za-z0-9]+|\bwhsec_[A-Za-z0-9]+",
             "[secret]");
-        // A space or a dash may sit between characters: Stripe prints IBANs in groups, not only as one uppercase token.
         redacted = System.Text.RegularExpressions.Regex.Replace(
             redacted,
             @"\b[A-Z]{2}\d{2}(?:[ \-]?[A-Z0-9]){11,30}\b",

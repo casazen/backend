@@ -3,11 +3,6 @@ using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
 
-/// <summary>
-/// Applies an e-signature provider webhook event queued by <c>POST webhooks/esign</c> (LT-02). The signature of the body
-/// was verified before queueing; the lease status guard and the flag check are in
-/// <see cref="ILeaseSigningService.HandleProviderEventAsync"/>.
-/// </summary>
 public class ESignWebhookJob(ILeaseSigningService leaseSigningService, ILogger<ESignWebhookJob> logger)
 {
     [AutomaticRetry(Attempts = 3)]

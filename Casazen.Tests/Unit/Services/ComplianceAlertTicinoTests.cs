@@ -31,11 +31,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E30/F02/US01/T01 (NF-127, D9): the staged alerts about the 24 hours of the notification of the guests of a Ticino property to the cantonal police. The rules of the
-/// schedule with the fixed clock and the two daylight saving changes (this class), then the service on EF InMemory with the real days-to-notify service, the real delivery
-/// and the recording queues (<see cref="ComplianceAlertTicinoTests"/>).
-/// </summary>
 public class ComplianceAlertTicinoScheduleTests
 {
     private static readonly Guid PropertyId = Guid.Parse("00000000-0000-0000-0000-0000000000a1");
@@ -48,15 +43,13 @@ public class ComplianceAlertTicinoScheduleTests
     private ComplianceAlertStep? Step(DateOnly day, string dueUtc, string nowUtc, TimeOnly? expected = null, ComplianceOptions? options = null) =>
         ComplianceAlertSchedule.DueTicinoStep(PropertyId, day, Utc(dueUtc), Zurich, expected, options ?? _options, Utc(nowUtc));
 
-    // ─── The first stage: the arrival day, on the clock of the property ───
-
     [Theory]
-    [InlineData("2026-03-28", "2026-03-28T17:00:00Z")] // 18:00 CET, the day before the clocks go forward
-    [InlineData("2026-03-29", "2026-03-29T16:00:00Z")] // 18:00 CEST, the day they go forward
-    [InlineData("2026-10-24", "2026-10-24T16:00:00Z")] // 18:00 CEST, the day before they go back
-    [InlineData("2026-10-25", "2026-10-25T17:00:00Z")] // 18:00 CET, the day they go back
-    [InlineData("2026-07-15", "2026-07-15T16:00:00Z")] // 18:00 CEST
-    [InlineData("2026-11-19", "2026-11-19T17:00:00Z")] // 18:00 CET
+    [InlineData("2026-03-28", "2026-03-28T17:00:00Z")]
+    [InlineData("2026-03-29", "2026-03-29T16:00:00Z")]
+    [InlineData("2026-10-24", "2026-10-24T16:00:00Z")]
+    [InlineData("2026-10-25", "2026-10-25T17:00:00Z")]
+    [InlineData("2026-07-15", "2026-07-15T16:00:00Z")]
+    [InlineData("2026-11-19", "2026-11-19T17:00:00Z")]
     public void DueTicinoStep_NoExpectedCheckIn_TheFirstStageIsDueAt1800OnTheClockOfTheProperty_AcrossBothDaylightSavingChanges(string day, string firstStageUtc)
     {
         var arrival = DateOnly.Parse(day, CultureInfo.InvariantCulture);
@@ -70,13 +63,13 @@ public class ComplianceAlertTicinoScheduleTests
     }
 
     [Theory]
-    [InlineData("2026-11-19", "15:30", "2026-11-19T16:30:00Z")] // 17:30 CET
-    [InlineData("2026-07-15", "15:30", "2026-07-15T15:30:00Z")] // 17:30 CEST
-    [InlineData("2026-03-29", "03:30", "2026-03-29T03:30:00Z")] // 05:30 CEST, after the change
-    [InlineData("2026-03-29", "00:30", "2026-03-29T01:30:00Z")] // 02:30 does not exist that day: read one hour later on the clock, 03:30 summer time
-    [InlineData("2026-10-25", "00:30", "2026-10-25T00:30:00Z")] // 02:30 happens twice that day: the first one, in summer time
-    [InlineData("2026-10-25", "05:00", "2026-10-25T06:00:00Z")] // 07:00 CET
-    [InlineData("2026-11-19", "23:30", "2026-11-19T22:00:00Z")] // the arrival day ends: never later than 23:00 on the clock
+    [InlineData("2026-11-19", "15:30", "2026-11-19T16:30:00Z")]
+    [InlineData("2026-07-15", "15:30", "2026-07-15T15:30:00Z")]
+    [InlineData("2026-03-29", "03:30", "2026-03-29T03:30:00Z")]
+    [InlineData("2026-03-29", "00:30", "2026-03-29T01:30:00Z")]
+    [InlineData("2026-10-25", "00:30", "2026-10-25T00:30:00Z")]
+    [InlineData("2026-10-25", "05:00", "2026-10-25T06:00:00Z")]
+    [InlineData("2026-11-19", "23:30", "2026-11-19T22:00:00Z")]
     public void TicinoArrivalAlertAtUtc_TwoHoursAfterTheFirstExpectedCheckIn_OnTheClockOfTheProperty(string day, string expected, string atUtc)
     {
         var at = ComplianceAlertSchedule.TicinoArrivalAlertAtUtc(
@@ -92,7 +85,6 @@ public class ComplianceAlertTicinoScheduleTests
     [Fact]
     public void TicinoArrivalAlertAtUtc_TheClockOfTheProperty_IsTheOneOfItsOwnTimeZone()
     {
-        // The same arrival day on the clock of a property in UTC: 18:00 is 18:00Z, the winter hour of Zurich would have said 17:00Z.
         var onUtc = ComplianceAlertSchedule.TicinoArrivalAlertAtUtc(new DateOnly(2026, 11, 19), TimeZoneInfo.Utc, null, _options);
         var onZurich = ComplianceAlertSchedule.TicinoArrivalAlertAtUtc(new DateOnly(2026, 11, 19), Zurich, null, _options);
 
@@ -123,13 +115,10 @@ public class ComplianceAlertTicinoScheduleTests
         Assert.Null(ComplianceAlertSchedule.TicinoFirstExpectedArrival([]));
     }
 
-    // ─── The sequence ───
-
     [Fact]
     public void DueTicinoStep_FollowsTheSequence_ArrivalDay_SixHoursBefore_Overdue_TwoReminders_ThenNothing()
     {
         var day = new DateOnly(2026, 11, 19);
-        // The arrival was registered at 15:00 (14:00Z): the deadline is 24 hours later. The guest said 15:30, so the first stage is due at 17:30 (16:30Z).
         const string due = "2026-11-20T14:00:00Z";
         var expected = new TimeOnly(15, 30);
 
@@ -147,7 +136,6 @@ public class ComplianceAlertTicinoScheduleTests
             ("2026-11-22T14:00:00Z", ComplianceAlertStage.TicinoOverdueReminder(2), ComplianceAlertKind.TicinoOverdue, 2),
             ("2026-11-23T13:59:59Z", ComplianceAlertStage.TicinoOverdueReminder(2), ComplianceAlertKind.TicinoOverdue, 2),
 
-            // The last stage is dropped a day after its time: never a late message of a day that has been overdue for three days.
             ("2026-11-23T14:00:00Z", null, null, 0),
             ("2026-12-01T09:00:00Z", null, null, 0),
         ];
@@ -176,7 +164,6 @@ public class ComplianceAlertTicinoScheduleTests
     [Fact]
     public void DueTicinoStep_AfterAnOutage_SendsTheHighestStageDueOnly_NeverTheBacklog()
     {
-        // The job was down from the evening to the morning of the deadline: one message, the stage of the moment, not stages 1 and 2.
         var step = Step(new DateOnly(2026, 11, 19), "2026-11-20T14:00:00Z", "2026-11-20T09:00:00Z", new TimeOnly(15, 30));
 
         Assert.Equal(ComplianceAlertStage.TicinoDeadlineApproaching, step!.Stage);
@@ -209,8 +196,6 @@ public class ComplianceAlertTicinoScheduleTests
     [Fact]
     public void DueTicinoStep_WithNoRecordedArrival_TheDeadlineIsTheEndOfTheDay_AndTheSixHoursCoincideWithTheDefaultFirstStage()
     {
-        // What ListPendingDaysAsync gives with no arrival registered: the start of the next day. Six hours before is 18:00, also the default of stage 1:
-        // that day the two coincide and only the higher stage goes out (documented in the runbook).
         var day = new DateOnly(2026, 11, 19);
         var due = RomeCalendar.StartOfDayUtc(day.AddDays(1)).ToString("O", CultureInfo.InvariantCulture);
 
@@ -261,10 +246,6 @@ public class ComplianceAlertTicinoScheduleTests
     }
 }
 
-/// <summary>
-/// The Ticino alerts on the real service (EF InMemory): the days come from <see cref="TicinoNotificationService"/>, the delivery is the real
-/// <see cref="NotificationService"/> over recording queues, the audience a mock that answers by org. 19 November 2026 is a Thursday, winter time (CET, UTC+1).
-/// </summary>
 public class ComplianceAlertTicinoTests : IDisposable
 {
     private const string GuestFirstName = "Giulia";
@@ -288,7 +269,6 @@ public class ComplianceAlertTicinoTests : IDisposable
 
     public ComplianceAlertTicinoTests()
     {
-        // The alerts of the Ticino days have a flag of their own: the traffic light stays off in these tests.
         _flags.Setup(f => f.IsEnabled(FeatureFlags.TicinoNotificationAlerts)).Returns(true);
         _recipients
             .Setup(r => r.ForPropertyAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
@@ -364,7 +344,6 @@ public class ComplianceAlertTicinoTests : IDisposable
         return tenant;
     }
 
-    /// <summary>The guests the check-in recorded for a stay: none (the booker stands for them, with no date of birth, nationality or document), a guest the file cannot take, or a complete one.</summary>
     private enum GuestRows
     {
         None,
@@ -399,7 +378,6 @@ public class ComplianceAlertTicinoTests : IDisposable
         _db.AddRange(guest, booking);
         if (guestRows != GuestRows.None)
         {
-            // Incomplete: no date of birth, no nationality and no document type, so the file has no valid row for this stay. Complete: everything the portal asks.
             var complete = guestRows == GuestRows.Complete;
             _db.StayGuests.Add(new StayGuest
             {
@@ -430,10 +408,6 @@ public class ComplianceAlertTicinoTests : IDisposable
 
     private static readonly DateTime DayDeadline = new(2026, 11, 20, 14, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>
-    /// A mock of the service of the days whose list, the one of the job (every org), still has the arrival day of <paramref name="tenant"/>: with no expected check-in
-    /// the first stage is due at 18:00 on the clock of the property, 17:00Z. What the detail of the day answers is up to the test.
-    /// </summary>
     private static Mock<ITicinoNotificationService> DaysToNotifyWith(Tenant tenant)
     {
         IReadOnlyList<TicinoPendingDay> listed = [new TicinoPendingDay(tenant.OrgId, tenant.PropertyId, tenant.PropertyName, Day, 1, DayDeadline)];
@@ -442,17 +416,13 @@ public class ComplianceAlertTicinoTests : IDisposable
         return days;
     }
 
-    /// <summary>The detail of the arrival day of <paramref name="tenant"/> with <paramref name="pendingDays"/> as the days of the property still to notify.</summary>
     private static TicinoNotificationDay DetailOfTheDay(Tenant tenant, IReadOnlyList<TicinoPendingDay> pendingDays) =>
         new(tenant.PropertyId, Day, "NL-99999999", 1, new TicinoDayPlan([], []), 0, DayDeadline, pendingDays);
-
-    // ─── Each stage once ───
 
     [Fact]
     public async Task TicinoAlerts_EachStageOnce_Test()
     {
         var tenant = await SeedTenantAsync("a");
-        // The arrival is registered at 15:00 (14:00Z): the deadline is 14:00Z of the next day; the guest said 15:30, so stage 1 is due from 16:30Z.
         await AddStayAsync(tenant, Day, arrivedAtUtc: "2026-11-19T14:00:00Z");
 
         // The hourly job from the morning of the arrival day to the day after the last stage, and every hour twice (a retry, a manual trigger, a second server).
@@ -464,7 +434,6 @@ public class ComplianceAlertTicinoTests : IDisposable
                 sentByHour.Add((at, sent));
         }
 
-        // Five messages in all, one for each stage, each at the first run after its time (the job is hourly).
         Assert.Equal(
             [
                 (new DateTimeOffset(2026, 11, 19, 17, 0, 0, TimeSpan.Zero), 1),
@@ -479,7 +448,6 @@ public class ComplianceAlertTicinoTests : IDisposable
             (tenant.PropertyId, tenant.OrgId, ComplianceAlertType.TicinoNotification, "2026-11-19", ComplianceAlertStage.TicinoOverdueReminder(2), 5),
             (state.PropertyId, state.OrgId, state.Type, state.ReferenceKey, state.Stage, state.AlertCount));
 
-        // One e-mail to the address of the org and one push to the hosts of the property for each stage, with a key of its own (a device gets one push per key).
         Assert.Equal(5, _emails.Snapshot().Count);
         Assert.All(_emails.Snapshot(), e => Assert.Equal(("a@example.com", EmailTemplates.Names.TicinoNotificationAlert), (e.To, e.Template)));
         Assert.StartsWith("Notifica alla polizia da preparare - Casa a", Subject(_emails, 0), StringComparison.Ordinal);
@@ -505,7 +473,6 @@ public class ComplianceAlertTicinoTests : IDisposable
     [Fact]
     public async Task TicinoAlerts_ThePropertyClock_DecidesTheArrivalDayStage()
     {
-        // A property whose clock is UTC: 18:00 is 18:00Z, not the 17:00Z of Zurich in winter. The arrival is registered so the deadline is far.
         var tenant = await SeedTenantAsync("a", timezone: "UTC");
         await AddStayAsync(tenant, Day, expectedArrival: null, arrivedAtUtc: "2026-11-19T10:00:00Z");
 
@@ -521,12 +488,10 @@ public class ComplianceAlertTicinoTests : IDisposable
         await AddStayAsync(tenant, Day, expectedArrival: "16:00", arrivedAtUtc: "2026-11-19T15:00:00Z");
         await AddStayAsync(tenant, Day, expectedArrival: "11:00", arrivedAtUtc: "2026-11-19T15:30:00Z");
 
-        // A no-show and a cancelled stay of the day, with an earlier expected arrival: they owe nothing and say nothing about when the day starts.
         await AddStayAsync(tenant, Day, expectedArrival: "06:00", noShowAt: new DateTime(2026, 11, 19, 20, 0, 0, DateTimeKind.Utc));
         await AddStayAsync(tenant, Day, expectedArrival: "06:30", status: BookingStatus.Cancelled);
         await AddStayAsync(tenant, Day, expectedArrival: "07:00", status: BookingStatus.Pending);
 
-        // 11:00 + 2 hours = 13:00 local = 12:00Z; the deadline is 24 hours from the first recorded arrival (15:00Z).
         Assert.Equal(0, await RunAtAsync("2026-11-19T11:59:00Z"));
         Assert.Equal(1, await RunAtAsync("2026-11-19T12:00:00Z"));
         Assert.Equal(1, await RunAtAsync("2026-11-20T09:00:00Z"));
@@ -548,8 +513,6 @@ public class ComplianceAlertTicinoTests : IDisposable
         Assert.Empty(await _db.ComplianceAlertStates.ToListAsync());
     }
 
-    // ─── A closed day stops the alerts ───
-
     [Fact]
     public async Task TicinoAlerts_ADayClosedByAReceipt_StopsTheAlerts_Test()
     {
@@ -557,7 +520,6 @@ public class ComplianceAlertTicinoTests : IDisposable
         await AddStayAsync(tenant, Day, arrivedAtUtc: "2026-11-19T14:00:00Z");
         Assert.Equal(1, await RunAtAsync("2026-11-19T17:00:00Z"));
 
-        // The host uploaded the file on the portal and recorded the receipt of the day: the service of the days says it is notified.
         _db.SwissComplianceReceipts.Add(new SwissComplianceReceipt
         {
             OrgId = tenant.OrgId,
@@ -603,13 +565,11 @@ public class ComplianceAlertTicinoTests : IDisposable
     {
         var tenant = await SeedTenantAsync("a");
         var days = DaysToNotifyWith(tenant);
-        // A receipt closed the day after the job read the list: the detail of the day, read just before the stage is claimed, no longer has it among the days of the property to notify.
         days.Setup(d => d.GetDayAsync(tenant.PropertyId, Day, It.IsAny<CancellationToken>())).ReturnsAsync(DetailOfTheDay(tenant, []));
         _clock.SetUtcNow(new DateTimeOffset(2026, 11, 19, 17, 0, 0, TimeSpan.Zero));
 
         var result = await Service(daysToNotify: days.Object).RunAsync();
 
-        // The first stage was due and the re-check ran: it stopped the alert before anything was claimed, queued, or even asked of the audience.
         days.Verify(d => d.GetDayAsync(tenant.PropertyId, Day, It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal(0, result.Sent);
         Assert.Empty(_emails.Snapshot());
@@ -657,8 +617,6 @@ public class ComplianceAlertTicinoTests : IDisposable
         Assert.Empty(_pushes.Queued);
     }
 
-    // ─── Permission and privacy ───
-
     [Fact]
     public async Task TicinoAlerts_OtherOrganizationNeverAlerted_Test()
     {
@@ -668,10 +626,8 @@ public class ComplianceAlertTicinoTests : IDisposable
         await AddStayAsync(a, Day, arrivedAtUtc: "2026-11-19T14:00:00Z");
         await AddStayAsync(b, Day, arrivedAtUtc: "2026-11-19T14:00:00Z");
 
-        // The third org has a Ticino property and an administrator too, and no stay: it hears nothing about the days of the two others.
         Assert.Equal(2, await RunAtAsync("2026-11-19T17:00:00Z"));
 
-        // The e-mail of each property goes to the address of its own org and to nobody else's.
         var emails = _emails.Snapshot();
         Assert.Equal(2, emails.Count);
         Assert.Contains(emails, e => e.To == a.Address && e.Content.Subject.Contains(a.PropertyName, StringComparison.Ordinal));
@@ -683,10 +639,8 @@ public class ComplianceAlertTicinoTests : IDisposable
         _recipients.Verify(r => r.ForPropertyAsync(c.OrgId, It.IsAny<Guid>(), It.IsAny<NotificationPermission>(), It.IsAny<CancellationToken>()), Times.Never);
         _recipients.Verify(r => r.ForPropertyAsync(a.OrgId, b.PropertyId, It.IsAny<NotificationPermission>(), It.IsAny<CancellationToken>()), Times.Never);
         _recipients.Verify(r => r.ForPropertyAsync(b.OrgId, a.PropertyId, It.IsAny<NotificationPermission>(), It.IsAny<CancellationToken>()), Times.Never);
-        // The audience of the alert of the 24 hours is always read with the permission: the one without it is never asked for these alerts.
         _recipients.Verify(r => r.ForPropertyAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // The push goes to the hosts of the property, and the bell, written by the real job from that audience, holds each entry for the people of the org of the property only.
         Assert.Equal(
             new[] { PushAudience.PropertyHosts(a.PropertyId, alloggiatiSubmit), PushAudience.PropertyHosts(b.PropertyId, alloggiatiSubmit) }.OrderBy(x => x.Id),
             _pushes.Queued.Select(p => p.Audience).OrderBy(x => x.Id));
@@ -703,15 +657,11 @@ public class ComplianceAlertTicinoTests : IDisposable
             rows.Select(r => (r.UserId, r.OrgId)).OrderBy(x => x.Item1));
         Assert.DoesNotContain(rows, r => r.UserId == c.OwnerId);
 
-        // Each entry is about the property of its own org (the entity of a Ticino alert is the property), never about another org's.
         Assert.Equal(
             new[] { (a.OwnerId, a.PropertyId), (b.OwnerId, b.PropertyId) }.OrderBy(x => x.Item1),
             rows.Select(r => (r.UserId, r.EntityId ?? Guid.Empty)).OrderBy(x => x.Item1));
     }
 
-    // ─── The audience of the alert is who can act on it, with the real services ───
-
-    /// <summary>The same service with the REAL audience: the real resolver over the real preferences and the real evaluation of a permission, so who is told is decided by the services and not by a mock.</summary>
     private ComplianceAlertService ServiceWithTheRealAudience(IContextAuthorizationService permissions) =>
         new(
             _db,
@@ -782,7 +732,6 @@ public class ComplianceAlertTicinoTests : IDisposable
         _clock.SetUtcNow(DateTimeOffset.Parse("2026-11-19T17:00:00Z", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal));
         Assert.Equal(1, (await ServiceWithTheRealAudience(permissions).RunAsync()).Sent);
 
-        // The stage is claimed and the e-mail goes to the address of the organization, as always; the push, the bell and the live update are for the hosts who hold the permission.
         Assert.Equal(ComplianceAlertStage.TicinoFileToPrepare, (await _db.ComplianceAlertStates.SingleAsync()).Stage);
         Assert.Equal(tenant.Address, Assert.Single(_emails.Snapshot()).To);
         var push = Assert.Single(_pushes.Queued);
@@ -790,7 +739,6 @@ public class ComplianceAlertTicinoTests : IDisposable
         Assert.Equal([tenant.OwnerId], await BellOfTheQueuedAlertsAsync(permissions));
         Assert.DoesNotContain(collaborator, await _db.InAppNotifications.AsNoTracking().Select(n => n.UserId).ToListAsync());
 
-        // The same collaborator is still told about the alerts of the Italian deadlines: the audience of those alerts is unchanged.
         var italian = await new ComplianceAlertRecipientResolver(_db, new NotificationPreferenceService(_db, permissions, _clock, NullLogger<NotificationPreferenceService>.Instance))
             .ForPropertyAsync(tenant.OrgId, tenant.PropertyId, CancellationToken.None);
         Assert.Contains(collaborator, italian.UserIds);
@@ -799,7 +747,6 @@ public class ComplianceAlertTicinoTests : IDisposable
     [Fact]
     public async Task TicinoAlerts_WhenNobodyWhoReachesTheFlatHoldsAlloggiatiSubmit_TheAlertGoesOnAsToday_OnlyNobodyIsToldInTheApp_Test()
     {
-        // The owner never finished the onboarding, so it holds no permission; the collaborator in charge has none either: nobody who reaches the flat can act on the day.
         var tenant = await SeedTenantAsync("a");
         var collaborator = await AddCollaboratorInChargeAsync(tenant);
         await AddStayAsync(tenant, Day, arrivedAtUtc: "2026-11-19T14:00:00Z");
@@ -808,26 +755,22 @@ public class ComplianceAlertTicinoTests : IDisposable
         _clock.SetUtcNow(DateTimeOffset.Parse("2026-11-19T17:00:00Z", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal));
         Assert.Equal(1, (await ServiceWithTheRealAudience(permissions).RunAsync()).Sent);
 
-        // The alert state progresses as it does with an audience, the e-mail goes to the address of the organization, the cockpit lists the day (it reads the same service)...
         var state = await _db.ComplianceAlertStates.SingleAsync();
         Assert.Equal((ComplianceAlertType.TicinoNotification, "2026-11-19", ComplianceAlertStage.TicinoFileToPrepare), (state.Type, state.ReferenceKey, state.Stage));
         Assert.Equal(tenant.Address, Assert.Single(_emails.Snapshot()).To);
         var listed = await new TicinoNotificationService(_db, _clock).ListPendingDaysAsync(tenant.OrgId, null, Day);
         Assert.Equal(Day, Assert.Single(listed).Day);
 
-        // ...only nobody is told in the app, and the log says why with ids and no name.
         Assert.Empty(await BellOfTheQueuedAlertsAsync(permissions));
         Assert.Contains("nobody who reaches the property holds alloggiati.submit", _log.AllOutput, StringComparison.Ordinal);
         Assert.DoesNotContain(collaborator, _log.AllOutput, StringComparison.Ordinal);
 
-        // A second run of the same hour sends nothing: the stage was claimed once.
         Assert.Equal(0, (await ServiceWithTheRealAudience(permissions).RunAsync()).Sent);
     }
 
     [Fact]
     public async Task TicinoAlerts_PayloadHasNoPersonalData_Test()
     {
-        // No structure identifier and a guest the file cannot take (no date of birth, no nationality, no document type): the day still alerts and names what misses.
         var tenant = await SeedTenantAsync("a", structureId: null);
         var booking = await AddStayAsync(tenant, Day, arrivedAtUtc: "2026-11-19T14:00:00Z", guestRows: GuestRows.Incomplete);
 
@@ -845,7 +788,6 @@ public class ComplianceAlertTicinoTests : IDisposable
         foreach (var value in personal.Where(v => !string.IsNullOrEmpty(v)))
             Assert.DoesNotContain(texts, t => t.Contains(value, StringComparison.OrdinalIgnoreCase));
 
-        // What it says: the property, the day and the types of field that miss, translated, in the e-mail and in the push of every stage.
         foreach (var email in _emails.Snapshot())
         {
             Assert.Contains(tenant.PropertyName, email.Content.Subject, StringComparison.Ordinal);
@@ -888,8 +830,6 @@ public class ComplianceAlertTicinoTests : IDisposable
         Assert.DoesNotContain("Mancano:", Assert.Single(_pushes.Queued).Payload.Body, StringComparison.Ordinal);
     }
 
-    // ─── The flag, the follow-up, the bell ───
-
     [Fact]
     public async Task TicinoAlerts_FlagOffSendsNothing_Test()
     {
@@ -901,7 +841,6 @@ public class ComplianceAlertTicinoTests : IDisposable
         Assert.Equal(0, await RunAtAsync("2026-11-19T17:00:00Z"));
         Assert.Equal(0, await RunAtAsync("2026-11-20T14:00:00Z"));
 
-        // Both flags off: the run does nothing and writes nothing; no e-mail, no push, no entry of the bell.
         Assert.True(result.Skipped);
         Assert.Empty(_emails.Snapshot());
         Assert.Empty(_pushes.Queued);
@@ -950,7 +889,6 @@ public class ComplianceAlertTicinoTests : IDisposable
         await RunAtAsync("2026-11-19T17:00:00Z");
         await RunAtAsync("2026-11-20T14:00:00Z");
 
-        // The cockpit lists the day in its own section, outside the feed of the "To do": the follow-up is never touched.
         _followUp.VerifyNoOtherCalls();
     }
 
@@ -977,7 +915,6 @@ public class ComplianceAlertTicinoTests : IDisposable
             Assert.Equal(tenant.PropertyId, r.EntityId);
         });
 
-        // The live message of the open sessions: the unread count, the type and the property (the day is not in the entry: the client opens the page of the property).
         Assert.Equal(
             [(tenant.OwnerId, PushTypes.TicinoNotificationDue, (Guid?)tenant.PropertyId), (tenant.OwnerId, PushTypes.TicinoNotificationOverdue, (Guid?)tenant.PropertyId)],
             publisher.Published.ToArray());
@@ -1010,20 +947,16 @@ public class ComplianceAlertTicinoTests : IDisposable
         var istat = new PushNotificationPayload("title", "body", PushTypes.IstatDeadline, null, PushRoutes.Properties);
         Assert.Null(QueuedInAppNotification.From(PushAudience.PropertyHosts(propertyId), istat, at).EntityId);
 
-        // A booking stays the entity of its types, a service request the one of its own.
         var stay = new PushNotificationPayload("title", "body", PushTypes.AlloggiatiDeadline, bookingId, PushRoutes.Booking(bookingId));
         Assert.Equal(bookingId, QueuedInAppNotification.From(PushAudience.BookingHosts(bookingId), stay, at).EntityId);
         var request = new PushNotificationPayload("title", "body", PushTypes.ServiceRequestCreated, bookingId, PushRoutes.Properties, requestId);
         Assert.Equal(requestId, QueuedInAppNotification.From(PushAudience.PropertyHosts(propertyId), request, at).EntityId);
 
-        // The property is named by the Ticino types sent to the hosts of a property only: another audience (an id that is a booking, not a property) is never turned into it.
         Assert.False(PushTypes.IsTicinoNotification(PushTypes.IstatDeadline));
         Assert.False(PushTypes.IsTicinoNotification(null));
         var ticino = new PushNotificationPayload("title", "body", PushTypes.TicinoNotificationDue, null, PushRoutes.Properties);
         Assert.Null(QueuedInAppNotification.From(PushAudience.BookingHosts(bookingId), ticino, at).EntityId);
     }
-
-    // ─── The registration, the enumerations, the placeholder ───
 
     [Fact]
     public async Task TheService_ResolvesWithValidateScopes_AndGetsTheServiceOfTheTicinoDays()
@@ -1053,7 +986,6 @@ public class ComplianceAlertTicinoTests : IDisposable
         using var scope = provider.CreateScope();
         var result = await scope.ServiceProvider.GetRequiredService<IComplianceAlertService>().RunAsync();
 
-        // The Ticino days were read: the optional service was given by the container, not left to its default.
         Assert.Equal(1, result.Sent);
         notifications.Verify(
             n => n.SendComplianceAlertAsync(
@@ -1139,7 +1071,6 @@ public class ComplianceAlertTicinoTests : IDisposable
                 Assert.DoesNotContain("someFutureCode", text, StringComparison.Ordinal);
             }
 
-            // A deadline at 14:00Z is 15:00 in Rome and Zurich in winter.
             Assert.Contains(culture.TwoLetterISOLanguageName == "en" ? "20 November 2026, 15:00" : "20/11/2026 15:00", email.HtmlBody, StringComparison.Ordinal);
         }
     }

@@ -10,11 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Octorate;
 
-/// <summary>
-/// The payments of a mirrored booking recorded on its Octorate reservation (E08/F01/US01/T04, AC-NF74-4, D9). The rule that costs money if it
-/// fails: a payment is recorded once, for its exact amount, however many times its event is delivered and even when the answer of Octorate is
-/// lost.
-/// </summary>
 public class OctoratePaymentProofTests
 {
     private const string ReservationId = "130219355";
@@ -43,17 +38,14 @@ public class OctoratePaymentProofTests
             {
                 registered.Add(payment);
 
-                // The card payment reaches Octorate, then its answer is lost.
                 return payment.Transaction == "pi_3LostAnswer" && registered.Count(r => r.Transaction == "pi_3LostAnswer") == 1
                     ? Task.FromException<OctoratePaymentResult>(new OctorateServerException(null))
                     : Task.FromResult(new OctoratePaymentResult("21575084"));
             });
 
-        // The cash payment, delivered twice.
         await DeliverAsync(h, cash);
         await DeliverAsync(h, cash);
 
-        // The card payment: the first delivery loses the answer (the dispatcher delivers it again), the second finds it on the reservation.
         await Assert.ThrowsAsync<OctorateServerException>(() => DeliverAsync(h, card));
         await DeliverAsync(h, card);
 
@@ -88,18 +80,15 @@ public class OctoratePaymentProofTests
         await WaitForConfirmationAsync(h, bookingId);
         var registered = ServeOctorate(h);
 
-        // 1. The payment event comes first: the create is still to come, so the event is not consumed, it is delivered again.
         await Assert.ThrowsAsync<OctorateSyncPendingException>(() => DeliverAsync(h, card));
         Assert.Empty(registered);
 
-        // 2. The confirmation: the reservation is created and the payment paid before it is recorded.
         Assert.Equal(OctorateSyncState.Synced, await ConfirmAsync(h, bookingId));
         var registration = Assert.Single(registered);
         Assert.Equal("pi_3Site", registration.Transaction);
         Assert.Equal("CREDITCARD", registration.PaymentMode);
         Assert.Equal(100m, registration.Amount);
 
-        // 3. The payment event delivered again finds it recorded and sends nothing.
         await DeliverAsync(h, card);
         Assert.Single(registered);
 
@@ -108,10 +97,6 @@ public class OctoratePaymentProofTests
         Assert.Equal(OctorateSyncState.Synced, (await read.OctorateBookingSyncs.AsNoTracking().SingleAsync(s => s.BookingId == bookingId)).State);
     }
 
-    /// <summary>
-    /// A payment of a booking that no create is waiting for (it was confirmed before the property was mirrored, so nothing will ever create its
-    /// reservation) is not held back: the event is consumed, not delivered again until it is dead-lettered, and nothing is sent.
-    /// </summary>
     [Fact]
     public async Task OctoratePayment_OfABookingNoCreateWaitsFor_IsConsumedAndSendsNothing_Test()
     {
@@ -128,11 +113,6 @@ public class OctoratePaymentProofTests
         Assert.False(await read.OctorateBookingSyncs.AnyAsync());
     }
 
-    /// <summary>
-    /// PROOF TEST: money rule. The reservation is created but the recording of a payment paid before it gets a 5xx: the error is not swallowed
-    /// (the confirmation fails and is delivered again), the mirror is marked <c>Failed</c> with <c>octorate_payments_not_recorded</c> (the host
-    /// sees it), the payment stays to be recorded, and the delivery that follows (the reservation id is saved already) records it, once.
-    /// </summary>
     [Fact]
     public async Task OctoratePayment_ServerErrorWhileTheCreateRecordsIt_MarksTheMirror_AndIsNotLost_Test()
     {
@@ -141,7 +121,6 @@ public class OctoratePaymentProofTests
         var cash = await SeedPaymentAsync(h, bookingId, 80m, PaymentMethod.CashOnArrival, stripePaymentIntentId: null);
         var registered = ServeOctorate(h, failFirstRead: true);
 
-        // The create succeeds; reading the reservation to record the payment answers 503. The error goes up, nothing was sent.
         await Assert.ThrowsAsync<OctorateServerException>(() => ConfirmAsync(h, bookingId));
         Assert.Empty(registered);
         Assert.Equal(ReservationId, (await h.ReadBookingAsync(bookingId)).OctorateReservationId);
@@ -154,7 +133,6 @@ public class OctoratePaymentProofTests
             Assert.Null((await read.Payments.AsNoTracking().SingleAsync(p => p.Id == cash)).OctorateTransactionId);
         }
 
-        // The next delivery of the confirmation finds the reservation and records what is left: once, and the mirror is closed.
         Assert.Equal(OctorateSyncState.Synced, await ConfirmAsync(h, bookingId));
         var registration = Assert.Single(registered);
         Assert.Equal($"casazen-{cash}", registration.Transaction);
@@ -195,10 +173,6 @@ public class OctoratePaymentProofTests
         Assert.Single(registered);
     }
 
-    /// <summary>
-    /// The payment of a reservation that exists does not depend on the read of the PMS rooms (which only the create needs): Octorate is not asked
-    /// for them, and the payment is recorded even when that read would fail.
-    /// </summary>
     [Fact]
     public async Task OctoratePayment_OfASyncedBooking_DoesNotReadThePmsRooms_Test()
     {
@@ -234,7 +208,6 @@ public class OctoratePaymentProofTests
             h, bookingId, 206m, PaymentMethod.CreditCard, stripePaymentIntentId: "pi_3Balance", processedAt: new DateTime(2026, 11, 6, 9, 0, 0, DateTimeKind.Utc));
         var registered = ServeOctorate(h);
 
-        // Delivered in the opposite order of their coming in: the result does not depend on it.
         await DeliverAsync(h, balance);
         await DeliverAsync(h, deposit);
 
@@ -243,7 +216,6 @@ public class OctoratePaymentProofTests
         Assert.Equal(300m, registered.Sum(r => r.Amount));
     }
 
-    /// <summary>A payment that pays tourist tax only (after the stay is paid in full) has nothing to record on the reservation: Octorate is not called.</summary>
     [Fact]
     public async Task OctoratePayment_ThatPaysOnlyTheTouristTax_IsNotSentToOctorate_Test()
     {
@@ -266,7 +238,6 @@ public class OctoratePaymentProofTests
         Assert.Null((await read.Payments.AsNoTracking().SingleAsync(p => p.Id == tax)).OctorateTransactionId);
     }
 
-    /// <summary>The tourist tax is the last slice of the price: what the payments pay inside it is left out, in whatever pieces they come.</summary>
     [Theory]
     [InlineData(306.0, 0.0, 306.0, 6.0, 300.0)]
     [InlineData(100.0, 0.0, 306.0, 6.0, 100.0)]
@@ -314,7 +285,6 @@ public class OctoratePaymentProofTests
         return registered;
     }
 
-    /// <summary>The confirmation of the booking waits in the outbox, as the booking site records it together with the payment.</summary>
     private static async Task WaitForConfirmationAsync(OctorateSyncHarness h, Guid bookingId)
     {
         await using var db = h.NewDb();
@@ -328,7 +298,6 @@ public class OctoratePaymentProofTests
         await db.SaveChangesAsync();
     }
 
-    /// <summary>One delivery of <c>BookingConfirmed</c> to the push, in its own scope of the event bus, under org A.</summary>
     private static async Task<OctorateSyncState?> ConfirmAsync(OctorateSyncHarness h, Guid bookingId)
     {
         var tenant = new RequestTenant(OctorateSyncHarness.OrgA);
@@ -336,7 +305,6 @@ public class OctoratePaymentProofTests
         return await h.Service(db, tenant).PushCreateAsync(bookingId, CancellationToken.None);
     }
 
-    /// <summary>One delivery of <c>PaymentSucceeded</c> in its own scope of the event bus, under org A, with the connector on.</summary>
     private static async Task DeliverAsync(OctorateSyncHarness h, Guid paymentId)
     {
         var tenant = new RequestTenant(OctorateSyncHarness.OrgA);
@@ -349,7 +317,6 @@ public class OctoratePaymentProofTests
             CancellationToken.None);
     }
 
-    /// <summary>The booking is on Octorate: its reservation id and a synced mirror.</summary>
     private static async Task MirrorAsync(OctorateSyncHarness h, Guid bookingId)
     {
         await using var db = h.NewDb();

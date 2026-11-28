@@ -35,16 +35,13 @@ public class StripeWebhookApiVersionTests : IClassFixture<StripeConnectWebhookCo
     public async Task StripeWebhook_EventApiVersionOlderThanSdkDefault_Returns200AndQueuesTheEventId(
         string path, string secret, WebhookSource expectedSource)
     {
-        // Arrange
         _factory.BackgroundJobClientMock.Invocations.Clear();
         var eventId = $"evt_old_version_{Guid.NewGuid():N}";
         using var client = _factory.CreateClient();
         using var request = SignedStripeRequest(path, StripeEventJson(eventId, OldApiVersion), secret);
 
-        // Act
         var response = await client.SendAsync(request);
 
-        // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         _factory.BackgroundJobClientMock.Verify(
             c => c.Create(
@@ -59,8 +56,6 @@ public class StripeWebhookApiVersionTests : IClassFixture<StripeConnectWebhookCo
     [Fact]
     public async Task StripeWebhook_ForgedSignatureWithOldApiVersion_StillReturns400()
     {
-        // A tolerant version check must never substitute for signature verification: a mismatched version alone
-        // does not let a forged payload through.
         _factory.BackgroundJobClientMock.Invocations.Clear();
         using var client = _factory.CreateClient();
         using var request = SignedStripeRequest(

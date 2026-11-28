@@ -31,13 +31,10 @@ public class PropertyService(
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    /// <summary>422: the cancellation policy chosen for a property does not exist.</summary>
     public const string CancellationPolicyNotFoundCode = "cancellation_policy_not_found";
 
-    /// <summary>422: a latitude outside -90..90 or a longitude outside -180..180.</summary>
     public const string PropertyCoordinatesInvalidCode = "property_coordinates_invalid";
 
-    /// <summary>The unique index of <c>(OrgId, Slug)</c> (see <c>AppDbContext</c>).</summary>
     private const string SlugUniqueIndexName = "UIX_Properties_OrgId_Slug";
 
     public async Task<Property?> GetPropertyAsync(Guid id)
@@ -105,9 +102,6 @@ public class PropertyService(
         NormalizeLocation(property);
         NormalizeStayRules(property);
         PropertyHouseRules.Normalize(property);
-        // Country/Currency are not yet updateable via UpdatePropertyRequest, so don't apply defaults on update.
-        // This preserves existing timezone values (PATCH semantics, A2-04).
-        // When Country becomes updateable, ApplyCountryDefaults should only run when country is being changed.
         if (!string.IsNullOrWhiteSpace(property.Slug))
         {
             property.Slug = PropertySlugHelper.NormalizeOptional(property.Slug);
@@ -123,7 +117,6 @@ public class PropertyService(
         }
         catch (DbUpdateException ex) when (ToUniqueConflict(ex) is { } conflict)
         {
-            // Another property took the address (or the slug) between the read and this save (A2-19).
             logger.LogWarning("Update of property {Id} refused by a unique index: {Code}", property.Id, conflict.Code);
             throw conflict;
         }
@@ -134,11 +127,6 @@ public class PropertyService(
         return updated;
     }
 
-    /// <summary>
-    /// The unit and the coordinates as stored (trimmed unit, coordinates with the precision of the column), and a
-    /// coordinate outside the earth refused before it reaches the database (422): the API validates the same ranges at its
-    /// boundary, this protects every other caller of the service and the <c>numeric(9,6)</c> columns (PC-06, A2-33).
-    /// </summary>
     private static void NormalizeLocation(Property property)
     {
         if (!PropertyAddress.IsValidLatitude(property.Latitude) || !PropertyAddress.IsValidLongitude(property.Longitude))
@@ -149,11 +137,6 @@ public class PropertyService(
         property.Longitude = PropertyAddress.RoundCoordinate(property.Longitude);
     }
 
-    /// <summary>
-    /// The minimum stay and the weekend surcharge as stored (DB-03): a value out of range is refused before it reaches the
-    /// database (422, the same message as the 400 of the forms), and the surcharge keeps the two decimals of its column, so
-    /// the percentage a quote applies is the one the host reads back. Protects every caller of the service, not only the API.
-    /// </summary>
     private static void NormalizeStayRules(Property property)
     {
         if (!PropertyStayRules.IsValidMinNights(property.MinNights))
@@ -165,10 +148,6 @@ public class PropertyService(
         property.WeekendSurchargePercent = PropertyStayRules.NormalizeWeekendSurcharge(property.WeekendSurchargePercent);
     }
 
-    /// <summary>
-    /// Derives currency and timezone from country code (ADR-001-R7): IT -> EUR, Europe/Rome; CH -> CHF, Europe/Zurich.
-    /// Ensures the country is stored in uppercase.
-    /// </summary>
     private static void ApplyCountryDefaults(Property property)
     {
         property.Country = property.Country?.ToUpperInvariant() ?? "IT";
@@ -184,7 +163,6 @@ public class PropertyService(
                 property.Timezone = "Europe/Zurich";
                 break;
             default:
-                // Unknown country defaults to IT
                 property.Currency = "EUR";
                 property.Timezone = "Europe/Rome";
                 break;
@@ -242,13 +220,8 @@ public class PropertyService(
             throw new DomainRuleException(CancellationPolicyNotFoundCode, "PropertyCancellationPolicyNotFound");
     }
 
-    /// <summary>
-    /// 409: the property has a pending, confirmed or checked-in stay whose check-out has not passed (PC-05, A2-18): a
-    /// host cannot make a property with a guest already booked disappear.
-    /// </summary>
     public const string HasUpcomingBookingsCode = "property_has_upcoming_bookings";
 
-    /// <summary>409: the property has a lease in force or in progress that has not ended yet (PC-05, A2-18).</summary>
     public const string HasActiveLeasesCode = "property_has_active_leases";
 
     /// <summary>
@@ -331,7 +304,6 @@ public class PropertyService(
         return row is null ? null : await WithSiteMediaAsync(MapPublicPropertyDetail(row));
     }
 
-    /// <summary>The floor plan levels and the points of interest of the page (DB-11a): two small reads of the property named, never of a list.</summary>
     private async Task<PublicPropertyDetailDto> WithSiteMediaAsync(PublicPropertyDetailDto page)
     {
         var media = await repository.GetSiteMediaAsync(page.Id);
@@ -349,7 +321,6 @@ public class PropertyService(
 
     public async Task<PropertyDetailResponse> GetPropertyDetailAsync(Guid propertyId)
     {
-        // 404 through the error middleware (FD-05); any other failure stays a 500, never a "not found" (A2-36).
         var property = await repository.GetPropertyDetailAsync(propertyId)
             ?? throw new NotFoundException($"Property {propertyId} not found");
 
@@ -445,12 +416,9 @@ public class PropertyService(
         UploadedAt = d.UploadedAt,
         ApeCode = d.DocumentType == DocumentType.Ape ? d.ApeCode : null,
         ApeEnergyClass = d.DocumentType == DocumentType.Ape ? d.ApeEnergyClass : null,
-        // Documents live in the private bucket: the only way to read one is the authenticated
-        // download endpoint (bearer token + tenant/ownership check), never the storage reference.
         DownloadUrl = DocumentDownloadPath(d.PropertyId, d.Id)
     };
 
-    /// <summary>API path (relative to the API base URL) of the authenticated document download.</summary>
     public static string DocumentDownloadPath(Guid propertyId, Guid documentId) =>
         $"/api/properties/{propertyId}/documents/{documentId}/download";
 
@@ -589,7 +557,6 @@ public class PropertyService(
         Description = row.Description,
         City = row.City,
         PostalCode = row.PostalCode,
-        // DB-03: the position leaves CasaZen rounded to about 1 km, never as the host typed it; a host who gave none is placed at the centre of the comune.
         Latitude = PublicPropertyPosition.Of(row.Latitude, row.Longitude, row.ComuneIstatCode).Latitude,
         Longitude = PublicPropertyPosition.Of(row.Latitude, row.Longitude, row.ComuneIstatCode).Longitude,
         Bedrooms = row.Bedrooms,
@@ -614,7 +581,6 @@ public class PropertyService(
         Description = row.Description,
         City = row.City,
         PostalCode = row.PostalCode,
-        // DB-03: the position leaves CasaZen rounded to about 1 km, never as the host typed it; a host who gave none is placed at the centre of the comune.
         Latitude = PublicPropertyPosition.Of(row.Latitude, row.Longitude, row.ComuneIstatCode).Latitude,
         Longitude = PublicPropertyPosition.Of(row.Latitude, row.Longitude, row.ComuneIstatCode).Longitude,
         Bedrooms = row.Bedrooms,
@@ -639,20 +605,14 @@ public class PropertyService(
         AcceptsBookings = Org.AcceptsDirectPayments(row.OrgStripeConnectedAccountId, row.OrgConnectChargesEnabled),
         HostName = row.OrgHostName,
         PublicPhone = row.OrgPublicPhone,
-        // DB-11a: what the host said about the house, only what they filled in.
         Profile = PublicPropertyProfileBuilder.Build(new PublicProfileSource(
             row.ListingTitle, row.AccommodationType, row.Beds, row.AreaSqm, row.FloorLevel, row.RenovatedYear, row.EnergyClass,
             row.EnergyIndex, row.AreaKind, row.ChildrenWelcome, row.CheckInFrom, row.CheckInTo, row.CheckOutBy, row.QuietHoursFrom,
             row.QuietHoursTo, row.SmokingPolicy, row.PetsPolicy, row.PartiesPolicy, row.VideoUrl, row.TourUrl, row.SiteProfileJson,
             row.Amenities)),
-        // DB-11a: the photos with the alternative text the host wrote and the size read at the upload (photoUrls stays).
         Photos = PropertyPhotoMeta.Of(row.PhotoUrls, row.PhotoAltJson),
     };
 
-    /// <summary>
-    /// What the public page of a property reads, in one place for both ways to ask for it (by id and by org and slug). The cancellation
-    /// policy is the catalog row with the columns the host changed of it (DB-03b: <see cref="PublicCancellation"/> builds the page's view).
-    /// </summary>
     private static readonly System.Linq.Expressions.Expression<Func<Property, PublicPropertyDetailRow>> DetailRow = p => new PublicPropertyDetailRow
     {
         Id = p.Id,
@@ -712,9 +672,6 @@ public class PropertyService(
         PhotoAltJson = p.PhotoAltJson,
     };
 
-    /// <summary>
-    /// What the public search reads of a property, in one place for both ways to ask for it (everywhere and by org): one expression, so one SQL.
-    /// </summary>
     private static readonly System.Linq.Expressions.Expression<Func<Property, PublicPropertyRow>> SearchRow = p => new PublicPropertyRow
     {
         Id = p.Id,
@@ -749,7 +706,6 @@ public class PropertyService(
         public string City { get; init; } = string.Empty;
         public string PostalCode { get; init; } = string.Empty;
 
-        // The comune the host chose from the official list: where the position of a property whose host gave none is taken from (PublicPropertyPosition).
         public string? ComuneIstatCode { get; init; }
         public decimal Latitude { get; init; }
         public decimal Longitude { get; init; }
@@ -759,7 +715,6 @@ public class PropertyService(
         public decimal NightlyRate { get; init; }
         public decimal CleaningFee { get; init; }
 
-        // The currency of the rate and of the cleaning fee: the one of the property (StayCurrency).
         public string Currency { get; init; } = StayCurrency.Default;
         public List<PropertyAmenity> Amenities { get; init; } = [];
         public List<string> PhotoUrls { get; init; } = [];
@@ -774,21 +729,17 @@ public class PropertyService(
         public int? MinNights { get; init; }
         public decimal WeekendSurchargePercent { get; init; }
 
-        // The cancellation policy of the property (DB-03b): the catalog row, null without one, and what the host changed of it.
         public CancellationPolicy? CatalogPolicy { get; init; }
         public int? OverrideFullRefundHours { get; init; }
         public int? OverridePartialRefundHours { get; init; }
         public decimal? OverridePartialRefundPercent { get; init; }
         public HostCancellationRefundType OverrideRefundType { get; init; }
 
-        // The columns of the org the public page reads (DB-03): whether it can take a payment, how the host is named, the
-        // phone the host chose to publish.
         public string? OrgStripeConnectedAccountId { get; init; }
         public bool OrgConnectChargesEnabled { get; init; }
         public string? OrgHostName { get; init; }
         public string? OrgPublicPhone { get; init; }
 
-        // What the host said about the house (SR-07a wizard fields and the DB-11a site profile): built into the profile of the page.
         public string? ListingTitle { get; init; }
         public AccommodationType? AccommodationType { get; init; }
         public int? Beds { get; init; }

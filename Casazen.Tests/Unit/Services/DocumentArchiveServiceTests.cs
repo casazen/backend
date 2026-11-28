@@ -41,7 +41,6 @@ public class DocumentArchiveServiceTests
         var limited = await service.ListAsync(world.Hosts.Restricted, DocumentArchiveWorld.Everything, All);
         var otherOrg = await service.ListAsync(new HostScope(world.Hosts.OtherOrgId), DocumentArchiveWorld.Everything, All);
 
-        // The whole org: both properties' documents, both leases' files and the one receipt; nothing of the other org, no payment without a receipt.
         Assert.Equal(5, wholeOrg.TotalCount);
         Assert.Equal(
             new[]
@@ -51,13 +50,11 @@ public class DocumentArchiveServiceTests
             wholeOrg.Items.Select(i => i.Id).Order());
         Assert.DoesNotContain(wholeOrg.Items, i => i.Id == world.TaxWithoutReceipt);
 
-        // A collaborator «Solo alcuni»: the property it was given, its lease file, and no payment (it has no property).
         Assert.Equal(
             new[] { world.GrantedPropertyDocument, world.GrantedLeaseDocument }.Order(),
             limited.Items.Select(i => i.Id).Order());
         Assert.Equal(2, limited.TotalCount);
 
-        // The other org sees its own three and none of the first org's.
         Assert.Equal(
             new[] { world.OtherOrgPropertyDocument, world.OtherOrgLeaseDocument, world.OtherOrgTaxReceipt }.Order(),
             otherOrg.Items.Select(i => i.Id).Order());
@@ -78,7 +75,6 @@ public class DocumentArchiveServiceTests
         Assert.Equal("Trullo", property.PropertyName);
         Assert.Null(property.BookingId);
         Assert.Null(property.SizeBytes);
-        // The property document stores no MIME type: the service gives the one of its extension.
         Assert.Equal("application/pdf", property.ContentType);
 
         var lease = Assert.Single(page.Items, i => i.Id == world.GrantedLeaseDocument);
@@ -133,7 +129,6 @@ public class DocumentArchiveServiceTests
         Assert.Equal([world.HiddenLeaseDocument, world.GrantedLeaseDocument], inSeptember.Items.Select(i => i.Id));
         Assert.Equal([world.GrantedPropertyDocument], oneDay.Items.Select(i => i.Id));
         Assert.Equal([world.HiddenPropertyDocument], afterTheFifth.Items.Select(i => i.Id));
-        // A property filter keeps the rows of that property and drops the payment, which has none.
         Assert.Equal(
             new[] { world.GrantedPropertyDocument, world.GrantedLeaseDocument }.Order(),
             ofTheTrullo.Items.Select(i => i.Id).Order());
@@ -232,23 +227,15 @@ public class DocumentArchiveServiceTests
         Assert.Equal(
             [(ArchiveDocumentType.TouristTax, 1), (ArchiveDocumentType.Contract, 2), (ArchiveDocumentType.PropertyDocument, 2)],
             all.Select(c => (c.Type, c.Count)));
-        // The type filter is the one thing a count leaves out; the scope still applies, and the payments are not in a limited scope.
         Assert.Equal(
             [(ArchiveDocumentType.TouristTax, 0), (ArchiveDocumentType.Contract, 1), (ArchiveDocumentType.PropertyDocument, 1)],
             limited.Select(c => (c.Type, c.Count)));
-        // A type with no document in the days is still offered, with zero.
         Assert.Equal(
             [(ArchiveDocumentType.TouristTax, 0), (ArchiveDocumentType.Contract, 2), (ArchiveDocumentType.PropertyDocument, 0)],
             inSeptember.Select(c => (c.Type, c.Count)));
         Assert.Equal([(ArchiveDocumentType.PropertyDocument, 2)], noContracts.Select(c => (c.Type, c.Count)));
     }
 
-    // ---------------------------------------------------------------- the file of one document
-
-    /// <summary>
-    /// PROOF TEST: data rule. A document of another org answers 404 like one that does not exist, and so does one of a property outside the scope of
-    /// the caller: the caller cannot tell them apart, and nothing is opened from the storage.
-    /// </summary>
     [Fact]
     public async Task DocumentArchiveDownload_OtherOrgRow_NotFound_Test()
     {
@@ -268,7 +255,6 @@ public class DocumentArchiveServiceTests
             Assert.Equal(DocumentArchiveService.DocumentNotFoundCode, missing.Code);
         }
 
-        // A property of the org that the collaborator was not given: the same 404, and the payment of the org (no property) as well.
         foreach (var (type, id) in new[]
                  {
                      (ArchiveDocumentType.PropertyDocument, world.HiddenPropertyDocument),
@@ -327,7 +313,6 @@ public class DocumentArchiveServiceTests
 
         await using (tax.Content)
         {
-            // The name the host sent, as the payment stores it.
             Assert.Equal("ricevuta-ostuni.pdf", tax.FileName);
             Assert.Equal("application/pdf", tax.ContentType);
             Assert.Equal(DocumentArchiveWorld.Pdf("ricevuta Ostuni"), await ReadAllAsync(tax.Content));
@@ -338,7 +323,6 @@ public class DocumentArchiveServiceTests
     public async Task Download_ARowWithoutAFile_IsNotFoundWithTheCodeOfItsOwn()
     {
         var world = await DocumentArchiveWorld.CreateAsync();
-        // The row is in the list, but the file is gone from the bucket.
         Assert.True(world.Storage.Remove(world.KeysByDocument[world.GrantedPropertyDocument]));
 
         var gone = await Assert.ThrowsAsync<NotFoundException>(
@@ -354,7 +338,6 @@ public class DocumentArchiveServiceTests
         var world = await DocumentArchiveWorld.CreateAsync();
         var document = await world.Db.PropertyDocuments.FindAsync(world.GrantedPropertyDocument);
         Assert.NotNull(document);
-        // A legacy path (a local folder) or a key that climbs out of its folder is not a key of the private bucket.
         document.StorageUrl = "../../secrets/appsettings.json";
         await world.Db.SaveChangesAsync();
         world.Db.ChangeTracker.Clear();

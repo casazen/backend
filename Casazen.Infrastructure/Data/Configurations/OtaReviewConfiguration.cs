@@ -29,24 +29,19 @@ internal sealed class OtaReviewConfiguration : IEntityTypeConfiguration<OtaRevie
             .HasForeignKey(r => r.OrgId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // The columns say what they hold: encrypted at rest. There is no plaintext column for the words of a guest or of a host.
         entity.Property(r => r.GuestReviewText).HasColumnName("GuestReviewTextEncrypted");
         entity.Property(r => r.HostReplyText).HasColumnName("HostReplyTextEncrypted");
         entity.Property(r => r.HostReviewJson).HasColumnName("HostReviewJsonEncrypted");
 
-        // xmin: every update of the row changes it, and a writer that read an older row fails (a reply is asked of the channel manager once).
         entity.Property(r => r.Version).IsRowVersion();
 
-        // One row for each booking and channel of the organization: the two reads of a booking, and two runs of the sync, are one row.
         entity.HasIndex(r => new { r.OrgId, r.BookingId, r.Channel })
             .IsUnique()
             .HasDatabaseName(OtaReview.OrgBookingChannelIndexName);
 
-        // The reviews of a property by the time the guest's was published (the list of the hub).
         entity.HasIndex(r => new { r.OrgId, r.PropertyId, r.GuestReviewPublishedAt })
             .HasDatabaseName(OtaReview.PropertyPublishedIndexName);
 
-        // The selection of the sync: the rows that wait for their next read.
         entity.HasIndex(r => r.NextPollAt)
             .HasFilter("\"NextPollAt\" IS NOT NULL")
             .HasDatabaseName(OtaReview.NextPollIndexName);

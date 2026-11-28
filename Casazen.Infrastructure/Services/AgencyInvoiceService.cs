@@ -16,7 +16,6 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public sealed class AgencyInvoiceService(AppDbContext db) : IAgencyInvoiceService
 {
-    /// <inheritdoc />
     public async Task<string?> GetInvoiceXmlAsync(Guid invoiceId, CancellationToken cancellationToken = default)
     {
         var invoice = await db.Set<AgencyInvoice>()
@@ -36,7 +35,6 @@ public sealed class AgencyInvoiceService(AppDbContext db) : IAgencyInvoiceServic
         return invoice.FatturapaXml;
     }
 
-    /// <inheritdoc />
     public async Task<byte[]> GetInvoicePdfAsync(Guid invoiceId, CancellationToken cancellationToken = default)
     {
         var invoice = await db.Set<AgencyInvoice>()
@@ -55,19 +53,12 @@ public sealed class AgencyInvoiceService(AppDbContext db) : IAgencyInvoiceServic
             throw new DomainRuleException("invoice_not_finalized", "InvoiceNotFinalized");
         }
 
-        // Generate PDF (simplified implementation - full PDF generation would use a library like QuestPDF)
         return GenerateInvoicePdf(invoice);
     }
 
 
-    /// <summary>
-    /// The courtesy copy of a historical invoice as it was stored (a text rendering): the date is the one it was made on, never the day it is downloaded (a
-    /// historical fiscal document is not dated again), with its compliance code (<c>legacy_unverified</c>).
-    /// </summary>
     private static byte[] GenerateInvoicePdf(AgencyInvoice invoice)
     {
-        // Simplified PDF generation - return a simple text representation as bytes
-        // In production, this would use QuestPDF or another PDF library
         var pdfContent = $@"INVOICE
 ================
 

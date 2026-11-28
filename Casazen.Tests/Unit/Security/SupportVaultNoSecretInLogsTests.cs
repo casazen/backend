@@ -101,12 +101,10 @@ public class SupportVaultNoSecretInLogsTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync();
 
-        // Refused writes that carry values.
         errors.Add(await Assert.ThrowsAsync<DomainRuleException>(() => vault.StoreAsync(
             Staff, input with { Password = new string('x', SupportVaultSecret.MaxPasswordLength) + PanelPassword }, Ct)));
         errors.Add(await Assert.ThrowsAsync<NotFoundException>(() => vault.StoreAsync(Staff, input with { OrgId = Guid.NewGuid() }, Ct)));
 
-        // Every kind of opening, for a request of the whole compliance part of the property (it needs all three).
         var request = await AssistOn(_db).RequestAsync(
             _world.OrgWide, _world.OwnerUserId, new AssistRequestInput(OnboardingPartKey.Compliance, OnboardingAssistContexts.Part, _world.Granted.Id), Ct);
         foreach (var kind in Enum.GetValues<SupportVaultCredentialKind>())
@@ -117,7 +115,6 @@ public class SupportVaultNoSecretInLogsTests : IAsyncLifetime
             Assert.Contains(opened.Password, Secrets);
         }
 
-        // Every refusal of an opening.
         errors.Add(await Assert.ThrowsAsync<DomainRuleException>(() =>
             vault.RevealAsync(Staff, request.Id, SupportVaultCredentialKind.Police, PolicePassword[..5], Ct)));
         var channel = await AssistOn(_db).RequestAsync(
@@ -136,7 +133,6 @@ public class SupportVaultNoSecretInLogsTests : IAsyncLifetime
         errors.Add(await Assert.ThrowsAsync<DomainConflictException>(() =>
             vault.RevealAsync(Staff, channel.Id, SupportVaultCredentialKind.OctoratePanel, Reason, Ct)));
 
-        // Whatever a log provider, an error page or the log of the org could carry.
         texts.Add(vaultLog.AllOutput);
         texts.Add(istatLog.AllOutput);
         texts.AddRange(errors.Select(e => e.ToString()));
@@ -152,7 +148,6 @@ public class SupportVaultNoSecretInLogsTests : IAsyncLifetime
         foreach (var secret in Secrets)
             Assert.All(texts, text => Assert.DoesNotContain(secret, text, StringComparison.Ordinal));
 
-        // The positive control: the logs say what happened, with ids and kinds.
         Assert.Contains(vaultLog.Entries, e => e.Message.Contains("opened for assist request", StringComparison.Ordinal));
         Assert.Contains(vaultLog.Entries, e => e.Message.Contains("replaced by staff", StringComparison.Ordinal));
         Assert.Contains(istatLog.Entries, e => e.Message.Contains("replaced", StringComparison.Ordinal));

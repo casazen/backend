@@ -25,10 +25,6 @@ public class SupplierSettingsController(
     ISupplierAgendaService agenda,
     ISupplierOrgContextResolver supplierOrgContextResolver) : ControllerBase
 {
-    /// <summary>
-    /// The settings; the defaults while the supplier never saved any (a read never creates the row). <c>onlineBookingEnabled</c> says
-    /// whether the showcase takes bookings: the showcase editor is the only place that changes it.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(SupplierSettingsDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -56,10 +52,6 @@ public class SupplierSettingsController(
                 await agenda.ReplaceSettingsAsync(orgId, SupplierSettingsMapper.ToInput(request), cancellationToken))),
             cancellationToken);
 
-    /// <summary>
-    /// Runs <paramref name="action"/> for the caller's linked supplier org (only an already linked one: a settings call never provisions
-    /// or links a supplier org). A setting that is not valid is answered with the names of its fields (<c>fields</c>).
-    /// </summary>
     private async Task<ActionResult<SupplierSettingsDto>> RunAsync(
         Func<Guid, Task<ActionResult<SupplierSettingsDto>>> action,
         CancellationToken cancellationToken)

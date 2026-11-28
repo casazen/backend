@@ -29,16 +29,10 @@ public sealed class OctorateOAuthStateService(
     TimeProvider timeProvider,
     ILogger<OctorateOAuthStateService> logger)
 {
-    /// <summary>Random bytes of a state (256 bits).</summary>
     public const int StateBytes = 32;
 
-    /// <summary>A longer state is refused without being looked up.</summary>
     private const int MaxStateLength = 128;
 
-    /// <summary>
-    /// A new state for the consent of <paramref name="orgId"/> started by <paramref name="userId"/> with <paramref name="redirectUri"/>:
-    /// its hash is stored with its expiry, the plain value is returned once. The expired states of every org are deleted first.
-    /// </summary>
     public async Task<string> CreateAsync(Guid orgId, string userId, string redirectUri, CancellationToken ct)
     {
         if (orgId == Guid.Empty)
@@ -77,7 +71,6 @@ public sealed class OctorateOAuthStateService(
         if (string.IsNullOrEmpty(presented) || presented.Length > MaxStateLength)
             throw new OctorateOAuthStateInvalidException();
 
-        // A system read by the hash (unique), then the binding compared in memory, in constant time.
         var hash = HashOf(presented);
         var row = await db.OctorateOAuthStates
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -100,7 +93,6 @@ public sealed class OctorateOAuthStateService(
             throw new OctorateOAuthStateInvalidException();
         }
 
-        // Single use: deleted before the code is used; a parallel request with the same state finds nothing to delete.
         if (!await DeleteAsync(row, now, ct))
         {
             logger.LogInformation("Octorate consent state refused: consumed by another request meanwhile");
@@ -110,14 +102,12 @@ public sealed class OctorateOAuthStateService(
         return row.Environment;
     }
 
-    /// <summary>The SHA-256 of a state, lowercase hex: what the table holds.</summary>
     public static string HashOf(string state) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(state)));
 
     private async Task<bool> DeleteAsync(OctorateOAuthState row, DateTime now, CancellationToken ct)
     {
         if (db.Database.IsRelational())
         {
-            // One statement: the row goes only if it is still there and still valid.
             var deleted = await db.OctorateOAuthStates
                 .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
                 .Where(s => s.Id == row.Id && s.ExpiresAt > now)
@@ -125,7 +115,6 @@ public sealed class OctorateOAuthStateService(
             return deleted == 1;
         }
 
-        // EF InMemory (unit tests): the tracked delete fails when the row is already gone.
         var entity = db.OctorateOAuthStates.Local.FirstOrDefault(s => s.Id == row.Id) ?? row;
         db.OctorateOAuthStates.Remove(entity);
         try
@@ -142,7 +131,6 @@ public sealed class OctorateOAuthStateService(
 
     private async Task DeleteExpiredAsync(DateTime now, CancellationToken ct)
     {
-        // The expired states of every org: garbage nobody can use any more.
         var expired = db.OctorateOAuthStates
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(s => s.ExpiresAt <= now);

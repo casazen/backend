@@ -41,8 +41,6 @@ internal static class HostScopePoints
         Assert.False(shown.Contains(world.OtherOrgProperty.Id), $"{point}: the property of another org is shown");
     }
 
-    // --- 1-5 · the repositories ------------------------------------------------------------------------
-
     public static async Task BookingsAsync(AppDbContext db, HostScopeWorld world)
     {
         var repository = new BookingRepository(db);
@@ -83,7 +81,6 @@ internal static class HostScopePoints
         TheWholeOrgButNotAnotherOne(world, (await repository.GetByScopeForComplianceAsync(world.OrgWide)).Select(p => p.Id), "CIN summary");
     }
 
-    /// <summary>An account in no team keeps the old rule: the properties it created (here both of the org, not the other org).</summary>
     public static async Task AccountInNoTeamAsync(AppDbContext db, HostScopeWorld world)
     {
         var scope = world.OwnedByOwner;
@@ -92,8 +89,6 @@ internal static class HostScopePoints
         Assert.Equal(2, properties.Count);
         TheWholeOrgButNotAnotherOne(world, (await new BookingRepository(db).GetByScopeAsync(scope)).Select(b => b.PropertyId), "bookings of the account in no team");
     }
-
-    // --- 6-8 · the fiscal reports ----------------------------------------------------------------------
 
     internal static FiscalService Fiscal(AppDbContext db) =>
         new(db, new MigraDocPdfDocumentRenderer(), Options.Create(new ShortStayFiscalOptions()), Clock);
@@ -105,7 +100,6 @@ internal static class HostScopePoints
 
         OnlyTheGranted(world, restricted.Properties.Select(p => p.PropertyId), "annual report");
         TheWholeOrgButNotAnotherOne(world, orgWide.Properties.Select(p => p.PropertyId), "annual report");
-        // What it earned is the granted property alone: half of the org (the two properties are alike).
         Assert.True(restricted.Totals.GrossIncome > 0, "annual report: the granted property earned nothing");
         Assert.Equal(orgWide.Totals.GrossIncome, restricted.Totals.GrossIncome * 2);
     }
@@ -131,8 +125,6 @@ internal static class HostScopePoints
         Assert.Equal(orgWide.Totals.Withholding, restricted.Totals.Withholding * 2);
     }
 
-    // --- 9-11 · the dashboard --------------------------------------------------------------------------
-
     internal static HostDashboardService Dashboard(AppDbContext db) => new(db, new ConfigurationBuilder().Build(), Clock);
 
     public static async Task DashboardPropertiesAsync(AppDbContext db, HostScopeWorld world)
@@ -142,7 +134,6 @@ internal static class HostScopePoints
 
         Assert.Equal(1, restricted.PropertyCount);
         Assert.Equal(2, orgWide.PropertyCount);
-        // The nights available are those of the properties in scope.
         Assert.Equal(orgWide.Occupancy.AvailableNights, restricted.Occupancy.AvailableNights * 2);
     }
 
@@ -168,8 +159,6 @@ internal static class HostScopePoints
         TheWholeOrgButNotAnotherOne(world, orgWide.Select(f => f.PropertyId), "iCal feeds");
     }
 
-    // --- 12 · the requests waiting for the host --------------------------------------------------------
-
     public static async Task AwaitingHostApprovalAsync(AppDbContext db, HostScopeWorld world)
     {
         var service = new OnSiteBookingRequestService(
@@ -182,9 +171,6 @@ internal static class HostScopePoints
         TheWholeOrgButNotAnotherOne(world, orgWide.Select(b => b.PropertyId), "requests waiting for the host");
     }
 
-    // --- 13 · the interventions of the host ------------------------------------------------------------
-
-    // The service as the API builds it (SP-04 kit, over the database of the test): the listings below write no file.
     private static ServiceRequestService ServiceRequests(AppDbContext db) => new ServiceRequestTestKit(db).Service;
 
     public static async Task InterventionsAsync(AppDbContext db, HostScopeWorld world)
@@ -201,7 +187,6 @@ internal static class HostScopePoints
         TheWholeOrgButNotAnotherOne(world, orgWide.Select(r => r.PropertyId ?? Guid.Empty), "interventions");
         Assert.Equal(2, orgWideTotal);
 
-        // The single read follows the same rule: the request of a hidden property is not found.
         var hidden = orgWide.Single(r => r.PropertyId == world.Hidden.Id);
         var granted = orgWide.Single(r => r.PropertyId == world.Granted.Id);
         Assert.Null(await service.GetByIdForHostAsync(hidden.Id, world.Restricted, ServiceRequestRentalContext.ShortRent));
@@ -218,8 +203,6 @@ internal static class HostScopePoints
         Assert.Equal(0, total);
     }
 
-    // --- the lists added with the scope: the Alloggiati stays ------------------------------------------
-
     public static async Task AlloggiatiListAsync(AppDbContext db, HostScopeWorld world)
     {
         var service = new AlloggiatiWebService(db, NullLogger<AlloggiatiWebService>.Instance, Clock);
@@ -234,8 +217,6 @@ internal static class HostScopePoints
         Assert.DoesNotContain(orgWide, row => row.PropertyName == world.OtherOrgProperty.Name);
         Assert.Empty(hiddenOnly);
     }
-
-    // --- the guests and their documents (SR-04b, AM-03-FU2) --------------------------------------------
 
     /// <summary>
     /// A collaborator limited to one property reaches the guest of that property and not the guest of the other one: in the list, in
@@ -270,7 +251,6 @@ internal static class HostScopePoints
         Assert.True(await access.IsGuestAccessibleAsync(hidden.Id, world.OrgWide));
     }
 
-    /// <summary>Every point, by name, for the run that reports all the failures together (PostgreSQL in CI).</summary>
     public static IReadOnlyList<(string Name, Func<AppDbContext, HostScopeWorld, Task> Run)> All { get; } =
     [
         ("01 bookings", BookingsAsync),

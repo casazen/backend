@@ -37,10 +37,6 @@ internal static class OrgTeamAccess
         return actor;
     }
 
-    /// <summary>
-    /// The caller's own member row, which must be active, whatever its role (AM-02b: any member asks the administrators for
-    /// access). <see cref="UnauthorizedAccessException"/> is a generic 403.
-    /// </summary>
     public static async Task<OrgMember> RequireMemberAsync(
         AppDbContext db,
         Guid orgId,
@@ -70,7 +66,6 @@ internal static class OrgTeamAccess
             cancellationToken,
             [OrgSeatService.SeatsLock(orgId), .. further]);
 
-    /// <summary>True when <paramref name="exception"/> is a PostgreSQL unique violation (23505), of the index <paramref name="constraint"/> when given.</summary>
     public static bool IsUniqueViolation(DbUpdateException exception, string? constraint = null) =>
         exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } postgres
         && (constraint is null || string.Equals(postgres.ConstraintName, constraint, StringComparison.Ordinal));

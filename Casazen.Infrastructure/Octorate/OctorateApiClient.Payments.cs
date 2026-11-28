@@ -28,7 +28,6 @@ public sealed partial class OctorateApiClient
         return PaymentsOf(answer.RootElement);
     }
 
-    /// <summary>The payments of a single read (a bare reservation, or one wrapped in <c>data</c>); an item without an amount is left out.</summary>
     internal static IReadOnlyList<OctoratePayment> PaymentsOf(JsonElement root)
     {
         var reservation = root.ValueKind == JsonValueKind.Object && OctorateJson.Find(root, "data") is { ValueKind: JsonValueKind.Object } data ? data : root;

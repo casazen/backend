@@ -99,13 +99,10 @@ public class ChannelMappingProofTests
         await db.SaveChangesAsync();
         var service = Service(db, new Mock<IOctorateApiClient>(MockBehavior.Strict).Object);
 
-        // Proposed or among the candidates of an ambiguous row: blocked until a person confirms.
         Assert.True(await service.IsWriteBlockedAsync(proposed, CancellationToken.None));
         Assert.True(await service.IsWriteBlockedAsync(candidate, CancellationToken.None));
-        // Confirmed: writes allowed. A property in no row is not blocked by the mapping (it has no listing to write to).
         Assert.False(await service.IsWriteBlockedAsync(confirmed, CancellationToken.None));
         Assert.False(await service.IsWriteBlockedAsync(free, CancellationToken.None));
-        // A property CasaZen does not know: nothing is written for it.
         Assert.True(await service.IsWriteBlockedAsync(Guid.NewGuid(), CancellationToken.None));
     }
 
@@ -128,24 +125,20 @@ public class ChannelMappingProofTests
         var jobs = new Mock<IBackgroundJobClient>();
         var service = Service(db, client.Object, Resolver(granted), jobs: jobs.Object);
 
-        // A collaborator «Solo alcuni» who was given another property cannot confirm the listing to this one.
         var unreachable = await Assert.ThrowsAsync<NotFoundException>(
             () => service.ConfirmAsync(OrgA, "1001", mine, null, Collaborator, CancellationToken.None));
         Assert.Equal("octorate_property_not_found", unreachable.Code);
 
-        // Nobody confirms a listing to a property of another organization, an administrator neither.
         var foreign = await Assert.ThrowsAsync<NotFoundException>(
             () => service.ConfirmAsync(OrgA, "1001", otherOrg, null, Admin, CancellationToken.None));
         Assert.Equal("octorate_property_not_found", foreign.Code);
 
-        // Refused before anything was read or written.
         client.VerifyNoOtherCalls();
         jobs.VerifyNoOtherCalls();
         var untouched = await db.OctorateListingMappings.AsNoTracking().SingleAsync();
         Assert.Equal(OctorateMappingStatus.Proposed, untouched.Status);
         Assert.Null(untouched.ConfirmedByUserId);
 
-        // An administrator of the org confirms it: user, time, the only room and the channel identifiers as Octorate gives them.
         await service.ConfirmAsync(OrgA, "1001", mine, null, Admin, CancellationToken.None);
         var confirmed = await db.OctorateListingMappings.AsNoTracking().SingleAsync();
         Assert.Equal(OctorateMappingStatus.Confirmed, confirmed.Status);
@@ -158,20 +151,16 @@ public class ChannelMappingProofTests
             && (Guid)job.Args[0] == OrgA && (Guid)job.Args[1] == mine), It.IsAny<EnqueuedState>()), Times.Once);
         Assert.Equal("""{"142":"BK-123456"}""", confirmed.ChannelIdsJson);
 
-        // The property is now confirmed to this listing: another listing cannot take it.
         db.OctorateListingMappings.Add(Mapping(OrgA, connection, "1002", OctorateMappingStatus.Proposed, mine));
         await db.SaveChangesAsync();
         var taken = await Assert.ThrowsAsync<DomainConflictException>(
             () => service.ConfirmAsync(OrgA, "1002", mine, null, Admin, CancellationToken.None));
         Assert.Equal("octorate_mapping_property_taken", taken.Code);
 
-        // The listing is confirmed to `mine`. Whoever reaches only the new property (the collaborator was given `granted` alone) does not
-        // take it over: it is not theirs to move (404).
         var takeover = await Assert.ThrowsAsync<NotFoundException>(
             () => service.ConfirmAsync(OrgA, "1001", granted, null, Collaborator, CancellationToken.None));
         Assert.Equal("octorate_property_not_found", takeover.Code);
 
-        // Whoever reaches both is refused too (409): a confirmed listing is not moved, it is rejected first. Nothing was read or changed.
         var moved = await Assert.ThrowsAsync<DomainConflictException>(
             () => service.ConfirmAsync(OrgA, "1001", granted, null, Admin, CancellationToken.None));
         Assert.Equal("octorate_mapping_linked_to_other_property", moved.Code);
@@ -180,22 +169,17 @@ public class ChannelMappingProofTests
         Assert.Equal(mine, stays.PropertyId);
         client.Verify(c => c.GetRoomsAsync("1001", It.IsAny<CancellationToken>()), Times.Once);
 
-        // Rejected first, the listing is confirmed to the other property.
         await service.RejectAsync(OrgA, "1001", Admin, CancellationToken.None);
         await service.ConfirmAsync(OrgA, "1001", granted, null, Admin, CancellationToken.None);
         var movedRow = await db.OctorateListingMappings.AsNoTracking().SingleAsync(m => m.OctorateAccommodationId == "1001");
         Assert.Equal(OctorateMappingStatus.Confirmed, movedRow.Status);
         Assert.Equal(granted, movedRow.PropertyId);
 
-        // An org-wide account in no org team (an owner from before the team, a test account) is decided by the roles of its token, which the
-        // web layer hands to the service: without them it would reach only the properties it created, and the service would refuse (404)
-        // what the web layer allowed. Choosing the room of the listing confirmed to `granted`, a property it did not create:
         var withoutRoles = await Assert.ThrowsAsync<NotFoundException>(
             () => service.SetRoomAsync(OrgA, "1001", "956528", Legacy, CancellationToken.None));
         Assert.Equal("octorate_property_not_found", withoutRoles.Code);
         await service.SetRoomAsync(OrgA, "1001", "956528", Legacy, CancellationToken.None, ManagerRoles);
 
-        // The same for a listing with no property, an org-level decision that only a person who reaches the whole org takes.
         db.OctorateListingMappings.Add(Mapping(OrgA, connection, "1003", OctorateMappingStatus.Ambiguous, null, $"[\"{mine}\",\"{granted}\"]"));
         await db.SaveChangesAsync();
         var noProperty = await Assert.ThrowsAsync<NotFoundException>(
@@ -214,7 +198,6 @@ public class ChannelMappingProofTests
         db.OctorateListingMappings.Add(Mapping(OrgA, connection, "1001", OctorateMappingStatus.Proposed, null));
         await db.SaveChangesAsync();
 
-        // Strict: any call the setups below do not name (a create, an update, a write of any kind) throws.
         var client = new Mock<IOctorateApiClient>(MockBehavior.Strict);
         client.Setup(c => c.GetPropertyAsync("1001", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OctorateProperty { Id = "1001", Name = "Casa del Lago", Address = "Via del Lago 1", City = "Como", PostalCode = "22100", Country = "IT" });
@@ -242,13 +225,11 @@ public class ChannelMappingProofTests
 
         var propertyId = await service.ImportAsPropertyAsync(OrgA, "1001", Admin, CancellationToken.None);
 
-        // Only reads reached Octorate: the accommodation, its rooms and its channel connections.
         client.Verify(c => c.GetPropertyAsync("1001", It.IsAny<CancellationToken>()), Times.Once);
         client.Verify(c => c.GetRoomsAsync("1001", It.IsAny<CancellationToken>()), Times.Once);
         client.Verify(c => c.GetConnectionsAsync("1001", It.IsAny<CancellationToken>()), Times.Once);
         client.VerifyNoOtherCalls();
 
-        // The CasaZen property: created through the property create path, in the org, by the person, inactive.
         properties.Verify(p => p.CreatePropertyAsync(It.IsAny<Property>()), Times.Once);
         var created = await db.Properties.AsNoTracking().SingleAsync(p => p.Id == propertyId);
         Assert.Equal(OrgA, created.OrgId);
@@ -257,14 +238,12 @@ public class ChannelMappingProofTests
         Assert.Equal("Casa del Lago", created.Name);
         Assert.Equal(3, created.MaxGuests);
 
-        // The mapping is confirmed at once, with the room and the identifier the listing already has on the channel.
         var mapping = await db.OctorateListingMappings.AsNoTracking().SingleAsync();
         Assert.Equal(OctorateMappingStatus.Confirmed, mapping.Status);
         Assert.Equal(propertyId, mapping.PropertyId);
         Assert.Equal("956528", mapping.OctorateProductId);
         Assert.Equal("""{"274":"AB-987654"}""", mapping.ChannelIdsJson);
 
-        // Flagged to check: a To do on the new property.
         activities.Verify(a => a.CreateAsync(
             It.Is<CreateTodoRequest>(r => r.Type == ActivityType.CheckImportedListing && r.PropertyId == propertyId),
             It.IsAny<CancellationToken>()), Times.Once);
@@ -296,11 +275,6 @@ public class ChannelMappingProofTests
             NullLogger<ChannelMappingService>.Instance, jobs: jobs);
     }
 
-    /// <summary>
-    /// The real scope resolver over the org team in the database: <see cref="Admin"/> is an administrator of org A (every property),
-    /// <see cref="Collaborator"/> a collaborator of org A «Solo alcuni» who was given <paramref name="grantedToCollaborator"/> only,
-    /// <see cref="Legacy"/> an account in no org team (the token roles decide it).
-    /// </summary>
     private static HostScopeResolver Resolver(Guid? grantedToCollaborator = null)
     {
         var store = new Mock<IUserAuthorizationSnapshotStore>();

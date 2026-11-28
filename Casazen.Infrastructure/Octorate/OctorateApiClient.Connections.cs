@@ -21,26 +21,19 @@ namespace Casazen.Infrastructure.Octorate;
 /// </remarks>
 public sealed partial class OctorateApiClient
 {
-    /// <summary>The members of a connection the list asks for: never its portal username or password.</summary>
     private const string ConnectionInfoFields =
         "id,channelId,accommodationId,hotelId,status,userLogged,loginAt,updateCalendar,pullReservations,lastPortalAcceptLog";
 
-    /// <summary>The most mappings one save sends (a listing has a handful of rooms and rates; more is a mistake).</summary>
     internal const int MaxMappingsPerSave = 100;
 
-    /// <summary>The most digits of a portal code CasaZen sends as a number.</summary>
     private const int MaxPortalCodeDigits = 18;
 
-    /// <summary>The longest line of the channel's own words that is kept (<see cref="OctorateConnectionInfo.LastError"/>).</summary>
     private const int MaxChannelTextLength = 200;
 
-    /// <summary>The names under which the log of the channel may give its moment, most specific first.</summary>
     private static readonly string[] PortalLogTimeMembers = ["time", "createTime", "date", "timestamp", "updateTime", "insertTime"];
 
-    /// <summary>The names under which the log of the channel may give a failure, most specific first.</summary>
     private static readonly string[] PortalLogErrorMembers = ["errorMessage", "error"];
 
-    /// <summary>The names under which the log of the channel may give its text, read as a failure only when the log says it failed.</summary>
     private static readonly string[] PortalLogTextMembers = ["message", "description", "text"];
 
     public async Task<OctorateConnectionInfo[]> ListConnectionsAsync(string accommodationCode, CancellationToken ct)
@@ -59,11 +52,6 @@ public sealed partial class OctorateApiClient
         return [.. items.Select(item => ReadConnectionInfo(item, accommodation)).OfType<OctorateConnectionInfo>()];
     }
 
-    /// <summary>
-    /// The items of an answer of <c>connection</c>: a bare list, the <c>data</c> list of a wrapper, or the one connection an answer is (or the <c>data</c> object of a
-    /// wrapper). <c>null</c> for anything else (a string, a number, a wrapper whose <c>data</c> is neither a list nor an object). An object with no <c>data</c> is the
-    /// connection itself, so an error object that came with HTTP 200 reaches the caller as an item that is not a connection, which it then refuses.
-    /// </summary>
     private static List<JsonElement>? ConnectionItemsOf(JsonElement root)
     {
         if (root.ValueKind == JsonValueKind.Array)
@@ -95,8 +83,6 @@ public sealed partial class OctorateApiClient
             ct,
             mapError: PartnerFailureOf);
 
-        // The answer is the connection with its credentials echoed: only the members CasaZen needs are read, and an answer with no usable id is
-        // not a success (the connection may exist: the caller looks it up with the list before it creates another).
         using var document = ParseJson(answer);
         var created = ReadConnectionInfo(Unwrap(document.RootElement), accommodation) ?? throw new OctorateServerException(answer.StatusCode);
         logger.LogInformation(
@@ -203,7 +189,6 @@ public sealed partial class OctorateApiClient
         var accommodation = CheckedAccommodationId(accommodationCode);
         var connection = CheckedConnectionId(connectionId);
 
-        // Everything is checked before the first call leaves: a bad id never leaves half of the mapping saved.
         var pairs = mappings
             .Select(mapping => (Product: CheckedId(mapping.ProductId, nameof(mappings)), Channel: CheckedId(mapping.ChannelRoomId, nameof(mappings))))
             .ToList();
@@ -224,11 +209,9 @@ public sealed partial class OctorateApiClient
         logger.LogInformation("Octorate connection {ConnectionId} mapping saved: {Mappings} rooms", connection, pairs.Count);
     }
 
-    /// <summary>The 550 of Octorate (the partner fails) is its own error; every other status keeps the common mapping of <see cref="ErrorOf"/>.</summary>
     internal static OctorateException? PartnerFailureOf(int status, string? errorType, string body) =>
         status == OctoratePartnerFailureException.OctorateStatus ? new OctoratePartnerFailureException() : null;
 
-    /// <summary>The <c>action</c> of the connection operation, as Octorate spells it.</summary>
     internal static string ConnectionActionName(OctorateConnectionAction action) => action switch
     {
         OctorateConnectionAction.ImportRooms => "IMPORT_ROOMS",
@@ -239,11 +222,6 @@ public sealed partial class OctorateApiClient
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, "Not an action of a connection."),
     };
 
-    /// <summary>
-    /// The body of a create: the portal as the number Octorate calls <c>channelId</c> (and as the <c>portal</c> the specification requires), the
-    /// access data the portal asked for, and the settings of a connection that reads and writes nothing yet: pulls off, only mapped rooms, no
-    /// content push (D6).
-    /// </summary>
     internal static string ConnectionCreateBody(OctorateConnectionCreate request)
     {
         var channel = CheckedPortalCode(request.PortalCode);
@@ -274,7 +252,6 @@ public sealed partial class OctorateApiClient
         return body.ToJsonString();
     }
 
-    /// <summary>The body of a change: the members that are set, and nothing else.</summary>
     internal static string ConnectionPatchBody(OctorateConnectionPatch patch)
     {
         var body = new JsonObject();
@@ -317,7 +294,6 @@ public sealed partial class OctorateApiClient
         return body.ToJsonString();
     }
 
-    /// <summary>The portal code as a number: 1 to <see cref="MaxPortalCodeDigits"/> digits, as the specification declares <c>channelId</c> (<c>int64</c>).</summary>
     internal static long CheckedPortalCode(string portalCode)
     {
         var code = portalCode?.Trim();
@@ -363,11 +339,6 @@ public sealed partial class OctorateApiClient
             OctorateHttp.StringOf(item, "hotelId"));
     }
 
-    /// <summary>
-    /// The moment and the failure of the last log of the channel (<c>lastPortalAcceptLog</c>). A bare moment is a moment; a bare text is
-    /// not read as an error (a log is as likely to report a success). From an object: the first moment it gives, and the text of an explicit
-    /// error member, or of its message when the log itself says it failed. Anything else is <c>null</c>.
-    /// </summary>
     private static (DateTime? At, string? Error) ReadPortalLog(JsonElement item)
     {
         if (!item.TryGetProperty("lastPortalAcceptLog", out var log))
@@ -414,7 +385,6 @@ public sealed partial class OctorateApiClient
                              || word.Equals("KO", StringComparison.OrdinalIgnoreCase)
                              || word.Equals("REFUSED", StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>A text of the channel on one line, at most <see cref="MaxChannelTextLength"/> characters; <c>null</c> when blank.</summary>
     private static string? OneLine(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -424,10 +394,6 @@ public sealed partial class OctorateApiClient
         return line.Length <= MaxChannelTextLength ? line : line[..MaxChannelTextLength];
     }
 
-    /// <summary>
-    /// A room of the channel of an answer of <c>connection/external</c>, or <c>null</c> when the item has no usable id. The id is the one of the
-    /// external product, the <c>externalId</c> of the mapping; the name is the room's, else its code on the channel, else the id.
-    /// </summary>
     internal static OctorateChannelRoom? ReadChannelRoom(JsonElement item)
     {
         if (item.ValueKind != JsonValueKind.Object)
@@ -477,7 +443,6 @@ public sealed partial class OctorateApiClient
         && OctorateHttp.StringOf(info, "actionPerformed") is { } performed
         && string.Equals(performed, actionName, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>A read of a connection operation: the common errors, plus the 550 of the partner.</summary>
     private async Task<JsonDocument> GetConnectionJsonAsync(string pathAndQuery, string operation, CancellationToken ct)
     {
         var answer = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get, Address(pathAndQuery)), operation, ct, mapError: PartnerFailureOf);

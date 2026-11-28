@@ -20,7 +20,7 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class HeldFundsServiceTests
 {
-    private const int Amount = 6_000; // 10 %: commission 600, net 5_400
+    private const int Amount = 6_000;
     private const int Net = 5_400;
     private const string IntentId = "pi_held_test";
 
@@ -48,7 +48,6 @@ public class HeldFundsServiceTests
         public void Dispose() => S.Dispose();
     }
 
-    /// <summary>A request of the supplier with a payment <c>Authorized</c> by a block of <paramref name="blockedCents"/> on the fake Stripe.</summary>
     private static async Task<World> StartAsync(
         ServiceRequestStatus status = ServiceRequestStatus.PresoInCarico,
         bool supplierReady = true,
@@ -87,7 +86,6 @@ public class HeldFundsServiceTests
         return new World(s, request.Id, payment.Id, group);
     }
 
-    /// <summary>The card was charged, the work is done and the money is due: the next run of the job releases it.</summary>
     private static async Task<World> DueAsync(bool supplierReady = true)
     {
         var w = await StartAsync(ServiceRequestStatus.Completato, supplierReady);
@@ -103,8 +101,6 @@ public class HeldFundsServiceTests
     private static StripeException Refusal(string code = "account_invalid") =>
         new(HttpStatusCode.BadRequest, new StripeError { Type = "invalid_request_error", Code = code }, "refused");
 
-    // ─── The payment born with the request ───
-
     [Fact]
     public async Task AddAuthorizedPayment_SnapshotsTheCommission_TheBlockExpiry_AndTheHeldModel()
     {
@@ -114,14 +110,14 @@ public class HeldFundsServiceTests
         Assert.Equal(ServicePaymentStatus.Authorized, payment.Status);
         Assert.Equal(ServiceFundsModel.PlatformHeld, payment.FundsModel);
         Assert.Equal(Amount, payment.AmountCents);
-        Assert.Equal(600, payment.ApplicationFeeCents); // the commission CasaZen keeps: nothing is sent to Stripe as a fee
+        Assert.Equal(600, payment.ApplicationFeeCents);
         Assert.Equal(Net, payment.NetCents);
         Assert.Equal(10m, payment.CommissionPercent);
         Assert.Null(payment.ConnectedAccountId);
         Assert.Equal(IntentId, payment.StripePaymentIntentId);
         Assert.Equal(w.Group, payment.TransferGroup);
         Assert.Equal(w.Now.AddHours(48), payment.AuthorizationExpiresAt);
-        Assert.Equal(ServicePayerKind.Host, payment.PayerKind); // a host request in this scenario; a showcase customer is Private
+        Assert.Equal(ServicePayerKind.Host, payment.PayerKind);
         Assert.Null(payment.CapturedAt);
         Assert.Null(payment.ReleaseAt);
     }
@@ -143,8 +139,6 @@ public class HeldFundsServiceTests
         Assert.Equal(Amount, payment.NetCents);
         Assert.Equal(0m, payment.CommissionPercent);
     }
-
-    // ─── The card is charged once, and only while its block is usable ───
 
     [Fact]
     public async Task Capture_ChargesTheCardOnce_AndTheMoneyIsHeld()
@@ -180,13 +174,13 @@ public class HeldFundsServiceTests
     public async Task Capture_ABlockThatLapsed_IsReleased_AndTheTakeIsRefused()
     {
         using var w = await StartAsync();
-        w.S.Clock.Advance(TimeSpan.FromHours(49)); // AuthorizationValidityHours = 48
+        w.S.Clock.Advance(TimeSpan.FromHours(49));
 
         var refusal = await Assert.ThrowsAsync<DomainConflictException>(
             async () => await w.Payments.CaptureForTakeAsync(await w.RequestAsync()));
 
         Assert.Equal("service_payment_authorization_expired", refusal.Code);
-        Assert.Empty(w.Stripe.Captures); // the card is never charged for a block that lapsed
+        Assert.Empty(w.Stripe.Captures);
         Assert.Equal("canceled", w.Stripe.Intent(IntentId).Status);
         Assert.Equal(ServicePaymentStatus.Canceled, (await w.PaymentAsync()).Status);
     }
@@ -236,13 +230,13 @@ public class HeldFundsServiceTests
 
         Assert.Equal(ServicePaymentStatus.Held, (await w.PaymentAsync()).Status);
         Assert.Equal(2, w.Stripe.Captures.Count);
-        Assert.Single(w.Stripe.Captures.Select(c => c.Key).Distinct()); // the same key: Stripe charges once
+        Assert.Single(w.Stripe.Captures.Select(c => c.Key).Distinct());
     }
 
     [Fact]
     public async Task Capture_ForAnotherAmountThanThePrice_GoesToReview_AndTheTakeIsRefused()
     {
-        using var w = await StartAsync(blockedCents: 5_000); // the block on Stripe is not the price of the payment
+        using var w = await StartAsync(blockedCents: 5_000);
 
         var refusal = await Assert.ThrowsAsync<DomainConflictException>(
             async () => await w.Payments.CaptureForTakeAsync(await w.RequestAsync()));
@@ -252,8 +246,6 @@ public class HeldFundsServiceTests
         Assert.Equal(ServicePaymentStatus.NeedsReview, payment.Status);
         Assert.StartsWith("review:", payment.FailureCode, StringComparison.Ordinal);
     }
-
-    // ─── The supplier is paid once, the net of the commission ───
 
     [Fact]
     public async Task Release_PaysTheSupplierOnceTheNet_AndTheRequestBecomesPaid()
@@ -266,7 +258,7 @@ public class HeldFundsServiceTests
         Assert.Equal(1, first.Released);
         Assert.Equal(0, second.Released);
         var transfer = Assert.Single(w.Stripe.TransferRequests);
-        Assert.Equal(Net, transfer.AmountCents); // the commission stays with CasaZen
+        Assert.Equal(Net, transfer.AmountCents);
         Assert.Equal(ServiceRequestScenario.SupplierAccountId, transfer.DestinationAccountId);
         Assert.Equal($"ch_{IntentId}", transfer.SourceChargeId);
         Assert.Equal(w.Group, transfer.TransferGroup);
@@ -309,11 +301,11 @@ public class HeldFundsServiceTests
         Assert.Equal(ServicePaymentStatus.Held, (await w.PaymentAsync()).Status);
         Assert.Single(w.Stripe.Transfers);
 
-        w.S.Clock.Advance(TimeSpan.FromMinutes(16)); // past the first delay
+        w.S.Clock.Advance(TimeSpan.FromMinutes(16));
         var second = await w.Payments.RunFundsAsync();
 
         Assert.Equal(1, second.Released);
-        Assert.Single(w.Stripe.TransferRequests); // no second transfer was asked for
+        Assert.Single(w.Stripe.TransferRequests);
         Assert.Single(w.Stripe.Transfers);
         var payment = await w.PaymentAsync();
         Assert.Equal(ServicePaymentStatus.Released, payment.Status);
@@ -335,7 +327,6 @@ public class HeldFundsServiceTests
         Assert.Equal("account_invalid", failed.TransferFailureCode);
         Assert.Equal(w.Now.AddMinutes(15), failed.TransferNextAttemptAt);
 
-        // Before the delay nothing is asked of Stripe again.
         await w.Payments.RunFundsAsync();
         Assert.Single(w.Stripe.TransferRequests);
 
@@ -346,7 +337,7 @@ public class HeldFundsServiceTests
         Assert.Equal(2, w.Stripe.TransferRequests.Count);
         Assert.Equal(ServiceCharges.TransferIdempotencyKey(w.PaymentId, 0), w.Stripe.TransferRequests[0].IdempotencyKey);
         Assert.Equal(ServiceCharges.TransferIdempotencyKey(w.PaymentId, 1), w.Stripe.TransferRequests[1].IdempotencyKey);
-        Assert.Single(w.Stripe.Transfers); // the refused one never existed
+        Assert.Single(w.Stripe.Transfers);
         Assert.Equal(ServicePaymentStatus.Released, (await w.PaymentAsync()).Status);
     }
 
@@ -359,7 +350,7 @@ public class HeldFundsServiceTests
         {
             w.Stripe.FailNextTransfer(Refusal());
             await w.Payments.RunFundsAsync();
-            w.S.Clock.Advance(TimeSpan.FromHours(13)); // past the longest delay
+            w.S.Clock.Advance(TimeSpan.FromHours(13));
         }
 
         Assert.Equal(ServicePaymentStatus.TransferFailed, (await w.PaymentAsync()).Status);
@@ -377,11 +368,11 @@ public class HeldFundsServiceTests
         w.S.Clock.Advance(TimeSpan.FromMinutes(16));
         await w.Payments.RunFundsAsync();
 
-        Assert.Empty(w.Stripe.TransferRequests); // nothing is sent to Stripe for an account that cannot receive it
+        Assert.Empty(w.Stripe.TransferRequests);
         var payment = await w.PaymentAsync();
         Assert.Equal(ServicePaymentStatus.Held, payment.Status);
         Assert.Equal("account_not_ready", payment.TransferFailureCode);
-        Assert.Equal(0, payment.TransferAttempts); // no refusal: the key of the first real try is still :0
+        Assert.Equal(0, payment.TransferAttempts);
         Assert.Single(w.S.EmailsOf("service-funds-account-not-ready", "supplier@test.com"));
     }
 
@@ -397,15 +388,13 @@ public class HeldFundsServiceTests
         Assert.Empty(w.Stripe.TransferRequests);
     }
 
-    // ─── A refund and a release never share the same euros ───
-
     [Fact]
     public async Task APartialRefund_BeforeTheRelease_ReducesWhatTheSupplierGets()
     {
         using var w = await DueAsync();
         await w.Payments.RefundAsync(w.PaymentId, 1_000, "goodwill", "admin-1");
         var held = await w.PaymentAsync();
-        Assert.Equal(ServicePaymentStatus.Held, held.Status); // the supplier is still owed the rest
+        Assert.Equal(ServicePaymentStatus.Held, held.Status);
         Assert.Equal(1_000, held.RefundedCents);
 
         await w.Payments.RunFundsAsync();
@@ -482,8 +471,6 @@ public class HeldFundsServiceTests
         Assert.Empty(w.Stripe.TransferRequests);
     }
 
-    // ─── The payer says "all fine" ───
-
     [Fact]
     public async Task ConfirmOk_ReleasesAtOnce_EvenBeforeTheTimeIsDue_AndAskingAgainIsNotAnError()
     {
@@ -533,8 +520,6 @@ public class HeldFundsServiceTests
         Assert.Equal(ServicePaymentStatus.Released, (await w.PaymentAsync()).Status);
     }
 
-    // ─── A request that closes gives the customer's money back ───
-
     [Fact]
     public async Task ARefusedRequest_ReleasesTheBlock_NothingIsRefundedBecauseNothingWasCharged()
     {
@@ -558,20 +543,20 @@ public class HeldFundsServiceTests
         await w.Payments.SettleClosedRequestAsync(w.RequestId);
 
         var refund = Assert.Single(w.Stripe.RefundRequests);
-        Assert.Equal(Amount, refund.AmountCents); // the whole price, not the net (decision D6)
+        Assert.Equal(Amount, refund.AmountCents);
         var payment = await w.PaymentAsync();
         Assert.Equal(ServicePaymentStatus.Refunded, payment.Status);
         Assert.Equal(Amount, payment.RefundedCents);
         Assert.Equal(ServicePaymentRefundOrigin.System, (await w.S.RefundsOfAsync(w.PaymentId)).Single().Origin);
         Assert.Single(w.S.EmailsOf("service-payment-refunded-payer"));
-        Assert.Empty(w.S.EmailsOf("service-payment-refunded-supplier")); // the supplier cancelled or lost it: not news
+        Assert.Empty(w.S.EmailsOf("service-payment-refunded-supplier"));
     }
 
     [Fact]
     public async Task ACardChargedJustBeforeTheCancellation_IsRefunded_NotDropped()
     {
         using var w = await StartAsync(ServiceRequestStatus.Annullato);
-        w.Stripe.ChargeOnNextCancel(); // the supplier's capture came a moment before
+        w.Stripe.ChargeOnNextCancel();
 
         await w.Payments.SettleClosedRequestAsync(w.RequestId);
 
@@ -651,7 +636,7 @@ public class HeldFundsServiceTests
         using var w = await DueAsync();
         await w.S.AddAdminAsync();
         var payment = await w.S.Db.ServiceRequestPayments.SingleAsync(p => p.Id == w.PaymentId);
-        payment.ReleaseAt = null; // not due: the job only warns
+        payment.ReleaseAt = null;
         payment.CapturedAt = w.Now.AddDays(-54);
         await w.S.Db.SaveChangesAsync();
         w.S.Db.ChangeTracker.Clear();
@@ -663,8 +648,6 @@ public class HeldFundsServiceTests
         Assert.Equal(0, second.HoldWarnings);
         Assert.Single(w.S.EmailsOf("service-funds-alert"));
     }
-
-    // ─── What Stripe reports must match the payment ───
 
     [Fact]
     public async Task Webhook_TheChargeIsRecorded_OnceAndInAnyOrder()
@@ -678,7 +661,7 @@ public class HeldFundsServiceTests
 
         Assert.Empty(first);
         Assert.Empty(duplicate);
-        Assert.Empty(late); // a canceled event after the charge changes nothing
+        Assert.Empty(late);
         var payment = await w.PaymentAsync();
         Assert.Equal(ServicePaymentStatus.Held, payment.Status);
         Assert.Equal("ch_event", payment.StripeChargeId);
@@ -686,9 +669,9 @@ public class HeldFundsServiceTests
     }
 
     [Theory]
-    [InlineData(5_000, null, null)] // another amount received
-    [InlineData(6_000, "acct_other", null)] // an event of a connected account
-    [InlineData(6_000, null, 600L)] // an application fee: the commission is never a fee
+    [InlineData(5_000, null, null)]
+    [InlineData(6_000, "acct_other", null)]
+    [InlineData(6_000, null, 600L)]
     public async Task Webhook_AChargeThatDiffers_NeedsAReview_AndIsNeverHeld(long received, string? account, long? fee)
     {
         using var w = await StartAsync();
@@ -737,7 +720,7 @@ public class HeldFundsServiceTests
     {
         using var w = await DueAsync();
 
-        var result = await w.Payments.ApplyTransferEventAsync(Transfer(w, "tr_wrong", Amount)); // the commission would go to the supplier
+        var result = await w.Payments.ApplyTransferEventAsync(Transfer(w, "tr_wrong", Amount));
 
         Assert.Equal(ServicePaymentNoticeKind.FundsAlert, Assert.Single(result.Notices).Kind);
         Assert.Equal(ServicePaymentStatus.NeedsReview, (await w.PaymentAsync()).Status);
@@ -761,10 +744,8 @@ public class HeldFundsServiceTests
         var payment = await w.PaymentAsync();
         Assert.Equal("dp_1", payment.CardDisputeId);
         Assert.Equal("lost", payment.CardDisputeStatus);
-        Assert.Equal(ServicePaymentStatus.Released, payment.Status); // nothing is recovered from the supplier automatically
+        Assert.Equal(ServicePaymentStatus.Released, payment.Status);
     }
-
-    // ─── Completing the work ───
 
     [Fact]
     public async Task Complete_FixesWhenTheMoneyIsDue_AndRefusesAnotherAmount()
@@ -774,7 +755,6 @@ public class HeldFundsServiceTests
         var request = await w.RequestAsync();
         var lines = new[] { new ServiceRequestPriceLine(ServiceRequestPriceLineKinds.Base, "Pulizia", Amount) };
 
-        // A different total (or an extra) is money nobody agreed to.
         var refusal = await Assert.ThrowsAsync<DomainRuleException>(async () => await w.Payments.PlanAsync(request, 7_000, lines, false));
         Assert.Equal("service_payment_amount_locked", refusal.Code);
 
@@ -783,7 +763,7 @@ public class HeldFundsServiceTests
 
         Assert.Equal(ServiceRequestPaymentMode.Online, plan.Mode);
         Assert.Null(plan.Payment); // the payment exists since the booking
-        Assert.Null(plan.Token); // no link: the customer already paid
+        Assert.Null(plan.Token);
         Assert.Equal(w.Now.AddMinutes(60), (await w.PaymentAsync()).ReleaseAt);
     }
 
@@ -804,13 +784,11 @@ public class HeldFundsServiceTests
         Assert.Equal(w.Now.AddMinutes(-20).AddMinutes(60), (await w.PaymentAsync()).ReleaseAt);
     }
 
-    // ─── Whether a booking is paid inside CasaZen ───
-
     [Theory]
     [InlineData(true, true, 6_000, true)]
-    [InlineData(false, true, 6_000, false)] // the flag is off: nothing changes for anybody
-    [InlineData(true, false, 6_000, false)] // the supplier's Stripe account cannot take charges and payouts
-    [InlineData(true, true, 49, false)] // below the minimum Stripe charges
+    [InlineData(false, true, 6_000, false)]
+    [InlineData(true, false, 6_000, false)]
+    [InlineData(true, true, 49, false)]
     [InlineData(true, true, 50, true)]
     public async Task CanAuthorize_OnlyWithTheFlag_AReadyAccount_AndAnAmountStripeAccepts(bool flag, bool ready, int amount, bool expected)
     {
@@ -843,10 +821,8 @@ public class HeldFundsServiceTests
 
         await s.Payments.CancelHoldAuthorizationAsync(hold, first.PaymentIntentId);
         Assert.Equal("canceled", s.Kit.PlatformGateway.Intent(first.PaymentIntentId).Status);
-        Assert.Null(await s.Payments.ReadHoldAuthorizationAsync(first.PaymentIntentId)); // nothing left to pay
+        Assert.Null(await s.Payments.ReadHoldAuthorizationAsync(first.PaymentIntentId));
     }
-
-    // ─── helpers ───
 
     private static ServicePaymentIntentEvent Event(
         World w,

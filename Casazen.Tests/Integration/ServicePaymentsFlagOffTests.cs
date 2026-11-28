@@ -105,11 +105,9 @@ public class ServicePaymentsFlagOffTests(CasazenWebApplicationFactory factory) :
     {
         var world = await WorldAsync();
         var id = await factory.CreateRequestAsync(world);
-        // Taken while the flag was on: the request is Online ...
         await factory.ChangeRequestAsync(id, r => { r.Status = ServiceRequestStatus.PresoInCarico; r.TakenAt = DateTime.UtcNow; r.PaymentMode = ServiceRequestPaymentMode.Online; });
         using var supplier = factory.Supplier(world);
 
-        // ... and completed after it was switched off: nothing is stuck, no payment is created.
         var completed = await supplier.PostAsJsonAsync($"/api/service-requests/{id}/complete", new { finalAmountCents = 6_000 });
 
         Assert.Equal(HttpStatusCode.OK, completed.StatusCode);
@@ -118,8 +116,6 @@ public class ServicePaymentsFlagOffTests(CasazenWebApplicationFactory factory) :
         var paid = await host.PostAsync($"/api/service-requests/{id}/mark-paid", content: null);
         Assert.Equal(HttpStatusCode.OK, paid.StatusCode);
     }
-
-    // ─── Helpers ───
 
     private FakeSupplierPaymentGateway Gateway => (FakeSupplierPaymentGateway)factory.Services.GetRequiredService<ISupplierPaymentGateway>();
 

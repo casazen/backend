@@ -2,20 +2,12 @@ using System.Globalization;
 
 namespace Casazen.Core.Utilities;
 
-/// <summary>
-/// The languages of the guest check-in page and of its emails (NF-40, AC-NF40-4): Italian, English, German, French and Spanish. No language is
-/// stored on the booking, so the language of a page is, in this order, the choice the guest saved on the session, the first supported language
-/// of the browser, Italian.
-/// </summary>
 public static class GuestLanguages
 {
-    /// <summary>The language when nothing else is known.</summary>
     public const string Default = "it";
 
-    /// <summary>The two-letter codes, in the order the page offers them.</summary>
     public static IReadOnlyList<string> Supported { get; } = ["it", "en", "de", "fr", "es"];
 
-    /// <summary>A supported code (trimmed, lower case), or null for anything else: only the exact two-letter codes are accepted.</summary>
     public static string? Normalize(string? language)
     {
         if (string.IsNullOrWhiteSpace(language))
@@ -87,7 +79,6 @@ public static class GuestLanguages
     public static string ResolveForEmail(string? sessionLanguage, string? country, string? orgDefaultLanguage) =>
         Resolve(Normalize(sessionLanguage) ?? OfUnambiguousCountry(country), orgDefaultLanguage);
 
-    /// <summary>The culture the emails of <paramref name="language"/> are written in (Italian for an unsupported one).</summary>
     public static CultureInfo CultureOf(string? language) => Normalize(language) switch
     {
         "en" => CultureInfo.GetCultureInfo("en"),
@@ -97,10 +88,6 @@ public static class GuestLanguages
         _ => CultureInfo.GetCultureInfo("it-IT"),
     };
 
-    /// <summary>
-    /// The primary languages of an <c>Accept-Language</c> header by descending quality (the order of the header between equals); the ones
-    /// with quality 0 and the wildcard are left out. A malformed part is skipped, never an error.
-    /// </summary>
     private static IEnumerable<string> BrowserLanguages(string? acceptLanguage)
     {
         if (string.IsNullOrWhiteSpace(acceptLanguage))

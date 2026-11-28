@@ -42,13 +42,8 @@ public sealed class OnboardingChannelAccessHandoff(
     TimeProvider timeProvider,
     ILogger<OnboardingChannelAccessHandoff> logger) : IChannelAccessHandoff
 {
-    /// <summary>The step of the wizard the person comes back to, stored as the resume point of the panel step.</summary>
     public const string ResumeStepCode = "existingInventoryAccess";
 
-    /// <summary>
-    /// The page of the connection of one portal on the panel, after the configured base, with the portal code as its only query
-    /// (<c>?portal={code}</c>). Verified by the product owner for Booking.com (<c>portal=142</c>) on 14/11/2026, and for no other portal yet.
-    /// </summary>
     public const string PortalPagePath = "user/channelmanager/edit.xhtml";
 
     public async Task<ChannelAccessHandoffStart> StartAsync(
@@ -62,7 +57,6 @@ public sealed class OnboardingChannelAccessHandoff(
         var panelUrl = PanelUrlOf(options.Value.FrontendBaseUrl, code)
             ?? throw new DomainConflictException("octorate_panel_url_missing", "OctoratePanelUrlMissing");
 
-        // A parallel start of the same step loses on the unique index of the steps: it reads the winner's row and applies the same update.
         for (var attempt = 0; ; attempt++)
         {
             var step = await FindAsync(orgId, code, ct);
@@ -84,7 +78,6 @@ public sealed class OnboardingChannelAccessHandoff(
             }
             else if (step.Status is PanelStepStatus.Started or PanelStepStatus.NotValid)
             {
-                // A step the person left half way, or whose check found the access not valid, starts again with a fresh window of checks.
                 step.Status = PanelStepStatus.Started;
                 step.HandoffMode = PanelHandoffMode.ManagedWindow;
                 step.StartedAt = now;
@@ -103,7 +96,6 @@ public sealed class OnboardingChannelAccessHandoff(
             }
             catch (DbUpdateException ex) when (attempt == 0 && OrgTeamAccess.IsUniqueViolation(ex, OnboardingPanelStep.StepIndexName))
             {
-                // Only the row that lost is forgotten: the context is shared with the import, which holds other rows.
                 db.Entry(step).State = EntityState.Detached;
                 continue;
             }
@@ -147,7 +139,6 @@ public sealed class OnboardingChannelAccessHandoff(
         if (step.Status == PanelStepStatus.NotValid)
             throw new DomainConflictException("panel_step_not_valid", "ChannelAccessNotValid");
 
-        // Only after a check stored «could not tell»: the confirmation is the technical fallback, never the normal path.
         if (step.LastVerificationOutcome != PanelVerificationOutcomes.Unverifiable)
             throw new DomainConflictException("panel_step_verification_required", "ChannelAccessVerificationRequired");
 
@@ -207,7 +198,6 @@ public sealed class OnboardingChannelAccessHandoff(
         return $"{panel.TrimEnd('/')}/{PortalPagePath}?portal={code}";
     }
 
-    /// <summary>The state the import shows for a step: what the stored status and the last check say.</summary>
     internal static ChannelAccessState StateOf(OnboardingPanelStep step) => step.Status switch
     {
         PanelStepStatus.Verified => ChannelAccessState.Verified,
@@ -295,7 +285,6 @@ public sealed class OnboardingChannelAccessHandoff(
         if (step.ResumeDraftEntityId is not { } batchId)
             return accommodations;
 
-        // A connection CasaZen created on the host's «Collega» is new to this hand-over by construction (the batch asked for it).
         var connected = await db.OctorateInventoryImportChannels
             .AsNoTracking()
             .Where(c => c.OrgId == step.OrgId && c.BatchId == batchId && c.ChannelCode == step.ChannelCode)
@@ -316,7 +305,6 @@ public sealed class OnboardingChannelAccessHandoff(
         return accommodations;
     }
 
-    /// <summary>The step of the org for the channel: one row for each org, kind and channel, with no property (unique index).</summary>
     private Task<OnboardingPanelStep?> FindAsync(Guid orgId, string channelCode, CancellationToken ct) =>
         db.OnboardingPanelSteps.FirstOrDefaultAsync(
             s => s.OrgId == orgId && s.PropertyId == null && s.Kind == PanelStepKind.ChannelAccess && s.ChannelCode == channelCode, ct);

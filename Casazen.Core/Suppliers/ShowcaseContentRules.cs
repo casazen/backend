@@ -4,12 +4,6 @@ using System.Text.Json.Serialization;
 
 namespace Casazen.Core.Suppliers;
 
-/// <summary>
-/// What the rules of the content need to know that is not in the content itself: whether an image URL is an object of the supplier's
-/// own storage, and which services of the supplier are active.
-/// </summary>
-/// <param name="IsOwnImageUrl">True for the URL of an object in the supplier's own folder of the public storage.</param>
-/// <param name="ActiveServiceSlugs">Slugs of the supplier's active services.</param>
 public sealed record ShowcaseContentContext(Func<string, bool> IsOwnImageUrl, IReadOnlyCollection<string> ActiveServiceSlugs);
 
 /// <summary>
@@ -36,7 +30,6 @@ public static class ShowcaseContentRules
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    // A save names the members of the contract exactly as they are written (camel case) and nothing else.
     private static readonly JsonSerializerOptions StrictJson = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -44,9 +37,6 @@ public static class ShowcaseContentRules
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     };
 
-    // ─── Reading and writing ─────────────────────────────────────────────────────
-
-    /// <summary>The document of a stored column; an empty document for a missing or unreadable one (a read never fails on old data).</summary>
     public static ShowcaseContentDocument Read(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -62,17 +52,8 @@ public static class ShowcaseContentRules
         }
     }
 
-    /// <summary>The stored form of a document: compact camel-case JSON without the members that are not set.</summary>
     public static string Write(ShowcaseContentDocument document) => JsonSerializer.Serialize(Complete(document), StoredJson);
 
-    // ─── A save ──────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The draft with a save applied: <paramref name="patch"/> is a JSON merge patch (RFC 7396) of the contract: a member that is
-    /// there replaces the stored one, an object is merged member by member, a list replaces the whole list, <c>null</c> clears. The
-    /// result is read in strict mode and validated as a whole.
-    /// </summary>
-    /// <exception cref="Exceptions.DomainRuleException"><see cref="ShowcaseContentErrors.Invalid"/>, with the fields at fault.</exception>
     public static ShowcaseContentDocument ApplyPatch(string? draftJson, JsonObject patch, ShowcaseContentContext context)
     {
         ArgumentNullException.ThrowIfNull(patch);
@@ -138,7 +119,6 @@ public static class ShowcaseContentRules
         }
     }
 
-    /// <summary>The path of the member a JSON error is about (<c>$.team[0].role</c> becomes <c>team[0].role</c>); <c>content</c> for the document itself.</summary>
     private static string FieldOf(JsonException exception)
     {
         var path = exception.Path ?? string.Empty;
@@ -150,13 +130,6 @@ public static class ShowcaseContentRules
         return path.Length == 0 || path.Length > 100 ? "content" : path;
     }
 
-    // ─── Validation ──────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The document with every text cleaned and every field checked against the contract (limits, formats, the colors, the images, the
-    /// services); an incomplete document is fine (a draft). Every field at fault is collected, so the editor can mark them all.
-    /// </summary>
-    /// <exception cref="Exceptions.DomainRuleException"><see cref="ShowcaseContentErrors.Invalid"/>, with <c>fields</c>.</exception>
     public static ShowcaseContentDocument Normalize(ShowcaseContentDocument document, ShowcaseContentContext context)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -170,7 +143,6 @@ public static class ShowcaseContentRules
         return normalized;
     }
 
-    /// <summary>Replaces the lists and objects a JSON <c>null</c> may have left null with the empty ones.</summary>
     private static ShowcaseContentDocument Complete(ShowcaseContentDocument document) => document with
     {
         Team = document.Team ?? [],
@@ -267,7 +239,6 @@ public static class ShowcaseContentRules
                 return null;
             }
 
-            // Only an image logo has a file: switching to the initials or the name leaves the old file behind.
             return new ShowcaseLogo(mode, mode == ShowcaseLogoModes.Image ? url : null);
         }
 
@@ -296,7 +267,6 @@ public static class ShowcaseContentRules
             var photo = Url(work.PhotoUrl, path + ".photoUrl");
             var before = Url(work.BeforeUrl, path + ".beforeUrl");
 
-            // A before/after needs two photos.
             if (before is not null && photo is null)
                 Fields.Add(path + ".photoUrl");
 
@@ -319,7 +289,6 @@ public static class ShowcaseContentRules
             {
                 var slug = ShowcaseText.Line(slugs[i])?.ToLowerInvariant();
 
-                // Only an active service of the supplier is shown, and once.
                 if (slug is null || !context.ActiveServiceSlugs.Contains(slug) || !seen.Add(slug))
                 {
                     Fields.Add($"serviceOrder[{i}]");
@@ -403,12 +372,6 @@ public static class ShowcaseContentRules
         }
     }
 
-    // ─── Publication ─────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The draft without its empty rows (a team member with neither name nor role, a blank value, an empty question...): what the
-    /// customers would read, and what is compared with the published version to tell what a publication changes.
-    /// </summary>
     public static ShowcaseContentDocument Cleaned(ShowcaseContentDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -489,10 +452,6 @@ public static class ShowcaseContentRules
         };
     }
 
-    /// <summary>
-    /// The members of the contract in which the draft (cleaned) differs from <paramref name="published"/> (nothing published = the empty
-    /// document), in the order of the contract: "cosa cambia pubblicando".
-    /// </summary>
     public static IReadOnlyList<string> Changes(ShowcaseContentDocument? published, ShowcaseContentDocument draft)
     {
         ArgumentNullException.ThrowIfNull(draft);
@@ -544,7 +503,6 @@ public static class ShowcaseContentRules
         return order.Distinct(StringComparer.Ordinal).Where(bySlug.ContainsKey).Select(slug => bySlug[slug]).ToList();
     }
 
-    /// <summary>The state the editor shows (never stored).</summary>
     public static ShowcaseContentState StateOf(bool published, bool paused, bool hasChanges)
     {
         if (!published)

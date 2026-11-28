@@ -28,13 +28,10 @@ public class ComuniIstatApiIntegrationTests : IClassFixture<CasazenWebApplicatio
         _emptyFactory = emptyFactory;
     }
 
-    /// <summary>A host where the official list was never imported.</summary>
     public sealed class EmptyListFactory : CasazenWebApplicationFactory
     {
         protected override bool SeedComuneSample => false;
     }
-
-    // ---- Search ------------------------------------------------------------------------------------------------
 
     [PostgresFact]
     public async Task Search_Anonymous_ReturnsTheComuneWithItsProvinceAndRegion()
@@ -174,7 +171,6 @@ public class ComuniIstatApiIntegrationTests : IClassFixture<CasazenWebApplicatio
 
         var search = await client.GetFromJsonAsync<JsonElement>("/api/comuni?q=milano");
         var status = await client.GetFromJsonAsync<JsonElement>("/api/comuni/status");
-        // Not even a query that would be refused: the list is the problem, not the question.
         var short_ = await client.GetAsync("/api/comuni?q=m");
 
         Assert.False(search.GetProperty("datasetAvailable").GetBoolean());
@@ -184,8 +180,6 @@ public class ComuniIstatApiIntegrationTests : IClassFixture<CasazenWebApplicatio
         Assert.Equal(HttpStatusCode.OK, short_.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/comuni/015146")).StatusCode);
     }
-
-    // ---- Admin import ------------------------------------------------------------------------------------------
 
     [PostgresFact]
     public async Task Import_NotAnAdmin_IsRefused()
@@ -214,7 +208,6 @@ public class ComuniIstatApiIntegrationTests : IClassFixture<CasazenWebApplicatio
         var firstBody = await first.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal((42, 42, 0, 0, 0), (Int(firstBody, "rows"), Int(firstBody, "inserted"), Int(firstBody, "updated"), Int(firstBody, "unchanged"), Int(firstBody, "deactivated")));
 
-        // The same file again changes nothing.
         var second = await (await ImportAsync(admin, SampleCsv())).Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal((42, 0, 0, 42, 0), (Int(second, "rows"), Int(second, "inserted"), Int(second, "updated"), Int(second, "unchanged"), Int(second, "deactivated")));
 
@@ -225,7 +218,6 @@ public class ComuniIstatApiIntegrationTests : IClassFixture<CasazenWebApplicatio
         Assert.Equal(("AdminUpload", "2026-02-21", 64), (last.GetProperty("origin").GetString(), last.GetProperty("referenceDate").GetString(), last.GetProperty("sha256").GetString()!.Length));
         Assert.Equal("ISTAT test sample", last.GetProperty("sourceVersion").GetString());
 
-        // The pickers see it at once.
         var search = await anonymous.GetFromJsonAsync<JsonElement>("/api/comuni?q=varenna");
         Assert.Equal("097084", Assert.Single(search.GetProperty("items").EnumerateArray()).GetProperty("istatCode").GetString());
     }
@@ -294,11 +286,8 @@ public class ComuniIstatApiIntegrationTests : IClassFixture<CasazenWebApplicatio
         Assert.Equal(1, Int(full, "deactivated"));
         using var anonymous = factory.CreateClient();
         Assert.Empty((await anonymous.GetFromJsonAsync<JsonElement>("/api/comuni?q=torino")).GetProperty("items").EnumerateArray());
-        // A stored code still says which comune it was.
         Assert.False((await anonymous.GetFromJsonAsync<JsonElement>("/api/comuni/001272")).GetProperty("isActive").GetBoolean());
     }
-
-    // ---- Helpers -----------------------------------------------------------------------------------------------
 
     private static int Int(JsonElement element, string name) => element.GetProperty(name).GetInt32();
 

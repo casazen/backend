@@ -17,13 +17,10 @@ public sealed class ExpoPushOptions
 {
     public const string SectionName = "Expo";
 
-    /// <summary>Base address of the Expo push API (HTTPS).</summary>
     public static readonly Uri ApiBaseAddress = new("https://exp.host/");
 
-    /// <summary>Expo accepts at most 100 messages per send request.</summary>
     public const int MaxMessagesPerRequest = 100;
 
-    /// <summary>Expo accepts at most 1000 ticket ids per receipts request.</summary>
     public const int MaxReceiptIdsPerRequest = 1000;
 
     public string? AccessToken { get; set; }
@@ -31,7 +28,6 @@ public sealed class ExpoPushOptions
     public bool HasAccessToken => !string.IsNullOrWhiteSpace(AccessToken);
 }
 
-/// <summary>One message of a send request (Expo push API v2).</summary>
 public sealed class ExpoPushMessage
 {
     [JsonPropertyName("to")]
@@ -43,14 +39,9 @@ public sealed class ExpoPushMessage
     [JsonPropertyName("body")]
     public string Body { get; set; } = string.Empty;
 
-    /// <summary>Android notification channel created by the app (MO-03); ignored on iOS.</summary>
     [JsonPropertyName("channelId")]
     public string ChannelId { get; set; } = string.Empty;
 
-    /// <summary>
-    /// The category of notification the app registered, with its action buttons (E05/F04: <c>draft-ready</c>, Approve and Edit); left out of the request
-    /// when the push has none, so every other push is the message it always was.
-    /// </summary>
     [JsonPropertyName("categoryId")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? CategoryId { get; set; }
@@ -59,44 +50,32 @@ public sealed class ExpoPushMessage
     public Dictionary<string, string> Data { get; set; } = new();
 }
 
-/// <summary>What happened to a send request as a whole.</summary>
 public enum ExpoSendOutcome
 {
-    /// <summary>Expo answered with one ticket per message, in order (<see cref="ExpoSendResult.Tickets"/>).</summary>
     Accepted,
 
     /// <summary>Expo certainly did not take the messages (HTTP 429 or 5xx, connection not established): retry later.</summary>
     NotSent,
 
-    /// <summary>Expo refused the request (other 4xx, e.g. 401 for a wrong access token): retrying does not help.</summary>
     Refused,
 
-    /// <summary>No usable answer after the request was sent (timeout, connection lost): Expo may have taken the messages.</summary>
     Unknown,
 }
 
-/// <summary>Ticket of one message: <c>ok</c> with the id of its receipt, or <c>error</c> with Expo's error code.</summary>
 public sealed record ExpoPushTicket(bool Ok, string? Id, string? Error);
 
-/// <summary>Result of <see cref="IExpoPushClient.SendAsync"/>. <see cref="Error"/> is a code for the logs, never a token.</summary>
 public sealed record ExpoSendResult(ExpoSendOutcome Outcome, IReadOnlyList<ExpoPushTicket> Tickets, string? Error = null)
 {
     public static ExpoSendResult Failure(ExpoSendOutcome outcome, string error) => new(outcome, [], error);
 }
 
-/// <summary>Receipt of one ticket.</summary>
 public sealed record ExpoPushReceipt(bool Ok, string? Error);
 
-/// <summary>
-/// Result of <see cref="IExpoPushClient.GetReceiptsAsync"/>: the receipts Expo has (a ticket without one is not ready yet,
-/// or older than a day), or <see cref="Error"/> when the request failed.
-/// </summary>
 public sealed record ExpoReceiptsResult(IReadOnlyDictionary<string, ExpoPushReceipt> Receipts, string? Error = null)
 {
     public bool Succeeded => Error is null;
 }
 
-/// <summary>Expo push API: send (at most 100 messages) and receipts (at most 1000 ids). Mocked in the tests.</summary>
 public interface IExpoPushClient
 {
     Task<ExpoSendResult> SendAsync(IReadOnlyList<ExpoPushMessage> messages, CancellationToken cancellationToken = default);
@@ -258,14 +237,12 @@ public sealed class ExpoPushClient(
         logger.LogError("Expo push {Operation} refused with HTTP {Status}", operation, (int)statusCode);
     }
 
-    /// <summary>The request never reached Expo: no connection, name resolution or TLS handshake.</summary>
     private static bool NotConnected(HttpRequestException ex) => ex.HttpRequestError is
         HttpRequestError.ConnectionError or
         HttpRequestError.NameResolutionError or
         HttpRequestError.SecureConnectionError or
         HttpRequestError.ProxyTunnelError;
 
-    /// <summary>Expo's error code (<c>details.error</c>), bounded; never the <c>message</c>, which quotes the token.</summary>
     private static string ErrorCode(ExpoErrorDetails? details)
     {
         var code = details?.Error;

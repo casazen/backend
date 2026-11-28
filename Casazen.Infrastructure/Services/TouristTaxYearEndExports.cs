@@ -6,27 +6,12 @@ using Casazen.Core.Utilities;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// The files of the tourist tax at year end (E18/F01/US02/T03, NF-117, acceptance steps C9 and D3 of the complete flow), as a CSV or an Excel file with the same tables: the annual declaration data per
-/// comune (nights, guests, the stays with a tax and those with none with the reason, the exempt guests by reason, the tax due, remitted and the difference, and the payments with their days and
-/// references), the account of the agent by month or quarter (what was collected and remitted, a line for the year and the payments) and the yearly count of the nights of the properties in Ticino for
-/// the regional tourist organization (taxed and untaxed nights with the amounts of the documents issued). They carry every field the data has (⚖ T2: the format a comune asks varies) and are made of
-/// what <see cref="TouristTaxSummaryService"/> gives: nothing is recomputed here and nothing is filed by CasaZen. The texts are those of the resource files, in the language of the request.
-/// </summary>
 public static class TouristTaxYearEndExports
 {
-    /// <summary>The name of the sheet of the count of Ticino: the canton code, in both languages (not a text to translate).</summary>
     public const string TicinoSheetName = "TI";
 
-    /// <summary>The most rows of a table of these exports.</summary>
     public const int MaxRows = 200_000;
 
-    // ---------------------------------------------------------------- the declaration to the comune
-
-    /// <summary>
-    /// The three tables of the declaration of the year: the comuni (stays, nights, guests, the stays with a tax, the stays with no amount and why, the tax due, remitted and the difference with the
-    /// status of the comune and a total row), the exempt guests by comune and reason (counts, never a guest) and the payments (period, amount, day, reference, receipt).
-    /// </summary>
     public static IReadOnlyList<ReportTable> DeclarationTables(TouristTaxDeclaration data, IDocumentTexts texts, string language)
     {
         ArgumentNullException.ThrowIfNull(data);
@@ -109,11 +94,9 @@ public static class TouristTaxYearEndExports
         return [comuni, exemptions, RemittancesTable(data.Comuni.SelectMany(c => c.Summary.Remittances ?? []).ToList(), year, texts, language)];
     }
 
-    /// <summary>The CSV of the declaration: the comuni, the exemptions and the payments, one under the other (<see cref="CsvWriter"/>).</summary>
     public static byte[] DeclarationCsv(TouristTaxDeclaration data, IDocumentTexts texts, string language) =>
         CsvWriter.Write(DeclarationTables(data, texts, language), MaxRows);
 
-    /// <summary>The Excel file of the declaration: a sheet for the comuni, one for the exemptions and one for the payments.</summary>
     public static byte[] DeclarationXlsx(TouristTaxDeclaration data, IDocumentTexts texts, string language)
     {
         var tables = DeclarationTables(data, texts, language);
@@ -126,16 +109,9 @@ public static class TouristTaxYearEndExports
             MaxRows);
     }
 
-    /// <summary>The name of the file of the declaration of a year: <c>casazen-imposta-soggiorno-dichiarazione-2026.csv</c>.</summary>
     public static string DeclarationFileName(int year, string extension) =>
         string.Create(CultureInfo.InvariantCulture, $"casazen-imposta-soggiorno-dichiarazione-{year:0000}.{extension}");
 
-    // ---------------------------------------------------------------- the account of the agent
-
-    /// <summary>
-    /// The two tables of the account of the agent: for each comune the tax collected and remitted in each month or quarter and then in the year (the rows of a comune together), with the stays, nights and
-    /// guests of the period and the difference; and every payment of the year with its period, amount, day, reference and receipt.
-    /// </summary>
     public static IReadOnlyList<ReportTable> AgentAccountTables(TouristTaxAgentAccount data, IDocumentTexts texts, string language)
     {
         ArgumentNullException.ThrowIfNull(data);
@@ -179,11 +155,9 @@ public static class TouristTaxYearEndExports
         return [account, RemittancesTable(data.Remittances, year, texts, language)];
     }
 
-    /// <summary>The CSV of the account of the agent: the account, then the payments.</summary>
     public static byte[] AgentAccountCsv(TouristTaxAgentAccount data, IDocumentTexts texts, string language) =>
         CsvWriter.Write(AgentAccountTables(data, texts, language), MaxRows);
 
-    /// <summary>The Excel file of the account of the agent: a sheet for the account and one for the payments.</summary>
     public static byte[] AgentAccountXlsx(TouristTaxAgentAccount data, IDocumentTexts texts, string language)
     {
         var tables = AgentAccountTables(data, texts, language);
@@ -195,16 +169,9 @@ public static class TouristTaxYearEndExports
             MaxRows);
     }
 
-    /// <summary>The name of the file of the account of the agent: <c>casazen-imposta-soggiorno-conto-agente-2026-mensile.csv</c> (<c>trimestrale</c> by quarter).</summary>
     public static string AgentAccountFileName(int year, TouristTaxAccountPeriod by, string extension) =>
         string.Create(CultureInfo.InvariantCulture, $"casazen-imposta-soggiorno-conto-agente-{year:0000}-{(by == TouristTaxAccountPeriod.Quarter ? "trimestrale" : "mensile")}.{extension}");
 
-    // ---------------------------------------------------------------- the yearly count of Ticino
-
-    /// <summary>
-    /// The table of the yearly count of the nights of the properties in Ticino: for each property its address and municipality, the stays and the nights of the year, the taxed and untaxed ones by their
-    /// documents, those with no document issued yet (told apart, never counted as untaxed), and the tourist tax of the documents in francs.
-    /// </summary>
     public static ReportTable TicinoTable(TicinoYearlyCount data, IDocumentTexts texts, string language)
     {
         ArgumentNullException.ThrowIfNull(data);
@@ -252,10 +219,6 @@ public static class TouristTaxYearEndExports
         return table;
     }
 
-    /// <summary>
-    /// The note of a property of the count: a canton that is not known (it may be in Ticino, to be checked), or a municipality derived from the postal
-    /// code and the town and not yet confirmed on the property (E29/F01/US01/T02); nothing for a municipality the host confirmed.
-    /// </summary>
     private static string? NoteOf(TicinoPropertyCount property, IDocumentTexts texts, string language)
     {
         if (property.CantonUnknown)
@@ -264,21 +227,15 @@ public static class TouristTaxYearEndExports
         return property.MunicipalityDerived ? texts.Get("TtTicinoNoteMunicipalityDerived", language) : null;
     }
 
-    /// <summary>The CSV of the yearly count of Ticino.</summary>
     public static byte[] TicinoCsv(TicinoYearlyCount data, IDocumentTexts texts, string language) =>
         CsvWriter.Write(TicinoTable(data, texts, language), MaxRows);
 
-    /// <summary>The Excel file of the yearly count of Ticino: one sheet, <see cref="TicinoSheetName"/>.</summary>
     public static byte[] TicinoXlsx(TicinoYearlyCount data, IDocumentTexts texts, string language) =>
         XlsxWriter.Write([new ReportSheet(TicinoSheetName, TicinoTable(data, texts, language))], MaxRows);
 
-    /// <summary>The name of the file of the yearly count of Ticino: <c>casazen-imposta-soggiorno-ticino-2026.csv</c>.</summary>
     public static string TicinoFileName(int year, string extension) =>
         string.Create(CultureInfo.InvariantCulture, $"casazen-imposta-soggiorno-ticino-{year:0000}.{extension}");
 
-    // ---------------------------------------------------------------- the words
-
-    /// <summary>The payments of the year as a table: the comune, the period they pay, the amount, the day, the reference, the notes of the host and whether a receipt is stored.</summary>
     private static ReportTable RemittancesTable(IReadOnlyList<TouristTaxRemittanceLine> remittances, string year, IDocumentTexts texts, string language)
     {
         var table = new ReportTable(
@@ -321,7 +278,6 @@ public static class TouristTaxYearEndExports
         _ => status.ToString(),
     };
 
-    /// <summary>The exemption reason in words: the catalogue of <see cref="TouristTaxExemptionReason"/> and the two reasons that are not a choice of the host (the age, an erased reason); an unknown code as it is.</summary>
     private static string ExemptionText(string reason, IDocumentTexts texts, string language) => reason switch
     {
         TouristTaxExemptionReason.MinorAgeCode => texts.Get("TtExemptionMinorAge", language),

@@ -17,7 +17,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 internal static class FiscalDocumentLiveRefresh
 {
-    /// <summary>The lock-screen text: fixed words of <c>SharedResources</c>, in the language of the organization.</summary>
     internal const string TitleKey = "FiscalDocPushIssuedTitle";
     internal const string BodyKey = "FiscalDocPushIssuedBody";
 
@@ -56,7 +55,6 @@ internal static class FiscalDocumentLiveRefresh
         }
     }
 
-    /// <summary>Queues the push for a document that was issued; nothing for a document without a booking or without a queue.</summary>
     public static void Tell(IPushNotificationService? push, IDocumentTexts texts, FiscalDocument document, Org org, ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(texts);

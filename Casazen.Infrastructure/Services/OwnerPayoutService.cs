@@ -62,10 +62,8 @@ public sealed class OwnerPayoutService(
         if (await IsClosedAsync(orgId, command.OwnerId, command.PaidOn.Year, command.PaidOn.Month, ct))
             throw new DomainConflictException(OwnerAccountingErrors.PeriodClosed, "OwnerPeriodClosed");
 
-        // The approved rule in force on the day of the payment decides (a draft never does: ResolveAsync refuses it); an unknown fact it needs blocks.
         var resolution = await fiscal.ResolveAsync(orgId, command.OwnerId, command.PaidOn, ct);
 
-        // A payout never pays more than the version still owes: the balance by default, a smaller amount when the command names one.
         var balance = await facts.UnpaidBalanceAsync(version, ct);
         var paid = command.GrossAmount ?? balance;
         if (paid <= 0m || paid > balance)
@@ -153,8 +151,6 @@ public sealed class OwnerPayoutService(
         var currency = StayCurrency.Normalize(version.Currency);
         var balance = await facts.UnpaidBalanceAsync(version, ct);
 
-        // What would refuse the confirmation, in the order the confirmation meets it: the closed month, the owner without an approved rule, the balance, the facts.
-        // The first refusal is the one told; the facts are read all the same, so the dialog shows them.
         var refusal = new PreviewRefusal();
         if (await IsClosedAsync(orgId, version.PropertyOwnerId, paidOn.Year, paidOn.Month, ct))
             refusal.Note(OwnerAccountingErrors.PeriodClosed, null);
@@ -213,7 +209,6 @@ public sealed class OwnerPayoutService(
 
         var now = time.GetUtcNow().UtcDateTime;
         var today = time.TodayInRomeAsDateOnly();
-        // The ledger lines are reversed in their month while it is open, else in the month of today: which must be open too (a closed month is never posted).
         var lines = await db.OwnerLedgerEntries.AsNoTracking()
             .Where(e => e.OrgId == orgId && e.SourceType == OwnerLedgerSourceType.OwnerPayout && e.SourceId == payout.Id && e.ReversesEntryId == null)
             .ToListAsync(ct);
@@ -263,10 +258,6 @@ public sealed class OwnerPayoutService(
             .ThenByDescending(p => p.ConfirmedAt)
             .ToListAsync(ct);
 
-    /// <remarks>
-    /// The data of the year is built by <see cref="CuDatasetBuilder"/> from the evidence as it is when the lock of the owner accounting of the org is held (E18/F01/US02/T01): one
-    /// request for a year at a time, so two of them never insert two rows of the unique index of the year. The payload is encrypted at rest (it names the recipients).
-    /// </remarks>
     public async Task<TaxReportingDataset> GenerateAnnualDatasetAsync(Guid orgId, int year, string? userId, CancellationToken ct = default)
     {
         Require(year is >= 2000 and <= 2100, "year");
@@ -360,10 +351,6 @@ public sealed class OwnerPayoutService(
     /// <summary>The jurisdiction of the withholding the F24 and the Certificazione Unica are filed for: Italy (<c>IT</c>, or a region of it, <c>IT-…</c>).</summary>
     internal const string FiledJurisdiction = "IT";
 
-    /// <summary>
-    /// The applicable evidence the Italian forms are built from: the decisions of an Italian rule and their reversals, never the evidence of a Swiss or any
-    /// other jurisdiction whatever its parameters say (AC-NF110-7).
-    /// </summary>
     internal static IQueryable<TaxObligationEvidence> F24EvidenceQuery(AppDbContext db, Guid orgId) =>
         db.TaxObligationEvidence.AsNoTracking()
             .Where(e => e.OrgId == orgId && e.Decision == TaxDecision.Applicable)
@@ -376,7 +363,6 @@ public sealed class OwnerPayoutService(
     internal static readonly Expression<Func<TaxObligationEvidence, bool>> IsItalianRule =
         e => e.Jurisdiction == FiledJurisdiction || e.Jurisdiction.StartsWith(FiledJurisdiction + "-");
 
-    /// <summary>The applicable evidence (decisions and their reversals) of the year, or of one month of it.</summary>
     internal async Task<List<TaxObligationEvidence>> ApplicableAsync(Guid orgId, int year, int? month, CancellationToken ct) =>
         await F24EvidenceQuery(db, orgId)
             .Where(e => e.PeriodYear == year && (month == null || e.PeriodMonth == month))
@@ -384,14 +370,12 @@ public sealed class OwnerPayoutService(
             .ThenBy(e => e.Id)
             .ToListAsync(ct);
 
-    /// <summary>SHA-256 of the ids and amounts of the evidence.</summary>
     internal static string HashOf(IEnumerable<TaxObligationEvidence> evidence)
     {
         var text = string.Join('\n', evidence.Select(e => string.Create(CultureInfo.InvariantCulture, $"{e.Id:N}:{e.Amount ?? 0m:0.00}")));
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
     }
 
-    /// <summary>The checks of a move: the transition, and the reference it needs (handoff, receipt, reason).</summary>
     private static (string? Handoff, string? Receipt, string? Rejection) Move(TaxFilingState current, TaxFilingCommand command)
     {
         if (!TaxFiling.CanMove(current, command.State))
@@ -436,7 +420,6 @@ public sealed class OwnerPayoutService(
             p => p.OrgId == orgId && p.PropertyOwnerId == ownerId && p.PeriodYear == year && p.PeriodMonth == month && p.Status == OwnerClosePeriodStatus.Closed,
             ct);
 
-    /// <summary>Marks dirty the owner's month when it has a current version (a line came after its cut-off).</summary>
     private async Task MarkDirtyAsync(Guid orgId, Guid ownerId, int year, int month, DateTime now, CancellationToken ct)
     {
         var hasVersion = await db.OwnerStatementVersions.AsNoTracking().AnyAsync(
@@ -459,7 +442,6 @@ public sealed class OwnerPayoutService(
         row.UpdatedAt = now;
     }
 
-    /// <summary>A ledger line of the payout, in the month of the payment.</summary>
     private static OwnerLedgerEntry Line(
         OwnerPayout payout,
         OwnerLedgerEntryType type,
@@ -494,7 +476,6 @@ public sealed class OwnerPayoutService(
             PostedByUserId = userId,
         };
 
-    /// <summary>The reversal of a decision: the same facts, the opposite amounts, in the month of the reversal.</summary>
     private static TaxObligationEvidence ReversalOf(TaxObligationEvidence original, DateOnly today, DateTime now, string? userId) => new()
     {
         OrgId = original.OrgId,
@@ -540,10 +521,6 @@ public sealed class OwnerPayoutService(
         return version;
     }
 
-    /// <summary>
-    /// The withholding kept from the payout, in its currency: the amount decided in euro as it is for a payout in euro, else at the agency's rate of the payout day
-    /// (⚖ R6, half to even as the ledger converts). Without a rate a withholding cannot be kept: 422 <c>tax_applicability_unresolved</c> (<c>fxRate</c>), never a guess.
-    /// </summary>
     private static decimal WithheldInPayoutCurrency(WithholdingDecision decision, PayoutFacts read)
     {
         if (decision.Amount is not { } inEuro || inEuro == 0m)
@@ -561,7 +538,6 @@ public sealed class OwnerPayoutService(
         return Math.Round(inEuro * fx.Rate, 2, MidpointRounding.ToEven);
     }
 
-    /// <summary>The withholding line of a payout in another currency: its amount in the currency of the version, from the euro decided and the rate of the day.</summary>
     private static OwnerLedgerEntry InWithholdingCurrency(OwnerLedgerEntry line, decimal inEuro, PayoutFx fx)
     {
         line.OriginalCurrency = fx.From;
@@ -587,7 +563,6 @@ public sealed class OwnerPayoutService(
             throw new DomainRuleException(OwnerPayoutErrors.PayoutInvalid, "OwnerPayoutInvalid") { Extensions = new Dictionary<string, object?> { ["field"] = field } };
     }
 
-    /// <summary>The first refusal a preview meets: the one the confirmation would answer.</summary>
     private sealed class PreviewRefusal
     {
         public string? Code { get; private set; }

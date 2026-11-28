@@ -72,7 +72,6 @@ public class ConcordatoFacilePrivacyTests
         Assert.Equal("2026-10-v2", JsonDocument.Parse(only.Payload!).RootElement.GetProperty("policyVersion").GetString());
         Assert.Single(JsonDocument.Parse(only.Payload!).RootElement.EnumerateObject());
 
-        // The notice changes: the acceptance of the old version is not the acceptance of the current one.
         _privacyVersion = "2026-12-v1";
         var refused = await Assert.ThrowsAsync<DomainConflictException>(() => link.GenerateSignedLinkAsync(LeaseId, user));
         Assert.Equal("concordatofacile_privacy_not_accepted", refused.Code);
@@ -99,7 +98,6 @@ public class ConcordatoFacilePrivacyTests
         Assert.Equal("lease_not_found", missing.Code);
         Assert.Equal(eventsBefore, await db.LeaseEvents.CountAsync());
 
-        // The state of a lease that is another org's shows nothing, although its own org accepted.
         var seenByTheOther = await privacy.GetStateAsync(LeaseId, OtherOrgId);
         Assert.False(seenByTheOther.Accepted);
         Assert.Null(seenByTheOther.AcceptedAt);

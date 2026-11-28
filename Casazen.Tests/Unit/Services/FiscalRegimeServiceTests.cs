@@ -14,10 +14,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// STR fiscal rules (CO-18, A5-22; fiscale.md § CO-18): threshold per taxpayer on the apartments with short-term stays in
-/// the tax year, withholding only outside the business (impresa) regime, IRPEF ordinaria regime, one 21% unit per taxpayer.
-/// </summary>
 public class FiscalRegimeServiceTests
 {
     private const int TaxYear = 2026;
@@ -154,7 +150,6 @@ public class FiscalRegimeServiceTests
         Assert.All(snapshot.Properties, p => Assert.Equal(StrFiscalRegime.CedolareSecca21, p.RecommendedRegime));
         Assert.Equal(3, snapshot.Properties.Select(p => p.TaxpayerIndex).Distinct().Count());
 
-        // Each owner has his own 21% unit: no conflict across taxpayers of the same org.
         foreach (var row in snapshot.Properties)
         {
             var assigned = await sut.AssignRegimeAsync(orgId, row.PropertyId, TaxYear, StrFiscalRegime.CedolareSecca21, true);
@@ -240,7 +235,6 @@ public class FiscalRegimeServiceTests
 
         Assert.Equal("fiscal_short_stay_threshold_exceeded", ex.Code);
         Assert.Null((await sut.GetRegimeAsync(orgId, TaxYear)).Properties.Single(p => p.PropertyId == properties[2].Id).RecommendedRegime);
-        // Changing the regime of an apartment already declared does not add one.
         var changed = await sut.AssignRegimeAsync(orgId, properties[1].Id, TaxYear, StrFiscalRegime.CedolareSecca26, null);
         Assert.Equal(StrFiscalRegime.CedolareSecca26, changed.AssignedRegime);
     }
@@ -248,7 +242,6 @@ public class FiscalRegimeServiceTests
     [Fact]
     public async Task AssignRegime_Cedolare26_WhenOnlyOneApartment_IsAllowedAtGeneralRate()
     {
-        // fiscale.md C2: 26% is the general rate; the 21% unit is chosen by the taxpayer in the tax return (it may be elsewhere).
         var orgId = Guid.NewGuid();
         await using var db = CreateDb();
         SeedOrg(db, orgId);
@@ -367,7 +360,7 @@ public class FiscalRegimeServiceTests
     [InlineData("12345678901")]
     [InlineData("RSSMRA80A01H501U9")]
     [InlineData("RSSMRA80-01H501U")]
-    [InlineData("RSSMRA85T10A562X")] // CO-18: structurally valid but wrong check character
+    [InlineData("RSSMRA85T10A562X")]
     public async Task SetPropertyTaxpayer_InvalidCode_ThrowsDomainRule(string fiscalCode)
     {
         var orgId = Guid.NewGuid();

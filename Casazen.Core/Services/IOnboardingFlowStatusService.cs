@@ -21,10 +21,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IOnboardingFlowStatusService
 {
-    /// <summary>
-    /// The six flows in the order of <see cref="OnboardingFlow"/>, each with how many properties of the scope are active, to complete and not
-    /// available. Always six entries, zeros included.
-    /// </summary>
     Task<IReadOnlyList<FlowSummary>> GetSummariesAsync(HostScope scope, CancellationToken ct);
 
     /// <summary>
@@ -62,19 +58,11 @@ public interface IOnboardingFlowStatusService
         CancellationToken ct);
 }
 
-/// <summary>A page of the properties with their status for one flow (NF-106).</summary>
-/// <param name="Items">The properties of the page, by name (the id as the tie-break).</param>
-/// <param name="TotalCount">All the properties that match the state and the search, on every page.</param>
-/// <param name="Page">The page taken (1-based) after bringing the request within the limits.</param>
-/// <param name="PageSize">The size taken after bringing the request within the limits.</param>
 public sealed record FlowPropertyPage(IReadOnlyList<FlowPropertyStatus> Items, int TotalCount, int Page, int PageSize)
 {
-    /// <summary>The page size when the caller does not say how big.</summary>
     public const int DefaultPageSize = 50;
 
-    /// <summary>The most properties a page may hold.</summary>
     public const int MaxPageSize = 100;
 
-    /// <summary>The highest page number taken: the order is fixed, a number past the end is just an empty page.</summary>
     public const int MaxPage = 100_000;
 }

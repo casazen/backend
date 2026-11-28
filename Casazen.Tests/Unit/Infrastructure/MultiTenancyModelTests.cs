@@ -18,7 +18,7 @@ public class MultiTenancyModelTests
             .Options);
 
     [Fact]
-    public void Org_HasUniqueIndexOnSlug() // AC1
+    public void Org_HasUniqueIndexOnSlug()
     {
         using var db = NewDb();
         var org = db.Model.FindEntityType(typeof(OrgEntity))!;
@@ -30,12 +30,12 @@ public class MultiTenancyModelTests
     }
 
     [Theory]
-    [InlineData(typeof(Property))] // AC2
+    [InlineData(typeof(Property))]
     [InlineData(typeof(Booking))]
     [InlineData(typeof(LeaseContract))]
     [InlineData(typeof(Payment))]
-    [InlineData(typeof(Guest))] // TN-1
-    [InlineData(typeof(PropertyDocument))] // TN-2: child rows exposed by controllers
+    [InlineData(typeof(Guest))]
+    [InlineData(typeof(PropertyDocument))]
     [InlineData(typeof(OtaIntegration))]
     [InlineData(typeof(PricingAdapterConfig))]
     [InlineData(typeof(PricingHistory))]
@@ -50,25 +50,25 @@ public class MultiTenancyModelTests
         var fk = entity.GetForeignKeys().Single(f => f.PrincipalEntityType.ClrType == typeof(OrgEntity));
         Assert.Equal("OrgId", fk.Properties.Single().Name);
         Assert.Equal(DeleteBehavior.Restrict, fk.DeleteBehavior);
-        Assert.False(fk.Properties.Single().IsNullable); // OrgId is required on tenant tables
+        Assert.False(fk.Properties.Single().IsNullable);
 
         Assert.Contains(entity.GetIndexes(), i => i.Properties.Any(p => p.Name == "OrgId"));
     }
 
     [Fact]
-    public void User_HasNullableRestrictedOrgIdFk() // AC9
+    public void User_HasNullableRestrictedOrgIdFk()
     {
         using var db = NewDb();
         var user = db.Model.FindEntityType(typeof(User))!;
 
         var fk = user.GetForeignKeys().Single(f => f.PrincipalEntityType.ClrType == typeof(OrgEntity));
         Assert.Equal("OrgId", fk.Properties.Single().Name);
-        Assert.True(fk.Properties.Single().IsNullable); // brand-new user pre-backfill has none
+        Assert.True(fk.Properties.Single().IsNullable);
         Assert.Equal(DeleteBehavior.Restrict, fk.DeleteBehavior);
     }
 
     [Fact]
-    public void Org_IsRegisteredAsDbSet() // AC1
+    public void Org_IsRegisteredAsDbSet()
     {
         using var db = NewDb();
         Assert.NotNull(db.Model.FindEntityType(typeof(OrgEntity)));

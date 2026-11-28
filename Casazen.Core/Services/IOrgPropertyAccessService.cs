@@ -14,12 +14,6 @@ namespace Casazen.Core.Services;
 /// </param>
 public sealed record PropertyAccessItem(Guid PropertyId, string Name, string City, bool Granted, int PeopleWithAccess);
 
-/// <summary>The access of a member to the properties of its org.</summary>
-/// <param name="MemberId">The member row (<c>OrgMember.Id</c>), what the endpoints address.</param>
-/// <param name="ScopeSupported">
-/// Whether the member can be limited to some properties: only a collaborator can (the others reach every property of the
-/// org). When it is <c>false</c> every item is granted.
-/// </param>
 public sealed record OrgMemberPropertyAccessView(
     Guid MemberId,
     OrgRole Role,
@@ -41,8 +35,6 @@ public sealed record OrgMemberPropertyAccessView(
 /// </remarks>
 public interface IOrgPropertyAccessService
 {
-    /// <summary>The properties of the org with, for <paramref name="memberId"/>, whether it reaches each one, and how many people do.</summary>
-    /// <exception cref="Casazen.Core.Exceptions.NotFoundException"><c>org_member_not_found</c>.</exception>
     Task<OrgMemberPropertyAccessView> GetAsync(Guid orgId, Guid memberId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -99,9 +91,7 @@ public interface IOrgPropertyAccessService
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>Stable codes of <see cref="IOrgPropertyAccessService.SetResponsibleAsync"/> (422), translated by the clients.</summary>
 public static class PropertyResponsibleErrors
 {
-    /// <summary>422: the person in charge is not an active member of the org who reaches the property.</summary>
     public const string Invalid = "property_responsible_invalid";
 }

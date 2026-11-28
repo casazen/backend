@@ -30,7 +30,6 @@ public class PublicSupplierShowcasePostgresTests(PublicShowcaseFactory factory) 
         await PublicShowcaseTestData.SeedServiceAsync(factory, a.OrgId, "Pulizia", slug: "pulizia", priceFromCents: 6000, durationMinutes: 120);
         await PublicShowcaseTestData.SeedServiceAsync(factory, b.OrgId, "Pulizia", slug: "pulizia", priceFromCents: 9900, durationMinutes: 60);
         await PublicShowcaseTestData.SeedServiceAsync(factory, b.OrgId, "Solo di B", slug: "solo-di-b");
-        // B is blocked all of Tuesday 13 October: A's Tuesday is untouched.
         await PublicShowcaseTestData.SeedBlockAsync(
             factory, b.OrgId, new DateTime(2026, 10, 13, 6, 0, 0, DateTimeKind.Utc), new DateTime(2026, 10, 13, 17, 0, 0, DateTimeKind.Utc));
         using var client = factory.CreateClient();
@@ -46,7 +45,6 @@ public class PublicSupplierShowcasePostgresTests(PublicShowcaseFactory factory) 
         Assert.Equal(6, slotsA.GetProperty("days")[0].GetProperty("slots").GetArrayLength());
         Assert.False(slotsB.GetProperty("days")[0].GetProperty("available").GetBoolean());
         Assert.Equal(60, slotsB.GetProperty("durationMinutes").GetInt32());
-        // A cannot reach B's service by its slug, and the other way round.
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/public/suppliers/{a.Slug}/services/solo-di-b")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/api/public/suppliers/{b.Slug}/services/solo-di-b")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/public/suppliers/{a.Slug}/slots?service=solo-di-b")).StatusCode);
@@ -59,7 +57,6 @@ public class PublicSupplierShowcasePostgresTests(PublicShowcaseFactory factory) 
         var slug = await PublicShowcaseTestData.SeedServiceAsync(factory, supplier.OrgId);
         var hostTexts = await PublicShowcaseTestData.SeedTimedRequestAsync(
             factory, supplier.OrgId, new DateTime(2026, 10, 13, 8, 0, 0, DateTimeKind.Utc), new DateTime(2026, 10, 13, 10, 0, 0, DateTimeKind.Utc));
-        // A request already cancelled does not hold its slot any more.
         await PublicShowcaseTestData.SeedTimedRequestAsync(
             factory, supplier.OrgId, new DateTime(2026, 10, 14, 8, 0, 0, DateTimeKind.Utc), new DateTime(2026, 10, 14, 10, 0, 0, DateTimeKind.Utc), ServiceRequestStatus.Annullato);
         using var client = factory.CreateClient();
@@ -68,8 +65,8 @@ public class PublicSupplierShowcasePostgresTests(PublicShowcaseFactory factory) 
 
         var raw = await response.Content.ReadAsStringAsync();
         var days = JsonDocument.Parse(raw).RootElement.GetProperty("days").EnumerateArray().ToList();
-        Assert.Equal(3, days[0].GetProperty("slots").GetArrayLength()); // Tuesday: the afternoon only
-        Assert.Equal(6, days[1].GetProperty("slots").GetArrayLength()); // Wednesday: the cancelled request holds nothing
+        Assert.Equal(3, days[0].GetProperty("slots").GetArrayLength());
+        Assert.Equal(6, days[1].GetProperty("slots").GetArrayLength());
         foreach (var text in hostTexts)
             Assert.DoesNotContain(text, raw, StringComparison.OrdinalIgnoreCase);
     }
@@ -112,7 +109,6 @@ public class PublicSupplierShowcasePostgresTests(PublicShowcaseFactory factory) 
     public async Task TheSupplementsOfAJsonbColumn_ArePricedAsTheSupplierWroteThem()
     {
         var supplier = await PublicShowcaseTestData.SeedSupplierAsync(factory);
-        // jsonb keeps no key order and no whitespace: the supplements must read back the same.
         var slug = await PublicShowcaseTestData.SeedServiceAsync(
             factory,
             supplier.OrgId,
@@ -128,7 +124,7 @@ public class PublicSupplierShowcasePostgresTests(PublicShowcaseFactory factory) 
         })).Content.ReadFromJsonAsync<JsonElement>();
 
         Assert.Equal(new[] { "bagno", "mq" }, detail.GetProperty("supplements").EnumerateArray().Select(s => s.GetProperty("code").GetString()));
-        Assert.Equal(6000 + 3000 + 1400, quote.GetProperty("totalCents").GetInt32()); // 2 bathrooms and 2 blocks of 30 m² above 60
+        Assert.Equal(6000 + 3000 + 1400, quote.GetProperty("totalCents").GetInt32());
     }
 
     [PostgresFact]
@@ -174,7 +170,6 @@ public class PublicSupplierShowcaseHoldsPostgresTests(PublicShowcaseWithHoldsFac
     {
         var supplier = await PublicShowcaseTestData.SeedSupplierAsync(factory);
         var slug = await PublicShowcaseTestData.SeedServiceAsync(factory, supplier.OrgId);
-        // Tuesday 13: the request of a host, 10:00-12:00 Rome. Wednesday 14: a hold, 10:00-12:00. Thursday 15: a hold that expired.
         await PublicShowcaseTestData.SeedTimedRequestAsync(
             factory, supplier.OrgId, new DateTime(2026, 10, 13, 8, 0, 0, DateTimeKind.Utc), new DateTime(2026, 10, 13, 10, 0, 0, DateTimeKind.Utc));
         var alive = PublicShowcaseFactory.Start.UtcDateTime.AddMinutes(30);

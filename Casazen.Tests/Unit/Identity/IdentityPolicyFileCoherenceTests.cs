@@ -37,7 +37,6 @@ public class IdentityPolicyFileCoherenceTests
     [Fact]
     public void TheCommittedConfiguration_ThroughTheServicesOfTheApplication_GivesAReadyPolicy()
     {
-        // The whole chain of production without the host: the committed appsettings.json, the options bound by AddCasazenServices, the file of the build output.
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddJsonFile(Path.Combine(IdentityPolicyTestFiles.RepositoryRoot(), "Casazen.Web", "appsettings.json"), optional: false).Build());
         services.AddLogging();
@@ -57,7 +56,6 @@ public class IdentityPolicyFileCoherenceTests
     {
         var project = XDocument.Load(Path.Combine(IdentityPolicyTestFiles.RepositoryRoot(), "Casazen.Web", "Casazen.Web.csproj"));
 
-        // The JSON is a Content item in the Web SDK and a None item elsewhere: both are listed, like the manifest of the check-in legal texts.
         foreach (var kind in new[] { "Content", "None" })
         {
             var item = Assert.Single(project.Descendants(kind), element => (string?)element.Attribute("Update") == @"IdentityPolicies\**\*.json");
@@ -91,7 +89,6 @@ public class IdentityPolicyFileCoherenceTests
 
         var policy = IdentityConfigurationJson.ReadStrict<IdentityDecisionPolicy>(canonical)!;
 
-        // A provisional policy can never be qualified, so nothing is approved automatically until a calibrated policy file is committed (a new file, a new pin).
         Assert.True(policy.Provisional);
         Assert.Equal((double)BiometricSettingsRules.DefaultAcceptThreshold, policy.Match.Accept);
         Assert.Equal((double)BiometricSettingsRules.DefaultEscalateThreshold, policy.Match.ReviewFloor);
@@ -102,7 +99,6 @@ public class IdentityPolicyFileCoherenceTests
     [Fact]
     public void PolicyRecords_HoldNoNumberOfTheirOwn_NoDefaultAndNoConstant()
     {
-        // AC5: no decision threshold is written in C#. A record that carried a default or a constant would decide in the place of the file.
         Type[] policyTypes =
         [
             typeof(IdentityDecisionPolicy),

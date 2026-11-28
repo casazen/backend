@@ -10,11 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E24/F01/US01/T02 (NF-120, NF-21, NF-45): the service requests are on the event bus (<c>ServiceRequestCreated</c> and <c>ServiceRequestCompleted</c>, in the save of the change, ids
-/// only), a request can be made at a price the host agreed beforehand, and the host can move a request nobody answered to another time. On the world of
-/// <see cref="ServiceRequestScenario"/> and the real <see cref="ServiceRequestService"/>.
-/// </summary>
 public class ServiceRequestEventsAndRescheduleTests
 {
     private static readonly JsonSerializerOptions ReadOptions = new() { PropertyNameCaseInsensitive = true };
@@ -22,9 +17,6 @@ public class ServiceRequestEventsAndRescheduleTests
     private static async Task<List<OutboxEvent>> EventsAsync(ServiceRequestScenario scenario) =>
         await scenario.Db.OutboxEvents.AsNoTracking().OrderBy(e => e.EventType).ThenBy(e => e.Id).ToListAsync();
 
-    // ─── The events ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The creation of a host's request is on the bus once: the org of the host, the request, a key per request and a payload of ids and the category, nothing of the host's notes or the price.</summary>
     [Fact]
     public async Task Create_RecordsServiceRequestCreated_OnceWithIdsOnly()
     {
@@ -39,16 +31,13 @@ public class ServiceRequestEventsAndRescheduleTests
         Assert.Equal(
             (request.Id, scenario.BookingId, scenario.PropertyId, scenario.SupplierOrgId, ServiceCategories.Cleaning, ServiceRequestRentalContext.ShortRent, ServiceRequestStatus.Richiesto),
             (payload.ServiceRequestId, payload.BookingId, payload.PropertyId, payload.SupplierOrgId, payload.Category, payload.RentalContext, payload.Status));
-        // Ids and codes only (ADR-022-R21): the notes of the host, the address and the price are not in it.
         Assert.DoesNotContain(ServiceRequestScenario.HostNotes, recorded.PayloadJson, StringComparison.Ordinal);
         Assert.DoesNotContain(ServiceRequestScenario.PropertyAddress, recorded.PayloadJson, StringComparison.Ordinal);
         Assert.DoesNotContain(ServiceRequestScenario.ServicePriceCents.ToString(System.Globalization.CultureInfo.InvariantCulture), recorded.PayloadJson, StringComparison.Ordinal);
-        // The routines read the stay by the name they always read it by, whatever the case.
         using var document = JsonDocument.Parse(recorded.PayloadJson);
         Assert.Contains(document.RootElement.EnumerateObject(), m => string.Equals(m.Name, "bookingId", StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>The completion is on the bus once for the request, in the save of the transition, with the status it has after it; nothing at all is recorded without a recorder.</summary>
     [Fact]
     public async Task Complete_RecordsServiceRequestCompleted_OnceForTheRequest()
     {
@@ -77,8 +66,6 @@ public class ServiceRequestEventsAndRescheduleTests
         Assert.Empty(await EventsAsync(scenario));
     }
 
-    // ─── The price agreed beforehand ──────────────────────────────────────────────────────────────────────────────────────────────
-
     private static CreateServiceRequestCommand Command(ServiceRequestScenario scenario, int? agreed) =>
         new(
             scenario.HostOrgId,
@@ -96,7 +83,6 @@ public class ServiceRequestEventsAndRescheduleTests
             DurationMinutes: 120,
             AgreedAmountCents: agreed);
 
-    /// <summary>The price the host agreed is the estimated amount of the request (in place of the one of a catalog service); none leaves it empty as before.</summary>
     [Fact]
     public async Task AgreedAmount_IsTheEstimatedAmountOfTheRequest()
     {
@@ -123,9 +109,6 @@ public class ServiceRequestEventsAndRescheduleTests
         Assert.Empty(scenario.Db.ServiceRequests);
     }
 
-    // ─── Moving a request nobody answered ────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The host moves a new request to another time: the interval changes, the request stays new, and nothing else of it.</summary>
     [Fact]
     public async Task Reschedule_MovesANewRequestToAnotherTime()
     {
@@ -140,7 +123,6 @@ public class ServiceRequestEventsAndRescheduleTests
         Assert.Equal((start, start.AddMinutes(90), request.ServiceListingId, request.EstimatedAmountCents), (stored.ScheduledStartUtc, stored.ScheduledEndUtc, stored.ServiceListingId, stored.EstimatedAmountCents));
     }
 
-    /// <summary>What the supplier took, proposed, offered or shares with a backup is not moved by the host: 422, and the host decides with the actions it has.</summary>
     [Theory]
     [InlineData("taken")]
     [InlineData("proposed")]
@@ -187,7 +169,6 @@ public class ServiceRequestEventsAndRescheduleTests
         Assert.Equal(before.ScheduledStartUtc, (await scenario.ReadAsync(request.Id)).ScheduledStartUtc);
     }
 
-    /// <summary>Another org's request is not found (the same 404 as a missing one), and so is a request of a supplier's showcase.</summary>
     [Fact]
     public async Task Reschedule_OfAnotherOrgsRequest_IsNotFound()
     {
@@ -201,7 +182,6 @@ public class ServiceRequestEventsAndRescheduleTests
         Assert.Equal(request.ScheduledStartUtc, (await scenario.ReadAsync(request.Id)).ScheduledStartUtc);
     }
 
-    /// <summary>The new time is checked as a take is: it must not overlap a job the supplier already took (409), and it must be an interval of whole minutes within the bounds (422).</summary>
     [Fact]
     public async Task Reschedule_ChecksTheNewTime()
     {

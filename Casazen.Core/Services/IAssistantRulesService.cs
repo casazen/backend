@@ -20,29 +20,14 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IAssistantRulesService
 {
-    /// <summary>The rules of the organization; the defaults (<see cref="EffectiveAssistantRules.Defaults"/>) when it never saved any, and nothing is written for that.</summary>
     Task<EffectiveAssistantRules> GetAsync(Guid orgId, CancellationToken ct = default);
 
-    /// <summary>
-    /// Saves the rules of the organization (the whole set: what the request does not give is the default). 422 <c>assistant_rules_invalid</c> (no language, a code
-    /// that is not two lower-case letters, a signature over 300 characters, hours with one end only or with the start equal to the end, a topic the assistant does
-    /// not know) or <c>assistant_threshold_invalid</c> (a threshold outside 0.50 to 0.99). The version of the instructions grows when something changed.
-    /// </summary>
     Task<EffectiveAssistantRules> SaveAsync(Guid orgId, AssistantRulesInput rules, string userId, CancellationToken ct = default);
 
-    /// <summary>Sets the organization switch while preserving its other assistant instructions.</summary>
     Task SetEnabledAsync(Guid orgId, bool enabled, string userId, CancellationToken ct = default);
 
-    /// <summary>
-    /// The exceptions of a property, a null field meaning «as the organization»; all null when the property has none. 404 <c>property_not_found</c> for a property that
-    /// is not the organization's.
-    /// </summary>
     Task<PropertyAssistantSettingsItem> GetPropertySettingsAsync(Guid orgId, Guid propertyId, CancellationToken ct = default);
 
-    /// <summary>
-    /// Saves the exceptions of a property (the whole set: a field not given is «as the organization»). The same 422 as <see cref="SaveAsync"/> for the fields it has,
-    /// 404 <c>property_not_found</c>. The version of the instructions grows when something changed.
-    /// </summary>
     Task<PropertyAssistantSettingsItem> SavePropertySettingsAsync(
         Guid orgId,
         Guid propertyId,
@@ -50,13 +35,8 @@ public interface IAssistantRulesService
         string userId,
         CancellationToken ct = default);
 
-    /// <summary>Removes the exceptions of a property: it follows the organization again. Nothing to remove is not an error; 404 <c>property_not_found</c> for a property that is not the organization's.</summary>
     Task DeletePropertySettingsAsync(Guid orgId, Guid propertyId, CancellationToken ct = default);
 
-    /// <summary>
-    /// The rules in force for a property: its own value of each field, else the organization's. <see cref="EffectiveAssistantRules.Enabled"/> is true only when the
-    /// organization's switch is on and the property does not turn it off. Reads only, whoever calls (the draft pipeline and the gate included).
-    /// </summary>
     Task<EffectiveAssistantRules> ResolveEffectiveAsync(Guid orgId, Guid propertyId, CancellationToken ct = default);
 
     /// <summary>
@@ -67,10 +47,6 @@ public interface IAssistantRulesService
     Task BumpVersionAsync(Guid orgId, CancellationToken ct = default);
 }
 
-/// <summary>
-/// The rules of an organization as a request gives them (the whole set). <paramref name="Languages"/> not given are Italian and English, <paramref name="Tone"/> not
-/// given is neutral, <paramref name="ConfidenceThreshold"/> not given is 0.85, the lists not given are empty, <paramref name="Enabled"/> not given is off.
-/// </summary>
 public sealed record AssistantRulesInput(
     bool? Enabled,
     AssistantTone? Tone,
@@ -82,7 +58,6 @@ public sealed record AssistantRulesInput(
     IReadOnlyList<string>? ForbiddenTopics,
     decimal? ConfidenceThreshold);
 
-/// <summary>The exceptions of a property as a request gives them (the whole set): a field not given is «as the organization».</summary>
 public sealed record PropertyAssistantSettingsInput(
     bool? Enabled,
     AssistantTone? Tone,
@@ -92,7 +67,6 @@ public sealed record PropertyAssistantSettingsInput(
     decimal? ConfidenceThreshold,
     IReadOnlyList<string>? ForbiddenTopics);
 
-/// <summary>The exceptions of a property as the screens read them: every field null means the property has none and follows the organization.</summary>
 public sealed record PropertyAssistantSettingsItem(
     Guid PropertyId,
     bool? Enabled,

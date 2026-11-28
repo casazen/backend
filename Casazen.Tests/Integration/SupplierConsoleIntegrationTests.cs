@@ -9,14 +9,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Xunit;
-// OrgEntity is a global alias defined in Casazen.Tests.csproj: OrgEntity = global::Casazen.Core.Entities.Org
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// Integration tests for the Supplier Console feature (US-022 / #292).
-/// Covers AC1–AC8: registration, activation, profile, inbox, availability, admin invite.
-/// </summary>
 public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private readonly CasazenWebApplicationFactory _factory;
@@ -26,13 +21,9 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         _factory = factory;
     }
 
-    // ─── AC3: POST /api/suppliers/register (public) ───────────────────────────
-    // Invite, pilot comuni, email binding and rate limit: SupplierRegistrationIntegrationTests (SU-01).
-
     [Fact]
     public async Task Register_SelfServeWithoutPilotComuniConfigured_Returns422SelfServeUnavailable()
     {
-        // Restricted mode (Suppliers:AnyComune=false) and no Suppliers:PilotComuni: self-serve is off, invite only.
         await using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
             config.AddInMemoryCollection(new Dictionary<string, string?> { ["Suppliers:AnyComune"] = "false" })));
         using var client = factory.CreateClient();
@@ -58,8 +49,6 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.False(db.SupplierProfiles.Any(sp => sp.Email == email));
     }
-
-    // ─── AC5: GET/POST activation ─────────────────────────────────────────────
 
     [Fact]
     public async Task GetActivation_AsSupplier_Returns200WithSteps()
@@ -90,8 +79,6 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         Assert.Equal(5, body.GetProperty("steps").GetArrayLength());
     }
 
-    // SU-02 (A4-23): the dual-role host reaches the supplier profile through its explicit link (User.SupplierOrgId),
-    // not through the email; linking by email alone is covered in SupplierClaimIntegrationTests.
     [Fact]
     public async Task GetActivation_AsDualRoleHostLinkedBySupplierOrgId_FindsItsSupplierProfile()
     {
@@ -153,7 +140,6 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var verify = _factory.Services.CreateScope();
         var verifyDb = verify.ServiceProvider.GetRequiredService<AppDbContext>();
-        // No second supplier org was provisioned and the host org is kept.
         Assert.Equal(1, await verifyDb.SupplierProfiles.CountAsync(sp => sp.Email == email));
         var user = await verifyDb.Users.SingleAsync(u => u.Id == userId);
         Assert.NotEqual(user.OrgId, user.SupplierOrgId);
@@ -177,7 +163,6 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
     [Fact]
     public async Task CompleteActivation_NoCategoriesNoBio_Returns409AndStaysPending()
     {
-        // A4-09: before SU-05 the Terms alone activated a profile with no category and no description.
         var (supplierId, orgId) = await SeedSupplierAsync();
         using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
 
@@ -241,7 +226,7 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var consent = await db.ConsentRecords.IgnoreQueryFilters() // proof of the acceptance of a supplier org, read across tenants by the test
+        var consent = await db.ConsentRecords.IgnoreQueryFilters()
             .SingleAsync(c => c.OrgId == orgId && c.Type == ConsentType.Tos);
         Assert.Equal(version, consent.Version);
         Assert.Equal(supplierId, consent.UserId);
@@ -290,7 +275,6 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         Assert.False(steps["showcase"].GetProperty("required").GetBoolean());
         Assert.Equal("bio_missing", steps["profile"].GetProperty("blocker").GetString());
         Assert.Equal("tos_not_accepted", steps["terms"].GetProperty("blocker").GetString());
-        // Nothing saved yet: the wizard opens at the first incomplete required step.
         Assert.Equal(2, body.GetProperty("currentStep").GetInt32());
     }
 
@@ -303,7 +287,6 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         var put = await client.PutAsJsonAsync("/api/supplier/profile/activation/step", new { step = 4 });
 
         Assert.Equal(HttpStatusCode.NoContent, put.StatusCode);
-        // Another device / session of the same supplier.
         using var other = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
         var body = await (await other.GetAsync("/api/supplier/profile/activation")).Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(4, body.GetProperty("currentStep").GetInt32());
@@ -396,8 +379,6 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
     [Fact]
     public async Task UpdateProfile_ActiveSupplierActivatedBeforeSu05WithoutBio_CanStillEditOtherFields()
     {
-        // A profile activated when the Terms alone sufficed has no description: editing something else (or uploading a
-        // photo) must keep working; the edit just cannot take one more requirement away.
         var (supplierId, orgId) = await SeedFullSupplierAsync(autoActivate: true);
         await UpdateProfileAsync(orgId, p => p.Bio = null);
         using var client = _factory.CreateAuthenticatedClient(supplierId, "Supplier");
@@ -419,8 +400,6 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("[]", (await LoadProfileAsync(orgId)).CategoriesJson);
     }
-
-    // ─── SU-13: public showcase (A4-16) ───────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task CompleteActivation_GeneratesTheShowcaseSlugAndThePublicPageShowsTheSupplier()
@@ -444,7 +423,6 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         Assert.Equal("Test Supplier Srl", body.GetProperty("legalName").GetString());
         Assert.Equal("Azienda di pulizie professionale.", body.GetProperty("bio").GetString());
         Assert.Equal(["cleaning"], body.GetProperty("categories").EnumerateArray().Select(c => c.GetString()));
-        // Contact data and status stay private: hosts reach the supplier through a request.
         var raw = body.GetRawText();
         Assert.DoesNotContain("phone", raw, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("email", raw, StringComparison.OrdinalIgnoreCase);
@@ -480,7 +458,6 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         Assert.Equal(JsonValueKind.Null, body.GetProperty("publicUrl").ValueKind);
         Assert.False(body.GetProperty("indexable").GetBoolean());
         Assert.Equal("Test Supplier Srl", body.GetProperty("showcase").GetProperty("legalName").GetString());
-        // Previewing never invents an address for a profile that is not public.
         Assert.Null((await LoadProfileAsync(orgId)).ShowcaseSlug);
     }
 
@@ -496,7 +473,6 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         Assert.NotNull(slug);
         Assert.True(body.GetProperty("published").GetBoolean());
         Assert.Equal($"/fornitori/{slug}", body.GetProperty("publicPath").GetString());
-        // The base URL is the configured App:PublicSiteBaseUrl, not a domain written in the code.
         using var scope = _factory.Services.CreateScope();
         var configured = scope.ServiceProvider.GetRequiredService<Casazen.Infrastructure.Email.PublicSiteLinks>().PublicPage($"/fornitori/{slug}");
         Assert.Equal(configured, body.GetProperty("publicUrl").GetString());
@@ -526,8 +502,6 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         change(profile);
         await db.SaveChangesAsync();
     }
-
-    // ─── AC4/Profile ─────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetProfile_AsSupplier_Returns200Profile()
@@ -560,8 +534,6 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         Assert.Equal("Azienda di pulizie professionale con 10 anni di esperienza.", body.GetProperty("bio").GetString());
     }
 
-    // ─── AC7: Inbox (empty until #293) ───────────────────────────────────────
-
     [Fact]
     public async Task GetInbox_AsSupplier_Returns200EmptyList()
     {
@@ -574,8 +546,6 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(0, body.GetProperty("total").GetInt32());
     }
-
-    // ─── AC8: Availability ───────────────────────────────────────────────────
 
     [Fact]
     public async Task GetAvailability_AsSupplier_Returns200SavedDates()
@@ -626,8 +596,6 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         Assert.Equal(2, body.GetProperty("updated").GetInt32());
     }
 
-    // ─── AC3: Admin invite ───────────────────────────────────────────────────
-
     [Fact]
     public async Task AdminInvite_AsAdmin_Returns201WithInviteId()
     {
@@ -660,8 +628,6 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
-
-    // ─── AC6: GET /api/suppliers only Active ─────────────────────────────────
 
     [Fact]
     public async Task GetSuppliers_ReturnsOnlyActiveForComune()
@@ -696,8 +662,6 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
             "Provide the municipality or the property to search for suppliers.",
             (await english.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("detail").GetString());
     }
-
-    // ─── A4-27: API messages come from the localized resources (no inline text) ──────────────────────────
 
     [Fact]
     public async Task GetAvailability_ToBeforeFrom_Returns400LocalizedInItalianAndEnglish()
@@ -859,8 +823,6 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         Assert.True(items.Count >= 1);
     }
 
-    // ─── Auth guards ─────────────────────────────────────────────────────────
-
     [Fact]
     public async Task SupplierProfile_WithoutAuth_Returns401()
     {
@@ -876,8 +838,6 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
         var response = await client.GetAsync("/api/supplier/profile");
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
-
-    // ─── Helpers ──────────────────────────────────────────────────────────────
 
     private async Task<(string UserId, Guid OrgId)> SeedSupplierAsync(string comuneCode = "H501")
     {

@@ -46,7 +46,6 @@ public class SupplierAccountUpdatedWebhookTests
         Assert.Null(a.ConnectRequirementsDueJson);
         Assert.Equal(AccountA, a.StripeConnectedAccountId);
 
-        // Nobody else: the other supplier keeps its capabilities and its requirement, the host org keeps its own.
         var b = await ReloadAsync(db, supplierB);
         Assert.False(b.ConnectChargesEnabled);
         Assert.False(b.ConnectPayoutsEnabled);
@@ -154,7 +153,6 @@ public class SupplierAccountUpdatedWebhookTests
         await using var db = CreateDb();
         var supplier = await SeedOrgAsync(db, AccountA, OrgType.Supplier, charges: false, payouts: false, requirementsJson: null);
 
-        // account.updated of a connected account arrives on the Connect endpoint; the platform endpoint ignores it.
         await CreateHandler(db).HandleEventAsync(
             AccountUpdated("evt_platform", AccountA, charges: true, payouts: true, submitted: true, due: []),
             WebhookSource.Platform);
@@ -170,7 +168,6 @@ public class SupplierAccountUpdatedWebhookTests
         var stripeEvent = AccountUpdated("evt_twice", AccountA, charges: true, payouts: true, submitted: true, due: []);
         await CreateHandler(db).HandleEventAsync(stripeEvent, WebhookSource.Connected);
 
-        // Something else changed the org after the first delivery; the duplicate must not overwrite it.
         var tracked = await db.Orgs.SingleAsync(o => o.Id == supplier);
         tracked.ConnectChargesEnabled = false;
         await db.SaveChangesAsync();
@@ -179,8 +176,6 @@ public class SupplierAccountUpdatedWebhookTests
         Assert.False((await ReloadAsync(db, supplier)).ConnectChargesEnabled);
         Assert.Equal(1, await db.ProcessedStripeEvents.CountAsync(e => e.EventId == "evt_twice"));
     }
-
-    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private StripeWebhookHandler CreateHandler(AppDbContext db) =>
         new(

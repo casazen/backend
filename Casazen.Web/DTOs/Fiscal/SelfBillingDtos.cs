@@ -110,10 +110,6 @@ public sealed record SelfBillingLineDto(int LineNumber, string Description, deci
         new(line.LineNumber, line.Description, line.TotalPrice, line.VatRatePercent, line.VatAmount);
 }
 
-/// <summary>
-/// <c>POST api/fiscal/self-billing/{id}/issue</c>: the host confirms the issue (<see cref="Confirm"/>) and, when part of the amount is an estimate (a rule of the agency or the default of the
-/// channel, <c>estimatedAmount</c> of the detail), accepts it (<see cref="AcceptEstimate"/>); without it the issue is 422 <c>self_billing_estimate_unconfirmed</c> and nothing is numbered.
-/// </summary>
 public sealed record IssueSelfBillingRequest
 {
     public bool Confirm { get; init; }
@@ -133,7 +129,6 @@ public sealed record CloseSelfBillingNotDueRequest
     public string? Note { get; init; }
 }
 
-/// <summary><c>POST api/fiscal/self-billing/drafts</c>: the month (<c>yyyy-MM</c>) whose drafts are made.</summary>
 public sealed record GenerateSelfBillingRequest
 {
     public string? Period { get; init; }
@@ -183,7 +178,6 @@ public sealed record SelfBillingGenerationDto(
 /// </summary>
 public sealed record SelfBillingKeptDto(Guid DocumentId, string HolderKind, Guid? HolderOwnerId, string PortalName, string? Number, string Reason);
 
-/// <summary>One TD17 of a generation: <c>result</c> is <c>created</c>, <c>updated</c> or <c>already_issued</c>.</summary>
 public sealed record SelfBillingOutcomeDto(
     Guid DocumentId,
     string HolderKind,
@@ -194,8 +188,6 @@ public sealed record SelfBillingOutcomeDto(
     decimal EstimatedAmount,
     bool ChangedSinceIssue);
 
-/// <summary>A holder that needs a TD17 and cannot get one: the code of the reason and the fields its issuer profile misses.</summary>
 public sealed record SelfBillingFailureDto(string HolderKind, Guid? HolderOwnerId, string PortalName, string Code, IReadOnlyList<string> Fields);
 
-/// <summary>Commissions of the month that are not self-billed: the reason, the channel, the number of stays and their commission.</summary>
 public sealed record SelfBillingNotDueDto(string Reason, string Channel, int Stays, decimal Amount, string Currency);

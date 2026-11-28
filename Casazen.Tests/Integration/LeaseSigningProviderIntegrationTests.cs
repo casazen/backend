@@ -84,7 +84,6 @@ public class LeaseSigningProviderIntegrationTests(LeaseESignProviderFlowWebAppli
         Assert.Equal(2, links.Count);
         Assert.All(links, l => Assert.StartsWith("https://esign.invalid/", l, StringComparison.Ordinal));
 
-        // A7-16: after a refresh the links are still there.
         var refreshedState = await ReadJson(await client.GetAsync($"/api/leases/{leaseId}/signers"));
         Assert.True(refreshedState.GetProperty("providerSigningAvailable").GetBoolean());
         var refreshed = refreshedState.GetProperty("signers");
@@ -113,7 +112,6 @@ public class LeaseSigningProviderIntegrationTests(LeaseESignProviderFlowWebAppli
         var signed = await GetLeaseAsync(client, leaseId);
         Assert.Equal("Signed", signed.GetProperty("status").GetString());
         Assert.InRange(signed.GetProperty("stipulaDate").GetDateTime().Date, todayBefore, TimeProvider.System.TodayInRome());
-        // Start 1/9 before the stipula: deadline 30 days from the start (LT-04).
         Assert.Equal(new DateTime(2026, 10, 1), signed.GetProperty("registrationDeadline").GetDateTime().Date);
         Assert.True(signed.GetProperty("hasSignedPdf").GetBoolean());
         var download = await client.GetAsync($"/api/leases/{leaseId}/signed-document");
@@ -131,7 +129,6 @@ public class LeaseSigningProviderIntegrationTests(LeaseESignProviderFlowWebAppli
         var registered = await GetLeaseAsync(client, leaseId);
         Assert.Equal("Registered", registered.GetProperty("status").GetString());
 
-        // A replayed (or forged but validly signed) event after the registration.
         await RunWebhookJobAsync(FakeLeaseESignProvider.EventBody(leaseId, "all_signed"));
         await RunWebhookJobAsync(FakeLeaseESignProvider.EventBody(leaseId, "signer_signed", Guid.NewGuid()));
 
@@ -146,7 +143,6 @@ public class LeaseSigningProviderIntegrationTests(LeaseESignProviderFlowWebAppli
     [PostgresFact]
     public async Task ESignWebhook_AllSignedOnADraftLease_ChangesNothing()
     {
-        // Only a signature in progress (AwaitingSignature, PartiallySigned) accepts provider events.
         var (client, leaseId) = await DraftLeaseAsync("provider-draft");
         await using (var scope = factory.Services.CreateAsyncScope())
         {

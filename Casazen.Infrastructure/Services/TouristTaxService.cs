@@ -87,11 +87,9 @@ public class TouristTaxService(ITouristTaxRateRepository repository) : ITouristT
         taxRate.SeasonEnd = string.IsNullOrWhiteSpace(input.SeasonEnd) ? null : input.SeasonEnd.Trim();
         taxRate.CalculationMethod = input.CalculationMethod;
         var percentage = input.CalculationMethod == TouristTaxCalculationMethod.PercentOfNightlyPrice;
-        // A percentage rate has no fixed amount, a fixed rate no percentage or cap: never both.
         taxRate.RatePerPersonPerNight = percentage ? 0m : input.RatePerPersonPerNight;
         taxRate.PercentOfNightlyPrice = percentage ? input.PercentOfNightlyPrice : null;
         taxRate.CapPerPersonPerNight = percentage ? input.CapPerPersonPerNight : null;
-        // The reduced band needs both values and a fixed rate.
         var reduced = !percentage && input.ReducedRateMaxAge is not null && input.ReducedRatePerPersonPerNight is not null;
         taxRate.ReducedRateMaxAge = reduced ? input.ReducedRateMaxAge : null;
         taxRate.ReducedRatePerPersonPerNight = reduced ? input.ReducedRatePerPersonPerNight : null;
@@ -104,6 +102,5 @@ public class TouristTaxService(ITouristTaxRateRepository repository) : ITouristT
             MessageKey = "TouristTaxRateNotFound",
         };
 
-    /// <summary>Problem code of a missing tourist tax rate (404).</summary>
     public const string TouristTaxRateNotFoundCode = "tourist_tax_rate_not_found";
 }

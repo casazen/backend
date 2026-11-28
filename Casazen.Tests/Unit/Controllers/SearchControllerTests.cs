@@ -61,8 +61,6 @@ public class SearchControllerTests
         return problem;
     }
 
-    // ─── The term ───────────────────────────────────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -111,7 +109,6 @@ public class SearchControllerTests
     {
         var controller = NewController();
 
-        // Two characters, but no letter or digit: it cannot match anything, so nothing is read.
         var result = await controller.Search("!?", null, CancellationToken.None);
 
         var response = Assert.IsType<GlobalSearchResponse>(Assert.IsType<OkObjectResult>(result.Result).Value);
@@ -119,8 +116,6 @@ public class SearchControllerTests
         _access.VerifyNoOtherCalls();
         _search.VerifyNoOtherCalls();
     }
-
-    // ─── The answer ─────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Search_RunsTheTermWithTheAccessOfTheCaller_AndTheLimitOfTheDefault()
@@ -212,8 +207,6 @@ public class SearchControllerTests
 
         Assert.Equal("private, no-store", controller.Response.Headers.CacheControl.ToString());
     }
-
-    // ─── The endpoint ───────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void TheEndpoint_IsRateLimitedPerUser_AndRequiresASignedInUser()

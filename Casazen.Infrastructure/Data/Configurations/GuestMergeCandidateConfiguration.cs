@@ -28,7 +28,6 @@ internal sealed class GuestMergeCandidateConfiguration : IEntityTypeConfiguratio
             t.HasCheckConstraint(
                 "CK_GuestMergeCandidates_Score",
                 $"\"Score\" >= {GuestMergeCandidate.MinScore} AND \"Score\" <= {GuestMergeCandidate.MaxScore}");
-            // The canonical order of the pair; strictly smaller, so a profile cannot be paired with itself either.
             t.HasCheckConstraint("CK_GuestMergeCandidates_ProfileOrder", "\"ProfileAId\" < \"ProfileBId\"");
         });
     }

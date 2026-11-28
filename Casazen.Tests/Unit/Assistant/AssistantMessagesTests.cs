@@ -4,13 +4,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Assistant;
 
-/// <summary>
-/// E05/F05/US01 (the backend writes every text a user reads in Italian and in English, never inline): every message key the services and the controllers of the assistant raise exists in
-/// <c>SharedResources.resx</c> and in its English twin, with a text of its own in each language and the same placeholders.
-/// </summary>
 public partial class AssistantMessagesTests
 {
-    /// <summary>The files that raise the keys: <c>DomainRuleException</c>, <c>DomainConflictException</c>, <c>NotFoundException.MessageKey</c> and <c>ApiProblem</c>.</summary>
     private static readonly string[] SourceFiles =
     [
         "Casazen.Core/Assistant/AssistantRulesValidator.cs",
@@ -38,7 +33,6 @@ public partial class AssistantMessagesTests
             .Order()
             .ToList();
 
-        // The scan is not hollow: it finds the keys the three services and the controllers raise.
         foreach (var expected in new[]
                  {
                      "AssistantRulesInvalid", "AssistantThresholdInvalid", "AssistantEntryInvalid", "AssistantEntryNotFound", "AssistantModeNotAllowed",
@@ -75,7 +69,6 @@ public partial class AssistantMessagesTests
         var italian = Read(Path.Combine(root, "Casazen.Web", "Resources", "SharedResources.resx"));
         var english = Read(Path.Combine(root, "Casazen.Web", "Resources", "SharedResources.en.resx"));
 
-        // The code is the assistant's, the text is the one of the templates of the composer: it names the variable ({0}) and lists the valid ones.
         Assert.Contains("new DomainRuleException(TemplateInvalidCode, ex.MessageKey", service, StringComparison.Ordinal);
         Assert.Contains("{0}", italian["MessageTemplateVariableUnknown"], StringComparison.Ordinal);
         Assert.Contains("{0}", english["MessageTemplateVariableUnknown"], StringComparison.Ordinal);
@@ -108,15 +101,12 @@ public partial class AssistantMessagesTests
         return directory?.FullName ?? throw new InvalidOperationException("Casazen.sln not found above the test output folder.");
     }
 
-    // new DomainRuleException(SomeCode, "Key") of the exceptions of the domain, and the => new(SomeCode, "Key") helpers of the services.
     [GeneratedRegex(@"(?:DomainRuleException|DomainConflictException|DomainForbiddenException)\(\s*[^,()""]+,\s*""(?<key>[A-Za-z]+)""|=> new\(\s*[A-Za-z.]+Code,\s*""(?<key>[A-Za-z]+)""\)")]
     private static partial Regex ExceptionKey();
 
-    // MessageKey = "Key"
     [GeneratedRegex(@"MessageKey\s*=\s*""(?<key>[A-Za-z]+)""")]
     private static partial Regex MessageKeyMember();
 
-    // this.ApiProblem(StatusCodes.StatusNNN, "code", "Key"
     [GeneratedRegex(@"ApiProblem\(\s*StatusCodes\.[A-Za-z0-9]+,\s*""[a-z_]+"",\s*""(?<key>[A-Za-z]+)""")]
     private static partial Regex ApiProblemKey();
 

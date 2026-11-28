@@ -42,7 +42,6 @@ public class ICalMigrationServiceTests
             Assert.True(f.Deprecated);
             Assert.Equal(Now.UtcDateTime, f.DeprecatedAt);
         });
-        // The feed stays, and so do the blocks it imported (they are kept as they were).
         Assert.Equal(2, await read.CalendarBlocks.CountAsync());
         Assert.All(await read.CalendarBlocks.ToListAsync(), b => Assert.NotNull(b.FeedId));
     }
@@ -58,7 +57,6 @@ public class ICalMigrationServiceTests
 
         var deprecated = await s.Service(db).DeprecateCoveredFeedsAsync(s.PropertyId, CancellationToken.None);
 
-        // Octorate does not know the source of an "other" feed, and the listing has Booking.com (142) only.
         Assert.Equal([booking], deprecated);
         await using var read = s.NewDb();
         var feeds = await read.PropertyICalFeeds.AsNoTracking().ToDictionaryAsync(f => f.Id);
@@ -154,7 +152,6 @@ public class ICalMigrationServiceTests
         await s.MarkDeprecatedAsync(noLongerRead, kept, ofAnotherOrg);
         await using var db = s.NewDb();
 
-        // The calendar job reads one property now (the one of `kept`): every other deprecated feed goes back to the import, in every org.
         var given = await s.Service(db).ReinstateFeedsAsync([stillRead], CancellationToken.None);
 
         Assert.Equal(new[] { noLongerRead, ofAnotherOrg }.Order(), given.Order());
@@ -166,12 +163,10 @@ public class ICalMigrationServiceTests
         Assert.True(feeds[kept].Deprecated);
         Assert.NotNull(feeds[kept].DeprecatedAt);
         Assert.False(feeds[neverDeprecated].Deprecated);
-        // The feed itself is untouched, and the log names the property and the feed, never the address.
         Assert.Equal(SecretAddress, feeds[noLongerRead].ImportUrl);
         Assert.All(s.Log.Lines, line => Assert.DoesNotContain("secret.example.com", line, StringComparison.OrdinalIgnoreCase));
         Assert.Contains(s.Log.Lines, line => line.Contains(noLongerRead.ToString(), StringComparison.Ordinal));
 
-        // Nothing left to give back: a second call changes nothing.
         await using var again = s.NewDb();
         Assert.Empty(await s.Service(again).ReinstateFeedsAsync([stillRead], CancellationToken.None));
     }
@@ -202,7 +197,6 @@ public class ICalMigrationServiceTests
         Assert.DoesNotContain("SECRET-TOKEN", line, StringComparison.Ordinal);
     }
 
-    /// <summary>A property of org A with a listing mapped to it, and the feeds the tests add to it.</summary>
     private sealed class Scenario
     {
         private readonly string _database = $"ical-migration-{Guid.NewGuid():N}";
@@ -293,7 +287,6 @@ public class ICalMigrationServiceTests
         }
     }
 
-    /// <summary>Keeps the text of every line the service logs.</summary>
     private sealed class CapturingLogger : ILogger<ICalMigrationService>
     {
         public List<string> Lines { get; } = [];

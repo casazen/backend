@@ -58,8 +58,6 @@ public sealed record ServiceRequestMilestones(
 /// </summary>
 public static class ServiceRequestHistory
 {
-    /// <summary>The steps of the request, in the order of the state machine.</summary>
-    /// <param name="takenByName">Name of the supplier member who took the request, when known.</param>
     public static IReadOnlyList<ServiceRequestHistoryEntry> Build(ServiceRequestMilestones request, string? takenByName)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -69,8 +67,6 @@ public static class ServiceRequestHistory
             new(ServiceRequestStatus.Richiesto, request.CreatedAt, request.Requester, null, null),
         };
 
-        // The quotes (SP-04b) happen while the request is new: between its creation and its take. An accepted one is not a step of its own,
-        // it is the take; a quote nobody answered is the cancellation (below).
         var acceptedAQuote = false;
         foreach (var quoteEvent in (request.QuoteEvents ?? []).OrderBy(e => e.At))
         {

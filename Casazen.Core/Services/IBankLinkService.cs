@@ -19,7 +19,6 @@ public interface IBankLinkService
         BankLinkCaller caller,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The tenant of the installment's lease (the payment-link token is the access check).</summary>
     Task<BankLinkSession> CreateLeaseSessionAsync(Guid installmentId, string token, CancellationToken cancellationToken = default);
 
     Task<BankLinkAccount> AttachLeaseAccountAsync(
@@ -28,17 +27,11 @@ public interface IBankLinkService
     Task<BankLinkPaymentStarted> StartLeasePaymentAsync(
         Guid installmentId, string token, BankLinkCaller caller, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Applies a <c>bank-link-payment</c> PaymentIntent event inside the webhook transaction. A linked rent installment
-    /// is paid only for <c>payment_intent.succeeded</c>.
-    /// </summary>
     Task<RentPaymentNotice?> ApplyStripeEventAsync(BankLinkStripeEvent paymentEvent, CancellationToken cancellationToken = default);
 }
 
-/// <summary>What the browser needs to open Financial Connections. No bank number.</summary>
 public sealed record BankLinkSession(string SessionId, string ClientSecret);
 
-/// <summary>The linked account as CasaZen stores and shows it: the Stripe id, and display fields read from Stripe.</summary>
 public sealed record BankLinkAccount(
     bool Linked,
     string? AccountId,
@@ -59,13 +52,8 @@ public sealed record StartBankLinkPayment(
     Guid? CondominiumId = null,
     Guid? CondominiumInstallmentId = null);
 
-/// <summary>The caller address Stripe stores on an online mandate. Not a bank detail.</summary>
 public sealed record BankLinkCaller(string? IpAddress, string? UserAgent);
 
-/// <summary>
-/// A debit that was started. <see cref="DueSettled"/> is false here: the due is settled by the webhook (or the offline
-/// declaration), never by the act of starting the PaymentIntent.
-/// </summary>
 public sealed record BankLinkPaymentStarted(
     Guid PaymentId,
     string PaymentIntentId,
@@ -74,14 +62,12 @@ public sealed record BankLinkPaymentStarted(
     string PaymentMethodType,
     bool DueSettled);
 
-/// <summary>A Stripe event of a bank-link PaymentIntent, without Stripe types.</summary>
 public sealed record BankLinkStripeEvent(
     string PaymentIntentId,
     string EventType,
     long AmountCents,
     string? FailureCode);
 
-/// <summary>Stable error codes of the bank-link endpoints.</summary>
 public static class BankLinkErrorCodes
 {
     public const string AccountIdInvalid = "bank_link_account_invalid";
@@ -94,17 +80,14 @@ public static class BankLinkErrorCodes
     public const string IdempotencyKeyInvalid = "bank_link_idempotency_key_invalid";
 }
 
-/// <summary><c>metadata.kind</c> of a PaymentIntent debited from a linked Financial Connections account.</summary>
 public static class BankLinkCharges
 {
     public const string Kind = "bank-link-payment";
 
-    /// <summary>SEPA Direct Debit. The euro method used for a linked Italian or EU account. Not <c>us_bank_account</c>.</summary>
     public const string SepaDebit = "sepa_debit";
 
     public const string Currency = "eur";
 
-    /// <summary>Institutions offered in the link flow: Italy, so the list is Intesa and the other Italian banks, not US banks.</summary>
     public const string InstitutionCountry = "IT";
 
     /// <summary>

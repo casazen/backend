@@ -1,8 +1,5 @@
 namespace Casazen.Infrastructure.OTA;
 
-/// <summary>
-/// Request model for updating calendar availability on Airbnb
-/// </summary>
 public class AirbnbAvailabilityRequest
 {
     public string ListingId { get; set; } = string.Empty;
@@ -10,9 +7,6 @@ public class AirbnbAvailabilityRequest
     public bool Available { get; set; }
 }
 
-/// <summary>
-/// Request model for updating pricing on Airbnb
-/// </summary>
 public class AirbnbPricingRequest
 {
     public string ListingId { get; set; } = string.Empty;
@@ -21,9 +15,6 @@ public class AirbnbPricingRequest
     public string Currency { get; set; } = "EUR";
 }
 
-/// <summary>
-/// Response model for Airbnb API calls
-/// </summary>
 public class AirbnbApiResponse<T>
 {
     public bool Success { get; set; }
@@ -31,17 +22,11 @@ public class AirbnbApiResponse<T>
     public string? Error { get; set; }
 }
 
-/// <summary>
-/// Airbnb reservation response model
-/// </summary>
 public class AirbnbReservationsResponse
 {
     public List<AirbnbReservation> Reservations { get; set; } = new();
 }
 
-/// <summary>
-/// Airbnb reservation model
-/// </summary>
 public class AirbnbReservation
 {
     public string ConfirmationCode { get; set; } = string.Empty;
@@ -53,9 +38,6 @@ public class AirbnbReservation
     public AirbnbGuest Guest { get; set; } = new();
 }
 
-/// <summary>
-/// Airbnb guest model
-/// </summary>
 public class AirbnbGuest
 {
     public string FirstName { get; set; } = string.Empty;
@@ -64,9 +46,6 @@ public class AirbnbGuest
     public string Phone { get; set; } = string.Empty;
 }
 
-/// <summary>
-/// Airbnb listing model
-/// </summary>
 public class AirbnbListing
 {
     public string Id { get; set; } = string.Empty;

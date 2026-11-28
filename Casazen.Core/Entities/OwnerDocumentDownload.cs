@@ -25,10 +25,8 @@ public class OwnerDocumentDownload : ITenantOwned, IAppendOnlyRecord
 
     public DateTime DownloadedAt { get; set; }
 
-    /// <summary>The person of the owner portal who downloaded it (<c>OwnerUser.Id</c>).</summary>
     public Guid? OwnerUserId { get; set; }
 
-    /// <summary>The person of the agency who downloaded it (<c>User.Id</c>).</summary>
     [MaxLength(UserIdMaxLength)]
     public string? UserId { get; set; }
 }

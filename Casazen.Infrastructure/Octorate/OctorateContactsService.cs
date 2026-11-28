@@ -51,16 +51,8 @@ public sealed class OctorateContactsService(
     TimeProvider timeProvider,
     ILogger<OctorateContactsService> logger) : IOctorateContactsService
 {
-    /// <summary>
-    /// The version recorded as the soft opt-in notice of a customer of the booking engine of the agency: the notice is the agency's, shown by its
-    /// booking engine, and its being shown is the product owner's declaration (<c>Crm:BookingEngineSoftOptIn</c>, D34), not a text CasaZen holds.
-    /// </summary>
     public const string BookingEngineNoticeVersion = "octorate-booking-engine";
 
-    /// <summary>
-    /// The code the log carries when the answer of <c>contactInfo</c> is not understood (<see cref="OctorateContactReadOutcome.Unrecognized"/>): the code
-    /// only, never a member or a value of the answer.
-    /// </summary>
     public const string UnrecognizedAnswerCode = "octorate_contact_info_unrecognized";
 
     public async Task<OctorateContactReadResult> ReadForBookingAsync(Guid orgId, Guid bookingId, CancellationToken ct = default)
@@ -97,16 +89,12 @@ public sealed class OctorateContactsService(
         if (sentByCasaZen)
             return new OctorateContactReadResult(OctorateContactReadOutcome.NotAnOctorateBooking);
 
-        // No history: a stay that is over has no use for the contact of its guest.
         if (booking.CheckOutDate.Date < timeProvider.TodayInRome().Date)
             return new OctorateContactReadResult(OctorateContactReadOutcome.StayOver);
 
-        // A cancelled booking has no stay to serve (no message, no check-in, no invoice to prepare): its guest's contact is not worth a sensitive read that
-        // Octorate logs. A pending booking is read: it is a stay in the making, and it is the one the event of its creation announces.
         if (booking.Status == BookingStatus.Cancelled)
             return new OctorateContactReadResult(OctorateContactReadOutcome.BookingCancelled);
 
-        // The guest of an erased or anonymized record is not asked about: its contacts were erased (E07/F06/US02/T01) and must not come back.
         var guest = await db.Guests
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -149,8 +137,6 @@ public sealed class OctorateContactsService(
                 if (string.IsNullOrEmpty(reservation.GuestId))
                     return NotAvailable(orgId, bookingId, now, "the reservation names no guest");
 
-                // Octorate says in the reservation whether it holds an address or a number for the guest: with neither there is nothing to ask,
-                // and a sensitive read that gives nothing is not made.
                 if (reservation.GuestEmailAvailable == false && reservation.GuestPhoneAvailable == false)
                 {
                     ledger.RememberRead(orgId, bookingId, hadContact: false, now);
@@ -171,13 +157,10 @@ public sealed class OctorateContactsService(
         }
         catch (OctorateException ex) when (ex is OctorateRequestRejectedException or OctorateConflictException)
         {
-            // Octorate refused the request itself (a 4xx that is no refusal of the data, no missing reservation and no limit): sent again it is refused
-            // again, so it is remembered like a refusal and not sent in a loop. Only the code of the error is logged.
             return NotAvailable(orgId, bookingId, now, $"Octorate rejected the request ({ex.Code})");
         }
         catch (OctorateException ex)
         {
-            // An outage, the limit, a connection that is not usable: not the booking's fault, so nothing is remembered about it. Not retried here.
             logger.LogWarning(
                 "Octorate contact of booking {BookingId} of org {OrgId} could not be read now ({Error}): a later call tries again",
                 bookingId,
@@ -209,10 +192,6 @@ public sealed class OctorateContactsService(
             stored);
     }
 
-    /// <summary>
-    /// Stores the address and the number as contacts of the guest of the booking and returns how many were stored. The contact service decides
-    /// what each one is: a forward address of an OTA stays service only whatever is passed here.
-    /// </summary>
     private async Task<int> StoreAsync(
         Guid orgId,
         BookingFacts booking,
@@ -225,8 +204,6 @@ public sealed class OctorateContactsService(
         var displayName = $"{guest.FirstName} {guest.LastName}".Trim();
         var purchase = CrmContactRules.IsPurchase(booking.Status);
 
-        // The customer of the booking engine of the agency saw the agency's notice when booking (declared by the product owner); everyone else
-        // brings none, and so is service only.
         CrmBasisEvidence? notice = null;
         if (settings.BookingEngineSoftOptIn
             && string.Equals(reservation.ChannelId, BookingStateMapper.BookingEngineChannelId, StringComparison.Ordinal))
@@ -290,10 +267,8 @@ public sealed class OctorateContactsService(
         return new OctorateContactReadResult(OctorateContactReadOutcome.NotAvailable);
     }
 
-    /// <summary>The columns of the guest of the booking the read needs: its profile, its name for the contacts, and whether it was erased.</summary>
     private sealed record GuestFacts(Guid? GuestCrmProfileId, string FirstName, string LastName, bool Erased);
 
-    /// <summary>The columns of the booking the read needs, nothing else.</summary>
     private sealed record BookingFacts(
         Guid PropertyId,
         Guid GuestId,

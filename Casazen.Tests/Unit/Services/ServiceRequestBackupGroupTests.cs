@@ -26,15 +26,12 @@ public class ServiceRequestBackupGroupTests
 {
     private static readonly TimeSpan PrimaryWindow = TimeSpan.FromMinutes(60);
 
-    /// <summary>A backup of a group: its request and the supplier org it was sent to.</summary>
     private sealed record BackupSide(ServiceRequest Request, Guid SupplierOrgId)
     {
         public Guid Id => Request.Id;
 
         public string Member => $"auth0|member-of-{SupplierOrgId:N}";
     }
-
-    // ─── Creation ────────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Create_WithTheFlagOn_SendsTheRequestToTheBackupsToo_DeclaredAsSuch_AndTheyHoldNoSlot()
@@ -54,7 +51,6 @@ public class ServiceRequestBackupGroupTests
         var savedPrimary = await s.ReadAsync(primary.Id);
         Assert.Equal(group.Id, savedPrimary.GroupId);
         Assert.Equal(ServiceRequestGroupRole.Primary, savedPrimary.GroupRole);
-        // The primary has the hour of the rule, not the 120 minutes of a request sent to one supplier.
         Assert.Equal(group.PrimaryDueAt, savedPrimary.ResponseDueAt);
 
         var backups = await BackupsOfAsync(s, group.Id);
@@ -63,7 +59,6 @@ public class ServiceRequestBackupGroupTests
         {
             Assert.Equal(ServiceRequestStatus.Richiesto, backup.Status);
             Assert.Equal(group.Id, backup.GroupId);
-            // The same job: host, property, stay, notes, time.
             Assert.Equal(s.HostOrgId, backup.OrgId);
             Assert.Equal(s.PropertyId, backup.PropertyId);
             Assert.Equal(s.BookingId, backup.BookingId);
@@ -74,7 +69,6 @@ public class ServiceRequestBackupGroupTests
             Assert.Equal(group.PrimaryDueAt, backup.ResponseDueAt);
         });
 
-        // A backup holds nothing of its agenda until it has the job; the primary's supplier does hold it (a request waiting counts).
         var day = RomeCalendar.DateInRome(savedPrimary.ScheduledStartUtc!.Value);
         Assert.Empty(await s.Reader.ListForAgendaAsync(alfa, day, day));
         Assert.Empty(await s.Reader.ListForAgendaAsync(beta, day, day));
@@ -103,10 +97,8 @@ public class ServiceRequestBackupGroupTests
         var backup = Assert.Single(await BackupsOfAsync(s, (await s.ReadAsync(primary.Id)).GroupId!.Value));
         var push = Assert.Single(s.Pushes, p => p.Payload.Type == PushTypes.ServiceRequestBackupInvited);
         Assert.Equal(PushAudience.SupplierOrg(alfa), push.Audience);
-        // The tap opens the request in the supplier area of the app, not the host's property list.
         Assert.Equal(PushRoutes.SupplierRequest(backup.Id), push.Payload.Route);
         Assert.Equal(PushDeliveryKeys.ServiceRequestBackup(backup.Id, "invited"), push.DeliveryKey);
-        // The chosen supplier still gets the email of a new request, and is not told about the backups.
         Assert.Single(s.Emails.Snapshot(), e => e.To == "supplier@test.com" && e.Template == EmailTemplates.Names.ServiceRequestCreated);
     }
 
@@ -116,29 +108,24 @@ public class ServiceRequestBackupGroupTests
         using var s = await ServiceRequestScenario.CreateAsync();
         var window = TimeSpan.FromMinutes(new Casazen.Core.Options.ServiceRequestOptions().HostResponseMinutes);
 
-        // Nobody else in the comune: with the flag on, a single request, with the deadline of today.
         s.Flags.Set(FeatureFlags.SupplierRequestBackups, true);
         await AssertSentAloneAsync(s, (await s.RequestAsync(withService: false)).Id, window);
 
         await AddBackupAsync(s, "Alfa Srl");
 
-        // The flag is off.
         s.Flags.Set(FeatureFlags.SupplierRequestBackups, false);
         await AssertSentAloneAsync(s, (await s.RequestAsync(withService: false)).Id, window);
 
-        // The flag is on, the org turned the rule off.
         s.Flags.Set(FeatureFlags.SupplierRequestBackups, true);
         var org = await s.Db.Orgs.SingleAsync(o => o.Id == s.HostOrgId);
         org.SupplierBackupsEnabled = false;
         await s.Db.SaveChangesAsync();
         await AssertSentAloneAsync(s, (await CreateAsync(s, useBackups: null)).Id, window);
 
-        // The org turned it on again and this request asks to be sent alone.
         org.SupplierBackupsEnabled = true;
         await s.Db.SaveChangesAsync();
         await AssertSentAloneAsync(s, (await CreateAsync(s, useBackups: false)).Id, window);
 
-        // Control: the same, asking for the backups, forms a group.
         var grouped = await CreateAsync(s, useBackups: null);
         Assert.NotNull((await s.ReadAsync(grouped.Id)).GroupId);
     }
@@ -153,7 +140,6 @@ public class ServiceRequestBackupGroupTests
         await s.Agenda.ReplaceRulesAsync(withHours, new SupplierRulesInput(30, 3, 0, 35, 60));
         await s.Agenda.ReplaceHoursAsync(withHours, ServiceRequestScenario.WorkingWeek());
 
-        // The slot is one of the primary's published slots (a catalog service, no typed duration): each backup must have it too.
         var primary = await s.RequestAsync(ServiceRequestScenario.FridayAt10);
 
         var backups = await BackupsOfAsync(s, (await s.ReadAsync(primary.Id)).GroupId!.Value);
@@ -161,8 +147,6 @@ public class ServiceRequestBackupGroupTests
         Assert.DoesNotContain(backups, backup => backup.SupplierOrgId == withoutHours);
         Assert.True((await s.Db.ServiceRequestGroups.AsNoTracking().SingleAsync()).SlotPlanned);
     }
-
-    // ─── What the host sees ──────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Host_SeesOnlyTheRequestItFollows_TheGroupWithEveryBackup_AndCannotActOnABackup()
@@ -186,11 +170,8 @@ public class ServiceRequestBackupGroupTests
         Assert.Equal(2, group.Members.Count(m => m.Role == ServiceRequestGroupRole.Backup));
         Assert.Equal(["Alfa Srl", "Beta Srl"], group.Members.Where(m => m.Role == ServiceRequestGroupRole.Backup).Select(m => m.SupplierName).Order());
         Assert.All(group.Members, member => Assert.Equal(ServiceRequestStatus.Richiesto, member.Status));
-        // Another org does not read the group.
         Assert.Empty(await s.Service.GetGroupViewsAsync(Guid.NewGuid(), [primary.GroupId.Value]));
     }
-
-    // ─── The primary takes the job ───────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task PrimaryTakesTheJob_TheBackupsAreClosed_AndToldSo()
@@ -215,7 +196,6 @@ public class ServiceRequestBackupGroupTests
         }
 
         Assert.Equal(2, s.Emails.Snapshot().Count(e => e.Template == EmailTemplates.Names.ServiceRequestBackupClosed));
-        // The host is told of the take like for any request, not of backups.
         Assert.Single(s.Emails.Snapshot(), e => e.To == "host@test.com" && e.Template == EmailTemplates.Names.ServiceRequestStatusChanged);
         Assert.DoesNotContain(s.Emails.Snapshot(), e => e.Template == EmailTemplates.Names.ServiceRequestTakenByBackup);
     }
@@ -241,15 +221,12 @@ public class ServiceRequestBackupGroupTests
         await s.Service.AcceptAsBackupAsync(alfa.Id, alfa.SupplierOrgId, alfa.Member);
         s.Clock.Advance(PrimaryWindow);
 
-        // The pass of the job has not run yet: the rule is the same, the primary cannot take the job from the backup that accepted in time.
         var refused = await Assert.ThrowsAsync<DomainRuleException>(
             () => s.Service.TakeAsync(primary.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId));
 
         Assert.Equal(ServiceRequestGroupErrorCodes.PrimaryWindowPassed, refused.Code);
         Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(primary.Id)).Status);
     }
-
-    // ─── The primary is silent for an hour ───────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task PrimarySilentForAnHour_TheJobGoesToTheBackupThatAcceptedFirst_AndTheHostSeesItInPlaceOfThePrimary()
@@ -265,7 +242,6 @@ public class ServiceRequestBackupGroupTests
             () => s.Service.AcceptAsBackupAsync(alfa.Id, alfa.SupplierOrgId, alfa.Member));
         Assert.Equal(ServiceRequestGroupErrorCodes.BackupRaceClosed, tooLate.Code);
 
-        // Before the end of the hour nothing happens.
         s.Clock.Advance(TimeSpan.FromMinutes(54));
         Assert.Equal(ServiceRequestGroupRun.Empty, await Job(s).RunAsync());
 
@@ -280,7 +256,6 @@ public class ServiceRequestBackupGroupTests
         Assert.Equal(beta.Member, winner.TakenByUserId);
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, winner.TakenAt);
         Assert.Null(winner.ResponseDueAt);
-        // Alfa was closed when Beta accepted, not by the take: its request says so, and it was told then.
         var other = await s.ReadAsync(alfa.Id);
         Assert.Equal(ServiceRequestStatus.Annullato, other.Status);
         Assert.Equal(ServiceRequestCancellationReasons.BackupRaceClosed, other.CancellationReason);
@@ -291,7 +266,6 @@ public class ServiceRequestBackupGroupTests
         Assert.Equal(ServiceRequestGroupRole.ReplacedPrimary, lost.GroupRole);
         Assert.Equal(ServiceRequestGroupPhase.Closed, (await s.Db.ServiceRequestGroups.AsNoTracking().SingleAsync()).Phase);
 
-        // The host follows the backup that took the job, in the place of the primary, and is told who it is.
         var (items, _) = await s.Service.ListForHostAsync(new HostScope(s.HostOrgId), ServiceRequestRentalContext.ShortRent, null, null, null, 1, 50);
         Assert.Equal(beta.Id, Assert.Single(items).Id);
         var toHost = Assert.Single(s.Emails.Snapshot(), e => e.To == "host@test.com");
@@ -305,7 +279,6 @@ public class ServiceRequestBackupGroupTests
         var toPrimary = Assert.Single(s.Emails.Snapshot(), e => e.To == "supplier@test.com" && e.Template == EmailTemplates.Names.ServiceRequestCancelledToSupplier);
         Assert.Contains("punteggio di affidabilità", toPrimary.Content.HtmlBody);
 
-        // Reliability (SP-REL): Beta answered in time as a backup, the primary missed its hour, Alfa lost nothing.
         var betaEvents = await s.ReliabilityEventsAsync(beta.SupplierOrgId);
         var answered = Assert.Single(betaEvents);
         Assert.Equal(SupplierReliabilityEventKind.RepliedInTime, answered.Kind);
@@ -323,7 +296,6 @@ public class ServiceRequestBackupGroupTests
         var (primary, alfa, beta) = await CreateGroupAsync(s);
         await s.Service.AcceptAsBackupAsync(alfa.Id, alfa.SupplierOrgId, alfa.Member);
 
-        // Alfa takes another job at that time before the hour is over (written straight to the table: the planner would have refused it).
         var savedPrimary = await s.ReadAsync(primary.Id);
         await s.SeedAsync(
             ServiceRequestStatus.PresoInCarico,
@@ -365,13 +337,10 @@ public class ServiceRequestBackupGroupTests
         Assert.Equal(ServiceRequestStatus.PresoInCarico, winner.Status);
         Assert.Equal(ServiceRequestGroupRole.PromotedBackup, winner.GroupRole);
         Assert.Equal(ServiceRequestStatus.Annullato, (await s.ReadAsync(beta.Id)).Status);
-        // It refused: the primary stays refused, and the host follows the backup that took the job.
         Assert.Equal(ServiceRequestStatus.Rifiutato, (await s.ReadAsync(primary.Id)).Status);
         var (items, _) = await s.Service.ListForHostAsync(new HostScope(s.HostOrgId), ServiceRequestRentalContext.ShortRent, null, null, null, 1, 50);
         Assert.Equal(alfa.Id, Assert.Single(items).Id);
     }
-
-    // ─── Nobody accepted ─────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task NoBackupAccepted_TheSecondWindowOpens_TheFirstToTakeHasTheJob_AndTheOtherIsRefused()
@@ -392,7 +361,6 @@ public class ServiceRequestBackupGroupTests
         Assert.Equal(group.BackupDueAt, (await s.ReadAsync(primary.Id)).ResponseDueAt);
         Assert.Equal(2, s.Emails.Snapshot().Count(e => e.Template == EmailTemplates.Names.ServiceRequestBackupActive));
 
-        // Two backups try to take it: one has it, the other is refused and closed.
         await s.Service.TakeAsync(alfa.Id, alfa.SupplierOrgId, alfa.Member);
         var refused = await Assert.ThrowsAnyAsync<DomainException>(() => s.Service.TakeAsync(beta.Id, beta.SupplierOrgId, beta.Member));
         Assert.Contains(refused.Code, new[] { ServiceRequestErrorCodes.StateChanged, ServiceRequestErrorCodes.InvalidTransition });
@@ -430,7 +398,6 @@ public class ServiceRequestBackupGroupTests
         Assert.Equal(ServiceRequestGroupPhase.Closed, (await s.Db.ServiceRequestGroups.AsNoTracking().SingleAsync()).Phase);
         var toHost = Assert.Single(s.Emails.Snapshot(), e => e.To == "host@test.com");
         Assert.Contains("nessuna risposta", toHost.Content.Subject);
-        // A run repeated finds nothing left, and tells nobody twice.
         var sent = s.Emails.Snapshot().Count;
         Assert.Equal(ServiceRequestGroupRun.Empty, await Job(s).RunAsync());
         Assert.Equal(sent, s.Emails.Snapshot().Count);
@@ -448,8 +415,6 @@ public class ServiceRequestBackupGroupTests
         Assert.Empty(due);
     }
 
-    // ─── The rules for the suppliers ─────────────────────────────────────────────────────────────────────────────────
-
     // ─── The first backup that accepts closes the race (decision of 2026-10-30) ──────────────────────────────────────
 
     [Fact]
@@ -462,14 +427,12 @@ public class ServiceRequestBackupGroupTests
 
         var accepted = await s.Service.AcceptAsBackupAsync(alfa.Id, alfa.SupplierOrgId, alfa.Member);
 
-        // Alfa is the only backup left: it waits for the primary, and its acceptance is on the record.
         Assert.Equal(ServiceRequestStatus.Richiesto, accepted.Status);
         var savedAlfa = await s.ReadAsync(alfa.Id);
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, savedAlfa.BackupAcceptedAt);
         Assert.Equal(alfa.Member, savedAlfa.BackupAcceptedByUserId);
         Assert.Equal(ServiceRequestGroupRole.Backup, savedAlfa.GroupRole);
 
-        // Beta's request is closed for good, by CasaZen, with its own reason, and the group goes on.
         var closed = await s.ReadAsync(beta.Id);
         Assert.Equal(ServiceRequestStatus.Annullato, closed.Status);
         Assert.Equal(ServiceRequestActorParty.System, closed.CancelledBy);
@@ -480,14 +443,12 @@ public class ServiceRequestBackupGroupTests
         Assert.Equal(ServiceRequestGroupPhase.PrimaryWindow, (await s.Db.ServiceRequestGroups.AsNoTracking().SingleAsync()).Phase);
         Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(primary.Id)).Status);
 
-        // Beta is told why, plainly, and nobody else is told anything: the primary and the host are not bothered.
         var toBeta = Assert.Single(s.Emails.Snapshot());
         Assert.Equal("beta-srl@test.com", toBeta.To);
         Assert.Equal(EmailTemplates.Names.ServiceRequestBackupClosed, toBeta.Template);
         Assert.Contains("già accettato", toBeta.Content.HtmlBody);
         Assert.Contains("nessuna penalità", toBeta.Content.HtmlBody);
 
-        // It costs Beta nothing: the points of a supplier are written for what it did, and it did nothing wrong. Alfa answered in time.
         Assert.Empty(await s.ReliabilityEventsAsync(beta.SupplierOrgId));
         var reply = Assert.Single(await s.ReliabilityEventsAsync(alfa.SupplierOrgId));
         Assert.Equal(SupplierReliabilityEventKind.RepliedInTime, reply.Kind);
@@ -522,7 +483,6 @@ public class ServiceRequestBackupGroupTests
         var savedPrimary = await s.ReadAsync(primary.Id);
         var day = RomeCalendar.DateInRome(savedPrimary.ScheduledStartUtc!.Value);
 
-        // Nobody has accepted yet: no backup holds anything.
         Assert.Empty(await s.Reader.ListForAgendaAsync(alfa.SupplierOrgId, day, day));
 
         await s.Service.AcceptAsBackupAsync(alfa.Id, alfa.SupplierOrgId, alfa.Member);
@@ -531,7 +491,6 @@ public class ServiceRequestBackupGroupTests
         Assert.Single(await s.Reader.ListForAgendaAsync(alfa.SupplierOrgId, day, day));
         Assert.Empty(await s.Reader.ListForAgendaAsync(beta.SupplierOrgId, day, day));
 
-        // The primary takes the job in its hour: Alfa is released, the time is free again and Alfa loses nothing.
         s.ForgetNotifications();
         await s.Service.TakeAsync(primary.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId);
 
@@ -580,7 +539,6 @@ public class ServiceRequestBackupGroupTests
         var (primary, alfa, beta) = await CreateGroupAsync(s);
         s.Clock.Advance(PrimaryWindow);
 
-        // The job has not looked at the group yet: the acceptance does, and the primary is out of time.
         var result = await s.Service.AcceptAsBackupAsync(alfa.Id, alfa.SupplierOrgId, alfa.Member);
 
         Assert.Equal(ServiceRequestStatus.PresoInCarico, result.Status);
@@ -590,14 +548,11 @@ public class ServiceRequestBackupGroupTests
         Assert.Equal(ServiceRequestGroupPhase.Closed, (await s.Db.ServiceRequestGroups.AsNoTracking().SingleAsync()).Phase);
     }
 
-    // ─── Who earns and who loses points (SP-REL) ─────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task NobodyAnswers_ThePrimaryLosesTheBigShare_ASilentBackupTheSmallOne_AndWhoWasAwayLosesNothing()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         var (_, alfa, beta) = await CreateGroupAsync(s);
-        // Beta only works on Sundays: while the request waits (a Thursday) it could not have answered.
         await s.Agenda.ReplaceHoursAsync(
             beta.SupplierOrgId,
             new SupplierHoursInput([new SupplierHoursDayInput(DayOfWeek.Sunday, [new SupplierHoursBandInput(8 * 60, 9 * 60)])]));
@@ -620,7 +575,6 @@ public class ServiceRequestBackupGroupTests
         Assert.Equal(-2, points[alfa.SupplierOrgId]);
         Assert.False(points.ContainsKey(beta.SupplierOrgId));
 
-        // The two that lost points are told why; the one that was away is told the request lapsed, and nothing about points.
         const string hint = "punteggio di affidabilità";
         Assert.Contains(hint, Assert.Single(s.Emails.Snapshot(), e => e.To == "supplier@test.com" && e.Template == EmailTemplates.Names.ServiceRequestCancelledToSupplier).Content.HtmlBody);
         Assert.Contains(hint, Assert.Single(s.Emails.Snapshot(), e => e.To == "alfa-srl@test.com" && e.Template == EmailTemplates.Names.ServiceRequestCancelledToSupplier).Content.HtmlBody);
@@ -638,7 +592,6 @@ public class ServiceRequestBackupGroupTests
 
         await s.Service.TakeAsync(primary.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId);
 
-        // It missed its hour (written when the second window opened); taking the job later is not an answer in time.
         var missed = Assert.Single(await s.ReliabilityEventsAsync());
         Assert.Equal(SupplierReliabilityEventKind.NoReplyInTime, missed.Kind);
     }
@@ -685,7 +638,6 @@ public class ServiceRequestBackupGroupTests
         Assert.Equal(alfa.Member, (await s.ReadAsync(alfa.Id)).BackupAcceptedByUserId);
         Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(alfa.Id)).Status);
 
-        // Accepting as a backup is for a backup that waits: the primary's request is not one, nor is another supplier's.
         var notABackup = await Assert.ThrowsAsync<DomainRuleException>(
             () => s.Service.AcceptAsBackupAsync(primary.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId));
         Assert.Equal(ServiceRequestGroupErrorCodes.NotAWaitingBackup, notABackup.Code);
@@ -719,12 +671,10 @@ public class ServiceRequestBackupGroupTests
         Assert.Null(inInbox.Notes);
         Assert.Null(inInbox.Location.PropertyName);
 
-        // The chosen supplier sees its own request with the priority of its hour.
         var primaryView = await s.Reader.GetAsync(primary.Id, s.SupplierOrgId);
         Assert.Equal(SupplierBackupRoles.Primary, primaryView!.Backup!.Role);
         Assert.Equal(SupplierBackupStates.Priority, primaryView.Backup.State);
 
-        // Once the backup has the job it is a request like any other: the property and the notes come with the take.
         await s.Service.AcceptAsBackupAsync(alfa.Id, alfa.SupplierOrgId, alfa.Member);
         Assert.Equal(SupplierBackupStates.Accepted, (await s.Reader.GetAsync(alfa.Id, alfa.SupplierOrgId))!.Backup!.State);
         s.Clock.Advance(PrimaryWindow);
@@ -736,7 +686,6 @@ public class ServiceRequestBackupGroupTests
         Assert.Equal(ServiceRequestScenario.HostNotes, won.Notes);
         Assert.Equal(SupplierBackupStates.Won, won.Backup!.State);
 
-        // The primary that did not answer has a cancelled request and no more to do with the group.
         var lost = await s.Reader.GetAsync(primary.Id, s.SupplierOrgId);
         Assert.Equal(ServiceRequestStatus.Annullato, lost!.Status);
         Assert.Null(lost.Backup);
@@ -779,11 +728,9 @@ public class ServiceRequestBackupGroupTests
 
         var waiting = await Job(s).RunAsync();
 
-        // The window passed, but the supplier did answer: nobody is given the job over the host's head.
         Assert.Equal(ServiceRequestGroupRun.Empty with { Examined = 1 }, waiting);
         Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(alfa.Id)).Status);
 
-        // The host turns the time down: the hour starts again for the primary and the backups together.
         await s.Service.RejectProposalAsync(primary.Id, s.HostOrgId);
         var group = await s.Db.ServiceRequestGroups.AsNoTracking().SingleAsync();
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime + PrimaryWindow, group.PrimaryDueAt);
@@ -799,12 +746,10 @@ public class ServiceRequestBackupGroupTests
         var (primary, alfa, beta) = await CreateGroupAsync(s);
         List<ServiceRequestQuoteLine> lines = [new("Pulizia profonda", 30000)];
 
-        // A backup answers the request as it is or refuses: the host would be answering a supplier it did not choose.
         var refused = await Assert.ThrowsAsync<DomainRuleException>(() => s.Service.SendQuoteAsync(
             alfa.Id, alfa.SupplierOrgId, alfa.Member, new SendServiceRequestQuoteCommand(lines, null, null)));
         Assert.Equal(ServiceRequestGroupErrorCodes.BackupCannotQuote, refused.Code);
 
-        // The primary's quote is the host's to answer: the hour passes and nobody is given the job over the host's head.
         await s.Service.AcceptAsBackupAsync(alfa.Id, alfa.SupplierOrgId, alfa.Member);
         var quoted = await s.Service.SendQuoteAsync(
             primary.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId, new SendServiceRequestQuoteCommand(lines, null, null));
@@ -812,7 +757,6 @@ public class ServiceRequestBackupGroupTests
         Assert.Equal(ServiceRequestGroupRun.Empty with { Examined = 1 }, await Job(s).RunAsync());
         Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(alfa.Id)).Status);
 
-        // The host accepts the quote: that is the primary's take, and the backups are closed.
         await s.Service.AcceptQuoteAsync(primary.Id, s.HostOrgId, quoted.QuoteSentAt!.Value);
 
         Assert.Equal(ServiceRequestStatus.PresoInCarico, (await s.ReadAsync(primary.Id)).Status);
@@ -840,7 +784,6 @@ public class ServiceRequestBackupGroupTests
 
         await s.Service.TakeAsync(alfa.Id, alfa.SupplierOrgId, alfa.Member);
 
-        // The database refuses a quote on a request that is not new: it is cleared with the cancellation.
         var lost = await s.ReadAsync(primary.Id);
         Assert.Equal(ServiceRequestStatus.Annullato, lost.Status);
         Assert.Equal(ServiceRequestCancellationReasons.NoResponse, lost.CancellationReason);
@@ -867,12 +810,9 @@ public class ServiceRequestBackupGroupTests
         Assert.Contains("2 failed", warning.Message);
     }
 
-    // ─── Helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────
-
     private static ServiceRequestGroupRunService Job(ServiceRequestScenario s) =>
         new(s.Db, s.Service, NullLogger<ServiceRequestGroupRunService>.Instance, s.Clock);
 
-    /// <summary>An active supplier of the scenario's comune and category: a possible backup. Its e-mail is its legal name, dashed.</summary>
     private static async Task<Guid> AddBackupAsync(ServiceRequestScenario s, string legalName)
     {
         var email = $"{legalName.Replace(' ', '-').ToLowerInvariant()}@test.com";
@@ -902,14 +842,12 @@ public class ServiceRequestBackupGroupTests
         return org.Id;
     }
 
-    /// <summary>The backups switched on and two backups in the comune, "Alfa Srl" and "Beta Srl".</summary>
     private static async Task<(Guid Alfa, Guid Beta)> AddTwoBackupsAsync(ServiceRequestScenario s)
     {
         s.Flags.Set(FeatureFlags.SupplierRequestBackups, true);
         return (await AddBackupAsync(s, "Alfa Srl"), await AddBackupAsync(s, "Beta Srl"));
     }
 
-    /// <summary>A request of the host sent to the scenario's supplier and to two backups, "Alfa Srl" and "Beta Srl".</summary>
     private static async Task<(ServiceRequest Primary, BackupSide Alfa, BackupSide Beta)> CreateGroupAsync(ServiceRequestScenario s)
     {
         var (alfa, beta) = await AddTwoBackupsAsync(s);

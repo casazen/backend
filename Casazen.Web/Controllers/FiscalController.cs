@@ -70,8 +70,6 @@ public class FiscalController(
         {
             return FiscalProblem(ex);
         }
-        // Over the short-rental threshold the service throws DomainConflictException (409, code
-        // fiscal_short_stay_threshold_exceeded), turned into a localized problem by the error middleware.
     }
 
     /// <summary>
@@ -86,7 +84,6 @@ public class FiscalController(
         if (orgId is null)
             return Unauthorized();
 
-        // A property of another org, or of another owner for a caller without org-wide access, answers 404.
         var resource = await hostResources.ForPropertyAsync(propertyId, cancellationToken);
         if (resource is null || !await authorizationService.IsAuthorizedAsync(User, resource, PropertyOperations.Write))
             return NotFound();
@@ -170,7 +167,6 @@ public class FiscalController(
         }
     }
 
-    /// <summary>OTA withholding per intermediary and per payment (CO-19). Same period rules as the summary.</summary>
     [HttpGet("reports/withholding/{taxYear:int}")]
     public async Task<IActionResult> WithholdingReport(
         int taxYear,
@@ -251,7 +247,6 @@ public class FiscalController(
         return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
     }
 
-    /// <summary>Period inside the tax year: null (the whole year) when neither bound is given, else the missing bound is the year's.</summary>
     private static FiscalReportPeriod? YearPeriod(int taxYear, DateOnly? from, DateOnly? to)
     {
         if (from is null && to is null)

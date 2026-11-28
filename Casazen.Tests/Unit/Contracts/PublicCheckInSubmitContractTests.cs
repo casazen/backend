@@ -16,10 +16,8 @@ namespace Casazen.Tests.Unit.Contracts;
 /// </summary>
 public class PublicCheckInSubmitContractTests
 {
-    /// <summary>Same list as <c>BACKEND_REQUIRED_FIELDS</c> in the frontend contract test: change both together.</summary>
     private static readonly string[] FrontendRequiredFields = ["guests"];
 
-    /// <summary>Same list as <c>BACKEND_REQUIRED_GUEST_FIELDS</c> in the frontend contract test.</summary>
     private static readonly string[] FrontendRequiredGuestFields =
     [
         "bornInItaly",
@@ -66,11 +64,6 @@ public class PublicCheckInSubmitContractTests
         }
     }
 
-    /// <summary>
-    /// NF-05: the per-channel consent fields are optional and bind from the camelCase names the frontend sends
-    /// (<c>marketingConsentEmail</c>, <c>marketingConsentWhatsApp</c>, <c>marketingEmail</c>); a payload without them, or with
-    /// only the legacy <c>marketingConsent</c>, reads as before.
-    /// </summary>
     [Fact]
     public void MarketingConsentFields_Deserialized_BindFromCamelCaseNamesAndDefaultToNotGiven()
     {

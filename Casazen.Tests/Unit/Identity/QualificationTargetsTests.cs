@@ -5,10 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// E74/F01/US01/T02: the targets of the qualification are read from <c>Fixtures/Qualification/qualification-targets.json</c> (the proposals of the specification,
-/// for the product owner to confirm), or from another file of the same shape, and never come from a number written in C#.
-/// </summary>
 public sealed class QualificationTargetsTests : IDisposable
 {
     private readonly string _folder = Path.Combine(Path.GetTempPath(), "casazen-qualification-targets-" + Guid.NewGuid().ToString("N"));
@@ -88,7 +84,6 @@ public sealed class QualificationTargetsTests : IDisposable
     [Fact]
     public void QualificationTargets_AnUnknownMemberOrABrokenText_IsRefused_WithoutQuotingIt()
     {
-        // The NAME of a member it does not know is text the author typed too, and the path of the parser holds it.
         string[] texts =
         [
             TargetsJson(("fmrMaxx", "0.5")),
@@ -112,7 +107,6 @@ public sealed class QualificationTargetsTests : IDisposable
     [Fact]
     public void QualificationTargets_ARefusedText_NamesOnlyKnownMembers_AndTheLineCountsFromOne()
     {
-        // (text, message): a member the file knows is written as the model writes it, whatever the letter case; any other name is "?".
         (string Text, string Message)[] cases =
         [
             (TargetsJson(("fmrMaxx", "0.5")), "The qualification targets cannot be read (at $.?, line 1)."),
@@ -137,24 +131,19 @@ public sealed class QualificationTargetsTests : IDisposable
     {
         var targets = QualificationTargets.Load();
 
-        // 425 of 500 closed automatically: the lower Wilson bound clears the 80% (the example of the specification).
         Assert.True(IdentityStatistics.Wilson(targets.AutomationTarget, targets.AutomationOf).Low >= targets.AutomationWilsonLowMin);
         Assert.True(IdentityStatistics.Wilson(targets.AutomationTarget - 25, targets.AutomationOf).Low < targets.AutomationWilsonLowMin);
 
-        // The minimum of attacks per class with none accepted is enough for the bound of a class; one accepted attack among them is not.
         Assert.True(IdentityStatistics.ClopperPearsonUpper(0, targets.MinAttacksPerClass, targets.Confidence) <= targets.ApcerUpperMax);
         Assert.True(IdentityStatistics.ClopperPearsonUpper(1, targets.MinAttacksPerClass, targets.Confidence) > targets.ApcerUpperMax);
 
-        // About 30,000 independent impostor comparisons with no false match give the bound of the false match rate; far fewer do not.
         Assert.True(IdentityStatistics.ClopperPearsonUpper(0, 30_000, targets.Confidence) <= targets.FmrMax);
         Assert.True(IdentityStatistics.ClopperPearsonUpper(0, 29_000, targets.Confidence) > targets.FmrMax);
 
-        // An identifying field read exactly 299 times out of 300 clears the lower bound of its exactness; 295 of 300 does not.
         Assert.True(IdentityStatistics.Wilson(299, 300).Low > targets.IdentifyingFieldExactnessMin);
         Assert.True(IdentityStatistics.Wilson(295, 300).Low < targets.IdentifyingFieldExactnessMin);
     }
 
-    // The default targets as JSON members, with the given members replaced (a null value removes the member, a new name adds one).
     private static string TargetsJson(params (string Member, string? Value)[] changes)
     {
         var members = new Dictionary<string, string?>

@@ -21,14 +21,11 @@ namespace Casazen.Core.Options;
 /// </remarks>
 public sealed class ItalianTouristTaxOptions
 {
-    /// <summary>The section the options are read from.</summary>
     public const string SectionName = "ItalianTouristTax";
 
-    /// <summary>The channels whose portal collects the Italian tourist tax itself, by default; the names of <see cref="BookingSource"/>. Empty by default.</summary>
     public List<BookingSource> PlatformCollected { get; set; } = [];
 }
 
-/// <summary>The checks of the Italian tourist tax options at startup (<see cref="ItalianTouristTaxOptions"/>): every problem is named with its key.</summary>
 public sealed class ItalianTouristTaxOptionsValidator : IValidateOptions<ItalianTouristTaxOptions>
 {
     public ValidateOptionsResult Validate(string? name, ItalianTouristTaxOptions options)
@@ -38,7 +35,6 @@ public sealed class ItalianTouristTaxOptionsValidator : IValidateOptions<Italian
         return problems.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(problems);
     }
 
-    /// <summary>What is wrong with the options; empty when they can be used.</summary>
     public static IReadOnlyList<string> Problems(ItalianTouristTaxOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);

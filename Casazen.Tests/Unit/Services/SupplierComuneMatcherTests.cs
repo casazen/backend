@@ -46,7 +46,6 @@ public class SupplierComuneMatcherTests
     [Fact]
     public async Task FilterAsync_OldCadastralCodeF205_IsMilanoNotFirenze()
     {
-        // The audit case: an invite with comune=F205 for a supplier of Milano showed it to the hosts of Firenze.
         await using var db = CreateDb();
         await ComuneTestData.ImportSampleAsync(db);
         var supplier = Supplier(written: ["F205"]);
@@ -82,7 +81,6 @@ public class SupplierComuneMatcherTests
         await using var db = CreateDb();
         await ComuneTestData.ImportSampleAsync(db);
 
-        // 010025 is Genova; Torino is 001272 (the old registry said Torino for 010025).
         var torino = Supplier(chosen: [ComuneTestData.Torino]);
         var genova = Supplier(chosen: [ComuneTestData.Genova]);
 
@@ -94,7 +92,6 @@ public class SupplierComuneMatcherTests
     [Fact]
     public async Task FilterAsync_PropertyCityWithAProvinceSuffix_MatchesByTheChosenCode()
     {
-        // The audit case (b): the supplier writes "Cesano Maderno", the property's city is "Cesano Maderno (MB)".
         await using var db = CreateDb();
         await ComuneTestData.ImportSampleAsync(db);
         var supplier = Supplier(written: ["Cesano Maderno"]);
@@ -125,7 +122,6 @@ public class SupplierComuneMatcherTests
         await ComuneTestData.ImportSampleAsync(db);
         var supplier = Supplier(written: ["Castro"]);
 
-        // Not resolvable: the written name equals the written city, as it did before the list.
         Assert.Single(await Matcher(db).FilterAsync([supplier], new ComuneTarget(null, "castro")));
         Assert.Empty(await Matcher(db).FilterAsync([supplier], new ComuneTarget(null, "Roma")));
     }
@@ -138,7 +134,6 @@ public class SupplierComuneMatcherTests
         var matcher = Matcher(db);
 
         Assert.Single(await matcher.FilterAsync([supplier], new ComuneTarget(null, "ROMA")));
-        // Nothing can say that H501 is Roma without the list.
         Assert.Empty(await matcher.FilterAsync([Supplier(written: ["H501"])], new ComuneTarget(null, "Roma")));
         Assert.Empty(await matcher.FilterAsync([supplier], new ComuneTarget(null, "Milano")));
     }

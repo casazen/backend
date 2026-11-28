@@ -21,8 +21,6 @@ public class ServiceRequestOfferRulesTests
     private static readonly DateTime SentAt = new(2026, 10, 9, 9, 0, 0, 123, DateTimeKind.Utc);
     private static readonly DateTime Start = new(2026, 10, 12, 8, 0, 0, DateTimeKind.Utc);
 
-    // ─── Lines and total ─────────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public void Normalize_TheAmountOfALineIsTheQuantityTimesThePriceOfOne_AndTheTotalAddsThemUp()
     {
@@ -41,7 +39,6 @@ public class ServiceRequestOfferRulesTests
     [Fact]
     public void Normalize_TheLimitsAreTheOnesOfTheQuote_AnOfferAtTheBoundIsValidAndOneCentMoreIsNot()
     {
-        // The bound of a request is the bound of the catalog: 100,000 euro in cents, for a line and for the total.
         var bound = ServiceRequestLimits.MaxAmountCents;
 
         var (_, atTheBound) = ServiceRequestOfferRules.Normalize([new ServiceRequestOfferLine("Intero cantiere", 1, bound)]);
@@ -50,7 +47,6 @@ public class ServiceRequestOfferRulesTests
         AssertInvalid([new ServiceRequestOfferLine("Intero cantiere", 1, bound + 1)]);
         AssertInvalid([new ServiceRequestOfferLine("A", 1, bound), new ServiceRequestOfferLine("B", 1, 1)]);
 
-        // A line whose product is above the bound is refused, and a product above int is not a wrap-around to something valid.
         AssertInvalid([new ServiceRequestOfferLine("Molte ore", ServiceRequestOfferRules.MaxQuantity, bound)]);
         AssertInvalid([new ServiceRequestOfferLine("Molte ore", int.MaxValue, int.MaxValue)]);
     }
@@ -71,14 +67,12 @@ public class ServiceRequestOfferRulesTests
         AssertInvalid([new ServiceRequestOfferLine("Gratis", 1, 0)]);
         AssertInvalid([new ServiceRequestOfferLine("Negativo", 1, -100)]);
 
-        // One good line does not save a bad one next to it.
         AssertInvalid([new ServiceRequestOfferLine("Buona", 1, 100), new ServiceRequestOfferLine("Cattiva", 0, 100)]);
     }
 
     [Fact]
     public void ALineOfAnOffer_KeepsItsQuantityAndItsPrice_AndAQuoteOfSP04b_KeepsTheJsonItAlwaysHad()
     {
-        // A quote written before the offer has no quantity: nothing about it changes in the column.
         Assert.Equal(
             "[{\"label\":\"Pulizia\",\"amountCents\":30000}]",
             ServiceRequestJson.Serialize(new[] { new ServiceRequestQuoteLine("Pulizia", 30000) }));
@@ -86,17 +80,13 @@ public class ServiceRequestOfferRulesTests
         var written = ServiceRequestJson.Serialize(new[] { new ServiceRequestQuoteLine("Posa", 9000, 2, 4500) });
         Assert.Equal(new ServiceRequestQuoteLine("Posa", 9000, 2, 4500), Assert.Single(ServiceRequestJson.ReadQuoteLines(written)));
 
-        // A row written before SP-10b-b reads without them.
         Assert.Equal(
             new ServiceRequestQuoteLine("Vecchia", 100),
             Assert.Single(ServiceRequestJson.ReadQuoteLines("[{\"label\":\"Vecchia\",\"amountCents\":100}]")));
 
-        // The lines the customer agreed to are the price lines of the work, with how many and at what price of one.
         var price = Assert.Single(ServiceRequestQuoteRules.AsPriceLines([new ServiceRequestQuoteLine("Posa", 9000, 2, 4500)]));
         Assert.Equal(new ServiceRequestPriceLine(ServiceRequestPriceLineKinds.Quote, "Posa", 9000, 2, 4500), price);
     }
-
-    // ─── The offer that waits ────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void PendingOf_IsTheQuoteOfARequestOnMeasure_WithItsTimeAndTheDeadlineOfTheCustomer()
@@ -114,7 +104,6 @@ public class ServiceRequestOfferRulesTests
         Assert.Null(offer.Note);
         Assert.Equal(new ServiceRequestQuoteLine("Posa", 9000, 2, 4500), Assert.Single(offer.Lines));
 
-        // The same facts are the quote of the engine: one engine, not two mechanisms (decision SP-D30).
         Assert.NotNull(ServiceRequestQuoteRules.PendingOf(request));
     }
 
@@ -158,14 +147,11 @@ public class ServiceRequestOfferRulesTests
         Assert.False(ServiceRequestOfferRules.LastOfferDeclined(Events(ServiceRequestQuoteEventKinds.Sent)));
         Assert.True(ServiceRequestOfferRules.LastOfferDeclined(Events(ServiceRequestQuoteEventKinds.Sent, ServiceRequestQuoteEventKinds.Rejected)));
 
-        // A new offer after the no, and an offer the supplier took back, are not "declined".
         Assert.False(ServiceRequestOfferRules.LastOfferDeclined(
             Events(ServiceRequestQuoteEventKinds.Sent, ServiceRequestQuoteEventKinds.Rejected, ServiceRequestQuoteEventKinds.Sent)));
         Assert.False(ServiceRequestOfferRules.LastOfferDeclined(
             Events(ServiceRequestQuoteEventKinds.Sent, ServiceRequestQuoteEventKinds.Withdrawn)));
     }
-
-    // ─── Where the negotiation is ────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData(ServiceRequestStatus.Richiesto, false, false, false, null, ServiceRequestNegotiation.AwaitingSupplier)]
@@ -199,7 +185,6 @@ public class ServiceRequestOfferRulesTests
             ServiceRequestNegotiation.AwaitingPayment,
             ServiceRequestNegotiation.Of(ServiceRequestStatus.Richiesto, true, offerPending: true, awaitingPayment: true));
 
-        // Without a standing offer, or once the request moved on, a payment says nothing about the negotiation.
         Assert.Equal(
             ServiceRequestNegotiation.InConversation,
             ServiceRequestNegotiation.Of(ServiceRequestStatus.Richiesto, true, offerPending: false, awaitingPayment: true));
@@ -208,13 +193,11 @@ public class ServiceRequestOfferRulesTests
             ServiceRequestNegotiation.Of(ServiceRequestStatus.PresoInCarico, true, offerPending: false, awaitingPayment: true));
     }
 
-    // ─── The card of an offer ────────────────────────────────────────────────────────────────────────────────────────
-
     [Theory]
-    [InlineData(12000, 0, true)] // made for the total, after the offer was sent
+    [InlineData(12000, 0, true)]
     [InlineData(12000, 30, true)]
-    [InlineData(12000, -1, false)] // made before the offer was sent: the card of an offer that was replaced
-    [InlineData(11999, 0, false)] // another total
+    [InlineData(12000, -1, false)]
+    [InlineData(11999, 0, false)]
     [InlineData(12001, 5, false)]
     public void IsPaymentOfOffer_OnlyForTheTotalOfTheOffer_AndCreatedAfterTheSupplierSentIt(int paymentCents, int createdMinutesAfterTheOffer, bool expected)
     {
@@ -233,8 +216,6 @@ public class ServiceRequestOfferRulesTests
         Assert.Equal(expected, ShowcaseBookingManagementRules.PaymentStatusOf(status));
     }
 
-    // ─── Codes and texts ─────────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public void MessageKeys_EveryKeyOfTheOffer_ExistsInItalianAndEnglishWithDifferentText()
     {
@@ -251,7 +232,6 @@ public class ServiceRequestOfferRulesTests
             Assert.NotEqual(italian[key], english[key]);
         });
 
-        // The messages of the validation of the body (the attributes of the DTOs name them).
         foreach (var key in new[] { "ServiceRequestOfferQuantityOutOfRange", "ServiceRequestOfferStartRequired", "ServiceRequestOfferSentAtRequired" })
         {
             Assert.True(italian.ContainsKey(key) && english.ContainsKey(key), key);
@@ -273,8 +253,6 @@ public class ServiceRequestOfferRulesTests
         Assert.DoesNotContain(ShowcaseBookingQuoteErrors.NoQuote, codes);
         Assert.DoesNotContain(Casazen.Core.Services.ServiceRequestErrorCodes.QuoteChanged, codes);
     }
-
-    // ─── helpers ───
 
     private static void AssertInvalid(IReadOnlyList<ServiceRequestOfferLine>? lines)
     {

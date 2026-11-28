@@ -13,15 +13,12 @@ public sealed class AccountantPackageSettingsDto
 
     public string? Email { get; init; }
 
-    /// <summary>The day of the month the send is due, 1 to 28 (Europe/Rome); from that day the previous month goes at the first run, until it is sent.</summary>
     public int SendDay { get; init; }
 
     public IReadOnlyList<string> Contents { get; init; } = [];
 
-    /// <summary>The last attempt; <c>null</c> before the first.</summary>
     public AccountantPackageLastSendDto? LastSend { get; init; }
 
-    /// <summary>When a person saved the settings last (UTC); <c>null</c> for an organization that saved none.</summary>
     public DateTime? UpdatedAt { get; init; }
 
     public static AccountantPackageSettingsDto From(AccountantPackageSettingsView view)
@@ -40,19 +37,15 @@ public sealed class AccountantPackageSettingsDto
     }
 }
 
-/// <summary>What the last attempt to send the package ended in: the month, when, <c>sent</c> or <c>failed</c> and, for a failure, the stable code of why (never a text, an address or a name).</summary>
 public sealed class AccountantPackageLastSendDto
 {
-    /// <summary>The month the package was of (<c>yyyy-MM</c>).</summary>
     public string Period { get; init; } = string.Empty;
 
-    /// <summary>When the attempt ended (UTC).</summary>
     public DateTime At { get; init; }
 
     /// <summary><c>sent</c>: the e-mail with the link is in the queue of the e-mails (the queue delivers it and retries); <c>failed</c>: nothing was sent and the next run tries again.</summary>
     public string Result { get; init; } = string.Empty;
 
-    /// <summary><c>null</c> for a send; for a failure <c>package_too_large</c>, <c>package_failed</c>, <c>storage_failed</c>, <c>link_not_configured</c> or <c>email_not_queued</c>.</summary>
     public string? Error { get; init; }
 
     public static AccountantPackageLastSendDto From(AccountantPackageLastSend last)
@@ -76,10 +69,6 @@ public sealed record AccountantPackageEmailQueuedDto(string Period, bool Queued,
     }
 }
 
-/// <summary>
-/// The body of <c>PUT api/accountant-package/settings</c>: all the settings, as a whole. A field that is missing is a refusal (422 <c>accountant_package_settings_invalid</c>), never a value (a send that turns off, a
-/// day 0); an empty <c>contents</c> never means every folder (422 <c>accountant_package_contents_invalid</c>). <c>email</c> empty or <c>null</c> clears the address, and the monthly send cannot stay on without one.
-/// </summary>
 public sealed record SaveAccountantPackageSettingsRequest
 {
     public bool? Enabled { get; init; }

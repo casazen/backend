@@ -42,7 +42,6 @@ public class PropertyRoomService(
     {
         ArgumentNullException.ThrowIfNull(rooms);
 
-        // The rules first: nothing is locked or read for a list that cannot be stored.
         var normalized = PropertyRoomRules.Normalize(rooms);
 
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
@@ -52,10 +51,8 @@ public class PropertyRoomService(
         if (property is null)
             return null;
 
-        // The rooms are part of the listing, which only a short-stay property has.
         PropertyRentalModeRules.EnsureShortRent(property);
 
-        // The request may already have read (and tracked) this row before the lock was free: the room of the photos must be the committed one.
         await db.Entry(property).ReloadAsync(cancellationToken);
 
         var stored = await db.PropertyRooms.Where(r => r.PropertyId == propertyId).ToListAsync(cancellationToken);
@@ -68,7 +65,6 @@ public class PropertyRoomService(
             PropertyRoom row;
             if (input.Id is { } id)
             {
-                // A room of another property is as if it did not exist.
                 row = byId.GetValueOrDefault(id)
                     ?? throw new NotFoundException($"Room not in property {propertyId}")
                     {

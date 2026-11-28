@@ -79,13 +79,10 @@ public class StripeWebhookHandler(
     {
         await using var eventTransaction = await BeginEventTransactionAsync();
 
-        // A ConcordatoFacile event (ADR-005) is claimed under its own source (R5). Decided once, here: the dispatch below reuses it.
         var cfPayment = stripeEvent.Type == "payment_intent.succeeded"
             && IsConcordatoFacilePayment(stripeEvent.Data.Object as PaymentIntent);
         var cfRefund = stripeEvent.Type == "charge.refunded"
             && await IsConcordatoFacileRefundAsync(stripeEvent.Data.Object as Charge);
-        // CF-BE: a payment of the service that failed or whose PaymentIntent was canceled. It closes the purchase only when the Checkout
-        // Session cannot succeed any more (ConcordatoFacilePaymentHandler.HandlePaymentNotCompletedAsync).
         var cfPaymentEnded = stripeEvent.Type is "payment_intent.payment_failed" or "payment_intent.canceled"
             && IsConcordatoFacilePayment(stripeEvent.Data.Object as PaymentIntent);
 
@@ -102,24 +99,15 @@ public class StripeWebhookHandler(
             return;
         }
 
-        // Refunds that Stripe has just confirmed: the guest is emailed once the event is committed.
         IReadOnlyList<Guid> succeededRefunds = [];
-        // Booking confirmed (BK-10), confirmed again or refunded (BK-04): Stripe call and emails once the event is committed.
         CheckoutPaymentSettlement? checkoutSettlement = null;
-        // Deferred charge failed (BK-08): guest and host emails once the event is committed.
         DeferredChargeNotice? deferredChargeNotice = null;
-        // Rent installment paid or failed (LT-06): landlord or tenant emails once the event is committed.
         RentPaymentNotice? rentNotice = null;
         // Platform invoice paid (PL-13): submitted to the configured SDI provider once the event is committed.
         Guid? sdiSubmission = null;
-        // Payment of a supplier's service (SP-15b): the receipt, the new link, the alert to the admins, the refund notices, once the event is committed.
         IReadOnlyList<ServicePaymentNotice> servicePaymentNotices = [];
-        // The card of a booking from a supplier's showcase was blocked and completed the booking (SP-15c-a): the receipt to the customer and the
-        // news to the supplier go once the event is committed.
         ShowcaseHoldCompletion? holdCompletion = null;
-        // A supplier that has just become able to receive payments (SP-15b): the payment requests that waited for it go out once the event is committed.
         Guid? readySupplierOrgId = null;
-        // The tourist tax a guest paid online (E25/F01/US01/T01): the hosts are told once the event is committed.
         TouristTaxPaidNotice? touristTaxPaid = null;
         try
         {
@@ -166,7 +154,6 @@ public class StripeWebhookHandler(
                     await (hostExtras ?? throw new InvalidOperationException("Host extra settlement is unavailable."))
                         .ObserveAsync(extraIntent, extraAccount, CancellationToken.None);
                     break;
-                // Tourist tax also settles independently of the lodging payment.
                 case "payment_intent.succeeded" when IsTouristTax(stripeEvent.Data.Object as PaymentIntent):
                     touristTaxPaid = await HandleTouristTaxPaymentAsync((PaymentIntent)stripeEvent.Data.Object, stripeEvent);
                     break;
@@ -186,18 +173,13 @@ public class StripeWebhookHandler(
                 case "payment_intent.canceled" when IsBankLink(stripeEvent.Data.Object as PaymentIntent):
                     rentNotice = await HandleBankLinkAsync((PaymentIntent)stripeEvent.Data.Object, stripeEvent.Type);
                     break;
-                // ConcordatoFacile one-time payment (ADR-005): BEFORE the generic payment_intent.succeeded, like rent and service charges.
-                // CF payments are identified by leaseId in metadata without a "kind" field.
                 case "payment_intent.succeeded" when cfPayment:
                     await CfPayments.HandlePaymentIntentSucceededAsync((PaymentIntent)stripeEvent.Data.Object, stripeEvent.Created);
                     break;
-                // The same payments when they fail or are canceled (CF-BE): BEFORE the generic failure below, which knows nothing of them.
                 case "payment_intent.payment_failed" when cfPaymentEnded:
                 case "payment_intent.canceled" when cfPaymentEnded:
                     await CfPayments.HandlePaymentNotCompletedAsync((PaymentIntent)stripeEvent.Data.Object, stripeEvent.Type);
                     break;
-                // Filing fee is a platform Checkout charge. A Connect PaymentIntent with the same kind is the host's own
-                // charge: it must not mark the fee paid (the generic handler below already drops those).
                 case "payment_intent.succeeded" when source == WebhookSource.Platform
                     && OpenapiRegistrationPaymentHandler.IsPayment(stripeEvent.Data.Object as PaymentIntent):
                     await OpenapiPayments.HandlePaymentIntentSucceededAsync(
@@ -210,7 +192,6 @@ public class StripeWebhookHandler(
                 case "payment_intent.processing" when IsServiceCharge(stripeEvent.Data.Object as PaymentIntent):
                 case "payment_intent.payment_failed" when IsServiceCharge(stripeEvent.Data.Object as PaymentIntent):
                 case "payment_intent.canceled" when IsServiceCharge(stripeEvent.Data.Object as PaymentIntent):
-                // SP-15c-a: the card of a booking is blocked (the PaymentIntent of the money CasaZen holds is a manual-capture one).
                 case "payment_intent.amount_capturable_updated" when IsServiceCharge(stripeEvent.Data.Object as PaymentIntent):
                     (servicePaymentNotices, holdCompletion) = await HandleServiceChargeAsync(
                         stripeEvent, (PaymentIntent)stripeEvent.Data.Object, source);
@@ -221,7 +202,6 @@ public class StripeWebhookHandler(
                 case "charge.expired" when IsServiceChargeOf(stripeEvent.Data.Object as Charge):
                     servicePaymentNotices = await HandleServiceChargeEventAsync(stripeEvent, (Charge)stripeEvent.Data.Object);
                     break;
-                // SP-15c-a: the transfer that pays a supplier, and its reversal.
                 case "transfer.created":
                 case "transfer.reversed":
                     servicePaymentNotices = await HandleServiceTransferAsync(stripeEvent);
@@ -240,8 +220,6 @@ public class StripeWebhookHandler(
                     break;
                 case "charge.refunded":
                     {
-                        // A refund of a supplier's service payment is recorded by the service payments (SP-15b); a CF refund is
-                        // handled by the CF handler (ADR-005-R7); any other is a booking payment's, as before.
                         var charge = stripeEvent.Data.Object as Charge;
                         var serviceRefund = await HandleServiceChargeRefundedAsync(charge, stripeEvent.Account);
                         if (serviceRefund is { Handled: true })
@@ -313,7 +291,6 @@ public class StripeWebhookHandler(
             if (eventTransaction is not null)
             {
                 await eventTransaction.RollbackAsync();
-                // The tracked entities no longer match the database after the rollback.
                 dbContext.ChangeTracker.Clear();
             }
             else
@@ -363,7 +340,6 @@ public class StripeWebhookHandler(
         if (readySupplierOrgId is { } supplierOrgId)
             supplierPayments.ScheduleSendPendingRequests(supplierOrgId);
 
-        // The bell, the pop-up and the open pages of the hosts hear of the tourist tax paid online; it never throws.
         if (touristTaxPaid is not null && touristTaxCollection is not null)
             await touristTaxCollection.CompletePaidAsync(touristTaxPaid);
     }
@@ -404,7 +380,6 @@ public class StripeWebhookHandler(
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            // Another worker committed the same event while this insert waited on its uncommitted claim.
             dbContext.ChangeTracker.Clear();
             return false;
         }
@@ -443,7 +418,7 @@ public class StripeWebhookHandler(
             return;
 
         if (!string.Equals(org.SubscriptionId, subscription.Id, StringComparison.Ordinal))
-            org.PastDueSince = null; // the grace period belongs to the previous subscription
+            org.PastDueSince = null;
 
         org.SubscriptionId = subscription.Id;
         org.SubscriptionStatus = status;
@@ -463,8 +438,6 @@ public class StripeWebhookHandler(
             var tier = stripeBillingService.MapPriceIdToTier(priceId);
             if (tier.HasValue)
             {
-                // The activity log (AM-02b) hears of the plan change in the very save that writes it: nobody asked, the
-                // subscription did, so there is no actor.
                 if (org.PlanTier != tier.Value)
                 {
                     activityLog?.Record(OrgActivity.Of(
@@ -538,8 +511,6 @@ public class StripeWebhookHandler(
         await dbContext.SaveChangesAsync();
         await entitlementService.SyncFromSubscriptionAsync(org.Id);
 
-        // ADR-006-R1, ADR-006-R2: Grant ConcordatoFacile gift for biennial subscriptions
-        // Only on customer.subscription.created (not updated/deleted)
         if (eventType == "customer.subscription.created" && concordatoFacileGiftService is not null)
         {
             var priceId = subscription.Items?.Data?.FirstOrDefault(i => stripeBillingService.MapPriceIdToTier(i.Price?.Id).HasValue)?.Price?.Id;
@@ -602,7 +573,6 @@ public class StripeWebhookHandler(
         return true;
     }
 
-    /// <summary>A subscription that has been paid and still exists on Stripe.</summary>
     private static bool IsPaidSubscription(SubscriptionStatus status) =>
         status is SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.PastDue or SubscriptionStatus.Unpaid;
 
@@ -674,12 +644,6 @@ public class StripeWebhookHandler(
         org.UpdatedAt = DateTime.UtcNow;
     }
 
-    /// <summary>
-    /// A failed renewal of the org's paying subscription starts the past-due grace period. A failed first payment
-    /// (<c>billing_reason = subscription_create</c>) is not a renewal: the subscription stays incomplete, without
-    /// paid access (A1-11). Invoices of another subscription, or of a canceled, incomplete or unpaid one, change
-    /// nothing.
-    /// </summary>
     private async Task HandleInvoicePaymentFailedAsync(Invoice? invoice, string eventId)
     {
         if (invoice is null)
@@ -771,10 +735,6 @@ public class StripeWebhookHandler(
         return null;
     }
 
-    /// <summary>
-    /// Applies <c>account.updated</c> to the org that owns the account. Returns the supplier org that has just become able to take
-    /// charges and payouts, if it did (SP-15b): its pending payment requests are queued once the event is committed.
-    /// </summary>
     private async Task<Guid?> HandleAccountUpdatedAsync(Account? account)
     {
         if (account is null)
@@ -784,15 +744,11 @@ public class StripeWebhookHandler(
         var snapshot = StripeConnectGateway.MapAccount(account);
         var update = await connectOnboardingService.ApplyAccountUpdatedAsync(snapshot);
 
-        // SP-13a: the bookings of the supplier's showcase follow its account. They close when it stops being able to take charges and
-        // payouts (the new bookings; those already made stay) and open again when it can, inside the transaction of the event.
         if (showcaseContent is not null && update is { SupplierReadinessChanged: true, OrgId: { } supplierOrgId })
             await showcaseContent.ReconcileBookingsAsync(supplierOrgId);
 
         return update is { SupplierBecameReady: true, OrgId: { } orgId } ? orgId : null;
     }
-
-    // ─── Supplier service payments (SP-15b) ─────────────────────────────────────────────────────────────────────────
 
     private static bool IsServiceCharge(PaymentIntent? paymentIntent) =>
         paymentIntent is not null &&
@@ -823,16 +779,12 @@ public class StripeWebhookHandler(
             ? parsed
             : (Guid?)null;
 
-        // The booking hold a PaymentIntent of the money CasaZen holds blocks the card for, before any payment exists (SP-15c-a).
         var holdId = paymentIntent.Metadata is not null
                      && paymentIntent.Metadata.TryGetValue(ServiceCharges.HoldMetadataKey, out var holdRaw)
                      && Guid.TryParse(holdRaw, out var parsedHold)
             ? parsedHold
             : (Guid?)null;
 
-        // The card of a booking is blocked and the booking has no request yet (SP-15c-a): the block is the second of the two conditions that
-        // make the request (the other is the check of the e-mail). A hold that is already a request, or that does not exist, is not handled
-        // here: the event is then about a payment, which follows below.
         if (stripeEvent.Type == "payment_intent.amount_capturable_updated"
             && holdId is { } hold
             && showcaseBookings is not null
@@ -874,17 +826,12 @@ public class StripeWebhookHandler(
         return (notices, null);
     }
 
-    /// <summary>A charge that carries the markers of a service PaymentIntent (Stripe copies the metadata of a PaymentIntent to its charge).</summary>
     private static bool IsServiceChargeOf(Charge? charge) =>
         charge is { Metadata: not null }
         && !string.IsNullOrWhiteSpace(charge.PaymentIntentId)
         && charge.Metadata.TryGetValue("kind", out var kind)
         && string.Equals(kind, ServiceCharges.Kind, StringComparison.Ordinal);
 
-    /// <summary>
-    /// <c>charge.captured</c> and <c>charge.expired</c> of the money CasaZen holds (SP-15c-a), applied as the PaymentIntent event they accompany
-    /// (<c>payment_intent.succeeded</c> and <c>payment_intent.canceled</c>), so the second to arrive finds the work done.
-    /// </summary>
     private async Task<IReadOnlyList<ServicePaymentNotice>> HandleServiceChargeEventAsync(Event stripeEvent, Charge charge)
     {
         var captured = stripeEvent.Type == "charge.captured";
@@ -912,10 +859,6 @@ public class StripeWebhookHandler(
             holdId));
     }
 
-    /// <summary>
-    /// <c>transfer.created</c> and <c>transfer.reversed</c> (SP-15c-a): the transfers CasaZen makes to the suppliers carry the id of their
-    /// payment in the metadata. A transfer made for anything else (the platform has other flows) is not ours: nothing happens.
-    /// </summary>
     private async Task<IReadOnlyList<ServicePaymentNotice>> HandleServiceTransferAsync(Event stripeEvent)
     {
         if (stripeEvent.Data.Object is not Transfer transfer
@@ -944,7 +887,6 @@ public class StripeWebhookHandler(
         return result.Notices;
     }
 
-    /// <summary>When Stripe says the event happened; null when the event has no creation time (synthetic events).</summary>
     private static DateTime? EventTime(Event stripeEvent) =>
         stripeEvent.Created.Year >= 2000 ? DateTime.SpecifyKind(stripeEvent.Created, DateTimeKind.Utc) : null;
 
@@ -974,8 +916,6 @@ public class StripeWebhookHandler(
             dispute.Status,
             stripeEvent.Type);
 
-        // The created one keeps its own path (the error in the log and the e-mail to the admins, SP-15b); the later ones of the
-        // money CasaZen holds only update what is recorded on the payment (SP-15c-a).
         return stripeEvent.Type == "charge.dispute.created"
             ? await supplierPayments.ApplyDisputeCreatedAsync(disputeEvent)
             : await supplierPayments.ApplyDisputeChangedAsync(disputeEvent);
@@ -994,7 +934,6 @@ public class StripeWebhookHandler(
             return null;
 
         TryGetMetadataKind(paymentIntent, out var kind);
-        // On the Connect endpoint only the checkout's own PaymentIntents: the host's other charges are not CasaZen's.
         if (source == WebhookSource.Connected && !string.Equals(kind, DirectBookingKind, StringComparison.Ordinal))
             return null;
 
@@ -1131,7 +1070,6 @@ public class StripeWebhookHandler(
             EventTime(stripeEvent)));
     }
 
-    /// <summary>A refund of the charge of a tourist tax paid online (E25/F01/US01/T01): <c>true</c> when the charge is one, and the stay follows it.</summary>
     private async Task<bool> HandleTouristTaxRefundAsync(Charge? charge, string? account) =>
         touristTaxCollection is not null
         && charge is not null
@@ -1179,19 +1117,12 @@ public class StripeWebhookHandler(
         TryGetMetadataKind(paymentIntent, out var kind) &&
         string.Equals(kind, DeferredCharges.Kind, StringComparison.Ordinal);
 
-    /// <summary>
-    /// Checks if a PaymentIntent is for a ConcordatoFacile purchase (ADR-005).
-    /// CF payments are identified by the presence of "leaseId" in metadata (without a "kind" field).
-    /// </summary>
     private static bool IsConcordatoFacilePayment(PaymentIntent? paymentIntent) =>
         paymentIntent is not null &&
         paymentIntent.Metadata is not null &&
         paymentIntent.Metadata.ContainsKey("leaseId") &&
         !paymentIntent.Metadata.ContainsKey("kind");
 
-    /// <summary>
-    /// Checks if a Charge refund is associated with a ConcordatoFacile purchase (ADR-005-R7).
-    /// </summary>
     private async Task<bool> IsConcordatoFacileRefundAsync(Charge? charge)
     {
         if (charge is null || string.IsNullOrWhiteSpace(charge.PaymentIntentId))
@@ -1201,11 +1132,6 @@ public class StripeWebhookHandler(
             .AnyAsync(p => p.StripePaymentIntentId == charge.PaymentIntentId);
     }
 
-    /// <summary>
-    /// An event of a deferred charge PaymentIntent ("Paga alla scadenza", BK-08, A3-14), from the Connect endpoint or the
-    /// platform endpoint listening to connected accounts: succeeded, processing, failed (guest and host emailed once) or
-    /// canceled. A success on a booking that is no longer confirmed is settled like a late checkout payment (BK-04).
-    /// </summary>
     private async Task<(CheckoutPaymentSettlement? Settlement, DeferredChargeNotice? Notice)> HandleDeferredChargeAsync(
         PaymentIntent paymentIntent,
         string eventType,
@@ -1241,7 +1167,6 @@ public class StripeWebhookHandler(
         await UpdatePaymentStatusAsync(paymentIntent.Id, FailedOrCanceled(eventType));
     }
 
-    // A PaymentIntent canceled with its booking (BK-02) was never collected: Canceled, not Failed.
     private static PaymentStatus FailedOrCanceled(string eventType) =>
         eventType == "payment_intent.canceled" ? PaymentStatus.Canceled : PaymentStatus.Failed;
 
@@ -1269,7 +1194,6 @@ public class StripeWebhookHandler(
         return await paymentRefundService.SyncPaymentIntentRefundsAsync(charge.PaymentIntentId, connectedAccountId);
     }
 
-    /// <summary>A refund was created or changed status (pending → succeeded, failed, canceled).</summary>
     private async Task<IReadOnlyList<Guid>> HandleRefundChangedAsync(Refund? refund, WebhookSource source, string? account)
     {
         if (refund is null || string.IsNullOrWhiteSpace(refund.PaymentIntentId))
@@ -1282,7 +1206,6 @@ public class StripeWebhookHandler(
         return await paymentRefundService.ApplyStripeRefundsAsync([PaymentRefundService.ToSnapshot(refund)], connectedAccountId);
     }
 
-    /// <summary>Connect events carry the connected account they happened on; platform events have none.</summary>
     private bool TryGetRefundAccount(WebhookSource source, string? account, out string? connectedAccountId)
     {
         connectedAccountId = null;
@@ -1318,10 +1241,6 @@ public class StripeWebhookHandler(
         await paymentRepository.UpdateAsync(payment);
     }
 
-    /// <summary>
-    /// Checks if a Stripe Price ID is in the configured BiennialPriceIds array (ADR-006-R2).
-    /// Returns false if the configuration is not available or the array is null/empty.
-    /// </summary>
     private bool IsBiennialSubscriptionPrice(string priceId)
     {
         if (concordatoFacileOptions is null)

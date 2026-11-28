@@ -7,7 +7,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.GuestPortal;
 
-/// <summary>Catalog and ledger rules for the guest portal supplier sandbox.</summary>
 public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
 {
     public Task<int?> ConfiguredResponseMinutesAsync(Guid supplierOrgId, CancellationToken ct) =>
@@ -131,8 +130,6 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
             includeInternal ? order.SupplierReply : null, order.Decision, order.StripeSandbox, order.RefundStatus == "retrying" ? "processing" : order.RefundStatus, order.RefundRequestedCents,
             includeInternal ? order.BankDisputeStatus : null, order.StripeDeferred)
         {
-            // The service seller documents the full guest price. The commercial commission is already in that
-            // price and is payable by the supplier to the holder of the snapshotted distribution relationship.
             DocumentPlan = includeInternal && total > 0
                 ? new(order.SupplierOrgId, total, order.RefundCents,
                     order.CommissionCents == 0 ? null : new(order.HostOrigin ? "host" : "platform",

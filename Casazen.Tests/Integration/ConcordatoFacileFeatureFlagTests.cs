@@ -85,11 +85,6 @@ public sealed class ConcordatoFacileEnabledFactory : CasazenWebApplicationFactor
     }
 }
 
-/// <summary>
-/// The checkout takes its input from the route and the token, so the frontend may post it with no body and no Content-Type. The action
-/// bound an empty <c>[FromBody]</c> class and the pipeline answered 415 before the action ran (the first payment on the test environment
-/// failed this way). The other tests of the module send <c>{}</c> with a JSON Content-Type, which is why none of them saw it.
-/// </summary>
 public class ConcordatoFacileCheckoutRequestTests(ConcordatoFacileEnabledFactory factory) : IClassFixture<ConcordatoFacileEnabledFactory>
 {
     [Fact]

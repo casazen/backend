@@ -12,7 +12,6 @@ public class PublicPropertyPositionTests
     [Fact]
     public void Of_NoPositionAndAKnownComune_IsTheCentreOfTheComuneToAboutAKilometre()
     {
-        // Como: the centre in the seed is 45.8103, 9.0861.
         var (latitude, longitude) = PublicPropertyPosition.Of(0m, 0m, "013075");
 
         Assert.Equal(45.81m, latitude);
@@ -41,8 +40,8 @@ public class PublicPropertyPositionTests
     }
 
     [Theory]
-    [InlineData(0, 9.1)] // on the equator
-    [InlineData(51.48, 0)] // on the meridian of Greenwich
+    [InlineData(0, 9.1)]
+    [InlineData(51.48, 0)]
     public void Of_OnlyOneOfTheTwoIsZero_IsARealPositionAndIsKept(double latitude, double longitude)
     {
         var (shownLatitude, shownLongitude) = PublicPropertyPosition.Of((decimal)latitude, (decimal)longitude, "013075");

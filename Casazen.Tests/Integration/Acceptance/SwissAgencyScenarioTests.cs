@@ -36,16 +36,11 @@ namespace Casazen.Tests.Integration.Acceptance;
 /// </remarks>
 public class SwissAgencyScenarioTests
 {
-    /// <summary>The month of the stays.</summary>
     private static readonly AccountantPackagePeriod October = AccountantPackagePeriod.OfMonth(2026, 10);
 
-    /// <summary>The end of the month of the agency: the last day of October, 16:00 in Lugano.</summary>
     private static readonly DateTimeOffset EndOfOctober = World.InRome(Day(10, 31), 16);
 
-    /// <summary>The day the agency pays the owner (the wire is asked for the next one).</summary>
     private static readonly DateOnly PayDay = Day(11, 2);
-
-    // ---------------------------------------------------------------- the four origins
 
     // Origine 1, Booking.com tramite Octorate: documento CHF, rendiconto, fattura PM, pacchetto e bonifico.
     [Fact]
@@ -56,7 +51,6 @@ public class SwissAgencyScenarioTests
         world.At(World.InRome(Day(9, 20), 10));
         var booking = await world.ImportFromChannelManagerAsync(world.BookingComReservation(Day(10, 2), Day(10, 5), 450m, commission: 67.50m));
 
-        // What the import stored: the price of the host, the commission of the reservation, the portal collects; no tourist tax in it.
         var stored = await world.BookingAsync(booking);
         Assert.Equal(
             (BookingSource.BookingCom, BookingStatus.Confirmed, 450.00m, 450.00m, 0m, (decimal?)67.50m, (bool?)true, 2),
@@ -81,10 +75,8 @@ public class SwissAgencyScenarioTests
         Assert.Contains("Tassa di soggiorno da riscuotere in struttura: CHF 12.00", guestPdf, StringComparison.Ordinal);
         Assert.Contains("Tassa di soggiorno (non soggetta all'IVA) - tassa da riscuotere in struttura", guestPdf, StringComparison.Ordinal);
 
-        // B8b: the e-mail with the link, to the relay address of the portal.
         AssertTheGuestGotTheDocument(world, document, await world.GuestEmailOfAsync(booking), "Fattura");
 
-        // C1, C2 (V1), C3, C4: the month.
         var month = await world.CloseMonthAsync(2026, 10, EndOfOctober);
         await AssertMonthAsync(
             world,
@@ -99,17 +91,14 @@ public class SwissAgencyScenarioTests
                 InvoiceLines: [(FiscalLineType.Commission, 90.00m, 8.1m, 7.29m), (FiscalLineType.Recharge, 80.00m, 8.1m, 6.48m)],
                 InvoiceTotals: (170.00m, 13.77m, 183.77m)));
 
-        // The channel fee is the commission of the reservation (the payload), on the day of the check-out.
         var fee = Assert.Single(await world.LedgerOfAsync(2026, 10), e => e.EntryType == OwnerLedgerEntryType.ChannelFee);
         Assert.Equal((-67.50m, (Guid?)booking, new DateOnly(2026, 10, 5)), (fee.Amount, fee.SourceId, fee.RecognitionDate));
         Assert.Equal(ChannelFeeSources.Payload, fee.RuleVersion);
 
-        // V1: the account of Booking.com is the owner's, so the portal bills the owner and the statement says so; the invoice of the property manager has no recharge of it.
         var statement = await world.StatementOfAsync(month.Published.Id);
         Assert.False(Assert.Single(statement.Of(OwnerStatementSection.ChannelFees)).AgencyHoldsPortalAccount);
         Assert.Contains("Trattenuta dal portale (fattura del portale a tuo nome)", StatementTextOf(statement), StringComparison.Ordinal);
 
-        // C7, C8: the package of October; C6: the wire of the payout.
         AssertPackage(
             await world.PackageAsync(October),
             guestDocuments: 1,
@@ -127,7 +116,6 @@ public class SwissAgencyScenarioTests
         world.At(World.InRome(Day(9, 25), 10));
         var booking = await world.ImportFromChannelManagerAsync(world.AgencySiteReservation(Day(10, 9), Day(10, 12), 390m, touristTax: 12m));
 
-        // A direct booking with the id of the channel manager, the tourist tax the site charged, no commission, nobody says who collects.
         var stored = await world.BookingAsync(booking);
         Assert.Equal(
             (BookingSource.Direct, 390.00m, 402.00m, 12.00m, (decimal?)null, (bool?)null),
@@ -135,7 +123,6 @@ public class SwissAgencyScenarioTests
         Assert.NotNull(stored.OctorateReservationId);
         await world.GiveInvoiceDataAsync(booking, "TEST Ospite Sito");
 
-        // The guest paid by bank transfer to the agency: the agency records it by hand.
         world.At(World.InRome(Day(10, 8), 9));
         await world.RecordPaymentByHandAsync(booking, 402m, PaymentMethod.BankTransfer, Day(10, 8));
 
@@ -149,7 +136,6 @@ public class SwissAgencyScenarioTests
         await AssertGuestPdfAsync(world, document, "Pagata", ("387.72", "14.28", "402.00"));
         AssertTheGuestGotTheDocument(world, document, await world.GuestEmailOfAsync(booking), "Fattura");
 
-        // The revenue is the payment the agency recorded, less its tourist tax: no channel fee for the agency's own site.
         var month = await world.CloseMonthAsync(2026, 10, EndOfOctober);
         await AssertMonthAsync(
             world,
@@ -183,13 +169,11 @@ public class SwissAgencyScenarioTests
         world.At(World.InRome(Day(10, 1), 12));
         var (booking, payment) = await world.PayOnTheCasaZenSiteAsync(Day(10, 16), Day(10, 19), price: 420m, cleaningFee: 60m, providerFee: 12.48m);
 
-        // The settlement of the webhook confirmed the booking and completed the payment; the fee of the charge is the one of its balance transaction.
         Assert.Equal(BookingStatus.Confirmed, (await world.BookingAsync(booking)).Status);
         var paid = await world.PaymentAsync(payment);
         Assert.Equal((PaymentStatus.Completed, 420.00m, (decimal?)12.48m, (decimal?)407.52m), (paid.Status, paid.Amount, paid.ProviderFeeAmount, paid.ProviderNetAmount));
         await world.GiveInvoiceDataAsync(booking, "TEST Ospite Vetrina");
 
-        // The checkout of Switzerland does not collect the tourist tax yet: the document carries the line of Ticino and is «to collect» for it.
         var document = await IssuedAfterTheStayAsync(world, booking, Day(10, 20), "2026/1");
         AssertDocument(
             document,
@@ -200,7 +184,6 @@ public class SwissAgencyScenarioTests
         await AssertGuestPdfAsync(world, document, "Da incassare", ("416.62", "15.38", "432.00"));
         AssertTheGuestGotTheDocument(world, document, await world.GuestEmailOfAsync(booking), "Fattura");
 
-        // The revenue is the Stripe payment on its day; the mandate does not pass the card fee to the owner, so the agency bears it.
         var month = await world.CloseMonthAsync(2026, 10, EndOfOctober);
         await AssertMonthAsync(
             world,
@@ -270,9 +253,6 @@ public class SwissAgencyScenarioTests
         await AssertPayoutAndWireAsync(world, month.Published, 148.66m);
     }
 
-    // ---------------------------------------------------------------- the main path, in memory and on PostgreSQL
-
-    // Percorso principale: le quattro origini nello stesso mese, fino al pacchetto e al bonifico.
     [Fact]
     [Trait("Scenario", "A1 A2 B7 B8a B8b C1 C2 C3 C4 C6 C7 C8")]
     public async Task MainPath_TheFourOriginsInOneMonth_UpToThePackageAndTheWire()
@@ -281,7 +261,6 @@ public class SwissAgencyScenarioTests
         await RunTheMainPathAsync(world);
     }
 
-    // Percorso principale su PostgreSQL: le quattro origini nello stesso mese, fino al pacchetto e al bonifico.
     [PostgresFact]
     [Trait("Scenario", "A1 A2 B7 B8a B8b C1 C2 C3 C4 C6 C7 C8")]
     public async Task MainPath_TheFourOriginsInOneMonth_UpToThePackageAndTheWire_Postgres()
@@ -291,10 +270,6 @@ public class SwissAgencyScenarioTests
         await RunTheMainPathAsync(world);
     }
 
-    /// <summary>
-    /// The four origins in the same month of the same flat: four documents numbered in the order of their stays, one statement with the four stays, one invoice of the
-    /// property manager (one commission line for the flat, one cleaning fee for each stay), the monthly report of the agency, the package and the wire.
-    /// </summary>
     private static async Task RunTheMainPathAsync(World world)
     {
         world.At(World.InRome(Day(9, 20), 10));
@@ -306,7 +281,6 @@ public class SwissAgencyScenarioTests
         var (showcase, _) = await world.PayOnTheCasaZenSiteAsync(Day(10, 16), Day(10, 19), price: 420m, cleaningFee: 60m, providerFee: 12.48m);
         await world.GiveInvoiceDataAsync(showcase, "TEST Ospite Vetrina");
 
-        // The booking of the portal has no invoice data: its document is made out to its guest, by name only (FIX/DOC-RECIPIENT).
         var portalDocument = await IssuedAfterTheStayAsync(world, portal, Day(10, 6), "2026/1");
         AssertRecipientIsTheGuestByName(portalDocument, "TEST Ospite Portale");
 
@@ -322,7 +296,6 @@ public class SwissAgencyScenarioTests
         await world.RecordPaymentByHandAsync(manual, 312m, PaymentMethod.CashOnArrival, Day(10, 23));
         var manualDocument = await IssuedAfterTheStayAsync(world, manual, Day(10, 27), "2026/4");
 
-        // The stored state of the portal document is the one of its channel; its PDF is paid through the portal for the stay only (see Origin_BookingCom_*, FIX/BE-PORTAL-TAXLINE).
         AssertDocument(
             portalDocument,
             [(FiscalLineType.Accommodation, 433.53m, 3.8m, 16.47m), (FiscalLineType.TouristTax, 12.00m, 0m, 0m)],
@@ -350,8 +323,6 @@ public class SwissAgencyScenarioTests
         foreach (var (booking, document) in new[] { (portal, portalDocument), (site, siteDocument), (showcase, showcaseDocument), (manual, manualDocument) })
             AssertTheGuestGotTheDocument(world, document, await world.GuestEmailOfAsync(booking), "Fattura");
 
-        // The statement of the month: the four stays (gross 1'560.00 without the CHF 48.00 of tourist tax), the fee of Booking.com, the commission of 20% of each, the
-        // four cleaning fees; the invoice: one commission line for the flat, one recharge for each stay.
         var month = await world.CloseMonthAsync(2026, 10, EndOfOctober);
         await AssertMonthAsync(
             world,
@@ -375,7 +346,6 @@ public class SwissAgencyScenarioTests
         var statement = await world.StatementOfAsync(month.Published.Id);
         Assert.Equal(new[] { 300.00m, 390.00m, 420.00m, 450.00m }, statement.Of(OwnerStatementSection.Stays).Select(l => l.Amount).Order().ToArray());
 
-        // C7: the monthly report of the agency adds up what is stored.
         var summary = await world.AgencySummaryAsync(October);
         Assert.True(summary.OwnerAccountingIncluded);
         var commission = Assert.Single(summary.Commissions);
@@ -395,8 +365,6 @@ public class SwissAgencyScenarioTests
         await AssertPayoutAndWireAsync(world, month.Published, 809.31m);
     }
 
-    // ---------------------------------------------------------------- the variants
-
     // Variante V2 (⚖ I10 I11): l'account Booking.com dell'appartamento e' dell'agenzia: commissione dalla regola del canale, riaddebito nella fattura PM,
     // informativa per l'imposta sull'acquisto, e il portale del proprietario letto come lo legge il proprietario.
     [Fact]
@@ -406,7 +374,6 @@ public class SwissAgencyScenarioTests
         await using var world = await World.CreateAsync(agencyHoldsTheBookingAccount: true);
         world.At(World.InRome(Day(9, 20), 10));
 
-        // No commission in the reservation: the fee comes from the rule of the agency for Booking.com (15% of 450.00).
         var booking = await world.ImportFromChannelManagerAsync(world.BookingComReservation(Day(10, 2), Day(10, 5), 450m, commission: null));
         await world.GiveInvoiceDataAsync(booking, "TEST Ospite Portale");
         await IssuedAfterTheStayAsync(world, booking, Day(10, 6), "2026/1");
@@ -434,14 +401,12 @@ public class SwissAgencyScenarioTests
         Assert.Equal(ChannelFeeSources.Rule(world.BookingComRuleId), fee.RuleVersion);
         Assert.StartsWith("Riaddebito commissioni Booking.com", month.Invoice.Lines.Single(l => l.TotalPrice == 67.50m).Description, StringComparison.Ordinal);
 
-        // The statement says it too (the published PDF and the owner portal): the commission was recharged by the property manager with its invoice, not billed by the portal.
         var statement = await world.StatementOfAsync(month.Published.Id);
         Assert.True(Assert.Single(statement.Of(OwnerStatementSection.ChannelFees)).AgencyHoldsPortalAccount);
         var text = StatementTextOf(statement);
         Assert.Contains("Commissioni del portale riaddebitate dal gestore (fattura n. PM2026/1)", text, StringComparison.Ordinal);
         Assert.DoesNotContain("Trattenuta dal portale", text, StringComparison.Ordinal);
 
-        // The owner portal says it as the owner reads it: under the filter of the request of an owner, on and with no org, the line of the page is the recharge.
         var detail = OwnerPortalStatementDetailDto.From(await world.PortalStatementAsTheOwnerAsync(month.Published.Id));
         var portalFee = Assert.Single(detail.Sections.Single(s => s.Section == "channelFees").Lines);
         Assert.Equal((-67.50m, true), (portalFee.Amount, portalFee.ChannelFeeRechargedByAgency));
@@ -468,8 +433,6 @@ public class SwissAgencyScenarioTests
         await world.GiveInvoiceDataAsync(booking, "TEST Ospite Portale");
         await IssuedAfterTheStayAsync(world, booking, Day(10, 6), "2026/1");
 
-        // The commission of the rule (15%) is a cost of the agency: the owner is not charged it (no deduction: 266.23, where V1 closes at 198.73) and the invoice does not
-        // recharge it: the commission of the agency and the cleaning fee only.
         var month = await world.CloseMonthAsync(2026, 10, EndOfOctober);
         await AssertMonthAsync(
             world,
@@ -484,13 +447,11 @@ public class SwissAgencyScenarioTests
                 InvoiceLines: [(FiscalLineType.Commission, 90.00m, 8.1m, 7.29m), (FiscalLineType.Recharge, 80.00m, 8.1m, 6.48m)],
                 InvoiceTotals: (170.00m, 13.77m, 183.77m)));
 
-        // The ledger: the commission of the rule is a line for information only, never a channel fee the owner is charged.
         var ledger = await world.LedgerOfAsync(2026, 10);
         Assert.DoesNotContain(ledger, e => e.EntryType == OwnerLedgerEntryType.ChannelFee);
         var borne = Assert.Single(ledger, e => e.EntryType == OwnerLedgerEntryType.ChannelFeeBorneByAgency);
         Assert.Equal((-67.50m, (Guid?)booking, ChannelFeeSources.Rule(world.BookingComRuleId)), (borne.Amount, borne.SourceId, borne.RuleVersion));
 
-        // The statement says what the invoice does: the line is not a recharge of the agency, and no label names invoice PM2026/1 for it, in the PDF or on the portal.
         var statement = await world.StatementOfAsync(month.Published.Id);
         var line = Assert.Single(statement.Of(OwnerStatementSection.ChannelFees));
         Assert.False(line.AgencyHoldsPortalAccount);
@@ -499,8 +460,6 @@ public class SwissAgencyScenarioTests
         var portalPart = detail.Sections.Single(s => s.Section == "channelFees");
         Assert.False(Assert.Single(portalPart.Lines).ChannelFeeRechargedByAgency);
 
-        // The portal bills the agency, which bears the commission: the line says so in words of its own, for information only (the commission shown, nothing taken from the net), in
-        // the PDF and as a flag of the owner portal, whose total of the part leaves it out; never the sentence of V1.
         Assert.Equal((true, true, -67.50m), (line.AgencyHoldsPortalAccountWithoutRecharge, line.Informational, line.Amount));
         var text = StatementTextOf(statement);
         Assert.Contains("Commissione del portale sostenuta dall'agenzia, non addebitata al proprietario", text, StringComparison.Ordinal);
@@ -524,8 +483,6 @@ public class SwissAgencyScenarioTests
         await AssertPayoutAndWireAsync(world, month.Published, 266.23m);
     }
 
-    // Variante del portale che incassa la tassa (⚖ C4 C5): prenotazione Airbnb tramite Octorate, nessuna riga della tassa di Ticino nel documento e nessuna nel
-    // riquadro del rendiconto.
     [Fact]
     [Trait("Scenario", "B7 B8a B8b C1 C3 C4 C7")]
     public async Task Variant_ThePortalCollectsTheTouristTax_Airbnb_NoTaxLineOnTheDocument_NorInTheStatementBox()
@@ -534,14 +491,12 @@ public class SwissAgencyScenarioTests
         world.At(World.InRome(Day(9, 20), 10));
         var booking = await world.ImportFromChannelManagerAsync(world.AirbnbReservation(Day(10, 2), Day(10, 5), 450m, commission: 69.75m, touristTax: 12m));
 
-        // The import stored the tax the portal collected from the guest, outside the price of the host.
         var stored = await world.BookingAsync(booking);
         Assert.Equal(
             (BookingSource.Airbnb, 450.00m, 462.00m, 12.00m, (decimal?)69.75m, (bool?)true),
             (stored.Source, stored.BasePrice, stored.TotalPrice, stored.TouristTax, stored.OtaCommission, stored.OtaCompanyCollect));
         await world.GiveInvoiceDataAsync(booking, "TEST Ospite Lago");
 
-        // Airbnb collects the tourist tax of Ticino (the issuer confirmed it in the wizard): the document bills the stay only, with no line of the tax.
         var document = await IssuedAfterTheStayAsync(world, booking, Day(10, 6), "2026/1");
         AssertDocument(
             document,
@@ -554,7 +509,6 @@ public class SwissAgencyScenarioTests
         Assert.DoesNotContain("Airbnb", text, StringComparison.OrdinalIgnoreCase);
         AssertTheGuestGotTheDocument(world, document, await world.GuestEmailOfAsync(booking), "Fattura");
 
-        // The month: the gross without the tax the portal collected, the commission of the reservation; the box of the tax is empty (the portal remits it).
         var month = await world.CloseMonthAsync(2026, 10, EndOfOctober);
         await AssertMonthAsync(
             world,
@@ -590,7 +544,6 @@ public class SwissAgencyScenarioTests
         Assert.Equal((300.00m, 24.30m, 324.30m), (invoice.TaxableBase, invoice.VatAmount, invoice.Total));
         Assert.Equal(-324.30m, month.Published.ClosingBalance);
 
-        // Nothing offsets it: the PDF ends with the payment part of the amount due, on the QR-IBAN of the agency, the owner as the debtor.
         var content = await world.PdfContentAsync(invoice.Id);
         var bill = Assert.IsType<PdfSwissQrBill>(content.QrBill);
         var fields = bill.Payload.Split('\n');
@@ -605,9 +558,6 @@ public class SwissAgencyScenarioTests
         Assert.Equal(2, pdf.NumberOfPages);
     }
 
-    // ---------------------------------------------------------------- the changes of a booking (B12)
-
-    // B12 cambio date: l'ospite resta due notti in piu', nota di credito dell'intero documento e nuovo documento emessi subito, rendiconto del soggiorno nuovo.
     [Fact]
     [Trait("Scenario", "B12")]
     public async Task Change_DateChange_FullCreditNoteAndNewDocument_AndTheStatementOfTheNewStay()
@@ -620,7 +570,6 @@ public class SwissAgencyScenarioTests
         await world.RecordPaymentByHandAsync(booking, 312m, PaymentMethod.CashOnArrival, Day(10, 23));
         var original = await IssuedAfterTheStayAsync(world, booking, Day(10, 27), "2026/1");
 
-        // The guest stayed two nights more: the host moves the check-out and the price (5 nights, tourist tax 2 x 5 x 2.00) and records the balance paid in cash.
         world.At(World.InRome(Day(10, 28), 11));
         await world.ChangeAsHostAsync(booking, b =>
         {
@@ -633,7 +582,6 @@ public class SwissAgencyScenarioTests
         await world.RecordPaymentByHandAsync(booking, 208m, PaymentMethod.CashOnArrival, Day(10, 28));
         await world.DeliverEventsAsync();
 
-        // The issued document is never rewritten: a credit note of all of it (its lines as stored) and the new document, both issued at once (automatic issue).
         var documents = await world.DocumentsOfAsync(booking);
         Assert.Equal(3, documents.Count);
         var (stored, note, replacement) = (documents[0], documents[1], documents[2]);
@@ -650,12 +598,10 @@ public class SwissAgencyScenarioTests
             FiscalPaymentChannel.Outside,
             FiscalDocumentPaymentState.Paid);
 
-        // The guest got the three documents.
         var email = await world.GuestEmailOfAsync(booking);
         foreach (var number in new[] { "2026/1", "2026/2", "2026/3" })
             Assert.Single(world.Emails.Queued, m => m.Template == EmailTemplates.Names.FiscalDocumentDelivery && m.To == email && m.Content.Subject.Contains(number, StringComparison.Ordinal));
 
-        // October holds the stay of five nights, from the two payments, without the tourist tax: 300.00 and 200.00, the commission of each, one cleaning fee.
         var month = await world.CloseMonthAsync(2026, 10, EndOfOctober);
         await AssertMonthAsync(
             world,
@@ -673,7 +619,6 @@ public class SwissAgencyScenarioTests
         Assert.Equal(new[] { 200.00m, 300.00m }, revenue);
     }
 
-    // B12 cancellazione con rimborso: rimborso Stripe dell'intero pagamento, nota di credito dell'intero documento emessa subito, nessun ricavo e nessun forfait.
     [Fact]
     [Trait("Scenario", "B12")]
     public async Task Change_CancellationWithRefund_FullCreditNote_AndNothingInTheLedger()
@@ -683,12 +628,10 @@ public class SwissAgencyScenarioTests
         var (booking, payment) = await world.PayOnTheCasaZenSiteAsync(Day(10, 16), Day(10, 19), price: 420m, cleaningFee: 60m, providerFee: 12.48m);
         await world.GiveInvoiceDataAsync(booking, "TEST Ospite Vetrina");
 
-        // The guest asked for the invoice when paying: the agency issued it at once.
         var original = await world.IssueNowAsync(booking);
         Assert.Equal((DocumentKind.Invoice, 432.00m, FiscalPaymentChannel.CasaZen), (original.Kind, original.Total, original.PaymentChannel));
         Assert.Equal("2026/1", original.Number);
 
-        // The guest cancels within the free cancellation: the agency cancels the booking and refunds the whole payment through Stripe.
         world.At(World.InRome(Day(10, 5), 10));
         await world.CancelAsHostAsync(booking);
         var refund = await world.RefundThroughStripeAsync(payment, amount: null);
@@ -696,7 +639,6 @@ public class SwissAgencyScenarioTests
         Assert.Equal(PaymentStatus.Refunded, (await world.PaymentAsync(payment)).Status);
         await world.DeliverEventsAsync();
 
-        // The guest pays nothing: a credit note of all the document (its lines as stored), issued at once and e-mailed; one, whatever the order of the two events.
         var documents = await world.DocumentsOfAsync(booking);
         var note = Assert.Single(documents, d => d.Kind == DocumentKind.CreditNote);
         Assert.Equal((FiscalDocumentStatus.Issued, (Guid?)original.Id, 432.00m), (note.Status, note.CreditedDocumentId, note.Total));
@@ -706,7 +648,6 @@ public class SwissAgencyScenarioTests
         var email = await world.GuestEmailOfAsync(booking);
         Assert.Single(world.Emails.Queued, m => m.Template == EmailTemplates.Names.FiscalDocumentDelivery && m.To == email && m.Content.Subject.Contains("2026/2", StringComparison.Ordinal));
 
-        // October: the refunded payment leaves no revenue and a cancelled stay no cleaning fee.
         var posting = await world.PostMonthAsync(2026, 10, EndOfOctober);
         Assert.DoesNotContain(posting.Issues, i => i.Blocking);
         Assert.Empty(await world.LedgerOfAsync(2026, 10));
@@ -724,7 +665,6 @@ public class SwissAgencyScenarioTests
         world.At(World.InRome(Day(10, 1), 9));
         await world.RecordPaymentByHandAsync(booking, 100m, PaymentMethod.BankTransfer, Day(10, 1));
 
-        // The agency did not mark the no-show before the daily run: the document of the whole stay was issued, with a deposit of 100.00 collected.
         var original = await IssuedAfterTheStayAsync(world, booking, Day(10, 13), "2026/1");
         AssertDocument(
             original,
@@ -745,8 +685,6 @@ public class SwissAgencyScenarioTests
         Assert.Equal((291.27m, 10.73m), (note.TaxableBase, note.VatAmount));
         Assert.All(note.Lines, l => Assert.Contains("no-show", l.Description, StringComparison.Ordinal));
 
-        // A no-show is not an active stay in any reader: no cleaning fee and no revenue from the booking. It owes no tourist tax either, so the whole deposit kept is
-        // the revenue of the owner (none of it is tax) and the box of the tax of the statement is empty: nothing of the deposit goes missing between the two.
         var month = await world.CloseMonthAsync(2026, 10, EndOfOctober);
         await AssertMonthAsync(
             world,
@@ -764,9 +702,6 @@ public class SwissAgencyScenarioTests
         Assert.Empty((await world.StatementOfAsync(month.Published.Id)).TouristTax);
     }
 
-    // ---------------------------------------------------------------- the official schema of the wire file
-
-    // Bonifico: il file pain.001.001.09.ch.03 del pagamento al proprietario e' valido per lo schema ufficiale svizzero.
     [SwissWireSchemaFact]
     [Trait("Scenario", "C6")]
     public async Task Wire_ThePayoutFile_ValidatesAgainstTheOfficialSwissSchema()
@@ -780,16 +715,12 @@ public class SwissAgencyScenarioTests
         world.At(World.InRome(PayDay, 10));
         var payout = await world.PayTheOwnerAsync(month.Published, PayDay);
 
-        // No schema of the test: the official one embedded in the build validates the file before the batch is saved.
         var (batch, xml) = await world.WireAsync([payout.Id], PayDay.AddDays(1), schemas: null);
 
         Assert.Equal((148.66m, 1), (batch.TotalAmount, batch.TransferCount));
         Assert.Equal(XNamespace.Get(Pain001SchemaProvider.SwissNamespace), XDocument.Parse(xml).Root!.Name.Namespace);
     }
 
-    // ---------------------------------------------------------------- the steps the tests share
-
-    /// <summary>The daily run of the day after the stay: it made the draft of the stay and issued it (automatic issue); the one live document of the booking.</summary>
     private static async Task<FiscalDocument> IssuedAfterTheStayAsync(World world, Guid booking, DateOnly day, string number)
     {
         var run = await world.RunDocumentsDueAsync(day);
@@ -802,7 +733,6 @@ public class SwissAgencyScenarioTests
         return document;
     }
 
-    /// <summary>The booking has no invoice data (a portal sends none): the document is made out to the guest of the booking, by name only, and nothing else of the guest is on it.</summary>
     private static void AssertRecipientIsTheGuestByName(FiscalDocument document, string name)
     {
         Assert.Equal((InvoiceRecipientKind.Guest, name), (document.RecipientKind, document.RecipientName));
@@ -859,7 +789,6 @@ public class SwissAgencyScenarioTests
         Assert.Equal("%PDF", Encoding.ASCII.GetString(pdf, 0, 4));
     }
 
-    /// <summary>B8b: the e-mail of the document queued to the guest with the signed link of the document, and no amount in it.</summary>
     private static void AssertTheGuestGotTheDocument(World world, FiscalDocument document, string guestEmail, string kind)
     {
         var mail = Assert.Single(
@@ -921,7 +850,6 @@ public class SwissAgencyScenarioTests
         Assert.Equal(expected.Gross, ledger.Where(e => e.EntryType == OwnerLedgerEntryType.BookingRevenue).Sum(e => e.Amount));
         Assert.Equal(expected.Closing, ledger.Where(e => OwnerLedgerBalance.Counts(e.EntryType)).Sum(e => e.Amount));
 
-        // The invoice of the property manager: in its own series, the Swiss rule of the last day of the month, no XML.
         var invoice = month.Invoice;
         Assert.Equal((FiscalDocumentPurpose.OwnerInvoice, DocumentKind.Invoice, FiscalDocumentStatus.Issued, (Guid?)world.OwnerId), (invoice.Purpose, invoice.Kind, invoice.Status, invoice.RecipientOwnerId));
         Assert.Equal("PM2026/1", invoice.Number);
@@ -932,12 +860,10 @@ public class SwissAgencyScenarioTests
         Assert.Equal(expected.InvoiceTotals, (invoice.TaxableBase, invoice.VatAmount, invoice.Total));
         Assert.Equal(-expected.Vat, invoice.VatAmount);
 
-        // What the agency owes the owner covers the invoice: offset in the statement, no QR-bill.
         var pdf = await world.PdfContentAsync(invoice.Id);
         Assert.Null(pdf.QrBill);
         Assert.Contains($"Compensata nel rendiconto del {published.PeriodMonth:00}/2026", TextOf(pdf), StringComparison.Ordinal);
 
-        // The owner portal: the published statement with its totals and the PDF stored at the publication, the invoice; the owner was told.
         var listed = Assert.Single(await world.PortalStatementsAsync());
         Assert.Equal((published.Id, true, false), (listed.StatementId, listed.HasPdf, listed.Superseded));
         Assert.Equal(totals, listed.Totals);
@@ -979,11 +905,6 @@ public class SwissAgencyScenarioTests
             Assert.Contains(portalCommissionRow, vat, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// C6: the payout of what the published version owes the owner (no withholding in Switzerland) and its wire file, <c>pain.001.001.09.ch.03</c>, checked here
-    /// against the stand-in schema of the tests (the scenario is about the payout and its amounts; the validation against the official schema embedded in the build is
-    /// <see cref="Wire_ThePayoutFile_ValidatesAgainstTheOfficialSwissSchema"/>).
-    /// </summary>
     private static async Task AssertPayoutAndWireAsync(World world, OwnerStatementVersion published, decimal net)
     {
         world.At(World.InRome(PayDay, 10));
@@ -1012,11 +933,9 @@ public class SwissAgencyScenarioTests
 
     private static DateOnly Day(int month, int day) => new(2026, month, day);
 
-    /// <summary>Every text of a PDF content: the title, the headings, the paragraphs and the cells of the tables, one per line.</summary>
     private static string TextOf(PdfDocumentContent content) =>
         string.Join('\n', new[] { content.Title }.Concat(content.Blocks.SelectMany(TextsOf)));
 
-    /// <summary>Every text of the PDF of a statement, as its layout writes it in Italian.</summary>
     private static string StatementTextOf(OwnerStatementContent statement) =>
         string.Join('\n', OwnerStatementLayout.Pdf(statement, new ResxDocumentTexts()).Blocks.SelectMany(TextsOf));
 
@@ -1030,13 +949,11 @@ public class SwissAgencyScenarioTests
 
     private static string Text(byte[] bytes) => Encoding.UTF8.GetString(bytes).TrimStart((char)0xFEFF);
 
-    /// <summary>The files of the index of the package (its first table: the path, the description, the rows and the SHA-256 of each file).</summary>
     private static List<(string Path, string Sha256)> IndexOf(byte[] bytes)
     {
         var rows = CsvRows(Text(bytes));
         var entries = new List<(string Path, string Sha256)>();
 
-        // The title of the table and its header come first; the first empty row ends the table.
         foreach (var row in rows.Skip(2))
         {
             if (row.Count == 1 && row[0].Length == 0)
@@ -1048,7 +965,6 @@ public class SwissAgencyScenarioTests
         return entries;
     }
 
-    /// <summary>The rows of a CSV of the package: <c>;</c> between the cells, quoted cells with the quotes doubled, a line break after each row.</summary>
     private static List<List<string>> CsvRows(string text)
     {
         var rows = new List<List<string>>();
@@ -1104,11 +1020,6 @@ public class SwissAgencyScenarioTests
     }
 }
 
-/// <summary>
-/// A fact that needs the official schema of the Swiss wire file (<c>pain.001.001.09.ch.03.xsd</c>, <see cref="Pain001SchemaProvider"/>): the file is in the repository,
-/// embedded in the build and pinned by its checksum (docs/runbooks/wire-transfers.md), so the test runs. The skip, reported with its reason, is only for a build that
-/// lacks the file, which is no longer the normal state.
-/// </summary>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class SwissWireSchemaFactAttribute : FactAttribute
 {

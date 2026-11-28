@@ -16,10 +16,8 @@ namespace Casazen.Infrastructure.Photos;
 /// </remarks>
 public sealed class PublicPhotoUrlService(IFileStorage storage)
 {
-    /// <summary>The longest address that is kept (the column of <see cref="PhotoUploadTask.PhotoUrl"/>).</summary>
     public const int MaxUrlLength = PhotoUploadTask.PhotoUrlMaxLength;
 
-    /// <summary>The photos of the gallery that are sent, in the order of the gallery (the cover first), each once.</summary>
     public IReadOnlyList<string> ListingPhotoUrls(Guid propertyId, IEnumerable<string>? photoUrls)
     {
         if (photoUrls is null)
@@ -50,7 +48,6 @@ public sealed class PublicPhotoUrlService(IFileStorage storage)
         return urls;
     }
 
-    /// <summary>The photos of <paramref name="property"/> that are sent.</summary>
     public IReadOnlyList<string> ListingPhotoUrls(Property property)
     {
         ArgumentNullException.ThrowIfNull(property);

@@ -6,28 +6,19 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// PM-02 (decisions D16 and D19): the rules of the scheduled change of rental mode without a database. One rule for both
-/// directions (a stay, a block or a lease stands in the way of a day when its last day is on or after it, the property is
-/// free from the day after), the first day is tomorrow, drafts are deleted and not waited for. "Today" is 10 October 2026.
-/// </summary>
 public class PropertyModeRulesTests
 {
     private static readonly DateTime Today = Day(10);
     private static readonly Guid PropertyId = Guid.NewGuid();
 
-    // ─── Constants and stored values ────────────────────────────────────────────────────────────────
-
     [Fact]
     public void StoredValues_AreTheIntegersOfTheColumnsAndAppendOnly()
     {
-        // PropertyModeChanges.Status is an integer and the partial unique index is written with Scheduled = 0.
         Assert.Equal([0, 1, 2, 3], Enum.GetValues<PropertyModeChangeStatus>().Select(v => (int)v).Order());
         Assert.Equal(0, (int)PropertyModeChangeStatus.Scheduled);
         Assert.Equal(1, (int)PropertyModeChangeStatus.Applied);
         Assert.Equal(2, (int)PropertyModeChangeStatus.Cancelled);
         Assert.Equal(3, (int)PropertyModeChangeStatus.Failed);
-        // CalendarBlocks.ManualReason: the three the host chooses keep their numbers, ModeChange is appended.
         Assert.Equal(0, (int)CalendarBlockReason.Owner);
         Assert.Equal(1, (int)CalendarBlockReason.Maintenance);
         Assert.Equal(2, (int)CalendarBlockReason.Other);
@@ -76,7 +67,6 @@ public class PropertyModeRulesTests
         Assert.Empty(PropertyOccupancy.NightsIn(start, end, day.AddDays(-2), day.AddDays(-1)));
         Assert.Equal(new DateTime(2028, 2, 28), PropertyModeRules.CalendarBlockStart(new DateTime(2028, 2, 29)));
         Assert.Equal(new DateTime(2028, 12, 1, 0, 0, 0, DateTimeKind.Utc), end);
-        // From a 29 February the block ends on the 28th (AddYears), never on a day that does not exist.
         Assert.Equal(new DateTime(2030, 2, 28, 0, 0, 0, DateTimeKind.Utc), PropertyModeRules.CalendarBlockEnd(new DateTime(2028, 2, 29)));
     }
 
@@ -88,8 +78,6 @@ public class PropertyModeRulesTests
         Assert.Equal(expected, PropertyModeRules.Opposite(mode));
     }
 
-    // ─── Earliest day ───────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public void EarliestDate_NothingInTheWay_IsTomorrow()
     {
@@ -99,7 +87,6 @@ public class PropertyModeRulesTests
     [Fact]
     public void EarliestDate_AStayThatLeavesLater_IsTheDayAfterItsDeparture()
     {
-        // The last guest leaves on the 20th: the property can change mode from the 21st ("last departure + 1").
         var candidates = new[] { Stay(Day(12), Day(15)), Stay(Day(18), Day(20)) };
 
         Assert.Equal(Day(21), PropertyModeRules.EarliestDate(Today, candidates));
@@ -122,7 +109,6 @@ public class PropertyModeRulesTests
     [Fact]
     public void EarliestDate_SomethingAlreadyFreeBeforeTomorrow_DoesNotPushTheDate()
     {
-        // Left today: free from tomorrow, which is the first day anyway.
         Assert.Equal(Day(11), PropertyModeRules.EarliestDate(Today, [Stay(Day(8), Day(10))]));
     }
 
@@ -132,11 +118,9 @@ public class PropertyModeRulesTests
         Assert.Equal(Day(11), PropertyModeRules.EarliestDate(Today, [Draft(Day(1), Day(400))]));
     }
 
-    // ─── What stands in the way of a day ────────────────────────────────────────────────────────────
-
     [Theory]
-    [InlineData(20, true)]  // the stay leaves on the 20th: the 20th is still in its way
-    [InlineData(21, false)] // free from the 21st
+    [InlineData(20, true)]
+    [InlineData(21, false)]
     [InlineData(25, false)]
     [InlineData(11, true)]
     public void BlockersFor_AStayThatLeavesOnThe20th_StandsInTheWayUntilTheDayAfterItsDeparture(int day, bool inTheWay)
@@ -170,8 +154,6 @@ public class PropertyModeRulesTests
 
         Assert.Equal([early.Id, late.Id], blockers.Select(b => b.Id));
     }
-
-    // ─── Assess: the answer of the preview ──────────────────────────────────────────────────────────
 
     [Fact]
     public void Assess_ToLongWithoutADay_EvaluatesTheEarliestDayAndCanBeScheduled()
@@ -305,8 +287,6 @@ public class PropertyModeRulesTests
         Assert.Null(preview.ScheduledChange);
     }
 
-    // ─── EnsureAllowed: the errors of the creation ──────────────────────────────────────────────────
-
     [Fact]
     public void EnsureAllowed_NoIssues_DoesNotThrow()
     {
@@ -378,8 +358,6 @@ public class PropertyModeRulesTests
         Assert.Equal("PropertyModeChangeExists", error.MessageKey);
     }
 
-    // ─── Failure reason of the job ──────────────────────────────────────────────────────────────────
-
     [Fact]
     public void FailureReasonOf_Nothing_IsNull()
     {
@@ -403,9 +381,6 @@ public class PropertyModeRulesTests
             PropertyModeRules.FailureReasonOf([Draft(Day(1), Day(2))]));
     }
 
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The given day of October 2026, midnight UTC (negative or past 31: the days around it).</summary>
     private static DateTime Day(int day) => new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(day - 1);
 
     private static PropertyModePreview AssessToLong(DateTime? requested, IEnumerable<PropertyModeBlocker> candidates) =>

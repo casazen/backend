@@ -40,8 +40,6 @@ public class MarketplaceChannelActivationTests
     private const string HotelId = "H-4471";
     private const string Collaborator = "auth0|collaborator";
 
-    // ─── Proofs ───────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task MarketplaceChannelActivation_PortalCredentials_NeverStoredOrLogged_Test()
     {
@@ -52,11 +50,9 @@ public class MarketplaceChannelActivationTests
         await using (var db = w.NewDb())
             state = await w.Service(db).StartAsync(w.OrgA, w.OrgWide, start);
 
-        // The credentials went to the channel manager once, as the access data the portal asked for.
         var sent = Assert.Single(w.Created);
         Assert.Equal((HotelId, Username, Password), (sent.HotelId, sent.Username, sent.Password));
 
-        // Not one column of the activation holds them, and no entity the service touched.
         await using (var db = w.NewDb())
         {
             var row = Assert.Single(await db.MarketplaceActivations.AsNoTracking().ToListAsync());
@@ -64,7 +60,6 @@ public class MarketplaceChannelActivationTests
             AssertNoSecret(Describe(row));
         }
 
-        // Nor the answer, nor the request when it is printed.
         AssertNoSecret(JsonSerializer.Serialize(MarketplaceActivationStateDto.From(state)));
         AssertNoSecret(start.ToString());
         AssertNoSecret(sent.ToString());
@@ -106,7 +101,6 @@ public class MarketplaceChannelActivationTests
         // The create was tried once, by the first start: the retry made no second connection.
         Assert.Single(lost.Created);
 
-        // Not one line of the logs of either world.
         AssertNoSecret(w.Logs.AllOutput);
         AssertNoSecret(lost.Logs.AllOutput);
         Assert.Contains(w.Logs.Entries, e => e.Message.Contains("started", StringComparison.Ordinal));
@@ -117,7 +111,6 @@ public class MarketplaceChannelActivationTests
     {
         var w = await World.CreateAsync();
 
-        // The owner starts the channel on the second property; the collaborator is granted the first one only.
         MarketplaceActivationState others;
         await using (var db = w.NewDb())
         {
@@ -136,7 +129,6 @@ public class MarketplaceChannelActivationTests
         {
             var service = w.Service(db);
 
-            // The plan and the start of a property outside the scope: the 404 of a property that does not exist.
             var plan = await Assert.ThrowsAsync<NotFoundException>(
                 () => service.GetPlanAsync(w.OrgA, scope, MarketplaceActivationKind.Channel, "142", w.OtherPropertyId));
             Assert.Equal("marketplace_property_not_found", plan.Code);
@@ -147,7 +139,6 @@ public class MarketplaceChannelActivationTests
                     new MarketplaceActivationStart(MarketplaceActivationKind.Channel, "142", w.OtherPropertyId, HotelId, Username, Password)));
             Assert.Equal("marketplace_property_not_found", started.Code);
 
-            // Every step on the activation of that property: the 404 of an activation that does not exist.
             var id = others.ActivationId;
             var steps = new Func<Task>[]
             {
@@ -164,11 +155,9 @@ public class MarketplaceChannelActivationTests
             }
         }
 
-        // Nothing left for the channel manager and nothing changed in CasaZen.
         Assert.Empty(w.Client.Invocations);
         Assert.Equal(before, await w.RowsAsync());
 
-        // The same collaborator reaches the property it was given.
         await using (var db = w.NewDb())
         {
             var plan = await w.Service(db).GetPlanAsync(w.OrgA, scope, MarketplaceActivationKind.Channel, "142", w.PropertyId);
@@ -189,12 +178,9 @@ public class MarketplaceChannelActivationTests
         var refused = await Assert.ThrowsAsync<NotFoundException>(() => service.GetStateAsync(orgB, new HostScope(orgB), state.ActivationId));
         Assert.Equal("marketplace_activation_not_found", refused.Code);
 
-        // The scope of another org is a mistake of the caller, refused before anything is read.
         await Assert.ThrowsAsync<ArgumentException>(() => service.GetStateAsync(orgB, new HostScope(w.OrgA), state.ActivationId));
         Assert.Empty(w.Client.Invocations);
     }
-
-    // ─── The plan and the start ───────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetPlanAsync_SaysWhatThePortalAsksFor_AndWhetherThePropertyIsLinked()
@@ -208,7 +194,6 @@ public class MarketplaceChannelActivationTests
         Assert.True(plan.PropertyLinked);
         Assert.Null(plan.ActivationId);
 
-        // A property with no confirmed listing is answered as such, not refused; nothing was asked of the channel manager.
         var unlinked = await World.CreateAsync(linked: false);
         await using var db2 = unlinked.NewDb();
         var notLinked = await unlinked.Service(db2).GetPlanAsync(unlinked.OrgA, unlinked.OrgWide, MarketplaceActivationKind.Channel, "142", unlinked.PropertyId);
@@ -222,7 +207,6 @@ public class MarketplaceChannelActivationTests
         var w = await World.CreateAsync();
         var first = await w.StartAsync();
 
-        // The second start carries no credentials (the wizard keeps none): it still gets the activation that exists, and nothing is created.
         var second = await w.StartAsync(hotelId: null, username: null, password: null);
 
         Assert.Equal(first.ActivationId, second.ActivationId);
@@ -230,7 +214,6 @@ public class MarketplaceChannelActivationTests
         Assert.Single(w.Created);
         Assert.Single(await w.RowsAsync());
 
-        // The plan of the same property and portal now points at the activation, to resume it.
         await using var db = w.NewDb();
         var plan = await w.Service(db).GetPlanAsync(w.OrgA, w.OrgWide, MarketplaceActivationKind.Channel, "142", w.PropertyId);
         Assert.Equal((first.ActivationId, MarketplaceActivationStatus.Pending), (plan.ActivationId, plan.ActivationStatus));
@@ -252,7 +235,6 @@ public class MarketplaceChannelActivationTests
         Assert.Equal("marketplace_connection_exists", conflict.Code);
         Assert.Empty(await conflicting.RowsAsync());
 
-        // A refusal of the access data, or the failure of the channel, leaves no activation either.
         var refused = await World.CreateAsync();
         refused.CreateFailure = new OctoratePartnerFailureException();
         await Assert.ThrowsAsync<OctoratePartnerFailureException>(() => refused.StartAsync());
@@ -265,7 +247,6 @@ public class MarketplaceChannelActivationTests
         var w = await World.CreateAsync();
         using var abandoned = new CancellationTokenSource();
 
-        // The caller goes away while the create is out: the channel manager may have made the connection.
         w.OnCreate = abandoned.Cancel;
         w.CreateFailure = new OperationCanceledException(abandoned.Token);
         await using (var db = w.NewDb())
@@ -276,7 +257,6 @@ public class MarketplaceChannelActivationTests
         Assert.Null(kept.OctorateConnectionId);
         AssertNoSecret(Describe(kept));
 
-        // The connection is there: the next start takes it, on the same row, and neither makes a second one nor refuses it as one CasaZen did not make.
         w.OnCreate = null;
         w.CreateFailure = null;
         w.Connections.Add(new OctorateConnectionInfo("7009", "142", "WAITING", null, null, HotelId: HotelId));
@@ -289,29 +269,23 @@ public class MarketplaceChannelActivationTests
     [Fact]
     public async Task StartAsync_RefusesWithTheStableCodes_BeforeAnythingLeaves()
     {
-        // The connector is off: nobody is connected.
         var off = await World.CreateAsync(flag: false);
         Assert.Equal("marketplace_octorate_not_connected", (await Assert.ThrowsAsync<DomainConflictException>(() => off.StartAsync())).Code);
 
-        // The org has no connected account in this environment.
         var disconnected = await World.CreateAsync(connected: false);
         Assert.Equal("marketplace_octorate_not_connected", (await Assert.ThrowsAsync<DomainConflictException>(() => disconnected.StartAsync())).Code);
 
-        // The property has no confirmed listing.
         var unlinked = await World.CreateAsync(linked: false);
         Assert.Equal("marketplace_property_not_linked", (await Assert.ThrowsAsync<DomainRuleException>(() => unlinked.StartAsync())).Code);
 
-        // A portal the catalog does not offer, or offers as the other kind.
         var normal = await World.CreateAsync();
         Assert.Equal("marketplace_portal_unknown", (await Assert.ThrowsAsync<NotFoundException>(() => normal.StartAsync(code: "999"))).Code);
         Assert.Equal("marketplace_portal_unknown", (await Assert.ThrowsAsync<NotFoundException>(() => normal.StartAsync(kind: MarketplaceActivationKind.Tool))).Code);
         Assert.Equal("marketplace_portal_unknown", (await Assert.ThrowsAsync<NotFoundException>(() => normal.StartAsync(kind: MarketplaceActivationKind.Partner))).Code);
 
-        // Octorate does not let the portal be created through its API, or its code is not the number it calls channelId.
         var notCreatable = await World.CreateAsync(portal => portal.Creatable = false);
         Assert.Equal("marketplace_portal_not_creatable", (await Assert.ThrowsAsync<DomainRuleException>(() => notCreatable.StartAsync())).Code);
 
-        // What the portal asks for and the request does not give.
         var asking = await World.CreateAsync();
         foreach (var (hotel, user, pass) in new (string?, string?, string?)[]
                  {
@@ -333,7 +307,6 @@ public class MarketplaceChannelActivationTests
             Assert.Empty(await world.RowsAsync());
         }
 
-        // A portal that asks for nothing is sent nothing: what the request carries beyond it is dropped.
         var bare = await World.CreateAsync(portal => (portal.RequiresHotelId, portal.RequiresPassword) = (false, false));
         await bare.StartAsync();
         var created = Assert.Single(bare.Created);
@@ -341,8 +314,6 @@ public class MarketplaceChannelActivationTests
         Assert.Null(created.Username);
         Assert.Null(created.Password);
     }
-
-    // ─── Import, mapping, activation ──────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task ImportAsync_RequestsOnlyRoomsAndDoesNotRepeatAfterReload()
@@ -370,7 +341,6 @@ public class MarketplaceChannelActivationTests
         var started = await w.StartAsync();
         w.Rooms.Add(new OctorateChannelRoom("3301", "Camera", "956528"));
 
-        // The defaults, no flag on: nothing at all is asked of the channel manager, and nothing changes in CasaZen.
         w.Octorate.ExistingInventory.Channels.Clear();
         w.Client.Invocations.Clear();
         var before = await w.RowsAsync();
@@ -384,7 +354,6 @@ public class MarketplaceChannelActivationTests
         Assert.Empty(w.Client.Invocations);
         Assert.Equal(before, await w.RowsAsync());
 
-        // Room import needs only its own capability. The later phases run after mapping.
         w.Octorate.ExistingInventory.Channels["142"] = new OctorateExistingInventoryChannelOptions { ImportRooms = true };
         w.Rooms.Clear();
         w.Calls.Clear();
@@ -393,7 +362,6 @@ public class MarketplaceChannelActivationTests
 
         Assert.Equal(["ImportRooms"], w.Calls);
 
-        // «Mark connected» is the one that is not verified: it is not sent, and the pulls that follow it are not switched on.
         w.Octorate.ExistingInventory.Channels["142"] = new OctorateExistingInventoryChannelOptions { ImportRooms = true, ImportReservations = true, ImportCalendar = true };
         w.Calls.Clear();
         await using (var db = w.NewDb())
@@ -403,7 +371,6 @@ public class MarketplaceChannelActivationTests
         Assert.Empty(w.Patches);
         Assert.Equal(MarketplaceActivationStatus.Pending, Assert.Single(await w.ActivationsAsync()).Status);
 
-        // The flags of another channel do not open this one.
         w.Octorate.ExistingInventory.Channels.Clear();
         w.Octorate.ExistingInventory.Channels["274"] = new OctorateExistingInventoryChannelOptions { ImportRooms = true, ImportReservations = true, ImportCalendar = true, MarkConnected = true };
         w.Client.Invocations.Clear();
@@ -421,7 +388,6 @@ public class MarketplaceChannelActivationTests
         w.Rooms.Add(new OctorateChannelRoom("3301", "Double Room", "956528"));
         w.Calls.Clear();
 
-        // The person has not given the access on the panel yet: nothing is asked of the channel, and the step says it cannot tell.
         Assert.False(started.PanelAccessDone);
         await using (var db = w.NewDb())
         {
@@ -435,7 +401,6 @@ public class MarketplaceChannelActivationTests
             Assert.Equal(PanelVerificationOutcome.Unverifiable, await verifier.VerifyAsync(w.Step(w.PropertyId, "142"), CancellationToken.None));
         }
 
-        // The person came back from the panel: the channel manager says the access was given.
         w.Connections[0] = w.Connections[0] with { UserLogged = true };
         await using (var db = w.NewDb())
         {
@@ -453,7 +418,6 @@ public class MarketplaceChannelActivationTests
             var verifier = new ChannelAccessPanelVerifier(db, service);
             Assert.Equal(PanelVerificationOutcome.Verified, await verifier.VerifyAsync(w.Step(w.PropertyId, "142"), CancellationToken.None));
 
-            // Every other case is «cannot tell», never «not valid»: another property, another channel, another org, a step with no property.
             foreach (var step in new[]
                      {
                          w.Step(w.OtherPropertyId, "142"),
@@ -470,9 +434,8 @@ public class MarketplaceChannelActivationTests
             Assert.True(imported.PanelAccessDone);
         }
 
-        Assert.Empty(w.Calls); // previously imported rooms were already listed
+        Assert.Empty(w.Calls);
 
-        // The verifier only reads: the activation is as the import left it.
         Assert.Equal(MarketplaceActivationStatus.Pending, Assert.Single(await w.ActivationsAsync()).Status);
     }
 
@@ -568,11 +531,11 @@ public class MarketplaceChannelActivationTests
         var proposals = mapping.ChannelRooms.ToDictionary(room => room.ChannelRoomId, room => room.ProposedProductId);
         Assert.Equal("956528", proposals["3301"]);
         Assert.Equal("956529", proposals["3302"]);
-        Assert.Null(proposals["3303"]); // the channel manager cannot manage it
-        Assert.Null(proposals["3304"]); // mapped already
-        Assert.Null(proposals["3305"]); // two rooms of the channel with the same name
+        Assert.Null(proposals["3303"]);
+        Assert.Null(proposals["3304"]);
+        Assert.Null(proposals["3305"]);
         Assert.Null(proposals["3306"]);
-        Assert.Null(proposals["3307"]); // two products with the same name
+        Assert.Null(proposals["3307"]);
         Assert.Equal("956531", mapping.ChannelRooms.Single(room => room.ChannelRoomId == "3304").MappedProductId);
         Assert.Equal("956528", mapping.PropertyProductId);
         Assert.Equal(7, mapping.Products.Count);
@@ -593,10 +556,8 @@ public class MarketplaceChannelActivationTests
         {
             var service = w.Service(db);
 
-            // An empty choice is never «all the rooms».
             Assert.Equal("marketplace_mapping_required", (await Assert.ThrowsAsync<DomainRuleException>(() => service.SaveMappingAsync(w.OrgA, w.OrgWide, started.ActivationId, []))).Code);
 
-            // A room that is not the channel's (or cannot be managed), a product that is not the listing's, the same room twice, a blank id.
             var invalid = new[]
             {
                 new[] { new MarketplaceRoomChoice("9999", "956528") },
@@ -629,7 +590,6 @@ public class MarketplaceChannelActivationTests
     [Fact]
     public async Task ActivateAsync_IsActiveOnlyWhenTheChannelManagerShowsTheConnectionWorking_AndThePullsStartAfterTheMapping()
     {
-        // The channel manager shows it working after «mark connected»: Active, the pulls are switched on, and a second click does nothing.
         var w = await World.CreateAsync();
         var started = await w.StartAsync();
         w.Rooms.Add(new OctorateChannelRoom("3301", "Camera", "956528"));
@@ -656,7 +616,6 @@ public class MarketplaceChannelActivationTests
         Assert.Null(row.LastErrorCode);
         Assert.False(row.IsDeclared);
 
-        // The connection is not shown working: To fix with the code, no pulls.
         var waiting = await World.CreateAsync();
         var waitingStart = await waiting.StartAsync();
         waiting.Rooms.Add(new OctorateChannelRoom("3301", "Camera", "956528"));
@@ -669,7 +628,6 @@ public class MarketplaceChannelActivationTests
 
         Assert.Empty(waiting.Patches);
 
-        // The connection is gone from the list.
         var gone = await World.CreateAsync();
         var goneStart = await gone.StartAsync();
         gone.Rooms.Add(new OctorateChannelRoom("3301", "Camera", "956528"));
@@ -684,7 +642,6 @@ public class MarketplaceChannelActivationTests
         // Gone after «mark connected»: the activation is freed (no id), so that the next start makes a connection.
         Assert.Null(Assert.Single(await gone.ActivationsAsync()).OctorateConnectionId);
 
-        // No room mapped yet: «mark connected» is never sent (D6), the activation stays as it is.
         var unmapped = await World.CreateAsync();
         var unmappedStart = await unmapped.StartAsync();
         unmapped.Rooms.Add(new OctorateChannelRoom("3301", "Camera", null));
@@ -698,7 +655,6 @@ public class MarketplaceChannelActivationTests
         Assert.Empty(unmapped.Calls);
         Assert.Equal(MarketplaceActivationStatus.Pending, Assert.Single(await unmapped.ActivationsAsync()).Status);
 
-        // The channel itself fails (550): To fix with the code, and the failure reaches the caller.
         var failing = await World.CreateAsync();
         var failingStart = await failing.StartAsync();
         failing.Rooms.Add(new OctorateChannelRoom("3301", "Camera", "956528"));
@@ -777,7 +733,6 @@ public class MarketplaceChannelActivationTests
         var started = await w.StartAsync();
         w.Rooms.Add(new OctorateChannelRoom("3301", "Camera", "956528"));
 
-        // The first click: «mark connected» ran, the channel manager does not show the connection working yet. To fix, and the pulls are not switched on.
         w.StatusAfterMarkConnected = "WAITING";
         await using (var db = w.NewDb())
         {
@@ -787,8 +742,6 @@ public class MarketplaceChannelActivationTests
 
         Assert.Empty(w.Patches);
 
-        // Later the channel manager shows the connection enabled, its pulls still off. The sync of the health reads it: the activation is not finished, so it is not
-        // Active, it stays to fix and its «To do» stays open.
         w.Connections[0] = w.Connections[0] with { Status = "ENABLED" };
         var sync = await w.SyncHealthAsync();
         Assert.Equal(1, sync.TodoRaised);
@@ -797,7 +750,6 @@ public class MarketplaceChannelActivationTests
         Assert.NotNull(row.TodoActivityId);
         Assert.Empty(w.Patches);
 
-        // The host tries again, as the message says: nothing stops the step, which switches the pulls on, and the activation is Active.
         w.StatusAfterMarkConnected = "ENABLED";
         w.Calls.Clear();
         await using (var db = w.NewDb())
@@ -807,19 +759,16 @@ public class MarketplaceChannelActivationTests
         var patch = Assert.Single(w.Patches);
         Assert.Equal((true, true), (patch.UpdateCalendar, patch.PullReservations));
 
-        // The next sync sees a finished activation: it stays Active and the item of the problem is closed by the system.
         var after = await w.SyncHealthAsync();
         Assert.Equal(1, after.TodoClosed);
         Assert.Equal(MarketplaceActivationStatus.Active, Assert.Single(await w.ActivationsAsync()).Status);
 
-        // A second click on a finished activation (its pulls are on) changes nothing.
         w.Calls.Clear();
         await using (var db = w.NewDb())
             Assert.Equal(MarketplaceActivationStatus.Active, (await w.Service(db).ActivateAsync(w.OrgA, w.OrgWide, started.ActivationId)).Status);
 
         Assert.Empty(w.Calls);
 
-        // An Active activation whose pulls are off (an enabled connection nobody finished) is not left looking finished: the click switches them on.
         w.Connections[0] = w.Connections[0] with { UpdateCalendar = false, PullReservations = false };
         w.Patches.Clear();
         w.Calls.Clear();
@@ -836,7 +785,6 @@ public class MarketplaceChannelActivationTests
         var w = await World.CreateAsync();
         var first = await w.StartAsync();
 
-        // The host turned it off: the row is kept as Deactivated and the connection is gone from the channel manager.
         await using (var db = w.NewDb())
         {
             var row = await db.MarketplaceActivations.SingleAsync();
@@ -846,14 +794,12 @@ public class MarketplaceChannelActivationTests
 
         w.Connections.Clear();
 
-        // The channel manager does not answer the new create: the row keeps no id (the old one belonged to the connection that is gone).
         w.CreateFailure = new OctorateServerException(null);
         await Assert.ThrowsAsync<OctorateServerException>(() => w.StartAsync());
         var kept = Assert.Single(await w.ActivationsAsync());
         Assert.Equal((first.ActivationId, MarketplaceActivationStatus.Pending), (kept.Id, kept.Status));
         Assert.Null(kept.OctorateConnectionId);
 
-        // The channel manager did make it: the next start takes it, on the same row, and makes no third connection.
         w.CreateFailure = null;
         w.Connections.Add(new OctorateConnectionInfo("7002", "142", "WAITING", null, null, HotelId: HotelId));
         var restarted = await w.StartAsync();
@@ -861,8 +807,6 @@ public class MarketplaceChannelActivationTests
         Assert.Equal("7002", Assert.Single(await w.ActivationsAsync()).OctorateConnectionId);
         Assert.Equal(2, w.Created.Count);
     }
-
-    // ─── A connection that is gone, a create the caller abandoned, a refused read, the D6 flags ───────────────
 
     [Fact]
     public async Task EveryStep_ThatFindsTheConnectionGone_FreesTheActivation_AndTheNextStartMakesAConnectionOnTheSameRow()
@@ -873,7 +817,6 @@ public class MarketplaceChannelActivationTests
             var first = await w.StartAsync();
             w.Rooms.Add(new OctorateChannelRoom("3301", "Camera", "956528"));
 
-            // The connection was removed on the channel manager: the step answers the 409 and the row stops pointing at it.
             w.Connections.Clear();
             w.Calls.Clear();
             await using (var db = w.NewDb())
@@ -894,7 +837,6 @@ public class MarketplaceChannelActivationTests
             Assert.Null(freed.OctorateConnectionId);
             Assert.Empty(w.Calls);
 
-            // The start goes through the list and makes a connection on the same row.
             var restarted = await w.StartAsync();
             Assert.Equal((first.ActivationId, MarketplaceActivationStatus.Pending, true), (restarted.ActivationId, restarted.Status, restarted.ConnectionFound));
             Assert.Equal(2, w.Created.Count);
@@ -903,7 +845,6 @@ public class MarketplaceChannelActivationTests
             Assert.Null(row.LastErrorCode);
         }
 
-        // An activation the host turned off stays turned off when its connection is found gone: it only forgets the id.
         var off = await World.CreateAsync();
         var offStart = await off.StartAsync();
         await using (var db = off.NewDb())
@@ -921,8 +862,6 @@ public class MarketplaceChannelActivationTests
         Assert.Equal(MarketplaceActivationStatus.Deactivated, turnedOff.Status);
         Assert.Null(turnedOff.OctorateConnectionId);
 
-        // The list of the channel manager may lag just after a create: a second start (a double click) gets the row it has and makes no second
-        // connection, and a read of the state changes nothing.
         var lag = await World.CreateAsync();
         var created = await lag.StartAsync();
         lag.Connections.Clear();
@@ -935,9 +874,6 @@ public class MarketplaceChannelActivationTests
         Assert.Equal("7001", Assert.Single(await lag.ActivationsAsync()).OctorateConnectionId);
     }
 
-    // ─── Registration and the proposer ────────────────────────────────────────────────────────────────────
-
-    /// <summary>The exact list of what the activation registers: the service, and the verifier of the channel access with the order that beats the default one.</summary>
     [Fact]
     public void Registration_TheServiceAndTheVerifierOfTheChannelAccess()
     {
@@ -962,8 +898,6 @@ public class MarketplaceChannelActivationTests
     public void ChannelRoomMappingProposer_Normalize_IsCaseAccentPunctuationAndSpaceInsensitive(string? name, string expected) =>
         Assert.Equal(expected, ChannelRoomMappingProposer.Normalize(name));
 
-    // ─── Helpers ──────────────────────────────────────────────────────────────────────────────────────────
-
     private static void AssertNoSecret(string text)
     {
         Assert.DoesNotContain(Password, text, StringComparison.Ordinal);
@@ -978,7 +912,6 @@ public class MarketplaceChannelActivationTests
                 .Where(property => property.GetIndexParameters().Length == 0)
                 .Select(property => $"{property.Name}={property.GetValue(entity)}"));
 
-    /// <summary>An org with a connected account, two properties each with a confirmed listing, the portal «142» in the catalog, and a stub of the channel manager.</summary>
     private sealed class World
     {
         private const string Accommodation = "585492";
@@ -1007,7 +940,6 @@ public class MarketplaceChannelActivationTests
 
         public FixedTimeProvider Clock { get; } = new(new DateTimeOffset(2026, 11, 6, 9, 30, 0, TimeSpan.Zero));
 
-        /// <summary>The connections the channel manager lists; a create adds one.</summary>
         public List<OctorateConnectionInfo> Connections { get; } = [];
 
         public List<OctorateConnectionCreate> Created { get; } = [];
@@ -1016,7 +948,6 @@ public class MarketplaceChannelActivationTests
 
         public List<OctorateRoomMapping> Saved { get; } = [];
 
-        /// <summary>The actions and writes that reached the channel manager, in order.</summary>
         public List<string> Calls { get; } = [];
 
         public List<OctorateChannelRoom> Rooms { get; } = [];
@@ -1031,15 +962,10 @@ public class MarketplaceChannelActivationTests
 
         public Exception? CreateFailure { get; set; }
 
-        /// <summary>Runs when a create reaches the channel manager, before it answers (a caller that goes away while the create is out).</summary>
         public Action? OnCreate { get; set; }
 
         public Exception? ListFailure { get; set; }
 
-        /// <summary>
-        /// The flags of the D6 operations by channel (<c>Octorate:ExistingInventory:Channels</c>): all on for the portal «142», as after the pilot. A test turns
-        /// them off through this object, which the service reads at every call.
-        /// </summary>
         public OctorateOptions Octorate { get; } = new()
         {
             ExistingInventory =
@@ -1057,7 +983,6 @@ public class MarketplaceChannelActivationTests
             },
         };
 
-        /// <summary>The status the connection has once «mark connected» ran; <c>null</c> removes it from the list.</summary>
         public string? StatusAfterMarkConnected { get; set; } = "ENABLED";
 
         public static async Task<World> CreateAsync(
@@ -1095,7 +1020,6 @@ public class MarketplaceChannelActivationTests
                 Logs);
         }
 
-        /// <summary>One run of the sync of the health for the org, over the same database and the same channel manager as the steps of the wizard.</summary>
         public async Task<MarketplaceSyncResult> SyncHealthAsync()
         {
             await using var db = NewDb();
@@ -1119,11 +1043,9 @@ public class MarketplaceChannelActivationTests
             return await health.SyncAsync(OrgA);
         }
 
-        /// <summary>The start of the first property for the portal «142», with the credentials, as the wizard sends it.</summary>
         public MarketplaceActivationStart StartRequest() =>
             new(MarketplaceActivationKind.Channel, "142", PropertyId, HotelId, Username, Password);
 
-        /// <summary>Starts the activation of the first property for the portal «142» with credentials, as the wizard does.</summary>
         public async Task<MarketplaceActivationState> StartAsync(
             string code = "142",
             MarketplaceActivationKind kind = MarketplaceActivationKind.Channel,
@@ -1151,7 +1073,6 @@ public class MarketplaceChannelActivationTests
             return await db.MarketplaceActivations.AsNoTracking().OrderBy(a => a.CreatedAt).ToListAsync();
         }
 
-        /// <summary>The activations as text, to compare before and after.</summary>
         public async Task<List<string>> RowsAsync() => (await ActivationsAsync()).Select(Describe).ToList();
 
         private async Task SeedAsync(Action<MarketplacePortal>? portal, bool connected, bool linked)
@@ -1217,7 +1138,6 @@ public class MarketplaceChannelActivationTests
                 MaxGuests = 4,
             };
 
-        /// <summary>The channel manager: it lists what <see cref="Connections"/> holds, makes the connection a create asks for, and keeps what it is sent.</summary>
         private void WireClient()
         {
             Client
@@ -1306,7 +1226,6 @@ public class MarketplaceChannelActivationTests
                     if (!ApplyPatch)
                         return Task.CompletedTask;
 
-                    // The channel manager keeps what it is sent: from then on it lists the connection with the pulls the change set.
                     for (var i = 0; i < Connections.Count; i++)
                     {
                         if (Connections[i].ConnectionId == connectionId)

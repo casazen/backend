@@ -9,12 +9,9 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IAiResponseCache
 {
-    /// <summary>The cached value of <paramref name="key"/> in the scope, when there is a fresh one of type <typeparamref name="T"/>.</summary>
     bool TryGet<T>(Guid? orgId, string key, out T? value) where T : class;
 
-    /// <summary>Stores <paramref name="value"/> (replacing the one of the same key), evicting the oldest entries if a limit is reached.</summary>
     void Set<T>(Guid? orgId, string key, T value) where T : class;
 
-    /// <summary>Entries held now, expired ones not yet removed excluded.</summary>
     int Count { get; }
 }

@@ -18,7 +18,6 @@ public class RoutineGuardrailProofTests
     private static readonly DateTime Earlier = RoutineRig.Now.UtcDateTime.AddHours(-5);
     private static readonly DateTime Later = RoutineRig.Now.UtcDateTime.AddHours(-1);
 
-    /// <summary>Runs the one action in a routine on <paramref name="payload"/> and returns what the engine recorded for it.</summary>
     private static async Task<RoutineActionResult> RunAsync(RoutineRig rig, string type, string? config, object payload)
     {
         await rig.SeedRoutineAsync(OrgA, RoutineEventType.BookingConfirmed, RoutineRig.Actions((type, config)));
@@ -34,17 +33,9 @@ public class RoutineGuardrailProofTests
 
     private static void AssertNotBlocked(RoutineActionResult result)
     {
-        // What follows a guardrail that lets an action through is the action: today none of these has an implementation, so it fails with its code.
         Assert.NotEqual(RoutineActionOutcomes.Blocked, result.Outcome);
     }
 
-    // ─── Access code (AC-NF26-4) ─────────────────────────────────────────────────
-
-    /// <summary>
-    /// Proof (permission rule, AC-NF26-4): <c>SendAccessCode</c> is blocked while the booking carries no accepted verification of the identity, even when
-    /// the payload of the event says <c>IdVerified</c>: the payload is not where the gate reads. Without it, guests could receive access codes without
-    /// identity verification.
-    /// </summary>
     [Fact]
     public async Task Routine_AccessCodeGuardrail()
     {
@@ -82,7 +73,6 @@ public class RoutineGuardrailProofTests
         AssertBlocked(result, RoutineActionType.SendAccessCode, RoutineCodes.AccessCodeNeedsIdVerification);
     }
 
-    /// <summary>The latest verification decides, as for the code itself: an operator's rejection after an accept closes the gate again.</summary>
     [Fact]
     public async Task AccessCode_TheLatestVerificationOfTheBookingDecides()
     {
@@ -96,7 +86,6 @@ public class RoutineGuardrailProofTests
         AssertBlocked(result, RoutineActionType.SendAccessCode, RoutineCodes.AccessCodeNeedsIdVerification);
     }
 
-    /// <summary>A verification written for another org's booking id is not this org's: every read names the org.</summary>
     [Fact]
     public async Task AccessCode_AVerificationOfAnotherOrg_IsNotOurs()
     {
@@ -109,7 +98,6 @@ public class RoutineGuardrailProofTests
         AssertBlocked(result, RoutineActionType.SendAccessCode, RoutineCodes.AccessCodeNeedsIdVerification);
     }
 
-    /// <summary>No booking in the event, an unknown booking, and a booking of another org that is verified: with nothing of this org to read, nothing opens the gate.</summary>
     [Fact]
     public async Task AccessCode_NoBookingInTheEvent_FailsClosed()
     {
@@ -141,8 +129,6 @@ public class RoutineGuardrailProofTests
 
         AssertBlocked(result, RoutineActionType.SendAccessCode, RoutineCodes.AccessCodeNeedsIdVerification);
     }
-
-    // ─── Airbnb (AC-NF26-5) ──────────────────────────────────────────────────────
 
     /// <summary>
     /// Proof (permission rule, AC-NF26-5): <c>MessageToGuest</c> is blocked for an Airbnb booking that is not confirmed, whatever the payload says (a
@@ -189,7 +175,6 @@ public class RoutineGuardrailProofTests
         AssertBlocked(result, RoutineActionType.MessageToGuest, RoutineCodes.AirbnbNotConfirmed);
     }
 
-    /// <summary>With no booking to read the engine cannot say the guest is not an Airbnb one that is not confirmed: it blocks (no booking, no pass).</summary>
     [Fact]
     public async Task Airbnb_NoBookingToRead_FailsClosed()
     {
@@ -211,8 +196,6 @@ public class RoutineGuardrailProofTests
 
         AssertBlocked(result, RoutineActionType.MessageToGuest, RoutineCodes.AirbnbNotConfirmed);
     }
-
-    // ─── Campaigns (AC-NF26-6) ───────────────────────────────────────────────────
 
     /// <summary>
     /// Proof (privacy rule, AC-NF26-6): a <c>MessageToGuest</c> configured as a campaign is blocked while the guest of the booking has not consented to

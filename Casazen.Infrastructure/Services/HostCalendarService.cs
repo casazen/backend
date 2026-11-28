@@ -10,14 +10,6 @@ using Microsoft.Extensions.Configuration;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc cref="IHostCalendarService"/>
-/// <remarks>
-/// Reads in a fixed number of steps whatever the number of properties: the properties of the scope, then one query each for the
-/// bookings (with their guest), the payments of those bookings (for how much of the total came in), the blocks and the
-/// interventions; the alerts read the properties, the bookings and the blocks only. Which properties are read is the scope's
-/// (<c>InScope</c>, in SQL); everything else is read by those property ids and the org, so nothing of another property or org
-/// can enter.
-/// </remarks>
 public sealed class HostCalendarService(
     AppDbContext db,
     IConfiguration? configuration = null,
@@ -86,10 +78,6 @@ public sealed class HostCalendarService(
         return new HostCalendarAlerts(today, query.From, query.To, alerts);
     }
 
-    // --- The range and the properties -----------------------------------------------------------------------
-
-    // The short-rent properties of the scope, by name. A property that is not the caller's is not read, so asking for it by id
-    // gives nothing, the same as an id that does not exist. With a limit, one row more is read to know whether the list was cut.
     private async Task<(IReadOnlyList<CalendarProperty> Properties, int Total)> ReadPropertiesAsync(
         HostScope scope,
         List<Guid>? requested,
@@ -142,8 +130,6 @@ public sealed class HostCalendarService(
         return (properties, total);
     }
 
-    // --- Bookings ----------------------------------------------------------------------------------------------
-
     private sealed record BookingRow(
         Guid Id,
         Guid PropertyId,
@@ -162,8 +148,6 @@ public sealed class HostCalendarService(
         string GuestFirstName,
         string GuestLastName);
 
-    // The bookings that take their dates (CheckoutHolds.OccupiesDates: not cancelled, not an expired hold) and have a day in the
-    // range (HostCalendarRange), of the properties given.
     private async Task<List<BookingRow>> ReadBookingRowsAsync(
         HostScope scope,
         List<Guid> propertyIds,
@@ -197,7 +181,6 @@ public sealed class HostCalendarService(
                 b.Guest.LastName))
             .ToListAsync(cancellationToken);
 
-    // What came in for each booking: one read for all of them, as the list of bookings does.
     private async Task<ILookup<Guid, BookingPaymentFact>> ReadPaymentsAsync(
         HostScope scope,
         IReadOnlyList<BookingRow> bookings,
@@ -217,7 +200,6 @@ public sealed class HostCalendarService(
 
     private static BookingCalendarItem BookingItem(BookingRow row, IReadOnlyCollection<BookingPaymentFact> payments, DateTime nowUtc)
     {
-        // The state of a "pay at the property" request is read from the booking itself (OnSiteRequests): a stand-in with only what it reads.
         var request = OnSiteRequests.StateOf(
             new Booking
             {
@@ -245,11 +227,8 @@ public sealed class HostCalendarService(
             PaymentCashRules.ToCents(row.TotalPrice),
             row.ICalFeedId,
             row.ChannelLabel,
-            // A cancelled stay has nothing left to check (CO-21).
             row.Status == BookingStatus.Cancelled ? null : row.OtaReviewReason);
     }
-
-    // --- Blocks ------------------------------------------------------------------------------------------------
 
     private sealed record BlockRow(
         Guid Id,
@@ -267,8 +246,6 @@ public sealed class HostCalendarService(
         DateTime? StayCheckIn,
         DateTime? StayCheckOut);
 
-    // The blocks (iCal imports and the host's own) with a day in the range, of the properties given, with the channel and label of
-    // their feed and where the stay made from them stands. A projection: the import URL of the feed is never read.
     private async Task<List<BlockRow>> ReadBlockRowsAsync(
         HostScope scope,
         List<Guid> propertyIds,
@@ -298,7 +275,6 @@ public sealed class HostCalendarService(
                 b.Booking != null ? (DateTime?)b.Booking.CheckOutDate : null))
             .ToListAsync(cancellationToken);
 
-    // The block as the entity the occupancy and conversion rules read: only what they read.
     private static CalendarBlock BlockOf(BlockRow row) => new()
     {
         Id = row.Id,
@@ -315,7 +291,6 @@ public sealed class HostCalendarService(
             ? new Booking { Id = id, Status = status, CheckInDate = checkIn, CheckOutDate = checkOut }
             : null;
 
-    // A block the host turned into an OTA stay that stands for it counts once, as the stay (PropertyOccupancy, CO-21).
     private static bool IsRepresentedByStay(BlockRow row) => PropertyOccupancy.IsRepresentedByStay(BlockOf(row), StayOf(row));
 
     private static CalendarItem BlockItem(BlockRow row, DateTime todayRome)
@@ -347,8 +322,6 @@ public sealed class HostCalendarService(
         _ => BookingChannel.Other,
     };
 
-    // --- Interventions -----------------------------------------------------------------------------------------
-
     private sealed record ServiceRow(
         Guid Id,
         Guid PropertyId,
@@ -362,8 +335,6 @@ public sealed class HostCalendarService(
         DateTime? ScheduledEndUtc,
         DateTime? StayCheckOut);
 
-    // The short-rent interventions of the properties given that nobody refused or cancelled and that have a day in the range: the
-    // day of their time (Europe/Rome) or, for a request with no time, the day its stay leaves (the day such a request has always had).
     private async Task<List<ServiceRow>> ReadServiceRowsAsync(
         HostScope scope,
         List<Guid> propertyIds,
@@ -399,7 +370,6 @@ public sealed class HostCalendarService(
             .ToListAsync(cancellationToken);
     }
 
-    // Null for a request that can be placed on no day (no time and no stay): it has no place on a calendar.
     private static ServiceCalendarItem? ServiceItem(ServiceRow row)
     {
         DateOnly? day = row.ScheduledStartUtc is { } start
@@ -424,9 +394,6 @@ public sealed class HostCalendarService(
             row.ScheduledEndUtc);
     }
 
-    // --- Alerts ------------------------------------------------------------------------------------------------
-
-    // What takes nights, for the alerts: the stays and the blocks (not the ones a stay stands for), as the calendar shows them.
     private static List<CalendarOccupant> OccupantsOf(IReadOnlyList<BookingRow> bookings, IReadOnlyList<BlockRow> blocks)
     {
         var occupants = new List<CalendarOccupant>(bookings.Count + blocks.Count);
@@ -437,9 +404,6 @@ public sealed class HostCalendarService(
         return occupants;
     }
 
-    // --- Time --------------------------------------------------------------------------------------------------
-
-    // Now, and today in Europe/Rome as midnight UTC of the date (the storage convention of stay dates).
     private (DateTime NowUtc, DateTime TodayRome) Now()
     {
         var now = _clock.GetUtcNow();

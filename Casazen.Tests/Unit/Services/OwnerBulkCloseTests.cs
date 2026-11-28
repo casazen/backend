@@ -32,12 +32,6 @@ public class OwnerBulkCloseTests
     private static readonly Guid CallerOrg = Guid.NewGuid();
     private const string CallerUser = "auth0|agency-admin";
 
-    // ---------------------------------------------------------------- the steps
-
-    /// <summary>
-    /// Money / data: the approval in bulk skips a flagged version with its reason and says what it did for each owner; an owner already approved is left as it is, and running
-    /// the step again changes nothing more (no version is made, the flagged one is still flagged).
-    /// </summary>
     [Fact]
     public async Task BulkApprove_SkipsFlaggedAndReportsEach_Test()
     {
@@ -47,13 +41,11 @@ public class OwnerBulkCloseTests
         var other = await OwnerWithAStayAsync(world);
         var owners = new[] { clean, flagged, other };
 
-        // The posting tells each owner what was kept out of its ledger: a stay without a mandate is held back, never a commission of zero.
         var posted = await world.BulkAsync(OwnerBulkAction.Post, owners);
         Assert.Equal([true, false, true], posted.Select(r => r.Ok));
         Assert.Equal(OwnerReadinessCodes.MandateMissingForStay, posted[1].Code);
         Assert.Equal([OwnerReadinessCodes.MandateMissingForStay], posted[1].Issues);
 
-        // The generation made a version for each owner; the one that came out flagged says why.
         var generated = await world.BulkAsync(OwnerBulkAction.Generate, owners);
         Assert.All(generated, r => Assert.True(r.Ok && !r.Unchanged));
         Assert.Equal([null, OwnerAccountingErrors.VersionFlagged, null], generated.Select(r => r.Code));
@@ -70,7 +62,6 @@ public class OwnerBulkCloseTests
         var run = new OwnerBulkRun(null, OwnerBulkAction.Approve, 2026, 10, OwnerBulkRunStatus.Completed, owners.Length, approved);
         Assert.Equal((2, 0, 1, false), (run.Succeeded, run.Unchanged, run.Failed, run.AllDone));
 
-        // Running it again changes nothing more: the approved are unchanged, the flagged is still skipped, no version is made.
         var again = await world.BulkAsync(OwnerBulkAction.Approve, owners);
         Assert.Equal([true, false, true], again.Select(r => r.Ok));
         Assert.True(again[0].Unchanged);
@@ -82,7 +73,6 @@ public class OwnerBulkCloseTests
         Assert.All(owners, owner => Assert.Equal(1, world.Db.OwnerStatementVersions.Count(v => v.PropertyOwnerId == owner)));
     }
 
-    /// <summary>Data: an empty list is never «every owner»; without a list the owners of the month are the ones the readiness knows; a step that does not exist or a close too early is one refusal.</summary>
     [Fact]
     public async Task Bulk_AnEmptyListIsRefusedAndNoListMeansEveryOwnerOfTheMonth_Test()
     {
@@ -110,12 +100,10 @@ public class OwnerBulkCloseTests
         var invalidMonth = await Assert.ThrowsAsync<DomainRuleException>(() => world.Service.ResolveBulkOwnersAsync(world.OrgId, 2026, 13, OwnerBulkAction.Post, null));
         Assert.Equal(OwnerAccountingErrors.PeriodInvalid, invalidMonth.Code);
 
-        // The close of a month that is not over is refused once, for every owner (never one refusal each).
         var early = await Assert.ThrowsAsync<DomainConflictException>(() => world.Service.ResolveBulkOwnersAsync(world.OrgId, 2026, 11, OwnerBulkAction.Close, [first]));
         Assert.Equal(OwnerAccountingErrors.PeriodNotEnded, early.Code);
     }
 
-    /// <summary>Data (tenant isolation): an owner of another org is the same row as one that does not exist, and nothing is posted or generated for it.</summary>
     [Fact]
     public async Task Bulk_AnOwnerOfAnotherOrgIsNeverServed_Test()
     {
@@ -138,7 +126,6 @@ public class OwnerBulkCloseTests
         Assert.NotEmpty(world.Db.OwnerLedgerEntries.Where(e => e.PropertyOwnerId == mine));
     }
 
-    /// <summary>Data: the posting in bulk posts the lines of the owners asked for and leaves the others as they are; asked again it posts nothing more.</summary>
     [Fact]
     public async Task BulkPost_OnlyPostsTheOwnersAskedFor_Test()
     {
@@ -162,10 +149,6 @@ public class OwnerBulkCloseTests
         Assert.Equal(lines, world.Db.OwnerLedgerEntries.Count());
     }
 
-    /// <summary>
-    /// Money: the whole month-end in bulk, and again. The close reconciles each owner to what was paid and never waives a difference (that needs a reason and the finance
-    /// permission, owner by owner); every step run twice changes nothing more.
-    /// </summary>
     [Fact]
     public async Task Bulk_PostGenerateApprovePublishClose_NeverWaivesAndRunsTwiceWithoutChangingMore_Test()
     {
@@ -183,7 +166,6 @@ public class OwnerBulkCloseTests
             Assert.NotNull(published.PublishedSnapshot);
         }
 
-        // 500 of revenue less 75 of channel commission and 100 of mandate commission: 325 are owed. One owner was paid in full, the other nothing.
         var settledProperty = world.Db.PropertyOwnerships.Single(o => o.PropertyOwnerId == settled).PropertyId;
         await world.PaidWireAsync(settled, settledProperty, 325m);
         var closed = await world.BulkAsync(OwnerBulkAction.Close, owners);
@@ -201,7 +183,6 @@ public class OwnerBulkCloseTests
         Assert.Equal(OwnerClosePeriodStatus.Open, open.Status);
         Assert.Null(open.WaiverReason);
 
-        // Every step again: nothing is made, posted, published or closed twice; the failure is the same failure.
         var versions = world.Db.OwnerStatementVersions.Count();
         var lines = world.Db.OwnerLedgerEntries.Count();
         foreach (var action in new[] { OwnerBulkAction.Post, OwnerBulkAction.Generate, OwnerBulkAction.Approve, OwnerBulkAction.Publish })
@@ -214,10 +195,6 @@ public class OwnerBulkCloseTests
         Assert.Equal((versions, lines), (world.Db.OwnerStatementVersions.Count(), world.Db.OwnerLedgerEntries.Count()));
     }
 
-    /// <summary>
-    /// Data: a month closes on an approved version too, so the publication in bulk is not done for a closed month by the close alone: the approved version is published (the owner
-    /// portal and the accountant read only the published ones) and the row says so; asked again, a month closed on a published version is the same unchanged row.
-    /// </summary>
     [Fact]
     public async Task Bulk_PublishOfAMonthClosedOnAnApprovedVersionPublishesIt_Test()
     {
@@ -226,7 +203,6 @@ public class OwnerBulkCloseTests
         foreach (var action in new[] { OwnerBulkAction.Post, OwnerBulkAction.Generate, OwnerBulkAction.Approve })
             Assert.All(await world.BulkAsync(action, owner), r => Assert.True(r.Ok && !r.Unchanged, $"{action}: {r.Code}"));
 
-        // 325 are owed and were paid: the month closes on the approved version, which was never published.
         var property = world.Db.PropertyOwnerships.Single(o => o.PropertyOwnerId == owner).PropertyId;
         await world.PaidWireAsync(owner, property, 325m);
         var closed = Assert.Single(await world.BulkAsync(OwnerBulkAction.Close, owner));
@@ -235,7 +211,6 @@ public class OwnerBulkCloseTests
         Assert.Equal(OwnerStatementVersionStatus.Approved, approved.Status);
         Assert.Null(approved.PublishedSnapshot);
 
-        // The close did not publish it: the publication is not «done» for the closed month, the version is published in it.
         var published = Assert.Single(await world.BulkAsync(OwnerBulkAction.Publish, owner));
         Assert.True(published.Ok && !published.Unchanged, published.Code);
         var version = await world.VersionAsync(owner);
@@ -243,15 +218,10 @@ public class OwnerBulkCloseTests
         Assert.NotNull(version.PublishedSnapshot);
         Assert.Equal(OwnerClosePeriodStatus.Closed, (await world.Db.OwnerClosePeriods.AsNoTracking().SingleAsync(p => p.PropertyOwnerId == owner)).Status);
 
-        // Asked again, the month closed on a published version is where the step leads: the same unchanged row, nothing published twice.
         var again = Assert.Single(await world.BulkAsync(OwnerBulkAction.Publish, owner));
         Assert.Equal((true, true, OwnerAccountingErrors.PeriodClosed), (again.Ok, again.Unchanged, again.Code));
     }
 
-    /// <summary>
-    /// Data: each owner is its own transaction: one whose step fails for a reason that is not a rule (the PDF of its statement cannot be made) is a failed row, leaves nothing
-    /// behind (its version is still approved, not half published) and stops nobody.
-    /// </summary>
     [Fact]
     public async Task Bulk_AnOwnerThatFailsLeavesNothingBehindAndStopsNobody_Test()
     {
@@ -281,10 +251,6 @@ public class OwnerBulkCloseTests
         Assert.False(run.AllDone);
     }
 
-    /// <summary>
-    /// Data: a failure that is not a rule of the domain is a failed row and is logged with its exception and the ids (the cause and the stack stay for whoever looks at a row that says
-    /// only <c>owner_bulk_failed</c>).
-    /// </summary>
     [Fact]
     public async Task Bulk_AnOwnerThatFailsIsLoggedWithItsExceptionAndItsIds_Test()
     {
@@ -308,7 +274,6 @@ public class OwnerBulkCloseTests
         Assert.Equal(world.OrgId, Assert.IsType<Guid>(failure.Values["OrgId"]));
     }
 
-    /// <summary>A step is told after each owner with the results so far (the progress of a long run).</summary>
     [Fact]
     public async Task Bulk_TellsItsProgressAfterEachOwner_Test()
     {
@@ -328,10 +293,6 @@ public class OwnerBulkCloseTests
         Assert.Equal([1, 2, 3], seen);
     }
 
-    /// <summary>
-    /// Data: a step out of its order is a failed row with its own code (nothing to approve or publish before a version, nothing to publish or close before the approval); the
-    /// generation leaves a draft that is still the picture of the ledger, but makes a new version as soon as a source changed: never a stale statement.
-    /// </summary>
     [Fact]
     public async Task Bulk_StepsOutOfOrderAreFailedRowsAndAStaleDraftIsGeneratedAgain_Test()
     {
@@ -341,7 +302,6 @@ public class OwnerBulkCloseTests
         var owners = new[] { changing, steady };
         await world.BulkAsync(OwnerBulkAction.Post, owners);
 
-        // Nothing to approve or publish before there is a version, nothing to close before it is approved.
         foreach (var action in new[] { OwnerBulkAction.Approve, OwnerBulkAction.Publish })
             Assert.All(await world.BulkAsync(action, owners), r => Assert.Equal((false, OwnerAccountingErrors.VersionNotFound), (r.Ok, r.Code)));
         Assert.All(await world.BulkAsync(OwnerBulkAction.Close, owners), r => Assert.Equal((false, OwnerAccountingErrors.VersionNotApproved), (r.Ok, r.Code)));
@@ -349,11 +309,9 @@ public class OwnerBulkCloseTests
         foreach (var action in new[] { OwnerBulkAction.Publish, OwnerBulkAction.Close })
             Assert.All(await world.BulkAsync(action, owners), r => Assert.Equal((false, OwnerAccountingErrors.VersionNotApproved), (r.Ok, r.Code)));
 
-        // The drafts are still the picture of the ledger: generating again leaves them as they are.
         Assert.All(await world.BulkAsync(OwnerBulkAction.Generate, owners), r => Assert.True(r.Ok && r.Unchanged));
         Assert.All(owners, owner => Assert.Equal(1, world.Db.OwnerStatementVersions.Count(v => v.PropertyOwnerId == owner)));
 
-        // A stay is posted for one owner: its draft is stale, so it gets a new version (the old one superseded) and the other owner's draft is left.
         var house = world.Db.PropertyOwnerships.Single(o => o.PropertyOwnerId == changing).PropertyId;
         await world.StayAsync(house, BookingSource.Direct, 80m, Day(10, 25), Day(10, 27));
         await world.BulkAsync(OwnerBulkAction.Post, changing);
@@ -367,9 +325,6 @@ public class OwnerBulkCloseTests
         Assert.Equal(1, world.Db.OwnerStatementVersions.Count(v => v.PropertyOwnerId == steady));
     }
 
-    // ---------------------------------------------------------------- the endpoint
-
-    /// <summary>Permission: the publication in bulk needs the permission of the publication, every other step the one of the management of the statements, as the single operations do.</summary>
     [Fact]
     public async Task BulkEndpoint_AskedStepNeedsItsOwnPermission_Test()
     {
@@ -379,25 +334,21 @@ public class OwnerBulkCloseTests
             .ReturnsAsync([new OwnerBulkOwnerResult(Guid.NewGuid(), true)]);
         var jobs = new Mock<IOwnerBulkJobs>(MockBehavior.Strict);
 
-        // A caller that may manage the statements and not publish them.
         var manager = Controller(accounting.Object, granted: CasazenPolicies.AgencyStatementManage);
         Assert.IsType<ForbidResult>((await manager.Bulk(2026, 10, new OwnerBulkRequest(OwnerBulkAction.Publish, null), jobs.Object)).Result);
         foreach (var action in new[] { OwnerBulkAction.Post, OwnerBulkAction.Generate, OwnerBulkAction.Approve, OwnerBulkAction.Close })
             Assert.IsType<OkObjectResult>((await manager.Bulk(2026, 10, new OwnerBulkRequest(action, null), jobs.Object)).Result);
 
-        // A caller that may publish and not manage.
         var publisher = Controller(accounting.Object, granted: CasazenPolicies.AgencyStatementPublish);
         Assert.IsType<OkObjectResult>((await publisher.Bulk(2026, 10, new OwnerBulkRequest(OwnerBulkAction.Publish, null), jobs.Object)).Result);
         foreach (var action in new[] { OwnerBulkAction.Post, OwnerBulkAction.Generate, OwnerBulkAction.Approve, OwnerBulkAction.Close })
             Assert.IsType<ForbidResult>((await publisher.Bulk(2026, 10, new OwnerBulkRequest(action, null), jobs.Object)).Result);
 
-        // No step named: the refusal of the request, after the permission.
         var none = await Assert.ThrowsAsync<DomainRuleException>(() => manager.Bulk(2026, 10, new OwnerBulkRequest(null, null), jobs.Object));
         Assert.Equal(OwnerAccountingErrors.BulkActionInvalid, none.Code);
         accounting.Verify(a => a.RunBulkAsync(CallerOrg, 2026, 10, OwnerBulkAction.Publish, It.IsAny<IReadOnlyList<Guid>>(), CallerUser, null, It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    /// <summary>Up to 20 owners the answer is in the request; for more it is a background job and the answer 202 with its id, nothing run in the request.</summary>
     [Fact]
     public async Task BulkEndpoint_MoreThanTwentyOwnersAreAJob_Test()
     {
@@ -425,18 +376,13 @@ public class OwnerBulkCloseTests
         accounting.Verify(a => a.RunBulkAsync(CallerOrg, 2026, 10, OwnerBulkAction.Generate, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<string?>(), It.IsAny<OwnerBulkProgress?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    /// <summary>
-    /// Data: leaving the list out on a month the readiness knows no owner in is an empty run (200, no row, nothing run), never the refusal of an empty list: the list was not sent.
-    /// </summary>
     [Fact]
     public async Task BulkEndpoint_NoListOnAMonthWithoutOwnersIsAnEmptyRunNotAnError_Test()
     {
-        // The service: a month nothing happened in has no owner to run for.
         var world = await OwnerMonthEndWorld.CreateAsync();
         await OwnerWithAStayAsync(world);
         Assert.Empty(await world.Service.ResolveBulkOwnersAsync(world.OrgId, 2026, 9, OwnerBulkAction.Post, null));
 
-        // The endpoint: that is a run with no owner, not 422 owner_bulk_owners_empty.
         var accounting = new Mock<IOwnerAccountingService>(MockBehavior.Strict);
         accounting.Setup(a => a.ResolveBulkOwnersAsync(CallerOrg, 2026, 9, OwnerBulkAction.Post, null, It.IsAny<CancellationToken>())).ReturnsAsync(new List<Guid>());
         var jobs = new Mock<IOwnerBulkJobs>(MockBehavior.Strict);
@@ -450,12 +396,6 @@ public class OwnerBulkCloseTests
         accounting.Verify(a => a.RunBulkAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<OwnerBulkAction>(), It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<string?>(), It.IsAny<OwnerBulkProgress?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    // ---------------------------------------------------------------- the job and its progress
-
-    /// <summary>
-    /// Privacy / data: the progress of a run is read only by the org that queued it (the same «not found» for another org, a job of another kind, an id that is not a job), is kept with
-    /// the job as it goes, and says «Completed» and «all done» only when every owner was answered and none failed.
-    /// </summary>
     [Fact]
     public async Task BulkJob_ProgressIsReadOnlyByTheOrgThatQueuedIt_Test()
     {
@@ -473,7 +413,6 @@ public class OwnerBulkCloseTests
         Assert.Null(await jobs.GetAsync(org, "not-a-job"));
         Assert.Null(await jobs.GetAsync(org, string.Empty));
 
-        // The job runs: the progress it keeps is the one the org reads, while it runs and when it is over.
         var accounting = new Mock<IOwnerAccountingService>();
         var seenWhileRunning = new List<(OwnerBulkRunStatus Status, int Processed)>();
         accounting.Setup(a => a.RunBulkAsync(org, 2026, 10, OwnerBulkAction.Approve, It.IsAny<IReadOnlyList<Guid>>(), CallerUser, It.IsAny<OwnerBulkProgress?>(), It.IsAny<CancellationToken>()))
@@ -508,7 +447,6 @@ public class OwnerBulkCloseTests
         Assert.Null(await jobs.GetAsync(Guid.NewGuid(), id));
     }
 
-    /// <summary>A run that fails as a whole is a failed job with the owners done before it and a code, never a completed one, and the failure is not swallowed.</summary>
     [Fact]
     public async Task BulkJob_ARunThatFailsAsAWholeIsAFailedRunWithWhatWasDone_Test()
     {
@@ -533,9 +471,6 @@ public class OwnerBulkCloseTests
         Assert.Equal((OwnerBulkRunStatus.Failed, OwnerAccountingErrors.BulkFailed, 22, 2, false), (run.Status, run.ErrorCode, run.Total, run.Processed, run.AllDone));
     }
 
-    // ---------------------------------------------------------------- the progress endpoint
-
-    /// <summary>The progress is the one of this org and this month: another month, another org or a run that is gone is the same 404.</summary>
     [Fact]
     public async Task BulkRunEndpoint_AnUnknownRunIsNotFound_Test()
     {
@@ -553,8 +488,6 @@ public class OwnerBulkCloseTests
         }
     }
 
-    // ---------------------------------------------------------------- helpers
-
     /// <summary>An owner paid in francs with a property and a portal stay in October (500 of gross, 75 of commission from the portal), with a mandate of 20% unless said otherwise.</summary>
     private static async Task<Guid> OwnerWithAStayAsync(OwnerMonthEndWorld world, bool withMandate = true)
     {
@@ -566,7 +499,6 @@ public class OwnerBulkCloseTests
         return owner;
     }
 
-    /// <summary>Runs the job of a queued run as Hangfire would: with the context of that job.</summary>
     private static async Task RunJobAsync(OwnerBulkCloseJob job, JobStorage storage, string jobId, Guid org, List<Guid> owners)
     {
         using var connection = storage.GetConnection();
@@ -575,7 +507,6 @@ public class OwnerBulkCloseTests
         await job.RunAsync(org, (int)data.Job.Args[1], (int)data.Job.Args[2], (OwnerBulkAction)data.Job.Args[3], owners.ToArray(), CallerUser, context, CancellationToken.None);
     }
 
-    /// <summary>The controller of a caller of the whole org who holds the one policy.</summary>
     private static OwnerAccountingController Controller(IOwnerAccountingService accounting, string granted)
     {
         var org = new Mock<IOrgContextResolver>();

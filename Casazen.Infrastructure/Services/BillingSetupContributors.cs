@@ -19,10 +19,8 @@ public abstract class IssuerSetupContributor(IDocumentIssuerService issuers) : I
 {
     public abstract string Section { get; }
 
-    /// <summary>False when the section has nothing to do for the issuer of <paramref name="view"/> (the Swiss tourist tax of an Italian issuer): it is then not counted.</summary>
     public virtual bool Applies(IssuerSettingsView view) => true;
 
-    /// <summary>The items missing in the setting <paramref name="view"/>, once <see cref="Applies"/> said yes.</summary>
     public abstract IReadOnlyList<BillingSetupItem> Evaluate(IssuerSettingsView view);
 
     public async Task<IReadOnlyList<BillingSetupItem>> EvaluateAsync(Guid orgId, CancellationToken ct)
@@ -31,7 +29,6 @@ public abstract class IssuerSetupContributor(IDocumentIssuerService issuers) : I
         return Applies(view) ? Evaluate(view) : [];
     }
 
-    /// <summary>An item of this section.</summary>
     protected BillingSetupItem Item(string key, string reason) => new(key, Section, reason);
 }
 
@@ -50,7 +47,6 @@ public sealed class IssuerSectionContributor(IDocumentIssuerService issuers) : I
         var missing = view.MissingFields;
         var items = new List<BillingSetupItem>();
 
-        // No profile at all: the issuer has not even said which country it issues from.
         if (view.Mode is null)
             items.Add(Item(BillingSetupItemKeys.CountryMissing, BillingSetupReasons.Required));
         if (missing.Contains(IssuerFields.LegalName))
@@ -91,7 +87,6 @@ public sealed class VatSectionContributor(IDocumentIssuerService issuers) : Issu
         if (view.MissingFields.Contains(IssuerFields.FatturaPaRegimeCode))
             items.Add(Item(BillingSetupItemKeys.RegimeCodeMissing, BillingSetupReasons.Required));
 
-        // The regime is chosen and the catalog has no rule in force for it today: nothing would be issued with a rate nobody approved.
         if (view.Regime is not null && view.Rule is null)
             items.Add(Item(BillingSetupItemKeys.TaxRuleMissing, BillingSetupReasons.Unavailable));
 
@@ -99,10 +94,6 @@ public sealed class VatSectionContributor(IDocumentIssuerService issuers) : Issu
     }
 }
 
-/// <summary>
-/// The section «Numerazione» (E11/F01/US01/T04): both series, the one of the documents to the guests and the one of the invoices to the owners. A series that
-/// was never saved has the default (the year, <c>PM{year}</c>), which is shown but not yet confirmed: the step saves it explicitly.
-/// </summary>
 public sealed class NumberingSectionContributor(IDocumentIssuerService issuers) : IssuerSetupContributor(issuers)
 {
     public override string Section => BillingSetupSections.Numbering;
@@ -145,11 +136,6 @@ public sealed class TouristTaxSectionContributor(IDocumentIssuerService issuers)
     }
 }
 
-/// <summary>
-/// The section «Emissione» (E11/F01/US01/T04): the choice of the automatic issue (and of the e-mail to the guest) is made once. The profile has no «not chosen»
-/// state for a yes or no, so the choice counts as made when the step was saved while the profile of the issuer could issue (<c>ConfirmedAt</c>, which the
-/// issuer service clears whenever the profile stops being complete): until then the item <c>auto_issue_unconfirmed</c> is missing.
-/// </summary>
 public sealed class AutomationSectionContributor(IDocumentIssuerService issuers) : IssuerSetupContributor(issuers)
 {
     public override string Section => BillingSetupSections.Automation;
@@ -235,7 +221,6 @@ public sealed class OwnerIssuerSetupContributor(AppDbContext db, IFiscalTaxRuleR
             : [new BillingSetupItem(BillingSetupItemKeys.OwnerIssuerMissing, Section, BillingSetupReasons.Required, without)];
     }
 
-    /// <summary>The owners, not anonymized, with an ownership of an Italian property that has not ended on <paramref name="today"/> (in force or to come).</summary>
     private async Task<List<Guid>> OwnersOfItalianPropertiesAsync(Guid orgId, DateOnly today, CancellationToken ct)
     {
         var ownerships = await db.PropertyOwnerships

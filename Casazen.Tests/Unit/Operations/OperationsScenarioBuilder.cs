@@ -68,41 +68,32 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
 
     public const string FlatName = "TEST Appartamento Lago Como";
 
-    /// <summary>The ISTAT code of Como, the comune of the flat.</summary>
     public const string ComuneIstatCode = "013075";
 
     public const string ComuneName = "Como";
 
     public const string HostUser = "auth0|test-ops-host";
 
-    /// <summary>The member of the staff of the agency who cleans the flat.</summary>
     public const string StaffUser = "auth0|test-ops-staff";
 
     public const string OctorateAccommodation = "585492";
 
     public const string OctorateRoom = "956528";
 
-    /// <summary>The channel id Octorate gives Booking.com.</summary>
     public const string BookingComChannel = "142";
 
-    /// <summary>The connected Stripe account of the agency.</summary>
     public const string StripeAccount = "acct_test_como";
 
-    /// <summary>The address of a guest of the direct and manual bookings (a domain of the tests, not one the standards reserve).</summary>
     public const string GuestEmail = "mario.rossi@ospiti-test.it";
 
-    /// <summary>The nightly price of the flat and the cleaning fee of its direct bookings.</summary>
     public const decimal NightlyRate = 150m;
 
     public const decimal CleaningFee = 50m;
 
-    /// <summary>The tourist tax of Como for each person and night, from the age of 14.</summary>
     public const decimal TouristTaxPerNight = 2.00m;
 
-    /// <summary>What the agency pays its member of the staff for a cleaning, in cents of euro.</summary>
     public const int CleaningPriceCents = 4000;
 
-    /// <summary>The arrival and the departure of every stay of the chain (Rome): three nights.</summary>
     public static readonly DateOnly CheckInDay = new(2026, 12, 4);
 
     public static readonly DateOnly CheckOutDay = new(2026, 12, 7);
@@ -126,34 +117,24 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
         DirectThread = new DirectThreadRecorder(Clock);
     }
 
-    /// <summary>The clock of every service: the scenario moves it from step to step.</summary>
     public FakeTimeProvider Clock { get; } = new(new DateTimeOffset(2026, 11, 20, 8, 0, 0, TimeSpan.Zero));
 
-    /// <summary>The channel manager.</summary>
     public Mock<IOctorateApiClient> Octorate { get; } = new();
 
-    /// <summary>Stripe: a payment intent is created the way the checkout and the tourist tax ask for it.</summary>
     public Mock<IStripeService> Stripe { get; } = new();
 
-    /// <summary>The e-mail queue: what it was asked to queue.</summary>
     public RecordingEmailQueue Emails { get; } = new();
 
-    /// <summary>The push queue: the live notices to the hosts.</summary>
     public RecordingPushQueue Pushes { get; } = new();
 
-    /// <summary>The Hangfire client: the jobs the services handed to the background (none runs by itself).</summary>
     public RecordingJobClient Jobs { get; } = new();
 
-    /// <summary>The private bucket in memory.</summary>
     public ObjectStorage Storage { get; } = new();
 
-    /// <summary>The conversations of the direct bookings: the automatic messages written to them.</summary>
     public DirectThreadRecorder DirectThread { get; }
 
-    /// <summary>Every guest payload the channel manager received, in order.</summary>
     public IReadOnlyList<OctorateCheckInGuestUpsert> GuestsWritten => _guestsWritten.ToArray();
 
-    /// <summary>Every message the portal chat took, in order.</summary>
     public IReadOnlyList<string> ChatMessages => _chatMessages.ToArray();
 
     public Guid OrgId { get; } = Guid.NewGuid();
@@ -164,7 +145,6 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
 
     public IConfiguration Configuration { get; private set; } = null!;
 
-    /// <summary>The flat of the agency, set up as the wizards of the host leave it, with the routines of the chain.</summary>
     public static async Task<OperationsScenarioBuilder> CreateAsync(params string[] moreFlags)
     {
         var world = new OperationsScenarioBuilder();
@@ -190,7 +170,6 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
         return world;
     }
 
-    /// <summary>The instant of <paramref name="hour"/>:<paramref name="minute"/> on <paramref name="day"/> in Rome, in UTC.</summary>
     public static DateTimeOffset InRome(DateOnly day, int hour, int minute = 0)
     {
         var local = day.ToDateTime(new TimeOnly(hour, minute), DateTimeKind.Unspecified);
@@ -203,7 +182,6 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
 
     public void At(DateTimeOffset instant) => Clock.SetUtcNow(instant);
 
-    /// <summary>A unit of work of its own (a request, a job, a delivery of an event) over the database of the scenario.</summary>
     public OperationsScope Scope(bool underTheOrg = true)
     {
         var scope = _provider.CreateAsyncScope();
@@ -214,7 +192,6 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
 
     public async ValueTask DisposeAsync() => await _provider.DisposeAsync();
 
-    /// <summary>The token of the check-in link a text carries (<c>/checkin/{token}</c>), or fails when it carries none.</summary>
     public static string TokenIn(string text)
     {
         var match = TokenInText.Match(text);
@@ -223,8 +200,6 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
 
     [GeneratedRegex("/checkin/([0-9a-f]{64})", RegexOptions.CultureInvariant)]
     private static partial Regex TokenPattern();
-
-    // ---------------------------------------------------------------- the composition
 
     private void Build()
     {
@@ -256,7 +231,6 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
             options.ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning));
         });
 
-        // The application's own registrations, in the order Program.cs calls them (only the groups the operations chain runs through).
         services.AddCasazenRepositories();
         services.AddScoped<IGuestRepository, GuestRepository>();
         services.AddScoped<IPropertyRepository, PropertyRepository>();
@@ -296,12 +270,10 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
         services.AddNotificationPreferences();
         services.AddScheduledMessages();
 
-        // What the push services register in the application, without the hub: the live notices go to a queue the world records.
         services.TryAddSingleton<IPopupAlertPublisher, NoOpPopupAlertPublisher>();
         services.TryAddSingleton<IInAppNotificationPublisher, NoOpInAppNotificationPublisher>();
         services.AddScoped<IInAppNotificationService, InAppNotificationService>();
 
-        // The external world, replaced: nothing here reaches a network.
         services.Replace(ServiceDescriptor.Singleton(Octorate.Object));
         services.Replace(ServiceDescriptor.Singleton(Stripe.Object));
         services.Replace(ServiceDescriptor.Singleton<IEmailQueue>(Emails));
@@ -309,30 +281,22 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
         services.Replace(ServiceDescriptor.Singleton<IBackgroundJobClient>(Jobs));
         services.Replace(ServiceDescriptor.Singleton<IFileStorage>(Storage));
         services.Replace(ServiceDescriptor.Singleton<IGuestMessageService>(DirectThread));
-        // The engine of the routines asks an AI provider which operations of a routine to run, on every execution (RoutineAgentPlanner): the cleaning at the check-out, the request of a review and the
-        // scheduled message all go through it. The world answers «all of them», so the chain does not depend on a model; an environment with no provider in effect (Ai:Provider=Stub, the default)
-        // closes every routine with routine_ai_unavailable (OperationsChain_RoutinesNeedAnAiProvider_Test), and an organization with a commercial signup also needs the add-on ai-agents (the world's
-        // agency has none: a legacy organization has the access). See docs/runbooks/operations-scenario.md § 3 and § 4.
         IAiProvider planner = _noAiProvider ? new StubAiProvider(NullLogger<StubAiProvider>.Instance) : RoutineRig.SelectAllOperations();
         services.Replace(ServiceDescriptor.Singleton(planner));
 
         _provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = false, ValidateOnBuild = false });
     }
 
-    /// <summary>What the channel manager and Stripe answer the whole chain long (the steps that change the answer say so).</summary>
     private void SetUpTheExternalWorld()
     {
-        // The police account the host connected on the panel: valid, and Octorate sends the daily communication.
         Octorate
             .Setup(c => c.GetPoliceAccountAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OctoratePoliceAccount { Valid = true, Autorun = true });
 
-        // The table of the places Octorate knows: the comune of the flat and of the guests.
         Octorate
             .Setup(c => c.GetCheckInCitiesAsync("IT", It.IsAny<CancellationToken>()))
             .ReturnsAsync([new OctoratePlaceEntry("COMO", "403013075", "CITY"), new OctoratePlaceEntry("ROMA", "412058091", "CITY")]);
 
-        // The guests written to the reservation: every one is accepted and named, and the arrival Octorate registered is read back empty.
         Octorate
             .Setup(c => c.UpsertCheckInGuestsAsync(OctorateAccommodation, It.IsAny<string>(), It.IsAny<IReadOnlyList<OctorateCheckInGuestUpsert>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string _, string _, IReadOnlyList<OctorateCheckInGuestUpsert> guests, CancellationToken _) =>
@@ -348,7 +312,6 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
             .Setup(c => c.GetReservationArrivalAsync(OctorateAccommodation, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OctorateReservationArrival(null, null));
 
-        // A booking CasaZen holds is created on the channel manager when it is confirmed: the nights are free, and the reservation is made.
         Octorate
             .Setup(c => c.CheckAvailabilityAsync(It.IsAny<OctorateBookingTarget>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OctorateAvailabilityResult(true, null));
@@ -367,7 +330,6 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
                 UpdatedAt = Clock.GetUtcNow().UtcDateTime,
             });
 
-        // A reservation CasaZen made is read back as the channel manager holds it, and a payment recorded on it is taken.
         Octorate
             .Setup(c => c.GetReservationAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string _, string id, CancellationToken _) => ReservationOf(id));
@@ -378,10 +340,8 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
             .Setup(c => c.RegisterPaymentAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<OctoratePaymentRegistration>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OctoratePaymentResult("pay-1"));
 
-        // The chat of the portal takes the message the check-in link goes in (a step that wants it refused says so).
         TheChatTakesMessages();
 
-        // Stripe: the payment intent of the checkout of a direct booking (the four-argument door) and the one of the tourist tax (the seven-argument door).
         Stripe
             .Setup(s => s.CreateConnectedAccountPaymentIntentAsync(It.IsAny<string>(), It.IsAny<long>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
             .ReturnsAsync(() => new StripeIntent { Id = $"pi_test_{Guid.NewGuid():N}", ClientSecret = "secret_test", Status = "requires_payment_method" });
@@ -412,7 +372,6 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
                 return intent;
             });
 
-        // The payment intent a stay holds open is read back by its id before another is asked for (the guest who opens the payment twice gets the same one).
         Stripe
             .Setup(s => s.GetPaymentIntentAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string id, string? _, CancellationToken _) =>
@@ -427,7 +386,6 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
         UpdatedAt = Clock.GetUtcNow().UtcDateTime,
     };
 
-    /// <summary>The chat of the portal takes every message and gives each its own id.</summary>
     public void TheChatTakesMessages()
     {
         var next = 90000;
@@ -440,7 +398,6 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
             });
     }
 
-    /// <summary>The application of the agency has no permission to write in the chat of the portal yet: the channel manager refuses the message.</summary>
     public void TheChatIsNotLicensed() =>
         Octorate
             .Setup(c => c.SendChatMessageAsync(OctorateAccommodation, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -485,7 +442,6 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
             ComplianceStatus = PropertyComplianceStatus.Active,
         });
 
-        // The listing of the flat on the channel manager: the room of the reservations it imports and the one CasaZen creates.
         var connection = new OctorateConnection { OrgId = OrgId, Environment = OctorateEnvironment.Test, Status = OctorateConnectionStatus.Connected };
         db.OctorateConnections.Add(connection);
         db.OctorateListingMappings.Add(new OctorateListingMapping
@@ -499,7 +455,6 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
             SnapshotName = FlatName,
         });
 
-        // The tourist tax of Como: the official rate of the comune, and the portal that collects it for its own bookings.
         db.TouristTaxRates.Add(new TouristTaxRate
         {
             City = ComuneName,
@@ -518,7 +473,6 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
             VerifiedAt = Clock.GetUtcNow().UtcDateTime,
         });
 
-        // The member of the staff who cleans the flat.
         db.Users.Add(new User
         {
             Id = StaffUser,
@@ -531,13 +485,10 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
         });
         db.OrgMembers.Add(new OrgMember { OrgId = OrgId, UserId = StaffUser, Role = OrgRole.Owner });
 
-        // The routines of the agency (the library the host picks from, saved as the page of the routines saves them): the cleaning at the check-out time, and the
-        // request of a review the day after.
         db.Routines.Add(NewRoutine("Pulizia al check-out", RoutineEventType.AfterCheckout, """{"hours":0}""", """[{"type":"CreateCleaningRequest","config":{}}]"""));
         db.Routines.Add(NewRoutine("Richiesta di recensione", RoutineEventType.AfterCheckout, """{"days":1,"hours":0}""", """[{"type":"RequestReview","config":{}}]"""));
         await db.SaveChangesAsync();
 
-        // The default cleaner of the flat, saved as the wizard of the property saves it: the member of the staff, at the price agreed.
         await using var host = Scope();
         await host.Get<IPropertyCleaningSetupService>().SaveAsync(
             OrgId,
@@ -568,7 +519,6 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
     }
 }
 
-/// <summary>The settings of the world on top of the shipped configuration: the flags of the operations steps on, the addresses and keys of the test environment.</summary>
 internal static class OperationsConfiguration
 {
     public static IEnumerable<KeyValuePair<string, string?>> Settings(string publicSiteBaseUrl)
@@ -581,7 +531,6 @@ internal static class OperationsConfiguration
         yield return new("Octorate:PaymentModes:Stripe", "STRIPE");
         yield return new("Octorate:PaymentModes:CashOnArrival", "CASH");
         yield return new("Octorate:PaymentModes:BankTransfer", "BANK_TRANSFER");
-        // The hold of a direct booking is stamped with the real clock by the booking service: the scenario's own clock must never read it as expired.
         yield return new("DirectBooking:PendingTtlMinutes", "100000");
         string[] flags =
         [
@@ -599,14 +548,12 @@ internal static class OperationsConfiguration
     }
 }
 
-/// <summary>One scope of the world: the unit of work of a request or of a job, with its container.</summary>
 internal sealed class OperationsScope(AsyncServiceScope scope) : IAsyncDisposable
 {
     public IServiceProvider Services => scope.ServiceProvider;
 
     public AppDbContext Db => Get<AppDbContext>();
 
-    /// <summary>A job or a handler as Hangfire and the bus build it: its constructor filled from the container of the scope.</summary>
     public T Create<T>()
         where T : class => ActivatorUtilities.CreateInstance<T>(scope.ServiceProvider);
 
@@ -616,7 +563,6 @@ internal sealed class OperationsScope(AsyncServiceScope scope) : IAsyncDisposabl
     public ValueTask DisposeAsync() => scope.DisposeAsync();
 }
 
-/// <summary>The push queue of the world: every live notice the services handed to it, in order.</summary>
 internal sealed class RecordingPushQueue : IPushNotificationService
 {
     private readonly ConcurrentQueue<(string Key, PushAudience Audience, PushNotificationPayload Payload)> _pushes = new();
@@ -630,7 +576,6 @@ internal sealed class RecordingPushQueue : IPushNotificationService
     }
 }
 
-/// <summary>The Hangfire client of the world: it records the jobs handed to the background and runs none of them.</summary>
 internal sealed class RecordingJobClient : IBackgroundJobClient
 {
     private readonly ConcurrentQueue<(Job Job, IState State)> _jobs = new();
@@ -646,7 +591,6 @@ internal sealed class RecordingJobClient : IBackgroundJobClient
     public bool ChangeState(string jobId, IState state, string expectedState) => true;
 }
 
-/// <summary>The private bucket of the world, in memory, that tells which objects it holds.</summary>
 internal sealed class ObjectStorage : IFileStorage
 {
     private readonly ConcurrentDictionary<string, byte[]> _objects = new(StringComparer.Ordinal);
@@ -683,11 +627,6 @@ internal sealed class ObjectStorage : IFileStorage
         Task.FromResult<Uri?>(null);
 }
 
-/// <summary>
-/// The conversations of the direct bookings of the world. The service that writes an automatic message to the thread of a direct booking updates the thread with a bulk
-/// <c>ExecuteUpdate</c>, which the in-memory provider cannot run: this recorder takes its place for the one door the scheduled messages use, and keeps what was written
-/// (the text and the key of the message, once for each key). Its own tests are the message layer's.
-/// </summary>
 internal sealed class DirectThreadRecorder(TimeProvider clock) : IGuestMessageService
 {
     private readonly object _gate = new();

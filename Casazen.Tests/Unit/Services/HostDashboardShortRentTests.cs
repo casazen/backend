@@ -11,11 +11,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// SR-03 on the host dashboard, with the numbers worked out by hand: the next 30 days, the period before (same number of days),
-/// the money collected by cash, the share of the stays that came from the booking site, the properties in long-term mode left
-/// out, the one-property filter and the reach of a collaborator limited to some properties. Today is 9 October 2026 in Rome.
-/// </summary>
 public class HostDashboardShortRentTests
 {
     private const string Collaborator = "auth0|collaboratore-sr03";
@@ -37,8 +32,6 @@ public class HostDashboardShortRentTests
         Property Foreign,
         HostScope OrgWide,
         HostScope Restricted);
-
-    // --- The data ---------------------------------------------------------------------------------------
 
     /// <summary>
     /// Two short-rent properties and one in long-term mode, the stays and the payments the tests count, and the stays and the
@@ -75,9 +68,6 @@ public class HostDashboardShortRentTests
         var elsewhere = Stay(foreign, foreignGuest, BookingStatus.Confirmed, BookingSource.Direct, Day(10, 10), Day(10, 20), 1000m);
         db.Bookings.AddRange(a, b, c, d, f, elsewhere);
 
-        // The payments: four in the next 30 days (the last of them has no instant of settlement, recorded before it existed: the day
-        // it was created counts), three in the period before (the 23:59 of the 8th in Rome among them: 21:59Z), and the rest
-        // that do not count (a refunded one, a failed one, another org's).
         db.Payments.AddRange(
             Pay(a, PaymentStatus.Completed, 300m, processed: At(10, 12, 10)),
             Pay(b, PaymentStatus.PartiallyRefunded, 200m, refunded: 50m, processed: At(10, 20, 10)),
@@ -130,8 +120,6 @@ public class HostDashboardShortRentTests
     private static HostDashboardQuery Next30Days(bool compare = false, bool collected = true, Guid? propertyId = null) =>
         new(HostDashboardPeriodKind.Next30Days, null, propertyId, compare, collected);
 
-    // --- The next 30 days -------------------------------------------------------------------------------
-
     [Fact]
     public async Task Next30Days_ThePeriodStartsTodayInRome_AndTheFiguresAreWorkedOutOverIt()
     {
@@ -143,13 +131,10 @@ public class HostDashboardShortRentTests
         Assert.Equal(Day(10, 9), kpis.Period.From);
         Assert.Equal(Day(11, 8), kpis.Period.To);
         Assert.Equal(Day(10, 9), kpis.TodayInRome);
-        // Two short-rent properties: the one in long-term mode is neither counted nor in the nights available.
         Assert.Equal(2, kpis.PropertyCount);
         Assert.Equal(new HostDashboardOccupancy(7, 60, 0), kpis.Occupancy);
-        // A 300 + B 2 of 3 nights 200 + C 2 of 4 nights 200.
         Assert.Equal(700m, kpis.Revenue);
         Assert.Equal(3, kpis.RevenueStayCount);
-        // Only A came from the booking site (Direct); B was entered by the host, C is an Airbnb stay.
         Assert.Equal(new HostDashboardDirectShare(1, 3), kpis.DirectShare);
         Assert.Equal(1m / 3m, kpis.DirectShare.Rate);
         Assert.Null(kpis.Previous);
@@ -162,8 +147,6 @@ public class HostDashboardShortRentTests
 
         var kpis = await Dashboard(world.Db).GetKpisAsync(world.OrgWide, Next30Days());
 
-        // 300 + (200 - 50 refunded) + 100 (no instant of settlement: created on the 25th) + 10 (00:30 on the 9th in Rome).
-        // Not the fully refunded one, not the failed one, not the 20 of 23:59 on the 8th, not another org's 999.
         Assert.Equal(new HostDashboardCollected(560m, 4), kpis.Collected);
     }
 
@@ -176,7 +159,6 @@ public class HostDashboardShortRentTests
 
         Assert.Null(kpis.Collected);
         Assert.Null(kpis.Previous!.Collected);
-        // The accrual figures are there all the same.
         Assert.Equal(700m, kpis.Revenue);
     }
 
@@ -192,16 +174,12 @@ public class HostDashboardShortRentTests
         Assert.Equal(Day(9, 9), previous.Period.From);
         Assert.Equal(Day(10, 9), previous.Period.To);
         Assert.Equal(kpis.Period.Nights, previous.Period.Nights);
-        // F 5 nights of the 20th of September on the Trullo and the night of the 8th of B: 6 of 60.
         Assert.Equal(new HostDashboardOccupancy(6, 60, 0), previous.Occupancy);
-        // F 500 + B 1 of 3 nights 100.
         Assert.Equal(600m, previous.Revenue);
         Assert.Equal(2, previous.RevenueStayCount);
         Assert.Equal(new HostDashboardDirectShare(1, 2), previous.DirectShare);
         Assert.Equal(0.5m, previous.DirectShare.Rate);
-        // 500 on the 30th of September and 20 at 23:59 on the 8th of October in Rome.
         Assert.Equal(new HostDashboardCollected(520m, 2), previous.Collected);
-        // The current figures are not touched by asking for the comparison.
         Assert.Equal(700m, kpis.Revenue);
         Assert.Equal(560m, kpis.Collected!.Amount);
     }
@@ -215,7 +193,6 @@ public class HostDashboardShortRentTests
             world.OrgWide, new HostDashboardQuery(HostDashboardPeriodKind.Month, new DateOnly(2026, 10, 1), Compare: true));
 
         Assert.Equal(31, kpis.Period.Nights);
-        // October: A 300 and B 300; the long-term property leaves the nights available (2 x 31).
         Assert.Equal(600m, kpis.Revenue);
         Assert.Equal(new HostDashboardOccupancy(6, 62, 0), kpis.Occupancy);
         Assert.Equal(Day(8, 31), kpis.Previous!.Period.From);
@@ -236,8 +213,6 @@ public class HostDashboardShortRentTests
         Assert.Null(kpis.Previous);
     }
 
-    // --- One property -----------------------------------------------------------------------------------
-
     [Fact]
     public async Task PropertyFilter_NarrowsEveryFigureToTheProperty()
     {
@@ -246,11 +221,9 @@ public class HostDashboardShortRentTests
         var kpis = await Dashboard(world.Db).GetKpisAsync(world.OrgWide, Next30Days(propertyId: world.Trullo.Id));
 
         Assert.Equal(1, kpis.PropertyCount);
-        // A (3 nights) and C (2 nights) of 30.
         Assert.Equal(new HostDashboardOccupancy(5, 30, 0), kpis.Occupancy);
         Assert.Equal(500m, kpis.Revenue);
         Assert.Equal(new HostDashboardDirectShare(1, 2), kpis.DirectShare);
-        // The payments of A (300) and C (100); the failed and the refunded ones of A do not count.
         Assert.Equal(new HostDashboardCollected(400m, 2), kpis.Collected);
         Assert.All(kpis.RecentBookings, stay => Assert.Equal(world.Trullo.Id, stay.PropertyId));
     }
@@ -261,15 +234,12 @@ public class HostDashboardShortRentTests
         var world = await SeedAsync();
         var service = Dashboard(world.Db);
 
-        // Another org's property, an unknown one, and (restricted) a property of the org the caller was not given.
         await Assert.ThrowsAsync<NotFoundException>(() => service.GetKpisAsync(world.OrgWide, Next30Days(propertyId: world.Foreign.Id)));
         await Assert.ThrowsAsync<NotFoundException>(() => service.GetKpisAsync(world.OrgWide, Next30Days(propertyId: Guid.NewGuid())));
         var error = await Assert.ThrowsAsync<NotFoundException>(
             () => service.GetKpisAsync(world.Restricted, Next30Days(propertyId: world.CasaBianca.Id)));
         Assert.Equal("PropertyNotFound", error.MessageKey);
     }
-
-    // --- A collaborator limited to some properties ----------------------------------------------------
 
     [Fact]
     public async Task Restricted_TheCollaboratorSeesTheFiguresOfItsPropertyOnly_MoneyIncluded()
@@ -283,13 +253,10 @@ public class HostDashboardShortRentTests
         Assert.Equal(500m, kpis.Revenue);
         Assert.Equal(new HostDashboardDirectShare(1, 2), kpis.DirectShare);
         Assert.Equal(new HostDashboardCollected(400m, 2), kpis.Collected);
-        // The period before: F on the Trullo only, and its payment; the night and the 20 of Casa Bianca are not the collaborator's.
         Assert.Equal(new HostDashboardOccupancy(5, 30, 0), kpis.Previous!.Occupancy);
         Assert.Equal(500m, kpis.Previous.Revenue);
         Assert.Equal(new HostDashboardCollected(500m, 1), kpis.Previous.Collected);
     }
-
-    // --- The stays of the day --------------------------------------------------------------------------
 
     [Fact]
     public async Task TodayStays_ArrivalsDeparturesAndTheCheckInsToCome_OnTheRomeDay()
@@ -302,7 +269,6 @@ public class HostDashboardShortRentTests
         db.Guests.Add(guest);
 
         var arrivesToday = Stay(property, guest, BookingStatus.Confirmed, BookingSource.Direct, Day(10, 9), Day(10, 12), 300m);
-        // 01:30 of the 9th in Rome, stored as the instant 23:30Z of the 8th: still an arrival of today, never of yesterday.
         var arrivesAfterMidnight = Stay(property, guest, BookingStatus.Confirmed, BookingSource.Manual, At(10, 8, 23, 30), Day(10, 11), 200m);
         var arrivedToday = Stay(property, guest, BookingStatus.CheckedIn, BookingSource.Airbnb, Day(10, 9), Day(10, 10), 100m);
         arrivedToday.ArrivedAt = At(10, 9, 8);
@@ -322,7 +288,6 @@ public class HostDashboardShortRentTests
             stays.Arrivals.Items.Select(s => s.BookingId).Order());
         Assert.Equal(3, stays.Arrivals.Count);
         Assert.Equal([leavesToday.Id], stays.Departures.Items.Select(s => s.BookingId));
-        // After today: the arrivals of today are in the first list, a cancelled stay and a request in neither.
         Assert.Equal([tomorrow.Id, later.Id], stays.Upcoming.Items.Select(s => s.BookingId));
         Assert.Equal(2, stays.Upcoming.Count);
 
@@ -338,7 +303,6 @@ public class HostDashboardShortRentTests
     public async Task TodayStays_ACollaboratorSeesTheStaysOfItsPropertyOnly()
     {
         var world = await SeedAsync();
-        // One arrival today on each of the two properties.
         var guest = await world.Db.Guests.FirstAsync(g => g.OrgId == world.OrgId);
         world.Db.Bookings.AddRange(
             Stay(world.Trullo, guest, BookingStatus.Confirmed, BookingSource.Direct, Day(10, 9), Day(10, 12), 300m),

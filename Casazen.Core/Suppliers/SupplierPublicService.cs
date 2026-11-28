@@ -44,15 +44,8 @@ public sealed record SupplierPublicService(
     bool UrgentEnabled = false,
     int? UrgentSurchargeCents = null)
 {
-    /// <summary>
-    /// What the public may know about urgent requests for this service (SP-04c): on only when the service <b>and</b> the supplier
-    /// accept them, with the surcharge that would be added. The catalog does not know the supplier's settings, so it leaves
-    /// <see cref="SupplierUrgentTerms.Off"/>; whoever does (the showcase service, the booking) sets it with
-    /// <see cref="WithUrgent"/> before the service is shown, estimated or booked.
-    /// </summary>
     public SupplierUrgentTerms Urgent { get; init; } = SupplierUrgentTerms.Off;
 
-    /// <summary>This service with the urgent terms its own switch and surcharge give next to the supplier's settings (<see cref="SupplierUrgentRules.Effective"/>).</summary>
     public SupplierPublicService WithUrgent(SupplierUrgentSettings supplier) =>
         this with { Urgent = SupplierUrgentRules.Effective(UrgentEnabled, UrgentSurchargeCents, supplier) };
 

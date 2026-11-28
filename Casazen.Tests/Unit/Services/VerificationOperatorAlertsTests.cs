@@ -49,7 +49,6 @@ public class VerificationOperatorAlertsTests
         var told = await ToldAsync(world);
         Assert.Equal(new[] { owner, admin, manager, Creator }.Order(StringComparer.Ordinal), told);
 
-        // The seeded role of the collaborator does not hold the permission: the grant of «Solo alcuni» changes nothing for it.
         Assert.DoesNotContain(collaborator, told);
         Assert.DoesNotContain(granted, told);
 
@@ -102,7 +101,6 @@ public class VerificationOperatorAlertsTests
         await alerts.RaiseAsync(session.Id, VerificationAlertReasons.Review, CancellationToken.None);
         await alerts.RaiseAsync(session.Id, VerificationAlertReasons.GuestRequest, CancellationToken.None);
 
-        // One "To do" for the booking: urgent, on the property, leading to the verification.
         var todo = await world.Db.InternalActivities.SingleAsync(a => a.EntityId == booking.Id);
         Assert.Equal(nameof(ActivityType.IdentityVerification), todo.ActivityType);
         Assert.Equal(ActivityAction.VerifyIdentity, todo.Action);
@@ -110,7 +108,6 @@ public class VerificationOperatorAlertsTests
         Assert.Equal(world.Property.Id, todo.PropertyId);
         Assert.Null(todo.CompletedAt);
 
-        // The push: the property, to the operators of the booking, and no guest.
         var first = pushes[0];
         Assert.Equal(PushAudience.VerificationOperators(booking.Id), first.Audience);
         Assert.Equal(PushTypes.VerificationRequired, first.Payload.Type);
@@ -118,7 +115,6 @@ public class VerificationOperatorAlertsTests
         Assert.All(pushes, p => Assert.DoesNotContain("Rossi", p.Payload.Title + p.Payload.Body, StringComparison.OrdinalIgnoreCase));
         Assert.Equal(2, pushes.Select(p => p.Key).Distinct().Count());
 
-        // The e-mails: to the operators only (the owner, the manager, the creator of the property), the property and the reason, no guest.
         var firstCall = emails.Take(emails.Count / 2).ToList();
         Assert.Equal(
             new[] { world.EmailOf(owner), world.EmailOf(manager), world.EmailOf(Creator) }.Order(StringComparer.OrdinalIgnoreCase),
@@ -136,7 +132,6 @@ public class VerificationOperatorAlertsTests
             Assert.DoesNotContain("mario.rossi@example.com", content, StringComparison.OrdinalIgnoreCase);
         });
 
-        // Nothing is raised for a stay that is not active, for an unknown reason or for a session that does not exist.
         var before = (emails.Count, pushes.Count);
         await alerts.RaiseAsync(cancelledSession.Id, VerificationAlertReasons.Review, CancellationToken.None);
         await alerts.RaiseAsync(Guid.NewGuid(), VerificationAlertReasons.Review, CancellationToken.None);
@@ -144,7 +139,6 @@ public class VerificationOperatorAlertsTests
         Assert.Equal(before, (emails.Count, pushes.Count));
         Assert.False(await world.Db.InternalActivities.AnyAsync(a => a.EntityId == cancelled.Id));
 
-        // The verification is over: the "To do" is closed by the system, once.
         await alerts.ResolveAsync(world.Org.Id, booking.Id, CancellationToken.None);
         await alerts.ResolveAsync(world.Org.Id, booking.Id, CancellationToken.None);
         var closed = await world.Db.InternalActivities.SingleAsync(a => a.EntityId == booking.Id);
@@ -159,7 +153,6 @@ public class VerificationOperatorAlertsTests
         .Order(StringComparer.Ordinal)
         .ToList();
 
-    /// <summary>One host org on the model seeds (the roles and their permissions as the migrations leave them), one property made by <see cref="Creator"/>.</summary>
     private sealed class World : IDisposable
     {
         private World(AppDbContext db, OrgEntity org, OrgEntity otherOrg, Property property)
@@ -202,7 +195,6 @@ public class VerificationOperatorAlertsTests
             return new World(db, org, other, property);
         }
 
-        /// <summary>A member of the team with the short-rent role its org role implies (the account roles do not matter here).</summary>
         public string Member(
             string id,
             OrgRole role,

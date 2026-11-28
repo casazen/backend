@@ -20,5 +20,4 @@ public sealed record InAppNotificationDto(Guid Id, string Type, Guid? EntityId, 
         new(item.Id, item.Type, item.EntityId, item.CreatedAt, item.ReadAt);
 }
 
-/// <summary>The number of the bell: how many notifications of the caller are unread.</summary>
 public sealed record UnreadNotificationCountDto(int Count);

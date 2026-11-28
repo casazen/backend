@@ -3,16 +3,10 @@ using Casazen.Core.Services;
 
 namespace Casazen.Core.Suppliers;
 
-/// <summary>The limits of the other suppliers offered to a customer whose request nobody answered (SP-10c).</summary>
 public static class ShowcaseAlternativesLimits
 {
-    /// <summary>Most suppliers offered (3): a short list in the context of one request, never a directory.</summary>
     public const int Max = 3;
 
-    /// <summary>
-    /// Most suppliers looked at, best first, to find <see cref="Max"/> that qualify: each costs a few reads (its published page, its services),
-    /// so a comune with many suppliers none of which takes bookings cannot make one call expensive.
-    /// </summary>
     public const int MaxCandidates = 12;
 }
 
@@ -51,7 +45,6 @@ public sealed record ShowcaseAlternative(
     int? MedianResponseMinutes,
     ShowcaseAlternativeService? Service);
 
-/// <summary>The rules that pick the alternatives (pure).</summary>
 public static class ShowcaseAlternativeRules
 {
     /// <summary>
@@ -71,10 +64,6 @@ public static class ShowcaseAlternativeRules
     /// </summary>
     public static bool Qualifies(PublishedShowcasePage? page) => page is { Paused: false, BookingsOpen: true };
 
-    /// <summary>
-    /// The service that corresponds to a request of <paramref name="category"/>: of the supplier's published services in that category, the one with
-    /// the lowest "from" price (a service on quote comes after the priced ones); <c>null</c> when it has none in the category.
-    /// </summary>
     public static ShowcaseAlternativeService? ServiceFor(IEnumerable<SupplierPublicService> services, string category)
     {
         ArgumentNullException.ThrowIfNull(services);

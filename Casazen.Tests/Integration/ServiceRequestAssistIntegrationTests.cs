@@ -15,10 +15,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// The default integration factory with an AI provider in effect (a mock answers) and a per-user AI limit of 3 an hour: «Descrivi di cosa hai
-/// bisogno» of the guided request (WIZ-AI-REQUEST) goes through the real pipeline (authentication, permission, property of the org, rate limit).
-/// </summary>
 public sealed class RequestAssistFactory : AiProviderMockFactory
 {
     public const int UserPermitLimit = 3;
@@ -113,7 +109,6 @@ public class ServiceRequestAssistIntegrationTests(RequestAssistFactory factory) 
         Assert.Equal("plumbing", body.RootElement.GetProperty("category").GetString());
         Assert.Equal("High", body.RootElement.GetProperty("urgency").GetString());
         Assert.Contains("rubinetto", body.RootElement.GetProperty("summary").GetString());
-        // The property of the test has no comune of the official list: nobody of CasaZen is proposed.
         Assert.Equal("external", body.RootElement.GetProperty("channel").GetString());
 
         string[] prompts;
@@ -234,7 +229,6 @@ public class ServiceRequestAssistIntegrationTests(RequestAssistFactory factory) 
             p => p.GenerateAsync(It.IsAny<AiRequest>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never);
 
-        // Reading whether the AI is there costs no permit: it still answers after the limit.
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync(AssistUrl)).StatusCode);
     }
 

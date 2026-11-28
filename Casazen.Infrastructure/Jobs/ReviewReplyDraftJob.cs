@@ -23,10 +23,8 @@ public class ReviewReplyDraftJob(
     IBackgroundTenantScope tenantScope,
     ILogger<ReviewReplyDraftJob> logger)
 {
-    /// <summary>The seconds a run waits for the one of the same review before it.</summary>
     public const int LockTimeoutSeconds = 300;
 
-    /// <summary>How many times Hangfire runs a failed job again.</summary>
     public const int Attempts = 2;
 
     [AutomaticRetry(Attempts = Attempts, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
@@ -45,7 +43,6 @@ public class ReviewReplyDraftJob(
             return;
         }
 
-        // Every read of the run names the org; the tenant of the scope is a second wall.
         tenantScope.EnterOrg(orgId);
         var outcome = await drafter.DraftAsync(orgId, key, ReviewDraftOptions.Automatic, cancellationToken);
         logger.LogInformation(

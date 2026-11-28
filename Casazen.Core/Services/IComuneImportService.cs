@@ -9,7 +9,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IComuneImportService
 {
-    /// <summary>Imports a file of the list. Rejections are returned in <see cref="ComuneImportResult.Errors"/>, never thrown.</summary>
     Task<ComuneImportResult> ImportAsync(
         ComuneImportRequest request,
         Stream content,
@@ -43,7 +42,6 @@ public sealed record ComuneImportRequest(
     string? Authority = null,
     DateTime? RetrievedAt = null);
 
-/// <summary>Outcome of an import; <see cref="Success"/> is false when the file was rejected (nothing was written).</summary>
 public sealed record ComuneImportResult(
     Guid? ImportId,
     int Rows,
@@ -58,30 +56,21 @@ public sealed record ComuneImportResult(
     public static ComuneImportResult Rejected(params ComuneImportLineError[] errors) => new(null, 0, 0, 0, 0, 0, errors);
 }
 
-/// <param name="Line">1-based line of the file; 0 for the file as a whole.</param>
-/// <param name="Error">Stable snake_case code (<see cref="ComuneImportErrors"/>).</param>
 public sealed record ComuneImportLineError(int Line, string Error);
 
-/// <summary>What the seed file did at startup.</summary>
 public enum ComuneSeedOutcome
 {
-    /// <summary>The build has no seed file (or no metadata): nothing to load.</summary>
     NoSeedFile = 0,
 
-    /// <summary>The seed file was imported.</summary>
     Imported = 1,
 
-    /// <summary>The database already has a list as recent as the seed file, or more: left alone.</summary>
     AlreadyUpToDate = 2,
 
-    /// <summary>The seed file or its metadata is invalid: nothing was written (logged).</summary>
     Rejected = 3,
 }
 
-/// <summary>Error codes of an import, per line or for the whole file.</summary>
 public static class ComuneImportErrors
 {
-    // File as a whole
     public const string EmptyFile = "empty_file";
     public const string FileTooLarge = "file_too_large";
     public const string UnreadableEncoding = "unreadable_encoding";
@@ -90,14 +79,12 @@ public static class ComuneImportErrors
     public const string ReferenceDateInFuture = "reference_date_in_future";
     public const string ReferenceDateOlderThanCurrent = "reference_date_older_than_current";
 
-    // Header
     public const string IstatColumnMissing = "istat_column_missing";
     public const string NameColumnMissing = "name_column_missing";
     public const string CadastralColumnMissing = "cadastral_column_missing";
     public const string ProvinceColumnMissing = "province_column_missing";
     public const string RegionColumnMissing = "region_column_missing";
 
-    // Row
     public const string ColumnCountMismatch = "column_count_mismatch";
     public const string IstatInvalid = "istat_invalid";
     public const string NameMissing = "name_missing";
@@ -111,6 +98,5 @@ public static class ComuneImportErrors
     public const string DuplicateIstatCode = "duplicate_istat_code";
     public const string DuplicateCadastralCode = "duplicate_cadastral_code";
 
-    /// <summary>The rows are valid but clash with comuni already stored (a cadastral code held by another active comune).</summary>
     public const string ConflictsWithStoredComuni = "conflicts_with_stored_comuni";
 }

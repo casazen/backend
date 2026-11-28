@@ -18,16 +18,10 @@ namespace Casazen.Core.Assistant;
 /// </remarks>
 public static partial class AssistantRulesValidator
 {
-    /// <summary>The 422 of a language, a signature, an hours window or a topic that is not valid.</summary>
     public const string RulesInvalidCode = "assistant_rules_invalid";
 
-    /// <summary>The 422 of a confidence threshold outside 0.50 to 0.99 or with more than three decimals.</summary>
     public const string ThresholdInvalidCode = "assistant_threshold_invalid";
 
-    /// <summary>
-    /// The languages to save: at least one, each a two-letter lower-case code (<c>it</c>, <c>en</c>), none twice, in the order given. 422
-    /// <see cref="RulesInvalidCode"/> for none at all or for a code that is not one.
-    /// </summary>
     public static List<string> CleanLanguages(IReadOnlyList<string>? languages)
     {
         if (languages is null || languages.Count == 0)
@@ -46,7 +40,6 @@ public static partial class AssistantRulesValidator
         return clean;
     }
 
-    /// <summary>The signature to save: trimmed and normalized like a message, <c>null</c> when empty; 422 <see cref="RulesInvalidCode"/> over 300 characters.</summary>
     public static string? CleanSignature(string? signature)
     {
         var clean = GuestMessageRules.NormalizeText(signature);
@@ -76,16 +69,10 @@ public static partial class AssistantRulesValidator
         return (start, end);
     }
 
-    /// <summary>The threshold to save: 0.50 to 0.99 with at most three decimals (the column is <c>numeric(4,3)</c>); a threshold that is not given is the default, 0.85.</summary>
     public static decimal CleanThreshold(decimal? threshold) => threshold is null ? OrgAssistantRules.DefaultConfidenceThreshold : Checked(threshold.Value);
 
-    /// <summary>The threshold of a property: not given = as the organization (<c>null</c>); given, the same rule as <see cref="CleanThreshold"/>.</summary>
     public static decimal? CleanOptionalThreshold(decimal? threshold) => threshold is null ? null : Checked(threshold.Value);
 
-    /// <summary>
-    /// The topics to save: names of <see cref="AssistantTopicNames.Known"/> (any case), saved with the spelling of the enums, none twice. No list is the empty list. 422
-    /// <see cref="RulesInvalidCode"/> for a name the assistant does not know.
-    /// </summary>
     public static List<string> CleanTopics(IReadOnlyList<string>? topics)
     {
         var clean = new List<string>();
@@ -115,7 +102,6 @@ public static partial class AssistantRulesValidator
 
     private static DomainRuleException Invalid() => new(RulesInvalidCode, "AssistantRulesInvalid");
 
-    // A language of the assistant is a two-letter lower-case code: it, en, de.
     [GeneratedRegex(@"^[a-z]{2}\z", RegexOptions.CultureInvariant)]
     private static partial Regex LanguageCode();
 }

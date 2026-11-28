@@ -20,27 +20,10 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IGuestBookingCancellationService
 {
-    /// <summary>
-    /// Generates a one-time cancel token, stores its SHA-256 hash on the booking with an expiry date, and
-    /// emails the signed link to the guest.
-    /// </summary>
-    /// <exception cref="Exceptions.NotFoundException">The booking does not exist.</exception>
-    /// <exception cref="Exceptions.DomainRuleException">The booking is not in a cancellable state.</exception>
     Task SendCancelLinkAsync(Guid bookingId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// What cancelling would do now, for the guest of the session who is in the guest area (<see cref="GuestCancellationChannel.GuestArea"/>:
-    /// a stay that has started is not cancellable here). Nothing is changed.
-    /// </summary>
-    /// <exception cref="Exceptions.NotFoundException">The booking does not exist.</exception>
     Task<GuestCancellationPreview> PreviewForGuestAreaAsync(Guid bookingId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The same preview for the page of the signed link: the token is verified (and not spent) like the cancellation does, so a link
-    /// that does not open the cancellation does not open the preview either.
-    /// </summary>
-    /// <exception cref="Exceptions.NotFoundException">The booking does not exist.</exception>
-    /// <exception cref="Exceptions.DomainRuleException">Token invalid or expired.</exception>
     Task<GuestCancellationPreview> PreviewByGuestLinkAsync(Guid bookingId, string token, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -79,11 +62,6 @@ public interface IGuestBookingCancellationService
     /// <exception cref="Exceptions.DomainConflictException">A payment is completing.</exception>
     Task<GuestCancellationResult> CancelByGuestLinkAsync(Guid bookingId, string token, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The cancellation of the signed link for the refund the guest was shown on its page (DB-08a): as
-    /// <see cref="CancelFromGuestAreaAsync"/>, a refund that is no longer <paramref name="expectedRefundAmount"/> cancels nothing and
-    /// leaves the link usable (<see cref="GuestRefundChangedException"/>).
-    /// </summary>
     Task<GuestCancellationResult> CancelByGuestLinkAsync(
         Guid bookingId,
         string token,

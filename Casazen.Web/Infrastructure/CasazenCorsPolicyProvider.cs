@@ -5,16 +5,8 @@ using Microsoft.Net.Http.Headers;
 
 namespace Casazen.Web.Infrastructure;
 
-/// <summary>
-/// Extension point for origins that are not in the configuration, such as the subdomains and custom domains of the hosts'
-/// booking sites (<see cref="OrgHostCorsOriginSource"/>, BK-16). Implementations are registered in DI (scoped is fine)
-/// and are asked only about origins the configuration rejects.
-/// </summary>
 public interface ICorsOriginSource
 {
-    /// <param name="origin">The <c>Origin</c> header of the request.</param>
-    /// <param name="requestPath">Path of the request (of the actual one, for a preflight): a source may limit its origins to some endpoints.</param>
-    /// <param name="cancellationToken">Cancels the check.</param>
     ValueTask<bool> IsOriginAllowedAsync(string origin, PathString requestPath, CancellationToken cancellationToken);
 }
 
@@ -44,7 +36,6 @@ public sealed class CasazenCorsPolicyProvider(
                 return BuildPolicy(candidate => string.Equals(candidate, origin, StringComparison.OrdinalIgnoreCase), context.Request.Path);
         }
 
-        // Rejected origin: the policy is still evaluated, it simply emits no Access-Control-Allow-Origin.
         return BuildPolicy(allowList.IsOriginAllowed, context.Request.Path);
     }
 
@@ -56,10 +47,6 @@ public sealed class CasazenCorsPolicyProvider(
             // Idempotency-Key: the key of a payment the host records (SR-06b); without it the browser's preflight refuses the call.
             // X-SignalR-User-Agent: sent by the SignalR browser client on its negotiate request (the hubs only use it).
             .WithHeaders("Authorization", "Content-Type", "Accept", "X-Requested-With", "Idempotency-Key", "X-SignalR-User-Agent", "X-Storefront-Chat")
-            // The header that says the list of the calendar changes of a collaborator limited to some properties may leave older changes out (E08/F05/US02): a browser reads
-            // a header of another origin only when the answer exposes it. Content-Disposition: the name of the file of a download (the CSV and Excel exports of the fiscal documents,
-            // E06/F03/US03/T01), which a page on another origin reads from the answer of its blob download. X-Retention-Years: the retention hint of the regime that comes with the file of the
-            // guest register of a Swiss property (E31/F01/US01/T01), the same number as the info the screen reads first.
             .WithExposedHeaders(CalendarChangesController.TruncatedHeader, HeaderNames.ContentDisposition, SwissComplianceController.RetentionYearsHeader);
 
         // The SignalR client negotiates with credentials included by default: the hubs answer Access-Control-Allow-Credentials for the

@@ -7,6 +7,5 @@ namespace Casazen.Web.DTOs;
 /// </summary>
 public interface IGuestBookingCodeRequest
 {
-    /// <summary>The booking code as the guest typed it (<c>XXXXX-XXXXX</c>, any case, with or without the dash).</summary>
     string BookingCode { get; }
 }

@@ -6,10 +6,6 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Condominium;
 
-/// <summary>
-/// One consistent <c>condo-export-v1</c> snapshot (CondoLedger). Amounts in the file are integer cents.
-/// This is a copy into staging, not a sync back.
-/// </summary>
 public static class CondoExportV1
 {
     public const string Format = "condo-export-v1";

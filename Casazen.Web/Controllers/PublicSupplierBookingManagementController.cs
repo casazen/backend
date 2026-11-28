@@ -34,12 +34,6 @@ namespace Casazen.Web.Controllers;
 [PrivateAnswer]
 public class PublicSupplierBookingManagementController(IShowcaseBookingManager bookings) : ControllerBase
 {
-    /// <summary>
-    /// Finds the booking again: its status, service, time, price and lines, place (the comune; the exact address only after the
-    /// supplier took the request), supplier, the other time the supplier proposed (with the deadline to answer it), and what the
-    /// customer can do (<c>canCancel</c>, <c>canReschedule</c>, <c>canRespondToProposal</c>). 404 <c>supplier_booking_not_found</c>;
-    /// 400 <c>validation_error</c> for a body without slug, code or address; 429 <c>rate_limited</c>.
-    /// </summary>
     [HttpPost("lookup")]
     [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
     [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
@@ -90,14 +84,6 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
         }
     }
 
-    /// <summary>
-    /// Moves a new request to another slot of the same service (<c>startUtc</c> exactly as <c>GET …/slots</c> gave it): the old time
-    /// is free again, a time the supplier had proposed is dropped, the supplier has its whole time to answer again and is told. Only
-    /// while the request is <c>Richiesto</c>. The time it already has changes nothing. 404 <c>supplier_booking_not_found</c>; 422
-    /// <c>supplier_booking_cannot_reschedule</c>, <c>supplier_booking_supplier_unavailable</c>, <c>supplier_booking_invalid</c>
-    /// (<c>fields</c>: <c>startUtc</c>); 409 <c>supplier_slot_unavailable</c> (not free, or no slot can start then),
-    /// <c>service_request_state_changed</c>; 429.
-    /// </summary>
     [HttpPost("reschedule")]
     [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
     [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
@@ -124,13 +110,6 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
         }
     }
 
-    /// <summary>
-    /// Accepts the time the supplier proposed: the request is taken on the supplier's behalf at that time, the slot is checked
-    /// again, and both are told. 404 <c>supplier_booking_not_found</c>; 422 <c>supplier_booking_no_proposal</c>,
-    /// <c>supplier_booking_proposal_expired</c>, <c>supplier_booking_supplier_unavailable</c>; 409 <c>supplier_slot_unavailable</c>
-    /// (the proposed time is gone: the proposal stays, the customer can turn it down or cancel), <c>service_request_state_changed</c>;
-    /// 429.
-    /// </summary>
     [HttpPost("proposal/accept")]
     [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
     [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
@@ -149,10 +128,6 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
         return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.AcceptProposalAsync(request.ToCredentials(), ct)));
     }
 
-    /// <summary>
-    /// Turns the proposed time down: the proposal goes, the request stays <c>Richiesto</c> at its time, the supplier has its whole
-    /// time to answer again and is told. Errors as <c>proposal/accept</c>, but for the slot.
-    /// </summary>
     [HttpPost("proposal/reject")]
     [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
     [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
@@ -197,10 +172,6 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
         return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.AcceptQuoteAsync(request.ToCredentials(), request.QuoteSentAt!.Value, ct)));
     }
 
-    /// <summary>
-    /// Turns the quote down (SP-04b): the quote goes, the request stays <c>Richiesto</c> at its time, the supplier has its whole time to
-    /// answer again and is told. Errors as <c>quote/accept</c>, but for the time.
-    /// </summary>
     [HttpPost("quote/reject")]
     [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
     [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
@@ -255,11 +226,6 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
         return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.AcceptOfferAsync(request.ToCredentials(), request.OfferSentAt!.Value, ct)));
     }
 
-    /// <summary>
-    /// Turns the offer down (SP-10b-b): the offer goes, the request stays <c>Richiesto</c> and the conversation goes on (<c>negotiation</c> is
-    /// <c>OfferDeclined</c> until the supplier sends another; no clock runs on the supplier), and the supplier is told. Errors as <c>offer/accept</c>,
-    /// but for the time.
-    /// </summary>
     [HttpPost("offer/decline")]
     [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
     [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
@@ -335,12 +301,6 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
             await bookings.ReportProblemAsync(request.ToCredentials(), request.Reason, request.Text, ct)));
     }
 
-    /// <summary>
-    /// SP-15c-c: the customer takes its complaint back — the money is no longer stopped and the supplier is paid at the next run of the funds job. Same
-    /// proof of who is asking and same limits as the other actions. Taking back a complaint that was taken back answers the same booking. 404
-    /// <c>supplier_booking_not_found</c> or <c>service_dispute_not_found</c> (no complaint); 409 <c>service_dispute_not_open</c> (it was decided already);
-    /// 429.
-    /// </summary>
     [HttpPost("withdraw-problem")]
     [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
     [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
@@ -411,7 +371,6 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
         });
     }
 
-    /// <summary>A 422 that names the fields at fault, as the booking does.</summary>
     private ObjectResult RuleProblem(string code, string messageKey, IReadOnlyList<object> messageArgs, IReadOnlyList<string> fields)
     {
         var problem = ApiProblemDetails.Create(HttpContext, StatusCodes.Status422UnprocessableEntity, code, messageKey, messageArgs);

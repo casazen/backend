@@ -13,7 +13,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>The periodic job of the custom domains (BK-17, A3-25): who is due, who is skipped, isolation, removals.</summary>
 public class DomainRecheckServiceTests
 {
     private readonly Mock<IDomainVerificationService> _verification = new();
@@ -36,8 +35,6 @@ public class DomainRecheckServiceTests
             .ReturnsAsync((OrgEntity org, CancellationToken _) => new DomainVerificationResult(
                 org.DomainVerificationStatus, org.CustomDomain!, _clock.GetUtcNow().UtcDateTime, org.DomainStatusDetail));
     }
-
-    // ─── Who is due ─────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task RunAsync_PendingDomainNeverChecked_IsChecked()
@@ -107,7 +104,6 @@ public class DomainRecheckServiceTests
     [Fact]
     public async Task RunAsync_VerifiedDomainConfiguredLongAgo_IsStillChecked()
     {
-        // The give-up applies to a domain that never worked, not to one that is live.
         await using var db = CreateDb();
         await SeedAsync(db, "live.example.it", DomainVerificationStatus.Verified, checkedAt: Ago(hours: 30), configuredAt: Ago(days: 200));
 
@@ -156,12 +152,9 @@ public class DomainRecheckServiceTests
         var summary = await CreateService(db).RunAsync();
 
         Assert.Equal(2, summary.Checked);
-        // Null (never checked) sorts first, then the oldest.
         _verification.Verify(v => v.VerifyAsync(It.Is<OrgEntity>(o => o.CustomDomain == "never.example.it"), It.IsAny<CancellationToken>()), Times.Once);
         _verification.Verify(v => v.VerifyAsync(It.Is<OrgEntity>(o => o.CustomDomain == "a.example.it"), It.IsAny<CancellationToken>()), Times.Once);
     }
-
-    // ─── Outcomes and isolation ────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task RunAsync_CountsNewlyVerifiedAndNoLongerVerified()
@@ -214,8 +207,6 @@ public class DomainRecheckServiceTests
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => CreateService(db).RunAsync());
     }
-
-    // ─── Removals from the Vercel project ──────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData(VercelCallStatus.Ok)]
@@ -351,7 +342,6 @@ public class DomainRecheckServiceTests
 
         var first = await CreateService(db, auth0.Object, flags).RunAsync();
 
-        // Off Vercel, still in Auth0: nothing is left half removed, the row waits for the next run with a stable code.
         Assert.Equal(0, first.Removed);
         Assert.Equal(1, first.RemovalsFailed);
         var row = await db.PendingDomainRemovals.SingleAsync();
@@ -408,8 +398,6 @@ public class DomainRecheckServiceTests
 
         Assert.Single(await db.PendingDomainRemovals.ToListAsync());
     }
-
-    // ─── Helpers ───────────────────────────────────────────────────────────────────────────────────
 
     private DateTime Ago(int days = 0, int hours = 0, int minutes = 0) =>
         _clock.GetUtcNow().UtcDateTime - new TimeSpan(days, hours, minutes, 0);

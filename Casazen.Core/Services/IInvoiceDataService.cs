@@ -23,7 +23,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IInvoiceDataService
 {
-    /// <summary>The invoice data of a booking, or <c>null</c> when the booking has none (or is not visible to the caller).</summary>
     Task<InvoiceDataView?> GetAsync(Guid bookingId, CancellationToken ct = default);
 
     /// <summary>
@@ -51,11 +50,6 @@ public interface IInvoiceDataService
         bool save = true,
         CancellationToken ct = default);
 
-    /// <summary>
-    /// Answers the question «would this save be refused?» without writing anything: the same 422 <see cref="SaveAsync"/> would answer (the data of
-    /// the command merged with the stored data and checked as a whole), or nothing when it would be accepted. A caller that saves the data with
-    /// something else (the public check-in) asks it first, so a refusal leaves everything else unsaved. A booking that is not visible is a 404.
-    /// </summary>
     Task EnsureValidAsync(Guid bookingId, SaveInvoiceDataCommand command, InvoiceDataSource source, CancellationToken ct = default);
 
     /// <summary>
@@ -66,10 +60,6 @@ public interface IInvoiceDataService
     Task MarkRequestedAsync(Guid bookingId, bool needInvoice, bool save = true, CancellationToken ct = default);
 }
 
-/// <summary>
-/// What a source sends of the invoice data of a booking (FIS-01). Every member is optional: <c>null</c> is «not sent» and keeps what is stored, an
-/// empty text clears the field. The text is normalized by the service (<see cref="Casazen.Core.Regulatory.InvoiceDataFormats.Normalize"/>) before it is checked.
-/// </summary>
 public sealed record SaveInvoiceDataCommand
 {
     public InvoiceRecipientKind? RecipientKind { get; init; }
@@ -96,14 +86,12 @@ public sealed record SaveInvoiceDataCommand
 
     public string? Pec { get; init; }
 
-    /// <summary>True when the command sends at least one member with something in it (a text that is not only white space).</summary>
     public bool HasContent =>
         RecipientKind is not null
         || new[] { Name, FiscalCode, VatNumber, AddressStreet, AddressCivic, PostalCode, City, Province, CountryCode, SdiRecipientCode, Pec }
             .Any(text => !string.IsNullOrWhiteSpace(text));
 }
 
-/// <summary>The invoice data of a booking as the service gives it (FIS-01): who it is for, where it came from and whether the guest asked for it.</summary>
 public sealed record InvoiceDataView(
     Guid BookingId,
     bool InvoiceRequested,
@@ -123,7 +111,6 @@ public sealed record InvoiceDataView(
     InvoiceDataSource Source,
     DateTime UpdatedAt)
 {
-    /// <summary>The view of <paramref name="row"/>.</summary>
     public static InvoiceDataView Of(BookingInvoiceData row)
     {
         ArgumentNullException.ThrowIfNull(row);
@@ -148,7 +135,6 @@ public sealed record InvoiceDataView(
             row.UpdatedAt);
     }
 
-    /// <summary>True when the row holds anything about the recipient (not only the guest's «yes»).</summary>
     public bool HasRecipientData =>
         new[] { Name, FiscalCode, VatNumber, AddressStreet, AddressCivic, PostalCode, City, Province, SdiRecipientCode, Pec }
             .Any(text => !string.IsNullOrWhiteSpace(text));

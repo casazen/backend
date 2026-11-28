@@ -18,28 +18,19 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IFlowReadinessProvider
 {
-    /// <summary>The flow this provider answers for.</summary>
     OnboardingFlow Flow { get; }
 
-    /// <summary>The weight of this provider among the ones for the same <see cref="Flow"/>: the highest wins. The placeholder is 0.</summary>
     int Order { get; }
 
-    /// <summary>
-    /// The readiness of <paramref name="propertyIds"/> (short-rent, active properties of the org, at most a few hundred) for the flow,
-    /// by property id. A property left out of the answer is treated as «not provided», never as ready.
-    /// </summary>
     Task<IReadOnlyDictionary<Guid, FlowReadiness>> EvaluateAsync(
         Guid orgId,
         IReadOnlyCollection<Guid> propertyIds,
         CancellationToken ct);
 }
 
-/// <summary>The <see cref="IFlowReadinessProvider.Order"/> values: the highest of the providers of a flow is the one asked.</summary>
 public static class FlowProviderOrders
 {
-    /// <summary>The placeholder that answers «not provided» for a flow nobody has built yet.</summary>
     public const int Placeholder = 0;
 
-    /// <summary>A provider that really answers for its flow: it replaces the placeholder.</summary>
     public const int Provider = 10;
 }

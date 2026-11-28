@@ -9,10 +9,6 @@ public static class HostPermissions
 {
     public const string Marketing = "marketing.manage";
 
-    /// <summary>
-    /// Create a request to a supplier (an intervention) for a stay, find a supplier for it, mark it paid. It used to be
-    /// <c>property.write</c>. Given to the owner, the property managers and the collaborator.
-    /// </summary>
     public const string ServiceRequestWrite = "servicerequest.write";
 
     /// <summary>
@@ -29,13 +25,6 @@ public static class HostPermissions
     /// </summary>
     public const string AlloggiatiSubmit = "alloggiati.submit";
 
-    /// <summary>
-    /// Decide the items of the approval queue (E05/F04/US01/T01, NF-68, AC-NF68-5): list them, edit the text of a draft, approve it (which runs the
-    /// action it was waiting for: a message goes to the guest, a campaign is approved) or reject it with a reason. It used to be the broad
-    /// <c>property.write</c>, which a collaborator holds only in part. Given to the owner and the property managers (the administrators are property
-    /// managers of the short-rent context); the collaborator and the accountant do not have it. It is one of <see cref="ShortRentFine"/>: the model
-    /// seeds it for the owner's role and for the property manager's, and the migration <c>AddApprovalDecisionAndOriginAction</c> adds those rows.
-    /// </summary>
     public const string ApprovalDecide = "approval.decide";
 
     /// <summary>

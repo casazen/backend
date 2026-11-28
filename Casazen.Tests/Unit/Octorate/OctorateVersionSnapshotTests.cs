@@ -12,7 +12,6 @@ public class OctorateVersionSnapshotTests
     [Fact]
     public void ToJson_FormatsTheRealDaysAsDatesOnly_AndParseReadsThemBack()
     {
-        // A real value, not a default: a time specifier on a DateOnly throws only when it runs.
         var snapshot = new OctorateVersionSnapshot(new DateOnly(2026, 11, 21), new DateOnly(2026, 11, 23), 1);
 
         var json = snapshot.ToJson();
@@ -60,7 +59,6 @@ public class OctorateVersionSnapshotTests
     [Fact]
     public void Parse_ATimeIsNotGuessedIntoAStayDay_AndWhatCannotBeReadIsLeftOut()
     {
-        // 23:00 UTC of the 20th is the 21st in Rome: without the clock of the property it is not a day CasaZen can name, so it is left out.
         var snapshot = OctorateVersionSnapshot.Parse("""{"checkIn":"2026-11-20T23:00:00Z","checkOut":"2026-11-23","guests":-2}""")!;
 
         Assert.Null(snapshot.CheckIn);

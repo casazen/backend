@@ -66,26 +66,18 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
 
     public const string AgencyUid = "CHE-109.322.551";
 
-    /// <summary>The account of the agency that pays the owners (a normal Swiss IBAN).</summary>
     public const string AgencyIban = "CH4308307000289537312";
 
-    /// <summary>The QR-IBAN of the agency (institution 31999): the account of its QR-bills.</summary>
     public const string AgencyQrIban = "CH4431999123000889012";
 
-    /// <summary>The account of the owner, the creditor of the wire.</summary>
     public const string OwnerIban = "CH9300762011623852957";
 
     public const string OwnerName = "TEST Proprietario";
 
     public const string OwnerEmail = "test.proprietario.lugano@example.com";
 
-    /// <summary>
-    /// The domain of the addresses of the invented guests of the direct bookings. Not <c>example.com</c>: the documents of a stay are never e-mailed to a domain the standards reserve (FIX/RES-DOCS), and
-    /// the scenarios check that the guest gets them.
-    /// </summary>
     public const string GuestMailDomain = "ospiti-test.ch";
 
-    /// <summary>The BFS number of Lugano, canton Ticino.</summary>
     public const string LuganoMunicipality = "5192";
 
     public const string PropertyName = "TEST Casa Lago Lugano";
@@ -100,23 +92,17 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
 
     public const string OctorateRoom = "956528";
 
-    /// <summary>The channel id Octorate gives Booking.com.</summary>
     public const string BookingComChannel = "142";
 
-    /// <summary>The channel id Octorate gives Airbnb.</summary>
     public const string AirbnbChannel = "274";
 
-    /// <summary>The first day of the mandate, of the ownership and of the rules of the agency.</summary>
     public static readonly DateOnly FirstOfTheYear = new(2026, 1, 1);
-
-    // ---------------------------------------------------------------- the Italian agency (E19/F01/US02/T01)
 
     public const string ItalianAgencyLegalName = "TEST Agenzia Lago di Como Srl";
 
     /// <summary>The VAT number of the agency, also its fiscal code (a company): a valid Italian number of the tests.</summary>
     public const string ItalianAgencyVat = "01234567897";
 
-    /// <summary>The account of the agency that pays the owners (an invented IBAN with its check digits).</summary>
     public const string ItalianAgencyIban = "IT82Z0100503200000000004321";
 
     /// <summary>The ISTAT code of Como: the comune of both flats, whose tourist tax the agency collects and remits.</summary>
@@ -124,7 +110,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
 
     public const string ComuneName = "Como";
 
-    /// <summary>Flat A: a private owner (receipt, withholding), the listing of the flat on the channel manager.</summary>
     public const string FlatAName = "TEST Appartamento A Como";
 
     public const string OwnerAName = "TEST Mario Rossi";
@@ -147,7 +132,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
 
     public const string OwnerBEmail = "test.proprietario.b@example.com";
 
-    /// <summary>The co-owner of flat A in the variant of the shares 60/40, a private person too.</summary>
     public const string CoOwnerName = "TEST Lara Bianchi";
 
     public const string CoOwnerFiscalCode = "BNCLRA85M41F205C";
@@ -182,7 +166,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
             });
     }
 
-    /// <summary>The clock of every service: the scenario moves it from step to step.</summary>
     public FakeTimeProvider Clock { get; } = new(new DateTimeOffset(2026, 9, 15, 8, 0, 0, TimeSpan.Zero));
 
     public TestFeatureFlags Flags { get; } = new(FeatureFlags.FiscalDocumentIssuance, FeatureFlags.OwnerInvoicing, FeatureFlags.AccountantPackage, FeatureFlags.AgencyTier);
@@ -193,19 +176,14 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
     /// </summary>
     public IDataProtectionProvider Keys => SharedKeys;
 
-    /// <summary>The channel manager.</summary>
     public Mock<IOctorateApiClient> Octorate { get; } = new();
 
-    /// <summary>Stripe: a refund succeeds at once; the fee of a charge is what <see cref="PayOnTheCasaZenSiteAsync"/> says.</summary>
     public Mock<IStripeService> Stripe { get; } = new();
 
-    /// <summary>The e-mail queue: what it was asked to queue.</summary>
     public RecordingEmailQueue Emails { get; } = new();
 
-    /// <summary>The private bucket of the files (the PDF of a published statement).</summary>
     public InMemoryFileStorage Storage { get; } = new();
 
-    /// <summary>The memory of the process (the documents whose e-mail the automatic send queued).</summary>
     public MemoryCache Memory { get; } = new(new MemoryCacheOptions());
 
     public Guid OrgId { get; } = Guid.NewGuid();
@@ -214,39 +192,30 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
 
     public Guid OwnerId { get; } = Guid.NewGuid();
 
-    /// <summary>The account of the owner on the owner portal.</summary>
     public Guid OwnerUserId { get; } = Guid.NewGuid();
 
-    /// <summary>The Italian agency (<see cref="CreateItalianAsync"/>): two flats, A of a private owner and B of a company.</summary>
     public bool Italy { get; private set; }
 
-    /// <summary>Flat B of the Italian agency: its property, its owner (a company) and the account of the owner on the portal.</summary>
     public Guid PropertyBId { get; } = Guid.NewGuid();
 
     public Guid OwnerBId { get; } = Guid.NewGuid();
 
     public Guid OwnerBUserId { get; } = Guid.NewGuid();
 
-    /// <summary>The co-owner of flat A in the variant of the shares 60/40 (<see cref="ItalianSetup.CoOwnersOfFlatA"/>): its registry owner and its account on the portal.</summary>
     public Guid CoOwnerId { get; } = Guid.NewGuid();
 
     public Guid CoOwnerUserId { get; } = Guid.NewGuid();
 
-    /// <summary>The cleaning company of the agency, the supplier of the requests of the cleanings (a row of the registry: the request names it).</summary>
     public Guid SupplierOrgId { get; } = Guid.NewGuid();
 
-    /// <summary>The flat the steps work on when none is named: the flat of Lugano, or flat A of the Italian agency.</summary>
     public Flat FlatA => new(Italy ? FlatAName : PropertyName, PropertyId, OwnerId, OwnerUserId, OctorateAccommodation, OctorateRoom);
 
-    /// <summary>Flat B of the Italian agency.</summary>
     public Flat FlatB => new(FlatBName, PropertyBId, OwnerBId, OwnerBUserId, OctorateAccommodationB, OctorateRoomB);
 
-    /// <summary>The rule of the agency for the commission of Booking.com (15%), as the wizard saved it.</summary>
     public Guid BookingComRuleId { get; private set; }
 
     public HostScope WholeOrg => new(OrgId);
 
-    /// <summary>The rules of the documents shipped (<c>FiscalDocuments</c>): the portals that collect, the look-back of the daily run.</summary>
     public static FiscalDocumentRulesOptions DocumentRules => Bind<FiscalDocumentRulesOptions>(FiscalDocumentRulesOptions.SectionName);
 
     /// <summary>
@@ -285,10 +254,8 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return world;
     }
 
-    /// <summary>A unit of work of its own (a request, a job, a delivery of an event) with the services of the chain over it.</summary>
     public AcceptanceScope Scope() => new(this, new AppDbContext(_options, NullTenantContext.Instance, Keys));
 
-    /// <summary>The instant of <paramref name="hour"/>:<paramref name="minute"/> on <paramref name="day"/> in Rome (and Lugano), in UTC.</summary>
     public static DateTimeOffset InRome(DateOnly day, int hour, int minute = 0)
     {
         var local = day.ToDateTime(new TimeOnly(hour, minute), DateTimeKind.Unspecified);
@@ -296,8 +263,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
     }
 
     public void At(DateTimeOffset instant) => Clock.SetUtcNow(instant);
-
-    // ---------------------------------------------------------------- the setup
 
     private async Task SetUpAsync(bool agencyHoldsTheBookingAccount, bool rechargePortalCommissions)
     {
@@ -316,7 +281,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
                 DefaultLanguage = "it",
             });
 
-            // The register of the municipalities is seeded by the migrations on PostgreSQL; the in-memory database starts empty.
             if (!await db.SwissMunicipalities.AnyAsync(m => m.MunicipalityCode == LuganoMunicipality))
                 db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = LuganoMunicipality, CantonCode = "TI", OfficialName = "Lugano" });
 
@@ -369,7 +333,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
                 OwnershipStart = FirstOfTheYear.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
             });
 
-            // The listing of the flat on the channel manager: the room of the reservations it imports.
             var connection = new OctorateConnection { OrgId = OrgId, Environment = OctorateEnvironment.Test, Status = OctorateConnectionStatus.Connected };
             db.OctorateConnections.Add(connection);
             db.OctorateListingMappings.Add(new OctorateListingMapping
@@ -416,7 +379,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
                 AgencyUser);
         }
 
-        // The owner: an approved rule set of Switzerland (no withholding), its fiscal profile paid in francs, its mandate; the rules of the channels of the agency.
         await using (var scope = Scope())
         {
             var policy = await scope.OwnerFiscal.CreatePolicyAsync(
@@ -469,13 +431,10 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
                     AgencyUser);
             }
 
-            // Turning the recharge off with an account of the agency is a waiver: the agency acknowledges it (FIX/BE-V2-NO-RECHARGE).
             if (!rechargePortalCommissions)
                 await scope.PortalAccounts.SaveAsync(OrgId, new PortalAccountSettingsCommand { RechargePortalCommissions = false, AcknowledgeRechargeWaiver = true }, AgencyUser);
         }
     }
-
-    // ---------------------------------------------------------------- the setup of the Italian agency
 
     private async Task SetUpItalyAsync(ItalianSetup setup)
     {
@@ -629,7 +588,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
                 });
             }
 
-            // Who collects the tourist tax of Como for a stay of a portal (a rule of the platform, with its source): the host for Booking.com; for Airbnb the portal, in the variant.
             db.TouristTaxChannelRules.Add(new TouristTaxChannelRule
             {
                 Channel = BookingSource.BookingCom,
@@ -784,7 +742,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
             if (setup.CoOwnersOfFlatA)
                 await SaveItalianProfileAsync(scope, CoOwnerId, OwnerEntityKind.NaturalPerson, CoOwnerName, CoOwnerFiscalCode, null, CoOwnerIban, "Via Dante 2, 22100 Como CO", policy.Id);
 
-            // Flat A: the cleaning is recharged at the cost of its request (⚖ I13); the co-owners' CU is per share when the variant says so. Flat B: a flat fee for each stay.
             await scope.Mandates.CreateVersionAsync(
                 WholeOrg,
                 OwnerId,
@@ -835,7 +792,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         }
     }
 
-    /// <summary>The fiscal profile of an Italian owner from the first day of the year, paid in euro on the rule set of Italy.</summary>
     private async Task SaveItalianProfileAsync(
         AcceptanceScope scope,
         Guid ownerId,
@@ -868,7 +824,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
             AgencyUser);
     }
 
-    /// <summary>The approved rule set of Italy of the agency (the withholding of 21%, the code 1919).</summary>
     public Guid ItalianPolicyId { get; private set; }
 
     private Property ItalianFlat(Guid id, string name, string address) => new()
@@ -895,8 +850,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         LastName = last,
         CreatedAt = Clock.GetUtcNow().UtcDateTime,
     };
-
-    // ---------------------------------------------------------------- the four origins
 
     /// <summary>
     /// A reservation of Booking.com as the channel manager gives it: the price of the host (<c>roomGross</c>, the total of the reservation), the commission of the
@@ -936,10 +889,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         };
     }
 
-    /// <summary>
-    /// A reservation of Airbnb as the channel manager gives it: the price of the host, the commission of the portal in the breakdown, collected by the portal, two
-    /// guests, and the tourist tax of Ticino the portal collected from the guest itself (Airbnb is the portal the issuer confirmed as collecting it in the wizard).
-    /// </summary>
     public OctorateReservation AirbnbReservation(DateOnly checkIn, DateOnly checkOut, decimal price, decimal commission, decimal touristTax, Flat? flat = null)
     {
         var id = $"ABB{Interlocked.Increment(ref _sequence):D4}";
@@ -966,10 +915,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         };
     }
 
-    /// <summary>
-    /// A reservation of the agency's own site: its booking engine is a channel of the channel manager (the «direct» channel, <see cref="BookingStateMapper.BookingEngineChannelId"/>),
-    /// so it comes in as a direct booking with an Octorate id; the price of the stay and the tourist tax the site charged, no commission, paid outside CasaZen.
-    /// </summary>
     public OctorateReservation AgencySiteReservation(DateOnly checkIn, DateOnly checkOut, decimal price, decimal touristTax, Flat? flat = null)
     {
         var id = $"WEB{Interlocked.Increment(ref _sequence):D4}";
@@ -994,7 +939,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         };
     }
 
-    /// <summary>The import of the channel manager reads <paramref name="reservation"/> (the client serves it): the booking it made or changed.</summary>
     public async Task<Guid> ImportFromChannelManagerAsync(OctorateReservation reservation, Flat? flat = null)
     {
         var listing = flat ?? FlatA;
@@ -1038,7 +982,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         var now = Clock.GetUtcNow().UtcDateTime;
         var guest = NewGuest("Ospite Vetrina", $"test.ospite.vetrina@{GuestMailDomain}");
 
-        // In Italy the checkout calculates the tourist tax and the guest pays it with the stay (BookingService: TouristTax, TouristTaxAmount, the total with it).
         var total = price + touristTax;
         var booking = new Booking
         {
@@ -1106,10 +1049,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return (booking.Id, payment.Id);
     }
 
-    /// <summary>
-    /// A booking the agency enters by hand (by phone, in person), as <c>BookingService.CreateManualBookingAsync</c> leaves it: confirmed from the start, the price the
-    /// agency agreed (cleaning included) and the tourist tax it charges, the event of the creation recorded with it.
-    /// </summary>
     public async Task<Guid> EnterByHandAsync(DateOnly checkIn, DateOnly checkOut, decimal price, decimal touristTax, Flat? flat = null)
     {
         var now = Clock.GetUtcNow().UtcDateTime;
@@ -1142,7 +1081,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return booking.Id;
     }
 
-    /// <summary>Money the agency received outside CasaZen and records on the booking (<see cref="ManualPaymentService"/>): the day it came in, today or before.</summary>
     public async Task<Guid> RecordPaymentByHandAsync(Guid bookingId, decimal amount, PaymentMethod method, DateOnly receivedOn)
     {
         await using var scope = Scope();
@@ -1175,7 +1113,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
             AgencyUser);
     }
 
-    /// <summary>The fiscal code of the private guests of the scenario (a valid code of the tests).</summary>
     public const string GuestFiscalCode = "NRIMRA82D50F839C";
 
     /// <summary>The VAT number of the company guest of the variant of the company tenant (a valid number of the tests).</summary>
@@ -1208,10 +1145,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
             AgencyUser);
     }
 
-    /// <summary>
-    /// The cleaning of the stay the agency's supplier did and the agency completed (a request of category cleaning, <c>Completato</c>, with its final amount): what the mandate on
-    /// the actual cost (flat A) recharges to the owner, linked to its request (<see cref="OwnerAccountingService"/>, <see cref="CleaningCostSource"/>).
-    /// </summary>
     public async Task<Guid> CompleteTheCleaningAsync(Guid bookingId, decimal amount, DateOnly completedOn, Flat? flat = null)
     {
         var completedAt = InRome(completedOn, 12).UtcDateTime;
@@ -1235,21 +1168,18 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return request.Id;
     }
 
-    /// <summary>The booking as it is stored now.</summary>
     public async Task<Booking> BookingAsync(Guid bookingId)
     {
         await using var scope = Scope();
         return await scope.Db.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId);
     }
 
-    /// <summary>The address the documents of the stay are e-mailed to: the one of the guest of the booking.</summary>
     public async Task<string> GuestEmailOfAsync(Guid bookingId)
     {
         await using var scope = Scope();
         return await scope.Db.Bookings.AsNoTracking().Where(b => b.Id == bookingId).Select(b => b.Guest.Email).SingleAsync();
     }
 
-    /// <summary>The issuer profile a document is issued on: the one of the owner (its sezionale), or the organization's when <paramref name="ownerId"/> is <c>null</c>.</summary>
     public async Task<Guid> IssuerProfileOfAsync(Guid? ownerId)
     {
         await using var scope = Scope();
@@ -1259,19 +1189,12 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
             .SingleAsync();
     }
 
-    /// <summary>The payment as it is stored now.</summary>
     public async Task<Payment> PaymentAsync(Guid paymentId)
     {
         await using var scope = Scope();
         return await scope.Db.Payments.AsNoTracking().SingleAsync(p => p.Id == paymentId);
     }
 
-    // ---------------------------------------------------------------- the documents of the guests
-
-    /// <summary>
-    /// The daily run of the documents at 05:10 in Rome on <paramref name="day"/> (<c>fiscal-documents-due</c>, with the limit and the look-back of the job), then the
-    /// events it recorded delivered to their consumers (the e-mail to the guest).
-    /// </summary>
     public async Task<FiscalDocumentsDueResult> RunDocumentsDueAsync(DateOnly day)
     {
         At(InRome(day, 5, 10));
@@ -1283,7 +1206,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return result;
     }
 
-    /// <summary>The host issues the document of a booking at once (the guest asked for it): the draft and its issue, through the endpoints' path.</summary>
     public async Task<FiscalDocument> IssueNowAsync(Guid bookingId)
     {
         FiscalDocument issued;
@@ -1297,7 +1219,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return issued;
     }
 
-    /// <summary>The documents of the booking (lines included, the payment state the current one), in the order of their numbers, the drafts last.</summary>
     public async Task<IReadOnlyList<FiscalDocument>> DocumentsOfAsync(Guid bookingId)
     {
         await using var scope = Scope();
@@ -1315,26 +1236,18 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return documents;
     }
 
-    /// <summary>What the PDF of a document of CasaZen shows, in Italian (or in <paramref name="language"/>).</summary>
     public async Task<PdfDocumentContent> PdfContentAsync(Guid documentId, string language = DocumentLanguages.Italian)
     {
         await using var scope = Scope();
         return await scope.Documents.PdfContentAsync(documentId, language);
     }
 
-    /// <summary>The PDF of a document of CasaZen, as it is downloaded.</summary>
     public async Task<byte[]> PdfAsync(Guid documentId)
     {
         await using var scope = Scope();
         return await scope.Documents.GetPdfAsync(documentId, DocumentLanguages.Italian);
     }
 
-    // ---------------------------------------------------------------- the changes of a booking (B12)
-
-    /// <summary>
-    /// The host changes the booking (<paramref name="change"/>: new dates, the new price): the state the edit of the host leaves, with <c>BookingModified</c> recorded in
-    /// the same save by <see cref="BookingEvents"/>, the way every writer of a booking records it.
-    /// </summary>
     public async Task ChangeAsHostAsync(Guid bookingId, Action<Booking> change)
     {
         await using var scope = Scope();
@@ -1345,7 +1258,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         await scope.Db.SaveChangesAsync();
     }
 
-    /// <summary>The host issues every document of a booking at once (the guest asked for them): the drafts of its plan, the owner's document of the stay and the agency's services, issued.</summary>
     public async Task<IReadOnlyList<FiscalDocument>> IssueEveryDocumentNowAsync(Guid bookingId)
     {
         await using (var scope = Scope())
@@ -1372,7 +1284,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return issued;
     }
 
-    /// <summary>The booking is cancelled (by the host, for the guest): the state of a cancellation with <c>BookingCancelled</c> recorded in the same save.</summary>
     public async Task CancelAsHostAsync(Guid bookingId)
     {
         await using var scope = Scope();
@@ -1384,14 +1295,12 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         await scope.Db.SaveChangesAsync();
     }
 
-    /// <summary>The host refunds a payment of the CasaZen site through Stripe (<see cref="PaymentRefundService.RefundAsync"/>; Stripe confirms the refund at once).</summary>
     public async Task<PaymentRefund> RefundThroughStripeAsync(Guid paymentId, decimal? amount)
     {
         await using var scope = Scope();
         return await scope.Refunds.RefundAsync(new PaymentRefundRequest(paymentId, amount, "TEST cancellazione", AgencyUser, NotifyGuest: false));
     }
 
-    /// <summary>The host marks the stay as a no-show (<see cref="StayLifecycleService.MarkNoShowAsync"/>).</summary>
     public async Task MarkNoShowAsync(Guid bookingId)
     {
         await using var scope = Scope();
@@ -1454,8 +1363,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return delivered;
     }
 
-    // ---------------------------------------------------------------- the month of the owner
-
     /// <summary>
     /// The end of the month of the agency, at <paramref name="at"/>: the month posted, the version of the owner generated, the invoice of the property manager made from it
     /// and issued (its VAT posted to the ledger, the version generated again with it), the version approved and published (its PDF stored, the owner told).
@@ -1466,10 +1373,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return await CloseOwnerMonthAsync(posting, year, month, flat);
     }
 
-    /// <summary>
-    /// The end of the month of an agency with several owners: the month posted once for all of them, then, for each one in the order given, its version generated, the invoice of
-    /// the property manager made from it and issued, the version approved and published.
-    /// </summary>
     public async Task<IReadOnlyList<MonthEnd>> CloseMonthForAsync(int year, int month, DateTimeOffset at, params Flat[] flats)
     {
         var posting = await PostMonthAsync(year, month, at);
@@ -1480,7 +1383,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return ends;
     }
 
-    /// <summary>What follows the posting of the month for one owner: its version, its invoice of the property manager (made and issued), the version approved and published.</summary>
     private async Task<MonthEnd> CloseOwnerMonthAsync(OwnerPostingResult posting, int year, int month, Flat? flat)
     {
         var ownerId = (flat ?? FlatA).OwnerId;
@@ -1518,7 +1420,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return new MonthEnd(posting, generated, draft, issued, published);
     }
 
-    /// <summary>The month posted at <paramref name="at"/> (the sources of the month written to the ledger of the owner), and nothing else.</summary>
     public async Task<OwnerPostingResult> PostMonthAsync(int year, int month, DateTimeOffset at)
     {
         At(at);
@@ -1526,7 +1427,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return await scope.Accounting.PostPeriodAsync(OrgId, year, month, AgencyUser);
     }
 
-    /// <summary>The lines of the ledger of the owner in the month that count: neither the reversals nor the lines they reverse.</summary>
     public async Task<IReadOnlyList<OwnerLedgerEntry>> LedgerOfAsync(int year, int month, Flat? flat = null)
     {
         var ownerId = (flat ?? FlatA).OwnerId;
@@ -1538,14 +1438,12 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return lines.Where(e => e.ReversesEntryId is null && !reversed.Contains(e.Id)).ToList();
     }
 
-    /// <summary>What the statement of the version says (the lines of its parts, the box of the tourist tax), as its PDF and the owner portal show it.</summary>
     public async Task<OwnerStatementContent> StatementOfAsync(Guid versionId)
     {
         await using var scope = Scope();
         return await scope.StatementFiles.GetContentAsync(OrgId, versionId);
     }
 
-    /// <summary>An approved charge of the owner (a repair the agency paid and recharges): posted with its month.</summary>
     public async Task<OwnerCharge> ChargeTheOwnerAsync(decimal amount, DateOnly day, string description, Flat? flat = null)
     {
         var charged = flat ?? FlatA;
@@ -1572,26 +1470,18 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
             return await scope.Accounting.ApproveChargeAsync(OrgId, charge.Id, AgencyUser);
     }
 
-    // ---------------------------------------------------------------- the owner portal, the payout, the wire and the package
-
-    /// <summary>The published statements the owner sees on its portal.</summary>
     public async Task<IReadOnlyList<OwnerPortalStatementInfo>> PortalStatementsAsync(Flat? flat = null)
     {
         await using var scope = Scope();
         return await scope.Portal.GetOwnerStatementsAsync((flat ?? FlatA).OwnerUserId);
     }
 
-    /// <summary>
-    /// A published statement as its owner reads it on the portal (<c>GET api/owner-portal/statements/{id}</c>, the lines and their labels), under the tenant filter of
-    /// the request of an owner: on, and with no org (the person of the portal has none), so a read that leaves a row to the filter finds nothing there.
-    /// </summary>
     public async Task<OwnerPortalStatementDetailInfo> PortalStatementAsTheOwnerAsync(Guid versionId, Flat? flat = null)
     {
         await using var scope = new AcceptanceScope(this, new AppDbContext(_options, new OwnerRequestTenant(), Keys));
         return await scope.Portal.GetOwnerStatementAsync((flat ?? FlatA).OwnerUserId, versionId);
     }
 
-    /// <summary>The PDF of a published statement the owner downloads from its portal.</summary>
     public async Task<byte[]> PortalStatementPdfAsync(Guid versionId, Flat? flat = null)
     {
         await using var scope = Scope();
@@ -1602,14 +1492,12 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return copy.ToArray();
     }
 
-    /// <summary>The invoices of the property manager the owner sees on its portal.</summary>
     public async Task<IReadOnlyList<OwnerPortalInvoiceInfo>> PortalInvoicesAsync(Flat? flat = null)
     {
         await using var scope = Scope();
         return await scope.Portal.GetOwnerInvoicesAsync((flat ?? FlatA).OwnerUserId);
     }
 
-    /// <summary>The stored PDF of the published version, as the publication wrote it.</summary>
     public async Task<byte[]> StoredStatementPdfAsync(Guid versionId)
     {
         await using var scope = Scope();
@@ -1620,14 +1508,9 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return copy.ToArray();
     }
 
-    /// <summary>The agency pays the owner what the published version owes it, on <paramref name="paidOn"/> (the payout of the statement, E06/F05/US02/T03).</summary>
     public async Task<OwnerPayout> PayTheOwnerAsync(OwnerStatementVersion version, DateOnly paidOn, Flat? flat = null) =>
         (await PayTheOwnerWithEvidenceAsync(version, paidOn, flat)).Payout;
 
-    /// <summary>
-    /// The same payout with the evidence of its withholding (E18/F01/US01/T01): the decision on the facts of the ledger, the reason when nothing is withheld. A second call with the
-    /// same key is the same payout (<see cref="OwnerPayoutResult.Replayed"/>).
-    /// </summary>
     public async Task<OwnerPayoutResult> PayTheOwnerWithEvidenceAsync(OwnerStatementVersion version, DateOnly paidOn, Flat? flat = null)
     {
         await using var scope = Scope();
@@ -1646,17 +1529,12 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
             AgencyUser);
     }
 
-    /// <summary>What a payout of the version paid on <paramref name="paidOn"/> would be, read only (the dialog of the agency shows it before the confirmation).</summary>
     public async Task<OwnerPayoutPreview> PreviewThePayoutAsync(OwnerStatementVersion version, DateOnly paidOn)
     {
         await using var scope = Scope();
         return await scope.Payouts.PreviewPayoutAsync(OrgId, version.Id, paidOn);
     }
 
-    /// <summary>
-    /// The wire file of the payouts (<c>pain.001.001.09.ch.03</c> for francs), validated against <paramref name="schemas"/>: the official schemas of the build when it is
-    /// <c>null</c> (they are embedded in the build; only a build that lacks the file answers 422 <c>wire_batch_schema_unavailable</c>).
-    /// </summary>
     public async Task<(WireBatch Batch, string Xml)> WireAsync(IReadOnlyList<Guid> payoutIds, DateOnly executionDate, Func<string, XmlSchemaSet>? schemas)
     {
         await using var scope = Scope();
@@ -1664,7 +1542,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return await wires.CreateBatchAsync(OrgId, payoutIds, executionDate);
     }
 
-    /// <summary>The ZIP of the accountant for <paramref name="period"/>, for the agency (the whole organization, the owner accounting included), file by file.</summary>
     public async Task<Dictionary<string, byte[]>> PackageAsync(AccountantPackagePeriod period)
     {
         using var output = new MemoryStream();
@@ -1685,7 +1562,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return files;
     }
 
-    /// <summary>The monthly report of the agency (the summary of the package) for <paramref name="period"/>.</summary>
     public async Task<AgencySummary> AgencySummaryAsync(AccountantPackagePeriod period)
     {
         await using var scope = Scope();
@@ -1715,10 +1591,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return await scope.Sdi.DeclareManuallyAsync(documentId, new SdiDeclaration(SdiDeclarationKind.Sent, day, reference));
     }
 
-    /// <summary>
-    /// The self-billed invoices (TD17) of a month for the holders of the portal accounts that need one, made and issued at <paramref name="at"/> (the month is over): the generation
-    /// of the drafts, then the issue of each one (the estimate is accepted only when asked).
-    /// </summary>
     public async Task<(SelfBillingGeneration Generation, IReadOnlyList<SelfBillingDetail> Issued)> SelfBillMonthAsync(int year, int month, DateTimeOffset at, bool acceptEstimate = false)
     {
         At(at);
@@ -1736,7 +1608,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return (generation, issued);
     }
 
-    /// <summary>The self-billed invoices of the agency as the list of the screen reads them.</summary>
     public async Task<IReadOnlyList<SelfBillingRow>> SelfBilledInvoicesAsync(int year, int month)
     {
         await using var scope = Scope();
@@ -1757,7 +1628,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return await scope.Withholding.GenerateF24Async(OrgId, month, year);
     }
 
-    /// <summary>The annual Certificazione Unica data of the year generated from the evidence of the payouts (while it is only generated), and read as the export reads it.</summary>
     public async Task<StoredCuDataset> CuOfTheYearAsync(int year)
     {
         await using (var scope = Scope())
@@ -1774,28 +1644,24 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return await scope.Withholding.Get770DataAsync(OrgId, year);
     }
 
-    /// <summary>The contracts of the year to communicate by 30 June: the qualifying short lets the agency handled and did not withhold on.</summary>
     public async Task<ContractsCommunication> ContractsOfTheYearAsync(int year)
     {
         await using var scope = Scope();
         return await scope.Withholding.GetContractsCommunicationAsync(OrgId, year);
     }
 
-    /// <summary>The annual declaration data of the tourist tax per comune (the stays, the tax owed, the tax remitted, the exemptions by reason).</summary>
     public async Task<TouristTaxDeclaration> TouristTaxDeclarationAsync(int year, bool withExemptionReasons = true)
     {
         await using var scope = Scope();
         return await scope.TouristTax.GetDeclarationAsync(WholeOrg, year, withExemptionReasons);
     }
 
-    /// <summary>The account of the agent for the year (the tax collected and remitted by month or quarter, the line of the year, every payment).</summary>
     public async Task<TouristTaxAgentAccount> TouristTaxAccountAsync(int year, TouristTaxAccountPeriod by)
     {
         await using var scope = Scope();
         return await scope.TouristTax.GetAgentAccountAsync(WholeOrg, year, by);
     }
 
-    /// <summary>The agency pays the tourist tax of a period to the comune and records it (the day it paid and its reference).</summary>
     public async Task<TouristTaxRemittanceLine> RemitTouristTaxAsync(DateOnly from, DateOnly to, decimal amount, DateOnly paidOn, string reference)
     {
         await using var scope = Scope();
@@ -1805,14 +1671,12 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
             receipt: null);
     }
 
-    /// <summary>The documents issued in the name of the owner of <paramref name="flat"/>, as its portal lists them (the account of the owner, accounting.read).</summary>
     public async Task<IReadOnlyList<OwnerPortalIssuedDocumentInfo>> PortalIssuedDocumentsAsync(Flat flat, AccountantPackagePeriod? period = null)
     {
         await using var scope = new AcceptanceScope(this, new AppDbContext(_options, new OwnerRequestTenant(), Keys));
         return await scope.Portal.GetOwnerIssuedDocumentsAsync(flat.OwnerUserId, period);
     }
 
-    /// <summary>The ZIP of the documents issued in the name of the owner of <paramref name="flat"/> for its accountant, file by file (the owner reads it from its portal).</summary>
     public async Task<Dictionary<string, byte[]>> PortalIssuedPackageAsync(Flat flat, AccountantPackagePeriod period)
     {
         using var output = new MemoryStream();
@@ -1822,49 +1686,42 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
         return ReadZip(output.ToArray());
     }
 
-    /// <summary>The withholding of the owner of <paramref name="flat"/> in the year as its portal shows it (the evidence, the CU once reviewed).</summary>
     public async Task<OwnerPortalWithholdingInfo> PortalWithholdingAsync(Flat flat, int year)
     {
         await using var scope = new AcceptanceScope(this, new AppDbContext(_options, new OwnerRequestTenant(), Keys));
         return await scope.Portal.GetOwnerWithholdingAsync(flat.OwnerUserId, year);
     }
 
-    /// <summary>The check of the limit of units of the owner of <paramref name="flat"/> on a day (the apartments the agency manages for it and the ones it declared outside).</summary>
     public async Task<OwnerUnitsCheck> UnitsOfTheOwnerAsync(Flat flat, DateOnly day)
     {
         await using var scope = Scope();
         return (await scope.TaxChecks.CheckUnitsAsync(OrgId, [flat.OwnerId], day))[flat.OwnerId];
     }
 
-    /// <summary>The owner declares how many apartments it lets short outside the agency: three in all make it presumed a business from the third.</summary>
     public async Task<OwnerUnitsCheck> DeclareExternalUnitsAsync(Flat flat, int units)
     {
         await using var scope = Scope();
         return await scope.TaxChecks.DeclareExternalUnitsAsync(WholeOrg, flat.OwnerId, units, AgencyUser);
     }
 
-    /// <summary>The «Da fare» of the stay of a company tenant (raised once), and whether it was raised now.</summary>
     public async Task<bool> RaiseCompanyTenantDecisionAsync(Guid bookingId)
     {
         await using var scope = Scope();
         return await scope.TaxChecks.RaiseCompanyTenantDecisionAsync(OrgId, bookingId);
     }
 
-    /// <summary>The stays of a company tenant in the property of a private owner and their decision, as the screen lists them.</summary>
     public async Task<IReadOnlyList<CompanyTenantCase>> CompanyTenantCasesAsync(CompanyTenantCaseState? state = null)
     {
         await using var scope = Scope();
         return await scope.TaxChecks.ListCompanyTenantCasesAsync(WholeOrg, state);
     }
 
-    /// <summary>The agency records the regime of the stay of a company tenant, with its reason: a person decides, the regime is never changed by itself.</summary>
     public async Task<ShortLetTaxDecision> DecideTheCompanyTenantAsync(Guid bookingId, ShortLetTaxRegime regime, string reason)
     {
         await using var scope = Scope();
         return await scope.TaxChecks.DecideAsync(WholeOrg, new DecideShortLetTaxCommand { BookingId = bookingId, Regime = regime, Reason = reason }, AgencyUser);
     }
 
-    /// <summary>The credit note of an issued document (the whole of it, or an amount), issued at once, as the agency makes it from the list.</summary>
     public async Task<FiscalDocument> CreditTheDocumentAsync(Guid documentId, decimal? amount, string reason)
     {
         await using var scope = Scope();
@@ -1917,7 +1774,6 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
 
     private static string Day(DateOnly day) => day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-    /// <summary>The configuration <c>Casazen.Web/appsettings.json</c> ships, as the application reads it.</summary>
     private static IConfiguration LoadShippedConfiguration()
     {
         var directory = new DirectoryInfo(System.AppContext.BaseDirectory);
@@ -1929,22 +1785,18 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
     }
 }
 
-/// <summary>A flat of the scenario: its property, its owner, the account of its owner on the portal and its listing on the channel manager.</summary>
 internal sealed record Flat(string Name, Guid PropertyId, Guid OwnerId, Guid OwnerUserId, string Accommodation, string Room);
 
 /// <summary>The variants of the Italian agency of the scenario (<see cref="AcceptanceScenarioBuilder.CreateItalianAsync"/>): V1 and no co-owners unless said.</summary>
 internal sealed record ItalianSetup
 {
-    /// <summary>The agency holds the Booking.com account of both flats (V2); by default the owners do (V1).</summary>
     public bool AgencyHoldsTheBookingAccount { get; init; }
 
-    /// <summary>Flat A has two co-owners, 60% and 40%, and the mandate says that the CU is made per share.</summary>
     public bool CoOwnersOfFlatA { get; init; }
 
     /// <summary>The VAT of the stay of the company of flat B: 10% by default, or exempt (art. 10 n. 8, nature N4).</summary>
     public StayVatTreatment StayVatOfFlatB { get; init; } = StayVatTreatment.Standard;
 
-    /// <summary>Airbnb collects the tourist tax of Como itself (no line on the document); by default the host does.</summary>
     public bool AirbnbCollectsTheTouristTax { get; init; }
 }
 
@@ -1956,7 +1808,6 @@ internal sealed class OwnerRequestTenant : ITenantContext
     public bool FilterEnabled => true;
 }
 
-/// <summary>What the end of a month left: the posting, the first version, the draft and the issued invoice of the property manager, and the published version.</summary>
 internal sealed record MonthEnd(
     OwnerPostingResult Posting,
     OwnerStatementVersion FirstVersion,
@@ -1964,10 +1815,6 @@ internal sealed record MonthEnd(
     FiscalDocument Invoice,
     OwnerStatementVersion Published);
 
-/// <summary>
-/// One unit of work of the scenario (a request, a job, a delivery of an event): a context of its own over the database of the scenario and the services of the chain
-/// over it, built as the container builds them (the real implementations; only the external services and the schedulers are the stand-ins of the builder).
-/// </summary>
 internal sealed class AcceptanceScope : IAsyncDisposable
 {
     public AcceptanceScope(AcceptanceScenarioBuilder world, AppDbContext db)
@@ -2019,7 +1866,6 @@ internal sealed class AcceptanceScope : IAsyncDisposable
         Mandates = new OwnerMandateService(db, clock, accountingOptions, NullLogger<OwnerMandateService>.Instance);
         PortalAccounts = new PortalAccountSettingsService(db, clock, NullLogger<PortalAccountSettingsService>.Instance);
 
-        // The Italian electronic invoices are written by the real builder and validated against the official schema; a Swiss document has no XML, so it is never asked for one.
         var xmlBuilder = new FatturaPaXmlBuilder(new FatturaPaSchemaProvider(), NullLogger<FatturaPaXmlBuilder>.Instance);
         Documents = new FiscalDocumentService(
             db,

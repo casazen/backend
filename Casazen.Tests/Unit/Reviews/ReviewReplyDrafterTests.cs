@@ -15,7 +15,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Reviews;
 
-/// <summary>An approval queue that keeps what it is given and decides nothing: what the drafter of the replies to the reviews writes, and what it supersedes.</summary>
 internal sealed class RecordingApprovalQueue : IApprovalQueueService
 {
     public List<(ApprovalQueueItem Item, bool IsAiGenerated, string? ContentVersion, string? OriginAction)> Submitted { get; } = [];
@@ -168,11 +167,9 @@ public class ReviewReplyDrafterTests
         Assert.Equal(ReviewReplyPromptBuilder.Version, version);
         Assert.Null(item.ConfidenceScore);
 
-        // The reply of the model, then the signature of the rules on a line of its own.
         Assert.StartsWith("Grazie di cuore per le belle parole", item.ContentText, StringComparison.Ordinal);
         Assert.EndsWith("Il team di Casa Bella (TEST)", item.ContentText, StringComparison.Ordinal);
 
-        // The draft waits: the review has no reply, no key, no state, and the channel manager was not called for a reply.
         NothingWasSent(rig);
         var row = await rig.H.ReviewOfAsync(rig.H.Granted);
         Assert.Equal(OtaReviewActionState.None, row.HostReplyState);
@@ -181,10 +178,6 @@ public class ReviewReplyDrafterTests
         Assert.Equal(AiModelTier.Standard, call.Tier);
     }
 
-    /// <summary>
-    /// PROOF TEST: privacy rule (PO-09). The name of the guest, the code of the booking, the reference on the channel manager, the address and the number of the guest never reach the
-    /// model: not in the words of the review it reads, not in the instructions; and the instructions forbid greeting by a name, so the reply has none.
-    /// </summary>
     [Fact]
     public async Task ReviewReply_TheGuestNameNeverReachesTheModel_Test()
     {
@@ -201,7 +194,6 @@ public class ReviewReplyDrafterTests
         foreach (var secret in new[] { "Giulietta", "Verdi", bookingCode, OtaReviewHarness.GrantedRefer, "guest-mail.example", "333 1234567", "3331234567" })
             Assert.DoesNotContain(secret, everything, StringComparison.OrdinalIgnoreCase);
 
-        // What the model does read: the stars, the words that are left, and the rule of not greeting by a name.
         Assert.Contains("RATING: 4.5 out of 5", request.Prompt, StringComparison.Ordinal);
         Assert.Contains("perfetto", request.Prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Do not greet by name", request.SystemPrompt, StringComparison.Ordinal);
@@ -236,19 +228,16 @@ public class ReviewReplyDrafterTests
         var review = await PublishedAsync(rig);
         var key = KeyOf(review);
 
-        // The assistant is not switched on for the property: the model is not asked.
         rig.SwitchOff();
         Assert.Equal(ReviewDraftReasons.AssistantDisabled, (await rig.DraftAsync(key)).Reason);
         Assert.Empty(rig.Ai.Calls);
 
-        // No provider in effect: the model is not asked either.
         var on = await Rig.CreateAsync();
         var onReview = await PublishedAsync(on);
         on.Settings.Setup(s => s.GetEffectiveAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new AiOptions());
         Assert.Equal(ReviewDraftReasons.AiProviderNotConfigured, (await on.DraftAsync(KeyOf(onReview))).Reason);
         Assert.Empty(on.Ai.Calls);
 
-        // A provider that did not answer, the budget used up, a provider that fails, an answer that is not a reply.
         var failing = await Rig.CreateAsync();
         var failingReview = await PublishedAsync(failing);
         failing.Ai.Configured = false;
@@ -274,12 +263,10 @@ public class ReviewReplyDrafterTests
     {
         var rig = await Rig.CreateAsync();
 
-        // Not published: nothing to answer.
         rig.H.ChannelHasNothing(rig.H.Hidden);
         var unpublished = await rig.H.SyncAsync(rig.H.Hidden);
         Assert.Equal(ReviewDraftReasons.NotPublished, (await rig.DraftAsync(KeyOf(unpublished))).Reason);
 
-        // Answered already, or an attempt waits for a check: nothing to draft.
         var answered = await PublishedAsync(rig);
         await using (var db = rig.H.NewDb())
         {
@@ -291,7 +278,6 @@ public class ReviewReplyDrafterTests
 
         Assert.Equal(ReviewDraftReasons.AlreadyAnswered, (await rig.DraftAsync(KeyOf(answered))).Reason);
 
-        // The channel has no integration for reviews.
         var booking = await rig.H.AddStayAsync(rig.H.Granted.OrgId, rig.H.Granted.PropertyId, "585009", "HMBOOKING1", BookingSource.BookingCom);
         Guid otherChannelReview;
         await using (var db = rig.H.NewDb())
@@ -313,7 +299,6 @@ public class ReviewReplyDrafterTests
 
         Assert.Equal(ReviewDraftReasons.ChannelNotSupported, (await rig.DraftAsync(MessageThreadKey.ForOtaReview(otherChannelReview))).Reason);
 
-        // A reply could not be sent now (the connector is off): no draft is written for it.
         var fresh = await Rig.CreateAsync();
         var freshReview = await PublishedAsync(fresh);
         fresh.H.Flags.Set(FeatureFlags.OctorateConnector, false);
@@ -369,13 +354,11 @@ public class ReviewReplyDrafterTests
             await db.SaveChangesAsync();
         }
 
-        // By itself (an event delivered twice, two jobs): one draft waiting is enough.
         var automatic = await rig.DraftAsync(key);
         Assert.Equal(ReviewDraftReasons.AlreadyDrafted, automatic.Reason);
         Assert.Empty(rig.Queue.Submitted);
         Assert.Empty(rig.Ai.Calls);
 
-        // A person who asks for a new one gets it, and the one that waited is rejected with the reason «regenerated» in the person's reach.
         var asked = await rig.DraftAsync(key, options: rig.AskedBy(rig.H.World.OrgWide));
         Assert.Equal(ReviewDraftStatus.Drafted, asked.Status);
         Assert.Single(rig.Queue.Submitted);
@@ -392,13 +375,9 @@ public class ReviewReplyDrafterTests
         var hidden = await PublishedAsync(rig, rig.H.Hidden);
         var other = await PublishedAsync(rig, rig.H.Other);
 
-        // A person limited to some properties asks for the review of a house it was not given.
         var restricted = await rig.DraftAsync(KeyOf(hidden), options: rig.AskedBy(rig.H.World.Restricted));
-        // The scope of another org asks for a review of this one.
         var foreign = await rig.DraftAsync(KeyOf(granted), options: rig.AskedBy(new HostScope(rig.H.Other.OrgId)));
-        // The job of another org is named with the key of a review of this one.
         var wrongOrg = await rig.DraftAsync(KeyOf(other), orgId: rig.H.Granted.OrgId);
-        // The key of a conversation is never the one of a review.
         var conversation = await rig.DraftAsync(MessageThreadKey.ForOta(granted.Id));
 
         Assert.Equal(ReviewDraftStatus.ReviewNotFound, restricted.Status);
@@ -408,7 +387,6 @@ public class ReviewReplyDrafterTests
         Assert.Empty(rig.Queue.Submitted);
         Assert.Empty(rig.Ai.Calls);
 
-        // The same person, in its reach, gets its draft.
         var granted2 = await rig.DraftAsync(KeyOf(granted), options: rig.AskedBy(rig.H.World.Restricted));
         Assert.Equal(ReviewDraftStatus.Drafted, granted2.Status);
     }
@@ -419,13 +397,11 @@ public class ReviewReplyDrafterTests
         var rig = await Rig.CreateAsync(new string('a', ReviewRules.ReplyMaxLength - 5));
         var review = await PublishedAsync(rig);
 
-        // The reply leaves room for the signature: one that does not fit with it is not queued, never cut.
         var tooLong = await rig.DraftAsync(KeyOf(review));
         Assert.Equal(ReviewDraftStatus.NotDrafted, tooLong.Status);
         Assert.Equal(ReviewReplyDrafter.DraftTooLongReason, tooLong.Reason);
         Assert.Empty(rig.Queue.Submitted);
 
-        // A review with only stars.
         var empty = await Rig.CreateAsync();
         empty.H.Client
             .Setup(c => c.GetReviewAsync(empty.H.Granted.Accommodation, empty.H.Granted.Refer, It.IsAny<CancellationToken>()))

@@ -26,7 +26,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 internal sealed class ServiceRequestTestKit : IDisposable
 {
-    /// <summary>The version of the privacy notice the kit's booking service asks for.</summary>
     public const string PrivacyNoticeVersion = "2026-11-test";
 
     private readonly string _storageRoot = Path.Combine(Path.GetTempPath(), "casazen-test-service-requests", Guid.NewGuid().ToString("N"));
@@ -51,8 +50,6 @@ internal sealed class ServiceRequestTestKit : IDisposable
         Clock = clock ?? TimeProvider.System;
         Options = options ?? new ServiceRequestOptions();
         ShowcaseOptions = showcaseOptions ?? new ShowcaseBookingOptions { PrivacyNoticeVersion = PrivacyNoticeVersion };
-        // The tests of SP-15a/15b exercise the direct charge on the supplier's account, so the kit pins that model; the money CasaZen holds for
-        // a host (SP-15c-b) is tried by the tests that ask for it (HeldForHosts = true).
         PaymentOptions = paymentOptions ?? new SupplierPaymentsOptions { CommissionPercent = 10m, HeldForHosts = false };
         Gateway = gateway ?? new FakeSupplierPaymentGateway();
         PlatformGateway = platformGateway ?? new FakePlatformPaymentGateway();
@@ -70,8 +67,6 @@ internal sealed class ServiceRequestTestKit : IDisposable
         Storage = new FileSystemFileStorage(storageOptions, NullLogger<FileSystemFileStorage>.Instance);
         Images = new ImageStorageService(Storage, storageOptions, NullLogger<ImageStorageService>.Instance);
 
-        // SP-04e: the reader tells the payment of a completed job, and the KPIs add up the payments that came in, through the real read
-        // models (the flag and the options are the kit's own, so a test that switches the payments on sees them in the summaries).
         PaymentReads = new SupplierPaymentReadModels(
             db, Flags, Microsoft.Extensions.Options.Options.Create(PaymentOptions), LegalTestServices.Legal(), Clock);
         Reader = new SupplierServiceRequestReader(db, Clock, PaymentReads);
@@ -102,11 +97,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
             ShowcaseNotifier,
             Microsoft.Extensions.Options.Options.Create(Options),
             NullLogger<ServiceRequestNotifier>.Instance);
-        // SP-REL: the reliability events of the suppliers are written by the real service over the same database, with the default weights.
         Reliability = new SupplierReliabilityService(
             db, Agenda, Microsoft.Extensions.Options.Options.Create(RankingOptions), NullLogger<SupplierReliabilityService>.Instance, Clock);
-        // E24/F01/US01/T02: the events of the requests go to the outbox of the same context, as the application does, for the tests that read them (the service of the requests and the
-        // payment service, which completes a job a dispute decides, record the same events).
         DomainEventRecorder? recorder = recordEvents ? new DomainEventRecorder(db, Mock.Of<ITenantContext>(), Clock) : null;
         Payments = new SupplierPaymentService(
             db,
@@ -127,8 +119,6 @@ internal sealed class ServiceRequestTestKit : IDisposable
             recorder);
         Matcher = ComuneTestServices.Matcher(db);
 
-        // SP-BKP: the choice of the backup suppliers over a plain ranking (the real one needs the whole supplier service); it is only
-        // reached with the feature flag SupplierRequestBackups on, which the kit leaves off until a test switches it on.
         BackupSelector = new ServiceRequestBackupSelector(
             new FakeSupplierRanking(db), Agenda, LegalTestServices.Legal(), db, NullLogger<ServiceRequestBackupSelector>.Instance);
         Service = new ServiceRequestService(
@@ -184,11 +174,9 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Payments,
             Payments,
             alternatives);
-        // SP-10c: the second pass of the expiry job, over the same notifier.
         Reminders = new ShowcaseReplyReminderService(db, ShowcaseNotifier, NullLogger<ShowcaseReplyReminderService>.Instance, Clock);
     }
 
-    /// <summary>The publishable key the payment sessions of the kit carry.</summary>
     public const string PublishableKey = "pk_test_kit";
 
     public AppDbContext Db { get; }
@@ -201,10 +189,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
 
     public SupplierPaymentsOptions PaymentOptions { get; }
 
-    /// <summary>The weights of the ranking the kit's reliability service uses: the defaults.</summary>
     public SupplierRankingOptions RankingOptions { get; } = new();
 
-    /// <summary>The reliability events of the suppliers (SP-REL), written by the flows of the kit.</summary>
     public SupplierReliabilityService Reliability { get; }
 
     public FakeSupplierPaymentGateway Gateway { get; }
@@ -212,10 +198,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
     /// <summary>The gateway of the money CasaZen holds (SP-15c-a): never reaches Stripe.</summary>
     public FakePlatformPaymentGateway PlatformGateway { get; }
 
-    /// <summary>Records the penalties the disputes decided for the customer give a supplier (SP-15c-c); nothing reaches a ranking.</summary>
     public RecordingSupplierDisputePenalties Penalties { get; } = new();
 
-    /// <summary>Records the supplier orgs whose pending payment requests were queued (SP-15b); nothing reaches Hangfire.</summary>
     public RecordingSupplierPaymentJobScheduler JobScheduler { get; } = new();
 
     public TestFeatureFlags Flags { get; }
@@ -230,10 +214,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
 
     public SupplierServiceRequestReader Reader { get; }
 
-    /// <summary>The reads of the payments of the supplier console (SP-04e), over the kit's flags and options.</summary>
     public SupplierPaymentReadModels PaymentReads { get; }
 
-    /// <summary>The KPIs of the supplier (SP-04e: with the overview, over <see cref="PaymentReads"/>).</summary>
     public SupplierKpiService Kpis { get; }
 
     public ShowcaseHoldReader Holds { get; }
@@ -256,21 +238,17 @@ internal sealed class ServiceRequestTestKit : IDisposable
 
     public ServiceRequestService Service { get; }
 
-    /// <summary>The choice of the backup suppliers of a request (SP-BKP), over <see cref="FakeSupplierRanking"/>.</summary>
     public ServiceRequestBackupSelector BackupSelector { get; }
 
     public ShowcaseBookingService Booking { get; }
 
-    /// <summary>The request on measure from the same showcase (SP-10b): no slot, the words of the customer.</summary>
     public ShowcaseInquiryService Inquiry { get; }
 
-    /// <summary>The customer's own area of a booking (SP-11), on the real service request actions.</summary>
     public ShowcaseBookingManager Manager { get; }
 
     /// <summary>The other suppliers offered to the customer of a request nobody answered (SP-10c): none unless a test gives the kit one.</summary>
     public IShowcaseAlternativesService? Alternatives { get; }
 
-    /// <summary>The reminders to the supplier of a request on measure nobody answered yet (SP-10c): the second pass of the expiry job.</summary>
     public ShowcaseReplyReminderService Reminders { get; }
 
     public void Dispose()

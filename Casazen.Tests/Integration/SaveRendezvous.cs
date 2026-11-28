@@ -26,13 +26,8 @@ namespace Casazen.Tests.Integration;
 /// </remarks>
 internal sealed class SaveRendezvous : SaveChangesInterceptor, IParallelSaveRendezvousInterceptor
 {
-    /// <summary>Long enough for a cold test host to serve both requests; a rendezvous that is never completed fails after it.</summary>
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
 
-    /// <summary>
-    /// How long a save waits for the others when the operations are serialized by the calendar lock of the supplier
-    /// (see <c>proceedOnTimeout</c>): the second one cannot arrive before the first one has finished.
-    /// </summary>
     public static readonly TimeSpan SerializedTimeout = TimeSpan.FromSeconds(3);
 
     private readonly TaskCompletionSource _allArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -49,13 +44,8 @@ internal sealed class SaveRendezvous : SaveChangesInterceptor, IParallelSaveRend
         _proceedOnTimeout = proceedOnTimeout;
     }
 
-    /// <summary>The saves of a service request that reached the rendezvous so far.</summary>
     public int Arrived => Volatile.Read(ref _arrived);
 
-    /// <summary>
-    /// Puts <b>one</b> rendezvous of <paramref name="parties"/> saves on every <see cref="AppDbContext"/> of the host being built
-    /// (call it from <c>ConfigureTestServices</c>, which runs once) and returns it.
-    /// </summary>
     public static SaveRendezvous HoldParallelSaves(
         IServiceCollection services,
         int parties = 2,

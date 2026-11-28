@@ -36,10 +36,6 @@ public class MarketingConfirmationConcurrencyPostgresTests : IAsyncLifetime
             await _database.DisposeAsync();
     }
 
-    /// <summary>
-    /// Data rule: eight requests for the same new address at the same moment queue one message and count one send; the others are told it was
-    /// sent a moment ago. Without the booking of the send each of them reads a counter of zero and queues its own message.
-    /// </summary>
     [PostgresFact]
     public async Task MarketingConfirmation_RequestsAtTheSameMoment_QueueOneMessageAndCountOneSend_Test()
     {
@@ -58,10 +54,6 @@ public class MarketingConfirmationConcurrencyPostgresTests : IAsyncLifetime
         Assert.NotNull(stored.ConfirmationSentAt);
     }
 
-    /// <summary>
-    /// Data rule: a person is never mailed more than the maximum, however many requests meet at the last send. The contact has two sends and the
-    /// last went out long ago: of eight requests together one takes the third and the others find the limit reached.
-    /// </summary>
     [PostgresFact]
     public async Task MarketingConfirmation_RequestsAtTheLastSend_NeverGoBeyondTheMaximum_Test()
     {
@@ -78,10 +70,6 @@ public class MarketingConfirmationConcurrencyPostgresTests : IAsyncLifetime
         Assert.Equal(3, (await ReadAsync(contactId)).ConfirmationSentCount);
     }
 
-    /// <summary>
-    /// Data rule: a message the queue refuses is not a send. The booking is given back on the database too (the counter, the time of the last
-    /// send, the confirmation), so the next call is not told it is too soon; a request that comes while the e-mail provider is off costs nothing.
-    /// </summary>
     [PostgresFact]
     public async Task MarketingConfirmation_QueueRefuses_GivesTheSendBack_Test()
     {
@@ -112,9 +100,6 @@ public class MarketingConfirmationConcurrencyPostgresTests : IAsyncLifetime
         Assert.Equal(1, (await ReadAsync(contactId)).ConfirmationSentCount);
     }
 
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The same call from <see cref="Together"/> requests, each with a context of its own, released together.</summary>
     private async Task<MarketingConfirmationSendOutcome[]> SendTogetherAsync(Guid orgId, Guid contactId, RecordingEmailQueue queue)
     {
         var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -155,7 +140,6 @@ public class MarketingConfirmationConcurrencyPostgresTests : IAsyncLifetime
         return await db.GuestContacts.AsNoTracking().SingleAsync(c => c.Id == contactId);
     }
 
-    /// <summary>An org and a consent on an e-mail address that is not confirmed, with <paramref name="sentCount"/> messages already sent.</summary>
     private async Task<(Guid OrgId, Guid ContactId, string Address)> SeedConsentContactAsync(int sentCount, int lastSentMinutesAgo = 0)
     {
         await using var db = _database!.CreateContext();

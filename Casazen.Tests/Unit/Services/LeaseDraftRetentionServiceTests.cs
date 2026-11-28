@@ -14,10 +14,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// LR-12, decision LR-D33: the drafts nobody changed for <c>LongRentLease:DraftRetentionDays</c> days are deleted with their parties and
-/// files; one with a signed copy, a rent plan, or that is not a draft any more never is; a second run finds nothing.
-/// </summary>
 public class LeaseDraftRetentionServiceTests
 {
     private static LeaseDraftRetentionService NewRetention(LeaseDraftHarness h, int days = 180, AppDbContext? db = null)
@@ -31,7 +27,6 @@ public class LeaseDraftRetentionServiceTests
             h.Clock);
     }
 
-    /// <summary>A complete draft, whose last change was <paramref name="idleDays"/> days before "now".</summary>
     private static async Task<Guid> IdleDraftAsync(LeaseDraftHarness h, double idleDays, Action<LeaseContract>? change = null)
     {
         var (created, _) = await h.CompleteAsync();
@@ -180,7 +175,6 @@ public class LeaseDraftRetentionServiceTests
     public async Task Run_ADraftThatNothingCanDelete_DoesNotMakeTheRunLoop()
     {
         using var h = await new LeaseDraftHarness().SeedAsync();
-        // Old, still a draft, no signed copy: it is a candidate — and a rent plan, added after the list is read, keeps it.
         var id = await IdleDraftAsync(h, 500);
         await using (var db = h.SecondContext())
         {
@@ -234,7 +228,6 @@ public class LeaseDraftRetentionServiceTests
         Assert.False(await ExistsAsync(h, unpaid));
     }
 
-    /// <summary>Refuses the deletion of the given leases with an error that is none of the ones the service knows (a failure of the database).</summary>
     private sealed class FailOnDelete(HashSet<Guid> leases) : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
     {
         public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(
@@ -253,7 +246,7 @@ public class LeaseDraftRetentionServiceTests
     public async Task Run_ADraftThatFailsForAnyReason_IsLeft_TheOnesBehindItAreStillDeleted()
     {
         using var h = await new LeaseDraftHarness().SeedAsync();
-        var poisoned = await IdleDraftAsync(h, 300); // the oldest: the first of the list
+        var poisoned = await IdleDraftAsync(h, 300);
         var fine = await IdleDraftAsync(h, 200);
         await using var db = h.ContextWith(new FailOnDelete([poisoned]));
 

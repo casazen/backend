@@ -34,10 +34,8 @@ public sealed class CampaignApprovalAction(ICampaignService campaigns, IFeatureF
     /// </summary>
     public const string ModuleOffCode = "crm_marketing_disabled";
 
-    /// <summary>The state of the answer for a campaign that was approved and scheduled.</summary>
     public const string ScheduledState = "Scheduled";
 
-    /// <summary>The state of the answer for a campaign that was approved and has no time yet.</summary>
     public const string ApprovedState = "Approved";
 
     public string ItemType => ApprovalItemTypes.Campaign;
@@ -49,8 +47,6 @@ public sealed class CampaignApprovalAction(ICampaignService campaigns, IFeatureF
         ArgumentNullException.ThrowIfNull(item);
         ArgumentException.ThrowIfNullOrWhiteSpace(finalText);
 
-        // The campaigns are behind Features:CrmMarketing (their endpoints answer 404 while it is off): the queue is another door to the same campaigns, so it does not approve or
-        // schedule one while the module is closed. The item stays pending with the code and the decision is taken when the module is on.
         if (!featureFlags.IsEnabled(FeatureFlags.CrmMarketing))
         {
             logger.LogWarning(

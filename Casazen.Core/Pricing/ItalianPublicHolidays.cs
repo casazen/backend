@@ -1,45 +1,31 @@
 namespace Casazen.Core.Pricing;
 
-/// <summary>National public holidays of Italy (Legge 27 maggio 1949 n. 260, art. 2, as amended).</summary>
 public enum ItalianHoliday
 {
-    /// <summary>1 January, Capodanno.</summary>
     NewYear,
 
-    /// <summary>6 January, Epifania.</summary>
     Epiphany,
 
-    /// <summary>Easter Sunday (Pasqua), computed.</summary>
     EasterSunday,
 
-    /// <summary>Easter Monday (Lunedì dell'Angelo, Pasquetta), computed.</summary>
     EasterMonday,
 
-    /// <summary>25 April, Festa della Liberazione.</summary>
     Liberation,
 
-    /// <summary>1 May, Festa del Lavoro.</summary>
     Labour,
 
-    /// <summary>2 June, Festa della Repubblica.</summary>
     Republic,
 
-    /// <summary>15 August, Assunzione (Ferragosto).</summary>
     Assumption,
 
-    /// <summary>4 October, San Francesco d'Assisi, from 2026 (Legge 8 ottobre 2025 n. 151).</summary>
     SaintFrancis,
 
-    /// <summary>1 November, Ognissanti.</summary>
     AllSaints,
 
-    /// <summary>8 December, Immacolata Concezione.</summary>
     ImmaculateConception,
 
-    /// <summary>25 December, Natale.</summary>
     Christmas,
 
-    /// <summary>26 December, Santo Stefano.</summary>
     SaintStephen,
 }
 
@@ -53,9 +39,6 @@ public static class ItalianPublicHolidays
     /// <summary>First year in which 4 October is a national holiday (Legge 151/2025, in force from 1 January 2026).</summary>
     public const int SaintFrancisFirstYear = 2026;
 
-    /// <summary>
-    /// Easter Sunday of <paramref name="year"/> in the Gregorian calendar (anonymous Gregorian algorithm, Meeus/Jones/Butcher).
-    /// </summary>
     public static DateOnly EasterSunday(int year)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(year, 1583);
@@ -77,7 +60,6 @@ public static class ItalianPublicHolidays
         return new DateOnly(year, month, day);
     }
 
-    /// <summary>Every national holiday of <paramref name="year"/>, in date order.</summary>
     public static IReadOnlyList<(DateOnly Date, ItalianHoliday Holiday)> ForYear(int year)
     {
         var easter = EasterSunday(year);
@@ -100,11 +82,9 @@ public static class ItalianPublicHolidays
         if (year >= SaintFrancisFirstYear)
             holidays.Add((new DateOnly(year, 10, 4), ItalianHoliday.SaintFrancis));
 
-        // Easter Monday can fall on 25 April (e.g. 2011): both are kept, the first in the list wins in On().
         return holidays.OrderBy(h => h.Date).ToList();
     }
 
-    /// <summary>The national holiday on <paramref name="date"/>, or <c>null</c> on an ordinary day.</summary>
     public static ItalianHoliday? On(DateOnly date)
     {
         foreach (var (day, holiday) in ForYear(date.Year))

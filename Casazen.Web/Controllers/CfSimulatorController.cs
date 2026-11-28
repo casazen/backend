@@ -29,11 +29,6 @@ public class CfSimulatorController(ICfSimulatorService simulator) : ControllerBa
 {
     private const int MaxBodyBytes = 4 * 1024;
 
-    /// <summary>
-    /// What the module learns when its page opens with the link: whether the signature and the expiry are good, the municipality the link
-    /// names and, for a good link, the practices the contract already has. A link that is not good answers 200 with <c>valid: false</c>:
-    /// the module can be filled in all the same (specification v0.2 §1).
-    /// </summary>
     [HttpGet("link")]
     [ProducesResponseType(typeof(CfSimulatorLinkResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -53,11 +48,6 @@ public class CfSimulatorController(ICfSimulatorService simulator) : ControllerBa
         });
     }
 
-    /// <summary>
-    /// The "send" of the module: takes in a practice (state <c>Received</c>) with the parameters of the link in the query string. Bound to
-    /// the contract only when the link is good; another practice of that contract that is not over is closed as a duplicate. The answer
-    /// carries the control token, which is not shown again.
-    /// </summary>
     [HttpPost("practices")]
     [RequestSizeLimit(MaxBodyBytes)]
     [ProducesResponseType(typeof(CfSimulatorCreatedPracticeResponse), StatusCodes.Status201Created)]
@@ -79,10 +69,6 @@ public class CfSimulatorController(ICfSimulatorService simulator) : ControllerBa
         });
     }
 
-    /// <summary>
-    /// The test panel: sets the state of a practice, any state, and the reason when it is closed without attestation. 404 when the practice
-    /// does not exist or the token is not its own (the two are not told apart); the state <c>Unknown</c> is not one of the service.
-    /// </summary>
     [HttpPost("practices/{practiceId}/status")]
     [RequestSizeLimit(MaxBodyBytes)]
     [ProducesResponseType(typeof(CfSimulatorPracticeResponse), StatusCodes.Status200OK)]

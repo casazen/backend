@@ -6,10 +6,8 @@ using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
 
-/// <summary>The progress of a bulk run as the job keeps it (<see cref="OwnerBulkCloseJob.ProgressParameter"/>): where it is and the results so far.</summary>
 public sealed record OwnerBulkProgressState(OwnerBulkRunStatus Status, IReadOnlyList<OwnerBulkOwnerResult> Results, string? ErrorCode = null);
 
-/// <summary>The JSON of <see cref="OwnerBulkProgressState"/>: member names for the enums, as the API writes them, and never an exception for a record that cannot be read.</summary>
 public static class OwnerBulkJobState
 {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
@@ -19,7 +17,6 @@ public static class OwnerBulkJobState
 
     public static string Serialize(OwnerBulkProgressState state) => JsonSerializer.Serialize(state, Options);
 
-    /// <summary>The state a job kept; <c>null</c> when there is none or it cannot be read.</summary>
     public static OwnerBulkProgressState? Deserialize(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -44,7 +41,6 @@ public static class OwnerBulkJobState
 /// </remarks>
 public sealed class HangfireOwnerBulkJobs(IBackgroundJobClient client, JobStorage? storage = null) : IOwnerBulkJobs
 {
-    // The arguments of OwnerBulkCloseJob.RunAsync, in order.
     private const int OrgArg = 0;
     private const int YearArg = 1;
     private const int MonthArg = 2;
@@ -61,7 +57,6 @@ public sealed class HangfireOwnerBulkJobs(IBackgroundJobClient client, JobStorag
 
     public Task<OwnerBulkRun?> GetAsync(Guid orgId, string jobId, CancellationToken ct = default)
     {
-        // Hangfire numbers its jobs: anything else is not one of them.
         if (string.IsNullOrEmpty(jobId) || !long.TryParse(jobId, NumberStyles.None, CultureInfo.InvariantCulture, out _))
             return Task.FromResult<OwnerBulkRun?>(null);
 
@@ -84,7 +79,6 @@ public sealed class HangfireOwnerBulkJobs(IBackgroundJobClient client, JobStorag
         var results = progress?.Results ?? [];
         var fromState = StatusOf(data.State);
 
-        // The run's own word counts once it is over (all its results are there); until then the job's state decides between waiting and working.
         var status = progress is { Status: OwnerBulkRunStatus.Completed or OwnerBulkRunStatus.Failed }
             ? progress.Status
             : fromState is OwnerBulkRunStatus.Completed or OwnerBulkRunStatus.Failed
@@ -94,7 +88,6 @@ public sealed class HangfireOwnerBulkJobs(IBackgroundJobClient client, JobStorag
         return Task.FromResult<OwnerBulkRun?>(new OwnerBulkRun(jobId, action, year, month, status, owners.Count(), results, errorCode));
     }
 
-    /// <summary>The state of a Hangfire job as the status of a run.</summary>
     private static OwnerBulkRunStatus StatusOf(string? state) => state switch
     {
         "Processing" => OwnerBulkRunStatus.Running,

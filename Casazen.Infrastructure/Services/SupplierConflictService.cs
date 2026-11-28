@@ -38,15 +38,12 @@ public sealed class SupplierConflictService(
 
         var listed = await requests.ListForAgendaAsync(supplierOrgId, from, to, cancellationToken);
 
-        // The planner's input reaches past the range: a suggestion looks for a free slot in the days after the job.
         var input = await agenda.BuildPlanningInputAsync(
             supplierOrgId,
             from,
             to.AddDays(SupplierAgendaLimits.ConflictSuggestionDays),
             cancellationToken);
 
-        // Which of them the detector looks at is its own rule (a job with hours, still to come); the bound is applied to those, the
-        // nearest first, so what is furthest away is cut.
         var nowUtc = UtcDateTime.Normalize(input.NowUtc);
         var upcoming = listed
             .Where(request => request is { HasHours: true })
@@ -71,10 +68,6 @@ public sealed class SupplierConflictService(
         return new SupplierConflictReport(from, to, SupplierConflictDetector.Detect(input, jobs), truncated);
     }
 
-    /// <summary>
-    /// The notice and weekdays of the catalog services behind the requests a time can be proposed on (<c>Richiesto</c>): the only
-    /// ones that get a suggestion. One read of the supplier's catalog, and none when no such request is for a service.
-    /// </summary>
     private async Task<Dictionary<Guid, (int? MinNoticeHours, int? WeekdaysMask)>> ServiceConstraintsAsync(
         Guid supplierOrgId,
         IReadOnlyList<SupplierAgendaRequest> upcoming,

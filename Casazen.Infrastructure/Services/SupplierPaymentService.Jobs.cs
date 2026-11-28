@@ -23,16 +23,12 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed partial class SupplierPaymentService
 {
-    /// <summary>Which email with a payment link is being sent.</summary>
     private enum LinkKind
     {
-        /// <summary>The first request of a payment that was pending (the supplier was not ready, or the payer had no address).</summary>
         FirstRequest,
 
-        /// <summary>A reminder of a payment still to be made.</summary>
         Reminder,
 
-        /// <summary>A new link after a payment that was in flight failed (a returned SEPA debit).</summary>
         Retry,
     }
 
@@ -43,13 +39,10 @@ public sealed partial class SupplierPaymentService
         NotQueued,
     }
 
-    // ─── service-payment-sync ───────────────────────────────────────────────────────────────────────────────────────
-
     public async Task<ServicePaymentSyncRun> SynchronizeAsync(CancellationToken cancellationToken = default)
     {
         int paymentsRead = 0, paymentsUpdated = 0, refundsRead = 0, refundsUpdated = 0, errors = 0;
 
-        // 1. The payments in flight: Stripe tells what became of them, in case the event was lost.
         var processing = await db.ServiceRequestPayments
             .AsNoTracking()
             .Where(p => p.Status == ServicePaymentStatus.Processing && p.StripePaymentIntentId != null && p.ConnectedAccountId != null)
@@ -143,7 +136,6 @@ public sealed partial class SupplierPaymentService
             }
         }
 
-        // 3. The refunds Stripe has not completed yet (pending, waiting for the bank): read again.
         var open = await db.ServiceRequestPaymentRefunds
             .AsNoTracking()
             .Where(r => (r.Status == ServicePaymentRefundStatus.Pending || r.Status == ServicePaymentRefundStatus.RequiresAction) && r.StripeRefundId != null)
@@ -172,7 +164,6 @@ public sealed partial class SupplierPaymentService
         return new ServicePaymentSyncRun(paymentsRead, paymentsUpdated, refundsRead, refundsUpdated, errors);
     }
 
-    /// <summary>Reads the PaymentIntent of a payment in flight and applies what it says, exactly as the webhook would.</summary>
     private async Task<(ServicePaymentNotice? Notice, bool Changed)> SynchronizePaymentAsync(PaymentRef candidate, CancellationToken cancellationToken)
     {
         db.ChangeTracker.Clear();
@@ -181,14 +172,12 @@ public sealed partial class SupplierPaymentService
             async () =>
             {
                 var payment = await LoadPaymentAsync(candidate.Id, cancellationToken);
-                // Read again under the lock: the webhook may have settled it while this run was waiting.
                 if (payment is not { Status: ServicePaymentStatus.Processing, StripePaymentIntentId: { } intentId, ConnectedAccountId: { } accountId })
                     return ((ServicePaymentNotice?)null, false);
 
                 var intent = await ReadIntentAsync(intentId, accountId, cancellationToken);
                 if (intent is null)
                 {
-                    // The PaymentIntent is gone with its account: money in flight that CasaZen can no longer follow.
                     payment.Status = ServicePaymentStatus.NeedsReview;
                     payment.FailureCode = ServiceChargeVerification.ReviewPrefix + "intent_gone";
                     payment.UpdatedAt = Now();
@@ -205,10 +194,6 @@ public sealed partial class SupplierPaymentService
             cancellationToken);
     }
 
-    /// <summary>
-    /// Reads the PaymentIntent of a payment a host is paying to the platform (SP-15c-b) and, if it did succeed, records the charge exactly as the
-    /// webhook would (the same checks: the platform's PaymentIntent, the amount, the currency, no fee). One that is not paid, or is gone, changes nothing.
-    /// </summary>
     private async Task<(ServicePaymentNotice? Notice, bool Changed)> SynchronizeHeldPaymentAsync(PaymentRef candidate, CancellationToken cancellationToken)
     {
         db.ChangeTracker.Clear();
@@ -217,7 +202,6 @@ public sealed partial class SupplierPaymentService
             async () =>
             {
                 var payment = await LoadPaymentAsync(candidate.Id, cancellationToken);
-                // Read again under the lock: the webhook may have settled it while this run was waiting.
                 if (payment is not { FundsModel: ServiceFundsModel.PlatformHeld, StripePaymentIntentId: { } intentId }
                     || payment.Status is not (ServicePaymentStatus.Requested or ServicePaymentStatus.Processing or ServicePaymentStatus.Failed))
                     return ((ServicePaymentNotice?)null, false);
@@ -250,7 +234,6 @@ public sealed partial class SupplierPaymentService
             cancellationToken);
     }
 
-    /// <summary>Lists the refunds of a payment on Stripe and applies them (a pending one may have completed). True when anything changed.</summary>
     private async Task<bool> RefreshRefundsAsync(Guid paymentId, CancellationToken cancellationToken)
     {
         db.ChangeTracker.Clear();
@@ -271,7 +254,6 @@ public sealed partial class SupplierPaymentService
                 if (payment is not { StripePaymentIntentId: { } intentId })
                     return list;
 
-                // The refunds of the money CasaZen holds are on the platform account, the others on the supplier's.
                 IReadOnlyList<ServiceChargeRefund> snapshots;
                 if (payment.FundsModel == ServiceFundsModel.PlatformHeld)
                 {
@@ -295,15 +277,12 @@ public sealed partial class SupplierPaymentService
         return notices.Count > 0;
     }
 
-    // ─── service-payment-reminders ──────────────────────────────────────────────────────────────────────────────────
-
     public async Task<ServicePaymentReminderRun> RunRemindersAsync(CancellationToken cancellationToken = default)
     {
         var now = Now();
         var emailsEnabled = features.IsEnabled(FeatureFlags.SupplierOnlinePayments);
         int markedLate = 0, requestsSent = 0, remindersSent = 0, skipped = 0, errors = 0;
 
-        // 1. Late: asked for LateAfterDays ago and still unpaid. Not behind the flag: it is a state of the payment, not a message.
         var lateBefore = now.AddDays(-options.Value.LateAfterDays);
         var late = await db.ServiceRequestPayments
             .AsNoTracking()
@@ -338,14 +317,11 @@ public sealed partial class SupplierPaymentService
             return new ServicePaymentReminderRun(false, markedLate, 0, 0, skipped, errors);
         }
 
-        // 2. The payments that were pending and can go out now: a catch-up for a supplier that became ready without anyone queueing
-        //    the job (or whose job failed).
         var pending = await SendPendingAsync(null, cancellationToken);
         requestsSent += pending.Sent;
         skipped += pending.Skipped;
         errors += pending.Errors;
 
-        // 3. The reminders that are due: at +2 and +7 days from the first request, three emails with a link in all, one a day at most.
         var days = options.Value.EffectiveReminderDays;
         var candidates = await db.ServiceRequestPayments
             .AsNoTracking()
@@ -404,7 +380,6 @@ public sealed partial class SupplierPaymentService
                     || !ServicePaymentSchedule.IsLate(payment.Status, payment.RequestedAt, options.Value.LateAfterDays, now))
                     return false;
 
-                // The moment it became late, not the moment the job noticed: the same figure whenever the job runs.
                 payment.LateAt = ServicePaymentSchedule.LateSince(payment.RequestedAt, options.Value.LateAfterDays);
                 payment.UpdatedAt = now;
                 logger.LogInformation("Service payment {PaymentId} is late since {LateAt:o}", payment.Id, payment.LateAt);
@@ -412,8 +387,6 @@ public sealed partial class SupplierPaymentService
             },
             cancellationToken);
     }
-
-    // ─── SendPendingPaymentRequestsJob ──────────────────────────────────────────────────────────────────────────────
 
     public async Task<int> SendPendingRequestsAsync(Guid supplierOrgId, CancellationToken cancellationToken = default)
     {
@@ -428,7 +401,6 @@ public sealed partial class SupplierPaymentService
         return run.Sent;
     }
 
-    /// <summary>Sends the first request of the pending payments (those of one supplier, or of all when <paramref name="supplierOrgId"/> is null). Nothing with the flag off.</summary>
     private async Task<(int Sent, int Skipped, int Errors)> SendPendingAsync(Guid? supplierOrgId, CancellationToken cancellationToken)
     {
         if (!features.IsEnabled(FeatureFlags.SupplierOnlinePayments))
@@ -479,8 +451,6 @@ public sealed partial class SupplierPaymentService
         return (sent, skipped, errors);
     }
 
-    // ─── One link, one email ────────────────────────────────────────────────────────────────────────────────────────
-
     /// <summary>
     /// Issues a new link for a payment and emails it, under the payment lock, only if the payment is still due for it when the lock
     /// is held (it may have been paid, asked for or reminded meanwhile). The link is committed before the email is queued; if the
@@ -512,7 +482,6 @@ public sealed partial class SupplierPaymentService
             await CommitAsync(transaction, cancellationToken);
         }
 
-        // The new link is committed: sending it, or taking it back, does not depend on the job still being there.
         var queued = false;
         try
         {
@@ -558,7 +527,6 @@ public sealed partial class SupplierPaymentService
                 payment.Status, payment.SentCount, payment.RequestedAt, payment.LastSentAt, options.Value.EffectiveReminderDays, now))
             return false;
 
-        // The request has two parties and is not tenant-filtered; scoped by the id the payment points to.
         var request = await db.ServiceRequests
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -574,7 +542,6 @@ public sealed partial class SupplierPaymentService
         return !string.IsNullOrWhiteSpace(await ReadPayerEmailAsync(payment.PayerOrgId, cancellationToken));
     }
 
-    /// <summary>Queues the email of a payment that failed after it was accepted, with its new link; false when it is not queued.</summary>
     private async Task<bool> QueueRetryEmailAsync(ServiceRequestPayment payment, string token, CancellationToken cancellationToken)
     {
         var recipient = await ReadPayerEmailAsync(payment.PayerOrgId, cancellationToken);

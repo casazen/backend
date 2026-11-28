@@ -7,34 +7,24 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Casazen.Tests.Unit.Search;
 
-/// <summary>Who asks, in a <see cref="SearchCase"/>: the access of a kind of caller on the <see cref="SearchWorld"/>.</summary>
 internal enum SearchCaller
 {
-    /// <summary>The owner: every permission, the whole org.</summary>
     Owner,
 
-    /// <summary>The collaborator «Solo alcuni»: every permission of the short-rent kind, the first property only.</summary>
     Collaborator,
 
-    /// <summary>An account in no team: the properties it created.</summary>
     AccountInNoTeam,
 
-    /// <summary>The owner of the other org.</summary>
     OtherOrg,
 
-    /// <summary>The owner holding only the permissions of the short-rent area.</summary>
     ShortRentOnly,
 
-    /// <summary>The owner holding only the permissions of the long-term area.</summary>
     LongRentOnly,
 
-    /// <summary>A collaborator given no property at all.</summary>
     NobodyGranted,
 
-    /// <summary>A supplier: the plumbers (the inbox), no host access.</summary>
     Plumbers,
 
-    /// <summary>A supplier: the cleaners (the inbox), no host access.</summary>
     Cleaners,
 }
 
@@ -75,7 +65,6 @@ internal static class SearchCases
 
     public static IReadOnlyList<SearchCase> All { get; } =
     [
-        // ─── The words ───────────────────────────────────────────────────────────────────────────────
         Case("property by the beginning of its name", "tru", SearchCaller.Owner, w => [Property(w.Trullo.Id)]),
         Case("property by a later word", "bianco", SearchCaller.Owner, w => [Property(w.Trullo.Id)]),
         Case("property by its city, accents ignored", "forli", SearchCaller.Owner, w => [Property(w.CasaBella.Id)]),
@@ -90,7 +79,6 @@ internal static class SearchCases
         Case("the long-term property needs the long-term permission", "loft", SearchCaller.ShortRentOnly, _ => []),
         Case("the short-rent property needs the short-rent permission", "trullo", SearchCaller.LongRentOnly, _ => []),
 
-        // ─── Guests and bookings ─────────────────────────────────────────────────────────────────────
         Case("guest by first name with the accent", "José", SearchCaller.Owner, w => [Booking(w.StayJose.Id), Guest(w.Jose.Id)]),
         Case("guest by surname typed without the diaeresis", "muller", SearchCaller.Owner, w => [Booking(w.StayJose.Id), Guest(w.Jose.Id)]),
         Case("guest by the beginning of the e-mail", "jose.muller@exam", SearchCaller.Owner, w => [Booking(w.StayJose.Id), Guest(w.Jose.Id)]),
@@ -106,7 +94,6 @@ internal static class SearchCases
         Case("booking of an anonymized guest, by code", "QWERT12345", SearchCaller.Owner, w => [Booking(w.StayAnonymized.Id)]),
         Case("a code with letters only is not looked up as a beginning", "zxcv", SearchCaller.Owner, _ => []),
 
-        // ─── Leases, requests, suppliers ─────────────────────────────────────────────────────────────
         Case("lease by a tenant", "verdi", SearchCaller.Owner, w => [Lease(w.LeaseVerdi.Id)]),
         Case("lease by the first name of a tenant", "paolo", SearchCaller.Owner, w => [Lease(w.LeaseVerdi.Id)]),
         Case("an anonymized tenant is not found", "bianchi", SearchCaller.Owner, _ => []),
@@ -120,14 +107,12 @@ internal static class SearchCases
         Case("a supplier asked, by its name", "splendore", SearchCaller.Owner, w => [Supplier(w.CleanersOrgId)]),
         Case("suppliers need the short-rent permission", "splendore", SearchCaller.LongRentOnly, _ => []),
 
-        // ─── The org boundary ────────────────────────────────────────────────────────────────────────
         Case("the other org finds its own property", "trullo", SearchCaller.OtherOrg, w => [Property(w.Foreign.Id)]),
         Case("the other org finds its own guest, stay and request", "maria", SearchCaller.OtherOrg, w => [Booking(w.StayForeign.Id), Guest(w.ForeignMaria.Id)]),
         Case("the other org finds its own lease", "verdi", SearchCaller.OtherOrg, w => [Lease(w.LeaseForeign.Id)]),
         Case("the other org does not find the code of a stay of this org", "7K3M9-PQ2XV", SearchCaller.OtherOrg, _ => []),
         Case("this org does not find the code of a stay of the other", "XYZ9876543", SearchCaller.Owner, _ => []),
 
-        // ─── The collaborator limited to one property ────────────────────────────────────────────────
         Case("collaborator: its property", "trullo", SearchCaller.Collaborator, w => [Property(w.Trullo.Id)]),
         Case("collaborator: another property", "casa", SearchCaller.Collaborator, _ => []),
         Case("collaborator: a city of another property", "forli", SearchCaller.Collaborator, _ => []),
@@ -145,12 +130,10 @@ internal static class SearchCases
         Case("a collaborator given nothing finds nothing (guest)", "rossi", SearchCaller.NobodyGranted, _ => []),
         Case("a collaborator given nothing finds nothing (code)", "7K3M9-PQ2XV", SearchCaller.NobodyGranted, _ => []),
 
-        // ─── The account in no team ──────────────────────────────────────────────────────────────────
         Case("account in no team: its guests", "rossi", SearchCaller.AccountInNoTeam, w =>
             [Booking(w.StayMarioAtCasaBella.Id, w.StayMarioAtTrullo.Id, w.StayMaria.Id), Guest(w.MariaRossi.Id, w.MarioRossi.Id), Supplier(w.PlumbersOrgId)]),
         Case("account in no team: a guest with no stay", "carla", SearchCaller.AccountInNoTeam, _ => []),
 
-        // ─── The supplier ────────────────────────────────────────────────────────────────────────────
         Case("supplier: its inbox by category", "plumbing", SearchCaller.Plumbers, w => [Inbox(w.Plumbing.Id)]),
         Case("supplier: its inbox by the name of the service", "caldaia", SearchCaller.Plumbers, w => [Inbox(w.Boiler.Id)]),
         Case("supplier: the inbox of another", "pulizia", SearchCaller.Plumbers, _ => []),
@@ -163,7 +146,6 @@ internal static class SearchCases
 
     public static SearchCase Named(string name) => All.Single(c => c.Name == name);
 
-    /// <summary>The request the case asks for: the access of the caller on the world, the term, the limit of the page.</summary>
     public static GlobalSearchRequest RequestOf(SearchCase searchCase, SearchWorld world, int limit = SearchLimits.MaxLimit)
     {
         var (host, supplier) = searchCase.Caller switch
@@ -183,10 +165,6 @@ internal static class SearchCases
         return new GlobalSearchRequest(SearchText.Parse(searchCase.Term), limit, host, supplier, Italian);
     }
 
-    /// <summary>
-    /// Runs one case and says what differs from the expected answer, or null when it is the one. The ids of a group are compared
-    /// as sets (some groups are ordered by a time several rows share).
-    /// </summary>
     public static async Task<string?> RunAsync(AppDbContext db, SearchWorld world, SearchCase searchCase)
     {
         var request = RequestOf(searchCase, world);

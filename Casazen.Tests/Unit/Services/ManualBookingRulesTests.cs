@@ -13,7 +13,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class ManualBookingRulesTests
 {
-    // 3 nights at 100 + cleaning 40 = 340, tourist tax 12: the guest pays 352.
     private static DirectBookingQuote Quote()
     {
         var checkIn = new DateTime(2026, 11, 10, 0, 0, 0, DateTimeKind.Utc);
@@ -53,7 +52,6 @@ public class ManualBookingRulesTests
         Assert.Equal(18m, cheap.BasePrice);
         Assert.Equal(18m, cheap.CleaningFee);
 
-        // Another total is the only thing that makes a price "agreed": nothing, or the total of the quote, is the quote.
         foreach (var notAgreed in new[] { ManualBookingRules.PriceOf(quote, null, "nota"), ManualBookingRules.PriceOf(quote, 352m, "nota") })
         {
             Assert.False(notAgreed.Overridden);

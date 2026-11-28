@@ -14,7 +14,6 @@ public class StayAlertsJob(IStayAlertService stayAlertService, IComplianceAlertS
 {
     public const string RecurringJobId = "stay-alerts";
 
-    /// <summary>Recurring ids of the jobs it replaces, removed at startup.</summary>
     public static readonly string[] ReplacedRecurringJobIds = ["alloggiati-deadline-alert", "guest-checkin-reminder"];
 
     [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]
@@ -22,7 +21,6 @@ public class StayAlertsJob(IStayAlertService stayAlertService, IComplianceAlertS
     {
         var result = await stayAlertService.RunAsync();
 
-        // A run that found another one in progress (the advisory lock of the stay alerts) leaves everything to it, the compliance alerts included.
         if (complianceAlertService is not null && !result.Skipped)
             await complianceAlertService.RunAsync();
     }

@@ -43,12 +43,10 @@ public class PropertyRoleVisibilityPostgresTests : IClassFixture<CasazenWebAppli
         using var manager = _factory.CreateAuthenticatedClient(managerId, "PropertyOwner,PropertyManager");
         using var other = _factory.CreateAuthenticatedClient(otherHostId, "PropertyOwner");
 
-        // The manager owns nothing, yet sees the whole org (it receives the org's pushes): never "no property".
         Assert.Equal([ownerProperty.Id, colleagueProperty.Id], await ListIdsAsync(manager, "/api/properties"));
         Assert.Equal([ownerProperty.Id], await ListIdsAsync(owner, "/api/properties"));
         Assert.Equal([otherProperty.Id], await ListIdsAsync(other, "/api/properties"));
 
-        // The CIN summary has the same reach as the list.
         var managerCin = await GetJsonAsync(manager, "/api/properties/cin-compliance");
         Assert.Equal(2, managerCin.GetProperty("totalCount").GetInt32());
         Assert.Equal(1, managerCin.GetProperty("summary").GetProperty("valid").GetInt32());
@@ -80,7 +78,6 @@ public class PropertyRoleVisibilityPostgresTests : IClassFixture<CasazenWebAppli
         Assert.Equal("Casa DTO", row.GetProperty("name").GetString());
         Assert.Equal(ValidCin, row.GetProperty("cinCode").GetString());
         Assert.False(row.GetProperty("isPaused").GetBoolean());
-        // The entity's navigations (bookings, OTA integrations, documents, org) are not part of the list contract.
         Assert.False(row.TryGetProperty("bookings", out _));
         Assert.False(row.TryGetProperty("otaIntegrations", out _));
         Assert.False(row.TryGetProperty("propertyDocuments", out _));

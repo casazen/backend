@@ -34,7 +34,6 @@ public sealed class OnboardingBulkImportController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
-    /// <summary>The largest request: the file and a margin for the other parts of the multipart body.</summary>
     private const int MaxRequestBytes = BulkImportLimits.MaxFileBytes + (256 * 1024);
 
     /// <summary>

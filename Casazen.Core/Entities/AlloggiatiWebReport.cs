@@ -22,17 +22,12 @@ public class AlloggiatiWebReport : ITenantOwned
     public Guid BookingId { get; set; }
     public virtual Booking Booking { get; set; } = null!;
 
-    /// <summary>Tenant of the row, copied from <see cref="Booking"/> when it is created (TN-2).</summary>
     public Guid OrgId { get; set; }
 
     [ForeignKey("Guest")]
     public Guid GuestId { get; set; }
     public virtual Guest Guest { get; set; } = null!;
 
-    /// <summary>
-    /// When the communication was sent: the transmission time with a receipt (<see cref="AlloggiatiWebStatus.Inviato"/>)
-    /// or the date the host declared (<see cref="AlloggiatiWebStatus.InviatoManualmente"/>). Null while not sent.
-    /// </summary>
     public DateTime? ReportedAt { get; set; }
 
     public AlloggiatiWebStatus Status { get; set; } = AlloggiatiWebStatus.DaInviare;
@@ -50,14 +45,11 @@ public class AlloggiatiWebReport : ITenantOwned
 
     public int RetryCount { get; set; }
 
-    /// <summary>True when the host declared having sent the communication on the portal.</summary>
     public bool ManuallyCompleted { get; set; }
 
-    /// <summary>Hangfire id of the job scheduled for the arrival day (<see cref="ScheduledFor"/>).</summary>
     [MaxLength(100)]
     public string? ScheduledJobId { get; set; }
 
-    /// <summary>UTC instant the job is scheduled for: the start of the arrival day in Europe/Rome, or later.</summary>
     public DateTime? ScheduledFor { get; set; }
 
     /// <summary>
@@ -76,59 +68,29 @@ public class AlloggiatiWebReport : ITenantOwned
 /// </summary>
 public enum AlloggiatiWebStatus
 {
-    /// <summary>Waiting for the arrival day (Europe/Rome): the portal does not accept a future arrival date.</summary>
     DaInviare = 0,
 
-    // 1 was "Submitted", set without transmitting anything: retired by CO-11, the migration
-    // AlloggiatiHonestStatus moved those rows to DaInviareManualmente.
-
-    /// <summary>Transmitted, with the real receipt in <see cref="AlloggiatiWebReport.ConfirmationNumber"/> (web service client, not implemented). Never without a receipt.</summary>
     Inviato = 2,
 
-    /// <summary>Technical error while preparing or transmitting the communication.</summary>
     Errore = 3,
 
     /// <summary>Ready, but CasaZen does not transmit: the host must send it on the Questura portal.</summary>
     DaInviareManualmente = 4,
 
-    /// <summary>Rejected by Alloggiati Web (web service client, not implemented).</summary>
     Rifiutato = 5,
 
-    /// <summary>The host declared having sent it on the portal (date in <see cref="AlloggiatiWebReport.ReportedAt"/>). CasaZen holds no receipt.</summary>
     InviatoManualmente = 6,
 
-    /// <summary>Transmitted via SOAP client, awaiting receipt retrieval (ADR-015). Set by <c>AlloggiatiSendJob</c> on successful send; moved to <c>Inviato</c> by <c>AlloggiatiReceiptJob</c> when the receipt is retrieved.</summary>
     SentReceiptPending = 7,
 
-    // AW-R04 (E03/F01/US05/T01): the values below are appended, never renumbered; nothing writes them yet.
-
-    /// <summary>The transmission is in progress: its attempt is reserved and the call may have reached the service.</summary>
     Sending = 8,
 
-    /// <summary>The service acquired some of the guests and rejected the others: the stay is not complete.</summary>
     PartiallyAccepted = 9,
 
-    /// <summary>
-    /// The outcome of the transmission is unknown (timeout, connection lost, crash after a possible acquisition): the agency checks it on
-    /// the portal; never sent again by itself.
-    /// </summary>
     ToVerify = 10,
 
-    // E03/F01/US01 (NF-45): the value below is derived by AlloggiatiStatusRules.Effective and never stored in a report.
-
-    /// <summary>
-    /// Nothing is due: the stay is a no-show (<see cref="Booking.NoShowAt"/>), the guests never came and there is nobody to communicate. Never
-    /// stored: it is what every reader derives from the no-show mark, so the stay is neither "to send manually" nor overdue and no alert is sent.
-    /// </summary>
     NotDue = 11,
 
-    // E20/F01/US01/T02: the two values below are derived by AlloggiatiStatusRules.WithChannelManager from the guests written to the channel manager,
-    // for a stay whose sender is the channel manager. Never stored in a report, never a sent status.
-
-    /// <summary>
-    /// Every registered guest of the stay is on the channel manager, written for good (not as a draft), and the channel manager sends them to the police
-    /// (PO-02). It is not «sent»: green exists only with an archived receipt (CHK-12), so the stay is yellow until one is archived. Derived, never stored.
-    /// </summary>
     EntrustedToChannelManager = 12,
 
     /// <summary>

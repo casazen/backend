@@ -71,7 +71,6 @@ public sealed class SupplierClientsService(
                 .ToList());
     }
 
-    /// <summary>The chip of the page applied to the customers.</summary>
     internal static IQueryable<ClientAggregate> Filter(IQueryable<ClientAggregate> rows, SupplierClientFilter filter) => filter switch
     {
         SupplierClientFilter.Host => rows.Where(c => !c.IsPrivate),
@@ -89,18 +88,14 @@ public sealed class SupplierClientsService(
     /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
     internal static IQueryable<ClientAggregate> AggregatesOf(AppDbContext db, Guid supplierOrgId, DateTime nowUtc, Guid? onlyClient = null)
     {
-        // ServiceRequest has no tenant filter (two parties, TN-2 allow-list): the supplier is an explicit predicate. IgnoreQueryFilters opens the
-        // requests of the hosts (another tenant), as the reader of the inbox does.
         var requests = db.ServiceRequests
             .IgnoreQueryFilters()
             .AsNoTracking()
-            // SP-BKP: a host whose request the supplier only waits to take as a backup is not its client (yet).
             .WithoutWaitingBackups()
             .Where(r => r.SupplierOrgId == supplierOrgId
                         && r.Status != ServiceRequestStatus.Rifiutato
                         && r.Status != ServiceRequestStatus.Annullato);
 
-        // One customer: narrowed before the grouping, so the detail does not count every customer of the supplier.
         if (onlyClient is { } clientId)
             requests = requests.Where(r => (r.CustomerId ?? r.OrgId) == clientId);
 
@@ -129,7 +124,6 @@ public sealed class SupplierClientsService(
             });
     }
 
-    /// <summary>The latest requests of one customer of the supplier, open or taken, the latest work first.</summary>
     internal static IQueryable<ClientJobRow> RecentJobsOf(AppDbContext db, Guid supplierOrgId, Guid clientId) =>
         db.ServiceRequests
             .IgnoreQueryFilters()
@@ -156,10 +150,6 @@ public sealed class SupplierClientsService(
                 FinalAmountCents = r.FinalAmountCents,
             });
 
-    /// <summary>
-    /// The page of aggregates with the names, and the contacts of the customers whose job was taken. The private customers come from the reader of
-    /// the customers (supplier predicate, personal columns decrypted only here), the hosts from their org (name and contact address).
-    /// </summary>
     private async Task<IReadOnlyList<SupplierClientSummary>> ToSummariesAsync(
         Guid supplierOrgId,
         IReadOnlyList<ClientAggregate> aggregates,
@@ -171,7 +161,6 @@ public sealed class SupplierClientsService(
             .ToDictionary(card => card.Id);
 
         var hostIds = aggregates.Where(c => !c.IsPrivate).Select(c => c.ClientId).ToArray();
-        // Org is the tenant itself (no tenant filter, TN-2 allow-list); read by the ids of the hosts of this page, which have a request of this supplier.
         var hosts = new Dictionary<Guid, HostRow>();
         if (hostIds.Length > 0)
         {
@@ -194,7 +183,6 @@ public sealed class SupplierClientsService(
                 var card = cards.GetValueOrDefault(aggregate.ClientId);
                 anonymized = card?.Anonymized ?? false;
 
-                // Decision D9: "Nome C." until a job of the customer is taken, then the full name, the e-mail and the phone.
                 label = card is null || anonymized
                     ? null
                     : taken ? NullIfBlank(card.FullName) : NullIfBlank(ShowcaseBookingRules.AbbreviateName(card.FullName));
@@ -205,7 +193,6 @@ public sealed class SupplierClientsService(
             {
                 var host = hosts.GetValueOrDefault(aggregate.ClientId);
                 label = host is null ? null : NullIfBlank(host.DisplayName) ?? NullIfBlank(host.Name);
-                // The name of a host org is known before the take (decision D9); how to reach it only after.
                 if (taken && host is not null)
                     contact = new SupplierClientContact(label, NullIfBlank(host.ContactEmail), null);
             }
@@ -227,10 +214,8 @@ public sealed class SupplierClientsService(
 
     private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    /// <summary>The name and the contact address of a host org.</summary>
     private sealed record HostRow(Guid Id, string DisplayName, string Name, string ContactEmail);
 
-    /// <summary>A customer of the supplier as counted by the database.</summary>
     internal sealed class ClientAggregate
     {
         public Guid ClientId { get; init; }
@@ -243,7 +228,6 @@ public sealed class SupplierClientsService(
         public DateTime LastActivityAt { get; init; }
     }
 
-    /// <summary>One request of a customer, as read for the detail.</summary>
     internal sealed class ClientJobRow
     {
         public Guid RequestId { get; init; }

@@ -22,7 +22,6 @@ public sealed class QuesturaCredentialsService(
 
     public async Task<QuesturaCredentialsStatus> GetStatusAsync(Guid propertyId, CancellationToken cancellationToken = default)
     {
-        // Projection on the date only: the encrypted columns are never read (nor decrypted) for the status.
         var updatedAt = await db.PropertyQuesturaCredentials
             .AsNoTracking()
             .Where(c => c.PropertyId == propertyId)
@@ -115,7 +114,6 @@ public sealed class QuesturaCredentialsService(
         }
         if (accountChanged || credentials.ApartmentId.HasValue)
         {
-            // One account/day receipt can cover multiple properties in the same organization.
             var identity = System.Text.Encoding.UTF8.GetBytes($"{row.OrgId:N}:{user.ToUpperInvariant()}");
             row.AccountKey = new Guid(System.Security.Cryptography.SHA256.HashData(identity).AsSpan(0, 16));
         }
@@ -123,7 +121,6 @@ public sealed class QuesturaCredentialsService(
         row.LastVerificationCode = null;
         row.LastVerifiedAt = null;
         row.Username = user;
-        // The password is kept exactly as typed: spaces may be part of it.
         row.Password = credentials.Password;
         row.WsKey = credentials.WsKey.Trim();
         row.UpdatedAt = now;

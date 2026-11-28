@@ -16,29 +16,24 @@ public class ShowcaseBookingManagerSqlTests
     [Fact]
     public void TheBookingsOfASupplier_AreScopedByTheSupplierOrgAndTheShowcaseContext_AndSelectOnlyWhatTheCustomerMayRead()
     {
-        // With the encryption on, as in production.
         using var db = NewNpgsqlContext(encrypted: true);
 
         var sql = Normalize(ShowcaseBookingManager.RowsOf(db, Guid.NewGuid()).ToQueryString());
 
         Assert.Matches("\"SupplierOrgId\" = @", sql);
         Assert.Matches("\"RentalContext\" = 2", sql);
-        // What it reads: the status, the code, the service, the time, the price, the deadlines, the proposal, the cancellation, the comune.
         foreach (var column in new[]
                  {
                      "Status", "PublicCode", "ServiceNameSnapshot", "ScheduledStartUtc", "ScheduledEndUtc", "EstimatedAmountCents", "QuotedAmountCents",
                      "FinalAmountCents", "PriceLinesJson", "OptionsJson", "ResponseDueAt", "ProposedStartUtc", "ProposedEndUtc", "ProposedAt",
                      "ProposalMessage", "CancelledAt", "CancelledBy", "CancellationReason", "RejectionReason", "LocationCity", "LocationPostalCode",
                      "QuoteSentAt", "QuoteLinesJson", "QuoteTotalCents", "QuoteNote", "QuoteScheduledStartUtc", "QuoteScheduledEndUtc",
-                     // SP-15c-a: whether the booking is paid inside CasaZen (its payment is read through the funds service, not here).
                      "PaymentMode",
                  })
         {
             Assert.Contains($"\"{column}\"", sql, StringComparison.Ordinal);
         }
 
-        // What it never reads: the encrypted place, what the supplier noted for itself, who took the request, the photos, the host's
-        // notes, the stay, the property, the supplier's org twice, the version of the row.
         foreach (var column in new[]
                  {
                      "LocationAddress", "LocationFloor", "LocationAccessNotes", "CompletionNotes", "WorkPhotosJson", "TakenByUserId", "ProposedByUserId",
@@ -49,7 +44,6 @@ public class ShowcaseBookingManagerSqlTests
             Assert.DoesNotContain($"\"{column}\"", sql, StringComparison.Ordinal);
         }
 
-        // No other table: the customer's contact comes from its own, scoped statement.
         Assert.DoesNotContain("\"ServiceCustomers\"", sql, StringComparison.Ordinal);
         Assert.DoesNotContain("JOIN", sql, StringComparison.Ordinal);
     }
@@ -77,7 +71,6 @@ public class ShowcaseBookingManagerSqlTests
 
         var sql = Normalize(ShowcaseBookingManager.QuoteEventsOf(db, Guid.NewGuid(), Guid.NewGuid()).ToQueryString());
 
-        // SP-10b-b: only the last event is used (an offer turned down is not an offer taken back); the view of the booking never selects the trace.
         Assert.Matches("\"SupplierOrgId\" = @", sql);
         Assert.Matches("\"Id\" = @", sql);
         Assert.Matches("\"RentalContext\" = 2", sql);
@@ -93,8 +86,6 @@ public class ShowcaseBookingManagerSqlTests
 
         var sql = Normalize(ShowcaseBookingManager.AlternativesBasisOf(db, Guid.NewGuid(), Guid.NewGuid()).ToQueryString());
 
-        // SP-10c: scoped by the supplier org, the request and the showcase context; the category and the place of the work (the code and the name of
-        // the comune), nothing the customer wrote and nothing encrypted.
         Assert.Matches("\"SupplierOrgId\" = @", sql);
         Assert.Matches("\"Id\" = @", sql);
         Assert.Matches("\"RentalContext\" = 2", sql);
@@ -116,7 +107,6 @@ public class ShowcaseBookingManagerSqlTests
 
         var sql = Normalize(ShowcaseReplyReminderService.WaitingOf(db, DateTime.UtcNow).ToQueryString());
 
-        // SP-10c: the showcase context, requests on measure, still new, with a deadline ahead, no offer waiting and the last reminder not sent.
         Assert.Matches("\"RentalContext\" = 2", sql);
         Assert.Contains("\"Kind\" = ", sql, StringComparison.Ordinal);
         Assert.Contains("\"Status\" = ", sql, StringComparison.Ordinal);
@@ -126,7 +116,6 @@ public class ShowcaseBookingManagerSqlTests
         foreach (var column in new[] { "Id", "CreatedAt", "ResponseDueAt", "ReplyReminderHalfSentAt" })
             Assert.Contains($"\"{column}\"", sql, StringComparison.Ordinal);
 
-        // It reads no payload: not the place, not the notes, not the customer, not the contacts of the supplier.
         foreach (var column in new[]
                  {
                      "LocationAddress", "LocationFloor", "LocationAccessNotes", "LocationCity", "Notes", "CustomerId", "PublicCode", "ProposalMessage",
@@ -147,10 +136,8 @@ public class ShowcaseBookingManagerSqlTests
         Assert.Matches("\"ShowcaseSlug\" = ", sql);
         foreach (var column in new[] { "OrgId", "Status", "LegalName", "ShowcaseSlug" })
             Assert.Contains($"\"{column}\"", sql, StringComparison.Ordinal);
-        // Not its contacts, its VAT number, its calendar, its tokens.
         foreach (var column in new[] { "Email", "Phone", "VatNumber", "IcalFeedUrl", "GoogleCalendarRefreshToken", "ClaimTokenHash", "SuspensionReason", "Bio" })
             Assert.DoesNotContain($"\"{column}\"", sql, StringComparison.Ordinal);
-        // The status is not a predicate: a customer finds its booking of a supplier that was suspended meanwhile.
         Assert.DoesNotContain("\"Status\" =", sql, StringComparison.Ordinal);
     }
 

@@ -95,7 +95,6 @@ public class StatementExportProofTests
         Assert.Contains("non è una fattura", text, StringComparison.Ordinal);
     }
 
-    /// <summary>The statement is a versioned ledger output: the files carry the version, the ledger totals as stored on it and the hash of its lines.</summary>
     [Fact]
     public async Task StatementExport_PrintsTheLedgerTotalsOfTheCurrentVersion_Test()
     {

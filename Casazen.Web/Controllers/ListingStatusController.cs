@@ -56,9 +56,6 @@ public sealed class ListingStatusController(
         return Ok(ListingStatusResponse.From(view, localizer));
     }
 
-    /// <summary>The worst state of each property of the caller's scope that has a channel, for the list of the properties.</summary>
-    /// <response code="200">One entry for each property with a channel.</response>
-    /// <response code="403">The caller has no org.</response>
     [HttpGet("channel-status")]
     [ProducesResponseType(typeof(IReadOnlyList<ListingPropertySummaryDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]

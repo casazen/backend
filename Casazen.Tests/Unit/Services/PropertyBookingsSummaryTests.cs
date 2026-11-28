@@ -65,9 +65,9 @@ public class PropertyBookingsSummaryTests
         var today = Date(6, 10);
         var bookings = new[]
         {
-            Stay(BookingStatus.CheckedIn, Date(6, 8), today),              // leaves today
-            Stay(BookingStatus.Confirmed, Date(6, 9), Date(6, 12)),        // arrived yesterday, not registered (CO-08)
-            Stay(BookingStatus.CheckedIn, Date(6, 5), Date(6, 9)),         // should have left: not in progress
+            Stay(BookingStatus.CheckedIn, Date(6, 8), today),
+            Stay(BookingStatus.Confirmed, Date(6, 9), Date(6, 12)),
+            Stay(BookingStatus.CheckedIn, Date(6, 5), Date(6, 9)),
             Stay(BookingStatus.Cancelled, Date(6, 9), Date(6, 12)),
             Stay(BookingStatus.CheckedOut, Date(6, 8), today),
         };
@@ -85,10 +85,8 @@ public class PropertyBookingsSummaryTests
     {
         var propertyId = Guid.NewGuid();
         var property = new Property { Id = propertyId, OwnerId = "auth0|owner", Name = "Villa", IsActive = true };
-        // 15 June 23:30 UTC = 16 June 01:30 in Rome: yesterday's arrival (15 June) is no longer upcoming, 16 June is.
         property.Bookings.Add(Stay(BookingStatus.Confirmed, Date(6, 15), Date(6, 17)));
         property.Bookings.Add(Stay(BookingStatus.Confirmed, Date(6, 16), Date(6, 18)));
-        // A check-in stored as an instant (23:30 UTC of 15 June) is a check-in of 16 June in Rome.
         property.Bookings.Add(Stay(BookingStatus.Confirmed, new DateTime(2026, 6, 15, 23, 30, 0, DateTimeKind.Utc), Date(6, 20)));
         var repository = new Mock<IPropertyRepository>();
         repository.Setup(r => r.GetPropertyDetailAsync(propertyId)).ReturnsAsync(property);
@@ -122,10 +120,10 @@ public class PropertyBookingsSummaryTests
     }
 
     [Theory]
-    [InlineData(6, 1, 6, 5, 400, 400)]      // all 4 nights in June
-    [InlineData(5, 29, 6, 2, 300, 75)]      // 1 of 4 nights in June
-    [InlineData(6, 28, 7, 3, 500, 300)]     // 3 of 5 nights in June
-    [InlineData(5, 1, 5, 31, 900, 0)]       // all in May
+    [InlineData(6, 1, 6, 5, 400, 400)]
+    [InlineData(5, 29, 6, 2, 300, 75)]
+    [InlineData(6, 28, 7, 3, 500, 300)]
+    [InlineData(5, 1, 5, 31, 900, 0)]
     public void RevenueInPeriod_StayAndJune_ProRataPerNight(
         int inMonth, int inDay, int outMonth, int outDay, int basePrice, int expected)
     {

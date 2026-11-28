@@ -4,10 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The pure rules of «Gestisci con AI»: who can be reached and how, in which language, what a chat message may say, and what the assistant
-/// does with each kind of item. Nothing here touches a database or a clock: the same facts always give the same answer.
-/// </summary>
 public class AutopilotRulesTests
 {
     private static readonly DateTime Now = new(2026, 11, 2, 12, 0, 0, DateTimeKind.Utc);
@@ -20,8 +16,6 @@ public class AutopilotRulesTests
         PhoneNumber = phone,
         Country = country,
     };
-
-    // ─── Contacts ────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("anna@example.com", true)]
@@ -72,8 +66,6 @@ public class AutopilotRulesTests
         Assert.DoesNotContain("&b=2", whatsApp, StringComparison.Ordinal);
     }
 
-    // ─── Language ────────────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData("Germany", "", "de")]
     [InlineData("Deutschland", "", "de")]
@@ -92,8 +84,6 @@ public class AutopilotRulesTests
     [InlineData("", "Giapponese", "en")]
     public void LanguageOf_TheGuestsOwnWhenTheBookingSaysWhereHeComesFrom(string? country, string? nationality, string expected) =>
         Assert.Equal(expected, AutopilotLanguages.Of(country, nationality));
-
-    // ─── The text of a chat message ──────────────────────────────────────────────
 
     [Fact]
     public void Check_AGoodTextWithTheFourPlaceholders_IsKept()
@@ -195,8 +185,6 @@ public class AutopilotRulesTests
         Assert.Equal("Ciao link, servono i dati: https://app.example/c/x", text);
     }
 
-    // ─── What the assistant does with the data of the guests ─────────────────────
-
     [Fact]
     public void GuestData_NeverAsked_AGuestWithAnEmailAndANumber_IsReadyByBothWays()
     {
@@ -283,8 +271,6 @@ public class AutopilotRulesTests
     public void ReminderOf_IsTheNextMessage_NeverMoreThanTheLast(int already, int expected) =>
         Assert.Equal(expected, AutopilotDecisions.ReminderOf(already));
 
-    // ─── What the assistant does with the departures ─────────────────────────────
-
     private static readonly DateTime Today = new(2026, 11, 2, 0, 0, 0, DateTimeKind.Utc);
 
     [Fact]
@@ -336,8 +322,6 @@ public class AutopilotRulesTests
 
         Assert.Equal((AutopilotItemStatus.Host, AutopilotReasons.NoPermission), (status, reason));
     }
-
-    // ─── What the assistant says of an Alloggiati communication ──────────────────
 
     private static AlloggiatiGuestSummaryInfo Summary(bool dataComplete, bool exportReady, int stayDays) => new(
         Guid.NewGuid(),

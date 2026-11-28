@@ -9,10 +9,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// The final test of the listings flow (E10/F01/US01/T04): the property is on at least one channel and no channel refused its content. A property
-/// whose every channel is written on the channel itself (Expedia) has nothing CasaZen sends: skipped. Reads the channel states, nothing else.
-/// </summary>
 public sealed class ListingsDryRunCheck(AppDbContext db) : IFlowDryRunCheck
 {
     public OnboardingFlow Flow => OnboardingFlow.Listings;
@@ -80,7 +76,6 @@ public sealed class BookingsDryRunCheck(BookingStateMapper mapper) : IFlowDryRun
         }
         catch (ArgumentOutOfRangeException)
         {
-            // An Octorate state the mapper does not read is no way back for this state.
             return false;
         }
     }
@@ -110,7 +105,6 @@ public sealed class CheckInComplianceDryRunCheck(ICheckInWizardService wizard) :
         }
         catch (DomainException ex)
         {
-            // A rule of the wizard refused the read: the flow would stop there too, with that code.
             return FlowCheckResult.Fail(Flow, ex.Code);
         }
 

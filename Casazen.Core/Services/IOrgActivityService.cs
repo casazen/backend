@@ -19,7 +19,6 @@ public sealed record OrgActivityFilter(
     bool SystemActor = false,
     bool PeopleOnly = false);
 
-/// <summary>One line of the activity log as the endpoints return it: ids and codes only (see <see cref="Casazen.Core.Entities.OrgActivityEntry"/>).</summary>
 public sealed record OrgActivityItem(
     Guid Id,
     DateTime When,
@@ -30,7 +29,6 @@ public sealed record OrgActivityItem(
     string SubjectId,
     IReadOnlyDictionary<string, string> Details);
 
-/// <summary>A page of the list, newest first, with how many lines match in all.</summary>
 public sealed record OrgActivityPage(IReadOnlyList<OrgActivityItem> Items, int TotalCount, int Page, int PageSize);
 
 /// <summary>
@@ -40,7 +38,6 @@ public sealed record OrgActivityPage(IReadOnlyList<OrgActivityItem> Items, int T
 /// </summary>
 public interface IOrgActivityService
 {
-    /// <summary>One page of the matching lines. <paramref name="page"/> counts from 1.</summary>
     Task<OrgActivityPage> ListAsync(
         Guid orgId,
         OrgActivityFilter filter,
@@ -48,20 +45,12 @@ public interface IOrgActivityService
         int pageSize,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The latest <paramref name="count"/> matching lines, newest first, with no total: one statement, so the home of the account
-    /// (AM-02c) does not count a whole year of lines to show three of them.
-    /// </summary>
     Task<IReadOnlyList<OrgActivityItem>> LatestAsync(
         Guid orgId,
         OrgActivityFilter filter,
         int count,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Every matching line, newest first, read one at a time from the database (the CSV does not hold the log in memory). The
-    /// database connection is held until the caller has read the last line or stopped.
-    /// </summary>
     IAsyncEnumerable<OrgActivityItem> StreamAsync(
         Guid orgId,
         OrgActivityFilter filter,

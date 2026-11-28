@@ -67,10 +67,8 @@ public sealed class OwnerStatementDocuments(
     IGuestDocumentLineBuilder? documentLines = null,
     AgencyDomainLinks? agencyLinks = null) : IOwnerStatementDocuments
 {
-    /// <summary>The entity type of the «To do» about a statement whose owner could not be told that it was published.</summary>
     public const string OwnerStatementVersionEntityType = "OwnerStatementVersion";
 
-    /// <summary>The line of that «To do»: a code, never a name or an amount.</summary>
     public const string NoticeFailedReason = "owner_statement_notice_failed";
 
     public async Task<OwnerStatementContent> GetContentAsync(Guid orgId, Guid versionId, string? language = null, CancellationToken ct = default)
@@ -84,7 +82,6 @@ public sealed class OwnerStatementDocuments(
     {
         var version = await VersionAsync(orgId, versionId, ct);
 
-        // A published version has its file: exactly what the owner downloads, in the language it was published in.
         if (version.PublishedAt is not null && await StoredFileAsync(orgId, versionId, ct) is { } file)
         {
             if (await ReadStoredAsync(file, ct) is { } bytes)
@@ -115,7 +112,6 @@ public sealed class OwnerStatementDocuments(
         ArgumentNullException.ThrowIfNull(version);
         ArgumentNullException.ThrowIfNull(entries);
 
-        // One file per version: the document is the version's id, so a version that has it stores nothing more.
         if (await db.OwnerDocuments.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AnyAsync(d => d.Id == version.Id, ct))
             return StoredStatementPdf.None;
 
@@ -182,14 +178,12 @@ public sealed class OwnerStatementDocuments(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The save that failed is the error to report; a file left in the bucket is told, not hidden.
             logger.LogWarning(ex, "The stored owner statement PDF {StorageKey} could not be removed after a failed save", key);
         }
     }
 
     public async Task<OwnerFileContent?> OpenPublishedPdfAsync(Guid orgId, Guid versionId, Guid ownerUserId, CancellationToken ct = default)
     {
-        // The agency can withdraw a document from the portal (RevokedAt): the owner stops seeing it at the next request, a statement PDF included.
         var document = await db.OwnerDocuments
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -197,12 +191,10 @@ public sealed class OwnerStatementDocuments(
         if (document is null || await StoredFileAsync(orgId, versionId, ct) is not { } file)
             return null;
 
-        // What the owner gets is what was published: a file that is missing, or no longer has the SHA-256 kept at the publication, is not handed out.
         var bytes = await ReadStoredAsync(file, ct);
         if (bytes is null)
             return null;
 
-        // The download is written before the file is handed out, as every download of an owner document is.
         db.OwnerDocumentDownloads.Add(new OwnerDocumentDownload
         {
             OrgId = orgId,
@@ -220,15 +212,12 @@ public sealed class OwnerStatementDocuments(
     {
         ArgumentNullException.ThrowIfNull(version);
 
-        // The e-mail points to the owner portal, which is behind Features:AgencyTier: with the flag off nobody is told.
         if (!featureFlags.IsEnabled(FeatureFlags.AgencyTier))
         {
             logger.LogInformation("Owner statement version {VersionId}: the owner portal is off, nobody is told", version.Id);
             return;
         }
 
-        // The statement is published whatever happens here, so a notice that fails is never turned into an error of the publication, and never left silent either: it is
-        // logged with its ids and handed to the agency as a To do, which tells the owner by hand.
         var told = false;
         try
         {
@@ -243,13 +232,8 @@ public sealed class OwnerStatementDocuments(
             await RaiseNoticeFailedAsync(version, ct);
     }
 
-    /// <summary>
-    /// Queues the e-mail for the people of the owner portal who read the statements of the owner. <c>true</c> when everyone was told or there is nobody to tell; <c>false</c>
-    /// when someone could not be (no public address to link to, or an e-mail the queue refused).
-    /// </summary>
     private async Task<bool> QueueNoticeAsync(OwnerStatementVersion version, CancellationToken ct)
     {
-        // The people who read the statements of the owner: the owner on its ownerships in force, and the delegated contacts that hold accounting.read.
         var now = time.GetUtcNow().UtcDateTime;
         var owners = await OwnerPortalAccessResolver.InForce(db, now)
             .Where(o => o.OrgId == version.OrgId && o.PropertyOwnerId == version.PropertyOwnerId && o.OwnerUserId != null)
@@ -288,8 +272,6 @@ public sealed class OwnerStatementDocuments(
             .Select(o => new { o.Name, o.DefaultLanguage })
             .FirstOrDefaultAsync(ct);
 
-        // The words are the agency and the link: the amounts, the lines and the stays are in the portal, never in the e-mail. E40/F01/US01/T03: the
-        // portal of the agency's own domain only once the owner sign-in works there.
         var accounting = (await agencyLinks.ForOrgOrPlatformAsync(links, version.OrgId, ct)).OwnerPortalAccounting();
         var content = EmailTemplates.OwnerStatementPublished(OrgInvitationEmails.CultureOf(agency?.DefaultLanguage), agency?.Name ?? string.Empty, accounting);
         var queued = 0;
@@ -313,10 +295,6 @@ public sealed class OwnerStatementDocuments(
         return false;
     }
 
-    /// <summary>
-    /// The To do that tells the agency the owner could not be told that the statement was published, so it tells the owner by hand: one for each version (raising it again
-    /// finds the open one), organization-level, a code as its reason and no personal data.
-    /// </summary>
     private async Task RaiseNoticeFailedAsync(OwnerStatementVersion version, CancellationToken ct)
     {
         await activities.CreateAsync(
@@ -346,7 +324,6 @@ public sealed class OwnerStatementDocuments(
         if (document is null)
             return null;
 
-        // The issuer as it was at the issue; the profile of today only for a document issued before the snapshot existed.
         var issuer = FiscalIssuerSnapshot.FromJson(document.IssuerSnapshot);
         if (issuer is null)
         {
@@ -363,12 +340,6 @@ public sealed class OwnerStatementDocuments(
         return new OwnerStatementFile(pdf.Render(content), name, "application/pdf");
     }
 
-    // ---------------------------------------------------------------- the content
-
-    /// <summary>
-    /// What the statement says: the lines of the version grouped by part, the totals the version stores (checked against the lines), the invoice of the property
-    /// manager when one is linked, and the tourist tax box.
-    /// </summary>
     private async Task<OwnerStatementContent> ContentAsync(OwnerStatementVersion version, IReadOnlyList<OwnerLedgerEntry> entries, string language, CancellationToken ct)
     {
         var orgId = version.OrgId;
@@ -389,7 +360,6 @@ public sealed class OwnerStatementDocuments(
                 .ToListAsync(ct))
             .ToDictionary(p => p.Id, p => new PropertyFacts(p.Name, p.Currency, TouristTaxComune.IsItalianCountry(p.Country) ? p.ComuneIstatCode : null));
 
-        // Who holds the account of each listing on each portal (E14, ⚖ I10), read once for the statement.
         var portalAccounts = holders is null ? PortalAccountHolders.Defaults : await holders.ForOrgAsync(orgId, ct);
         var lines = entries
             .Select(entry => LineOf(entry, BookingOf(entry, bookings), properties.GetValueOrDefault(entry.PropertyId ?? Guid.Empty)?.Name, portalAccounts))
@@ -397,7 +367,6 @@ public sealed class OwnerStatementDocuments(
             .ThenBy(line => line.Date)
             .ToList();
 
-        // The totals are the version's: every part of the lines must give what the version stores, or the file would show a net it does not have.
         var totals = OwnerStatementLayout.TotalsOf(version.OpeningBalance, lines);
         if (totals != OwnerStatementTotals.Of(version))
         {
@@ -436,19 +405,12 @@ public sealed class OwnerStatementDocuments(
         };
     }
 
-    /// <summary>
-    /// The line of a ledger entry: its part, its day, the stay (days, channel, code) and property it is about, and, for the commission a portal kept, whether the
-    /// invoice of the property manager recharges it (<paramref name="portalAccounts"/>: the agency holds the account of the listing on that portal and recharges), or the
-    /// owner was charged it on an account of the agency that the organization does not recharge now (<see cref="OwnerStatementLine.AgencyAccountChargedWithoutRecharge"/>).
-    /// The commission the agency bears is told by the type of the line (<see cref="OwnerStatementLine.AgencyHoldsPortalAccountWithoutRecharge"/>).
-    /// </summary>
     private static OwnerStatementLine LineOf(OwnerLedgerEntry entry, BookingFacts? booking, string? propertyName, PortalAccountHolders portalAccounts)
     {
         DateOnly? checkIn = booking is null ? null : DateOnly.FromDateTime(booking.CheckIn);
         DateOnly? checkOut = booking is null ? null : DateOnly.FromDateTime(booking.CheckOut);
         var isPayment = entry.EntryType is OwnerLedgerEntryType.OwnerPayment or OwnerLedgerEntryType.AgencyPayment;
 
-        // The days of a stay come from its booking; a line whose booking is gone keeps the check-in the ledger line was posted with.
         if (booking is null && BookingIdOf(entry) is not null)
             checkIn = entry.ServiceDate;
 
@@ -468,15 +430,10 @@ public sealed class OwnerStatementDocuments(
             entry.Amount,
             entry.ReversesEntryId is not null,
 
-            // V2 with the recharge (the test of the invoice, OwnerInvoiceService): the portal bills the agency, which recharges the commission on its invoice. V1 (the
-            // default), or an account of the agency whose commissions it does not recharge: no invoice of the property manager carries it.
             AgencyHoldsPortalAccount: entry.EntryType == OwnerLedgerEntryType.ChannelFee
                 && booking is not null
                 && portalAccounts.RechargesCommissionOf(entry.PropertyId ?? booking.PropertyId, booking.Source))
         {
-            // The other half of the test of the invoice: a channel fee the owner was charged on an account of the agency whose commissions it does not recharge now (a line posted
-            // before FIX/BE-V2-NO-RECHARGE, which posts such a commission as ChannelFeeBorneByAgency). It is not the owner's portal invoice (V1) and no invoice recharges it; its
-            // amount stays the one of the ledger line, in the totals, as the statement was made.
             AgencyAccountChargedWithoutRecharge = entry.EntryType == OwnerLedgerEntryType.ChannelFee
                 && booking is not null
                 && portalAccounts.IsAgencyAccountWithoutRecharge(entry.PropertyId ?? booking.PropertyId, booking.Source),
@@ -486,7 +443,6 @@ public sealed class OwnerStatementDocuments(
         };
     }
 
-    /// <summary>The booking a ledger line is about: the source of a stay line or a flat fee, the booking a payment is of (its reference, with no dashes); none for a charge, a wire or a payout.</summary>
     private static Guid? BookingIdOf(OwnerLedgerEntry entry) => entry.SourceType switch
     {
         OwnerLedgerSourceType.Booking or OwnerLedgerSourceType.MandateFlatFee => entry.SourceId,
@@ -497,7 +453,6 @@ public sealed class OwnerStatementDocuments(
     private static BookingFacts? BookingOf(OwnerLedgerEntry entry, Dictionary<Guid, BookingFacts> bookings) =>
         BookingIdOf(entry) is { } id && bookings.TryGetValue(id, out var booking) ? booking : null;
 
-    /// <summary>True when the stay owes its tourist tax: an active booking (confirmed, checked in or checked out) that is not a no-show, the one definition of the code.</summary>
     private static bool IsDue(BookingFacts booking) =>
         AlloggiatiStatusRules.ActiveBookingStatuses.Contains(booking.Status) && booking.NoShowAt is null;
 
@@ -584,7 +539,6 @@ public sealed class OwnerStatementDocuments(
             if (!swissIssuer)
                 return ItalianPortalTouristTax.Decide(stay.Source, rule, record?.DeclaredCollector, record?.Collector, platformCollected, confirmedComuni, comune).Collector == TouristTaxCollector.Channel;
 
-            // Switzerland: the list of the issuer first, as the Swiss guest document reads it, then the collector of the stay.
             if (platformCollected.Contains(stay.Source))
                 return true;
 
@@ -609,7 +563,6 @@ public sealed class OwnerStatementDocuments(
         ];
     }
 
-    /// <summary>The invoice of the property manager to the owner for this statement, when E14 linked one that was issued: through the version, or through the owner and the month.</summary>
     private async Task<InvoiceFacts?> OwnerInvoiceAsync(OwnerStatementVersion version, CancellationToken ct)
     {
         var orgId = version.OrgId;
@@ -623,11 +576,8 @@ public sealed class OwnerStatementDocuments(
             .Select(d => new InvoiceFacts(d.Number, d.IssueDate, d.OwnerStatementVersionId == version.Id))
             .ToListAsync(ct);
 
-        // The one linked to this very version first, else the latest issued for the owner and the month.
         return rows.OrderByDescending(r => r.OfThisVersion).ThenByDescending(r => r.IssueDate).FirstOrDefault();
     }
-
-    // ---------------------------------------------------------------- reads and names
 
     private async Task<OwnerStatementVersion> VersionAsync(Guid orgId, Guid versionId, CancellationToken ct) =>
         await db.OwnerStatementVersions
@@ -646,20 +596,12 @@ public sealed class OwnerStatementDocuments(
         .ThenBy(e => e.Id)
         .ToList();
 
-    /// <summary>
-    /// The file stored at the publication of the version: the version 1 of its owner document (its id is the id of the version), or <c>null</c> when none was stored.
-    /// A statement has no other: the owner documents refuse a new version of it, and a row that got there some other way is never the file that was published.
-    /// </summary>
     private async Task<OwnerDocumentVersion?> StoredFileAsync(Guid orgId, Guid versionId, CancellationToken ct) =>
         await db.OwnerDocumentVersions
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
             .FirstOrDefaultAsync(v => v.OrgId == orgId && v.OwnerDocumentId == versionId && v.VersionNumber == 1, ct);
 
-    /// <summary>
-    /// The stored file as it was published: its bytes, read from the bucket and checked against the SHA-256 kept at the publication. <c>null</c>, with an error in the log
-    /// (the ids only), when the file is missing from the bucket or is no longer that file.
-    /// </summary>
     private async Task<byte[]?> ReadStoredAsync(OwnerDocumentVersion file, CancellationToken ct)
     {
         var stored = await storage.OpenReadAsync(StorageBucket.Private, file.StorageKey, ct);
@@ -686,7 +628,6 @@ public sealed class OwnerStatementDocuments(
 
     private DateTime Now() => UtcDateTime.TruncateToMicroseconds(time.GetUtcNow().UtcDateTime);
 
-    /// <summary>The name a file of a version is offered under: the same as the published JSON of the version, with its own extension.</summary>
     private static string FileName(OwnerStatementVersion version, string extension) =>
         string.Create(CultureInfo.InvariantCulture, $"rendiconto-{version.PeriodYear:D4}-{version.PeriodMonth:D2}-v{version.VersionNumber}-{version.Id:N}{extension}");
 
@@ -695,7 +636,6 @@ public sealed class OwnerStatementDocuments(
 
     private static string Truncate(string text, int max) => text.Length <= max ? text : text[..max];
 
-    /// <summary>What a ledger line needs of its booking.</summary>
     private sealed record BookingFacts(
         Guid Id,
         Guid PropertyId,
@@ -711,7 +651,6 @@ public sealed class OwnerStatementDocuments(
     /// <summary>What a statement needs of a property: its name, its currency and, for an Italian one, the ISTAT code of its comune.</summary>
     private sealed record PropertyFacts(string Name, string Currency, string? ComuneIstatCode);
 
-    /// <summary>What the tourist tax of a stay says about who collects: the collector confirmed with the calculation and the one the host declared.</summary>
     private sealed record StayTaxFacts(Guid BookingId, TouristTaxCollector? Collector, TouristTaxCollector? DeclaredCollector);
 
     private sealed record InvoiceFacts(string? Number, DateOnly? IssueDate, bool OfThisVersion);

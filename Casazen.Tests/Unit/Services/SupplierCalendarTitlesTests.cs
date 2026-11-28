@@ -20,7 +20,6 @@ public class SupplierCalendarTitlesTests
     private static readonly DateOnly From = new(2026, 10, 8);
     private static readonly DateOnly To = new(2026, 10, 14);
 
-    /// <summary>What must never be in what the calendar returns for a request of a host or of a customer, before or after the take.</summary>
     private static readonly string[] NeverInTheCalendar =
     [
         ServiceRequestScenario.PropertyName,
@@ -43,13 +42,11 @@ public class SupplierCalendarTitlesTests
 
         var item = Assert.Single((await s.Agenda.GetCalendarAsync(s.SupplierOrgId, From, To)).Requests);
 
-        // The titles.
         Assert.Equal(ServiceRequestScenario.ServiceName, item.ServiceName);
-        Assert.Equal("Casa Rossi", item.ClientLabel); // the host's org, as the inbox says it before the take
+        Assert.Equal("Casa Rossi", item.ClientLabel);
         Assert.Equal(ServiceRequestScenario.Comune, item.Comune);
         Assert.Equal("casazen", item.Source);
         Assert.Equal("to_answer", item.Phase);
-        // What was there before.
         Assert.Equal(request.Id, item.Id);
         Assert.Equal(new DateOnly(2026, 10, 9), item.Date);
         Assert.Equal(ServiceRequestScenario.FridayAt10, item.StartUtc);
@@ -75,7 +72,7 @@ public class SupplierCalendarTitlesTests
     [InlineData(ServiceRequestStatus.Richiesto, false, "to_answer")]
     [InlineData(ServiceRequestStatus.Richiesto, true, "proposal_pending")]
     [InlineData(ServiceRequestStatus.PresoInCarico, false, "scheduled")]
-    [InlineData(ServiceRequestStatus.PresoInCarico, true, "scheduled")] // a proposal only matters while the request waits
+    [InlineData(ServiceRequestStatus.PresoInCarico, true, "scheduled")]
     [InlineData(ServiceRequestStatus.InCorso, false, "in_progress")]
     [InlineData(ServiceRequestStatus.Completato, false, "completed")]
     [InlineData(ServiceRequestStatus.Pagato, false, "paid")]
@@ -123,7 +120,7 @@ public class SupplierCalendarTitlesTests
         await s.Service.TakeAsync(request.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId);
         var after = Assert.Single((await s.Agenda.GetCalendarAsync(s.SupplierOrgId, From, To)).Requests);
 
-        Assert.Equal("Mario Rossi", after.ClientLabel); // the name, once it is the supplier's job: nothing else of the customer
+        Assert.Equal("Mario Rossi", after.ClientLabel);
         Assert.Equal("scheduled", after.Phase);
         AssertNothingPrivate(after);
     }
@@ -203,8 +200,6 @@ public class SupplierCalendarTitlesTests
         Assert.Null(item.ServiceName);
         Assert.Null(item.ClientLabel);
         Assert.Null(item.Comune);
-        // What is a column of the request itself is right in the light read too (not the default of the record): a showcase request
-        // with a proposal that waits says so wherever the record comes from.
         Assert.Equal("showcase", item.Source);
         Assert.True(item.HasPendingProposal);
         Assert.Equal("proposal_pending", item.Phase);
@@ -239,8 +234,6 @@ public class SupplierCalendarTitlesTests
             .CalendarRowsOf(db, Guid.NewGuid(), new DateTime(2026, 10, 11, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 10, 20, 0, 0, 0, DateTimeKind.Utc))
             .ToQueryString();
 
-        // The supplier is an explicit predicate (a request has two parties and no tenant filter); the titles come from the columns
-        // they need and from no other.
         Assert.Matches("\"SupplierOrgId\" = @", sql);
         Assert.Contains("\"ServiceNameSnapshot\"", sql);
         Assert.Contains("\"City\"", sql);

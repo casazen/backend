@@ -16,7 +16,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Email;
 
-/// <summary>FD-13 (A9-06): the configured sender is used as is, never replaced by onboarding@resend.dev.</summary>
 public class ResendEmailServiceTests
 {
     [Fact]
@@ -40,11 +39,6 @@ public class ResendEmailServiceTests
         Assert.DoesNotContain("resend.dev", sent.From.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// PROOF TEST (E50/F01/US03/T01, NF-155: what a guest reads as the sender): an e-mail to a guest is sent in the name of the host, and only that: the display name is the host's,
-    /// cleaned (no quote, no bracket, no control character, no separator of an address, at most 64 characters; a name that is nothing after the cleaning leaves the configured one),
-    /// and the <b>address</b> of the sender is the configured one whatever the name says.
-    /// </summary>
     [Fact]
     public void BuildMessage_FromName_IsSanitizedAndAddressUnchanged()
     {
@@ -64,7 +58,6 @@ public class ResendEmailServiceTests
         Assert.DoesNotContain("[", name, StringComparison.Ordinal);
         Assert.DoesNotContain("@", name, StringComparison.Ordinal);
 
-        // A name that is nothing once cleaned, or none at all, leaves the configured name; the address is the same in every case.
         var nothing = ResendEmailService.BuildMessage(settings, "guest@example.com", "Oggetto", "<p>Ciao</p>", fromName: "<>[]\r\n");
         var none = ResendEmailService.BuildMessage(settings, "guest@example.com", "Oggetto", "<p>Ciao</p>");
         Assert.Equal("CasaZen", nothing.From.DisplayName);
@@ -129,7 +122,6 @@ public class ResendEmailServiceTests
         Assert.DoesNotContain("resend.dev", request.Body, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>DEB-01: the one-click unsubscribe headers of a campaign reach the provider as headers of the e-mail.</summary>
     [Fact]
     public async Task SendEmailWithHeadersAsync_ThroughHttpApi_PostsTheListUnsubscribeHeaders()
     {

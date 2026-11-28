@@ -35,15 +35,12 @@ public partial class ServiceRequestService
 
         if (request is not { Status: ServiceRequestStatus.Completato, FinalAmountNeedsConfirmation: true })
         {
-            // Confirming twice (a double click, a second tab) is not an error: the amount is confirmed, and that is what the host asked.
             if (request is { Status: ServiceRequestStatus.Completato, FinalAmountConfirmedAt: not null })
                 return request;
 
             throw new DomainRuleException(ServicePaymentErrors.NoConfirmationNeeded, ServicePaymentErrors.NoConfirmationNeededMessageKey);
         }
 
-        // The confirmation is what lets a request paid inside CasaZen get its payment: the same decision as at the completion,
-        // now with nothing left to confirm.
         var lines = ServiceRequestJson.ReadPriceLines(request.PriceLinesJson);
         var plan = await payments.PlanAsync(request, request.FinalAmountCents, lines, needsConfirmation: false, cancellationToken);
 
@@ -73,14 +70,12 @@ public partial class ServiceRequestService
         Guid hostOrgId,
         CancellationToken cancellationToken = default)
     {
-        // Another org's request (and a showcase one) is not found. The host proved who it is by owning the request.
         var request = await GetRequestOfHostOrThrow(id, hostOrgId, cancellationToken);
         if (funds is null || request.PaymentMode != ServiceRequestPaymentMode.Online)
             throw new DomainRuleException(ServicePaymentErrors.NotConfirmable, ServicePaymentErrors.NotConfirmableMessageKey);
 
         await funds.ConfirmOkAsync(request.Id, cancellationToken);
 
-        // The release may have made the request paid: the answer is the request as it is now.
         await db.Entry(request).ReloadAsync(cancellationToken);
         logger.LogInformation("ServiceRequest {Id}: the host said all fine ({Status})", request.Id, request.Status);
         return request;
@@ -91,7 +86,6 @@ public partial class ServiceRequestService
         Guid supplierOrgId,
         CancellationToken cancellationToken = default)
     {
-        // A suspended supplier, or one that has not accepted the current Terms, performs no action (SU-12, SU-05).
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
         return await payments.RequestPaymentAsync(request, cancellationToken);
     }

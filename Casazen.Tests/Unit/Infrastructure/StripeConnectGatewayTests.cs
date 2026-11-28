@@ -28,21 +28,17 @@ public class StripeConnectGatewayTests
 
     public static TheoryData<HttpStatusCode, string?, StripeConnectFailure> StripeErrors => new()
     {
-        // Account gone or no longer reachable by the platform key: the only case that may unlink.
         { HttpStatusCode.NotFound, "resource_missing", StripeConnectFailure.AccountUnavailable },
         { HttpStatusCode.Forbidden, "account_invalid", StripeConnectFailure.AccountUnavailable },
-        // Temporary.
         { HttpStatusCode.TooManyRequests, "rate_limit", StripeConnectFailure.Transient },
         { HttpStatusCode.TooManyRequests, "lock_timeout", StripeConnectFailure.Transient },
         { HttpStatusCode.Conflict, null, StripeConnectFailure.Transient },
         { HttpStatusCode.InternalServerError, null, StripeConnectFailure.Transient },
         { HttpStatusCode.BadGateway, null, StripeConnectFailure.Transient },
         { HttpStatusCode.ServiceUnavailable, null, StripeConnectFailure.Transient },
-        // Platform key.
         { HttpStatusCode.Unauthorized, null, StripeConnectFailure.Configuration },
         { HttpStatusCode.Unauthorized, "api_key_expired", StripeConnectFailure.Configuration },
         { HttpStatusCode.Forbidden, null, StripeConnectFailure.Configuration },
-        // Anything else Stripe refuses.
         { HttpStatusCode.BadRequest, "parameter_invalid_empty", StripeConnectFailure.Rejected },
         { HttpStatusCode.BadRequest, null, StripeConnectFailure.Rejected },
     };
@@ -71,7 +67,6 @@ public class StripeConnectGatewayTests
         var ex = await Assert.ThrowsAsync<StripeConnectException>(() => Gateway().GetAccountAsync(AccountId));
 
         Assert.Equal(StripeConnectFailure.Transient, ex.Failure);
-        // Still a PaymentProcessingException: a caller that does not handle it answers 503, never 500.
         Assert.IsAssignableFrom<PaymentProcessingException>(ex);
     }
 
@@ -173,7 +168,6 @@ public class StripeConnectGatewayTests
     [InlineData("IT", "IT")]
     public async Task CreateExpressAccountAsync_CreatesTheAccountInTheGivenCountry_NotAFixedOne(string country, string expected)
     {
-        // Issue #1001: the country was always the platform default, so a Swiss company got an Italian form.
         var created = SetupCreateAccount();
 
         await Gateway().CreateExpressAccountAsync("host@example.com", country, "connect-account:abc");
@@ -219,7 +213,6 @@ public class StripeConnectGatewayTests
         Assert.Equal("individual", options.BusinessType);
         Assert.Equal("6513", options.BusinessProfile.Mcc);
         Assert.False(string.IsNullOrWhiteSpace(options.BusinessProfile.ProductDescription));
-        // Stripe refuses reserved domains in test mode too, which would fail the whole update: no URL is sent.
         Assert.Null(options.BusinessProfile.Url);
         var individual = options.Individual;
         Assert.Equal("host@example.com", individual.Email);
@@ -249,7 +242,6 @@ public class StripeConnectGatewayTests
     [InlineData("rk_test_unit_connect", "False")]
     public async Task CreateExpressAccountAsync_LiveKeyOrPrefillSwitchedOff_NeverFillsTheAccount(string secretKey, string? prefillSetting)
     {
-        // A live account is never written with fake identities; the test environment can also ask for the real hosted form.
         SetupCreateAccount();
         var update = SetupUpdateAccount();
 
@@ -281,7 +273,6 @@ public class StripeConnectGatewayTests
     [InlineData(HttpStatusCode.ServiceUnavailable, null)]
     public async Task CreateExpressAccountAsync_TestDataRejectedByStripe_StillReturnsTheCreatedAccount(HttpStatusCode status, string? code)
     {
-        // The account exists and is linked by the caller: the prefill is a help, never a reason to lose it.
         SetupCreateAccount();
         _client
             .Setup(c => c.RequestAsync<Account>(
@@ -358,7 +349,6 @@ public class StripeConnectGatewayTests
     [Fact]
     public async Task CreateDashboardLoginLinkAsync_PostsToTheLoginLinksOfTheAccount_ReturnsTheUrl()
     {
-        // SP-14: POST /v1/accounts/{id}/login_links, the single-use link to the Express Dashboard of the supplier.
         SetupLoginLink().ReturnsAsync(new LoginLink { Url = "https://connect.stripe.com/express/abc" });
 
         var url = await Gateway().CreateDashboardLoginLinkAsync(AccountId);
@@ -423,7 +413,6 @@ public class StripeConnectGatewayTests
             Times.Never);
     }
 
-    /// <summary>A Stripe error as Stripe.net 50.1 builds it from the JSON body (<c>LiveApiRequestor.BuildStripeException</c>).</summary>
     internal static StripeException StripeError(HttpStatusCode status, string? code) =>
         new(status, new StripeError { Type = "invalid_request_error", Code = code, Message = $"Stripe error {code}" }, $"Stripe error {code}");
 
@@ -435,7 +424,6 @@ public class StripeConnectGatewayTests
         _client.Setup(c => c.RequestAsync<LoginLink>(
             HttpMethod.Post, $"/v1/accounts/{AccountId}/login_links", It.IsAny<BaseOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()));
 
-    /// <summary>What the mocked Stripe client received for one request.</summary>
     private sealed class Sent
     {
         public BaseOptions? Options { get; set; }
@@ -443,7 +431,6 @@ public class StripeConnectGatewayTests
         public RequestOptions? RequestOptions { get; set; }
     }
 
-    /// <summary><c>POST /v1/accounts</c> creates <c>acct_new</c>.</summary>
     private Sent SetupCreateAccount()
     {
         var sent = new Sent();
@@ -459,7 +446,6 @@ public class StripeConnectGatewayTests
         return sent;
     }
 
-    /// <summary><c>POST /v1/accounts/acct_new</c>, the update that fills a test account.</summary>
     private Sent SetupUpdateAccount()
     {
         var sent = new Sent();

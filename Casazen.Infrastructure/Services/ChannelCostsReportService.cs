@@ -54,8 +54,6 @@ public sealed class ChannelCostsReportService(
                 b.StripeSetupIntentId != null))
             .ToListAsync(cancellationToken);
 
-        // The payments of the direct stays that say something of their cost (a failed or canceled one costs nothing and collected nothing), with the fee the capture
-        // stored for the card ones: the cost of a direct stay (read through the payment ledger's own columns).
         var payments = await RevenueStays(scope, query.PropertyId, period)
             .Where(b => b.Source == BookingSource.Direct)
             .SelectMany(
@@ -72,7 +70,6 @@ public sealed class ChannelCostsReportService(
 
     private static ChannelCostStay CostStayOf(StayRow stay, IEnumerable<PaymentRow> payments)
     {
-        // Whose money the stay is decides where its cost is read: the one definition of NF-77, not a test of the source written again.
         var facts = new Booking { Source = stay.Source, OctorateReservationId = stay.OctorateReservationId };
         if (BookingAmountSourceRules.HoldsChannelManagerMoney(facts, stay.HasMirror))
             return new ChannelCostStay(stay.Source, stay.BasePrice, stay.CheckIn, stay.CheckOut, stay.OtaCommission, stay.OtaNetAmount);
@@ -85,7 +82,6 @@ public sealed class ChannelCostsReportService(
         switch (ChannelCostRules.KindOf(stay.Source))
         {
             case ChannelCostKind.ChannelCommission:
-                // A stay of a channel with no reservation on Octorate (an iCal stay): no commission was ever reported for it.
                 return null;
 
             case ChannelCostKind.NoCost:
@@ -96,29 +92,23 @@ public sealed class ChannelCostsReportService(
         }
     }
 
-    // What a stay of the booking site costs: the fees of its settled card payments, and only what is known is a cost. Zero is a cost only for a stay that was collected
-    // without a card; a stay nobody paid yet, one whose card is still on its way or is charged later is not free, it is not known (the rate of the row does not count it).
     private static decimal? DirectCostOf(StayRow stay, IReadOnlyCollection<PaymentRow> payments)
     {
-        // A card payment still on its way will cost its fee once it settles.
         if (payments.Any(p => p.IsCard && p.Status is PaymentStatus.Pending or PaymentStatus.Processing))
             return null;
 
         var settled = payments.Where(p => p.IsCard && PaymentProviderFeeService.SettledStatuses.Contains(p.Status)).ToList();
         if (settled.Count == 0)
         {
-            // The card saved for the deferred charge was not charged yet: its fee is still to come.
             if (stay.PaymentOption == PaymentOption.OnCancellationDeadline && stay.HasSavedCard)
                 return null;
 
-            // Cash or a bank transfer has no fee, but only money that came in says so: nothing collected is nothing known.
             return payments.Any(p => !p.IsCard && p.Status is PaymentStatus.Completed or PaymentStatus.PartiallyRefunded) ? 0m : null;
         }
 
         var total = 0m;
         foreach (var payment in settled)
         {
-            // A fee in another currency than the stay's cannot be added to it, and one not stored yet is not a fee of zero: either way the cost is not known.
             if (payment.Fee is not { } fee
                 || !string.Equals(StayCurrency.Normalize(payment.BalanceCurrency), StayCurrency.Normalize(payment.PropertyCurrency), StringComparison.Ordinal))
             {
@@ -131,7 +121,6 @@ public sealed class ChannelCostsReportService(
         return total;
     }
 
-    // The rows the revenue is made of, defined once by the code of the Home: the confirmed stays that have a night in the period.
     private IQueryable<Booking> RevenueStays(HostScope scope, Guid? propertyId, HostDashboardPeriod period)
     {
         var bookings = db.Bookings.AsNoTracking().Where(b => b.OrgId == scope.OrgId).InScope(scope);
@@ -143,7 +132,6 @@ public sealed class ChannelCostsReportService(
             .Where(PropertyOccupancy.BookingTakesNightIn(period.From, period.To));
     }
 
-    // One 404 for a property that is missing, another org's or not reached by the caller: nothing tells them apart.
     private async Task EnsurePropertyInScopeAsync(HostScope scope, Guid? propertyId, CancellationToken cancellationToken)
     {
         if (propertyId is not { } id)

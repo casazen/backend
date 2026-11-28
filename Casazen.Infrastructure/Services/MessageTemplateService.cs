@@ -32,13 +32,10 @@ public sealed class MessageTemplateService(
     ILogger<MessageTemplateService> logger,
     TimeProvider? timeProvider = null) : IMessageTemplateService
 {
-    /// <summary>Stable code of the 404 of a template that is not the organization's.</summary>
     public const string NotFoundCode = "message_template_not_found";
 
-    /// <summary>Stable code of the 422 of a template with no valid name, language or text.</summary>
     public const string InvalidCode = "message_template_invalid";
 
-    /// <summary>Stable code of the 409 of a second template with the same name and language.</summary>
     public const string ExistsCode = "message_template_exists";
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -128,7 +125,6 @@ public sealed class MessageTemplateService(
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        // The template of this organization first, then the conversation in the reach of the caller: neither says anything about the other.
         var template = await db.MessageTemplates
             .AsNoTracking()
             .FirstOrDefaultAsync(t => t.OrgId == scope.OrgId && t.Id == id, ct)
@@ -152,7 +148,6 @@ public sealed class MessageTemplateService(
         ArgumentNullException.ThrowIfNull(scope);
         var conversation = await MessageConversationLookup.FindAsync(db, scope, threadKey, ct);
 
-        // Only a conversation of a channel has templates on the channel manager.
         if (conversation.OtaThreadId is null || conversation.OctorateThreadId is null || conversation.OctorateAccommodationId is null)
             return [];
 
@@ -194,7 +189,6 @@ public sealed class MessageTemplateService(
             throw new DomainRuleException(InvalidCode, "MessageTemplateInvalid");
         }
 
-        // A name that is not one of the variables, or a brace that belongs to none: 422 template_variable_unknown, now and not in front of a guest.
         MessageTemplateRenderer.VariablesOf(cleanBody);
         return (cleanName, cleanLanguage, cleanBody);
     }
@@ -204,7 +198,6 @@ public sealed class MessageTemplateService(
             t => t.OrgId == orgId && t.Name == name && t.Language == language && (exceptId == null || t.Id != exceptId),
             ct);
 
-    /// <summary>Saves; the unique index on (organization, name, language) answers the same 409 when two saves of the same template meet.</summary>
     private async Task SaveAsync(CancellationToken ct)
     {
         try
@@ -227,7 +220,6 @@ public sealed class MessageTemplateService(
         VariablesOf(template.Body),
         template.UpdatedAt);
 
-    /// <summary>The variables a stored body uses; none for a body that does not parse (a row written some other way must not break the list).</summary>
     private static IReadOnlyList<string> VariablesOf(string body)
     {
         try

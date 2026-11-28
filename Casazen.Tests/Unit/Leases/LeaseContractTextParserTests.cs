@@ -52,7 +52,6 @@ public sealed class LeaseContractTextParserTests
         Il Locatore                              Il Conduttore
         """;
 
-    // A canone concordato 3+2 as a form prints it: the people in labelled lines (surname first, in capitals), the rent by the month.
     internal const string Concordato = """
         CONTRATTO DI LOCAZIONE AD USO ABITATIVO A CANONE CONCORDATO
         (art. 2, comma 3, legge 9 dicembre 1998 n. 431 - Accordo territoriale del Comune di Monza)
@@ -82,7 +81,6 @@ public sealed class LeaseContractTextParserTests
         Monza, li 10/11/2026
         """;
 
-    // A transitory contract, short: the people with their code in brackets, the term as "dal ... al ...", the rent by the year only.
     internal const string Transitorio = """
         CONTRATTO DI LOCAZIONE AD USO ABITATIVO DI NATURA TRANSITORIA
         (art. 5, comma 1, legge 9 dicembre 1998, n. 431 e D.M. 16 gennaio 2017)
@@ -111,7 +109,7 @@ public sealed class LeaseContractTextParserTests
         Assert.Equal("Rossi", landlord.LastName);
         Assert.Equal("RSSMRA80A01H501U", landlord.FiscalCode);
         Assert.Equal("Roma (RM), Via dei Mille n. 5", landlord.Residence);
-        Assert.Equal("IT", landlord.Citizenship); // inferred from the Italian place of birth encoded by the fiscal code
+        Assert.Equal("IT", landlord.Citizenship);
         var tenant = Assert.Single(reading.Parties, p => p.Role == PartyRole.Tenant);
         Assert.Equal("Giulia", tenant.FirstName);
         Assert.Equal("Verdi", tenant.LastName);
@@ -123,7 +121,7 @@ public sealed class LeaseContractTextParserTests
         Assert.Equal(LeaseContractType.Libero, reading.ContractType!.Value);
         Assert.Equal(LeaseTaxRegime.CedolareSecca, reading.TaxRegime!.Value);
         Assert.Equal(800m, reading.MonthlyRent!.Value);
-        Assert.False(reading.MonthlyRent.Derived); // the month's rent is written, and agrees with the year's
+        Assert.False(reading.MonthlyRent.Derived);
         Assert.Equal(1600m, reading.SecurityDeposit!.Value);
         Assert.False(reading.SecurityDeposit.Derived);
         Assert.Equal(new DateOnly(2026, 11, 1), reading.StartDate!.Value);
@@ -139,7 +137,7 @@ public sealed class LeaseContractTextParserTests
         var reading = LeaseContractTextParser.Parse(Concordato, new LeaseContractParseContext("Via Cavour 8", "Monza"));
 
         var landlord = Assert.Single(reading.Parties, p => p.Role == PartyRole.Landlord);
-        Assert.Equal("Paolo", landlord.FirstName); // "BIANCHI PAOLO" in capitals: the fiscal code says which is the surname
+        Assert.Equal("Paolo", landlord.FirstName);
         Assert.Equal("Bianchi", landlord.LastName);
         Assert.Equal("BNCPLA68L10F704T", landlord.FiscalCode);
         Assert.Equal("MONZA (MB), Via Italia n. 5", landlord.Residence);
@@ -150,14 +148,14 @@ public sealed class LeaseContractTextParserTests
         Assert.Equal("MILANO (MI), Via Torino n. 9", tenant.Residence);
 
         Assert.Equal(LeaseContractType.Concordato, reading.ContractType!.Value);
-        Assert.Equal(LeaseTaxRegime.Ordinario, reading.TaxRegime!.Value); // "non ha optato per la cedolare secca"
+        Assert.Equal(LeaseTaxRegime.Ordinario, reading.TaxRegime!.Value);
         Assert.Equal(650m, reading.MonthlyRent!.Value);
         Assert.Equal(1300m, reading.SecurityDeposit!.Value);
         Assert.Equal(new DateOnly(2026, 11, 15), reading.StartDate!.Value);
         Assert.Equal(new DateOnly(2029, 11, 14), reading.EndDate!.Value);
         Assert.Equal(36, reading.TermMonths!.Value);
         Assert.Equal(new DateOnly(2026, 11, 10), reading.StipulaDate!.Value);
-        Assert.Equal(PropertyAddressMatch.Mismatch, reading.Property!.Value); // the contract is for Via Manzoni, the draft for Via Cavour
+        Assert.Equal(PropertyAddressMatch.Mismatch, reading.Property!.Value);
     }
 
     [Fact]
@@ -175,14 +173,14 @@ public sealed class LeaseContractTextParserTests
         Assert.Equal(LeaseContractType.Transitorio, reading.ContractType!.Value);
         Assert.Equal(LeaseTaxRegime.CedolareSecca, reading.TaxRegime!.Value);
         Assert.Equal(new DateOnly(2027, 1, 1), reading.StartDate!.Value);
-        Assert.Equal(new DateOnly(2027, 12, 31), reading.EndDate!.Value); // a transitory contract has no term of its own: the draft needs the end it states
+        Assert.Equal(new DateOnly(2027, 12, 31), reading.EndDate!.Value);
         Assert.Equal(12, reading.TermMonths!.Value);
-        Assert.Equal(700m, reading.MonthlyRent!.Value); // 8,400 a year
+        Assert.Equal(700m, reading.MonthlyRent!.Value);
         Assert.True(reading.MonthlyRent.Derived);
-        Assert.Equal(1400m, reading.SecurityDeposit!.Value); // two months of that
+        Assert.Equal(1400m, reading.SecurityDeposit!.Value);
         Assert.True(reading.SecurityDeposit.Derived);
         Assert.Equal(new DateOnly(2026, 12, 20), reading.StipulaDate!.Value);
-        Assert.Null(reading.Property); // no property to compare with
+        Assert.Null(reading.Property);
     }
 
     [Fact]
@@ -197,11 +195,9 @@ public sealed class LeaseContractTextParserTests
 
         var reading = LeaseContractTextParser.Parse(text);
 
-        // The tenant's fiscal code does not pass its check character and no OCR confusion puts it right: the tenant is not a person yet.
         var landlord = Assert.Single(reading.Parties);
         Assert.Equal(PartyRole.Landlord, landlord.Role);
         Assert.Equal("RSSMRA80A01H501U", landlord.FiscalCode);
-        // A rent that changes over the years is not one rent; a deposit, a type, a regime, an end, a signature the text never states are not guessed.
         Assert.Null(reading.MonthlyRent);
         Assert.Null(reading.SecurityDeposit);
         Assert.Null(reading.ContractType);
@@ -223,21 +219,19 @@ public sealed class LeaseContractTextParserTests
         var reading = LeaseContractTextParser.Parse(text);
 
         var landlord = Assert.Single(reading.Parties, p => p.Role == PartyRole.Landlord);
-        Assert.Equal(("Mario", "Rossi"), (landlord.FirstName, landlord.LastName)); // surname first, in capitals
+        Assert.Equal(("Mario", "Rossi"), (landlord.FirstName, landlord.LastName));
         var tenant = Assert.Single(reading.Parties, p => p.Role == PartyRole.Tenant);
-        Assert.Equal(("Anna Maria", "De Luca"), (tenant.FirstName, tenant.LastName)); // two given names, a surname with a particle
+        Assert.Equal(("Anna Maria", "De Luca"), (tenant.FirstName, tenant.LastName));
         Assert.Equal("Bari, Via Argiro n. 7", tenant.Residence);
     }
 
     [Fact]
     public void AFiscalCodeWithAnOcrConfusion_IsPutRightOnlyWhenTheCheckCharacterThenPasses()
     {
-        // The O of "80" is a zero the OCR read as a letter, in a place where only a digit can be: one correction, and the code passes.
         var repaired = Assert.Single(ContractFiscalCodes.Find("codice fiscale RSSMRA8OA01H501U"));
         Assert.Equal("RSSMRA80A01H501U", repaired.Code);
         Assert.True(repaired.Repaired);
 
-        // A wrong check character, or letters that no confusion explains, is no person.
         Assert.Empty(ContractFiscalCodes.Find("codice fiscale RSSMRA80A01H501X"));
         Assert.Empty(ContractFiscalCodes.Find("codice fiscale (novemilaseicento/00)"));
     }
@@ -245,7 +239,6 @@ public sealed class LeaseContractTextParserTests
     [Fact]
     public void AFiscalCodeWithOneCharacterTooMany_IsFoundWhenTakingOneOutLeavesExactlyOneValidCode()
     {
-        // A stray letter the OCR put after, before or inside the code: seventeen characters, and one valid code once the stray one is out.
         foreach (var printed in new[] { "RSSMRA80A01H501UA", "ARSSMRA80A01H501U", "RSSMRA80AI01H501U" })
         {
             var found = Assert.Single(ContractFiscalCodes.Find($"codice fiscale {printed}"));
@@ -253,16 +246,12 @@ public sealed class LeaseContractTextParserTests
             Assert.True(found.Repaired);
         }
 
-        // Two different deletions that both leave a valid code (here the last digit of the place of birth may be an omocodia letter): nobody
-        // can tell which is the person's, so no code is guessed.
         Assert.Empty(ContractFiscalCodes.Find("codice fiscale RSSMRA80A01H501UK"));
 
-        // Seventeen characters from which no deletion gives a valid code are no person; two characters too many are not looked at.
         Assert.Empty(ContractFiscalCodes.Find("codice fiscale RSSMRA80A01H501XK"));
         Assert.Empty(ContractFiscalCodes.Find("protocollo ABCDEFGHIJKLMNOPQ"));
         Assert.Empty(ContractFiscalCodes.Find("codice fiscale RSSMRA80A01H501UKK"));
 
-        // The same person written once right and once with a stray letter is one code, at the place where it first appears.
         var twice = Assert.Single(ContractFiscalCodes.Find("RSSMRA80A01H501U e poi, nel riepilogo, RSSMRA80A01H501UA"));
         Assert.Equal(0, twice.Index);
         Assert.False(twice.Repaired);
@@ -271,8 +260,6 @@ public sealed class LeaseContractTextParserTests
     [Fact]
     public void ACoTenantWhoseFiscalCodeTheOcrSpelledWithAStrayLetter_IsStillATenantOfTheContract()
     {
-        // The first of the two tenants has a letter too many in her code, as in a real scan: without the repair she was not a person for
-        // the reading, and the draft got one tenant out of two.
         const string text = """
             TRA La Sig.ra NERI ANNA, nata a Milano il 05/04/1992, residente in Como, Via Roma n. 1, C.F. NRENNA92D45F205T, di seguito denominata locatore,
             la Sig.ra Anna Maria De Luca, nata a Bari il 21/11/1971, residente in Bari, Via Argiro n. 7, C.F. DLCNMR71S61A662DK, passaporto n. 123456789,
@@ -292,8 +279,6 @@ public sealed class LeaseContractTextParserTests
     [Fact]
     public void TheJointRoleOfTheTenants_ReachesTheFirstOneAcrossHerIdentityDocument_ButNotFurtherNorPastAnotherRole()
     {
-        // As in a real contract: the first tenant has no role of her own, her passport (number, office, two dates) lies between her and the
-        // second, and «di seguito congiuntamente conduttore» comes only after the second.
         const string head = """
             TRA La Sig.ra NERI ANNA, nata a Milano il 05/04/1992, residente in Como, Via Roma n. 1, C.F. NRENNA92D45F205T, di seguito denominata locatore,
             la Sig.ra Anna Maria De Luca, nata a Bari il 21/11/1971, residente in Bari, Via Argiro n. 7, C.F. DLCNMR71S61A662D,
@@ -330,7 +315,6 @@ public sealed class LeaseContractTextParserTests
         Assert.Equal("RSSMRA80A01H501U", Assert.Single(both.Parties, p => p.Role == PartyRole.Landlord).FiscalCode);
         Assert.Equal(["BNCPLA68L10F704T", "VRDGLI85B42F205E"], both.Parties.Where(p => p.Role == PartyRole.Tenant).Select(p => p.FiscalCode).Order());
 
-        // A guarantor named the same way is not a tenant, and neither is the other side of the contract.
         var guarantor = LeaseContractTextParser.Parse($"""
             {landlords}
             e il Sig. Paolo Bianchi, fideiussore, nato a Monza il 10/07/1968, residente in Milano, Via Roma n. 9, C.F. BNCPLA68L10F704T.

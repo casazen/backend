@@ -41,11 +41,6 @@ public sealed class OwnerPayoutFacts(
 {
     private static readonly PaymentStatus[] CollectedStatuses = [PaymentStatus.Completed, PaymentStatus.PartiallyRefunded, PaymentStatus.Refunded];
 
-    /// <summary>
-    /// What the version still owes the owner: its closing balance less the gross of the confirmed payouts of the owner (in its currency) that the version does not
-    /// count, those paid in a later month or confirmed after its cut-off. A payout paid in the month of the version or before it and confirmed before the cut-off is
-    /// already in the closing balance (its lines are).
-    /// </summary>
     public async Task<decimal> UnpaidBalanceAsync(OwnerStatementVersion version, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(version);
@@ -58,12 +53,6 @@ public sealed class OwnerPayoutFacts(
         return version.ClosingBalance - paid.Sum();
     }
 
-    /// <summary>
-    /// The facts of a payout of <paramref name="version"/> paid on <paramref name="paidOn"/>, judged with <paramref name="rule"/> (the approved rule in force that day;
-    /// <c>null</c> in a preview of an owner without one: the requirements of a withholding rule and the configured portals of ⚖ R5) and the fiscal profile in force.
-    /// <see cref="PayoutFacts.GrossAmount"/> is left to the caller. 422 <c>tax_applicability_unresolved</c> when a stay cannot be judged (<c>stays</c>: its booking
-    /// is gone or its lines are in two currencies; <c>fxRate</c>: no rate of the payout day for a stay of the base in another currency).
-    /// </summary>
     public async Task<PayoutFacts> ReadAsync(
         OwnerStatementVersion version,
         DateOnly paidOn,
@@ -161,10 +150,6 @@ public sealed class OwnerPayoutFacts(
         };
     }
 
-    /// <summary>
-    /// The stays of the payout: the owner's revenue lines of the ledger of the version's month and of the months before (posted up to the cut-off) that no confirmed
-    /// payout of the owner decided, added up per stay; the stays with something left to decide, with the lines they are made of.
-    /// </summary>
     private async Task<Dictionary<Guid, StayRevenue>> StaysOfAsync(OwnerStatementVersion version, CancellationToken ct)
     {
         var orgId = version.OrgId;
@@ -236,7 +221,6 @@ public sealed class OwnerPayoutFacts(
         return stays;
     }
 
-    /// <summary>The gross of a stay of the base in euro: as it is, or at the agency's rate of the payout day (half to even, as the ledger converts).</summary>
     private static decimal InEuro(StayRevenue stay, IReadOnlyList<OwnerFxRate> rates, DateOnly paidOn)
     {
         if (string.Equals(stay.Currency, StayCurrency.Euro, StringComparison.Ordinal))
@@ -245,7 +229,6 @@ public sealed class OwnerPayoutFacts(
         return Math.Round(stay.Gross * quote.Multiplier, 2, MidpointRounding.ToEven);
     }
 
-    /// <summary>The stay of a revenue line: the booking itself, or the booking a payment line names in its reference.</summary>
     private static Guid? StayOf(RevenueLine line) =>
         line.SourceType == OwnerLedgerSourceType.Booking ? line.SourceId
         : Guid.TryParseExact(line.Reference, "N", out var booking) ? booking : null;
@@ -266,10 +249,6 @@ public sealed class OwnerPayoutFacts(
         int PeriodMonth,
         DateTime PostedAt);
 
-    /// <summary>
-    /// The owner's revenue of one stay: its property, currency and gross (the original amounts), its share, whether payments posted it and which, and the ledger lines
-    /// it is made of (what the payout decides).
-    /// </summary>
     private sealed record StayRevenue(
         Guid? PropertyId,
         string Currency,

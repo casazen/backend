@@ -45,10 +45,8 @@ public class Auth0ManagementTokenProviderTests
         var provider = CreateProvider(http, time, M2MConfig());
 
         var first = await provider.GetTokenAsync();
-        // expires_in − 60 s − 1 s: still cached.
         time.Advance(TimeSpan.FromSeconds(3600 - 60 - 1));
         var stillCached = await provider.GetTokenAsync();
-        // Inside the last 60 s of validity: renewed.
         time.Advance(TimeSpan.FromSeconds(2));
         var renewed = await provider.GetTokenAsync();
 

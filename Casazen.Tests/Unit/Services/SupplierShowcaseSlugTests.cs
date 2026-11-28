@@ -13,7 +13,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>The address of a supplier's public showcase (SU-13, A4-16).</summary>
 public class SupplierShowcaseSlugTests
 {
     [Theory]
@@ -62,7 +61,6 @@ public class SupplierShowcaseSlugTests
         var second = await service.EnsureShowcaseSlugAsync(orgId);
 
         Assert.Equal("pulizie-citta-srl", first);
-        // A link already shared keeps working when the supplier renames the business.
         Assert.Equal(first, second);
     }
 

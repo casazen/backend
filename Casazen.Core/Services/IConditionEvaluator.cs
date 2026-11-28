@@ -3,10 +3,6 @@ using Casazen.Core.Models;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// Server-side condition evaluation for marketing segments and automation routines (ADR-014-R3).
-/// Client NEVER receives full guest data - all evaluation happens server-side.
-/// </summary>
 public interface IConditionEvaluator
 {
     /// <summary>
@@ -24,15 +20,6 @@ public interface IConditionEvaluator
         HostScope scope,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Count how many guests/bookings match a condition (segment preview, ADR-014-R6).
-    /// Performance target: &lt;5s for 10k guests (ADR-014-R6).
-    /// </summary>
-    /// <param name="condition">Condition tree to evaluate.</param>
-    /// <param name="orgId">Organization ID.</param>
-    /// <param name="scope">Host scope for perimeter enforcement.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Count of matching entities.</returns>
     Task<int> PreviewCountAsync(
         Condition condition,
         Guid orgId,

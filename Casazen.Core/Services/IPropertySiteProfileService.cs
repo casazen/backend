@@ -9,7 +9,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IPropertySiteProfileService
 {
-    /// <summary>The profile as the host editor shows it; <c>null</c> when the property does not exist for the caller.</summary>
     Task<SitePropertyProfileView?> GetAsync(Guid propertyId, CancellationToken cancellationToken = default);
 
     /// <summary>

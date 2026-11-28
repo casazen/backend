@@ -21,27 +21,12 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IOwnerCollaborationService
 {
-    // ---------------------------------------------------------------- documents
-
-    /// <summary>
-    /// The documents the caller may read (<c>documents.read</c>; the statements and invoices also <c>accounting.read</c>) with their versions, and the
-    /// published statement versions of the owner accounting (<c>accounting.read</c>). 403 when the caller holds neither permission.
-    /// </summary>
     Task<OwnerPortalDocuments> ListDocumentsForOwnerAsync(OwnerPortalAccess access, CancellationToken cancellationToken = default);
 
-    /// <summary>The file of a version (the current one when <paramref name="versionId"/> is <c>null</c>); the download is written first.</summary>
-    /// <exception cref="Exceptions.NotFoundException"><see cref="OwnerCollaborationErrors.DocumentNotFound"/>.</exception>
     Task<OwnerFileContent> OpenDocumentForOwnerAsync(OwnerPortalAccess access, Guid documentId, Guid? versionId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The documents the org shares, or the ones of one owner profile, with their versions and downloads, the latest first (at most <see cref="OwnerCollaborationRules.MaxList"/>).
-    /// The PDF of a published statement is not among them (it is read with the statement; its id is the id of the version).
-    /// </summary>
     Task<IReadOnlyList<OwnerDocumentAdminView>> ListDocumentsForAgencyAsync(Guid orgId, Guid? propertyOwnerId, CancellationToken cancellationToken = default);
 
-    /// <summary>Shares a new document with its first file.</summary>
-    /// <exception cref="Exceptions.DomainRuleException"><see cref="OwnerCollaborationErrors.DocumentInvalid"/>, a code of <see cref="OwnerFileRules"/>.</exception>
-    /// <exception cref="Exceptions.NotFoundException"><see cref="OwnerCollaborationErrors.DocumentOwnerNotFound"/>.</exception>
     Task<OwnerDocumentAdminView> ShareDocumentAsync(
         Guid orgId,
         ShareOwnerDocument command,
@@ -49,7 +34,6 @@ public interface IOwnerCollaborationService
         string actorUserId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Adds a new file to a document: a new version, the earlier ones kept as they were.</summary>
     Task<OwnerDocumentAdminView> AddDocumentVersionAsync(
         Guid orgId,
         Guid documentId,
@@ -58,7 +42,6 @@ public interface IOwnerCollaborationService
         string actorUserId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Withdraws a document from the portal (<paramref name="visible"/> false) or shares it again; a repeat changes nothing.</summary>
     Task<OwnerDocumentAdminView> SetDocumentVisibilityAsync(
         Guid orgId,
         Guid documentId,
@@ -66,10 +49,8 @@ public interface IOwnerCollaborationService
         string actorUserId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The downloads of a document, newest first.</summary>
     Task<IReadOnlyList<OwnerDocumentDownloadView>> ListDocumentDownloadsAsync(Guid orgId, Guid documentId, CancellationToken cancellationToken = default);
 
-    /// <summary>The file of a version for a person of the agency; the download is written too.</summary>
     Task<OwnerFileContent> OpenDocumentForAgencyAsync(
         Guid orgId,
         Guid documentId,
@@ -77,37 +58,22 @@ public interface IOwnerCollaborationService
         string actorUserId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The background work of the documents: a «To do» of the agency for every shared document whose current version lapses within
-    /// <see cref="OwnerCollaborationRules.ExpiryAlertDays"/> days (raised once per version), closed when a new version or a withdrawal settles it.
-    /// </summary>
     Task<OwnerDocumentAlertResult> RaiseExpiryAlertsAsync(CancellationToken cancellationToken = default);
 
-    // ---------------------------------------------------------------- contacts
-
-    /// <summary>The contacts of the owner profiles the caller owns (a delegated contact manages none: 403).</summary>
     Task<IReadOnlyList<OwnerContactView>> ListContactsForOwnerAsync(OwnerPortalAccess access, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The owner invites a contact for one of its owner profiles, with at least one permission (an empty list is 422, never «all»): the link goes by e-mail and
-    /// lasts seven days; an e-mail that cannot be queued withdraws the invitation (422).
-    /// </summary>
     Task<OwnerContactView> InviteContactAsync(OwnerPortalAccess access, InviteOwnerContact command, CancellationToken cancellationToken = default);
 
-    /// <summary>The owner changes what a contact may do: effective at its next request.</summary>
     Task<OwnerContactView> SetContactPermissionsAsync(
         OwnerPortalAccess access,
         Guid contactId,
         IReadOnlyCollection<string>? permissions,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The owner withdraws a contact: nothing from its next request on; a repeat changes nothing.</summary>
     Task<OwnerContactView> RevokeContactByOwnerAsync(OwnerPortalAccess access, Guid contactId, CancellationToken cancellationToken = default);
 
-    /// <summary>The contacts of the org, or of one owner profile.</summary>
     Task<IReadOnlyList<OwnerContactView>> ListContactsForAgencyAsync(Guid orgId, Guid? propertyOwnerId, CancellationToken cancellationToken = default);
 
-    /// <summary>The agency withdraws a contact; a repeat changes nothing.</summary>
     Task<OwnerContactView> RevokeContactByAgencyAsync(Guid orgId, Guid contactId, string actorUserId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -119,21 +85,15 @@ public interface IOwnerCollaborationService
     /// <exception cref="Exceptions.DomainForbiddenException">The e-mail of the account is not verified, or not the invited one.</exception>
     Task<OwnerContactAccepted> AcceptContactAsync(AcceptOwnerContact command, CancellationToken cancellationToken = default);
 
-    // ---------------------------------------------------------------- inbox
-
-    /// <summary>The conversations the caller may read (<c>inbox.use</c>), the latest first.</summary>
     Task<IReadOnlyList<OwnerConversationView>> ListConversationsForOwnerAsync(OwnerPortalAccess access, CancellationToken cancellationToken = default);
 
-    /// <summary>Opens a conversation with the agency and writes its first message; the agency is told by e-mail, without the words.</summary>
     Task<OwnerConversationView> StartConversationByOwnerAsync(
         OwnerPortalAccess access,
         StartOwnerConversation command,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The messages of a conversation, oldest first.</summary>
     Task<IReadOnlyList<OwnerMessageView>> ListMessagesForOwnerAsync(OwnerPortalAccess access, Guid conversationId, CancellationToken cancellationToken = default);
 
-    /// <summary>Writes a message, with an optional file that passed the scan; the agency is told by e-mail, without the words.</summary>
     Task<OwnerMessageView> PostMessageByOwnerAsync(
         OwnerPortalAccess access,
         Guid conversationId,
@@ -141,27 +101,22 @@ public interface IOwnerCollaborationService
         OwnerFileUpload? attachment,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The file of a message of a conversation the caller may read.</summary>
     Task<OwnerFileContent> OpenAttachmentForOwnerAsync(
         OwnerPortalAccess access,
         Guid conversationId,
         Guid messageId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The conversations of the org, or of one owner profile, the latest first.</summary>
     Task<IReadOnlyList<OwnerConversationView>> ListConversationsForAgencyAsync(Guid orgId, Guid? propertyOwnerId, CancellationToken cancellationToken = default);
 
-    /// <summary>The agency opens a conversation with an owner profile; the owner and its contacts with <c>inbox.use</c> are told by e-mail.</summary>
     Task<OwnerConversationView> StartConversationByAgencyAsync(
         Guid orgId,
         StartOwnerConversation command,
         string actorUserId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The messages of a conversation of the org, oldest first.</summary>
     Task<IReadOnlyList<OwnerMessageView>> ListMessagesForAgencyAsync(Guid orgId, Guid conversationId, CancellationToken cancellationToken = default);
 
-    /// <summary>A person of the agency writes a message; the owner side is told by e-mail, without the words.</summary>
     Task<OwnerMessageView> PostMessageByAgencyAsync(
         Guid orgId,
         Guid conversationId,
@@ -170,23 +125,17 @@ public interface IOwnerCollaborationService
         string actorUserId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The file of a message of a conversation of the org.</summary>
     Task<OwnerFileContent> OpenAttachmentForAgencyAsync(Guid orgId, Guid conversationId, Guid messageId, CancellationToken cancellationToken = default);
 
-    /// <summary>Whether the person of the portal gets an e-mail when the agency writes.</summary>
     Task<OwnerInboxPreferences> GetInboxPreferencesAsync(Guid ownerUserId, CancellationToken cancellationToken = default);
 
-    /// <summary>Sets whether the person of the portal gets an e-mail when the agency writes.</summary>
     Task<OwnerInboxPreferences> SetInboxPreferencesAsync(Guid ownerUserId, bool emailNotifications, CancellationToken cancellationToken = default);
 }
 
-/// <summary>The limits of the collaboration of the owner portal.</summary>
 public static class OwnerCollaborationRules
 {
-    /// <summary>The days before the expiry of a document when the agency is told.</summary>
     public const int ExpiryAlertDays = 30;
 
-    /// <summary>The most contacts in force (invited or active) of one owner profile.</summary>
     public const int MaxContactsPerOwner = 10;
 
     /// <summary>
@@ -196,14 +145,11 @@ public static class OwnerCollaborationRules
     /// </summary>
     public const int MaxContactInvitationsPerDay = 20;
 
-    /// <summary>The days the link of the invitation of a contact lasts.</summary>
     public const int ContactInvitationDays = 7;
 
-    /// <summary>The most items a list answers.</summary>
     public const int MaxList = 500;
 }
 
-/// <summary>Error codes of the collaboration of the owner portal, with the keys of their localized messages.</summary>
 public static class OwnerCollaborationErrors
 {
     public const string DocumentNotFound = "owner_document_not_found";
@@ -255,13 +201,10 @@ public static class OwnerCollaborationErrors
     public const string AttachmentNotFoundMessageKey = "OwnerAttachmentNotFound";
 }
 
-/// <summary>An uploaded file: the name it came with (only its last part is kept) and its bytes.</summary>
 public sealed record OwnerFileUpload(string? FileName, byte[] Content);
 
-/// <summary>A file handed out: the caller disposes the stream.</summary>
 public sealed record OwnerFileContent(Stream Content, string FileName, string ContentType);
 
-/// <summary>A document to share with an owner profile, optionally for one of its properties.</summary>
 public sealed record ShareOwnerDocument(
     Guid PropertyOwnerId,
     Guid? PropertyId,
@@ -270,10 +213,8 @@ public sealed record ShareOwnerDocument(
     DateOnly? EffectiveFrom,
     DateOnly? ExpiresOn);
 
-/// <summary>The dates of a new version.</summary>
 public sealed record OwnerDocumentVersionInput(DateOnly? EffectiveFrom, DateOnly? ExpiresOn);
 
-/// <summary>How a version reads on a day: <c>upcoming</c> (not in force yet), <c>current</c>, <c>superseded</c> (a later one is in force), <c>expired</c>.</summary>
 public sealed record OwnerDocumentVersionView(
     Guid Id,
     int VersionNumber,
@@ -286,10 +227,6 @@ public sealed record OwnerDocumentVersionView(
     string State,
     DateTime UploadedAt);
 
-/// <summary>
-/// A shared document: its versions, the newest first, and the expiry state of the current one (<c>none</c>, <c>valid</c>, <c>expiring</c> within
-/// <see cref="OwnerCollaborationRules.ExpiryAlertDays"/> days, <c>expired</c>).
-/// </summary>
 public sealed record OwnerDocumentView(
     Guid Id,
     Guid OrgId,
@@ -303,13 +240,10 @@ public sealed record OwnerDocumentView(
     IReadOnlyList<OwnerDocumentVersionView> Versions,
     DateTime UpdatedAt);
 
-/// <summary>A shared document as the agency reads it: the owner profile, the downloads and whether it is withdrawn.</summary>
 public sealed record OwnerDocumentAdminView(OwnerDocumentView Document, string OwnerName, bool Visible, DateTime? RevokedAt, int Downloads, DateTime? LastDownloadAt);
 
-/// <summary>One download: the version, when, and who (the name of the person of the portal, or <c>User.Id</c> of the agency with <paramref name="ByAgency"/>).</summary>
 public sealed record OwnerDocumentDownloadView(Guid VersionId, int VersionNumber, DateTime DownloadedAt, string By, bool ByAgency);
 
-/// <summary>A published (or superseded) statement version of the owner accounting, referenced where it is (E06), never copied.</summary>
 public sealed record OwnerStatementReferenceView(
     Guid StatementVersionId,
     Guid OrgId,
@@ -321,16 +255,12 @@ public sealed record OwnerStatementReferenceView(
     DateTime PublishedAt,
     string? PublishedSha256);
 
-/// <summary>What the documents page of the portal shows.</summary>
 public sealed record OwnerPortalDocuments(IReadOnlyList<OwnerDocumentView> Documents, IReadOnlyList<OwnerStatementReferenceView> Statements);
 
-/// <summary>What one run of the expiry alerts did.</summary>
 public sealed record OwnerDocumentAlertResult(int Raised, int Closed);
 
-/// <summary>A contact the owner invites: the agency (needed when the owner has more than one), the person and its permissions.</summary>
 public sealed record InviteOwnerContact(Guid? AgencyId, string? Email, string? FirstName, string? LastName, IReadOnlyCollection<string>? Permissions);
 
-/// <summary>A delegated contact: <c>status</c> is <c>invited</c>, <c>expired</c> (the link lapsed), <c>active</c> or <c>revoked</c>.</summary>
 public sealed record OwnerContactView(
     Guid Id,
     Guid OrgId,
@@ -345,10 +275,8 @@ public sealed record OwnerContactView(
     DateTime? AcceptedAt,
     DateTime? RevokedAt);
 
-/// <summary>The contact who accepts: the secret of the link and the account that holds it (the e-mail comes from the token or Auth0).</summary>
 public sealed record AcceptOwnerContact(string? Token, string Auth0Sub, string? Email, bool EmailVerified, string FirstName, string LastName);
 
-/// <summary>What the acceptance did, and the claims of the portal (ADR-011-R7) handed to the identity provider (<see cref="OwnerClaimsRefresh"/>).</summary>
 public sealed record OwnerContactAccepted(
     Guid OwnerUserId,
     IReadOnlyList<Guid> AgencyIds,
@@ -356,10 +284,6 @@ public sealed record OwnerContactAccepted(
     bool AlreadyAccepted,
     string ClaimsRefresh);
 
-/// <summary>
-/// A conversation to open: on the agency side the owner profile (<paramref name="PropertyOwnerId"/>), on the owner side the agency when the owner has more
-/// than one (<paramref name="AgencyId"/>); the topic and exactly the reference it names; the subject and the first message.
-/// </summary>
 public sealed record StartOwnerConversation(
     Guid? PropertyOwnerId,
     Guid? AgencyId,
@@ -371,7 +295,6 @@ public sealed record StartOwnerConversation(
     string? Subject,
     string? Body);
 
-/// <summary>A conversation of the inbox.</summary>
 public sealed record OwnerConversationView(
     Guid Id,
     Guid OrgId,
@@ -385,10 +308,8 @@ public sealed record OwnerConversationView(
     DateTime CreatedAt,
     DateTime LastMessageAt);
 
-/// <summary>The file of a message: its name, type and size.</summary>
 public sealed record OwnerAttachmentView(string FileName, string ContentType, long SizeBytes);
 
-/// <summary>A message: who wrote it (the agency, or the person of the portal by name), the words and the file.</summary>
 public sealed record OwnerMessageView(
     Guid Id,
     Guid ConversationId,
@@ -398,5 +319,4 @@ public sealed record OwnerMessageView(
     OwnerAttachmentView? Attachment,
     DateTime CreatedAt);
 
-/// <summary>The notification preference of the owner inbox.</summary>
 public sealed record OwnerInboxPreferences(bool EmailNotifications);

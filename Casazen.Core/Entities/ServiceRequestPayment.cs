@@ -42,35 +42,26 @@ public class ServiceRequestPayment
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The request being paid. A request is never deleted while a payment points to it (restrict).</summary>
     public Guid ServiceRequestId { get; set; }
 
-    /// <summary>The supplier org that is paid (the org of the Stripe account the charge lands on).</summary>
     public Guid SupplierOrgId { get; set; }
 
     public ServicePayerKind PayerKind { get; set; } = ServicePayerKind.Host;
 
-    /// <summary>The host org that pays; null for a private customer.</summary>
     public Guid? PayerOrgId { get; set; }
 
-    /// <summary>The price the payer pays, in cents: the final amount of the request, commission included (the commission comes out of what the supplier receives).</summary>
     public int AmountCents { get; set; }
 
-    /// <summary>Lowercase ISO currency (<c>eur</c>).</summary>
     [Required, MaxLength(3)]
     public string Currency { get; set; } = ServiceCharges.Currency;
 
-    /// <summary>The commission percentage in force when the row was created (snapshot).</summary>
     [Column(TypeName = "numeric(5,2)")]
     public decimal CommissionPercent { get; set; }
 
-    /// <summary>The commission in cents that is sent to Stripe as <c>application_fee_amount</c>; 0 when none is sent (snapshot).</summary>
     public int ApplicationFeeCents { get; set; }
 
-    /// <summary><see cref="AmountCents"/> minus <see cref="ApplicationFeeCents"/>: what the supplier receives before Stripe's own fees (snapshot).</summary>
     public int NetCents { get; set; }
 
-    /// <summary>The host agreed to pay the platform fee on top of the supplier price for this request.</summary>
     public bool CommissionAddedToPrice { get; set; }
 
     /// <summary>
@@ -79,42 +70,30 @@ public class ServiceRequestPayment
     /// </summary>
     public ServiceFeeVatMode? FeeVatMode { get; set; }
 
-    /// <summary>VAT on the commission, in cents; empty together with <see cref="FeeVatMode"/>.</summary>
     public int? FeeVatCents { get; set; }
 
     public ServicePaymentStatus Status { get; set; } = ServicePaymentStatus.Requested;
 
-    /// <summary>The current PaymentIntent on <see cref="ConnectedAccountId"/>; null until the payer opens a payment session.</summary>
     [MaxLength(255)]
     public string? StripePaymentIntentId { get; set; }
 
-    /// <summary>
-    /// The supplier's Stripe account the current PaymentIntent was created on (snapshot). The webhook accepts a payment only if it
-    /// comes from this account.
-    /// </summary>
     [MaxLength(255)]
     public string? ConnectedAccountId { get; set; }
 
     /// <summary>PaymentIntents created so far: part of the idempotency key of the next one (<c>service-charge:{id}:{n}</c>).</summary>
     public int PaymentIntentCount { get; set; }
 
-    /// <summary>SHA-256 of the token of the payment link (<see cref="Services.CheckoutOutcomes.HashToken"/>); the raw token is only in the email. Null while no link was sent.</summary>
     [MaxLength(64)]
     public string? PaymentTokenHash { get; set; }
 
-    /// <summary>When the payment was first asked of the payer (the first email). Null while the request is pending (the supplier cannot be paid yet).</summary>
     public DateTime? RequestedAt { get; set; }
 
-    /// <summary>When a link was last emailed (request or reminder): the validity of the current link counts from here, and the supplier may ask again once a day.</summary>
     public DateTime? LastSentAt { get; set; }
 
-    /// <summary>Emails with a link sent so far (the request and its reminders).</summary>
     public int SentCount { get; set; }
 
-    /// <summary>When the payment was flagged as late (SP-15b): <c>LateAfterDays</c> days after <see cref="RequestedAt"/>. Null while on time.</summary>
     public DateTime? LateAt { get; set; }
 
-    /// <summary>Stripe error code of the last failed attempt (e.g. <c>card_declined</c>); no personal data.</summary>
     [MaxLength(100)]
     public string? FailureCode { get; set; }
 
@@ -122,56 +101,31 @@ public class ServiceRequestPayment
 
     public ServicePaymentChannel? PaidVia { get; set; }
 
-    /// <summary>Cents given back to the payer so far (SP-15b); never above <see cref="AmountCents"/>.</summary>
     public int RefundedCents { get; set; }
 
-    /// <summary>JSON array of <see cref="ServiceRequestPriceLine"/> (<c>kind</c>, <c>label</c>, <c>amountCents</c>): the price of the work as it was when the payment was created.</summary>
     [Column(TypeName = "jsonb")]
     public string LineItemsJson { get; set; } = "[]";
 
-    /// <summary>
-    /// What the supplier wrote when it recorded the payment as received outside CasaZen: for a request paid inside CasaZen it is
-    /// the reason of the exception (decision D5), required and kept as its trace.
-    /// </summary>
     [MaxLength(ServicePaymentLimits.OfflineNoteMaxLength)]
     public string? OfflineNote { get; set; }
 
-    /// <summary>The user who recorded the offline payment.</summary>
     [MaxLength(255)]
     public string? MarkedPaidByUserId { get; set; }
 
-    /// <summary>When the payment was dropped (<see cref="ServicePaymentStatus.Canceled"/>).</summary>
     public DateTime? CanceledAt { get; set; }
 
-    // ─── The payment held by CasaZen (SP-15c-a, decision VT-D1): every column below is empty for ServiceFundsModel.DirectCharge ───
-
-    /// <summary>Whose money the payment is while it is in flight: the supplier's (a direct charge, SP-15a) or CasaZen's (held, SP-15c).</summary>
     public ServiceFundsModel FundsModel { get; set; } = ServiceFundsModel.DirectCharge;
 
-    /// <summary>
-    /// The Stripe charge (<c>ch_…</c>) of the platform PaymentIntent, known from the capture: the <c>source_transaction</c> of the
-    /// transfer to the supplier, which ties the transfer to the money of this payment and lets it go before the funds are settled.
-    /// </summary>
     [MaxLength(255)]
     public string? StripeChargeId { get; set; }
 
-    /// <summary>
-    /// The Stripe <c>transfer_group</c> the PaymentIntent was created with: every PaymentIntent, refund and transfer of this money carries it.
-    /// The release looks for a transfer of the group before it makes one, so a transfer whose answer was lost is found, not duplicated.
-    /// </summary>
     [MaxLength(100)]
     public string? TransferGroup { get; set; }
 
-    /// <summary>When the payer's card was blocked for the amount (the PaymentIntent became <c>requires_capture</c>).</summary>
     public DateTime? AuthorizedAt { get; set; }
 
-    /// <summary>
-    /// When CasaZen stops treating the block as usable: <see cref="AuthorizedAt"/> plus <c>SupplierPayments:AuthorizationValidityHours</c>,
-    /// far below what a card network keeps a block for. A capture after it is refused and the block is released (VT-D22).
-    /// </summary>
     public DateTime? AuthorizationExpiresAt { get; set; }
 
-    /// <summary>When the card was charged (the supplier accepted and the capture succeeded): the money is held from here.</summary>
     public DateTime? CapturedAt { get; set; }
 
     /// <summary>
@@ -181,10 +135,8 @@ public class ServiceRequestPayment
     /// </summary>
     public DateTime? ReleaseAt { get; set; }
 
-    /// <summary>When the payer pressed "all fine": the money is released at once (<see cref="ReleaseAt"/> is brought forward to it).</summary>
     public DateTime? ReleaseConfirmedAt { get; set; }
 
-    /// <summary>When the transfer to the supplier succeeded (<see cref="ServicePaymentStatus.Released"/>).</summary>
     public DateTime? ReleasedAt { get; set; }
 
     /// <summary>The Stripe transfer (<c>tr_…</c>) that paid the supplier. At most one per payment (unique index): never two transfers.</summary>
@@ -197,31 +149,21 @@ public class ServiceRequestPayment
     /// </summary>
     public int TransferAttempts { get; set; }
 
-    /// <summary>Not before: the release job leaves the payment alone until then (the backoff after a refused or impossible transfer).</summary>
     public DateTime? TransferNextAttemptAt { get; set; }
 
-    /// <summary>Why the last transfer did not go (<c>account_not_ready</c> or a Stripe error code); no personal data.</summary>
     [MaxLength(100)]
     public string? TransferFailureCode { get; set; }
 
-    /// <summary>When the admins were told that the transfer keeps failing (once).</summary>
     public DateTime? TransferAlertedAt { get; set; }
 
-    /// <summary>When the admins were warned that the money has been held for nearly <c>SupplierPayments:MaxHoldDays</c> (once).</summary>
     public DateTime? HoldWarnedAt { get; set; }
 
-    /// <summary>
-    /// The card dispute (a chargeback, <c>dp_…</c>) Stripe opened on the charge, if any. A dispute after the release is CasaZen's loss
-    /// (VT-D22): it is only recorded here, for the admin console, and nothing is recovered automatically. Not the complaint of SP-15c-c.
-    /// </summary>
     [MaxLength(255)]
     public string? CardDisputeId { get; set; }
 
-    /// <summary>Stripe's status of <see cref="CardDisputeId"/> (<c>needs_response</c>, <c>won</c>, <c>lost</c>…).</summary>
     [MaxLength(50)]
     public string? CardDisputeStatus { get; set; }
 
-    /// <summary>When Stripe last told about the card dispute.</summary>
     public DateTime? CardDisputeAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -8,15 +8,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.BankStatements;
 
-/// <summary>
-/// The first sheet of an Excel workbook, read with nothing but the framework: shared and inline strings, numbers stored as such, dates as
-/// serials, cells left out; and the workbooks it refuses (not a workbook, a part that unzips to more than it may).
-/// </summary>
 public class BankStatementXlsxTests
 {
     private static double Serial(int year, int month, int day) => (new DateTime(year, month, day) - new DateTime(1899, 12, 30)).TotalDays;
 
-    /// <summary>Builds a minimal workbook: strings are shared strings (or inline when asked), numbers are numbers, null leaves the cell out.</summary>
     internal static byte[] Workbook(IReadOnlyList<object?[]> rows, bool inlineStrings = false)
     {
         var shared = new List<string>();
@@ -75,7 +70,6 @@ public class BankStatementXlsxTests
         writer.Write(content);
     }
 
-    /// <summary>A workbook from the XML of its sheet (rows of <c>&lt;c&gt;</c>) and, if given, of its shared strings (the <c>&lt;si&gt;</c> items).</summary>
     private static byte[] RawWorkbook(string rows, string? sharedItems = null)
     {
         using var stream = new MemoryStream();
@@ -94,7 +88,6 @@ public class BankStatementXlsxTests
     private const string HeaderRowInline =
         "<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Data</t></is></c><c r=\"B1\" t=\"inlineStr\"><is><t>Descrizione</t></is></c><c r=\"C1\" t=\"inlineStr\"><is><t>Importo</t></is></c></row>";
 
-    /// <summary>Runs the parser on a thread of its own and waits a while: a reader that never comes back must fail the test, not hold it.</summary>
     private static ParsedBankStatement ParseOrGiveUp(byte[] bytes)
     {
         var task = Task.Run(() => BankStatementParser.Parse(bytes));
@@ -161,7 +154,6 @@ public class BankStatementXlsxTests
     [Fact]
     public void Xlsx_AnEmptyInlineString_IsAnEmptyCell_AndTheReaderMovesOn()
     {
-        // «<is/>» has no end tag to stop on: a reader that read it again from the same place would never come back.
         var date = Serial(2026, 10, 3).ToString(CultureInfo.InvariantCulture);
         var bytes = RawWorkbook(
             HeaderRowInline
@@ -205,7 +197,6 @@ public class BankStatementXlsxTests
         var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         Assert.Equal("Canone", Assert.Single(statement.Credits).Description);
-        // As an XElement tree these runs would cost hundreds of MB; read as nodes they cost next to nothing.
         Assert.True(allocated < 64L * 1024 * 1024, $"The shared strings allocated {allocated / (1024 * 1024)} MB.");
     }
 
@@ -228,7 +219,6 @@ public class BankStatementXlsxTests
     [Fact]
     public void Xlsx_ASheetPartThatUnzipsToMoreThanTheLimit_IsRefused()
     {
-        // A workbook whose sheet is one cell of 48 MB and a little more of the same letter: a few dozen KB zipped, too large once unzipped.
         using var stream = new MemoryStream();
         using (var zip = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
         {
@@ -243,7 +233,6 @@ public class BankStatementXlsxTests
 
         var bytes = stream.ToArray();
 
-        // The file itself is small: it is the part that is large once unzipped.
         Assert.True(bytes.Length < BankStatementLimits.MaxFileBytes);
         var ex = Assert.Throws<DomainRuleException>(() => BankStatementParser.Parse(bytes));
 

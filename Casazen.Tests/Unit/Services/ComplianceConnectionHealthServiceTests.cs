@@ -42,20 +42,17 @@ public class ComplianceConnectionHealthServiceTests
         await using var db = OrgTeamTestData.NewDb(databaseName);
         var harness = new Harness(db, octorate);
 
-        // The API exposes nothing: unknown (the host is asked to confirm), never active, and every police field is null.
         Exposes(octorate, null, null, null);
         var nothing = await harness.Health.GetAsync(world.Connected, CancellationToken.None);
         Assert.Equal(ConnectionHealthState.Unknown, nothing.Alloggiati.State);
         Assert.Equal(SenderReasonCodes.PoliceNotExposed, nothing.Alloggiati.Reason);
         Assert.Equal<(bool?, bool?, DateTime?)>((null, null, null), (nothing.Alloggiati.ConnectionValid, nothing.Alloggiati.Autorun, nothing.Alloggiati.LastAutomaticRunAt));
 
-        // Half a proof is no proof: valid with the automatic send left out, and the other way round.
         Exposes(octorate, true, null, null);
         Assert.Equal(ConnectionHealthState.Unknown, (await harness.Health.GetAsync(world.Connected, CancellationToken.None)).Alloggiati.State);
         Exposes(octorate, null, true, null);
         Assert.Equal(ConnectionHealthState.Unknown, (await harness.Health.GetAsync(world.Connected, CancellationToken.None)).Alloggiati.State);
 
-        // Octorate says it does not send: inactive, with the reason.
         Exposes(octorate, false, true, null);
         var invalid = await harness.Health.GetAsync(world.Connected, CancellationToken.None);
         Assert.Equal((ConnectionHealthState.Inactive, SenderReasonCodes.PoliceAccountInvalid), (invalid.Alloggiati.State, invalid.Alloggiati.Reason));
@@ -63,14 +60,12 @@ public class ComplianceConnectionHealthServiceTests
         var autorunOff = await harness.Health.GetAsync(world.Connected, CancellationToken.None);
         Assert.Equal((ConnectionHealthState.Inactive, SenderReasonCodes.PoliceAutorunOff), (autorunOff.Alloggiati.State, autorunOff.Alloggiati.Reason));
 
-        // Octorate cannot be reached: a failure proves nothing, so unknown and not an error.
         octorate
             .Setup(o => o.GetPoliceAccountAsync(Accommodation, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new OctorateServerException(503));
         var down = await harness.Health.GetAsync(world.Connected, CancellationToken.None);
         Assert.Equal((ConnectionHealthState.Unknown, SenderReasonCodes.Unavailable), (down.Alloggiati.State, down.Alloggiati.Reason));
 
-        // Only both members true make it active, with the last run of the daily job.
         Exposes(octorate, true, true, lastCron);
         var active = await harness.Health.GetAsync(world.Connected, CancellationToken.None);
         Assert.Equal(ConnectionHealthState.Active, active.Alloggiati.State);
@@ -78,7 +73,6 @@ public class ComplianceConnectionHealthServiceTests
         Assert.Equal<(bool?, bool?, DateTime?)>((true, true, lastCron), (active.Alloggiati.ConnectionValid, active.Alloggiati.Autorun, active.Alloggiati.LastAutomaticRunAt));
         Assert.Equal(ComplianceSenderType.ChannelManager, active.Alloggiati.Sender);
 
-        // ISTAT follows Alloggiati: the same sender, state and readings.
         Assert.Equal(active.Alloggiati, active.Istat);
     }
 
@@ -91,7 +85,6 @@ public class ComplianceConnectionHealthServiceTests
         await using var db = OrgTeamTestData.NewDb(databaseName);
         var harness = new Harness(db, octorate);
 
-        // Not connected to a channel manager: the host sends (the default of PO-02).
         var manual = await harness.Health.GetAsync(world.NotConnected, CancellationToken.None);
         Assert.True(manual.Applies);
         Assert.Equal((ComplianceSenderType.Manual, ConnectionHealthState.Manual), (manual.Alloggiati.Sender, manual.Alloggiati.State));
@@ -106,7 +99,6 @@ public class ComplianceConnectionHealthServiceTests
         Assert.Equal(ConnectionHealthState.Manual, swiss.Alloggiati.State);
         Assert.Equal(ConnectionHealthState.Manual, swiss.Istat.State);
 
-        // Nothing was asked of Octorate for either.
         octorate.Verify(o => o.GetPoliceAccountAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -153,8 +145,6 @@ public class ComplianceConnectionHealthServiceTests
         var withCredentials = await harness.Health.GetAsync(world.Connected, CancellationToken.None);
         var without = await harness.Health.GetAsync(world.NotConnected, CancellationToken.None);
 
-        // They exist, and even a verification that passed does not make them usable: the verification is postponed, so CasaZen never
-        // says the receipts can be downloaded.
         Assert.True(withCredentials.CredentialsInCasaZen);
         Assert.False(withCredentials.CredentialsUsable);
         Assert.False(without.CredentialsInCasaZen);
@@ -190,7 +180,6 @@ public class ComplianceConnectionHealthServiceTests
         await db.SaveChangesAsync();
         var harness = new Harness(db, octorate, credentialsConfigured: [world.NotConnected]);
 
-        // Never verified: CasaZen cannot tell, and the sender is not available in this release.
         var unverified = await harness.Health.GetAsync(world.NotConnected, CancellationToken.None);
         Assert.Equal((ComplianceSenderType.CasaZen, ConnectionHealthState.Unknown, SenderReasonCodes.CasaZenNotAvailable),
             (unverified.Alloggiati.Sender, unverified.Alloggiati.State, unverified.Alloggiati.Reason));
@@ -200,7 +189,6 @@ public class ComplianceConnectionHealthServiceTests
         await db.SaveChangesAsync();
         Assert.Equal(ConnectionHealthState.Unknown, (await harness.Health.GetAsync(world.NotConnected, CancellationToken.None)).Alloggiati.State);
 
-        // The service refused them: inactive, with the reason.
         credentials.LastVerificationOk = false;
         await db.SaveChangesAsync();
         var refused = await harness.Health.GetAsync(world.NotConnected, CancellationToken.None);
@@ -235,7 +223,6 @@ public class ComplianceConnectionHealthServiceTests
         var healthLog = new CapturingLogger<ComplianceConnectionHealthService>();
         var harness = new Harness(db, octorate, credentialsConfigured: [world.Connected], senderLog: senderLog, healthLog: healthLog);
 
-        // The healthy read, and the reads that fail or leave members out (the paths that log): none may carry a secret.
         var health = await harness.Health.GetAsync(world.Connected, CancellationToken.None);
         octorate
             .Setup(o => o.GetPoliceAccountAsync(Accommodation, It.IsAny<CancellationToken>()))
@@ -259,7 +246,6 @@ public class ComplianceConnectionHealthServiceTests
         foreach (var secret in new[] { username, password, wsKey, octorateToken })
             Assert.DoesNotContain(everything, text => text.Contains(secret, StringComparison.Ordinal));
 
-        // The shape says it too: no member of the answer is a credential, a token or a key; the credentials are only said to exist.
         string[] forbidden = ["password", "username", "wskey", "token", "secret", "apikey"];
         foreach (var type in new[] { typeof(ComplianceConnectionHealthDto), typeof(ConnectionHealthLineDto), typeof(ComplianceConnectionHealth), typeof(ConnectionHealthLine) })
         {
@@ -295,7 +281,6 @@ public class ComplianceConnectionHealthServiceTests
         Assert.Equal(2, waiting.Count);
         Assert.All(waiting, h => Assert.Equal(ConnectionHealthState.Unknown, h.Alloggiati.State));
 
-        // The second call reuses what it knows and reads the rest; the third reads nothing.
         var second = await harness.Health.GetManyAsync(ids, CancellationToken.None);
         Assert.DoesNotContain(second.Values, h => h.Alloggiati.Reason == ComplianceConnectionHealthRules.NotCheckedYetReason);
         Assert.Equal(7, second.Count);
@@ -303,7 +288,6 @@ public class ComplianceConnectionHealthServiceTests
         Assert.Equal(7, third.Count);
         octorate.Verify(o => o.GetPoliceAccountAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(7));
 
-        // An empty list is nothing, never "everything".
         Assert.Empty(await harness.Health.GetManyAsync([], CancellationToken.None));
     }
 
@@ -328,8 +312,6 @@ public class ComplianceConnectionHealthServiceTests
             .ToList();
         Assert.Equal(2, notReadYet.Count);
 
-        // The answers expire (five minutes pass) but the moment each was read is remembered: the next call starts with the two that were left out, the
-        // ones a fixed order would leave out again and again.
         foreach (var id in ids)
             harness.Cache.Remove(ComplianceConnectionHealthService.CacheKeyOf(id));
 
@@ -339,8 +321,6 @@ public class ComplianceConnectionHealthServiceTests
         Assert.Equal(2, second.Values.Count(h => h.Alloggiati.Reason == ComplianceConnectionHealthRules.NotCheckedYetReason));
     }
 
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────────
-
     private static void Exposes(Mock<IOctorateApiClient> octorate, bool? valid, bool? autorun, DateTime? lastCron) =>
         octorate
             .Setup(o => o.GetPoliceAccountAsync(Accommodation, It.IsAny<CancellationToken>()))
@@ -349,7 +329,6 @@ public class ComplianceConnectionHealthServiceTests
     private static AppDbContext TenantDb(string databaseName, Guid orgId) =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(databaseName).Options, new FixedTenant(orgId));
 
-    /// <summary>The services over one context, with the clock, Octorate and the logs under the test's control.</summary>
     private sealed class Harness
     {
         public Harness(
@@ -408,7 +387,6 @@ public class ComplianceConnectionHealthServiceTests
         public bool FilterEnabled => true;
     }
 
-    /// <summary>One org with a property confirmed on a connected Octorate account (the one of <see cref="Accommodation"/>), one that is not, one in Switzerland.</summary>
     private static async Task<World> SeedAsync(string databaseName, int extraConnected = 0)
     {
         await using var db = OrgTeamTestData.NewDb(databaseName);
@@ -435,7 +413,6 @@ public class ComplianceConnectionHealthServiceTests
         return new World(org.Id, connected.Id, notConnected.Id, swiss.Id, [connected.Id, .. others]);
     }
 
-    /// <summary>A property of another org, with a confirmed listing like the others: the caller must never read it.</summary>
     private static async Task<Guid> SeedForeignOrgAsync(string databaseName)
     {
         await using var db = OrgTeamTestData.NewDb(databaseName);

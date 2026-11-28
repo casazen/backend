@@ -76,7 +76,6 @@ public sealed class BillingSetupService(
             };
         }
 
-        // Every field the payload carries belongs to the section: a step never saves another step's answers by the way.
         var provided = payload.ProvidedFields();
         var allowed = BillingSetupSections.FieldsOf(name);
         var strays = provided.Where(field => !allowed.Contains(field)).ToList();
@@ -87,7 +86,6 @@ public sealed class BillingSetupService(
         if (provided.Count == 0)
             return await SectionAfterAsync(orgId, name, current, ct);
 
-        // The step «Emissione» confirms itself while the profile can issue; one already confirmed keeps its time (the same answers saved again change nothing).
         var command = Merge(current, payload);
         var saved = name == BillingSetupSections.Automation && current.ConfirmedAt is null
             ? await SaveConfirmingAsync(orgId, command, updatedByUserId, ct)
@@ -153,7 +151,6 @@ public sealed class BillingSetupService(
             VirtualStampConfirmed = payload.VirtualStampConfirmed ?? issuer.VirtualStampConfirmed,
         };
 
-        // A regime is the regime of a country: the one chosen for the country the issuer had does not follow it to another.
         var country = CountryOf(command.CountryCode);
         if (command.Regime is { } kept && !FiscalDocumentRules.IsRegimeOfCountry(kept, country))
             command = command with { Regime = null };
@@ -164,7 +161,6 @@ public sealed class BillingSetupService(
         else if (payload.VatRegistered is { } registered && RegimeOfRegistration(country, registered) is { } told)
             command = command with { Regime = told };
 
-        // The registration follows the regime; without one it is what the issuer answered (the answer of the payload, else the one it had).
         var vatRegistered = payload.VatRegistered;
         if (vatRegistered is null && command.Regime is null)
             vatRegistered = issuer.VatRegistered;
@@ -181,10 +177,6 @@ public sealed class BillingSetupService(
         return registered ? null : DocumentRegime.PrivatePerson;
     }
 
-    /// <summary>
-    /// Saves the step of the automatic issue and confirms it when the profile can issue; a profile that cannot yet is saved as a draft (the issuer service refuses
-    /// the confirmation before it writes anything), and the item <c>auto_issue_unconfirmed</c> stays until the step is saved again with a complete profile.
-    /// </summary>
     private async Task<IssuerSettingsView> SaveConfirmingAsync(Guid orgId, SaveIssuerSettingsCommand command, string? updatedByUserId, CancellationToken ct)
     {
         try
@@ -197,7 +189,6 @@ public sealed class BillingSetupService(
         }
     }
 
-    /// <summary>The section as it is after a save (or as it is, when nothing was saved), from the setting the save answered.</summary>
     private async Task<BillingSetupSection> SectionAfterAsync(Guid orgId, string name, IssuerSettingsView view, CancellationToken ct)
     {
         var evaluations = await EvaluateAsync(orgId, new SettingReader(issuers, orgId, view), [name], ct);
@@ -205,10 +196,6 @@ public sealed class BillingSetupService(
         return SectionOf(evaluations.Single(), view, null, italianTax);
     }
 
-    /// <summary>
-    /// The section with its values: the ones of the profile of the issuer, for <c>channels</c> the defaults of the portal accounts (E14/F01/US01/T01), and for <c>touristTax</c> of an Italian issuer
-    /// the read-only proposals and hint of <see cref="IItalianTouristTaxSetup"/> (<paramref name="italianTax"/>).
-    /// </summary>
     private BillingSetupSection SectionOf(
         Evaluation evaluation,
         IssuerSettingsView view,
@@ -248,11 +235,6 @@ public sealed class BillingSetupService(
         };
     }
 
-    /// <summary>
-    /// The values of the section <c>channels</c> the owner invoice adds (E14/F01/US01/T01, ⚖ I10, I11): who holds the accounts of the portals by default and
-    /// whether their commissions are recharged, saved by <c>PUT api/billing-setup/channels</c>; <c>null</c> without the settings of the portal accounts and while
-    /// <c>Features:OwnerInvoicing</c> is off (the endpoints that save them answer 404 then, so the section shows nothing it could not save).
-    /// </summary>
     private async Task<IReadOnlyDictionary<string, object?>?> ChannelValuesAsync(Guid orgId, CancellationToken ct)
     {
         if (portalAccounts is null || featureFlags?.IsEnabled(FeatureFlags.OwnerInvoicing) != true)
@@ -266,10 +248,6 @@ public sealed class BillingSetupService(
         };
     }
 
-    /// <summary>
-    /// The sections asked (all when <paramref name="only"/> is <c>null</c>), in the order of the wizard and then the ones an epic added, each with the items of its
-    /// contributors in the order they were registered. A section with no contributor, or whose only contributors say it does not apply, does not apply.
-    /// </summary>
     private async Task<IReadOnlyList<Evaluation>> EvaluateAsync(Guid orgId, SettingReader setting, IReadOnlyCollection<string>? only, CancellationToken ct)
     {
         var wanted = only?.Select(NameOf).ToHashSet(StringComparer.Ordinal);
@@ -297,7 +275,6 @@ public sealed class BillingSetupService(
                 }
                 else
                 {
-                    // A contributor of another epic with nothing to look at for this organization neither counts nor makes its section apply.
                     if (!await contributor.AppliesAsync(orgId, ct))
                         continue;
 
@@ -316,7 +293,6 @@ public sealed class BillingSetupService(
 
     private static string NameOf(string? section) => BillingSetupSections.Of(section) ?? section?.Trim() ?? string.Empty;
 
-    /// <summary>The country as the issuer service stores it: upper case, Italy when blank.</summary>
     private static string CountryOf(string? countryCode) =>
         string.IsNullOrWhiteSpace(countryCode) ? OrgFiscalIssuerProfile.DefaultCountryCode : countryCode.Trim().ToUpperInvariant();
 
@@ -328,7 +304,6 @@ public sealed class BillingSetupService(
     /// </summary>
     private IReadOnlyList<string> PlatformDefaultsOf(string? countryCode) => [.. DefaultChannelsOf(countryCode).Select(source => source.ToString())];
 
-    /// <summary>The default portals of the country of an issuer that has confirmed none (see <see cref="PlatformDefaultsOf"/>), as the guest documents read them.</summary>
     private IReadOnlyList<BookingSource> DefaultChannelsOf(string? countryCode)
     {
         if (documentLines is null)
@@ -338,7 +313,6 @@ public sealed class BillingSetupService(
         return documentLines.PlatformCollectedChannelsOf(unconfirmed);
     }
 
-    /// <summary>What is saved in a section, by the names of <see cref="BillingSetupFields"/>; the bank accounts of the issuer are in none. A section no epic fills here has none.</summary>
     private Dictionary<string, object?> ValuesOf(string section, IssuerSettingsView view)
     {
         var issuer = view.Issuer;
@@ -356,7 +330,6 @@ public sealed class BillingSetupService(
                     [BillingSetupFields.Province] = issuer.Province,
                     [BillingSetupFields.SwissVatNumber] = issuer.SwissVatNumber,
 
-                    // The Italian tax ids are those of the organization (its tax profile): read here, never copied.
                     ["vatNumber"] = view.VatNumber,
                     ["fiscalCode"] = view.FiscalCode,
                 };
@@ -388,8 +361,6 @@ public sealed class BillingSetupService(
                         ? issuer.PlatformCollectedTouristTaxChannels.Select(source => source.ToString()).ToList()
                         : null,
 
-                    // The portals that collect it by default while the issuer has confirmed none (the shipped default of a Swiss issuer, ItalianTouristTax:PlatformCollected, none by
-                    // default, for an Italian one): the wizard asks about the portals that are not on it, not about all of them. Read, never saved; the issuer's own answer is the field above.
                     [DefaultPlatformCollectedTouristTaxChannels] = PlatformDefaultsOf(issuer.CountryCode),
                 };
             case BillingSetupSections.Automation:
@@ -411,7 +382,6 @@ public sealed class BillingSetupService(
         }
     }
 
-    /// <summary>A refusal with the code of the first failure and the list of the fields, in the shape of the issuer setting (<c>field</c> and <c>errors</c>).</summary>
     private static DomainRuleException Refusal(string code, string messageKey, IReadOnlyList<string> fields) =>
         new(code, messageKey)
         {
@@ -422,10 +392,8 @@ public sealed class BillingSetupService(
             },
         };
 
-    /// <summary>What one section found: whether it applies, and its missing items.</summary>
     private sealed record Evaluation(string Section, bool Applies, IReadOnlyList<BillingSetupItem> Items);
 
-    /// <summary>The setting of the organization, read at most once for all the contributors that need it (or given, when the caller has just read or saved it).</summary>
     private sealed class SettingReader(IDocumentIssuerService issuers, Guid orgId, IssuerSettingsView? known)
     {
         private IssuerSettingsView? _view = known;

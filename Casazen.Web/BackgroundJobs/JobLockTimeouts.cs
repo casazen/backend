@@ -11,9 +11,7 @@ namespace Casazen.Web.BackgroundJobs;
 /// </summary>
 public static class JobLockTimeouts
 {
-    /// <summary>Jobs that run every 5–15 minutes: wait briefly, the next occurrence comes soon anyway.</summary>
     public const int FrequentSeconds = 60;
 
-    /// <summary>Hourly, daily and on-demand jobs.</summary>
     public const int DefaultSeconds = 300;
 }

@@ -20,13 +20,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.BackgroundJobs;
 
-/// <summary>
-/// Daily check-in link job and the link email job (US-020, CO-09): a failed email keeps the link usable and tells the host
-/// (A5-26), an expired link is replaced (A5-27), complete guest data needs no link.
-/// </summary>
 public class GuestCheckInSendJobTests
 {
-    /// <summary>casazen/backend#978: an org whose links the host sends (manual booking flow) gets no link from the daily job.</summary>
     [Fact]
     public async Task ExecuteAsync_OrgFlowManual_IssuesNoLink()
     {
@@ -42,7 +37,6 @@ public class GuestCheckInSendJobTests
         Assert.Empty(harness.QueuedJobs);
     }
 
-    /// <summary>casazen/backend#978: the days before the arrival are the org's (here 5, beyond the default window of 3), never beyond them.</summary>
     [Fact]
     public async Task ExecuteAsync_OrgFlowFiveDaysBefore_IssuesLinksWithinTheOrgWindowOnly()
     {
@@ -60,7 +54,6 @@ public class GuestCheckInSendJobTests
         Assert.False(await db.GuestCheckInSessions.AnyAsync(s => s.BookingId == beyondOrgWindow.Id));
     }
 
-    /// <summary>casazen/backend#978: an org that never saved its flow is automatic, with the default window (3 days).</summary>
     [Fact]
     public async Task ExecuteAsync_OrgWithoutFlow_SendsWithTheDefaultWindow()
     {
@@ -94,10 +87,6 @@ public class GuestCheckInSendJobTests
         harness.Email.Verify(s => s.SendEmailAsync(booking.Guest.Email, It.IsAny<string>(), It.IsAny<string>()), Times.Once);
     }
 
-    /// <summary>
-    /// QA-CLOCK: the send window is a Europe/Rome calendar window (today .. today + SendWindowDays) at any hour of the run.
-    /// At 23:30 UTC Rome is already on the next day: an instant bound (now + days) dropped the last day of the window.
-    /// </summary>
     [Theory]
     [InlineData("2026-09-24T12:00:00Z")]
     [InlineData("2026-09-24T23:30:00Z")]
@@ -307,10 +296,6 @@ public class GuestCheckInSendJobTests
         Assert.Equal(GuestCheckInSessionStatus.Inviato, session.Status);
     }
 
-    /// <summary>
-    /// NF-40, AC-NF40-3: a guest who never opened the link gets ONE reminder before arrival, with a new link in the language chosen on the
-    /// page, whatever the number of runs: two runs on the same day and a run the next day queue one reminder for the stay.
-    /// </summary>
     [Fact]
     public async Task GuestCheckInReminder_OneReminderPerStay_Test()
     {
@@ -333,16 +318,11 @@ public class GuestCheckInSendJobTests
         Assert.Single(today.QueuedJobs);
         Assert.Empty(tomorrow.QueuedJobs);
 
-        // The email of that link is the reminder, in the guest's language.
         await today.RunQueuedEmailJobsAsync();
         var (_, subject, _) = Assert.Single(today.SentEmails);
         Assert.StartsWith("Erinnerung", subject, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// NF-40, AC-NF40-3 (privacy): the reminder is transactional. It goes to the booker's contact e-mail only (never to the marketing address
-    /// the booker gave for the offers) and carries no marketing block: the check-in link is its only link, with no offer nor unsubscribe text.
-    /// </summary>
     [Fact]
     public async Task GuestCheckInReminder_OnlyBookerContact_NoMarketing_Test()
     {
@@ -382,14 +362,9 @@ public class GuestCheckInSendJobTests
         Assert.DoesNotContain("offert", html, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// 08:00 UTC of a day near today in Rome (the email job checks the link against the real clock): the time of the daily run, on the Rome
-    /// calendar date (QA-CLOCK).
-    /// </summary>
     private static FixedTimeProvider ClockAtEightUtc(int daysFromToday) =>
         new(new DateTimeOffset(TimeProvider.System.TodayInRome().AddDays(daysFromToday).AddHours(8), TimeSpan.Zero));
 
-    /// <summary>A link the guest received two days before the run and never opened.</summary>
     private static GuestCheckInSession EarlierLink(Booking booking, TimeProvider clock, string? language)
     {
         var now = clock.GetUtcNow().UtcDateTime;
@@ -429,7 +404,6 @@ public class GuestCheckInSendJobTests
         EnteredByUserId = "auth0|owner",
     };
 
-    /// <summary>Real services on the in-memory database; Hangfire and the email provider are recorded.</summary>
     private sealed class Harness
     {
         private readonly AppDbContext _db;

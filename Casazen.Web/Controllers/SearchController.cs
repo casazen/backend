@@ -30,13 +30,6 @@ public class SearchController(
     ISearchAccessResolver accessResolver,
     IGlobalSearchService searchService) : ControllerBase
 {
-    /// <summary>
-    /// Results grouped by kind. <c>q</c> is the term (2 to 64 characters; case and accents do not matter; each word is looked for
-    /// at the beginning of the words of a name, a city, a code); <c>limit</c> is the most results per group (default 5, at most 20).
-    /// </summary>
-    /// <response code="200">The groups with results, possibly none.</response>
-    /// <response code="400"><c>search_query_too_short</c> or <c>search_query_too_long</c>.</response>
-    /// <response code="429"><c>rate_limited</c>.</response>
     [HttpGet]
     [ProducesResponseType(typeof(GlobalSearchResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -65,7 +58,6 @@ public class SearchController(
                 SearchText.MaxQueryLength);
         }
 
-        // The answer holds names of people: never kept by a cache or the browser history.
         Response.Headers.CacheControl = "private, no-store";
 
         var query = SearchText.Parse(term);

@@ -4,10 +4,6 @@ using Casazen.Core.Models;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// Service for automation routine execution (NF-21, NF-26, ADR-022): the engine behind the event bus. The routines themselves are created,
-/// changed and read through <c>IRoutineManagementService</c> (E01/F04/US01/T03).
-/// </summary>
 public interface IRoutineService
 {
     /// <summary>

@@ -19,7 +19,6 @@ public class GuestContactEncryptionPostgresTests
     private const string Phone = "+393331234567";
     private const string DisplayName = "Mario Rossi";
 
-    // Whole values and pieces of them that cannot appear by chance in a base64url payload (a dot, a plus sign, a space, ten digits).
     private static readonly string[] Secrets = [Email, Phone, DisplayName, "mario.rossi", "3331234567"];
 
     [PostgresFact]
@@ -72,7 +71,6 @@ public class GuestContactEncryptionPostgresTests
             orgId = org.Id;
         }
 
-        // The table itself, whatever EF would have made of it: a context without Data Protection reads the stored text.
         await using var stored = database.CreateContext();
         var values = await stored.Database.SqlQueryRaw<string>("SELECT \"Value\" AS \"Value\" FROM \"GuestContacts\"").ToListAsync();
         var names = await stored.Database
@@ -88,12 +86,10 @@ public class GuestContactEncryptionPostgresTests
                 Assert.DoesNotContain(secret, column, StringComparison.OrdinalIgnoreCase);
         });
 
-        // The same through the model of a context without Data Protection: the columns hold the payload, and the keyed hash is what finds the row.
         var rows = await stored.GuestContacts.IgnoreQueryFilters().AsNoTracking().Where(c => c.OrgId == orgId).ToListAsync();
         Assert.All(rows, row => Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, row.Value, StringComparison.Ordinal));
         Assert.Equal(new[] { emailHash, phoneHash }, rows.Select(c => c.ValueHash).Order().ToArray());
 
-        // Read through EF with Data Protection the clear values come back, found by the hash.
         await using var reader = new AppDbContext(database.CreateOptions(), tenantContext: null, provider);
         var email = await reader.GuestContacts.IgnoreQueryFilters().AsNoTracking()
             .SingleAsync(c => c.OrgId == orgId && c.Channel == GuestContactChannel.Email && c.ValueHash == emailHash);

@@ -21,15 +21,8 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IOwnerIssuerProfileService
 {
-    /// <summary>The profile of the owner, or the empty one of an owner that has none (<see cref="OwnerIssuerProfileView.ProfileId"/> <c>null</c>).</summary>
     Task<OwnerIssuerProfileView> GetAsync(HostScope scope, Guid ownerId, CancellationToken ct = default);
 
-    /// <summary>
-    /// Saves the profile of the owner as a whole (made at the first save): what is left out is cleared. 404 <c>owner_not_found</c>; 422
-    /// <c>document_issuance_not_available</c>, <c>issuer_field_invalid</c> (with the <c>field</c> and the <c>errors</c>), <c>issuer_regime_country_mismatch</c>.
-    /// An incomplete profile is saved and says what is missing (<see cref="OwnerIssuerProfileView.MissingFields"/>): nothing is issued on it until it is complete.
-    /// A refused save changes nothing.
-    /// </summary>
     Task<OwnerIssuerProfileView> SaveAsync(Guid orgId, Guid ownerId, SaveOwnerIssuerProfileCommand command, string? userId, CancellationToken ct = default);
 }
 
@@ -40,12 +33,10 @@ public interface IOwnerIssuerProfileService
 /// </summary>
 public sealed record SaveOwnerIssuerProfileCommand
 {
-    /// <summary><c>PrivatePerson</c>, <c>VatOrdinary</c>, <c>VatFlatRate</c> (Italy), <c>SwissVatRegistered</c> or <c>SwissNotRegistered</c> (Switzerland).</summary>
     public DocumentRegime? Regime { get; init; }
 
     public string? LegalName { get; init; }
 
-    /// <summary>The Italian fiscal code of the owner: 16 characters for a person, 11 digits for a company.</summary>
     public string? FiscalCode { get; init; }
 
     /// <summary>The Italian VAT number of a company or of a professional owner (11 digits, with or without <c>IT</c>).</summary>
@@ -63,28 +54,20 @@ public sealed record SaveOwnerIssuerProfileCommand
 
     public string? Province { get; init; }
 
-    /// <summary><c>IT</c> by default; <c>CH</c> for a Swiss owner.</summary>
     public string? CountryCode { get; init; }
 
-    /// <summary>The VAT of the stay (⚖ I1): <c>Standard</c> (the default) or <c>ExemptArt10</c>.</summary>
     public StayVatTreatment? StayVatTreatment { get; init; }
 
-    /// <summary>The series pattern of the owner's own documents (its sezionale, <c>{year}</c> is the year of the issue); <c>null</c> = the year.</summary>
     public string? GuestDocumentSeries { get; init; }
 
-    /// <summary>The authorization of the virtual stamp duty of the owner or the number of the physical stamp (⚖ I4).</summary>
     public string? StampDutyReference { get; init; }
 
-    /// <summary>The code of the owner's own SDI channel.</summary>
     public string? IssuerSdiRecipientCode { get; init; }
 
-    /// <summary>The PEC of the owner.</summary>
     public string? IssuerPec { get; init; }
 
-    /// <summary>The UID of a registered Swiss owner.</summary>
     public string? SwissVatNumber { get; init; }
 
-    /// <summary>A Swiss owner: the agency chose «emette il proprietario» (⚖ C1). Ignored in Italy, where the owner always issues.</summary>
     public bool StayIssuedByOwner { get; init; }
 }
 
@@ -113,7 +96,6 @@ public sealed record OwnerIssuerProfileView(
     FiscalTaxRule? Rule,
     DateTime? UpdatedAt)
 {
-    /// <summary>The owner has a profile that can issue: one exists and nothing is missing.</summary>
     public bool CanIssue => ProfileId is not null && MissingFields.Count == 0;
 }
 
@@ -123,7 +105,6 @@ public sealed record OwnerIssuerProfileView(
 /// </summary>
 public static class OwnerIssuerProfileRules
 {
-    /// <summary>The fields <paramref name="profile"/> still misses (<see cref="IssuerFields"/>); <paramref name="ruleRegimeCode"/> is the regime code of the tax rule in force.</summary>
     public static IReadOnlyList<string> MissingFields(OrgFiscalIssuerProfile profile, string? ruleRegimeCode)
     {
         ArgumentNullException.ThrowIfNull(profile);
@@ -133,7 +114,6 @@ public static class OwnerIssuerProfileRules
         return FiscalDocumentRules.MissingIssuerFields(DataOf(profile), profile.DocumentRegime, effectiveRegimeCode, profile.VatNumber, profile.FiscalCode);
     }
 
-    /// <summary>The data of a stored profile as the wizard shows it.</summary>
     public static IssuerData DataOf(OrgFiscalIssuerProfile profile)
     {
         ArgumentNullException.ThrowIfNull(profile);

@@ -5,11 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// Verifies that security-critical [Authorize] attributes are present on all protected controllers.
-/// Guards against accidental removal or commenting-out of authorization during debugging.
-/// See GitHub issues #95, #99-#104.
-/// </summary>
 public class AuthorizationAttributeTests
 {
     [Theory]
@@ -22,12 +17,10 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(OtaIntegrationsController))]
     public void Controller_MustHaveAuthorizeAttribute(Type controllerType)
     {
-        // Arrange & Act
         var authorizeAttr = controllerType
             .GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true)
             .FirstOrDefault();
 
-        // Assert
         Assert.True(
             authorizeAttr is not null,
             $"{controllerType.Name} is missing [Authorize] attribute. " +
@@ -36,10 +29,6 @@ public class AuthorizationAttributeTests
         );
     }
 
-    /// <summary>
-    /// TN-3: host controllers carry a context read permission at class level, never the old "PropertyOwner" policy
-    /// (which only required a signed-in user, suppliers included).
-    /// </summary>
     [Theory]
     [InlineData(typeof(PropertiesController), CasazenPolicies.SharedPropertyRead)]
     [InlineData(typeof(PropertyModeController), CasazenPolicies.SharedPropertyRead)]
@@ -55,14 +44,10 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(AlloggiatiController), CasazenPolicies.BookingRead)]
     [InlineData(typeof(ComplianceController), CasazenPolicies.BookingRead)]
     [InlineData(typeof(FiscalController), CasazenPolicies.PropertyRead)]
-    // AM-03: the fiscal area is about money, so it needs payment.read too (a collaborator reads properties, not payments).
     [InlineData(typeof(FiscalController), CasazenPolicies.PaymentRead)]
-    // AM-03, E06/F03/US03/T01: the list of the fiscal documents and its CSV and Excel files are money and the names of the customers, so payment.read too.
     [InlineData(typeof(FiscalDocumentsController), CasazenPolicies.PaymentRead)]
     [InlineData(typeof(FiscalDocumentExportsController), CasazenPolicies.PaymentRead)]
-    // SR-10: the reports are money in aggregate, so payment.read too (SR-D7).
     [InlineData(typeof(ReportsController), CasazenPolicies.PaymentRead)]
-    // NF-97, NF-98, E07/F03/US02: the money collected, the balances to collect and what each channel costs are money in aggregate too, so payment.read.
     [InlineData(typeof(CollectionsReportsController), CasazenPolicies.PaymentRead)]
     [InlineData(typeof(ChannelCostsReportsController), CasazenPolicies.PaymentRead)]
     [InlineData(typeof(LeasesController), CasazenPolicies.LeaseRead)]
@@ -72,7 +57,6 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(LongRentAgendaController), CasazenPolicies.LeaseRead)]
     [InlineData(typeof(LongRentTenantsController), CasazenPolicies.LeaseRead)]
     [InlineData(typeof(LongRentPropertiesController), CasazenPolicies.LongRentPropertyRead)]
-    // LR-12: the guided draft carries the parties in clear, so even its reads need the permission to create a lease.
     [InlineData(typeof(LeaseDraftsController), CasazenPolicies.LeaseCreate)]
     public void HostController_ClassPolicyIsAContextReadPermission(Type controllerType, string expectedPolicy)
     {
@@ -121,14 +105,12 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(LongRentRentsController), nameof(LongRentRentsController.SendReminders), "RequireContext:long-rent:lease.create")]
     [InlineData(typeof(LongRentLeaseSetupController), nameof(LongRentLeaseSetupController.GetRules), "RequireContext:long-rent:lease.read")]
     [InlineData(typeof(LongRentLeaseSetupController), nameof(LongRentLeaseSetupController.GetLandlordDefaults), "RequireContext:long-rent:lease.create")]
-    // LR-09: the copy of a tenant's data (in clear) and the erasure request need lease.create on top of the class's lease.read.
     [InlineData(typeof(LongRentTenantsController), nameof(LongRentTenantsController.Export), "RequireContext:long-rent:lease.create")]
     [InlineData(typeof(LongRentTenantsController), nameof(LongRentTenantsController.RequestErasure), "RequireContext:long-rent:lease.create")]
     [InlineData(typeof(OtaIntegrationsController), nameof(OtaIntegrationsController.Create), "RequireContext:short-rent:ota.write")]
     [InlineData(typeof(PropertyModeController), nameof(PropertyModeController.Preview), "RequireContext:short-rent|long-rent:property.write")]
     [InlineData(typeof(PropertyModeController), nameof(PropertyModeController.Schedule), "RequireContext:short-rent|long-rent:property.write")]
     [InlineData(typeof(PropertyModeController), nameof(PropertyModeController.Cancel), "RequireContext:short-rent|long-rent:property.write")]
-    // AM-03: the finer permissions carved out of the broad ones.
     [InlineData(typeof(GuestsController), nameof(GuestsController.Delete), "RequireContext:short-rent:guest.manage")]
     [InlineData(typeof(AlloggiatiController), nameof(AlloggiatiController.ReplaceStayGuests), "RequireContext:short-rent:alloggiati.submit")]
     [InlineData(typeof(AlloggiatiController), nameof(AlloggiatiController.MarkSentManually), "RequireContext:short-rent:alloggiati.submit")]

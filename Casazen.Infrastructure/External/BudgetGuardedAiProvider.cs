@@ -33,7 +33,6 @@ public sealed class BudgetGuardedAiProvider(
         }
         catch
         {
-            // The prompt may have been processed before the failure (e.g. a timeout): count it, not the completion.
             await SettleSafelyAsync(reservation, AiTokenEstimator.Estimate(prompt));
             throw;
         }
@@ -58,11 +57,6 @@ public sealed class BudgetGuardedAiProvider(
         };
     }
 
-    /// <summary>
-    /// The same guard for a call with instructions and images: the reservation counts every image
-    /// (<see cref="AiTokenEstimator.TokensPerImage"/>), and so does the estimate of a provider that reports no usage — only the
-    /// images the model actually received.
-    /// </summary>
     public async Task<AiGenerationResult> GenerateAsync(
         AiRequest request,
         AiModelTier tier,
@@ -109,10 +103,6 @@ public sealed class BudgetGuardedAiProvider(
         };
     }
 
-    /// <summary>
-    /// Settles even when the caller's request was cancelled: the tokens were spent anyway. A failed settlement leaves
-    /// the (higher) reservation in place, which errs on the side of the cap.
-    /// </summary>
     private async Task SettleSafelyAsync(AiBudgetReservation reservation, long usedTokens)
     {
         try

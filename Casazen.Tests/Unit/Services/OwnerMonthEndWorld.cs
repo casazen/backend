@@ -10,13 +10,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// An agency (Switzerland and Italy) with its owners, properties, stays and payments, and the owner accounting, the bulk month-end and the reconciliation over one in-memory
-/// database (E13/F01/US03): the world of the tests of the month-end in bulk and of the reconciliation. The clock is the 14th of November 2026, so October 2026 is over.
-/// </summary>
 internal sealed class OwnerMonthEndWorld
 {
-    /// <summary>The user the steps are run as.</summary>
     public const string UserId = "auth0|test-agency";
 
     private OwnerMonthEndWorld(AppDbContext db, Guid orgId, FakeTimeProvider clock, IOwnerStatementDocuments? files)
@@ -29,7 +24,6 @@ internal sealed class OwnerMonthEndWorld
             defaults.ChannelCommissionDefaults[channel] = percent;
         var options = Microsoft.Extensions.Options.Options.Create(defaults);
         Fiscal = new OwnerFiscalProfileService(db, clock, NullLogger<OwnerFiscalProfileService>.Instance);
-        // The posting reads who holds the portal accounts, as the container builds it (FIX/BE-V2-NO-RECHARGE): an agency that sets none is V1 everywhere.
         Service = new OwnerAccountingService(
             db, Fiscal, clock, NullLogger<OwnerAccountingService>.Instance, options, files, holders: new PortalAccountHolderResolver(db));
         Reconciliation = new OwnerReconciliationService(db, NullLogger<OwnerReconciliationService>.Instance);
@@ -47,7 +41,6 @@ internal sealed class OwnerMonthEndWorld
 
     public OwnerReconciliationService Reconciliation { get; }
 
-    /// <summary>A new agency over its own database, or over the database of another (a second org in the same database).</summary>
     public static Task<OwnerMonthEndWorld> CreateAsync(IOwnerStatementDocuments? files = null, OwnerMonthEndWorld? sameDatabaseAs = null)
     {
         var db = sameDatabaseAs?.Db ?? new AppDbContext(
@@ -60,7 +53,6 @@ internal sealed class OwnerMonthEndWorld
 
     public static DateTime Day(int month, int day) => new(2026, month, day, 0, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>An owner with a complete profile from January and the approved rule set of its jurisdiction (created once for the agency).</summary>
     public async Task<Guid> OwnerAsync(string jurisdiction = "CH", string currency = "CHF")
     {
         var owner = new PropertyOwner { OrgId = OrgId, FirstName = "TEST", LastName = "Proprietario", Email = $"{Guid.NewGuid():N}@example.com" };
@@ -101,7 +93,6 @@ internal sealed class OwnerMonthEndWorld
         return owner.Id;
     }
 
-    /// <summary>An owner with no fiscal profile: the financial operations cannot resolve it.</summary>
     public async Task<Guid> OwnerWithoutProfileAsync()
     {
         var owner = new PropertyOwner { OrgId = OrgId, FirstName = "TEST", LastName = "Senza profilo", Email = $"{Guid.NewGuid():N}@example.com" };
@@ -110,7 +101,6 @@ internal sealed class OwnerMonthEndWorld
         return owner.Id;
     }
 
-    /// <summary>A property in the currency, owned from January by the given owners.</summary>
     public async Task<Guid> PropertyAsync(string currency, params (Guid Owner, decimal Share)[] owners)
     {
         var property = new Property { OrgId = OrgId, OwnerId = "auth0|agency", Name = "TEST Casa", Address = "Via 1", City = currency == "CHF" ? "Lugano" : "Como", Currency = currency };
@@ -131,7 +121,6 @@ internal sealed class OwnerMonthEndWorld
         return property.Id;
     }
 
-    /// <summary>A mandate of the owner from January for all its properties.</summary>
     public async Task MandateAsync(Guid owner, decimal commission)
     {
         Db.OwnerMandates.Add(new OwnerMandate
@@ -145,9 +134,6 @@ internal sealed class OwnerMonthEndWorld
         await Db.SaveChangesAsync();
     }
 
-    /// <summary>
-    /// A stay: its gross without the tourist tax (the cleaning in it), the tourist tax, and what the channel manager reported for it (the commission, the net, who collected).
-    /// </summary>
     public async Task<Guid> StayAsync(
         Guid property,
         BookingSource source,
@@ -185,7 +171,6 @@ internal sealed class OwnerMonthEndWorld
         return booking.Id;
     }
 
-    /// <summary>A completed payment recorded on the booking (by hand: a bank transfer).</summary>
     public async Task<Guid> PaymentAsync(Guid booking, decimal amount, DateTime paidAt)
     {
         var payment = new Payment
@@ -204,7 +189,6 @@ internal sealed class OwnerMonthEndWorld
         return payment.Id;
     }
 
-    /// <summary>A legacy statement of October for the owner paid by a wire batch marked paid in November.</summary>
     public async Task PaidWireAsync(Guid owner, Guid property, decimal amount, string currency = "CHF")
     {
         var statement = new OwnerStatement
@@ -234,7 +218,6 @@ internal sealed class OwnerMonthEndWorld
         await Db.SaveChangesAsync();
     }
 
-    /// <summary>One bulk step of October 2026 for the owners (the clock moves on a minute first, so what a step posts is after what a step before it cut).</summary>
     public async Task<IReadOnlyList<OwnerBulkOwnerResult>> BulkAsync(OwnerBulkAction action, params Guid[] owners)
     {
         Clock.Advance(TimeSpan.FromMinutes(1));
@@ -242,7 +225,6 @@ internal sealed class OwnerMonthEndWorld
         return await Service.RunBulkAsync(OrgId, 2026, 10, action, owners, UserId);
     }
 
-    /// <summary>The version in force of the owner's October (the newest that is not superseded).</summary>
     public async Task<OwnerStatementVersion> VersionAsync(Guid owner)
     {
         Db.ChangeTracker.Clear();

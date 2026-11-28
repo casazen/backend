@@ -8,7 +8,6 @@ internal sealed class UserNotificationChannelSettingConfiguration : IEntityTypeC
 {
     public void Configure(EntityTypeBuilder<UserNotificationChannelSetting> entity)
     {
-        // Like the quiet hours: the choices of a person go with the account and with the org (erasure; the merge of two duplicate orgs).
         entity.HasOne<Org>()
             .WithMany()
             .HasForeignKey(s => s.OrgId)
@@ -18,8 +17,6 @@ internal sealed class UserNotificationChannelSettingConfiguration : IEntityTypeC
             .HasForeignKey(s => s.UserId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // By name, so a member appended later never changes the meaning of the rows already written. The channels stay the integer of
-        // their bits (NotificationChannels).
         entity.Property(s => s.EventType)
             .HasConversion<string>()
             .HasMaxLength(UserNotificationChannelSetting.EventTypeMaxLength);
@@ -30,7 +27,6 @@ internal sealed class UserNotificationChannelSettingConfiguration : IEntityTypeC
             .IsUnique()
             .HasDatabaseName(UserNotificationChannelSetting.OncePerUserAndEventIndexName);
 
-        // The choices of the people to tell about an event: all the rows of some users, one org.
         entity.HasIndex(s => new { s.OrgId, s.UserId });
     }
 }

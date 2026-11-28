@@ -81,7 +81,6 @@ public class PropertiesController(
         [FromQuery] string? mode = null,
         [FromQuery] string? view = null)
     {
-        // Never log the claims or the identity name: they carry email and name (FD-17, A2-32).
         var userId = GetAuthenticatedUserId();
         if (string.IsNullOrEmpty(userId))
         {
@@ -89,7 +88,6 @@ public class PropertiesController(
             return Unauthorized();
         }
 
-        // A blank value is the same as no filter; a value that is not a mode is a 400, never a silent "every property".
         RentalMode? modeFilter = null;
         if (!string.IsNullOrWhiteSpace(mode))
         {
@@ -99,7 +97,6 @@ public class PropertiesController(
             modeFilter = parsedMode;
         }
 
-        // Same for the view: a value that is not a view is a 400, never silently the plain list.
         var overviewRequested = false;
         if (!string.IsNullOrWhiteSpace(view))
         {
@@ -120,7 +117,6 @@ public class PropertiesController(
         if (!overviewRequested)
             return Ok(properties.Select(property => PropertyResponse.From(property)).ToList());
 
-        // The rows the caller's scope reached, and nothing else, are described: the overview never widens the list.
         var rows = properties.ToList();
         var overviewService = HttpContext.RequestServices.GetRequiredService<IPropertyOverviewService>();
         var overviews = await overviewService.DescribeAsync(rows, HttpContext.RequestAborted);
@@ -187,10 +183,6 @@ public class PropertiesController(
         return Ok(PropertyResponse.From(property, swissPlace: swissPlace));
     }
 
-    /// <summary>
-    /// The cancellation policies a short-stay property can reference (<see cref="UpdatePropertyRequest.CancellationPolicyId"/>),
-    /// by name. The catalog is global, not per org.
-    /// </summary>
     [HttpGet("cancellation-policies")]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
     [ProducesResponseType(typeof(IReadOnlyList<CancellationPolicyOptionDto>), StatusCodes.Status200OK)]
@@ -229,7 +221,6 @@ public class PropertiesController(
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        // Resolve org; auto-provision Starter org for legacy users who have roles but no OrgId (#217).
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
         if (orgId is null)
         {
@@ -239,7 +230,6 @@ public class PropertiesController(
 
         logger.LogInformation("Creating property for user: {UserId}", userId);
         var property = request.ToProperty(userId);
-        // AC7: tenant key is server-set from the caller's org, never client-supplied.
         property.OrgId = orgId.Value;
 
         // The comune chosen from the official ISTAT list (SU-04): validated against it, the region follows it.
@@ -250,9 +240,6 @@ public class PropertiesController(
             property.RegionCode = comune.RegionCode;
         }
 
-        // E29/F01/US01/T02 (NF-124): the Swiss municipality the host chose from the official directory, only for a property in Switzerland. This
-        // request has no country (the property it creates is Italian; a Swiss one comes from the import of a channel manager), so a municipality sent
-        // here is refused while the country is not Swiss.
         if (!string.IsNullOrWhiteSpace(request.SwissMunicipalityCode))
         {
             if (!SwissPlace.IsSwissCountry(property.Country))
@@ -318,7 +305,6 @@ public class PropertiesController(
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        // The row alone: saving it must not write back the bookings or OTA integrations of the property (A2-04).
         var existing = await propertyService.GetPropertyRecordAsync(id);
         if (existing == null)
             return NotFound();
@@ -363,12 +349,9 @@ public class PropertiesController(
         }
         else if (cityChanged && existing.ComuneIstatCode is not null)
         {
-            // The city was rewritten without choosing a comune: the stored code no longer says where the property is.
             clearComune = true;
         }
 
-        // A host can correct the country on an imported draft before activation (active properties keep the existing contract): worked out before
-        // anything is applied, so the Swiss municipality below is checked against the country the property will have.
         var correctedCountry = await ImportedDraftCountryCorrectionAsync(existing, request.Country);
 
         // E29/F01/US01/T02 (NF-124): the Swiss municipality of the official directory, stored only when the caller sent it (the host confirmed it in
@@ -382,8 +365,6 @@ public class PropertiesController(
                 clearSwissMunicipality = true;
             else if (correctedCountry is not null || !IsTheStoredSwissMunicipality(existing, request.SwissMunicipalityCode))
             {
-                // Checked only when it changes, as the comune is: the form sends back the number the record carries, which is not a choice, so a
-                // municipality the directory dropped later (or a directory not loaded) never blocks the other edits of the property.
                 if (!SwissPlace.IsSwissCountry(correctedCountry ?? existing.Country))
                     return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, SwissPlaceErrorCodes.NotApplicable, SwissPlaceErrorCodes.NotApplicableMessageKey);
 
@@ -523,15 +504,10 @@ public class PropertiesController(
 
     private static string Compact(string? value) => string.Concat((value ?? string.Empty).Where(c => !char.IsWhiteSpace(c)));
 
-    /// <summary>The BFS number sent is the one already stored on the property (same digits, leading zeros ignored).</summary>
     private static bool IsTheStoredSwissMunicipality(Property existing, string sent) =>
         SwissPlaceCodes.NormalizeMunicipalityCode(sent) is { } code
         && string.Equals(code, SwissPlaceCodes.NormalizeMunicipalityCode(existing.SwissMunicipalityCode), StringComparison.Ordinal);
 
-    /// <summary>
-    /// The country an imported draft is corrected to, or null when it does not change: only a property not active yet whose listing an Octorate
-    /// mapping confirmed, and only to another country (the active properties keep the contract they have).
-    /// </summary>
     private async Task<string?> ImportedDraftCountryCorrectionAsync(Property existing, string? requestedCountry)
     {
         if (existing.IsActive || requestedCountry is null || requestedCountry == existing.Country)
@@ -543,7 +519,6 @@ public class PropertiesController(
         return imported ? requestedCountry : null;
     }
 
-    /// <summary>The one resolver of the place of a Swiss property (E29/F01/US01/T02), asked only when a request carries a Swiss municipality.</summary>
     private IPropertySwissPlaceResolver SwissPlaces() => HttpContext.RequestServices.GetRequiredService<IPropertySwissPlaceResolver>();
 
     /// <summary>
@@ -623,14 +598,6 @@ public class PropertiesController(
         return NoContent();
     }
 
-    /// <summary>
-    /// Cadastral identification of the unit (LT-10): sheet (foglio), parcel (particella), subaltern, category and income
-    /// (rendita). Used by the lease contract and, for the sheet, to find the canone concordato zone. Shared by
-    /// short-rent hosts and long-term landlords. Only lengths are validated.
-    /// </summary>
-    /// <response code="204">Saved.</response>
-    /// <response code="403">The caller may not edit this property.</response>
-    /// <response code="404">No property with this id in the caller's org.</response>
     [HttpPut("{id:guid}/cadastral")]
     [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
     public async Task<IActionResult> UpdateCadastral(Guid id, [FromBody] UpdatePropertyCadastralRequest request)
@@ -692,18 +659,11 @@ public class PropertiesController(
 
         await AuditPrivilegedAccessIfNeededAsync(userId, id, existing.OwnerId, roles, "Property.Delete");
 
-        // 409 property_has_upcoming_bookings / property_has_active_leases: ProblemDetails from the error middleware (FD-05).
         await propertyService.DeletePropertyAsync(id);
         logger.LogInformation("Property soft-deleted: {PropertyId} by user {UserId}", id, userId);
         return NoContent();
     }
 
-    /// <summary>
-    /// The public search across orgs (BK-20, A8-13): published properties of active orgs, cheapest first within a city, at
-    /// most 50. Every filter is optional: <c>city</c> (part of the name), <c>bedrooms</c> and <c>bathrooms</c> (at least),
-    /// <c>guests</c> (sleeps at least), <c>minPrice</c> and <c>maxPrice</c> (nightly rate). Each result carries
-    /// <c>orgSlug</c>, which with <c>slug</c> gives <c>/book/{orgSlug}/property/{slug}</c>. A value out of range is a 400.
-    /// </summary>
     [HttpGet("search")]
     [AllowAnonymous]
     [EnableRateLimiting(RateLimitPolicies.PublicRead)]
@@ -739,15 +699,6 @@ public class PropertiesController(
         return Ok(property);
     }
 
-    // ─── Photo gallery (PC-04, A2-26) ────────────────────────────────────────────
-
-    /// <summary>
-    /// The photo gallery of a property: the photos in display order (absolute public URLs; the first is the cover) and
-    /// the upload rules. Short-rent only, like every short-stay side of the property.
-    /// </summary>
-    /// <response code="200">The gallery.</response>
-    /// <response code="403">The caller may not read this property (TN-3).</response>
-    /// <response code="404">No property with this id in the caller's org.</response>
     [HttpGet("{id:guid}/images")]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
     [ProducesResponseType(typeof(PropertyPhotosResponse), StatusCodes.Status200OK)]
@@ -880,10 +831,6 @@ public class PropertiesController(
         return Ok(PropertyPhotosResponse.From(gallery));
     }
 
-    /// <summary>
-    /// TN-3 check of the photo endpoints: the property of the caller's org (the tenant filter hides another org's one, so
-    /// 404), the host permission for the row (403), and the audit of an org-wide role acting on a colleague's property.
-    /// </summary>
     private async Task<(Property? Property, ActionResult? Denied)> AuthorizePropertyAsync(
         Guid id,
         HostOperationRequirement operation,
@@ -911,8 +858,6 @@ public class PropertiesController(
         return (property, null);
     }
 
-    // ─── Detail + Documents ──────────────────────────────────────────────────────
-
     /// <summary>
     /// Returns the full detail view of a property, including documents, OTA integrations (no API keys), and bookings summary.
     /// </summary>
@@ -934,7 +879,6 @@ public class PropertiesController(
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        // TN-3: the row is checked before its bookings and documents are read; another org's property is 404.
         var property = await propertyService.GetPropertyRecordAsync(id);
         if (property == null)
             return NotFound();
@@ -1140,7 +1084,6 @@ public class PropertiesController(
         return Ok(ToUploadDto(await documentService.ReadApeIdentificationAsync(document)));
     }
 
-    /// <summary>A document just stored or read again, with what the reading of an APE found (localized names of the data not read).</summary>
     private PropertyDocumentDto ToUploadDto(PropertyDocumentUpload upload)
     {
         var dto = ToDocumentDto(upload.Document);
@@ -1221,7 +1164,6 @@ public class PropertiesController(
         if (string.IsNullOrEmpty(userId))
             return (null, Unauthorized());
 
-        // Tenant query filter: another org's property is invisible here → 404, never its file.
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null)
             return (null, NotFound());
@@ -1335,7 +1277,6 @@ public class PropertiesController(
         };
     }
 
-    /// <summary>Export link, block count and import feeds of the property.</summary>
     [HttpGet("{id:guid}/ical/status")]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
     [ProducesResponseType(typeof(PropertyIcalStatusDto), StatusCodes.Status200OK)]
@@ -1359,7 +1300,6 @@ public class PropertiesController(
         });
     }
 
-    /// <summary>Import feeds of the property, oldest first; each with its own sync state and a masked URL.</summary>
     [HttpGet("{id:guid}/ical/feeds")]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
     [ProducesResponseType(typeof(IReadOnlyList<PropertyIcalFeedDto>), StatusCodes.Status200OK)]
@@ -1410,7 +1350,6 @@ public class PropertiesController(
         }
         catch (DomainRuleException ex) when (ex.Code is ICalErrorCodes.InvalidUrl or ICalFeedErrorCodes.InvalidLabel)
         {
-            // Malformed input, not a business rule: 400 like the other validation errors.
             return this.ApiProblem(StatusCodes.Status400BadRequest, ex.Code, ex.MessageKey, [.. ex.MessageArgs]);
         }
 
@@ -1418,7 +1357,6 @@ public class PropertiesController(
         return Accepted(BuildIcalFeedDto(feed, blockCount: 0, localizer));
     }
 
-    /// <summary>Removes an import feed and the blocks it imported (only those): 204; 404 <c>ical_feed_not_found</c>.</summary>
     [HttpDelete("{id:guid}/ical/feeds/{feedId:guid}")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -1437,10 +1375,6 @@ public class PropertiesController(
         return NoContent();
     }
 
-    /// <summary>
-    /// "Sync now" of one import feed: 202 with status <c>Syncing</c> and a queued job, or the current state when a sync
-    /// is already queued; 404 <c>ical_feed_not_found</c>.
-    /// </summary>
     [HttpPost("{id:guid}/ical/feeds/{feedId:guid}/sync")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(PropertyIcalFeedDto), StatusCodes.Status202Accepted)]
@@ -1511,8 +1445,6 @@ public class PropertiesController(
         });
     }
 
-    // TN-3 resource-based check of the property for the iCal actions: 404 when the property is not visible (other
-    // org), 403 when visible but the operation is not allowed.
     private async Task<(Property Property, ActionResult? Denied)> AuthorizeIcalAsync(
         Guid propertyId,
         HostOperationRequirement operation,
@@ -1561,7 +1493,6 @@ public class PropertiesController(
         }
         catch (Exception ex)
         {
-            // The feed is saved: the recurring property-ical-sync job (every 15 minutes) syncs it anyway.
             logger.LogError(ex, "Could not queue the sync of iCal feed {FeedId}", feedId);
         }
     }
@@ -1595,8 +1526,6 @@ public class PropertiesController(
             DeprecatedAt = feed.DeprecatedAt,
         };
     }
-
-    // ─── Compliance activation wizard (#295) ───────────────────────────────────
 
     [HttpGet("{id:guid}/compliance/activation")]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
@@ -1689,7 +1618,6 @@ public class PropertiesController(
             Message = localizer[blocker.MessageKey, blocker.MessageArgs.ToArray()].Value,
         };
 
-    /// <summary>Code of the 409 of <see cref="CompleteComplianceActivation"/> when blocking steps are left.</summary>
     internal const string ActivationBlockedCode = "property_activation_blocked";
 
     /// <summary>
@@ -1755,8 +1683,6 @@ public class PropertiesController(
             return NotFound();
         }
     }
-
-    // ─── D.L. 145/2023 safety checklist (CO-07) ────────────────────────────────
 
     /// <summary>
     /// Safety checklist of the property (D.L. 145/2023 art. 13-ter): facts, answers, items "not applicable" with their
@@ -1889,8 +1815,6 @@ public class PropertiesController(
         Message = localizer[issue.MessageKey, issue.MessageArgs.ToArray()].Value,
     };
 
-    // TN-3 resource-based check of a short-stay property for the compliance actions touched by CO-07: 404 when the
-    // property is not visible (other org), 403 when visible but the operation is not allowed.
     private async Task<ActionResult?> AuthorizeShortStayPropertyAsync(Guid propertyId, HostOperationRequirement operation)
     {
         var property = await propertyService.GetPropertyAsync(propertyId);
@@ -1908,10 +1832,8 @@ public class PropertiesController(
         return null;
     }
 
-    /// <summary>The value of <c>?view=</c> that adds the state, what is missing and the nights to each row of the list (SR-07a).</summary>
     internal const string OverviewView = "overview";
 
-    /// <summary>403 of a create over the org's plan limit; the frontend branches on it (<c>isPlanLimitError</c>).</summary>
     internal const string PlanLimitReachedCode = "plan_limit_reached";
     internal const string CityLockedCode = "property_city_locked";
 }

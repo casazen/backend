@@ -24,7 +24,6 @@ public static class ICalFeedWriter
 {
     public const string ProductId = "-//CasaZen//Export//EN";
 
-    /// <exception cref="ArgumentException">An event without a night (end not after start), UID or summary.</exception>
     public static string Write(IEnumerable<ICalFeedEvent> events)
     {
         var calendar = new CalendarModel
@@ -48,7 +47,6 @@ public static class ICalFeedWriter
                 End = DateValue(feedEvent.EndDate),
             };
 
-            // Add X-CURRENCY custom property for non-EUR bookings (ADR-002-R7)
             if (!string.IsNullOrWhiteSpace(feedEvent.Currency) && !string.Equals(feedEvent.Currency, "EUR", StringComparison.OrdinalIgnoreCase))
             {
                 calendarEvent.AddProperty("X-CURRENCY", feedEvent.Currency);
@@ -60,7 +58,6 @@ public static class ICalFeedWriter
         return new CalendarSerializer().SerializeToString(calendar)!;
     }
 
-    // A calendar date: VALUE=DATE, no time, no TZID.
     private static CalDateTime DateValue(DateOnly date) =>
         new(date.Year, date.Month, date.Day) { HasTime = false };
 }

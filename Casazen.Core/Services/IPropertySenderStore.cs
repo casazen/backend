@@ -20,16 +20,8 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IPropertySenderStore
 {
-    /// <summary>
-    /// The sender of the property: the stored one, or the default; never null. Throws <c>NotFoundException</c>
-    /// (<c>property_not_found</c>) for a property the caller's org does not have.
-    /// </summary>
     Task<PropertySenderInfo> GetAsync(Guid propertyId, CancellationToken ct);
 
-    /// <summary>
-    /// The sender of each property, keyed by its id, read with a fixed number of queries. An id that is not found (deleted, of another
-    /// org) is left out of the answer.
-    /// </summary>
     Task<IReadOnlyDictionary<Guid, PropertySenderInfo>> GetManyAsync(IReadOnlyCollection<Guid> propertyIds, CancellationToken ct);
 
     /// <summary>
@@ -56,22 +48,16 @@ public interface IPropertySenderStore
     Task<PropertySenderInfo> SetAsync(Guid propertyId, ComplianceSenderType sender, string userId, CancellationToken ct);
 }
 
-/// <summary>Where the sender of a property comes from.</summary>
 public enum SenderSource
 {
-    /// <summary>A person chose it (<c>PropertyComplianceSender</c>).</summary>
     Stored = 1,
 
-    /// <summary>No choice stored, and the listing is confirmed on a connected channel manager: the channel manager sends (PO-02).</summary>
     DefaultConnected = 2,
 
-    /// <summary>No choice stored, and no confirmed listing on a connected channel manager: the host sends (PO-02).</summary>
     DefaultNotConnected = 3,
 
-    /// <summary>The property is outside Italy: there is no police sender to choose.</summary>
     NotApplicable = 4,
 
-    /// <summary>The account choice inherited by an Italian property without a stored override.</summary>
     OrganizationDefault = 5,
 }
 

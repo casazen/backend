@@ -45,7 +45,6 @@ public sealed class AutopilotMessageWriter(
         {
             if (!cache.TryGet(orgId, cacheKey, out AutopilotAcceptedTexts? accepted) || accepted is null)
             {
-                // A permit only for a call that is really made: a cached answer costs nothing and counts for nothing.
                 if (acquirePermit is not null && !acquirePermit())
                     return new AutopilotWording(plain, false, AiSuggestionFallbackReasons.AiUnavailable);
 
@@ -56,7 +55,6 @@ public sealed class AutopilotMessageWriter(
                 var texts = AutopilotMessagePrompt.Parse(result.Content, variants);
                 if (texts.Count == 0)
                 {
-                    // The sizes, never the text: it is the model's, and it may repeat what it should not.
                     logger.LogWarning("The AI answer for the chat messages of the assistant holds no usable text ({Length} characters)", result.Content?.Length ?? 0);
                     return new AutopilotWording(plain, false, AiSuggestionFallbackReasons.AiInvalidAnswer);
                 }
@@ -84,12 +82,10 @@ public sealed class AutopilotMessageWriter(
         }
         catch (Exception ex)
         {
-            // A timeout of the provider is a TaskCanceledException too: it is the provider that did not answer, not the caller who left.
             logger.LogWarning(ex, "The AI provider failed to write the chat messages of the assistant");
             return new AutopilotWording(plain, false, AiSuggestionFallbackReasons.AiUnavailable);
         }
     }
 }
 
-/// <summary>The texts of an answer that passed the checks, by variant key: what the cache keeps.</summary>
 public sealed record AutopilotAcceptedTexts(IReadOnlyDictionary<string, string> Texts);

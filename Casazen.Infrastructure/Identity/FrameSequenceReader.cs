@@ -20,10 +20,6 @@ namespace Casazen.Infrastructure.Identity;
 /// <param name="ContentType">The content type the client declared; carried, never used to decide.</param>
 public sealed record FramePart(Stream Content, long Length, string? ContentType);
 
-/// <summary>
-/// What <see cref="FrameSequenceReader.ReadAsync"/> found: the sequence, which the caller disposes, or the code of the first violation of a limit
-/// (<see cref="IdentityApiErrors.PresenceSequenceInvalid"/> or <see cref="IdentityApiErrors.PresenceSequenceTooLarge"/>), with nothing left in memory.
-/// </summary>
 public sealed class FrameSequenceReadResult
 {
     private FrameSequenceReadResult(FrameSequence? sequence, string? errorCode)
@@ -32,13 +28,10 @@ public sealed class FrameSequenceReadResult
         ErrorCode = errorCode;
     }
 
-    /// <summary>The frames, read and decoded; null when a limit was violated. The caller disposes it (<see cref="FrameSequence.Dispose"/> zeroes every buffer).</summary>
     public FrameSequence? Sequence { get; }
 
-    /// <summary>The code of the first violation, an <see cref="IdentityApiErrors"/> code the page translates; null when the sequence was read.</summary>
     public string? ErrorCode { get; }
 
-    /// <summary>True when <see cref="Sequence"/> is there.</summary>
     [MemberNotNullWhen(true, nameof(Sequence))]
     [MemberNotNullWhen(false, nameof(ErrorCode))]
     public bool Succeeded => Sequence is not null;
@@ -79,16 +72,10 @@ public sealed class FrameSequenceReader(
     IOptions<BiometricModelOptions> biometricOptions,
     ILogger<FrameSequenceReader> logger)
 {
-    /// <summary>The characters one timestamp may take in the JSON: a 64-bit integer has at most 19 digits, and the comma and a space come with it.</summary>
     private const int MaxTimestampCharacters = 24;
 
-    /// <summary>The depth of the JSON of the timestamps: the array and nothing inside it.</summary>
     private const int TimestampsMaxDepth = 2;
 
-    /// <summary>
-    /// Reads the frames of <paramref name="parts"/> with the timestamps of <paramref name="timestampsJson"/>, stamped as received at <paramref name="receivedAt"/>.
-    /// The first violation is the answer; a cancellation is an <see cref="OperationCanceledException"/>, after what was read has been zeroed.
-    /// </summary>
     public async Task<FrameSequenceReadResult> ReadAsync(
         IReadOnlyList<FramePart> parts,
         string? timestampsJson,
@@ -99,7 +86,6 @@ public sealed class FrameSequenceReader(
         var limits = identityOptions.Value.Presence;
         var maxPixels = biometricOptions.Value.MaxImagePixels;
 
-        // What the declared sizes and the timestamps say is settled before the first byte is read.
         var refusal = CheckDeclared(parts, limits);
         if (refusal is not null)
             return Refuse(refusal, parts.Count);
@@ -127,7 +113,6 @@ public sealed class FrameSequenceReader(
         }
         finally
         {
-            // A violation, a cancellation or a failure of the stream: nothing that was read stays in memory.
             if (!handedOver)
             {
                 foreach (var frame in frames)
@@ -139,7 +124,6 @@ public sealed class FrameSequenceReader(
         }
     }
 
-    /// <summary>The first limit that the declared sizes break, or null: the count of the frames, the length of each and the length of all.</summary>
     private static string? CheckDeclared(IReadOnlyList<FramePart> parts, IdentityPresenceOptions limits)
     {
         if (parts.Count == 0)
@@ -165,10 +149,6 @@ public sealed class FrameSequenceReader(
         return null;
     }
 
-    /// <summary>
-    /// The timestamps, or null when they are not a JSON array of exactly <paramref name="frames"/> non-negative integers, strictly increasing, the first being 0 (a
-    /// fraction, an exponent, a string, a negative value, a repeated or a lower one, a count that differs from the frames, and anything that is not strict JSON).
-    /// </summary>
     private static long[]? ParseTimestamps(string? json, int frames)
     {
         if (string.IsNullOrWhiteSpace(json) || json.Length > ((long)frames * MaxTimestampCharacters) + MaxTimestampCharacters)
@@ -188,7 +168,6 @@ public sealed class FrameSequenceReader(
                 if (item.ValueKind != JsonValueKind.Number || !item.TryGetInt64(out var value) || value < 0)
                     return null;
 
-                // The first value is 0 and each one is above the one before it.
                 if (next == 0 ? value != 0 : value <= values[next - 1])
                     return null;
 
@@ -203,10 +182,6 @@ public sealed class FrameSequenceReader(
         }
     }
 
-    /// <summary>
-    /// One frame: the bytes (exactly the declared length), their magic, the size from the header before any pixel is decoded, then the picture. The frame, or the
-    /// code of what is wrong with it; whatever was read for a frame that is refused is zeroed here.
-    /// </summary>
     private static async Task<(SequenceFrame? Frame, string? Error)> ReadFrameAsync(
         FramePart part,
         int index,
@@ -223,14 +198,12 @@ public sealed class FrameSequenceReader(
             if (!await FillAsync(part.Content, bytes, ct))
                 return (null, IdentityApiErrors.PresenceSequenceInvalid);
 
-            // The declared type is not trusted: a JPEG begins FF D8 FF.
             if (bytes.Length < 3 || bytes[0] != 0xFF || bytes[1] != 0xD8 || bytes[2] != 0xFF)
                 return (null, IdentityApiErrors.PresenceSequenceInvalid);
 
             if (ReadSize(bytes) is not { } size)
                 return (null, IdentityApiErrors.PresenceSequenceInvalid);
 
-            // A small file can hold a huge picture: the header says so before it is decoded.
             if (Math.Max(size.Width, size.Height) > limits.MaxFrameSide || (long)size.Width * size.Height > maxPixels)
                 return (null, IdentityApiErrors.PresenceSequenceTooLarge);
 
@@ -259,7 +232,6 @@ public sealed class FrameSequenceReader(
         }
     }
 
-    /// <summary>Fills <paramref name="buffer"/> from the stream: false when the stream is shorter than declared or has more after it.</summary>
     private static async Task<bool> FillAsync(Stream content, byte[] buffer, CancellationToken ct)
     {
         try
@@ -271,7 +243,6 @@ public sealed class FrameSequenceReader(
             return false;
         }
 
-        // The length a client declares is not the length it sends: a byte more is the proof that the part is longer than it said.
         var probe = ArrayPool<byte>.Shared.Rent(1);
         try
         {
@@ -283,7 +254,6 @@ public sealed class FrameSequenceReader(
         }
     }
 
-    /// <summary>The size in the header of the picture, without decoding it; null when it has none that the decoder understands.</summary>
     private static (int Width, int Height)? ReadSize(byte[] bytes)
     {
         try
@@ -300,7 +270,6 @@ public sealed class FrameSequenceReader(
 
     private FrameSequenceReadResult Refuse(string code, int frames)
     {
-        // The code and the count only: never a byte, a timestamp or a size that could say who is in front of the camera.
         logger.LogInformation("A presence sequence was refused: {Code} ({Frames} frames)", code, frames);
         return FrameSequenceReadResult.Failure(code);
     }

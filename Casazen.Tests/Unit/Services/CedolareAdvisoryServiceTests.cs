@@ -22,7 +22,6 @@ public class CedolareAdvisoryServiceTests
     private const string OwnerId = "auth0|owner";
     private const string Seveso = "Seveso";
 
-    /// <summary>A day of 2026, the tax year of the configured IRPEF brackets.</summary>
     private static readonly DateTimeOffset In2026 = new(2026, 9, 24, 10, 0, 0, TimeSpan.Zero);
 
     [Fact]
@@ -122,7 +121,6 @@ public class CedolareAdvisoryServiceTests
         Assert.Equal(2520.00m, result.Cedolare.AnnualTaxEur);
         Assert.Equal(0m, result.Cedolare.RegistroEur);
         Assert.Equal(0m, result.Cedolare.BolloEur);
-        // The ordinary option of the same lease does pay them.
         Assert.Equal(240.00m, result.Ordinary.Registro.FirstYearEur);
         Assert.Equal(64.00m, result.Ordinary.Bollo.AmountEur);
     }
@@ -225,9 +223,9 @@ public class CedolareAdvisoryServiceTests
     }
 
     [Theory]
-    [InlineData(20_000, 800, 2209.60)] // 28.000 × 23% + 1.120 × 33% − 20.000 × 23%
-    [InlineData(45_000, 1000, 4402.00)] // 56.400 crosses into the 43% bracket
-    [InlineData(0, 250, 655.50)] // 2.850 × 23%
+    [InlineData(20_000, 800, 2209.60)]
+    [InlineData(45_000, 1000, 4402.00)]
+    [InlineData(0, 250, 655.50)]
     public async Task EvaluateAsync_IrpefWithOtherIncome_ComputesTheAdditionalGrossTaxWithTheBrackets(
         double otherIncome, double monthlyRent, double expected)
     {
@@ -306,7 +304,6 @@ public class CedolareAdvisoryServiceTests
 
         var result = await Sut(lease, ata).EvaluateAsync(lease.Id);
 
-        // The calculator shows "ATA verified" with HighTensionArea.ReliefsApply: the advisory applies the reliefs exactly then.
         Assert.Equal(HighTensionArea.ReliefsApply(ata), result!.ConcordatoAtaReliefs);
         Assert.Equal(verified == true ? 0.10m : 0.21m, result.Cedolare.Rate);
     }
@@ -316,7 +313,6 @@ public class CedolareAdvisoryServiceTests
     {
         var lease = Lease(LeaseContractType.Libero, LeaseTaxRegime.CedolareSecca, 1000m);
 
-        // Who may read the lease is decided by the controller (TN-3); an id outside the caller's org is not found.
         Assert.Null(await Sut(lease).EvaluateAsync(Guid.NewGuid()));
     }
 

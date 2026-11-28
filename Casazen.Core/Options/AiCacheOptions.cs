@@ -13,19 +13,12 @@ public class AiCacheOptions
     public const int DefaultMaxEntriesPerOrg = 50;
     public const int DefaultTtlHours = 24;
 
-    /// <summary>Entries kept in all (platform content and every org together). The oldest goes first when it is full.</summary>
     public int MaxEntries { get; set; } = DefaultMaxEntries;
 
-    /// <summary>
-    /// Entries one org can hold: past it, the oldest entry of that same org is replaced, so an org never pushes out the
-    /// entries of the others.
-    /// </summary>
     public int MaxEntriesPerOrg { get; set; } = DefaultMaxEntriesPerOrg;
 
-    /// <summary>Hours an answer stays cached.</summary>
     public int TtlHours { get; set; } = DefaultTtlHours;
 
-    /// <summary>The configured limits, with a non-positive value read as its default.</summary>
     public AiCacheOptions Normalized() => new()
     {
         MaxEntries = MaxEntries > 0 ? MaxEntries : DefaultMaxEntries,

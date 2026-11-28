@@ -17,10 +17,8 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public static class ShowcaseTextPrompt
 {
-    /// <summary>Version of the prompt: stored in the cache key.</summary>
     public const string Version = "showcase-texts-it-2026-11-v1";
 
-    /// <summary>The names of the categories as the clients show them, in lower case for the middle of a sentence.</summary>
     private static readonly IReadOnlyDictionary<string, string> CategoryLabels = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         [ServiceCategories.Cleaning] = "pulizie",
@@ -36,10 +34,8 @@ public static class ShowcaseTextPrompt
         [ServiceCategories.Electrical] = "elettricista",
     };
 
-    /// <summary>The name of a category in the middle of a sentence; a code the table does not know is left as it is.</summary>
     public static string CategoryLabel(string code) => CategoryLabels.TryGetValue(code, out var label) ? label : code;
 
-    /// <summary>The whole prompt for the members in <paramref name="fields"/> (already normalized, at least one).</summary>
     public static string Build(ShowcaseTextFacts facts, ShowcaseTextAnswers answers, IReadOnlyList<string> fields)
     {
         ArgumentNullException.ThrowIfNull(facts);
@@ -106,7 +102,6 @@ public static class ShowcaseTextPrompt
         return sb.ToString();
     }
 
-    /// <summary>The key of the cache of the answers: the version and a hash of the whole prompt (which holds every input).</summary>
     public static string CacheKey(string prompt)
     {
         ArgumentNullException.ThrowIfNull(prompt);

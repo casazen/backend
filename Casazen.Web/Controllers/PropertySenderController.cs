@@ -86,8 +86,6 @@ public class PropertySenderController(
         if (User.GetUserId() is not { Length: > 0 } userId)
             return Unauthorized();
 
-        // The guests written to the channel manager on their own is an org-wide setting (E20/F01/US01/T01, decision O1): it changes what happens to the
-        // guests of every property of the org, so only the organization administrator changes it, and nothing of the request is done for another member.
         var orgId = request.AutoSendGuestsToOctorate is null ? Guid.Empty : await OrgOfPropertyAsync(propertyId, cancellationToken);
         if (request.AutoSendGuestsToOctorate is { } wanted
             && wanted != await autoSendSetting.GetAsync(orgId, cancellationToken)
@@ -108,7 +106,6 @@ public class PropertySenderController(
             request.DelegationTextVersion);
         logger.LogInformation("User {UserId} set the sender of property {PropertyId} to {Sender}", userId, propertyId, view.Sender);
 
-        // After the sender, when it went through: a refused switch leaves the setting as it was.
         if (request.AutoSendGuestsToOctorate is { } value)
         {
             await autoSendSetting.SetAsync(orgId, value, userId, cancellationToken);
@@ -178,13 +175,8 @@ public class PropertySenderController(
         return Ok(PropertySenderDto.From(view, Guidance(view.Reason)));
     }
 
-    /// <summary>
-    /// The row-level check of the property (TN-3): 404 when it is not visible (another org, or none), 403 when it is the org's but the caller
-    /// may not do <paramref name="operation"/> on it. <c>null</c> when allowed.
-    /// </summary>
     private async Task<ActionResult?> AuthorizePropertyAsync(Guid propertyId, HostOperationRequirement operation, CancellationToken cancellationToken)
     {
-        // Tenant filter: another org's property is not found.
         var resource = await hostResources.ForPropertyAsync(propertyId, cancellationToken);
         if (resource is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, "property_not_found", "PropertyNotFound");
@@ -200,11 +192,9 @@ public class PropertySenderController(
         return null;
     }
 
-    /// <summary>The org of the property the caller was just authorized on (TN-3): the tenant filter shows the caller's own org's property only.</summary>
     private async Task<Guid> OrgOfPropertyAsync(Guid propertyId, CancellationToken cancellationToken) =>
         (await hostResources.ForPropertyAsync(propertyId, cancellationToken))!.OrgId;
 
-    /// <summary>What the host can do about a reason code, in the language of the request; <c>null</c> when there is nothing to say.</summary>
     private string? Guidance(string? reason) => reason switch
     {
         SenderReasonCodes.PoliceAccountInvalid => localizer["SenderGuidancePoliceAccountInvalid"].Value,

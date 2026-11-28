@@ -58,7 +58,6 @@ public sealed class MarketplaceActivationChangesController(
         if (await CallerAsync(cancellationToken) is not { } caller)
             return NoOrg();
 
-        // No body is a change that names nothing: 422, never a 400 that says nothing about the rule.
         NoStore();
         var outcome = await changes.UpdateSettingsAsync(
             caller.OrgId,
@@ -121,7 +120,6 @@ public sealed class MarketplaceActivationChangesController(
         if (await CallerAsync(cancellationToken) is not { } caller)
             return NoOrg();
 
-        // A request with no body has not said yes.
         NoStore();
         var outcome = await changes.DeactivateAsync(caller.OrgId, caller.Scope, id, request?.Confirmed == true, caller.UserId, cancellationToken);
         return Ok(MarketplaceActivationChangeDto.From(outcome));
@@ -156,7 +154,6 @@ public sealed class MarketplaceActivationChangesController(
         return Ok(MarketplaceActivationChangeDto.From(outcome));
     }
 
-    /// <summary>The caller's id, org and scope; <c>null</c> when it has no org or reaches nothing in it.</summary>
     private Task<HostCaller?> CallerAsync(CancellationToken cancellationToken) =>
         HostCallerResolver.CallerAsync(User, orgContextResolver, hostScopeResolver, cancellationToken);
 

@@ -3,10 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services.ICal;
 
-/// <summary>
-/// Export writer (PC-12, A2-22): all-day events with <c>VALUE=DATE</c>, DTEND exclusive (departure day), no time and no
-/// time zone; read back by the importer with the same nights.
-/// </summary>
 public class ICalFeedWriterTests
 {
     [Fact]

@@ -9,7 +9,6 @@ using Npgsql;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc />
 public sealed class UserContextMembershipService(
     AppDbContext db,
     IUserAuthorizationCache authorizationCache,
@@ -34,8 +33,6 @@ public sealed class UserContextMembershipService(
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            // A parallel request of the same user (e.g. the onboarding submitted twice) inserted a membership first.
-            // TN-4: drop the rejected inserts, re-read and apply again; the second pass only updates existing rows.
             foreach (var pending in db.ChangeTracker.Entries<UserContextMembership>()
                          .Where(e => e.State == EntityState.Added)
                          .ToList())
@@ -154,8 +151,6 @@ public sealed class UserContextMembershipService(
         if (orgRole is not null)
             return orgRole != OrgRole.Owner;
 
-        // Removal used to leave User.OrgId in place. The org still has its owner, so this user must not onboard
-        // into it and become a second one. A host org with no owner yet is the caller's own onboarding.
         var orgId = await db.Users.AsNoTracking()
             .Where(u => u.Id == userId)
             .Select(u => u.OrgId)

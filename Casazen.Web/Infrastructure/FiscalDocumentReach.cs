@@ -7,13 +7,8 @@ using Microsoft.AspNetCore.Authorization;
 
 namespace Casazen.Web.Infrastructure;
 
-/// <summary>
-/// Who reaches a fiscal document, the same for the controllers that read or change it (<c>FiscalDocumentsController</c>, <c>FiscalDocumentSdiController</c>):
-/// through its booking, or the whole org for a document without a booking.
-/// </summary>
 internal static class FiscalDocumentReach
 {
-    /// <summary>The document when the caller reaches it: through its booking, or the whole org for a document without a booking.</summary>
     public static async Task<FiscalDocument?> ReachableAsync(
         ClaimsPrincipal user,
         Guid id,
@@ -40,7 +35,6 @@ internal static class FiscalDocumentReach
             : null;
     }
 
-    /// <summary>The caller may do <paramref name="operation"/> on the booking: the booking exists in its org and the resource check allows it.</summary>
     public static async Task<bool> CanOnBookingAsync(
         ClaimsPrincipal user,
         Guid bookingId,

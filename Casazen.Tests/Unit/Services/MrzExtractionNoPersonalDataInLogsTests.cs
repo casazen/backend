@@ -6,16 +6,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E03/F04/US01/T02, privacy rule (AC-NF51-12, ADR-013-R6): reading a document writes no MRZ text, name, number or date of birth to any log, at any
-/// level, whether the reading succeeds, fails its check digits, finds nothing or breaks (an error whose message holds the MRZ is not logged
-/// either). The logs have counts and codes. The same holds for the reading of the printed fields.
-/// </summary>
 public class MrzExtractionNoPersonalDataInLogsTests
 {
     private static readonly FixedTimeProvider Clock = new(new DateTimeOffset(2026, 11, 5, 12, 0, 0, TimeSpan.Zero));
 
-    /// <summary>Everything a log must not say about the specimen person: the lines, the name, the numbers and the dates in the forms a log would write them.</summary>
     private static readonly string[] Forbidden =
     [
         MrzSpecimens.Td3Line1, MrzSpecimens.Td3Line2, MrzSpecimens.Td1Line1, MrzSpecimens.Td1Line2, MrzSpecimens.Td1Line3,
@@ -37,14 +31,12 @@ public class MrzExtractionNoPersonalDataInLogsTests
         foreach (var token in Forbidden)
             Assert.DoesNotContain(token, output, StringComparison.OrdinalIgnoreCase);
 
-        // The exception itself is never handed to the logger: its message could carry the lines that were being read.
         Assert.All(log.Entries, entry => Assert.Null(entry.Exception));
     }
 
     [Fact]
     public async Task MrzExtraction_NoPersonalDataInLogs_Test()
     {
-        // Passport read with every digit right.
         var passport = new CapturingLogger<MrzExtractionService>();
         var passportReading = await Service(
             passport,
@@ -53,7 +45,6 @@ public class MrzExtractionNoPersonalDataInLogsTests
         Assert.True(passportReading.Result!.CheckDigitsValid);
         AssertNoPersonalData("passport", passport);
 
-        // ID card read with every digit right.
         var card = new CapturingLogger<MrzExtractionService>();
         var cardReading = await Service(
             card,
@@ -62,7 +53,6 @@ public class MrzExtractionNoPersonalDataInLogsTests
         Assert.True(cardReading.Result!.CheckDigitsValid);
         AssertNoPersonalData("id card", card);
 
-        // A reading with a failed digit.
         var doubtful = new CapturingLogger<MrzExtractionService>();
         var doubtfulReading = await Service(
             doubtful,
@@ -71,7 +61,6 @@ public class MrzExtractionNoPersonalDataInLogsTests
         Assert.False(doubtfulReading.Result!.CheckDigitsValid);
         AssertNoPersonalData("failed digit", doubtful);
 
-        // Nothing found.
         var nothing = new CapturingLogger<MrzExtractionService>();
         var nothingReading = await Service(
             nothing,
@@ -80,7 +69,6 @@ public class MrzExtractionNoPersonalDataInLogsTests
         Assert.Null(nothingReading.Result);
         AssertNoPersonalData("nothing found", nothing);
 
-        // The OCR breaks and the message of its error holds the whole MRZ.
         var broken = new CapturingLogger<MrzExtractionService>();
         var reader = new ScriptedLineReader("X")
         {
@@ -94,7 +82,6 @@ public class MrzExtractionNoPersonalDataInLogsTests
     [Fact]
     public void DocumentReading_HasNothingThatCouldWriteAPicture()
     {
-        // No database context (so no DocumentImage row, ADR-013-R6), no job queue, no storage, no form file.
         var services = new[]
         {
             typeof(MrzExtractionService), typeof(DocumentOcrService), typeof(MrzImageLocator), typeof(TesseractMrzTextReader),
@@ -117,8 +104,6 @@ public class MrzExtractionNoPersonalDataInLogsTests
     [Fact]
     public void ImagePipeline_NeverTouchesTheDisk()
     {
-        // The classes that hold a picture, a crop or a vector: none of them calls an API that creates or writes a file (the model files are
-        // written by ModelFileProvisioner, which never sees an image). A temporary file of a document would break ADR-013-R6 and R2.
         string[] files =
         [
             "MrzExtractionService.cs", "DocumentOcrService.cs", "MrzImageLocator.cs", "TesseractOcr.cs", "RasterImage.cs", "ImageBytes.cs",

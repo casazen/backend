@@ -37,7 +37,6 @@ public class OrgInvitationTokensTests
         Assert.Matches("^[0-9a-f]{64}$", hash);
         Assert.NotEqual(token, hash);
         Assert.Equal(hash, OrgInvitationTokens.Hash(token));
-        // SHA-256("aaaa…a" x64), computed independently.
         Assert.Equal(
             Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token))),
             hash);

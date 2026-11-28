@@ -11,10 +11,6 @@ namespace Casazen.Infrastructure.Services.LeaseDrafts;
 /// </summary>
 internal static class LeaseDraftLocking
 {
-    /// <summary>
-    /// Local to the transaction that runs it: a wait for a lock longer than this ends with <c>55P03</c>. Long enough for the usual holder
-    /// (a confirmation that reads the energy certificate from the storage), short enough for a person who is typing.
-    /// </summary>
     public const string SetLockTimeoutSql = "SET LOCAL lock_timeout = '5s'";
 
     /// <summary>

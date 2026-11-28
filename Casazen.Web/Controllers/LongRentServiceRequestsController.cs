@@ -94,13 +94,6 @@ public class LongRentServiceRequestsController(
         });
     }
 
-    /// <summary>
-    /// One long-rent request of the caller's scope (LR-08a), in the shape of the list (<see cref="ServiceRequestDto"/>): the dates of its
-    /// path (<c>createdAt</c>, <c>takenAt</c>, <c>startedAt</c>, <c>completedAt</c>, <c>paidAt</c>, <c>cancelledAt</c>) and its
-    /// <c>history</c> are in it. 404 <c>service_request_not_found</c> for a request that does not exist, that is of another org, that
-    /// is on a property outside the caller's scope (a collaborator "Solo alcuni") or that is a short-rent one; 403 when the caller may
-    /// not read the request's property (<c>property.read</c> in long-rent as a <see cref="HostResource"/>).
-    /// </summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -146,7 +139,6 @@ public class LongRentServiceRequestsController(
         var listed = await comuneDirectory.GetByIstatCodesAsync(
             suppliers.SelectMany(SupplierComuniView.IstatCodes), cancellationToken);
 
-        // SP-REL: in the order of the ranking, like the list of the short-rent search (the first one marked "recommended" when it leads).
         var scores = await matcher.ScoresAsync(suppliers, ServiceRequestUrgency.Normal, cancellationToken);
         var items = SupplierPickerSearch.Apply(
             suppliers.Select(sp => SupplierPickerDto.From(sp, listed, [], null, hostOrigin: hostOriginIds?.Contains(sp.OrgId))), q: null, SupplierPickerSort.Recommended, services: null, scores);
@@ -229,10 +221,6 @@ public class LongRentServiceRequestsController(
         CancellationToken cancellationToken) =>
         HostActionAsync(id, hostOrgId => serviceRequestService.CancelAsHostAsync(id, hostOrgId, request.Reason, cancellationToken), cancellationToken);
 
-    /// <summary>
-    /// The landlord reminds the supplier to answer a new long-rent request (SP-04): at most one reminder every 6 hours, only
-    /// while the request is new. Same rules and errors as the short-rent <c>POST api/service-requests/{id}/remind</c>.
-    /// </summary>
     [HttpPost("{id:guid}/remind")]
     [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
@@ -243,10 +231,6 @@ public class LongRentServiceRequestsController(
     public Task<ActionResult<ServiceRequestDto>> Remind(Guid id, CancellationToken cancellationToken) =>
         HostActionAsync(id, hostOrgId => serviceRequestService.RemindAsync(id, hostOrgId, cancellationToken), cancellationToken);
 
-    /// <summary>
-    /// The landlord accepts the time the supplier proposed for a long-rent request (SP-04). Same rules and errors as the
-    /// short-rent <c>POST api/service-requests/{id}/proposal/accept</c>.
-    /// </summary>
     [HttpPost("{id:guid}/proposal/accept")]
     [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
@@ -257,10 +241,6 @@ public class LongRentServiceRequestsController(
     public Task<ActionResult<ServiceRequestDto>> AcceptProposal(Guid id, CancellationToken cancellationToken) =>
         HostActionAsync(id, hostOrgId => serviceRequestService.AcceptProposalAsync(id, hostOrgId, cancellationToken), cancellationToken);
 
-    /// <summary>
-    /// The landlord turns the proposed time down (SP-04). Same rules and errors as the short-rent
-    /// <c>POST api/service-requests/{id}/proposal/reject</c>.
-    /// </summary>
     [HttpPost("{id:guid}/proposal/reject")]
     [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
@@ -271,10 +251,6 @@ public class LongRentServiceRequestsController(
     public Task<ActionResult<ServiceRequestDto>> RejectProposal(Guid id, CancellationToken cancellationToken) =>
         HostActionAsync(id, hostOrgId => serviceRequestService.RejectProposalAsync(id, hostOrgId, cancellationToken), cancellationToken);
 
-    /// <summary>
-    /// The landlord accepts the quote the supplier sent for a long-rent request (SP-04b). Same rules and errors as the short-rent
-    /// <c>POST api/service-requests/{id}/quote/accept</c>: the body repeats <c>quote.sentAt</c> as read.
-    /// </summary>
     [HttpPost("{id:guid}/quote/accept")]
     [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
@@ -290,9 +266,6 @@ public class LongRentServiceRequestsController(
         HostActionAsync(
             id, hostOrgId => serviceRequestService.AcceptQuoteAsync(id, hostOrgId, request.QuoteSentAt!.Value, cancellationToken), cancellationToken);
 
-    /// <summary>
-    /// The landlord turns the quote down (SP-04b). Same rules and errors as the short-rent <c>POST api/service-requests/{id}/quote/reject</c>.
-    /// </summary>
     [HttpPost("{id:guid}/quote/reject")]
     [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
@@ -308,10 +281,6 @@ public class LongRentServiceRequestsController(
         HostActionAsync(
             id, hostOrgId => serviceRequestService.RejectQuoteAsync(id, hostOrgId, request.QuoteSentAt!.Value, cancellationToken), cancellationToken);
 
-    /// <summary>
-    /// A photo of the work of a long-rent request (SP-04), for its landlord (<c>property.read</c> in long-rent). Private file,
-    /// never cached. The supplier reads its photos at <c>GET api/service-requests/{id}/photos/{photoId}</c>.
-    /// </summary>
     [HttpGet("{id:guid}/photos/{photoId:guid}")]
     [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -324,11 +293,6 @@ public class LongRentServiceRequestsController(
         return await ServiceRequestPhotoResults.ForAsync(this, serviceRequestService, request, photoId, cancellationToken);
     }
 
-    /// <summary>
-    /// Runs a host action on a long-rent request of the caller's scope: 404 for a request outside it (or a short-rent one), 403
-    /// when the caller may not write the request's property (<c>property.write</c> in long-rent as a <see cref="HostResource"/>),
-    /// then <paramref name="action"/> with the host org.
-    /// </summary>
     private async Task<ActionResult<ServiceRequestDto>> HostActionAsync(
         Guid id,
         Func<Guid, Task<ServiceRequest>> action,
@@ -348,10 +312,6 @@ public class LongRentServiceRequestsController(
         return Ok(ServiceRequestsController.MapDto(await action(scope.OrgId)));
     }
 
-    /// <summary>
-    /// The landlord confirms the final amount of a long-rent request that is above the quote by more than the tolerance (SP-15a,
-    /// decision D7). Same rules and errors as the short-rent <c>POST api/service-requests/{id}/final-amount/confirm</c>.
-    /// </summary>
     [HttpPost("{id:guid}/final-amount/confirm")]
     [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
@@ -387,7 +347,6 @@ public class LongRentServiceRequestsController(
         if (!await authorizationService.IsAuthorizedAsync(User, resource, LongRentPropertyOperations.Write))
             return Forbid();
 
-        // The answer carries a client secret: never cached.
         Response.Headers.CacheControl = "private, no-store";
         return Ok(ServicePaymentSessionDto.From(await supplierPayments.CreateHostSessionAsync(id, scope.OrgId, cancellationToken)));
     }
@@ -423,11 +382,6 @@ public class LongRentServiceRequestsController(
         return Ok(ServiceRequestsController.MapDto(updated));
     }
 
-    /// <summary>
-    /// "Tutto a posto" (SP-15c-b, decision VT-D1) for a long-rent request: the landlord says the work of a completed request paid inside CasaZen is
-    /// fine, and the money CasaZen holds for it goes to the supplier at once. Same rules and errors as the short-rent
-    /// <c>POST api/service-requests/{id}/confirm-ok</c>; <c>property.write</c> in long-rent on the request's property.
-    /// </summary>
     [HttpPost("{id:guid}/confirm-ok")]
     [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
     [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
@@ -458,10 +412,6 @@ public class LongRentServiceRequestsController(
         return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
     }
 
-    /// <summary>
-    /// The property (tenant filter: another org's is not found) and the outcome of <paramref name="operation"/> on it:
-    /// 404 when it is not in the caller's org, 403 when the operation is not allowed.
-    /// </summary>
     private async Task<(PropertyRef? Property, ActionResult? Denied)> AuthorizePropertyAsync(
         Guid propertyId,
         HostOperationRequirement operation,

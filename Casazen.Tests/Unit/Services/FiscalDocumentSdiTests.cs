@@ -30,8 +30,6 @@ public class FiscalDocumentSdiTests
         "<p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><DatiTrasmissione>"
         + "<IdTrasmittente><IdPaese>IT</IdPaese><IdCodice>09876543217</IdCodice></IdTrasmittente><ProgressivoInvio>ABCDE12345</ProgressivoInvio></DatiTrasmissione></FatturaElettronicaHeader></p:FatturaElettronica>";
 
-    // ---------------------------------------------------------------- the proof
-
     /// <summary>
     /// PROOF TEST: data and trust rule. With no provider configured (or a provider but the module off) no document ever reaches <c>submitted</c>, <c>delivered</c> or <c>manual_declared</c> by itself:
     /// the submission answers «not configured» and changes nothing, an outcome that is no answer of the provider (a «submitted», a delivery of a document never submitted) moves nothing, and the
@@ -44,25 +42,21 @@ public class FiscalDocumentSdiTests
         var document = await SeedAsync(db);
         var recorder = new DomainEventRecorder(db, new SdiTenant(), new FakeTimeProvider(Now));
 
-        // No provider configured: nothing is submitted, nothing changes.
         var service = Service(db, new UnconfiguredSdiEInvoiceProvider(), recorder: recorder);
         var answer = await service.SubmitAsync(document.Id);
         Assert.Equal((SdiSubmitOutcome.NotConfigured, FiscalDocumentSdiStatuses.ToSend), (answer.Outcome, answer.Status));
 
-        // A provider that is configured, with the module off, is the same: it is never called.
         var provider = Configured();
         var off = Service(db, provider.Object, new TestFeatureFlags(), recorder);
         Assert.Equal(SdiSubmitOutcome.NotConfigured, (await off.SubmitAsync(document.Id)).Outcome);
         provider.Verify(p => p.SubmitDocumentAsync(It.IsAny<SdiDocumentSubmission>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // «Submitted» is no outcome, and a delivery of a document that was never submitted contradicts its state: neither moves it.
         Assert.Equal(SdiRecordResult.AlreadyRecorded, await service.RecordOutcomeAsync(document.Id, new SdiOutcome(SdiOutcomeKind.Submitted)));
         Assert.Equal(SdiRecordResult.Ignored, await service.RecordOutcomeAsync(document.Id, new SdiOutcome(SdiOutcomeKind.Delivered)));
         var stored = await db.FiscalDocuments.AsNoTracking().SingleAsync();
         Assert.Equal((FiscalDocumentSdiStatuses.ToSend, (string?)null, (DateTime?)null), (stored.SdiStatus, stored.SdiTransmissionId, stored.SdiStatusUpdatedAt));
         Assert.Empty(await db.OutboxEvents.ToListAsync());
 
-        // The declaration needs a person: the day and the reference. Without them nothing changes; with them the document is declared, and that is all.
         var invalid = await Assert.ThrowsAsync<DomainRuleException>(() => service.DeclareManuallyAsync(document.Id, new SdiDeclaration(SdiDeclarationKind.Sent)));
         Assert.Equal(FiscalDocumentSdiErrors.DeclarationInvalid, invalid.Code);
         Assert.Equal(["date", "reference"], Assert.IsAssignableFrom<List<string>>(invalid.Extensions["fields"]));
@@ -73,8 +67,6 @@ public class FiscalDocumentSdiTests
         stored = await db.FiscalDocuments.AsNoTracking().SingleAsync();
         Assert.Equal(("IT09876543217_AB123.xml", RomeCalendar.StartOfDayUtc(new DateOnly(2026, 11, 19))), (stored.SdiTransmissionId, stored.SdiStatusUpdatedAt));
     }
-
-    // ---------------------------------------------------------------- the submission
 
     [Fact]
     public async Task Submit_TheProviderAccepts_IsSubmittedOnce_WithTheIssuerAndTheFileOfTheStoredXml()
@@ -102,7 +94,6 @@ public class FiscalDocumentSdiTests
         Assert.StartsWith("IT09876543217_", seen.FileName, StringComparison.Ordinal);
         Assert.Equal(SdiFileNames.Of("IT", "09876543217", document.Id), seen.FileName);
 
-        // A second submission (a double click) never sends it twice.
         Assert.Equal(SdiSubmitOutcome.AlreadySubmitted, (await service.SubmitAsync(document.Id)).Outcome);
         provider.Verify(p => p.SubmitDocumentAsync(It.IsAny<SdiDocumentSubmission>(), It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -165,8 +156,6 @@ public class FiscalDocumentSdiTests
         provider.Verify(p => p.SubmitDocumentAsync(It.IsAny<SdiDocumentSubmission>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    // ---------------------------------------------------------------- the outcomes
-
     [Fact]
     public async Task RecordOutcome_Delivered_IsRecordedOnce_AndALaterSubmittedNeverOverridesIt()
     {
@@ -201,14 +190,10 @@ public class FiscalDocumentSdiTests
         Assert.Equal((DomainEventType.FiscalDocumentSdiRejected, document.Id, $"fiscal-document-sdi-rejected:{document.Id:N}"), (recorded.EventType, recorded.EntityId, recorded.DedupKey));
         Assert.DoesNotContain("example.com", recorded.PayloadJson, StringComparison.Ordinal);
 
-        // A delivery after a rejection contradicts it: not applied.
         Assert.Equal(SdiRecordResult.Ignored, await service.RecordOutcomeAsync(document.Id, new SdiOutcome(SdiOutcomeKind.Delivered)));
         Assert.Equal(FiscalDocumentSdiStatuses.Rejected, (await db.FiscalDocuments.AsNoTracking().SingleAsync()).SdiStatus);
     }
 
-    /// <summary>
-    /// The rule the reuse of a number rests on: a delivered invoice is never rejected afterwards, so a rejected one never was delivered. The rejection is ignored (and no event is recorded).
-    /// </summary>
     [Fact]
     public async Task RecordOutcome_ADeliveredInvoice_IsNeverRejectedAfterwards()
     {
@@ -237,8 +222,6 @@ public class FiscalDocumentSdiTests
         await Assert.ThrowsAsync<NotFoundException>(() => service.RecordOutcomeAsync(Guid.NewGuid(), new SdiOutcome(SdiOutcomeKind.Delivered)));
     }
 
-    // ---------------------------------------------------------------- the declaration by hand
-
     [Fact]
     public async Task Declare_TheDayAndTheReference_AreChecked_AndARejectionGoesThroughTheOneEntryOfTheOutcomes()
     {
@@ -246,7 +229,6 @@ public class FiscalDocumentSdiTests
         var document = await SeedAsync(db);
         var service = Service(db, new UnconfiguredSdiEInvoiceProvider());
 
-        // The day: not in the future, not before the issue; the reference: not empty.
         foreach (var declaration in new[]
                  {
                      new SdiDeclaration(SdiDeclarationKind.Sent, new DateOnly(2026, 11, 21), "ref"),
@@ -258,7 +240,6 @@ public class FiscalDocumentSdiTests
             Assert.Equal(FiscalDocumentSdiErrors.DeclarationInvalid, invalid.Code);
         }
 
-        // A rejection needs its code; with it, the state is rejected and the event is recorded as for the provider's answers.
         var noCode = await Assert.ThrowsAsync<DomainRuleException>(() => service.DeclareManuallyAsync(document.Id, new SdiDeclaration(SdiDeclarationKind.Rejected)));
         Assert.Equal(["errorCode"], Assert.IsAssignableFrom<List<string>>(noCode.Extensions["fields"]));
 
@@ -266,7 +247,6 @@ public class FiscalDocumentSdiTests
         Assert.Equal((FiscalDocumentSdiStatuses.Rejected, "00311", true), (rejected.Status, rejected.ErrorCode, rejected.CanCorrect));
         Assert.Single(await db.OutboxEvents.Where(e => e.EventType == DomainEventType.FiscalDocumentSdiRejected).ToListAsync());
 
-        // A document rejected is rejected: a second declaration is no change, and a declaration of sending is refused.
         await service.DeclareManuallyAsync(document.Id, new SdiDeclaration(SdiDeclarationKind.Rejected, ErrorCode: "311"));
         Assert.Single(await db.OutboxEvents.ToListAsync());
         Assert.Equal(
@@ -287,8 +267,6 @@ public class FiscalDocumentSdiTests
         Assert.Equal(FiscalDocumentSdiErrors.NotToSend, conflict.Code);
         Assert.Equal(FiscalDocumentSdiStatuses.Submitted, (await db.FiscalDocuments.AsNoTracking().SingleAsync()).SdiStatus);
     }
-
-    // ---------------------------------------------------------------- the reads of the job and of the webhook
 
     [Fact]
     public async Task Reads_OfTheJobAndTheWebhook_AreAcrossTheOrgs_AndNeverIncludeADocumentDeclaredByHand()
@@ -348,10 +326,6 @@ public class FiscalDocumentSdiTests
         provider.Verify(p => p.GetStatusAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule (the scope of the caller). A caller who reaches only some properties sees the issuers that have a document on a booking of those properties, never every issuer of
-    /// the org («senza dichiarazione = in scope» is never the rule); a scope that reaches no property sees none; the whole org sees all of them.
-    /// </summary>
     [Fact]
     public async Task IssuerRegistrations_ACallerWithAPartialScope_SeesOnlyTheIssuersOfTheDocumentsOfHisProperties()
     {
@@ -370,8 +344,6 @@ public class FiscalDocumentSdiTests
         Assert.Empty(await service.IssuerRegistrationsAsync(new HostScope(OrgId, OwnerId: "auth0|somebody-else")));
         Assert.Empty(await service.IssuerRegistrationsAsync(new HostScope(OrgId, GrantedToUserId: "auth0|collaborator-without-grants")));
     }
-
-    // ---------------------------------------------------------------- the contributor of the billing setup
 
     [Fact]
     public async Task BillingSetup_TheIssuersWaitingForTheirVatNumber_AreCountedOnlyWhileTheChannelIsOpen()
@@ -400,8 +372,6 @@ public class FiscalDocumentSdiTests
         Assert.Empty(await off.EvaluateAsync(OrgId, CancellationToken.None));
     }
 
-    // ---------------------------------------------------------------- the state a host reads
-
     [Fact]
     public async Task State_SaysWhatCanBeDone_AndWhyAnInvoiceIsStillToSend()
     {
@@ -425,8 +395,6 @@ public class FiscalDocumentSdiTests
             (state?.CanSubmit ?? false, state?.CanDeclare ?? false, state?.CanCorrect ?? false, state is not null);
     }
 
-    // ---------------------------------------------------------------- helpers
-
     private static FiscalDocumentSdiService Service(AppDbContext db, ISdiEInvoiceProvider provider, IFeatureFlags? flags = null, IDomainEventRecorder? recorder = null) =>
         new(
             db,
@@ -447,7 +415,6 @@ public class FiscalDocumentSdiTests
     private static AppDbContext NewDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"FiscalSdi_{Guid.NewGuid()}").Options, new SdiTenant(), TestDataProtection.Shared);
 
-    /// <summary>An issued electronic invoice of CasaZen «to send», as the issue leaves it (the XML, the snapshot of the issuer); the arguments change what the test needs.</summary>
     private static async Task<FiscalDocument> SeedAsync(
         AppDbContext db,
         FiscalDocumentSource source = FiscalDocumentSource.CasaZen,
@@ -530,7 +497,6 @@ public class FiscalDocumentSdiTests
 
     private static Guid OwnerOf(AppDbContext db, Guid profileId) => db.OrgFiscalIssuerProfiles.AsNoTracking().Single(p => p.Id == profileId).PropertyOwnerId!.Value;
 
-    /// <summary>The document made the one of a booking at a property of the host <paramref name="hostId"/> (what the scope of a caller reaches it through).</summary>
     private static async Task OnABookingOfAsync(AppDbContext db, FiscalDocument document, string hostId)
     {
         var property = new Property { OrgId = OrgId, OwnerId = hostId, Name = "TEST Casa", Address = "Via 1", City = "Roma", Currency = "EUR" };
@@ -556,7 +522,6 @@ public class FiscalDocumentSdiTests
     }
 }
 
-/// <summary>No request: the org of an event or of a read is the one the test names.</summary>
 internal sealed class SdiTenant : ITenantContext
 {
     public Guid? OrgId => null;

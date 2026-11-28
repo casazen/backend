@@ -11,10 +11,6 @@ using Casazen.Infrastructure.Data;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Proposes the condominium expense of a lease from the condominium book, or from the two amounts the wizard types
-/// when the book is empty. No payment is started here.
-/// </summary>
 public sealed class TenantExpenseProposalService(AppDbContext db, ICondominiumAccountingService condominiums)
     : ITenantExpenseProposalService
 {

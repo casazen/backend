@@ -3,11 +3,6 @@ using Casazen.Core.Exceptions;
 
 namespace Casazen.Core.BankStatements;
 
-/// <summary>
-/// Reads the movements out of a table (a CSV or the first sheet of an Excel file), whatever the bank calls its columns: the title row is
-/// looked for among the first rows and its words are matched against the ones Italian banks use («Data valuta», «Descrizione operazione»,
-/// «Importo», or «Dare»/«Avere»); when nothing is recognized the landlord says which column is which (<see cref="BankColumnMapping"/>).
-/// </summary>
 internal static class TabularStatementReader
 {
     private const int HeaderSearchRows = 40;
@@ -30,7 +25,6 @@ internal static class TabularStatementReader
         Reference,
     }
 
-    /// <summary>Where each piece of a movement is in a row.</summary>
     private sealed class ColumnMap
     {
         public int? BookingDate { get; set; }
@@ -99,8 +93,6 @@ internal static class TabularStatementReader
         return new ParsedBankStatement(format, credits, movements);
     }
 
-    // ---------------------------------------------------------------- columns
-
     private static bool TryDetect(IReadOnlyList<Cell[]> rows, out ColumnMap map, out int headerRow)
     {
         for (var index = 0; index < Math.Min(rows.Count, HeaderSearchRows); index++)
@@ -114,8 +106,6 @@ internal static class TabularStatementReader
             }
         }
 
-        // A statement without any description column still names the payer or the reason somewhere: accept it without one only when the
-        // dates and the amounts are there, so the landlord is not asked to map a file that is readable.
         for (var index = 0; index < Math.Min(rows.Count, HeaderSearchRows); index++)
         {
             var candidate = MapFromTitles(rows[index]);
@@ -181,7 +171,6 @@ internal static class TabularStatementReader
         return map;
     }
 
-    /// <summary>The role a title plays, by the words banks use for it; a title the importer does not know is null.</summary>
     private static Role? Classify(string title)
     {
         var text = BankValues.NormalizeText(title);
@@ -274,7 +263,6 @@ internal static class TabularStatementReader
         };
         map.Descriptions.Add(mapping.Description);
 
-        // What the landlord did not say but the titles do (payer, IBAN, currency, sign) is still used.
         if (mapping.HeaderRow >= 0)
         {
             var detected = MapFromTitles(rows[mapping.HeaderRow]);
@@ -294,8 +282,6 @@ internal static class TabularStatementReader
     private static DomainRuleException Unrecognized(IReadOnlyList<Cell[]> rows)
     {
         var headerRow = GuessHeaderRow(rows);
-        // The top of the file as it is, and at least down to the first movement under the titles the guess found: a long preamble
-        // (holder, account, period, balance) must not hide the very rows the landlord needs to see.
         var shown = Math.Max(PreviewRows, headerRow + 2);
         var preview = rows
             .Take(shown)
@@ -312,7 +298,6 @@ internal static class TabularStatementReader
         };
     }
 
-    /// <summary>The first of the top rows that looks like titles (several cells, none a date or an amount); -1 when the file seems to have none.</summary>
     private static int GuessHeaderRow(IReadOnlyList<Cell[]> rows)
     {
         for (var index = 0; index < Math.Min(rows.Count, 10); index++)
@@ -324,8 +309,6 @@ internal static class TabularStatementReader
 
         return -1;
     }
-
-    // ---------------------------------------------------------------- rows
 
     private static DecimalMark DetectMark(IReadOnlyList<Cell[]> rows, int headerRow, ColumnMap map)
     {
@@ -378,7 +361,6 @@ internal static class TabularStatementReader
         }
         else
         {
-            // Money in and money out in two columns: what comes in is positive, what goes out is taken off whatever sign it is written with.
             var hasCredit = BankValues.TryParseAmount(At(row, map.Credit), mark, out var credit);
             var hasDebit = BankValues.TryParseAmount(At(row, map.Debit), mark, out var debit);
             if (!hasCredit && !hasDebit)
@@ -388,7 +370,6 @@ internal static class TabularStatementReader
 
         if (map.Sign is not null)
         {
-            // A column that holds only «+» or «-» (or the long dashes a spreadsheet makes of it) has nothing left once the text is normalized.
             var written = At(row, map.Sign).Text.Trim();
             var sign = written switch
             {
@@ -409,7 +390,6 @@ internal static class TabularStatementReader
         column is { } index && index >= 0 && index < row.Length ? row[index] : Cell.Empty;
 }
 
-/// <summary>Reads the text of a CSV (or a tab- or pipe-separated file) into rows of cells.</summary>
 internal static class CsvTableReader
 {
     private static readonly char[] Delimiters = [';', '\t', '|', ','];
@@ -499,16 +479,11 @@ internal static class CsvTableReader
         void Append(char ch)
         {
             fieldHasContent = true;
-            // A field is never longer than the importer keeps; the rest of a runaway cell is not stored.
             if (field.Length < BankStatementLimits.MaxTextLength * 2)
                 field.Append(ch);
         }
     }
 
-    /// <summary>
-    /// The delimiter that splits the most lines into the same number of cells (so a title line with a stray comma does not decide);
-    /// <c>;</c> when none splits anything.
-    /// </summary>
     private static char DetectDelimiter(string text)
     {
         var lines = new List<string>(DelimiterSampleLines);
@@ -557,7 +532,6 @@ internal static class CsvTableReader
     }
 }
 
-/// <summary>Turns the bytes of a text file into text: UTF-8 (with or without BOM), UTF-16 with BOM, or the Windows-1252 that older bank exports use.</summary>
 internal static class StatementText
 {
     private static readonly Encoding StrictUtf8 = new UTF8Encoding(false, true);

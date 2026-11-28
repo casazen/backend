@@ -60,16 +60,12 @@ public sealed class BookingImportService(
     TimeProvider timeProvider,
     ILogger<BookingImportService> logger) : IBookingImportService
 {
-    /// <summary>Reservations asked for in a page.</summary>
     public const int PageSize = OctorateReservationQuery.MaxPageSize;
 
-    /// <summary>Years of history the first full read goes back.</summary>
     public const int FullImportYears = 3;
 
-    /// <summary>Calls of the bucket of the org that the import leaves to the people who use CasaZen.</summary>
     public const int RateReserve = 5;
 
-    /// <summary>The longest the import waits for the bucket of an org to refill, in one run.</summary>
     public static readonly TimeSpan MaxRateWait = TimeSpan.FromMinutes(5);
 
     /// <summary>What the guests of an imported booking are kept for (GDPR art. 6.1.b: the stay contract), in <see cref="Guest.DataProcessingPurpose"/>.</summary>
@@ -185,8 +181,6 @@ public sealed class BookingImportService(
                     break;
                 }
 
-                // An item that cannot be read (no id, or one the column cannot hold) is not imported and not lost in silence: the run is not
-                // complete, so the checkpoint stays and the next run reads it again.
                 if (listed.Unreadable > 0)
                 {
                     run.Failed += listed.Unreadable;
@@ -205,7 +199,6 @@ public sealed class BookingImportService(
                         break;
                 }
 
-                // The list ends with a page that has no item, not with a short one: a server may serve fewer than the size asked for.
                 if (listed.ItemCount == 0)
                 {
                     reachedEnd = true;
@@ -213,7 +206,6 @@ public sealed class BookingImportService(
                 }
             }
 
-            // Pages run out before the list does (or the run stopped): what was not read is not "nothing".
             if (!reachedEnd)
                 run.Stopped = true;
         }
@@ -243,10 +235,8 @@ public sealed class BookingImportService(
             run.Failed);
     }
 
-    /// <summary>Deals with one reservation of the list; <c>false</c> when the run has to stop.</summary>
     private async Task<bool> HandleAsync(Target target, OctorateReservation item, BookingImportOptions? options, RunState run, CancellationToken ct)
     {
-        // A reservation of another room is not this property's.
         if (item.Product is not null && !target.Owns(item.Product))
         {
             run.Unmapped.Add(new UnmappedReservation(target.AccommodationId, item.Id, item.Product));
@@ -278,7 +268,6 @@ public sealed class BookingImportService(
         }
         catch (OctorateNotFoundException)
         {
-            // Gone between the list and the read: nothing to import.
             run.Skipped++;
             return true;
         }
@@ -321,7 +310,6 @@ public sealed class BookingImportService(
         }
         catch (DbUpdateException ex)
         {
-            // The type of the error only: the message of the database may quote the row.
             run.Failed++;
             logger.LogError(
                 "Octorate reservation {ReservationId} of property {PropertyId} could not be saved ({Error}): the next run reads it again",
@@ -333,7 +321,6 @@ public sealed class BookingImportService(
         return true;
     }
 
-    /// <summary>Applies one reservation under the advisory lock of its key and commits it with its events.</summary>
     private async Task<Applied> ApplyAsync(Target target, OctorateReservation reservation, BookingImportOptions? options, CancellationToken ct)
     {
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
@@ -348,7 +335,6 @@ public sealed class BookingImportService(
         }
         finally
         {
-            // Whatever happened, nothing of this reservation (not even an event that was not saved) is left for the next one.
             db.ChangeTracker.Clear();
         }
     }
@@ -360,11 +346,9 @@ public sealed class BookingImportService(
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .FirstOrDefaultAsync(b => b.OrgId == target.OrgId && b.OctorateReservationId == reservation.Id, ct);
 
-        // The version read may have been applied meanwhile, or be older than the one that was: nothing changes.
         if (booking is not null && (IsNotNewer(reservation.UpdatedAt, booking.OctorateUpdatedAt) || IsProtected(booking.UpdatedAt, options)))
             return Applied.Skipped;
 
-        // The echo of a reservation CasaZen created itself, read before the push saved its id: the booking is there, it is linked, not made again.
         if (booking is null && await LinkOwnBookingAsync(target, reservation, ct))
             return Applied.Skipped;
 
@@ -389,7 +373,6 @@ public sealed class BookingImportService(
         var amounts = mapper.ToOtaAmounts(reservation, target.Currency);
         var todayRome = timeProvider.TodayInRome();
 
-        // Who collects (E08/F03/US03/T02, NF-77): a booking of a channel has it, any other (the host's own, CasaZen's, the agency's booking engine) never.
         var channelBooking = FiscalCopy.IsOtaBookingSource(source) && booking?.Source != BookingSource.Manual;
         var collection = channelBooking ? await CollectionOfAsync(reservation, ct) : OtaCollection.None;
 
@@ -401,8 +384,6 @@ public sealed class BookingImportService(
 
         var statusChanged = status != booking.Status;
 
-        // The booking is found by (org, Octorate id) only. When Octorate moves the reservation to a room that is mapped to another property of the
-        // org, the booking follows its room: left on the old property it would hold the nights there and leave the new one looking free.
         var propertyChanged = booking.PropertyId != target.PropertyId;
         var datesChanged = booking.CheckInDate.Date != arrival.Date || booking.CheckOutDate.Date != departure.Date;
         var guestsChanged = booking.NumberOfGuests != guests || booking.NumberOfAdults != adults || booking.NumberOfChildren != children;
@@ -431,13 +412,10 @@ public sealed class BookingImportService(
         var note = Clip(reservation.Notes, 1000);
         var noteChanged = booking.SpecialRequests.Length == 0 && note.Length > 0;
 
-        // The two flags of NF-77 are read as the figures are, but they are not money and not an event: a booking CasaZen owns keeps them as well, and
-        // a change of them alone is saved without a modification of the booking being announced.
         var collectionChanged = channelBooking
                                 && (booking.OtaCompanyCollect != collection.CompanyCollect
                                     || booking.OtaCommissionIncludedInPayments != collection.CommissionIncludedInPayments);
 
-        // What the version applied is remembered even when nothing else changes, so the same version is not read twice.
         if (reservation.UpdatedAt is { } updatedAt)
             booking.OctorateUpdatedAt = updatedAt;
 
@@ -566,8 +544,6 @@ public sealed class BookingImportService(
             Status = status,
             Source = channel.Source,
             ChannelLabel = channel.Label,
-            // E27/F01/US01/T01 (NF-123): a reservation of the booking engine of the agency stays direct and is attributed to it, so its origin is the site of
-            // the agency. The reservation CasaZen pushed itself never gets here: it is the booking CasaZen already has (LinkOwnBookingAsync, the known id).
             AttributionSource = mapper.ToAttributionSource(channel.Source),
             SpecialRequests = Clip(reservation.Notes, 1000),
             OctorateReservationId = reservation.Id,
@@ -595,10 +571,6 @@ public sealed class BookingImportService(
         return Applied.Created;
     }
 
-    /// <summary>
-    /// The events of a change of an existing booking (ADR-033-R7): the confirmation and the cancellation when the state became that, the
-    /// modification when the property, the dates, the guests or the amounts changed and the booking is not cancelled. None for a stay that is over.
-    /// </summary>
     private async Task RecordChangeAsync(Booking booking, bool statusChanged, bool modified, DateTime todayRome, CancellationToken ct)
     {
         if (booking.CheckOutDate.Date < todayRome.Date)
@@ -671,13 +643,8 @@ public sealed class BookingImportService(
         return mapper.ToOtaCollection(reservation with { CommissionIncludedInPayments = commissionIncluded });
     }
 
-    /// <summary>A figure Octorate gave and that differs from the one held; a figure it did not give changes nothing.</summary>
     private static bool Differs(decimal held, decimal? read) => read is { } value && held != value;
 
-    /// <summary>
-    /// A booking CasaZen owns: entered by the host, or one that has payments or a saved card in CasaZen. Octorate's figures do not replace
-    /// its own, and a cancellation made in CasaZen is not undone by a read.
-    /// </summary>
     private async Task<bool> IsOwnedByCasaZenAsync(Booking booking, CancellationToken ct)
     {
         if (booking.Source == BookingSource.Manual
@@ -752,7 +719,6 @@ public sealed class BookingImportService(
         return guest;
     }
 
-    /// <summary>Records on the mapping that everything up to <paramref name="startedAt"/> was read (see <see cref="OctorateListingMapping.BookingsImportedThrough"/>).</summary>
     private async Task MarkReadAsync(Target target, DateTime startedAt, DateTime? since, CancellationToken ct)
     {
         var mapping = await db.OctorateListingMappings
@@ -763,7 +729,6 @@ public sealed class BookingImportService(
         if (mapping is null || mapping.BookingsImportedThrough > startedAt)
             return;
 
-        // A full read covers the whole history; a window covers up to now only when it reaches back to the last complete read.
         var covers = since is null || (mapping.BookingsImportedThrough is { } previous && since.Value <= previous);
         if (!covers)
         {
@@ -805,10 +770,6 @@ public sealed class BookingImportService(
                 StayCurrency.Normalize(property.Currency));
     }
 
-    /// <summary>
-    /// Waits, at most <see cref="MaxRateWait"/>, until the bucket of the org has more than <see cref="RateReserve"/> calls; <c>false</c> when
-    /// it did not refill in time.
-    /// </summary>
     private async Task<bool> WaitForCapacityAsync(Guid orgId, CancellationToken ct)
     {
         var waited = TimeSpan.Zero;
@@ -824,10 +785,8 @@ public sealed class BookingImportService(
         return true;
     }
 
-    /// <summary>The version read is not newer than the one applied (both known): it changes nothing.</summary>
     private static bool IsNotNewer(DateTime? read, DateTime? applied) => read is { } r && applied is { } a && r <= a;
 
-    /// <summary>The booking was changed in CasaZen within the window the caller protects (the optimistic window of the reconciliation).</summary>
     private bool IsProtected(DateTime bookingUpdatedAt, BookingImportOptions? options) =>
         options?.SkipChangedWithin is { } window && bookingUpdatedAt > timeProvider.GetUtcNow().UtcDateTime - window;
 
@@ -844,7 +803,6 @@ public sealed class BookingImportService(
         Updated,
     }
 
-    /// <summary>The property a run is about, read once: the org, the listing, the room and the clock and currency of the property.</summary>
     private sealed record Target(
         Guid MappingId,
         Guid OrgId,
@@ -854,7 +812,6 @@ public sealed class BookingImportService(
         string Timezone,
         string Currency)
     {
-        /// <summary>The reservation is on the room of the property; a reservation that does not say its room is not.</summary>
         public bool Owns(string? product) =>
             product is not null && ProductId is not null && string.Equals(product, ProductId, StringComparison.Ordinal);
     }

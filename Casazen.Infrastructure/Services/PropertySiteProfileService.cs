@@ -41,7 +41,6 @@ public class PropertySiteProfileService(
         if (property is null)
             return null;
 
-        // A property let for the long term has no page on the booking site: 422 like the checkout (property_not_bookable_in_long_mode).
         PropertyRentalModeRules.EnsureShortRent(property);
 
         var now = _clock.GetUtcNow();
@@ -68,7 +67,6 @@ public class PropertySiteProfileService(
 
         PropertyRentalModeRules.EnsureShortRent(property);
 
-        // Only the document is written: the columns of the profile and the rest of the property stay as they are.
         var document = SitePropertyProfileJson.Parse(property.SiteProfileJson);
         var merged = SitePropertyProfileRules.MergeAutoTranslations(document, translated);
         property.SiteProfileJson = SitePropertyProfileJson.Serialize(merged);

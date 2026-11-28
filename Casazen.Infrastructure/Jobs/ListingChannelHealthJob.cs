@@ -29,13 +29,10 @@ public class ListingChannelHealthJob(
 {
     public const string RecurringJobId = "listing-channel-health";
 
-    /// <summary>Every day at 06:00 (UTC).</summary>
     public const string Cron = "0 6 * * *";
 
-    /// <summary>The seconds a run waits for the previous one.</summary>
     public const int LockTimeoutSeconds = 300;
 
-    /// <summary>The code the item carries as its reason.</summary>
     public const string Reason = "listing_channel_silent";
 
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
@@ -48,8 +45,6 @@ public class ListingChannelHealthJob(
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var threshold = now - ListingStatusService.SyncAlertAfter;
 
-        // Only the channels of properties that still exist: a deleted property keeps its rows (nothing cleans them up), the SoftDelete filter hides
-        // it from the «To do» service (which would throw «not found» at the first such row and stop the whole run), and nobody is left to fix them.
         var stale = await (
                 from state in db.ListingChannelStates.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking()
                 join property in db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking() on state.PropertyId equals property.Id
@@ -60,7 +55,6 @@ public class ListingChannelHealthJob(
         foreach (var row in stale)
             await todos.RaiseAsync(ActivityType.IntegrationError, row, ActivityUrgency.Medium, Reason, cancellationToken);
 
-        // Closed when the row is fresh again (or is not a pushed one any more, or its property is gone).
         var silent = stale.Select(row => row.Id).ToHashSet();
         var type = nameof(ActivityType.IntegrationError);
         var open = await db.InternalActivities

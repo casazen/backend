@@ -25,7 +25,6 @@ public enum LongRentDeadlineType
     Rent = 4,
 }
 
-/// <summary>Rules and limits of the agenda of the long-term area (LR-01, B2).</summary>
 public static class LongRentDeadlineRules
 {
     /// <summary>
@@ -36,13 +35,10 @@ public static class LongRentDeadlineRules
     /// </summary>
     public const int NoticeMonthsBeforeEnd = 6;
 
-    /// <summary>Days shown when the caller gives no <c>to</c>: from <c>from</c> (today by default) to this many days later.</summary>
     public const int DefaultWindowDays = 90;
 
-    /// <summary>Longest window the agenda answers for (a year and a leap day), so a request cannot ask for years of installments.</summary>
     public const int MaxWindowDays = 366;
 
-    /// <summary>Installments listed at most in one answer (the earliest by due date); beyond it the answer says it was cut.</summary>
     public const int MaxRentItems = 500;
 
     /// <summary>
@@ -54,7 +50,6 @@ public static class LongRentDeadlineRules
     public static DateOnly? NoticeDate(LeaseContractType contractType, DateTime endDate) =>
         NoticeDate(contractType, RomeCalendar.DateInRome(endDate));
 
-    /// <inheritdoc cref="NoticeDate(LeaseContractType, DateTime)"/>
     public static DateOnly? NoticeDate(LeaseContractType contractType, DateOnly endDate) =>
         contractType is LeaseContractType.Libero or LeaseContractType.Concordato
             ? endDate.AddMonths(-NoticeMonthsBeforeEnd)

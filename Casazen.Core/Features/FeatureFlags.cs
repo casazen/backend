@@ -21,21 +21,8 @@ public static class FeatureFlags
     /// </summary>
     public const string OtaPartnerApi = "OtaPartnerApi";
 
-    /// <summary>
-    /// D11: AI supplier discovery (US-014, in freeze): <c>POST api/service-requests/match-supplier</c>, the external
-    /// web search and the LLM extraction of "nearby businesses" (<c>IAiSupplierDiscoveryService</c>) and the AI match
-    /// reason. Off: the endpoint answers 404 and no call reaches the AI provider. The manual service request
-    /// (<c>POST api/service-requests</c> with a chosen supplier) is not behind this flag.
-    /// </summary>
     public const string AiSupplierDiscovery = "AiSupplierDiscovery";
 
-    /// <summary>
-    /// D15 / LT-01: RLI filing through an external provider (Openapi DocuEngine, docs/integrations/rli-esign.md), off
-    /// until the legal opinion on the provider's filing professional and a real provider client exist. Off:
-    /// <c>POST api/leases/{id}/registration</c> answers 404, the <c>lease-registration-status-poll</c> job is not
-    /// registered and no call reaches the provider. The manual registration (the landlord files on the official
-    /// channel and records number, date and receipt) is not behind this flag and is the default path.
-    /// </summary>
     public const string RliProvider = "RliProvider";
 
     /// <summary>
@@ -103,12 +90,6 @@ public static class FeatureFlags
     /// </summary>
     public const string SeoSignupCta = "SeoSignupCta";
 
-    /// E01/F01/US01 (ADR-010): B2B agency tier features including property owner registry, owner portal access,
-    /// monthly statements, withholding tax management, wire transfers, invoicing, internal staff activities,
-    /// and trusted supplier management. Off (default): <c>agency.*</c> policies return 403 feature_requires_agency_tier,
-    /// agency endpoints return 404, and frontend B2B routes are hidden. Gates all features requiring
-    /// <c>Org.PlanTier == PlanTier.Agency</c>.
-    /// </summary>
     public const string AgencyTier = "AgencyTier";
 
     /// <summary>
@@ -145,13 +126,6 @@ public static class FeatureFlags
     /// </summary>
     public const string CheckInIdentitySelfHosted = "CheckInIdentitySelfHosted";
 
-    /// <summary>
-    /// E70-E74 (NF-194, D4, ADR-013-R19): the platform-wide permission to approve the identity of a guest automatically, only inside a segment (property × format ×
-    /// channel) qualified for the active policy version, policy hash and weights hash, <b>off by default</b>. Off, every attempt goes to a person (observation) even
-    /// in a qualified segment: the decision of the policy is only recorded as the shadow decision. It works only with <see cref="CheckInIdentitySelfHosted"/> and
-    /// <see cref="CheckInIdentityVerification"/> on; turning it off is the platform-wide rollback to observation. E70/F01/US01/T01 owns the flag. It needs no
-    /// variable to start. The frontend reads the key <c>checkInIdentityAutoApproval</c>.
-    /// </summary>
     public const string CheckInIdentityAutoApproval = "CheckInIdentityAutoApproval";
 
     /// <summary>
@@ -186,7 +160,6 @@ public static class FeatureFlags
     /// </summary>
     public const string CrmMarketing = "CrmMarketing";
 
-    /// <summary>Host-requested interest proposals from anonymous topic counts, enabled after provider/privacy review.</summary>
     public const string MarketingGuestInterestAi = "MarketingGuestInterestAi";
 
     /// <summary>
@@ -277,13 +250,6 @@ public static class FeatureFlags
     /// </summary>
     public const string OwnerInvoicing = "OwnerInvoicing";
 
-    /// <summary>
-    /// E15/F01/US01/T01 (NF-101, NF-87, NF-115, D11, D15): the accountant package, one ZIP of a month or a year in a fixed structure and the agency summary, <b>off by
-    /// default</b> and turned on only in the test environment until the accountant confirms the ⚖ choices that shape the files (the Swiss purchase tax on the portal
-    /// commissions, the Italian register of the sales). Off, <c>GET api/accountant-package</c> and <c>GET api/accountant-package/agency-summary</c> answer 404 before
-    /// authentication. It needs no variable to start; the caps of the ZIP are the ones of the document archive (<c>DocumentArchive:MaxExportFiles</c>,
-    /// <c>DocumentArchive:MaxExportBytes</c>). The frontend reads the key <c>accountantPackage</c>.
-    /// </summary>
     public const string AccountantPackage = "AccountantPackage";
 
     /// <summary>
@@ -430,34 +396,12 @@ public static class FeatureFlags
     /// </summary>
     public const string GuestRegistrationRegimes = "GuestRegistrationRegimes";
 
-    /// <summary>
-    /// E50-E60 (NF-152..NF-187, guest portal plan decision A6, casazen/backend#987): the guest portal, <b>off by default</b>. On, every booking of any source
-    /// gets its personal stay link <c>/s/{token}</c> on request (the host endpoints <c>api/bookings/{id}/guest-portal</c>) and the public portal
-    /// <c>api/public/guest-portal/{token}/…</c> answers with its sections (stay, check-in, guide, services, chat, documents, review) and the host's extras.
-    /// Off, every endpoint of the portal, of the host and of the guest, answers 404 before authentication like a route that does not exist, no link is
-    /// created and the links of today (check-in, cancellation, review, document) behave as before. It needs no variable to start. The frontend reads the
-    /// key <c>guestPortal</c>.
-    /// </summary>
     public const string GuestPortal = "GuestPortal";
 
-    /// <summary>
-    /// E56-E58 (guest portal plan decision A6, §8 of the specification): the services of the suppliers bought by the guests in the portal (the ownership
-    /// of the suppliers, the host's percentage, the order, the card, the funds held until the service is done, the refunds and the disputes) and the
-    /// change of the CasaZen commission added on top of the price (D9, D21), <b>off by default</b> until the accountant answers. Off, the portal shows no
-    /// supplier service and the commission is computed as today. It works only with <see cref="GuestPortal"/> on. It needs no variable to start. The
-    /// frontend reads the key <c>guestPortalSupplierServices</c>.
-    /// </summary>
     public const string GuestPortalSupplierServices = "GuestPortalSupplierServices";
 
-    /// <summary>
-    /// E52 (guest portal plan decision A6, D16): the replies the assistant sends on its own to the practical questions of the guests in the portal chat,
-    /// when it is sure and the answer is in the house guide, <b>off by default</b>. Off, every message of a guest goes to the host and nothing is sent
-    /// automatically. It works only with <see cref="GuestPortal"/> on. It needs no variable to start. The frontend reads the key
-    /// <c>guestPortalAutoReplies</c>.
-    /// </summary>
     public const string GuestPortalAutoReplies = "GuestPortalAutoReplies";
 
-    /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
         OtaPartnerApi,

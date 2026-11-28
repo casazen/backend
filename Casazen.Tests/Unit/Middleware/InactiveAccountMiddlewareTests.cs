@@ -11,11 +11,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Middleware;
 
-/// <summary>
-/// PL-03 and AM-01: a deactivated account answers 403 <c>account_inactive</c>, a member the org deactivated answers 403
-/// <c>member_inactive</c>, on every authenticated request and before anything else runs; the account code wins when both
-/// apply; a user in good standing and an anonymous request are not touched.
-/// </summary>
 public class InactiveAccountMiddlewareTests
 {
     [Fact]

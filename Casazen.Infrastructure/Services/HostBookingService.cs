@@ -67,7 +67,6 @@ public sealed class HostBookingService(
             await checkoutHoldExpiry.ExpireOverlappingHoldsAsync(current.PropertyId, checkIn, checkOut, cancellationToken);
 
         await using var transaction = await LockBookingAsync(current.PropertyId, update.BookingId, cancellationToken);
-        // Join the booking transaction before reading the ledger. Manual receipts and guest payment intent creation use this same lock.
         await using var paymentLock = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, cancellationToken,
             (PostgresAdvisoryLocks.Scope.BookingPayment, update.BookingId.ToString("N")));
         var booking = await LoadAsync(update.BookingId, cancellationToken);
@@ -106,16 +105,12 @@ public sealed class HostBookingService(
             throw new DomainForbiddenException(BookingErrorCodes.EditPaymentPermissionRequired, "BookingEditPaymentPermissionRequired");
         }
 
-        // The checks that can refuse the dates come before any money moves.
         if (edit.DatesChanged)
         {
-            // The dates lock of the property first (the repository takes it again when it saves): a manual block is
-            // written under it (PC-09), so it cannot take the new nights between this check and the save.
             await BookingRepository.LockPropertyDatesAsync(db, booking.PropertyId, cancellationToken);
             await EnsureDatesFreeAsync(booking, checkIn, checkOut, cancellationToken);
         }
 
-        // The Stripe call, before anything is written. A refusal throws and nothing was saved.
         var money = await SettleBeforeSaveAsync(booking, edit, update.RequestedByUserId, cancellationToken);
 
         if (edit.Price is { } price)
@@ -126,7 +121,6 @@ public sealed class HostBookingService(
             booking.CheckInDate = checkIn;
             booking.CheckOutDate = checkOut;
 
-            // The free cancellation deadline (and, for "Paga alla scadenza", the day the card is charged) follows the new check-in.
             if (booking.Source == BookingSource.Direct && booking.FreeRefundDeadline is not null)
                 booking.FreeRefundDeadline = edit.Price!.FreeRefundDeadline;
         }
@@ -140,7 +134,6 @@ public sealed class HostBookingService(
         if (money.Charge is { } charge)
             await RecordChargeAsync(booking, charge, cancellationToken);
 
-        // Saved by the same save as the change; a change the repository refuses takes its event back (ADR-022-R1).
         await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingModified, booking, BookingEventOrigin.Host, cancellationToken);
         await SaveAsync(booking, checkOverlap: edit.DatesChanged, cancellationToken);
 
@@ -177,7 +170,6 @@ public sealed class HostBookingService(
             ?? throw BookingNotFound(update.BookingId);
         var edit = await EvaluateAsync(booking, update, checkIn, checkOut, cancellationToken);
 
-        // The same refusals as the edit, read without a lock: the answer is what the edit would do now.
         if (edit.DatesChanged)
             await EnsureDatesFreeAsync(booking, checkIn, checkOut, cancellationToken);
 
@@ -192,8 +184,6 @@ public sealed class HostBookingService(
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw BookingNotFound(bookingId);
 
-        // One confirmation for every pending booking: a "pay at the property" request is the host's acceptance of
-        // decision D5, with its own rules (guest email confirmed, deadline, OTA blocks) and emails (BK-06).
         if (current.Source == BookingSource.Direct && current.PaymentOption == PaymentOption.OnSite)
             return await onSiteRequests.AcceptAsync(bookingId, cancellationToken);
 
@@ -208,8 +198,6 @@ public sealed class HostBookingService(
         if (booking.Source != BookingSource.Manual)
             throw new DomainRuleException(BookingErrorCodes.NotConfirmable, "BookingNotConfirmable");
 
-        // A pending booking may have been overtaken meanwhile by another booking (checked by the repository under the
-        // property lock) or by a block imported from a channel.
         if (await propertyICalSyncService.HasOverlappingBlockAsync(
                 booking.PropertyId, booking.CheckInDate, booking.CheckOutDate, cancellationToken))
             throw DatesUnavailable();
@@ -218,7 +206,6 @@ public sealed class HostBookingService(
         booking.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
         booking.ConfirmedAt = booking.UpdatedAt;
 
-        // The repository also issues the guest check-in token of a confirmed booking.
         await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingConfirmed, booking, BookingEventOrigin.Host, cancellationToken);
         await SaveAsync(booking, checkOverlap: true, cancellationToken);
         if (transaction is not null)
@@ -228,7 +215,6 @@ public sealed class HostBookingService(
         return booking;
     }
 
-    /// <summary>The days and the guests of an edit, validated: a stay of 1 to the maximum of nights, at least one adult.</summary>
     private static (DateTime CheckIn, DateTime CheckOut) ValidatedStay(HostBookingUpdate update)
     {
         var checkIn = update.CheckInDate.Date;
@@ -287,7 +273,6 @@ public sealed class HostBookingService(
         DateTime checkOut,
         CancellationToken cancellationToken)
     {
-        // The rule of the `canEdit` of every booking answer (SR-05a): a cancelled booking changes nothing, not even its notes.
         var editability = BookingEditRules.Of(booking);
         if (editability.Reason == BookingEditLock.Cancelled)
             throw new DomainRuleException(BookingErrorCodes.NotEditable, "BookingNotEditable");
@@ -314,9 +299,6 @@ public sealed class HostBookingService(
             if (editability.Reason == BookingEditLock.Started)
                 throw new DomainRuleException(BookingErrorCodes.StayLocked, "BookingStayLocked");
 
-            // A booking from a channel keeps the price, payment, free cancellation deadline and check-in link agreed there; one of the
-            // booking site that is not confirmed yet is a request, not a booking. Only the bookings of the host and the confirmed ones of
-            // the booking site are priced here.
             if (editability.Reason == BookingEditLock.SourceLocked)
                 throw new DomainRuleException(BookingErrorCodes.SourceLocked, "BookingUpdateSourceLocked");
 
@@ -328,8 +310,6 @@ public sealed class HostBookingService(
             if (price.TouristTax.Status == TouristTaxQuoteStatus.ChildAgesRequired)
                 throw new DomainRuleException(DirectBookingErrorCodes.ChildAgesRequired, "TouristTaxChildAgesRequired");
 
-            // The tax of the new dates cannot be worked out (no rate for some night, a category or a night price missing) while the booking holds a tax
-            // that the guest paid: the new price would leave it out and the money of the edit would give it back by itself. Nothing is changed.
             if (booking.Source == BookingSource.Direct
                 && booking.TouristTax > 0m
                 && price.TouristTax.Status != TouristTaxQuoteStatus.Calculated)
@@ -349,12 +329,10 @@ public sealed class HostBookingService(
         if (booking.Source == BookingSource.Direct && price is not null && (money.Processing || money.AwaitsGuestPayment))
             throw new DomainConflictException(BookingErrorCodes.EditPaymentInProgress, "BookingEditPaymentInProgress");
 
-        // The money follows the price only for a confirmed booking of the booking site; the bookings of the host are settled by hand ("Registra incasso").
         var plan = booking.Source == BookingSource.Direct && price is not null
             ? BookingEditSettlementRules.Plan(newTotal, money.Paid, money.Refundable, money.CollectsOnline, !update.GuestWillPay && HasSavedCard(booking))
             : BookingEditPlan.None;
 
-        // A link that cannot be made is known before the host confirms: the answer is the same as the edit's.
         if (plan.Action == BookingSettlementAction.PaymentLink)
         {
             if (paymentLinks is null)
@@ -468,8 +446,6 @@ public sealed class HostBookingService(
                         "Booking edit",
                         requestedByUserId,
                         BookingEditSettlementRules.RefundKey(booking.Id, booking.UpdatedAt, part.PaymentId),
-                        // The guest is told once, by the email of the edit after the commit: the refund sends no "refund confirmed" of its own now
-                        // (and its notification is claimed when Stripe confirmed it at once); one still pending is confirmed by a later email.
                         NotifyGuest: false),
                     cancellationToken);
                 if (refund.Status is PaymentRefundStatus.Failed or PaymentRefundStatus.Canceled)
@@ -523,7 +499,6 @@ public sealed class HostBookingService(
         }
         catch (StripeException ex)
         {
-            // Authentication required, declined, Stripe unreachable: the guest was not charged, the edit is not saved.
             logger.LogWarning(
                 "Booking {BookingId} not changed: Stripe refused the charge of the saved card ({Code})", booking.Id, ex.StripeError?.Code ?? "no code");
             throw SettlementFailed();
@@ -561,7 +536,6 @@ public sealed class HostBookingService(
         return new SettlementBeforeSave(settlement, payment);
     }
 
-    /// <summary>The charge of the saved card, written with the edit; a payment that came in is announced to the consumers of the payment events (the Octorate handler records it).</summary>
     private async Task RecordChargeAsync(Booking booking, Payment payment, CancellationToken cancellationToken)
     {
         db.Payments.Add(payment);
@@ -594,7 +568,6 @@ public sealed class HostBookingService(
         }
     }
 
-    /// <summary>The new price and guests of the booking (SR-06a: a price agreed for the old stay does not follow the new one).</summary>
     private static void Reprice(Booking booking, HostBookingUpdate update, EditEvaluation edit, DirectBookingQuote price)
     {
         booking.BasePrice = price.BasePrice;
@@ -602,7 +575,6 @@ public sealed class HostBookingService(
         booking.TouristTax = price.TouristTax.AmountOrZero;
         booking.TouristTaxAmount = price.TouristTax.AmountOrZero;
         booking.TotalPrice = price.TotalPrice;
-        // The stay is priced anew (SR-06a): a price the host had agreed for the old dates and guests does not follow it.
         booking.PriceOverridden = false;
         booking.PriceOverrideNote = null;
         booking.NumberOfGuests = update.NumberOfGuests;
@@ -610,7 +582,6 @@ public sealed class HostBookingService(
         booking.NumberOfChildren = update.NumberOfChildren;
     }
 
-    /// <summary>The guest is told after the commit: dates, guests, the new total and what happens to the money. A failure is logged and never undoes the edit.</summary>
     private async Task TellTheGuestAsync(
         Booking booking,
         EditEvaluation edit,
@@ -635,7 +606,6 @@ public sealed class HostBookingService(
         if (await propertyICalSyncService.HasOverlappingBlockAsync(booking.PropertyId, checkIn, checkOut, cancellationToken))
             throw DatesUnavailable();
 
-        // The repository checks the other bookings again when it saves, under the same lock; read here, so no money moves for dates that are taken.
         if (await BookingRepository.TakesNightsOfAnotherBookingAsync(db, booking.Id, booking.PropertyId, checkIn, checkOut, cancellationToken))
             throw DatesUnavailable();
     }
@@ -649,7 +619,6 @@ public sealed class HostBookingService(
         {
             try
             {
-                // Joins the transaction: property lock + overlap check against every other booking not cancelled.
                 await bookingRepository.UpdateAsync(booking);
             }
             catch (InvalidOperationException ex) when (
@@ -699,10 +668,8 @@ public sealed class HostBookingService(
     private static DomainRuleException SettlementFailed() =>
         new(BookingErrorCodes.SettlementFailed, "BookingSettlementFailed");
 
-    /// <summary>The description of the payment row of the charge of the saved card (no personal data).</summary>
     internal const string BookingEditChargeDescription = "Price change of the booking";
 
-    /// <summary>What the edit reads of the booking before anything else: where it is, where it came from and the amounts of the channel.</summary>
     private sealed record CurrentBooking(
         Guid PropertyId,
         BookingSource Source,
@@ -714,7 +681,6 @@ public sealed class HostBookingService(
         decimal? OtaPaidAmount,
         decimal? OtaBalanceAmount);
 
-    /// <summary>The money of a booking: what was paid and not got back, the Stripe payments that can return it, and the state that decides the collection.</summary>
     private sealed record MoneyFacts(
         decimal Paid,
         IReadOnlyList<BookingRefundableShare> Refundable,

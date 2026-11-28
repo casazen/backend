@@ -25,10 +25,6 @@ public class GuestPortalOverviewIntegrationTests(GuestPortalEnabledFactory facto
 {
     private const string Address = "Via Riservata 12, scala B";
 
-    /// <summary>
-    /// Privacy rule: before the check-in the overview says <c>canSeeReserved: false</c> and carries nothing reserved: the address of the house is
-    /// nowhere in the answer, only its name and its town. The answer is private and has exactly the keys of the contract.
-    /// </summary>
     [PostgresFact]
     public async Task Overview_BeforeCheckIn_ReturnsNoReservedData()
     {
@@ -58,13 +54,11 @@ public class GuestPortalOverviewIntegrationTests(GuestPortalEnabledFactory facto
         Assert.DoesNotContain(Address, json, StringComparison.Ordinal);
         Assert.DoesNotContain("address", json, StringComparison.OrdinalIgnoreCase);
 
-        // A token that opens nothing: the same private 404 of the portal.
         var unknown = await client.GetAsync("/api/public/guest-portal/Unknown_Token_0000000000000000000");
         await OrgTeamHttp.AssertProblemAsync(unknown, HttpStatusCode.NotFound, GuestPortalRules.LinkInvalidCode);
         Assert.Equal("no-store", unknown.Headers.CacheControl?.ToString());
     }
 
-    /// <summary>Permission rule (the flag): off, the overview is a 404 like a route that does not exist, even with a real token.</summary>
     [Fact]
     public async Task Overview_FlagOff_Returns404()
     {
@@ -171,7 +165,6 @@ public class GuestPortalOverviewIntegrationTests(GuestPortalEnabledFactory facto
         var stay = await db.Bookings.Include(b => b.Guest).Include(b => b.Property).SingleAsync(b => b.Id == booking);
         var count = factory.SentEmails().Count;
 
-        // The synthetic example.com address, then the host's opt-out, each prevent the request.
         Assert.False((await reviews.GetInviteStatusAsync(booking)).HasGuestEmail);
         Assert.Equal(ReviewInviteSkipReasons.NoEmail, (await reviews.RequestInviteAsync(stay.OrgId, booking)).Reason);
         stay.Guest.Email = $"synthetic-{Guid.NewGuid():N}@guest.booking.com";
@@ -263,7 +256,6 @@ public class GuestPortalOverviewIntegrationTests(GuestPortalEnabledFactory facto
         Assert.EndsWith($"/s/{token}", body.RootElement.GetProperty("url").GetString());
     }
 
-    /// <summary>A confirmed stay from a portal at a house of a new org, arriving in five days, and its stay link.</summary>
     [PostgresFact]
     public async Task OtaLink_AddsOnlyThisStayToOneVerifiedAccountUntilRevoked()
     {

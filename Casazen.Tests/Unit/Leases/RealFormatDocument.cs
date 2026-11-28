@@ -13,10 +13,8 @@ public static class RealFormatDocument
     public const string LandlordFiscalCode = "RSSMRA80A01H501U";
     public const string TenantFiscalCode = "VRDGLI85B42F205E";
 
-    /// <summary>Contract: pages 1 to 6. Attestation: pages 7 to 10. Calculation sheet: pages 11 to 14.</summary>
     public static string[] Pages() =>
     [
-        // ---- the contract ------------------------------------------------------------------------------------------------
         """
         Contratto di Locazione Abitativa Agevolata
         LOCAZIONE ABITATIVA
@@ -93,7 +91,6 @@ public static class RealFormatDocument
         Pag. 6
         """,
 
-        // ---- the attestation of conformity ---------------------------------------------------------------------------------
         """
         Attestazione di Rispondenza
         (D.M. 16 gennaio 2017)
@@ -155,7 +152,6 @@ public static class RealFormatDocument
         Pag. 4
         """,
 
-        // ---- the calculation sheet --------------------------------------------------------------------------------------------
         """
         Scheda Riepilogativa Canone
         Accordo locale per i Comuni dell'ambito di Garbagnate Milanese, sottoscritto in Milano il 20 maggio 2025 — Comune di Bollate (MI)
@@ -211,7 +207,6 @@ public static class RealFormatDocument
         """,
     ];
 
-    /// <summary>The pages joined as the text reader of the server gives them: a form feed between one page and the next.</summary>
     public static string Text() => string.Join("\n\f\n", Pages());
 
     /// <summary>

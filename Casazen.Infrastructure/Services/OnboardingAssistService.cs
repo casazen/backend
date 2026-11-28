@@ -45,7 +45,6 @@ public sealed class OnboardingAssistService(
 
     private static readonly OnboardingAssistStatus[] OpenStatuses = [OnboardingAssistStatus.Requested, OnboardingAssistStatus.InProgress];
 
-    /// <summary>The page of the queue is never beyond this number: a skip of <c>(page - 1) * pageSize</c> stays an int.</summary>
     private const int MaxPage = 100_000;
 
     public async Task<AssistRequestView> RequestAsync(HostScope scope, string userId, AssistRequestInput input, CancellationToken ct)
@@ -75,13 +74,11 @@ public sealed class OnboardingAssistService(
             }
             catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex, OnboardingAssistRequest.OpenRequestIndexName))
             {
-                // A parallel request of the same part, property and channel saved first (the partial unique index): nothing of this one was saved.
                 db.ChangeTracker.Clear();
                 throw AlreadyOpen();
             }
             catch (DbUpdateException ex) when (attempt == 1 && OrgTeamAccess.IsUniqueViolation(ex, OnboardingPanelStep.StepIndexName))
             {
-                // The panel step was started in parallel: nothing was saved, and the call reads it again.
                 db.ChangeTracker.Clear();
             }
         }
@@ -100,7 +97,6 @@ public sealed class OnboardingAssistService(
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db, ct, OpenGroupLock(orgId, part, propertyId, channelCode));
 
-        // The two compliance services can proceed independently. A general request still covers the whole part.
         var independentContext = IndependentComplianceContext(context);
         var open = await db.OnboardingAssistRequests
             .FirstOrDefaultAsync(
@@ -126,7 +122,6 @@ public sealed class OnboardingAssistService(
 
         var now = Now();
 
-        // The panel step the request is about is marked as asked for; one that was never started is made, so support has the step to confirm.
         if (kind is not null)
         {
             var step = await db.OnboardingPanelSteps.FirstOrDefaultAsync(
@@ -152,14 +147,11 @@ public sealed class OnboardingAssistService(
                 step.Status = PanelStepStatus.AssistRequested;
                 step.NextVerificationAt = null;
 
-                // Support has the step: what an earlier check found no longer stands. A stored «could not tell» would let the other door on the
-                // same row (the import's channel access handoff) take the host's confirmation, so the outcome and the attempts start again.
                 step.LastVerificationOutcome = null;
                 step.VerificationAttempts = 0;
             }
         }
 
-        // A reference to the draft of the host's wizard (whether it exists, never what it holds), and no copy of it.
         var hasDraft = await db.WizardDrafts
             .AsNoTracking()
             .AnyAsync(
@@ -190,7 +182,6 @@ public sealed class OnboardingAssistService(
         if (transaction is not null)
             await transaction.CommitAsync(ct);
 
-        // The request is stored: the staff learns of it now, before the host's "To do", so a failure of the "To do" does not leave them unaware.
         TellStaff(request);
         await RaiseTodoAsync(request, ct);
 
@@ -228,7 +219,6 @@ public sealed class OnboardingAssistService(
         }
     }
 
-    /// <summary>The host's "To do" of a request (codes and ids only), found again when it exists, and its id stored on the request (saved here).</summary>
     private async Task RaiseTodoAsync(OnboardingAssistRequest request, CancellationToken ct)
     {
         request.ActivityId = await activities.CreateAsync(
@@ -270,14 +260,12 @@ public sealed class OnboardingAssistService(
         page = Math.Clamp(page, 1, MaxPage);
         pageSize = pageSize <= 0 ? OnboardingAssistLimits.DefaultPageSize : Math.Min(pageSize, OnboardingAssistLimits.MaxPageSize);
 
-        // The queue is the one place that reads the requests of every org, on purpose: the tenant filter is lifted by name, and the rows keep their org.
         var query = db.OnboardingAssistRequests.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking();
         if (status is { } wanted)
             query = query.Where(r => r.Status == wanted);
 
         var total = await query.CountAsync(ct);
 
-        // Open requests first (Requested = 1, InProgress = 2 sort before Done and Cancelled), the oldest first.
         var rows = await query
             .OrderBy(r => r.Status)
             .ThenBy(r => r.RequestedAt)
@@ -307,8 +295,6 @@ public sealed class OnboardingAssistService(
         if (!OnboardingAssistRules.TryNormalizeNote(note, out var normalizedNote))
             throw new DomainRuleException(OnboardingAssistCodes.NoteInvalid, "AssistNoteInvalid");
 
-        // «Fatto» on a panel step: what the panel says is read first, outside the lock and the transaction of the request (a call to the channel manager
-        // never holds them). A step the panel reads as not valid stops here, and a read that failed goes to the caller: never a silent «done».
         var verification = status == OnboardingAssistStatus.Done ? await VerifyForDoneAsync(requestId, ct) : null;
 
         OnboardingAssistRequest request;
@@ -322,7 +308,6 @@ public sealed class OnboardingAssistService(
             if (request.Status is OnboardingAssistStatus.Done or OnboardingAssistStatus.Cancelled)
                 throw new DomainConflictException(OnboardingAssistCodes.Closed, "AssistRequestClosed");
 
-            // From here on every statement names the org OF THE REQUEST: the step, the "To do" and the line of the log are its, not the staff user's.
             var now = Now();
             request.Status = status;
             request.AssignedToUserId = status == OnboardingAssistStatus.InProgress ? staffUserId : request.AssignedToUserId ?? staffUserId;
@@ -347,7 +332,6 @@ public sealed class OnboardingAssistService(
             "Assist request {RequestId} of org {OrgId} set to {Status} by staff {StaffUserId} (outcome {Outcome})",
             request.Id, request.OrgId, OnboardingAssistRules.StatusCode(status), staffUserId, request.Outcome);
 
-        // The administrators of the org are told live (the bell, the pop-up, the open page): after the commit, best effort.
         if (status == OnboardingAssistStatus.Done)
             await OnboardingAssistOutcomeNotice.TellAsync(db, pushNotifications, notificationPublisher, request, logger, ct);
 
@@ -357,7 +341,6 @@ public sealed class OnboardingAssistService(
 
     public async Task<AssistRequestDetail> GetAsync(Guid requestId, CancellationToken ct)
     {
-        // Staff reads the requests of every org: the tenant filter is lifted by name, and every read of the checklist names the org of the request.
         var request = await db.OnboardingAssistRequests
             .IgnoreQueryFilters([Tenant])
             .AsNoTracking()
@@ -381,8 +364,6 @@ public sealed class OnboardingAssistService(
             await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
                 db, ct, (PostgresAdvisoryLocks.Scope.OnboardingPanelAssist, $"assist:{requestId:N}"));
 
-            // The request of the org of the scope, of a property the scope reaches (a request of the whole org: a scope over the whole org). Anything
-            // else is the 404 of a request that does not exist.
             request = await db.OnboardingAssistRequests.FirstOrDefaultAsync(r => r.Id == requestId && r.OrgId == scope.OrgId, ct)
                 ?? throw NotFound();
             if (!await CanReachAsync(scope, request.PropertyId, ct))
@@ -430,20 +411,16 @@ public sealed class OnboardingAssistService(
         }
         catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex, OnboardingAssistRequest.OpenRequestIndexName))
         {
-            // A parallel request of the same part, property and channel was opened first: nothing of this reopening was saved.
             db.ChangeTracker.Clear();
             throw AlreadyOpen();
         }
 
-        // Stored: the staff learns of it, and the host finds the request behind a "To do" again (the one of the «Fatto» was closed).
         TellStaff(request, reopened: true);
         await RaiseTodoAsync(request, ct);
 
         logger.LogInformation("Assist request {RequestId} of org {OrgId} reopened by the host, To do {ActivityId}", request.Id, request.OrgId, request.ActivityId);
         return ViewOf(request);
     }
-
-    // ─── «Fatto»: the verification and the step ──────────────────────────────────────────────────────────────
 
     /// <summary>
     /// What the panel says about the step of the request, before «Fatto» is stored: <c>null</c> for a request of a whole part (there is no step, support
@@ -474,7 +451,6 @@ public sealed class OnboardingAssistService(
         }
         catch (OctorateException ex)
         {
-            // Worth a later try: nothing is saved and the error reaches the caller with its code. Never a «done» the panel did not confirm.
             logger.LogWarning(
                 "«Done» on assist request {RequestId} of org {OrgId}: the panel could not be read ({Error}), nothing changed",
                 request.Id, request.OrgId, ex.Code);
@@ -539,10 +515,6 @@ public sealed class OnboardingAssistService(
         }
     }
 
-    /// <summary>
-    /// The host reopened the request: the step it was about (done by support, or anything else but already with support) is support's again, as when the
-    /// host first asked. What the «Fatto» recorded on it no longer stands: the outcome, the completion and the checks start again.
-    /// </summary>
     private async Task GiveStepBackToSupportAsync(OnboardingAssistRequest request, CancellationToken ct)
     {
         foreach (var step in await StepsOfAsync(request, status: null, ct))
@@ -560,7 +532,6 @@ public sealed class OnboardingAssistService(
         }
     }
 
-    /// <summary>The panel steps of the request (of its org, property, kind and channel), tracked; none for a request of a whole part.</summary>
     private async Task<List<OnboardingPanelStep>> StepsOfAsync(OnboardingAssistRequest request, PanelStepStatus? status, CancellationToken ct)
     {
         if (!PanelStepCatalog.TryOfContext(request.Context, out var info))
@@ -579,8 +550,6 @@ public sealed class OnboardingAssistService(
 
     private static string OutcomeOf(PanelVerificationOutcome? verification) =>
         verification == PanelVerificationOutcome.Verified ? OnboardingAssistOutcomes.Verified : OnboardingAssistOutcomes.Declared;
-
-    // ─── The checklist of the staff view ─────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// What support needs, per property of the request (E20/F03/US01/T02): presence and dates of the credentials, never a value, never decrypted (the
@@ -659,7 +628,6 @@ public sealed class OnboardingAssistService(
             var sender = senders.FirstOrDefault(s => s.PropertyId == property.Id);
             var italian = TouristTaxComune.IsItalianCountry(property.Country);
             var applicableKinds = italian ? kinds : kinds.Where(k => k == PanelStepKind.ChannelAccess).ToList();
-            // The saved account choice is configuration, never a declaration that this property sends successfully.
             AssistSenderLine? senderLine = null;
             if (italian)
             {
@@ -704,11 +672,6 @@ public sealed class OnboardingAssistService(
         };
     }
 
-    /// <summary>
-    /// The steps of one block of the checklist, in the order of the kinds: each step the block has (for a channel access, the one of the request's channel,
-    /// or every channel when the request names none), and, with <paramref name="placeholders"/>, a <see cref="AssistChecklistStates.NotStarted"/> line for a
-    /// kind the block does not have yet (a channel access with no channel has no placeholder: there is no channel to name).
-    /// </summary>
     private static List<AssistChecklistStep> StepsOf(
         OnboardingAssistRequest request,
         IReadOnlyList<PanelStepKind> kinds,
@@ -747,7 +710,6 @@ public sealed class OnboardingAssistService(
         return request.Context == OnboardingAssistContexts.PanelIstat ? AssistIstatRequirements.Required : AssistIstatRequirements.ToVerify;
     }
 
-    /// <summary>Whether the scope reaches a request of <paramref name="propertyId"/> (the whole org for none), as the host's other operations decide it.</summary>
     private Task<bool> CanReachAsync(HostScope scope, Guid? propertyId, CancellationToken ct) => OnboardingReach.CanReachAsync(db, scope, propertyId, ct);
 
     private static (PostgresAdvisoryLocks.Scope, string) OpenGroupLock(Guid orgId, OnboardingPartKey part, Guid? propertyId, string? channelCode) =>
@@ -760,10 +722,6 @@ public sealed class OnboardingAssistService(
         _ => null,
     };
 
-    /// <summary>
-    /// Closes a "To do" of the org of the request, as the staff user (the save is the caller's). It does not go through
-    /// <see cref="IInternalActivityService"/>, whose reads are those of the caller's own org: the item is the host's, found by its id AND its org.
-    /// </summary>
     private async Task CloseTodoAsync(Guid orgId, Guid? activityId, string closedBy, DateTime now, CancellationToken ct)
     {
         if (activityId is not { } id)
@@ -780,7 +738,6 @@ public sealed class OnboardingAssistService(
         todo.ClosedBy = closedBy;
     }
 
-    /// <summary>The property and the comune of the rows, found by the org of each row and the id (a property of another org is never matched).</summary>
     private async Task<Dictionary<(Guid OrgId, Guid PropertyId), PropertyLine>> PropertiesOfAsync(
         IReadOnlyCollection<OnboardingAssistRequest> rows,
         CancellationToken ct)
@@ -839,7 +796,6 @@ public sealed class OnboardingAssistService(
             r.HostNote,
             r.ReopenedAt);
 
-    /// <summary>The line of the activity log of the org: the part, the context and the status as short codes; never a note, a draft or a person.</summary>
     private static OrgActivity LogLine(
         Guid orgId,
         OrgActivityType type,
@@ -858,7 +814,6 @@ public sealed class OnboardingAssistService(
             (OrgActivityDetailKeys.Status, OnboardingAssistRules.StatusCode(status)));
     }
 
-    /// <summary>The channel of a channel access (1 to 40 characters); refused for every other context.</summary>
     private static string? CheckedChannel(PanelStepKindInfo? kind, string? channelCode)
     {
         var code = channelCode?.Trim();
@@ -893,6 +848,5 @@ public sealed class OnboardingAssistService(
 
     private DateTime Now() => timeProvider.GetUtcNow().UtcDateTime;
 
-    /// <summary>The name and the comune of a property, as the staff view shows them.</summary>
     private sealed record PropertyLine(string Name, string Comune);
 }

@@ -30,10 +30,6 @@ internal static class NpgsqlTranslationProbe
             .AddInterceptors(new NoConnection(), new FewRows(statements, count, rows))
             .Options);
 
-    /// <summary>
-    /// Runs <paramref name="call"/> and fails when a query of it could not be translated. Anything else it throws is the
-    /// empty result sets meeting code that expects data, which is not what is probed here.
-    /// </summary>
     public static async Task AssertTranslatesAsync(Func<Task> call)
     {
         try
@@ -42,7 +38,6 @@ internal static class NpgsqlTranslationProbe
         }
         catch (Exception exception) when (!IsTranslationFailure(exception))
         {
-            // Empty results (a single that is missing, an org that is not there): beyond the translation.
         }
     }
 
@@ -57,7 +52,6 @@ internal static class NpgsqlTranslationProbe
         return false;
     }
 
-    /// <summary>The one row some statements must answer with: <paramref name="count"/> (0) of a count, false of an exists, 0 of a sum, the org of a report.</summary>
     private static DataTable? RowFor(string sql, int count)
     {
         var text = sql.TrimStart();

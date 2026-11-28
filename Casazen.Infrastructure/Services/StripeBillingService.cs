@@ -176,7 +176,6 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
                              PlanCatalog.TryParseTier(raw, out var parsed)
                 ? parsed
                 : null;
-            // A pre-rotation session still quotes the old base tariff. Let the checkout service expire it.
             var metered = session.Metadata?.GetValueOrDefault(AgencyUsagePricing.MetadataKey) == AgencyUsagePricing.Version;
             if (tier is { } quotedTier && (metered || configuration[$"Billing:CheckoutPrices:{quotedTier}"] is not null) &&
                 session.Metadata?.GetValueOrDefault("basePriceId") != (metered

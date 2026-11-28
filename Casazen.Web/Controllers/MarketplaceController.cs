@@ -106,7 +106,6 @@ public sealed class MarketplaceController(
         return Ok(MarketplaceEntryDetailDto.From(detail));
     }
 
-    /// <summary>The caller's org and scope; <c>null</c> when it has no org or reaches nothing in it.</summary>
     private async Task<Caller?> CallerAsync(CancellationToken cancellationToken)
     {
         if (await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken) is not { } orgId
@@ -122,7 +121,6 @@ public sealed class MarketplaceController(
     private static string LanguageOf(string? lang) =>
         MarketplaceLanguages.Normalize(string.IsNullOrWhiteSpace(lang) ? CultureInfo.CurrentUICulture.TwoLetterISOLanguageName : lang);
 
-    /// <summary>The kind named by its name (<c>channel</c>, <c>Channel</c>...), never by its number.</summary>
     private static bool TryParseKind(string kind, out MarketplaceActivationKind parsed) =>
         Enum.TryParse(kind, ignoreCase: true, out parsed) && Enum.IsDefined(parsed) && !int.TryParse(kind, out _);
 

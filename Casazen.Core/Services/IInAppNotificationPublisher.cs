@@ -12,13 +12,9 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IInAppNotificationPublisher
 {
-    /// <param name="userId">The user whose sessions are told (the token's <c>sub</c>).</param>
-    /// <param name="type">Type of the notification written or cleared; <c>null</c> when the count only changed (read, read all).</param>
-    /// <param name="entityId">Booking or service request the notification is about; <c>null</c> when there is none.</param>
     Task PublishAsync(string userId, string? type, Guid? entityId, CancellationToken cancellationToken = default);
 }
 
-/// <summary>Publisher that does nothing: the default of hosts and tests with no real-time channel.</summary>
 public sealed class NoOpInAppNotificationPublisher : IInAppNotificationPublisher
 {
     public Task PublishAsync(string userId, string? type, Guid? entityId, CancellationToken cancellationToken = default) =>

@@ -8,13 +8,8 @@ namespace Casazen.Tests.Qualification;
 // CASAZEN_QUALIFICATION_OUT are set, and skip with their reason otherwise, so CI runs the smoke test and the unit tests only. The split of the final test belongs to the final test
 // (QualificationFinalTests), which refuses to start unless the configuration is the frozen one.
 
-/// <summary>The long runs of the qualification pipeline on a real dataset (see the comments at the top of the file); nothing they print is more than ids of the manifest, counts and file names.</summary>
 public sealed class QualificationRunnerTests(ITestOutputHelper output)
 {
-    /// <summary>
-    /// The real pipeline on the captures of the development or the calibration split: writes <c>results.json</c> to the output folder and, for the calibration split, the proposal of the thresholds
-    /// (<c>identity-policy-&lt;yyyy.MM&gt;-&lt;n&gt;.json</c> and <c>calibration-proposal.json</c>), which a person reviews, commits and pins before the configuration is frozen.
-    /// </summary>
     [QualificationFact(QualificationSplits.Development, QualificationSplits.Calibration)]
     public async Task QualificationRun_OnTheDevelopmentOrCalibrationSplit_WritesTheResultsOfTheRealPipeline()
     {

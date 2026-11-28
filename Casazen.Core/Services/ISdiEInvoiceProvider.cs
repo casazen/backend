@@ -13,16 +13,12 @@ public static class PlatformInvoiceSdiStatuses
     /// <summary>No SDI provider is configured: the e-invoice must be issued manually (runbook billing-tax.md).</summary>
     public const string ManualRequired = "manual_required";
 
-    /// <summary>A provider is configured and the submission has not been attempted yet.</summary>
     public const string Pending = "pending";
 
-    /// <summary>The provider accepted the invoice (<see cref="PlatformInvoice.SdiTransmissionId"/> is its id).</summary>
     public const string Submitted = "submitted";
 
-    /// <summary>The provider refused the invoice or could not be reached (<see cref="PlatformInvoice.SdiError"/>).</summary>
     public const string Failed = "failed";
 
-    /// <summary>A platform admin declared the e-invoice issued by hand, with its reference.</summary>
     public const string ManualIssued = "manual_issued";
 
     public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.Ordinal)
@@ -44,7 +40,6 @@ public sealed record SdiSubmissionResult(bool Accepted, string? TransmissionId, 
 
     public static SdiSubmissionResult Failure(string error) => new(false, null, error);
 
-    /// <summary>A refusal with the code of why and a short note.</summary>
     public static SdiSubmissionResult Failure(string error, string? detail) => new(false, null, error, detail);
 }
 
@@ -58,16 +53,12 @@ public static class SdiSubmissionErrors
     /// <summary>The VAT number of the issuer is not enabled at the provider yet (the item <c>sdi_issuer_registration_pending</c> of the billing setup).</summary>
     public const string IssuerPending = "issuer_pending";
 
-    /// <summary>The provider refused the file (it did not pass its checks, or its answer was a refusal): the file is not corrected here, the host reads the reason.</summary>
     public const string ProviderRefused = "provider_refused";
 
-    /// <summary>The provider did not answer, or answered with an error of its own: nothing was submitted, the submission can be repeated.</summary>
     public const string ProviderError = "provider_error";
 
-    /// <summary>The provider does not submit this kind of document (the SaaS invoices of the platform).</summary>
     public const string NotSupported = "not_supported";
 
-    /// <summary>Every code, in the order above.</summary>
     public static IReadOnlyList<string> All { get; } = [IssuerPending, ProviderRefused, ProviderError, NotSupported];
 }
 
@@ -86,7 +77,6 @@ public sealed record SdiDocumentSubmission(Guid OrgId, Guid DocumentId, Guid Iss
 /// <summary>What the SDI said about a submitted document, in the three states the channel tells apart.</summary>
 public enum SdiOutcomeKind
 {
-    /// <summary>Accepted by the channel, no outcome from the SDI yet.</summary>
     Submitted = 1,
 
     /// <summary>The SDI delivered the invoice (or made it available to its recipient: the invoice is issued).</summary>
@@ -104,9 +94,6 @@ public enum SdiOutcomeKind
 /// <param name="ErrorDetail">The text the SDI gave a rejection, when rejected: no personal data is kept (<see cref="SdiRejectionReasons.Clean"/>).</param>
 public sealed record SdiStatusResult(SdiOutcomeKind Status, string? ErrorCode = null, string? ErrorDetail = null);
 
-/// <summary>One notification of the provider about a submitted document (its webhook, <see cref="ISdiEInvoiceProvider.ReadNotificationAsync"/>).</summary>
-/// <param name="TransmissionId">The provider's id of the submission it is about (<see cref="FiscalDocument.SdiTransmissionId"/>).</param>
-/// <param name="Outcome">What the notification says.</param>
 public sealed record SdiNotification(string TransmissionId, SdiStatusResult Outcome);
 
 /// <summary>
@@ -119,7 +106,6 @@ public sealed record SdiNotification(string TransmissionId, SdiStatusResult Outc
 /// </summary>
 public interface ISdiEInvoiceProvider
 {
-    /// <summary>False when no provider is configured: nothing is ever submitted.</summary>
     bool IsConfigured { get; }
 
     /// <summary>Provider name for logs and the health check (never a secret). Never shown to a user (decision D14).</summary>
@@ -141,9 +127,5 @@ public interface ISdiEInvoiceProvider
     /// <summary>The state of a submission the provider accepted (the fallback of the webhook: the job <c>fiscal-sdi-status</c>). Never called when <see cref="IsConfigured"/> is false.</summary>
     Task<SdiStatusResult> GetStatusAsync(string transmissionId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// What a call of the provider's webhook says (E17/F01/US02/T02): the notifications of <paramref name="payload"/>, the raw body of the call, none for an event that is not
-    /// about a submission. The provider's own wire format stays here. Never called when <see cref="IsConfigured"/> is false.
-    /// </summary>
     Task<IReadOnlyList<SdiNotification>> ReadNotificationAsync(string payload, CancellationToken cancellationToken = default);
 }

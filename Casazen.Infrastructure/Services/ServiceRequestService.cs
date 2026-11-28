@@ -63,28 +63,22 @@ public partial class ServiceRequestService(
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    /// <summary>The wall clock time (Europe/Rome) a request gets when the host names none (SP-04, SR-08a).</summary>
     private static readonly TimeOnly DefaultStartTime = new(10, 0);
 
-    /// <summary>The time asked for a request, with the slot query that checks it.</summary>
     private sealed record RequestSchedule(DateTime Start, DateTime End, SupplierSlotQuery Query);
 
     public async Task<ServiceRequest> CreateAsync(
         CreateServiceRequestCommand command,
         CancellationToken cancellationToken = default)
     {
-        // A request from a supplier's showcase is made by ShowcaseBookingService, from a checked e-mail address, and nowhere else:
-        // this is the host's path, which would give it a host org and a property (the table refuses that).
         if (command.RentalContext == ServiceRequestRentalContext.Showcase)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(command), command.RentalContext, "A showcase request is not created through the host's path.");
         }
 
-        // Only category codes are stored (SU-03); anything else is a 422 before any lookup.
         var category = ServiceCategories.Require(command.Category);
 
-        // E24/F01/US01/T02: the price the host agreed beforehand is an amount like any other of a request (1 cent to the bound).
         if (command.AgreedAmountCents is { } agreedAmount)
             ServiceRequestPricing.EnsureValidAmount(agreedAmount);
 
@@ -96,7 +90,6 @@ public partial class ServiceRequestService(
             .Include(p => p.Org)
             .FirstOrDefaultAsync(p => p.Id == command.PropertyId, cancellationToken);
 
-        // Another org's property is answered exactly like a missing one.
         if (property is null || property.OrgId != command.OrgId)
         {
             throw new NotFoundException($"Property {command.PropertyId} not found for the service request")
@@ -137,12 +130,10 @@ public partial class ServiceRequestService(
                 ServiceRequestErrorCodes.SupplierOutsideComune, ServiceRequestErrorCodes.SupplierOutsideComuneMessageKey);
         }
 
-        // SP-04: the service of the supplier's catalog the request is for, and the time the host picked among its slots.
         var service = await FindRequestableServiceAsync(command, category, cancellationToken);
         command = await EnsureTimedCreateCommandAsync(command, service, cancellationToken);
         var schedule = ResolveCreateSchedule(command, service);
 
-        // SP-BKP: the backups the same request is sent to, declared as such. Chosen before the lock (a few reads), added to the same save below.
         var backupSuppliers = await SelectBackupsAsync(command, property, category, schedule, cancellationToken);
 
         var now = Now();
@@ -166,12 +157,9 @@ public partial class ServiceRequestService(
             EstimatedAmountCents = command.AgreedAmountCents ?? service?.EstimatedAmountCents,
             ScheduledStartUtc = schedule.Start,
             ScheduledEndUtc = schedule.End,
-            // Decision D8: a host's request waits for the supplier's answer for HostResponseMinutes. The deadline is recorded
-            // always; only the flag SupplierRequestAutoCancel makes the job act on it.
             ResponseDueAt = now.AddMinutes(options.Value.HostResponseMinutes),
         };
 
-        // Rendered before saving: a missing App:PublicSiteBaseUrl is a configuration error, not a wrong link.
         var comune = property.City;
         var supplierEmail = notifier.RenderCreatedEmail(request, supplier.LegalName, comune);
 
@@ -179,19 +167,14 @@ public partial class ServiceRequestService(
         IDbContextTransaction? transaction = await LockSupplierCalendarAsync(command.SupplierOrgId, cancellationToken);
         await using (transaction)
         {
-            // After the lock: a request saved by whoever held it before is seen, so the slot is judged on what is there now.
-            // A duration the host typed is the length of the job; it does not have to be one of the published slots.
             if (command.DurationMinutes is null)
                 await EnsureSlotFreeAsync(command.SupplierOrgId, schedule, exceptRequestId: null, cancellationToken);
 
             await EnsureNoOverlappingCommitmentAsync(
                 command.SupplierOrgId, request.Id, schedule.Start, schedule.End, cancellationToken);
 
-            // SP-04d: with the slot checked, the request of a regular host is saved already taken, in this same transaction.
             await AcceptAutomaticallyIfRegularAsync(request, command, supplier, service, cancellationToken);
 
-            // SP-BKP: a request that waits for its supplier's answer is tied to its backups in the same save; one that was accepted by the
-            // supplier's own rule has nothing to wait for, so it has no backups. The primary's window is the hour of the rule, not the 120 minutes.
             if (!request.AutoAccepted && backupSuppliers.Count > 0)
                 backups = AttachBackupGroup(request, backupSuppliers, slotPlanned: command.DurationMinutes is null, now);
 
@@ -206,7 +189,6 @@ public partial class ServiceRequestService(
                     item.HostSurchargePercent = privateIds.Contains(item.SupplierOrgId) ? 0m : marketplaceRate;
             }
 
-            // E24/F01/US01/T02: the request is on the event bus, in the save that creates it (and with it, in the same transaction, whatever else the caller keys to it).
             RecordEvent(DomainEventType.ServiceRequestCreated, request, request.Status, ServiceRequestEventPayload.CreatedKeyPrefix);
             await repository.AddAsync(request, cancellationToken);
             await CommitAsync(transaction, cancellationToken);
@@ -224,8 +206,6 @@ public partial class ServiceRequestService(
 
         var created = (await repository.GetByIdAsync(request.Id, cancellationToken))!;
 
-        // The request accepted automatically is told like a take, from the request as it is stored (with its property): the host
-        // learns it was accepted, the supplier that it was accepted for it. The supplier is not sent the email of a new request.
         if (created.AutoAccepted)
         {
             await notifier.NotifyHostAsync(created, cancellationToken);
@@ -249,21 +229,15 @@ public partial class ServiceRequestService(
         SupplierServiceForRequest? service,
         CancellationToken cancellationToken)
     {
-        // A priced service of the catalog whose time the planner checked: a duration the host typed skips that check (see CreateAsync).
         if (!ServiceRequestAutoAccept.IsEligibleRequest(service, command.DurationMinutes))
             return;
 
-        // The supplier's settings are the agenda service's to read (the table is keyed by the supplier org and not tenant-filtered); a
-        // supplier that never saved one has the defaults, so the option is off.
         if (!(await agenda.GetSettingsAsync(supplier.OrgId, cancellationToken)).AutoAcceptRegulars)
             return;
 
-        // The gate of a take by hand (SU-05): a supplier with a new version of the Terms to accept performs no action.
         if (SupplierActivationRules.TosState(supplier, legalDocuments.GetTos().Version).BlocksActions)
             return;
 
-        // The jobs this host's org has taken with this supplier. ServiceRequest has two parties and no tenant filter (TN-2 allow-list):
-        // scoped by both org ids, and a showcase request (whose OrgId is the supplier's own) is never a host's job.
         var jobsTaken = await db.ServiceRequests
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -276,14 +250,12 @@ public partial class ServiceRequestService(
         if (!ServiceRequestAutoAccept.IsRegular(jobsTaken, options.Value.RegularHostMinJobs))
             return;
 
-        // Like a take (SP-15a), the way it is paid is decided now; unlike a take, no member of the supplier does it.
         request.PaymentMode = await ResolvePaymentModeAsync(request, cancellationToken);
         request.Status = ServiceRequestStatus.PresoInCarico;
         request.AutoAccepted = true;
         request.TakenAt = request.CreatedAt;
         request.TakenByUserId = null;
 
-        // Answered at once: there is no deadline to meet.
         request.ResponseDueAt = null;
 
         logger.LogInformation(
@@ -291,11 +263,6 @@ public partial class ServiceRequestService(
             request.Id, request.SupplierOrgId, jobsTaken);
     }
 
-    /// <summary>
-    /// D2 (SU-07): a short-rent request may be for one stay, a booking of the request's property in the host's org (SR-D3, SR-08a:
-    /// the stay is optional, a request can be for the house alone); a long-rent request is for the property and takes no booking. 422
-    /// with the codes of <see cref="ServiceRequestErrorCodes"/>; a booking of another property or org answers like a missing one.
-    /// </summary>
     private async Task EnsureBookingRuleAsync(CreateServiceRequestCommand command, CancellationToken cancellationToken)
     {
         if (command.RentalContext == ServiceRequestRentalContext.LongRent)
@@ -309,11 +276,9 @@ public partial class ServiceRequestService(
             return;
         }
 
-        // No stay named: the request is for the property alone (the database check only asks for a property and the host's source).
         if (command.BookingId is not { } bookingId)
             return;
 
-        // IgnoreQueryFilters: scoped by the explicit OrgId predicate (same reason as the property lookup above).
         var belongsToProperty = await db.Bookings
             .IgnoreQueryFilters()
             .AnyAsync(
@@ -345,7 +310,6 @@ public partial class ServiceRequestService(
                 ServiceRequestErrorCodes.LeaseNotAllowed, ServiceRequestErrorCodes.LeaseNotAllowedMessageKey);
         }
 
-        // IgnoreQueryFilters (tenant only): scoped by the explicit OrgId predicate (same reason as the property lookup in CreateAsync).
         var leaseProperty = await db.LeaseContracts
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -369,10 +333,6 @@ public partial class ServiceRequestService(
         }
     }
 
-    /// <summary>
-    /// The service of the supplier's catalog a new request is for (SP-04), or null when the request is by category only.
-    /// 404 when it is not one of the supplier's (or was deleted); 422 when it is a draft or paused, or of another category.
-    /// </summary>
     private async Task<SupplierServiceForRequest?> FindRequestableServiceAsync(
         CreateServiceRequestCommand command,
         string category,
@@ -381,7 +341,6 @@ public partial class ServiceRequestService(
         if (command.ServiceListingId is not { } listingId)
             return null;
 
-        // Another supplier's service is answered exactly like a missing one.
         var service = await catalog.FindForRequestAsync(command.SupplierOrgId, listingId, cancellationToken)
             ?? throw new NotFoundException($"Service {listingId} not found for the supplier")
             {
@@ -435,11 +394,9 @@ public partial class ServiceRequestService(
 
         var start = RomeCalendar.ToUtc(day, DefaultStartTime);
 
-        // A short-rent request for the house alone (SR-08a): "today at 10:00" that has gone by is the next day's.
         if (command.RentalContext == ServiceRequestRentalContext.ShortRent && command.BookingId is null && start <= now)
             start = RomeCalendar.ToUtc(day.AddDays(1), DefaultStartTime);
 
-        // Explicit duration so the planner is not asked for a published slot the host never chose.
         var minutes = command.DurationMinutes
             ?? (service?.DurationMinutes is > 0 and var fromService ? fromService : 120);
 
@@ -487,8 +444,6 @@ public partial class ServiceRequestService(
         ThrowIfRaceClosed(request);
         EnsureCan(request, ServiceRequestStatus.PresoInCarico, ServiceRequestErrorCodes.CannotTakeMessageKey);
 
-        // The deadline the request had when the supplier answered: the take clears it, the ranking (SP-REL) needs it. The group role
-        // changes with the take (the backup that gets the job is promoted), so it is read now.
         var dueBeforeAnswer = await ReplyDeadlineAsync(request, cancellationToken);
         var answeredAsBackup = request.GroupRole == ServiceRequestGroupRole.Backup;
 
@@ -496,26 +451,18 @@ public partial class ServiceRequestService(
         {
             ServiceRequestPricing.EnsureValidAmount(quote);
 
-            // SP-15c-a: the price of a request whose card is blocked is what the customer blocked; the supplier cannot commit another one
-            // (a different price needs a new offer from the supplier, accepted by the customer).
             if (IsPaidInsideCasaZen(request) && quote != request.EstimatedAmountCents)
                 throw new DomainRuleException(ServicePaymentErrors.AmountLocked, ServicePaymentErrors.AmountLockedMessageKey);
         }
 
         var schedule = await ResolveTakeScheduleAsync(request, supplierOrgId, command, cancellationToken);
 
-        // SP-15a: how the request is paid is decided now and kept (Online only if the flag is on and the supplier's Stripe account
-        // can take charges and payouts: no payment before the KYC).
         var paymentMode = await ResolvePaymentModeAsync(request, cancellationToken);
 
-        // Always under the calendar lock: two takes of the same day must not both pass the overlap check. A request of a group of backup
-        // suppliers (SP-BKP) first takes the lock of its group, always in this order.
         IDbContextTransaction? transaction = await LockSupplierCalendarAsync(supplierOrgId, request.GroupId, cancellationToken);
         GroupClosure? closure = null;
         await using (transaction)
         {
-            // The group is read again under its lock and the take is judged by its rules: the primary has its window, a backup waits for it or
-            // takes the job in its turn. From here on the request is the one committed now (the tracker was cleared to read it).
             GroupTake? groupTake = null;
             if (request.GroupId is { } groupId)
             {
@@ -529,7 +476,6 @@ public partial class ServiceRequestService(
             }
             else if (groupTake is { Request.GroupRole: ServiceRequestGroupRole.Backup, State.Group.SlotPlanned: true })
             {
-                // A backup did not hold the slot: the time the host picked among the primary's slots must be one of its own now that it gets the job.
                 var backupSchedule = await ResolveScheduleAsync(
                     request, supplierOrgId, request.ScheduledStartUtc!.Value, request.ScheduledEndUtc, cancellationToken);
                 await EnsureSlotFreeAsync(supplierOrgId, backupSchedule, exceptRequestId: request.Id, cancellationToken);
@@ -542,11 +488,8 @@ public partial class ServiceRequestService(
                 schedule?.End ?? request.ScheduledEndUtc,
                 cancellationToken);
 
-            // SP-15c-a: accepting charges the customer's card, before the request changes state: if the card cannot be charged (the block
-            // lapsed, the bank refuses) the take does not happen and the supplier is told why (409).
             await CaptureHeldMoneyAsync(request, cancellationToken);
 
-            // The others of the group are closed in the same save as the take: either the job is this supplier's and the rest is over, or nothing.
             if (groupTake is not null)
                 closure = CloseGroupAfterTake(groupTake, Now());
 
@@ -568,7 +511,6 @@ public partial class ServiceRequestService(
                     if (command?.QuotedAmountCents is { } committed)
                         r.QuotedAmountCents = committed;
 
-                    // The supplier answered: no deadline to meet, and a time it proposed earlier is moot.
                     r.ResponseDueAt = null;
                     ClearProposal(r);
                 },
@@ -578,7 +520,6 @@ public partial class ServiceRequestService(
 
         await RecordReplyAsync(request, dueBeforeAnswer, answeredAsBackup, cancellationToken);
 
-        // The host learns who has the job; when a backup took it in place of the primary, it is told so.
         if (closure is { WinnerIsBackup: true })
             await notifier.NotifyHostBackupTookOverAsync(request, cancellationToken);
         else
@@ -590,10 +531,6 @@ public partial class ServiceRequestService(
         return request;
     }
 
-    /// <summary>
-    /// The time the supplier sets when it takes a request (SP-04), or null when it sets none. A request that has a time keeps it
-    /// (the supplier proposes another one with <c>propose-time</c>); sending the same time again is not a change.
-    /// </summary>
     private async Task<RequestSchedule?> ResolveTakeScheduleAsync(
         ServiceRequest request,
         Guid supplierOrgId,
@@ -602,7 +539,6 @@ public partial class ServiceRequestService(
     {
         if (command?.ScheduledStartUtc is not { } requested)
         {
-            // An end without a start says nothing.
             if (command?.ScheduledEndUtc is not null)
                 throw TimeInvalid();
 
@@ -623,11 +559,6 @@ public partial class ServiceRequestService(
         return await ResolveScheduleAsync(request, supplierOrgId, start, end, cancellationToken);
     }
 
-    /// <summary>
-    /// The interval and the slot query for a request moved to <paramref name="start"/>: the length is the explicit end, else
-    /// the duration of the request's catalog service. 422 <see cref="ServiceRequestErrorCodes.TimeInvalid"/> when neither gives
-    /// a length (or the end is not after the start, or the length is not whole minutes).
-    /// </summary>
     private async Task<RequestSchedule> ResolveScheduleAsync(
         ServiceRequest request,
         Guid supplierOrgId,
@@ -697,10 +628,8 @@ public partial class ServiceRequestService(
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
         EnsureCan(request, ServiceRequestStatus.Completato, ServiceRequestErrorCodes.CannotCompleteMessageKey);
 
-        // The final price: the declared total, or the agreed price plus the extras (decision D7 compares it with the quote).
         var reference = ServiceRequestPricing.ReferenceAmount(request.QuotedAmountCents, request.EstimatedAmountCents);
 
-        // The lines of the quote the customer accepted (SP-04b) stay as it approved them while they still are the price of the work itself.
         var agreedLines = request.QuotedAmountCents is null
             ? null
             : ServiceRequestJson.ReadPriceLines(request.PriceLinesJson).Where(line => line.Kind == ServiceRequestPriceLineKinds.Quote).ToList();
@@ -726,7 +655,6 @@ public partial class ServiceRequestService(
                 ServiceRequestErrorCodes.CannotCompleteMessageKey,
                 r =>
                 {
-                    // What the supplier writes is its own column: the host's notes stay as the host wrote them.
                     r.CompletionNotes = notes;
                     r.CompletedAt = Now();
                     r.FinalAmountCents = price.FinalAmountCents;
@@ -734,7 +662,6 @@ public partial class ServiceRequestService(
                     r.FinalAmountNeedsConfirmation = needsConfirmation;
                     r.PaymentMode = plan.Mode;
 
-                    // E24/F01/US01/T02: the completion is on the event bus, in the save of the transition, once for each request.
                     RecordEvent(DomainEventType.ServiceRequestCompleted, r, ServiceRequestStatus.Completato, ServiceRequestEventPayload.CompletedKeyPrefix);
                 },
                 cancellationToken);
@@ -745,7 +672,6 @@ public partial class ServiceRequestService(
             throw;
         }
 
-        // The link goes out after the save, and only the winner of the transition sends it.
         await payments.AnnounceAsync(plan, request, cancellationToken);
         await RecordCompletedAsync(request, cancellationToken);
         await notifier.NotifyHostAsync(request, cancellationToken);
@@ -758,7 +684,6 @@ public partial class ServiceRequestService(
         string reason,
         CancellationToken cancellationToken = default)
     {
-        // The API requires a reason of at most 500 characters (400 validation_error, A4-18): a blank one is a bug here.
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
         var wasWaitingBackup = request.GroupRole == ServiceRequestGroupRole.Backup;
@@ -776,28 +701,17 @@ public partial class ServiceRequestService(
             },
             cancellationToken);
 
-        // Saying no in time is an answer in time (SP-REL): the host can ask somebody else at once. A backup's counts as a backup's.
         await RecordReplyAsync(request, dueBeforeAnswer, wasWaitingBackup, cancellationToken);
 
-        // A6-08: the host learns of the rejection by email and push, like of the other supplier decisions. Not of a backup's: the host did not
-        // choose it, and the group goes on without it.
         if (!wasWaitingBackup)
             await notifier.NotifyHostAsync(request, cancellationToken);
 
-        // SP-15c-a: the block on the customer's card goes with the refusal.
         await SettleClosedMoneyAsync(request, cancellationToken);
 
-        // SP-BKP: a refusal changes the group (the primary is out, or a backup is): it is looked at right away.
         await ResolveGroupAfterChangeAsync(request.GroupId, cancellationToken);
         return request;
     }
 
-    // ─── The money CasaZen holds for a request (SP-15c-a) ────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The request is paid inside CasaZen: it was born with the card of its customer blocked (a request from a supplier's public showcase;
-    /// the hosts' requests join in SP-15c-b). The price is then what the customer blocked, and the supplier's acceptance charges the card.
-    /// </summary>
     private static bool IsPaidInsideCasaZen(ServiceRequest request) =>
         request is { RentalContext: ServiceRequestRentalContext.Showcase, PaymentMode: ServiceRequestPaymentMode.Online };
 
@@ -835,7 +749,6 @@ public partial class ServiceRequestService(
     {
         var request = await repository.GetByIdAsync(id, cancellationToken);
 
-        // Another org's request, one from a supplier's showcase and a backup's that waits are answered exactly like a missing one.
         if (request is null
             || request.OrgId != hostOrgId
             || request.RentalContext == ServiceRequestRentalContext.Showcase
@@ -844,8 +757,6 @@ public partial class ServiceRequestService(
             throw RequestNotFound(id);
         }
 
-        // SP-15a, decision D5: a request paid inside CasaZen is paid with the link (the commission is part of it). The host cannot
-        // mark it paid by hand; the only exception is the supplier's, traced (api/supplier/requests/{id}/payment/offline).
         if (request.PaymentMode == ServiceRequestPaymentMode.Online)
         {
             throw new DomainRuleException(ServicePaymentErrors.OnlinePayment, ServicePaymentErrors.OnlinePaymentMessageKey);
@@ -862,7 +773,6 @@ public partial class ServiceRequestService(
             },
             cancellationToken);
 
-        // SU-09: the supplier learns that the host marked the request as paid (the payment itself is outside CasaZen).
         await notifier.NotifySupplierPaidAsync(request, cancellationToken);
         return request;
     }
@@ -887,8 +797,6 @@ public partial class ServiceRequestService(
         apply(request);
         request.Status = to;
 
-        // SP-04b: a quote is an offer on a request that still waits for its answer. Whatever moves the request on (taken, refused,
-        // cancelled) takes the offer away with it; the database refuses a quote on a request that is not new.
         ClearQuote(request);
         request.UpdatedAt = Now();
 
@@ -957,7 +865,6 @@ public partial class ServiceRequestService(
         return null;
     }
 
-    /// <summary>The time the supplier proposed is dropped when the request moves on (taken, rejected, cancelled).</summary>
     internal static void ClearProposal(ServiceRequest request)
     {
         request.ProposedStartUtc = null;
@@ -973,8 +880,6 @@ public partial class ServiceRequestService(
         ServiceRequestRentalContext rentalContext,
         CancellationToken cancellationToken = default)
     {
-        // ServiceRequest is not tenant-filtered (two parties, see the TN-2 allow-list); host and supplier
-        // reads are scoped by the explicit OrgId / SupplierOrgId predicate, never by the included Property.
         if (rentalContext == ServiceRequestRentalContext.Showcase)
             return Task.FromResult<ServiceRequest?>(null);
 
@@ -989,8 +894,6 @@ public partial class ServiceRequestService(
         return query.FirstOrDefaultAsync(cancellationToken);
     }
 
-    // IgnoreQueryFilters: the supplier reads the host's Property (another org) through the request;
-    // scoped by the explicit SupplierOrgId predicate.
     public Task<ServiceRequest?> GetByIdForSupplierAsync(Guid id, Guid supplierOrgId, CancellationToken cancellationToken = default) =>
         db.ServiceRequests
             .IgnoreQueryFilters()
@@ -998,11 +901,6 @@ public partial class ServiceRequestService(
             .Include(r => r.SupplierOrg)
             .FirstOrDefaultAsync(r => r.Id == id && r.SupplierOrgId == supplierOrgId, cancellationToken);
 
-    /// <summary>
-    /// The statuses of the closed view of a host (<see cref="ServiceRequestHostView.Closed"/>): the ones nothing leaves, as the state
-    /// machine says (<see cref="ServiceRequestStateMachine.IsFinal"/>), in an array the query can turn into an IN list. The open view
-    /// is every other status.
-    /// </summary>
     private static readonly ServiceRequestStatus[] ClosedStatuses =
         [.. Enum.GetValues<ServiceRequestStatus>().Where(ServiceRequestStateMachine.IsFinal)];
 
@@ -1018,7 +916,6 @@ public partial class ServiceRequestService(
         Guid? leaseContractId = null,
         CancellationToken cancellationToken = default)
     {
-        // IgnoreQueryFilters: scoped by the explicit host OrgId predicate (see GetByIdForHostAsync).
         if (rentalContext == ServiceRequestRentalContext.Showcase)
             return Task.FromResult<(IReadOnlyList<ServiceRequest> Items, int Total)>(([], 0));
 
@@ -1044,7 +941,6 @@ public partial class ServiceRequestService(
         if (bookingId is not null)
             query = query.Where(r => r.BookingId == bookingId.Value);
 
-        // The sheet of a contract (LR-03c): narrows the list already limited to the scope, so another org's lease gives an empty one.
         if (leaseContractId is not null)
             query = query.Where(r => r.LeaseContractId == leaseContractId.Value);
 
@@ -1073,11 +969,9 @@ public partial class ServiceRequestService(
     {
         var request = await repository.GetByIdAsync(id, cancellationToken) ?? throw RequestNotFound(id);
 
-        // 403 (FD-05): the request exists but was sent to another supplier.
         if (request.SupplierOrgId != supplierOrgId)
             throw new UnauthorizedAccessException($"Service request {id} belongs to another supplier");
 
-        // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the supplier org id.
         var profile = await db.SupplierProfiles
             .AsNoTracking()
             .Where(sp => sp.OrgId == supplierOrgId)
@@ -1092,8 +986,6 @@ public partial class ServiceRequestService(
                 ServiceRequestErrorCodes.SupplierNotActive, ServiceRequestErrorCodes.SupplierNotActiveMessageKey);
         }
 
-        // SU-05: a new Terms of Service version must be accepted again before the supplier keeps acting on requests.
-        // A supplier that accepted before versions were recorded is only asked to accept (it is not blocked).
         var tos = SupplierActivationRules.TosState(
             new SupplierProfile { TosAcceptedAt = profile.TosAcceptedAt, TosVersion = profile.TosVersion },
             legalDocuments.GetTos().Version);
@@ -1109,16 +1001,10 @@ public partial class ServiceRequestService(
         return request;
     }
 
-    /// <summary>
-    /// The request of the host org (404 <see cref="ServiceRequestErrorCodes.NotFound"/> for a missing one and for another org's,
-    /// which answers the same), for the host's own actions (cancel, remind, answer a proposal).
-    /// </summary>
     private async Task<ServiceRequest> GetRequestOfHostOrThrow(Guid id, Guid hostOrgId, CancellationToken cancellationToken)
     {
         var request = await repository.GetByIdAsync(id, cancellationToken);
 
-        // The host never reaches a request of a supplier's public showcase (SP-10), even when the supplier org is also its org. Nor a backup
-        // that waits (SP-BKP): it follows the request of the supplier it chose, and the group is reached through it.
         if (request is null
             || request.OrgId != hostOrgId
             || request.RentalContext == ServiceRequestRentalContext.Showcase
@@ -1166,7 +1052,6 @@ public partial class ServiceRequestService(
             .Select(r => new { Start = r.ScheduledStartUtc!.Value, End = r.ScheduledEndUtc!.Value })
             .ToListAsync(cancellationToken);
 
-        // The one definition of "overlap" of the agenda (the console's `overlap` conflict, SP-03b, calls the same method).
         var mine = new SupplierInterval(start, end);
         foreach (var other in others)
         {
@@ -1183,7 +1068,6 @@ public partial class ServiceRequestService(
                 ServiceRequestErrorCodes.CommitmentConflict, ServiceRequestErrorCodes.CommitmentConflictMessageKey);
         }
     }
-    /// <summary>The host's org and, for a restricted scope (AM-03), only the requests on the properties the caller reaches.</summary>
     private static IQueryable<ServiceRequest> ApplyHostScope(IQueryable<ServiceRequest> query, HostScope scope) =>
         query.Where(r => r.OrgId == scope.OrgId).InScope(scope).OnlyVisibleToHost();
 
@@ -1219,11 +1103,6 @@ public partial class ServiceRequestService(
 
     private DateTime Now() => _clock.GetUtcNow().UtcDateTime;
 
-    /// <summary>
-    /// Adds the event of a request to the outbox of the current unit of work (ADR-022-R1): the caller's save writes it with the change, or neither. The org is the request's, the
-    /// payload ids and the category (<see cref="ServiceRequestEventPayload"/>), the key <c>{prefix}:{id}</c> makes it once for each request. Nothing without a recorder (the tests
-    /// that build the service by hand).
-    /// </summary>
     private void RecordEvent(DomainEventType type, ServiceRequest request, ServiceRequestStatus status, string keyPrefix) =>
         recorder?.Record(type, request.Id, ServiceRequestEventPayload.Of(request, status), ServiceRequestEventPayload.KeyOf(keyPrefix, request.Id), request.OrgId);
 }

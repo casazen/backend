@@ -20,15 +20,8 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface ISwissNotificationService
 {
-    /// <summary>How many days back the days still to notify are looked for.</summary>
     public const int PendingLookbackDays = SwissAssistedNotification.PendingLookbackDays;
 
-    /// <summary>
-    /// One arrival day of a property the assisted notification covers: the guests of the stays that arrive on it as data ready to copy, what they lack, the regime (the portal, the
-    /// deadline and how sure the source is), when the day is due, who declared it notified and when, and the other days of the property still to notify.
-    /// Throws <c>property_not_found</c> (no such property in the org), or <c>swiss_notification_not_applicable</c> (422: the property is not Swiss, is in Ticino, or its canton asks
-    /// only for a register or is not known). It does not need the duty to be <c>Required</c>: it says what the duty is, and only a <c>Required</c> day is raised.
-    /// </summary>
     Task<SwissNotificationDay> GetDayAsync(Guid propertyId, DateOnly day, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -105,7 +98,6 @@ public sealed record SwissNotificationDay(
     string? DeclaredBy,
     IReadOnlyList<SwissPendingDay> PendingDays)
 {
-    /// <summary>The day is closed: a person declared it notified (the rule of <see cref="ISwissNotificationService.ListPendingDaysAsync"/>).</summary>
     public bool AlreadyDeclared => DeclaredAtUtc is not null;
 }
 
@@ -118,15 +110,12 @@ public sealed record SwissNotificationDay(
 /// <param name="Created">True when this call recorded the declaration, false when the day was declared already.</param>
 public sealed record SwissDeclaration(Guid PropertyId, DateOnly Day, string RegimeCode, DateTime DeclaredAtUtc, string? DeclaredBy, bool Created);
 
-/// <summary>The codes and message keys of the assisted notification (the answers of the 4xx).</summary>
 public static class SwissNotificationErrorCodes
 {
-    /// <summary>422: the property is not one the assisted notification covers (not Swiss, in Ticino, a canton that asks only for a register, or a place that is not known).</summary>
     public const string NotApplicable = "swiss_notification_not_applicable";
 
     public const string NotApplicableMessageKey = "SwissNotificationNotApplicable";
 
-    /// <summary>422: the day to declare has not started in Switzerland.</summary>
     public const string DeclarationDayInFuture = "swiss_declaration_day_in_future";
 
     public const string DeclarationDayInFutureMessageKey = "SwissDeclarationDayInFuture";

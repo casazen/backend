@@ -97,19 +97,14 @@ public interface IMessageReplyService
         CancellationToken ct = default);
 }
 
-/// <summary>How a guest can be written to from CasaZen (<see cref="MessageContactOptions.Channel"/>).</summary>
 public enum MessageContactChannel
 {
-    /// <summary>There is no way to write to the guest now (<see cref="MessageContactOptions.Reason"/> says why).</summary>
     None = 0,
 
-    /// <summary>The conversation the booking has on a channel (Airbnb, Booking.com, Vrbo, Expedia), through the channel manager.</summary>
     Ota = 1,
 
-    /// <summary>The conversation with the guest of a direct booking, in CasaZen itself.</summary>
     Direct = 2,
 
-    /// <summary>An e-mail to the guest, for a booking of a channel that has no chat.</summary>
     Email = 3,
 }
 
@@ -126,30 +121,17 @@ public sealed record MessageContactOptions(
     bool EmailAvailable,
     bool PhoneAvailable)
 {
-    /// <summary>No conversation of the booking takes a message now.</summary>
     public const string NoConversationReason = "no_conversation";
 
-    /// <summary>The booking is a channel's, its conversation (or listing) is not mapped to a property that was decided: nothing is written (OCT-04).</summary>
     public const string MappingNotConfirmedReason = MessageThreadActions.MappingNotConfirmedReason;
 
-    /// <summary>The conversation with the guest of the direct booking is closed.</summary>
     public const string ThreadClosedReason = MessageThreadActions.ThreadClosedReason;
 
-    /// <summary>The booking has no conversation and the channel manager holds no address for its guest, or it cannot be asked.</summary>
     public const string ContactInfoUnavailableReason = "contact_info_unavailable";
 
-    /// <summary>The Octorate connector is off: nothing is written to a channel (the same code as <c>OctorateAuthException.NotConnectedCode</c>).</summary>
     public const string NotConnectedReason = "octorate_not_connected";
 }
 
-/// <summary>
-/// The outcome of a send (<see cref="IMessageReplyService.ReplyAsync"/>, <see cref="IMessageReplyService.StartConversationAsync"/>).
-/// <paramref name="Message"/> is the message as the hub shows it (<c>null</c> for an e-mail, which is not kept as a conversation);
-/// <paramref name="State"/> is where it is: <see cref="OtaMessageDeliveryState.Sent"/> (also for a direct message and an e-mail that was queued),
-/// <see cref="OtaMessageDeliveryState.Created"/> or <see cref="OtaMessageDeliveryState.WaitingAuthorization"/> (the channel manager has it and sends it),
-/// <see cref="OtaMessageDeliveryState.Error"/> (with <paramref name="ErrorCode"/>) or <see cref="OtaMessageDeliveryState.ManualVerify"/> (a person checks
-/// on the channel before it is sent again). <paramref name="Replayed"/> is true when the same key had written it already and nothing was sent.
-/// </summary>
 public sealed record MessageReplyResult(
     MessageContactChannel Channel,
     MessageThreadKey? ThreadKey,

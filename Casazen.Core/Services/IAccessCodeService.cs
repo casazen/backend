@@ -2,10 +2,6 @@ using Casazen.Core.Authorization;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// Manages property access codes with encryption and verification gating (NF-13, E06/F03/US01/T01).
-/// Codes are encrypted at rest and NEVER released without verification.
-/// </summary>
 public interface IAccessCodeService
 {
     /// <summary>
@@ -47,18 +43,8 @@ public interface IAccessCodeService
     /// </returns>
     Task<string?> ReleaseToGuestAsync(Guid bookingId, string channel, CancellationToken ct = default);
 
-    /// <summary>
-    /// The first half of <see cref="ReleaseToGuestAsync"/>: the same gate (a known channel, verification passed, an active stay not over, no hold, a code set), and the code the guest may be given, but
-    /// <b>nothing is written</b>: no line of the release log. For a caller that puts the code in a message and logs the release only once the message went out (<see cref="RecordReleaseAsync"/>), so a message
-    /// that is refused or fails leaves no line that says a code reached a guest.
-    /// </summary>
-    /// <returns>Plain text code, or null for the reasons <see cref="ReleaseToGuestAsync"/> gives.</returns>
     Task<string?> GetReleasableCodeAsync(Guid bookingId, string channel, CancellationToken ct = default);
 
-    /// <summary>
-    /// The second half of <see cref="ReleaseToGuestAsync"/>: writes the line of the release log (the channel and the time, never the code) for a code that was taken with
-    /// <see cref="GetReleasableCodeAsync"/> and has gone, or may have gone, to the guest. Another value of <paramref name="channel"/> than <see cref="AccessCodeReleaseChannels"/> is an <see cref="ArgumentException"/>.
-    /// </summary>
     Task RecordReleaseAsync(Guid bookingId, string channel, CancellationToken ct = default);
 
     /// <summary>
@@ -87,41 +73,25 @@ public interface IAccessCodeService
     Task<AccessCodeStatusPage> GetStatusAsync(HostScope scope, int page, int pageSize, CancellationToken ct = default);
 }
 
-/// <summary>
-/// The channels a lock code is released through (<see cref="IAccessCodeService.ReleaseToGuestAsync"/>): what the release log records, never the
-/// code (AC-NF13-4). E03/F04/US02.
-/// </summary>
 public static class AccessCodeReleaseChannels
 {
-    /// <summary>Shown to the guest on the check-in page, in the answer of a passed selfie (E03/F04/US02/T04).</summary>
     public const string CheckInScreen = "checkin-screen";
 
-    /// <summary>E-mailed to the guest (template <c>GuestAccessCode</c>).</summary>
     public const string Email = "email";
 
-    /// <summary>Released by the approval of an operator from the verification queue (E03/F04/US02/T03).</summary>
     public const string Operator = "operator";
 
-    /// <summary>A screen of a guest-facing page (the channel of before E03/F04/US02).</summary>
     public const string Screen = "screen";
 
-    /// <summary>A scheduled message of a routine written in the conversation of the booking on a portal (the chat of the channel manager, E05/F07/US01/T03).</summary>
     public const string PortalChat = "portal-chat";
 
-    /// <summary>A scheduled message of a routine written in the guest area of a direct booking (the conversation of the booking site, E05/F07/US01/T03).</summary>
     public const string GuestArea = "guest-area";
 
-    /// <summary>Every channel; any other value is refused.</summary>
     public static IReadOnlyList<string> All { get; } = [CheckInScreen, Email, Operator, Screen, PortalChat, GuestArea];
 }
 
-/// <summary>Why the lock code of a stay is held back from the guest (<see cref="IAccessCodeService.GetHoldReasonAsync"/>); the codes the guest page reads.</summary>
 public static class AccessCodeHoldReasons
 {
-    /// <summary>
-    /// The organization asks for the tourist tax before the lock code, the guest can pay it online, and it is due, not paid, not exempt and not marked paid at
-    /// the property (E25/F01/US01/T01). The guest pays on the tourist tax endpoints and asks again: the code comes with the next answer.
-    /// </summary>
     public const string TouristTaxDue = "tourist_tax_due";
 }
 
@@ -132,13 +102,10 @@ public static class AccessCodeHoldReasons
 /// <param name="PageSize">The size taken after bringing the request within the limits.</param>
 public sealed record AccessCodeStatusPage(IReadOnlyList<AccessCodeStatusItem> Items, int TotalCount, int Page, int PageSize)
 {
-    /// <summary>The page size when the caller does not say how big.</summary>
     public const int DefaultPageSize = 50;
 
-    /// <summary>The most properties a page may hold.</summary>
     public const int MaxPageSize = 100;
 
-    /// <summary>The highest page number taken: the order is fixed, a number past the end is just an empty page.</summary>
     public const int MaxPage = 100_000;
 }
 

@@ -48,8 +48,6 @@ public sealed class ChatMessageReceivedHandler(
             return;
         }
 
-        // This runs in the outbox dispatcher, one event after the other for every org within a budget of seconds: the sync of this scope never waits for
-        // the calls of the org to refill, it ends at once with the rate limit and the dispatcher delivers the event again at its next run.
         pacing.WaitForCapacity = false;
 
         SyncResult result;
@@ -61,8 +59,6 @@ public sealed class ChatMessageReceivedHandler(
                 {
                     result = await sync.SyncThreadAsync(domainEvent.OrgId, domainEvent.AccommodationId, domainEvent.ObjectId!, null, ct);
 
-                    // What the body names may not be a thread of the chat (what it holds is not recorded yet, and its object id is the first of several
-                    // keys): when Octorate does not know it, the notification is still a signal that something was written, so the recent pass reads.
                     if (result.NotFound > 0)
                         result = result.Plus(await sync.ReconcileRecentAsync(domainEvent.OrgId, ct));
                 }
@@ -80,7 +76,6 @@ public sealed class ChatMessageReceivedHandler(
         }
         catch (OctorateAuthException ex) when (ex.IsChatNotLicensed)
         {
-            // The state is on the checkpoints of the listing already; delivering the event again would ask the same question.
             logger.LogInformation("Octorate webhook {EventId} ({EventType}): the chat module is not in the license of the listing, nothing done", domainEvent.Id, domainEvent.WebhookType);
             return;
         }
@@ -93,7 +88,6 @@ public sealed class ChatMessageReceivedHandler(
             result.MessagesAdded);
     }
 
-    /// <summary>The notification names an accommodation and a thread the client can ask for (a thread is a number); anything else is no name at all.</summary>
     private static bool IsUsable(string accommodationId, string? objectId) =>
         !string.IsNullOrWhiteSpace(accommodationId)
         && accommodationId.Trim().Length <= OctorateApiClient.MaxAccommodationIdLength

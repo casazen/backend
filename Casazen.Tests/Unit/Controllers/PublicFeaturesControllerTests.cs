@@ -8,9 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// <c>GET /api/public/features</c> (FD-20): one camelCase key per flag of <see cref="FeatureFlags.All"/>.
-/// </summary>
 public class PublicFeaturesControllerTests
 {
     private static IReadOnlyDictionary<string, bool> Get(Dictionary<string, string?> configuration)
@@ -34,10 +31,6 @@ public class PublicFeaturesControllerTests
         Assert.All(features, feature => Assert.False(feature.Value, $"{feature.Key} must be off by default"));
     }
 
-    /// <summary>
-    /// E29/F02/US01/T01 (NF-125): the regimes of the registration of the guests are off by default and follow <c>Features:GuestRegistrationRegimes</c> alone; the
-    /// frontend reads them under <c>guestRegistrationRegimes</c>.
-    /// </summary>
     [Fact]
     public void Get_GuestRegistrationRegimes_IsOffByDefault_AndFollowsItsConfigurationAlone()
     {
@@ -52,7 +45,6 @@ public class PublicFeaturesControllerTests
     [Fact]
     public void Get_SiteIntegrationFlags_AreExposedUnderTheirCamelCaseKeys()
     {
-        // E40/F01/US01/T01: the frontend reads whiteLabelHost, auth0HostSync and siteEmbed (off by default, on only when set).
         var off = Get(new Dictionary<string, string?>());
         var on = Get(new Dictionary<string, string?>
         {
@@ -68,10 +60,6 @@ public class PublicFeaturesControllerTests
         }
     }
 
-    /// <summary>
-    /// E70/F01/US01/T01 (D3, data: production stays closed): the frontend reads the three flags of the self-hosted identity verification under their camelCase keys,
-    /// off by default and on only when their own key is set.
-    /// </summary>
     [Fact]
     public void Get_SelfHostedIdentityFlags_AreExposedOffByDefault_UnderTheirCamelCaseKeys()
     {

@@ -7,10 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.GuestPortal;
 
-/// <summary>
-/// E50/F01/US01/T01, T02 (NF-152, AC-NF152-5, decision A3): the token of a stay link is a secret that opens the stay, so it is in no log line, no
-/// exception and no partition of the rate limiter; the logs of the portal carry the id of the link.
-/// </summary>
 public class GuestPortalLoggingTests
 {
     /// <summary>
@@ -26,7 +22,6 @@ public class GuestPortalLoggingTests
         var first = (await links.GetOrCreateAsync(world.Org.Id, world.Booking.Id, "auth0|titolare-aurora"))!.Link.Token;
         var active = (await links.RegenerateAsync(world.Org.Id, world.Booking.Id, "auth0|titolare-aurora"))!;
 
-        // The departure moves later: the next request extends the link, and says so in the log.
         var booking = await world.Db.Bookings.SingleAsync(b => b.Id == world.Booking.Id);
         booking.CheckOutDate = new DateTime(2026, 10, 20, 0, 0, 0, DateTimeKind.Utc);
         await world.Db.SaveChangesAsync();
@@ -49,7 +44,6 @@ public class GuestPortalLoggingTests
         foreach (var token in new[] { first, active.Token })
             Assert.DoesNotContain(lines, line => line.Contains(token, StringComparison.Ordinal));
 
-        // The id of the link is what the lines carry: on the creation, the extension and the failure of a section inside the request.
         Assert.Contains(lines, line => line.Contains("made for booking", StringComparison.Ordinal));
         Assert.Contains(lines, line => line.Contains("extended", StringComparison.Ordinal) && line.Contains(active.Id.ToString(), StringComparison.Ordinal));
         Assert.Contains(
@@ -57,7 +51,6 @@ public class GuestPortalLoggingTests
             line => line.Contains("SectionKey=guide", StringComparison.Ordinal)
                     && line.Contains($"GuestPortalLinkId={active.Id}", StringComparison.Ordinal));
 
-        // The limiter partitions by the client and a hash of the token of the route.
         var http = new DefaultHttpContext();
         http.Request.RouteValues[GuestPortalTokenFilter.TokenRouteValue] = active.Token;
         var partition = RateLimitingServiceCollectionExtensions.GetPartitionKey(http, partitionByToken: true);

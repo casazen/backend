@@ -33,10 +33,6 @@ public class ScheduledMessageWiringTests
 {
     private static readonly Guid OrgId = Guid.NewGuid();
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // Registration
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
     [Fact]
     public void AddScheduledMessages_RegistersTheServicesOfTheFeature_ScopedEachOnce_AsTheWholeListOfServices()
     {
@@ -58,11 +54,9 @@ public class ScheduledMessageWiringTests
             var descriptor = Assert.Single(services, d => d.ServiceType == service);
             Assert.Equal(implementation, descriptor.ImplementationType);
 
-            // Scoped: they hold the database of the request (or of the job).
             Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
         }
 
-        // Of the types of the application, these and no other (the options of the section Messaging:ScheduledMessages are the framework's).
         Assert.Equal(
             [
                 "IEventHandler`1", nameof(IScheduledMessageDispatcher), nameof(IScheduledMessageService), nameof(ScheduledMessageAlertDelivery),
@@ -82,10 +76,6 @@ public class ScheduledMessageWiringTests
         Assert.DoesNotContain("ScheduledMessageService", shared, StringComparison.Ordinal);
         Assert.DoesNotContain("ScheduledMessageDispatcher", shared, StringComparison.Ordinal);
     }
-
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The options
-    // ------------------------------------------------------------------------------------------------------------------------------------
 
     [Fact]
     public void TheOptionsOfTheSection_HaveTheDecidedDefaults_AreBoundToTheSection_AndAValueThatCannotWorkFallsBack()
@@ -128,10 +118,6 @@ public class ScheduledMessageWiringTests
         Assert.False(configuration.GetValue<bool>($"Features:{FeatureFlags.ScheduledMessages}"));
         Assert.Contains(FeatureFlags.ScheduledMessages, FeatureFlags.All);
     }
-
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The jobs
-    // ------------------------------------------------------------------------------------------------------------------------------------
 
     [Theory]
     [InlineData(true)]
@@ -194,7 +180,6 @@ public class ScheduledMessageWiringTests
         flags.Set(FeatureFlags.ScheduledMessages, true);
         await Assert.ThrowsAsync<InvalidOperationException>(() => job.ExecuteAsync(CancellationToken.None));
 
-        // The organization that failed did not stop the next one: both were looked at, and the run shows as failed.
         messages.Verify(m => m.ReplanOrgAsync(OrgId, It.IsAny<CancellationToken>()), Times.Once);
         messages.Verify(m => m.ReplanOrgAsync(other, It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -217,10 +202,6 @@ public class ScheduledMessageWiringTests
 
         dispatcher.Verify(d => d.SweepAsync(instant.UtcDateTime, It.IsAny<CancellationToken>()), Times.Once);
     }
-
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The handler of the booking events
-    // ------------------------------------------------------------------------------------------------------------------------------------
 
     private static DomainEvent EventOf(DomainEventType type, Guid bookingId) =>
         new(Guid.NewGuid(), OrgId, type, bookingId, new DateTime(2026, 11, 18, 10, 0, 0, DateTimeKind.Utc), "{}");
@@ -269,10 +250,6 @@ public class ScheduledMessageWiringTests
         messages.VerifyNoOtherCalls();
     }
 
-    /// <summary>
-    /// The text of every file of the web host that registers services except the one of the area under test: the shared registration
-    /// (<c>AddCasazenServices</c>) is spread over one file for each area, so "the shared one" is all of them.
-    /// </summary>
     private static string ReadSharedRegistrations(string root) =>
         string.Join(
             '\n',

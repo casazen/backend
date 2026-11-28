@@ -8,10 +8,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// One process-wide view of the AI provider. The admin row is read on demand and cached; a save replaces the cache,
-/// so the next generation uses it. The API key stays in the entity (encrypted at rest) and in this cache, never in a log.
-/// </summary>
 public sealed class AiRuntimeSettings(IOptions<AiOptions> environment, IServiceScopeFactory scopes) : IAiRuntimeSettings
 {
     private readonly object _gate = new();

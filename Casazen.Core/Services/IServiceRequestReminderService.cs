@@ -19,7 +19,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IServiceRequestReminderService
 {
-    /// <summary>One run. Never throws for a request it cannot handle: it counts it.</summary>
     Task<ServiceRequestReminderRun> SendDueAsync(CancellationToken cancellationToken = default);
 }
 
@@ -29,12 +28,9 @@ public interface IServiceRequestReminderService
 /// <param name="Failed">Requests whose reminder to the customer could not be queued: retried by the next run while the reminder is still due.</param>
 public sealed record ServiceRequestReminderRun(bool Skipped, int Sent, int Failed)
 {
-    /// <summary>Another run is in progress.</summary>
     public static ServiceRequestReminderRun LockTaken { get; } = new(Skipped: true, 0, 0);
 
-    /// <summary>Reminders to suppliers queued by this run (SP-16d).</summary>
     public int SupplierSent { get; init; }
 
-    /// <summary>Requests whose reminder to the supplier could not be queued.</summary>
     public int SupplierFailed { get; init; }
 }

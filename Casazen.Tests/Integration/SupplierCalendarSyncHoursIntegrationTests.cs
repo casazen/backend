@@ -47,7 +47,6 @@ public class SupplierCalendarSyncHoursIntegrationTests(SupplierCalendarSyncPostg
         Assert.Equal(RomeCalendar.ToUtc(day, new TimeOnly(10, 0)), block.GetProperty("startUtc").GetDateTime().ToUniversalTime());
         Assert.Equal(RomeCalendar.ToUtc(day, new TimeOnly(11, 0)), block.GetProperty("endUtc").GetDateTime().ToUniversalTime());
         Assert.Equal("Dentista", block.GetProperty("label").GetString());
-        // Before SP-05 this event closed the whole day. The per-day grid lists only the days that have an override: this one has none.
         Assert.Equal(0, calendar.GetProperty("closedDays").GetArrayLength());
         var grid = await ReadAsync(await client.GetAsync($"{Base}?from={day:yyyy-MM-dd}&to={day:yyyy-MM-dd}"));
         Assert.Equal(0, grid.GetProperty("dates").GetArrayLength());
@@ -85,12 +84,10 @@ public class SupplierCalendarSyncHoursIntegrationTests(SupplierCalendarSyncPostg
         await SyncAsync(orgId);
 
         var plans = await PlanAsync(orgId, busyHour, holiday);
-        // Open 08:00-14:00 in hourly slots: only the 10:00 one is taken.
         Assert.Null(plans[0].Closure);
         Assert.Equal(
             new[] { 8, 9, 11, 12, 13 }.Select(hour => RomeCalendar.ToUtc(busyHour, new TimeOnly(hour, 0))),
             plans[0].Slots.Select(slot => slot.StartUtc));
-        // The all-day event closes its day, as before.
         Assert.Equal(SupplierDayClosure.DayClosed, plans[1].Closure);
         Assert.Empty(plans[1].Slots);
     }
@@ -125,7 +122,7 @@ public class SupplierCalendarSyncHoursIntegrationTests(SupplierCalendarSyncPostg
 
         await SyncAsync(aOrg);
         await SyncAsync(bOrg);
-        factory.Feeds[aUrl] = () => Feed(); // A's calendar empties; B's window must stay
+        factory.Feeds[aUrl] = () => Feed();
         await SyncAsync(aOrg);
 
         var aCalendar = await ReadAsync(await a.GetAsync($"/api/supplier/calendar?from={day:yyyy-MM-dd}&to={day:yyyy-MM-dd}"));
@@ -156,11 +153,8 @@ public class SupplierCalendarSyncHoursIntegrationTests(SupplierCalendarSyncPostg
         Assert.Equal(SupplierBusyWindowSource.Manual, Assert.Single(await WindowsAsync(orgId)).Source);
     }
 
-    // ─── helpers ─────────────────────────────────────────────────────────────────
-
     private HttpClient SupplierClient(string userId) => factory.CreateAuthenticatedClient(userId, roles: "Supplier");
 
-    /// <summary>An Active supplier with an iCal feed URL (the scripted client answers it) and no hours yet.</summary>
     private async Task<(string UserId, Guid OrgId, string Url)> SeedSupplierWithFeedAsync()
     {
         var (userId, orgId) = await SupplierCatalogTestData.SeedSupplierAsync(factory);
@@ -174,7 +168,6 @@ public class SupplierCalendarSyncHoursIntegrationTests(SupplierCalendarSyncPostg
         return (userId, orgId, url);
     }
 
-    /// <summary>Every weekday 08:00-14:00, no buffer, no notice, hourly slots.</summary>
     private async Task OpenEveryDayAsync(string userId)
     {
         using var client = SupplierClient(userId);

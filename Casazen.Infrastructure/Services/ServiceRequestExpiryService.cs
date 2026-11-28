@@ -48,8 +48,6 @@ public sealed class ServiceRequestExpiryService(
             return ServiceRequestExpiryRun.LockTaken;
         }
 
-        // The holds of the bookings and the inquiries of the requests on measure (SP-10b) that nobody checked: both wait for an e-mail
-        // check and lapse alike, so the run counts them together.
         var holdsDeleted = await DeleteExpiredHoldsAsync(cancellationToken) + await DeleteExpiredInquiriesAsync(cancellationToken);
         var cancellation = await autoCancel.CancelUnansweredShowcaseAsync(cancellationToken);
         var reminded = await SendRemindersAsync(cancellationToken);
@@ -65,7 +63,6 @@ public sealed class ServiceRequestExpiryService(
             Skipped: false, holdsDeleted, cancellation.Cancelled, cancellation.Conflicts, cancellation.Failed, reminded.Sent);
     }
 
-    /// <summary>The reminders to the suppliers of the requests on measure nobody answered yet (SP-10c); a pass that fails is logged and counted as nothing.</summary>
     private async Task<ShowcaseReplyReminderRun> SendRemindersAsync(CancellationToken cancellationToken)
     {
         if (reminders is null)
@@ -129,7 +126,6 @@ public sealed class ServiceRequestExpiryService(
         }
         catch (DbUpdateConcurrencyException)
         {
-            // Another run removed some of them first: the next run finds what is left.
             db.ChangeTracker.Clear();
             logger.LogInformation("Service request expiry: some expired inquiries were already gone");
             return 0;
@@ -150,7 +146,6 @@ public sealed class ServiceRequestExpiryService(
             .Where(h => ids.Contains(h.Id) && h.StripePaymentIntentId != null && h.ConsumedAt == null)
             .Select(h => new ExpiredPaidHold(h.Id, h.OrgId));
 
-    /// <summary>An expired hold that holds a block on a card: where it is and which supplier's it is.</summary>
     internal sealed record ExpiredPaidHold(Guid Id, Guid OrgId);
 
     private async Task<int> DeleteExpiredHoldsAsync(CancellationToken cancellationToken)
@@ -160,8 +155,6 @@ public sealed class ServiceRequestExpiryService(
         if (ids.Count == 0)
             return 0;
 
-        // SP-15c-a: the holds whose card is blocked are released one at a time, the block first. The others (never paid, or already a request)
-        // are deleted together below. A hold the release could not delete stays for the next run.
         var released = 0;
         var paid = await UnconsumedPaidHoldsOf(db, ids).ToListAsync(cancellationToken);
         if (paid.Count > 0)
@@ -189,7 +182,6 @@ public sealed class ServiceRequestExpiryService(
                 logger.LogWarning("Service request expiry: {Count} expired holds have a card block and there is no way to release it; kept", paid.Count);
             }
 
-            // Whatever happened to them, they are not deleted by key below: a block that was not released must not lose its hold.
             ids = ids.Where(id => !paidIds.Contains(id)).ToList();
         }
 
@@ -205,7 +197,6 @@ public sealed class ServiceRequestExpiryService(
         }
         catch (DbUpdateConcurrencyException)
         {
-            // Another run (or a check of the link) removed or changed some of them first: the next run finds what is left.
             db.ChangeTracker.Clear();
             logger.LogInformation("Service request expiry: some expired holds were already gone");
             return released;

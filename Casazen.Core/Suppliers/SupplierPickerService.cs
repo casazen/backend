@@ -23,9 +23,7 @@ public sealed record SupplierPickerService(
     SupplierServicePriceUnit PriceUnit,
     bool RequiresQuote);
 
-/// <summary>Limits of the supplier picker of the marketplace (SR-09a).</summary>
 public static class SupplierPickerLimits
 {
-    /// <summary>Services listed on each supplier of the picker (the catalog order; the "from" price is the lowest of all of them).</summary>
     public const int MaxServices = 3;
 }

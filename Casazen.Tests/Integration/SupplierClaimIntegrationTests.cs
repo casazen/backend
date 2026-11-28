@@ -33,7 +33,6 @@ public class SupplierClaimIntegrationTests(SupplierClaimIntegrationTests.ClaimFa
         var email = NewEmail("claim-ok");
         var (orgId, token) = await RegisterAnonymouslyAsync(email);
         var userId = NewUserId("claim-ok");
-        // Just signed up: the email is not verified yet, the token proves the registrant.
         using var client = factory.CreateAuthenticatedClient(userId, email: email.ToUpperInvariant(), emailVerified: false);
 
         var response = await ClaimAsync(client, token);
@@ -49,7 +48,6 @@ public class SupplierClaimIntegrationTests(SupplierClaimIntegrationTests.ClaimFa
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var user = await db.Users.SingleAsync(u => u.Id == userId);
             Assert.Equal(orgId, user.SupplierOrgId);
-            // PL-05 (A1-40): the supplier org is never written into OrgId, which is the host org only.
             Assert.Null(user.OrgId);
             var profile = await db.SupplierProfiles.SingleAsync(p => p.OrgId == orgId);
             Assert.Equal(SupplierClaimTokens.Hash(token), profile.ClaimTokenHash);
@@ -69,7 +67,6 @@ public class SupplierClaimIntegrationTests(SupplierClaimIntegrationTests.ClaimFa
         using (var first = factory.CreateAuthenticatedClient(NewUserId("claim-first"), email: email))
             Assert.Equal(HttpStatusCode.OK, (await ClaimAsync(first, token)).StatusCode);
 
-        // Another account of the same email (e.g. a social login) cannot take the profile with the same token.
         var secondId = NewUserId("claim-second");
         using var second = factory.CreateAuthenticatedClient(secondId, email: email, emailVerified: true);
         var reused = await ClaimAsync(second, token);
@@ -203,8 +200,6 @@ public class SupplierClaimIntegrationTests(SupplierClaimIntegrationTests.ClaimFa
         Assert.Equal(linkedOrgId, (await db.Users.SingleAsync(u => u.Id == userId)).SupplierOrgId);
     }
 
-    // ─── Without token: verified email only ─────────────────────────────────
-
     [PostgresFact]
     public async Task Claim_WithoutTokenAndUnverifiedEmail_Returns422EmailUnverifiedWithoutLinking()
     {
@@ -223,7 +218,6 @@ public class SupplierClaimIntegrationTests(SupplierClaimIntegrationTests.ClaimFa
     public async Task Claim_WithoutTokenAndVerifiedEmail_LinksTheOnlyUnclaimedProfile()
     {
         var email = NewEmail("claim-verified");
-        // A profile registered before SU-02 (no claim token), never linked to an account.
         var orgId = await SeedUnclaimedProfileAsync(email);
         var userId = NewUserId("claim-verified");
         using var client = factory.CreateAuthenticatedClient(userId, email: email, emailVerified: true);
@@ -248,8 +242,6 @@ public class SupplierClaimIntegrationTests(SupplierClaimIntegrationTests.ClaimFa
         await AssertProblemAsync(response, HttpStatusCode.UnprocessableEntity, "supplier_claim_not_found");
     }
 
-    // ─── No automatic link by email (A4-23, A1-13) ──────────────────────────
-
     [PostgresTheory]
     [InlineData(false)]
     [InlineData(true)]
@@ -273,29 +265,23 @@ public class SupplierClaimIntegrationTests(SupplierClaimIntegrationTests.ClaimFa
             inviteId = invite.Id;
         }
 
-        // A Supplier role given by hand to an Auth0 account that only shows the same email.
         var userId = NewUserId($"claim-auto-{emailVerified}");
         using var client = factory.CreateAuthenticatedClient(userId, "Supplier", email, emailVerified);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/users/me")).StatusCode);
 
         var response = await client.GetAsync("/api/supplier/profile/activation");
 
-        // Neither linked by email (A4-23) nor given a second profile with the same email (SU-14, A4-22): the account is
-        // told to link the existing profile with the claim.
         await AssertProblemAsync(response, HttpStatusCode.Conflict, "supplier_email_taken");
         await AssertNotLinkedAsync(userId, orgId);
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            // The invite is accepted only with its token, never consumed by the email.
             Assert.False((await db.SupplierInviteRecords.SingleAsync(i => i.Id == inviteId)).IsUsed);
             Assert.False(await db.Users.AnyAsync(u => u.SupplierOrgId == orgId || u.OrgId == orgId));
             Assert.Equal(1, await db.SupplierProfiles.CountAsync(sp => sp.Email == email));
             Assert.Null((await db.Users.SingleAsync(u => u.Id == userId)).SupplierOrgId);
         }
     }
-
-    // ─── /api/users/me ──────────────────────────────────────────────────────
 
     [PostgresFact]
     public async Task GetMe_ClaimedSupplier_ReturnsSupplierOrgId()
@@ -314,7 +300,6 @@ public class SupplierClaimIntegrationTests(SupplierClaimIntegrationTests.ClaimFa
         Assert.Equal(HttpStatusCode.OK, me.StatusCode);
         var body = await me.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(orgId, body.GetProperty("supplierOrgId").GetGuid());
-        // PL-05 (A1-40): a supplier-only account has no host org.
         Assert.Equal(JsonValueKind.Null, body.GetProperty("orgId").ValueKind);
     }
 
@@ -342,8 +327,6 @@ public class SupplierClaimIntegrationTests(SupplierClaimIntegrationTests.ClaimFa
         Assert.Equal(supplierOrgId, body.GetProperty("supplierOrgId").GetGuid());
     }
 
-    // ─── Helpers ────────────────────────────────────────────────────────────
-
     private static string NewEmail(string prefix) => $"{prefix}-{Guid.NewGuid():N}@test.com";
 
     private static string NewUserId(string prefix) => $"auth0|{prefix}-{Guid.NewGuid():N}";
@@ -351,7 +334,6 @@ public class SupplierClaimIntegrationTests(SupplierClaimIntegrationTests.ClaimFa
     private static Task<HttpResponseMessage> ClaimAsync(HttpClient client, string? claimToken) =>
         client.PostAsJsonAsync("/api/suppliers/claim", new { claimToken });
 
-    /// <summary>Anonymous self-serve registration; returns the new org and the claim token of the response.</summary>
     private async Task<(Guid OrgId, string Token)> RegisterAnonymouslyAsync(string email)
     {
         using var anonymous = factory.CreateClient();
@@ -413,7 +395,6 @@ public class SupplierClaimIntegrationTests(SupplierClaimIntegrationTests.ClaimFa
         Assert.False(string.IsNullOrWhiteSpace(problem.GetProperty("detail").GetString()));
     }
 
-    /// <summary>Pilot comune H501 and a mocked Auth0 Management API (roles assigned, no profile lookup).</summary>
     public class ClaimFactory : SupplierRegistrationIntegrationTests.PilotComuniFactory
     {
         public Mock<IAuth0ManagementService> Auth0 { get; } = CreateAuth0Mock();

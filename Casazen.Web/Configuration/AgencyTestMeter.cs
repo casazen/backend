@@ -5,7 +5,6 @@ using Stripe.Billing;
 
 namespace Casazen.Web.Configuration;
 
-/// <summary>Explicit operator command for the CasaZen test catalog. No web host or database is started.</summary>
 internal static class AgencyTestMeter
 {
     internal static async Task EnsureAsync(string module)

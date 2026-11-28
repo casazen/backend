@@ -6,11 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// E40/F01/US01/T04 (NF-149): the Google Tag Manager container of an agency. The endpoint is hidden while <c>SiteEmbed</c> is off, saves only the
-/// caller's own org, refuses anything that is not a container id without echoing it, and <c>resolve-host</c> serves the saved id at once (and
-/// nothing while the flag is off).
-/// </summary>
 public class OrgDomainTrackingIntegrationTests(CasazenWebApplicationFactory flagsOff, SiteIntegrationFlagsFactory flagsOn)
     : IClassFixture<CasazenWebApplicationFactory>, IClassFixture<SiteIntegrationFlagsFactory>
 {

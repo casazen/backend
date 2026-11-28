@@ -21,7 +21,6 @@ public sealed class QualificationSafetyTests : IDisposable
             Directory.Delete(_root, recursive: true);
     }
 
-    // A checkout in a temporary folder: the solution at its root, the sources of the policy files, and a test output folder with the folder of the policy files the application reads.
     private (string Checkout, string BaseDirectory) NewCheckout()
     {
         var checkout = Path.Combine(_root, "checkout");
@@ -48,7 +47,6 @@ public sealed class QualificationSafetyTests : IDisposable
 
         Assert.Equal([Path.Combine(baseDirectory, "IdentityPolicies"), Path.Combine(checkout, "Casazen.Web", "IdentityPolicies")], folders);
 
-        // A policy file given with a full path is read from its own folder; a test output that is no checkout (a copy) has only the folder it reads from.
         var elsewhere = Path.Combine(_root, "elsewhere", "policy.json");
         Assert.Equal(Path.Combine(_root, "elsewhere"), QualificationOutputFolder.ProtectedPolicyFolders(elsewhere, baseDirectory)[0]);
         var copy = QualificationOutputFolder.ProtectedPolicyFolders("IdentityPolicies/identity-policy-2026.11-1.json", Path.Combine(_root, "copy"));
@@ -65,7 +63,6 @@ public sealed class QualificationSafetyTests : IDisposable
         Assert.Null(QualificationOutputFolder.CheckoutRoot(Path.Combine(_root, "copy")));
     }
 
-    /// <summary>Proof (data, the repository is public): a qualification refuses the folder of the committed policy files and every folder of the checkout, before anything is created.</summary>
     [Fact]
     public void EnsureAllowed_RefusesTheFolderOfThePolicyFilesAndTheCheckout_AndCreatesNothing()
     {
@@ -74,15 +71,12 @@ public sealed class QualificationSafetyTests : IDisposable
         var sources = Path.Combine(checkout, "Casazen.Web", "IdentityPolicies");
         var protectedFolders = QualificationOutputFolder.ProtectedPolicyFolders("IdentityPolicies/identity-policy-2026.11-1.json", baseDirectory);
 
-        // The folders of the committed policy files, spelled in several ways, and a folder inside one of them.
         foreach (var path in new[] { published, sources, published + Path.DirectorySeparatorChar, Path.Combine(published, "..", "IdentityPolicies"), Path.Combine(sources, "proposals") })
             Assert.EndsWith(QualificationOutputFolder.PolicyFolderDetail, Detail(() => QualificationOutputFolder.EnsureAllowed(path, protectedFolders, checkout)), StringComparison.Ordinal);
 
-        // Any other folder of the checkout: its root, a folder in it, the test output, a folder reached through a «..».
         foreach (var path in new[] { checkout, Path.Combine(checkout, "out"), Path.Combine(baseDirectory, "results"), Path.Combine(checkout, "Casazen.Tests", "..", "out") })
             Assert.EndsWith(QualificationOutputFolder.CheckoutDetail, Detail(() => QualificationOutputFolder.EnsureAllowed(path, protectedFolders, checkout)), StringComparison.Ordinal);
 
-        // A folder outside the checkout is fine, even one whose name starts with the name of the checkout, and without a checkout (a copy of the test output) only the policy folders are refused.
         var sibling = checkout + "-results";
         QualificationOutputFolder.EnsureAllowed(sibling, protectedFolders, checkout);
         QualificationOutputFolder.EnsureAllowed(Path.Combine(_root, "qa", "out"), protectedFolders, checkout);
@@ -106,10 +100,6 @@ public sealed class QualificationSafetyTests : IDisposable
         Assert.False(QualificationOutputFolder.IsInside(_root, folder));
     }
 
-    /// <summary>
-    /// Proof (privacy, D5, ADR-013-R21): real faces and documents go through this pipeline, so it registers nothing that could take one out of the process: no HTTP client factory (so the store
-    /// downloads nothing), no HTTP client, no AI provider or its settings, no job client. None of them can be resolved either.
-    /// </summary>
     [Fact]
     public void QualificationPipeline_RegistersNoHttpClient_NoAiProvider_AndNoJobClient()
     {
@@ -129,7 +119,6 @@ public sealed class QualificationSafetyTests : IDisposable
         Assert.All(forbidden, type => Assert.Null(provider.GetService(type)));
     }
 
-    /// <summary>The guard is not blind: a registration of an HTTP client factory is found by the very check the test above makes.</summary>
     [Fact]
     public void QualificationPipeline_TheEgressCheck_FindsAnHttpClientFactoryWhereOneIsRegistered()
     {

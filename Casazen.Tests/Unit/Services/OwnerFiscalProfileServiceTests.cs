@@ -13,11 +13,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E06/F05/US02/T01 (NF-109, NF-110, ADR-012): an owner is usable for the financial operations only with a complete profile and an approved rule set in
-/// force of its own jurisdiction (no default rate, no jurisdiction inferred from a country), and only <c>agency.owner.financial.manage</c> sees the full
-/// identifiers and bank data.
-/// </summary>
 public class OwnerFiscalProfileServiceTests
 {
     private static readonly Guid OrgId = Guid.NewGuid();
@@ -63,12 +58,10 @@ public class OwnerFiscalProfileServiceTests
         var swiss = await service.CreatePolicyAsync(OrgId, SwissRule(), null);
         await service.ApprovePolicyAsync(OrgId, swiss.Id, "TEST Treuhänder", null);
 
-        // A Swiss owner given the Italian rule set is refused: the rule must be of the jurisdiction of the profile.
         await service.SaveProfileAsync(OrgId, owner, Profile("CH", italian.Id) with { ValidFrom = new DateOnly(2026, 1, 1) }, null);
         var mismatch = await Assert.ThrowsAsync<DomainRuleException>(() => service.ResolveAsync(OrgId, owner, Day));
         Assert.Equal(OwnerFiscalErrors.PolicyJurisdictionMismatch, mismatch.Code);
 
-        // From October the Swiss owner follows its Swiss rule set: no withholding, whatever the org's Italian rule says.
         await service.SaveProfileAsync(OrgId, owner, Profile("CH", swiss.Id) with { ValidFrom = new DateOnly(2026, 10, 1) }, null);
         var resolution = await service.ResolveAsync(OrgId, owner, Day);
         Assert.Equal("CH", resolution.Policy.Jurisdiction);
@@ -100,7 +93,6 @@ public class OwnerFiscalProfileServiceTests
         Assert.Equal("IT60X0542811101000000123456", full.BankAccountReference);
         Assert.False(full.Masked);
 
-        // Only the owner and the administrators of the agency hold the permission that reads the full values.
         foreach (var role in new[] { OrgRole.PropertyManager, OrgRole.Collaborator, OrgRole.Accountant })
             Assert.DoesNotContain(AgencyPermissions.OwnerFinancialManage, OrgRoleCatalog.AgencyPermissionsOf(role));
         Assert.Contains(AgencyPermissions.OwnerFinancialManage, OrgRoleCatalog.AgencyPermissionsOf(OrgRole.Admin));

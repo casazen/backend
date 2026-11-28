@@ -65,8 +65,6 @@ public class OrgScopeHardeningPostgresTests : IAsyncLifetime
         return (await db.Properties.IgnoreQueryFilters().AsNoTracking().SingleAsync(p => p.Id == propertyId)).ResponsibleUserId;
     }
 
-    // --- The audience on real SQL --------------------------------------------------------------------
-
     private async Task<List<string>> ToldAsync(Guid orgId, Guid propertyId, string? responsible, string creator)
     {
         await using var db = _database!.CreateContext();
@@ -89,7 +87,6 @@ public class OrgScopeHardeningPostgresTests : IAsyncLifetime
 
         Assert.Equal([Anna, OwnerId], await ToldAsync(org.Id, property, Anna, OwnerId));
 
-        // The access is taken away; the name is written back by hand (what a write on another instance could leave).
         await using (var db = _database.CreateContext())
             await Access(db).SetAsync(org.Id, member.Id, OwnerId, PropertyScope.Selected, [other]);
         await using (var db = _database.CreateContext())
@@ -111,7 +108,6 @@ public class OrgScopeHardeningPostgresTests : IAsyncLifetime
         var (org, _) = await _kit.SeedOwnerOrgAsync();
         await using (var db = _database!.CreateContext())
         {
-            // An owner of before the team: an account of the org with no member row.
             db.Users.Add(new User
             {
                 Id = "auth0|legacy",
@@ -129,8 +125,6 @@ public class OrgScopeHardeningPostgresTests : IAsyncLifetime
 
         Assert.Equal(["auth0|legacy", OwnerId], await ToldAsync(org.Id, property, responsible: null, creator: "auth0|legacy"));
     }
-
-    // --- The responsibility goes with the access ---------------------------------------------------------
 
     [PostgresFact]
     public async Task SetAsync_TakingAPropertyAway_ReleasesThePersonInChargeOfThatPropertyOnly()
@@ -198,7 +192,6 @@ public class OrgScopeHardeningPostgresTests : IAsyncLifetime
                 }
                 catch (DomainRuleException)
                 {
-                    // The access was already gone: the rule refuses it, which is the right answer.
                     return false;
                 }
             });
@@ -212,15 +205,11 @@ public class OrgScopeHardeningPostgresTests : IAsyncLifetime
 
             await Task.WhenAll(appointment, revocation);
 
-            // Whatever the order, the access is gone, and so is the name: either the revocation ran second and released it, or the
-            // appointment ran second and was refused.
             await using var verify = _database!.CreateContext();
             Assert.False(await verify.PropertyMemberAccesses.IgnoreQueryFilters().AnyAsync(a => a.UserId == Anna && a.PropertyId == contested));
             Assert.Null(await ResponsibleAsync(contested));
         }
     }
-
-    // --- The export of the org on real SQL ---------------------------------------------------------------
 
     [PostgresFact]
     public async Task Export_AScopeNarrowerThanTheOrg_HoldsOnlyTheSectionsOfTheProperties_OnRealSql()
@@ -272,8 +261,6 @@ public class OrgScopeHardeningPostgresTests : IAsyncLifetime
         Assert.DoesNotContain("BNCLRA85C45L219Z", whole.GetRawText());
         Assert.DoesNotContain("VRDLGU75B12F205X", collaborator.GetRawText());
     }
-
-    // --- The generic save --------------------------------------------------------------------------------
 
     [PostgresFact]
     public async Task UpdateAsync_FromACopyReadBeforeTheAccessWasTakenAway_DoesNotPutTheOldPersonBack()

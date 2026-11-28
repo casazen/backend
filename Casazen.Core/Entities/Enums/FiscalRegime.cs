@@ -9,12 +9,9 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum FiscalRegime
 {
-    /// <summary>Canone libero with the cedolare secca.</summary>
     CedolareSecca,
 
-    /// <summary>Canone libero with the ordinary regime.</summary>
     RegimeOrdinario,
 
-    /// <summary>Canone concordato, whatever the tax regime.</summary>
     CanoneConcordato
 }

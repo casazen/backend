@@ -24,7 +24,6 @@ public class DocumentArchiveSqlTests
     private static readonly HostScope OrgWide = new(OrgId);
     private static readonly HostScope Restricted = new(OrgId, GrantedToUserId: "auth0|collaboratore");
 
-    /// <summary>The tables the archive may read, and the ones its filters and its reach join: the host's own, never a guest's.</summary>
     private static readonly string[] TablesOfTheArchive =
     [
         "PropertyDocuments", "LeaseDocuments", "TouristTaxRemittances", "Properties", "LeaseContracts", "PropertyMemberAccesses",
@@ -40,8 +39,6 @@ public class DocumentArchiveSqlTests
         var statements = new List<string>();
         var db = NpgsqlTranslationProbe.NewContext(statements, count, rows);
         var storage = new InMemoryFileStorage();
-        // The five sources as the container registers them: the statement holds the ones of the types the access allows (the three of the documents for
-        // DocumentArchiveWorld.Everything, all five for DocumentArchiveWorld.EveryType).
         IDocumentArchiveSource[] sources =
         [
             new PropertyDocumentArchiveSource(db, storage),
@@ -55,7 +52,6 @@ public class DocumentArchiveSqlTests
 
     private static string[] Branches(string statement) => statement.Split("UNION ALL", StringSplitOptions.None);
 
-    /// <summary>The branch of the union that reads the table of a source in its FROM (the tables it joins are read inside the others too).</summary>
     private static string BranchOf(string statement, string table) =>
         Assert.Single(Branches(statement), branch => Regex.IsMatch(branch, $"FROM \"{table}\""));
 
@@ -76,7 +72,6 @@ public class DocumentArchiveSqlTests
         Assert.Equal(2, statements.Count);
         Assert.StartsWith("SELECT count(*)", statements[0].TrimStart(), StringComparison.OrdinalIgnoreCase);
         Assert.All(statements, sql => Assert.Equal(2, Regex.Matches(sql, "UNION ALL").Count));
-        // The order and the page are in the statement, not made after it.
         Assert.Matches("ORDER BY .*\"DocumentDate\" DESC, .*\"Id\"", statements[1]);
         Assert.Contains("LIMIT", statements[1], StringComparison.Ordinal);
         Assert.Contains("OFFSET", statements[1], StringComparison.Ordinal);
@@ -93,7 +88,6 @@ public class DocumentArchiveSqlTests
         var wholeOrg = (await ListAsync(OrgWide, Query()))[1];
         var limited = (await ListAsync(Restricted, Query()))[1];
 
-        // The org is a parameter in the WHERE of the branch, and of every property it joins; the tenant filter of the context is next to it.
         foreach (var (statement, table) in new[]
                  {
                      (wholeOrg, "PropertyDocuments"), (wholeOrg, "LeaseDocuments"), (wholeOrg, "TouristTaxRemittances"),
@@ -104,15 +98,12 @@ public class DocumentArchiveSqlTests
             Assert.Contains("@ef_filter", BranchOf(statement, table), StringComparison.Ordinal);
         }
 
-        // A file names the org on itself, on its lease and on the property it joins; a property document on itself and on its property.
         Assert.Equal(3, Regex.Matches(BranchOf(wholeOrg, "LeaseDocuments"), "\"OrgId\" = @").Count);
         Assert.Equal(2, Regex.Matches(BranchOf(wholeOrg, "PropertyDocuments"), "\"OrgId\" = @").Count);
 
-        // The whole org adds nothing to the branches: no grants, nothing cut out.
         Assert.DoesNotContain("PropertyMemberAccesses", wholeOrg, StringComparison.Ordinal);
         Assert.DoesNotContain("FALSE", BranchOf(wholeOrg, "TouristTaxRemittances"), StringComparison.OrdinalIgnoreCase);
 
-        // A collaborator: the grants in the branches of the properties, and nothing at all from the receipts.
         Assert.Contains("EXISTS", BranchOf(limited, "PropertyDocuments"), StringComparison.Ordinal);
         Assert.Contains("PropertyMemberAccesses", BranchOf(limited, "PropertyDocuments"), StringComparison.Ordinal);
         Assert.Contains("PropertyMemberAccesses", BranchOf(limited, "LeaseDocuments"), StringComparison.Ordinal);
@@ -120,7 +111,6 @@ public class DocumentArchiveSqlTests
         Assert.Contains("FALSE", BranchOf(limited, "TouristTaxRemittances"), StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>The branches of the union that read <paramref name="table"/> in their FROM (the two sources of the proofs both read the proofs).</summary>
     private static string[] BranchesOf(string statement, string table) =>
         [.. Branches(statement).Where(branch => Regex.IsMatch(branch, $"FROM \"{table}\""))];
 
@@ -149,23 +139,18 @@ public class DocumentArchiveSqlTests
 
         foreach (var statement in new[] { wholeOrg[1], limited[1] })
         {
-            // The branches that join a property: the documents, the lease files and the two kinds of proof (two branches read the proofs).
             var withProperty = new[] { "PropertyDocuments", "LeaseDocuments", "ManualComplianceProofs" }
                 .SelectMany(table => BranchesOf(statement, table))
                 .ToList();
             Assert.Equal(4, withProperty.Count);
             Assert.All(withProperty, branch => Assert.Contains("\"IsDeleted\"", branch, StringComparison.Ordinal));
 
-            // The tenant filter of the context stays in the branches that read the rows of the org's properties (the receipts of the tourist tax of a collaborator are cut out in SQL).
             Assert.Equal(5, Branches(statement).Length);
             Assert.All(withProperty, branch => Assert.Contains("@ef_filter", branch, StringComparison.Ordinal));
         }
 
-        // The whole org: the tenant filter is in each of the five branches.
         Assert.All(Branches(wholeOrg[1]), branch => Assert.Contains("@ef_filter", branch, StringComparison.Ordinal));
 
-        // A collaborator reads a receipt of several flats only when every flat it covers is in reach AND none is gone (the soft-delete filter takes a deleted flat out of
-        // the NOT EXISTS): the lines of the receipt are counted against the lines whose flat is still there, in the same statement (two counts); the whole org has no count.
         Assert.All(BranchesOf(limited[1], "ManualComplianceProofs"), branch =>
         {
             Assert.Contains("PropertyMemberAccesses", branch, StringComparison.Ordinal);
@@ -181,11 +166,9 @@ public class DocumentArchiveSqlTests
     {
         var statements = await ListAsync(OrgWide, Query(from: new DateOnly(2026, 1, 1)));
 
-        // The day the host sees: the instant moved to Europe/Rome by the server, then cut to a date, in the branches of the two uploads.
         foreach (var table in new[] { "PropertyDocuments", "LeaseDocuments" })
             Assert.Contains("AT TIME ZONE 'Europe/Rome'", BranchOf(statements[1], table), StringComparison.Ordinal);
 
-        // The filter by days is on that day, in each branch, not made on the rows after the statement.
         Assert.Contains("@", BranchOf(statements[1], "PropertyDocuments"), StringComparison.Ordinal);
     }
 
@@ -195,7 +178,6 @@ public class DocumentArchiveSqlTests
         var statements = await ListAsync(OrgWide, Query("50%_off"));
 
         Assert.All(statements, sql => Assert.Contains("ILIKE", sql, StringComparison.Ordinal));
-        // The text is a parameter, never part of the statement.
         Assert.All(statements, sql => Assert.DoesNotContain("50%_off", sql, StringComparison.Ordinal));
     }
 
@@ -247,19 +229,12 @@ public class DocumentArchiveSqlTests
         await NpgsqlTranslationProbe.AssertTranslatesAsync(
             () => service.OpenAsync(Restricted, DocumentArchiveWorld.Everything, ArchiveDocumentType.PropertyDocument, Guid.NewGuid()));
 
-        // One source of that type: one statement, with the org and the grants of the collaborator, and no other table's rows.
         var statement = Assert.Single(statements);
         Assert.Matches("\"OrgId\" = @", statement);
         Assert.Contains("PropertyMemberAccesses", statement, StringComparison.Ordinal);
         Assert.DoesNotContain("LeaseDocuments", statement, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// PROOF TEST: privacy rule. The archive reads the tables of the host's documents and nothing that belongs to a guest: across the list, the
-    /// count, the export and the download, every table the statements read is in the short list of the archive. The identity documents and the
-    /// selfies of the guests live in other tables and are not reachable from any source; a source added later has to be added to the list of this
-    /// test too, on purpose.
-    /// </summary>
     [Fact]
     public async Task DocumentArchive_NoGuestIdentityDocuments_Test()
     {
@@ -284,7 +259,6 @@ public class DocumentArchiveSqlTests
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.Subset(TablesOfTheArchive.ToHashSet(StringComparer.Ordinal), tables);
-        // And, said the other way, the five sources are all there.
         Assert.Contains("PropertyDocuments", tables);
         Assert.Contains("LeaseDocuments", tables);
         Assert.Contains("TouristTaxRemittances", tables);

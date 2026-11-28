@@ -38,14 +38,8 @@ public sealed record PublishedShowcasePage(
     bool AcceptsOnlinePayments,
     string? PrivacyNoticeVersion);
 
-/// <summary>
-/// The free slots of one Europe/Rome day. <b>No reason, no kind, no label</b>: a day with no slot is just "not available"
-/// (closed, on leave, full, inside the notice and beyond the horizon look the same to the public), so a customer can read
-/// neither why a supplier is not working nor what it is doing.
-/// </summary>
 public sealed record PublicSlotDay(DateOnly Date, IReadOnlyList<SupplierSlot> Slots)
 {
-    /// <summary>True when the day has at least one free slot.</summary>
     public bool Available => Slots.Count > 0;
 }
 
@@ -68,24 +62,15 @@ public sealed record PublicSlots(
     IReadOnlyList<PublicSlotDay> Days,
     bool Urgent = false);
 
-/// <summary>Whether the place of an estimate is one of the supplier's zones.</summary>
 public enum PublicQuoteCoverage
 {
-    /// <summary>No place was given: nothing is known, nothing is refused.</summary>
     Unknown = 0,
 
-    /// <summary>The comune is one of the supplier's zones.</summary>
     Covered = 1,
 
-    /// <summary>The comune is not one of the supplier's zones (or could not be recognized): the supplier decides.</summary>
     Outside = 2,
 }
 
-/// <summary>An estimate with the service it is for and where the work is.</summary>
-/// <param name="Service">The published service the estimate is for.</param>
-/// <param name="Coverage">Whether the place is in the supplier's zones.</param>
-/// <param name="Quote">The estimate itself.</param>
-/// <param name="PostalCode">The postal code the customer gave, echoed (it does not decide the coverage).</param>
 public sealed record PublicQuote(
     SupplierPublicService Service,
     PublicQuoteCoverage Coverage,
@@ -109,40 +94,21 @@ public sealed record PublicQuote(
 /// </remarks>
 public interface IPublicSupplierShowcaseService
 {
-    /// <summary>
-    /// The <c>Active</c> supplier whose showcase slug is <paramref name="slug"/> (trimmed, lowercase); <c>null</c> for an unknown
-    /// slug and for a supplier that is pending or suspended, with no way to tell which. Read-only.
-    /// </summary>
     Task<SupplierProfile?> FindActiveSupplierAsync(string? slug, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// What the published content adds to the page of <paramref name="supplier"/> (SP-13a); <c>null</c> while the supplier has published nothing,
-    /// and then the page is exactly what it always was. Reads the <b>published</b> version only, never the draft. Read-only.
-    /// </summary>
     Task<PublishedShowcasePage?> GetPublishedPageAsync(SupplierProfile supplier, CancellationToken cancellationToken = default);
 
-    /// <summary>True when the supplier paused its published showcase: its slots and estimates answer "not available" (SP-13a). Read-only.</summary>
     Task<bool> IsPausedAsync(SupplierProfile supplier, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The first free slot of each of <paramref name="services"/> (SP-13a, "primo orario libero"), by service slug; a service with no free slot in
-    /// the supplier's horizon is not in the answer. From the same plan and the same 30-second cache as <see cref="GetSlotsAsync"/>. Read-only.
-    /// </summary>
     Task<IReadOnlyDictionary<string, DateTime>> GetNextSlotsAsync(
         SupplierProfile supplier,
         IReadOnlyList<SupplierPublicService> services,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The services and the measured response time to add to the showcase of <paramref name="supplier"/>. Read-only.</summary>
     Task<PublicSupplierExtension> GetExtensionAsync(SupplierProfile supplier, CancellationToken cancellationToken = default);
 
-    /// <summary>The <c>Active</c> services of <paramref name="supplier"/>, by position then creation date. Read-only.</summary>
     Task<IReadOnlyList<SupplierPublicService>> ListServicesAsync(SupplierProfile supplier, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// One <c>Active</c> service of <paramref name="supplier"/> by its slug; <c>null</c> for an unknown slug, a draft, a paused
-    /// or a deleted service and a service of another supplier, with no way to tell which. Read-only.
-    /// </summary>
     Task<SupplierPublicService?> FindServiceAsync(SupplierProfile supplier, string? serviceSlug, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -161,14 +127,6 @@ public interface IPublicSupplierShowcaseService
         bool urgent = false,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The price estimate of a service (<see cref="SupplierQuoteCalculator"/>) for what the customer chose, with the check of
-    /// the place against the supplier's zones. <c>null</c> when the service is not one of the supplier's published ones. An
-    /// estimate that cannot be given (on quote, outside the zones) is a result, not an error. Read-only.
-    /// </summary>
-    /// <exception cref="Exceptions.DomainRuleException">
-    /// <see cref="SupplierQuoteErrors.Invalid"/> (<see cref="SupplierQuoteRuleException"/>, with the fields): a value that does not fit the service.
-    /// </exception>
     Task<PublicQuote?> QuoteAsync(
         SupplierProfile supplier,
         string? serviceSlug,

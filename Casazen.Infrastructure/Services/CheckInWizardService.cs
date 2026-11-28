@@ -101,7 +101,6 @@ public sealed class CheckInWizardService(
         return new CheckInConfirmation(tax, sent, next, await BuildStateAsync(booking, cancellationToken));
     }
 
-    /// <summary>The first step with something to do: the guests, their documents, the other checks, the tax, the send to Octorate, the result.</summary>
     internal static string SuggestedStep(
         int savedGuests,
         IReadOnlyList<CheckInIssue> issues,
@@ -123,7 +122,6 @@ public sealed class CheckInWizardService(
         if (blocking.Count > 0)
             return CheckInWizardSteps.Checks;
 
-        // A comune with no rate is shown in the tax step but never forces it: the host may have nothing to do there.
         if (tax is { CollectorNeeded: true }
             || tax is { Status: TouristTaxQuoteStatus.Calculated, Total: not null } && (tax.ConfirmedAt is null || tax.Stale))
         {
@@ -164,7 +162,6 @@ public sealed class CheckInWizardService(
         var region = await IstatRegionService.FindForComuneAsync(db, booking.Property.ComuneIstatCode, cancellationToken);
         var statisticalFields = IstatRegionResolver.RequiredFields(region?.Rule);
 
-        // NF-132: a property in canton Ticino asks the fields of the police file, and every guest the file notifies needs a document.
         var inTicino = ticinoNotifications is not null && await ticinoNotifications.IsPropertyInTicinoAsync(booking.PropertyId);
         var requiredGuestFields = TicinoCheckInFields.AskedOf(statisticalFields, inTicino);
         var issues = CheckInReadinessRules.Evaluate(new CheckInReadinessInput(
@@ -177,7 +174,6 @@ public sealed class CheckInWizardService(
         }
         catch (DomainException ex)
         {
-            // The tax step says what is missing; the rest of the wizard works without it.
             logger.LogWarning("Tourist tax of booking {BookingId} not available in the check-in wizard: {Code}", booking.Id, ex.Code);
         }
 
@@ -217,10 +213,6 @@ public sealed class CheckInWizardService(
             AskVehiclePlate: inTicino);
     }
 
-    /// <summary>
-    /// The tax of the stay is confirmed only when it is calculable: a comune with no rate, or a stay that will not happen, never blocks the
-    /// check-in and is reported with its reason.
-    /// </summary>
     private async Task<CheckInTaxOutcome> ConfirmTaxAsync(Guid bookingId, CheckInState state, string userId, CancellationToken cancellationToken)
     {
         if (state.Attendance is StayAttendance.NoShow or StayAttendance.Inactive)
@@ -232,8 +224,6 @@ public sealed class CheckInWizardService(
         {
             await stayTouristTax.ConfirmAsync(bookingId, userId, cancellationToken);
 
-            // The confirmation records no event (E25/F01/US01/T01, AC2): a confirmed amount lower than what the price included or the guest paid raises the
-            // host's «To do» here, with the collection on. It never throws.
             if (touristTaxCollection is not null)
                 await touristTaxCollection.ReconcileAfterChangeAsync(bookingId, cancellationToken);
 
@@ -276,7 +266,6 @@ public sealed class CheckInWizardService(
         }
     }
 
-    /// <summary>The booking of the caller's org (the tenant filter): another org's is not found.</summary>
     private async Task<Booking> LoadBookingAsync(Guid bookingId, CancellationToken cancellationToken) =>
         await db.Bookings
             .Include(b => b.Property)

@@ -7,10 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Octorate;
 
-/// <summary>
-/// E02/F01/US02/T02, ADR-023-R4: the mappings of the listings and the OAuth states are tenant-owned, so the global tenant filter hides
-/// one organization's rows from every request of another, whatever the query asks.
-/// </summary>
 public class OctorateMappingTenantIsolationTests
 {
     [Fact]
@@ -21,7 +17,6 @@ public class OctorateMappingTenantIsolationTests
         var orgB = Guid.NewGuid();
         var mappingId = Guid.NewGuid();
 
-        // Written as a job would: no request, no tenant filter.
         await using (var system = new AppDbContext(options))
         {
             var connection = new OctorateConnection
@@ -52,7 +47,6 @@ public class OctorateMappingTenantIsolationTests
             await system.SaveChangesAsync();
         }
 
-        // A request of org B sees nothing of org A: not the list, not the row by its id, not the row by its accommodation code.
         await using (var asB = new AppDbContext(options, new RequestTenant(orgB)))
         {
             Assert.Empty(await asB.OctorateListingMappings.ToListAsync());
@@ -62,7 +56,6 @@ public class OctorateMappingTenantIsolationTests
             Assert.Empty(await asB.OctorateConnections.ToListAsync());
         }
 
-        // A request of org A sees its own rows.
         await using (var asA = new AppDbContext(options, new RequestTenant(orgA)))
         {
             Assert.Equal(mappingId, Assert.Single(await asA.OctorateListingMappings.ToListAsync()).Id);
@@ -74,7 +67,6 @@ public class OctorateMappingTenantIsolationTests
         Assert.True(typeof(ITenantOwned).IsAssignableFrom(typeof(OctorateOAuthState)));
     }
 
-    /// <summary>The tenant of an authenticated request of one org.</summary>
     private sealed class RequestTenant(Guid orgId) : ITenantContext
     {
         public Guid? OrgId { get; } = orgId;

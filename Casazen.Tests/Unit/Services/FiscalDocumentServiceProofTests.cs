@@ -155,11 +155,6 @@ public class FiscalDocumentServiceProofTests
         Assert.Single(await db.FiscalDocuments.Where(d => d.BookingId == legacy || d.BookingId == portal).ToListAsync());
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. An issued document keeps the issuer it was issued with: renaming the issuer (and moving it) after the issue changes neither
-    /// the stored snapshot nor what the PDF of the document shows, while a new draft shows the issuer of today. The document also keeps its purpose, its
-    /// property, its period, the version of its rule and its payment channel.
-    /// </summary>
     [Fact]
     public async Task FiscalDocument_IssuedPdfUsesSnapshot_Test()
     {
@@ -181,7 +176,6 @@ public class FiscalDocumentServiceProofTests
         Assert.Equal(new DateOnly(2026, 11, 1), stored.ServicePeriodFrom);
         Assert.Equal(new DateOnly(2026, 11, 4), stored.ServicePeriodTo);
 
-        // The issuer is renamed and moves.
         var profile = await db.OrgFiscalIssuerProfiles.SingleAsync();
         profile.LegalName = "TEST Nuovo Nome Srl";
         profile.AddressStreet = "Via Nuova";
@@ -194,7 +188,6 @@ public class FiscalDocumentServiceProofTests
         Assert.DoesNotContain("Via Nuova", issuedPdf, StringComparison.Ordinal);
         Assert.Equal(stored.IssuerSnapshot, (await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == issued.Id)).IssuerSnapshot);
 
-        // A draft has no snapshot yet: it shows the issuer of today.
         var draft = await service.CreateDraftAsync(second, null);
         Assert.Null(draft.IssuerSnapshot);
         Assert.Contains("TEST Nuovo Nome Srl", TextOf(await service.PdfContentAsync(draft.Id, "it")), StringComparison.Ordinal);
@@ -243,11 +236,6 @@ public class FiscalDocumentServiceProofTests
         await Assert.ThrowsAsync<DomainRuleException>(() => service.CreateCreditNoteAsync(original.Id, 0.01m, "TEST", confirm: true, null));
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (E11/F01/US01/T01, E14). Only the credit note that completes the credit marks the original <c>CreditedInFull</c> (an owner invoice
-    /// credited in full frees its owner and period): a partial one does not, one refused for exceeding the original marks nothing, the last part does, and
-    /// so does a single note of the whole document.
-    /// </summary>
     [Fact]
     public async Task FiscalDocument_CreditNote_MarksTheOriginalCreditedInFullOnlyWhenItCompletesTheCredit_Test()
     {
@@ -268,7 +256,6 @@ public class FiscalDocumentServiceProofTests
         await service.CreateCreditNoteAsync(original.Id, null, "TEST storno del residuo", confirm: true, null);
         Assert.True(await IsCreditedInFullAsync(db, original.Id));
 
-        // One note of the whole document completes the credit at once; the other documents are untouched.
         Assert.False(await IsCreditedInFullAsync(db, whole.Id));
         await service.CreateCreditNoteAsync(whole.Id, null, "TEST storno totale", confirm: true, null);
         Assert.True(await IsCreditedInFullAsync(db, whole.Id));
@@ -278,12 +265,6 @@ public class FiscalDocumentServiceProofTests
     private static async Task<bool> IsCreditedInFullAsync(AppDbContext db, Guid documentId) =>
         (await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == documentId)).CreditedInFull;
 
-    /// <summary>
-    /// PROOF TEST: money and data rule. A draft is issued only with the rule it was made with: when a treatment of the issuer (the cleaning with the stay or as a
-    /// service) or its regime changes after the draft, the amounts the host confirmed are the old rule's while the XML, the snapshot and the layout would be the
-    /// new one's, so issuing is refused (409 <c>document_draft_outdated</c>, nothing is numbered); a draft that is refreshed takes the amounts of the new rule
-    /// and is issued.
-    /// </summary>
     [Fact]
     public async Task FiscalDocument_DraftOfAnotherRule_IsNotIssued_UntilItIsRefreshed_Test()
     {
@@ -304,13 +285,11 @@ public class FiscalDocumentServiceProofTests
         Assert.Empty(await db.FiscalNumberSequences.ToListAsync());
         Assert.Equal(FiscalDocumentStatus.Draft, (await db.FiscalDocuments.AsNoTracking().SingleAsync()).Status);
 
-        // Refreshed, the draft has the amounts of the new rule, and it is issued with them.
         var refreshed = await service.RefreshDraftAsync(draft.Id);
         Assert.Equal(36.29m, refreshed.VatAmount);
         var issued = await service.IssueAsync(draft.Id, confirm: true);
         Assert.Equal((FiscalDocumentStatus.Issued, 36.29m, 362.00m), (issued.Status, issued.VatAmount, issued.Total));
 
-        // The regime changes after another draft: a private person gives a receipt, not the invoice the draft is.
         var second = await SeedBookingAsync(db, BookingSource.Manual);
         var draftOfAnInvoice = await service.CreateDraftAsync(second, null);
         profile.DocumentRegime = DocumentRegime.PrivatePerson;
@@ -319,7 +298,6 @@ public class FiscalDocumentServiceProofTests
         Assert.Equal(FiscalDocumentErrors.DraftOutdated, changed.Code);
     }
 
-    /// <summary>A booking that is not active owes no document: no draft, no number, no lock of the issuer (the one definition of an active booking).</summary>
     [Theory]
     [InlineData(BookingStatus.Pending, false)]
     [InlineData(BookingStatus.Cancelled, false)]
@@ -341,7 +319,6 @@ public class FiscalDocumentServiceProofTests
         Assert.Empty(await db.BookingDocumentIssuers.ToListAsync());
     }
 
-    /// <summary>The payment state of a document CasaZen issued is the current one, read from the payments, not the one of the day the draft was made.</summary>
     [Fact]
     public async Task FiscalDocument_PaymentState_IsTheCurrentOneWhenRead_Test()
     {
@@ -351,7 +328,6 @@ public class FiscalDocumentServiceProofTests
         var issued = await service.IssueAsync((await service.CreateDraftAsync(booking, null)).Id, confirm: true);
         Assert.Equal(FiscalDocumentPaymentState.ToCollect, (await service.GetAsync(issued.Id))!.PaymentState);
 
-        // The guest pays the whole total: the document is Paid for the API (the stored value is not what is shown).
         var payment = new Payment { OrgId = OrgId, BookingId = booking, Amount = 362m, Status = PaymentStatus.Completed, ProcessedAt = Now.UtcDateTime };
         db.Payments.Add(payment);
         await db.SaveChangesAsync();
@@ -359,7 +335,6 @@ public class FiscalDocumentServiceProofTests
         var page = await service.ListAsync(new HostScope(OrgId), new FiscalDocumentCriteria(), 1, 20);
         Assert.Equal(FiscalDocumentPaymentState.Paid, Assert.Single(page.Items).PaymentState);
 
-        // A partial refund: what is collected net of it no longer reaches the total.
         payment.RefundedAmount = 100m;
         payment.Status = PaymentStatus.PartiallyRefunded;
         await db.SaveChangesAsync();
@@ -438,7 +413,6 @@ public class FiscalDocumentServiceProofTests
         }
     }
 
-    /// <summary>A document Octorate issued, imported read-only and linked to a booking of the org.</summary>
     private static FiscalDocument ImportedDocument(Guid bookingId, DocumentKind kind, string octorateId) => new()
     {
         OrgId = OrgId,
@@ -504,7 +478,6 @@ public class FiscalDocumentServiceProofTests
 
         xml.Verify(x => x.Build(It.IsAny<FatturaPaInput>()), Times.Never);
 
-        // The credit note of an invoice stays an electronic one.
         await using var invoiceDb = NewDb();
         var invoiceBooking = await SeedAsync(invoiceDb, BookingSource.Direct);
         var invoiceService = Service(invoiceDb);
@@ -514,11 +487,6 @@ public class FiscalDocumentServiceProofTests
         Assert.Equal("<p:FatturaElettronica/>", creditNote.FatturaPaXml);
     }
 
-    /// <summary>
-    /// PROOF TEST: money rule (review of FIX/BE-PORTAL-TAXLINE). The guest document of a portal booking reads the collection of the tourist tax of the stay (E25) once, for the document the API gives and for
-    /// its PDF alike, in Switzerland and in Italy: nothing recorded is «to collect at the property» as before (450.00 through the portal, 12.00 to collect); 5.00 paid online leaves only 7.00 to collect; the tax
-    /// recorded paid at the property leaves nothing to collect, no note, and the document says it is paid in full.
-    /// </summary>
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -529,10 +497,8 @@ public class FiscalDocumentServiceProofTests
         var service = Service(db);
         var document = await AddPortalDocumentAsync(db, booking, swiss);
 
-        // No record of the collection: the tax is to collect at the property, as before.
         await AssertTheTouristTaxAsync(service, document.Id, swiss, toCollect: 12m);
 
-        // The guest paid 5.00 of it online: only the rest is to collect.
         var record = new StayTouristTax
         {
             OrgId = OrgId,
@@ -547,24 +513,20 @@ public class FiscalDocumentServiceProofTests
         await db.SaveChangesAsync();
         await AssertTheTouristTaxAsync(service, document.Id, swiss, toCollect: 7m);
 
-        // The host recorded that the guest paid it at the property: nothing is to collect and the document is paid in full.
         record.CollectionStatus = TouristTaxCollectionStatus.PaidAtProperty;
         await db.SaveChangesAsync();
         await AssertTheTouristTaxAsync(service, document.Id, swiss, toCollect: null);
     }
 
-    /// <summary>What the document says of the tourist tax, in the answer of the API and in the PDF: <paramref name="toCollect"/> still to collect at the property, or <c>null</c> for nothing (paid in full).</summary>
     private static async Task AssertTheTouristTaxAsync(FiscalDocumentService service, Guid id, bool swiss, decimal? toCollect)
     {
         var culture = swiss ? CultureInfo.InvariantCulture : CultureInfo.GetCultureInfo("it-IT");
 
-        // The document the API gives...
         decimal? paidViaPortal = toCollect is null ? null : 450m;
         var dto = FiscalDocumentDto.From((await service.GetAsync(id))!);
         Assert.Equal((paidViaPortal, toCollect), (dto.AmountPaidViaPortal, dto.AmountToCollectAtProperty));
         Assert.Equal(toCollect is not null, Assert.Single(dto.Lines, l => l.LineType == "TouristTax").ToCollectAtProperty);
 
-        // ...and its PDF say the same.
         var text = TextOf(await service.PdfContentAsync(id, "it"));
         if (toCollect is { } rest)
         {
@@ -575,7 +537,6 @@ public class FiscalDocumentServiceProofTests
                 Assert.Contains("- tassa da riscuotere in struttura", text, StringComparison.Ordinal);
             else
             {
-                // The cell of the line of the tax says «da pagare in struttura» (a cell on its own: the paragraph of the payment has a colon after it), never «riscossa».
                 Assert.Contains("\nImposta di soggiorno da pagare in struttura\n", text, StringComparison.Ordinal);
                 Assert.DoesNotContain("riscossa per conto del comune", text, StringComparison.Ordinal);
             }
@@ -647,7 +608,6 @@ public class FiscalDocumentServiceProofTests
         string.Join('|', d.Number, d.Status, d.TaxableBase, d.VatAmount, d.StampDuty, d.Total, d.RecipientName, d.RecipientFiscalCode, d.IssuerSnapshot, d.RuleVersion,
             string.Join(',', d.Lines.OrderBy(l => l.LineNumber).Select(l => $"{l.LineNumber}:{l.LineType}:{l.Description}:{l.TotalPrice}:{l.VatRatePercent}")));
 
-    /// <summary>Every text of a PDF content: headings, paragraphs and the cells of the tables, one per line.</summary>
     private static string TextOf(Casazen.Core.Documents.PdfDocumentContent content) =>
         string.Join('\n', new[] { content.Title }.Concat(content.Blocks.SelectMany(TextsOf)));
 

@@ -33,60 +33,48 @@ public class AirbnbAdapterTests
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public void Platform_ReturnsAirbnb()
     {
-        // Act
         var platform = _adapter.Platform;
 
-        // Assert
         Assert.Equal("Airbnb", platform);
     }
 
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task ValidateCredentialsAsync_WithValidApiKey_ReturnsTrue()
     {
-        // Arrange
         _mockHttp.When($"{BaseUrl}/listings")
             .WithHeaders("Authorization", $"Bearer {TestApiKey}")
             .Respond(HttpStatusCode.OK, "application/json", "{}");
 
-        // Act
         var result = await _adapter.ValidateCredentialsAsync(TestApiKey);
 
-        // Assert
         Assert.True(result);
     }
 
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task ValidateCredentialsAsync_WithInvalidApiKey_ReturnsFalse()
     {
-        // Arrange
         _mockHttp.When($"{BaseUrl}/listings")
             .Respond(HttpStatusCode.Unauthorized);
 
-        // Act
         var result = await _adapter.ValidateCredentialsAsync("invalid_key");
 
-        // Assert
         Assert.False(result);
     }
 
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task ValidateCredentialsAsync_WithNetworkError_ReturnsFalse()
     {
-        // Arrange
         _mockHttp.When($"{BaseUrl}/listings")
             .Throw(new HttpRequestException("Network error"));
 
-        // Act
         var result = await _adapter.ValidateCredentialsAsync(TestApiKey);
 
-        // Assert
         Assert.False(result);
     }
 
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task GetBookingsAsync_WithValidResponse_ReturnsBookings()
     {
-        // Arrange
         await _adapter.ValidateCredentialsAsync(TestApiKey);
 
         var startDate = new DateTime(2026, 4, 1);
@@ -136,10 +124,8 @@ public class AirbnbAdapterTests
             .WithQueryString($"start_date={startDate:yyyy-MM-dd}&end_date={endDate:yyyy-MM-dd}")
             .Respond("application/json", jsonResponse);
 
-        // Act
         var bookings = await _adapter.GetBookingsAsync(TestPropertyId, startDate, endDate);
 
-        // Assert
         Assert.NotNull(bookings);
         Assert.Equal(2, bookings.Count);
 
@@ -161,7 +147,6 @@ public class AirbnbAdapterTests
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task GetBookingsAsync_WithEmptyResponse_ReturnsEmptyList()
     {
-        // Arrange
         await _adapter.ValidateCredentialsAsync(TestApiKey);
 
         var startDate = new DateTime(2026, 4, 1);
@@ -176,10 +161,8 @@ public class AirbnbAdapterTests
         _mockHttp.When($"{BaseUrl}/listings/{TestPropertyId}/reservations")
             .Respond("application/json", jsonResponse);
 
-        // Act
         var bookings = await _adapter.GetBookingsAsync(TestPropertyId, startDate, endDate);
 
-        // Assert
         Assert.NotNull(bookings);
         Assert.Empty(bookings);
     }
@@ -187,7 +170,6 @@ public class AirbnbAdapterTests
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task GetBookingsAsync_WithApiError_ReturnsEmptyList()
     {
-        // Arrange
         await _adapter.ValidateCredentialsAsync(TestApiKey);
 
         var startDate = new DateTime(2026, 4, 1);
@@ -196,10 +178,8 @@ public class AirbnbAdapterTests
         _mockHttp.When($"{BaseUrl}/listings/{TestPropertyId}/reservations")
             .Respond(HttpStatusCode.InternalServerError);
 
-        // Act
         var bookings = await _adapter.GetBookingsAsync(TestPropertyId, startDate, endDate);
 
-        // Assert
         Assert.NotNull(bookings);
         Assert.Empty(bookings);
     }
@@ -207,14 +187,11 @@ public class AirbnbAdapterTests
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task GetBookingsAsync_WithoutApiKey_ReturnsEmptyList()
     {
-        // Arrange
         var startDate = new DateTime(2026, 4, 1);
         var endDate = new DateTime(2026, 4, 30);
 
-        // Act (without calling ValidateCredentialsAsync first)
         var bookings = await _adapter.GetBookingsAsync(TestPropertyId, startDate, endDate);
 
-        // Assert
         Assert.NotNull(bookings);
         Assert.Empty(bookings);
     }
@@ -228,7 +205,6 @@ public class AirbnbAdapterTests
     [InlineData("unknown_status", "Unknown")]
     public async Task GetBookingsAsync_StatusMapping_MapsCorrectly(string airbnbStatus, string expectedStatus)
     {
-        // Arrange
         await _adapter.ValidateCredentialsAsync(TestApiKey);
 
         var startDate = new DateTime(2026, 4, 1);
@@ -259,10 +235,8 @@ public class AirbnbAdapterTests
         _mockHttp.When($"{BaseUrl}/listings/{TestPropertyId}/reservations")
             .Respond("application/json", jsonResponse);
 
-        // Act
         var bookings = await _adapter.GetBookingsAsync(TestPropertyId, startDate, endDate);
 
-        // Assert
         Assert.Single(bookings);
         Assert.Equal(expectedStatus, bookings[0].Status);
     }
@@ -270,7 +244,6 @@ public class AirbnbAdapterTests
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task UpdateAvailabilityAsync_WithValidRequest_ReturnsTrue()
     {
-        // Arrange
         await _adapter.ValidateCredentialsAsync(TestApiKey);
 
         var date = new DateTime(2026, 4, 15);
@@ -279,17 +252,14 @@ public class AirbnbAdapterTests
             .WithHeaders("Authorization", $"Bearer {TestApiKey}")
             .Respond(HttpStatusCode.OK, "application/json", "{\"success\":true}");
 
-        // Act
         var result = await _adapter.UpdateAvailabilityAsync(TestPropertyId, date, true);
 
-        // Assert
         Assert.True(result);
     }
 
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task UpdateAvailabilityAsync_WithApiError_ReturnsFalse()
     {
-        // Arrange
         await _adapter.ValidateCredentialsAsync(TestApiKey);
 
         var date = new DateTime(2026, 4, 15);
@@ -297,30 +267,24 @@ public class AirbnbAdapterTests
         _mockHttp.When(HttpMethod.Put, $"{BaseUrl}/calendar/availability")
             .Respond(HttpStatusCode.BadRequest, "application/json", "{\"error\":\"Invalid request\"}");
 
-        // Act
         var result = await _adapter.UpdateAvailabilityAsync(TestPropertyId, date, false);
 
-        // Assert
         Assert.False(result);
     }
 
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task UpdateAvailabilityAsync_WithoutApiKey_ReturnsFalse()
     {
-        // Arrange
         var date = new DateTime(2026, 4, 15);
 
-        // Act (without calling ValidateCredentialsAsync first)
         var result = await _adapter.UpdateAvailabilityAsync(TestPropertyId, date, true);
 
-        // Assert
         Assert.False(result);
     }
 
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task UpdatePricingAsync_WithValidRequest_ReturnsTrue()
     {
-        // Arrange
         await _adapter.ValidateCredentialsAsync(TestApiKey);
 
         var date = new DateTime(2026, 4, 15);
@@ -330,49 +294,40 @@ public class AirbnbAdapterTests
             .WithHeaders("Authorization", $"Bearer {TestApiKey}")
             .Respond(HttpStatusCode.OK, "application/json", "{\"success\":true}");
 
-        // Act
         var result = await _adapter.UpdatePricingAsync(TestPropertyId, date, price);
 
-        // Assert
         Assert.True(result);
     }
 
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task UpdatePricingAsync_WithInvalidPrice_ReturnsFalse()
     {
-        // Arrange
         await _adapter.ValidateCredentialsAsync(TestApiKey);
 
         var date = new DateTime(2026, 4, 15);
         var invalidPrice = 0m;
 
-        // Act
         var result = await _adapter.UpdatePricingAsync(TestPropertyId, date, invalidPrice);
 
-        // Assert
         Assert.False(result);
     }
 
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task UpdatePricingAsync_WithNegativePrice_ReturnsFalse()
     {
-        // Arrange
         await _adapter.ValidateCredentialsAsync(TestApiKey);
 
         var date = new DateTime(2026, 4, 15);
         var negativePrice = -50m;
 
-        // Act
         var result = await _adapter.UpdatePricingAsync(TestPropertyId, date, negativePrice);
 
-        // Assert
         Assert.False(result);
     }
 
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task UpdatePricingAsync_WithApiError_ReturnsFalse()
     {
-        // Arrange
         await _adapter.ValidateCredentialsAsync(TestApiKey);
 
         var date = new DateTime(2026, 4, 15);
@@ -381,31 +336,25 @@ public class AirbnbAdapterTests
         _mockHttp.When(HttpMethod.Put, $"{BaseUrl}/calendar/pricing")
             .Respond(HttpStatusCode.InternalServerError);
 
-        // Act
         var result = await _adapter.UpdatePricingAsync(TestPropertyId, date, price);
 
-        // Assert
         Assert.False(result);
     }
 
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task UpdatePricingAsync_WithoutApiKey_ReturnsFalse()
     {
-        // Arrange
         var date = new DateTime(2026, 4, 15);
         var price = 150.00m;
 
-        // Act (without calling ValidateCredentialsAsync first)
         var result = await _adapter.UpdatePricingAsync(TestPropertyId, date, price);
 
-        // Assert
         Assert.False(result);
     }
 
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task UpdatePricingAsync_WithNetworkError_ReturnsFalse()
     {
-        // Arrange
         await _adapter.ValidateCredentialsAsync(TestApiKey);
 
         var date = new DateTime(2026, 4, 15);
@@ -414,17 +363,14 @@ public class AirbnbAdapterTests
         _mockHttp.When(HttpMethod.Put, $"{BaseUrl}/calendar/pricing")
             .Throw(new HttpRequestException("Network timeout"));
 
-        // Act
         var result = await _adapter.UpdatePricingAsync(TestPropertyId, date, price);
 
-        // Assert
         Assert.False(result);
     }
 
     [Fact(Skip = "OTA partner API in freeze (D10)")]
     public async Task GetBookingsAsync_WithGuestNameVariations_HandlesCorrectly()
     {
-        // Arrange
         await _adapter.ValidateCredentialsAsync(TestApiKey);
 
         var startDate = new DateTime(2026, 4, 1);
@@ -483,10 +429,8 @@ public class AirbnbAdapterTests
         _mockHttp.When($"{BaseUrl}/listings/{TestPropertyId}/reservations")
             .Respond("application/json", jsonResponse);
 
-        // Act
         var bookings = await _adapter.GetBookingsAsync(TestPropertyId, startDate, endDate);
 
-        // Assert
         Assert.Equal(3, bookings.Count);
         Assert.Equal("John Doe", bookings[0].GuestName);
         Assert.Equal("Jane", bookings[1].GuestName);

@@ -30,37 +30,22 @@ public interface IOctorateContactsService
     Task<OctorateContactReadResult> ReadForBookingAsync(Guid orgId, Guid bookingId, CancellationToken ct = default);
 }
 
-/// <summary>What <see cref="IOctorateContactsService.ReadForBookingAsync"/> did.</summary>
 public enum OctorateContactReadOutcome
 {
-    /// <summary>The contact was read from Octorate and at least one address or number was stored.</summary>
     Stored = 1,
 
-    /// <summary>The contact was read (or Octorate says the guest has none) and there was nothing to store, as for a guest of Airbnb.</summary>
     NothingToStore = 2,
 
-    /// <summary>
-    /// Nothing was read: <c>Crm:OctorateContactsEnabled</c>, or the connector, is off, or the CRM module is closed (<c>Features:CrmMarketing</c> off or
-    /// <c>Crm:ContactIndexKey</c> not set): no call to Octorate is made.
-    /// </summary>
     Disabled = 3,
 
-    /// <summary>
-    /// Nothing was read: there is no such booking in the org, or it is not a booking that came from Octorate (one made in CasaZen has none, or was
-    /// sent there by CasaZen: its guest's contact is CasaZen's own).
-    /// </summary>
     NotAnOctorateBooking = 4,
 
-    /// <summary>Nothing was read: the check-out of the stay is in the past (no history is read).</summary>
     StayOver = 5,
 
-    /// <summary>Nothing was read: the property of the booking has no confirmed listing on Octorate to read the reservation from.</summary>
     NotMapped = 6,
 
-    /// <summary>Nothing was read: the org already had <c>Crm:OctorateContactReadsPerHour</c> reads in the last hour. Ask again later.</summary>
     OverCap = 7,
 
-    /// <summary>Nothing was read: the booking was read in the last day (its contacts are stored).</summary>
     AlreadyRead = 8,
 
     /// <summary>
@@ -70,10 +55,8 @@ public enum OctorateContactReadOutcome
     /// </summary>
     NotAvailable = 9,
 
-    /// <summary>The read could not be made now (Octorate did not answer, or its limit was reached): nothing is recorded, a later call tries again.</summary>
     Deferred = 10,
 
-    /// <summary>Nothing was read: the guest of the booking was erased or anonymized, and its contacts must not come back (E07/F06/US02/T01).</summary>
     GuestErased = 11,
 
     /// <summary>
@@ -84,15 +67,10 @@ public enum OctorateContactReadOutcome
     /// </summary>
     Unrecognized = 12,
 
-    /// <summary>Nothing was read: the booking is cancelled, so there is no stay to serve with the contact of its guest. A pending booking is read.</summary>
     BookingCancelled = 13,
 }
 
-/// <summary>The result of a contact read for one booking.</summary>
-/// <param name="Outcome">What happened.</param>
-/// <param name="ContactsStored">The addresses and numbers stored (0 to 2).</param>
 public sealed record OctorateContactReadResult(OctorateContactReadOutcome Outcome, int ContactsStored = 0)
 {
-    /// <summary>True when the contact of the booking is in CasaZen after the call (just read, or read before).</summary>
     public bool HasContact => Outcome is OctorateContactReadOutcome.Stored or OctorateContactReadOutcome.AlreadyRead;
 }

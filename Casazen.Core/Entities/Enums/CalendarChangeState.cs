@@ -7,24 +7,17 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum CalendarChangeState
 {
-    /// <summary>Saved in CasaZen and nothing to send (the property is not mirrored on the channel manager). Stored as 1.</summary>
     Applied = 1,
 
-    /// <summary>Saved in CasaZen and waiting to be sent. Stored as 2.</summary>
     Queued = 2,
 
-    /// <summary>Being sent: some chunks are accepted, others are still to send. Stored as 3.</summary>
     Sending = 3,
 
-    /// <summary>Every chunk was accepted by the channel manager. Stored as 4.</summary>
     Sent = 4,
 
-    /// <summary>Every chunk was confirmed by the process the channel manager ran for it. Stored as 5.</summary>
     Confirmed = 5,
 
-    /// <summary>Some chunks were accepted and others failed. Stored as 6.</summary>
     PartiallySent = 6,
 
-    /// <summary>No chunk could be sent. Stored as 7.</summary>
     Failed = 7,
 }

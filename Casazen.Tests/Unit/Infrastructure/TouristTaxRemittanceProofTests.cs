@@ -13,10 +13,6 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// </summary>
 public class TouristTaxRemittanceProofTests
 {
-    /// <summary>
-    /// PROOF TEST: data rule (tenant isolation). Two orgs paid the same comune. The caller of org A reads its own payment only: the one of
-    /// org B is neither in the list nor found by its id (the 404 of the endpoints), and a caller with no org matches nothing.
-    /// </summary>
     [Fact]
     public async Task TouristTaxRemittance_OtherOrgRows_Invisible_Test()
     {
@@ -26,7 +22,6 @@ public class TouristTaxRemittanceProofTests
         var mine = NewRemittance(orgA, 10.00m);
         var theirs = NewRemittance(orgB, 99.00m);
 
-        // The system writes both rows (no caller, so no filter), as the seed or a job would.
         await using (var system = NewDb(databaseName, tenant: null))
         {
             system.TouristTaxRemittances.AddRange(mine, theirs);
@@ -41,11 +36,9 @@ public class TouristTaxRemittanceProofTests
         Assert.Equal(orgA, row.OrgId);
         Assert.Equal(10.00m, row.PaidAmount);
 
-        // By id too: the payment of the other org is not there.
         Assert.Null(await asOrgA.TouristTaxRemittances.AsNoTracking().FirstOrDefaultAsync(r => r.Id == theirs.Id));
         Assert.False(await asOrgA.TouristTaxRemittances.AsNoTracking().AnyAsync(r => r.OrgId == orgB));
 
-        // A caller with no org is fail-closed: it matches nothing.
         await using var nobody = NewDb(databaseName, new FixedTenantContext(null));
         Assert.Empty(await nobody.TouristTaxRemittances.AsNoTracking().ToListAsync());
     }

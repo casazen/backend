@@ -17,12 +17,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Events;
 
-/// <summary>
-/// E08/F01/US02/T02 (NF-80, AC-NF80-2, ADR-025, ADR-026-R3): a booking that arrives from the channel manager on nights that are already taken
-/// raises one urgent «To do» and one alert, once; the item says the property and the nights and nothing of the guest; it closes by itself when the
-/// nights are free again. On EF InMemory, on the world of <see cref="HostScopeScenario"/>: per property a confirmed stay (Oct 10-13), a stay checked
-/// out (Oct 1-4) and a request waiting for the host (Nov 20-23); the clock is Oct 9, 12:00 in Rome.
-/// </summary>
 public class BookingOverlapHandlerTests : IAsyncLifetime
 {
     private static readonly CancellationToken Ct = CancellationToken.None;
@@ -35,17 +29,13 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _db.DisposeAsync();
 
-    // --- Raising the item and the alert --------------------------------------------------------------------------------------------
-
     [Fact]
     public async Task Overlap_ABookingFromTheChannelManagerOnTakenNights_RaisesOneUrgentItemAndOneAlert_OnceWhateverTheEvents()
     {
-        // Oct 12-15 on a property whose stay of Oct 10-13 takes the night of Oct 12.
         var booking = await ChannelBookingAsync(_world.Granted, 12, 15);
 
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingCreated, booking), Ct);
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingConfirmed, booking), Ct);
-        // Delivered again, and as another event of the same booking: still one item and one alert (ADR-022-R7).
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingConfirmed, booking), Ct);
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingModified, booking), Ct);
 
@@ -60,7 +50,6 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
         Assert.Equal("Trullo: la prenotazione arriva su notti già occupate, dal 12/10/2026 al 13/10/2026", item.Reason);
         Assert.Null(item.CompletedAt);
 
-        // The person in charge of nothing: the owner of the org is the one told.
         var alert = Assert.Single(await AlertsAsync(booking.Id));
         Assert.Equal(_world.OwnerUserId, alert.UserId);
         Assert.Equal(AlertType.BookingNeedsReview, alert.AlertType);
@@ -72,7 +61,6 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
     [Fact]
     public async Task Overlap_ACalendarBlockTakesTheNightsToo_AndTheReasonNamesTheFirstSharedRange()
     {
-        // Oct 13-16 on the other property, whose stay leaves on Oct 13 (a free arrival), and a block of the host on Oct 14-17.
         var booking = await ChannelBookingAsync(_world.Hidden, 13, 16);
         _db.CalendarBlocks.Add(new CalendarBlock
         {
@@ -96,7 +84,6 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
     public async Task Overlap_NothingIsRaised_ForAnOtherOrigin_ForFreeNights_ForABookingThatTakesNoNight_OrForAnOtherOrg()
     {
         var overlapping = await ChannelBookingAsync(_world.Granted, 12, 15);
-        // The check-out day of the stay of Oct 10-13 is a free arrival: no night is shared.
         var turnover = await ChannelBookingAsync(_world.Hidden, 13, 15);
         var cancelled = await ChannelBookingAsync(_world.Granted, 11, 14, BookingStatus.Cancelled);
 
@@ -110,12 +97,10 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingCreated, cancelled), Ct);
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingCancelled, cancelled), Ct);
 
-        // The booking exists, but not in the org the event names (ADR-022-R6): as for a booking that does not exist.
         var otherOrg = (await BookedAsync(DomainEventType.BookingCreated, overlapping)) with { OrgId = _world.OtherOrgId };
         await Handler().HandleAsync(otherOrg, Ct);
         await Handler().HandleAsync(otherOrg with { EntityId = Guid.NewGuid() }, Ct);
 
-        // A payload that is not JSON, one that is not an object, one without an origin, and events of another kind.
         var created = await BookedAsync(DomainEventType.BookingCreated, overlapping);
         await Handler().HandleAsync(created with { PayloadJson = "not json" }, Ct);
         await Handler().HandleAsync(created with { PayloadJson = "[]" }, Ct);
@@ -136,8 +121,6 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
     [Fact]
     public async Task Overlap_TheNightsTheChannelManagerHoldsClosed_AreItsOwnReservation_AndNotAConflict_ButTheBlockOfTheHostIs()
     {
-        // Oct 14-17 is free on both properties. On the first the sync of the calendar of the channel manager closed those nights before the
-        // booking was imported (a block of source Octorate, the echo of the reservation); on the other the host closed the same nights by hand.
         var withTheEcho = await ChannelBookingAsync(_world.Granted, 14, 17);
         var withTheHostBlock = await ChannelBookingAsync(_world.Hidden, 14, 17);
         _db.CalendarBlocks.AddRange(
@@ -168,22 +151,13 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
             await Handler().HandleAsync(await BookedAsync(type, withTheHostBlock), Ct);
         }
 
-        // The echo is nobody else taking the nights: no item and no alert, so nothing is left open when the next sync takes the block away.
         Assert.Empty(await TodosAsync(withTheEcho.Id));
         Assert.Empty(await AlertsAsync(withTheEcho.Id));
 
-        // The block of the host is another matter: one item and its alert.
         Assert.Null(Assert.Single(await TodosAsync(withTheHostBlock.Id)).CompletedAt);
         Assert.NotEmpty(await AlertsAsync(withTheHostBlock.Id));
     }
 
-    // --- Proofs ---------------------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// Proof (privacy; ADR-026-R3): the reason of the item, and the alert, hold the property and the nights and nothing of the guest of the
-    /// booking or of the booking it overlaps (name, e-mail, phone, the request they wrote), in Italian and in English. The dates are formatted
-    /// from real values: <c>DateOnly</c> takes the formats of a date only, and a format with a time would throw at run time.
-    /// </summary>
     [Fact]
     public async Task BookingOverlapActivity_NoGuestData_Test()
     {
@@ -193,7 +167,6 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
 
         var item = Assert.Single(await TodosAsync(booking.Id));
         var alert = Assert.Single(await AlertsAsync(booking.Id));
-        // The guest of the booking, the guest of the stay it overlaps (Anna) and the request they wrote.
         var forbidden = new[] { "Giulietta", "Capuleti", "giulietta.capuleti", "+39333", "Anna", "Allergica", "gatti", "cane" };
         var said = string.Join('|', item.Reason, item.EntityType, item.EntityId, item.StaffUserId, item.Notes, alert.EntityType, alert.AlertType, alert.UserId);
         foreach (var word in forbidden)
@@ -223,15 +196,9 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
         }
     }
 
-    /// <summary>
-    /// Proof (permission; ADR-025): the alert goes to the people who reach the property, as every host notification does
-    /// (<c>HostNotificationAudience</c>): the administrators of the org and the member in charge while they still reach it. A collaborator
-    /// «Solo alcuni» who was put in charge of a property and lost it is not told, whatever the property.
-    /// </summary>
     [Fact]
     public async Task BookingOverlapAlert_GoesOnlyToWhoReachesTheProperty_Test()
     {
-        // The collaborator was given the first property only, and both name them as the person in charge.
         await ChangePropertyAsync(_world.Granted.Id, p => p.ResponsibleUserId = _world.CollaboratorId);
         await ChangePropertyAsync(_world.Hidden.Id, p => p.ResponsibleUserId = _world.CollaboratorId);
         var onGranted = await ChannelBookingAsync(_world.Granted, 12, 15);
@@ -243,13 +210,10 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
         var reachingGranted = (await AlertsAsync(onGranted.Id)).Select(a => a.UserId).Order(StringComparer.Ordinal).ToList();
         Assert.Equal(new[] { _world.OwnerUserId, _world.CollaboratorId }.Order(StringComparer.Ordinal).ToList(), reachingGranted);
 
-        // The one they do not reach: the owner of the org only. The item is raised all the same.
         var reachingHidden = Assert.Single(await AlertsAsync(onHidden.Id));
         Assert.Equal(_world.OwnerUserId, reachingHidden.UserId);
         Assert.Single(await TodosAsync(onHidden.Id));
     }
-
-    // --- Closing and replacing the item -------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task Overlap_TheItemClosesWhenTheOtherBookingIsCancelled_AndItsOwnCancellationClosesIt_AndNothingBringsItBack()
@@ -259,7 +223,6 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingCreated, booking), Ct);
         Assert.Null(Assert.Single(await TodosAsync(booking.Id)).CompletedAt);
 
-        // The stay it overlaps is cancelled, by the host in CasaZen: the nights are free.
         await ChangeAsync(other.Id, b => b.Status = BookingStatus.Cancelled);
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingCancelled, other, BookingEventOrigin.Host), Ct);
 
@@ -268,12 +231,10 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
         Assert.Equal(InternalActivity.ClosedBySystem, closed.ClosedBy);
         Assert.NotNull(closed.CompletedAt);
 
-        // The same event delivered again, and the booking confirmed again: the nights are free, so nothing is raised.
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingCancelled, other, BookingEventOrigin.Host), Ct);
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingConfirmed, booking), Ct);
         Assert.Single(await TodosAsync(booking.Id));
 
-        // A booking that conflicts and is itself cancelled: its item closes with it.
         var second = await ChannelBookingAsync(_world.Hidden, 12, 15);
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingCreated, second), Ct);
         Assert.Null(Assert.Single(await TodosAsync(second.Id)).CompletedAt);
@@ -290,12 +251,10 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingCreated, movesAway), Ct);
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingCreated, movesOver), Ct);
 
-        // Changed on the channel: the first to Oct 20-22 (free), the second to Oct 11-13 (the stay of Oct 10-13 shares two nights of it).
         await ChangeAsync(movesAway.Id, b => (b.CheckInDate, b.CheckOutDate) = (HostScopeScenario.Day(2026, 10, 20), HostScopeScenario.Day(2026, 10, 22)));
         await ChangeAsync(movesOver.Id, b => (b.CheckInDate, b.CheckOutDate) = (HostScopeScenario.Day(2026, 10, 11), HostScopeScenario.Day(2026, 10, 13)));
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingModified, movesAway), Ct);
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingModified, movesOver), Ct);
-        // Delivered again: nothing changes.
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingModified, movesOver), Ct);
 
         Assert.Equal(InternalActivity.ClosedBySystem, Assert.Single(await TodosAsync(movesAway.Id)).ClosedBy);
@@ -309,7 +268,6 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
         Assert.Equal("Casa Bianca: la prenotazione arriva su notti già occupate, dal 11/10/2026 al 13/10/2026", current.Reason);
         Assert.Equal(RomeCalendar.StartOfDayUtc(HostScopeScenario.Day(2026, 10, 11)), current.Deadline);
 
-        // The host was told once about the booking, and is not told again for the new nights.
         Assert.Single(await AlertsAsync(movesOver.Id));
     }
 
@@ -320,14 +278,12 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingCreated, booking), Ct);
         await Activities().CloseAsync(Assert.Single(await TodosAsync(booking.Id)).Id, _world.OwnerUserId, Ct);
 
-        // A change of the price on the channel: the same nights, the host has seen them.
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingModified, booking), Ct);
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingConfirmed, booking), Ct);
 
         Assert.Single(await TodosAsync(booking.Id));
         Assert.Single(await AlertsAsync(booking.Id));
 
-        // Other nights are another item.
         await ChangeAsync(booking.Id, b => b.CheckInDate = HostScopeScenario.Day(2026, 10, 11));
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingModified, booking), Ct);
 
@@ -339,7 +295,6 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
     [Fact]
     public async Task Overlap_TheItemOfDatesTheChannelManagerRefused_IsNotClosedBecauseCasaZenSeesNoOverlap_UntilTheBookingIsCancelled()
     {
-        // A booking of CasaZen whose create on the channel manager found the dates taken there (E08/F01/US01/T03): urgent item, sync in Conflict.
         var stay = await StayAsync(_world.Granted, BookingStatus.Confirmed);
         await Activities().CreateAsync(
             new CreateTodoRequest
@@ -363,18 +318,14 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync();
 
-        // Another booking of the property changes: the item is looked at again and left alone.
         var other = await ChannelBookingAsync(_world.Granted, 20, 22);
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingModified, other, BookingEventOrigin.Host), Ct);
         Assert.Null(Assert.Single(await TodosAsync(stay.Id)).CompletedAt);
 
-        // The booking itself is cancelled: there is nothing left to review.
         await ChangeAsync(stay.Id, b => b.Status = BookingStatus.Cancelled);
         await Handler().HandleAsync(await BookedAsync(DomainEventType.BookingCancelled, stay, BookingEventOrigin.Host), Ct);
         Assert.Equal(InternalActivity.ClosedBySystem, Assert.Single(await TodosAsync(stay.Id)).ClosedBy);
     }
-
-    // --- Helpers ------------------------------------------------------------------------------------------------------------------
 
     private InternalActivityService Activities() => new(_db, NullLogger<InternalActivityService>.Instance, _clock);
 
@@ -387,21 +338,18 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
             _clock,
             NullLogger<BookingOverlapHandler>.Instance);
 
-    /// <summary>The To do items about the booking, closed ones too.</summary>
     private async Task<List<InternalActivity>> TodosAsync(Guid bookingId)
     {
         _db.ChangeTracker.Clear();
         return await _db.InternalActivities.AsNoTracking().Where(a => a.Action != null && a.EntityId == bookingId).ToListAsync();
     }
 
-    /// <summary>The popup alerts about the booking, for whoever they are.</summary>
     private async Task<List<PopupAlert>> AlertsAsync(Guid bookingId)
     {
         _db.ChangeTracker.Clear();
         return await _db.PopupAlerts.AsNoTracking().Where(a => a.EntityId == bookingId).ToListAsync();
     }
 
-    /// <summary>The scenario's stay of the property with that status, entered by the host (Oct 10-13 confirmed, Oct 1-4 checked out).</summary>
     private async Task<Booking> StayAsync(Property property, BookingStatus status)
     {
         _db.ChangeTracker.Clear();
@@ -409,7 +357,6 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
             .SingleAsync(b => b.PropertyId == property.Id && b.Source == BookingSource.Manual && b.Status == status);
     }
 
-    /// <summary>A booking of a channel on the property, in October 2026, with a guest who has a name, an e-mail, a phone and a request.</summary>
     private async Task<Booking> ChannelBookingAsync(Property property, int fromDay, int toDay, BookingStatus status = BookingStatus.Confirmed)
     {
         var guest = new Guest
@@ -441,7 +388,6 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
         return booking;
     }
 
-    /// <summary>Changes the booking and saves it; the context starts again clean.</summary>
     private async Task ChangeAsync(Guid bookingId, Action<Booking> change)
     {
         _db.ChangeTracker.Clear();
@@ -458,7 +404,6 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
         _db.ChangeTracker.Clear();
     }
 
-    /// <summary>The event of a booking as the services record it: the payload of <see cref="BookingEventPayload"/>, as the booking is now.</summary>
     private async Task<DomainEvent> BookedAsync(DomainEventType type, Booking booking, BookingEventOrigin origin = BookingEventOrigin.Octorate)
     {
         _db.ChangeTracker.Clear();

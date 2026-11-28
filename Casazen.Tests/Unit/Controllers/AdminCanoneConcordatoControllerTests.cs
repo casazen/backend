@@ -84,7 +84,6 @@ public class AdminCanoneConcordatoControllerTests
     [Fact]
     public async Task UpdateBand_InvalidRange_LetsTheDomainRuleExceptionThrough()
     {
-        // The API's error middleware turns it into 422 (see DomainException docs); the controller adds no handling of its own.
         var admin = new Mock<IRegulatoryReferenceDataAdminService>();
         admin
             .Setup(s => s.UpdateBandAsync(
@@ -172,13 +171,11 @@ public class AdminCanoneConcordatoControllerTests
     [InlineData(nameof(AdminCanoneConcordatoController.GetAudit))]
     public void Controller_EveryAction_IsAdminOnly(string actionName)
     {
-        // Global reference data, not tenant-owned (LT-13): platform admins only, no per-row ownership check needed.
         var classPolicies = typeof(AdminCanoneConcordatoController)
             .GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), false)
             .Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>()
             .Select(a => a.Policy);
         Assert.Contains("AdminOnly", classPolicies);
-        // No method-level [Authorize] narrows or replaces it for any of these actions.
         var method = typeof(AdminCanoneConcordatoController).GetMethods()
             .First(m => m.Name == actionName && m.DeclaringType == typeof(AdminCanoneConcordatoController));
         Assert.Empty(method.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), false));

@@ -24,22 +24,14 @@ using Moq;
 
 namespace Casazen.Tests.Unit.Assistant;
 
-/// <summary>What the tests of the assistant (E05/F05/US01) share: a database, the services over it at a fixed instant, a property with a listing worth reading, and the controllers' surroundings.</summary>
 internal static class AssistantTestKit
 {
-    /// <summary>The instant the services run at.</summary>
     public static readonly DateTimeOffset Now = new(2026, 11, 12, 10, 0, 0, TimeSpan.Zero);
 
-    // One provider for the whole test run: EF keeps one model per provider, and a provider per test would fill the cache the other tests share.
     private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
-    /// <summary>The name of a new InMemory store: contexts over the same name see the same data, as two requests over one database do.</summary>
     public static string NewStore() => $"assistant-{Guid.NewGuid()}";
 
-    /// <summary>
-    /// A context over <paramref name="store"/> with the encryption of the free text, like production, and no tenant context: the filter by organization is off (the
-    /// tests of the services run like a job), so every service has to name the organization itself, which is what is proved.
-    /// </summary>
     public static AppDbContext NewDb(string? store = null) =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(store ?? NewStore()).Options, tenantContext: null, Provider);
 
@@ -63,7 +55,6 @@ internal static class AssistantTestKit
         KnowledgeEntryKind kind = KnowledgeEntryKind.Fact) =>
         new(topic, kind, null, text, language, isActive);
 
-    /// <summary>The rules of an organization as the host's screen would send them, the threshold and the lists as given.</summary>
     public static AssistantRulesInput RulesInput(
         bool enabled = true,
         AssistantTone tone = AssistantTone.Friendly,
@@ -76,7 +67,6 @@ internal static class AssistantTestKit
         TimeOnly? to = null) =>
         new(enabled, tone, languages ?? ["it", "en", "de"], signature, from, to, allowed, forbidden, threshold);
 
-    /// <summary>A property of <paramref name="orgId"/> with a listing the knowledge base can be read from.</summary>
     public static async Task<Property> AddPropertyAsync(AppDbContext db, Guid orgId, string name = "Trullo dei Sogni", Action<Property>? configure = null)
     {
         var property = new Property
@@ -100,7 +90,6 @@ internal static class AssistantTestKit
         return property;
     }
 
-    /// <summary>A complete listing: every field the builder reads is filled, in Italian and in English where the page takes both.</summary>
     public static void FullListing(Property property)
     {
         property.CheckInFrom = new TimeOnly(15, 0);
@@ -125,12 +114,6 @@ internal static class AssistantTestKit
         });
     }
 
-    // ─── the controllers' surroundings: the real scope resolver and the real resource handler over the scenario of the scope tests ───
-
-    /// <summary>
-    /// The real scope resolver: the collaborator of the scenario is «Solo alcuni» and was given the first property only; the administrator (<paramref name="administrator"/>) reaches the
-    /// whole organization.
-    /// </summary>
     public static IHostScopeResolver ScopeOf(HostScopeWorld world, bool administrator = false)
     {
         var member = administrator
@@ -152,7 +135,6 @@ internal static class AssistantTestKit
 
     public static ClaimsPrincipal Administrator(HostScopeWorld world) => HostAuthorizationTestHarness.User(world.OwnerUserId, "PropertyOwner");
 
-    /// <summary>The property records as the application reads them: the row, whatever the org (the controller checks the org and the reach itself).</summary>
     public static IPropertyService Properties(AppDbContext db)
     {
         var properties = new Mock<IPropertyService>();
@@ -178,7 +160,6 @@ internal static class AssistantTestKit
         },
     };
 
-    /// <summary>The service of the harness for the checks of a row and for the policies it knows, and a fixed answer for the policy of the organization's administrators.</summary>
     private sealed class OrganizationAdministratorAuthorization(IAuthorizationService inner, bool administrator) : IAuthorizationService
     {
         public Task<AuthorizationResult> AuthorizeAsync(ClaimsPrincipal user, object? resource, IEnumerable<IAuthorizationRequirement> requirements) =>

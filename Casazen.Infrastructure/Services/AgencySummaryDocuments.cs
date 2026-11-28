@@ -13,7 +13,6 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 internal static class AgencySummaryDocuments
 {
-    /// <summary>The summary as tables, in the order of the file: the period, the stays, the money, the documents, the costs of the channels, the tourist tax, then the owner accounting.</summary>
     public static IReadOnlyList<ReportTable> Tables(AgencySummary summary, PackageTexts t)
     {
         ArgumentNullException.ThrowIfNull(summary);
@@ -184,14 +183,11 @@ internal static class AgencySummaryDocuments
         return tables;
     }
 
-    /// <summary>The summary as a CSV: the tables one under the other, an empty row between them.</summary>
     public static byte[] Csv(AgencySummary summary, PackageTexts t) => CsvWriter.Write(Tables(summary, t));
 
-    /// <summary>The summary as a workbook: a sheet for each table, with the same title row, header and rows as the CSV.</summary>
     public static byte[] Xlsx(AgencySummary summary, PackageTexts t) =>
         XlsxWriter.Write([.. Tables(summary, t).Select((table, index) => new ReportSheet(string.Create(CultureInfo.InvariantCulture, $"{index + 1:00} {SheetNameOf(table.Title)}"), table))]);
 
-    /// <summary>The summary as a PDF: its title, then each table under its own heading.</summary>
     public static PdfDocumentContent Pdf(AgencySummary summary, PackageTexts t)
     {
         ArgumentNullException.ThrowIfNull(summary);
@@ -210,7 +206,6 @@ internal static class AgencySummaryDocuments
         };
     }
 
-    /// <summary>A table as the block of a PDF: the header, the rows as text in the number format of the language, the numbers to the right.</summary>
     internal static PdfTable PdfTableOf(ReportTable table, string language)
     {
         var culture = DocumentLanguages.CultureOf(language);
@@ -272,7 +267,6 @@ internal static class AgencySummaryDocuments
         _ => t[PackageLabels.WireGenerated],
     };
 
-    /// <summary>The words that name a sheet: the title up to its first comma or colon, the numbers in front of it keep the order of the tables.</summary>
     private static string SheetNameOf(string title)
     {
         var cut = title.IndexOfAny([',', ':', ';', '(']);

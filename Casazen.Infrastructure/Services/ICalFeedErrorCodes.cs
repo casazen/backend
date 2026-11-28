@@ -7,19 +7,14 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public static class ICalFeedErrorCodes
 {
-    /// <summary>No feed with that id on that property (or the property is not visible). HTTP 404.</summary>
     public const string NotFound = "ical_feed_not_found";
 
-    /// <summary>The property already has <c>ICalImport:MaxFeedsPerProperty</c> feeds. HTTP 422.</summary>
     public const string LimitReached = "ical_feed_limit_reached";
 
-    /// <summary>The property already imports the same URL. HTTP 409.</summary>
     public const string Duplicate = "ical_feed_duplicate";
 
-    /// <summary>The label has control characters. HTTP 400.</summary>
     public const string InvalidLabel = "ical_feed_invalid_label";
 
-    /// <summary>"Sync now" of a supplier without an iCal feed (SU-15). HTTP 422.</summary>
     public const string SupplierNoFeed = "ical_supplier_no_feed";
 
     public const string NotFoundMessageKey = "ICalFeedNotFound";

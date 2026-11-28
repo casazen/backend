@@ -5,13 +5,9 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Server-side condition evaluation for marketing segments and automation routines (ADR-014).
-/// </summary>
 public class ConditionEvaluator(
     ILogger<ConditionEvaluator> logger) : IConditionEvaluator
 {
-    /// <inheritdoc/>
     public async Task<bool> EvaluateAsync(
         Condition condition,
         object context,
@@ -21,7 +17,6 @@ public class ConditionEvaluator(
         ArgumentNullException.ThrowIfNull(condition);
         ArgumentNullException.ThrowIfNull(scope);
 
-        // Validate condition before evaluation
         var errors = ValidateCondition(condition);
         if (errors.Count > 0)
         {
@@ -32,13 +27,11 @@ public class ConditionEvaluator(
             return false;
         }
 
-        // Evaluate groups (default to AND if empty)
         if (condition.Groups.Count == 0)
         {
             return true;
         }
 
-        // All groups must evaluate (combined with implicit AND at top level)
         foreach (var group in condition.Groups)
         {
             var groupResult = await EvaluateGroupAsync(group, context, scope, cancellationToken);
@@ -51,7 +44,6 @@ public class ConditionEvaluator(
         return true;
     }
 
-    /// <inheritdoc/>
     public async Task<int> PreviewCountAsync(
         Condition condition,
         Guid orgId,
@@ -61,7 +53,6 @@ public class ConditionEvaluator(
         ArgumentNullException.ThrowIfNull(condition);
         ArgumentNullException.ThrowIfNull(scope);
 
-        // Validate condition
         var errors = ValidateCondition(condition);
         if (errors.Count > 0)
         {
@@ -72,9 +63,6 @@ public class ConditionEvaluator(
             return 0;
         }
 
-        // For MVP: return 0 as placeholder
-        // Full implementation will query guests/bookings matching the condition
-        // Performance target: <5s for 10k guests (ADR-014-R6)
         logger.LogInformation(
             "Preview count requested for org {OrgId} - placeholder returning 0",
             orgId);
@@ -83,7 +71,6 @@ public class ConditionEvaluator(
         return 0;
     }
 
-    /// <inheritdoc/>
     public List<string> ValidateCondition(Condition condition)
     {
         var errors = new List<string>();
@@ -105,7 +92,6 @@ public class ConditionEvaluator(
             return errors;
         }
 
-        // Validate each group
         foreach (var group in condition.Groups)
         {
             if (group == null)
@@ -129,7 +115,6 @@ public class ConditionEvaluator(
                 continue;
             }
 
-            // Validate each rule
             foreach (var rule in group.Rules)
             {
                 if (rule == null)
@@ -144,14 +129,12 @@ public class ConditionEvaluator(
                     continue;
                 }
 
-                // Check field exists in catalog
                 if (!FieldCatalog.IsValidField(rule.FieldId))
                 {
                     errors.Add($"Unknown field: {rule.FieldId}");
                     continue;
                 }
 
-                // Check operator is valid for the field
                 if (string.IsNullOrWhiteSpace(rule.Operator))
                 {
                     errors.Add($"Operator is required for field {rule.FieldId}");
@@ -161,7 +144,6 @@ public class ConditionEvaluator(
                     errors.Add($"Invalid operator '{rule.Operator}' for field {rule.FieldId}");
                 }
 
-                // Value is optional for some operators, but should be present for most
                 if (rule.Value == null && rule.Operator != "is")
                 {
                     errors.Add($"Value is required for operator '{rule.Operator}' on field {rule.FieldId}");
@@ -172,9 +154,6 @@ public class ConditionEvaluator(
         return errors;
     }
 
-    /// <summary>
-    /// Evaluate a single condition group.
-    /// </summary>
     private async Task<bool> EvaluateGroupAsync(
         ConditionGroup group,
         object context,
@@ -194,26 +173,20 @@ public class ConditionEvaluator(
             results.Add(ruleResult);
         }
 
-        // Combine results based on operator
         if (group.Operator == "OR")
         {
             return results.Any(r => r);
         }
 
-        // Default to AND
         return results.All(r => r);
     }
 
-    /// <summary>
-    /// Evaluate a single condition rule against context.
-    /// </summary>
     private async Task<bool> EvaluateRuleAsync(
         ConditionRule rule,
         object context,
         HostScope scope,
         CancellationToken cancellationToken)
     {
-        // The conditions of the routines (E01/F04/US01/T01): the context is the facts of the booking of the event, and the rule is met or not.
         if (context is RoutineConditionFacts routineFacts)
         {
             return RoutineConditions.Satisfies(rule, routineFacts);

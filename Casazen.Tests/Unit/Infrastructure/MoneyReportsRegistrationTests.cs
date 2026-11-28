@@ -46,12 +46,10 @@ public class MoneyReportsRegistrationTests
         host.SetupGet(h => h.EnvironmentName).Returns("Staging");
         var services = new ServiceCollection();
         services.AddLogging();
-        // The tenant of the context is the request's (AddCasazenServices registers it), which reads the HTTP context.
         services.AddHttpContextAccessor();
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
         services.AddSingleton(host.Object);
         services.AddDbContext<AppDbContext>(options => options.UseInMemoryDatabase($"money-reports-{Guid.NewGuid()}"));
-        // The mapper of the booking import is registered by the Octorate module, which this test does not need whole.
         services.AddSingleton<BookingStateMapper>();
         services.AddCasazenServices();
         using var provider = services.BuildServiceProvider();

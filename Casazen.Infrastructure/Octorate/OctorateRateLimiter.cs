@@ -15,16 +15,12 @@ namespace Casazen.Infrastructure.Octorate;
 /// </remarks>
 public sealed class OctorateRateLimiter(TimeProvider timeProvider)
 {
-    /// <summary>Calls one org may make in a minute, and the size of its bucket.</summary>
     public const int RequestsPerMinute = 100;
 
-    /// <summary>Calls given back to a bucket at a time.</summary>
     public const int BurstSize = 20;
 
-    /// <summary>The key of the calls that are not made for an org.</summary>
     public const string PlatformKey = "platform";
 
-    /// <summary>Every <see cref="BurstPeriod"/> a bucket gets <see cref="BurstSize"/> calls back, up to <see cref="RequestsPerMinute"/>.</summary>
     public static readonly TimeSpan BurstPeriod = TimeSpan.FromMinutes(1) / (RequestsPerMinute / BurstSize);
 
     /// <summary>The waits before the retries of a call Octorate answered with 429 (exponential: three retries at most).</summary>
@@ -33,7 +29,6 @@ public sealed class OctorateRateLimiter(TimeProvider timeProvider)
 
     private readonly ConcurrentDictionary<string, Bucket> _buckets = new(StringComparer.Ordinal);
 
-    /// <summary>Takes one call from the bucket of <paramref name="orgId"/>; <c>false</c> when it is empty (the call must not be made).</summary>
     public Task<bool> TryAcquireAsync(Guid orgId)
     {
         if (orgId == Guid.Empty)
@@ -42,10 +37,8 @@ public sealed class OctorateRateLimiter(TimeProvider timeProvider)
         return Task.FromResult(TryAcquire(KeyOf(orgId)));
     }
 
-    /// <summary>Takes one call from the bucket of the calls that are not made for an org (<see cref="PlatformKey"/>).</summary>
     public Task<bool> TryAcquirePlatformAsync() => Task.FromResult(TryAcquire(PlatformKey));
 
-    /// <summary>The calls <paramref name="orgId"/> can still make now (diagnostics and tests).</summary>
     public int AvailableCalls(Guid orgId)
     {
         if (!_buckets.TryGetValue(KeyOf(orgId), out var bucket))
@@ -75,7 +68,6 @@ public sealed class OctorateRateLimiter(TimeProvider timeProvider)
 
     private static string KeyOf(Guid orgId) => orgId.ToString("N");
 
-    /// <summary>A bucket: the calls left and the start of the current period. Changed only under its own lock.</summary>
     private sealed class Bucket(DateTimeOffset since)
     {
         public int Tokens { get; set; } = RequestsPerMinute;

@@ -56,16 +56,10 @@ public class RoutineService(
     RoutineBookingActions? bookingActions = null,
     IScheduledMessageService? scheduledMessages = null) : IRoutineService
 {
-    /// <summary>
-    /// The unique index on <c>RoutineExecutions (RoutineId, EventId)</c> (migration <c>AddRoutineEngine</c>): a second execution of
-    /// a routine for the same event is refused by the database (ADR-022-R7).
-    /// </summary>
     internal const string ExecutionPerEventIndexName = "IX_RoutineExecutions_RoutineId_EventId";
 
-    /// <summary>The code of a <see cref="NotFoundException"/> that names none: the generic one of the API.</summary>
     private const string GenericNotFoundCode = "not_found";
 
-    /// <summary>How much earlier than its <c>ResumeAt</c> a job may find a waiting execution (the clocks of the machines): the job of an earlier wait is far earlier than that.</summary>
     private static readonly TimeSpan ResumeClockTolerance = TimeSpan.FromMinutes(5);
 
     public Task TriggerAsync(
@@ -89,7 +83,6 @@ public class RoutineService(
         ArgumentNullException.ThrowIfNull(routineFilter);
         ArgumentException.ThrowIfNullOrWhiteSpace(eventId);
 
-        // The module is closed (Features:Routines): the events of the bus start nothing.
         if (!featureFlags.IsEnabled(FeatureFlags.Routines))
         {
             logger.LogDebug("Routines are off: event {EventId} of org {OrgId} starts no routine", eventId, orgId);
@@ -98,7 +91,6 @@ public class RoutineService(
 
         var data = RoutinePayload.Normalize(payload);
 
-        // Find all active routines for this event type and org (TN-1: tenant isolation), then the ones the caller asks for
         var routines = (await db.Routines
                 .Where(r => r.OrgId == orgId && r.Active && r.EventType == eventType)
                 .ToListAsync(cancellationToken))
@@ -120,15 +112,12 @@ public class RoutineService(
 
     public async Task ResumeAsync(Guid executionId, CancellationToken cancellationToken = default)
     {
-        // The module is closed (Features:Routines): a wait that comes due changes nothing. Nothing is read or written, the execution stays as it is
-        // (waiting), and the host finds it as it was when the module is on again.
         if (!featureFlags.IsEnabled(FeatureFlags.Routines))
         {
             logger.LogDebug("Routines are off: execution {ExecutionId} is not resumed and stays as it is", executionId);
             return;
         }
 
-        // The job has no tenant: the execution is found by its id, and everything after it reads in the org of the execution.
         var execution = await db.RoutineExecutions
             .Include(e => e.Routine)
             .FirstOrDefaultAsync(e => e.Id == executionId, cancellationToken);
@@ -139,7 +128,6 @@ public class RoutineService(
             return;
         }
 
-        // A second job for the same wait, or one that comes after the execution ended: nothing to continue (ADR-022-R10).
         if (execution.Outcome != RoutineExecutionOutcomes.Waiting)
         {
             logger.LogInformation(
@@ -148,9 +136,6 @@ public class RoutineService(
             return;
         }
 
-        // The job of an earlier wait that comes again (the queue delivers a job twice after a crash) finds the execution waiting at the NEXT wait: it is not
-        // its job, so it does nothing, and the job of that wait continues the execution at its time. The tolerance covers the clocks of two machines; the
-        // shortest wait is an hour.
         if (execution.ResumeAt is { } due && due - ResumeClockTolerance > Now())
         {
             logger.LogInformation(
@@ -162,12 +147,10 @@ public class RoutineService(
         var saved = RoutineExecutionResult.Parse(execution.ResultJson);
         var results = saved.Actions.ToList();
 
-        // The wait that brought the execution here is over.
         var waited = results.FindLastIndex(r => r.Outcome == RoutineActionOutcomes.Waiting);
         if (waited >= 0)
             results[waited] = results[waited] with { Outcome = RoutineActionOutcomes.Done };
 
-        // A routine deactivated meanwhile does not continue: the execution ends and says so.
         if (execution.Routine is not { Active: true } routine)
         {
             logger.LogInformation(
@@ -213,7 +196,6 @@ public class RoutineService(
 
         var run = new Run(db, orgId, RoutinePayload.Normalize(sampleEventPayload));
 
-        // The same evaluation as a real event: a condition the engine would refuse is reported, not guessed at.
         var verdict = await EvaluateConditionAsync(routine, run, cancellationToken);
         var actionsValid = RoutineAction.TryParseList(routine.ActionsJson, out var actions);
 
@@ -225,7 +207,6 @@ public class RoutineService(
         {
             var action = actions[index];
 
-            // What stops it for real: a guardrail, or no implementation (the routine in test mode may hold any action; live it would fail).
             var reason = await CheckGuardrailsAsync(run, action, cancellationToken)
                          ?? (RoutineActionCatalog.IsAvailable(action.Type, featureFlags) ? null : RoutineCodes.ActionNotAvailable);
             if (reason is null && plan is not null)
@@ -272,7 +253,6 @@ public class RoutineService(
             return;
         }
 
-        // Create execution record
         var execution = new RoutineExecution
         {
             RoutineId = routine.Id,
@@ -289,8 +269,6 @@ public class RoutineService(
         }
         catch (DbUpdateException ex) when (IsDuplicateExecution(ex))
         {
-            // A parallel delivery of the same event claimed this routine first: the unique index refused this second claim
-            // (ADR-022-R7). The routine has run once; nothing failed.
             db.Entry(execution).State = EntityState.Detached;
             logger.LogInformation(
                 "Routine {RoutineId} already executed for event {EventId} by a parallel delivery, skipping (idempotence)",
@@ -314,12 +292,6 @@ public class RoutineService(
         await RunAsync(routine, execution, run, [], 0, resumed: false, cancellationToken);
     }
 
-    /// <summary>
-    /// Runs the actions of <paramref name="routine"/> from <paramref name="startIndex"/> and closes the execution: <c>Success</c>, <c>Failed</c>, or
-    /// <c>Waiting</c> at a Wait. <paramref name="results"/> holds what the actions before it did (a resumed execution). After a wait
-    /// (<paramref name="resumed"/>) a stay that was cancelled, or marked as a no-show, meanwhile gets nothing more: each action left is recorded
-    /// <c>blocked</c> with <see cref="RoutineCodes.BookingNotActive"/>, but for the routines of a cancellation, which are about exactly that.
-    /// </summary>
     private async Task RunAsync(
         Routine routine,
         RoutineExecution execution,
@@ -369,7 +341,6 @@ public class RoutineService(
                     continue;
                 }
 
-                // Apply guardrails (AC-NF26-4, AC-NF26-5, AC-NF26-6, ADR-022-R11): a blocked action is not run, and the next ones go on
                 var guardrail = await CheckGuardrailsAsync(run, action, cancellationToken);
                 if (guardrail is not null)
                 {
@@ -394,7 +365,6 @@ public class RoutineService(
                     continue;
                 }
 
-                // Test mode (AC-NF26-7): no case runs, no wait is scheduled
                 if (routine.TestMode)
                 {
                     logger.LogInformation(
@@ -406,7 +376,6 @@ public class RoutineService(
 
                 if (action.Type == RoutineActionType.Wait)
                 {
-                    // Handle Wait action (AC-NF26-10, ADR-022-R10): the execution is suspended until the job resumes it
                     await WaitAsync(execution, run, results, index, action, cancellationToken);
                     return;
                 }
@@ -444,7 +413,6 @@ public class RoutineService(
         var org = await db.Orgs.AsNoTracking().Where(o => o.Id == orgId)
             .Select(o => new { o.CommercialSignupJson, o.CommercialPaymentConfirmed, o.SubscriptionStatus, o.CommercialPaidAddonsJson })
             .FirstOrDefaultAsync(ct);
-        // Existing contracts retain access under the same rules as the commercial API middleware.
         return org is not null && (org.CommercialSignupJson is null ||
             (org.CommercialPaymentConfirmed && org.SubscriptionStatus is SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.PastDue &&
              (System.Text.Json.JsonSerializer.Deserialize<string[]>(org.CommercialPaidAddonsJson ?? "[]") ?? []).Contains("ai-agents")));
@@ -512,10 +480,6 @@ public class RoutineService(
         }
     }
 
-    /// <summary>
-    /// A Wait: the payload and the next action are saved with the execution, which becomes <c>Waiting</c> until <c>ResumeAt</c>, and the job that resumes it
-    /// is scheduled. A wait that is out of range (the API refuses it, a routine saved some other way may not) fails the action.
-    /// </summary>
     private async Task WaitAsync(
         RoutineExecution execution,
         Run run,
@@ -543,7 +507,6 @@ public class RoutineService(
         execution.ResultJson = new RoutineExecutionResult(results, RoutinePayload.ToJson(run.Payload), index + 1).ToJson();
         await db.SaveChangesAsync(cancellationToken);
 
-        // Scheduling is the one call outside the database: when it fails the wait can never end, so the execution says so and the failure goes on.
         var executionId = execution.Id;
         run.FailureCode = RoutineCodes.WaitNotScheduled;
         jobs.Schedule<RoutineDelayJob>(job => job.ResumeRoutineAsync(executionId, CancellationToken.None), resumeAt);
@@ -554,12 +517,6 @@ public class RoutineService(
             execution.RoutineId, resumeAt, executionId);
     }
 
-    /// <summary>
-    /// The one place that runs an action: a case for each action, owned by the task that makes it real (<c>CreateActivity</c>: E01/F04/US01/T02,
-    /// <c>CreateCleaningRequest</c>: E24/F01/US01/T02, <c>RequestReview</c>: E26/F01/US01/T01).
-    /// What the catalog does not list as available, and what has no case yet, fails with <see cref="RoutineCodes.ActionNotAvailable"/>: nothing here
-    /// pretends to have done what it did not.
-    /// </summary>
     private async Task<RoutineActionResult> ExecuteActionAsync(
         Routine routine,
         RoutineExecution execution,
@@ -568,7 +525,6 @@ public class RoutineService(
         IReadOnlyDictionary<string, object?> payload,
         CancellationToken cancellationToken)
     {
-        // The catalog is the one source of what can run: an action it does not list as available never reaches its case.
         if (RoutineActionCatalog.IsAvailable(action.Type, featureFlags))
         {
             switch (action.Type)
@@ -580,8 +536,6 @@ public class RoutineService(
                 case RoutineActionType.RequestReview:
                     return await RequestReviewAsync(routine, actionIndex, action, payload, cancellationToken);
                 case RoutineActionType.MessageToGuest when scheduledMessages is not null && featureFlags.IsEnabled(FeatureFlags.ScheduledMessages):
-                    // E05/F07/US01/T03: with the scheduled messages on, the message goes through the plan (one row for the booking, the routine and the action), the one place that sends; with the flag
-                    // off the case below does what it did before. There is one switch and one send for each flag state, never two sends for one action.
                     return await MessageToGuestAsync(routine, actionIndex, payload, cancellationToken);
                 default:
                     if (bookingActions is not null)
@@ -596,12 +550,6 @@ public class RoutineService(
         return RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.ActionNotAvailable);
     }
 
-    /// <summary>
-    /// <c>MessageToGuest</c> with the scheduled messages on (E05/F07/US01/T03, NF-71): the row of the booking, the routine and the action is found or written and sent when its time has come
-    /// (<see cref="IScheduledMessageService.OnRoutineActionAsync"/>, the routine firing IS the moment). <c>done</c> when it went out, waits for the send window or was handled already; <c>blocked</c> with the code
-    /// when a piece of data is missing (the guardrails of the engine have already run); <c>skipped</c> when it does not go out (the rules of the channel, no way to the guest); <c>failed</c> when the channel
-    /// did not take it. An event that names no booking of the org is blocked like the other booking actions.
-    /// </summary>
     private async Task<RoutineActionResult> MessageToGuestAsync(
         Routine routine,
         int actionIndex,
@@ -671,13 +619,6 @@ public class RoutineService(
         return RoutineActionResult.Done(actionIndex, action.Type);
     }
 
-    /// <summary>
-    /// <c>CreateCleaningRequest</c> (E24/F01/US01/T02, NF-120): the cleaning of the stay of the event for the default cleaner of its property, once for each stay (the booking is
-    /// read in the org of the routine, by <see cref="ICleaningAutomationService"/>). A cleaning made, one the stay had already and one someone else asked for are <c>done</c>; a
-    /// property with no cleaner set up is <c>blocked</c> with <see cref="RoutineCodes.CleaningNotConfigured"/> and a stay that does not happen with
-    /// <see cref="RoutineCodes.BookingNotActive"/> (the next actions go on); a cleaning that cannot be made (the supplier is suspended or busy, the member left) <c>fails</c> with the
-    /// code of the rule, and the host has been told by a "To do" and an alert. An event that names no booking the org has fails the action.
-    /// </summary>
     private async Task<RoutineActionResult> CreateCleaningRequestAsync(
         Routine routine,
         int actionIndex,
@@ -685,7 +626,6 @@ public class RoutineService(
         IReadOnlyDictionary<string, object?> payload,
         CancellationToken cancellationToken)
     {
-        // An engine built by hand with no automation cannot run the action: it says so, it never pretends.
         if (cleaning is null)
             return RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.ActionNotAvailable);
 
@@ -721,7 +661,6 @@ public class RoutineService(
         IReadOnlyDictionary<string, object?> payload,
         CancellationToken cancellationToken)
     {
-        // The module that sends it is not there (a service built without it): the action cannot run, and it says so.
         if (reviews is null)
             return RoutineActionResult.Failed(actionIndex, action.Type, RoutineCodes.ActionNotAvailable);
 
@@ -751,17 +690,13 @@ public class RoutineService(
         switch (action.Type)
         {
             case RoutineActionType.SendAccessCode:
-                // Access code only after the identity of the guest was verified: the latest verification of the booking is an Accept.
                 return await run.IdentityVerifiedAsync(cancellationToken) ? null : RoutineCodes.AccessCodeNeedsIdVerification;
 
             case RoutineActionType.MessageToGuest:
-                // No Airbnb contact before the booking is confirmed.
                 var booking = await run.BookingAsync(cancellationToken);
                 if (booking is null || (booking.Source == BookingSource.Airbnb && !IsConfirmed(booking.Status)))
                     return RoutineCodes.AirbnbNotConfirmed;
 
-                // Campaigns only with the marketing consent the campaigns themselves read (Guest.MarketingConsent). The marker is read closed: any value
-                // but false (a text, a number, null) marks a campaign, so a marker that is not spelled as a JSON true never lets a message through.
                 if (action.IsOnUnlessFalse("isCampaign") && !await run.MarketingConsentAsync(cancellationToken))
                     return RoutineCodes.CampaignNeedsConsent;
 
@@ -775,10 +710,6 @@ public class RoutineService(
     private static bool IsConfirmed(BookingStatus status) =>
         status is BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut;
 
-    /// <summary>
-    /// Reads the condition of <paramref name="routine"/> and evaluates it on the facts of the booking of the event. No condition is met; a condition
-    /// the evaluator or the routines refuse is invalid; a rule on a fact that is not known is not met.
-    /// </summary>
     private async Task<ConditionVerdict> EvaluateConditionAsync(Routine routine, Run run, CancellationToken cancellationToken)
     {
         var parsed = RoutineConditions.Parse(routine.ConditionJson);
@@ -800,7 +731,6 @@ public class RoutineService(
             return ConditionVerdict.Invalid;
         }
 
-        // No rule at all (the {} of a routine with no condition): nothing to prove, nothing to read.
         if (condition.Groups.All(group => group.Rules.Count == 0))
             return ConditionVerdict.Met;
 
@@ -821,11 +751,6 @@ public class RoutineService(
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// Closes an execution as <c>Failed</c> with <paramref name="code"/> after an unexpected error (the code is all the host needs: no message of the
-    /// exception is kept). The unit of work may hold the change that failed, so it starts again from what the database says; if even this cannot be
-    /// saved, it is logged and the original error goes on.
-    /// </summary>
     private async Task RecordFailureAsync(Guid executionId, string code)
     {
         try
@@ -858,7 +783,6 @@ public class RoutineService(
         Invalid,
     }
 
-    /// <summary>The columns of the booking an event is about that the engine reads, never the guest or the prices.</summary>
     private sealed record BookingFacts(
         Guid Id,
         Guid PropertyId,
@@ -871,10 +795,6 @@ public class RoutineService(
         DateTime CreatedAt,
         DateTime? NoShowAt);
 
-    /// <summary>
-    /// One run of a routine: the payload of the event, and the facts of its booking read once, on first use, in the org of the routine. A resumed
-    /// execution gets a new one, so it reads the booking as it is when the wait ends.
-    /// </summary>
     private sealed class Run(AppDbContext db, Guid orgId, IReadOnlyDictionary<string, object?> payload)
     {
         private bool _bookingRead;
@@ -884,10 +804,8 @@ public class RoutineService(
 
         public IReadOnlyDictionary<string, object?> Payload { get; } = payload;
 
-        /// <summary>The code an unexpected error is recorded with: <see cref="RoutineCodes.ActionError"/>, or the one of the call that was being made.</summary>
         public string FailureCode { get; set; } = RoutineCodes.ActionError;
 
-        /// <summary>The booking the payload names (<c>bookingId</c>), in the org of the routine; <c>null</c> when it names none or the org has no such booking.</summary>
         public async Task<BookingFacts?> BookingAsync(CancellationToken cancellationToken)
         {
             if (_bookingRead)
@@ -915,14 +833,9 @@ public class RoutineService(
             return _booking;
         }
 
-        /// <summary>
-        /// The booking the payload names was cancelled, or marked as a no-show (it stays <c>Confirmed</c> with <c>NoShowAt</c> set): a stay that does not
-        /// happen. <c>false</c> when the payload names no booking the org has, or the stay is on (a request that waits for an answer is).
-        /// </summary>
         public async Task<bool> BookingIsGoneAsync(CancellationToken cancellationToken) =>
             await BookingAsync(cancellationToken) is { } booking && (booking.Status == BookingStatus.Cancelled || booking.NoShowAt is not null);
 
-        /// <summary>The facts a condition is evaluated on: those of the booking, none when there is none.</summary>
         public async Task<RoutineConditionFacts> FactsAsync(CancellationToken cancellationToken)
         {
             var booking = await BookingAsync(cancellationToken);
@@ -937,10 +850,6 @@ public class RoutineService(
                     booking.CreatedAt);
         }
 
-        /// <summary>
-        /// The verification gate of the access code (AC-NF13-6, AC-NF26-4): the latest <see cref="BiometricVerificationLog"/> of the booking is an
-        /// <see cref="BiometricOutcome.Accept"/>, written by the agent or by an operator's approval; the same gate as <c>AccessCodeService</c>.
-        /// </summary>
         public async Task<bool> IdentityVerifiedAsync(CancellationToken cancellationToken)
         {
             if (_identityVerified is { } known)
@@ -960,10 +869,6 @@ public class RoutineService(
             return (_identityVerified = latest == BiometricOutcome.Accept).Value;
         }
 
-        /// <summary>
-        /// The marketing consent of the guest of the booking, the flag the campaigns read (<c>Guest.MarketingConsent</c>, set once the e-mail is
-        /// confirmed): a guest who was erased or anonymized has none.
-        /// </summary>
         public async Task<bool> MarketingConsentAsync(CancellationToken cancellationToken)
         {
             if (_marketingConsent is { } known)
@@ -973,7 +878,6 @@ public class RoutineService(
             if (booking is null)
                 return (_marketingConsent = false).Value;
 
-            // The one reading of the consent, shared with the scheduled messages (CampaignConsent).
             var consented = await CampaignConsent.IsGrantedAsync(db, orgId, booking.GuestId, cancellationToken);
             return (_marketingConsent = consented).Value;
         }

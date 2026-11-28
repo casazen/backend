@@ -18,10 +18,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Assistant;
 
-/// <summary>
-/// E05/F05/US02/T01: the endpoints of the drafts are behind the flag and private, each with its policy and its limits; the simulator answers the 404 of a property that does not exist
-/// for a property out of the caller's reach and runs nothing; a key that is not one is a 400 before anything runs.
-/// </summary>
 public sealed class AssistantDraftsControllerTests
 {
     [Fact]
@@ -66,7 +62,6 @@ public sealed class AssistantDraftsControllerTests
 
         drafts.Verify(d => d.SimulateAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // The property it was given is simulated.
         var granted = Assert.IsType<OkObjectResult>((await controller.Simulate(new SimulateAssistantRequest { PropertyId = world.Granted.Id, Text = "Dove parcheggio?" }, CancellationToken.None)).Result);
         Assert.Equal(AssistantDecisionCodes.AiProviderNotConfigured, Assert.IsType<AssistantSimulationDto>(granted.Value).Reason);
     }

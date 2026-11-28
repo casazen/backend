@@ -133,7 +133,6 @@ public class ListingPriceSuggestionService(
         }
         catch (Exception ex)
         {
-            // A timeout of the provider is a TaskCanceledException too: it is the provider that did not answer, not the caller who left.
             logger.LogWarning(ex, "The AI provider failed to price a property");
             return (null, PriceSuggestionFallbackReasons.AiUnavailable);
         }
@@ -180,14 +179,12 @@ public class ListingPriceSuggestionService(
         && (property.MaxGuests <= 0 || row.MaxGuests <= 0
             || Math.Abs(row.MaxGuests - property.MaxGuests) <= PriceSuggestionLimits.SimilarGuestsDelta);
 
-    /// <summary>The first 300 characters of an answer, on one line, for the log.</summary>
     private static string Snippet(string? content)
     {
         var line = string.Join(' ', (content ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         return line.Length <= 300 ? line : line[..300] + "…";
     }
 
-    /// <summary>The prompt holds every input (and the language), so its hash is the key of the answer: the same data, the same answer.</summary>
     private static string CacheKey(string prompt)
     {
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(prompt));

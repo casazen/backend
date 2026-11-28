@@ -21,7 +21,6 @@ public class FiscalControllerIntegrationTests : IClassFixture<CasazenWebApplicat
     {
         var owner = $"auth0|fiscal-{Guid.NewGuid():N}";
         var property = await _factory.SeedPropertyAsync(owner);
-        // Only apartments with short-term stays in the tax year count toward the threshold (CO-18, A5-22).
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();

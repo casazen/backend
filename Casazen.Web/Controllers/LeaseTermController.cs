@@ -53,10 +53,6 @@ public class LeaseTermController(
         return await DetailAsync(id);
     }
 
-    /// <summary>
-    /// Takes back the notice, so the lease renews by itself again; only while the current period has not ended (409
-    /// <c>lease_term_already_ended</c> after). Taking back a notice that is not there changes nothing (200).
-    /// </summary>
     [HttpDelete("{id:guid}/notice")]
     [ProducesResponseType(typeof(LeaseDetailDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> RemoveNotice(Guid id, CancellationToken cancellationToken)
@@ -125,8 +121,6 @@ public class LeaseTermController(
         return await DetailAsync(id);
     }
 
-    // ---- authorization and answer --------------------------------------------------------------------------------
-
     /// <summary>
     /// Authorizes <c>lease.create</c> on the property of the lease as a row of that property: <c>null</c> when allowed, otherwise the answer
     /// (404 <c>lease_not_found</c> for a lease of another org or none, 403 for a property the caller may not handle).
@@ -152,12 +146,10 @@ public class LeaseTermController(
     }
 }
 
-/// <summary>A notice of non-renewal: who gave it (<c>Landlord</c> or <c>Tenant</c>) and the day (<c>yyyy-MM-dd</c>, from the start of the lease up to today).</summary>
 public sealed record RecordLeaseNoticeDto(
     [param: Required, EnumDataType(typeof(LeaseNoticeParty))] LeaseNoticeParty? From,
     [param: Required] DateOnly? On);
 
-/// <summary>The last day of a lease ended early (<c>yyyy-MM-dd</c>, from the start of the lease up to the end of the period it is in).</summary>
 public sealed record TerminateLeaseDto([param: Required] DateOnly? On);
 
 /// <summary>The renewal of a lease (LR-OPS-1): without a day the standard one of the type, otherwise the last day of the extension the parties agreed on (<c>yyyy-MM-dd</c>).</summary>

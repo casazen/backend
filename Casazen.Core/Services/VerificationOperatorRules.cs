@@ -18,13 +18,8 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public static class VerificationOperatorRules
 {
-    /// <summary>The attempts after which a session of before E03/F04/US02 (no operator request recorded) waits for an operator (ADR-013-R5).</summary>
     public const int MaxAttempts = 3;
 
-    /// <summary>
-    /// The sessions that wait for an operator, apart from the two conditions above. An expression, so the queue reads it in SQL and the status reads it
-    /// in SQL too: one definition in both places.
-    /// </summary>
     public static Expression<Func<GuestCheckInSession, bool>> NeedsOperator { get; } = session =>
         session.BiometricOutcome != BiometricOutcome.Accept
         && (session.OperatorRequestedAt != null
@@ -33,13 +28,8 @@ public static class VerificationOperatorRules
                 && (session.BiometricOutcome == BiometricOutcome.Escalate
                     || (session.BiometricAttempts >= MaxAttempts && session.BiometricConsentAt == null))));
 
-    /// <summary>The moment the hand-off of a session started: the request to the operator, or else the session itself.</summary>
     public static DateTime HandOffStartedAt(DateTime? operatorRequestedAt, DateTime sessionCreatedAt) => operatorRequestedAt ?? sessionCreatedAt;
 
-    /// <summary>
-    /// Whether an operator has already answered the hand-off that started at <paramref name="handOffStartedAt"/>: a row of an operator (a decision,
-    /// or the new photo the operator asked for) written at or after it. <paramref name="lastOperatorRowAt"/> is the latest such row of the booking.
-    /// </summary>
     public static bool IsDecided(DateTime handOffStartedAt, DateTime? lastOperatorRowAt) =>
         lastOperatorRowAt is { } at && at >= handOffStartedAt;
 }

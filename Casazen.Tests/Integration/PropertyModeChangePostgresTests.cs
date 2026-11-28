@@ -32,15 +32,12 @@ namespace Casazen.Tests.Integration;
 /// </remarks>
 public class PropertyModeChangePostgresTests : IClassFixture<PropertyModeChangePostgresTests.Factory>
 {
-    // "Today" for the host: 2 October of next year at 10:00 in Rome (FD-06, fixed clock).
     private static readonly DateTime Today = PublicAvailabilityPostgresTests.NextYear(10, 2);
     private static readonly DateTimeOffset Now = new(Today.AddHours(8), TimeSpan.Zero);
 
     private readonly Factory _factory;
 
     public PropertyModeChangePostgresTests(Factory factory) => _factory = factory;
-
-    // ─── The index ──────────────────────────────────────────────────────────────────────────────────
 
     [PostgresFact]
     public async Task Table_AndItsIndexes_AreInTheDatabase()
@@ -87,8 +84,6 @@ public class PropertyModeChangePostgresTests : IClassFixture<PropertyModeChangeP
             Assert.Equal(4, await db.PropertyModeChanges.IgnoreQueryFilters().CountAsync(c => c.PropertyId == property.Id)));
     }
 
-    // ─── The creation and the bookings ──────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task Schedule_ToLong_AndABookingOnTheSameNightsAtTheSameTime_OnlyOneOfThemHappens()
     {
@@ -132,8 +127,6 @@ public class PropertyModeChangePostgresTests : IClassFixture<PropertyModeChangeP
             start.Set();
             var outcomes = await Task.WhenAll(scheduleTask, bookingTask);
 
-            // Exactly one: either the change is programmed (and the calendar closed, so the booking was refused), or the booking
-            // is there (and the change was refused). Never both on the same nights.
             Assert.Equal(1, outcomes.Count(won => won));
             await WithDbAsync(async db =>
             {
@@ -193,19 +186,14 @@ public class PropertyModeChangePostgresTests : IClassFixture<PropertyModeChangeP
         await using var other = _factory.Services.CreateAsyncScope();
         var bookings = other.ServiceProvider.GetRequiredService<IBookingRepository>();
 
-        // The final check of the repository (under the property lock) reads the block of the change too.
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
             () => bookings.AddAsync(NewBooking(property, Today.AddDays(12), Today.AddDays(14), BookingSource.Manual)));
         Assert.Contains("Property not available", error.Message);
-        // A stay that checks out on the day of the change takes the night before it, which the change treats as not free yet.
         var checkoutNight = await Assert.ThrowsAsync<InvalidOperationException>(
             () => bookings.AddAsync(NewBooking(property, Today.AddDays(9), Today.AddDays(10), BookingSource.Manual)));
         Assert.Contains("Property not available", checkoutNight.Message);
-        // A stay that has already left by the morning before the change stays bookable.
         await bookings.AddAsync(NewBooking(property, Today.AddDays(5), Today.AddDays(9), BookingSource.Manual));
     }
-
-    // ─── The application ────────────────────────────────────────────────────────────────────────────
 
     [PostgresFact]
     public async Task ApplyDue_AChangeAndABookingOnTheSameNightsAtTheSameTime_NeverEndWithALongPropertyAndAStay()
@@ -213,7 +201,6 @@ public class PropertyModeChangePostgresTests : IClassFixture<PropertyModeChangeP
         for (var round = 0; round < 8; round++)
         {
             var property = await SeedPropertyAsync($"pm02-apply-race-{round}");
-            // The change is due today; it was programmed earlier, so no calendar block closes the nights yet.
             await InsertChangeAsync(property, PropertyModeChangeStatus.Scheduled, Today, RentalMode.Long);
             using var start = new ManualResetEventSlim(false);
 
@@ -248,8 +235,6 @@ public class PropertyModeChangePostgresTests : IClassFixture<PropertyModeChangeP
                 var stored = await db.Properties.IgnoreQueryFilters().AsNoTracking().SingleAsync(p => p.Id == property.Id);
                 var booked = await db.Bookings.IgnoreQueryFilters().AnyAsync(b => b.PropertyId == property.Id);
                 var change = await db.PropertyModeChanges.IgnoreQueryFilters().SingleAsync(c => c.PropertyId == property.Id);
-                // Either the stay got there first (the change failed, the property is still short), or the property became
-                // long-term first (the stay was refused by the block). Never a long-term property with a stay to come.
                 Assert.False(stored.RentalMode == RentalMode.Long && booked);
                 Assert.Equal(
                     stored.RentalMode == RentalMode.Long ? PropertyModeChangeStatus.Applied : PropertyModeChangeStatus.Failed,
@@ -292,7 +277,6 @@ public class PropertyModeChangePostgresTests : IClassFixture<PropertyModeChangeP
             Assert.All(
                 await db.Properties.IgnoreQueryFilters().Where(p => ids.Contains(p.Id)).ToListAsync(),
                 p => Assert.Equal(RentalMode.Long, p.RentalMode));
-            // One calendar block each, whatever the number of runs.
             var blocks = await db.CalendarBlocks.IgnoreQueryFilters()
                 .Where(b => ids.Contains(b.PropertyId) && b.ManualReason == CalendarBlockReason.ModeChange)
                 .GroupBy(b => b.PropertyId)
@@ -301,7 +285,6 @@ public class PropertyModeChangePostgresTests : IClassFixture<PropertyModeChangeP
             Assert.Equal(properties.Count, blocks.Count);
             Assert.All(blocks, count => Assert.Equal(1, count));
         });
-        // One "applied" e-mail per change, to the contact address of its org.
         var applied = _factory.Emails.Snapshot().Where(e => e.Template == "property-mode-change-applied").ToList();
         Assert.Equal(properties.Count, applied.Count);
     }
@@ -433,8 +416,6 @@ public class PropertyModeChangePostgresTests : IClassFixture<PropertyModeChangeP
         });
     }
 
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────
-
     private async Task<Property> SeedPropertyAsync(string label, RentalMode mode = RentalMode.Short)
     {
         var property = await PublishedPropertyTests.SeedAsync(_factory, label);
@@ -501,7 +482,6 @@ public class PropertyModeChangePostgresTests : IClassFixture<PropertyModeChangeP
         await action(scope.ServiceProvider.GetRequiredService<AppDbContext>());
     }
 
-    /// <summary>The integration host with a fixed clock and the e-mails recorded.</summary>
     public sealed class Factory : CasazenWebApplicationFactory
     {
         internal RecordingEmailQueue Emails { get; } = new();

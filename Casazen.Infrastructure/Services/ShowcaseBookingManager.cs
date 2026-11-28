@@ -44,13 +44,8 @@ public sealed class ShowcaseBookingManager(
     IServiceDisputeService? disputes = null,
     IShowcaseAlternativesService? alternatives = null) : IShowcaseBookingManager
 {
-    /// <summary>
-    /// What a slug and a code that cannot be valid are looked up as: values that match nothing (a slug never starts with a hyphen, a code
-    /// is ten letters and digits), so the statements still run and find no row.
-    /// </summary>
     private const string NothingToMatch = "-";
 
-    /// <summary>The address compared when there is none to compare with, so the comparison runs for every attempt.</summary>
     private const string NoAddress = "nobody@invalid.invalid";
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -148,7 +143,6 @@ public sealed class ShowcaseBookingManager(
     {
         var found = await IdentifyAsync(credentials, cancellationToken);
 
-        // Only a booking paid inside CasaZen has money to release; any other is "nothing to confirm", like a booking whose work is not done.
         if (funds is null || found.Row.PaymentMode != ServiceRequestPaymentMode.Online)
             throw new DomainRuleException(ServicePaymentErrors.NotConfirmable, ServicePaymentErrors.NotConfirmableMessageKey);
 
@@ -164,7 +158,6 @@ public sealed class ShowcaseBookingManager(
     {
         var found = await IdentifyAsync(credentials, cancellationToken);
 
-        // Only a booking paid inside CasaZen has money to stop; any other has nothing to report from here.
         if (disputes is null || found.Row.PaymentMode != ServiceRequestPaymentMode.Online)
             throw ServiceDisputeErrors.CannotReport();
 
@@ -206,14 +199,8 @@ public sealed class ShowcaseBookingManager(
         return await AlternativesOfAsync(found, cancellationToken) ?? Array.Empty<ShowcaseAlternative>();
     }
 
-    // ─── Who is asking ───────────────────────────────────────────────────────────────────────────────────────────────
-
     private sealed record Found(SupplierRow Supplier, ShowcaseBookingRow Row);
 
-    /// <summary>
-    /// The booking of the credentials, or <see cref="ShowcaseBookingManagementErrors.BookingNotFound"/>. The statements and the
-    /// comparison run whatever the credentials are, and the failure is decided at the end, once: see the remarks of the class.
-    /// </summary>
     private async Task<Found> IdentifyAsync(ShowcaseBookingCredentials credentials, CancellationToken cancellationToken)
     {
         var valid = ShowcaseBookingManagementRules.TryNormalize(credentials, out var key);
@@ -225,8 +212,6 @@ public sealed class ShowcaseBookingManager(
             .Where(r => r.PublicCode == (valid ? key!.Code : NothingToMatch))
             .FirstOrDefaultAsync(cancellationToken);
 
-        // The customer of the booking, read for this supplier only: the stored address, decrypted by the column. A request that has no
-        // customer (it cannot happen: the database checks it) and a customer the retention anonymized have no address to match.
         var contact = await customers.FindContactAsync(supplierOrgId, row?.CustomerId ?? Guid.Empty, cancellationToken);
         var stored = contact is { Anonymized: false } ? contact.Email : null;
         var sameAddress = ServiceCustomerEmails.SameAddress(stored, valid ? key!.Email : NoAddress);
@@ -237,9 +222,6 @@ public sealed class ShowcaseBookingManager(
         return new Found(supplier, row);
     }
 
-    // ─── What the customer is shown ──────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The booking as it is after an action: read again, so the answer is what the database holds.</summary>
     private async Task<ShowcaseBookingView> AfterAsync(Found found, CancellationToken cancellationToken)
     {
         var row = await RowsOf(db, found.Supplier.OrgId)
@@ -247,7 +229,6 @@ public sealed class ShowcaseBookingManager(
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw ShowcaseBookingManagementErrors.BookingNotFound();
 
-        // The supplier can have changed meanwhile as well (suspended, the service paused): the view is built from what it is now.
         var supplier = await SupplierBySlugOf(db, found.Supplier.Slug).FirstOrDefaultAsync(cancellationToken) ?? found.Supplier;
         return await BuildViewAsync(new Found(supplier, row), cancellationToken);
     }
@@ -258,7 +239,6 @@ public sealed class ShowcaseBookingManager(
         var now = UtcNow();
         var hours = options.Value.FreeCancellationHours;
 
-        // The exact address, the floor and the notes for the access: only once the supplier took the request, and from their own statement.
         var location = SupplierJobDisclosure.IsDisclosed(row.Status)
             ? await LocationOf(db, supplier.OrgId, row.Id).FirstOrDefaultAsync(cancellationToken)
             : null;
@@ -269,7 +249,6 @@ public sealed class ShowcaseBookingManager(
         var published = service is { IsRequestable: true };
         var supplierActive = supplier.Status == SupplierStatus.Active;
 
-        // The conversation of a request on measure (SP-10b): read now, which marks what the supplier wrote as read by the customer.
         var onMeasure = row.Kind == ServiceRequestKind.Custom;
         var thread = onMeasure ? await actions.ReadThreadAsCustomerAsync(row.Id, supplier.OrgId, cancellationToken) : null;
 
@@ -282,8 +261,6 @@ public sealed class ShowcaseBookingManager(
             ? new ShowcaseBookingProposal(row.ProposedStartUtc!.Value, row.ProposedEndUtc!.Value, row.ProposedAt!.Value, answerBy, row.ProposalMessage)
             : null;
 
-        // The quote the supplier sent (SP-04b): the customer has until the deadline of the request to answer it. For a request on measure the
-        // quote is its offer (SP-10b-b, the same engine): it is told as an offer and answered with the offer endpoints, never as a quote.
         var quotePending = ServiceRequestQuoteRules.IsPending(row.Status, row.QuoteSentAt) && row.QuoteTotalCents is not null;
         var offer = onMeasure
             ? ServiceRequestOfferRules.PendingOf(
@@ -298,7 +275,6 @@ public sealed class ShowcaseBookingManager(
                 row.ResponseDueAt)
             : null;
 
-        // How the last offer ended, for the negotiation: read only for a new request on measure with no offer waiting, from a statement of its own.
         var offerEvents = onMeasure && row.Status == ServiceRequestStatus.Richiesto && offer is null
             ? await QuoteEventsOf(db, supplier.OrgId, row.Id).FirstOrDefaultAsync(cancellationToken)
             : null;
@@ -322,14 +298,11 @@ public sealed class ShowcaseBookingManager(
                     : row.CancellationReason)
             : null;
 
-        // SP-15c-a: the money of a booking paid inside CasaZen, read through the funds service (the payments table is not read here).
         var paidInside = row.PaymentMode == ServiceRequestPaymentMode.Online;
         var held = funds is not null && (paidInside || offer is not null)
             ? await funds.FindHeldPaymentAsync(row.Id, cancellationToken)
             : null;
 
-        // SP-10b-b: an offer the customer accepted and whose card is not blocked yet (or is, and the request is being taken) has a payment of its own
-        // before the request is paid inside CasaZen: it is shown while it is the one made for the offer that stands, never a card of an earlier offer.
         if (!paidInside && held is not null
             && !(offer is not null
                  && held is { PayerKind: ServicePayerKind.Private, Status: ServicePaymentStatus.Requested or ServicePaymentStatus.Failed or ServicePaymentStatus.Authorized or ServicePaymentStatus.Held }
@@ -343,7 +316,6 @@ public sealed class ShowcaseBookingManager(
             ? null
             : awaitingPayment || (funds is not null && await funds.CanAuthorizeAsync(supplier.OrgId, offer.TotalCents, cancellationToken));
 
-        // SP-15c-c: the customer's complaint about the job, read through the dispute service (the disputes table is not read here either).
         var dispute = held is not null && paidInside && disputes is not null
             ? await disputes.FindDisputeForPayerAsync(row.Id, cancellationToken)
             : null;
@@ -361,7 +333,6 @@ public sealed class ShowcaseBookingManager(
         var canConfirmOk = held is not null
             && ShowcaseBookingManagementRules.CanConfirmOk(row.Status, held.Status, held.NetCents, held.RefundedCents);
 
-        // The same facts and the same rule the endpoint enforces, so the page and the API cannot disagree.
         var canReportProblem = held is not null
             && disputes is not null
             && ServiceDisputeRules.CanReport(
@@ -386,8 +357,6 @@ public sealed class ShowcaseBookingManager(
             proposal,
             cancellation,
             row.Status == ServiceRequestStatus.Rifiutato && !string.IsNullOrWhiteSpace(row.RejectionReason) ? row.RejectionReason : null,
-            // A request on measure has no work to start until its offer is accepted: closing it is always free (and its start is the day it was
-            // made). Once the offer is accepted it has a time like any booking, and the terms are those of a booking.
             onMeasure && row.ScheduledStartUtc is null
                 ? new ShowcaseBookingCancellationTerms(start, IsFree: true)
                 : new ShowcaseBookingCancellationTerms(
@@ -440,7 +409,6 @@ public sealed class ShowcaseBookingManager(
             cancellationToken);
     }
 
-    /// <summary>The complaint as the customer reads it: its own words, the state and the decision; never the supplier's reply nor the admin's note.</summary>
     private static ShowcaseBookingDisputeView ToDisputeView(ServiceDisputePayerView dispute) => new(
         dispute.Status.ToString(),
         ServiceDisputeRules.ReasonName(dispute.Reason),
@@ -454,19 +422,11 @@ public sealed class ShowcaseBookingManager(
         dispute.RefundCents,
         dispute.Settled);
 
-    /// <summary>
-    /// The price of the booking: the amounts, and the lines — the choices of the customer when it booked, or, once the supplier
-    /// completed the work, the lines of the final amount. The lines of the estimate add up to it: a flat price (per job) keeps no
-    /// quantity among the choices of the booking, so its base is what the estimate has beyond the options, shown as the line of the
-    /// service.
-    /// </summary>
     private static ShowcaseBookingPrice PriceOf(ShowcaseBookingRow row)
     {
         var final = ServiceRequestJson.ReadPriceLines(row.PriceLinesJson);
         var finalLines = row.FinalAmountCents is not null && final.Count > 0;
 
-        // The lines of a quote the customer accepted (SP-04b) are the price of the work from the take on, before it is completed: the
-        // request keeps them with the total as the price agreed, and the estimate it was made with no longer says what it costs.
         var agreedLines = !finalLines && row.QuotedAmountCents is not null && final.Any(line => line.Kind == ServiceRequestPriceLineKinds.Quote);
         var lines = finalLines || agreedLines
             ? final
@@ -482,7 +442,6 @@ public sealed class ShowcaseBookingManager(
                     option.Code switch
                     {
                         ServiceRequestOptionCodes.Quantity => "service",
-                        // The surcharge of an urgent booking (SP-04c) is told apart so the page can say it in the customer's language.
                         ServiceRequestOptionCodes.Urgent => "urgent",
                         _ => "option",
                     },
@@ -507,8 +466,6 @@ public sealed class ShowcaseBookingManager(
 
     private DateTime UtcNow() => _clock.GetUtcNow().UtcDateTime;
 
-    // ─── The statements ──────────────────────────────────────────────────────────────────────────────────────────────
-
     /// <summary>The supplier of a showcase slug (unique), whatever its status. SupplierProfile is keyed by the supplier org and not tenant-filtered.</summary>
     /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
     internal static IQueryable<SupplierRow> SupplierBySlugOf(AppDbContext db, string normalizedSlug) =>
@@ -532,7 +489,6 @@ public sealed class ShowcaseBookingManager(
                 Id = r.Id,
                 CustomerId = r.CustomerId,
                 Status = r.Status,
-                // SP-15c-a: whether the booking is paid inside CasaZen (then its payment is read through the funds service).
                 PaymentMode = r.PaymentMode,
                 PublicCode = r.PublicCode,
                 ServiceListingId = r.ServiceListingId,
@@ -549,8 +505,6 @@ public sealed class ShowcaseBookingManager(
                 ProposedEndUtc = r.ProposedEndUtc,
                 ProposedAt = r.ProposedAt,
                 ProposalMessage = r.ProposalMessage,
-                // The quote the supplier sent (SP-04b): what the customer is asked to answer, and no more — not who at the supplier sent it,
-                // not the story of the other quotes.
                 QuoteSentAt = r.QuoteSentAt,
                 QuoteLinesJson = r.QuoteLinesJson,
                 QuoteTotalCents = r.QuoteTotalCents,
@@ -604,16 +558,12 @@ public sealed class ShowcaseBookingManager(
             .Where(r => r.Id == requestId && r.SupplierOrgId == supplierOrgId && r.RentalContext == ServiceRequestRentalContext.Showcase)
             .Select(r => new AlternativesBasis(r.Category, r.LocationComuneIstat, r.LocationCity));
 
-    /// <summary>The place and the category the alternatives of a lapsed request are looked for with.</summary>
     internal sealed record AlternativesBasis(string Category, string? ComuneIstat, string? City);
 
-    /// <summary>The supplier of a booking: what the customer's view and the rules need of its profile.</summary>
     internal sealed record SupplierRow(Guid OrgId, SupplierStatus Status, string LegalName, string Slug);
 
-    /// <summary>The place a taken request is at, as the customer wrote it.</summary>
     internal sealed record ShowcaseBookingLocation(string? Address, string? Floor, string? AccessNotes);
 
-    /// <summary>The columns of a showcase request that the customer's view is made of.</summary>
     internal sealed class ShowcaseBookingRow
     {
         public Guid Id { get; init; }

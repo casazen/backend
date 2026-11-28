@@ -12,24 +12,19 @@ namespace Casazen.Core.Entities;
 [Table("OnboardingPilotMembers")]
 public class OnboardingPilotMember : ITenantOwned
 {
-    /// <summary>Name of the unique index on <see cref="PropertyId"/>: a property is in the pilot group once.</summary>
     public const string PropertyIndexName = "UIX_OnboardingPilotMembers_PropertyId";
 
-    /// <summary>Longest <see cref="AddedByUserId"/>: the column length of <c>User.Id</c>, the Auth0 subject.</summary>
     public const int UserIdMaxLength = 255;
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row, copied from the property when it is created (TN-2).</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The property (FK, CASCADE: the membership goes with the property).</summary>
     public Guid PropertyId { get; set; }
 
     public DateTime AddedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>Who added the property to the pilot group: the Auth0 subject of the account.</summary>
     [Required]
     [MaxLength(UserIdMaxLength)]
     public string AddedByUserId { get; set; } = string.Empty;

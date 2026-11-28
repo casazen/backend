@@ -11,7 +11,6 @@ public static partial class RecurringJobsRegistration
     /// </summary>
     private static void RegisterFiscalJobs(IRecurringJobManager recurringJobManager, IFeatureFlags featureFlags)
     {
-        // E12/F01/US01/T02: the drafts of the stays that ended and their automatic issue, only while the issuance of the fiscal documents is on.
         ConfigureFiscalDocumentJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.FiscalDocumentIssuance));
 
         // E17/F01/US02/T01: the status of the electronic invoices submitted to the SDI, the fallback of the provider's webhook, only while the issuance and the SDI submission are both on.
@@ -19,7 +18,6 @@ public static partial class RecurringJobsRegistration
             recurringJobManager,
             featureFlags.IsEnabled(FeatureFlags.FiscalDocumentIssuance) && featureFlags.IsEnabled(FeatureFlags.SdiSubmission));
 
-        // E15/F01/US02/T02 (NF-101): the package of the previous month goes to the accountant of every org that asked for it, only while the package of the accountant is on.
         ConfigureAccountantPackageJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.AccountantPackage));
     }
 
@@ -72,11 +70,6 @@ public static partial class RecurringJobsRegistration
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 
-    /// <summary>
-    /// The monthly package of the accountant (E15/F01/US02/T02, NF-101): every day at 06:00 Europe/Rome, only with <see cref="FeatureFlags.AccountantPackage"/> on. Each run sends the previous month to the accountant of
-    /// every org whose monthly send is on and whose day has come, once for each org and month, and deletes the packages whose link has expired. With the flag off nothing is made or sent by time and the schedule of an
-    /// earlier deploy is removed (<c>RemoveIfExists</c>).
-    /// </summary>
     private static void ConfigureAccountantPackageJobs(IRecurringJobManager recurringJobManager, bool enabled)
     {
         if (!enabled)

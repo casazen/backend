@@ -22,10 +22,8 @@ public class AdminTouristTaxController(
     TimeProvider timeProvider,
     ILogger<AdminTouristTaxController> logger) : ControllerBase
 {
-    /// <summary>Problem code of a reason code that does not exist (404).</summary>
     public const string ReasonNotFoundCode = "tax_exemption_reason_not_found";
 
-    /// <summary>Problem code of a source that is not an absolute https address (422).</summary>
     public const string SourceInvalidCode = "tax_rule_source_invalid";
 
     /// <summary>
@@ -69,7 +67,6 @@ public class AdminTouristTaxController(
         return Ok(TouristTaxChannelRuleDto.From(rule));
     }
 
-    /// <summary>Sets the Octorate code of an exemption reason (null: no known match) and whether it can be chosen.</summary>
     [HttpPut("exemption-reasons/{code}")]
     [ProducesResponseType(typeof(AdminTouristTaxExemptionReasonDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

@@ -1,9 +1,5 @@
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// How the services that record an act with a receipt (<see cref="QuesturaCommunicationService"/>, <see cref="RliRegistrationService"/>) read the
-/// receipt: a PDF of a limited size, counted while it is read.
-/// </summary>
 internal static class ReceiptPdfReader
 {
     private static readonly byte[] PdfSignature = "%PDF-"u8.ToArray();

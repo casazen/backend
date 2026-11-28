@@ -25,22 +25,13 @@ namespace Casazen.Infrastructure.Search;
 /// </remarks>
 internal static class SearchKeyModel
 {
-    /// <summary>Name of the generated column, the same on every searchable table.</summary>
     public const string KeyProperty = "SearchKey";
 
-    /// <summary>Text search configuration of the indexes and of the queries: no stemming, no stop words.</summary>
     public const string TextSearchConfig = "simple";
 
     /// <summary>Index over the prefix of the booking code (<c>varchar_pattern_ops</c>, so that <c>LIKE 'ABC%'</c> is a range scan in any collation).</summary>
     public const string BookingCodePrefixIndex = "IX_Bookings_BookingCode_Prefix";
 
-    /// <summary>
-    /// The SQL expression that folds <paramref name="textExpression"/> exactly as <see cref="SearchText.Fold"/> does: the accents of
-    /// <see cref="SearchFolding"/> to plain letters (<c>translate</c>, one letter each; <c>replace</c> for the ones that become two),
-    /// lower case, every run of characters that are not <c>a-z0-9</c> to one space, no space at the ends. Built from the table, so the
-    /// two cannot differ; <c>SearchFoldingTests</c> runs the same steps in C# and compares them for the whole range of the table.
-    /// All the functions are immutable, as a generated column requires.
-    /// </summary>
     public static string FoldSql(string textExpression)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(textExpression);
@@ -58,30 +49,21 @@ internal static class SearchKeyModel
         return "btrim(regexp_replace(lower(" + expression + "), '[^a-z0-9]+', ' ', 'g'))";
     }
 
-    /// <summary>Key of a property: name, city and CIN.</summary>
     public static string PropertyKeySql { get; } =
         FoldSql("\"Name\" || ' ' || \"City\" || ' ' || coalesce(\"CinCode\", '')");
 
-    /// <summary>Key of a guest: surname, first name and e-mail address (the e-mail is only searched, the answer shows it masked).</summary>
     public static string GuestKeySql { get; } =
         FoldSql("\"LastName\" || ' ' || \"FirstName\" || ' ' || \"Email\"");
 
-    /// <summary>Key of a party of a lease: surname and first name.</summary>
     public static string PartyKeySql { get; } =
         FoldSql("\"LastName\" || ' ' || \"FirstName\"");
 
-    /// <summary>
-    /// Key of a service request: the name of the service as the supplier wrote it, the category code, the code the customer of a
-    /// showcase request quotes and the comune of the work of such a request.
-    /// </summary>
     public static string ServiceRequestKeySql { get; } =
         FoldSql("coalesce(\"ServiceNameSnapshot\", '') || ' ' || \"Category\" || ' ' || coalesce(\"PublicCode\", '') || ' ' || coalesce(\"LocationCity\", '')");
 
-    /// <summary>Key of a supplier profile: the business name.</summary>
     public static string SupplierProfileKeySql { get; } =
         FoldSql("\"LegalName\"");
 
-    /// <summary>The keys and the index of each searchable table, for the tests that check them all.</summary>
     public static IReadOnlyList<(Type Entity, string Table, string KeySql, string IndexName)> Keys { get; } =
     [
         (typeof(Property), "Properties", PropertyKeySql, "IX_Properties_SearchKey_Fts"),
@@ -91,7 +73,6 @@ internal static class SearchKeyModel
         (typeof(SupplierProfile), "SupplierProfiles", SupplierProfileKeySql, "IX_SupplierProfiles_SearchKey_Fts"),
     ];
 
-    /// <summary>Adds the generated key and its full-text index to every searchable entity, and the booking code prefix index.</summary>
     public static void Configure(ModelBuilder modelBuilder)
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);
@@ -111,7 +92,6 @@ internal static class SearchKeyModel
                 .IsTsVectorExpressionIndex(TextSearchConfig);
         }
 
-        // "Cerca per codice": the booking code is stored upper case without separator, so a prefix of it is a range of the index.
         modelBuilder.Entity<Booking>()
             .HasIndex(b => b.BookingCode)
             .HasDatabaseName(BookingCodePrefixIndex)

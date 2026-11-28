@@ -69,7 +69,6 @@ public class OctorateContactsProofTests
         var contacts = await verify.GuestContacts.AsNoTracking().ToListAsync(Ct);
         Assert.Equal(3, contacts.Count);
 
-        // The address of the OTA booking is a forward: service only, whatever else is declared.
         var forwardedByOta = Assert.Single(contacts, c => c.Channel == GuestContactChannel.Email && c.Value == "reply-9f3a@guest.airbnb.example");
         Assert.Equal(GuestContactOrigin.OtaForward, forwardedByOta.Origin);
         Assert.Equal(GuestContactLegalBasis.ServiceOnly, forwardedByOta.LegalBasis);
@@ -77,25 +76,20 @@ public class OctorateContactsProofTests
         Assert.Equal(CrmContactRules.ReasonOtaForward, CrmContactRules.ReachabilityReason(forwardedByOta));
         Assert.True(CrmContactRules.CanReceiveService(forwardedByOta));
 
-        // The address of a customer of the booking engine that is on a relay domain is a forward too, although the soft opt-in is on and the
-        // booking is confirmed.
         var forwardedByDomain = Assert.Single(contacts, c => c.Value == "customer@relay.example.org");
         Assert.Equal(GuestContactOrigin.OtaForward, forwardedByDomain.Origin);
         Assert.Equal(GuestContactLegalBasis.ServiceOnly, forwardedByDomain.LegalBasis);
         Assert.False(CrmContactRules.CanReceiveMarketing(forwardedByDomain));
 
-        // The phone number: service only, from Octorate.
         var phone = Assert.Single(contacts, c => c.Channel == GuestContactChannel.Phone);
         Assert.Equal(GuestContactOrigin.OctorateContactInfo, phone.Origin);
         Assert.Equal(GuestContactLegalBasis.ServiceOnly, phone.LegalBasis);
         Assert.Equal(CrmNormalizer.NormalizePhone("+39 333 1234567", "+39"), phone.Value);
         Assert.False(CrmContactRules.CanReceiveMarketing(phone));
 
-        // The contacts belong to the guest of their booking.
         var guestOfAirbnb = await verify.Bookings.AsNoTracking().Where(b => b.Id == viaAirbnb).Select(b => b.GuestId).SingleAsync(Ct);
         Assert.All(contacts.Where(c => c.Value != "customer@relay.example.org"), c => Assert.Equal(guestOfAirbnb, c.GuestId));
 
-        // No address, number or name in a log.
         Assert.DoesNotContain("example", log.AllOutput, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("1234567", log.AllOutput, StringComparison.Ordinal);
     }
@@ -125,12 +119,10 @@ public class OctorateContactsProofTests
         await using var db = h.NewDb();
         var service = Service(h, db, options);
 
-        // History and bookings of CasaZen are not read.
         Assert.Equal(OctorateContactReadOutcome.StayOver, (await service.ReadForBookingAsync(OrgA, over, Ct)).Outcome);
         Assert.Equal(OctorateContactReadOutcome.NotAnOctorateBooking, (await service.ReadForBookingAsync(OrgA, notOctorate, Ct)).Outcome);
         Assert.Equal(OctorateContactReadOutcome.NotAnOctorateBooking, (await service.ReadForBookingAsync(OrgA, Guid.NewGuid(), Ct)).Outcome);
 
-        // The cap: two reads in the hour, the third booking waits.
         Assert.Equal(OctorateContactReadOutcome.Stored, (await service.ReadForBookingAsync(OrgA, upcoming[0], Ct)).Outcome);
         Assert.Equal(OctorateContactReadOutcome.Stored, (await service.ReadForBookingAsync(OrgA, upcoming[1], Ct)).Outcome);
         Assert.Equal(OctorateContactReadOutcome.OverCap, (await service.ReadForBookingAsync(OrgA, upcoming[2], Ct)).Outcome);
@@ -142,21 +134,14 @@ public class OctorateContactsProofTests
         h.Client.Verify(c => c.GetReservationAsync(It.IsAny<string>(), "res-over", It.IsAny<CancellationToken>()), Times.Never);
         h.Client.Verify(c => c.GetReservationsAsync(It.IsAny<string>(), It.IsAny<OctorateReservationQuery>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // The hour has passed: the booking that waited is read, and the one read lately is not asked for again.
         h.Clock.Advance(OctorateContactReadLedger.Window + TimeSpan.FromMinutes(1));
         Assert.Equal(OctorateContactReadOutcome.Stored, (await service.ReadForBookingAsync(OrgA, upcoming[2], Ct)).Outcome);
         Assert.Equal(OctorateContactReadOutcome.AlreadyRead, (await service.ReadForBookingAsync(OrgA, upcoming[0], Ct)).Outcome);
         h.Client.Verify(c => c.GetGuestContactInfoAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(3));
 
-        // Three bookings were read, one address each: nothing was stored for the others.
         Assert.Equal(3, await db.GuestContacts.CountAsync(Ct));
     }
 
-    /// <summary>
-    /// Proof test (privacy rule, AC-NF94-1): nothing sensitive is read before the product owner declares the IP addresses ready. With
-    /// <c>Crm:OctorateContactsEnabled</c> off (the default), or with the connector off, the call returns at once: no query, no call to Octorate,
-    /// no contact.
-    /// </summary>
     [Fact]
     public async Task OctorateContacts_FlagOff_ReadsNothing_Test()
     {
@@ -166,12 +151,10 @@ public class OctorateContactsProofTests
 
         await using var db = h.NewDb();
 
-        // The default of the options: off.
         var off = await Service(h, db, new CrmOptions()).ReadForBookingAsync(OrgA, bookingId, Ct);
         Assert.Equal(OctorateContactReadOutcome.Disabled, off.Outcome);
         Assert.False(off.HasContact);
 
-        // The switch on, the connector off.
         var noConnector = await Service(h, db, new CrmOptions { OctorateContactsEnabled = true }, new TestFeatureFlags())
             .ReadForBookingAsync(OrgA, bookingId, Ct);
         Assert.Equal(OctorateContactReadOutcome.Disabled, noConnector.Outcome);
@@ -180,7 +163,6 @@ public class OctorateContactsProofTests
         h.Client.Verify(c => c.GetGuestContactInfoAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         Assert.False(await db.GuestContacts.AnyAsync(Ct));
 
-        // Both on: the same call reads.
         var on = await Service(h, db, new CrmOptions { OctorateContactsEnabled = true }).ReadForBookingAsync(OrgA, bookingId, Ct);
         Assert.Equal(OctorateContactReadOutcome.Stored, on.Outcome);
     }
@@ -201,11 +183,9 @@ public class OctorateContactsProofTests
         var ledger = new OctorateContactReadLedger();
         await using var db = h.NewDb();
 
-        // The flag of the module is off (the key is set).
         var flagOff = Service(h, db, options, new TestFeatureFlags(FeatureFlags.OctorateConnector), ledger);
         Assert.Equal(OctorateContactReadOutcome.Disabled, (await flagOff.ReadForBookingAsync(OrgA, bookingId, Ct)).Outcome);
 
-        // The flag is on and the key is not set (production without Crm__ContactIndexKey).
         var noKey = Service(h, db, options, ledger: ledger, index: CrmTestIndex.Create(key: null));
         Assert.Equal(OctorateContactReadOutcome.Disabled, (await noKey.ReadForBookingAsync(OrgA, bookingId, Ct)).Outcome);
 
@@ -213,16 +193,10 @@ public class OctorateContactsProofTests
         h.Client.Verify(c => c.GetGuestContactInfoAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         Assert.False(await db.GuestContacts.AnyAsync(Ct));
 
-        // The module open: the same booking is read, as the closed calls spent and remembered nothing.
         var open = Service(h, db, options, ledger: ledger);
         Assert.Equal(OctorateContactReadOutcome.Stored, (await open.ReadForBookingAsync(OrgA, bookingId, Ct)).Outcome);
     }
 
-    /// <summary>
-    /// Proof test (privacy rule, AC-NF94-2): a customer of the booking engine of the agency is soft opt-in for a confirmed booking only while the
-    /// product owner's declaration (<c>Crm:BookingEngineSoftOptIn</c>) is on; with it off, or for a booking that is still pending, the address is
-    /// service only and is not reachable for marketing.
-    /// </summary>
     [Fact]
     public async Task OctorateContacts_BookingEngineCustomer_IsSoftOptInOnlyWhileTheDeclarationIsOn_Test()
     {
@@ -251,13 +225,11 @@ public class OctorateContactsProofTests
         await using var verify = h.NewDb();
         var contacts = await verify.GuestContacts.AsNoTracking().ToListAsync(Ct);
 
-        // The declaration is off: service only.
         var withoutDeclaration = Assert.Single(contacts, c => c.Value == "off@customer.example.org");
         Assert.Equal(GuestContactOrigin.OctorateContactInfo, withoutDeclaration.Origin);
         Assert.Equal(GuestContactLegalBasis.ServiceOnly, withoutDeclaration.LegalBasis);
         Assert.False(CrmContactRules.CanReceiveMarketing(withoutDeclaration));
 
-        // The declaration is on and the booking is confirmed: the address is soft opt-in, with the notice recorded; the phone number stays service only.
         var softOptIn = Assert.Single(contacts, c => c.Value == "confirmed@customer.example.org");
         Assert.Equal(GuestContactOrigin.OctorateContactInfo, softOptIn.Origin);
         Assert.Equal(GuestContactLegalBasis.SoftOptIn, softOptIn.LegalBasis);
@@ -266,7 +238,6 @@ public class OctorateContactsProofTests
         var phone = Assert.Single(contacts, c => c.Channel == GuestContactChannel.Phone && c.GuestId == softOptIn.GuestId);
         Assert.Equal(GuestContactLegalBasis.ServiceOnly, phone.LegalBasis);
 
-        // The declaration is on and the booking is still pending: not a purchase yet, service only.
         var notYet = Assert.Single(contacts, c => c.Value == "pending@customer.example.org");
         Assert.Equal(GuestContactLegalBasis.ServiceOnly, notYet.LegalBasis);
         Assert.False(CrmContactRules.CanReceiveMarketing(notYet));
@@ -299,16 +270,11 @@ public class OctorateContactsProofTests
         h.Client.Verify(c => c.GetGuestContactInfoAsync(It.IsAny<string>(), "guest-casazen", It.IsAny<CancellationToken>()), Times.Never);
         Assert.DoesNotContain(await db.GuestContacts.AsNoTracking().ToListAsync(Ct), c => c.GuestId == mineGuest);
 
-        // The one that came from Octorate on the same channel is read, and is soft opt-in while the declaration is on.
         Assert.Equal(OctorateContactReadOutcome.Stored, (await service.ReadForBookingAsync(OrgA, theirs, Ct)).Outcome);
         var engineCustomer = Assert.Single(await db.GuestContacts.AsNoTracking().ToListAsync(Ct));
         Assert.Equal(GuestContactLegalBasis.SoftOptIn, engineCustomer.LegalBasis);
     }
 
-    /// <summary>
-    /// Proof test (privacy rule, AC-NF94-5): a cancelled booking has no stay to serve, so the contact of its guest is not read, however far its check-in
-    /// is: no call to Octorate, nothing stored. A pending booking, a stay in the making, is read.
-    /// </summary>
     [Fact]
     public async Task OctorateContacts_CancelledBooking_IsNotRead_ButAPendingOneIs_Test()
     {
@@ -398,7 +364,6 @@ public class OctorateContactsProofTests
         await using var db = h.NewDb();
         var service = Service(h, db, new CrmOptions { OctorateContactsEnabled = true }, log: log);
 
-        // Empty while the reservation says there is an address, and an answer with no member of a contact: not understood, remembered, not asked again.
         Assert.Equal(OctorateContactReadOutcome.Unrecognized, (await service.ReadForBookingAsync(OrgA, emptyWhileAvailable, Ct)).Outcome);
         Assert.Equal(OctorateContactReadOutcome.Unrecognized, (await service.ReadForBookingAsync(OrgA, noMember, Ct)).Outcome);
         Assert.Equal(OctorateContactReadOutcome.Unrecognized, (await service.ReadForBookingAsync(OrgA, emptyWhileAvailable, Ct)).Outcome);
@@ -407,7 +372,6 @@ public class OctorateContactsProofTests
         h.Client.Verify(c => c.GetGuestContactInfoAsync(It.IsAny<string>(), "guest-empty", It.IsAny<CancellationToken>()), Times.Once);
         h.Client.Verify(c => c.GetGuestContactInfoAsync(It.IsAny<string>(), "guest-shape", It.IsAny<CancellationToken>()), Times.Once);
 
-        // A request Octorate rejects: not available for the booking, not sent again in a loop.
         Assert.Equal(OctorateContactReadOutcome.NotAvailable, (await service.ReadForBookingAsync(OrgA, rejected, Ct)).Outcome);
         Assert.Equal(OctorateContactReadOutcome.NotAvailable, (await service.ReadForBookingAsync(OrgA, rejected, Ct)).Outcome);
         h.Client.Verify(c => c.GetGuestContactInfoAsync(It.IsAny<string>(), "guest-rejected", It.IsAny<CancellationToken>()), Times.Once);
@@ -417,12 +381,10 @@ public class OctorateContactsProofTests
         Assert.Equal(OctorateContactReadOutcome.NothingToStore, (await service.ReadForBookingAsync(OrgA, noContact, Ct)).Outcome);
         h.Client.Verify(c => c.GetGuestContactInfoAsync(It.IsAny<string>(), "guest-none", It.IsAny<CancellationToken>()), Times.Once);
 
-        // Once the wait is over the answer is asked for again.
         h.Clock.Advance(OctorateContactReadLedger.NotAvailableMemory);
         Assert.Equal(OctorateContactReadOutcome.Unrecognized, (await service.ReadForBookingAsync(OrgA, emptyWhileAvailable, Ct)).Outcome);
         h.Client.Verify(c => c.GetGuestContactInfoAsync(It.IsAny<string>(), "guest-empty", It.IsAny<CancellationToken>()), Times.Exactly(2));
 
-        // Nothing is stored for a guest with no contact, and the log says the code and nothing of the answer.
         Assert.False(await db.GuestContacts.AnyAsync(Ct));
         Assert.Contains(OctorateContactsService.UnrecognizedAnswerCode, log.AllOutput, StringComparison.Ordinal);
         Assert.DoesNotContain("example", log.AllOutput, StringComparison.OrdinalIgnoreCase);
@@ -457,7 +419,6 @@ public class OctorateContactsProofTests
         await handler.HandleAsync(EventOf(DomainEventType.BookingCreated, Guid.Empty, BookingEventOrigin.Octorate), Ct);
         service.Verify(s => s.ReadForBookingAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Once);
 
-        // A failure does not fail the event, and the log has the ids and the kind of error, never its message.
         service.Reset();
         service
             .Setup(s => s.ReadForBookingAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
@@ -470,7 +431,6 @@ public class OctorateContactsProofTests
         Assert.DoesNotContain("1234567", log.AllOutput, StringComparison.Ordinal);
     }
 
-    /// <summary>The cap is validated at startup: zero or a huge number would switch the guard off without a word.</summary>
     [Theory]
     [InlineData(0, true)]
     [InlineData(1, false)]
@@ -487,8 +447,6 @@ public class OctorateContactsProofTests
         Assert.Equal(fails, result.Failed);
         Assert.Equal(CrmOptions.DefaultOctorateContactReadsPerHour, new CrmOptions().OctorateContactReadsPerHour);
     }
-
-    // ---- the world of the proofs --------------------------------------------------------------------------------------------------
 
     private static OctorateContactsService Service(
         BookingImportHarness h,
@@ -510,7 +468,6 @@ public class OctorateContactsProofTests
             h.Clock,
             log ?? NullLogger<OctorateContactsService>.Instance);
 
-    /// <summary>Octorate answers the reservation (with the id of its guest) and, for that guest, the address and the number given (<c>null</c>: none).</summary>
     private static void Serve(
         BookingImportHarness h,
         string reservationId,
@@ -535,10 +492,6 @@ public class OctorateContactsProofTests
             .ReturnsAsync(new OctorateGuestContactInfo(email, phone));
     }
 
-    /// <summary>
-    /// Octorate answers the reservation with the id of its guest and the flag of the e-mail as given (<c>null</c>: the answer does not say), and for
-    /// that guest exactly <paramref name="answer"/>, whatever it is.
-    /// </summary>
     private static void ServeAnswer(BookingImportHarness h, string reservationId, string guestId, bool? emailAvailable, OctorateGuestContactInfo answer)
     {
         h.Client
@@ -549,7 +502,6 @@ public class OctorateContactsProofTests
             .ReturnsAsync(answer);
     }
 
-    /// <summary>The row of the mirror CasaZen makes when it creates the reservation of a booking on Octorate: the booking is CasaZen's own.</summary>
     private static async Task MirrorAsync(BookingImportHarness h, Guid bookingId)
     {
         await using var db = h.NewDb();

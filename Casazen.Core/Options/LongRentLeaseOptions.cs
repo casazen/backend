@@ -2,11 +2,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Core.Options;
 
-/// <summary>
-/// Section <c>LongRentLease</c>: the product values of the lease drafts of the long-term area (LR-12). Env var
-/// <c>LongRentLease__DraftRetentionDays</c>. The figures of law (terms, notice, deposit limit) are not configuration: they are in
-/// <see cref="Casazen.Core.Leases.LongRentRules"/> and reach the screens through <c>GET api/long-rent/rules</c> (decision LR-D29).
-/// </summary>
 public class LongRentLeaseOptions
 {
     public const string SectionName = "LongRentLease";
@@ -20,7 +15,6 @@ public class LongRentLeaseOptions
     /// </summary>
     public int DraftRetentionDays { get; set; } = DefaultDraftRetentionDays;
 
-    /// <summary>Configuration errors, empty when the section is valid.</summary>
     public IReadOnlyList<string> Validate()
     {
         var failures = new List<string>();
@@ -30,7 +24,6 @@ public class LongRentLeaseOptions
     }
 }
 
-/// <summary>Refuses a <c>LongRentLease</c> section that is not valid at startup, so a typo never deletes drafts after a day nor keeps them for ever.</summary>
 public sealed class LongRentLeaseOptionsValidator : IValidateOptions<LongRentLeaseOptions>
 {
     public ValidateOptionsResult Validate(string? name, LongRentLeaseOptions options)

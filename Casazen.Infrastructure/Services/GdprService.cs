@@ -49,7 +49,6 @@ public class GdprService(
     public const string WithdrawalNoteRequiredCode = "gdpr_marketing_withdrawal_note_required";
     public const int WithdrawalNoteMaxLength = 500;
 
-    /// <summary>The source of the suppression entries a host's withdrawal makes (<c>SuppressionListEntry.Source</c>).</summary>
     private const string SuppressionSourceManual = "manual";
 
     private DateTime UtcNow() => timeProvider.GetUtcNow().UtcDateTime;
@@ -84,7 +83,6 @@ public class GdprService(
         string? actorUserId,
         CancellationToken cancellationToken = default)
     {
-        // The reach of the caller is always declared, never assumed: a scope of another org is a mistake of the caller, not a wider reach.
         ArgumentNullException.ThrowIfNull(scope);
         if (scope.OrgId != orgId)
             throw new ArgumentException("The reach of the caller is not on the org of the guest.", nameof(scope));
@@ -155,8 +153,6 @@ public class GdprService(
         var (crmProfile, profileIsGuestsAlone, crmProfileIds) = await ReadCrmProfileAsync(guest, cancellationToken);
         var contacts = await ReadCrmContactsAsync(guest, profileIsGuestsAlone, crmProfileIds, cancellationToken);
 
-        // The messages are not the guest's data alone: they follow the rules of the message screens of the host (BookingMessagesController), that is
-        // booking.read and the properties the caller reaches. guest.read opens the rest of the export, not the conversations on stays out of reach.
         IReadOnlyList<GuestExportMessage> messages = [];
         if (includeMessages)
             messages = await ReadMessagesAsync(orgId, scope, bookingIds, cancellationToken);
@@ -270,11 +266,6 @@ public class GdprService(
         return (export, !shared, profileIds);
     }
 
-    /// <summary>
-    /// The contacts of the guest in the CRM, decrypted: the ones the guest gave and, when the profile is the guest's alone, every contact of
-    /// that profile and of the profiles merged into it (<paramref name="profileIds"/>): the same set the erasure removes
-    /// (<see cref="GuestDataEraser.EraseCrmDataAsync"/>). An opt-out marker left by an earlier erasure holds no person and is not the guest's.
-    /// </summary>
     private async Task<IReadOnlyList<GuestExportContact>> ReadCrmContactsAsync(
         Guest guest,
         bool profileIsGuestsAlone,
@@ -303,10 +294,6 @@ public class GdprService(
             c.BasisRecordedAt, c.ConsentSource, c.ConsentIpAddress, c.IsSuppressed, c.SuppressedAt, c.SuppressedSource, c.CreatedAt)).ToList();
     }
 
-    /// <summary>
-    /// The messages of the conversations the guest had with the host on its bookings (DB-14a), oldest first: only the threads of the properties
-    /// <paramref name="scope"/> reaches, in SQL (<c>InScope</c>, the rule of every list of the host). A thread on a stay out of reach is not read.
-    /// </summary>
     private async Task<IReadOnlyList<GuestExportMessage>> ReadMessagesAsync(
         Guid orgId,
         HostScope scope,
@@ -331,7 +318,6 @@ public class GdprService(
         return messages.Select(m => new GuestExportMessage(bookingOfThread[m.ThreadId], m.Sender, m.Text, m.CreatedAt)).ToList();
     }
 
-    /// <summary>The tags of a profile (<c>TagsJson</c>, a JSON array of texts; empty or unreadable is none).</summary>
     private static List<string> TagsOf(string? tagsJson)
     {
         if (string.IsNullOrWhiteSpace(tagsJson))
@@ -418,8 +404,6 @@ public class GdprService(
         var now = UtcNow();
         var filesDeleted = await eraser.DeleteDocumentScanAsync(guest, cancellationToken);
 
-        // The row is about to be removed, and the CRM backfill gives a profile and contacts to every guest, bookings or not: they go with it, in
-        // the same save (E07/F06/US02/T01). The guest is unlinked from its profile first, so the removal of the row meets no reference to it.
         var crm = await eraser.EraseCrmDataAsync(guest, now, cancellationToken);
         AddAudit(
             guest,
@@ -451,12 +435,8 @@ public class GdprService(
         if (string.IsNullOrEmpty(documentedRequest))
             throw new DomainRuleException("gdpr_marketing_withdrawal_note_required", "GdprMarketingWithdrawalNoteRequired");
 
-        // What the guest consented to is the flag (the yes/no of the checkout and of the portal) and the contacts of the CRM the guest gave: a
-        // consent on WhatsApp alone leaves the flag unset, and an address typed on the guest page is a contact of the guest and no more.
         var openContacts = await OpenContactsOfAsync(guest, cancellationToken);
 
-        // The contacts are suppressed through the service of the contacts, which needs the key of the index like the addresses of the guest.
-        // Without it they are left, and an error in the log says so (a guest with contacts has them only where the key was set).
         var endContacts = openContacts.Count > 0 && crmContacts is not null && suppressionService is { CanIndexAddresses: true };
         if (openContacts.Count > 0 && !endContacts)
         {
@@ -496,14 +476,10 @@ public class GdprService(
             guest.UpdatedAt = now;
             AddAudit(guest, GuestPrivacyAuditAction.MarketingConsentWithdrawn, actorUserId, now);
 
-            // AC-NF95-6: the guest asked to stop, so every address it gave enters the suppression list, in the same unit of work as the
-            // withdrawal. The withdrawal is a legal record and does not wait for the key of the index: without it the suppression is skipped
-            // (and logged as an error) and the record, the audit entry and the flag are saved as they were before the index had a key.
             await StageSuppressionOfTheGuestAsync(guest, withdrawal.Id, cancellationToken);
         }
         else
         {
-            // The flag was not set: the consents in force are the contacts, each of which writes its own row of the history below.
             guest.UpdatedAt = now;
             AddAudit(guest, GuestPrivacyAuditAction.MarketingConsentWithdrawn, actorUserId, now);
         }
@@ -515,11 +491,6 @@ public class GdprService(
         logger.LogInformation("Marketing consent of guest {GuestId} withdrawn by user {ActorUserId} on the guest's request", guest.Id, actorUserId);
     }
 
-    /// <summary>
-    /// The contacts of the CRM that the guest gave (<see cref="GuestContact.GuestId"/>) and that are not suppressed yet, with a basis a message
-    /// of marketing can rest on (soft opt-in or consent): the ones a withdrawal on the guest's request has to end. Read, not tracked; the
-    /// service of the contacts changes them. Of the guest's org only.
-    /// </summary>
     private async Task<List<GuestContact>> OpenContactsOfAsync(Guest guest, CancellationToken cancellationToken) =>
         await db.GuestContacts
             .AsNoTracking()
@@ -529,11 +500,6 @@ public class GdprService(
                 && c.LegalBasis > GuestContactLegalBasis.ServiceOnly)
             .ToListAsync(cancellationToken);
 
-    /// <summary>
-    /// Suppresses each contact through the service of the contacts (source <c>manual</c>, consent source <see cref="GuestConsentSource.HostOnGuestRequest"/>,
-    /// the documented request as the note): the contact is flagged, goes back to service only, its address enters the suppression list and the
-    /// withdrawal is written in the privacy history. The caller has checked that the service exists and that the key of the index is there.
-    /// </summary>
     private async Task WithdrawContactsAsync(
         Guest guest,
         List<GuestContact> contacts,
@@ -557,13 +523,6 @@ public class GdprService(
         }
     }
 
-    /// <summary>
-    /// Adds to the unit of work (not saved here) the suppression, with source <c>manual</c>, of the e-mail of the guest and of every marketing
-    /// e-mail of its per-channel consents (<see cref="MarketingConsentRecord.MarketingEmail"/>), each address once however it is spelled.
-    /// The placeholder of an anonymized guest and an empty address are not addresses. The suppression service flags the CRM contacts with the same
-    /// keyed hash in the same unit of work. Only when the key of the index is there: without it nothing is staged and the withdrawal is
-    /// saved alone, with an error in the log that holds the ids and the name of the variable and nothing about the guest.
-    /// </summary>
     private async Task StageSuppressionOfTheGuestAsync(Guest guest, Guid withdrawalId, CancellationToken cancellationToken)
     {
         var suppression = suppressionService
@@ -666,10 +625,6 @@ public class GdprService(
             : new GuestPrivacyNoticeState(guest.ConsentVersion, guest.ConsentDate ?? guest.DataProcessingConsentDate);
     }
 
-    /// <summary>
-    /// Retention of each category for this guest, computed like the job does (<see cref="GuestDataRetentionService"/>):
-    /// reference date, due date when configured, and when the job last applied it (audit).
-    /// </summary>
     private async Task<IReadOnlyList<GuestRetentionScheduleItem>> RetentionScheduleAsync(
         Guest guest,
         IReadOnlyList<GuestConsentRecord> history,
@@ -727,7 +682,6 @@ public class GdprService(
         var years = await fiscalYears
             .Select(y => new { y.PropertyId, y.TaxYear, Regime = y.Regime.ToString(), y.IsPrimaryForCedolare })
             .ToListAsync(cancellationToken);
-        // Taxpayers recorded per property (CO-18).
         var propertyTaxpayers = await taxpayers
             .Select(p => new { PropertyId = p.Id, FiscalCode = p.TaxpayerFiscalCode })
             .ToListAsync(cancellationToken);

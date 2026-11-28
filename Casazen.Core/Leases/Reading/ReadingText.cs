@@ -4,16 +4,10 @@ using System.Text.RegularExpressions;
 
 namespace Casazen.Core.Leases.Reading;
 
-/// <summary>
-/// The small tools the readers of a contract document share (CF-DOCS-REAL): the text brought to a plain form that an OCR's small
-/// mistakes do not break, the search of a title that tolerates a few wrong letters, and the amounts and dates as an Italian document
-/// writes them. Pure, no I/O, nothing logged.
-/// </summary>
 internal static partial class ReadingText
 {
     private const int Timeout = 2000;
 
-    /// <summary>Lower case, no accents, anything that is not a letter or a digit is one space: how a heading is compared.</summary>
     public static string Normalize(string? text)
     {
         if (string.IsNullOrEmpty(text))
@@ -41,16 +35,10 @@ internal static partial class ReadingText
         return builder.ToString().Trim();
     }
 
-    /// <summary><see cref="Normalize"/> without the spaces: a title the OCR split in two or glued to its neighbour is still found.</summary>
     public static string Compact(string? text) => Normalize(text).Replace(" ", string.Empty, StringComparison.Ordinal);
 
-    /// <summary>The number of letters and digits of a text: what tells a page that holds text from one that is blank or unreadable.</summary>
     public static int Letters(string? text) => string.IsNullOrEmpty(text) ? 0 : text.Count(char.IsLetterOrDigit);
 
-    /// <summary>
-    /// The smallest number of wrong, missing or extra letters with which <paramref name="phrase"/> appears in <paramref name="text"/>
-    /// (both compact), and where the best occurrence ends; the phrase is not found at all when it needs more than a sixth of its length.
-    /// </summary>
     public static (bool Found, int End) FindLike(string text, string phrase)
     {
         if (phrase.Length == 0 || text.Length == 0)
@@ -85,26 +73,18 @@ internal static partial class ReadingText
         return best <= allowed ? (true, end) : (false, -1);
     }
 
-    /// <summary>Whether the normalized text holds the words as a whole (not as part of a longer word).</summary>
     public static bool HasWords(string normalized, string words) =>
         $" {normalized} ".Contains($" {words} ", StringComparison.Ordinal);
 
-    // ---- amounts ------------------------------------------------------------------------------------------------------------
-
-    /// <summary>An amount of euros as the documents of the Agenzia and the contracts write it: "7.140,00", "595,00", "595".</summary>
     public const string AmountPattern = @"\d{1,3}(?:[. ]\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?";
 
     public static decimal? Amount(string raw) => LeaseContractTextParser.ParseAmount(raw);
 
-    // ---- dates --------------------------------------------------------------------------------------------------------------
-
-    /// <summary>A date as numbers, with a four or a two digit year: "19/09/2026", "19-9-26".</summary>
     public const string DatePattern = @"\d{1,2}\s?[/.\-]\s?\d{1,2}\s?[/.\-]\s?(?:\d{4}|\d{2})";
 
     [GeneratedRegex(@"^(?<d>\d{1,2})\s?[/.\-]\s?(?<m>\d{1,2})\s?[/.\-]\s?(?<y>\d{4}|\d{2})$", RegexOptions.CultureInvariant, Timeout)]
     private static partial Regex NumericDate();
 
-    /// <summary>The calendar date written as numbers; a two digit year is read as 20xx. <c>null</c> when it is not a real day.</summary>
     public static DateOnly? Date(string raw)
     {
         var match = NumericDate().Match(raw.Trim());

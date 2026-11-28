@@ -4,9 +4,6 @@ using System.Collections.Concurrent;
 
 namespace Casazen.Infrastructure.OTA.Resilience;
 
-/// <summary>
-/// Rate limiter for OTA platform API calls
-/// </summary>
 public class OtaRateLimiter
 {
     private readonly ILogger<OtaRateLimiter> _logger;
@@ -48,12 +45,6 @@ public class OtaRateLimiter
         }
     }
 
-    /// <summary>
-    /// Waits for rate limit availability before allowing request to proceed
-    /// </summary>
-    /// <param name="platform">OTA platform name</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Disposable token to release rate limit slot</returns>
     public async Task<IDisposable> AcquireAsync(string platform, CancellationToken cancellationToken = default)
     {
         if (!_configs.TryGetValue(platform, out var config))
@@ -67,10 +58,8 @@ public class OtaRateLimiter
 
         try
         {
-            // Wait for rate limit window availability
             await WaitForRateLimitWindow(platform, config, cancellationToken);
 
-            // Record request timestamp
             var now = DateTime.UtcNow;
             lock (_requestTimestamps[platform])
             {
@@ -83,7 +72,6 @@ public class OtaRateLimiter
         }
         catch
         {
-            // Release semaphore if we couldn't complete acquisition
             _semaphores[platform].Release();
             throw;
         }
@@ -98,20 +86,17 @@ public class OtaRateLimiter
 
             lock (_requestTimestamps[platform])
             {
-                // Remove timestamps outside the current window
                 while (_requestTimestamps[platform].Count > 0 &&
                        _requestTimestamps[platform].Peek() < windowStart)
                 {
                     _requestTimestamps[platform].Dequeue();
                 }
 
-                // Check if we're under the limit
                 if (_requestTimestamps[platform].Count < config.MaxRequestsPerWindow)
                 {
                     return;
                 }
 
-                // Calculate wait time until oldest request falls outside window
                 var oldestRequest = _requestTimestamps[platform].Peek();
                 var waitTime = oldestRequest.AddSeconds(config.WindowDurationSeconds) - now;
 
@@ -125,7 +110,6 @@ public class OtaRateLimiter
                 }
             }
 
-            // Wait a bit before checking again
             await Task.Delay(100, cancellationToken);
         }
     }

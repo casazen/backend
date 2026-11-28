@@ -9,7 +9,6 @@ namespace Casazen.Web.Infrastructure;
 /// </summary>
 public static class ZipDownloadHeaders
 {
-    /// <summary>Registers the headers to be set when the response starts, under the name <paramref name="fileName"/>.</summary>
     public static void WhenTheResponseStarts(HttpResponse response, string fileName)
     {
         ArgumentNullException.ThrowIfNull(response);
@@ -25,7 +24,6 @@ public static class ZipDownloadHeaders
             (response, fileName));
     }
 
-    /// <summary><c>application/zip</c> and an attachment disposition with the name, for a response that is a 200; nothing for any other status.</summary>
     public static void Apply(HttpResponse response, string fileName)
     {
         ArgumentNullException.ThrowIfNull(response);

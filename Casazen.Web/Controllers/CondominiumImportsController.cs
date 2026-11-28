@@ -7,11 +7,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// One-way copy of a CondoLedger <c>condo-export-v1</c> snapshot. Staging does not change balances.
-/// A house is posted only after a property in this organization is verified and the year matches to the cent.
-/// This is not an administrator PDF reader.
-/// </summary>
 [ApiController]
 [Route("api/long-rent/condominium-imports")]
 [Authorize(Policy = CasazenPolicies.LongRentPropertyRead)]

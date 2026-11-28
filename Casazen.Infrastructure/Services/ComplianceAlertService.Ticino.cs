@@ -28,12 +28,10 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed partial class ComplianceAlertService
 {
-    /// <summary>The code of the 422 <see cref="ITicinoNotificationService"/> answers for a property that is not in canton Ticino.</summary>
     private const string PropertyNotInTicinoCode = "property_not_in_ticino";
 
     private async Task<int> SendTicinoAlertsAsync(DateTime now, CancellationToken ct)
     {
-        // The flag is on but the service of the days is not there (a host that builds this service without it): nothing can be read, and it is said, not silent.
         if (ticinoNotifications is null)
         {
             logger.LogWarning("Ticino notification alerts skipped: Features:TicinoNotificationAlerts is on but the service of the days to notify is not registered");
@@ -74,8 +72,6 @@ public sealed partial class ComplianceAlertService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // One property or day that cannot be processed never stops the others; its stage stays unclaimed when the failure came before the claim, and
-                // the next run tries again.
                 logger.LogError(ex, "Ticino notification alert of property {PropertyId} for {Day} could not be processed", day.PropertyId, day.Day);
             }
             finally
@@ -120,7 +116,6 @@ public sealed partial class ComplianceAlertService
         return step with { Alert = step.Alert with { MissingFields = missing } };
     }
 
-    /// <summary>The clock of each property: its <c>Timezone</c>, and Europe/Rome (the same rules as Europe/Zurich) for one the machine does not know.</summary>
     private async Task<Dictionary<Guid, TimeZoneInfo>> TicinoZonesAsync(IReadOnlyCollection<Guid> propertyIds, CancellationToken ct)
     {
         var ids = propertyIds.ToList();
@@ -132,11 +127,6 @@ public sealed partial class ComplianceAlertService
         return rows.ToDictionary(row => row.Id, row => RomeCalendar.ZoneOf(row.Timezone));
     }
 
-    /// <summary>
-    /// The earliest expected check-in of each arrival day of these properties (<see cref="ComplianceAlertSchedule.TicinoFirstExpectedArrival"/>), from the stays
-    /// that owe a notification: the one definition of them (an active status and no no-show mark, <see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/>).
-    /// A day without an expected time is not in the answer.
-    /// </summary>
     private async Task<Dictionary<(Guid PropertyId, DateOnly Day), TimeOnly>> TicinoExpectedArrivalsAsync(
         IReadOnlyCollection<Guid> propertyIds,
         DateOnly firstDay,
@@ -167,7 +157,6 @@ public sealed partial class ComplianceAlertService
         return result;
     }
 
-    /// <summary>The last stage sent for each arrival day of these properties (the state rows of <see cref="ComplianceAlertType.TicinoNotification"/>).</summary>
     private async Task<Dictionary<(Guid PropertyId, string Day), int>> TicinoStagesAsync(IReadOnlyCollection<Guid> propertyIds, CancellationToken ct)
     {
         var ids = propertyIds.ToList();
@@ -179,6 +168,5 @@ public sealed partial class ComplianceAlertService
         return rows.ToDictionary(row => (row.PropertyId, row.ReferenceKey), row => row.Stage);
     }
 
-    /// <summary>A calendar day as the bookings store it: midnight UTC of that day.</summary>
     private static DateTime StoredDay(DateOnly day) => DateTime.SpecifyKind(day.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
 }

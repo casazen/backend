@@ -23,10 +23,8 @@ public class PropertyMemberAccess : ITenantOwned
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant key: the org of the property and of the member. Server-set, never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The member (<c>User.Id</c>).</summary>
     [Required, MaxLength(255)]
     public string UserId { get; set; } = string.Empty;
 
@@ -36,7 +34,6 @@ public class PropertyMemberAccess : ITenantOwned
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>Who gave the access (<c>User.Id</c>). No foreign key: the history outlives the account.</summary>
     [MaxLength(255)]
     public string? CreatedByUserId { get; set; }
 }

@@ -6,19 +6,14 @@ namespace Casazen.Infrastructure.Identity;
 // one session: codes, flags and the numbers the policy compares, never a picture, a frame, a value read on a document or a face representation. Every threshold in it comes
 // from the versioned policy file (the closure fills it); the engine holds none.
 
-/// <summary>How one check of the evidence came out. The default, <see cref="NotRun"/>, is never a pass: a check that was not reached cannot approve anybody.</summary>
 public enum IdentityCheckStatus
 {
-    /// <summary>The check was not reached (an earlier step stopped the attempt) or was never filled in: never a pass.</summary>
     NotRun = 0,
 
-    /// <summary>The check was made and holds.</summary>
     Passed = 1,
 
-    /// <summary>The check was made and does not hold.</summary>
     Failed = 2,
 
-    /// <summary>The check could not be made (a model was not there, failed or ran out of time): a technical fault, never a pass.</summary>
     Unavailable = 3,
 }
 
@@ -39,41 +34,27 @@ public sealed record CheckOutcome(
     double? Value = null,
     double? Threshold = null);
 
-/// <summary>
-/// The coherence of the document (NF-190, D11: the reliability of a document is coherence only), summed up for the decision. The default, <see cref="Unknown"/>, is never a pass:
-/// a check that could not be made (a field not read, nothing kept to read again, as in Ticino) does not vouch for the document.
-/// </summary>
 public enum IdentityDocumentCoherence
 {
-    /// <summary>The coherence could not be told: never a pass.</summary>
     Unknown = 0,
 
-    /// <summary>Every check of the coherence that the format requires passed.</summary>
     Passed = 1,
 
-    /// <summary>A field the policy calls identifying reads differently on the two sides (or against the MRZ).</summary>
     IdentifyingConflict = 2,
 
-    /// <summary>A check digit of the MRZ does not hold.</summary>
     MrzInvalid = 3,
 
-    /// <summary>The document expires before the day of the stay.</summary>
     Expired = 4,
 }
 
-/// <summary>Whether the models could run for the attempt. Anything but <see cref="None"/> is a fault, and a fault never approves (D8).</summary>
 public enum IdentityModelsFault
 {
-    /// <summary>No fault: every model that was asked ran.</summary>
     None = 0,
 
-    /// <summary>The models are not loaded (missing, a hash that does not match, still loading): the verification is <c>unavailable</c>.</summary>
     NotReady = 1,
 
-    /// <summary>A model failed while it ran (an exception): <c>technical_error</c>.</summary>
     Failed = 2,
 
-    /// <summary>The time of the attempt (<c>IdentityVerification:Presence:SequenceTimeoutMs</c>) was over: <c>technical_error</c>.</summary>
     TimedOut = 3,
 }
 
@@ -99,7 +80,6 @@ public sealed record MatchSummary(
     double ReviewFloor,
     double MinEachFrame)
 {
-    /// <summary>The summary of <paramref name="report"/> with the thresholds of <paramref name="policy"/> (the very policy the matcher ran with).</summary>
     public static MatchSummary From(MatchReport report, IdentityMatchPolicy policy)
     {
         ArgumentNullException.ThrowIfNull(report);
@@ -144,10 +124,6 @@ public sealed record IdentityEvidenceBundle(
     int GuidedRetriesUsed,
     int GuidedRetriesAllowed)
 {
-    /// <summary>
-    /// The checks of the presence the decision requires, in their order (the order of the validation, then the liveness of the frames the server chose): every one of them must
-    /// be <see cref="IdentityCheckStatus.Passed"/> for an approval, and they are independent conditions (D7): none of them is weighed against another or against the similarity.
-    /// </summary>
     public static IReadOnlyList<string> PresenceChecks { get; } =
     [
         VerificationReasons.Checks.PresenceTiming,

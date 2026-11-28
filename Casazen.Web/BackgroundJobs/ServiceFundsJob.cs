@@ -24,7 +24,6 @@ public class ServiceFundsJob(ISupplierFundsJobService funds, IServiceDisputeJobS
 {
     public const string RecurringJobId = "service-funds";
 
-    /// <summary>Every 5 minutes.</summary>
     public const string Cron = "*/5 * * * *";
 
     // One run at a time; a second run started anyway (a retry, the dashboard) waits for the first and then finds nothing left to do.
@@ -44,7 +43,6 @@ public class ServiceFundsJob(ISupplierFundsJobService funds, IServiceDisputeJobS
                 run.Errors);
         }
 
-        // The disputes are a step of their own: whatever it finds, the releases above have run.
         var disputeRun = await disputes.RunDisputesAsync(cancellationToken);
         if (!disputeRun.HadWork)
             return;

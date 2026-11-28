@@ -27,36 +27,20 @@ public interface ICrmProfileSyncService
     /// </summary>
     bool IsAvailable { get; }
 
-    /// <summary>
-    /// Syncs the booker of a booking of the org: finds or creates the profile (<see cref="IGuestMatchingService.FindOrCreateProfileAsync"/>), builds
-    /// the contacts (<see cref="ICrmContactService.SyncFromGuestAsync"/>), recomputes the aggregates of the profile and sets its language from
-    /// the most recent contact language and its country from the guest when empty.
-    /// </summary>
     Task<CrmSyncOutcome> SyncBookingAsync(Guid orgId, Guid bookingId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The same for a guest of the org, with no booking in hand: the backfill of the guests who have no profile yet, and a guest created from the
-    /// guest list who never had a booking.
-    /// </summary>
     Task<CrmSyncOutcome> SyncGuestAsync(Guid orgId, Guid guestId, CancellationToken cancellationToken = default);
 }
 
-/// <summary>What a sync did (<see cref="ICrmProfileSyncService"/>).</summary>
 public enum CrmSyncOutcome
 {
-    /// <summary>The guest has its profile, its contacts and its aggregates.</summary>
     Synced = 1,
 
-    /// <summary>
-    /// The module is closed (<see cref="ICrmProfileSyncService.IsAvailable"/> is false: the flag is off or the keyed index has no key): nothing
-    /// was read or written.
-    /// </summary>
     NotAvailable = 2,
 
     /// <summary>The org has no such booking (deleted since the event was recorded): nothing to do.</summary>
     BookingNotFound = 3,
 
-    /// <summary>The org has no such guest, or the guest is erased, anonymized or asked for erasure: nothing is kept of them in the CRM.</summary>
     GuestNotSyncable = 4,
 }
 

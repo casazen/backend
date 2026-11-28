@@ -29,8 +29,6 @@ public class FiscalReportsTests
 
     private static readonly DateTimeOffset Now = new(2026, 9, 25, 10, 0, 0, TimeSpan.Zero);
 
-    // ---------------------------------------------------------------- summary
-
     [Fact]
     public async Task GetAnnualReport_KnownPayments_TotalsAndTaxEstimatedOnlyForCedolare()
     {
@@ -45,10 +43,8 @@ public class FiscalReportsTests
         SeedRegime(db, b, StrFiscalRegime.CedolareSecca26);
         SeedRegime(db, c, StrFiscalRegime.IrpefOrdinaria);
 
-        // A: direct booking, tourist tax 100 included in the 1.100 paid.
         var stayA = SeedStay(db, a, Day(2026, 3, 1), nights: 3, totalPrice: 1100m, touristTax: 100m);
         SeedPayment(db, stayA, 1100m, Instant(2026, 3, 1, 10));
-        // B: OTA payouts with withholding, one partially refunded (500 - 100 = 400, withholding 105 -> 84).
         var stayB = SeedStay(db, b, Day(2026, 4, 1), nights: 5, source: BookingSource.Airbnb);
         SeedPayment(db, stayB, 1000m, Instant(2026, 4, 10, 10), withholding: 210m);
         SeedPayment(db, stayB, 500m, Instant(2026, 4, 11, 10), withholding: 105m, refunded: 100m, status: PaymentStatus.PartiallyRefunded);
@@ -168,7 +164,6 @@ public class FiscalReportsTests
         var property = SeedProperty(db, orgId, "Trimestre");
         SeedRegime(db, property, StrFiscalRegime.CedolareSecca21);
         var stay = SeedStay(db, property, Day(2026, 3, 30), nights: 3);
-        // 21:30 UTC of 31 March is 23:30 in Rome (Q1); 22:30 UTC is 00:30 of 1 April in Rome (Q2).
         SeedPayment(db, stay, 100m, new DateTime(2026, 3, 31, 21, 30, 0, DateTimeKind.Utc));
         SeedPayment(db, stay, 40m, new DateTime(2026, 3, 31, 22, 30, 0, DateTimeKind.Utc));
         await db.SaveChangesAsync();
@@ -225,8 +220,6 @@ public class FiscalReportsTests
         Assert.Equal(10m, touristTax.Totals.Amount);
     }
 
-    // ---------------------------------------------------------------- withholding
-
     [Fact]
     public async Task GetWithholdingReport_Lines_CarryPropertyBookingCodeRomeDateAndTotals()
     {
@@ -253,8 +246,6 @@ public class FiscalReportsTests
         Assert.Equal(new WithholdingTotals(1000m, 210m, 790m, 2), report.Totals);
         Assert.Equal(["Airbnb", "BookingCom"], report.ByOta.Select(o => o.Source));
     }
-
-    // ---------------------------------------------------------------- tourist tax
 
     [Fact]
     public async Task GetTouristTaxReport_GroupsByComuneAndMonth_WithTheRecordedAmounts()
@@ -300,8 +291,6 @@ public class FiscalReportsTests
         Assert.Equal("fiscal_report_period_invalid", ex.Code);
     }
 
-    // ---------------------------------------------------------------- PDF
-
     [Fact]
     public void ToPdf_AnnualReportWithManyProperties_ItalianTablesOnSeveralA4Pages()
     {
@@ -332,10 +321,8 @@ public class FiscalReportsTests
             Assert.Equal(842, Math.Round(page.Height));
         });
         var words = PdfTestReader.BodyWords(pdf);
-        // Two tables per property (income, estimated tax): every property appears twice, in order.
         var properties = words.Where(w => w.StartsWith("Immobile0", StringComparison.Ordinal)).ToList();
         Assert.Equal(Enumerable.Range(1, 70).Select(i => $"Immobile{i:D3}").Concat(Enumerable.Range(1, 70).Select(i => $"Immobile{i:D3}")), properties);
-        // Amounts, including a 6-digit total, are never split across lines.
         Assert.Contains("12.345,67", words);
         Assert.Contains("864.196,90", words);
         Assert.Contains("26%", words);
@@ -349,7 +336,6 @@ public class FiscalReportsTests
         Assert.Contains("n.d.", text, StringComparison.Ordinal);
         Assert.DoesNotContain("Gross", text, StringComparison.Ordinal);
         Assert.DoesNotContain("withholding", text, StringComparison.OrdinalIgnoreCase);
-        // The header row of the income table is repeated on the pages it spans.
         Assert.True(
             pages.Count(p => p.Text.Contains("Immobile Regime Incassato", StringComparison.Ordinal)) > 1,
             string.Join("\n---\n", pages.Select(p => p.Text[..Math.Min(300, p.Text.Length)])));
@@ -423,8 +409,6 @@ public class FiscalReportsTests
         Assert.Contains("Modello 21", text, StringComparison.Ordinal);
     }
 
-    // ---------------------------------------------------------------- CSV
-
     [Fact]
     public async Task ToCsv_AnnualReport_ItalianHeadersSemicolonsDecimalCommaAndFormulaGuard()
     {
@@ -496,8 +480,6 @@ public class FiscalReportsTests
         Assert.Equal("Totale;;;;600,00;126,00;474,00;", lines[2]);
     }
 
-    // ---------------------------------------------------------------- tax profile and regimes
-
     [Fact]
     public async Task UpdateTaxProfile_OnlyFiscalCode_KeepsTheSavedPartitaIva()
     {
@@ -564,8 +546,8 @@ public class FiscalReportsTests
     [InlineData(true, "1234", null)]
     [InlineData(null, null, "RSSMRA80A01")]
     [InlineData(false, "12345678901", null)]
-    [InlineData(null, null, "RSSMRA85T10A562X")] // CO-18: structurally valid person code but wrong check character
-    [InlineData(null, null, "12345678901")] // CO-18: structurally valid numeric code but wrong check digit
+    [InlineData(null, null, "RSSMRA85T10A562X")]
+    [InlineData(null, null, "12345678901")]
     public async Task UpdateTaxProfile_InvalidIdentifiers_ThrowsValidation(bool? hasPartitaIva, string? number, string? fiscalCode)
     {
         var orgId = Guid.NewGuid();
@@ -626,8 +608,6 @@ public class FiscalReportsTests
 
         Assert.Equal("fiscal_partita_iva_required", ex.Code);
     }
-
-    // ---------------------------------------------------------------- helpers
 
     private static FiscalReportRules Rules()
     {

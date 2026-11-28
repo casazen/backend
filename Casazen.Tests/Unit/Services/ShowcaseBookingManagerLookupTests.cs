@@ -20,8 +20,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class ShowcaseBookingManagerLookupTests
 {
-    // ─── The booking, as the customer sees it ────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Lookup_ANewBooking_IsFoundWithTheCodeAndTheAddress_WithWhatTheCustomerBooked()
     {
@@ -42,9 +40,7 @@ public class ShowcaseBookingManagerLookupTests
         Assert.Equal("20900", view.Place.PostalCode);
         Assert.Equal((6000, (int?)null, (int?)null), (view.Price.EstimatedAmountCents, view.Price.QuotedAmountCents, view.Price.FinalAmountCents));
         Assert.Equal((6000, "estimate"), (view.Price.AmountCents, view.Price.Basis));
-        // A flat price keeps no quantity among the choices of the booking: its base is the line of the service, so the lines add up.
         Assert.Equal([new ShowcaseBookingPriceLine("service", ServiceRequestScenario.ServiceName, 1, 6000, 6000)], view.Price.Lines);
-        // The supplier has its 180 minutes from the moment the address was checked.
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime.AddMinutes(180), view.RespondBy);
         Assert.Null(view.Proposal);
         Assert.Null(view.Cancellation);
@@ -57,7 +53,6 @@ public class ShowcaseBookingManagerLookupTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.EnableBookingAsync();
-        // Friday 10:00 is 22 hours away at the clock of the scenario; Saturday 09:00 is 45 hours away.
         var (_, soon) = await s.BookedForManagementAsync(ServiceRequestScenario.FridayAt10);
         var (_, later) = await s.BookedForManagementAsync(ServiceRequestScenario.SaturdayAt09, "anna.verdi@example.com");
 
@@ -68,7 +63,6 @@ public class ShowcaseBookingManagerLookupTests
         Assert.False(soonView.CancellationTerms.IsFree);
         Assert.Equal(ServiceRequestScenario.SaturdayAt09.AddHours(-24), laterView.CancellationTerms.FreeUntilUtc);
         Assert.True(laterView.CancellationTerms.IsFree);
-        // Not free any more is not the end of cancelling: a late cancellation costs nothing either in v1 (decision D6).
         Assert.True(soonView.Actions.CanCancel);
     }
 
@@ -87,7 +81,7 @@ public class ShowcaseBookingManagerLookupTests
         var view = await s.Kit.Manager.LookupAsync(credentials);
 
         Assert.Equal(ServiceRequestScenario.FridayAt10.AddHours(-12), view.CancellationTerms.FreeUntilUtc);
-        Assert.True(view.CancellationTerms.IsFree); // 22 hours away: more than 12
+        Assert.True(view.CancellationTerms.IsFree);
     }
 
     [Fact]
@@ -115,7 +109,6 @@ public class ShowcaseBookingManagerLookupTests
                 new ShowcaseBookingPriceLine("option", "Pulizie pesanti", 1, 2000, 2000),
             ],
             view.Price.Lines);
-        // The lines of the estimate add up to it, whatever the unit of the price.
         Assert.Equal(view.Price.EstimatedAmountCents, view.Price.Lines.Sum(line => line.AmountCents));
     }
 
@@ -151,8 +144,6 @@ public class ShowcaseBookingManagerLookupTests
         Assert.Null(view.Price.Basis);
         Assert.Empty(view.Price.Lines);
     }
-
-    // ─── The place: the exact address only once the supplier took the request ───────────────────────────────────────────
 
     [Fact]
     public async Task Lookup_BeforeTheTake_TheStreetTheFloorAndTheNotesAreNotThere_AfterTheTakeTheyAre()
@@ -213,7 +204,6 @@ public class ShowcaseBookingManagerLookupTests
 
         var view = await s.Kit.Manager.LookupAsync(credentials);
 
-        // The code NoResponse is not a sentence and is not handed to the customer as one; the party says what happened.
         Assert.Equal(ServiceRequestStatus.Annullato, view.Status);
         Assert.Equal(ServiceRequestActorParty.System, view.Cancellation!.By);
         Assert.Null(view.Cancellation.Reason);
@@ -247,7 +237,6 @@ public class ShowcaseBookingManagerLookupTests
             ],
             view.Price.Lines);
         Assert.Equal(new ShowcaseBookingActions(false, false, false), view.Actions);
-        // What the supplier wrote when it completed the work is for the supplier.
         Assert.DoesNotContain("Citofono rotto", JsonSerializer.Serialize(view));
         Assert.DoesNotContain("chiavi di scorta", JsonSerializer.Serialize(view));
     }
@@ -271,8 +260,6 @@ public class ShowcaseBookingManagerLookupTests
             Assert.DoesNotContain(secret, json, StringComparison.OrdinalIgnoreCase);
         }
     }
-
-    // ─── Who is asking ───────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Lookup_EverythingThatDoesNotIdentifyABooking_IsTheSameAnswer_AndRunsTheSameStatements()
@@ -314,12 +301,9 @@ public class ShowcaseBookingManagerLookupTests
             Assert.True(refused.Code == ShowcaseBookingManagementErrors.NotFound, name);
         }
 
-        // One answer for all of them: the same code, the same key, the same message.
         Assert.Single(answers.Distinct());
         Assert.Equal(("supplier_booking_not_found", "SupplierBookingNotFound"), (answers[0].Code, answers[0].Key));
-        // And the same work for all of them: the customer's contact is read for every attempt, found or not, valid or not.
         Assert.Equal(attempts.Count, spy.Calls);
-        // The right credentials do find the booking, through the same manager.
         Assert.Equal(ServiceRequestStatus.Richiesto, (await manager.LookupAsync(mine)).Status);
         Assert.Equal(attempts.Count + 1, spy.Calls);
     }
@@ -434,8 +418,6 @@ public class ShowcaseBookingManagerLookupTests
             () => s.Kit.Manager.LookupAsync(credentials with { Email = ServiceCustomerPrivacyService.AnonymizedEmail(customer.Id) }));
     }
 
-    // ─── The supplier that is not active any more ────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Lookup_ASuspendedSupplier_DoesNotTakeTheBookingAwayFromTheCustomer_ButItCanOnlyBeCancelled()
     {
@@ -474,8 +456,6 @@ public class ShowcaseBookingManagerLookupTests
         Assert.True(view.Actions.CanCancel);
     }
 
-    // ─── The proposal ────────────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Lookup_AProposalThatWaits_IsInTheView_WithItsDeadlineAndMessage_AndTheSupplierDeadlineIsSpent()
     {
@@ -492,9 +472,7 @@ public class ShowcaseBookingManagerLookupTests
         Assert.Equal(ServiceRequestScenario.FridayAt14.AddMinutes(ServiceRequestScenario.ServiceMinutes), proposal.EndUtc);
         Assert.Equal("Il mattino sono già impegnato", proposal.Message);
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, proposal.ProposedAt);
-        // The customer has a day to answer.
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime.AddHours(24), proposal.AnswerBy);
-        // The request keeps the time it was asked for until the customer accepts, and it is not waiting for the supplier anymore.
         Assert.Equal(ServiceRequestScenario.FridayAt10, view.StartUtc);
         Assert.Null(view.RespondBy);
         Assert.Equal(new ShowcaseBookingActions(CanCancel: true, CanReschedule: true, CanRespondToProposal: true), view.Actions);
@@ -513,11 +491,8 @@ public class ShowcaseBookingManagerLookupTests
 
         Assert.NotNull(view.Proposal);
         Assert.False(view.Actions.CanRespondToProposal);
-        // Until the upkeep job cancels the request the customer can still cancel it, or move it.
         Assert.True(view.Actions.CanCancel);
     }
-
-    // ─── Where the SQL looks ─────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Lookup_NeverWritesAnything()
@@ -539,9 +514,6 @@ public class ShowcaseBookingManagerLookupTests
         Assert.False(s.Db.ChangeTracker.HasChanges());
     }
 
-    // ─── helpers ───
-
-    /// <summary>A booking at the other supplier of <see cref="ShowcaseScenario.AddBookableSupplierAsync"/>, by the same customer.</summary>
     private static async Task<(ServiceRequest Request, ShowcaseBookingCredentials Credentials)> BookAtAsync(
         ServiceRequestScenario s,
         (Guid OrgId, SupplierProfile Profile, string ServiceSlug) other)

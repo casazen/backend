@@ -13,7 +13,6 @@ public sealed record ComuneInfo(
     string RegionSlug,
     string ComuneSlug)
 {
-    /// <summary>The SEO view of a comune of the official list; slugs come from its name and its region.</summary>
     public static ComuneInfo From(Comune comune)
     {
         ArgumentNullException.ThrowIfNull(comune);

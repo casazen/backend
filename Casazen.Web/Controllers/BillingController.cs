@@ -22,14 +22,9 @@ public class BillingController(
     PublicSiteLinks publicSiteLinks,
     IConfiguration configuration) : ControllerBase
 {
-    /// <summary>503: the public URL of the web app, base of the Stripe return pages, is not configured (PL-11).</summary>
     private const string ReturnUrlNotConfiguredCode = "billing_return_url_not_configured";
     private const string NoStripeCustomerCode = "billing_no_customer";
 
-    /// <summary>
-    /// Plans of the catalogue. <c>purchasable</c> is false for a plan whose Stripe Price id is not configured in this
-    /// environment (<c>Billing__Prices__&lt;Tier&gt;</c>, PL-11): its checkout answers 422 <c>billing_plan_unavailable</c>.
-    /// </summary>
     [HttpGet("plans")]
     [Authorize]
     public ActionResult<IEnumerable<PlanCatalogDto>> GetPlans() =>
@@ -92,7 +87,6 @@ public class BillingController(
         if (string.IsNullOrWhiteSpace(request.BillingCountry) || request.BillingCountry.Trim().Length != 2)
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingCountryInvalid");
 
-        // Checked before any change (billing profile, Stripe customer): nothing happens for a request that cannot pay.
         if (!publicSiteLinks.IsConfigured)
         {
             return this.ApiProblem(
@@ -245,7 +239,6 @@ public class BillingController(
         if (!BillingProfileValidation.IsValidVatId(request.VatId))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingVatIdInvalid");
 
-        // Per field: omitted (null) = unchanged, empty = cleared (BillingEInvoiceDetails).
         var sdiRecipientCode = request.SdiRecipientCode is null ? null : BillingProfileValidation.NormalizeCode(request.SdiRecipientCode) ?? string.Empty;
         if (!BillingProfileValidation.IsValidSdiRecipientCode(sdiRecipientCode))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingSdiRecipientCodeInvalid");
@@ -282,14 +275,9 @@ public class BillingController(
         });
     }
 
-    /// <summary>
-    /// A return URL of the client: absent (the default page is used) or a plan/billing page of the public web app
-    /// (PL-11 same site, PL-16 allow-listed path).
-    /// </summary>
     private bool IsAllowedReturnUrl(string? url) =>
         string.IsNullOrWhiteSpace(url) || publicSiteLinks.IsBillingReturnUrl(url);
 
-    /// <summary>A return page of the client: absent (the default page is used) or one of the allow-listed paths (PL-16).</summary>
     private static bool IsAllowedReturnPath(string? path) =>
         string.IsNullOrWhiteSpace(path) || PublicSiteLinks.IsBillingReturnPagePath(path.Trim());
 

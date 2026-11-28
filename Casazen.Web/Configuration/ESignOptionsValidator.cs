@@ -14,7 +14,6 @@ public sealed class ESignOptionsValidator(IFeatureFlags featureFlags) : IValidat
 {
     public const string Runbook = "docs/runbooks/rli.md";
 
-    /// <summary>A shorter secret is not a provider-generated HMAC secret.</summary>
     public const int MinimumSecretLength = 16;
 
     public ValidateOptionsResult Validate(string? name, ESignOptions options)
@@ -30,7 +29,6 @@ public sealed class ESignOptionsValidator(IFeatureFlags featureFlags) : IValidat
             : ValidateOptionsResult.Success;
     }
 
-    /// <summary>Empty, a committed placeholder (<c>PLACEHOLDER_SET_IN_ENV</c>, <c>YOUR_…</c>, …) or too short.</summary>
     public static bool IsWebhookSecretMissing(string? secret) =>
         RequiredConfiguration.IsMissing(secret)
         || secret!.Contains("PLACEHOLDER", StringComparison.OrdinalIgnoreCase)

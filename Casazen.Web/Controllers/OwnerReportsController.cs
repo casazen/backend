@@ -35,10 +35,6 @@ public class OwnerReportsController(
     IHostScopeResolver hostScopeResolver,
     IStringLocalizer<SharedResources> localizer) : ControllerBase
 {
-    /// <summary>
-    /// The report by owner for the days from <c>from</c> to <c>to</c> (<c>yyyy-MM-dd</c>, both included, at most 24 months): a row for each
-    /// owner that holds a part of a property in them, the row of the properties nobody owns, and the total of the Home.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(OwnerReportDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

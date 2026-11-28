@@ -30,12 +30,6 @@ public sealed class OwnerInvitationAcceptanceController(
     IOwnerInvitationService invitations,
     IAccountEmailResolver accountEmails) : ControllerBase
 {
-    /// <summary>
-    /// The signed-in account accepts the invitation and becomes the owner of the ownerships of the invitation. 403 <c>owner_invitation_email_not_verified</c>
-    /// and <c>owner_invitation_email_mismatch</c> (the e-mail of the account is not the invited one); 410 <c>owner_invitation_invalid</c>,
-    /// <c>owner_invitation_expired</c>, <c>owner_invitation_used</c>, <c>owner_invitation_revoked</c> when the link no longer works. Sending it twice
-    /// finds it done and answers the same.
-    /// </summary>
     [HttpPost("accept")]
     [Authorize(Policy = CasazenPolicies.Authenticated)]
     [ProducesResponseType(typeof(OwnerInvitationAcceptedDto), StatusCodes.Status200OK)]

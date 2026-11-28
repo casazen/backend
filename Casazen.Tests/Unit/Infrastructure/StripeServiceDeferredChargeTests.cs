@@ -58,8 +58,6 @@ public class StripeServiceDeferredChargeTests
         Assert.Equal(12_345, options.Amount);
         Assert.True(options.Confirm);
         Assert.True(IsTrue(options.OffSession));
-        // With automatic payment methods Stripe refuses error_on_requires_action (needs payment_method_types), and
-        // return_url is not needed off-session: none of them is sent (PR #447).
         Assert.Null(options.ErrorOnRequiresAction);
         Assert.Null(options.PaymentMethodTypes);
         Assert.Null(options.ReturnUrl);

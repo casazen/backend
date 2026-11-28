@@ -9,13 +9,10 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 internal sealed class FailingSaveInterceptor : SaveChangesInterceptor
 {
-    /// <summary>The exception thrown by the next saves; <c>null</c> lets them through.</summary>
     public Exception? Failure { get; set; }
 
-    /// <summary>Saves refused so far.</summary>
     public int Refused { get; private set; }
 
-    /// <summary>Runs after every save that succeeded (to cancel the token of a request the moment its change is saved, for one).</summary>
     public Action? AfterSave { get; set; }
 
     public override ValueTask<int> SavedChangesAsync(

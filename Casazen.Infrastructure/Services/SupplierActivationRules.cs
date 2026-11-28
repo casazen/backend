@@ -5,13 +5,8 @@ using Casazen.Core.Suppliers;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// What a stored supplier profile has to satisfy to be activated (SU-05, A4-09) and the five wizard steps derived from
-/// it. Single source for the wizard status, the activation check and the guard that keeps an active profile complete.
-/// </summary>
 internal static class SupplierActivationRules
 {
-    /// <summary>The requirements of the profile (everything but the Terms of Service) that are not met, in wizard order.</summary>
     public static IReadOnlyList<(string Step, string Code)> ProfileBlockers(SupplierProfile profile)
     {
         var blockers = new List<(string, string)>();
@@ -21,7 +16,6 @@ internal static class SupplierActivationRules
         if (!SupplierActivation.IsPlausiblePhone(profile.Phone))
             blockers.Add((SupplierActivation.Steps.Identity, SupplierActivation.Blockers.PhoneInvalid));
 
-        // Only known codes count: a stored code that is not a category (old data) matches no host request.
         if (!SupplierComuneMatcher.ReadStrings(profile.CategoriesJson).Any(ServiceCategories.IsKnown))
             blockers.Add((SupplierActivation.Steps.Services, SupplierActivation.Blockers.CategoriesMissing));
         if (!HasComuni(profile))
@@ -46,8 +40,6 @@ internal static class SupplierActivationRules
             profile.TosVersion,
             profile.TosAcceptedAt,
             ReacceptanceRequired: accepted && !isCurrent,
-            // A recorded version that is no longer the current one blocks supplier actions; an unrecorded (legacy)
-            // acceptance only asks to accept again.
             BlocksActions: accepted && profile.TosVersion is not null && !isCurrent);
     }
 

@@ -2,15 +2,8 @@ using System.Security.Claims;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// Result of generating a signed link to the ConcordatoFacile partner portal.
-/// </summary>
 public sealed record CfLinkResult(string Url);
 
-/// <summary>
-/// Generates HMAC-SHA256 signed links to the ConcordatoFacile partner portal (ADR-007).
-/// Links are time-limited (15 minutes) and include lease and municipality data.
-/// </summary>
 public interface IConcordatoFacileLinkService
 {
     /// <summary>

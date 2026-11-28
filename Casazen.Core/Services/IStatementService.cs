@@ -2,12 +2,6 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// Service for generating and managing monthly owner statements (ADR-017).
-/// Statements are generated per property owner per property per month, with revenue breakdown,
-/// commission, expenses, withholding tax, and net payable computed with banker's rounding.
-/// Co-owners each receive their own statement, split by percentage (ADR-017-R3/R4).
-/// </summary>
 public interface IStatementService
 {
     /// <summary>

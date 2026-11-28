@@ -50,8 +50,6 @@ public sealed class ApeDocumentInspector(TimeProvider? timeProvider = null) : IA
         return InspectExtractedText(extracted);
     }
 
-    // The labels as printed and as the OCR of a photo often leaves them ("DATA DI EMISSION", "EMISSIONS"); "EMISSIONI DI CO2" is not
-    // followed by a date, so it never gives one. Lombardy prints "VALIDO FINO A", the national model "VALIDO FINO AL".
     private const string IssueLabel = @"(?:DATA DI EMISSIONE|DATA EMISSIONE|RILASCIATO IL|DATA DI RILASCIO|EMISSION[A-Z]{0,3})";
     private const string ExpiryLabel = @"(?:VALIDO FINO AL?|VALIDITA FINO AL?|DATA DI SCADENZA|DATA SCADENZA|SCADENZA)";
     private const string CodeLabel = @"(?:CODICE IDENTIFICATIVO(?: ATTESTATO| APE)?|CODICE ATTESTATO|NUMERO ATTESTATO|CODICE CERTIFICATO)";
@@ -90,13 +88,6 @@ public sealed class ApeDocumentInspector(TimeProvider? timeProvider = null) : IA
             : new(ApeInspectionStatus.Valid) { Reading = reading };
     }
 
-    /// <summary>
-    /// The data of the certificate in <paramref name="text"/> (the raw text, for the code with its separators) and
-    /// <paramref name="normalized"/>. The energy class is the letter read most often after "CLASSE ENERGETICA": the reader of a photo
-    /// reads the box of the class several times (the page, its negative, the crop around the label) and may get one of them wrong.
-    /// A date that cannot be one of an APE (a misread year) is passed over; with no "valido fino al" at all (unreadable on the
-    /// photo) the expiry is the issue plus ten years, the longest an APE lasts, while a label with an impossible date stays unread.
-    /// </summary>
     private static ApeReading Read(string text, string normalized, DateOnly today)
     {
         var classes = Regex.Matches(normalized, @"CLASSE ENERGETICA (A4|A3|A2|A1|A PLUS|[A-G])(?: |$)", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1))
@@ -126,7 +117,6 @@ public sealed class ApeDocumentInspector(TimeProvider? timeProvider = null) : IA
             normalized.Contains("REGIONE LOMBARDIA", StringComparison.Ordinal) || normalized.Contains("CENED", StringComparison.Ordinal));
     }
 
-    /// <summary>The code after its label, with its separators as printed ("12345-000678/19"); null when there is no label with a code.</summary>
     private static string? ReadCode(string text, string normalized)
     {
         if (!Regex.IsMatch(normalized, CodeLabel + " [A-Z0-9]*[0-9][A-Z0-9]*", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)))
@@ -159,7 +149,6 @@ public sealed class ApeDocumentInspector(TimeProvider? timeProvider = null) : IA
         var isPdf = HasPdfHeader(bytes);
         if (!isPdf && ImageSignature.Detect(bytes.AsSpan(0, Math.Min(bytes.Length, ImageSignature.HeaderLength))) is not ("image/jpeg" or "image/png"))
             return new(ApeInspectionStatus.NotAPdf);
-        // Real PDFs need a layout-aware reader; literal extraction alone misses embedded fonts.
         try
         {
             var text = await ApeOcrReader.ReadAsync(bytes, isPdf, InspectExtractedText, ct);

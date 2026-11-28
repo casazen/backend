@@ -32,23 +32,18 @@ internal sealed class ScheduledMessageConfiguration : IEntityTypeConfiguration<S
             .HasForeignKey(m => m.OrgId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // The column says what it holds: the encrypted edit of the host. There is no plaintext column for the words of a message.
         entity.Property(m => m.TextOverride).HasColumnName("TextOverrideEncrypted");
 
-        // xmin, as for the requests: two actors that read the same row cannot both change it.
         entity.Property(m => m.Version).IsRowVersion();
 
-        // Planning twice never writes two rows. A row of a deleted routine has no key: those are all distinct, as they should be (the history).
         entity.HasIndex(m => new { m.BookingId, m.RoutineId, m.ActionIndex })
             .IsUnique()
             .HasDatabaseName(ScheduledMessage.PlanIndexName);
 
-        // The sweep: the rows that are still to be decided (planned, blocked, failed), by the time they go out.
         entity.HasIndex(m => new { m.Status, m.PlannedAtUtc })
             .HasFilter($"\"Status\" IN ({(int)ScheduledMessageStatus.Scheduled}, {(int)ScheduledMessageStatus.Blocked}, {(int)ScheduledMessageStatus.Failed})")
             .HasDatabaseName("IX_ScheduledMessages_Open");
 
-        // The screens: the messages of a property by time, and the timeline of a booking.
         entity.HasIndex(m => new { m.OrgId, m.PropertyId, m.PlannedAtUtc });
         entity.HasIndex(m => new { m.OrgId, m.BookingId });
 

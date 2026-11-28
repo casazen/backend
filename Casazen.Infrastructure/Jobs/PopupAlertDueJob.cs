@@ -37,13 +37,10 @@ public class PopupAlertDueJob(
     public const string RecurringJobId = "popup-alert-due";
     public const string Cron = "*/1 * * * *";
 
-    /// <summary>Alerts read at a time.</summary>
     public const int BatchSize = 100;
 
-    /// <summary>A run starts no new batch after this time, so it ends before the next run is due.</summary>
     public static readonly TimeSpan RunBudget = TimeSpan.FromSeconds(40);
 
-    // The next run comes a minute later and takes what is left due: a failed run is not retried.
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
     public async Task ExecuteAsync(CancellationToken cancellationToken)
     {
@@ -76,7 +73,6 @@ public class PopupAlertDueJob(
                         alert.UserId, alert.Id, alert.AlertType, alert.EntityType, alert.EntityId, alert.Urgency, cancellationToken);
                     alert.DeliveredAt = timeProvider.GetUtcNow().UtcDateTime;
 
-                    // One commit per alert: a crash after this point never pushes this alert again.
                     await db.SaveChangesAsync(cancellationToken);
                     pushed++;
                 }
@@ -86,7 +82,6 @@ public class PopupAlertDueJob(
                 }
                 catch (Exception ex)
                 {
-                    // Out of the change tracker, so a save that failed is not tried again with the next alert.
                     db.Entry(alert).State = EntityState.Detached;
                     failedThisRun.Add(alert.Id);
                     logger.LogWarning(

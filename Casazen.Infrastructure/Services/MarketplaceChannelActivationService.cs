@@ -52,10 +52,8 @@ public sealed class MarketplaceChannelActivationService(
     TimeProvider timeProvider,
     ILogger<MarketplaceChannelActivationService> logger) : IMarketplaceChannelActivationService
 {
-    /// <summary>The longest portal code CasaZen sends as the number Octorate calls <c>channelId</c>.</summary>
     private const int MaxPortalCodeDigits = 18;
 
-    /// <summary>The code kept on a row whose create may or may not have reached the channel manager (the same as <see cref="OctorateServerException"/>).</summary>
     private const string UnknownOutcomeCode = "octorate_unavailable";
 
     public async Task<MarketplaceActivationPlan> GetPlanAsync(
@@ -115,8 +113,6 @@ public sealed class MarketplaceChannelActivationService(
         if (!IsCreatable(portal))
             throw new DomainRuleException(MarketplaceActivationErrorCodes.PortalNotCreatable, "MarketplacePortalNotCreatable");
 
-        // The remote connection belongs to the accommodation, which can cover several CasaZen properties.
-        // Serialize the read and possible creation for that accommodation and portal.
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db,
             ct,
@@ -132,8 +128,6 @@ public sealed class MarketplaceChannelActivationService(
             return await StateAsync(orgId, link, activation, ct);
         }
 
-        // What the portal asks for is checked only when a connection is to be made: a second start that carries no credentials (the wizard keeps none)
-        // still gets the activation that exists.
         var knownHotelId = portal.RequiresHotelId ? link.HotelIdFor(portal.PortalCode) : null;
         var create = ConnectionDataOf(portal, knownHotelId is null ? request : request with { HotelId = knownHotelId });
 
@@ -208,7 +202,6 @@ public sealed class MarketplaceChannelActivationService(
             }
             catch
             {
-                // A refusal (access data, the channel failed, the rate limit): nothing was made, nothing is kept.
                 Forget(activation, isNew);
                 throw;
             }
@@ -294,7 +287,6 @@ public sealed class MarketplaceChannelActivationService(
 
     public async Task<MarketplaceActivationMapping> GetMappingAsync(Guid orgId, HostScope scope, Guid activationId, CancellationToken ct = default)
     {
-        // Tracked: a connection that is gone frees the activation (RequireConnectionAsync).
         var activation = await FindActivationAsync(orgId, scope, activationId, track: true, ct);
         var link = await RequireLinkAsync(orgId, activation.PropertyId!.Value, ct);
         await RequireConnectionAsync(orgId, link, activation, ct);
@@ -333,7 +325,6 @@ public sealed class MarketplaceChannelActivationService(
     {
         var activation = await FindActivationAsync(orgId, scope, activationId, track: true, ct);
 
-        // An empty choice is not «all the rooms»: nothing leaves.
         if (choices is null || choices.Count == 0)
             throw new DomainRuleException(MarketplaceActivationErrorCodes.MappingRequired, "MarketplaceMappingRequired");
 
@@ -487,7 +478,6 @@ public sealed class MarketplaceChannelActivationService(
         }
         else if (verified is null)
         {
-            // Listed when the step began and gone after «mark connected»: freed like the activation of any step that finds its connection gone.
             await ForgetGoneConnectionAsync(activation, ct);
         }
         else
@@ -515,7 +505,6 @@ public sealed class MarketplaceChannelActivationService(
         }
 
         var imported = await bookings.ImportAllAsync(activation.PropertyId!.Value, ct);
-        // The importer may clear the shared change tracker.
         if (db.Entry(activation).State == EntityState.Detached)
             db.Attach(activation);
         await db.Entry(activation).ReloadAsync(ct);
@@ -533,7 +522,6 @@ public sealed class MarketplaceChannelActivationService(
         if (CalendarVerified(calendar, productIds))
             return;
 
-        // A partially priced or incomplete calendar stays in review. An import could overwrite prices that already exist.
         var blankDays = calendar.Where(day => day.HasSignal && day.Price == 0)
             .Select(day => (day.ProductId, day.Date)).ToHashSet();
         if (calendar.Any(day => day.Price > 0)
@@ -575,7 +563,6 @@ public sealed class MarketplaceChannelActivationService(
         }
         catch (OctorateException ex) when (ex is OctorateRateLimitException or OctorateRequestRejectedException)
         {
-            // An explicit refusal allows another attempt. Timeouts and channel failures require reconciliation.
             await SaveAsync(activation, a => stamp(a, null), CancellationToken.None);
             throw;
         }
@@ -592,9 +579,6 @@ public sealed class MarketplaceChannelActivationService(
             db, PostgresAdvisoryLocks.Scope.MarketplaceChannelActivation, link.AccommodationId, ct)
         ?? throw new DomainConflictException("marketplace_activation_busy", "MarketplaceActivationBusy");
 
-    // ─── The checks every step shares ────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The listing a property is confirmed to: its accommodation id (the <c>acc</c> of every call) and the room the connect wizard chose.</summary>
     private sealed record Link(string AccommodationId, string? ProductId, string ChannelIdsJson)
     {
         public string? HotelIdFor(string portalCode)
@@ -606,10 +590,6 @@ public sealed class MarketplaceChannelActivationService(
         }
     }
 
-    /// <summary>
-    /// The activation of the caller: one of the org, of a channel or a tool, whose property is inside the scope. Another org's, one outside the scope
-    /// and one that does not exist are the same 404.
-    /// </summary>
     private async Task<MarketplaceActivation> FindActivationAsync(Guid orgId, HostScope scope, Guid activationId, bool track, CancellationToken ct)
     {
         MarketplaceReads.EnsureSameOrg(orgId, scope);
@@ -630,7 +610,6 @@ public sealed class MarketplaceChannelActivationService(
         return reachable ? activation : throw ActivationNotFound();
     }
 
-    /// <summary>The portal of the catalog the wizard connects: listed, enabled and of the category of <paramref name="kind"/>; else the 404 of a code nobody has.</summary>
     private async Task<MarketplacePortal> FindPortalAsync(MarketplaceActivationKind kind, string? portalCode, CancellationToken ct)
     {
         var code = portalCode?.Trim();
@@ -643,14 +622,12 @@ public sealed class MarketplaceChannelActivationService(
         return portal ?? throw PortalUnknown();
     }
 
-    /// <summary>The org is connected (the connector is on and it has a connected account in this environment) and the property has its confirmed listing.</summary>
     private async Task<Link> RequireLinkAsync(Guid orgId, Guid propertyId, CancellationToken ct)
     {
         var connectionKey = await ConnectedAccountAsync(orgId, ct) ?? throw NotConnected();
         return await LinkOfAsync(orgId, propertyId, connectionKey, ct) ?? throw NotLinked();
     }
 
-    /// <summary>The id of the org's connected account in this environment; <c>null</c> while the connector is off or the org is not connected.</summary>
     private async Task<Guid?> ConnectedAccountAsync(Guid orgId, CancellationToken ct)
     {
         if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
@@ -663,10 +640,6 @@ public sealed class MarketplaceChannelActivationService(
             .FirstOrDefaultAsync(ct);
     }
 
-    /// <summary>
-    /// The confirmed listing of the property that was found through the connected account of this environment (a listing found through another
-    /// environment's account has an accommodation id that does not exist here).
-    /// </summary>
     private async Task<Link?> LinkOfAsync(Guid orgId, Guid propertyId, Guid connectionKey, CancellationToken ct) =>
         await db.OctorateListingMappings.AsNoTracking()
             .Where(m => m.OrgId == orgId
@@ -712,7 +685,6 @@ public sealed class MarketplaceChannelActivationService(
             activation,
             a =>
             {
-                // Another request may have started the activation again meanwhile: its new connection is not the one that is gone.
                 if (!string.Equals(a.OctorateConnectionId, goneId, StringComparison.Ordinal))
                     return;
 
@@ -751,7 +723,6 @@ public sealed class MarketplaceChannelActivationService(
             c => string.Equals(c.ConnectionId, activation.OctorateConnectionId, StringComparison.Ordinal)
                  && string.Equals(c.PortalCode, activation.TargetCode, StringComparison.Ordinal));
 
-    /// <summary>A channel that needs the access given on the channel manager's panel is not asked for imports or activation before the person gave it.</summary>
     private async Task EnsurePanelAccessAsync(MarketplaceActivation activation, OctorateConnectionInfo connection, CancellationToken ct)
     {
         var needsPanel = await db.MarketplacePortals.AsNoTracking()
@@ -794,8 +765,6 @@ public sealed class MarketplaceChannelActivationService(
             activation.LastSyncedAt,
             activation.LastErrorCode,
             connection?.LastUpdate);
-
-    // ─── Calls to the channel manager and what they leave behind ─────────────────────────────────────────────
 
     /// <summary>
     /// Runs the calls of one step for <paramref name="orgId"/>. A failure of the channel itself (550) is kept on the activation as To fix with its code
@@ -856,26 +825,15 @@ public sealed class MarketplaceChannelActivationService(
         }
     }
 
-    /// <summary>An activation that was added in this request and failed leaves nothing behind (not even in the tracker); a row that existed is untouched.</summary>
     private void Forget(MarketplaceActivation activation, bool isNew)
     {
         if (isNew)
             db.Entry(activation).State = EntityState.Detached;
     }
 
-    // ─── Rules of the portal ─────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Octorate lets a connection to the portal be created through its API, and the portal code is the number it calls <c>channelId</c>. A code that
-    /// is not a number cannot be sent: the wizard cannot start for it.
-    /// </summary>
     private static bool IsCreatable(MarketplacePortal portal) =>
         portal.Creatable && portal.PortalCode.Length is > 0 and <= MaxPortalCodeDigits && portal.PortalCode.All(char.IsAsciiDigit);
 
-    /// <summary>
-    /// What goes to the channel manager: only what the portal asks for (the identifier of the property, the username and password) and the person gave;
-    /// anything more in the request is dropped. What the portal asks for and is missing is the 422 the wizard shows on the step.
-    /// </summary>
     private static OctorateConnectionCreate ConnectionDataOf(MarketplacePortal portal, MarketplaceActivationStart request)
     {
         string? hotelId = null;

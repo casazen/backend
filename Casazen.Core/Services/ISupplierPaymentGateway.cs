@@ -97,13 +97,8 @@ public interface ISupplierPaymentGateway
     /// </summary>
     Task<ServiceChargeIntent> CreateAsync(ServiceChargeIntentRequest request, CancellationToken cancellationToken = default);
 
-    /// <summary>The PaymentIntent as it is now on Stripe.</summary>
     Task<ServiceChargeIntent> GetAsync(string paymentIntentId, string connectedAccountId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Cancels a PaymentIntent the payer has not paid and returns it as it is afterwards. A PaymentIntent that cannot be canceled
-    /// any more (paid or in progress meanwhile) is returned as it is, not an error: the caller sees its real status.
-    /// </summary>
     Task<ServiceChargeIntent> CancelAsync(
         string paymentIntentId,
         string connectedAccountId,
@@ -118,7 +113,6 @@ public interface ISupplierPaymentGateway
     /// </summary>
     Task<ServiceChargeRefund> CreateRefundAsync(ServiceChargeRefundRequest request, CancellationToken cancellationToken = default);
 
-    /// <summary>Every refund Stripe has for a PaymentIntent of the supplier's account.</summary>
     Task<IReadOnlyList<ServiceChargeRefund>> ListRefundsAsync(
         string paymentIntentId,
         string connectedAccountId,

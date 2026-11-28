@@ -26,7 +26,6 @@ public class StripeConnectGateway(
     internal static readonly IReadOnlySet<string> AccountUnavailableCodes =
         new HashSet<string>(StringComparer.Ordinal) { "resource_missing", "account_invalid" };
 
-    /// <summary>Stripe error codes of a platform key that no longer works (same source as <see cref="AccountUnavailableCodes"/>).</summary>
     internal static readonly IReadOnlySet<string> ConfigurationCodes =
         new HashSet<string>(StringComparer.Ordinal) { "api_key_expired", "platform_api_key_expired", "secret_key_required" };
 
@@ -206,7 +205,6 @@ public class StripeConnectGateway(
         _ => StripeConnectFailure.Rejected,
     };
 
-    /// <summary>The <see cref="StripeConnectException"/> of a failed Stripe call (see <see cref="Classify"/>).</summary>
     internal static StripeConnectException ToConnectException(Exception exception, string operation)
     {
         var failure = Classify(exception);

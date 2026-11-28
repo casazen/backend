@@ -29,10 +29,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public static class FiscalDocumentExports
 {
-    /// <summary>
-    /// The most documents read for a file: as many as the rows the two writers accept, so a list one document too long is refused by them
-    /// (422 <c>csv_too_many_rows</c> or <c>xlsx_too_many_rows</c>) and never cut without a word.
-    /// </summary>
     public const int Limit = CsvWriter.MaxRows;
 
     /// <summary>The headers of the fourteen columns, in the language: kind, number, issue date, booking code, property, recipient, taxable base, VAT, stamp duty, total, currency, payment state, SDI state, source.</summary>
@@ -59,7 +55,6 @@ public static class FiscalDocumentExports
         ];
     }
 
-    /// <summary>The rows as typed cells, one list per document, in the order of <see cref="Header"/>: text, a day, amounts, text; an empty cell is <c>null</c>.</summary>
     public static IReadOnlyList<IReadOnlyList<object?>> Table(IReadOnlyList<FiscalDocumentExportRow> rows, IDocumentTexts texts, string language)
     {
         ArgumentNullException.ThrowIfNull(rows);
@@ -84,17 +79,12 @@ public static class FiscalDocumentExports
             }).ToList();
     }
 
-    /// <summary>The CSV of the list: the header, then a row for each document (the Italian file of <see cref="CsvWriter"/>).</summary>
-    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">There are more rows than a file holds (422 <c>csv_too_many_rows</c>).</exception>
     public static byte[] Csv(IReadOnlyList<FiscalDocumentExportRow> rows, IDocumentTexts texts, string language) =>
         CsvWriter.Write(Table(rows, texts, language).Prepend(Header(texts, language)));
 
-    /// <summary>The Excel file of the list: one sheet, the same header and rows as the CSV, amounts as numbers and days as dates.</summary>
-    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">There are more rows than a file holds (422 <c>xlsx_too_many_rows</c>).</exception>
     public static byte[] Xlsx(IReadOnlyList<FiscalDocumentExportRow> rows, IDocumentTexts texts, string language) =>
         XlsxWriter.Write(texts.Get("FiscalExportSheetName", language), Header(texts, language), Table(rows, texts, language));
 
-    /// <summary>The name of the file: <c>documenti-2026-10.csv</c>, the month being the one of <paramref name="month"/> (a calendar day of it).</summary>
     public static string FileName(DateOnly month, string extension)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(extension);

@@ -5,13 +5,8 @@ using Casazen.Core.Exceptions;
 
 namespace Casazen.Core.Services;
 
-/// <summary>Stable <c>code</c> values of the rental mode errors (FD-05): part of the API contract, never rename one.</summary>
 public static class PropertyRentalModeErrorCodes
 {
-    /// <summary>
-    /// 422: a short-stay operation (booking a stay, publishing the property on the booking site) on a property in
-    /// <see cref="RentalMode.Long"/> mode. The public site answers 404 for such a property instead: it is not published.
-    /// </summary>
     public const string NotBookableInLongMode = "property_not_bookable_in_long_mode";
 
     /// <summary>
@@ -51,20 +46,12 @@ public static class PropertyRentalModeRules
     /// </summary>
     public static Expression<Func<Property, bool>> IsShortRent { get; } = p => p.RentalMode == RentalMode.Short;
 
-    /// <summary>True when <paramref name="property"/> behaves as a short-rent property (<see cref="IsShortRent"/>).</summary>
     public static bool IsShort(Property property)
     {
         ArgumentNullException.ThrowIfNull(property);
         return property.RentalMode == RentalMode.Short;
     }
 
-    /// <summary>
-    /// Refuses a short-stay operation on a property in <see cref="RentalMode.Long"/> mode.
-    /// </summary>
-    /// <exception cref="DomainRuleException">
-    /// <see cref="PropertyRentalModeErrorCodes.NotBookableInLongMode"/> (422), message key
-    /// <c>PropertyNotBookableInLongMode</c>.
-    /// </exception>
     public static void EnsureShortRent(Property property)
     {
         if (!IsShort(property))

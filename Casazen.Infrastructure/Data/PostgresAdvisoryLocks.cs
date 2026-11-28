@@ -25,10 +25,8 @@ internal static class PostgresAdvisoryLocks
     internal static (Scope, string) TrustedSupplierRelation(Guid hostOrgId, Guid supplierOrgId) =>
         (Scope.TrustedSupplierRelation, $"{hostOrgId:N}:{supplierOrgId:N}");
 
-    /// <summary>First integer of the lock key: what the lock protects.</summary>
     internal enum Scope
     {
-        /// <summary>Org provisioning of one user (one org per user).</summary>
         OrgProvisioningUser = 1_001,
 
         InstitutionalSenderCutover = 21_145,
@@ -36,22 +34,16 @@ internal static class PostgresAdvisoryLocks
         GuestHostExtra = 1_957,
         TrustedSupplierRelation = 1_975,
 
-        /// <summary>Allocation of one org slug (unique <c>Orgs.Slug</c>).</summary>
         OrgSlug = 1_002,
 
-        /// <summary>Property count and insert of one org (plan limit).</summary>
         OrgPropertySlot = 1_003,
 
-        /// <summary>Stripe Checkout of one org's plan: at most one subscription per org (A1-10).</summary>
         OrgBillingCheckout = 1_004,
 
-        /// <summary>Refunds of one payment: the refundable amount is checked and reserved one request at a time (BK-02).</summary>
         PaymentRefund = 1_005,
 
-        /// <summary>Cancellation of one booking: a double click cancels and refunds once (BK-02).</summary>
         BookingCancellation = 1_006,
 
-        /// <summary>One replacement-photo request per booking across link creation, email queueing and hand-off resolution.</summary>
         VerificationPhotoRequest = 1_954,
 
         /// <summary>
@@ -61,13 +53,10 @@ internal static class PostgresAdvisoryLocks
         /// </summary>
         BookingPayment = 1_340,
 
-        /// <summary>Acceptance of one supplier invite (key: token hash): an invite is used at most once (SU-01).</summary>
         SupplierInvite = 1_007,
 
-        /// <summary>Claim of one supplier profile (key: supplier org id): at most one account is linked (SU-02).</summary>
         SupplierClaim = 1_008,
 
-        /// <summary>Deactivation of any user (single key): the last active platform admin is never deactivated (PL-03).</summary>
         UserDeactivation = 1_009,
 
         /// <summary>
@@ -84,28 +73,12 @@ internal static class PostgresAdvisoryLocks
         /// </summary>
         StayAlertsRun = 1_011,
 
-        /// <summary>
-        /// Stripe Connect account of one org (key: org id): two clicks on "Collega Stripe" create one Express account
-        /// (BK-09, A3-19).
-        /// </summary>
         OrgConnectAccount = 1_012,
 
-        /// <summary>
-        /// Seasonal price suggestions of one property (key: property id): the nightly job, the manual recalculation and a
-        /// configuration save never upsert the same dates at once (PC-15).
-        /// </summary>
         SeasonalPriceSuggestions = 1_019,
 
-        /// <summary>
-        /// Compliance status of one property (key: property id): a host request and the nightly check suspend it once
-        /// and email the host once (CO-06, A5-20).
-        /// </summary>
         PropertyComplianceStatus = 1_030,
 
-        /// <summary>
-        /// One run of the compliance check of every active property (single key, session lock held for the whole run):
-        /// the nightly job and the one-shot command never run together (CO-06, A5-36).
-        /// </summary>
         PropertyComplianceCheckRun = 1_031,
 
         /// <summary>
@@ -120,16 +93,8 @@ internal static class PostgresAdvisoryLocks
         /// </summary>
         CinDeadlineAlertsRun = 1_042,
 
-        /// <summary>
-        /// One run of the supplier repair <c>fix-orphaned</c> (single key): two admin runs never merge the same duplicate
-        /// profiles at once (SU-14, A4-22). The run also takes <see cref="SupplierClaim"/> for every profile it merges.
-        /// </summary>
         SupplierMaintenance = 1_054,
 
-        /// <summary>
-        /// Availability days of one supplier (key: supplier org id): the iCal sync (15-minute job, first sync, "sync
-        /// now") and the supplier's manual changes never write the same days at once (SU-15).
-        /// </summary>
         SupplierCalendarSync = 1_065,
 
         /// <summary>
@@ -241,11 +206,6 @@ internal static class PostgresAdvisoryLocks
         /// </summary>
         ServiceRequestPayment = 1_320,
 
-        /// <summary>
-        /// The people of one org (key: org id): adding, changing, deactivating or removing a member, and the owner's
-        /// creation, run one at a time, so the owner rule is decided on rows nobody else is changing (AM-01). The seat
-        /// count is decided under <see cref="OrgSeats"/>, which the callers take <b>before</b> this one (AM-02).
-        /// </summary>
         OrgMembership = 1_401,
 
         /// <summary>
@@ -279,24 +239,12 @@ internal static class PostgresAdvisoryLocks
         /// </summary>
         OrgActivityRetention = 1_405,
 
-        /// <summary>
-        /// The host invites of one inviter org, or of one admin (key: org id, or user id for an admin): the daily quota, the
-        /// pending cap and the duplicate check are decided one request at a time, so the last invite of the day is given to one
-        /// request only.
-        /// </summary>
         HostInviteQuota = 1_410,
 
-        /// <summary>Acceptance of one host invite (key: token hash): an invite is used at most once.</summary>
         HostInviteAccept = 1_411,
 
-        /// <summary>One run of the retention of the host invites (single key, session lock held for the whole run).</summary>
         HostInviteRetention = 1_412,
 
-        /// <summary>
-        /// The access requests of one person of one org (key: org id and user id, AM-02b): the count of the requests of the last
-        /// 24 hours, read from the activity log, and the line that records the next one run one at a time, so the daily limit
-        /// holds across requests and API instances.
-        /// </summary>
         OrgAccessRequest = 1_406,
 
         /// <summary>
@@ -325,10 +273,6 @@ internal static class PostgresAdvisoryLocks
         /// </summary>
         OpenapiLeaseRegistrationCheckout = 1_212,
 
-        /// <summary>
-        /// The privacy acceptance of one lease for the ConcordatoFacile form (key: lease id, <c>leaseId.ToString("N")</c>): two requests at
-        /// the same time write one event, not two (CF-BE).
-        /// </summary>
         ConcordatoFacilePrivacy = 1_210,
 
         /// <summary>
@@ -438,16 +382,8 @@ internal static class PostgresAdvisoryLocks
         /// </summary>
         MarketplaceChannelActivation = 20_931,
 
-        /// <summary>
-        /// One condominium (key: condominium id): preventivo, consuntivo, rates and the prior-year balance are decided
-        /// one request at a time, so two confirms cannot issue two plans or two balances.
-        /// </summary>
         Condominium = 21_042,
 
-        /// <summary>
-        /// The euro debit of one tenant maintenance request (key: request id). Two pays wait, then the second
-        /// joins the debit the first saved. A failed debit is a new key only after that failed row is recorded.
-        /// </summary>
         MaintenancePayment = 21_043,
 
         /// <summary>
@@ -457,10 +393,6 @@ internal static class PostgresAdvisoryLocks
         /// </summary>
         FiscalNumbering = 1_601,
 
-        /// <summary>
-        /// The owner accounting of one org (key: <c>{orgId:N}</c>, E06/F05/US02/T02, NF-110): the posting of a month, the generation of a version and
-        /// the close are taken one at a time, so two postings never post the same facts twice and a close never reads a month being posted.
-        /// </summary>
         OwnerAccounting = 1_603,
 
         /// <summary>
@@ -527,11 +459,6 @@ internal static class PostgresAdvisoryLocks
         /// </summary>
         OtaReview = 20_541,
 
-        /// <summary>
-        /// The load of the seed of the Swiss localities and municipalities (single key, E29/F01/US01/T01): instances starting together write the two
-        /// tables one at a time, and the second finds the version stamp of the first and does nothing. Held until the commit. The values 29_000 to
-        /// 29_099 are the Swiss places and the guest-registration regimes (epic E29).
-        /// </summary>
         SwissPlacesSeed = 29_011,
 
         PropertyImportReview = 29_026,
@@ -593,10 +520,6 @@ internal static class PostgresAdvisoryLocks
         return transaction;
     }
 
-    /// <summary>
-    /// True when the context carries the parallel-save test interceptor: advisory locks must stay off so both
-    /// parties can reach <c>SaveChanges</c> without one waiting on the other's transaction lock.
-    /// </summary>
     private static bool ParallelSaveHarnessIsActive(DbContext context)
     {
         var core = context.GetService<IDbContextOptions>().FindExtension<CoreOptionsExtension>();
@@ -644,7 +567,6 @@ internal static class PostgresAdvisoryLocks
         return null;
     }
 
-    /// <summary>Stable across processes and releases (unlike <see cref="string.GetHashCode()"/>).</summary>
     internal static int Hash(string key) =>
         BinaryPrimitives.ReadInt32LittleEndian(SHA256.HashData(Encoding.UTF8.GetBytes(key)));
 
@@ -661,8 +583,6 @@ internal static class PostgresAdvisoryLocks
             }
             finally
             {
-                // Back to the pool only after the unlock; if the unlock failed the connection is broken and closing it
-                // ends the session, which releases the lock anyway.
                 await context.Database.CloseConnectionAsync();
             }
         }

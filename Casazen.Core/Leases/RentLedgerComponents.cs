@@ -2,19 +2,10 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Leases;
 
-/// <summary>One component of a rent installment before it is stored.</summary>
-/// <param name="Kind">Rent, condominium advance, settlement or other.</param>
-/// <param name="Amount">Euros, in cents. A settlement credit is negative.</param>
-/// <param name="Description">Optional note. The kind is what the clients show.</param>
 public sealed record RentComponentDraft(RentLedgerComponentKind Kind, decimal Amount, string? Description = null);
 
-/// <summary>Cents arithmetic for rent and condominium amounts (EUR).</summary>
 public static class RentLedgerMoney
 {
-    /// <summary>
-    /// Splits <paramref name="total"/> into <paramref name="installments"/> amounts of whole cents. Every installment gets the
-    /// same base share; the leftover cents go on the last installment, so the parts add up to <paramref name="total"/> exactly.
-    /// </summary>
     public static IReadOnlyList<decimal> SplitRemainderOnLast(decimal total, int installments)
     {
         if (installments < 1)
@@ -34,7 +25,6 @@ public static class RentLedgerMoney
         return parts;
     }
 
-    /// <summary>The advance of one rent installment when the advance cadence divides the rent cadence with no leftover cents.</summary>
     public static decimal UniformAdvance(decimal amountPerAdvanceCadence, RentCadence advanceCadence, RentCadence rentCadence)
     {
         var advanceMonths = RentInstallmentPlan.MonthsPer(advanceCadence);
@@ -69,9 +59,6 @@ public static class RentLedgerMoney
     public static decimal FromCents(long cents) => cents / 100m;
 }
 
-/// <summary>
-/// The parts of one rent installment and the rule that <c>AmountDue</c> equals their sum.
-/// </summary>
 public static class RentLedgerLine
 {
     public static decimal Sum(IReadOnlyList<RentComponentDraft> components)
@@ -90,7 +77,6 @@ public static class RentLedgerLine
         return total;
     }
 
-    /// <summary>Throws when <paramref name="amountDue"/> is not the sum of <paramref name="components"/>.</summary>
     public static void EnsureAmountDue(decimal amountDue, IReadOnlyList<RentComponentDraft> components)
     {
         var sum = Sum(components);
@@ -101,7 +87,6 @@ public static class RentLedgerLine
         }
     }
 
-    /// <summary>Rent plus the contractual condominium advance (and any settlement or other charge that is not zero).</summary>
     public static IReadOnlyList<RentComponentDraft> FixedContract(
         decimal rent, decimal condominiumAdvance, decimal settlement = 0m, decimal other = 0m)
     {
@@ -117,16 +102,9 @@ public static class RentLedgerLine
         return components;
     }
 
-    /// <summary>A line that has no condominium breakdown yet: the whole amount due is rent.</summary>
     public static IReadOnlyList<RentComponentDraft> SingleRent(decimal amountDue) =>
         FixedContract(amountDue, 0m);
 
-    /// <summary>
-    /// The installment total after the condominium terms change. When <paramref name="currentTotal"/> is the rent, the rent
-    /// plus <paramref name="previousAdvance"/>, or already the rent plus <paramref name="nextAdvance"/>, it becomes the rent
-    /// plus <paramref name="nextAdvance"/>. A next advance of zero (no advance, or a clause that charges nothing) drops the
-    /// previous one. Any other total was chosen by the landlord and stays.
-    /// </summary>
     public static decimal InstallmentTotalAfterTerms(
         decimal currentTotal, decimal rentPortion, decimal previousAdvance, decimal nextAdvance)
     {
@@ -191,7 +169,6 @@ public static class RentLedgerLine
     }
 }
 
-/// <summary>One posted month of the rent ledger. Posting the same <see cref="PeriodStart"/> again returns this row.</summary>
 public sealed class RentPostedMonth
 {
     private RentPostedMonth(DateOnly periodStart, DateOnly periodEnd, decimal amountDue, IReadOnlyList<RentComponentDraft> components)
@@ -221,10 +198,6 @@ public sealed class RentPostedMonth
     }
 }
 
-/// <summary>
-/// The months posted for one lease. Posting a month that is already there does nothing: the first line, with its components,
-/// is the one that stays.
-/// </summary>
 public sealed class RentMonthLedger
 {
     private readonly Dictionary<DateOnly, RentPostedMonth> _months = new();
@@ -242,21 +215,14 @@ public sealed class RentMonthLedger
     }
 }
 
-/// <summary>The condominium terms the rent plan reads. A budget never replaces a confirmed fixed contractual advance.</summary>
 public sealed record RentCondominiumTerms(
     CondominiumAdvanceMode AdvanceMode,
     decimal? AdvanceAmount,
     RentCadence? Cadence,
     bool Confirmed)
 {
-    /// <summary>Nothing under this confidence is proposed as a charge until a person confirms it.</summary>
     public const decimal MinimumProposalConfidence = 0.85m;
 
-    /// <summary>
-    /// The advance to charge for one period of the terms' own cadence. A confirmed fixed amount wins over
-    /// <paramref name="budgetAmount"/>. Unconfirmed terms, <see cref="CondominiumAdvanceMode.None"/> and
-    /// <see cref="CondominiumAdvanceMode.NeedsReview"/> charge nothing, budget included.
-    /// </summary>
     public decimal ChargeableAdvance(decimal? budgetAmount)
     {
         if (!Confirmed || AdvanceMode is CondominiumAdvanceMode.None or CondominiumAdvanceMode.NeedsReview)
@@ -271,7 +237,6 @@ public sealed record RentCondominiumTerms(
         return 0m;
     }
 
-    /// <summary>The advance of one rent installment, when it scales onto <paramref name="rentCadence"/> in equal cents.</summary>
     public decimal UniformAdvanceFor(RentCadence rentCadence)
     {
         var perCadence = ChargeableAdvance(budgetAmount: null);

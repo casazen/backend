@@ -11,17 +11,13 @@ namespace Casazen.Core.Services;
 /// </summary>
 public enum PanelVerificationOutcome
 {
-    /// <summary>CasaZen read the proof: the step is done.</summary>
     Verified = 1,
 
-    /// <summary>CasaZen read it and the step is not done or not valid: the person has to do it again.</summary>
     NotValid = 2,
 
-    /// <summary>CasaZen cannot tell: the person confirms.</summary>
     Unverifiable = 3,
 }
 
-/// <summary>The stored string of a <see cref="PanelVerificationOutcome"/> (<see cref="PanelVerificationOutcomes"/>).</summary>
 public static class PanelVerificationOutcomeExtensions
 {
     public static string Code(this PanelVerificationOutcome outcome) => outcome switch
@@ -58,10 +54,8 @@ public sealed record PanelStepContext(Guid OrgId, Guid? PropertyId, PanelStepKin
 /// </remarks>
 public interface IPanelStepVerifier
 {
-    /// <summary>The kind of step this verifier checks.</summary>
     PanelStepKind Kind { get; }
 
-    /// <summary>The priority among the verifiers of the same kind: the highest wins. The default verifiers have 0.</summary>
     int Order { get; }
 
     /// <summary>
@@ -71,6 +65,5 @@ public interface IPanelStepVerifier
     /// </summary>
     bool SupportsCallback => false;
 
-    /// <summary>Verifies the step.</summary>
     Task<PanelVerificationOutcome> VerifyAsync(PanelStepContext context, CancellationToken ct);
 }

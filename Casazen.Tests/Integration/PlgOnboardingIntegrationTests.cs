@@ -37,10 +37,9 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
 
         var body = await subprocessors.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(ConsentVersion, body.GetProperty("version").GetString());
-        // PL-14 (A9-40): the list comes from the configuration in use, not from a hand-written list.
         var items = body.GetProperty("items").EnumerateArray().ToList();
         var auth0 = Assert.Single(items, i => i.GetProperty("key").GetString() == "auth0");
-        Assert.Equal("US", auth0.GetProperty("region").GetString()); // Testing tenant: test.auth0.com
+        Assert.Equal("US", auth0.GetProperty("region").GetString());
         Assert.Contains(items, i => i.GetProperty("key").GetString() == "expo");
         Assert.DoesNotContain(items, i => i.GetProperty("name").GetString() == "SendGrid");
     }
@@ -55,7 +54,6 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         Assert.Equal("tos", tos.GetProperty("key").GetString());
         Assert.Equal(ConsentVersion, tos.GetProperty("version").GetString());
         Assert.Equal("2026-06-01T00:00:00Z", tos.GetProperty("effectiveAt").GetString());
-        // No text from the product owner yet (D14): "in preparation", never an invented text.
         Assert.False(tos.GetProperty("available").GetBoolean());
         Assert.Equal(JsonValueKind.Null, tos.GetProperty("contentHtml").ValueKind);
     }
@@ -190,8 +188,6 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         Assert.Equal("done", StepOf(status, "firstBooking").GetProperty("state").GetString());
     }
 
-    // ─── PL-15: the checklist reflects the real state (A1-37, A3-26, PLG-AC10) ──────────────────
-
     [Fact]
     public async Task GetOnboardingStatus_NewHost_ListsEveryStepAndTheGeneratedProfileIsNotConfigured()
     {
@@ -203,7 +199,6 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
             ["account", "organization", "property", "cin", "payments", "sitePublished", "firstBooking"],
             status.GetProperty("steps").EnumerateArray().Select(s => s.GetProperty("key").GetString()!).ToArray());
         Assert.Equal("done", StepOf(status, "account").GetProperty("state").GetString());
-        // The org was provisioned with a generated slug (and the placeholder name): the host has not chosen them.
         Assert.Equal("todo", StepOf(status, "organization").GetProperty("state").GetString());
         Assert.Equal("org_profile_incomplete", ReasonOf(status, "organization"));
         Assert.Equal("todo", StepOf(status, "property").GetProperty("state").GetString());
@@ -239,7 +234,6 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         var (client, userId, orgId) = await OnboardAsync("no-stripe");
         await SeedPropertyAsync(userId, orgId);
 
-        // A published property, no Stripe account: the link would answer every guest with a 409 (A3-26).
         var status = await GetStatusAsync(client);
         Assert.True(status.GetProperty("propertyCreated").GetBoolean());
         Assert.False(status.GetProperty("sitePublished").GetBoolean());
@@ -248,7 +242,6 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         Assert.Equal("payments_not_ready", ReasonOf(status, "sitePublished"));
         Assert.Equal("connect_not_started", ReasonOf(status, "payments"));
 
-        // The Connect onboarding is started, Stripe still asks for data: started is not done.
         await UpdateOrgAsync(orgId, org =>
         {
             org.StripeConnectedAccountId = "acct_started";
@@ -260,7 +253,6 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         Assert.Equal("inProgress", StepOf(status, "payments").GetProperty("state").GetString());
         Assert.Equal("connect_requirements_due", ReasonOf(status, "payments"));
 
-        // Everything submitted, Stripe has not enabled charges yet.
         await UpdateOrgAsync(orgId, org =>
         {
             org.ConnectDetailsSubmitted = true;
@@ -270,7 +262,6 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         Assert.False(status.GetProperty("sitePublished").GetBoolean());
         Assert.Equal("connect_pending_verification", ReasonOf(status, "payments"));
 
-        // Stripe enables charges (account.updated): now guests can book.
         await UpdateOrgAsync(orgId, org => org.ConnectChargesEnabled = true);
         status = await GetStatusAsync(client);
         Assert.True(status.GetProperty("sitePublished").GetBoolean());
@@ -286,7 +277,6 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         await UpdateOrgAsync(orgId, org => EnableCharges(org));
         var propertyId = await SeedPropertyAsync(userId, orgId, p => { p.IsPaused = true; p.PausedAt = DateTime.UtcNow; });
 
-        // PC-03: a paused property is created but it is not a published site.
         var status = await GetStatusAsync(client);
         Assert.True(status.GetProperty("propertyCreated").GetBoolean());
         Assert.False(status.GetProperty("sitePublished").GetBoolean());
@@ -367,7 +357,6 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         var (client, userId, orgId) = await OnboardAsync("cin");
         await SeedPropertyAsync(userId, orgId);
         await SeedPropertyAsync(userId, orgId, p => p.CinCode = null);
-        // The old invented format is not a CIN (compliance.md).
         await SeedPropertyAsync(userId, orgId, p => p.CinCode = "IT-12345-1234567890");
 
         var cin = StepOf(await GetStatusAsync(client), "cin");
@@ -437,7 +426,6 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
 
         var response = await client.PutAsJsonAsync("/api/users/onboarding", new { rentalType = "ShortTerm" });
 
-        // A1-01: a stable code the client answers with the consents step, not a generic 400 dead end.
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("consents_required", problem.GetProperty("code").GetString());
@@ -468,7 +456,6 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
 
         var response = await client.PostAsJsonAsync("/api/users/onboarding", BuildOnboardingPayload("ShortTerm", consents));
 
-        // FN-01: a stable code and a localized detail; the clients recognize the stale documents by their own field.
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
         var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -597,8 +584,6 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         var orgId = Guid.Parse(body.GetProperty("orgId").GetString()!);
-        // The core A1-40 guarantee: never the Supplier org (orgProvisioned is not asserted here — it reflects
-        // whether the account had *any* OrgId before the call, which was already true for this supplier).
         Assert.NotEqual(supplierOrgId, orgId);
 
         using var checkScope = _factory.Services.CreateScope();
@@ -619,7 +604,6 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
         org.IsActive = true;
         if (string.IsNullOrWhiteSpace(org.Slug))
             org.Slug = $"plg-{Guid.NewGuid():N}"[..20];
-        // PL-15 (A1-37, A3-26): the site counts as published only when guests can pay, like the checkout requires.
         org.StripeConnectedAccountId = $"acct_{Guid.NewGuid():N}"[..20];
         org.ConnectChargesEnabled = true;
         org.ConnectDetailsSubmitted = true;
@@ -684,7 +668,6 @@ public class PlgOnboardingIntegrationTests : IClassFixture<CasazenWebApplication
     private async Task<(HttpClient Client, string UserId, Guid OrgId)> OnboardAsync(string label)
     {
         var userId = $"auth0|plg-{label}-{Guid.NewGuid():N}";
-        // PropertyOwner: the host role, so the org settings (OrgBillingAdmin) are open to this client once onboarded.
         var client = _factory.CreateAuthenticatedClient(userId, roles: "PropertyOwner");
         var response = await client.PostAsJsonAsync("/api/users/onboarding", BuildOnboardingPayload("ShortTerm"));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);

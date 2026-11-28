@@ -21,17 +21,9 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IComplianceMonthlySummaryService
 {
-    /// <summary>
-    /// Sends the summary of the calendar month before <paramref name="runDate"/> (a Europe/Rome day, <c>RomeCalendar</c> on the injected clock) to every active
-    /// organization that has a short-rent property and was not sent it yet. One organization that cannot be processed is logged and does not stop the others.
-    /// </summary>
     Task<ComplianceMonthlySummaryRunResult> RunAsync(DateOnly runDate, CancellationToken ct);
 }
 
-/// <summary>Outcome of one run of <see cref="IComplianceMonthlySummaryService.RunAsync"/>.</summary>
-/// <param name="Skipped">The module is off (<c>Features:ComplianceTrafficLight</c>): the run did nothing.</param>
-/// <param name="Organizations">The active short-rent organizations looked at.</param>
-/// <param name="Sent">The summaries handed to the email queue in this run (an organization that already had its row sends nothing).</param>
 public sealed record ComplianceMonthlySummaryRunResult(bool Skipped, int Organizations, int Sent);
 
 /// <summary>
@@ -59,10 +51,8 @@ public sealed record ComplianceMonthSummary(
     bool Complete,
     IReadOnlyList<ComplianceMonthItem> OpenItems)
 {
-    /// <summary>The <see cref="ComplianceMonthlySummaryLog.Outcome"/> of this month.</summary>
     public string Outcome => Complete ? ComplianceMonthlySummaryLog.AllCompliant : ComplianceMonthlySummaryLog.ItemsMissing;
 
-    /// <summary>How many obligations are not settled: the ones without a proof and the ones held only by the channel manager.</summary>
     public int NotSettled => Counts.Missing + Counts.ExternalVerificationRequired;
 
     /// <summary>

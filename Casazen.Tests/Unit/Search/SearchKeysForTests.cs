@@ -25,7 +25,6 @@ internal static class SearchKeysForTests
 
     public static string SupplierProfileText(SupplierProfile s) => s.LegalName;
 
-    /// <summary>Writes the key of every searchable row of the database, then saves: what the generated columns do on PostgreSQL.</summary>
     public static async Task ComputeAsync(AppDbContext db)
     {
         db.ChangeTracker.Clear();

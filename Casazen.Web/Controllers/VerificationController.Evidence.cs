@@ -17,7 +17,6 @@ namespace Casazen.Web.Controllers;
 /// </summary>
 public partial class VerificationController
 {
-    /// <summary>The live evidence of a booking: <c>[{ id, kind, createdAt, expiresAt }]</c>, never a picture. 404 <c>identity_evidence_not_found</c> for a booking the caller does not reach.</summary>
     [HttpGet("{bookingId:guid}/evidence")]
     [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
     [FeatureGate(FeatureFlags.CheckInIdentitySelfHosted)]
@@ -46,10 +45,6 @@ public partial class VerificationController
         return Ok(items.Select(IdentityEvidenceItemDto.From).ToList());
     }
 
-    /// <summary>
-    /// One picture of the evidence of a booking, decrypted, with its content type (<c>image/png</c> or <c>image/jpeg</c>): a line of the activity log is written before it is sent.
-    /// 404 <c>identity_evidence_not_found</c> for every case where it is not served.
-    /// </summary>
     [HttpGet("{bookingId:guid}/evidence/{evidenceId:guid}")]
     [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
     [FeatureGate(FeatureFlags.CheckInIdentitySelfHosted)]

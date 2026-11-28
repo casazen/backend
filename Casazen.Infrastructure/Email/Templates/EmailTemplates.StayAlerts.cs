@@ -4,7 +4,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Email.Templates;
 
-/// <summary>Short plain-text notification (push): no markup, values not encoded.</summary>
 public sealed record PushText(string Title, string Body);
 
 /// <summary>
@@ -67,7 +66,6 @@ public static partial class EmailTemplates
                 bookingUrl)
             .Build("AlloggiatiFailed_Subject", propertyName, checkInDate);
 
-    /// <summary>Check-out day of a confirmed or checked-in stay, to the host (A5-25: email as well as push).</summary>
     public static EmailContent CheckoutReminder(
         CultureInfo culture,
         string guestName,
@@ -93,10 +91,6 @@ public static partial class EmailTemplates
                 bookingUrl)
             .Build("ReceiptMissing_Subject", propertyName, checkInDate);
 
-    /// <summary>
-    /// A stay of at most one night (the 6-hour term) that is not entrusted to the channel manager arrives within a few hours (E03/F02/US02/T01,
-    /// CHK-12), to the host. The exact deadline is shown when the arrival is registered (<paramref name="deadlineUtc"/>). No guest data.
-    /// </summary>
     public static EmailContent ShortStayAtRisk(
         CultureInfo culture,
         string propertyName,
@@ -112,10 +106,6 @@ public static partial class EmailTemplates
             .Build("ShortStayAtRisk_Subject", propertyName, checkInDate);
     }
 
-    /// <summary>
-    /// A stay over 30 nights, which the channel manager does not send by itself, arrives tomorrow (E03/F02/US02/T01, CHK-12), to the host. No guest
-    /// data.
-    /// </summary>
     public static EmailContent OverThirtyNights(CultureInfo culture, string propertyName, DateTime checkInDate, string? bookingUrl = null) =>
         WithBookingLink(
                 new EmailHtmlBuilder(culture)
@@ -145,10 +135,6 @@ public static partial class EmailTemplates
         return WithComplianceLink(builder, complianceUrl).Build($"{prefix}_{phase}_Subject", propertyName, month);
     }
 
-    /// <summary>
-    /// The police send of the channel manager is not active while a stay is coming (E03/F02/US02/T01, CHK-12), to the host: the property only. The
-    /// second and last notice says so.
-    /// </summary>
     public static EmailContent ComplianceConnectionAlert(CultureInfo culture, ComplianceAlert alert, string propertyName, string? complianceUrl = null)
     {
         ArgumentNullException.ThrowIfNull(alert);
@@ -161,9 +147,6 @@ public static partial class EmailTemplates
             .Build("ComplianceAlertConnection_Subject", propertyName);
     }
 
-    /// <summary>
-    /// Push text of a period or connection alert: the property and, for a period, the month and the deadline day. Plain text, no guest data.
-    /// </summary>
     public static PushText CompliancePush(CultureInfo culture, ComplianceAlert alert, string propertyName)
     {
         ArgumentNullException.ThrowIfNull(alert);
@@ -184,29 +167,17 @@ public static partial class EmailTemplates
             string.Format(culture, EmailTexts.Get($"{prefix}_Body", culture), propertyName, MonthLabel(alert.Period, culture), deadline));
     }
 
-    /// <summary>
-    /// The month <c>yyyy-MM</c> as the texts write it, with the month name of the culture (<c>ottobre 2026</c>, <c>October 2026</c>); the value itself
-    /// when it is not a month. The format is a date-only one, which <see cref="DateOnly"/> accepts.
-    /// </summary>
     internal static string MonthLabel(string? period, CultureInfo culture) =>
         period is { Length: 7 }
         && DateOnly.TryParseExact(period + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var first)
             ? first.ToString("MMMM yyyy", culture)
             : period ?? string.Empty;
 
-    /// <summary>
-    /// "Open the compliance page" button to the compliance page of the console (<see cref="PublicSiteLinks.HostCompliance"/>), with the raw link
-    /// below it. Nothing when the link is not known.
-    /// </summary>
     private static EmailHtmlBuilder WithComplianceLink(EmailHtmlBuilder builder, string? complianceUrl) =>
         string.IsNullOrWhiteSpace(complianceUrl)
             ? builder
             : builder.Button("ComplianceAlert_Cta", complianceUrl).LinkFallback("Booking_LinkFallback", complianceUrl);
 
-    /// <summary>
-    /// "Open the booking" button to the booking in the console (<see cref="PublicSiteLinks.HostBooking"/>), with the raw
-    /// link below it, as in the new booking email of BK-10. Nothing when the link is not known.
-    /// </summary>
     private static EmailHtmlBuilder WithBookingLink(EmailHtmlBuilder builder, string? bookingUrl) =>
         string.IsNullOrWhiteSpace(bookingUrl)
             ? builder

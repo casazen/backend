@@ -11,13 +11,8 @@ using DocumentKind = Casazen.Core.Entities.Enums.FiscalDocumentKind;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// What the documents of a booking do when the booking changes (E12/F01/US01/T01, T03, I12): a draft follows the booking; an issued document is never rewritten, it is corrected by a credit
-/// note (the reversal receipt of a receipt: the same kind, the same series) and, when the booking is still on, a new draft.
-/// </summary>
 public sealed partial class FiscalDocumentService
 {
-    /// <summary>The reason printed on a correction, by what happened (<c>SharedResources</c>, Italian: the language of the lines of a document).</summary>
     private const string CorrectionModifiedKey = "FiscalDocCorrectionModified";
     private const string CorrectionCancelledKey = "FiscalDocCorrectionCancelled";
     private const string CorrectionNoShowKey = "FiscalDocCorrectionNoShow";
@@ -36,12 +31,9 @@ public sealed partial class FiscalDocumentService
             return BookingChangeOutcome.None;
         }
 
-        // Nothing to follow for a booking with no live document (none yet, or all credited in full: the next one is made by the daily run).
         if (!await HasLiveDocumentAsync(bookingId, ct))
             return BookingChangeOutcome.None;
 
-        // A cancelled booking (or a no-show) is credited by what the guest ends up paying: a refund still under way is not known yet. The event is delivered again; the refund that
-        // succeeds records PaymentRefunded, which prepares the credit note, so nothing is ever consumed with no effect.
         if (!IsActive(booking) && change != BookingChange.Refunded && await RefundInProgressAsync(bookingId, ct) && await HasIssuedLiveDocumentAsync(bookingId, ct))
             throw new FiscalDocumentChangePendingException(bookingId);
 
@@ -51,7 +43,6 @@ public sealed partial class FiscalDocumentService
                          ct,
                          (PostgresAdvisoryLocks.Scope.FiscalDocumentBooking, bookingId.ToString("N"))))
         {
-            // The booking and its documents as they are now, under the lock: an event of the same booking may have corrected them while this one waited.
             booking = await BookingOfAsync(bookingId, ct);
             var active = IsActive(booking);
             var documents = await db.FiscalDocuments
@@ -78,11 +69,6 @@ public sealed partial class FiscalDocumentService
         return await FinishAsync(booking, plan, ct);
     }
 
-    /// <summary>
-    /// A draft follows its booking: made again from it while the booking is active; discarded when the booking bills nothing any more and nothing was collected for it; kept, with a «To do»
-    /// for the host, when money was collected (the host decides), when the draft holds the number of a rejected invoice (E17/F01/US02/T03) or when the draft cannot be made again (its data
-    /// is missing now).
-    /// </summary>
     private async Task FollowDraftAsync(FiscalDocument draft, BookingFacts booking, bool active, BookingChange change, ChangePlan plan, CancellationToken ct)
     {
         if (!active)
@@ -97,7 +83,6 @@ public sealed partial class FiscalDocumentService
             draft.Status = FiscalDocumentStatus.Discarded;
             draft.UpdatedAt = UtcNow;
             await db.SaveChangesAsync(ct);
-            // The «To do» that told the host the booking changed under this draft (it was kept while money was collected) has nothing left to look at: it is done with the draft (FIX/RES-DOCS).
             await CloseReviewTodoAsync(draft.OrgId, draft.Id, ct);
             plan.Discarded++;
             logger.LogInformation("Draft {DocumentId} of booking {BookingId} discarded: the booking is no longer active ({Change})", draft.Id, booking.Id, change);
@@ -111,7 +96,6 @@ public sealed partial class FiscalDocumentService
         }
         catch (DomainException ex)
         {
-            // The draft cannot be made again now (the data of the guest or of the issuer is missing): it keeps what it had, and the host is told to look at it.
             logger.LogWarning("Draft {DocumentId} of booking {BookingId} not made again after {Change}: {Code}", draft.Id, booking.Id, change, ex.Code);
             plan.Todos.Add((draft.Id, FiscalDocumentTodos.BookingChangedReason));
         }
@@ -131,7 +115,6 @@ public sealed partial class FiscalDocumentService
     /// </summary>
     private async Task CorrectIssuedAsync(FiscalDocument issued, BookingFacts booking, bool active, BookingChange change, ChangePlan plan, CancellationToken ct)
     {
-        // A refund of an active booking is its own price (an edit of the price is a BookingModified): nothing to correct.
         if (active && change == BookingChange.Refunded)
             return;
 
@@ -147,7 +130,6 @@ public sealed partial class FiscalDocumentService
         FiscalTaxRule rule;
         try
         {
-            // The document is corrected by its own issuer (E17/F01/US01/T02): the owner's receipt or invoice by the owner, the agency's by the agency.
             (organization, _) = await RequireIssuerAsync(booking.OrgId, ct);
             var profile = await IssuerProfileAsync(booking, organization, issued.IssuerProfileId, requireComplete: false, ct);
             rule = RuleOf(profile, booking);
@@ -167,7 +149,6 @@ public sealed partial class FiscalDocumentService
 
         if (active)
         {
-            // The lines the booking bills now that this document bills (its part of the plan), against what the document says.
             var built = await _lines.BuildAsync(booking.Id, rule, _lines.PlatformCollectedChannelsOf(organization), ct);
             FiscalDocumentAmounts? now = null;
             try
@@ -176,7 +157,6 @@ public sealed partial class FiscalDocumentService
             }
             catch (DomainException)
             {
-                // The booking bills nothing now (a price of zero): the whole document is credited and there is no new draft.
             }
 
             if (now is not null && Matches(issued, now))
@@ -194,7 +174,6 @@ public sealed partial class FiscalDocumentService
 
             try
             {
-                // The new drafts of the plan; the one of this document's part follows its credit note in the automatic issue.
                 var drafts = await MakeDraftsOfThePlanAsync(booking.Id, null, onlyMissing: false, ct);
                 if (drafts.FirstOrDefault(d => d.ForAgencyServices == issued.ForAgencyServices && d.Status == FiscalDocumentStatus.Draft) is { } draft
                     && !plan.IssueInOrder.Contains(draft.Id))
@@ -204,15 +183,12 @@ public sealed partial class FiscalDocumentService
             }
             catch (DomainException ex)
             {
-                // The new draft cannot be made now (the data of the guest is missing): the host sees the credit note, the daily run makes the draft when the data is there.
                 logger.LogWarning("Booking {BookingId}: the new draft after the credit note of {DocumentId} was not made ({Code})", booking.Id, issued.Id, ex.Code);
             }
 
             return;
         }
 
-        // Not on any more. A portal collected the money: CasaZen does not know what it kept, only the host does. The same for a stay of a portal the host collects from when the channel
-        // manager has not said what the guest paid (CasaZen has no payment of such a stay): what nobody knows is never «nothing paid», which would be a credit note of the whole document.
         if (issued.PaymentChannel == FiscalPaymentChannel.Portal
             || (FiscalCopy.IsOtaBookingSource(booking.Source) && await OtaPaidOfAsync(booking.Id, ct) is null))
         {
@@ -220,7 +196,6 @@ public sealed partial class FiscalDocumentService
             return;
         }
 
-        // What the guest ends up paying is the consideration: collected net of the refunds, never more than the document.
         var charged = Math.Min(issued.Total, Math.Max(await CollectedOfAsync(booking.Id, ct), 0m));
         var needed = uncovered - charged;
         if (needed > 0m)
@@ -237,7 +212,6 @@ public sealed partial class FiscalDocumentService
         ChangePlan plan,
         CancellationToken ct)
     {
-        // The whole of what is left is the document as stored; a part is spread over its lines in proportion.
         var note = BuildCreditNote(issued, credited, amount, reason, null, rule);
         db.FiscalDocuments.Add(note);
         await db.SaveChangesAsync(ct);
@@ -246,11 +220,6 @@ public sealed partial class FiscalDocumentService
         logger.LogInformation("Credit note draft {CreditNoteId} prepared for document {DocumentId} of booking {BookingId}", note.Id, issued.Id, issued.BookingId);
     }
 
-    /// <summary>
-    /// After the corrections are committed: with the automatic issue of the profile, the credit notes and then the new draft are issued through the same path as the API (a new draft cannot be
-    /// issued before its credit note, so the chain stops at the first refusal); what is still a draft is the host's «To do» («Controlla ed emetti la nota di credito»); the documents that
-    /// need a look are the «To do» of T01. A «To do» is raised once for a document while it is open.
-    /// </summary>
     private async Task<BookingChangeOutcome> FinishAsync(BookingFacts booking, ChangePlan plan, CancellationToken ct)
     {
         var issuedIds = new HashSet<Guid>();
@@ -281,7 +250,6 @@ public sealed partial class FiscalDocumentService
         return new BookingChangeOutcome(plan.Refreshed, plan.Discarded, plan.CreditNoteIds.Count, issuedIds.Count, todos);
     }
 
-    /// <summary>The «To do» of a document for the host (no personal data: a code, the document and its property); an item already open is the one raised.</summary>
     private async Task<BookingChangeOutcome> TellTheHostAsync(BookingFacts booking, Guid documentId, string reason, CancellationToken ct)
     {
         if (activities is null)
@@ -336,7 +304,6 @@ public sealed partial class FiscalDocumentService
         }
     }
 
-    /// <summary>The document bills what the booking bills now: the same total and the same net for every type of line.</summary>
     private static bool Matches(FiscalDocument document, FiscalDocumentAmounts amounts)
     {
         if (document.Total != amounts.Total)
@@ -361,7 +328,6 @@ public sealed partial class FiscalDocumentService
             : lines;
     }
 
-    /// <summary>The booking bills what the document says: the lines it bills now make the same total and the same net for every type of line (a booking that bills nothing any more does not).</summary>
     private static bool BillsWhatTheDocumentSays(FiscalDocument document, IReadOnlyList<FiscalDocumentGrossLine> lines, FiscalTaxRule rule)
     {
         try
@@ -374,7 +340,6 @@ public sealed partial class FiscalDocumentService
         }
     }
 
-    /// <summary>The key of the reason printed on a correction: what happened to the booking as it is now.</summary>
     private static string ReasonKeyOf(BookingFacts booking, BookingChange change)
     {
         if (IsActive(booking))
@@ -386,25 +351,20 @@ public sealed partial class FiscalDocumentService
         return booking.NoShowAt is not null && booking.Status != BookingStatus.Cancelled ? CorrectionNoShowKey : CorrectionCancelledKey;
     }
 
-    /// <summary>The booking bills a document: a status of the one definition of the code and no no-show mark (<see cref="AlloggiatiStatusRules"/>).</summary>
     private static bool IsActive(BookingFacts booking) =>
         AlloggiatiStatusRules.ActiveBookingStatuses.Contains(booking.Status) && booking.NoShowAt is null;
 
-    /// <summary>The money collected for a booking, net of the refunds (for a stay of a portal the host collects from, what the channel manager says the guest paid).</summary>
     private async Task<decimal> CollectedOfAsync(Guid bookingId, CancellationToken ct) =>
         (await CollectedByBookingAsync(db, [bookingId], ct)).GetValueOrDefault(bookingId);
 
-    /// <summary>What the channel manager says the guest paid for a stay of a portal; <c>null</c> when it does not say.</summary>
     private Task<decimal?> OtaPaidOfAsync(Guid bookingId, CancellationToken ct) =>
         db.Bookings.AsNoTracking().Where(b => b.Id == bookingId).Select(b => b.OtaPaidAmount).FirstOrDefaultAsync(ct);
 
-    /// <summary>A refund of a payment of the booking was asked and Stripe has not confirmed it (pending, or waiting for an action of the guest's bank).</summary>
     private Task<bool> RefundInProgressAsync(Guid bookingId, CancellationToken ct) =>
         db.PaymentRefunds
             .AsNoTracking()
             .AnyAsync(r => r.Payment.BookingId == bookingId && (r.Status == PaymentRefundStatus.Pending || r.Status == PaymentRefundStatus.RequiresAction), ct);
 
-    /// <summary>The booking has an issued document that is not a credit note, not a proforma and not credited in full.</summary>
     private Task<bool> HasIssuedLiveDocumentAsync(Guid bookingId, CancellationToken ct) =>
         db.FiscalDocuments
             .AsNoTracking()
@@ -417,23 +377,18 @@ public sealed partial class FiscalDocumentService
                      && !d.CreditedInFull,
                 ct);
 
-    /// <summary>What a change decided, to be done once the corrections are committed.</summary>
     private sealed class ChangePlan
     {
-        /// <summary>The profile issues without a person.</summary>
         public bool AutoIssue { get; set; }
 
         public int Refreshed { get; set; }
 
         public int Discarded { get; set; }
 
-        /// <summary>The credit notes prepared, as drafts.</summary>
         public List<Guid> CreditNoteIds { get; } = [];
 
-        /// <summary>What the automatic issue issues, in order: the credit notes, then the new draft.</summary>
         public List<Guid> IssueInOrder { get; } = [];
 
-        /// <summary>The documents that need a look, with the reason of the «To do».</summary>
         public List<(Guid DocumentId, string Reason)> Todos { get; } = [];
     }
 }

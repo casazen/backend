@@ -12,7 +12,6 @@ public sealed partial class BuildInfo(string? commitSha)
     public const string RailwayCommitVariable = "RAILWAY_GIT_COMMIT_SHA";
     public const string CommitVariable = "GIT_COMMIT_SHA";
 
-    /// <summary>Lowercase commit SHA (7-40 hex characters), or null when the host does not provide it.</summary>
     public string? CommitSha { get; } = commitSha;
 
     public static BuildInfo FromConfiguration(IConfiguration configuration)

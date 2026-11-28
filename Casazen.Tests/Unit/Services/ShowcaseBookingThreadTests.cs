@@ -31,8 +31,6 @@ public class ShowcaseBookingThreadTests
     private static ShowcaseBookingCredentials Credentials(ServiceRequest request, string email = ShowcaseScenario.CustomerEmail) =>
         new(ShowcaseScenario.Slug, BookingCodes.Format(request.PublicCode!), email);
 
-    // ─── Reading ─────────────────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Lookup_OfARequestOnMeasure_ShowsTheThread_MarksTheSuppliersMessagesRead_AndSaysWhereTheNegotiationIs()
     {
@@ -86,12 +84,10 @@ public class ShowcaseBookingThreadTests
         Assert.Equal(ServiceRequestKind.Standard, view.Kind);
         Assert.Null(view.Thread);
         Assert.Null(view.Negotiation);
-        // At the root of the answer (the lines of the price have a kind of their own): the three members are not there at all.
         using var plain = JsonDocument.Parse(JsonSerializer.Serialize(PublicSupplierBookingViewMapper.ToDto(view), new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         foreach (var member in new[] { "kind", "thread", "negotiation" })
             Assert.False(plain.RootElement.TryGetProperty(member, out _), member);
 
-        // And the one on measure has them.
         var onMeasure = await s.InquiredAsync(email: "altra.persona@example.com");
         var customJson = JsonSerializer.Serialize(
             PublicSupplierBookingViewMapper.ToDto(await s.Kit.Manager.LookupAsync(Credentials(onMeasure, "altra.persona@example.com"))),
@@ -101,15 +97,12 @@ public class ShowcaseBookingThreadTests
         Assert.Contains("\"author\":\"customer\"", customJson);
     }
 
-    // ─── Writing ─────────────────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task PostMessage_AddsTheCustomersMessage_TellsTheSupplierWithTheComuneAndAShortName_NeverTheWords()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         var supplier = await s.EnableBookingAsync();
         var request = await s.InquiredAsync(supplier);
-        // The supplier was told of the first message when the address was checked; a follow-up inside ten minutes tells nobody again.
         s.Clock.Advance(TimeSpan.FromMinutes(11));
 
         var view = await s.Kit.Manager.PostMessageAsync(Credentials(request), "  " + Question + "  ");
@@ -121,7 +114,6 @@ public class ShowcaseBookingThreadTests
         var stored = await s.ThreadAsync(request.Id);
         Assert.Equal(s.SupplierOrgId, stored[1].OrgId);
 
-        // The clock of the supplier is its own: the customer's message does not touch it.
         var after = await s.ReadAsync(request.Id);
         Assert.Equal(request.ResponseDueAt, after.ResponseDueAt);
         Assert.Equal(ServiceRequestStatus.Richiesto, after.Status);
@@ -166,14 +158,12 @@ public class ShowcaseBookingThreadTests
         var (booking, _) = await s.BookedAsync();
         s.ForgetNotifications();
 
-        // Empty, too long, with a character a message cannot have: one answer.
         foreach (var body in new[] { null, "   ", new string('x', ShowcaseInquiryLimits.MessageMaxLength + 1), "con un carattere" + (char)0 + " nascosto" })
         {
             var invalid = await Assert.ThrowsAsync<DomainRuleException>(async () => await s.Kit.Manager.PostMessageAsync(Credentials(request), body));
             Assert.Equal("service_request_message_invalid", invalid.Code);
         }
 
-        // Who is not the customer, and a booking that is not a request on measure, are the same 404.
         var wrongAddress = await Assert.ThrowsAsync<NotFoundException>(
             async () => await s.Kit.Manager.PostMessageAsync(Credentials(request, "qualcun.altro@example.com"), Question));
         var aBooking = await Assert.ThrowsAsync<NotFoundException>(
@@ -182,7 +172,6 @@ public class ShowcaseBookingThreadTests
         Assert.Equal(wrongAddress.Code, aBooking.Code);
         Assert.Equal(wrongAddress.Message, aBooking.Message);
 
-        // A supplier that is not active answers nobody.
         await s.SetSupplierStatusAsync(SupplierStatus.Suspended);
         var suspended = await Assert.ThrowsAsync<DomainRuleException>(async () => await s.Kit.Manager.PostMessageAsync(Credentials(request), Question));
         Assert.Equal("supplier_booking_supplier_unavailable", suspended.Code);
@@ -226,8 +215,6 @@ public class ShowcaseBookingThreadTests
         Assert.Equal(ShowcaseInquiryLimits.MaxMessagesPerRequest, (await s.ThreadAsync(crowded.Id)).Count);
     }
 
-    // ─── Closing ─────────────────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Cancel_OfARequestOnMeasure_ClosesItForFree_TellsTheSupplierWithoutADay_AndTheCustomerGetsNoReceipt()
     {
@@ -250,16 +237,12 @@ public class ShowcaseBookingThreadTests
         Assert.Contains("Mario R.", toSupplier.Content.HtmlBody);
         Assert.DoesNotContain("Rossi", toSupplier.Content.Subject + toSupplier.Content.HtmlBody);
         Assert.DoesNotContain(s.Emails.Snapshot(), e => e.Template == EmailTemplates.Names.SupplierBookingCancelledByCustomer);
-        // The customer closed it itself: no receipt that speaks of a day and a time the request never had.
         Assert.DoesNotContain(s.Emails.Snapshot(), e => e.To == ShowcaseScenario.CustomerEmail);
 
-        // A closed request takes no more messages, from either party.
         await Assert.ThrowsAsync<DomainConflictException>(async () => await s.Kit.Manager.PostMessageAsync(Credentials(request), Question));
         await Assert.ThrowsAsync<DomainConflictException>(
             async () => await s.Service.PostMessageAsSupplierAsync(request.Id, s.SupplierOrgId, Reply));
     }
-
-    // ─── Retention ───────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task ApplyRetention_TheThreadOfARequestOnMeasureThatIsOver_IsDeletedAfterThePeriod_TheOpenOneAndTheYoungOneAreKept()
@@ -270,7 +253,6 @@ public class ShowcaseBookingThreadTests
         var open = await s.InquiredAsync(supplier, "altra.persona@example.com");
         await s.Service.RejectAsync(closed.Id, s.SupplierOrgId, "Non copro questo tipo di lavoro");
 
-        // Not yet: the period has not ended.
         s.Clock.Advance(TimeSpan.FromDays((365 * 2) - 30));
         await Service(s).ApplyRetentionAsync();
         Assert.Single(await s.ThreadAsync(closed.Id));
@@ -278,14 +260,12 @@ public class ShowcaseBookingThreadTests
         s.Clock.Advance(TimeSpan.FromDays(60));
         await Service(s).ApplyRetentionAsync();
 
-        // The words are gone; the request stays for the supplier's accounts. The request still open keeps its thread.
         Assert.Empty(await s.ThreadAsync(closed.Id));
         var kept = await s.ReadAsync(closed.Id);
         Assert.Equal(ServiceRequestStatus.Rifiutato, kept.Status);
         Assert.Equal(ShowcaseScenario.City, kept.LocationCity);
         Assert.Single(await s.ThreadAsync(open.Id));
 
-        // A second run finds nothing more.
         await Service(s).ApplyRetentionAsync();
         Assert.Single(await s.ThreadAsync(open.Id));
         Assert.Empty(await s.ThreadAsync(closed.Id));

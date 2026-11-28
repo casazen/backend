@@ -25,23 +25,17 @@ public partial class ServiceRequestService
         ArgumentNullException.ThrowIfNull(command);
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
 
-        // SP-10b-b: a request on measure is answered with an offer (IServiceRequestOfferActions), which carries the time and the quantities it
-        // needs; the quote of SP-04b leans on the time of a request, and a request on measure has none.
         EnsureNotOnMeasure(request);
 
-        // The quote answers a request nobody answered yet: not one the supplier took, refused, or that was cancelled.
         if (request.Status != ServiceRequestStatus.Richiesto)
         {
             throw new DomainRuleException(
                 ServiceRequestErrorCodes.InvalidTransition, ServiceRequestErrorCodes.CannotQuoteMessageKey);
         }
 
-        // SP-15c-a: a request whose card is blocked has its price: the total the customer saw is what is blocked, and a quote would be another
-        // price (R7: a different price needs a new offer, not an answer of the supplier). Refused before anything else is read.
         if (IsPaidInsideCasaZen(request))
             throw new DomainRuleException(ServicePaymentErrors.AmountLocked, ServicePaymentErrors.AmountLockedMessageKey);
 
-        // SP-BKP: a backup answers the request as it is or refuses; the host would be answering a supplier it did not choose.
         if (request.GroupRole == ServiceRequestGroupRole.Backup)
         {
             throw new DomainRuleException(
@@ -54,11 +48,6 @@ public partial class ServiceRequestService
             request, supplierOrgId, userId, lines, total, note, command.ScheduledStartUtc, command.ScheduledEndUtc, cancellationToken);
     }
 
-    /// <summary>
-    /// Puts a checked quote on a new request, with the supplier's calendar lock held while the time of the quote (if it has one) is judged, and
-    /// tells the customer: the part that the quote of SP-04b and the offer of SP-10b-b share (decision SP-D30). The caller has loaded the request
-    /// for an active supplier, refused what a quote cannot be sent on, and normalized the lines and the note.
-    /// </summary>
     private async Task<ServiceRequest> PublishQuoteAsync(
         ServiceRequest request,
         Guid supplierOrgId,
@@ -72,8 +61,6 @@ public partial class ServiceRequestService
     {
         var dueBeforeAnswer = await ReplyDeadlineAsync(request, cancellationToken);
 
-        // The quote leans on the time the request has (every request has one, but a request on measure: its offer always brings its own).
-        // Another time is optional and is judged like the time of a proposal: with the planner, under the lock, and without holding the slot.
         RequestSchedule? other = null;
         if (scheduledStartUtc is { } requestedStart)
         {
@@ -83,7 +70,6 @@ public partial class ServiceRequestService
         }
         else if (scheduledEndUtc is not null)
         {
-            // An end without a start says nothing.
             throw TimeInvalid();
         }
 
@@ -106,12 +92,8 @@ public partial class ServiceRequestService
             request.QuoteScheduledEndUtc = other?.End;
             AppendQuoteEvent(request, ServiceRequestQuoteEventKinds.Sent, now, total);
 
-            // One offer at a time: the quote takes the place of a proposed time.
             ClearProposal(request);
 
-            // A showcase request has no host who may take as long as it needs: its customer has the same time to answer as for a proposed
-            // time (Suppliers:Showcase:ProposalResponseMinutes), then the request lapses like one nobody answered. The supplier did answer.
-            // A host has no deadline; the one of the request is the supplier's own, which the auto-cancel job leaves alone while a quote waits.
             if (request.RentalContext == ServiceRequestRentalContext.Showcase)
                 request.ResponseDueAt = now.AddMinutes(showcaseOptions.Value.ProposalResponseMinutes);
 
@@ -122,11 +104,9 @@ public partial class ServiceRequestService
 
         logger.LogInformation("ServiceRequest {Id}: the supplier sent a quote", request.Id);
 
-        // SP-10b-b: an offer replaces the one before, and a card blocked for that one is not for this one: it is released, never charged.
         if (request.Kind == ServiceRequestKind.Custom)
             await ReleaseOfferPaymentAsync(request.Id, CancellationToken.None);
 
-        // A quote is an answer too (the request then waits for the customer, not for the supplier).
         await RecordReplyAsync(request, dueBeforeAnswer, asBackup: false, cancellationToken);
         await notifier.NotifyQuoteSentAsync(request, cancellationToken);
         return request;
@@ -140,7 +120,6 @@ public partial class ServiceRequestService
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
         var quote = RequirePendingQuote(request, quoteSentAt: null);
 
-        // The request is "to answer" again: the supplier answers it within its own time, as after an answer of the customer.
         var now = NowToTheMicrosecond();
         await RestartSupplierDeadlineAsync(request, now, cancellationToken);
         ClearQuote(request);
@@ -148,13 +127,11 @@ public partial class ServiceRequestService
         request.UpdatedAt = now;
         await SaveAsync(request, "quote withdrawn", cancellationToken);
 
-        // SP-BKP: the primary is "to answer" again, and the window of its group starts again the same way if it passed while the quote waited.
         if (request.GroupId is { } groupId)
             await ReopenGroupWindowAsync(groupId, cancellationToken);
 
         logger.LogInformation("ServiceRequest {Id}: the supplier took its quote back", request.Id);
 
-        // SP-10b-b: a card blocked (or waiting) for the offer that goes is released.
         if (request.Kind == ServiceRequestKind.Custom)
             await ReleaseOfferPaymentAsync(request.Id, CancellationToken.None);
 
@@ -170,8 +147,6 @@ public partial class ServiceRequestService
         var request = await GetRequestOfHostOrThrow(id, hostOrgId, cancellationToken);
         var quote = RequirePendingQuote(request, quoteSentAt);
 
-        // The quote is the supplier's offer to do the work at that price: accepting it takes the request on the supplier's behalf. A
-        // supplier suspended meanwhile cannot take work.
         var supplierStatus = await ReadSupplierStatusAsync(request.SupplierOrgId, cancellationToken);
         if (supplierStatus != SupplierStatus.Active)
         {
@@ -179,7 +154,6 @@ public partial class ServiceRequestService
                 ServiceRequestErrorCodes.SupplierInactive, ServiceRequestErrorCodes.SupplierInactiveMessageKey);
         }
 
-        // SP-15a: accepting the quote is a take, so the request is paid the way the supplier can be paid right now.
         var paymentMode = await ResolvePaymentModeAsync(request, cancellationToken);
 
         IDbContextTransaction? transaction = await LockSupplierCalendarAsync(request.SupplierOrgId, cancellationToken);
@@ -193,7 +167,6 @@ public partial class ServiceRequestService
 
         await notifier.NotifyQuoteAnsweredAsync(request, accepted: true, quote, cancellationToken);
 
-        // SP-BKP: accepting the primary's quote is the take of its job: the backups that still wait are closed.
         await ResolveGroupAfterChangeAsync(request.GroupId, cancellationToken);
         return request;
     }
@@ -207,8 +180,6 @@ public partial class ServiceRequestService
         var request = await GetRequestOfHostOrThrow(id, hostOrgId, cancellationToken);
         var quote = RequirePendingQuote(request, quoteSentAt);
 
-        // The request stays new and waits for another answer from the supplier. The deadline it had may have passed while the host was
-        // deciding: it starts again, or the job would cancel the request as if nobody had answered.
         var now = NowToTheMicrosecond();
         await RestartSupplierDeadlineAsync(request, now, cancellationToken);
         ClearQuote(request);
@@ -216,7 +187,6 @@ public partial class ServiceRequestService
         request.UpdatedAt = now;
         await SaveAsync(request, "quote rejected", cancellationToken);
 
-        // SP-BKP: the window of a group starts again the same way, for the primary and the backups together.
         if (request.GroupId is { } groupId)
             await ReopenGroupWindowAsync(groupId, cancellationToken);
 
@@ -225,8 +195,6 @@ public partial class ServiceRequestService
         await notifier.NotifyQuoteAnsweredAsync(request, accepted: false, quote, cancellationToken);
         return request;
     }
-
-    // ─── Shared by the host's and the customer's acceptance ───────────────────────────────────────────────────────────
 
     /// <summary>
     /// The take that accepting <paramref name="quote"/> is, with the supplier's calendar lock held by the caller: the time of the quote
@@ -245,8 +213,6 @@ public partial class ServiceRequestService
         var offeredTime = quote is { ScheduledStartUtc: not null, ScheduledEndUtc: not null };
         await EnsureQuoteTimeStillFreeAsync(request, quote, cancellationToken);
 
-        // SP-10b-b: an offer paid inside CasaZen charges the customer's card here — after the time was judged and before the request changes
-        // state, like the supplier's take of a booking whose card is blocked: a card that cannot be charged leaves the request as it was.
         if (beforeTake is not null)
             await beforeTake();
 
@@ -267,7 +233,6 @@ public partial class ServiceRequestService
                 r.TakenAt = now;
                 r.TakenByUserId = takenBy;
 
-                // The total is the price agreed (the reference of decision D7 for the final amount), and the lines say what it is made of.
                 r.QuotedAmountCents = quote.TotalCents;
                 r.PriceLinesJson = ServiceRequestJson.Serialize(ServiceRequestQuoteRules.AsPriceLines(quote.Lines));
                 AppendQuoteEvent(r, ServiceRequestQuoteEventKinds.Accepted, now, quote.TotalCents);
@@ -287,7 +252,6 @@ public partial class ServiceRequestService
     {
         if (quote is { ScheduledStartUtc: not null, ScheduledEndUtc: not null })
         {
-            // Another time than the request's own: it was an offer, not a reservation, so the planner judges it again now.
             var service = request.ServiceListingId is { } listingId
                 ? await catalog.FindForRequestAsync(request.SupplierOrgId, listingId, cancellationToken)
                 : null;
@@ -307,11 +271,6 @@ public partial class ServiceRequestService
             cancellationToken);
     }
 
-    /// <summary>
-    /// The quote that waits on the request, for the host or the supplier: 422 <see cref="ServiceRequestErrorCodes.NoQuote"/> when none does.
-    /// With <paramref name="quoteSentAt"/> (what the customer read) it has to be that very quote: another one means the supplier replaced it
-    /// meanwhile, 409 <see cref="ServiceRequestErrorCodes.QuoteChanged"/>, and nothing is answered.
-    /// </summary>
     private static ServiceRequestQuote RequirePendingQuote(ServiceRequest request, DateTime? quoteSentAt)
     {
         var quote = ServiceRequestQuoteRules.PendingOf(request)
@@ -333,8 +292,6 @@ public partial class ServiceRequestService
     {
         if (request.Kind == ServiceRequestKind.Custom)
         {
-            // SP-10b-b: a request on measure the supplier has answered (it sent the offer) is a conversation, which no clock closes behind the
-            // customer's back (the first reply stopped it): an offer turned down or taken back leaves it going on.
             request.ResponseDueAt = null;
         }
         else if (request.RentalContext == ServiceRequestRentalContext.Showcase)
@@ -344,12 +301,10 @@ public partial class ServiceRequestService
         }
         else if (request.GroupId is null && request.ResponseDueAt is { } due && due <= now)
         {
-            // A request of a group has the deadline of the group's window (ReopenGroupWindowAsync starts it again).
             request.ResponseDueAt = now.AddMinutes(options.Value.HostResponseMinutes);
         }
     }
 
-    /// <summary>The quote is dropped when the request moves on (taken, refused, cancelled) or when the supplier replaces it with a proposed time.</summary>
     internal static void ClearQuote(ServiceRequest request)
     {
         request.QuoteSentAt = null;
@@ -361,7 +316,6 @@ public partial class ServiceRequestService
         request.QuoteScheduledEndUtc = null;
     }
 
-    /// <summary>Adds an event to the trace of the quotes of the request (the last ones are kept).</summary>
     private static void AppendQuoteEvent(ServiceRequest request, string kind, DateTime at, int? totalCents) =>
         request.QuoteEventsJson = ServiceRequestJson.Serialize(
             ServiceRequestQuoteRules.Append(

@@ -22,7 +22,6 @@ public class SeoContentServiceTests
 
     private static readonly TimeProvider Today = new FixedTimeProvider(new DateTimeOffset(2026, 9, 24, 10, 0, 0, TimeSpan.Zero));
 
-    /// <summary>The real quote service (the only tourist tax engine) over a repository holding <paramref name="rates"/>.</summary>
     private static TouristTaxQuoteService QuoteService(params TouristTaxRate[] rates)
     {
         var repository = new Mock<ITouristTaxRateRepository>();
@@ -58,7 +57,6 @@ public class SeoContentServiceTests
     {
         var service = CreateService(Mock.Of<ISeoContentRepository>(), ComoRate());
 
-        // 5 nights, cap 4; 2 adults + a 13-year-old (exempt under 14) + a 14-year-old: 3 x 3,00 x 4 = 36,00.
         var result = await service.CalculateTouristTaxAsync(new PublicTouristTaxCalculateRequest(
             "como",
             2,
@@ -78,7 +76,6 @@ public class SeoContentServiceTests
     [Fact]
     public async Task CalculateTouristTaxAsync_ComuneWithoutRate_ReturnsRateUnavailableNotAnError()
     {
-        // A8-12: Palermo is in the registry but has no rate: an explicit state, no invented amount.
         var service = CreateService(Mock.Of<ISeoContentRepository>(), ComoRate());
 
         var result = await service.CalculateTouristTaxAsync(new PublicTouristTaxCalculateRequest(
@@ -107,7 +104,6 @@ public class SeoContentServiceTests
     [Fact]
     public async Task BuildComplianceSitemapXmlAsync_CalculatorOfComuneWithoutRate_IsExcluded()
     {
-        // A8-12: the tourist tax page of Palermo (no rate) is not indexed; its compliance guide still is.
         var seoRepo = new Mock<ISeoContentRepository>();
         seoRepo.Setup(r => r.GetPublishedPagesForSitemapAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(
@@ -128,7 +124,6 @@ public class SeoContentServiceTests
     [Fact]
     public async Task GetTouristTaxPageAsync_RateStoredWithLowerCaseCity_ListsTheRateInForce()
     {
-        // A8-23: an admin typing "como" must not hide the rate of the "Como" page.
         var page = new SeoContentPage
         {
             Id = Guid.NewGuid(),
@@ -395,7 +390,6 @@ public class SeoContentServiceTests
     [Fact]
     public async Task GeneratePagesForComuneBatchAsync_LatestNotGenerated_RetriesEvenWithUnchangedData()
     {
-        // A page left "not generated" (stub, missing key) is generated again once a provider is configured.
         var seoRepo = GenerationRepository(out var stored);
         var existing = new SeoContentPage { Id = Guid.NewGuid(), ComuneCode = "013075", PageType = SeoPageType.ComplianceGuide };
         seoRepo.Setup(r => r.GetPageAsync("013075", SeoPageType.ComplianceGuide, It.IsAny<CancellationToken>())).ReturnsAsync(existing);
@@ -424,7 +418,6 @@ public class SeoContentServiceTests
     [Fact]
     public async Task GeneratePagesForComuneBatchAsync_LombardyGuideOfThePreviousPrompt_IsGeneratedAgain()
     {
-        // The Lombardy guides gained the regional section: their texts of the previous prompt are regenerated as drafts.
         var (seoRepo, stored, aiProvider) = ExistingGeneratedPage("013075", SeoPageType.ComplianceGuide, SeoContentPrompt.Version);
         var service = new SeoContentService(
             seoRepo.Object, QuoteService(), Catalog, aiProvider.Object, EmailTestHelpers.Links(),
@@ -439,7 +432,6 @@ public class SeoContentServiceTests
     [Fact]
     public async Task GeneratePagesForComuneBatchAsync_PageWhosePromptDidNotChange_IsNotGeneratedAgain()
     {
-        // A guide outside Lombardy keeps its prompt version: no paid call and no new review for an unchanged text.
         var (seoRepo, stored, aiProvider) = ExistingGeneratedPage("082053", SeoPageType.ComplianceGuide, SeoContentPrompt.Version);
         var service = new SeoContentService(
             seoRepo.Object, QuoteService(), Catalog, aiProvider.Object, EmailTestHelpers.Links(),
@@ -454,7 +446,6 @@ public class SeoContentServiceTests
             Times.Never);
     }
 
-    /// <summary>A page whose latest revision is a generated text of <paramref name="promptVersion"/> with unchanged data.</summary>
     private static (Mock<ISeoContentRepository> Repo, List<SeoContentRevision> Stored, Mock<IAiProvider> Provider) ExistingGeneratedPage(
         string comuneCode, SeoPageType pageType, string promptVersion)
     {
@@ -476,7 +467,6 @@ public class SeoContentServiceTests
         return (seoRepo, stored, aiProvider);
     }
 
-    // A8-25 (SE-05): the answers are cached in a bounded cache with a time to live; "regenerate" really regenerates.
     private static (SeoContentService Service, Mock<IAiProvider> Provider, List<SeoContentRevision> Stored, AiResponseCache Cache) CachedService(
         bool providerConfigured = true,
         string? content = null)
@@ -508,7 +498,6 @@ public class SeoContentServiceTests
             Times.Once);
         Assert.Equal(2, stored.Count);
         Assert.Equal(stored[0].BodyHtml, stored[1].BodyHtml);
-        // The second revision cost no tokens.
         Assert.Equal(50, stored[0].PromptTokens);
         Assert.Equal(0, stored[1].PromptTokens);
     }
@@ -520,7 +509,6 @@ public class SeoContentServiceTests
 
         await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: false);
         await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: true);
-        // The regenerated text is what the cache holds now.
         await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: false);
 
         provider.Verify(
@@ -535,7 +523,6 @@ public class SeoContentServiceTests
     [Fact]
     public async Task GeneratePagesForComuneBatchAsync_PlaceholderAnswer_IsNeverCached()
     {
-        // The stub provider (no API key) answers a placeholder: keeping it would only hide the missing configuration.
         var (service, provider, _, cache) = CachedService(providerConfigured: false);
 
         await service.GeneratePagesForComuneBatchAsync(["013075"], [SeoPageType.ComplianceGuide], forceRegenerate: false);
@@ -550,7 +537,6 @@ public class SeoContentServiceTests
     [Fact]
     public async Task GetComplianceGuideAsync_ApprovedGeneratedRevision_IsMarkedAiGeneratedAndItalian()
     {
-        // SE-05 (A8-19, A8-27): the API tells the client to show the AI notice and the language of the text.
         var revision = new SeoContentRevision { Id = Guid.NewGuid(), BodyHtml = "<p>Guida</p>", ContentStatus = SeoContentStatus.Generated };
         var page = new SeoContentPage
         {
@@ -585,7 +571,6 @@ public class SeoContentServiceTests
         Assert.False(dto!.AiGenerated);
     }
 
-    /// <summary>A repository for a generation from scratch, collecting the stored revisions.</summary>
     private static Mock<ISeoContentRepository> GenerationRepository(out List<SeoContentRevision> stored)
     {
         var revisions = new List<SeoContentRevision>();
@@ -648,7 +633,6 @@ public class SeoContentServiceTests
         Assert.Equal(
             "<h2>CIN</h2><p>Testo <a rel=\"noopener noreferrer\">x</a></p>",
             stored!.BodyHtml);
-        // Too short to be a page: kept (sanitized) for the admin, never publishable (A8-06).
         Assert.Equal(SeoContentStatus.InvalidOutput, stored.ContentStatus);
     }
 
@@ -657,7 +641,6 @@ public class SeoContentServiceTests
     [InlineData(SeoPageType.TouristTaxCalc)]
     public async Task PublicPage_StoredRevisionWithMaliciousHtml_ReturnsSanitizedBody(SeoPageType pageType)
     {
-        // Revisions stored before the allowlist (or written by any other path) are sanitized again on read.
         var revision = new SeoContentRevision
         {
             BodyHtml = "<h2>Guida</h2><iframe src=\"https://evil.example\"></iframe>" +
@@ -694,7 +677,6 @@ public class SeoContentServiceTests
     [Fact]
     public async Task PublicPage_WithNewerDraft_ServesThePublishedRevisionAndItsDate()
     {
-        // A8-05: the public page shows the approved text; the repository never hands it the latest draft.
         var published = new SeoContentRevision
         {
             BodyHtml = "<p>Testo approvato</p>",

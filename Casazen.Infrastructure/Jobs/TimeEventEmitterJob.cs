@@ -54,16 +54,13 @@ public class TimeEventEmitterJob(
 {
     public const string RecurringJobId = "time-event-emitter";
 
-    /// <summary>The least a run looks back for the triggers that became due.</summary>
     public static readonly TimeSpan CatchUpWindow = TimeSpan.FromHours(1);
 
     private static readonly RoutineEventType[] StayEventTypes = [.. TimeTrigger.StayKinds.Keys];
 
-    // Every run is followed by the next one in a few minutes: a failed run is not retried, the next one catches up.
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
     public async Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        // The module is closed (Features:Routines): nothing is written to the outbox, whatever routines the orgs have saved.
         if (!featureFlags.IsEnabled(FeatureFlags.Routines))
         {
             logger.LogDebug("Routines are off (Features:Routines): no time trigger is written");
@@ -111,7 +108,6 @@ public class TimeEventEmitterJob(
             skipped);
     }
 
-    /// <summary>The triggers of <paramref name="orgId"/> due in (<paramref name="windowStart"/>, <paramref name="now"/>].</summary>
     private async Task<List<DueTrigger>> DueTriggersAsync(
         Guid orgId,
         HashSet<TriggerPoint> points,
@@ -139,7 +135,6 @@ public class TimeEventEmitterJob(
             .Select(b => new { b.Id, b.PropertyId, b.CheckInDate, b.CheckOutDate })
             .ToListAsync(cancellationToken);
 
-        // The clock of each property: when guests may arrive and when they must leave, in its own zone.
         var propertyIds = bookings.Select(b => b.PropertyId).Distinct().ToList();
         var clocks = propertyIds.Count == 0
             ? new Dictionary<Guid, PropertyClock>()
@@ -169,11 +164,6 @@ public class TimeEventEmitterJob(
         return due;
     }
 
-    /// <summary>
-    /// The stored dates whose trigger can be due in the window. The time of a date on the clock of a property is up to 14 hours before and up
-    /// to 36 hours after its stored midnight UTC (a zone from UTC+14 to UTC-12, a time of the day up to 23:59), so the range is two days wider
-    /// before and one day wider after; the exact due time is checked on each booking.
-    /// </summary>
     private static DateWindow? DatesToRead(IEnumerable<TriggerPoint> points, DateTime windowStart, DateTime now)
     {
         DateWindow? dates = null;
@@ -190,7 +180,6 @@ public class TimeEventEmitterJob(
         return dates;
     }
 
-    /// <summary>Writes the triggers not written yet, one save each: a key another run wrote meanwhile is refused and skipped.</summary>
     private async Task<(int Emitted, int Skipped)> EmitAsync(Guid orgId, List<DueTrigger> due, CancellationToken cancellationToken)
     {
         if (due.Count == 0)
@@ -229,7 +218,6 @@ public class TimeEventEmitterJob(
             }
             catch (DbUpdateException ex) when (IsDedupConflict(ex))
             {
-                // Another run wrote the same trigger meanwhile: the database kept the first one.
                 foreach (var entry in db.ChangeTracker.Entries<OutboxEvent>().Where(e => e.State == EntityState.Added).ToList())
                     entry.State = EntityState.Detached;
                 skipped++;

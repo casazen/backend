@@ -86,13 +86,8 @@ public sealed record HostBookingUpdate(
     Guid? GuestStayChangeId = null,
     bool GuestWillPay = false);
 
-/// <summary>
-/// The commission, net, paid and balance amounts of the channel as a request to change a booking carried them (each <c>null</c> when it did
-/// not). Read-only after the import: they come from the channel manager.
-/// </summary>
 public sealed record OtaAmountsInput(decimal? Commission, decimal? Net, decimal? Paid, decimal? Balance)
 {
-    /// <summary>True when a figure was given that is not the one in <paramref name="stored"/> (the four figures the booking holds): that would be an edit.</summary>
     public bool Edits(OtaAmountsInput stored)
     {
         ArgumentNullException.ThrowIfNull(stored);

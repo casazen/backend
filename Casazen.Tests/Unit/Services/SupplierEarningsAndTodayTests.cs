@@ -7,16 +7,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// SP-04: what the supplier's home shows (<c>GET api/supplier/today</c>): the jobs of the day, the new requests by deadline, the
-/// month's earnings from the final amounts of the completed jobs (labelled as an estimate until payments exist), what is still
-/// to be collected and the average time to answer; and the checklist of the first steps (<c>GET api/supplier/checklist</c>).
-/// Dates are Europe/Rome days: the scenario clock is Thursday 8 October 2026, 12:00 in Rome.
-/// </summary>
 public class SupplierEarningsAndTodayTests
 {
-    // ─── Earnings ───
-
     [Fact]
     public async Task GetEarningsSummaryAsync_NothingYet_IsZeroForTheMonthOfTheClockAndStillAnEstimate()
     {
@@ -41,11 +33,8 @@ public class SupplierEarningsAndTodayTests
         var other = await s.AddOtherSupplierAsync();
         await s.SeedAsync(ServiceRequestStatus.Completato, r => Completed(r, "2026-10-03T09:00:00Z", 8000));
         await s.SeedAsync(ServiceRequestStatus.Pagato, r => Completed(r, "2026-10-05T09:00:00Z", 5000));
-        // Completed in September: it is no earning of October, but it is still to be collected.
         await s.SeedAsync(ServiceRequestStatus.Completato, r => Completed(r, "2026-09-20T09:00:00Z", 6000));
-        // Completed without a final amount (an older request): a job that adds nothing.
         await s.SeedAsync(ServiceRequestStatus.Completato, r => Completed(r, "2026-10-06T09:00:00Z", null));
-        // Not earnings: new, taken, rejected, cancelled, and the job of another supplier.
         await s.SeedAsync(ServiceRequestStatus.Richiesto);
         await s.SeedAsync(ServiceRequestStatus.PresoInCarico, r => r.TakenAt = r.CreatedAt);
         await s.SeedAsync(ServiceRequestStatus.Rifiutato);
@@ -61,10 +50,10 @@ public class SupplierEarningsAndTodayTests
     }
 
     [Theory]
-    [InlineData("2026-09-30T21:59:59Z", false)] // 23:59:59 on 30 September in Rome
-    [InlineData("2026-09-30T22:00:00Z", true)] // 00:00 on 1 October in Rome
-    [InlineData("2026-10-31T22:59:59Z", true)] // 23:59:59 on 31 October in Rome (summer time ended on the 25th: UTC+1)
-    [InlineData("2026-10-31T23:00:00Z", false)] // 00:00 on 1 November in Rome
+    [InlineData("2026-09-30T21:59:59Z", false)]
+    [InlineData("2026-09-30T22:00:00Z", true)]
+    [InlineData("2026-10-31T22:59:59Z", true)]
+    [InlineData("2026-10-31T23:00:00Z", false)]
     public async Task GetEarningsSummaryAsync_TheMonthIsMadeOfRomeDays(string completedAt, bool inOctober)
     {
         using var s = await ServiceRequestScenario.CreateAsync();
@@ -83,14 +72,12 @@ public class SupplierEarningsAndTodayTests
         var now = ServiceRequestScenario.Instant.UtcDateTime;
         foreach (var minutes in new[] { 10, 20, 25 })
             await s.SeedAsync(ServiceRequestStatus.PresoInCarico, r => Taken(r, now.AddDays(-5), minutes));
-        // Taken 91 days ago: outside the window, it does not weigh on today's average.
         await s.SeedAsync(ServiceRequestStatus.Completato, r => Taken(r, now.AddDays(-91), 600));
-        // Never taken: no answer to average.
         await s.SeedAsync(ServiceRequestStatus.Richiesto);
 
         var summary = await Kpis(s).GetEarningsSummaryAsync(s.SupplierOrgId);
 
-        Assert.Equal(18, summary.AverageResponseMinutes); // (10 + 20 + 25) / 3 = 18.3
+        Assert.Equal(18, summary.AverageResponseMinutes);
         Assert.Equal(90, SupplierEarningsSummary.ResponseWindowDays);
     }
 
@@ -100,7 +87,7 @@ public class SupplierEarningsAndTodayTests
         using var s = await ServiceRequestScenario.CreateAsync();
         var other = await s.AddOtherSupplierAsync();
         await s.SeedAsync(ServiceRequestStatus.Richiesto);
-        await s.SeedAsync(ServiceRequestStatus.Annullato); // cancelled before anybody answered
+        await s.SeedAsync(ServiceRequestStatus.Annullato);
         await s.SeedAsync(ServiceRequestStatus.Pagato, r => Taken(r, ServiceRequestScenario.Instant.UtcDateTime, 5), supplierOrgId: other);
         Assert.False(await Kpis(s).HasAnsweredARequestAsync(s.SupplierOrgId));
 
@@ -117,16 +104,14 @@ public class SupplierEarningsAndTodayTests
         Assert.True(await Kpis(s).HasAnsweredARequestAsync(s.SupplierOrgId));
     }
 
-    // ─── Today ───
-
     [Fact]
     public async Task GetTodayAsync_ListsTheJobsOfTheRomeDayByTimeAndLeavesOutTheOtherDays()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        var afternoon = await Job(s, "2026-10-08T12:00:00Z"); // 14:00
-        var morning = await Job(s, "2026-10-08T07:00:00Z"); // 09:00
-        var justAfterMidnight = await Job(s, "2026-10-07T22:30:00Z"); // 00:30 on the 8th in Rome
-        await Job(s, "2026-10-08T22:30:00Z"); // 00:30 on the 9th in Rome
+        var afternoon = await Job(s, "2026-10-08T12:00:00Z");
+        var morning = await Job(s, "2026-10-08T07:00:00Z");
+        var justAfterMidnight = await Job(s, "2026-10-07T22:30:00Z");
+        await Job(s, "2026-10-08T22:30:00Z");
         await Job(s, "2026-10-09T08:00:00Z");
         var done = await Job(s, "2026-10-08T10:00:00Z", ServiceRequestStatus.Completato);
 
@@ -134,7 +119,6 @@ public class SupplierEarningsAndTodayTests
 
         Assert.Equal(new DateOnly(2026, 10, 8), today.Date);
         Assert.Equal(new[] { justAfterMidnight, morning, done, afternoon }, today.Jobs.Select(job => job.Id));
-        // A job the supplier took shows the property and the notes, as the console does after the take.
         Assert.All(today.Jobs, job =>
         {
             Assert.Equal(ServiceRequestScenario.PropertyName, job.Location.PropertyName);
@@ -149,7 +133,7 @@ public class SupplierEarningsAndTodayTests
         var ids = new List<Guid>();
         for (var i = 0; i < 12; i++)
         {
-            var minutes = 12 - i; // the last created is the first to expire
+            var minutes = 12 - i;
             ids.Add((await s.SeedAsync(ServiceRequestStatus.Richiesto, r => r.ResponseDueAt = ServiceRequestScenario.Instant.UtcDateTime.AddMinutes(minutes))).Id);
         }
 
@@ -201,8 +185,6 @@ public class SupplierEarningsAndTodayTests
         Assert.Empty(today.NewRequests);
     }
 
-    // ─── Checklist ───
-
     [Fact]
     public async Task GetChecklistAsync_ASupplierWithoutAProfile_IsNull()
     {
@@ -230,7 +212,6 @@ public class SupplierEarningsAndTodayTests
         Assert.Equal(ServiceRequestScenario.Instant.UtcDateTime, checklist.HoursConfiguredAt);
         Assert.True(checklist.ShowcasePublished);
         Assert.True(checklist.FirstRequestAnswered);
-        // The payments of the suppliers are not available yet: not a "no", so no value.
         Assert.Null(checklist.PaymentsActive);
     }
 
@@ -297,10 +278,8 @@ public class SupplierEarningsAndTodayTests
 
         var checklist = await Today(s, Suppliers(s, SupplierStatus.Active, 80, "x")).GetChecklistAsync(s.SupplierOrgId);
 
-        Assert.Equal(2, checklist!.ActiveServices); // the one of the scenario and "Secondo servizio"
+        Assert.Equal(2, checklist!.ActiveServices);
     }
-
-    // ─── helpers ───
 
     private static SupplierKpiService Kpis(ServiceRequestScenario s) => new(s.Db, s.Clock);
 
@@ -320,7 +299,6 @@ public class SupplierEarningsAndTodayTests
     private static SupplierDashboard Dashboard(int completion) =>
         new(completion, "Active", 0, "None", null, null, null, "None", ServiceRequestScenario.Instant.UtcDateTime);
 
-    /// <summary>A job of the supplier at <paramref name="startUtc"/>, two hours long, taken (or in <paramref name="status"/>).</summary>
     private static async Task<Guid> Job(ServiceRequestScenario s, string startUtc, ServiceRequestStatus status = ServiceRequestStatus.PresoInCarico)
     {
         var start = Utc(startUtc);

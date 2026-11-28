@@ -13,26 +13,18 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>The kinds of problem a scheduled message alerts the hosts about: codes, part of the key of the push and of the bell (E05/F07/US01, NF-71, AC-NF71-3).</summary>
 public static class ScheduledMessageAlertKinds
 {
-    /// <summary>The message is held back for a piece of data it has no value for.</summary>
     public const string Blocked = "blocked";
 
     /// <summary>The channel did not take the message and the retries are used.</summary>
     public const string Failed = "failed";
 
-    /// <summary>The system skipped the message (the rules of the channel, no way to the guest, a mapping nobody decided) or a person skipped it.</summary>
     public const string Skipped = "skipped";
 
-    /// <summary>The message went out when the clock of the property was outside the send window.</summary>
     public const string OutsideHours = "outside-hours";
 }
 
-/// <summary>
-/// A scheduled message the hosts are alerted about: ids, a kind and an instant, <b>never the words of the message, a name or an address</b>. <paramref name="ExceptUserId"/> is the person who did
-/// it themselves (the one who skipped the message or asked for «Send now»), who needs no alert about their own action. <paramref name="OccurredAtUtc"/> is the instant the quiet hours are judged at.
-/// </summary>
 public sealed record ScheduledMessageAlert(Guid OrgId, Guid PropertyId, Guid BookingId, Guid MessageId, string Kind, string? ExceptUserId, DateTime OccurredAtUtc);
 
 /// <summary>
@@ -65,10 +57,8 @@ public sealed class ScheduledMessageAlertDelivery(
 {
     private const string Tenant = AppDbContext.TenantQueryFilter;
 
-    /// <summary>How long an e-mail slot is kept after its last use before the next claim of the person deletes it.</summary>
     private static readonly TimeSpan SlotRetention = TimeSpan.FromDays(7);
 
-    /// <summary>How long a failed alert waits before the job raises it again (a passing error has time to pass).</summary>
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
 
     /// <summary>
@@ -90,7 +80,6 @@ public sealed class ScheduledMessageAlertDelivery(
         }
     }
 
-    /// <summary>Alerts every host the preferences select. Throws, after trying everybody, when a person could not be alerted.</summary>
     public async Task AlertAsync(ScheduledMessageAlert alert, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(alert);
@@ -114,7 +103,6 @@ public sealed class ScheduledMessageAlertDelivery(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // Never the user id in the log: the message and the org tell where to look.
                 logger.LogError(ex, "Scheduled message alert {MessageId} ({Kind}) of org {OrgId}: a person could not be alerted", alert.MessageId, alert.Kind, alert.OrgId);
                 failures.Add(ex);
             }
@@ -162,8 +150,6 @@ public sealed class ScheduledMessageAlertDelivery(
         }
     }
 
-    // ─── One person ───
-
     private async Task DeliverToAsync(ScheduledMessageAlert alert, string? propertyName, NotificationRecipient recipient, CancellationToken ct)
     {
         if (recipient.NowChannels.HasFlag(NotificationChannels.CounterOnly))
@@ -176,7 +162,6 @@ public sealed class ScheduledMessageAlertDelivery(
         if (recipient.DeferredChannels == NotificationChannels.None || recipient.DueAtUtc is not { } due)
             return;
 
-        // An e-mail that waits holds the slot of the alert until it is due: the job only queues it.
         var deferred = recipient.DeferredChannels;
         var claimedEmail = false;
         if (deferred.HasFlag(NotificationChannels.Email))
@@ -208,16 +193,11 @@ public sealed class ScheduledMessageAlertDelivery(
         }
         catch (Exception) when (claimedEmail)
         {
-            // Nothing is waiting for the slot: give it back, so the alert raised again can claim it and schedule the e-mail.
             await ReleaseEmailSlotAsync(alert, recipient.UserId, CancellationToken.None);
             throw;
         }
     }
 
-    /// <summary>
-    /// The push and the e-mail of one person. <paramref name="claimedAtUtc"/> is the instant the e-mail slot was already claimed for (an e-mail that waited for the quiet hours to end);
-    /// <c>null</c> means the slot is claimed here, at the instant of the alert.
-    /// </summary>
     private async Task SendHeldChannelsAsync(
         ScheduledMessageAlert alert,
         string? propertyName,
@@ -250,14 +230,10 @@ public sealed class ScheduledMessageAlertDelivery(
             links.IsConfigured ? links.HostBooking(alert.BookingId) : null);
         if (!emailQueue.Enqueue(email, content, EmailTemplates.Names.HostScheduledMessageIssue))
         {
-            // Not queued (no provider, no address): give the slot back, so an alert raised again tries again.
             await ReleaseEmailSlotAsync(alert, userId, ct);
         }
     }
 
-    // ─── Counter ───
-
-    /// <summary>Writes the notification of the bell for the person, once for each message and kind, and tells its open sessions. False when it was there already.</summary>
     private async Task<bool> WriteBellAsync(ScheduledMessageAlert alert, string userId, CancellationToken ct)
     {
         var key = KeyOf(alert, userId);
@@ -285,13 +261,11 @@ public sealed class ScheduledMessageAlertDelivery(
         }
         catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex, InAppNotification.OncePerEventAndUserIndexName))
         {
-            // The same alert written by another run at the same moment: that row is the one.
             db.Entry(row).State = EntityState.Detached;
             return false;
         }
         catch (Exception)
         {
-            // A row that could not be saved must not stay in the tracker, or every later save of this context would try it again.
             db.Entry(row).State = EntityState.Detached;
             throw;
         }
@@ -302,19 +276,12 @@ public sealed class ScheduledMessageAlertDelivery(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The row is stored: the real-time update is a hint, the bell reads the count on its next poll.
             logger.LogWarning(ex, "Scheduled message alert {MessageId}: the real-time update of the bell failed", alert.MessageId);
         }
 
         return true;
     }
 
-    // ─── E-mail slot ───
-
-    /// <summary>
-    /// Claims the slot of the person and the alert: true when no e-mail went (or waits) for it. One insert on the unique index <c>(org, user, key)</c>, so two runs at the same moment queue one e-mail,
-    /// and an alert delivered again (after another person of the same alert failed) finds the slot taken and e-mails nobody twice.
-    /// </summary>
     private async Task<bool> ClaimEmailSlotAsync(ScheduledMessageAlert alert, string userId, DateTime atUtc, CancellationToken ct)
     {
         var key = EmailSlotKeyOf(alert);
@@ -335,7 +302,6 @@ public sealed class ScheduledMessageAlertDelivery(
         }
         catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex, NotificationEmailSlot.OncePerUserAndThreadIndexName))
         {
-            // Another run claimed it first: that one has the slot.
             db.Entry(created).State = EntityState.Detached;
             return false;
         }
@@ -349,7 +315,6 @@ public sealed class ScheduledMessageAlertDelivery(
         return true;
     }
 
-    /// <summary>Gives the slot back after an e-mail that could not be queued: the row of this very alert goes, so the alert raised again is free.</summary>
     private async Task ReleaseEmailSlotAsync(ScheduledMessageAlert alert, string userId, CancellationToken ct)
     {
         var key = EmailSlotKeyOf(alert);
@@ -366,7 +331,6 @@ public sealed class ScheduledMessageAlertDelivery(
         await db.SaveChangesAsync(ct);
     }
 
-    /// <summary>The slots of the person not used for a week are of alerts long over: they go with the next claim.</summary>
     private async Task PruneEmailSlotsAsync(Guid orgId, string userId, DateTime atUtc, CancellationToken ct)
     {
         var limit = atUtc - SlotRetention;
@@ -383,10 +347,7 @@ public sealed class ScheduledMessageAlertDelivery(
         await db.SaveChangesAsync(ct);
     }
 
-    /// <summary>The key of the slot: the message and the kind of the alert. At most 64 characters.</summary>
     private static string EmailSlotKeyOf(ScheduledMessageAlert alert) => $"scheduled:{alert.MessageId:N}:{alert.Kind}";
-
-    // ─── Deferral ───
 
     private void Schedule(QueuedScheduledMessageAlert queued, DateTime dueUtc)
     {
@@ -401,9 +362,6 @@ public sealed class ScheduledMessageAlertDelivery(
             jobId);
     }
 
-    // ─── What the alert is about ───
-
-    /// <summary>Who is told about a scheduled message: the audience of its property (the administrators of the org when it has none), narrowed to who may open the booking.</summary>
     private static NotificationEventContext ContextOf(ScheduledMessageAlert alert, DateTime? atUtc, string? onlyUserId) =>
         new(
             alert.OrgId,
@@ -415,7 +373,6 @@ public sealed class ScheduledMessageAlertDelivery(
 
     private static string KeyOf(ScheduledMessageAlert alert, string userId) => PushDeliveryKeys.ScheduledMessageIssue(alert.MessageId, alert.Kind, 0, userId);
 
-    /// <summary>The name of the property of the message (never the guest, never the words); <c>null</c> when it is gone.</summary>
     private Task<string?> PropertyNameAsync(ScheduledMessageAlert alert, CancellationToken ct) =>
         db.Properties
             .AsNoTracking()

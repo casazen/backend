@@ -46,24 +46,19 @@ public sealed partial class OctorateTokenService(
     ILogger<OctorateTokenService> logger,
     OctoratePartnerTokenCache? partnerTokens = null) : IOctorateTokenService
 {
-    /// <summary>Name of the <see cref="HttpClient"/> of the refresh call.</summary>
     public const string HttpClientName = "Octorate.Identity";
 
-    /// <summary>Configuration key of the application's client id (<c>Octorate__ClientId</c>).</summary>
     public const string ClientIdKey = "Octorate:ClientId";
 
     /// <summary>Configuration key of the application's client secret (<c>Octorate__ClientSecret</c>, never committed).</summary>
     public const string ClientSecretKey = "Octorate:ClientSecret";
 
-    /// <summary>A token that expires within this window is refreshed before it is handed out (ADR-023-R2).</summary>
     public static readonly TimeSpan RefreshWindow = TimeSpan.FromMinutes(5);
 
     private const string RefreshPath = "/rest/v1/identity/refresh";
 
-    /// <summary>The <c>suggestion</c> of the 403 <c>ApiSecurityException</c> Octorate answers to a refresh token that is not valid.</summary>
     private const string RefreshTokenInvalidSuggestion = "errRefreshTokenInvalid";
 
-    /// <summary>The OAuth error of a refresh token (or grant) that is not valid, expired or revoked.</summary>
     private const string InvalidGrant = "invalid_grant";
 
     private static readonly EventId TokenAccessedEvent = new(52_001, "OctorateTokenAccessed");
@@ -102,7 +97,6 @@ public sealed partial class OctorateTokenService(
         if (string.IsNullOrEmpty(tokens.AccessToken) && string.IsNullOrEmpty(tokens.RefreshToken))
             throw new ArgumentException("Octorate answered no token to save.", nameof(tokens));
 
-        // The refresh token first: it arrives once, so it is in the database before anything else can fail.
         var connection = await SaveRefreshTokenAsync(orgId, tokens.RefreshToken, ct);
 
         if (!string.IsNullOrEmpty(tokens.AccessToken))
@@ -111,7 +105,6 @@ public sealed partial class OctorateTokenService(
             connection.TokenExpiresAt = tokens.ExpiresAt;
         }
 
-        // Usable once a refresh token is stored: the access token alone would die with its expiry.
         if (!string.IsNullOrEmpty(connection.EncryptedRefreshToken))
             connection.Status = OctorateConnectionStatus.Connected;
 
@@ -154,7 +147,6 @@ public sealed partial class OctorateTokenService(
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db, ct, (PostgresAdvisoryLocks.Scope.OctorateTokenRefresh, connection.Id.ToString("N")));
 
-        // Inside the lock: what another instance may have written while this one waited.
         await db.Entry(connection).ReloadAsync(ct);
         if (connection.Status != OctorateConnectionStatus.Connected)
             throw OctorateAuthException.NotConnected();
@@ -162,7 +154,6 @@ public sealed partial class OctorateTokenService(
         if (connection.EncryptedAccessToken is { Length: > 0 } current
             && (rejectedAccessToken is null ? !ExpiresSoon(connection) : !SameToken(current, rejectedAccessToken)))
         {
-            // Refreshed by another caller meanwhile: its token is the one to use, nothing is written.
             LogAccess(orgId, connection.Id);
             return current;
         }
@@ -176,8 +167,6 @@ public sealed partial class OctorateTokenService(
         var outcome = await CallRefreshAsync(connection, refreshToken, ct);
         if (outcome.Tokens is not { } tokens)
         {
-            // Octorate said the refresh token itself is not valid: the only refusal that forgets the tokens. Every other one was thrown
-            // by CallRefreshAsync with the tokens untouched.
             await DisconnectRefusedAsync(connection, transaction, outcome.StatusCode, outcome.ErrorType, ct);
             throw OctorateAuthException.Refused(outcome.StatusCode);
         }
@@ -239,7 +228,6 @@ public sealed partial class OctorateTokenService(
         }
         catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
         {
-            // The 30-second timeout of the client.
             throw new OctorateServerException(null, ex);
         }
 
@@ -269,10 +257,6 @@ public sealed partial class OctorateTokenService(
         }
     }
 
-    /// <summary>
-    /// True when Octorate says the refresh token itself is not valid any more: the suggestion <c>errRefreshTokenInvalid</c> of its
-    /// <c>ApiSecurityException</c> (the 403 seen in the sandbox) or the OAuth error <c>invalid_grant</c> (ADR-023-R12). Nothing else is.
-    /// </summary>
     internal static bool IsRefreshTokenInvalid(string? suggestion, string body) =>
         string.Equals(suggestion, RefreshTokenInvalidSuggestion, StringComparison.OrdinalIgnoreCase)
         || body.Contains(InvalidGrant, StringComparison.OrdinalIgnoreCase);
@@ -402,6 +386,5 @@ public sealed partial class OctorateTokenService(
 
     private DateTime Now() => timeProvider.GetUtcNow().UtcDateTime;
 
-    /// <summary>What the refresh call answered: the tokens, or a refusal with Octorate's status and error type.</summary>
     private sealed record RefreshOutcome(OctorateTokenResponse? Tokens, int? StatusCode, string? ErrorType);
 }

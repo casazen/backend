@@ -70,11 +70,6 @@ public sealed class OctorateMappingController(
         return Ok(await VisibleAsync(await mappings.RefreshAsync(caller.OrgId, cancellationToken), caller.Scope));
     }
 
-    /// <summary>Confirms the listing to the property of the body. A listing already confirmed to another property is not moved: reject it first.</summary>
-    /// <response code="204">Confirmed.</response>
-    /// <response code="404">The listing is not the org's or the caller does not reach it (its property, or the whole org for a listing with no property), or the property is not in the org or not reachable by the caller.</response>
-    /// <response code="409"><c>octorate_mapping_property_taken</c>: the property is confirmed to another listing; <c>octorate_mapping_linked_to_other_property</c>: the listing is confirmed to another property.</response>
-    /// <response code="422"><c>octorate_room_invalid</c>: the room given is not a room of the listing.</response>
     [HttpPut("mapping/{octorateAccommodationId}")]
     [Authorize(Policy = CasazenPolicies.OtaWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -92,8 +87,6 @@ public sealed class OctorateMappingController(
         if (request.PropertyId is not { } propertyId || !await CanWritePropertyAsync(caller, propertyId))
             return PropertyNotFound();
 
-        // The listing itself, as SetRoom and Reject check it: a listing proposed or confirmed to a property is the decision of whoever
-        // reaches that property (the others do not see it in the list), so reaching the new property alone does not take it over.
         if (!await CanDecideAsync(caller, await RowAsync(caller, octorateAccommodationId, cancellationToken)))
             return MappingNotFound();
 
@@ -127,9 +120,6 @@ public sealed class OctorateMappingController(
         return NoContent();
     }
 
-    /// <summary>Rejects the mapping of the listing: it is not one of the org's CasaZen properties.</summary>
-    /// <response code="204">Rejected.</response>
-    /// <response code="404">The listing is not the org's, or the caller does not reach its property (or the whole org, for a listing with no property).</response>
     [HttpDelete("mapping/{octorateAccommodationId}")]
     [Authorize(Policy = CasazenPolicies.OtaWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -165,10 +155,6 @@ public sealed class OctorateMappingController(
         return Created($"/api/properties/{propertyId}", new ImportListingResponse(propertyId));
     }
 
-    /// <summary>
-    /// The caller's id, org, scope and token roles; <c>null</c> when it has no org or reaches nothing in it. The roles go to the service, which
-    /// decides the reach of a person in no org team with them, as this controller did.
-    /// </summary>
     private async Task<Caller?> CallerAsync(CancellationToken cancellationToken)
     {
         if (User.GetUserId() is not { Length: > 0 } userId
@@ -181,7 +167,6 @@ public sealed class OctorateMappingController(
         return new Caller(userId, orgId, scope, User.GetRoles());
     }
 
-    /// <summary>The row-level check of <c>PropertiesController</c>: the property is in the caller's org and the caller may write it.</summary>
     private async Task<bool> CanWritePropertyAsync(Caller caller, Guid propertyId)
     {
         var property = await propertyService.GetPropertyRecordAsync(propertyId);
@@ -190,10 +175,6 @@ public sealed class OctorateMappingController(
                && await authorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), PropertyOperations.Write);
     }
 
-    /// <summary>
-    /// Whether the caller may decide on a listing: the row-level check of its property (proposed or confirmed), or, for a listing with
-    /// no property, a scope over the whole org (an org-level decision).
-    /// </summary>
     private async Task<bool> CanDecideAsync(Caller caller, ChannelMappingRow? row) => row switch
     {
         null => false,
@@ -205,7 +186,6 @@ public sealed class OctorateMappingController(
         (await mappings.ListAsync(caller.OrgId, cancellationToken))
         .FirstOrDefault(row => string.Equals(row.OctorateAccommodationId, octorateAccommodationId?.Trim(), StringComparison.Ordinal));
 
-    /// <summary>The listings the caller reaches: all of them for the whole org, else those of the properties of its scope.</summary>
     private async Task<IReadOnlyList<OctorateListingDto>> VisibleAsync(IReadOnlyList<ChannelMappingRow> rows, HostScope scope)
     {
         if (scope.IsOrgWide)

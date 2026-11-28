@@ -25,7 +25,6 @@ public class SeoContentService(
     TimeProvider? timeProvider = null,
     IAiResponseCache? aiCache = null) : ISeoContentService
 {
-    /// <summary>Language of the generated pages: the prompt asks for Italian, the regulations are Italian.</summary>
     public const string ContentLanguage = "it";
 
     public const int CounselRequiredBatchSize = 100;
@@ -62,7 +61,6 @@ public class SeoContentService(
         if (comune is null)
             return null;
 
-        // Same engine as the checkout (BK-03): ages, category, season, cap of nights and percentage rates included.
         var quote = await touristTaxQuoteService.QuoteAsync(
             ToTouristTaxComune(comune),
             new TouristTaxStay(
@@ -137,7 +135,6 @@ public class SeoContentService(
         var page = await repository.GetByIdAsync(command.PageId, cancellationToken)
             ?? throw new NotFoundException($"SEO page {command.PageId} not found");
 
-        // A8-04: the first pages need an explicit confirmation of the legal review, never a default.
         if (page.CounselRequired && !command.CounselApproved)
             throw new DomainRuleException(SeoReviewErrorCodes.CounselRequired, "SeoCounselRequired", CounselRequiredBatchSize);
 
@@ -289,7 +286,6 @@ public class SeoContentService(
                 }
                 catch (AiBudgetExceededException)
                 {
-                    // A8-07: the provider was not called; every following page would hit the same cap, so stop here.
                     logger.LogWarning(
                         "Platform AI budget exhausted: SEO batch stopped at {Comune} {PageType} after {Generated} pages",
                         comune.Name, pageType, generated);
@@ -361,8 +357,6 @@ public class SeoContentService(
 
     public async Task<string> BuildComplianceSitemapXmlAsync(CancellationToken cancellationToken = default)
     {
-        // SE-02 (A8-02, D3): every URL is on App:PublicSiteBaseUrl, the domain of the web app that serves /p/*.
-        // Missing value: configuration error (only possible in Development/Testing), never a fallback domain.
         publicSiteLinks.EnsureConfigured();
 
         var pages = await GetIndexablePagesAsync(cancellationToken);
@@ -385,11 +379,6 @@ public class SeoContentService(
             new XElement(ns + "loc", publicSiteLinks.PublicPage(path)),
             new XElement(ns + "lastmod", lastModified.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
 
-    /// <summary>
-    /// The pages worth indexing, shared by the sitemap and the hub: published (an approved revision, SE-01), with content,
-    /// of a known comune and, for a calculator, with a tourist tax rate in force. There is no feature flag on the SEO pages.
-    /// The last modification is the approval of the published text, not a later draft.
-    /// </summary>
     private async Task<IReadOnlyList<IndexablePage>> GetIndexablePagesAsync(CancellationToken cancellationToken)
     {
         var candidates = await repository.GetPublishedPagesForSitemapAsync(cancellationToken);
@@ -401,7 +390,6 @@ public class SeoContentService(
             if (!comuni.TryGetValue(page.ComuneCode, out var comune))
                 continue;
 
-            // A8-12 (BK-03): a calculator page of a comune without a rate in force is not worth indexing.
             if (page.PageType == SeoPageType.TouristTaxCalc
                 && (await touristTaxQuoteService.GetRatesInForceAsync(ToTouristTaxComune(comune), today, cancellationToken)).Count == 0)
             {
@@ -445,7 +433,6 @@ public class SeoContentService(
         if (existing is not null && !forceRegenerate)
         {
             var latest = await repository.GetLatestRevisionAsync(existing.Id, cancellationToken);
-            // A text the admin wrote is kept until they ask to regenerate: a batch must not replace it.
             if (latest is { ContentStatus: SeoContentStatus.Manual })
             {
                 logger.LogInformation("SEO page {Slug} has a manual draft; skipping until an explicit regenerate", slug);
@@ -463,8 +450,6 @@ public class SeoContentService(
 
         var cacheKey = $"{comune.Code}:{pageType}:{sourceVersion}:{promptVersion}";
         var prompt = SeoContentPrompt.Build(comune, pageType, taxRates);
-        // A paid provider is wrapped by the platform budget guard: it checks the cap BEFORE the call and throws
-        // AiBudgetExceededException, which stops the batch (A8-07). The prompt holds public regulatory data only.
         var aiResult = await GenerateOrReuseAsync(prompt, cacheKey, forceRegenerate, cancellationToken);
         var (contentStatus, bodyHtml) = SeoGeneratedContent.Evaluate(aiResult);
         if (contentStatus != SeoContentStatus.Generated)
@@ -531,7 +516,6 @@ public class SeoContentService(
         var comune = await comuneCatalog.GetByCodeAsync(page.ComuneCode, cancellationToken)
             ?? throw new InvalidOperationException($"Unknown comune code {page.ComuneCode}");
 
-        // SE-01 (A8-05): the approved revision only, never a newer draft. Sanitized again on read (FD-15).
         var revision = page.PublishedRevision
             ?? (page.PublishedRevisionId is { } publishedId
                 ? await repository.GetRevisionAsync(publishedId, cancellationToken)
@@ -631,7 +615,6 @@ public class SeoContentService(
             revision.ContentStatus,
             revision.PromptVersion);
 
-    /// <summary>The text as the public page would show it: sanitized with the FD-15 allowlist.</summary>
     private static SeoRevisionPreviewDto Preview(SeoContentRevision revision) =>
         new(
             revision.Id,
@@ -696,14 +679,9 @@ public class SeoContentService(
             _ => $"Microsite fornitori per affitti brevi a {comune.Name} (Phase 0 deferred).",
         };
 
-    /// <summary>Canonical URL on App:PublicSiteBaseUrl (D3); null only when it is not configured (Development/Testing).</summary>
     private string? BuildCanonicalUrl(ComuneInfo comune, SeoPageType pageType) =>
         publicSiteLinks.TryPublicPage(SeoPagePaths.For(comune, pageType));
 
-    /// <summary>
-    /// Signup CTA on App:PublicSiteBaseUrl (D3, SE-03); relative only when it is not configured (Development/Testing).
-    /// No compliance checker CTA: the tool has no spec yet (A8-03).
-    /// </summary>
     private SeoCtaDto BuildCta(ComuneInfo comune, SeoPageType pageType)
     {
         var path = SeoPagePaths.SignupCta(comune, pageType);

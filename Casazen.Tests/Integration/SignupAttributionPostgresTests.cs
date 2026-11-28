@@ -88,14 +88,14 @@ public class SignupAttributionPostgresTests(CasazenWebApplicationFactory factory
 
         object[] invalid =
         [
-            new { utmSource = new string('a', 101) },               // longer than 100 characters
-            new { utmCampaign = "mario.rossi@example.com" },          // "@": an email address never passes
-            new { utmTerm = "<script>" },                             // markup
-            new { comune = "Como" },                                  // slugs are lower case
-            new { landingPath = "/p/affitti-brevi?email=a@b.it" },   // no query string in the path
-            new { landingPath = "p/affitti-brevi" },                  // a path of the web app starts with "/"
-            new { landingPath = "/" + new string('a', 200) },         // longer than 200 characters
-            new { referrerHost = "https://www.google.com/search" },   // host only, no scheme or path
+            new { utmSource = new string('a', 101) },
+            new { utmCampaign = "mario.rossi@example.com" },
+            new { utmTerm = "<script>" },
+            new { comune = "Como" },
+            new { landingPath = "/p/affitti-brevi?email=a@b.it" },
+            new { landingPath = "p/affitti-brevi" },
+            new { landingPath = "/" + new string('a', 200) },
+            new { referrerHost = "https://www.google.com/search" },
         ];
 
         foreach (var body in invalid)
@@ -105,12 +105,10 @@ public class SignupAttributionPostgresTests(CasazenWebApplicationFactory factory
             var raw = await response.Content.ReadAsStringAsync();
             var problem = JsonSerializer.Deserialize<JsonElement>(raw);
             Assert.Equal("validation_error", problem.GetProperty("code").GetString());
-            // The field error is the localized message, never the resource key.
             Assert.NotEqual(JsonValueKind.Undefined, problem.GetProperty("errors").ValueKind);
             Assert.DoesNotContain("SignupAttribution", raw, StringComparison.Ordinal);
         }
 
-        // Well-formed but not a comune CasaZen knows: refused as a business rule, the rest of the body is not stored.
         var unknownComune = await client.PostAsJsonAsync(AttributionPath, new { utmSource = "google", comune = "atlantide" });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, unknownComune.StatusCode);
         var unknownProblem = await unknownComune.Content.ReadFromJsonAsync<JsonElement>();
@@ -118,7 +116,6 @@ public class SignupAttributionPostgresTests(CasazenWebApplicationFactory factory
 
         Assert.Empty(await AttributionsOfAsync(orgId));
 
-        // Refused values are not stored "half": a valid attribution afterwards is still the first one.
         var valid = await client.PostAsJsonAsync(AttributionPath, new { utmSource = "google", comune = ComoIstatCode });
         Assert.True((await ReadOkAsync(valid)).GetProperty("recorded").GetBoolean());
         Assert.Equal(ComoIstatCode, Assert.Single(await AttributionsOfAsync(orgId)).ComuneCode);
@@ -183,7 +180,6 @@ public class SignupAttributionPostgresTests(CasazenWebApplicationFactory factory
     {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        // Test assertion outside any request: read the rows of the org directly.
         return await db.SignupAttributions.IgnoreQueryFilters().AsNoTracking().Where(a => a.OrgId == orgId).ToListAsync();
     }
 

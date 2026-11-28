@@ -8,7 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>SP-02: the mapping between the catalog's entity, its response DTO and the request that creates or replaces it.</summary>
 public class SupplierServiceMapperTests
 {
     private static readonly DateTime Created = new(2026, 10, 1, 8, 0, 0, DateTimeKind.Utc);

@@ -143,7 +143,6 @@ public class StayGuestsPostgresIntegrationTests : IClassFixture<CasazenWebApplic
         Assert.Equal(HttpStatusCode.NotFound, replace.StatusCode);
         Assert.DoesNotContain("AB123456", await read.Content.ReadAsStringAsync());
 
-        // Directly through the tenant query filter: org B neither reads nor bulk-deletes org A's guests.
         using var scope = _factory.Services.CreateScope();
         var orgIdB = await OrgOfAsync(seedB.BookingId);
         await using (var dbB = NewDb(scope, new FixedTenantContext(orgIdB)))
@@ -199,7 +198,6 @@ public class StayGuestsPostgresIntegrationTests : IClassFixture<CasazenWebApplic
         using var admin = _factory.CreateAuthenticatedClient($"auth0|co12-admin-{Guid.NewGuid():N}", "Admin");
         using var owner = _factory.CreateAuthenticatedClient(seed.OwnerId, OwnerRole);
 
-        // A file with an invalid line is rejected as a whole: nothing imported.
         var rejected = await ImportAsync(admin, "Comuni", "Codice;Descrizione;Provincia\n900000001;TEST Milano;MI\n12345678901;TEST Troppo lungo;RM\n");
         Assert.Equal(HttpStatusCode.UnprocessableEntity, rejected.StatusCode);
         using (var problem = JsonDocument.Parse(await rejected.Content.ReadAsStringAsync()))
@@ -209,7 +207,6 @@ public class StayGuestsPostgresIntegrationTests : IClassFixture<CasazenWebApplic
             Assert.Equal((3, "code_invalid"), (line.GetProperty("line").GetInt32(), line.GetProperty("error").GetString()));
         }
 
-        // Synthetic files: names match the seeded guests (Milano, Italia), codes are fake (9...).
         Assert.Equal(HttpStatusCode.OK, (await ImportAsync(admin, "Comuni", "Codice;Descrizione;Provincia\r\n900000001;Milano;MI\r\n900000002;\"Reggio nell'Emilia\";RE\r\n")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await ImportAsync(admin, "Stati", "Codice\tDescrizione\n900000100\tItalia\n900000101\tTEST Francia\n")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await ImportAsync(admin, "Documenti", "Code,Description\nTSTPA,TEST Passaporto\n")).StatusCode);
@@ -223,7 +220,6 @@ public class StayGuestsPostgresIntegrationTests : IClassFixture<CasazenWebApplic
         var search = await owner.GetFromJsonAsync<JsonElement>("/api/alloggiati/codes?list=comuni&q=reggio");
         Assert.Equal("900000002", Assert.Single(search.EnumerateArray()).GetProperty("code").GetString());
 
-        // The seeded head has a document kind but no document table code: only that code is still to complete.
         var before = await owner.GetFromJsonAsync<JsonElement>($"/api/alloggiati/{seed.BookingId}/guest-summary");
         Assert.False(before.GetProperty("exportReady").GetBoolean());
         var head = before.GetProperty("guests")[0];
@@ -233,7 +229,6 @@ public class StayGuestsPostgresIntegrationTests : IClassFixture<CasazenWebApplic
         Assert.Equal("900000100", head.GetProperty("codes").GetProperty("citizenship").GetString());
         Assert.Equal("94", before.GetProperty("guests")[1].GetProperty("codes").GetProperty("type").GetString());
 
-        // The host picks the document type from the table: the record is complete and exportable.
         var replace = await owner.PutAsync($"/api/alloggiati/{seed.BookingId}/stay-guests", Json(new
         {
             guests = new object[]
@@ -254,7 +249,6 @@ public class StayGuestsPostgresIntegrationTests : IClassFixture<CasazenWebApplic
         Assert.Equal(0, after.RootElement.GetProperty("missingCodeTables").GetArrayLength());
         Assert.Equal("TEST Passaporto", after.RootElement.GetProperty("guests")[0].GetProperty("codes").GetProperty("documentTypeDescription").GetString());
 
-        // An unknown code is refused once the table is imported.
         var unknown = await owner.PutAsync($"/api/alloggiati/{seed.BookingId}/stay-guests", Json(new
         {
             guests = new object[]
@@ -273,7 +267,6 @@ public class StayGuestsPostgresIntegrationTests : IClassFixture<CasazenWebApplic
             Assert.True(problem.RootElement.GetProperty("errors").TryGetProperty("Guests[0].DocumentTypeCode", out _));
         }
 
-        // A new import replaces the whole table.
         Assert.Equal(HttpStatusCode.OK, (await ImportAsync(admin, "Documenti", "Codice;Descrizione\nTSTCI;TEST Carta\n")).StatusCode);
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();

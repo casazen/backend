@@ -51,7 +51,6 @@ public sealed class GuestMessageSessionRateLimitFilter(
             return;
         }
 
-        // No code, address or IP in the log: the policy, the route and the trace id identify the event.
         logger.LogWarning(
             "Rate limit exceeded: policy {Policy} on {Method} {Route}. TraceId={TraceId}",
             limiter.PolicyName,

@@ -15,9 +15,6 @@ public class FakeAlloggiatiServer(ILogger<FakeAlloggiatiServer> logger)
     private const string TestToken = "TEST_TOKEN_12345";
     private const string TestConfirmationPrefix = "TEST_";
 
-    /// <summary>
-    /// Mock GenerateToken response (p. 7 of manual).
-    /// </summary>
     public string GenerateTokenResponse(string wsKey)
     {
         logger.LogDebug("Fake Alloggiati: GenerateToken for WSKEY={WSKey}", MaskSecret(wsKey));
@@ -32,9 +29,6 @@ public class FakeAlloggiatiServer(ILogger<FakeAlloggiatiServer> logger)
         return envelope.ToString(SaveOptions.DisableFormatting);
     }
 
-    /// <summary>
-    /// Mock Authentication_Test response (p. 8).
-    /// </summary>
     public string AuthenticationTestResponse(string username, string password)
     {
         logger.LogDebug("Fake Alloggiati: Authentication_Test for user={User}", username);
@@ -49,10 +43,6 @@ public class FakeAlloggiatiServer(ILogger<FakeAlloggiatiServer> logger)
         return envelope.ToString(SaveOptions.DisableFormatting);
     }
 
-    /// <summary>
-    /// Mock Test response (pp. 9-11). Returns empty errors array (all rows valid) in phase 1.
-    /// Real validation would check 168/174-char format and field rules.
-    /// </summary>
     public string TestResponse(string recordData)
     {
         var rowCount = recordData.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length;
@@ -69,9 +59,6 @@ public class FakeAlloggiatiServer(ILogger<FakeAlloggiatiServer> logger)
         return envelope.ToString(SaveOptions.DisableFormatting);
     }
 
-    /// <summary>
-    /// Mock Send response (pp. 12-14). Returns test confirmation number.
-    /// </summary>
     public string SendResponse(string recordData)
     {
         var rowCount = recordData.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length;
@@ -104,7 +91,6 @@ public class FakeAlloggiatiServer(ILogger<FakeAlloggiatiServer> logger)
             fromDate.ToString("yyyy-MM-dd"),
             toDate.ToString("yyyy-MM-dd"));
 
-        // Generate one test receipt per day in range (max 3 for demo)
         var receipts = new List<XElement>();
         var days = Math.Min((toDate - fromDate).Days + 1, 3);
 
@@ -130,9 +116,6 @@ public class FakeAlloggiatiServer(ILogger<FakeAlloggiatiServer> logger)
         return envelope.ToString(SaveOptions.DisableFormatting);
     }
 
-    /// <summary>
-    /// Mock Tabella response (p. 18). Returns empty in phase 1 (code tables already imported).
-    /// </summary>
     public string TabellaResponse(string tableName)
     {
         logger.LogDebug("Fake Alloggiati: Tabella for {TableName} (empty in phase 1)", tableName);
@@ -148,21 +131,14 @@ public class FakeAlloggiatiServer(ILogger<FakeAlloggiatiServer> logger)
         return envelope.ToString(SaveOptions.DisableFormatting);
     }
 
-    /// <summary>
-    /// Generate minimal test PDF as base64 (placeholder - real receipts are PDF documents).
-    /// </summary>
     private static string GenerateTestPdfBase64()
     {
-        // Minimal PDF header for testing (real receipts would be actual PDF content)
         var pdfContent = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n" +
                         "2 0 obj\n<< /Type /Pages /Count 0 >>\nendobj\nxref\n0 3\n" +
                         "trailer\n<< /Root 1 0 R >>\n%%EOF";
         return Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(pdfContent));
     }
 
-    /// <summary>
-    /// Mask secret values in logs (show only first 4 chars).
-    /// </summary>
     private static string MaskSecret(string? secret)
     {
         if (string.IsNullOrEmpty(secret) || secret.Length <= 4)

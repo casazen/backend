@@ -32,13 +32,10 @@ public class ServicePaymentDispute
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The payment that is disputed. A payment with a dispute is never deleted (restrict).</summary>
     public Guid ServiceRequestPaymentId { get; set; }
 
-    /// <summary>The request the payment is for (kept next to the payment so the parties find the dispute by the request they know).</summary>
     public Guid ServiceRequestId { get; set; }
 
-    /// <summary>The supplier that is paid: the only supplier that sees and answers the dispute.</summary>
     public Guid SupplierOrgId { get; set; }
 
     public ServiceDisputeStatus Status { get; set; } = ServiceDisputeStatus.AwaitingSupplier;
@@ -47,67 +44,38 @@ public class ServicePaymentDispute
 
     public ServiceDisputeOpener OpenedBy { get; set; }
 
-    /// <summary>
-    /// The supplier had not marked the work completed when the complaint was opened (the time agreed for it had ended): the no-show. It tells the
-    /// admin what to look for and, with the outcome, which penalty the supplier gets.
-    /// </summary>
     public bool NoShow { get; set; }
 
-    /// <summary>The Auth0 subject of the host member who opened it; empty for a showcase customer (who has no account) and for CasaZen.</summary>
     [MaxLength(255)]
     public string? OpenedByUserId { get; set; }
 
-    /// <summary>
-    /// What the payer wrote (at most <see cref="Casazen.Core.Suppliers.ServiceDisputeLimits.TextMaxLength"/> characters); empty for the no-show
-    /// CasaZen opens. Encrypted at rest.
-    /// </summary>
     public string? CustomerText { get; set; }
 
     public DateTime OpenedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>The instant the supplier's time to reply ends: <see cref="OpenedAt"/> plus <c>DisputeSupplierReplyHours</c>.</summary>
     public DateTime SupplierReplyDueAt { get; set; }
 
-    /// <summary>What the supplier answered; one reply (a late one is taken while the dispute is open). Encrypted at rest.</summary>
     public string? SupplierReply { get; set; }
 
     public DateTime? SupplierRepliedAt { get; set; }
 
-    /// <summary>
-    /// The target by which an admin decides: set when the dispute reaches <see cref="ServiceDisputeStatus.AwaitingDecision"/>, plus
-    /// <c>DisputeDecisionTargetHours</c>. Nothing is decided by itself when it passes: the admins are told, once.
-    /// </summary>
     public DateTime? DecisionDueAt { get; set; }
 
-    /// <summary>When the admins were told that the target had passed (once).</summary>
     public DateTime? DecisionOverdueAlertedAt { get; set; }
 
-    /// <summary>When the dispute was resolved or withdrawn; empty while it is open.</summary>
     public DateTime? ResolvedAt { get; set; }
 
-    /// <summary>The Auth0 subject of the admin who decided; empty for a withdrawal.</summary>
     [MaxLength(255)]
     public string? ResolvedByUserId { get; set; }
 
-    /// <summary>The admin's note on the decision (internal, never shown to the parties). Encrypted at rest.</summary>
     public string? AdminNote { get; set; }
 
-    /// <summary>What the admin decided to give back to the payer, in cents (1 to the price minus the commission); set only when resolved for the customer (0 when nothing was left to give back).</summary>
     public int? DecidedRefundCents { get; set; }
 
-    /// <summary>
-    /// The total the payment must have given back for the decision to be done: what was refunded or being refunded when the admin decided, plus
-    /// <see cref="DecidedRefundCents"/>. Set with it. The payment leaves <see cref="ServicePaymentStatus.Disputed"/> when its refunded amount reaches it.
-    /// </summary>
     public int? RefundTargetCents { get; set; }
 
-    /// <summary>
-    /// When the money of a decision for the customer was settled: the refund that was decided succeeded and what is left of the supplier's part is
-    /// free to be paid (or nothing was left). Empty until then, and for every other outcome.
-    /// </summary>
     public DateTime? SettledAt { get; set; }
 
-    /// <summary>When the admins were told that the refund of the decision had not gone through (once).</summary>
     public DateTime? RefundAlertedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

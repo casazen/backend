@@ -30,13 +30,6 @@ public class OtaStaysController(
     IAuthorizationService authorizationService,
     ILogger<OtaStaysController> logger) : ControllerBase
 {
-    /// <summary>
-    /// "Crea soggiorno OTA": turns the imported block into a confirmed stay (dates of the block, source and label of its
-    /// feed, the guest given here, optional guests and amount). 201 with the booking. 404 <c>ical_block_not_found</c>;
-    /// 409 <c>ota_stay_block_already_converted</c>, <c>ota_stay_block_overlaps_booking</c>; 422
-    /// <c>ota_stay_block_not_imported</c>, <c>ota_stay_block_ended</c>, <c>ota_stay_source_required</c>,
-    /// <c>booking_too_many_guests</c>.
-    /// </summary>
     [HttpPost("ical-blocks/{blockId:guid}/ota-stay")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [ProducesResponseType(typeof(BookingResponseDto), StatusCodes.Status201Created)]
@@ -83,12 +76,6 @@ public class OtaStaysController(
         return Created($"/api/bookings/{stay.Id}", response);
     }
 
-    /// <summary>
-    /// "Segna come verificato": the host checked the reservation on the channel, the stay is no longer "da verificare".
-    /// With <c>applyChannelDates</c> the stay first takes the dates its block now has on the channel (confirmed stays only:
-    /// 422 <c>booking_stay_locked</c> after the arrival, <c>ota_stay_channel_dates_unavailable</c> when the block left the
-    /// feed; 409 <c>booking_dates_unavailable</c> when another booking has them). 200 with the booking.
-    /// </summary>
     [HttpPost("bookings/{id:guid}/ota-review/resolve")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [ProducesResponseType(typeof(BookingResponseDto), StatusCodes.Status200OK)]

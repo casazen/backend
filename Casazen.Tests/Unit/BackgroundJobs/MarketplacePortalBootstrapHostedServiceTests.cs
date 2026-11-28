@@ -50,7 +50,6 @@ public class MarketplacePortalBootstrapHostedServiceTests
         _jobs.Verify(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()), Times.Never);
     }
 
-    /// <summary>The cache counts as filled only with a portal the marketplace lists: one the refresh no longer returns, or one Octorate does not offer, is not one.</summary>
     [Theory]
     [InlineData(true, true, false)]
     [InlineData(false, true, true)]
@@ -107,10 +106,6 @@ public class MarketplacePortalBootstrapHostedServiceTests
         Assert.False(queued);
     }
 
-    /// <summary>
-    /// Never blocks the start: <c>StartAsync</c> returns while the check of the cache has not even run (it waits behind the flag read here), and the run is
-    /// queued only afterwards, from the background.
-    /// </summary>
     [Fact]
     public async Task StartAsync_ReturnsBeforeTheCacheIsChecked_SoTheStartOfTheHostIsNeverHeld()
     {

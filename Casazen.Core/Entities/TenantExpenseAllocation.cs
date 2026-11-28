@@ -5,9 +5,6 @@ using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// One consuntivo line shared onto a lease. A line in review, or an extraordinary line nobody confirmed, stays excluded.
-/// </summary>
 [Table("TenantExpenseAllocations")]
 public class TenantExpenseAllocation : ITenantOwned
 {

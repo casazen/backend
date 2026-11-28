@@ -42,7 +42,6 @@ public sealed class ListingStatusService(
     TimeProvider timeProvider,
     ILogger<ListingStatusService> logger) : IListingStatusService
 {
-    /// <summary>How long a pushed channel may go without a confirmation before the status raises the alert (ADR-034-R3).</summary>
     public static readonly TimeSpan SyncAlertAfter = TimeSpan.FromHours(24);
 
     public async Task<ListingStatusView?> GetAsync(Guid propertyId, CancellationToken ct)
@@ -107,7 +106,6 @@ public sealed class ListingStatusService(
                         && s.PropertyId == propertyId
                         && (s.Status == ChannelPublishStatus.Sending || s.Status == ChannelPublishStatus.Accepted))
             .ToListAsync(ct);
-        // The photos waiting in the queue or to be removed, and the ones a run that stopped left unsent (those a publication is not still sending).
         var unsentBefore = Now() - ListingPhotoSync.PendingGrace;
         var tasks = await db.PhotoUploadTasks
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -128,7 +126,6 @@ public sealed class ListingStatusService(
             {
                 changed += await photoSync.ReadQueueAsync(tasks, accommodation, ct);
 
-                // A photo a run left unsent is sent now: the publication the host asked for is finished. A property that was deleted is left alone.
                 if (tasks.Any(t => t.Status == PhotoUploadStatus.Pending)
                     && await db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking()
                         .FirstOrDefaultAsync(p => p.Id == propertyId && p.OrgId == orgId, ct) is { } property)
@@ -141,10 +138,6 @@ public sealed class ListingStatusService(
         return changed;
     }
 
-    /// <summary>
-    /// Reads the process the row waits on and moves it: done is <c>Published</c>, failed is <c>ToFix</c> with the reason, still going on or not
-    /// understood changes nothing but the time of the read. A row with no process to follow is left as it is.
-    /// </summary>
     private async Task<int> FollowProcessAsync(ListingChannelState row, string accommodation, CancellationToken ct)
     {
         var baseline = ListingChannelBaseline.Parse(row.ContentHashesJson);
@@ -186,13 +179,11 @@ public sealed class ListingStatusService(
                 return 1;
 
             case OctorateProcessState.Pending:
-                // The read worked: the channel manager answered, the channel has not decided yet.
                 row.LastSyncedAt = now;
                 await db.SaveChangesAsync(ct);
                 return 0;
 
             default:
-                // An answer CasaZen does not understand is never read as a success, and it confirms nothing.
                 logger.LogWarning("Listing status of property {PropertyId}, channel {ChannelCode}: the state of the process is not understood", row.PropertyId, row.ChannelCode);
                 return 0;
         }
@@ -204,7 +195,6 @@ public sealed class ListingStatusService(
         var managed = row.Status == ChannelPublishStatus.ManagedOnChannel || rule is null;
         var baseline = ListingChannelBaseline.Parse(row.ContentHashesJson);
 
-        // What the rule of the channel asks for, each with the step that owns it.
         var checks = new List<(bool Ok, string Step)>();
         if (!managed)
         {
@@ -265,12 +255,10 @@ public sealed class ListingStatusService(
             Price: property.NightlyRate > 0m);
     }
 
-    /// <summary>A channel that was pushed and that the channel manager has not confirmed for more than 24 hours (or never).</summary>
     private static bool IsStale(ChannelPublishStatus status, DateTime? lastSyncedAt, DateTime now) =>
         status is ChannelPublishStatus.Accepted or ChannelPublishStatus.Published
         && (lastSyncedAt is null || now - lastSyncedAt.Value > SyncAlertAfter);
 
-    /// <summary>How much a state needs the attention of the host: the lower the number, the worse the state.</summary>
     internal static int Severity(ChannelPublishStatus status) => status switch
     {
         ChannelPublishStatus.ToFix => 0,

@@ -46,7 +46,6 @@ public class StripeSupplierPaymentGateway(
             AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions { Enabled = true },
         };
 
-        // The platform commission of the direct charge (decision D2/D3). Left unset, not 0, when there is none to send (A3-40).
         if (request.ApplicationFeeCents is { } fee && SupplierCommission.IsSendable(fee, request.AmountCents))
             options.ApplicationFeeAmount = fee;
 
@@ -101,7 +100,6 @@ public class StripeSupplierPaymentGateway(
         }
         catch (StripeException ex) when (ex.StripeError?.Code == PaymentIntentUnexpectedStateCode)
         {
-            // Paid or in progress between the read and the cancellation: the caller must see what it really is.
             logger.LogInformation(
                 "Service payment intent {PaymentIntentId} could not be canceled, it changed state meanwhile", paymentIntentId);
             return await GetAsync(paymentIntentId, connectedAccountId, cancellationToken);
@@ -161,7 +159,6 @@ public class StripeSupplierPaymentGateway(
         return refunds;
     }
 
-    /// <summary>A Stripe refund as CasaZen reads it; also used by the webhook handler for the <c>refund.*</c> events.</summary>
     public static ServiceChargeRefund MapRefund(Refund refund)
     {
         ArgumentNullException.ThrowIfNull(refund);

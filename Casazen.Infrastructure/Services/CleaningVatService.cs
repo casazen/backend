@@ -32,7 +32,6 @@ public sealed class CleaningVatService(
     TimeProvider time,
     ILogger<CleaningVatService> logger) : ICleaningVatService
 {
-    /// <summary>The states of a cleaning whose invoice the company issued: completed, or paid.</summary>
     private static readonly ServiceRequestStatus[] Done = [ServiceRequestStatus.Completato, ServiceRequestStatus.Pagato];
 
     public async Task<CleaningVatQuestion> GetAsync(HostScope scope, Guid requestId, CancellationToken ct = default)
@@ -93,7 +92,6 @@ public sealed class CleaningVatService(
         }
         catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex, SupplierVatDefault.OrgSupplierIndexName))
         {
-            // Another call remembered an answer for the same company first: nothing of this one was saved, the caller reads again and answers.
             throw new DomainConflictException(ServiceRequestErrorCodes.StateChanged, ServiceRequestErrorCodes.StateChangedMessageKey);
         }
 
@@ -104,10 +102,6 @@ public sealed class CleaningVatService(
         return await QuestionAsync(scope.OrgId, request, ct);
     }
 
-    /// <summary>
-    /// The cleaning requests the scope reaches: the org named (no tenant filter on the requests), a property the scope reaches, not of the showcase, of category
-    /// cleaning, the ones the host sees.
-    /// </summary>
     private IQueryable<ServiceRequest> RequestsOf(HostScope scope) =>
         db.ServiceRequests
             .IgnoreQueryFilters()
@@ -118,7 +112,6 @@ public sealed class CleaningVatService(
             .InScope(scope)
             .OnlyVisibleToHost();
 
-    /// <summary>Remembers the answer for the company in the organization; <c>false</c> when it was already remembered so (nothing written).</summary>
     private async Task<bool> RememberAsync(Guid orgId, Guid companyId, bool appliesVat, string userId, DateTime now, CancellationToken ct)
     {
         var row = await db.SupplierVatDefaults.FirstOrDefaultAsync(d => d.OrgId == orgId && d.SupplierOrgId == companyId, ct);
@@ -169,7 +162,6 @@ public sealed class CleaningVatService(
 
         if (company is { } companyId)
         {
-            // Only the requests with no answer of their own: one answered «Non lo so» is not covered by the company's answer (its own wins), and its item stays open.
             var asked = open.Where(a => a.EntityType == CleaningVatRules.TodoEntityType && a.EntityId != request.Id).Select(a => a.EntityId).ToList();
             var ofCompany = asked.Count == 0
                 ? []
@@ -224,7 +216,6 @@ public sealed class CleaningVatService(
             stated.GetValueOrDefault(request.Id));
     }
 
-    /// <summary>The country of the property of the cleaning (deleted ones too: the cleaning stays the owner's) and the user who created it.</summary>
     private async Task<(string Country, string? OwnerUserId)> PropertyOfAsync(Guid orgId, Guid propertyId, CancellationToken ct)
     {
         var property = await db.Properties

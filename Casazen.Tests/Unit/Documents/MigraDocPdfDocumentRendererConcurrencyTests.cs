@@ -20,10 +20,8 @@ public class MigraDocPdfDocumentRendererConcurrencyTests
     private const int ThreadCount = 16;
     private const int RendersPerThread = 4;
 
-    /// <summary>How long a test waits for something that must happen; only reached when something is stuck.</summary>
     private static readonly TimeSpan Patience = TimeSpan.FromSeconds(60);
 
-    /// <summary>How long the first render of the overlap test stays inside the libraries, waiting for a second one to get in.</summary>
     private static readonly TimeSpan OverlapWindow = TimeSpan.FromMilliseconds(500);
 
     [Fact]
@@ -34,8 +32,6 @@ public class MigraDocPdfDocumentRendererConcurrencyTests
         Assert.Equal(expected, PdfTestReader.Text(new MigraDocPdfDocumentRenderer().Render(content)));
         Assert.Contains("Pagina 1 di", expected, StringComparison.Ordinal);
 
-        // Half of the threads share one renderer, as the singleton of the container is shared by the requests; the others
-        // have their own, as tests and jobs do: the guarantee must hold between instances and not only within one.
         var shared = new MigraDocPdfDocumentRenderer();
         var pdfs = new byte[ThreadCount * RendersPerThread][];
         var errors = new ConcurrentQueue<Exception>();
@@ -77,8 +73,6 @@ public class MigraDocPdfDocumentRendererConcurrencyTests
     [Fact]
     public void Render_SecondRendererWhileOneIsRendering_WaitsUntilTheFirstHasFinished()
     {
-        // MigraDoc builds the document by reading its blocks, inside the libraries: the first render is held there for a
-        // moment while a second one, on another instance, is started. The second must not get in before the first is done.
         using var firstIsInside = new ManualResetEventSlim();
         using var secondIsInside = new ManualResetEventSlim();
         var overlapped = false;
@@ -107,13 +101,6 @@ public class MigraDocPdfDocumentRendererConcurrencyTests
         Assert.Contains("Testo di Secondo", PdfTestReader.Text(secondPdf!), StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// Every character the embedded font offers to CasaZen documents (Basic Latin, Latin-1 and Latin Extended-A, Greek,
-    /// Cyrillic, typographic punctuation) in regular and bold paragraphs and in a table, with headings and a watermark.
-    /// The more different glyphs a render looks up, the more often two overlapping renders hit the shared state of the
-    /// libraries: of the shapes tried in BE-PDF-01 (numbered words, long words, tables, contracts) this was the one that
-    /// corrupted the most PDFs.
-    /// </summary>
     private static PdfDocumentContent AllCharactersDocument()
     {
         var characters = new List<char>();
@@ -150,7 +137,6 @@ public class MigraDocPdfDocumentRendererConcurrencyTests
             characters.Add((char)code);
     }
 
-    /// <summary>A one-paragraph document whose list of blocks calls <paramref name="onRead"/> when the renderer reads it.</summary>
     private static PdfDocumentContent ObservedDocument(string title, Action onRead) =>
         new(title, new ObservedBlocks([new PdfParagraph($"Testo di {title}")], onRead));
 
@@ -172,7 +158,6 @@ public class MigraDocPdfDocumentRendererConcurrencyTests
         return thread;
     }
 
-    /// <summary>What is missing from and what is not expected in <paramref name="actual"/>, word by word, to read a failure at a glance.</summary>
     private static string Difference(string expected, string actual)
     {
         var expectedWords = expected.Split(' ');

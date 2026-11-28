@@ -24,47 +24,35 @@ namespace Casazen.Core.Options;
 /// </remarks>
 public sealed class FiscalTaxRulesOptions
 {
-    /// <summary>The section the catalog is read from: its rule sets are <c>FiscalDocuments:TaxRules</c>.</summary>
     public const string SectionName = "FiscalDocuments";
 
-    /// <summary>The rule sets.</summary>
     public List<FiscalTaxRuleSetOptions> TaxRules { get; set; } = [];
 }
 
-/// <summary>One rule set of the catalog: a country, a regime and a range of dates.</summary>
 public sealed class FiscalTaxRuleSetOptions
 {
-    /// <summary>The longest <see cref="Version"/>: it is stored on every document (<c>FiscalDocument.RuleVersion</c>).</summary>
     public const int VersionMaxLength = 64;
 
-    /// <summary>The country of the rule: <c>IT</c> or <c>CH</c>.</summary>
     public string Jurisdiction { get; set; } = string.Empty;
 
-    /// <summary>The regime of the issuer the rule is for; one of the regimes of <see cref="Jurisdiction"/>.</summary>
     public DocumentRegime Regime { get; set; }
 
-    /// <summary>The first day the rule is in force.</summary>
     public DateOnly ValidFrom { get; set; }
 
-    /// <summary>The last day the rule is in force; <c>null</c> = open.</summary>
     public DateOnly? ValidTo { get; set; }
 
     /// <summary>The name of this version, stored on the documents made with it (<c>ch-vat-2024.1</c>). Unique in the catalog.</summary>
     public string Version { get; set; } = string.Empty;
 
-    /// <summary>Where the rates were read from (the page of the tax administration or of the law).</summary>
     public string? SourceUrl { get; set; }
 
-    /// <summary>The document the rule gives: <see cref="FiscalDocumentKind.Receipt"/> or <see cref="FiscalDocumentKind.Invoice"/>.</summary>
     public FiscalDocumentKind DocumentKind { get; set; } = FiscalDocumentKind.None;
 
     /// <summary>The regime code of FatturaPA (<c>RF01</c>, <c>RF19</c>); the profile of the issuer can override it. Italy only.</summary>
     public string? FatturaPaRegimeCode { get; set; }
 
-    /// <summary>The type of document of an invoice in FatturaPA. Italy only.</summary>
     public string InvoiceTypeCode { get; set; } = "TD01";
 
-    /// <summary>The type of document of a credit note in FatturaPA. Italy only.</summary>
     public string CreditNoteTypeCode { get; set; } = "TD04";
 
     /// <summary>
@@ -76,17 +64,13 @@ public sealed class FiscalTaxRuleSetOptions
     /// <summary>The stamp duty of the documents without VAT. Italy only; <c>null</c> = none.</summary>
     public FiscalStampDutyOptions? StampDuty { get; set; }
 
-    /// <summary>The nature code of the stay of an issuer whose stay is exempt (<c>StayVatTreatment.ExemptArt10</c>, <c>N4</c>). Italy only.</summary>
     public string? StayExemptNature { get; set; }
 }
 
-/// <summary>The VAT of one line type.</summary>
 public sealed class FiscalTaxRateOptions
 {
-    /// <summary>The rate in percent, 0 to 100; <c>null</c> is a missing rate (the startup fails).</summary>
     public decimal? Percent { get; set; }
 
-    /// <summary>The nature code of an Italian rate of 0 (<c>N1</c>, <c>N2.2</c>, <c>N4</c>...); never on a Swiss rule.</summary>
     public string? Nature { get; set; }
 }
 
@@ -97,13 +81,9 @@ public sealed class FiscalStampDutyOptions
 
     public decimal Amount { get; set; }
 
-    /// <summary>Whether the stamp duty is added to the total (charged to the recipient); off, the issuer bears it.</summary>
     public bool ChargedToRecipient { get; set; }
 }
 
-/// <summary>
-/// The checks of the catalog at startup (<see cref="FiscalTaxRulesOptions"/>): every problem is named with the position and the version of its rule set.
-/// </summary>
 public sealed partial class FiscalTaxRulesOptionsValidator : IValidateOptions<FiscalTaxRulesOptions>
 {
     public ValidateOptionsResult Validate(string? name, FiscalTaxRulesOptions options)
@@ -113,7 +93,6 @@ public sealed partial class FiscalTaxRulesOptionsValidator : IValidateOptions<Fi
         return problems.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(problems);
     }
 
-    /// <summary>What is wrong with the catalog; empty when it can be used.</summary>
     public static IReadOnlyList<string> Problems(FiscalTaxRulesOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -186,7 +165,6 @@ public sealed partial class FiscalTaxRulesOptionsValidator : IValidateOptions<Fi
             }
         }
 
-        // Two versions of one country and regime never overlap: a date has one rule.
         foreach (var group in sets
                      .Select((set, index) => (Set: set, Index: index))
                      .GroupBy(x => (Jurisdiction: x.Set.Jurisdiction?.Trim().ToUpperInvariant(), x.Set.Regime)))
@@ -211,7 +189,6 @@ public sealed partial class FiscalTaxRulesOptionsValidator : IValidateOptions<Fi
         return problems;
     }
 
-    /// <summary>A nature code of FatturaPA: N1 to N7, with the sub-codes (N2.2, N3.5, N6.9).</summary>
     [GeneratedRegex("^N[1-7](\\.[0-9]{1,2})?$", RegexOptions.CultureInvariant)]
     private static partial Regex NatureCode();
 }

@@ -5,11 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// BK-08 (A3-14): rules of the deferred payment. A PaymentIntent that needs the guest is never "Completed", the automatic
-/// cancellation happens only before the arrival, and the outcome page shows a failed deferred charge as a payment to
-/// complete.
-/// </summary>
 public class DeferredChargesTests
 {
     private static readonly DateTime FailedAt = new(2026, 10, 1, 7, 0, 0, DateTimeKind.Utc);
@@ -72,7 +67,6 @@ public class DeferredChargesTests
         var booking = FailedBooking(checkIn: new DateTime(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc));
 
         Assert.Equal(new DateOnly(2026, 10, 4), DeferredCharges.CancellationDay(booking, 3));
-        // Start of 4 October in Rome (CEST): 22:00 UTC of 3 October.
         Assert.Equal(new DateTime(2026, 10, 3, 22, 0, 0, DateTimeKind.Utc), DeferredCharges.PayByUtc(booking, 3));
     }
 
@@ -83,7 +77,6 @@ public class DeferredChargesTests
     {
         var booking = FailedBooking(checkIn: new DateTime(2026, 10, checkInDay, 0, 0, 0, DateTimeKind.Utc));
 
-        // 1 October + 3 days is the check-in day or later: the stay may have started, the host decides.
         Assert.Null(DeferredCharges.CancellationDay(booking, 3));
         Assert.Null(DeferredCharges.PayByUtc(booking, 3));
     }

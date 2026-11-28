@@ -38,11 +38,9 @@ public sealed class CleaningCostSource(AppDbContext db) : ICleaningCostSource
         DateOnly to,
         CancellationToken ct)
     {
-        // An empty list of properties is none, never «every property»; a period that ends before it starts has no day.
         if (propertyIds is { Count: 0 } || to < from)
             return [];
 
-        // The days are Europe/Rome calendar days: [the start of the first, the start of the day after the last).
         var fromUtc = RomeCalendar.StartOfDayUtc(from);
         var untilUtc = RomeCalendar.StartOfDayUtc(to == DateOnly.MaxValue ? to : to.AddDays(1));
 
@@ -65,7 +63,6 @@ public sealed class CleaningCostSource(AppDbContext db) : ICleaningCostSource
         var ids = currencies.Keys.ToList();
         var found = new List<(DateTime At, CompletedCleaning Cleaning)>();
 
-        // The service requests of the org: not tenant-filtered (two parties), so the org is the predicate; the property is one of the org's by the list above.
         var requests = await db.ServiceRequests
             .AsNoTracking()
             .OnlyVisibleToHost()
@@ -75,7 +72,6 @@ public sealed class CleaningCostSource(AppDbContext db) : ICleaningCostSource
                         && ids.Contains(r.PropertyId.Value)
                         && r.Category == ServiceCategories.Cleaning
                         && (r.Status == ServiceRequestStatus.Completato || r.Status == ServiceRequestStatus.Pagato)
-                        // The final amount is above the quote by more than the tolerance and the host has not confirmed it (decision D7): it is not a cost until it does.
                         && !(r.Status == ServiceRequestStatus.Completato && r.FinalAmountNeedsConfirmation && r.FinalAmountConfirmedAt == null)
                         && (r.FinalAmountConfirmedAt ?? (r.FinalAmountNeedsConfirmation ? r.PaidAt : null) ?? r.CompletedAt ?? r.PaidAt ?? r.UpdatedAt) >= fromUtc
                         && (r.FinalAmountConfirmedAt ?? (r.FinalAmountNeedsConfirmation ? r.PaidAt : null) ?? r.CompletedAt ?? r.PaidAt ?? r.UpdatedAt) < untilUtc)
@@ -111,7 +107,6 @@ public sealed class CleaningCostSource(AppDbContext db) : ICleaningCostSource
                     SupplierInvoiceReference: null)));
         }
 
-        // The staff work of the org (tenant-filtered, the org named): the cleanings that were completed, not the To do rows that share the table.
         var staffWork = await db.InternalActivities
             .AsNoTracking()
             .Where(a => a.OrgId == orgId

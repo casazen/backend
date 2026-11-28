@@ -24,7 +24,6 @@ public sealed class ApiBaseUrlHealthCheck(IConfiguration configuration, IHostEnv
             : HealthCheckResult.Degraded(problem));
     }
 
-    /// <summary>What is wrong with the value, naming the variable and never the value; null when it is usable.</summary>
     public static string? GetProblem(string? value, bool requireHttps)
     {
         if (RequiredConfiguration.IsMissing(value))

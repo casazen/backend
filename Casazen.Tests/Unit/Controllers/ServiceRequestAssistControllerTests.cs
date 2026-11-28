@@ -20,7 +20,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>«Descrivi di cosa hai bisogno» of the guided request (WIZ-AI-REQUEST): who may ask, what is passed on, what comes back.</summary>
 public class ServiceRequestAssistControllerTests
 {
     private const string OwnerId = "auth0|owner_123";
@@ -40,8 +39,6 @@ public class ServiceRequestAssistControllerTests
             HostAuthorizationTestHarness.Create(TestOrgId),
             NullLogger<ServiceRequestAssistController>.Instance);
     }
-
-    // ─── Assist ──────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Assist_TheOwner_GetsTheSuggestion()
@@ -191,8 +188,6 @@ public class ServiceRequestAssistControllerTests
             Times.Never);
     }
 
-    // ─── GetAvailability ─────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -208,8 +203,6 @@ public class ServiceRequestAssistControllerTests
             a => a.AssistAsync(It.IsAny<Property>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
-
-    // ─── The doors ───────────────────────────────────────────────────────────────
 
     [Fact]
     public void TheController_AsksForThePermissionOfCreatingTheRequest()
@@ -242,8 +235,6 @@ public class ServiceRequestAssistControllerTests
         Assert.NotNull(action.GetCustomAttribute<HttpGetAttribute>());
     }
 
-    // ─── Helpers ─────────────────────────────────────────────────────────────────
-
     private void SetUser(string userId) => _controller.ControllerContext = ContextOf(userId);
 
     private static ControllerContext ContextOf(string userId) => new()
@@ -257,6 +248,5 @@ public class ServiceRequestAssistControllerTests
     private static Property MakeProperty() =>
         new() { Id = Guid.NewGuid(), OwnerId = OwnerId, OrgId = TestOrgId, Name = "Casa Como", NightlyRate = 0m, ComuneIstatCode = "013075" };
 
-    /// <summary>What <c>ApiProblem</c> needs from the request: the localizer of the messages (the problem details factory).</summary>
     private static IServiceProvider ApiProblemServices() => new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider();
 }

@@ -2,9 +2,6 @@ using Casazen.Infrastructure.External;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Cached practice status retrieval for ConcordatoFacile with 15-minute expiry and request coalescing (ADR-008-R7 through ADR-008-R10).
-/// </summary>
 public interface IConcordatoFacileStatusCacheService
 {
     /// <summary>
@@ -31,19 +28,14 @@ public interface IConcordatoFacileStatusCacheService
     Task<PracticeDto?> GetPracticeAsync(string practiceId, CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// Result of a cached or fresh practice status fetch.
-/// </summary>
 public sealed record CfStatusResult
 {
     public required IReadOnlyList<PracticeDto> Practices { get; init; }
 
-    /// <summary>When the practices were last read successfully; null when they never were (CF-BE: not available).</summary>
     public required DateTime? LastCheckedAt { get; init; }
     public required DateTime NextUpdateAt { get; init; }
     public required bool IsStale { get; init; }
 
-    /// <summary>True when the practices come from ConcordatoFacile (a successful read or a valid snapshot, stale or not); false when the status could not be read and no snapshot exists (CF-BE).</summary>
     public bool IsAvailable { get; init; } = true;
     public string? LastError { get; init; }
 }

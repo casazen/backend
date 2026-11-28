@@ -4,10 +4,6 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Casazen.Infrastructure.Data.Configurations;
 
-/// <summary>
-/// The rule sets of the owner accounting (NF-109, NF-110, E06/F05/US02/T01): one version of a rule code per agency. A rule set is never removed while a
-/// profile names it (restrict).
-/// </summary>
 internal sealed class OwnerAccountingPolicyConfiguration : IEntityTypeConfiguration<OwnerAccountingPolicy>
 {
     public void Configure(EntityTypeBuilder<OwnerAccountingPolicy> entity)
@@ -34,11 +30,6 @@ internal sealed class OwnerFiscalProfileConfiguration : IEntityTypeConfiguration
     }
 }
 
-/// <summary>
-/// The versioned mandates of the owners (E13/F01/US01/T01): the owner restricts (a mandate is evidence of the terms that applied); one version of the owner per
-/// first day (the mandates of one ownership, the shape of before E13, are outside the index and still go with their ownership); a valid range, a percent and
-/// flat fees that are not negative.
-/// </summary>
 internal sealed class OwnerMandateConfiguration : IEntityTypeConfiguration<OwnerMandate>
 {
     public void Configure(EntityTypeBuilder<OwnerMandate> entity)
@@ -59,10 +50,6 @@ internal sealed class OwnerMandateConfiguration : IEntityTypeConfiguration<Owner
     }
 }
 
-/// <summary>
-/// The commission rules of the channels of an agency (E13/F01/US01/T01, ⚖ R2): gone with the org; one rule per channel and first day; a percent from 0 to
-/// 100 and a valid range.
-/// </summary>
 internal sealed class OrgChannelCommissionRuleConfiguration : IEntityTypeConfiguration<OrgChannelCommissionRule>
 {
     public void Configure(EntityTypeBuilder<OrgChannelCommissionRule> entity)

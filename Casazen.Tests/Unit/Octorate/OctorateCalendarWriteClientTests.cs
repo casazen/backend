@@ -58,7 +58,6 @@ public class OctorateCalendarWriteClientTests
         Assert.True(first.GetProperty("closeToArrival").GetBoolean());
         Assert.False(first.GetProperty("closeToDeparture").GetBoolean());
         Assert.Equal(3, first.GetProperty("cutOffDays").GetInt32());
-        // What is not set is not sent: Octorate keeps what it holds.
         Assert.False(first.TryGetProperty("availability", out _));
         Assert.False(first.TryGetProperty("maxstay", out _));
         var second = items[1].GetProperty("values");
@@ -119,7 +118,6 @@ public class OctorateCalendarWriteClientTests
         {
             await Assert.ThrowsAsync<OctorateRequestRejectedException>(() => h.Client.UpdateCalendarAsync([Update()], CancellationToken.None));
             await Assert.ThrowsAsync<OctorateServerException>(() => h.Client.UpdateCalendarAsync([Update()], CancellationToken.None));
-            // No «success: true»: the ids are not an acceptance.
             await Assert.ThrowsAsync<OctorateServerException>(() => h.Client.UpdateCalendarAsync([Update()], CancellationToken.None));
             await Assert.ThrowsAsync<OctorateServerException>(() => h.Client.UpdateCalendarAsync([Update()], CancellationToken.None));
         }
@@ -195,7 +193,6 @@ public class OctorateCalendarWriteClientTests
     public async Task AQuotaThatIsUsedUp_IsAWaitOfItsOwn_NotARefusalOfTheAccess_OnTheWriteAndOnTheRead()
     {
         var h = new Harness();
-        // Octorate answers a quota that is used up with a 403 of its own type (OCT-13): the status of a refusal of the access, but not one.
         h.Serve("""{ "type": "ApiQuotaException" }""", HttpStatusCode.Forbidden);
         h.Serve("""{ "type": "ApiQuotaException" }""", HttpStatusCode.Forbidden);
         h.Serve("""{ "type": "ApiSecurityException" }""", HttpStatusCode.Forbidden);
@@ -209,7 +206,6 @@ public class OctorateCalendarWriteClientTests
             Assert.True(read.QuotaExhausted);
             Assert.Equal("octorate_rate_limited", write.Code);
 
-            // A 403 that is a refusal of the access keeps its meaning.
             await Assert.ThrowsAsync<OctorateAuthException>(() => h.Client.UpdateCalendarAsync([Update()], CancellationToken.None));
         }
     }
@@ -266,7 +262,6 @@ public class OctorateCalendarWriteClientTests
             throw new InvalidOperationException("No partner-level call is made in these tests.");
     }
 
-    /// <summary>Answers each call with the next queued status and body and keeps what it was called with.</summary>
     private sealed class QueueHandler : HttpMessageHandler
     {
         public Queue<(HttpStatusCode Status, string Body)> Answers { get; } = new();

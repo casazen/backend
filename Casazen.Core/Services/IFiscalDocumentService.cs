@@ -25,26 +25,12 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IFiscalDocumentService
 {
-    /// <summary>The draft of the booking: made from its stored price, or the draft it already has, refreshed.</summary>
     Task<FiscalDocument> CreateDraftAsync(Guid bookingId, string? userId, CancellationToken ct = default);
 
-    /// <summary>
-    /// The draft made again from the current price, recipient and rule of its booking. 422 <c>document_owner_invoice</c> for an owner invoice, which is made
-    /// again from its statement version (<see cref="IOwnerInvoiceService.CreateDraftAsync"/>).
-    /// </summary>
     Task<FiscalDocument> RefreshDraftAsync(Guid documentId, CancellationToken ct = default);
 
-    /// <summary>
-    /// The draft discarded: no number is consumed. 422 <c>document_owner_invoice</c> for an owner invoice, which is discarded by
-    /// <see cref="IOwnerInvoiceService.DiscardDraftAsync"/>, behind its own permission and flag.
-    /// </summary>
     Task DiscardDraftAsync(Guid documentId, CancellationToken ct = default);
 
-    /// <summary>
-    /// The draft of an owner invoice discarded (E14/F01/US01/T01), called by <see cref="IOwnerInvoiceService.DiscardDraftAsync"/> once it checked the
-    /// organization and the purpose of the document: the same discard as <see cref="DiscardDraftAsync"/> for a document that is an owner invoice (404
-    /// <c>fiscal_document_not_found</c> for any other).
-    /// </summary>
     Task DiscardOwnerInvoiceDraftAsync(Guid documentId, CancellationToken ct = default);
 
     /// <summary>
@@ -97,24 +83,14 @@ public interface IFiscalDocumentService
     /// </summary>
     Task<FiscalDocument> CreateOwnerInvoiceCreditNoteAsync(Guid documentId, decimal? amount, string reason, bool confirm, string? userId, CancellationToken ct = default);
 
-    /// <summary>One document with its lines, or <c>null</c> when it is not visible to the caller.</summary>
     Task<FiscalDocument?> GetAsync(Guid documentId, CancellationToken ct = default);
 
-    /// <summary>One page of the documents of the scope (newest first), narrowed in SQL to the properties the scope reaches.</summary>
     Task<FiscalDocumentPage> ListAsync(HostScope scope, FiscalDocumentCriteria criteria, int page, int pageSize, CancellationToken ct = default);
 
-    /// <summary>
-    /// The documents of the scope for a file (FIS-07, NF-87, E06/F03/US03/T01), newest first and at most <paramref name="limit"/> of them: the same
-    /// narrowing in SQL as <see cref="ListAsync"/> (the scope, then <paramref name="criteria"/>), the payment state the current one, and only the
-    /// documents that were issued, whatever <see cref="FiscalDocumentCriteria.Status"/> says: a draft has no number and no date, and a discarded one
-    /// is not a document. The XML and the lines are not read.
-    /// </summary>
     Task<IReadOnlyList<FiscalDocumentExportRow>> ListForExportAsync(HostScope scope, FiscalDocumentCriteria criteria, int limit, CancellationToken ct = default);
 
-    /// <summary>The FatturaPA XML of an issued CasaZen invoice or credit note.</summary>
     Task<string> GetXmlAsync(Guid documentId, CancellationToken ct = default);
 
-    /// <summary>The PDF of a CasaZen document in <paramref name="language"/>.</summary>
     Task<byte[]> GetPdfAsync(Guid documentId, string language, CancellationToken ct = default);
 
     /// <summary>
@@ -133,10 +109,6 @@ public interface IFiscalDocumentService
     /// </summary>
     Task<EnsureDraftOutcome> EnsureDraftAsync(Guid bookingId, string? userId, CancellationToken ct = default);
 
-    /// <summary>
-    /// The organizations the daily run looks at: the ones that have an issuer profile, whatever the tenant of the caller (the run has none). The run enters each of them in a
-    /// scope of its own before <see cref="ProcessDueDocumentsAsync"/>.
-    /// </summary>
     Task<IReadOnlyList<Guid>> OrgsWithDocumentsDueAsync(CancellationToken ct = default);
 
     /// <summary>
@@ -160,13 +132,10 @@ public interface IFiscalDocumentService
     Task<FiscalDocumentBatchResult> IssueBatchAsync(HostScope scope, FiscalDocumentBatchRequest request, CancellationToken ct = default);
 }
 
-/// <summary>What <see cref="IFiscalDocumentService.EnsureDraftAsync"/> found.</summary>
 public enum EnsureDraftOutcome
 {
-    /// <summary>The booking had no live document: its draft was made.</summary>
     Created = 1,
 
-    /// <summary>The booking has a live document already (a draft, an issued one, one issued elsewhere): nothing was made.</summary>
     AlreadyHasDocument = 2,
 }
 
@@ -179,30 +148,22 @@ public enum EnsureDraftOutcome
 /// <param name="ChangesTold">The issued documents of the stays of a portal that ended and changed on the portal afterwards, for which the host got the «To do» of a change.</param>
 public sealed record FiscalDocumentsDueResult(string? NotRunReason, int Examined, int DraftsCreated, int DocumentsIssued, int Skipped, int ChangesTold = 0)
 {
-    /// <summary>True when the run looked at the organization.</summary>
     public bool Ran => NotRunReason is null;
 
-    /// <summary>A run that did nothing, with its reason.</summary>
     public static FiscalDocumentsDueResult NotRun(string reason) => new(reason, 0, 0, 0, 0);
 }
 
-/// <summary>Why a daily run did nothing (<see cref="FiscalDocumentsDueResult.NotRunReason"/>).</summary>
 public static class FiscalDocumentsDueSkipReasons
 {
-    /// <summary><c>Features:FiscalDocumentIssuance</c> is off.</summary>
     public const string IssuanceOff = "issuance_off";
 
-    /// <summary>The profile of the issuer misses an item the documents need (the setup of the issuer is not complete).</summary>
     public const string ProfileIncomplete = "profile_incomplete";
 
-    /// <summary>Another run of the same organization is working.</summary>
     public const string RunInProgress = "run_in_progress";
 }
 
-/// <summary>The limits of the bulk issue.</summary>
 public static class FiscalDocumentBatch
 {
-    /// <summary>The most documents one request issues.</summary>
     public const int MaxDocuments = 200;
 }
 
@@ -213,32 +174,23 @@ public static class FiscalDocumentBatch
 /// </summary>
 public sealed record FiscalDocumentBatchRequest(IReadOnlyList<Guid>? DocumentIds, DateOnly? From, DateOnly? To, IReadOnlyList<Guid>? PropertyIds);
 
-/// <summary>The outcome of one document of a bulk issue: issued with its number, or not with the stable code of why.</summary>
 public sealed record FiscalDocumentBatchRow(Guid Id, bool Issued, string? Number, string? ErrorCode);
 
-/// <summary>The answer of a bulk issue: one row per document, and how many more documents the selection matched beyond the maximum.</summary>
 public sealed record FiscalDocumentBatchResult(IReadOnlyList<FiscalDocumentBatchRow> Rows, int Remaining)
 {
-    /// <summary>The documents issued.</summary>
     public int Issued => Rows.Count(r => r.Issued);
 
-    /// <summary>The documents that were not issued.</summary>
     public int Failed => Rows.Count(r => !r.Issued);
 }
 
-/// <summary>What happened to a booking that its documents have to follow (<see cref="IFiscalDocumentService.ApplyBookingChangeAsync"/>).</summary>
 public enum BookingChange
 {
-    /// <summary>The dates, the guests, the amounts or the property changed.</summary>
     Modified = 1,
 
-    /// <summary>The booking was cancelled.</summary>
     Cancelled = 2,
 
-    /// <summary>The host marked the stay as a no-show.</summary>
     NoShow = 3,
 
-    /// <summary>A refund of a payment of the booking succeeded.</summary>
     Refunded = 4,
 }
 
@@ -250,10 +202,8 @@ public enum BookingChange
 /// <param name="TodosRaised">«To do» items raised for the host (an item already open counts as raised).</param>
 public sealed record BookingChangeOutcome(int DraftsRefreshed, int DraftsDiscarded, int CreditNotesPrepared, int DocumentsIssued, int TodosRaised)
 {
-    /// <summary>Nothing was done.</summary>
     public static BookingChangeOutcome None { get; } = new(0, 0, 0, 0, 0);
 
-    /// <summary>The outcomes of two steps added up.</summary>
     public BookingChangeOutcome Plus(BookingChangeOutcome other) =>
         new(
             DraftsRefreshed + other.DraftsRefreshed,
@@ -263,29 +213,19 @@ public sealed record BookingChangeOutcome(int DraftsRefreshed, int DraftsDiscard
             TodosRaised + other.TodosRaised);
 }
 
-/// <summary>The «To do» items of the fiscal documents the service raises (no personal data: a code, the document and its property).</summary>
 public static class FiscalDocumentTodos
 {
-    /// <summary>The kind of entity of the item: the document (the frontend opens it from the id).</summary>
     public const string EntityType = "FiscalDocument";
 
-    /// <summary>A booking changed after its document was issued: a credit note may be needed. The document is never rewritten.</summary>
     public const string BookingChangedReason = "fiscal_document_booking_changed";
 
-    /// <summary>«Controlla ed emetti la nota di credito»: the credit note (or reversal receipt) of a correction is waiting as a draft for the host to check and issue.</summary>
     public const string CreditNoteToIssueReason = "fiscal_document_credit_note_to_issue";
 
-    /// <summary>The kind of entity of the item about an owner (the frontend opens the owner from the id).</summary>
     public const string OwnerEntityType = "PropertyOwner";
 
-    /// <summary>
-    /// The owner who issues the document of a stay of its Italian property has no issuer profile that can issue (E17/F01/US01/T02): no document is made until the
-    /// profile is complete. The same key as the item of the billing setup.
-    /// </summary>
     public const string OwnerIssuerMissingReason = Casazen.Core.Models.BillingSetupItemKeys.OwnerIssuerMissing;
 }
 
-/// <summary>The filters of the list of the documents; the days are Europe/Rome calendar days of the issue (of the creation for a draft).</summary>
 public sealed record FiscalDocumentCriteria(
     Guid? BookingId = null,
     Guid? PropertyId = null,
@@ -295,7 +235,6 @@ public sealed record FiscalDocumentCriteria(
     FiscalDocumentStatus? Status = null,
     FiscalDocumentSource? Source = null);
 
-/// <summary>One page of documents.</summary>
 public sealed record FiscalDocumentPage(IReadOnlyList<FiscalDocument> Items, int TotalCount, int Page, int PageSize)
 {
     public const int DefaultPageSize = 20;
@@ -326,7 +265,6 @@ public sealed record FiscalDocumentExportRow(
     FiscalDocumentSource Source,
     FiscalDocumentPurpose Purpose = FiscalDocumentPurpose.GuestStay);
 
-/// <summary>The stable codes of the errors of the fiscal documents, with the keys of their messages in <c>SharedResources</c>.</summary>
 public static class FiscalDocumentErrors
 {
     public const string BookingNotDirect = DocumentIssuerErrorCodes.BookingNotDirect;
@@ -349,27 +287,17 @@ public static class FiscalDocumentErrors
     public const string NotFound = "fiscal_document_not_found";
     public const string XmlUnavailable = "fiscal_document_xml_unavailable";
 
-    /// <summary>422: a bulk issue with an empty selection (no document, no period, no property): never read as «all».</summary>
     public const string BatchSelectionRequired = "document_batch_selection_required";
 
-    /// <summary>422: more documents than <see cref="FiscalDocumentBatch.MaxDocuments"/> in one bulk issue.</summary>
     public const string BatchTooLarge = "document_batch_too_large";
 
-    /// <summary>422: the period of a bulk issue ends before it starts.</summary>
     public const string BatchPeriodInvalid = "document_batch_period_invalid";
 
-    /// <summary>The code of a row of a bulk issue whose document failed for a reason that is not a rule (the database): the document stays a draft and can be issued again.</summary>
     public const string IssueFailed = "document_issue_failed";
 
-    /// <summary>
-    /// 422 (E17/F01/US01/T02): the owner who issues the document of the stay has no issuer profile that can issue (none, or one that misses a field): no document
-    /// is made, and the owner's «Da fare» is raised. The <c>ownerId</c> is in the answer.
-    /// </summary>
     public const string OwnerIssuerMissing = Casazen.Core.Models.BillingSetupItemKeys.OwnerIssuerMissing;
 
-    /// <summary>The longest reason of a credit note.</summary>
     public const int CreditReasonMaxLength = 200;
 }
 
-/// <summary>The payload of <c>FiscalDocumentIssued</c> and <c>FiscalDocumentCreditNoteIssued</c>: ids and codes only.</summary>
 public sealed record FiscalDocumentIssuedPayload(Guid DocumentId, Guid? BookingId, string Kind, Guid? CreditedDocumentId);

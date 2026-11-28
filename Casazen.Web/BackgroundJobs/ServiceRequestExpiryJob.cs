@@ -15,7 +15,6 @@ public class ServiceRequestExpiryJob(IServiceRequestExpiryService expiryService,
 {
     public const string RecurringJobId = "service-request-expiry";
 
-    /// <summary>Every 5 minutes: a hold is deleted, and a request cancelled, at most 5 minutes after its time.</summary>
     public const string Cron = "*/5 * * * *";
 
     // One run at a time; a second run started anyway (a retry, the dashboard) waits for the first and then finds nothing due.

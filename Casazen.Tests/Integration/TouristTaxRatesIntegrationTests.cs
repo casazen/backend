@@ -12,10 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// Admin tourist tax rates over HTTP on PostgreSQL (A5-06): create with a server-generated id, update and soft delete
-/// with 404 on unknown ids, localized validation errors, and the rates seeded from the RS-7 research.
-/// </summary>
 public class TouristTaxRatesIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private const string AdminId = "auth0|tax-rates-admin";
@@ -225,7 +221,6 @@ public class TouristTaxRatesIntegrationTests : IClassFixture<CasazenWebApplicati
 
         Assert.All(seeded, r => Assert.Equal(TouristTaxRateSeed.IstatCodes[r.GetProperty("city").GetString()!], r.GetProperty("istatCode").GetString()));
 
-        // BK-03 rows plus the later official extracts (Roma locazione breve, Venezia Gruppo 3 alta).
         var categoryIds = TouristTaxRateSeed.BuildCategoryAndSeasonRates()
             .Select(r => r.Id)
             .Concat(TouristTaxOfficialExtractSeed.NewRates().Where(r => r.City is "Roma" or "Venezia").Select(r => r.Id))
@@ -248,7 +243,6 @@ public class TouristTaxRatesIntegrationTests : IClassFixture<CasazenWebApplicati
             .ToListAsync());
         Assert.Equal(laterIds, storedLater.Order().ToArray());
 
-        // The municipal pages still publish no tariff.
         var notLoaded = new[] { "Seveso", "Cesano Maderno" };
         Assert.False(await WithDbAsync(db => db.TouristTaxRates.AnyAsync(r => notLoaded.Contains(r.City))));
     }

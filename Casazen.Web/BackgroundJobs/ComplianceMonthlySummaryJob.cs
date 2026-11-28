@@ -14,7 +14,6 @@ public class ComplianceMonthlySummaryJob(IComplianceMonthlySummaryService summar
 {
     public const string RecurringJobId = "compliance-monthly-summary";
 
-    /// <summary>07:00 on the first day of every month, in the time zone of Europe/Rome (the job is registered with <see cref="RomeCalendar.TimeZone"/>).</summary>
     public const string Cron = "0 7 1 * *";
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;

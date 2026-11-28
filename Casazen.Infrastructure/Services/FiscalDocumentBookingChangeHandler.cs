@@ -100,7 +100,6 @@ public sealed class FiscalDocumentBookingChangeHandler(
         }
     }
 
-    /// <summary>What a booking event asks of the documents; <c>null</c> for an event that is not one of the changes.</summary>
     internal static BookingChange? ChangeOf(DomainEventType type) => type switch
     {
         DomainEventType.BookingModified => BookingChange.Modified,
@@ -110,7 +109,6 @@ public sealed class FiscalDocumentBookingChangeHandler(
         _ => null,
     };
 
-    /// <summary>The booking of an event: its entity for a booking event, the booking named by the payload for the refund of a payment; <c>null</c> when the payload says none.</summary>
     private static Guid? BookingOf(DomainEvent domainEvent)
     {
         if (domainEvent.Type != DomainEventType.PaymentRefunded)

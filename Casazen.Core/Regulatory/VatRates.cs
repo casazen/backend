@@ -2,16 +2,13 @@ using Casazen.Core.Services;
 
 namespace Casazen.Core.Regulatory;
 
-/// <summary>The kind of a VAT rate of a country (<see cref="VatRates"/>).</summary>
 public enum VatRateKind
 {
     /// <summary>The standard rate: what a cleaning company that applies VAT charges (Switzerland 8.1, Italy 22).</summary>
     Standard = 1,
 
-    /// <summary>The reduced rate of Switzerland (2.6). Italy has no row of this kind in the table.</summary>
     Reduced = 2,
 
-    /// <summary>The rate of the lodging: Switzerland the special rate for accommodation (3.8, by law until 31/12/2027), Italy the rate of the accommodation in a structure (10).</summary>
     Lodging = 3,
 }
 
@@ -45,10 +42,8 @@ public static class VatRates
     private const string Swiss = "ESTV, Schweizer Mehrwertsteuersätze (5/11/2026); LIVA/MWSTG SR 641.20 art. 25 (consolidated 1/1/2025)";
     private const string Italian = "DPR 633/72 art. 16 and Tab. A parte III n. 120 (Normattiva); from 1/1/2027 D.Lgs. 10/2026 (TU IVA)";
 
-    /// <summary>The first day the table covers.</summary>
     public static readonly DateOnly FirstDay = new(2024, 1, 1);
 
-    /// <summary>The rows, by country and kind; two rows of one country and kind never overlap.</summary>
     public static IReadOnlyList<VatRate> Table { get; } =
     [
         new(FiscalDocumentRules.Switzerland, VatRateKind.Standard, 8.1m, FirstDay, null, Swiss),
@@ -58,10 +53,6 @@ public static class VatRates
         new(FiscalDocumentRules.Italy, VatRateKind.Lodging, 10m, FirstDay, null, Italian),
     ];
 
-    /// <summary>
-    /// The rate of <paramref name="kind"/> in <paramref name="country"/> in force on <paramref name="day"/>, or <c>null</c> when the table has none for that day
-    /// (a country it does not know, a day outside every validity): never a default.
-    /// </summary>
     public static VatRate? Find(string? country, VatRateKind kind, DateOnly day)
     {
         var code = country?.Trim().ToUpperInvariant();

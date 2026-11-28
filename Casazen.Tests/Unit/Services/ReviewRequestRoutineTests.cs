@@ -30,16 +30,12 @@ public class ReviewRequestRoutineTests
     private static readonly Guid OrgA = RoutineRig.OrgA;
     private static readonly Guid OrgB = RoutineRig.OrgB;
 
-    // The engine thinks it is 12 November 2026, 09:00 UTC (10:00 in Rome, winter time). A stay that ended on the 11th is on its first day to review.
     private static readonly DateTime Today = new(2026, 11, 12, 0, 0, 0, DateTimeKind.Utc);
     private static readonly DateTime CheckOut = Today.AddDays(-1);
 
-    /// <summary>The trigger of the ready routine: a day after the check-out, as the routines page writes it.</summary>
     private const string OneDayAfter = """{"days":1,"hours":0}""";
 
     private static readonly string RequestReviewActions = RoutineRig.Actions(("RequestReview", "{}"));
-
-    // ─── Seeding ─────────────────────────────────────────────────────────────────
 
     private static async Task SeedOrgAsync(RoutineRig rig, Guid orgId, string slug)
     {
@@ -73,7 +69,6 @@ public class ReviewRequestRoutineTests
         await db.SaveChangesAsync();
     }
 
-    /// <summary>A check-in session of the stay in which the guest chose <paramref name="language"/> on the check-in page.</summary>
     private static async Task SeedCheckInSessionAsync(RoutineRig rig, Booking booking, string language)
     {
         await using var db = rig.NewDb();
@@ -88,7 +83,6 @@ public class ReviewRequestRoutineTests
         await db.SaveChangesAsync();
     }
 
-    /// <summary>The subject of the invitation in <paramref name="language"/>, from the same template: what the guest is expected to read.</summary>
     private static string InvitationSubject(string language)
     {
         var content = EmailTemplates.ReviewInvite(
@@ -138,12 +132,6 @@ public class ReviewRequestRoutineTests
         Assert.Equal(booking.Id, invite.BookingId);
     }
 
-    // ─── The action: once for each booking (data rule) ───────────────────────────
-
-    /// <summary>
-    /// Proof (data rule): two routines asking for the same stay, an event for it that comes again and the host's button leave one invitation. The mark of the
-    /// booking is the only thing that decides it, so the guest is asked once, whoever asks and however many times the event is delivered.
-    /// </summary>
     [Fact]
     public async Task RequestReview_OncePerBooking_Test()
     {
@@ -153,8 +141,8 @@ public class ReviewRequestRoutineTests
         await SeedRequestRoutineAsync(rig);
         await SeedRequestRoutineAsync(rig);
 
-        await TriggerAsync(rig, booking); // two routines, one event
-        await TriggerAsync(rig, booking); // another event for the same stay
+        await TriggerAsync(rig, booking);
+        await TriggerAsync(rig, booking);
 
         var executions = await rig.ExecutionsAsync();
         Assert.Equal(4, executions.Count);
@@ -164,7 +152,6 @@ public class ReviewRequestRoutineTests
         Assert.Equal(3, results.Count(r => r is { Outcome: RoutineActionOutcomes.Skipped, Code: ReviewInviteSkipReasons.AlreadyInvited }));
         await AssertOneInvitationAsync(rig, booking, guest, "org-a");
 
-        // The host's button after a routine is the same mark: refused, and no second email.
         await using var db = rig.NewDb();
         var refused = await Assert.ThrowsAsync<DomainConflictException>(() => rig.Reviews(db).SendInviteAsync(booking.Id, "auth0|host"));
         Assert.Equal("review_invite_already_sent", refused.Code);
@@ -172,7 +159,6 @@ public class ReviewRequestRoutineTests
         Assert.Null((await db.ReviewInvites.SingleAsync()).SentByUserId);
     }
 
-    /// <summary>The other way round: the host asked by hand first, so the routine skips the stay as already invited and sends nothing more.</summary>
     [Fact]
     public async Task RequestReview_AfterTheHostAskedByHand_IsSkippedAsAlreadyInvited()
     {
@@ -194,15 +180,12 @@ public class ReviewRequestRoutineTests
         Assert.Equal("auth0|host", (await read.ReviewInvites.SingleAsync()).SentByUserId);
     }
 
-    /// <summary>The invitation of a routine is the one email of the host's button: to the address of the guest, with the signed link of this booking and no other.</summary>
     [Fact]
     public async Task RequestReview_AnEligibleDirectStay_QueuesTheInvitationWithTheSignedLinkOfTheBooking()
     {
         var rig = new RoutineRig();
         await SeedOrgAsync(rig, OrgA, "org-a");
 
-        // The link of the invitation expires at the end of the review window, and the key ring checks that against the real clock: this stay ended yesterday
-        // by the real clock, so the link it gets is valid whenever the test runs.
         var clock = new FixedTimeProvider(DateTimeOffset.UtcNow);
         var endedYesterday = clock.TodayInRomeAsDateOnly().AddDays(-1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var (booking, guest) = await SeedStayAsync(rig, OrgA, checkOut: endedYesterday);
@@ -223,7 +206,6 @@ public class ReviewRequestRoutineTests
         Assert.Equal(booking.Id, linked);
     }
 
-    /// <summary>A stay the host left in any state of a stay that happened (confirmed, checked in, checked out: the one definition of an active stay) is invited.</summary>
     [Theory]
     [InlineData(BookingStatus.Confirmed)]
     [InlineData(BookingStatus.CheckedIn)]
@@ -240,8 +222,6 @@ public class ReviewRequestRoutineTests
         Assert.Equal(RoutineActionOutcomes.Done, SingleActionOf(Assert.Single(await rig.ExecutionsAsync())).Outcome);
         await AssertOneInvitationAsync(rig, booking, guest, "org-a");
     }
-
-    // ─── The host's button keeps its answers (the same core) ─────────────────────
 
     [Theory]
     [InlineData("portal")]
@@ -314,12 +294,6 @@ public class ReviewRequestRoutineTests
         await AssertNothingWasSentAsync(rig);
     }
 
-    // ─── Portal bookings and every other booking that is not to be invited ───────
-
-    /// <summary>
-    /// Proof (data rule): a stay that came through a portal is skipped with <c>not_direct</c>: the portal asks its own guests, so nothing is written and nothing
-    /// is sent, whatever else is eligible (confirmed, over, with an address). It is not a failure: the execution is a success and nothing is tried again.
-    /// </summary>
     [Fact]
     public async Task RequestReview_PortalBookingSkipped_Test()
     {
@@ -415,7 +389,6 @@ public class ReviewRequestRoutineTests
         await AssertSkippedAsync(rig, reason);
     }
 
-    /// <summary>The window of the review: the day after the check-out is the first day to ask, the 14th day after it is the last; before and after, the stay is skipped.</summary>
     [Theory]
     [InlineData(-1, ReviewInviteSkipReasons.TooEarly)]
     [InlineData(0, ReviewInviteSkipReasons.TooEarly)]
@@ -442,9 +415,6 @@ public class ReviewRequestRoutineTests
         }
     }
 
-    // ─── Failures: what is not a skip ────────────────────────────────────────────
-
-    /// <summary>Proof (permission rule): the booking is read in the org of the routine. The id of a stay of another org is no stay: the action fails and nothing is sent or marked, in either org.</summary>
     [Fact]
     public async Task RequestReview_ABookingOfAnotherOrg_FailsAndSendsNothing()
     {
@@ -479,10 +449,6 @@ public class ReviewRequestRoutineTests
         await AssertNothingWasSentAsync(rig);
     }
 
-    /// <summary>
-    /// The queue does not take the email (the provider is not configured): the action fails with the code of the host's button, never a success nobody confirmed,
-    /// and the booking is not marked, so the host can still ask by hand and the guest is not left without the invitation for good.
-    /// </summary>
     [Fact]
     public async Task RequestReview_TheQueueDoesNotTakeTheEmail_FailsAndLeavesTheBookingFree()
     {
@@ -521,7 +487,6 @@ public class ReviewRequestRoutineTests
         await AssertNothingWasSentAsync(rig);
     }
 
-    /// <summary>A skipped action is not a failure: the actions after it still run (a To do for the host, say), and the execution ends in success.</summary>
     [Fact]
     public async Task RequestReview_ASkippedAction_DoesNotStopTheNextOnes()
     {
@@ -546,7 +511,6 @@ public class ReviewRequestRoutineTests
             RoutineRig.ResultOf(execution).Actions);
     }
 
-    /// <summary>After a Wait the action reads the booking of the saved payload: one invitation however many jobs resume it, and none for a stay cancelled while it waited.</summary>
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -601,12 +565,6 @@ public class ReviewRequestRoutineTests
         await AssertNothingWasSentAsync(rig);
     }
 
-    // ─── The ready routine «Richiesta di recensione» ─────────────────────────────
-
-    /// <summary>
-    /// The ready routine as the routines page saves it (a day after the check-out, the action <c>RequestReview</c>) is a routine the API accepts, active and not in
-    /// test mode, and its trigger is the offset of 24 hours the time triggers read.
-    /// </summary>
     [Fact]
     public async Task ReadyRoutine_RichiestaDiRecensione_IsARoutineTheApiSaves_ActiveAndNotInTestMode()
     {
@@ -629,10 +587,6 @@ public class ReviewRequestRoutineTests
         Assert.Equal(24, TimeTrigger.OffsetHours(saved.EventConfig));
     }
 
-    /// <summary>
-    /// Acceptance: with the routine active, a day after the check-out at the check-out time of the house (10:00 on the clock of the property) every eligible direct stay
-    /// gets one invitation and the others are skipped with a reason. From the time trigger the emitter writes to the routine that runs, through the handler of the bus.
-    /// </summary>
     [Fact]
     public async Task ReadyRoutine_ADayAfterTheCheckOut_InvitesTheDirectStay_AndSkipsThePortalOne()
     {
@@ -651,7 +605,6 @@ public class ReviewRequestRoutineTests
             await rig.Management(db).CreateAsync(OrgA, command);
         }
 
-        // One house with the usual check-out time, and two stays that end on the 12th: one of the booking site, one of a portal.
         var guest = await rig.SeedGuestAsync(OrgA);
         var checkOutDay = new DateTime(2026, 11, 12, 0, 0, 0, DateTimeKind.Utc);
         var stays = new Dictionary<BookingSource, Booking>();
@@ -687,7 +640,6 @@ public class ReviewRequestRoutineTests
             await db.SaveChangesAsync();
         }
 
-        // 10:00 in Rome on the 13th is 09:00 UTC: five minutes earlier nothing is due, five minutes later each stay has its trigger.
         await EmitTimeTriggersAsync(rig, new DateTime(2026, 11, 13, 8, 55, 0, DateTimeKind.Utc));
         await using (var read = rig.NewDb())
             Assert.Empty(await read.OutboxEvents.ToListAsync());
@@ -701,7 +653,6 @@ public class ReviewRequestRoutineTests
             Assert.Equal(2, triggers.Count);
             Assert.All(triggers, t => Assert.Contains("\"offset\":24", t.PayloadJson, StringComparison.Ordinal));
 
-            // The dispatcher hands each trigger to the routine engine.
             var clock = new FixedTimeProvider(new DateTimeOffset(now, TimeSpan.Zero));
             var handler = new RoutineEventHandler(rig.Service(db, clock), NullLogger<RoutineEventHandler>.Instance);
             foreach (var trigger in triggers)
@@ -733,8 +684,6 @@ public class ReviewRequestRoutineTests
         await job.ExecuteAsync(CancellationToken.None);
     }
 
-    // ─── ReviewReceived on the bus ───────────────────────────────────────────────
-
     private static PublicReviewService PublicReviews(RoutineRig rig, AppDbContext db)
     {
         var clock = new FixedTimeProvider(RoutineRig.Now);
@@ -746,10 +695,6 @@ public class ReviewRequestRoutineTests
             new DomainEventRecorder(db, NullTenantContext.Instance, clock));
     }
 
-    /// <summary>
-    /// Proof (privacy rule): a review sent by the guest records <c>ReviewReceived</c> once, in the save of the review, and its payload is the ids of the review, the
-    /// stay and the house, never the mark, the text or the name; the same link sent again is refused and leaves no second event.
-    /// </summary>
     [Fact]
     public async Task ReviewReceived_IsRecordedOnceForEachReview_WithTheIdsOnly_Test()
     {
@@ -784,7 +729,6 @@ public class ReviewRequestRoutineTests
         Assert.DoesNotContain("perfetto", published.PayloadJson, StringComparison.Ordinal);
     }
 
-    /// <summary>A review that is refused (the stay is of a portal, so it cannot be reviewed) records no event and writes no review.</summary>
     [Fact]
     public async Task ReviewReceived_AReviewThatIsRefused_RecordsNoEvent()
     {
@@ -803,7 +747,6 @@ public class ReviewRequestRoutineTests
         Assert.Empty(await read.Reviews.ToListAsync());
     }
 
-    /// <summary>The event reaches the routines of the host: a routine on <c>ReviewReceived</c> finds the stay of the review in the payload and raises its To do for it.</summary>
     [Fact]
     public async Task ReviewReceived_StartsTheRoutinesOfTheOrg_OnTheStayOfTheReview()
     {
@@ -832,12 +775,6 @@ public class ReviewRequestRoutineTests
         Assert.Equal(booking.Id, todo.EntityId);
     }
 
-    // ─── The language of the invitation: the guest's, chosen as the message with the check-in link does ───
-
-    /// <summary>
-    /// The invitation is written in the language of the guest: the one chosen on the check-in page, else the one of the country of the guest, else Italian. It exists in Italian and
-    /// English, so every other language reads English. The English one, the choice over the country and the fallback to Italian are each proved here.
-    /// </summary>
     [Theory]
     [InlineData("en", "", "en")]
     [InlineData(null, "GB", "en")]
@@ -862,7 +799,6 @@ public class ReviewRequestRoutineTests
         Assert.Equal(InvitationSubject(written), Assert.Single(rig.Emails.Snapshot()).Content.Subject);
     }
 
-    /// <summary>The core is the same, so the host's button writes in the language of the guest too (with the answers and the order of the checks it always had).</summary>
     [Fact]
     public async Task HostButton_WritesInTheLanguageOfTheGuest_Too()
     {
@@ -877,11 +813,6 @@ public class ReviewRequestRoutineTests
         Assert.Equal(InvitationSubject("en"), Assert.Single(rig.Emails.Snapshot()).Content.Subject);
     }
 
-    /// <summary>
-    /// E50/F01/US03/T02, with the guest portal on: the invitation is written in any of the five languages of the guest (the check-in page, a country whose language is beyond doubt, else the
-    /// account of the host, else Italian). A guest from another country is not turned into English: Switzerland, where four languages are spoken, is the language of the host's account.
-    /// With the portal off it is the invitation of the tests above, in Italian or English.
-    /// </summary>
     [Theory]
     [InlineData("", "de", "de")]
     [InlineData("CH", "de", "de")]

@@ -21,10 +21,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Biometrics;
 
-/// <summary>
-/// E22/F01/US01/T01: the <c>biometrics</c> health entry and <c>GET api/admin/biometrics/status</c> say which model is missing and why, without ever taking
-/// the instance out of rotation and without a path, a hash or an address in the answer. Both read the same <see cref="IBiometricModelStatusReader"/>.
-/// </summary>
 public sealed class BiometricsHealthCheckTests : IDisposable
 {
     private const string SecretPath = "MlModels/biometrics/never-shown-path.onnx";
@@ -40,8 +36,6 @@ public sealed class BiometricsHealthCheckTests : IDisposable
         if (Directory.Exists(_folder))
             Directory.Delete(_folder, recursive: true);
     }
-
-    // ─── The proofs of the brief ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Proof (data): the operator path is never blocked by the models. Whatever the state of the store (not loaded, loading, ready, unavailable as a whole
@@ -85,11 +79,6 @@ public sealed class BiometricsHealthCheckTests : IDisposable
         Assert.Contains(HealthCheckExtensions.ReadyTag, registration.Tags);
     }
 
-    /// <summary>
-    /// Proof (permission): the status is for the platform administrators only. The route sits under <see cref="CasazenPolicies.AdminOnly"/> and nothing else
-    /// opens it (no <c>[AllowAnonymous]</c>, no host policy); the real registered policy refuses the owner of an organization and every caller that is not an
-    /// administrator, while the administrator passes (the positive control).
-    /// </summary>
     [Fact]
     public async Task AdminBiometricsStatus_AdminOnly_Test()
     {
@@ -103,8 +92,6 @@ public sealed class BiometricsHealthCheckTests : IDisposable
             .Where(m => m.GetCustomAttributes<HttpMethodAttribute>(inherit: true).Any())
             .ToList();
 
-        // The status (E22/F01/US01/T01), the calibration of the thresholds of an organization (E22/F01/US01/T03) and the qualification of a segment of the self-hosted
-        // verification and its revocation (E70/F02/US01/T02): all for the platform administrators only.
         Assert.Equal(
             ["GetStatus", "MarkCalibrated", "QualifySegment", "RevokeSegmentQualification"],
             routed.Select(a => a.Name).Order(StringComparer.Ordinal));
@@ -139,8 +126,6 @@ public sealed class BiometricsHealthCheckTests : IDisposable
         await ((IAuthorizationHandler)requirement).HandleAsync(admin);
         Assert.True(admin.HasSucceeded, "The platform administrator does not pass the policy of the models status.");
     }
-
-    // ─── What the answers say ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task BiometricsHealth_FlagOff_IsHealthyWhateverTheFilesAre()
@@ -229,7 +214,6 @@ public sealed class BiometricsHealthCheckTests : IDisposable
         Assert.DoesNotContain(DownloadAddress, json);
         using var document = JsonDocument.Parse(json);
 
-        // E73/F01/US02/T03: the status also says what of the retention of the identity verification is overdue (counts and a time only, null here: no reading of it).
         Assert.Equal(["enabled", "models", "reasonCode", "retention", "state"], document.RootElement.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
         foreach (var model in document.RootElement.GetProperty("models").EnumerateArray())
         {
@@ -255,8 +239,6 @@ public sealed class BiometricsHealthCheckTests : IDisposable
         Assert.Equal(BiometricModelStatusStates.Loading, status.State);
         Assert.All(status.Models.Where(m => m.Role != BiometricModelRoles.MrzOcr), m => Assert.Null(m.Code));
     }
-
-    // ─── The optional second candidates (E72/F01/US02/T03): they are ignored ─────────────────────────────
 
     /// <summary>
     /// Proof (data): a candidate never changes the health. In every situation of the store, with the flag on or off, with the files pinned or not, and whatever the candidates are (not configured,
@@ -297,14 +279,12 @@ public sealed class BiometricsHealthCheckTests : IDisposable
         File.WriteAllBytes(System.IO.Path.Combine(_folder, "ocrb.traineddata"), [1]);
         var mrz = new MrzOcrOptions { Mrz = new ModelFileOptions { Name = "OCR-B", Path = "ocrb.traineddata", Sha256 = PinnedHash } };
 
-        // Not configured: both, whatever the state of the store (it is read from the options, so it is true before the store has finished and when it never will).
         var none = BiometricModelStatuses.Describe(true, snapshot, options, mrz, _folder);
         Assert.Equal(BiometricModelStatusStates.Ready, none.State);
         Assert.Equal([BiometricModelRoles.AntiSpoofingCandidate, BiometricModelRoles.FaceRecognitionCandidate], none.Candidates.Select(candidate => candidate.Role));
         Assert.All(none.Candidates, candidate => Assert.Equal(BiometricModelStatusStates.NotConfigured, candidate.State));
         Assert.Equal(4, none.Models.Count);
 
-        // Configured: the store is ready and has not looked at it yet, it is loaded, it failed with its code, the store never will, the flag is off.
         options.FaceRecognitionCandidate = new FaceRecognitionCandidateOptions { Name = "Candidate", Version = "1", License = "MIT", Path = SecretPath, Sha256 = PinnedHash };
         var loading = BiometricModelStatuses.Describe(true, snapshot, options, mrz, _folder);
         var loaded = BiometricModelStatuses.Describe(true, snapshot with { Candidates = [Info(BiometricModelRoles.FaceRecognitionCandidate, loaded: true, null)] }, options, mrz, _folder);
@@ -322,14 +302,10 @@ public sealed class BiometricsHealthCheckTests : IDisposable
         Assert.True(Recognition(loaded).Pinned);
         Assert.Equal(BiometricModelStatusStates.NotConfigured, none.Candidates[0].State);
 
-        // Apart: the set is as ready as it was in every case, and the three models are the same four entries.
         Assert.All(new[] { loading, loaded, failed }, status => Assert.Equal(none.State, status.State));
         Assert.All(new[] { loading, loaded, failed }, status => Assert.Equal(none.Models, status.Models));
     }
 
-    // ─── Fixtures ────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>What the store says of the two candidates in each situation of <see cref="BiometricsHealth_TheOptionalCandidates_NeverChangeTheEntryTheStateOrTheModels_Test"/>.</summary>
     private static List<BiometricModelInfo> CandidateInfos(string mode)
     {
         BiometricModelInfo[] roles =
@@ -340,7 +316,6 @@ public sealed class BiometricsHealthCheckTests : IDisposable
         return mode == "not looked at yet" ? [] : [.. roles];
     }
 
-    /// <summary>The options of the candidates: configured (a file, a hash) or not.</summary>
     private static void ConfigureCandidates(BiometricModelOptions options, bool configured)
     {
         if (!configured)

@@ -61,8 +61,6 @@ public record DirectBookingCreateInput(
     BookingAttributionInput? Attribution = null,
     IReadOnlyList<DirectCheckoutExtra>? Extras = null);
 
-/// <summary>Stay to price before booking (checkout quote).</summary>
-/// <param name="ChildrenAges">Age of each minor at check-in, needed when the tourist tax depends on it.</param>
 public record DirectBookingQuoteInput(
     Guid PropertyId,
     DateTime CheckInDate,
@@ -133,54 +131,25 @@ public sealed record StayLodging(
     decimal WeekendNightlyRate,
     decimal Total)
 {
-    /// <summary>
-    /// The length-of-stay discount taken off the nights (NF-35, ADR-028): the tier of the property that the stay reaches and the amount it takes
-    /// off <see cref="Total"/>. <c>null</c> = none applies, which is every stay of a property with no tier.
-    /// </summary>
     public StayDiscount? Discount { get; init; }
 
-    /// <summary>What the guest pays for the nights: <see cref="Total"/> less the discount; the cleaning fee and the tourist tax are not in it.</summary>
     public decimal NetTotal => Total - (Discount?.Amount ?? 0m);
 
-    /// <summary>
-    /// The nights of the stay whose price the host set for their date (a seasonal price the host confirmed, PC-15), in date
-    /// order. Each costs that price: the weekend surcharge is not added to it, and these nights are in neither
-    /// <see cref="WeekdayNights"/> nor <see cref="WeekendNights"/>.
-    /// </summary>
     public IReadOnlyList<PricedNight> PricedNights { get; init; } = [];
 
-    /// <summary>Every night of the stay.</summary>
     public int Nights => WeekdayNights + WeekendNights + PricedNights.Count;
 }
 
-/// <summary>One night whose price the host set for its date: the Europe/Rome calendar date the night starts and its price.</summary>
 public sealed record PricedNight(DateOnly Date, decimal Price);
 
-/// <summary>
-/// One tier of the length-of-stay discount of a property (NF-35): from <paramref name="MinNights"/> nights the lodging costs
-/// <paramref name="PercentOff"/> percent less. The rule that picks the tier and rounds the amount is <see cref="StayPricing.DiscountFor"/>.
-/// </summary>
 public sealed record StayDiscountTier(int MinNights, decimal PercentOff);
 
-/// <summary>
-/// The length-of-stay discount a stay got (NF-35, ADR-028-R3, R4): the tier that applied and what it took off the nights.
-/// </summary>
-/// <param name="MinNights">The nights of the tier that applied.</param>
-/// <param name="PercentOff">Its percentage.</param>
-/// <param name="Amount">What it takes off the price of the nights: <c>round(total x percent / 100, 2)</c>, half away from zero, an exact number of cents.</param>
 public sealed record StayDiscount(int MinNights, decimal PercentOff, decimal Amount);
 
-/// <summary>What a line of the quote is. Serialized by name: never rename or reorder a member the frontend reads.</summary>
 public enum QuoteLineKind
 {
-    /// <summary>
-    /// Nights at the ordinary nightly rate (the "notti feriali"; every night when there is no weekend surcharge). There is one
-    /// more line of this kind, in the order of the nights, for each other price that the host set for dates of the stay (a
-    /// confirmed seasonal price): the quantity and the unit price of each line say which nights it is.
-    /// </summary>
     Nights = 0,
 
-    /// <summary>Friday and Saturday nights at the rate with the weekend surcharge; present only when there are such nights.</summary>
     WeekendNights = 1,
 
     /// <summary>
@@ -190,13 +159,10 @@ public enum QuoteLineKind
     /// </summary>
     LengthOfStayDiscount = 5,
 
-    /// <summary>The cleaning fee, once; present only when it is not zero.</summary>
     CleaningFee = 2,
 
-    /// <summary>The tourist tax, already calculated by the tourist tax engine; present only when its amount is known.</summary>
     TouristTax = 3,
 
-    /// <summary>The total to pay: the sum of the lines above.</summary>
     Total = 4,
 }
 
@@ -250,50 +216,31 @@ public record DirectBookingCreateResult(
 /// </summary>
 public static class DirectBookingErrorCodes
 {
-    /// <summary>409: the host has not completed Stripe Connect: the site does not take bookings yet (R-11).</summary>
     public const string PaymentsNotReady = "direct_booking_payments_not_ready";
 
-    /// <summary>422: check-in in the past, check-out not after check-in, or a stay longer than the longest one priced.</summary>
     public const string InvalidStay = "direct_booking_invalid_stay";
 
-    /// <summary>400: the data processing consent was not given.</summary>
     public const string ConsentRequired = "direct_booking_consent_required";
 
     /// <summary>422: the consent text changed since the page was loaded.</summary>
     public const string ConsentOutdated = "direct_booking_consent_outdated";
 
-    /// <summary>422: unknown payment option.</summary>
     public const string InvalidPaymentOption = "direct_booking_invalid_payment_option";
 
-    /// <summary>
-    /// 422: "Paga alla scadenza" chosen for a stay whose charge day is not after today (arrival too close, A3-16,
-    /// <see cref="DirectBookingPaymentRules.IsDeferredPaymentOffered"/>).
-    /// </summary>
     public const string DeferredPaymentUnavailable = "direct_booking_deferred_payment_unavailable";
 
-    /// <summary>422: the tourist tax depends on the age of the minors and their ages are missing (BK-03).</summary>
     public const string ChildAgesRequired = "tourist_tax_child_ages_required";
 
-    /// <summary>
-    /// 422: the stay is shorter than the minimum stay of its arrival date, in the quote and in the checkout: the minimum stay of that night
-    /// (<see cref="PropertyDayRule.MinNights"/>, NF-36) or, when the night has none, the one of the property (<c>Property.MinNights</c>, DB-03).
-    /// The message says the minimum. The host can still enter a shorter stay by hand.
-    /// </summary>
     public const string MinNightsNotMet = "direct_booking_min_nights_not_met";
 
-    /// <summary>422: the stay arrives on a night that is closed to arrival (<see cref="PropertyDayRule.ClosedToArrival"/>, NF-36), in the quote and in the checkout.</summary>
     public const string ArrivalClosed = "direct_booking_arrival_closed";
 
-    /// <summary>422: the stay leaves on a day that is closed to departure (<see cref="PropertyDayRule.ClosedToDeparture"/>, NF-36), in the quote and in the checkout.</summary>
     public const string DepartureClosed = "direct_booking_departure_closed";
 
-    /// <summary>422: the stay is longer than the maximum stay of its arrival date (<see cref="PropertyDayRule.MaxNights"/>, NF-36). The message says the maximum.</summary>
     public const string MaxNightsExceeded = "direct_booking_max_nights_exceeded";
 
-    /// <summary>422: the stay is booked closer to its arrival than the minimum advance of its arrival date (<see cref="PropertyDayRule.MinAdvanceDays"/>, NF-36). The message says the minimum.</summary>
     public const string AdvanceTooShort = "direct_booking_advance_too_short";
 
-    /// <summary>422: the stay is booked further ahead of its arrival than the maximum advance of its arrival date (<see cref="PropertyDayRule.MaxAdvanceDays"/>, NF-36). The message says the maximum.</summary>
     public const string AdvanceTooLong = "direct_booking_advance_too_long";
 
     /// <summary>
@@ -303,10 +250,6 @@ public static class DirectBookingErrorCodes
     /// </summary>
     public const string MarketingConsentUnavailable = "direct_booking_marketing_consent_unavailable";
 
-    /// <summary>
-    /// 422: the checkout ticks the WhatsApp consent but the guest left no phone number that can be reached (E07/F04/US01/T02, NF-90): a consent
-    /// on a channel needs the address of that channel.
-    /// </summary>
     public const string WhatsAppRequiresPhone = "direct_booking_whatsapp_requires_phone";
 
     /// <summary>
@@ -315,16 +258,7 @@ public static class DirectBookingErrorCodes
     /// </summary>
     public const string SoftOptInNoticeOutdated = "direct_booking_soft_opt_in_notice_outdated";
 
-    /// <summary>
-    /// 422: the checkout carries an <c>expectedArrivalTime</c> that is neither <c>HH:mm</c> nor <c>late</c> (DB-03b,
-    /// <see cref="ArrivalTimeRules"/>). The field is optional and only a preference of the guest, so nothing else is refused for it.
-    /// </summary>
     public const string ArrivalTimeInvalid = "direct_booking_arrival_time_invalid";
 
-    /// <summary>
-    /// The property has a currency that is neither EUR nor CHF (<see cref="StayCurrency.IsSupported"/>): 422 from the quote and the
-    /// checkout, 501 from the host's manual booking. A house in Switzerland is a CHF house and is priced, charged and refunded in francs
-    /// (CHF-MONEY, which supersedes ADR-001-R10: CHF used to be refused here).
-    /// </summary>
     public const string CurrencyNotSupported = "currency_not_supported";
 }

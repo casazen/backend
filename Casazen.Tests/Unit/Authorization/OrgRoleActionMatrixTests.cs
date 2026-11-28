@@ -36,7 +36,6 @@ public class OrgRoleActionMatrixTests
     private const string WithMoney = Owner + "," + Admin + "," + Manager + "," + Accountant;
     private const string Team = Owner + "," + Admin;
 
-    /// <summary>Permissions by context and role key, as seeded.</summary>
     private static readonly Lazy<Dictionary<(string Context, string RoleKey), HashSet<string>>> Seeded = new(() =>
     {
         using var db = OrgTeamTestData.NewDb();
@@ -45,10 +44,6 @@ public class OrgRoleActionMatrixTests
             .ToDictionary(g => g.Key, g => g.Select(rp => rp.PermissionKey).ToHashSet(StringComparer.Ordinal));
     });
 
-    /// <summary>
-    /// What the role holds in the context, for a person who works in both rental areas: the account role of the org role, and
-    /// the role of each rental context.
-    /// </summary>
     private static HashSet<string> PermissionsOf(OrgRole role, string context)
     {
         var roleKey = AccountContext.IsAccountContext(context) ? OrgRoleCatalog.AccountRoleKey(role) : OrgRoleCatalog.HostRoleKey(role, context);
@@ -63,7 +58,6 @@ public class OrgRoleActionMatrixTests
             .Select(p => p!)
             .ToList();
 
-    /// <summary>The policies of an action are all required: a role passes when it holds the permission in one of the contexts of each.</summary>
     private static bool Allows(OrgRole role, MethodInfo action) => PoliciesOf(action).All(policy =>
     {
         var (contexts, permission) = CasazenPolicies.ParseContextPolicy(policy);
@@ -72,7 +66,6 @@ public class OrgRoleActionMatrixTests
 
     public static TheoryData<Type, string, string> Matrix => new()
     {
-        // What every role of the team can look at.
         { typeof(PropertiesController), nameof(PropertiesController.GetAll), Everyone },
         { typeof(PropertiesController), nameof(PropertiesController.GetCinCompliance), Everyone },
         { typeof(BookingsController), nameof(BookingsController.GetAll), Everyone },
@@ -86,7 +79,6 @@ public class OrgRoleActionMatrixTests
         { typeof(AlloggiatiController), nameof(AlloggiatiController.GetSummary), Everyone },
         { typeof(SuppliersController), nameof(SuppliersController.GetSuppliers), Everyone },
 
-        // Money: the collaborator never reads it.
         { typeof(PaymentsController), nameof(PaymentsController.GetAll), WithMoney },
         { typeof(FiscalController), nameof(FiscalController.AnnualReport), WithMoney },
         { typeof(FiscalController), nameof(FiscalController.WithholdingReport), WithMoney },
@@ -101,7 +93,6 @@ public class OrgRoleActionMatrixTests
         { typeof(PaymentsController), nameof(PaymentsController.Create), Operators },
         { typeof(PaymentsController), nameof(PaymentsController.Refund), Operators },
 
-        // Property core, bookings, channels: the owner, the administrators and the managers.
         { typeof(PropertiesController), nameof(PropertiesController.Update), Operators },
         { typeof(PropertiesController), nameof(PropertiesController.UpdateCin), Operators },
         { typeof(PropertiesController), nameof(PropertiesController.Delete), Operators },
@@ -116,7 +107,6 @@ public class OrgRoleActionMatrixTests
         { typeof(OtaController), nameof(OtaController.SyncAll), Operators },
         { typeof(OtaIntegrationsController), nameof(OtaIntegrationsController.Create), Operators },
 
-        // AM-03: what the collaborator can do without the rest.
         { typeof(ServiceRequestsController), nameof(ServiceRequestsController.Create), WithoutAccountant },
         { typeof(ServiceRequestsController), nameof(ServiceRequestsController.MatchSupplier), WithoutAccountant },
         { typeof(ServiceRequestsController), nameof(ServiceRequestsController.MarkPaid), WithoutAccountant },
@@ -135,7 +125,6 @@ public class OrgRoleActionMatrixTests
         { typeof(AlloggiatiController), nameof(AlloggiatiController.MarkSentManually), Operators },
         { typeof(AlloggiatiController), nameof(AlloggiatiController.SendManual), Operators },
 
-        // Long-term rental: the accountant reads the leases, the collaborator sees none.
         { typeof(LeasesController), nameof(LeasesController.GetAll), WithMoney },
         { typeof(LeasesController), nameof(LeasesController.Create), Operators },
         { typeof(LeasesController), nameof(LeasesController.TriggerRegistration), Operators },
@@ -147,8 +136,6 @@ public class OrgRoleActionMatrixTests
         { typeof(LongRentTenantsController), nameof(LongRentTenantsController.Export), Operators },
         { typeof(LongRentTenantsController), nameof(LongRentTenantsController.RequestErasure), Operators },
 
-        // LR-12: the guided draft of a lease is written, and read (it carries the parties in clear), by who may create a lease; the
-        // rules of the area, which are figures and nothing personal, by who may read the leases.
         { typeof(LeaseDraftsController), nameof(LeaseDraftsController.Create), Operators },
         { typeof(LeaseDraftsController), nameof(LeaseDraftsController.Get), Operators },
         { typeof(LeaseDraftsController), nameof(LeaseDraftsController.Save), Operators },
@@ -160,8 +147,6 @@ public class OrgRoleActionMatrixTests
         { typeof(LongRentLeaseSetupController), nameof(LongRentLeaseSetupController.GetRules), WithMoney },
         { typeof(LongRentLeaseSetupController), nameof(LongRentLeaseSetupController.GetLandlordDefaults), Operators },
 
-        // CF-BE: the guided contract. What writes (the privacy acceptance, the gift of the plan, the signed link to the form) asks for
-        // lease.create like the draft, so the accountant, who only reads, cannot spend the gift of the org; the state is read with lease.read.
         { typeof(ConcordatoFacileController), nameof(ConcordatoFacileController.AcceptPrivacy), Operators },
         { typeof(ConcordatoFacileController), nameof(ConcordatoFacileController.ConsumeGift), Operators },
         { typeof(ConcordatoFacileController), nameof(ConcordatoFacileController.GenerateLink), Operators },
@@ -174,8 +159,6 @@ public class OrgRoleActionMatrixTests
         // org, an item (a deadline of law too) that would then vanish for the owner as well.
         { typeof(ActivitiesController), nameof(ActivitiesController.Close), Operators },
 
-        // E03/F04/US02/T01 (AC-NF24-3): the identity verification queue, its decisions and its figures are for who decides (verification.decision):
-        // the owner, the administrators and the property managers; never the collaborator nor the accountant.
         { typeof(VerificationController), nameof(VerificationController.GetPending), Operators },
         { typeof(VerificationController), nameof(VerificationController.RequestNewPhoto), Operators },
         { typeof(VerificationController), nameof(VerificationController.RecordVerification), Operators },
@@ -183,7 +166,6 @@ public class OrgRoleActionMatrixTests
         { typeof(VerificationController), nameof(VerificationController.GetMetrics), Operators },
         { typeof(VerificationController), nameof(VerificationController.ExportPilot), Operators },
 
-        // The people of the org, and the properties each of them reaches.
         { typeof(OrgMembersController), nameof(OrgMembersController.List), Team },
         { typeof(OrgMembersController), nameof(OrgMembersController.GetProperties), Team },
         { typeof(OrgMembersController), nameof(OrgMembersController.SetProperties), Team },
@@ -233,7 +215,6 @@ public class OrgRoleActionMatrixTests
         var holdsPaymentRead = contexts.Any(context => PermissionsOf(role, context).Contains(permission));
         Assert.Equal(mayReadMoney, holdsPaymentRead);
 
-        // Every role of the team reads the archive (the policy of the class), which is what makes the cut inside the action necessary.
         Assert.True(Allows(role, typeof(ComplianceArchiveController).GetMethod(nameof(ComplianceArchiveController.List))!));
 
         var orgId = Guid.NewGuid();
@@ -282,12 +263,6 @@ public class OrgRoleActionMatrixTests
         Assert.Equal(mayReadMoney, exported!.MoneyProofs);
     }
 
-    /// <summary>
-    /// AM-02c (AM-D12): the property manager has a membership of the account context, so a policy of the account context could
-    /// start to let it in. Every action of the API found by reflection that asks for a permission of the account context is
-    /// checked: the property manager passes it only when the permission is the one of the trusted suppliers, whatever the
-    /// controller (so a team, billing, settings or activity endpoint added later is covered without anyone listing it).
-    /// </summary>
     [Fact]
     public void PropertyManager_InTheAccountContext_PassesNoAccountActionButTheTrustedSuppliers()
     {
@@ -301,7 +276,6 @@ public class OrgRoleActionMatrixTests
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
-        // The team, the activity log and the other pages of the area are really found (the test is not vacuous).
         Assert.Contains(AccountContext.Permissions.MembersManage, accountPermissions);
         Assert.Contains(AccountContext.Permissions.ActivityRead, accountPermissions);
 

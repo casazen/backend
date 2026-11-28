@@ -15,10 +15,8 @@ namespace Casazen.Core.Entities;
 [Table("OctorateOAuthStates")]
 public class OctorateOAuthState : ITenantOwned
 {
-    /// <summary>Name of the unique index on <see cref="StateHash"/>.</summary>
     public const string StateHashIndexName = "UIX_OctorateOAuthStates_StateHash";
 
-    /// <summary>Length of <see cref="StateHash"/>: the hex of a SHA-256.</summary>
     public const int StateHashLength = 64;
 
     public const int UserIdMaxLength = 255;
@@ -27,28 +25,22 @@ public class OctorateOAuthState : ITenantOwned
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant: the org the consent is for.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The user who started the consent: only that user can complete it.</summary>
     [Required]
     [MaxLength(UserIdMaxLength)]
     public string UserId { get; set; } = string.Empty;
 
-    /// <summary>The SHA-256 of the state, lowercase hex (unique).</summary>
     [Required]
     [MaxLength(StateHashLength)]
     public string StateHash { get; set; } = string.Empty;
 
-    /// <summary>The redirect address the consent was started with: the callback must come back to the same one.</summary>
     [Required]
     [MaxLength(RedirectUriMaxLength)]
     public string RedirectUri { get; set; } = string.Empty;
 
-    /// <summary>The Octorate environment the consent was started in.</summary>
     public OctorateEnvironment Environment { get; set; }
 
-    /// <summary>After this instant (UTC) the state is refused.</summary>
     public DateTime ExpiresAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

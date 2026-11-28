@@ -21,7 +21,7 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/leases/{leaseId:guid}/concordatofacile")]
 [FeatureGate(FeatureFlags.ConcordatoFacile)]
-[Authorize] // Base authentication; OR permission check is programmatic per ADR-005-R9
+[Authorize]
 public class ConcordatoFacileController(
     IConcordatoFacileCheckoutService checkoutService,
     IConcordatoFacileAccessService accessService,
@@ -63,7 +63,6 @@ public class ConcordatoFacileController(
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized();
 
-        // ADR-005-R9: Authorize with LeaseCreate OR LeaseRead policy
         var hasLeaseRead = (await authorizationService.AuthorizeAsync(User, CasazenPolicies.LeaseRead)).Succeeded;
         var hasLeaseCreate = (await authorizationService.AuthorizeAsync(User, CasazenPolicies.LeaseCreate)).Succeeded;
 
@@ -108,13 +107,11 @@ public class ConcordatoFacileController(
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized();
 
-        // ADR-005-R8: Authorize with LeaseRead policy
         var hasLeaseRead = (await authorizationService.AuthorizeAsync(User, CasazenPolicies.LeaseRead)).Succeeded;
 
         if (!hasLeaseRead)
             return Forbid();
 
-        // The org of the caller, to say what the lease has on the privacy notice and on the form: none when the caller has no org.
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
 
         return Ok(await BuildAccessResponseAsync(leaseId, orgId, cancellationToken));
@@ -193,7 +190,6 @@ public class ConcordatoFacileController(
                 "GiftAlreadyConsumed");
         }
 
-        // Both Success and AlreadyConsumedForThisLease return 200 OK with access state
         return Ok(await BuildAccessResponseAsync(leaseId, orgId, cancellationToken));
     }
 
@@ -226,7 +222,6 @@ public class ConcordatoFacileController(
         {
             var result = await linkService.GenerateSignedLinkAsync(leaseId, User, cancellationToken);
 
-            // ADR-007-R11: Set Cache-Control header to prevent caching of temporary signed URL
             Response.Headers.CacheControl = "private, no-store";
 
             return Ok(new LinkResponse { Url = result.Url });
@@ -272,10 +267,8 @@ public class ConcordatoFacileController(
         if (orgId is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, "org_not_found", "NoOrganizationAssigned");
 
-        // ADR-008-R11: Authorize with LeaseRead policy before calling CF API
         var result = await statusCacheService.GetPracticesAsync(leaseId, orgId.Value, cancellationToken);
 
-        // ADR-008-R12: Cache-Control header to prevent caching of status data
         Response.Headers.CacheControl = "private, no-store";
 
         return Ok(new StatusResponse
@@ -288,7 +281,6 @@ public class ConcordatoFacileController(
                 SubmittedAt = p.SubmittedAt,
                 Comune = p.Comune,
 
-                // null (the link named no comune) is nothing to warn about, like false.
                 ComuneDiffersFromLink = p.ComuneDiffersFromLink == true,
                 CloseReason = p.CloseReason
             }).ToList(),
@@ -331,7 +323,6 @@ public class ConcordatoFacileController(
         if (orgId is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, "org_not_found", "NoOrganizationAssigned");
 
-        // The lease of the caller's org (the same 404 for another org's lease and for none), and its property for the resource check.
         var propertyId = await db.LeaseContracts
             .AsNoTracking()
             .Where(l => l.Id == leaseId && l.OrgId == orgId.Value)
@@ -374,14 +365,11 @@ public class ConcordatoFacileController(
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized();
 
-        // Validate practiceId format: ^P-[0-9A-Fa-f]{16}$ (case-insensitive)
         if (!System.Text.RegularExpressions.Regex.IsMatch(practiceId, @"^P-[0-9A-Fa-f]{16}$", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
         {
             return this.ApiProblem(StatusCodes.Status404NotFound, "practice_not_found", "PracticeNotFound");
         }
 
-        // The practice as ConcordatoFacile has it (kept 15 minutes, CF-FIX2). It is CF's data, the same for every org: the lease it
-        // names is checked against the caller's org below, each time.
         var practice = await statusCacheService.GetPracticeAsync(practiceId, cancellationToken);
 
         if (practice is null)
@@ -389,7 +377,6 @@ public class ConcordatoFacileController(
             return this.ApiProblem(StatusCodes.Status404NotFound, "practice_not_found", "PracticeNotFound");
         }
 
-        // If leaseId is null, return manualSelectionRequired
         if (practice.LeaseId is null)
         {
             return Ok(new PracticeLookupResponse
@@ -401,7 +388,6 @@ public class ConcordatoFacileController(
             });
         }
 
-        // Verify tenant isolation: LeaseContract.OrgId must match user's OrgId
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (orgId is null)
         {
@@ -415,11 +401,9 @@ public class ConcordatoFacileController(
 
         if (lease is null || lease.OrgId != orgId.Value)
         {
-            // Don't reveal existence - return 404
             return this.ApiProblem(StatusCodes.Status404NotFound, "practice_not_found", "PracticeNotFound");
         }
 
-        // Authorized - return lease info with status
         return Ok(new PracticeLookupResponse
         {
             LeaseId = practice.LeaseId.Value.ToString(),
@@ -429,10 +413,6 @@ public class ConcordatoFacileController(
         });
     }
 
-    /// <summary>
-    /// The access state of the lease for the caller, with what the lease has on the privacy notice and on the form (CF-BE). The privacy
-    /// fields are read for the lease of the caller's org only: another org's lease, or a caller without an org, shows none.
-    /// </summary>
     private async Task<AccessResponse> BuildAccessResponseAsync(Guid leaseId, Guid? orgId, CancellationToken cancellationToken)
     {
         var access = await accessService.CheckAccessAsync(leaseId, User, cancellationToken);

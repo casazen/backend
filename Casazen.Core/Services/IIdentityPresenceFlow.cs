@@ -2,12 +2,6 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// The presence challenge of the self-hosted identity verification of one check-in session (E72/F01/US01/T01, NF-192, ADR-013-R17, decision D6): a short,
-/// unpredictable request (more than one bit) with an expiry, bound to the session and to the attempt, that the guest answers with a sequence of frames. It is a new
-/// interface that <see cref="IIdentityVerificationFlowService"/>'s implementation also implements (the same scoped instance), so the shared interface of the flow
-/// stays as it is. Everything it does is behind <c>Features:CheckInIdentityVerification</c> and <c>Features:CheckInIdentitySelfHosted</c>, both off by default.
-/// </summary>
 public interface IIdentityPresenceFlow
 {
     /// <summary>
@@ -77,43 +71,31 @@ public sealed record PresenceSubmission(
     Stream? DocumentPhoto = null,
     Stream? DocumentPhotoBack = null);
 
-/// <summary>What <see cref="IIdentityPresenceFlow.SubmitPresenceSequenceAsync"/> did. Every status but <see cref="Done"/> wrote nothing.</summary>
 public enum PresenceStepStatus
 {
-    /// <summary>The attempt was answered (decided now, or answered again for its key): see <see cref="PresenceStepResult.Result"/>.</summary>
     Done = 1,
 
     /// <summary>No valid <c>Idempotency-Key</c> (400 <c>idempotency_key_required</c>).</summary>
     IdempotencyKeyRequired = 2,
 
-    /// <summary>The verification of the session is closed and the key is not the one of its last attempt (409 <c>identity_already_closed</c>, with the state).</summary>
     AlreadyClosed = 3,
 
-    /// <summary>No valid challenge: none issued, the proof of another session, attempt or challenge, or the step not opened (409 <c>presence_challenge_required</c>).</summary>
     ChallengeRequired = 4,
 
-    /// <summary>The challenge expired (409 <c>presence_challenge_expired</c>): the page asks for a new one.</summary>
     ChallengeExpired = 5,
 
-    /// <summary>The biometric consent is not the current one (409 <c>biometric_consent_required</c>).</summary>
     ConsentRequired = 6,
 
-    /// <summary>The document step is not complete, or its kept picture is gone (409 <c>document_check_required</c>).</summary>
     DocumentRequired = 7,
 
-    /// <summary>A property that keeps no document: its pictures must come again with the frames (400 <c>document_photo_required</c>).</summary>
     DocumentPhotoRequired = 8,
 
-    /// <summary>A picture of the document sent again is not the one that was read (409 <c>document_photo_mismatch</c>).</summary>
     DocumentPhotoMismatch = 9,
 
-    /// <summary>The frames or their timestamps are not a valid sequence (422 <c>presence_sequence_invalid</c>).</summary>
     SequenceInvalid = 10,
 
-    /// <summary>The sequence breaks a limit of <c>IdentityVerification:Presence</c> (413 <c>presence_sequence_too_large</c>).</summary>
     SequenceTooLarge = 11,
 
-    /// <summary>The session expired or got a new link while the request waited for it, or the self-hosted flow is off (404).</summary>
     SessionUnavailable = 12,
 }
 
@@ -132,7 +114,6 @@ public sealed record PresenceStepResult(
     string? LockCodeHeld = null,
     bool Replayed = false)
 {
-    /// <summary>The way to a person is always open.</summary>
     public bool OperatorPathOpen => true;
 }
 
@@ -159,15 +140,11 @@ public sealed record PresenceChallengeIssue(
     int MaxFrames,
     int MaxFrameSide);
 
-/// <summary>What <see cref="IIdentityPresenceFlow.TryValidatePresenceToken"/> found.</summary>
 public enum PresenceTokenStatus
 {
-    /// <summary>The proof is the one of the challenge stored for the current attempt, and the challenge has not expired.</summary>
     Valid = 1,
 
-    /// <summary>There is no valid proof: none sent, none stored, the proof is of another session, attempt, consent or challenge, or the stored challenge is of a past attempt (<c>presence_challenge_required</c>).</summary>
     Required = 2,
 
-    /// <summary>The proof is the right one and the challenge expired (<c>presence_challenge_expired</c>): the page asks for a new one.</summary>
     Expired = 3,
 }

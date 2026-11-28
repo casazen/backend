@@ -3,19 +3,12 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs.Properties;
 
-/// <summary>
-/// The body of <c>PUT api/properties/{id}/cleaning-setup</c> (E24/F01/US01/T01, NF-120): the whole setup of the default cleaner of a property, what the body leaves out is
-/// cleared. Nothing is trusted: the service validates the whole setup that results, with the codes of <see cref="PropertyCleaningSetupRules"/>.
-/// </summary>
 public class SaveCleaningSetupRequest
 {
-    /// <summary>Who cleans: <c>Supplier</c> or <c>Staff</c>. Required.</summary>
     public PropertyCleanerKind? CleanerKind { get; set; }
 
-    /// <summary>The supplier org, for a supplier only: an org with an active supplier profile that covers the comune of the property, preferably one of the org's trusted suppliers.</summary>
     public Guid? SupplierOrgId { get; set; }
 
-    /// <summary>The member of the org (<c>userId</c> of the members' list), for staff only: an active member who reaches the property.</summary>
     public string? StaffUserId { get; set; }
 
     /// <summary>
@@ -24,28 +17,19 @@ public class SaveCleaningSetupRequest
     /// </summary>
     public int? PriceCents { get; set; }
 
-    /// <summary>The currency of the price (ISO 4217): required with a price, and the one of the property (<c>EUR</c> or <c>CHF</c>).</summary>
     public string? Currency { get; set; }
 
-    /// <summary>The time the cleaning starts on the check-out day, on the clock of the property, in whole minutes (<c>11:00:00</c>); left out = the check-out time of the property.</summary>
     public TimeOnly? StartTime { get; set; }
 
-    /// <summary>How long the cleaning lasts, in minutes (5 to 1,440); left out = 120.</summary>
     public int? DurationMinutes { get; set; }
 
-    /// <summary>Whether the automation uses the setup; <c>false</c> keeps it without using it (default <c>true</c>).</summary>
     public bool Active { get; set; } = true;
 
     public CleaningSetupInput ToInput() => new(CleanerKind, SupplierOrgId, StaffUserId, PriceCents, Currency, StartTime, DurationMinutes, Active);
 }
 
-/// <summary>
-/// The body of <c>PUT api/properties/cleaning-setup/bulk</c> (E24/F01/US01/T01): one setup for many properties of the org. <see cref="PropertyIds"/> lists them (at most
-/// <see cref="PropertyCleaningSetupRules.MaxBulkProperties"/>; none is 422, never «every property»).
-/// </summary>
 public sealed class BulkSaveCleaningSetupRequest : SaveCleaningSetupRequest
 {
-    /// <summary>The properties to save the setup for, of the caller's org and inside its reach.</summary>
     public List<Guid>? PropertyIds { get; set; }
 }
 
@@ -105,21 +89,17 @@ public sealed record PropertyCleaningSetupDto(
     }
 }
 
-/// <summary>What the bulk save did for one property: saved, or the <c>code</c> and the localized <c>message</c> of the rule that stopped it.</summary>
 public sealed class CleaningSetupBulkResultDto
 {
     public Guid PropertyId { get; set; }
 
     public bool Saved { get; set; }
 
-    /// <summary>The stable code of the rule that stopped the property; <c>null</c> when it was saved.</summary>
     public string? Code { get; set; }
 
-    /// <summary>The localized text of <see cref="Code"/> (the language of the caller); <c>null</c> when it was saved.</summary>
     public string? Message { get; set; }
 }
 
-/// <summary>The answer of <c>PUT api/properties/cleaning-setup/bulk</c>: one result for each property, in the order received, and the counts. It is 200 even when some failed: never «all saved» when one did not.</summary>
 public sealed class CleaningSetupBulkResponse
 {
     public List<CleaningSetupBulkResultDto> Results { get; set; } = [];

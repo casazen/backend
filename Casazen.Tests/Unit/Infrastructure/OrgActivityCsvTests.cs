@@ -104,8 +104,6 @@ public class OrgActivityCsvTests
         Assert.Contains("\"'=HYPERLINK(\"\"http://evil\"\")\"", line, StringComparison.Ordinal);
     }
 
-    // ─── The download ──────────────────────────────────────────────────────────────────────────────────
-
     private static async Task<(DefaultHttpContext Context, string Body)> ExecuteAsync(IAsyncEnumerable<OrgActivityItem> items)
     {
         var context = new DefaultHttpContext { Response = { Body = new MemoryStream() } };

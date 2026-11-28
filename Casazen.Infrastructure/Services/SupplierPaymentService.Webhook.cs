@@ -20,10 +20,8 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed partial class SupplierPaymentService
 {
-    /// <summary>What the observed PaymentIntent is doing.</summary>
     private enum ObservedState
     {
-        /// <summary>Nothing that changes a payment (the payer is still confirming, or an event type CasaZen does not act on).</summary>
         Open,
         Succeeded,
         Processing,
@@ -31,7 +29,6 @@ public sealed partial class SupplierPaymentService
         Canceled,
     }
 
-    /// <summary>A PaymentIntent as Stripe reported it: by an event, or read back by the sync.</summary>
     private sealed record ObservedIntent(
         string PaymentIntentId,
         ObservedState State,
@@ -44,10 +41,7 @@ public sealed partial class SupplierPaymentService
         DateTime? OccurredAt,
         string Source);
 
-    /// <summary>A payment found by its PaymentIntent, before the lock: enough to take the lock of its request.</summary>
     private sealed record PaymentRef(Guid Id, Guid ServiceRequestId);
-
-    // ─── payment_intent.* ───────────────────────────────────────────────────────────────────────────────────────────
 
     public async Task<IReadOnlyList<ServicePaymentNotice>> ApplyPaymentIntentEventAsync(
         ServicePaymentIntentEvent paymentEvent,
@@ -74,7 +68,6 @@ public sealed partial class SupplierPaymentService
                 if (payment is null)
                     return null;
 
-                // The money CasaZen holds is on the platform and follows its own cycle (SP-15c-a); a direct charge, the one of SP-15a.
                 return payment.FundsModel == ServiceFundsModel.PlatformHeld
                     ? ApplyHeldIntentEvent(payment, paymentEvent)
                     : await ApplyObservationAsync(payment, observed, cancellationToken);
@@ -84,10 +77,8 @@ public sealed partial class SupplierPaymentService
         return notice is null ? [] : [notice];
     }
 
-    /// <summary>The payment that has this PaymentIntent, else the one the PaymentIntent's metadata names, without tracking it.</summary>
     private async Task<PaymentRef?> FindPaymentRefAsync(string paymentIntentId, Guid? paymentId, CancellationToken cancellationToken)
     {
-        // The PaymentIntent is the strong binding: only the ones CasaZen created are recorded on a payment (unique index).
         var byIntent = await db.ServiceRequestPayments
             .AsNoTracking()
             .Where(p => p.StripePaymentIntentId == paymentIntentId)
@@ -104,7 +95,6 @@ public sealed partial class SupplierPaymentService
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    /// <summary>The payment, tracked and read again from the database: after the lock it shows what the previous holder committed.</summary>
     private async Task<ServiceRequestPayment?> LoadPaymentAsync(Guid paymentId, CancellationToken cancellationToken)
     {
         var payment = await db.ServiceRequestPayments.Where(p => p.Id == paymentId).FirstOrDefaultAsync(cancellationToken);
@@ -114,10 +104,6 @@ public sealed partial class SupplierPaymentService
         return payment;
     }
 
-    /// <summary>
-    /// Runs <paramref name="work"/> under the payment lock of the request and saves what it changed. Inside the webhook transaction
-    /// it joins it (the lock is released with the event); anywhere else it opens its own READ COMMITTED transaction.
-    /// </summary>
     private async Task<T> UnderPaymentLockAsync<T>(Guid requestId, Func<Task<T>> work, CancellationToken cancellationToken)
     {
         await using var transaction = await LockAsync(requestId, cancellationToken);
@@ -146,7 +132,6 @@ public sealed partial class SupplierPaymentService
         e.OccurredAt,
         e.EventId);
 
-    /// <summary>A PaymentIntent read back from Stripe (by the sync job, or before a refund is recorded).</summary>
     private static ObservedIntent Observe(ServiceChargeIntent intent, ServiceRequestPayment payment) => new(
         intent.Id,
         intent.Status switch
@@ -154,8 +139,6 @@ public sealed partial class SupplierPaymentService
             "succeeded" => ObservedState.Succeeded,
             "processing" => ObservedState.Processing,
             "canceled" => ObservedState.Canceled,
-            // A PaymentIntent that is back to "requires_payment_method" after it was processing has failed (a returned debit); one
-            // that never was processing and has no error is just waiting for the payer.
             "requires_payment_method" when intent.LastErrorCode is not null || payment.Status == ServicePaymentStatus.Processing => ObservedState.Failed,
             _ => ObservedState.Open,
         },
@@ -167,8 +150,6 @@ public sealed partial class SupplierPaymentService
         intent.LastErrorCode,
         OccurredAt: null,
         Source: "sync");
-
-    // ─── The one place that moves a payment from what Stripe says ──────────────────────────────────────────────────
 
     /// <summary>
     /// Applies one observation of a PaymentIntent to its payment (the payment is locked and read again). Returns the notice to send
@@ -188,7 +169,6 @@ public sealed partial class SupplierPaymentService
                 return await ApplySucceededAsync(payment, observed, isCurrent, now, cancellationToken);
 
             case ObservedState.Processing:
-                // Stripe is processing the payment (a SEPA debit): not paid yet, not payable again.
                 if (!isCurrent || payment.Status is not (ServicePaymentStatus.Requested or ServicePaymentStatus.Failed))
                     return null;
 
@@ -219,13 +199,9 @@ public sealed partial class SupplierPaymentService
                 payment.FailureCode = Truncate(observed.FailureCode, 100);
                 payment.UpdatedAt = now;
 
-                // An on-session failure is shown to the payer on the page; a payment that was accepted and failed afterwards (a
-                // SEPA debit returned) gets an email with a new link.
                 return wasInFlight ? new ServicePaymentNotice(ServicePaymentNoticeKind.FailedInFlight, payment.Id) : null;
 
             case ObservedState.Canceled:
-                // The current PaymentIntent was canceled (outside CasaZen, or with its account): the payer can start a new one. One
-                // that CasaZen canceled itself is no longer the current one, so this does not match it.
                 if (!isCurrent || payment.Status is not (ServicePaymentStatus.Requested or ServicePaymentStatus.Failed or ServicePaymentStatus.Processing))
                     return null;
 
@@ -249,8 +225,6 @@ public sealed partial class SupplierPaymentService
         switch (payment.Status)
         {
             case ServicePaymentStatus.Paid or ServicePaymentStatus.PartiallyRefunded or ServicePaymentStatus.Refunded:
-                // The same success again (a second event, the sync) is nothing; a success of another PaymentIntent is a second
-                // charge for a payment that is paid already: money the payer should get back.
                 if (!isCurrent)
                 {
                     logger.LogError(
@@ -261,8 +235,6 @@ public sealed partial class SupplierPaymentService
                 return null;
 
             case ServicePaymentStatus.Canceled:
-                // The payment was withdrawn (the supplier recorded a payment received outside CasaZen) and yet a charge succeeded.
-                // It cannot be reopened (the request is paid already): the admins refund it.
                 logger.LogError(
                     "Service payment {PaymentId} was withdrawn but PaymentIntent {PaymentIntentId} succeeded on {AccountId} (event {EventId}): the payer was charged for work that is paid already, refund it",
                     payment.Id, observed.PaymentIntentId, observed.AccountId ?? "none", observed.Source);
@@ -275,7 +247,6 @@ public sealed partial class SupplierPaymentService
                 return null;
         }
 
-        // Requested, Processing or Failed: the money arrived. It is recorded as paid only if it is exactly what was asked for.
         var mismatches = ServiceChargeVerification.Mismatches(
             new ServiceChargeExpectation(
                 payment.ConnectedAccountId, payment.StripePaymentIntentId, payment.AmountCents, payment.Currency, payment.ApplicationFeeCents),
@@ -297,7 +268,6 @@ public sealed partial class SupplierPaymentService
             return new ServicePaymentNotice(ServicePaymentNoticeKind.NeedsReview, payment.Id, Detail: code);
         }
 
-        // The money is not in the future: a clock that runs behind Stripe's does not date a payment after now.
         var paidAt = observed.OccurredAt is { } at && at < now ? at : now;
         payment.Status = ServicePaymentStatus.Paid;
         payment.PaidAt = paidAt;
@@ -312,10 +282,6 @@ public sealed partial class SupplierPaymentService
         return new ServicePaymentNotice(ServicePaymentNoticeKind.Received, payment.Id);
     }
 
-    /// <summary>
-    /// The request of a payment that was paid becomes <c>Pagato</c>, by the payer (the host) or, for the money CasaZen held,
-    /// by the one who released it (the customer who said "all fine", or the system). Any other state is left as it is and logged.
-    /// </summary>
     private async Task MarkRequestPaidAsync(
         ServiceRequestPayment payment,
         DateTime paidAt,
@@ -323,7 +289,6 @@ public sealed partial class SupplierPaymentService
         CancellationToken cancellationToken,
         ServiceRequestActorParty paidBy = ServiceRequestActorParty.Host)
     {
-        // The request has two parties and is not tenant-filtered; scoped by the id the payment points to.
         var request = await db.ServiceRequests
             .IgnoreQueryFilters()
             .Where(r => r.Id == payment.ServiceRequestId)
@@ -343,14 +308,12 @@ public sealed partial class SupplierPaymentService
         }
         else if (request.Status != ServiceRequestStatus.Pagato)
         {
-            // Not expected: a payment exists only for a completed request. The money is recorded on the payment all the same.
             logger.LogWarning(
                 "Service payment {PaymentId} was paid but its request {RequestId} is {Status}: the request is left as it is",
                 payment.Id, request.Id, request.Status);
         }
     }
 
-    /// <summary>The event happened before the last change CasaZen recorded on the payment, so it describes a state that is gone.</summary>
     private static bool IsOlderThanLastChange(ObservedIntent observed, ServiceRequestPayment payment) =>
         observed.OccurredAt is { } at && at < payment.UpdatedAt;
 
@@ -361,8 +324,6 @@ public sealed partial class SupplierPaymentService
 
     private static string? Truncate(string? value, int maxLength) =>
         value is null || value.Length <= maxLength ? value : value[..maxLength];
-
-    // ─── charge.dispute.created ─────────────────────────────────────────────────────────────────────────────────────
 
     public async Task<ServicePaymentEventResult> ApplyDisputeCreatedAsync(
         ServiceDisputeEvent dispute,
@@ -376,13 +337,11 @@ public sealed partial class SupplierPaymentService
         if (found is null)
             return ServicePaymentEventResult.NotOurs;
 
-        // A dispute changes no state: the admin answers it on Stripe before the deadline. What CasaZen does is not let it pass unseen.
         logger.LogError(
             "Dispute {DisputeId} opened on service payment {PaymentId} (PaymentIntent {PaymentIntentId}, account {AccountId}, event {EventId}): {Amount} {Currency}, reason {Reason}, status {Status}. Answer it on the Stripe Dashboard before the deadline",
             dispute.DisputeId, found.Id, dispute.PaymentIntentId, dispute.AccountId ?? "none", dispute.EventId,
             dispute.AmountCents, dispute.Currency ?? "none", dispute.Reason ?? "none", dispute.Status ?? "none");
 
-        // SP-15c-a: the dispute is also written on the payment, for the admin console; the status of the payment does not change.
         await UnderPaymentLockAsync(
             found.ServiceRequestId,
             async () =>
@@ -401,8 +360,6 @@ public sealed partial class SupplierPaymentService
             },
             cancellationToken);
 
-        // SP-REL: a dispute takes back the point of the job and costs the supplier more (SupplierRanking). Stripe is the only door for now:
-        // the claim a host will open from CasaZen (SP-15c-c) records the same event.
         await RecordDisputeAsync(found.ServiceRequestId, dispute.DisputeId, cancellationToken);
 
         var detail = $"{dispute.DisputeId} · {dispute.Reason ?? "reason n/a"} · {dispute.Status ?? "status n/a"}";
@@ -420,7 +377,6 @@ public sealed partial class SupplierPaymentService
 
         try
         {
-            // The request has two parties and is not tenant-filtered; scoped by the id the payment points to.
             var owner = await db.ServiceRequests
                 .IgnoreQueryFilters()
                 .AsNoTracking()
@@ -444,8 +400,6 @@ public sealed partial class SupplierPaymentService
             logger.LogError(ex, "The dispute {DisputeId} of request {RequestId} could not be recorded on the supplier's reliability", disputeId, serviceRequestId);
         }
     }
-
-    // ─── account.updated ────────────────────────────────────────────────────────────────────────────────────────────
 
     public void ScheduleSendPendingRequests(Guid supplierOrgId) => jobScheduler.SchedulePendingRequests(supplierOrgId);
 }

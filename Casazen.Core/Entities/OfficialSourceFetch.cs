@@ -15,7 +15,6 @@ public class OfficialSourceFetch
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Stable dataset key (<see cref="OfficialSourceDatasets"/>).</summary>
     [Required, MaxLength(40)]
     public string Dataset { get; set; } = string.Empty;
 
@@ -32,7 +31,6 @@ public class OfficialSourceFetch
 
     public int? HttpStatus { get; set; }
 
-    /// <summary>Outcome of the attempt (<see cref="OfficialSourceFetchStatus"/>).</summary>
     [Required, MaxLength(40)]
     public string Status { get; set; } = string.Empty;
 
@@ -45,7 +43,6 @@ public class OfficialSourceFetch
     public string? IstatCode { get; set; }
 }
 
-/// <summary>Dataset keys stored on <see cref="OfficialSourceFetch.Dataset"/>.</summary>
 public static class OfficialSourceDatasets
 {
     public const string IstatComuni = "istat_comuni";
@@ -57,14 +54,9 @@ public static class OfficialSourceDatasets
     public const string MefNuovaAtIndex = "mef_nuova_at_index";
     public const string MefImpostaSoggiorno = "mef_imposta_soggiorno";
 
-    /// <summary>
-    /// The seed of the Swiss localities and municipalities derived from the official directory of swisstopo (E29/F01/US01/T01): one row each time
-    /// a seed file is loaded, with its SHA-256, the version stamp the next startup compares.
-    /// </summary>
     public const string SwisstopoLocalities = "swisstopo_localities";
 }
 
-/// <summary>Outcome keys stored on <see cref="OfficialSourceFetch.Status"/>.</summary>
 public static class OfficialSourceFetchStatus
 {
     public const string Imported = "imported";

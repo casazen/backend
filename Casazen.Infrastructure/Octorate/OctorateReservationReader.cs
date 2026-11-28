@@ -19,18 +19,12 @@ namespace Casazen.Infrastructure.Octorate;
 /// </remarks>
 internal static class OctorateReservationReader
 {
-    /// <summary>Longest e-mail kept (the column of the guest).</summary>
     private const int MaxEmailLength = 255;
 
-    /// <summary>Longest phone kept (the column of the guest).</summary>
     private const int MaxPhoneLength = 20;
 
     private static readonly string[] ContainerNames = ["data", "content", "items", "reservations", "results", "result"];
 
-    /// <summary>
-    /// The reservations of a list answer: a bare array (v1) or the array of a wrapper (<c>{data, page}</c>). <c>null</c> when the answer is
-    /// neither, so a caller can tell an empty list from an answer it cannot read.
-    /// </summary>
     internal static IEnumerable<JsonElement>? ListItems(JsonElement root)
     {
         if (root.ValueKind == JsonValueKind.Array)
@@ -48,12 +42,6 @@ internal static class OctorateReservationReader
         return null;
     }
 
-    /// <summary>
-    /// The page a list answer holds: the reservations that could be read, and how many items the answer had. <c>null</c> when the answer is not a
-    /// list (<see cref="ListItems"/>). An item that is not an object, or has no usable id, is left out of the reservations but still counted: a
-    /// caller that decided where the list ends on the number of reservations read would stop at a page that only looks short and lose the pages
-    /// after it.
-    /// </summary>
     internal static OctorateReservationPage? ReadPage(JsonElement root)
     {
         if (ListItems(root) is not { } items)
@@ -63,9 +51,6 @@ internal static class OctorateReservationReader
         return new OctorateReservationPage([.. listed.Select(item => Read(item)).OfType<OctorateReservation>()], listed.Count);
     }
 
-    /// <summary>The reservation of <paramref name="item"/>, or <c>null</c> when it is not an object or has no usable id.</summary>
-    /// <param name="item">One reservation of an answer.</param>
-    /// <param name="fallbackId">The id the call asked for, used when the answer does not repeat it.</param>
     internal static OctorateReservation? Read(JsonElement item, string? fallbackId = null)
     {
         if (item.ValueKind != JsonValueKind.Object)
@@ -107,7 +92,6 @@ internal static class OctorateReservationReader
             GuestPhoneAvailable = OctorateJson.Bool(firstGuest, "phoneAvailable"),
             GuestEmail = EmailOf(OctorateJson.Text(item, "email", "guestEmail") ?? OctorateJson.Text(firstGuest, "email")),
             GuestPhone = PhoneOf(OctorateJson.Text(item, "phone", "guestPhone") ?? OctorateJson.Text(firstGuest, "phone")),
-            // Only what the guest wrote: never the private notes of the host.
             Notes = OctorateJson.Text(item, "guestNotes", "guestNote", "specialRequests", "comments", "comment"),
             Currency = CurrencyOf(item),
             RoomGross = OctorateJson.Decimal(item, "roomGross"),
@@ -121,10 +105,6 @@ internal static class OctorateReservationReader
         };
     }
 
-    /// <summary>
-    /// The id of the guest in the guest registry (E07/F06/US02/T02): a <c>guestId</c> of the reservation itself, else the <c>id</c> of its first
-    /// guest. <c>null</c> when there is none, or one longer than a call accepts. Not proven by the sandbox (it gives flags, not contacts).
-    /// </summary>
     private static string? GuestIdOf(JsonElement item, JsonElement firstGuest)
     {
         var id = OctorateJson.Text(item, "guestId") ?? OctorateJson.Text(firstGuest, "id", "guestId");
@@ -148,7 +128,6 @@ internal static class OctorateReservationReader
             : null;
     }
 
-    /// <summary>The <c>transaction</c> of each payment of the single read (<c>payments[].transaction</c>, <c>ApiReservationPaymentDTO</c>); never an amount or a card.</summary>
     private static IReadOnlyList<string> PaymentTransactionsOf(JsonElement item)
     {
         if (OctorateJson.Find(item, "payments") is not { ValueKind: JsonValueKind.Array } payments)
@@ -163,7 +142,6 @@ internal static class OctorateReservationReader
         ];
     }
 
-    /// <summary>The status Octorate wrote, or <c>null</c> for a word that is none of the three.</summary>
     internal static OctorateBookingStatus? StatusOf(string? text) => text?.Trim().ToUpperInvariant() switch
     {
         "WAITING" => OctorateBookingStatus.Waiting,
@@ -206,11 +184,6 @@ internal static class OctorateReservationReader
 
     private static string? PhoneOf(string? text) => text is { Length: > 0 and <= MaxPhoneLength } ? text : null;
 
-    /// <summary>
-    /// The ISO code of the currency of the reservation. <c>ApiReservationRespDTO.currency</c> is an object (<c>{ "currencyCode": "EUR", "numericCode":
-    /// 978, ... }</c>, OpenAPI 2026-11-04); the plain code as a string is read as well. <c>null</c> when the answer states none, or something that is
-    /// not a three-letter code: the amounts of such a reservation are not taken for the property's.
-    /// </summary>
     private static string? CurrencyOf(JsonElement item)
     {
         if (OctorateJson.Find(item, "currency", "currencyCode") is not { } value)

@@ -29,7 +29,6 @@ public class ShowcaseBookingManagerQuoteTests
         await QuoteAsSupplierAsync(s, request.Id, 30000);
         var sentAt = (await s.ReadAsync(request.Id)).QuoteSentAt!.Value;
 
-        // The customer reads the quote it was e-mailed: the lines, the total, the deadline; and it cannot move the time while it waits.
         var view = await s.Kit.Manager.LookupAsync(credentials);
         Assert.Equal(ServiceRequestStatus.Richiesto, view.Status);
         Assert.Equal(30000, view.Quote!.TotalCents);
@@ -47,7 +46,6 @@ public class ShowcaseBookingManagerQuoteTests
         Assert.Equal(ShowcaseBookingManagementErrors.CannotReschedule, cannotMove.Code);
         s.ForgetNotifications();
 
-        // The answer is about the version the customer read: another one is a 409 and nothing changes.
         var stale = await Assert.ThrowsAsync<DomainConflictException>(
             () => s.Kit.Manager.AcceptQuoteAsync(credentials, sentAt.AddMinutes(-1)));
         Assert.Equal(ServiceRequestErrorCodes.QuoteChanged, stale.Code);
@@ -63,7 +61,6 @@ public class ShowcaseBookingManagerQuoteTests
         Assert.Equal("quote", accepted.Price.Basis);
         var line = Assert.Single(accepted.Price.Lines);
         Assert.Equal(("service", "Pulizia profonda", 30000), (line.Kind, line.Label, line.AmountCents));
-        // Taken now: the exact address is there.
         Assert.Equal(ShowcaseScenario.Address, accepted.Place.Address);
 
         var saved = await s.ReadAsync(request.Id);
@@ -74,7 +71,6 @@ public class ShowcaseBookingManagerQuoteTests
         Assert.Null(saved.ResponseDueAt);
         Assert.Null(saved.QuoteSentAt);
 
-        // The supplier is told, e-mail and push, with "Nome C." and never more; the customer gets the e-mail of a request taken.
         var toSupplier = Assert.Single(s.Emails.Snapshot(), e => e.To == SupplierEmail);
         Assert.Equal(EmailTemplates.Names.ServiceRequestQuoteAnswered, toSupplier.Template);
         Assert.Contains("Cliente: <strong>Mario R.</strong>", toSupplier.Content.HtmlBody);
@@ -104,7 +100,6 @@ public class ShowcaseBookingManagerQuoteTests
         Assert.Null(rejected.Quote);
         Assert.False(rejected.Actions.CanRespondToQuote);
         Assert.True(rejected.Actions.CanReschedule);
-        // The deadline of the customer is gone; the supplier has its whole time to answer again.
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime.AddMinutes(180), rejected.RespondBy);
         var toSupplier = Assert.Single(s.Emails.Snapshot());
         Assert.Equal((SupplierEmail, EmailTemplates.Names.ServiceRequestQuoteAnswered), (toSupplier.To, toSupplier.Template));
@@ -130,7 +125,6 @@ public class ShowcaseBookingManagerQuoteTests
         Assert.False((await s.Kit.Manager.LookupAsync(credentials)).Actions.CanRespondToQuote);
         Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(request.Id)).Status);
 
-        // The upkeep does what the page says it will.
         var run = await s.ExpiryJob().RunAsync();
 
         Assert.Equal(1, run.RequestsCancelled);
@@ -143,7 +137,6 @@ public class ShowcaseBookingManagerQuoteTests
         Assert.Equal(ServiceRequestStatus.Annullato, view.Status);
         Assert.Null(view.Cancellation!.Reason);
 
-        // The supplier did answer: it is not told it did not, and the customer is told it is the one who did not.
         var toCustomer = Assert.Single(s.Emails.Snapshot(), e => e.To == ShowcaseScenario.CustomerEmail);
         Assert.Equal(EmailTemplates.Names.SupplierBookingQuoteExpired, toCustomer.Template);
         var toSupplier = Assert.Single(s.Emails.Snapshot(), e => e.To == SupplierEmail);
@@ -153,7 +146,6 @@ public class ShowcaseBookingManagerQuoteTests
         Assert.Equal(PushDeliveryKeys.ServiceRequestStatus(request.Id, ServiceRequestStatus.Annullato), push.DeliveryKey);
     }
 
-    /// <summary>The supplier answers a booking with a quote of one line, as its console does.</summary>
     private static Task<ServiceRequest> QuoteAsSupplierAsync(ServiceRequestScenario s, Guid requestId, int amountCents = 30000) =>
         s.Service.SendQuoteAsync(
             requestId,

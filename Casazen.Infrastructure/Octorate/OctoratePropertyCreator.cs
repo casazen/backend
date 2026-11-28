@@ -59,7 +59,6 @@ public sealed class OctoratePropertyCreator(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
-        // The property is read through the tenant filter: in a request only the caller's org has it, in a job (no tenant) the reach below decides.
         var property = await db.Properties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == propertyId, ct);
         if (property is null
             || !await hostScopeResolver.CanReachPropertyAsync(userId, tokenRoles ?? NoTokenRoles, property.OrgId, property.Id, property.OwnerId, ct))
@@ -73,7 +72,6 @@ public sealed class OctoratePropertyCreator(
             .AnyAsync(c => c.OrgId == orgId && c.Environment == environment && c.UsesMasterAccount, ct))
             throw new DomainConflictException("octorate_managed_by_staff", "OctoratePreparationUnavailable");
 
-        // Only new inventory is ever created (D6): the declaration of a person, not the absence of a mapping.
         await scenarios.EnsureNewInventoryAsync(orgId, propertyId, ct);
 
         if (await db.OctorateListingMappings
@@ -108,11 +106,8 @@ public sealed class OctoratePropertyCreator(
             throw PropertyInvalid(ex.Fields);
         }
 
-        // The refresh token arrives once: saved before anything else can fail (it creates the connection of the org when there is none).
         await tokens.SaveTokensAsync(orgId, new OctorateTokenResponse(null, created.RefreshToken, null), ct);
 
-        // The new accommodation is read back with the connection just made and becomes a Confirmed mapping of the property. The room of the unit is
-        // created by the publication, which then sets it.
         await mappings.RefreshAsync(orgId, ct);
         await mappings.ConfirmAsync(orgId, created.AccommodationId, propertyId, null, userId, ct, tokenRoles);
 
@@ -123,10 +118,6 @@ public sealed class OctoratePropertyCreator(
         return created.AccommodationId;
     }
 
-    /// <summary>
-    /// The data of the new accommodation, checked before the call: the country, the position, the address and the contact of the organization.
-    /// Every field that is missing is named, so the wizard shows them all at once on their steps.
-    /// </summary>
     internal async Task<OctoratePropertyCreate> BuildPreparationRequestAsync(
         Property property, string userId, string billingNetworkName, CancellationToken ct) =>
         (await BuildRequestAsync(property, userId, connected: false, ct)) with
@@ -221,7 +212,6 @@ public sealed class OctoratePropertyCreator(
         }
     }
 
-    /// <summary>Whether the org has a usable connection to Octorate in this environment (a new host has none, and the creation returns the token).</summary>
     private Task<bool> IsConnectedAsync(Guid orgId, CancellationToken ct)
     {
         var environment = OctorateEnvironments.Of(hostEnvironment);

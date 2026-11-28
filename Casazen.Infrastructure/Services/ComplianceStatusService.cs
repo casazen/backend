@@ -75,7 +75,6 @@ public sealed class ComplianceStatusService(
         var propertyFilter = window?.PropertyId;
         var connectorOn = featureFlags.IsEnabled(FeatureFlags.OctorateConnector);
 
-        // The properties and the stays of the caller's reach: everything below is read for these ids only.
         var propertyQuery = db.Properties.AsNoTracking();
         if (forReport)
             propertyQuery = propertyQuery.IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter]);
@@ -89,7 +88,6 @@ public sealed class ComplianceStatusService(
             .Select(p => new PropertyRow(p.Id, p.Name, p.Country, p.City, p.ComuneIstatCode, p.CinCode))
             .ToListAsync(ct);
 
-        // The cockpit looks a week ahead (the arriving guests' identity); a report looks at the stays that have arrived, up to its last day.
         var arrivalHorizon = window is null
             ? today.AddDays(ComplianceLightRules.IdentityLookaheadDays)
             : Earlier(StoredDate(window.To), today);
@@ -128,7 +126,6 @@ public sealed class ComplianceStatusService(
             : (await (forReport ? senders.GetManyForHistoryAsync(propertyIds, ct) : senders.GetManyAsync(propertyIds, ct)))
                 .ToDictionary(pair => pair.Key, pair => pair.Value);
 
-        // Who sends, as far as CasaZen can rely on it: the channel manager only while the connector is on, and nobody outside Italy.
         ComplianceSenderType SenderOf(Guid propertyId)
         {
             if (!senderOf.TryGetValue(propertyId, out var info) || !info.Applies)
@@ -146,8 +143,6 @@ public sealed class ComplianceStatusService(
             ? new Dictionary<Guid, ComplianceConnectionHealth>()
             : (await health.GetManyAsync(channelManagerProperties, ct)).ToDictionary(pair => pair.Key, pair => pair.Value);
 
-        // A property whose send was NOT read in this call (over the limit of live reads, no answer in memory) is neither fine nor in trouble: it gets
-        // no connection item and no verdict, and the universe says so, so its To do about the connection is neither raised nor closed on that.
         var connectionNotRead = connections
             .Where(pair => pair.Value.Alloggiati.Reason == ComplianceConnectionHealthRules.NotCheckedYetReason)
             .Select(pair => pair.Key)
@@ -192,9 +187,6 @@ public sealed class ComplianceStatusService(
                 universe.Bookings, universe.IdentityBookings, universe.Properties, universe.Periods, windowStart, connectionNotRead));
     }
 
-    // ─── Alloggiati Web ─────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>Everything read about the communications of the stays whose arrival day has come.</summary>
     private sealed record AlloggiatiReads(
         ILookup<Guid, ReportRow> Reports,
         IReadOnlyDictionary<Guid, ReceiptRow> Receipts,
@@ -216,7 +208,6 @@ public sealed class ComplianceStatusService(
                 .Select(r => new ReportRow(r.BookingId, r.GuestId, r.Status, r.ReportedAt, r.UpdatedAt, r.ReceiptId))
                 .ToListAsync(ct);
 
-        // A receipt CasaZen downloaded itself, live: a simulated one never stands for a real one.
         var receiptIds = reports.Where(r => r.ReceiptId.HasValue).Select(r => r.ReceiptId!.Value).Distinct().ToList();
         var receipts = receiptIds.Count == 0
             ? []
@@ -226,8 +217,6 @@ public sealed class ComplianceStatusService(
                 .Select(r => new ReceiptRow(r.Id, r.RetrievedAt))
                 .ToListAsync(ct);
 
-        // What was entrusted to the channel manager and what failed on its way: the guests of a stay and the links of each to Octorate (a guest on it
-        // for good is not a draft; a guest that could not be written says why, E20/F01/US01/T02). The links of the stays of the channel manager only.
         var channelManagerStayIds = dueStays.Where(s => senderOf(s.PropertyId) == ComplianceSenderType.ChannelManager).Select(s => s.Id).ToList();
         var guests = channelManagerStayIds.Count == 0
             ? []
@@ -286,7 +275,6 @@ public sealed class ComplianceStatusService(
         }
     }
 
-    /// <summary>What the rules decided for one stay: the status it reads, where its guests stand on the channel manager, the light and the proof.</summary>
     private sealed record AlloggiatiJudgement(
         AlloggiatiWebStatus Status,
         ChannelManagerWriteState ChannelManager,
@@ -310,7 +298,6 @@ public sealed class ComplianceStatusService(
         DateTime today,
         DateOnly todayDate)
     {
-        // The report that stands for the stay: the one of its booker, or else the latest.
         var ofStay = reads.Reports[stay.Id].ToList();
         var report = ofStay.FirstOrDefault(r => r.GuestId == stay.GuestId) ?? ofStay.OrderByDescending(r => r.UpdatedAt).FirstOrDefault();
 
@@ -345,8 +332,6 @@ public sealed class ComplianceStatusService(
         var orgId = scope.OrgId;
         var today = _clock.TodayInRome();
 
-        // The stay of the caller's reach, by the same reads as the cockpit: another org's stay, one outside the reach of a collaborator «Solo alcuni»
-        // and one that does not exist are the same answer.
         var found = await db.Bookings
             .AsNoTracking()
             .Where(b => b.OrgId == orgId && b.Id == bookingId)
@@ -378,14 +363,11 @@ public sealed class ComplianceStatusService(
                 : info.AlloggiatiSender
             : ComplianceSenderType.Manual;
 
-        // The same reads as the cockpit, for this stay alone: its report and receipt, its guests and their links, the proofs of its property and day.
         var reads = await ReadAlloggiatiAsync(orgId, [stay], _ => sender, ct);
         var day = RomeCalendar.DateInRome(stay.CheckInDate);
         var proofRows = await ManualProofCoverage.ReadAsync(db, orgId, [stay.PropertyId], day, day, ct);
         var proofs = proofRows.ToLookup(p => (p.PropertyId, p.Kind));
 
-        // The connection of the channel manager, from the short memory of the health service (the cockpit reads it the same way): an inactive one is a
-        // reason of the light, so the stay reads like the cockpit says.
         ConnectionHealthState? connection = null;
         if (sender == ComplianceSenderType.ChannelManager)
         {
@@ -433,7 +415,6 @@ public sealed class ComplianceStatusService(
         var today = _clock.TodayInRome();
         var todayDate = _clock.TodayInRomeAsDateOnly();
 
-        // The stays the cockpit judges: those that owe the communication (the one definition) and whose arrival day has come. The org is named here, whoever calls.
         var stays = await db.Bookings
             .AsNoTracking()
             .Where(b => b.OrgId == orgId && ids.Contains(b.Id))
@@ -455,8 +436,6 @@ public sealed class ComplianceStatusService(
                 : ComplianceSenderType.Manual;
         var reads = await ReadAlloggiatiAsync(orgId, dueStays, SenderOf, ct);
 
-        // The receipt, taken as archived: one proof of the arrival day for each stay, and the same judgement as the cockpit's. The connection is not looked at (nothing is read from
-        // Octorate): a proof ends the verdict before the connection counts, and a failure ends it before the proof.
         var proofs = dueStays
             .Select(s => new CoveredProof(Guid.Empty, s.PropertyId, ManualProofKind.AlloggiatiReceipt, RomeCalendar.DateInRome(s.CheckInDate), nowUtc))
             .ToLookup(p => (p.PropertyId, p.Kind));
@@ -470,11 +449,6 @@ public sealed class ComplianceStatusService(
         return green;
     }
 
-    /// <summary>
-    /// The archived proof of the arrival day of a stay: the live receipt a report points to, or else a receipt the host uploaded that covers the
-    /// property of the stay, for that day (one receipt may cover several flats, E20/F02/US01/T01; the proofs of a flat the receipt does not name
-    /// are not here). Both are real files in the private bucket; neither is a declaration.
-    /// </summary>
     private static ComplianceProof? AlloggiatiProof(
         StayRow stay,
         ReportRow? report,
@@ -494,8 +468,6 @@ public sealed class ComplianceStatusService(
             : new ComplianceProof($"manual-proof:{manual.Id:N}", ComplianceEvidenceSources.ManualUpload, manual.UploadedAt);
     }
 
-    // ─── Identity ───────────────────────────────────────────────────────────────────────────────────────
-
     private async Task AddIdentityAsync(
         List<ComplianceStatusItem> items,
         Universe universe,
@@ -513,8 +485,6 @@ public sealed class ComplianceStatusService(
         if (bookingIds.Count == 0)
             return;
 
-        // The check-in session says whether the stay goes through the online check-in of the document-leaving guest; the audit log of the
-        // verification and the decision of the operator say whether it passed (the rule of the access code: accepted, or decided by an operator).
         var sessions = (await db.GuestCheckInSessions
                 .AsNoTracking()
                 .Where(s => bookingIds.Contains(s.BookingId))
@@ -545,9 +515,6 @@ public sealed class ComplianceStatusService(
             if (!sessions.Contains(stay.Id))
                 continue;
 
-            // The one rule of the gate of the access code (AccessCodeService): the verification passed when the LATEST row of its log is an
-            // Accept, written by the agent or by an operator's approval. Who decided only names the source: an operator's rejection (Reject) and
-            // the row that asks the guest for a new photo (Escalate) are rows of an operator too, and neither is a pass.
             ComplianceProof? proof = null;
             if (logs.TryGetValue(stay.Id, out var log) && log.Outcome == BiometricOutcome.Accept)
             {
@@ -579,8 +546,6 @@ public sealed class ComplianceStatusService(
                 arrivalStart));
         }
     }
-
-    // ─── Properties and periods ─────────────────────────────────────────────────────────────────────────
 
     private async Task AddPropertyItemsAsync(
         List<ComplianceStatusItem> items,
@@ -622,7 +587,6 @@ public sealed class ComplianceStatusService(
         // Compliance:IstatDeadlineDays overrides it. A comune that is not in the list, or a region without a monthly day, has no deadline.
         var territoryOf = await IstatRegionService.FindForComuniAsync(db, properties.Select(p => p.ComuneIstatCode), ct);
 
-        // A day configured for a region that is not a day of the month is ignored and warned about, once for each region in an evaluation.
         var warnedOverrides = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var declaredRates = !propertyChecks
             ? []
@@ -633,8 +597,6 @@ public sealed class ComplianceStatusService(
         var rateKnown = new Dictionary<string, bool>(StringComparer.Ordinal);
         var staysOf = stays.ToLookup(s => s.PropertyId);
 
-        // The payments of the tourist tax the host already recorded with the receipt of the payment (TouristTaxRemittance, NF-100): the existing
-        // archive of what was paid and declared for a period of a comune, read as the proof of the month it covers, besides the proofs uploaded here.
         var periodsFrom = months.Count == 0 ? default : months[0];
         var periodsTo = months.Count == 0 ? default : months[^1].AddMonths(1).AddDays(-1);
         var remittances = months.Count == 0
@@ -673,7 +635,6 @@ public sealed class ComplianceStatusService(
             if (!italian || propertyStays.Count == 0)
                 continue;
 
-            // The tourist tax rate of the comune: known from the official table or declared by the org, never presumed zero.
             var comune = new TouristTaxComune(property.ComuneIstatCode, property.City);
             if (propertyChecks && !comune.IsEmpty)
             {
@@ -703,8 +664,6 @@ public sealed class ComplianceStatusService(
                         logger.LogWarning(IstatRegionService.InvalidOverrideMessage, region, configured);
                 });
 
-            // Who sends it: the sender of the property, but not the channel manager where it does not cover the region (the host uses the portal of the
-            // region, so nothing is handled outside). The same rule as the coverage of the property, so the two always say the same.
             var istatSender = IstatRegionResolver.IstatSenderFor(sender, territory?.Rule?.OctorateCoverage ?? IstatCoverage.Unknown);
 
             foreach (var month in months)
@@ -733,13 +692,11 @@ public sealed class ComplianceStatusService(
                         RomeCalendar.StartOfDayUtc(ComplianceLightRules.IstatDeadline(month, deadlineDay))));
                 }
 
-                // The tax is owed for the stays the engine priced above zero; a month without any owes nothing (a stay with no amount is not a zero).
                 if (inMonth.Any(s => s.TouristTax > 0)
                     && ComplianceLightRules.TouristTaxPeriod(new TaxPeriodFacts
                     {
                         Today = todayDate,
                         PeriodStart = month,
-                        // A payment recorded with its receipt declares and pays the period it names: it proves both.
                         Declaration = ProofOf(proofs, property.Id, ManualProofKind.TouristTaxDeclaration, month) ?? RemittanceProof(remittances, property, month),
                         Payment = ProofOf(proofs, property.Id, ManualProofKind.TouristTaxPayment, month) ?? RemittanceProof(remittances, property, month),
                     }) is { } taxVerdict)
@@ -759,7 +716,6 @@ public sealed class ComplianceStatusService(
         DateTime? dueAt) =>
         new(kind, action, property.Id, null, period, property.Name, verdict, dueAt);
 
-    /// <summary>The latest proof of a kind for the property and the first day of a month (the day a period proof is filed under).</summary>
     private static ComplianceProof? ProofOf(
         ILookup<(Guid PropertyId, ManualProofKind Kind), CoveredProof> proofs,
         Guid propertyId,
@@ -775,11 +731,6 @@ public sealed class ComplianceStatusService(
             : new ComplianceProof($"manual-proof:{proof.Id:N}", ComplianceEvidenceSources.ManualUpload, proof.UploadedAt);
     }
 
-    /// <summary>
-    /// The latest payment of the tourist tax the host recorded with a receipt for the comune of the property whose period covers the whole month
-    /// (a monthly or a quarterly payment alike): <c>null</c> when there is none. The comune is compared as the tourist tax report compares it
-    /// (<see cref="TouristTaxComune.NormalizeName"/>), so a payment typed "forli" meets the stays of "Forlì".
-    /// </summary>
     private static ComplianceProof? RemittanceProof(IReadOnlyList<RemittanceRow> remittances, PropertyRow property, DateOnly month)
     {
         var comuneKey = TouristTaxComune.NormalizeName(property.City);
@@ -796,10 +747,6 @@ public sealed class ComplianceStatusService(
             : new ComplianceProof($"tourist-tax-remittance:{covering.Id:N}", ComplianceEvidenceSources.ManualUpload, covering.CreatedAt);
     }
 
-    /// <summary>
-    /// The closed months the periods are looked at for: from the first full month inside the lookback to the month before today. The month in
-    /// progress is not a period yet, and a month cut by the lookback is not looked at (its stays would be partial).
-    /// </summary>
     internal static IReadOnlyList<DateOnly> ClosedMonths(DateOnly today, int lookbackDays)
     {
         var from = today.AddDays(-Math.Max(1, lookbackDays));
@@ -812,10 +759,6 @@ public sealed class ComplianceStatusService(
         return months;
     }
 
-    /// <summary>
-    /// The closed months a coverage report looks at: the months that lie wholly between <paramref name="from"/> and <paramref name="to"/> and
-    /// are over (before the month of <paramref name="today"/>). A month cut by the window is not looked at: its stays would be partial.
-    /// </summary>
     internal static IReadOnlyList<DateOnly> ClosedMonthsWithin(DateOnly today, DateOnly from, DateOnly to)
     {
         var first = from.Day == 1 ? from : new DateOnly(from.Year, from.Month, 1).AddMonths(1);
@@ -827,7 +770,6 @@ public sealed class ComplianceStatusService(
         return months;
     }
 
-    /// <summary>A Europe/Rome day as the stays store it: midnight UTC of that date.</summary>
     private static DateTime StoredDate(DateOnly date) => date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
     private static DateTime Earlier(DateTime first, DateTime second) => first <= second ? first : second;
@@ -838,11 +780,8 @@ public sealed class ComplianceStatusService(
         return new DateOnly(date.Year, date.Month, 1);
     }
 
-    /// <summary>What the cockpit calls a stay: its guest, as the other items do; the name of the property when the guest has none.</summary>
     private static string LabelOf(StayRow stay, IReadOnlyDictionary<Guid, string> propertyNames) =>
         string.IsNullOrWhiteSpace(stay.GuestName) ? propertyNames.GetValueOrDefault(stay.PropertyId, string.Empty) : stay.GuestName;
-
-    // ─── Rows ───────────────────────────────────────────────────────────────────────────────────────────
 
     private sealed class Universe
     {

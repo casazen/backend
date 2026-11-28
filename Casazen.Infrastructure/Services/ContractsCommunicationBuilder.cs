@@ -40,7 +40,6 @@ internal static class ContractsCommunicationBuilder
         var stays = new List<DecidedStay>();
         foreach (var decision in decisions.Where(d => !reversed.Contains(d.Id)))
         {
-            // The evidence of before the facts were read from the ledger has typed facts and names no stay: there is no contract to read from it.
             if (PayoutFactRules.FromJson(decision.FactsJson) is not { } facts)
                 continue;
 
@@ -58,7 +57,6 @@ internal static class ContractsCommunicationBuilder
             .ToList();
         var people = await TaxReportingPeople.ReadAsync(db, orgId, [.. placed.Select(p => p.Lessor).Distinct()], propertyIds, cancellationToken);
 
-        // One contract for each lessor and stay: the shares of the co-owners the signatory takes on are one consideration.
         var rows = placed
             .GroupBy(p => (p.Lessor, p.Decided.Stay.BookingId))
             .Select(group =>
@@ -86,7 +84,6 @@ internal static class ContractsCommunicationBuilder
         return new ContractsCommunication(year, rows);
     }
 
-    /// <summary>Why the agency did not withhold on the stay: what its facts say, or, when its decision has no withholding at all, the reason of the decision.</summary>
     private static string ReasonOf(TaxObligationEvidence decision, PayoutStayFact stay) =>
         stay.InBase ? decision.ReasonCode : stay.Reason;
 

@@ -53,13 +53,6 @@ public sealed class OnboardingIntegrationController(
         return Ok((await integration.GetOverviewAsync(scope.OrgId, scope, cancellationToken)).ToDto());
     }
 
-    /// <summary>
-    /// Reopens a part of the plan: its deferral is cleared and its "To do" closed, and the answer says where to continue (the launch target of the
-    /// part and, for the compliance wizard, the focus <c>sender</c>). Nothing else is written.
-    /// </summary>
-    /// <response code="200">Where to continue.</response>
-    /// <response code="404"><c>onboarding_part_unknown</c>: the route names no part.</response>
-    /// <response code="422"><c>onboarding_part_not_reopenable</c>: nobody provides the part, so there is no wizard to go back to.</response>
     [HttpPost("parts/{key}/reopen")]
     [ProducesResponseType(typeof(OnboardingReopenDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

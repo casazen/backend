@@ -26,8 +26,6 @@ public partial class SupplierKpiService
         var (from, to) = SupplierKpiPeriods.Resolve(period, timeProvider.TodayInRomeAsDateOnly());
         var (previousFrom, previousTo) = SupplierKpiPeriods.Previous(from, to);
 
-        // Each period is made of Europe/Rome calendar days: [00:00 Rome of the first, 00:00 Rome of the day after the last). The two
-        // are next to each other, so the end of the previous one is the start of the current one.
         var previousStart = RomeCalendar.StartOfDayUtc(previousFrom);
         var currentStart = RomeCalendar.StartOfDayUtc(from);
         var currentEnd = RomeCalendar.StartOfDayUtc(to.AddDays(1));
@@ -35,12 +33,10 @@ public partial class SupplierKpiService
         var counts = await OverviewCountsOf(db, supplierOrgId, previousStart, currentStart, currentEnd)
             .SingleOrDefaultAsync(cancellationToken);
 
-        // Read as pairs and averaged here, like the home does, so the arithmetic on instants does not depend on the provider.
         var answers = await AnswersBetween(db, supplierOrgId, previousStart, currentEnd).ToListAsync(cancellationToken);
         var currentWaits = answers.Where(a => a.TakenAt >= currentStart).Select(a => a.Minutes).ToList();
         var previousWaits = answers.Where(a => a.TakenAt < currentStart).Select(a => a.Minutes).ToList();
 
-        // Still to collect, now: the declared total of a job paid outside CasaZen, the net of the payment of one paid inside it.
         var open = await OpenJobsOf(db, supplierOrgId).ToListAsync(cancellationToken);
         var nets = payments is null
             ? new Dictionary<Guid, int>()
@@ -48,7 +44,6 @@ public partial class SupplierKpiService
                 .ToDictionary(pair => pair.Key, pair => pair.Value);
         var toCollectCents = open.Sum(job => (long)(nets.TryGetValue(job.Id, out var net) ? net : job.FinalAmountCents ?? 0));
 
-        // The money of the home: only when the supplier has payments through CasaZen to show (the flag is on and there is one).
         var onlinePayments = false;
         var currentPaid = SupplierPaymentTotals.None;
         var previousPaid = SupplierPaymentTotals.None;
@@ -109,7 +104,6 @@ public partial class SupplierKpiService
         DateTime previousStart,
         DateTime currentStart,
         DateTime currentEnd) =>
-        // ServiceRequest has no tenant filter (two parties, TN-2 allow-list): scoped by the supplier org explicitly.
         db.ServiceRequests
             .AsNoTracking()
             .Where(r => r.SupplierOrgId == supplierOrgId)
@@ -126,25 +120,18 @@ public partial class SupplierKpiService
                 g.Count(r => (r.Status == ServiceRequestStatus.Completato || r.Status == ServiceRequestStatus.Pagato)
                              && r.CompletedAt >= previousStart && r.CompletedAt < currentStart)));
 
-    /// <summary>
-    /// When each request taken inside <c>[fromUtc, toUtc)</c> was received and taken, for the average response time. The requests accepted
-    /// automatically (SP-04d) are left out: they are born taken, so their wait is zero; they still count as accepted in
-    /// <see cref="OverviewCountsOf"/>.
-    /// </summary>
     internal static IQueryable<AnswerPair> AnswersBetween(AppDbContext db, Guid supplierOrgId, DateTime fromUtc, DateTime toUtc) =>
         db.ServiceRequests
             .AsNoTracking()
             .Where(r => r.SupplierOrgId == supplierOrgId && !r.AutoAccepted && r.TakenAt != null && r.TakenAt >= fromUtc && r.TakenAt < toUtc)
             .Select(r => new AnswerPair(r.CreatedAt, r.TakenAt!.Value));
 
-    /// <summary>The jobs of the supplier completed and not paid yet, with the total each declared.</summary>
     internal static IQueryable<OpenJob> OpenJobsOf(AppDbContext db, Guid supplierOrgId) =>
         db.ServiceRequests
             .AsNoTracking()
             .Where(r => r.SupplierOrgId == supplierOrgId && r.Status == ServiceRequestStatus.Completato)
             .Select(r => new OpenJob(r.Id, r.FinalAmountCents));
 
-    /// <summary>The counts of the two periods of the overview.</summary>
     internal sealed record OverviewCounts(
         int ReceivedCurrent,
         int ReceivedPrevious,
@@ -155,10 +142,8 @@ public partial class SupplierKpiService
         int CompletedCurrent,
         int CompletedPrevious)
     {
-        /// <summary>A supplier without a single request.</summary>
         public static OverviewCounts Empty { get; } = new(0, 0, 0, 0, 0, 0, 0, 0);
     }
 
-    /// <summary>A completed job not paid yet and the total its supplier declared (<c>null</c> when it declared none).</summary>
     internal sealed record OpenJob(Guid Id, int? FinalAmountCents);
 }

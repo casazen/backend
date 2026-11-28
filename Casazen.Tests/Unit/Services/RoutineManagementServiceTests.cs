@@ -50,16 +50,9 @@ public class RoutineManagementServiceTests
         return await db.Routines.AsNoTracking().Where(r => r.OrgId == orgId).ToListAsync();
     }
 
-    /// <summary>A routine of <see cref="OrgA"/> as it is saved, read in a context of its own (the context under test hands back the object it tracks).</summary>
     private static async Task<Routine> StoredAsync(RoutineRig rig, Guid id) =>
         (await RoutinesOfAsync(rig, OrgA)).Single(r => r.Id == id);
 
-    // ─── The org (permission rule) ───────────────────────────────────────────────
-
-    /// <summary>
-    /// Proof (permission rule): a routine of another org cannot be read, changed, switched, deleted or have its log read: every one is a 404
-    /// <c>routine_not_found</c>, the same answer as a routine that does not exist, and the routine stays exactly as its org left it.
-    /// </summary>
     [Fact]
     public async Task RoutineManagement_OtherOrgRoutine_NotFound_Test()
     {
@@ -113,12 +106,6 @@ public class RoutineManagementServiceTests
         Assert.All(listed, r => Assert.Equal(OrgA, r.OrgId));
     }
 
-    // ─── Active means it can run (data rule) ─────────────────────────────────────
-
-    /// <summary>
-    /// Proof (data rule): a routine that holds an action that is not available cannot be made active outside test mode, whichever way it is tried: it would
-    /// fail at every event, and the host would think it works. In test mode it may hold any action.
-    /// </summary>
     [Fact]
     public async Task RoutineManagement_ActivateWithUnavailableAction_Rejected_Test()
     {
@@ -131,7 +118,6 @@ public class RoutineManagementServiceTests
 
         var byTheSwitch = await RefusedAsync(() => service.SetActiveAsync(OrgA, routine.Id, true));
         var byACreate = await RefusedAsync(() => service.CreateAsync(OrgA, Command(actions: [Act("AddTag", """{"tag":"vip"}""")], active: true)));
-        // A change that only says "active" keeps the actions the routine has, so it is judged with them.
         var byAnUpdate = await RefusedAsync(() => service.UpdateAsync(OrgA, routine.Id, new RoutineCommand(null, null, null, null, null, null, true)));
 
         Assert.All(new[] { byTheSwitch, byACreate, byAnUpdate }, error =>
@@ -143,14 +129,12 @@ public class RoutineManagementServiceTests
         Assert.Equal("AddTag", Assert.Single(byTheSwitch.MessageArgs));
         Assert.False((await RoutinesOfAsync(rig, OrgA)).Single(r => r.Id == routine.Id).Active);
 
-        // In test mode it may hold any action, and be active.
         await service.SetTestModeAsync(OrgA, routine.Id, true);
         await service.SetActiveAsync(OrgA, routine.Id, true);
         var inTest = await StoredAsync(rig, routine.Id);
         Assert.True(inTest.TestMode);
         Assert.True(inTest.Active);
 
-        // And it cannot leave test mode while it holds one.
         var leaving = await RefusedAsync(() => service.SetTestModeAsync(OrgA, routine.Id, false));
         Assert.Equal(RoutineCodes.ActionNotAvailable, leaving.Code);
         Assert.True((await StoredAsync(rig, routine.Id)).TestMode);
@@ -172,8 +156,6 @@ public class RoutineManagementServiceTests
         Assert.Equal(RoutineCodes.ActionNotAvailable, gaining.Code);
         Assert.Equal(2, JsonDocument.Parse((await RoutinesOfAsync(rig, OrgA)).Single().ActionsJson).RootElement.GetArrayLength());
     }
-
-    // ─── Create ──────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Create_SavesTheRoutineOff_NotInTestMode_WithTheShapeTheEngineReads()
@@ -267,7 +249,6 @@ public class RoutineManagementServiceTests
         Assert.Equal((RoutineCodes.EventTypeInvalid, "RoutineEventTypeInvalid"), (error.Code, error.MessageKey));
     }
 
-    /// <summary>The weekly recurrence has no job that writes it, so a routine on it would never run: it is not saved (the editor does not offer it).</summary>
     [Fact]
     public async Task Create_WeeklyRecurrence_IsNotAvailable()
     {
@@ -322,8 +303,6 @@ public class RoutineManagementServiceTests
         Assert.Empty(await RoutinesOfAsync(rig, OrgA));
     }
 
-    // ─── The condition (AC-NF21-2) ───────────────────────────────────────────────
-
     [Theory]
     [InlineData("""{"version":"1.0","groups":[{"operator":"XOR","rules":[]}]}""")]
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"nope","operator":"equals","value":"x"}]}]}""")]
@@ -333,7 +312,6 @@ public class RoutineManagementServiceTests
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"totalStays","operator":"greaterThan","value":2}]}]}""")]
     [InlineData("[]")]
     [InlineData("\"channel = Airbnb\"")]
-    // The value of a rule is of the kind its operator takes: a routine that could never run, or would run for every booking, is not saved.
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"in","value":"Airbnb"}]}]}""")]
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"in","value":[]}]}]}""")]
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"channel","operator":"notIn","value":[]}]}]}""")]
@@ -345,7 +323,6 @@ public class RoutineManagementServiceTests
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"stayDuration","operator":"greaterThan","value":"2"}]}]}""")]
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"stayDuration","operator":"between","value":[3,1]}]}]}""")]
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"guestCount","operator":"between","value":[1,2,3]}]}]}""")]
-    // A member nobody reads: what was meant is never saved as "no condition" (the shape of the old frontend types, `conditions` and `field`, included).
     [InlineData("""{"rules":[{"fieldId":"channel","operator":"equals","value":"Airbnb"}]}""")]
     [InlineData("""{"version":"1.0","groups":[{"operator":"AND","conditions":[{"field":"channel","operator":"equals","value":"Airbnb"}]}]}""")]
     [InlineData("""{"version":"1.0","groups":[],"extra":true}""")]
@@ -373,7 +350,6 @@ public class RoutineManagementServiceTests
         Assert.Equal(condition, routine.ConditionJson);
     }
 
-    /// <summary>Every kind of value the engine reads is saved: what is refused above is only what the engine could not meet, or would meet for every booking.</summary>
     [Theory]
     [InlineData("channel", "equals", "\"airbnb\"")]
     [InlineData("channel", "notEquals", "\"BookingCom\"")]
@@ -395,8 +371,6 @@ public class RoutineManagementServiceTests
 
         Assert.Equal(condition, routine.ConditionJson);
     }
-
-    // ─── The actions (AC-NF21-1) ─────────────────────────────────────────────────
 
     [Fact]
     public async Task Create_NoActions_OrAnEmptyList_OrMoreThanTen_IsRefused()
@@ -484,8 +458,6 @@ public class RoutineManagementServiceTests
         Assert.Equal(RoutineCodes.ActionConfigInvalid, error.Code);
     }
 
-    // ─── The limit ───────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Create_TheFiftyFirstRoutineOfAnOrg_IsRefused_AndAnotherOrgIsNotAffected()
     {
@@ -510,8 +482,6 @@ public class RoutineManagementServiceTests
         Assert.Equal(OrgB, other.OrgId);
     }
 
-    // ─── Update ──────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Update_LeavesOutWhatTheCommandDoesNotSay()
     {
@@ -522,7 +492,6 @@ public class RoutineManagementServiceTests
             OrgA,
             Command(condition: """{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"guestCount","operator":"greaterThan","value":1}]}]}""", testMode: true));
 
-        // The context hands back the very object it tracks, so what the routine was is read before the change.
         var (eventType, eventConfig, conditionJson, actionsJson) = (routine.EventType, routine.EventConfig, routine.ConditionJson, routine.ActionsJson);
 
         await service.UpdateAsync(OrgA, routine.Id, new RoutineCommand("Nuovo nome", null, null, null, null, null, null));
@@ -545,9 +514,7 @@ public class RoutineManagementServiceTests
         var service = rig.Management(db);
         var routine = await service.CreateAsync(OrgA, Command());
 
-        // The event type changes and the configuration of the time trigger stays: it is not valid for the new type.
         var kept = await RefusedAsync(() => service.UpdateAsync(OrgA, routine.Id, new RoutineCommand(null, "BookingConfirmed", null, null, null, null, null)));
-        // Said together with its own configuration, it is.
         var together = await service.UpdateAsync(OrgA, routine.Id, new RoutineCommand(null, "BookingConfirmed", J("{}"), null, null, null, null));
         var badName = await RefusedAsync(() => service.UpdateAsync(OrgA, routine.Id, new RoutineCommand(" ", null, null, null, null, null, null)));
 
@@ -583,15 +550,12 @@ public class RoutineManagementServiceTests
         Assert.Equal([RoutineActionType.Wait], actions.Select(a => a.Type));
         Assert.Contains("Airbnb", changed.ConditionJson, StringComparison.Ordinal);
 
-        // An empty condition takes the condition away: the routine runs always again, and its actions stay.
         await service.UpdateAsync(OrgA, routine.Id, new RoutineCommand(null, null, null, J("{}"), null, null, null));
 
         var cleared = await StoredAsync(rig, routine.Id);
         Assert.Equal("{}", cleared.ConditionJson);
         Assert.Equal(changed.ActionsJson, cleared.ActionsJson);
     }
-
-    // ─── The switches and the delete ─────────────────────────────────────────────
 
     [Fact]
     public async Task SetActive_AndTestMode_SwitchTheRoutine_AndLeaveTheRestAsItWas()
@@ -640,8 +604,6 @@ public class RoutineManagementServiceTests
         await Assert.ThrowsAsync<NotFoundException>(() => service.DeleteAsync(OrgA, doomed.Id));
     }
 
-    // ─── The log ─────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task ListExecutions_IsTheLogOfTheRoutine_NewestFirst_PagedWithItsTotal()
     {
@@ -679,10 +641,6 @@ public class RoutineManagementServiceTests
         Assert.Equal((1, 3), (first.Page, first.PageSize));
     }
 
-    /// <summary>
-    /// A page number so large that the rows to skip would not fit an int (it wrapped to a negative OFFSET, an error of the database, a 500) is a page that no
-    /// log reaches: empty, with the total of the log.
-    /// </summary>
     [Theory]
     [InlineData(int.MaxValue, 100)]
     [InlineData(int.MaxValue, 7)]

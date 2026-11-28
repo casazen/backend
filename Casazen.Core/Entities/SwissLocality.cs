@@ -14,30 +14,23 @@ namespace Casazen.Core.Entities;
 [Table("SwissLocalities")]
 public class SwissLocality
 {
-    /// <summary>Longest locality name stored.</summary>
     public const int NameMaxLength = 100;
 
-    /// <summary>The four digits of the postal code (PLZ4), e.g. <c>6900</c>.</summary>
     [Required, MaxLength(4)]
     public string PostalCode { get; set; } = string.Empty;
 
-    /// <summary>The two-digit add-on of the postal code (Zusatzziffer): <c>6900</c> <c>00</c> is Lugano, <c>6900</c> <c>05</c> Massagno.</summary>
     [Required, MaxLength(2)]
     public string AddOn { get; set; } = string.Empty;
 
-    /// <summary>The name of the locality as the directory writes it (Ortschaftsname), e.g. <c>Lugano</c>, <c>Brè sopra Lugano</c>.</summary>
     [Required, MaxLength(NameMaxLength)]
     public string Name { get; set; } = string.Empty;
 
-    /// <summary><see cref="Name"/> as the search compares it (<see cref="NormalizeName"/>): lower case, without diacritics.</summary>
     [Required, MaxLength(NameMaxLength)]
     public string NormalizedName { get; set; } = string.Empty;
 
-    /// <summary>The BFS number of the municipality (<see cref="SwissMunicipality.MunicipalityCode"/>) the locality, or this part of it, lies in.</summary>
     [Required, MaxLength(10)]
     public string MunicipalityCode { get; set; } = string.Empty;
 
-    /// <summary>The two letters of the canton of the municipality (ISO 3166-2:CH), e.g. <c>TI</c>.</summary>
     [Required, MaxLength(2)]
     public string CantonCode { get; set; } = string.Empty;
 

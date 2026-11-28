@@ -4,10 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// E72/F01/US01/T01 (NF-192, ADR-013-R17, decision D6): the challenge of the presence is several moves drawn at random from the policy, never a coin: with the default
-/// policy 4 x 3 x 3 = 36 sequences (about 5.2 bits), no move after itself, an expiry and the attempt it was issued for. Every number is the policy's.
-/// </summary>
 public class PresenceChallengeIssuerTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 27, 9, 0, 0, TimeSpan.Zero);
@@ -17,7 +13,6 @@ public class PresenceChallengeIssuerTests
     [Fact]
     public void PresenceChallengeIssuer_ThousandIssues_AreDiverseAndNeverRepeatImmediately()
     {
-        // Security (NF-192, AC-NF192-1): the challenge cannot be guessed by the one bit of a coin, and a move never follows itself.
         var policy = IdentityTestPolicy.Shipped();
 
         var challenges = Enumerable.Range(0, 1000).Select(_ => _issuer.Issue(policy, attempt: 1, Now)).ToList();
@@ -30,12 +25,10 @@ public class PresenceChallengeIssuerTests
                 Assert.NotEqual(challenge.Steps[index - 1], challenge.Steps[index]);
         });
 
-        // Of the 36 sequences of the default policy, a thousand draws meet at least 30 (the chance of missing seven is nil).
         var sequences = challenges.Select(challenge => string.Join('>', challenge.Steps)).ToList();
         Assert.InRange(sequences.Distinct().Count(), 30, 36);
         Assert.Equal(1000, challenges.Select(challenge => challenge.Id).Distinct().Count());
 
-        // More than one bit, by the policy's own arithmetic and by what the draws show: the entropy of the sequences met is that of an almost uniform draw of 36.
         Assert.InRange(IdentityPolicyProvider.ChallengeEntropyBits(4, 3, noImmediateRepeat: true), 5.1, 5.2);
         var measured = -sequences.GroupBy(sequence => sequence).Select(group => group.Count() / 1000.0).Sum(share => share * Math.Log2(share));
         Assert.True(measured > 4, $"The sequences drawn carry {measured:0.00} bits.");
@@ -133,7 +126,6 @@ public class PresenceChallengeIssuerTests
     [Fact]
     public void Issuer_DrawsWithRandomNumberGenerator_NeverWithSystemRandom()
     {
-        // AC-NF192-1: the moves are drawn with the cryptographic generator. A guard on the source of the issuer, so a "simpler" Random cannot come back unnoticed.
         var source = File.ReadAllText(Path.Combine(IdentityPolicyTestFiles.RepositoryRoot(), "Casazen.Infrastructure", "Identity", "PresenceChallengeIssuer.cs"));
 
         Assert.Contains("RandomNumberGenerator.GetInt32", source, StringComparison.Ordinal);

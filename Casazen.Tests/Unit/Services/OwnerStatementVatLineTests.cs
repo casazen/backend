@@ -65,7 +65,6 @@ public class OwnerStatementVatLineTests
     private static Task<OwnerStatementVersion> CurrentVersionAsync(OwnerInvoiceRig rig) =>
         rig.Db.OwnerStatementVersions.AsNoTracking().SingleAsync(v => v.Status != OwnerStatementVersionStatus.Superseded);
 
-    /// <summary>The files of the statements over the database of the rig (the storage, the scan and the e-mail are not used by what is read here).</summary>
     private static OwnerStatementDocuments DocumentsOf(OwnerInvoiceRig rig) => new(
         rig.Db,
         new MigraDocPdfDocumentRenderer(),

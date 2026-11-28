@@ -2,10 +2,6 @@ using Casazen.Core.Options;
 
 namespace Casazen.Core.Services;
 
-/// <summary>What of a property the prices of its nights are made of (<see cref="OctorateCalendarEntries.Build"/>).</summary>
-/// <param name="NightlyRate">The nightly rate of the property.</param>
-/// <param name="WeekendSurchargePercent">The weekend surcharge of the property, in percent (0 for none).</param>
-/// <param name="MinNights">The minimum stay of the property; <c>null</c> for none.</param>
 public sealed record OctorateCalendarProperty(decimal NightlyRate, decimal WeekendSurchargePercent, int? MinNights);
 
 /// <summary>
@@ -108,8 +104,6 @@ public static class OctorateCalendarEntries
 
         return new OctorateCalendarValues(
             Availability: availability,
-            // A night with no price at all (a property with no base price, «0 = none», as the listings imported from the channel manager are, and no price the host
-            // set for the night) sends none: the channel manager keeps the one it holds. A price of 0 is never written to the channels.
             Price: price > 0m ? price : null,
             MinStay: DayRuleDefaults.MinNightsOf(rule, property.MinNights),
             MaxStay: rule?.MaxNights ?? options.NoMaxStayNights,

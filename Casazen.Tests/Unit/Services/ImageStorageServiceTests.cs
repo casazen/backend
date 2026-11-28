@@ -10,10 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// <see cref="ImageStorageService"/> on the filesystem provider (FD-07): photos in the public bucket
-/// with absolute URLs, documents in the private bucket referenced by key, never under wwwroot.
-/// </summary>
 public class ImageStorageServiceTests : IDisposable
 {
     private const string PublicBaseUrl = "https://api.test/storage/public";

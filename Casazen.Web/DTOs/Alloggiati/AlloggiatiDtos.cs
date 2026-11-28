@@ -69,10 +69,6 @@ public sealed record AlloggiatiChannelManagerGuestDto(
     }
 }
 
-/// <summary>Whether an archived receipt covers the arrival day of the stay: a receipt CasaZen downloaded, or one the host uploaded.</summary>
-/// <param name="Archived"><c>true</c> when a receipt is archived: the only thing that makes the stay green.</param>
-/// <param name="Source"><c>casazen_receipt</c> or <c>manual_upload</c>; <c>null</c> when none.</param>
-/// <param name="ArchivedAt">When it was archived (UTC); <c>null</c> when none or when it has no date.</param>
 public sealed record AlloggiatiReceiptCoverageDto(bool Archived, string? Source, DateTime? ArchivedAt)
 {
     public static AlloggiatiReceiptCoverageDto From(ComplianceProof? proof) =>
@@ -115,16 +111,12 @@ public class AlloggiatiStatusDto
     /// </summary>
     public AlloggiatiWebStatus Status { get; set; }
 
-    /// <summary>Reference of the real receipt; only with <see cref="AlloggiatiWebStatus.Inviato"/>.</summary>
     public string? ConfirmationNumber { get; set; }
 
-    /// <summary>Stable error code; only with <see cref="AlloggiatiWebStatus.Errore"/> or <see cref="AlloggiatiWebStatus.Rifiutato"/>.</summary>
     public string? ErrorCode { get; set; }
 
-    /// <summary>Sent (receipt) or declared sent by the host; null while not sent.</summary>
     public DateTime? ReportedAt { get; set; }
 
-    /// <summary>Legal deadline (UTC): arrival + 24 hours, or + 6 hours for a stay of at most one night.</summary>
     public DateTime DeadlineAt { get; set; }
 
     public bool IsShortStay { get; set; }
@@ -132,20 +124,11 @@ public class AlloggiatiStatusDto
     public bool IsOverdue { get; set; }
     public bool DataComplete { get; set; }
 
-    /// <summary>
-    /// The guests of the stay on the channel manager, the sender and the receipt coverage (E20/F01/US01/T02); <c>null</c> where the status is answered
-    /// without it (the declaration of a manual send).
-    /// </summary>
     public AlloggiatiChannelManagerDto? ChannelManager { get; set; }
 
     /// <summary>What the host's retry of the write of the guests did; <c>null</c> in every other answer (E20/F01/US01/T02).</summary>
     public AlloggiatiRetryResultDto? Retry { get; set; }
 
-    /// <summary>
-    /// The status of a stay. With <paramref name="stay"/> (the same facts and rules as the cockpit) the channel manager is taken into account: the
-    /// status reads «entrusted» or «write failed» where the guests say so, «not due» for a stay that owes nothing, and the block of the guests and the
-    /// receipt coverage is added.
-    /// </summary>
     public static AlloggiatiStatusDto From(AlloggiatiStatusInfo info, ComplianceStayStatus? stay = null) => new()
     {
         BookingId = info.BookingId,
@@ -188,7 +171,6 @@ public class AlloggiatiSummaryDto
     public bool IsShortStay { get; set; }
 }
 
-/// <summary>Body of <c>POST /api/alloggiati/{bookingId}/mark-sent-manually</c>.</summary>
 public class MarkAlloggiatiSentManuallyRequest
 {
     /// <summary>Date the host sent the schedina on the Questura portal (from the check-in date to today).</summary>
@@ -204,22 +186,16 @@ public class AlloggiatiGuestSummaryDto
     public DateTime ArrivalDate { get; set; }
     public int StayDays { get; set; }
 
-    /// <summary>The portal accepts at most 30 days per schedina.</summary>
     public bool StayExceedsMaxDays { get; set; }
 
-    /// <summary>Guests declared on the booking; <see cref="Guests"/> are the ones registered.</summary>
     public int DeclaredGuests { get; set; }
 
-    /// <summary>Every guest has every record field and the order of the guests is valid.</summary>
     public bool DataComplete { get; set; }
 
-    /// <summary>Data complete and every official code found: the record can be exported.</summary>
     public bool ExportReady { get; set; }
 
-    /// <summary>Official tables not imported yet (their codes stay "to complete").</summary>
     public IReadOnlyList<AlloggiatiCodeTable> MissingCodeTables { get; set; } = [];
 
-    /// <summary>In record order: a head of family or group before its members.</summary>
     public IReadOnlyList<AlloggiatiGuestRowDto> Guests { get; set; } = [];
 
     public static AlloggiatiGuestSummaryDto From(AlloggiatiGuestSummaryInfo info) => new()
@@ -237,33 +213,18 @@ public class AlloggiatiGuestSummaryDto
     };
 }
 
-/// <summary>
-/// How far the guest data of a stay are (MO-08, A6-17): counts only, no personal data, for the host app booking detail
-/// ("2 ospiti completi su 3"). Same rules as <see cref="AlloggiatiGuestSummaryDto"/>, which carries the data themselves.
-/// </summary>
 public class AlloggiatiGuestProgressDto
 {
     public Guid BookingId { get; set; }
 
-    /// <summary>Guests declared on the booking.</summary>
     public int DeclaredGuests { get; set; }
 
-    /// <summary>
-    /// Guests with a record line: the registered guests of the stay, or the booker alone while none is registered
-    /// (the rows of the guest summary).
-    /// </summary>
     public int RegisteredGuests { get; set; }
 
-    /// <summary>Guests whose line has every record field and fits in the order of the stay.</summary>
     public int CompleteGuests { get; set; }
 
-    /// <summary>
-    /// Every registered guest is complete and the order of the guests is valid (<see cref="AlloggiatiGuestSummaryDto.DataComplete"/>).
-    /// Declared guests not registered yet are <see cref="DeclaredGuests"/> minus <see cref="RegisteredGuests"/>.
-    /// </summary>
     public bool DataComplete { get; set; }
 
-    /// <summary>The stay is longer than the 30 days the portal accepts on one schedina.</summary>
     public bool StayExceedsMaxDays { get; set; }
 
     public static AlloggiatiGuestProgressDto From(AlloggiatiGuestSummaryInfo info) => new()
@@ -283,7 +244,6 @@ public class AlloggiatiGuestProgressDto
 /// </summary>
 public class AlloggiatiGuestRowDto
 {
-    /// <summary>Null for the booker shown before any guest is registered.</summary>
     public Guid? StayGuestId { get; set; }
     public int Position { get; set; }
     public StayGuestType Type { get; set; }
@@ -314,10 +274,8 @@ public class AlloggiatiGuestRowDto
     public IReadOnlyList<string> CodesToComplete { get; set; } = [];
     public string? CompositionIssue { get; set; }
 
-    /// <summary>Who entered the data (CO-09): <c>GuestPortal</c>, <c>Host</c>, or <c>NotRecorded</c> (booker record, or before CO-09).</summary>
     public StayGuestDataSource DataSource { get; set; }
 
-    /// <summary>When the data was entered; null for the booker shown before any guest is registered.</summary>
     public DateTime? EnteredAt { get; set; }
 
     public static AlloggiatiGuestRowDto From(AlloggiatiGuestRow row) => new()
@@ -359,7 +317,6 @@ public class AlloggiatiGuestRowDto
     };
 }
 
-/// <summary>Official codes of a guest's record line (null = to complete or not part of the line).</summary>
 public class AlloggiatiRowCodesDto
 {
     public string? Type { get; set; }
@@ -371,15 +328,10 @@ public class AlloggiatiRowCodesDto
     public string? DocumentIssuePlace { get; set; }
 }
 
-/// <summary>
-/// Full document number of a guest of the stay (CO-09: shown on an explicit request of the host, audited). It is the number of a single guest or a head and, in a stay of a property in
-/// canton Ticino (NF-132), of every adult family or group member the police file notifies; never of a minor and never of a guest with no number stored. The <see cref="Position"/> says whose.
-/// </summary>
 public class StayGuestDocumentNumberDto
 {
     public int Position { get; set; }
 
-    /// <summary>Null for the booker shown before any guest is registered.</summary>
     public Guid? StayGuestId { get; set; }
 
     public string DocumentNumber { get; set; } = string.Empty;
@@ -403,7 +355,6 @@ public class ReplaceStayGuestsRequest
     public string? VehiclePlate { get; set; }
 }
 
-/// <summary>One entry of an official Alloggiati table.</summary>
 public class AlloggiatiCodeEntryDto
 {
     public AlloggiatiCodeTable Table { get; set; }
@@ -411,7 +362,6 @@ public class AlloggiatiCodeEntryDto
     public string Description { get; set; } = string.Empty;
     public string? Province { get; set; }
 
-    /// <summary>Citizenship adjective (Italiano). Null for a place and for a country without one.</summary>
     public string? CitizenshipLabel { get; set; }
 
     public static AlloggiatiCodeEntryDto From(AlloggiatiCodeEntryInfo info) => new()
@@ -424,7 +374,6 @@ public class AlloggiatiCodeEntryDto
     };
 }
 
-/// <summary>Rows and last import of an official Alloggiati table.</summary>
 public class AlloggiatiCodeTableStatusDto
 {
     public AlloggiatiCodeTable Table { get; set; }
@@ -443,10 +392,6 @@ public class AlloggiatiCodeTableStatusDto
     };
 }
 
-/// <summary>
-/// Lists of official codes the forms can search: <c>comuni</c>, <c>stati</c> (states and citizenships),
-/// <c>documenti</c> and <c>luoghi</c> (comuni and states, for the place of issue of a document).
-/// </summary>
 public static class AlloggiatiCodeLists
 {
     public static bool TryParse(string? list, out IReadOnlyList<AlloggiatiCodeTable> tables)

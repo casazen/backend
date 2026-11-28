@@ -27,7 +27,6 @@ public class SupplierKpisPostgresTests : IClassFixture<CasazenWebApplicationFact
     private const string Supplier = "Supplier";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    /// <summary>15 September 2026, 10:00 in Rome.</summary>
     private static readonly DateTimeOffset MidSeptember = new(2026, 9, 15, 8, 0, 0, TimeSpan.Zero);
 
     private readonly CasazenWebApplicationFactory _factory;
@@ -49,7 +48,6 @@ public class SupplierKpisPostgresTests : IClassFixture<CasazenWebApplicationFact
             }
         }
 
-        // Clock fixed once the five completions are done: the last 30 days hold them whatever the real date.
         await using var app = WithClock(new FixedTimeProvider(DateTimeOffset.UtcNow));
         using var client = CreateClient(app, w.SupplierA.UserId, Supplier);
 
@@ -73,16 +71,13 @@ public class SupplierKpisPostgresTests : IClassFixture<CasazenWebApplicationFact
             Request(supplierOrg, ServiceRequestStatus.Completato, completedAt: Utc(2026, 9, 5, 9)),
             Request(supplierOrg, ServiceRequestStatus.Completato, completedAt: Utc(2026, 9, 8, 9)),
             Request(supplierOrg, ServiceRequestStatus.Completato, completedAt: Utc(2026, 9, 10, 9)),
-            // Paid after its completion: still a completed request.
             Request(supplierOrg, ServiceRequestStatus.Pagato, completedAt: Utc(2026, 9, 12, 9)),
-            // Completed in August: not this month.
             Request(supplierOrg, ServiceRequestStatus.Completato, completedAt: Utc(2026, 8, 20, 9)),
             Request(supplierOrg, ServiceRequestStatus.Richiesto),
             Request(supplierOrg, ServiceRequestStatus.PresoInCarico),
             Request(supplierOrg, ServiceRequestStatus.InCorso),
             Request(supplierOrg, ServiceRequestStatus.Rifiutato, updatedAt: Utc(2026, 9, 9, 9)),
             Request(supplierOrg, ServiceRequestStatus.Rifiutato, updatedAt: Utc(2026, 8, 10, 9)),
-            // SP-04: a cancelled request is none of completed, rejected, waiting or upcoming, but it was a request.
             Request(supplierOrg, ServiceRequestStatus.Annullato, updatedAt: Utc(2026, 9, 9, 9)));
         await using var app = WithClock(new FixedTimeProvider(MidSeptember));
         using var client = CreateClient(app, w.SupplierA.UserId, Supplier);
@@ -105,7 +100,6 @@ public class SupplierKpisPostgresTests : IClassFixture<CasazenWebApplicationFact
         Assert.Equal("2026-08-31", previousMonth.GetProperty("to").GetString());
         Assert.Equal(1, previousMonth.GetProperty("completed").GetInt32());
         Assert.Equal(1, previousMonth.GetProperty("rejected").GetInt32());
-        // The open work is "now", whatever the period.
         Assert.Equal(1, previousMonth.GetProperty("awaitingAcceptance").GetInt32());
         Assert.Equal(2, previousMonth.GetProperty("upcoming").GetInt32());
 
@@ -119,11 +113,8 @@ public class SupplierKpisPostgresTests : IClassFixture<CasazenWebApplicationFact
         var supplierOrg = w.SupplierA.OrgId;
         await AddRequestsAsync(
             w,
-            // 31 August 23:30 in Rome (CEST, UTC+2): August.
             Request(supplierOrg, ServiceRequestStatus.Completato, completedAt: new DateTime(2026, 8, 31, 21, 30, 0, DateTimeKind.Utc)),
-            // 1 September 00:30 in Rome, still 31 August in UTC: September.
             Request(supplierOrg, ServiceRequestStatus.Completato, completedAt: new DateTime(2026, 8, 31, 22, 30, 0, DateTimeKind.Utc)),
-            // 15 September 23:30 in Rome: today, the last day of the period.
             Request(supplierOrg, ServiceRequestStatus.Completato, completedAt: new DateTime(2026, 9, 15, 21, 30, 0, DateTimeKind.Utc)));
         await using var app = WithClock(new FixedTimeProvider(MidSeptember));
         using var client = CreateClient(app, w.SupplierA.UserId, Supplier);
@@ -232,7 +223,6 @@ public class SupplierKpisPostgresTests : IClassFixture<CasazenWebApplicationFact
             r.Response.StatusCode == HttpStatusCode.NotFound,
             $"{r.Route}: expected 404, got {(int)r.Response.StatusCode}"));
 
-        // Nothing is stored anywhere for the supplier: the table is gone (migration RemoveSupplierJobs).
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var tables = await db.Database
@@ -240,8 +230,6 @@ public class SupplierKpisPostgresTests : IClassFixture<CasazenWebApplicationFact
             .ToListAsync();
         Assert.Empty(tables);
     }
-
-    // ─── Helpers ───
 
     private WebApplicationFactory<Program> WithClock(TimeProvider clock) =>
         _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>

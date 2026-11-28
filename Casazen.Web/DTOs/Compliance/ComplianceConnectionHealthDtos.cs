@@ -24,7 +24,6 @@ public sealed record ComplianceConnectionHealthDto(
     bool CredentialsUsable,
     DateTime CheckedAt)
 {
-    /// <summary>The DTO of a health read.</summary>
     public static ComplianceConnectionHealthDto From(ComplianceConnectionHealth health)
     {
         ArgumentNullException.ThrowIfNull(health);
@@ -56,7 +55,6 @@ public sealed record ConnectionHealthLineDto(
     string? Reason,
     DateTime? DeclaredAt)
 {
-    /// <summary>The DTO of a line.</summary>
     public static ConnectionHealthLineDto From(ConnectionHealthLine line)
     {
         ArgumentNullException.ThrowIfNull(line);

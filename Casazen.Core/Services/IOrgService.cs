@@ -21,10 +21,6 @@ public interface IOrgService
     /// </summary>
     Task<Org?> GetByVerifiedCustomDomainAsync(string host, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Resolves an active org by its <see cref="Org.Subdomain"/> label, falling back to
-    /// <see cref="Org.Slug"/> when <c>Subdomain</c> is unset (back-compat, #298).
-    /// </summary>
     Task<Org?> GetBySubdomainOrSlugAsync(string label, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -38,12 +34,6 @@ public interface IOrgService
         string displayName,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Writes the stored plan tier. No entitlement check: callers apply <see cref="PlanChangePolicy"/> first. When the tier
-    /// really changes the activity log gets the line <c>PlanChanged</c>, in the same save (AM-02b):
-    /// <paramref name="actorUserId"/> is who asked, <paramref name="source"/> says whether it was the org's billing
-    /// administrator or CasaZen staff.
-    /// </summary>
     Task<Org?> UpdatePlanTierAsync(
         Guid orgId,
         PlanTier planTier,
@@ -118,11 +108,6 @@ public interface IOrgService
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>Result of <see cref="IOrgService.CheckSlugAvailabilityAsync"/>.</summary>
 public sealed record OrgSlugAvailability(string Slug, bool Available, string? Code);
 
-/// <summary>
-/// Data for the Italian e-invoice of the CasaZen subscription (PL-13). Per field: null leaves the stored value unchanged,
-/// an empty string clears it.
-/// </summary>
 public sealed record BillingEInvoiceDetails(string? SdiRecipientCode, string? PecEmail, string? FiscalCode);

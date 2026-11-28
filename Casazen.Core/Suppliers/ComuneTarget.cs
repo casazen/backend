@@ -26,6 +26,5 @@ public sealed record ComuneTarget(string? IstatCode, string? Name)
         return ComuneRules.IsIstatCode(trimmed) ? new ComuneTarget(trimmed, null) : new ComuneTarget(null, trimmed);
     }
 
-    /// <summary>True when there is nothing to look up.</summary>
     public bool IsEmpty => string.IsNullOrWhiteSpace(IstatCode) && string.IsNullOrWhiteSpace(Name);
 }

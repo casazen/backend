@@ -47,7 +47,6 @@ public class CampaignApprovalFlowTests : IDisposable
         });
         await _rig.Db.SaveChangesAsync();
 
-        // The campaign service needs the queue, and the action of the queue needs the campaign service: the registry asks for the action when it is first used.
         CampaignService? campaigns = null;
         _registry = new ApprovalOriginActionRegistry(() => [new CampaignApprovalAction(campaigns!, _flags, NullLogger<CampaignApprovalAction>.Instance)]);
         var queue = _rig.Service(_registry);
@@ -73,10 +72,6 @@ public class CampaignApprovalFlowTests : IDisposable
         return (campaigns, queue);
     }
 
-    /// <summary>
-    /// Trust rule (nothing leaves unapproved): the queue is the way a campaign becomes <c>Approved</c> and so can be scheduled. Submitted, it waits as an item with its action; approved
-    /// with an edited text, the campaign takes the edit and is approved (not scheduled: it has no time); only then the host can schedule it.
-    /// </summary>
     [Fact]
     public async Task ACampaignSubmittedToTheQueue_IsApprovedByApprovingItsItem_AndCanThenBeScheduled()
     {
@@ -90,7 +85,6 @@ public class CampaignApprovalFlowTests : IDisposable
         Assert.Equal(ApprovalQueueRules.CampaignTextOf("Oggetto", "<p>Testo</p>"), item.ContentText);
         Assert.Equal((ApprovalOriginActions.ApproveCampaign, ApprovalOriginActionStatus.Pending), (item.OriginAction, item.OriginActionStatus));
         Assert.Equal(CampaignStatus.PendingApproval, (await _rig.Db.Campaigns.AsNoTracking().SingleAsync()).Status);
-        // The alert and the "To do" come with the item (before, the campaign path bypassed the queue service and told nobody).
         Assert.Single(await _rig.Db.InAppNotifications.AsNoTracking().ToListAsync(), n => n.UserId == ApprovalQueueRig.Owner);
         Assert.NotNull(item.ActivityId);
         var notYet = await Assert.ThrowsAsync<DomainRuleException>(() => campaigns.ScheduleAsync(draft.Id, ApprovalQueueRig.Noon.AddDays(1), _rig.OrgId));
@@ -104,17 +98,12 @@ public class CampaignApprovalFlowTests : IDisposable
         Assert.Equal(CampaignStatus.Approved, approved.Status);
         Assert.Equal(("Oggetto corretto", "<p>Testo corretto</p>"), (approved.Subject, approved.Body));
 
-        // What was impossible before: the approved campaign is scheduled.
         var at = ApprovalQueueRig.Noon.AddDays(3);
         await campaigns.ScheduleAsync(draft.Id, at, _rig.OrgId);
         var scheduled = await _rig.Db.Campaigns.AsNoTracking().SingleAsync();
         Assert.Equal((CampaignStatus.Scheduled, at), (scheduled.Status, scheduled.ScheduledAt));
     }
 
-    /// <summary>
-    /// Module rule: the campaigns are closed with <c>Features:CrmMarketing</c> (the endpoints answer 404), and the queue is another door to them: with the module off an approval
-    /// does not approve or schedule a campaign. It fails with its code and the item stays pending (409, <c>originActionError</c>); with the module on again the same item is approved.
-    /// </summary>
     [Fact]
     public async Task ApprovingACampaign_WithTheModuleOff_FailsWithItsCode_AndTheItemStaysPending()
     {
@@ -212,11 +201,9 @@ public class CampaignApprovalFlowTests : IDisposable
         await campaigns.SubmitForApprovalAsync(draft.Id, _rig.OrgId);
         var item = await _rig.Db.ApprovalQueueItems.AsNoTracking().SingleAsync();
 
-        // The first approval went halfway (the item was not saved, or the schedule failed): the campaign is approved with the first edit.
         var firstCall = await campaigns.MarkApprovedAsync(draft.Id, _rig.OrgId, "Un altro oggetto", "<p>Un altro testo</p>");
         Assert.Equal(CampaignStatus.Approved, firstCall.Status);
 
-        // The host edits again and tries again: the campaign takes the text it approved last, and is approved once.
         await queue.EditAsync(_rig.OrgWide, item.Id, "Ancora un altro\n\n<p>Ancora</p>", ApprovalQueueRig.Owner);
         var decision = await queue.ApproveAsync(_rig.OrgWide, item.Id, ApprovalQueueRig.Owner);
 
@@ -224,15 +211,10 @@ public class CampaignApprovalFlowTests : IDisposable
         var approved = await _rig.Db.Campaigns.AsNoTracking().SingleAsync();
         Assert.Equal((CampaignStatus.Approved, "Ancora un altro", "<p>Ancora</p>"), (approved.Status, approved.Subject, approved.Body));
 
-        // A call with no edit changes nothing.
         var noEdit = await campaigns.MarkApprovedAsync(draft.Id, _rig.OrgId, null, null);
         Assert.Equal(("Ancora un altro", "<p>Ancora</p>"), (noEdit.Subject, noEdit.Body));
     }
 
-    /// <summary>
-    /// Trust rule (nothing leaves rejected): an approval that went halfway leaves the campaign approved or scheduled while its item still waits. Rejecting the item undoes it: the campaign is
-    /// a draft again with no time, it cannot be scheduled, and a send job that is still waiting finds a draft and sends nothing.
-    /// </summary>
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -284,12 +266,10 @@ public class CampaignApprovalFlowTests : IDisposable
         await campaigns.SubmitForApprovalAsync(draft.Id, _rig.OrgId);
         await campaigns.MarkApprovedAsync(draft.Id, _rig.OrgId, null, null);
 
-        // Campaigns of another org and campaigns that are gone are left as they are, with no error.
         await campaigns.ReturnToDraftAsync(draft.Id, Guid.NewGuid());
         await campaigns.ReturnToDraftAsync(Guid.NewGuid(), _rig.OrgId);
         Assert.Equal(CampaignStatus.Approved, (await _rig.Db.Campaigns.AsNoTracking().SingleAsync()).Status);
 
-        // An approval that went halfway is undone; a second call, a draft and a campaign that was sent are left as they are.
         await campaigns.ReturnToDraftAsync(draft.Id, _rig.OrgId);
         Assert.Equal(CampaignStatus.Draft, (await _rig.Db.Campaigns.AsNoTracking().SingleAsync()).Status);
         await campaigns.ReturnToDraftAsync(draft.Id, _rig.OrgId);
@@ -300,10 +280,6 @@ public class CampaignApprovalFlowTests : IDisposable
         Assert.Equal(CampaignStatus.Sent, (await _rig.Db.Campaigns.AsNoTracking().SingleAsync()).Status);
     }
 
-    /// <summary>
-    /// A decision nobody took is not a way to strand a campaign: when its item expires the campaign goes back to a draft, as a rejection leaves it, so the host can submit it again (nothing
-    /// else gets a campaign out of <c>PendingApproval</c>), and the "To do" of the item is closed.
-    /// </summary>
     [Fact]
     public async Task ACampaignWhoseItemExpired_IsADraftAgain_ThatCanBeSubmittedAgain()
     {

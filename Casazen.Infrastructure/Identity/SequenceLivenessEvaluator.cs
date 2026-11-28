@@ -6,16 +6,12 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Identity;
 
-/// <summary>How the liveness of the chosen frames came out.</summary>
 public enum LivenessState
 {
-    /// <summary>The rule of the policy holds: every chosen frame reached the minimum score. The only state that is a pass.</summary>
     Passed,
 
-    /// <summary>The model judged every chosen frame and the rule does not hold: a frame is under the minimum score.</summary>
     Failed,
 
-    /// <summary>The liveness could not be judged (no policy, the model is not ready, it failed or the time was over): never a pass, and a person decides.</summary>
     Unavailable,
 }
 
@@ -24,24 +20,14 @@ public enum LivenessState
 /// <param name="Score">The score, above 0 and at most 1 (0 is never a score: it is what a model that did not run gives).</param>
 public sealed record FrameLiveness(int Index, double Score);
 
-/// <summary>
-/// The liveness of the frames the server chose (E72/F01/US02/T01, NF-192, NF-193): <see cref="State"/> is <see cref="LivenessState.Passed"/> only when the rule of the policy
-/// holds; the report decides nothing about the outcome, it is one input of the decision (E73), which also has the validation of the sequence and the match.
-/// </summary>
-/// <param name="State">How it came out.</param>
-/// <param name="Frames">The score of every chosen frame, in the order of the indices it was asked for; empty when <see cref="State"/> is <see cref="LivenessState.Unavailable"/> (no partial answer is given).</param>
 public sealed record LivenessReport(LivenessState State, IReadOnlyList<FrameLiveness> Frames)
 {
-    /// <summary>True when the rule holds.</summary>
     public bool Passed => State == LivenessState.Passed;
 
-    /// <summary>True when the liveness could not be judged: nothing says the frames are live or that they are not.</summary>
     public bool IsUnavailable => State == LivenessState.Unavailable;
 
-    /// <summary>The lowest score of the frames; null when there is none.</summary>
     public double? MinScore => Frames.Count == 0 ? null : Frames.Min(frame => frame.Score);
 
-    /// <summary>The report of a liveness that could not be judged: no frame, never a pass.</summary>
     public static LivenessReport NotAvailable()
     {
         return new LivenessReport(LivenessState.Unavailable, []);
@@ -70,11 +56,6 @@ public sealed class SequenceLivenessEvaluator(
     IOptions<BiometricModelOptions> biometricOptions,
     ILogger<SequenceLivenessEvaluator> logger)
 {
-    /// <summary>
-    /// Judges the frames of <paramref name="sequence"/> at <paramref name="indices"/> (the <c>LivenessIndices</c> the server chose) with <paramref name="policy"/>. A <c>null</c>
-    /// policy is <see cref="LivenessState.Unavailable"/>.
-    /// </summary>
-    /// <exception cref="ArgumentException">No index, an index that is not a frame of the sequence, or an index twice.</exception>
     public async Task<LivenessReport> EvaluateAsync(FrameSequence sequence, IReadOnlyList<int> indices, IdentityDecisionPolicy? policy, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(sequence);
@@ -105,7 +86,6 @@ public sealed class SequenceLivenessEvaluator(
             {
                 budget.Token.ThrowIfCancellationRequested();
 
-                // The very bytes the sequence holds: the service reads them into its own buffer and zeroes that.
                 using var picture = new MemoryStream(sequence.Frames[index].Jpeg, writable: false);
                 var result = await antiSpoofing.ScoreLivenessAsync(picture, budget.Token);
                 if (!double.IsFinite(result.Score) || result.Score <= 0 || result.Score > 1)
@@ -117,7 +97,6 @@ public sealed class SequenceLivenessEvaluator(
                 scores.Add(new FrameLiveness(index, result.Score));
             }
 
-            // The rule is "all" (the only one the policy knows today): every chosen frame reaches the minimum score.
             var passed = scores.All(frame => frame.Score >= rules.MinScore);
             logger.LogInformation("Presence liveness judged: passed={Passed}, {Frames} frames", passed, scores.Count);
             return new LivenessReport(passed ? LivenessState.Passed : LivenessState.Failed, scores);
@@ -138,13 +117,11 @@ public sealed class SequenceLivenessEvaluator(
         }
         catch (Exception ex)
         {
-            // The type only: a message could carry what was being read.
             logger.LogError("The liveness of the sequence could not be judged ({ErrorType}); a person decides", ex.GetType().Name);
             return LivenessReport.NotAvailable();
         }
     }
 
-    /// <summary>The indices name frames of the sequence, each once, and there is at least one: judging nothing is not a pass.</summary>
     private static void RequireFrames(FrameSequence sequence, IReadOnlyList<int> indices)
     {
         if (indices.Count == 0)

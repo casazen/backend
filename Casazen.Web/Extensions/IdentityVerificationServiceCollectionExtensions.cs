@@ -12,10 +12,6 @@ namespace Casazen.Web.Extensions;
 /// </summary>
 public static partial class IdentityVerificationServiceCollectionExtensions
 {
-    /// <summary>
-    /// Binds <see cref="IdentityVerificationOptions"/> to its section and runs the hooks in this order. Called once, by <c>AddCasazenServices</c>, next to the
-    /// biometric registrations. The section is read from the application configuration of the container (<c>BindConfiguration</c>), so no configuration is passed.
-    /// </summary>
     public static IServiceCollection AddSelfHostedIdentityVerification(this IServiceCollection services)
     {
         services.AddOptions<IdentityVerificationOptions>()
@@ -35,36 +31,26 @@ public static partial class IdentityVerificationServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>The foundations: the policy file, the registry of the formats, the closed-egress guards.</summary>
     static partial void AddFoundationServices(IServiceCollection services);
 
-    /// <summary>The session bound to one guest: the opening, the notice, the choice, the closure.</summary>
     static partial void AddSessionServices(IServiceCollection services);
 
-    /// <summary>The local reading of the document (the prefill of <c>read-document</c> included).</summary>
     static partial void AddDocumentReadingServices(IServiceCollection services);
 
-    /// <summary>The geometry of the document: the card, its edges, its orientation, the zones of the layout.</summary>
     static partial void AddDocumentGeometryServices(IServiceCollection services);
 
-    /// <summary>The fields of the document by zone and their coherence.</summary>
     static partial void AddDocumentFieldServices(IServiceCollection services);
 
-    /// <summary>The document step of the self-hosted flow: the sides, the targeted guidance.</summary>
     static partial void AddDocumentStepServices(IServiceCollection services);
 
-    /// <summary>The presence: the challenge and the validation of the sequence of frames.</summary>
     static partial void AddPresenceServices(IServiceCollection services);
 
-    /// <summary>The match of the portrait with the frames chosen by the server.</summary>
     static partial void AddMatchingServices(IServiceCollection services);
 
     /// <summary>The decision of the versioned policy, the segments and the idempotent closure.</summary>
     static partial void AddDecisionServices(IServiceCollection services);
 
-    /// <summary>The review by a person: the evidence, its time to live and its purge.</summary>
     static partial void AddReviewServices(IServiceCollection services);
 
-    /// <summary>The counters and the export of the pilot.</summary>
     static partial void AddMetricsServices(IServiceCollection services);
 }

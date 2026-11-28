@@ -11,42 +11,22 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IStayTouristTaxService
 {
-    /// <summary>
-    /// The tax of the stay as it is now: the guests of the booking (<see cref="IStayGuestService.GetForBookingAsync"/>, each age taken at the
-    /// check-in date from the date of birth), the comune of the property, the breakdown of <see cref="ITouristTaxQuoteService.QuoteGuestsAsync"/>
-    /// with the org of the booking, then <see cref="TouristTaxCollectorRules"/>. No name and no document.
-    /// </summary>
     Task<StayTouristTaxView> GetAsync(Guid bookingId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Writes the host's exemption of the guests in place (<see cref="StayGuest.TaxExemptionCode"/>; a null code clears it). 422
-    /// <c>tax_exemption_unknown</c> for an unknown, inactive or automatic reason, 422 <c>tax_guest_unknown</c> for a position with no saved guest.
-    /// A confirmed record becomes stale.
-    /// </summary>
     Task<StayTouristTaxView> SetExemptionsAsync(
         Guid bookingId,
         IReadOnlyList<GuestExemption> exemptions,
         string userId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The host's declaration of who collected the tax (null clears it), only for a channel booking whose comune has no channel rule; any other
-    /// booking answers 422 <c>tax_collector_not_applicable</c>.
-    /// </summary>
     Task<StayTouristTaxView> SetCollectorAsync(
         Guid bookingId,
         TouristTaxCollector? collector,
         string userId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The rate the org declared for the comune of the property, and whether an official rate is in force there today.</summary>
     Task<MunicipalityRateView> GetMunicipalityRateAsync(Guid propertyId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Declares (or replaces) the org's rate for the comune of the property (AC-NF46-6, ADR-037-R5): 409 <c>tax_rate_official_exists</c> when an
-    /// official rate is in force there today, 422 <c>tax_rate_source_required</c> without a source note, 422 <c>tax_rate_invalid</c> for an amount
-    /// outside 0.01 to 50, a night cap under 1, an age outside 0 to 18, a season with one bound only or a property with no comune.
-    /// </summary>
     Task<MunicipalityRateView> SaveMunicipalityRateAsync(
         Guid propertyId,
         MunicipalityRateInput input,
@@ -63,19 +43,14 @@ public interface IStayTouristTaxService
     Task<StayTouristTaxView> ConfirmAsync(Guid bookingId, string userId, CancellationToken cancellationToken = default);
 }
 
-/// <summary>The exemption the host chooses for the guest at <paramref name="Position"/>; a null <paramref name="Code"/> clears it.</summary>
 public sealed record GuestExemption(int Position, string? Code);
 
-/// <summary>Where the rates of a stay's tax come from.</summary>
 public enum TouristTaxRateSource
 {
-    /// <summary>No rate is known for the stay (the tax step shows the sub-step to declare one; the amount is never 0).</summary>
     None = 0,
 
-    /// <summary>The official rates of the comune.</summary>
     Official = 1,
 
-    /// <summary>The rate the org declared for a comune with no official one.</summary>
     HostDeclared = 2,
 }
 
@@ -131,10 +106,8 @@ public sealed record StayTouristTaxGuestView(
     TouristTaxExemptionKind ExemptionKind,
     string? ExemptionCode);
 
-/// <summary>An exemption reason the host may choose: its code and the i18n key of its label.</summary>
 public sealed record TouristTaxExemptionReasonView(string Code, string LabelKey);
 
-/// <summary>The rate the org declared for a comune with no official rate.</summary>
 public sealed record MunicipalityRateInput(
     decimal RatePerPersonPerNight,
     int? MaxNights,

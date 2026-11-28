@@ -38,7 +38,6 @@ public sealed class ShowcaseAlternativesService(
         if (target.IsEmpty || string.IsNullOrWhiteSpace(query.Category))
             return [];
 
-        // «Takes bookings» (decision VT-D7) includes the payments flag: while it is off no showcase takes any, and there is nothing to look for.
         if (!features.IsEnabled(FeatureFlags.SupplierOnlinePayments))
             return [];
 
@@ -49,7 +48,6 @@ public sealed class ShowcaseAlternativesService(
         }
         catch (DomainRuleException)
         {
-            // A category that is not one of the platform's codes: no supplier covers it.
             return [];
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -84,7 +82,6 @@ public sealed class ShowcaseAlternativesService(
         return found;
     }
 
-    /// <summary>The supplier as an alternative, or <c>null</c> when its showcase is not one a customer can book from now (or cannot be read).</summary>
     private async Task<ShowcaseAlternative?> TryDescribeAsync(SupplierProfile supplier, string category, CancellationToken cancellationToken)
     {
         try

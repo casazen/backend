@@ -14,11 +14,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// DEB-01 over the real pipeline: the one-click address a campaign puts in <c>List-Unsubscribe</c> is the signed link of ADR-007-R18,
-/// and <c>POST api/public/marketing/unsubscribe</c> accepts it as a mail client sends it (RFC 8058: <c>List-Unsubscribe=One-Click</c> in a
-/// form body): the address is suppressed for the org of the link, while a link whose signature was touched is refused.
-/// </summary>
 public class MarketingUnsubscribeIntegrationTests(CasazenWebApplicationFactory factory) : IClassFixture<CasazenWebApplicationFactory>
 {
     private const string LinkSecret = "it-signed-link-secret-0123456789abcdef";
@@ -96,6 +91,5 @@ public class MarketingUnsubscribeIntegrationTests(CasazenWebApplicationFactory f
         Assert.True(saved.Opened && saved.Clicked && saved.Bounced);
     }
 
-    /// <summary>The body a mail client posts for <c>List-Unsubscribe-Post</c> (RFC 8058).</summary>
     private static FormUrlEncodedContent OneClickBody() => new([new KeyValuePair<string, string>("List-Unsubscribe", "One-Click")]);
 }

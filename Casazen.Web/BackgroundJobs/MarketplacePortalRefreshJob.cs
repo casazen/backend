@@ -13,7 +13,6 @@ public class MarketplacePortalRefreshJob(IMarketplacePortalCatalogService portal
 {
     public const string RecurringJobId = "marketplace-portal-refresh";
 
-    /// <summary>Every day at 03:30 UTC.</summary>
     public const string Cron = "30 3 * * *";
 
     [AutomaticRetry(Attempts = 3)]

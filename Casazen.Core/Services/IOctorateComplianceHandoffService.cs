@@ -5,23 +5,17 @@ using Casazen.Core.Regulatory;
 
 namespace Casazen.Core.Services;
 
-/// <summary>The compliance outcome the host goes to check in the connected area of Octorate (CHK-15).</summary>
 public enum OctorateHandoffTopic
 {
-    /// <summary>The Alloggiati Web communication of the guests of a stay.</summary>
     Alloggiati = 1,
 
-    /// <summary>The ISTAT communication of a period.</summary>
     Istat = 2,
 }
 
-/// <summary>What the address of a handoff is.</summary>
 public enum OctorateHandoffDestinationKind
 {
-    /// <summary>The authenticated home of the Octorate panel: the guide describes the menu steps.</summary>
     Home = 1,
 
-    /// <summary>A deep link of the panel for the topic, configured and verified by a person.</summary>
     DeepLink = 2,
 }
 
@@ -116,10 +110,8 @@ public static class OctorateHandoffGuides
     /// <summary>Alloggiati, a stay of more than 30 nights: the panel does not send it, the file goes to the Alloggiati portal.</summary>
     public const string AlloggiatiLongStay = "alloggiati_long_stay";
 
-    /// <summary>ISTAT: the send of the period, per region, to check.</summary>
     public const string IstatPeriod = "istat_period";
 
-    /// <summary>Every guide code.</summary>
     public static IReadOnlyList<string> All { get; } = [AlloggiatiDaily, AlloggiatiShortStay, AlloggiatiLongStay, IstatPeriod];
 
     /// <summary>The guide of a topic and, for Alloggiati, of the stay the check starts from (none: the ordinary one).</summary>
@@ -138,16 +130,10 @@ public static class OctorateHandoffGuides
     }
 }
 
-/// <summary>
-/// The two strings of a handoff request the client writes, checked in one place. The route is the one CasaZen string that looks like
-/// an address, so it is held to be a relative path of CasaZen and never anything that a browser could read as another site.
-/// </summary>
 public static class OctorateHandoffInput
 {
-    /// <summary>The longest route (path and query) accepted.</summary>
     public const int MaxReturnPathLength = 1024;
 
-    /// <summary>The longest period (<c>yyyy-MM-dd</c>).</summary>
     public const int MaxPeriodLength = 10;
 
     private const int FirstPeriodYear = 2000;
@@ -184,10 +170,6 @@ public static class OctorateHandoffInput
         return true;
     }
 
-    /// <summary>
-    /// True when <paramref name="value"/> is empty (no period: <paramref name="period"/> is <c>null</c>) or a month <c>yyyy-MM</c> or a day
-    /// <c>yyyy-MM-dd</c> of a real date between 2000 and 2100, written with ASCII digits.
-    /// </summary>
     public static bool TryNormalizePeriod(string? value, out string? period)
     {
         period = null;

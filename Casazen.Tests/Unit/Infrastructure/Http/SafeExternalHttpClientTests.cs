@@ -15,8 +15,6 @@ namespace Casazen.Tests.Unit.Infrastructure.Http;
 /// </summary>
 public class SafeExternalHttpClientTests
 {
-    // ─── Real SocketsHttpHandler: DNS resolution and connect-time checks ──────
-
     [Theory]
     [InlineData("https://127.0.0.1/cal.ics")]
     [InlineData("https://10.1.2.3/cal.ics")]
@@ -51,7 +49,6 @@ public class SafeExternalHttpClientTests
             () => client.GetStringAsync("https://feeds.attacker.example/cal.ics"));
 
         Assert.Equal(ExternalFetchFailure.BlockedDestination, ex.Failure);
-        // The only DNS lookup is the one of the connect callback: the checked address is the connected one.
         Assert.Equal(new[] { "feeds.attacker.example" }, resolver.Lookups);
     }
 
@@ -101,15 +98,13 @@ public class SafeExternalHttpClientTests
     [Fact]
     public async Task ConnectAsync_DnsFailure_IsUnreachable()
     {
-        var resolver = new FakeResolver(); // unknown host → SocketException, like NXDOMAIN
+        var resolver = new FakeResolver();
 
         var ex = await Assert.ThrowsAsync<ExternalFetchException>(
             () => SafeExternalHttpClient.ConnectAsync(new DnsEndPoint("missing.example", 443), [443], resolver, CancellationToken.None).AsTask());
 
         Assert.Equal(ExternalFetchFailure.Unreachable, ex.Failure);
     }
-
-    // ─── Redirects ────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("https://169.254.169.254/latest/meta-data/")]
@@ -133,8 +128,6 @@ public class SafeExternalHttpClientTests
     [Fact]
     public async Task GetStringAsync_RedirectToHostnameResolvingToPrivateAddress_IsRefusedAtConnect()
     {
-        // The first hop is served by a stub; the redirect target goes through the real handler and its
-        // connect callback, where the fake DNS answers with a private address.
         var resolver = new FakeResolver { ["internal.attacker.example"] = [IPAddress.Parse("10.0.0.7")] };
         var options = new SafeExternalHttpOptions();
         var handler = new FirstHopStubHandler(
@@ -160,7 +153,7 @@ public class SafeExternalHttpClientTests
             () => client.GetStringAsync("https://feeds.example.com/cal.ics"));
 
         Assert.Equal(ExternalFetchFailure.RedirectRejected, ex.Failure);
-        Assert.Equal(4, handler.Requests.Count); // the original request and 3 redirects
+        Assert.Equal(4, handler.Requests.Count);
     }
 
     [Fact]
@@ -176,8 +169,6 @@ public class SafeExternalHttpClientTests
         Assert.Equal("BEGIN:VCALENDAR", body);
         Assert.Equal("https://feeds.example.com/v2/cal.ics", handler.Requests[1].AbsoluteUri);
     }
-
-    // ─── Size, status, time ───────────────────────────────────────────────────
 
     [Fact]
     public async Task GetStringAsync_DeclaredLengthOverLimit_IsRefusedBeforeReading()
@@ -201,7 +192,6 @@ public class SafeExternalHttpClientTests
     [Fact]
     public async Task GetStringAsync_StreamedBodyOverLimit_IsInterrupted()
     {
-        // No Content-Length and an (almost) endless body: the read must stop right after the limit.
         var body = new CountingStream(totalBytes: 50L * 1024 * 1024);
         var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(body) });
         using var client = CreateStubClient(handler, new SafeExternalHttpOptions { MaxResponseBytes = 64 * 1024 });
@@ -281,8 +271,6 @@ public class SafeExternalHttpClientTests
         Assert.False(client.TryValidateUrl("https://example.com:9443/cal.ics", out _));
     }
 
-    // ─── Helpers ──────────────────────────────────────────────────────────────
-
     private static SafeExternalHttpClient CreateNetworkClient(IExternalHostResolver resolver) =>
         new(Options.Create(new SafeExternalHttpOptions()), resolver, NullLogger<SafeExternalHttpClient>.Instance);
 
@@ -336,7 +324,6 @@ public class SafeExternalHttpClientTests
         }
     }
 
-    /// <summary>Answers requests to <c>firstHost</c> with a canned response and sends the others to the real handler.</summary>
     private sealed class FirstHopStubHandler(string firstHost, HttpResponseMessage firstResponse, HttpMessageHandler network)
         : DelegatingHandler(network)
     {
@@ -346,7 +333,6 @@ public class SafeExternalHttpClientTests
                 : base.SendAsync(request, cancellationToken);
     }
 
-    /// <summary>Non-seekable stream of <c>totalBytes</c> bytes that counts what was read.</summary>
     private sealed class CountingStream(long totalBytes) : Stream
     {
         public long BytesRead { get; private set; }

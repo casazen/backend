@@ -27,7 +27,6 @@ public class LeasePartyPrivacyPostgresTests : IClassFixture<CasazenWebApplicatio
     private const string LandlordCf = "RSSMRA80A01H501U";
     private const string TenantCf = "VRDGLI85B42F205W";
 
-    /// <summary>Properties of <see cref="Party"/> that are not personal data of the party, with the reason.</summary>
     private static readonly Dictionary<string, string> PartyNonPersonal = new()
     {
         [nameof(Party.Id)] = "pseudonymous key, kept for the signers",
@@ -73,12 +72,10 @@ public class LeasePartyPrivacyPostgresTests : IClassFixture<CasazenWebApplicatio
     [PostgresFact]
     public async Task ApplyRetentionAsync_PeriodConfigured_CountsFromTheEndDateAndAppliesOnce()
     {
-        // 4+4 lease renewed: start 2026, end 2034. The old rule (start + 10 years) would have hit it in 2036 while still
-        // in force had it been renewed again; now it is end + period, i.e. from 2037-01-01.
         var lease = await SeedLeaseAsync(Start(2026, 1, 1), End(2034, 12, 31), withSigners: true);
 
-        await RunRetentionAsync(TwoYears, Day(2028, 1, 2)); // start + 2 years: lease in force
-        await RunRetentionAsync(TwoYears, Day(2036, 12, 31)); // end + 2 years: last day of the period
+        await RunRetentionAsync(TwoYears, Day(2028, 1, 2));
+        await RunRetentionAsync(TwoYears, Day(2036, 12, 31));
         var stored = await LoadLeaseAsync(lease.LeaseId);
         Assert.Null(stored.PartiesAnonymizedAt);
         Assert.All(stored.Parties, p => Assert.Null(p.AnonymizedAt));
@@ -88,7 +85,6 @@ public class LeasePartyPrivacyPostgresTests : IClassFixture<CasazenWebApplicatio
         stored = await LoadLeaseAsync(lease.LeaseId);
         Assert.NotNull(stored.PartiesAnonymizedAt);
         Assert.All(stored.Parties, AssertNoPersonalData);
-        // LR-12: what the landlord typed in the wizard repeats the data of the parties and goes with them.
         Assert.Null(stored.DraftData);
         Assert.Equal([PartyRole.Landlord, PartyRole.Tenant], stored.Parties.Select(p => p.Role).Order());
         Assert.Contains(stored.Parties, p => p.IsExtraEU);
@@ -100,7 +96,6 @@ public class LeasePartyPrivacyPostgresTests : IClassFixture<CasazenWebApplicatio
             Assert.All(signers, s => Assert.Equal((null, null, null), (s.SigningUrl, s.SigningUrlExpiresAt, s.ExternalSignerId)));
         }
 
-        // Second run: nothing changes, the markers stay as they were.
         await RunRetentionAsync(TwoYears, Day(2037, 1, 2));
         var again = await LoadLeaseAsync(lease.LeaseId);
         Assert.Equal(stored.PartiesAnonymizedAt, again.PartiesAnonymizedAt);
@@ -113,7 +108,6 @@ public class LeasePartyPrivacyPostgresTests : IClassFixture<CasazenWebApplicatio
     public async Task ApplyRetentionAsync_PartyAlsoInALeaseNotEnded_KeepsThatPartyUntilItEnds()
     {
         var old = await SeedLeaseAsync(Start(2020, 1, 1), End(2023, 12, 31));
-        // Same landlord (same fiscal code, written differently), new tenant, lease in force until 2031.
         var current = await SeedLeaseAsync(
             Start(2028, 1, 1), End(2031, 12, 31), ownerId: old.OwnerId, landlordCf: "rssmra80a01h501u", tenantCf: "BNCLRA90C41H501V");
 
@@ -127,7 +121,6 @@ public class LeasePartyPrivacyPostgresTests : IClassFixture<CasazenWebApplicatio
         AssertNoPersonalData(stored.Parties.Single(p => p.Role == PartyRole.Tenant));
         Assert.All((await LoadLeaseAsync(current.LeaseId)).Parties, p => Assert.Null(p.AnonymizedAt));
 
-        // Once the other lease has ended too, the landlord of the old lease goes as well.
         await RunRetentionAsync(TwoYears, Day(2032, 1, 1));
         stored = await LoadLeaseAsync(old.LeaseId);
         Assert.NotNull(stored.PartiesAnonymizedAt);
@@ -138,7 +131,7 @@ public class LeasePartyPrivacyPostgresTests : IClassFixture<CasazenWebApplicatio
     public async Task ApplyRetentionAsync_SameFiscalCodeInAnotherOrg_DoesNotKeepTheParty()
     {
         var old = await SeedLeaseAsync(Start(2020, 1, 1), End(2023, 12, 31));
-        await SeedLeaseAsync(Start(2025, 1, 1), End(2033, 12, 31)); // another owner, another org, same fiscal codes
+        await SeedLeaseAsync(Start(2025, 1, 1), End(2033, 12, 31));
 
         await RunRetentionAsync(TwoYears, Day(2026, 1, 1));
 
@@ -163,7 +156,6 @@ public class LeasePartyPrivacyPostgresTests : IClassFixture<CasazenWebApplicatio
         Assert.Single(stored.Events, e => e.EventType == LeaseEventType.ErasureRequested);
         Assert.All(stored.Parties, p => Assert.Null(p.AnonymizedAt));
 
-        // No retention period configured: the request alone is enough, from the day after the end date.
         await RunRetentionAsync(new RetentionPeriodOptions(), Day(2030, 8, 31));
         Assert.Null((await LoadLeaseAsync(lease.LeaseId)).PartiesAnonymizedAt);
 
@@ -213,7 +205,6 @@ public class LeasePartyPrivacyPostgresTests : IClassFixture<CasazenWebApplicatio
 
     private static DateTime End(int year, int month, int day) => Start(year, month, day);
 
-    /// <summary>A run at 03:00 UTC of <paramref name="year"/>-<paramref name="month"/>-<paramref name="day"/> (same Rome date).</summary>
     private static DateTimeOffset Day(int year, int month, int day) => new(year, month, day, 3, 0, 0, TimeSpan.Zero);
 
     private async Task<LeasePartyRetentionRunResult> RunRetentionAsync(RetentionPeriodOptions period, DateTimeOffset at)
@@ -265,7 +256,6 @@ public class LeasePartyPrivacyPostgresTests : IClassFixture<CasazenWebApplicatio
             FiscalCode = landlordCf,
             Citizenship = "IT",
             ContactEmail = "mario.rossi@example.com",
-            // LR-12: the residence and the day the documents were checked are personal data too.
             Residence = "Bari, via Sparano 1",
             DocumentsVerifiedOn = new DateOnly(2026, 1, 5),
         };
@@ -293,7 +283,6 @@ public class LeasePartyPrivacyPostgresTests : IClassFixture<CasazenWebApplicatio
             EndDate = end,
             MonthlyRent = 900m,
             Parties = [landlord, tenant],
-            // LR-12: the values typed in the wizard repeat the data of the parties and go with them.
             DraftData = """{"landlords":[{"firstName":"Mario"}]}""",
         };
         db.LeaseContracts.Add(lease);

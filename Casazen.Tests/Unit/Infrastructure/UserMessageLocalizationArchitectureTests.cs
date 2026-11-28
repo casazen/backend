@@ -14,17 +14,14 @@ public class UserMessageLocalizationArchitectureTests
 {
     private static readonly Regex ErrorMessageLiteral = new(@"ErrorMessage\s*=\s*""(?<value>[^""]*)""", RegexOptions.Compiled);
 
-    // BadRequest(new { error = ... }), Conflict(new { message = ... }), StatusCode(403, new { error = ... }), also over several lines.
     private static readonly Regex LegacyErrorBody = new(
         @"\b(?:BadRequest|NotFound|Conflict|Unauthorized|UnprocessableEntity|StatusCode)\((?:\s*[\w.]+\s*,)?\s*new\s*\{[^}]*?\b(?:error|message|detail)\s*=",
         RegexOptions.Compiled);
 
-    // BadRequest("text"), NotFound($"text"), StatusCode(500, "text").
     private static readonly Regex PlainTextBody = new(
         @"\b(?:BadRequest|NotFound|Conflict|UnprocessableEntity)\(\s*\$?""|\bStatusCode\(\s*[\w.]+\s*,\s*\$?""",
         RegexOptions.Compiled);
 
-    // ErrorMessage = "..." anywhere in the application code must be a resource key.
     [Fact]
     public void ValidationAttributes_ErrorMessageLiteral_IsAResourceKey()
     {
@@ -74,7 +71,6 @@ public class UserMessageLocalizationArchitectureTests
 
         foreach (var (relative, text) in ReadSources(root, ["Casazen.Web/Controllers"]))
         {
-            // The OTA webhooks answer machines (the partner platforms), not people: their plain status texts stay.
             if (relative.EndsWith("/WebhooksController.cs", StringComparison.Ordinal))
                 continue;
 

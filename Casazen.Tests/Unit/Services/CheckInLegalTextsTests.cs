@@ -15,10 +15,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E22/F01/US02/T02 proofs of the registry of the check-in legal texts: production serves only approved versions (privacy), a consent can refer only to a version the registry serves
-/// and keeps the hash of its text (privacy), and a text is served only when its file is the one whose SHA-256 the manifest records (data).
-/// </summary>
 public sealed class CheckInLegalTextsTests : IDisposable
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 20, 9, 0, 0, TimeSpan.Zero);
@@ -30,10 +26,6 @@ public sealed class CheckInLegalTextsTests : IDisposable
             Directory.Delete(_root, recursive: true);
     }
 
-    /// <summary>
-    /// Privacy: production serves the last approved version of each text and never a draft; every other environment serves the last version, flagged as a draft when it is one. A kind with
-    /// nothing approved is not served at all in production. The files that ship today are all drafts: production serves nothing of them, the test environment serves both.
-    /// </summary>
     [Fact]
     public void LegalTexts_ProductionServesOnlyApproved_Test()
     {
@@ -59,7 +51,6 @@ public sealed class CheckInLegalTextsTests : IDisposable
         Assert.Equal(["biometric-consent", "ticino-notice"], staging.GetForStay(documentNotArchived: true, "it").Select(t => t.Kind));
         Assert.All(staging.GetForStay(documentNotArchived: true, "it"), text => Assert.True(text.IsDraft));
 
-        // The texts that ship: production never serves a draft of them (today all are drafts, so it serves none); the test environment serves them, a draft with its flag.
         var shipped = new Dictionary<string, string?> { ["Legal:ContentPath"] = LegalTextFixtures.ShippedRoot() };
         var shippedProduction = new CheckInLegalTexts(Config(shipped), Env("Production"), NullLogger<CheckInLegalTexts>.Instance);
         Assert.All(shippedProduction.GetForStay(documentNotArchived: true, "it"), text => Assert.False(text.IsDraft));
@@ -72,10 +63,6 @@ public sealed class CheckInLegalTextsTests : IDisposable
         Assert.NotNull(shippedStaging.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent));
     }
 
-    /// <summary>
-    /// Privacy: a consent refers to the version the registry serves now; any other string (a free text, a version of the past, a draft in production) is refused with nothing recorded, and a
-    /// consent that is recorded keeps the version and the hash of its text. With no text of the consent served the identity step is closed, an operator is told why, and nothing is recorded.
-    /// </summary>
     [Fact]
     public async Task Consent_UnknownVersionRefused_Test()
     {
@@ -103,12 +90,10 @@ public sealed class CheckInLegalTextsTests : IDisposable
         Assert.Equal(served.TextHash, good.BiometricConsentTextHash);
         Assert.Equal(64, good.BiometricConsentTextHash!.Length);
 
-        // Refusing needs no version and records no hash.
         var refusing = await rig.SessionAsync();
         Assert.Equal(BiometricConsentStatus.Refused, (await rig.Flow(registry).RecordConsentAsync(refusing, false, "anything", CancellationToken.None)).Status);
         Assert.Null(refusing.BiometricConsentTextHash);
 
-        // Production, nothing approved: no text of the consent is served, the identity step is not offered and the operator is told why.
         var production = Registry("Production");
         var closed = await rig.SessionAsync();
         var state = (await rig.Flow(production).GetStateAsync(closed, CancellationToken.None));
@@ -124,10 +109,6 @@ public sealed class CheckInLegalTextsTests : IDisposable
         Assert.Contains(VerificationAlertReasons.LegalTextNotApproved, VerificationAlertReasons.All);
     }
 
-    /// <summary>
-    /// Data: the SHA-256 of every file that ships is the one of the manifest (line endings as <c>\n</c>, so a checkout on Windows and one on Linux agree), the texts are all there, and the
-    /// registry does not serve a file that was changed after its hash was recorded (a version a guest accepted is never edited in place).
-    /// </summary>
     [Fact]
     public void LegalTexts_HashMatchesFile_Test()
     {
@@ -141,7 +122,6 @@ public sealed class CheckInLegalTextsTests : IDisposable
             var kind = text.GetProperty("kind").GetString()!;
             var version = text.GetProperty("version").GetString()!;
             Assert.InRange(version.Length, 1, BiometricConsentRules.VersionMaxLength);
-            // A draft has no approval, an approved text has both: who approved it and when.
             var approved = text.GetProperty("status").GetString() == "approved";
             Assert.True(approved || text.GetProperty("status").GetString() == "draft");
             Assert.Equal(approved ? JsonValueKind.String : JsonValueKind.Null, text.GetProperty("approvedBy").ValueKind);
@@ -158,19 +138,16 @@ public sealed class CheckInLegalTextsTests : IDisposable
                 Assert.Equal(hash, hash.ToLowerInvariant());
                 Assert.DoesNotContain('\r', content);
 
-                // The Ticino notice says that it is a draft, in every language, until the pull request that approves it removes the line.
                 if (kind == "ticino-notice")
                     Assert.Equal(!approved, content.Contains("BOZZA - da approvare dal legale", StringComparison.Ordinal));
             }
         }
 
-        // The same text with Windows line endings has the same hash.
         var sample = Encoding.UTF8.GetBytes("Riga uno\nRiga due\n");
         Assert.Equal(
             CheckInLegalTexts.Sha256OfText(sample, out _),
             CheckInLegalTexts.Sha256OfText(Encoding.UTF8.GetBytes("Riga uno\r\nRiga due\r\n"), out _));
 
-        // A file changed after its hash was recorded is not served: the version has no text left, so nothing of it is served.
         WriteRegistry(("biometric-consent", "consent-v1", "draft", Texts("Testo registrato")));
         File.WriteAllText(Path.Combine(_root, "checkin", "biometric-consent.consent-v1.it.md"), "Testo cambiato dopo la registrazione\n");
         var tampered = Registry("Staging");
@@ -198,7 +175,6 @@ public sealed class CheckInLegalTextsTests : IDisposable
         rig.Alerts.Verify(a => a.RaiseAsync(withText.Id, VerificationAlertReasons.GuestRequest, It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    /// <summary>An approval is recorded in the manifest: an approved text without who approved it and when is not served, in production or anywhere.</summary>
     [Fact]
     public void LegalTexts_ApprovedWithoutItsApproval_IsNotServed()
     {
@@ -223,13 +199,11 @@ public sealed class CheckInLegalTextsTests : IDisposable
         var kept = Assert.Single(registry.GetForStay(documentNotArchived: false, "it"));
         var notKept = registry.GetForStay(documentNotArchived: true, "it").First(t => t.Kind == CheckInLegalTextKinds.BiometricConsent);
 
-        // The photo of the document is kept encrypted until the check is over, except for a property that keeps no document.
         Assert.Contains("conservata cifrata", kept.ContentHtml, StringComparison.Ordinal);
         Assert.DoesNotContain("conservata cifrata", notKept.ContentHtml, StringComparison.Ordinal);
         Assert.DoesNotContain("<!--", kept.ContentHtml, StringComparison.Ordinal);
         Assert.StartsWith("<h3>", kept.ContentHtml, StringComparison.Ordinal);
 
-        // A language the registry has is served as it is; one it lacks (the notice has Italian and English) falls back to English.
         Assert.Equal("de", registry.GetForStay(documentNotArchived: false, "de").Single().Language);
         var notice = registry.GetForStay(documentNotArchived: true, "de").First(t => t.Kind == CheckInLegalTextKinds.TicinoNotice);
         Assert.Equal("en", notice.Language);
@@ -262,11 +236,6 @@ public sealed class CheckInLegalTextsTests : IDisposable
         Assert.Null(registry.GetActiveVersion("not-a-kind"));
     }
 
-    /// <summary>
-    /// Data (E22/F01/US02 post-review): a failure of the file system (an I/O error) says nothing about the files, so it is not kept for the life of the process. A reader that fails once leaves the
-    /// registry closed for now (nothing that was not checked is served), it is not read again within the interval, and after it the texts are served; the same for one text file of a version. What
-    /// the files say (a hash that is not the recorded one) is the same at every read and stays out whatever the time, without reading again.
-    /// </summary>
     [Fact]
     public void LegalTexts_AnErrorOfTheFileSystem_IsReadAgainAfterTheInterval_AndWhatTheFilesSayIsNot_Test()
     {
@@ -275,7 +244,6 @@ public sealed class CheckInLegalTextsTests : IDisposable
         var italian = Path.Combine(_root, "checkin", "biometric-consent.consent-v1.it.md");
         var clock = new FakeTimeProvider(Now);
 
-        // The manifest cannot be read once: nothing is served, and within the interval it is not read again.
         var files = new FailingOnceFiles();
         files.FailOnce(manifest);
         var registry = Registry("Production", clock, files);
@@ -288,7 +256,6 @@ public sealed class CheckInLegalTextsTests : IDisposable
         Assert.Null(registry.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent));
         Assert.Equal(reads, files.Reads);
 
-        // After the interval it is read again and the text is served; a registry read in full is kept.
         clock.Advance(TimeSpan.FromSeconds(2));
         Assert.Equal("consent-v1", registry.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent)!.Version);
         Assert.Single(registry.GetForStay(documentNotArchived: false, "it"));
@@ -297,7 +264,6 @@ public sealed class CheckInLegalTextsTests : IDisposable
         Assert.NotNull(registry.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent));
         Assert.Equal(readInFull, files.Reads);
 
-        // One text file of the version cannot be read once: the version is not served (a text that was not checked never is) and comes back after the interval.
         var partial = new FailingOnceFiles();
         partial.FailOnce(italian);
         var second = Registry("Production", clock, partial);
@@ -305,7 +271,6 @@ public sealed class CheckInLegalTextsTests : IDisposable
         clock.Advance(CheckInLegalTexts.TransientRetryInterval + TimeSpan.FromSeconds(1));
         Assert.NotNull(second.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent));
 
-        // What the files say is the same at every read: a text changed after its hash was recorded is out for good, and nothing is read again.
         File.WriteAllText(italian, "Testo cambiato dopo la registrazione\n");
         var tamperedFiles = new FailingOnceFiles();
         var third = Registry("Production", clock, tamperedFiles);
@@ -324,7 +289,6 @@ public sealed class CheckInLegalTextsTests : IDisposable
     private CheckInLegalTexts Registry(string environment, TimeProvider clock, ILegalFileReader files) =>
         new(Config(new Dictionary<string, string?> { ["Legal:ContentPath"] = _root }), Env(environment), NullLogger<CheckInLegalTexts>.Instance, clock, files);
 
-    /// <summary>The files of the registry, with some that fail once with an I/O error the way a file system may; every read is counted.</summary>
     private sealed class FailingOnceFiles : ILegalFileReader
     {
         private readonly HashSet<string> _failOnce = new(StringComparer.Ordinal);
@@ -366,7 +330,6 @@ public sealed class CheckInLegalTextsTests : IDisposable
         return environment.Object;
     }
 
-    /// <summary>A registry on disk: one file per language of each text and the manifest with their hashes; the order is the order of the manifest.</summary>
     private void WriteRegistry(params (string Kind, string Version, string Status, Dictionary<string, string> Markdown, bool WithApproval)[] versions)
     {
         var folder = Path.Combine(_root, "checkin");
@@ -399,7 +362,6 @@ public sealed class CheckInLegalTextsTests : IDisposable
     private void WriteRegistry(params (string Kind, string Version, string Status, Dictionary<string, string> Markdown)[] versions) =>
         WriteRegistry([.. versions.Select(v => (v.Kind, v.Version, v.Status, v.Markdown, WithApproval: true))]);
 
-    /// <summary>An org on the Agency plan (the biometric verification on by default), a stay of an adult guest and the flow, with fakes for everything that is not the consent.</summary>
     private sealed class FlowRig : IAsyncDisposable
     {
         private readonly Guid _orgId = Guid.NewGuid();
@@ -448,7 +410,6 @@ public sealed class CheckInLegalTextsTests : IDisposable
             return rig;
         }
 
-        /// <summary>A new stay of an adult booker with an open check-in session, loaded as the public endpoint loads it.</summary>
         public async Task<GuestCheckInSession> SessionAsync()
         {
             var guest = new Guest

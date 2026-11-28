@@ -7,18 +7,13 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum OrgRole
 {
-    /// <summary>The owner of the org: pays the plan, manages the team. One per org; not transferable in this version (D15).</summary>
     Owner = 1,
 
-    /// <summary>Administers the org like the owner (team, billing, settings), without closing the account or holding the ownership.</summary>
     Admin = 2,
 
-    /// <summary>Runs the properties (bookings, guests, payments, leases) and the suppliers; no billing, no team.</summary>
     PropertyManager = 3,
 
-    /// <summary>Reads properties and bookings and handles guests; cannot change prices, bookings or payments.</summary>
     Collaborator = 4,
 
-    /// <summary>Reads properties, bookings, payments and leases and the org's invoices; writes nothing.</summary>
     Accountant = 5,
 }

@@ -17,15 +17,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>Where the policy files of the plan are, and the committed one, for the tests of the policy (E70/F01/US02/T01).</summary>
 internal static class IdentityPolicyTestFiles
 {
     public const string ShippedFileName = "identity-policy-2026.11-1.json";
 
-    /// <summary>
-    /// The canonical SHA-256 of the committed policy file, the one <c>IdentityPolicyProvider.CanonicalSha256</c> gives for it (the message of
-    /// <c>IdentityPolicyFileCoherenceTests</c> names it when the file changes); the pin in <c>appsettings.json</c> is the same value.
-    /// </summary>
     public const string ShippedCanonicalHash = "d2d343e2bf661f316c8e3e4a91252ecf6c9da1e669766609e9e393978fd04426";
 
     public static string RepositoryRoot()
@@ -42,29 +37,21 @@ internal static class IdentityPolicyTestFiles
         return Path.Combine(RepositoryRoot(), "Casazen.Web", "IdentityPolicies");
     }
 
-    /// <summary>The text of the committed policy file, as the checkout of this machine has it.</summary>
     public static string ShippedText()
     {
         return File.ReadAllText(Path.Combine(SourceFolder(), ShippedFileName));
     }
 
-    /// <summary>
-    /// The text of the candidate policy file <paramref name="version"/>, not provisional: <c>identity-policy-2026.11-2</c> or <c>-3</c> (IDENT-TESTPOLICY), the committed policy with the three similarity
-    /// thresholds of the candidate; <c>-4</c> or <c>-5</c> (IDENT-TUNING), the policy of <c>-2</c> with the two thresholds of the pose of the head of the candidate. No pin of a candidate is committed:
-    /// the tests compute its canonical hash from the file.
-    /// </summary>
     public static string CandidateText(string version)
     {
         return File.ReadAllText(Path.Combine(SourceFolder(), version + ".json"));
     }
 
-    /// <summary>The committed policy with the members at <paramref name="edits"/> set to a JSON literal (a null literal removes the member), written compactly.</summary>
     public static string Edited(params (string Path, string? Literal)[] edits)
     {
         return Apply(ShippedText(), edits);
     }
 
-    /// <summary>The JSON <paramref name="text"/> with the members at the dotted paths of <paramref name="edits"/> set to a JSON literal (a null literal removes the member), written compactly.</summary>
     public static string Apply(string text, params (string Path, string? Literal)[] edits)
     {
         var root = JsonNode.Parse(text)!.AsObject();
@@ -85,11 +72,6 @@ internal static class IdentityPolicyTestFiles
     }
 }
 
-/// <summary>
-/// E70/F01/US02/T01 (NF-193, NF-194, ADR-013-R18): the decision policy is read once, validated and used only when its canonical SHA-256 is the pinned one; a
-/// policy that cannot be used is <see cref="IdentityPolicyState.Unavailable"/> with a code and never an exception; the fingerprint of the configuration is null
-/// while any model is missing and changes with the policy hash and with every weight hash.
-/// </summary>
 public sealed class IdentityPolicyProviderTests : IDisposable
 {
     private const string PolicyFile = "policy.json";
@@ -138,7 +120,6 @@ public sealed class IdentityPolicyProviderTests : IDisposable
         Assert.Equal((3, 300, 2, IdentityAggregationRules.Median, 0.85, 0.7, 0.7), (policy.Match.Frames, policy.Match.MinFrameGapMs, policy.Match.RandomizeAmongTop, policy.Match.Aggregation, policy.Match.Accept, policy.Match.ReviewFloor, policy.Match.MinEachFrame));
         Assert.Equal(1, policy.Closure.GuidedRetries);
 
-        // Nothing the file says is dropped on the way: the policy written back is, canonically, the file.
         var written = JsonSerializer.SerializeToUtf8Bytes(policy, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Assert.Equal(IdentityPolicyTestFiles.ShippedCanonicalHash, IdentityPolicyProvider.CanonicalSha256(written));
     }
@@ -146,7 +127,6 @@ public sealed class IdentityPolicyProviderTests : IDisposable
     [Fact]
     public void CanonicalSha256_TheLfAndTheCrlfVersionsOfOneFile_AreIdentical()
     {
-        // A checkout on Windows turns the line endings into CRLF, an editor may add a byte order mark: the pin must not care.
         var lf = IdentityPolicyTestFiles.ShippedText().Replace("\r\n", "\n", StringComparison.Ordinal);
         var crlf = lf.Replace("\n", "\r\n", StringComparison.Ordinal);
         var withBom = new byte[] { 0xEF, 0xBB, 0xBF }.Concat(Encoding.UTF8.GetBytes(crlf)).ToArray();
@@ -296,7 +276,6 @@ public sealed class IdentityPolicyProviderTests : IDisposable
     [InlineData("document", "[]")]
     public void Snapshot_AMemberMissingUnknownOrOfTheWrongType_IsInvalid(string path, string? literal)
     {
-        // Strict: a member that is spelled wrong or has the wrong shape is refused, never ignored and never defaulted.
         var snapshot = ProviderFor(IdentityPolicyTestFiles.Edited((path, literal))).Snapshot;
 
         AssertUnavailable(snapshot, IdentityPolicyReasonCodes.PolicyInvalid);
@@ -305,7 +284,6 @@ public sealed class IdentityPolicyProviderTests : IDisposable
     [Fact]
     public void IdentityPolicyProvider_OneBitChallenge_IsInvalid()
     {
-        // Security (NF-192): a challenge of one bit (two moves, never the same twice in a row) is a coin toss a replayed video wins half the time.
         var oneBit = IdentityPolicyTestFiles.Edited(
             ("presence.challenge.actions", "[\"turn_left\",\"turn_right\"]"),
             ("presence.challenge.steps", "3"),
@@ -357,7 +335,6 @@ public sealed class IdentityPolicyProviderTests : IDisposable
     [Fact]
     public void Snapshot_ALawfulChangeOfTheFileSpelling_StaysReady()
     {
-        // The LF checkout, the CRLF checkout and the compact rewrite of one policy are one policy: the pin holds.
         var lf = IdentityPolicyTestFiles.ShippedText().Replace("\r\n", "\n", StringComparison.Ordinal);
         var crlf = lf.Replace("\n", "\r\n", StringComparison.Ordinal);
         var compact = JsonNode.Parse(lf)!.ToJsonString();
@@ -380,8 +357,6 @@ public sealed class IdentityPolicyProviderTests : IDisposable
     [InlineData("provisional", "false")]
     public void IdentityPolicyProvider_ModifiedFile_IsUnavailable(string path, string literal)
     {
-        // Security: a threshold (or the word "provisional") changed after the file was pinned is still a valid policy, and it must not be used: only the hash
-        // tells it is not the one that was qualified. Nothing about the modified file is exposed.
         var logger = new CapturingLogger<IdentityPolicyProvider>();
         var modified = IdentityPolicyTestFiles.Edited((path, literal));
         File.WriteAllText(Path.Combine(_directory, PolicyFile), modified);
@@ -392,7 +367,6 @@ public sealed class IdentityPolicyProviderTests : IDisposable
         var computed = IdentityPolicyProvider.CanonicalSha256(Encoding.UTF8.GetBytes(modified))!;
         Assert.NotEqual(IdentityPolicyTestFiles.ShippedCanonicalHash, computed);
 
-        // The log says what to pin (the hash of the file in the application) and why, with no path and no value.
         var line = Assert.Single(logger.Lines, entry => entry.Contains(IdentityPolicyReasonCodes.PolicyHashMismatch, StringComparison.Ordinal));
         Assert.Contains(computed, line, StringComparison.Ordinal);
         Assert.DoesNotContain(_directory, string.Concat(logger.Lines), StringComparison.Ordinal);
@@ -462,7 +436,6 @@ public sealed class IdentityPolicyProviderTests : IDisposable
 
         AssertUnavailable(snapshot, IdentityPolicyReasonCodes.PolicyInvalid);
 
-        // The type of the failure, never its message.
         Assert.DoesNotContain("4321", string.Concat(logger.Lines), StringComparison.Ordinal);
         Assert.Contains(nameof(InvalidOperationException), string.Concat(logger.Lines), StringComparison.Ordinal);
     }
@@ -481,7 +454,6 @@ public sealed class IdentityPolicyProviderTests : IDisposable
     [Fact]
     public void Snapshot_AFileThatCannotBeRead_IsUnavailable_AsMissing_AndNeverThrows()
     {
-        // Another process holds the file open: the read fails with an I/O error, which is no reason to throw at a reader, and never one to approve.
         var path = Path.Combine(_directory, PolicyFile);
         File.WriteAllText(path, IdentityPolicyTestFiles.ShippedText());
         using var held = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
@@ -551,8 +523,6 @@ public sealed class IdentityPolicyProviderTests : IDisposable
         Assert.Equal("identity-policy-2026.11-1", current.PolicyVersion);
         Assert.Equal(IdentityPolicyTestFiles.ShippedCanonicalHash, current.PolicyHash);
 
-        // Independent vectors (a script, not this code): the weights hash is the SHA-256 of the three lower case hashes joined with ":" in role order, the
-        // fingerprint the SHA-256 of "policyHash:weightsHash".
         Assert.Equal("f299a350bdadffc513a0ec0a9f230297b0c5b364af3f5b553bbdede224043a46", current.WeightsHash);
         Assert.Equal("4bb3e13e0aa8f56531af8847b806fdcadc2493f0d9ff019e1233e30425a9bc45", current.Fingerprint);
         Assert.Equal(current.WeightsHash, IdentityConfigurationFingerprint.ComputeWeightsHash(store.Snapshot));
@@ -573,7 +543,6 @@ public sealed class IdentityPolicyProviderTests : IDisposable
             ModelsSnapshot(DetectorHash, AntiSpoofingHash, RecognitionHash).Models.Where(model => model.Role != role).ToList());
         var stateNotReady = ModelsSnapshot(DetectorHash, AntiSpoofingHash, RecognitionHash, state: BiometricModelsState.Loading);
 
-        // Even a store that says Ready but whose entry of one role says "not loaded" gives nothing.
         var readyButNotLoaded = ModelsSnapshot(DetectorHash, AntiSpoofingHash, RecognitionHash, notLoadedRole: role);
 
         foreach (var snapshot in new[] { notLoaded, missing, stateNotReady, readyButNotLoaded })
@@ -618,10 +587,8 @@ public sealed class IdentityPolicyProviderTests : IDisposable
         var original = new IdentityConfigurationFingerprint(ProviderFor(IdentityPolicyTestFiles.ShippedText()), store).Current()!;
         var other = "00" + DetectorHash[2..];
 
-        // Another policy (a new calibration is a new file): same models, another policy hash.
         var anotherPolicy = new IdentityConfigurationFingerprint(ProviderFor(IdentityPolicyTestFiles.Edited(("version", "\"identity-policy-2026.12-1\""), ("provisional", "false")), fileName: "calibrated.json"), store).Current()!;
 
-        // Another weight in each of the three roles, and two weights swapped (the role order is part of the recipe).
         var detectorChanged = Current(ModelsSnapshot(other, AntiSpoofingHash, RecognitionHash));
         var antiSpoofingChanged = Current(ModelsSnapshot(DetectorHash, other, RecognitionHash));
         var recognitionChanged = Current(ModelsSnapshot(DetectorHash, AntiSpoofingHash, other));
@@ -634,7 +601,6 @@ public sealed class IdentityPolicyProviderTests : IDisposable
         Assert.All(new[] { detectorChanged, antiSpoofingChanged, recognitionChanged, swapped }, value => Assert.Equal(original.PolicyHash, value.PolicyHash));
         Assert.All(new[] { detectorChanged, antiSpoofingChanged, recognitionChanged, swapped }, value => Assert.NotEqual(original.WeightsHash, value.WeightsHash));
 
-        // The same models and the same policy: the same value, whatever the case the store spells the hashes in.
         var again = Current(ModelsSnapshot(DetectorHash.ToLowerInvariant(), AntiSpoofingHash.ToLowerInvariant(), RecognitionHash.ToLowerInvariant()));
         Assert.Equal(original, again);
 
@@ -643,8 +609,6 @@ public sealed class IdentityPolicyProviderTests : IDisposable
             return new IdentityConfigurationFingerprint(ProviderFor(IdentityPolicyTestFiles.ShippedText(), fileName: "again.json"), new FakeModelStore(snapshot)).Current()!;
         }
     }
-
-    // ─── The candidate policy files (IDENT-TESTPOLICY, NF-194) ───────────────────────────────────────────
 
     /// <summary>
     /// AC1: each candidate policy file is the committed policy with exactly five members different: its version (the name of its file), the end of the provisional state and the three
@@ -669,11 +633,6 @@ public sealed class IdentityPolicyProviderTests : IDisposable
         Assert.Equal(expectedCanonical, actualCanonical);
     }
 
-    /// <summary>
-    /// AC2 and AC3, the way a candidate is chosen and the only way: with the two variables (<c>IdentityVerification__PolicyFile</c> and <c>IdentityVerification__PolicySha256</c>, here as the
-    /// configuration keys they bind to) over the committed <c>appsettings.json</c>, the services of the application give the ready, non-provisional candidate read from the build output,
-    /// with its canonical hash and its thresholds; with the committed defaults alone they give the committed provisional policy and its pin, as before.
-    /// </summary>
     [Theory]
     [InlineData("identity-policy-2026.11-2", 0.5, 0.363, 0.3)]
     [InlineData("identity-policy-2026.11-3", 0.4, 0.3, 0.25)]
@@ -700,12 +659,6 @@ public sealed class IdentityPolicyProviderTests : IDisposable
         Assert.NotEqual(committed.Hash, candidate.Hash);
     }
 
-    // ─── The pose candidates (IDENT-TUNING, NF-194) ──────────────────────────────────────────────────────
-
-    /// <summary>
-    /// AC1: each pose candidate is the candidate <c>identity-policy-2026.11-2</c> with exactly three members different: its version (the name of its file) and the two thresholds of the pose of the head. The numbers are below
-    /// what the estimator of the pose can measure, to compare on real runs, never a calibration; every other limit and rule, <c>neutralMaxDegrees</c> too, is the one of <c>-2</c>.
-    /// </summary>
     [Theory]
     [InlineData("identity-policy-2026.11-4", "12", "6")]
     [InlineData("identity-policy-2026.11-5", "8", "4")]
@@ -723,10 +676,6 @@ public sealed class IdentityPolicyProviderTests : IDisposable
         Assert.Equal(expectedCanonical, actualCanonical);
     }
 
-    /// <summary>
-    /// AC2, the way a pose candidate is chosen and the only way: with the two variables over the committed <c>appsettings.json</c> the services of the application give the ready, non-provisional candidate with its canonical hash, its
-    /// two thresholds of the pose and the similarity thresholds of <c>-2</c>; with the committed defaults alone they give the committed provisional policy and its pin, as before.
-    /// </summary>
     [Theory]
     [InlineData("identity-policy-2026.11-4", 12.0, 6.0)]
     [InlineData("identity-policy-2026.11-5", 8.0, 4.0)]
@@ -756,7 +705,6 @@ public sealed class IdentityPolicyProviderTests : IDisposable
         Assert.NotEqual(committed.Hash, candidate.Hash);
     }
 
-    /// <summary>Security: a pose candidate named without its own pin (only <c>IdentityVerification__PolicyFile</c> set) is no policy: the pin of the committed file does not fit it, and a person decides.</summary>
     [Theory]
     [InlineData("identity-policy-2026.11-4")]
     [InlineData("identity-policy-2026.11-5")]
@@ -767,7 +715,6 @@ public sealed class IdentityPolicyProviderTests : IDisposable
         AssertUnavailable(snapshot, IdentityPolicyReasonCodes.PolicyHashMismatch);
     }
 
-    /// <summary>What the services of the application, built over the committed <c>appsettings.json</c> and the configuration <paramref name="variables"/> on top of it, make of the policy.</summary>
     private static IdentityPolicySnapshot SnapshotOfTheServices(Dictionary<string, string?> variables)
     {
         var configuration = new ConfigurationBuilder()

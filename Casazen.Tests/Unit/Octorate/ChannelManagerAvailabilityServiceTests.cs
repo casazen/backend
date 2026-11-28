@@ -74,7 +74,6 @@ public class ChannelManagerAvailabilityServiceTests
     {
         ClientAnswers(new OctorateAvailabilityResult(false, null));
 
-        // The same property, room and dates: the guest who tries again, the host who goes back and forth, whoever is the one asking.
         await Service().CheckAsync(PropertyId, OrgId, From, To, 2, Ct);
         await Service().CheckAsync(PropertyId, OrgId, From, To, 4, Ct);
         var again = await Service().CheckAsync(PropertyId, OrgId, From, To, 1, Ct);
@@ -139,7 +138,6 @@ public class ChannelManagerAvailabilityServiceTests
     [Fact]
     public async Task CheckAsync_TheLookupOfTheTargetFailsOnOctorate_NeverRefuses()
     {
-        // The lookup reads the rooms of the accommodation on Octorate when the mapping holds none.
         _targets
             .Setup(t => t.LookupAsync(PropertyId, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new OctorateRateLimitException(null));

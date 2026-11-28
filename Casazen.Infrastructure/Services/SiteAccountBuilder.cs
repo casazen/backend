@@ -7,12 +7,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// <see cref="ISiteAccountBuilder"/> (S023, PLG-BE-SITEAPI, site integration plan §10.3): the one place that makes the <c>account</c> of a connected plugin, so the four
-/// endpoints that answer it cannot disagree. It adds no rule: the domain settings are those of <see cref="IOrgDomainService"/> (the console's), the address of the
-/// org's own domain is the one the console reads in <c>publicUrls.customDomainUrl</c> (a custom domain that is verified and paid for, <see cref="PublicOrgSiteUrls"/>),
-/// the CasaZen address is <c>App:PublicSiteBaseUrl</c>, and <c>embedEnabled</c> is what <see cref="HostSurfaceRules"/> gives <c>resolve-host</c>.
-/// </summary>
 public sealed class SiteAccountBuilder(
     AppDbContext db,
     IOrgDomainService orgDomain,
@@ -20,7 +14,6 @@ public sealed class SiteAccountBuilder(
     IOptions<PublicSiteOptions> publicSite,
     IFeatureFlags featureFlags) : ISiteAccountBuilder
 {
-    /// <inheritdoc />
     public async Task<SiteAccountResult> BuildAsync(
         SiteConnectionPrincipal site,
         OrgDomainConfig? domain = null,
@@ -28,7 +21,6 @@ public sealed class SiteAccountBuilder(
     {
         ArgumentNullException.ThrowIfNull(site);
 
-        // The org of the credential and no other; one that is no longer active has no account (its credential does not open either).
         var org = await db.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == site.OrgId && o.IsActive, cancellationToken);
         if (org is null)
             return new SiteAccountResult(SiteAccountOutcome.NotFound, null);
@@ -44,7 +36,6 @@ public sealed class SiteAccountBuilder(
         SitePublicAddressKind kind;
         if (domain.PublicUrls.CustomDomainUrl is { Length: > 0 } ownDomain)
         {
-            // A domain that is served now: verified and paid for, the one resolve-host answers on.
             address = ownDomain;
             kind = SitePublicAddressKind.CustomDomain;
         }
@@ -58,7 +49,6 @@ public sealed class SiteAccountBuilder(
             return new SiteAccountResult(SiteAccountOutcome.PublicAddressNotConfigured, null);
         }
 
-        // The same call that makes the answer of resolve-host, with the mode the org's host is really served in.
         var surfaces = HostSurfaceRules.Evaluate(
             org,
             siteUrls.ServedMode(org),

@@ -70,10 +70,6 @@ public class OrgExportScopeTests
         IsPrimaryForCedolare = regime == StrFiscalRegime.CedolareSecca21,
     };
 
-    /// <summary>
-    /// An org with four properties, each with a taxpayer and a fiscal year: the first and the soft-deleted fourth are given to the
-    /// collaborator Anna, the third was created by a second owner, and another org with its own property.
-    /// </summary>
     private async Task<World> SeedAsync()
     {
         var (org, _) = await _kit.SeedOwnerOrgAsync();
@@ -135,7 +131,6 @@ public class OrgExportScopeTests
 
         var export = await ExportAsync(world, new HostScope(world.OrgId, GrantedToUserId: Anna));
 
-        // The first property and the soft-deleted one it was given; not the hidden one, not the one of the second owner.
         Assert.True(PropertiesOf(export, "propertyFiscalYears").SetEquals([world.Granted, world.Deleted]));
         Assert.True(PropertiesOf(export, "propertyTaxpayers").SetEquals([world.Granted, world.Deleted]));
         var json = export.GetRawText();

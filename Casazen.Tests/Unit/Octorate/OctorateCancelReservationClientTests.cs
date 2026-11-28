@@ -48,7 +48,6 @@ public class OctorateCancelReservationClientTests
         using (h.Scope.Use(OrgA))
             await h.Client.CancelReservationAsync(Target, "7001", CancellationToken.None);
 
-        // The read, the PUT, and the read that proves the reservation is cancelled: no delete.
         Assert.Equal([HttpMethod.Get, HttpMethod.Put, HttpMethod.Get], h.Requests.Select(r => r.Method).ToList());
         Assert.EndsWith("/rest/v1/reservation/585492/7001", h.Requests[2].Uri.PathAndQuery);
         var put = h.Requests[1];
@@ -57,7 +56,6 @@ public class OctorateCancelReservationClientTests
         var body = document.RootElement;
         Assert.Equal("CANCELLED", body.GetProperty("status").GetString());
 
-        // Nothing else of the reservation is rewritten: the dates, the price, the guests stay what Octorate gave.
         Assert.Equal("K7Q2M9X4TB", body.GetProperty("refer").GetString());
         Assert.Equal(274, body.GetProperty("channelId").GetInt32());
         Assert.Equal(956528, body.GetProperty("product").GetInt64());
@@ -96,7 +94,6 @@ public class OctorateCancelReservationClientTests
             var h = new ClientHarness();
             h.Answer(HttpStatusCode.OK, ConfirmedReservation);
 
-            // The PUT answers 200 with a document that says CANCELLED (an echo of what was sent) and the read that follows says it is not.
             h.Answer(HttpStatusCode.OK, ConfirmedReservation.Replace("CONFIRMED", "CANCELLED", StringComparison.Ordinal));
             h.Answer(HttpStatusCode.OK, heldAfterThePut);
             h.Answer(HttpStatusCode.OK, "{}");
@@ -132,7 +129,6 @@ public class OctorateCancelReservationClientTests
                 Assert.IsType(expected, error);
             }
 
-            // Nothing is deleted on a read that failed, and nothing is reported as cancelled.
             Assert.Equal([HttpMethod.Get, HttpMethod.Put, HttpMethod.Get], h.Requests.Select(r => r.Method).ToList());
         }
     }
@@ -158,7 +154,6 @@ public class OctorateCancelReservationClientTests
                 Assert.IsType(expected, error);
             }
 
-            // The read and the PUT: a delete is for the answer that says the reservation cannot be cancelled that way, and for no other.
             Assert.Equal([HttpMethod.Get, HttpMethod.Put], h.Requests.Select(r => r.Method).ToList());
         }
     }
@@ -177,7 +172,6 @@ public class OctorateCancelReservationClientTests
             Assert.Equal(956527, completed.RootElement.GetProperty("pmsProduct").GetInt64());
         }
 
-        // A document that has its own room keeps it: the room of the target does not replace what Octorate says.
         using (var kept = JsonDocument.Parse(OctorateReservationRequests.CancelBody(complete.RootElement, new OctorateBookingTarget("585492", "111", "222"))))
         {
             Assert.Equal(956528, kept.RootElement.GetProperty("product").GetInt64());

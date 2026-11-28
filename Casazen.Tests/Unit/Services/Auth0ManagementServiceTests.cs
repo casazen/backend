@@ -12,10 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// Exercises the real Auth0 SDK client against a fake HTTP handler, so the assertions are on the
-/// requests actually sent to the Management API.
-/// </summary>
 public class Auth0ManagementServiceTests
 {
     private const string Domain = "tenant.eu.auth0.com";
@@ -54,7 +50,6 @@ public class Auth0ManagementServiceTests
         var assign = Assert.Single(_requests, r => r.Method == HttpMethod.Post);
         Assert.EndsWith("/users/auth0%7Chost-and-supplier/roles", assign.Path);
         Assert.Equal(["rol_supplier"], RoleIdsOf(assign));
-        // The destructive pattern (read the user's roles, delete them all) must be gone.
         Assert.DoesNotContain(_requests, r => r.Method == HttpMethod.Delete);
         Assert.DoesNotContain(_requests, r => r.Method == HttpMethod.Get && r.Path.Contains("/users/"));
     }
@@ -192,7 +187,6 @@ public class Auth0ManagementServiceTests
         Assert.EndsWith("/users/auth0%7Chost-and-supplier", patch.Path);
         var body = JsonDocument.Parse(patch.Body!).RootElement;
         Assert.True(body.GetProperty("blocked").GetBoolean());
-        // Nothing else of the profile is overwritten.
         Assert.Equal(["blocked"], body.EnumerateObject().Select(p => p.Name));
     }
 

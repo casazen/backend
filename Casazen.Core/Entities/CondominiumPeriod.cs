@@ -5,10 +5,6 @@ using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// One fiscal year of a condominium (CondoLedger <c>fiscal_periods</c>). It need not match the calendar year.
-/// Two active years of the same condominium do not overlap.
-/// </summary>
 [Table("CondominiumPeriods")]
 public class CondominiumPeriod : ITenantOwned
 {

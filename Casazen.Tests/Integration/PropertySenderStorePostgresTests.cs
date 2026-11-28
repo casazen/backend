@@ -37,13 +37,11 @@ public class PropertySenderStorePostgresTests
         var swiss = await SeedPropertyAsync(database, orgA, "CH", 3);
         var foreign = await SeedPropertyAsync(database, orgB, "IT", 4);
 
-        // One value for both senders, from the default (manual: no confirmed listing) to the one chosen, with its line.
         await using (var db = TenantContext(database, orgA))
         {
             var set = await Store(db).SetAsync(first, ComplianceSenderType.CasaZen, UserA, CancellationToken.None);
             Assert.Equal((ComplianceSenderType.CasaZen, ComplianceSenderType.CasaZen, SenderSource.Stored), (set.AlloggiatiSender, set.IstatSender, set.Source));
 
-            // The same sender again: nothing more is written.
             await Store(db).SetAsync(first, ComplianceSenderType.CasaZen, UserA, CancellationToken.None);
         }
 
@@ -58,9 +56,6 @@ public class PropertySenderStorePostgresTests
                 OrgActivityDetails.Parse(line.DetailsJson));
         }
 
-        // Two first writes at the same moment, with two senders that both change the default (manual): both read no row, both insert with
-        // their line, the unique index keeps one. The loser re-reads the row, which holds the other sender, and is refused: one row, one
-        // line, one coherent pair.
         var race = new SenderSaveRendezvous();
         var outcomes = await Task.WhenAll(
             OutcomeAsync(database, orgA, race, raced, ComplianceSenderType.ChannelManager, UserA),
@@ -75,7 +70,6 @@ public class PropertySenderStorePostgresTests
             Assert.Equal(1, await verify.OrgActivityEntries.CountAsync(e => e.SubjectId == raced.ToString()));
         }
 
-        // A property of another org is not found, read or written; a property outside Italy has no sender to choose.
         await using (var db = TenantContext(database, orgA))
         {
             var store = Store(db);
@@ -154,7 +148,6 @@ public class PropertySenderStorePostgresTests
         return new PropertySenderStore(db, new ActivityLog(db), host.Object);
     }
 
-    /// <summary>A context of a request of <paramref name="orgId"/>: the tenant filter on.</summary>
     private static AppDbContext TenantContext(PostgresTestDatabase database, Guid orgId) =>
         new(database.CreateOptions(), new FixedTenantContext(orgId));
 
@@ -175,10 +168,6 @@ public class PropertySenderStorePostgresTests
         return org.Id;
     }
 
-    /// <summary>
-    /// A property of <paramref name="orgId"/>. The address is unique per org (<c>UIX_Properties_OrgId_AddressKey</c>), so every property
-    /// of one org gets its own <paramref name="streetNumber"/>.
-    /// </summary>
     private static async Task<Guid> SeedPropertyAsync(PostgresTestDatabase database, Guid orgId, string country, int streetNumber)
     {
         await using var db = database.CreateContext();

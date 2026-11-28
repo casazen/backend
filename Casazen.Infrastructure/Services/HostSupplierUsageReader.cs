@@ -35,8 +35,6 @@ public sealed class HostSupplierUsageReader(AppDbContext db) : IHostSupplierUsag
 
         var supplierIds = requests.Select(r => r.SupplierOrgId).Distinct().ToList();
 
-        // The name a supplier goes by in the marketplace is its legal name; an org without a profile (it never finished joining)
-        // goes by the name of the org. SupplierProfile is keyed by the supplier org and not tenant-filtered.
         var legalNames = await db.SupplierProfiles
             .AsNoTracking()
             .Where(sp => supplierIds.Contains(sp.OrgId))

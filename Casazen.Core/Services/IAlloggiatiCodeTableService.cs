@@ -10,20 +10,14 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IAlloggiatiCodeTableService
 {
-    /// <summary>Rows and last import of every table.</summary>
     Task<IReadOnlyList<AlloggiatiCodeTableStatus>> GetStatusAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Entries of <paramref name="tables"/> whose description starts with (then contains) <paramref name="query"/>,
-    /// ignoring case, accents and punctuation; at most <paramref name="limit"/>.
-    /// </summary>
     Task<IReadOnlyList<AlloggiatiCodeEntryInfo>> SearchAsync(
         IReadOnlyList<AlloggiatiCodeTable> tables,
         string query,
         int limit,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The codes of the imported tables needed to resolve <paramref name="guests"/>.</summary>
     Task<AlloggiatiCodeBook> LoadCodeBookAsync(IEnumerable<StayGuest> guests, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -41,10 +35,6 @@ public interface IAlloggiatiCodeTableService
         string? authority = null,
         bool skipIfUnchanged = false);
 
-    /// <summary>
-    /// Loads the embedded official tables of the deploy when a table is empty. Does not replace a table an admin or
-    /// the scheduled job already imported.
-    /// </summary>
     Task<IReadOnlyList<AlloggiatiCodeImportResult>> ImportSeedIfEmptyAsync(CancellationToken cancellationToken = default);
 }
 
@@ -55,7 +45,6 @@ public sealed record AlloggiatiCodeTableStatus(
     string? SourceVersion,
     string? SourceFileName);
 
-/// <param name="CitizenshipLabel">Adjective shown for a citizenship (Italiano). Null for places and unknown countries.</param>
 public sealed record AlloggiatiCodeEntryInfo(
     AlloggiatiCodeTable Table,
     string Code,
@@ -63,8 +52,6 @@ public sealed record AlloggiatiCodeEntryInfo(
     string? Province,
     string? CitizenshipLabel = null);
 
-/// <param name="Line">1-based line of the file (0 for the file as a whole).</param>
-/// <param name="Error">Stable snake_case code (see <see cref="AlloggiatiCodeImportErrors"/>).</param>
 public sealed record AlloggiatiCodeImportLineError(int Line, string Error);
 
 public sealed record AlloggiatiCodeImportResult(
@@ -77,7 +64,6 @@ public sealed record AlloggiatiCodeImportResult(
     public bool Success => Errors.Count == 0;
 }
 
-/// <summary>Error codes of an import, per line or for the whole file.</summary>
 public static class AlloggiatiCodeImportErrors
 {
     public const string EmptyFile = "empty_file";

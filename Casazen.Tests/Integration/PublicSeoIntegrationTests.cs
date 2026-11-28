@@ -14,10 +14,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// BK-15 (A3-20, A8-09, A8-29): what a crawler receives for the booking sites. The tests read the HTML the way a search
-/// engine does (head tags, JSON-LD) and check what must never be indexed: unpublished data, unknown or unverified hosts.
-/// </summary>
 public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private const string Cin = "IT058091C27G5FFZDZ";
@@ -26,8 +22,6 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
     public PublicSeoIntegrationTests(CasazenWebApplicationFactory factory) => _factory = factory;
 
     private string PublicSite => _factory.Services.GetRequiredService<IOptions<PublicSiteOptions>>().Value.PublicSiteBaseUrl!.TrimEnd('/');
-
-    // ── Org landing page ────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetOrg_WithPublishedProperties_ServesIndexableHtmlWithTheHeadOfSpecAc13()
@@ -51,7 +45,6 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.Contains("<meta property=\"og:image\" content=\"https://cdn.example.test/logo.png\">", html);
         Assert.Contains("<meta property=\"og:site_name\" content=\"Rossi Ospitalità\">", html);
         Assert.Contains("<h1>Rossi Ospitalità</h1>", html);
-        // The property is a link on the public domain, with its real facts.
         Assert.Contains($"<a href=\"{PublicSite}/book/{org.Slug}/property/{property.Slug}\">Villa Lago</a>", html);
         Assert.Contains("Ospiti: 4", html);
         Assert.Contains("Da €150 a notte", html);
@@ -157,7 +150,6 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
 
         var html = await GetHtmlAsync($"/api/public/seo/orgs/{org.Slug}?host=evil.example\"><script>alert(1)</script>");
 
-        // The page is noindex for such a host, and the host is not written anywhere.
         Assert.Contains("content=\"noindex,nofollow\"", html);
         Assert.DoesNotContain("evil.example", html);
         Assert.DoesNotContain("<script>alert", html);
@@ -166,8 +158,6 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
         foreach (var block in JsonLdBlocks(html))
             Assert.Equal("https://schema.org", block.GetProperty("@context").GetString());
     }
-
-    // ── Hosts: the verified ones are indexed, the others are not ────────────────────────
 
     [Fact]
     public async Task GetOrg_OnThePublicSiteHostOrWithoutHost_IsIndexable()
@@ -212,7 +202,6 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
     [Fact]
     public async Task GetOrg_OnAVerifiedCustomDomainWithoutAPaidProPlan_IsNoindex()
     {
-        // The domain is verified, but a Pro tier nobody pays for is Starter: the host no longer resolves (A3-07).
         var domain = $"www.{Guid.NewGuid():N}.example.test";
         var org = await SeedOrgAsync(planTier: PlanTier.Pro, paid: false, customDomain: domain, verified: true);
         await SeedPropertyAsync(org, "Villa Lago");
@@ -237,8 +226,6 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
             Assert.Contains("content=\"noindex,nofollow\"", html);
         }
     }
-
-    // ── Property page ───────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetProperty_Published_ServesTheHeadOfSpecAc13AndAVacationRentalOfRealData()
@@ -280,7 +267,6 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
             place.GetProperty("amenityFeature").EnumerateArray().Select(a => a.GetProperty("name").GetString()));
         Assert.True(rental.GetProperty("petsAllowed").GetBoolean());
         Assert.Equal(150m, rental.GetProperty("makesOffer")[0].GetProperty("priceSpecification").GetProperty("price").GetDecimal());
-        // Nothing the database does not hold is invented.
         foreach (var key in new[] { "aggregateRating", "review", "checkinTime", "checkoutTime" })
             Assert.False(rental.TryGetProperty(key, out _), key);
 
@@ -291,7 +277,6 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
     [Fact]
     public async Task GetProperty_HouseInSwissFrancs_SaysFrancsInTheTextAndInTheOffer()
     {
-        // CHF-MONEY: the price a crawler reads is in the currency of the house, not always in euros.
         var org = await SeedOrgAsync();
         var property = await SeedPropertyAsync(org, "Casa Ceresio", city: "Lugano", currency: "CHF");
 
@@ -419,8 +404,6 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
         var rental = JsonLdBlocks(html).Single(b => b.GetProperty("@type").GetString() == "VacationRental");
         Assert.Equal("Villa \"Lago\" <i>", rental.GetProperty("name").GetString());
     }
-
-    // ── Org's own host: subdomain and custom domain (BK-16) ──────────────────────────────
 
     [Fact]
     public async Task GetHostPage_VerifiedCustomDomain_RendersTheLandingPageWithTheCanonicalOnThatDomain()
@@ -599,8 +582,6 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.All(Locations(await response.Content.ReadAsStringAsync(), "url"), loc => Assert.StartsWith(PublicSite + "/p/", loc));
     }
 
-    // ── Sitemaps ────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task OrgSitemap_ListsTheLandingPageAndThePublishedPropertiesOnThePublicSite()
     {
@@ -652,8 +633,6 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.DoesNotContain($"{PublicSite}/book/{inactive.Slug}/sitemap.xml", locations);
         Assert.All(locations, loc => Assert.StartsWith(PublicSite + "/book/", loc));
     }
-
-    // ── Supplier showcases ──────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetSupplier_ActiveSupplier_ServesIndexableHtmlWithoutAnyPrivateData()
@@ -707,12 +686,9 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.All(locations, loc => Assert.StartsWith(PublicSite + "/fornitori/", loc));
     }
 
-    // ── Guides and hub ──────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetGuide_ApprovedRevision_IsServedAsAnIndexableArticle()
     {
-        // Own comune: a page is seeded once per comune and shared by the tests of this class.
         await SeedGuideAsync("013250", "bellagio", "<h2>CIN</h2><p>Il CIN è obbligatorio.</p><script>alert(1)</script>");
 
         var response = await GetAsync("/api/public/seo/guides/lombardia/bellagio");
@@ -725,14 +701,12 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.Contains("<h2>CIN</h2>", html);
         Assert.Contains("Il CIN è obbligatorio.", html);
         Assert.DoesNotContain("alert(1)", html);
-        // SEO-INVITE: CasaZen is on private invitation, so the flag SeoSignupCta is off and the page has no link to the signup.
         Assert.DoesNotContain("/signup", html);
         Assert.Contains("non consulenza legale", html);
         Assert.Contains("amministratore CasaZen prima della pubblicazione", html);
         var article = JsonLdBlocks(html).Single(b => b.GetProperty("@type").GetString() == "Article");
         Assert.Equal("CasaZen", article.GetProperty("publisher").GetProperty("name").GetString());
         var breadcrumb = JsonLdBlocks(html).Single(b => b.GetProperty("@type").GetString() == "BreadcrumbList");
-        // The trail starts at the site, then the hub, then the page: the same steps as the visible breadcrumb.
         Assert.Equal($"{PublicSite}/", breadcrumb.GetProperty("itemListElement")[0].GetProperty("item").GetString());
         Assert.Equal($"{PublicSite}/p/affitti-brevi", breadcrumb.GetProperty("itemListElement")[1].GetProperty("item").GetString());
     }
@@ -781,7 +755,6 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
     [Fact]
     public async Task GetTouristTaxPage_WithoutARateInForce_IsNoindexLikeTheSitemap()
     {
-        // Palermo: no rate is seeded for it (Como has one), so no rate is in force.
         await SeedGuideAsync("082053", "palermo", "<p>Calcolatore</p>", SeoPageType.TouristTaxCalc, slugPrefix: "tassa-soggiorno", regionCode: "SIC");
 
         var response = await GetAsync("/api/public/seo/tourist-tax/palermo");
@@ -807,8 +780,6 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.Equal(1, collection.GetProperty("mainEntity").GetProperty("itemListElement").GetArrayLength());
     }
 
-    // ── Language ────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetOrg_EnglishAcceptLanguage_IsServedInEnglishAndSaysSo()
     {
@@ -825,9 +796,6 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.Contains("Our properties", html);
     }
 
-    // ── Helpers ─────────────────────────────────────────────────────────────────────
-
-    // No redirect following: a 301 is the answer under test, not a request to repeat.
     private Task<HttpResponseMessage> GetAsync(string url) =>
         _factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { AllowAutoRedirect = false }).GetAsync(url);
 
@@ -980,7 +948,6 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
     }
 }
 
-/// <summary>The hub with nothing to list is thin content: not indexed, like its absence from the sitemap (BK-15).</summary>
 public class PublicSeoEmptyHubIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private readonly CasazenWebApplicationFactory _factory;

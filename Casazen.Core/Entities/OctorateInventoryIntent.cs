@@ -23,43 +23,31 @@ namespace Casazen.Core.Entities;
 [Table("OctorateInventoryIntents")]
 public class OctorateInventoryIntent : ITenantOwned
 {
-    /// <summary>Name of the partial unique index on (<see cref="OrgId"/>, <see cref="PropertyId"/>) of the rows with a property.</summary>
     public const string PropertyIndexName = "UIX_OctorateInventoryIntents_OrgId_PropertyId";
 
-    /// <summary>Name of the partial unique index on (<see cref="OrgId"/>, <see cref="WizardBatch"/>) of the rows with no property.</summary>
     public const string OrgLevelGroupIndexName = "UIX_OctorateInventoryIntents_OrgId_Group_OrgLevel";
 
-    /// <summary>Longest <see cref="WizardBatch"/>.</summary>
     public const int WizardBatchMaxLength = 100;
 
-    /// <summary>Longest <see cref="ActorUserId"/>: the column length of <c>User.Id</c>, the Auth0 subject.</summary>
     public const int UserIdMaxLength = 255;
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row (TN-2). Server-set, never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The CasaZen property the intent is about (FK, CASCADE); <c>null</c> for the intent of a group that has no property yet.</summary>
     public Guid? PropertyId { get; set; }
 
     public OctorateInventoryScenario Scenario { get; set; }
 
-    /// <summary>
-    /// The named group of the wizard (a mixed portfolio) the assignment belongs to; <c>null</c> for an assignment that belongs to no group.
-    /// An intent with no property always has one.
-    /// </summary>
     [MaxLength(WizardBatchMaxLength)]
     public string? WizardBatch { get; set; }
 
-    /// <summary>Who declared it: the Auth0 subject.</summary>
     [Required]
     [MaxLength(UserIdMaxLength)]
     public string ActorUserId { get; set; } = string.Empty;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>When it was declared or changed last (UTC).</summary>
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

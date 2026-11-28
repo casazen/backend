@@ -6,10 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Email;
 
-/// <summary>
-/// AM-02: the three emails of an org invitation (the invitation, the reminder of the third day, the note of the expiry), in
-/// Italian and English, with every dynamic value HTML-encoded (FD-13) and no personal data in the links.
-/// </summary>
 public class OrgInvitationEmailTemplatesTests
 {
     private const string AcceptUrl = "https://casazen-app.test/invite/accept?token=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -17,12 +13,9 @@ public class OrgInvitationEmailTemplatesTests
     private const string Payload = "<a href=\"https://phish.example\">Paga qui</a>";
     private const string EncodedPayload = "&lt;a href=&quot;https://phish.example&quot;&gt;Paga qui&lt;/a&gt;";
 
-    // 2026-10-15 11:00 UTC = 13:00 in Rome (daylight saving time).
     private static readonly DateTime ExpiresAt = new(2026, 10, 15, 11, 0, 0, DateTimeKind.Utc);
 
     private static readonly CultureInfo English = CultureInfo.GetCultureInfo("en");
-
-    // ─── The invitation ─────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void OrgInvitation_Italian_SaysWhoInvitesToWhichOrgWithWhichRoleAndWhere()
@@ -90,7 +83,6 @@ public class OrgInvitationEmailTemplatesTests
 
         Assert.DoesNotContain("<a href=\"https://phish.example\"", content.HtmlBody);
         Assert.Contains(EncodedPayload, content.HtmlBody);
-        // The subject is plain text: values are not encoded there, and it is one line.
         Assert.DoesNotContain('\n', content.Subject);
     }
 
@@ -112,8 +104,6 @@ public class OrgInvitationEmailTemplatesTests
         Assert.Throws<ArgumentException>(() => EmailTemplates.OrgInvitation(
             EmailTemplates.DefaultCulture, "A", "B", "C", OrgRole.Collaborator, ["short-rent"], "a@example.com", "javascript:alert(1)", ExpiresAt));
     }
-
-    // ─── The reminder ───────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void OrgInvitationReminder_Italian_SaysTheLinkReplacesTheFirstOne()
@@ -148,8 +138,6 @@ public class OrgInvitationEmailTemplatesTests
         Assert.Contains(EncodedPayload, content.HtmlBody);
     }
 
-    // ─── The expiry note ────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public void OrgInvitationExpired_Italian_TellsTheInviterTheSeatIsFreeAndLinksThePeoplePage()
     {
@@ -175,8 +163,6 @@ public class OrgInvitationEmailTemplatesTests
         Assert.Contains(EncodedPayload, content.HtmlBody);
         Assert.DoesNotContain("<a href=\"https://phish.example\"", content.HtmlBody);
     }
-
-    // ─── All of them ────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("it-IT")]

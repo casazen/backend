@@ -8,13 +8,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// The operator's privacy notice and booking terms of the public site (BK-14, A3-21): the host writes the text, or
-/// links a document hosted elsewhere, and publishes it as a new version; the guest reads it on
-/// <c>/book/{slug}/privacy</c> and <c>/book/{slug}/termini</c> through <c>GET /api/public/orgs/{slug}/documents/{kind}</c>.
-/// CasaZen supplies no text. Same policy as the branding and the org settings (BK-12, PL-04): only the org's
-/// billing/settings administrator. <c>{kind}</c> is <c>privacy</c> or <c>terms</c>.
-/// </summary>
 [ApiController]
 [Route("api/orgs/me/site-documents")]
 [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
@@ -23,10 +16,8 @@ public class OrgSiteDocumentsController(
     IOrgSiteDocumentService documentService,
     ILogger<OrgSiteDocumentsController> logger) : ControllerBase
 {
-    /// <summary>The largest text (50,000 characters, up to 4 bytes each) with the JSON overhead.</summary>
     private const long MaxRequestBytes = 512 * 1024;
 
-    /// <summary>The state of both documents: what the public site shows and the recent versions.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(List<OrgSiteDocumentStateDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -42,7 +33,6 @@ public class OrgSiteDocumentsController(
         return Ok(states.Select(OrgSiteDocumentStateDto.From).ToList());
     }
 
-    /// <summary>One earlier (or current) version with its text, to read it or start the next one from it.</summary>
     [HttpGet("{kind}/versions/{version:int}")]
     [ProducesResponseType(typeof(OrgSiteDocumentVersionDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -66,10 +56,6 @@ public class OrgSiteDocumentsController(
             : Ok(OrgSiteDocumentVersionDto.From(document, includeContent: true));
     }
 
-    /// <summary>
-    /// Publishes a new version (shown right away). 422 <c>org_document_*</c> for an invalid text or address (nothing
-    /// saved). Publishing what is already shown changes nothing.
-    /// </summary>
     [HttpPut("{kind}")]
     [RequestSizeLimit(MaxRequestBytes)]
     [ProducesResponseType(typeof(OrgSiteDocumentStateDto), StatusCodes.Status200OK)]

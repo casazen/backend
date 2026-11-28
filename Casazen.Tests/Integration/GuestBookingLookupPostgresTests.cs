@@ -74,12 +74,10 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         Assert.Equal(0m, root.GetProperty("refundedAmount").GetDecimal());
         Assert.Equal("Villa Lookup Srl", root.GetProperty("host").GetProperty("name").GetString());
         Assert.Equal(org.ContactEmail, root.GetProperty("host").GetProperty("email").GetString());
-        // Arrival in 40 days: the check-in link is emailed 3 days before (CheckIn:SendWindowDays).
         var checkIn = root.GetProperty("checkIn");
         Assert.Equal("NotYetOpen", checkIn.GetProperty("status").GetString());
         Assert.Equal(seed.CheckIn.AddDays(-3).ToString("yyyy-MM-dd"), checkIn.GetProperty("opensOn").GetString());
 
-        // Nothing personal, and not the internal booking id.
         Assert.DoesNotContain(seed.Email, body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Giulia", body, StringComparison.Ordinal);
         Assert.DoesNotContain("Bianchi", body, StringComparison.Ordinal);
@@ -96,13 +94,9 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
 
         var answers = new[]
         {
-            // Right code, email of someone else.
             await PostAsync(LookupPath, new { orgSlug = org.Slug, bookingCode = seed.Code, email = $"other.{Guid.NewGuid():N}@example.com" }),
-            // Right email, code that does not exist.
             await PostAsync(LookupPath, new { orgSlug = org.Slug, bookingCode = UnusedCode(seed.Code), email = seed.Email }),
-            // Right email, not a code at all (e.g. the booking id).
             await PostAsync(LookupPath, new { orgSlug = org.Slug, bookingCode = seed.BookingId.ToString("D"), email = seed.Email }),
-            // Right code and email, on the site of another org.
             await PostAsync(LookupPath, new { orgSlug = otherOrg.Slug, bookingCode = seed.Code, email = $"x.{Guid.NewGuid():N}@example.com" }),
         };
 
@@ -122,7 +116,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
             }));
         }
 
-        // Identical answers (the trace id aside): nothing tells which bookings exist.
         Assert.Single(bodies.Distinct(StringComparer.Ordinal));
     }
 
@@ -152,7 +145,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
     [PostgresFact]
     public async Task LookupGuestBooking_PreviousSlugOfTheOrg_StillFindsTheBooking()
     {
-        // PL-04 (A1-23): the host changed the public slug; links in emails sent before keep working.
         var org = await SeedOrgAsync();
         var seed = await SeedBookingAsync(org, BookingStatus.Confirmed, checkInInDays: 30);
         var previousSlug = $"old-{Guid.NewGuid():N}";
@@ -174,14 +166,12 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         var org = await SeedOrgAsync();
         var seed = await SeedBookingAsync(org, BookingStatus.Confirmed, checkInInDays: 20);
 
-        // LookupFactory: 3 attempts per email and window, whatever the IP.
         for (var attempt = 0; attempt < 3; attempt++)
         {
             var guess = await PostAsync(LookupPath, new { orgSlug = org.Slug, bookingCode = UnusedCode(seed.Code), email = seed.Email });
             Assert.Equal(HttpStatusCode.NotFound, guess.StatusCode);
         }
 
-        // Even the right code is not checked once the email has no attempt left.
         var limited = await PostAsync(LookupPath, new { orgSlug = org.Slug, bookingCode = seed.Code, email = seed.Email.ToUpperInvariant() });
         var problem = await ClientIpRateLimitingIntegrationTests.AssertRateLimitedAsync(limited);
         Assert.DoesNotContain(seed.Email, problem.ToString(), StringComparison.OrdinalIgnoreCase);
@@ -197,7 +187,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         var seed = await SeedBookingAsync(org, BookingStatus.Confirmed, checkInInDays: 20);
         var peer = NextPeer();
 
-        // LookupFactory: 4 attempts per IP and window, whatever the email.
         for (var attempt = 0; attempt < 4; attempt++)
         {
             var guess = await PostAsync(
@@ -250,7 +239,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         Assert.Equal(JsonValueKind.Null, before.GetProperty("checkIn").GetProperty("linkSentAt").ValueKind);
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         Assert.DoesNotContain("/checkin/", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
-        // CO-09: the link email goes through its own job, which records the real outcome for the host.
         await _factory.RunCheckInLinkEmailJobsAsync(seed.BookingId);
         var email = Assert.Single(_factory.LinkEmails.Snapshot(), e => e.To == seed.Email);
         Assert.Contains("Completa il check-in", email.Subject, StringComparison.Ordinal);
@@ -286,8 +274,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
     [PostgresFact]
     public async Task GuestSession_AGuestNeverReadsTheBookingOfAnotherGuestOrSite_AndEveryRefusalLooksAlike()
     {
-        // DB-06a: two sites, and on each a guest with THE SAME email and THE SAME booking code (codes are unique per org only), plus
-        // another guest of the first site.
         var orgA = await SeedOrgAsync();
         var orgB = await SeedOrgAsync();
         var own = await SeedBookingAsync(orgA, BookingStatus.Confirmed, checkInInDays: 30);
@@ -308,13 +294,11 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         Assert.InRange(session.GetProperty("expiresAt").GetDateTime(), DateTime.UtcNow, DateTime.UtcNow.AddHours(24));
         Assert.DoesNotContain(own.Email, openedBody + token, StringComparison.OrdinalIgnoreCase);
 
-        // The guest reads their own booking; the same code on the other site (same email) is not reachable with this token.
         Assert.Equal(orgA.PropertyName, await PropertyNameAsync(await GetAsync($"{GuestBookingsPath}/{BookingCodes.Format(own.Code)}", token)));
         var otherSiteSession = await PostAsync(SessionPath, new { orgSlug = orgB.Slug, bookingCode = sameEmailOtherSite.Code, email = own.Email });
         var otherSiteToken = JsonDocument.Parse(await otherSiteSession.Content.ReadAsStringAsync()).RootElement.GetProperty("accessToken").GetString()!;
         Assert.Equal(orgB.PropertyName, await PropertyNameAsync(await GetAsync($"{GuestBookingsPath}/{sameEmailOtherSite.Code}", otherSiteToken)));
 
-        // Another guest of the site, a code that does not exist, not a code, a wrong email at the door: the same 404, nothing leaked.
         var refusals = new[]
         {
             await GetAsync($"{GuestBookingsPath}/{otherGuestOfTheSite.Code}", token),
@@ -342,7 +326,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
 
         Assert.Single(bodies.Distinct(StringComparer.Ordinal));
 
-        // No token, an altered token and a token of nothing: 401, never a booking.
         var path = $"{GuestBookingsPath}/{BookingCodes.Format(own.Code)}";
         var altered = token[..20] + (token[20] == 'A' ? 'B' : 'A') + token[21..];
         Assert.Equal(HttpStatusCode.Unauthorized, (await GetAsync(path, null)).StatusCode);
@@ -353,15 +336,12 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
     [PostgresFact]
     public async Task PhoneVariant_RightDigitsOpenTheSessionOfTheEmail_AndEveryRefusalLooksLikeAWrongEmail()
     {
-        // NF-143 (E40/F01/US03/T01), WhiteLabelHost on in LookupFactory: the twin on PostgreSQL of the main path of the phone proof, and of the booking
-        // without a phone, which only its e-mail opens.
         var org = await SeedOrgAsync();
         var otherOrg = await SeedOrgAsync();
         var seed = await SeedBookingAsync(org, BookingStatus.Confirmed, checkInInDays: 30, phone: PhoneOfTheGuest);
         var withoutPhone = await SeedBookingAsync(org, BookingStatus.Confirmed, checkInInDays: 35, phone: string.Empty);
         var otherSite = await SeedBookingAsync(otherOrg, BookingStatus.Confirmed, checkInInDays: 40, phone: PhoneOfTheGuest);
 
-        // The right digits: the session of the e-mail proof (same body, same booking), and its token reads the booking.
         var byPhone = await PostAsync(SessionPath, new
         {
             orgSlug = org.Slug,
@@ -377,7 +357,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         var token = phoneSession.GetProperty("accessToken").GetString()!;
         Assert.Equal(org.PropertyName, await PropertyNameAsync(await GetAsync($"{GuestBookingsPath}/{BookingCodes.Format(seed.Code)}", token)));
 
-        // Wrong digits, a code that does not exist, another site's code, not a code, a booking without a phone, a wrong e-mail: one answer.
         var refusals = new[]
         {
             await PostAsync(SessionPath, new { orgSlug = org.Slug, bookingCode = seed.Code, phoneLast4 = "4821" }),
@@ -393,7 +372,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
             Assert.Equal(HttpStatusCode.NotFound, refusal.StatusCode);
             var problem = JsonDocument.Parse(await refusal.Content.ReadAsStringAsync()).RootElement;
 
-            // The digits are looked for in what the answer says, not in its trace id: that is a random hexadecimal string and can hold any four digits.
             var said = SupplierBookingManageHttp.SameBody(problem);
             Assert.DoesNotContain("7364", said, StringComparison.Ordinal);
             Assert.DoesNotContain("4821", said, StringComparison.Ordinal);
@@ -411,7 +389,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
 
         Assert.Single(answers.Distinct(StringComparer.Ordinal));
 
-        // AC-NF143-4: the booking without a phone is not found by the phone, and its e-mail still opens it.
         var withoutPhoneByEmail = await PostAsync(SessionPath, new { orgSlug = org.Slug, bookingCode = withoutPhone.Code, email = withoutPhone.Email });
         Assert.Equal(HttpStatusCode.OK, withoutPhoneByEmail.StatusCode);
     }
@@ -423,7 +400,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         var seed = await SeedBookingAsync(org, BookingStatus.Confirmed, checkInInDays: 30, phone: PhoneOfTheGuest);
         var madeUp = UnusedCode(seed.Code);
 
-        // Five wrong attempts on each code, each from an IP of its own: the lock counts per code, whatever the IP and whether the code exists.
         foreach (var code in new[] { seed.Code, madeUp })
         {
             for (var attempt = 0; attempt < 5; attempt++)
@@ -433,7 +409,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
             }
         }
 
-        // Locked: the right digits are not even checked, and the wait names the whole window (60 minutes); the made-up code answers alike.
         var locked = await PostAsync(SessionPath, new { orgSlug = org.Slug, bookingCode = BookingCodes.Format(seed.Code), phoneLast4 = "7364" });
         var problem = await ClientIpRateLimitingIntegrationTests.AssertRateLimitedAsync(locked);
         Assert.Equal(TimeSpan.FromMinutes(60), locked.Headers.RetryAfter?.Delta);
@@ -442,7 +417,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         await ClientIpRateLimitingIntegrationTests.AssertRateLimitedAsync(lockedMadeUp);
         Assert.Equal(TimeSpan.FromMinutes(60), lockedMadeUp.Headers.RetryAfter?.Delta);
 
-        // The e-mail proof keeps its own limits: the same code opens with the address of the booking.
         var byEmail = await PostAsync(SessionPath, new { orgSlug = org.Slug, bookingCode = seed.Code, email = seed.Email });
         Assert.Equal(HttpStatusCode.OK, byEmail.StatusCode);
     }
@@ -450,8 +424,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
     [PostgresFact]
     public async Task PhoneVariant_TooManyCallsFromOneIp_TheEleventhIs429()
     {
-        // The per-IP policy of the session (PublicGuestSession, 10 per 5 minutes, as in production: LookupFactory) covers the phone proof too. A code
-        // of its own at each call, so neither the limit per code nor the lock plays a part.
         var org = await SeedOrgAsync();
         var peer = NextPeer();
 
@@ -465,10 +437,8 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
             await PostAsync(SessionPath, new { orgSlug = org.Slug, bookingCode = BookingCodes.New(), phoneLast4 = "7364" }, peer));
     }
 
-    /// <summary>The phone of the guests of the phone proofs: at most 20 characters and a valid <c>[Phone]</c>; its last four digits are 7364.</summary>
     private const string PhoneOfTheGuest = "+39 347 555 7364";
 
-    /// <summary>The headers of an answer the client could compare (<c>name=value</c>, sorted), without those that change with the moment or the size.</summary>
     private static string[] HeadersOf(HttpResponseMessage response) =>
         response.Headers.Concat(response.Content.Headers)
             .Where(header => header.Key is not ("Date" or "Content-Length"))
@@ -508,14 +478,12 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         Assert.DoesNotContain(marker, email.Content.HtmlBody + email.Content.Subject, StringComparison.Ordinal);
         Assert.DoesNotContain(_factory.Emails.Snapshot(), e => e.To == orgA.ContactEmail);
 
-        // The guest reads their thread; the other guest of the site and the guest of the other site (same code, same email) do not see it.
         var own1 = JsonDocument.Parse(await (await GetAsync(path, token)).Content.ReadAsStringAsync()).RootElement;
         Assert.Contains(marker, own1.GetProperty("messages")[0].GetProperty("text").GetString(), StringComparison.Ordinal);
         var otherSiteView = await GetAsync(path, otherSiteToken);
         Assert.Equal(HttpStatusCode.OK, otherSiteView.StatusCode);
         Assert.Equal(0, JsonDocument.Parse(await otherSiteView.Content.ReadAsStringAsync()).RootElement.GetProperty("messages").GetArrayLength());
 
-        // Another guest of the site, a code that does not exist, not a code: neither read nor write, and every refusal looks alike.
         var refusals = new[]
         {
             await GetAsync(path, otherGuestToken),
@@ -542,8 +510,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         Assert.Single(bodies.Distinct(StringComparer.Ordinal));
         Assert.Equal(HttpStatusCode.Unauthorized, (await GetAsync(path, null)).StatusCode);
 
-        // The host's side: the guest of the other site writes too; each org lists only its own thread, and a collaborator who reaches
-        // another property lists none.
         var otherSitePath = $"{GuestBookingsPath}/{BookingCodes.Format(sameCodeOtherSite.Code)}/messages";
         var otherMarker = $"other-{Guid.NewGuid():N}";
         Assert.Equal(HttpStatusCode.OK, (await PostMessageAsync(otherSitePath, otherSiteToken, otherMarker, Guid.NewGuid().ToString())).StatusCode);
@@ -572,7 +538,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         return JsonDocument.Parse(await opened.Content.ReadAsStringAsync()).RootElement.GetProperty("accessToken").GetString()!;
     }
 
-    /// <summary>POST of a message from a client IP of its own, with the guest-session token as the bearer and the key of the send.</summary>
     private async Task<HttpResponseMessage> PostMessageAsync(string path, string bearerToken, string text, string idempotencyKey)
     {
         using var client = _factory.CreateClient();
@@ -594,7 +559,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            // As the migration finds them: the column added with an empty default.
             await db.Bookings.IgnoreQueryFilters()
                 .Where(b => b.Id == withoutCodeA.BookingId || b.Id == withoutCodeB.BookingId)
                 .ExecuteUpdateAsync(u => u.SetProperty(b => b.BookingCode, string.Empty));
@@ -629,7 +593,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         return await client.SendAsync(request);
     }
 
-    /// <summary>GET from a client IP of its own, with the guest-session token (if any) as the bearer.</summary>
     private async Task<HttpResponseMessage> GetAsync(string path, string? bearerToken)
     {
         using var client = _factory.CreateClient();
@@ -691,11 +654,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         return new OrgSeed(org.Id, org.Slug, org.ContactEmail, property.Id, property.Name);
     }
 
-    /// <summary>
-    /// The person in charge of the property of <paramref name="org"/> (its creator, in no team), onboarded and with an address of its own, who
-    /// chose the email next to the defaults for the new messages of the guests (NF-65, PO-10) and no quiet hours, so the test does not depend on
-    /// the time of day. The org has no other user. Returns the address of the person.
-    /// </summary>
     private async Task<string> SeedHostWhoChoseTheEmailAsync(OrgSeed org)
     {
         using var scope = _factory.Services.CreateScope();
@@ -715,7 +673,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         await HostOnboardingSeed.MarkOnboardedAsync(db, host, org.OrgId, scope.ServiceProvider.GetRequiredService<ILegalDocumentService>());
         await db.SaveChangesAsync();
 
-        // Start equal to end is an empty window: no quiet hours at any time of the day.
         await scope.ServiceProvider.GetRequiredService<INotificationPreferenceService>().SaveAsync(
             host.Id,
             new NotificationPreferencesUpdate(
@@ -727,10 +684,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         return host.Email;
     }
 
-    /// <summary>
-    /// A booking of the public checkout: 3 nights, 300 lodging + 50 cleaning + 12 tourist tax = 362. The guest's phone is <paramref name="phone"/>
-    /// (empty: no phone; at most 20 characters and a valid <c>[Phone]</c>).
-    /// </summary>
     private async Task<BookingSeed> SeedBookingAsync(
         OrgSeed org,
         BookingStatus status,
@@ -799,7 +752,6 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
 
         if (unpaidIntent)
         {
-            // A checkout hold: its PaymentIntent was created, nothing was paid.
             db.Payments.Add(new Payment
             {
                 BookingId = booking.Id,
@@ -818,17 +770,10 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         return new BookingSeed(booking.Id, booking.BookingCode, guest.Email, checkIn);
     }
 
-    /// <summary>
-    /// The integration host with a recording email queue, client IPs from <see cref="TestPeerIpStartupFilter"/> and low
-    /// limits for "Le mie prenotazioni": 4 attempts per IP, 3 per email. The guest session keeps the per-IP limit of production
-    /// (10 per 5 minutes), and the flag <c>WhiteLabelHost</c> is on, so the session also takes the last four digits of the phone
-    /// (NF-143): the e-mail proofs of this class run with it on and answer as before.
-    /// </summary>
     public sealed class LookupFactory : CasazenWebApplicationFactory
     {
         internal RecordingEmailQueue Emails { get; } = new();
 
-        /// <summary>Emails handed to the provider by the check-in link email job (CO-09).</summary>
         internal RecordingEmailService LinkEmails { get; } = new();
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -855,12 +800,10 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
             });
         }
 
-        /// <summary>Runs the check-in link email jobs queued for the sessions of <paramref name="bookingId"/>.</summary>
         internal async Task RunCheckInLinkEmailJobsAsync(Guid bookingId)
         {
             using var scope = Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            // No request here: the filter is off anyway, explicit for the reader.
             var sessionIds = await db.GuestCheckInSessions.IgnoreQueryFilters()
                 .Where(s => s.BookingId == bookingId)
                 .Select(s => s.Id)

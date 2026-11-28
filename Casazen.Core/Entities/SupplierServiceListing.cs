@@ -29,22 +29,15 @@ public class SupplierServiceListing
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The supplier org the service belongs to (<see cref="SupplierProfile.OrgId"/>).</summary>
     [Required]
     public Guid OrgId { get; set; }
 
-    /// <summary>
-    /// Last part of the public address of the service (<c>/fornitori/{supplierSlug}/servizi/{slug}</c>), unique among the
-    /// supplier's services that are not deleted. Taken from the name when the service is created and kept from then on;
-    /// only a draft, which was never public, follows a change of its name.
-    /// </summary>
     [Required, MaxLength(SupplierServiceCatalogLimits.SlugMaxLength)]
     public string Slug { get; set; } = string.Empty;
 
     [Required, MaxLength(SupplierServiceCatalogLimits.NameMaxLength)]
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>Code of <see cref="ServiceCategories"/>.</summary>
     [Required, MaxLength(SupplierServiceCatalogLimits.CategoryMaxLength)]
     public string Category { get; set; } = string.Empty;
 
@@ -54,13 +47,8 @@ public class SupplierServiceListing
     [MaxLength(SupplierServiceCatalogLimits.DescriptionMaxLength)]
     public string? Description { get; set; }
 
-    /// <summary>
-    /// The "from" price in cents, in euro. <c>null</c> is "on quote": the price is agreed before the work
-    /// (<see cref="RequiresQuote"/>); a draft may not have one yet.
-    /// </summary>
     public int? PriceFromCents { get; set; }
 
-    /// <summary>What <see cref="PriceFromCents"/> is for (per job, hour, set or square meter).</summary>
     public SupplierServicePriceUnit PriceUnit { get; set; } = SupplierServicePriceUnit.PerJob;
 
     /// <summary>
@@ -69,19 +57,10 @@ public class SupplierServiceListing
     /// </summary>
     public bool PricesIncludeVat { get; set; }
 
-    /// <summary>
-    /// The customer asks and waits for the supplier's offer: the price is confirmed before the work. A service with this
-    /// flag can be published without a price.
-    /// </summary>
     public bool RequiresQuote { get; set; }
 
-    /// <summary>Indicative duration in minutes; the slot planner uses it (SP-03). Required to publish.</summary>
     public int? DurationMinutes { get; set; }
 
-    /// <summary>
-    /// Shortest notice, in hours, between the booking and the work. <c>null</c>: the supplier's default notice (SP-03).
-    /// <c>0</c>: no notice.
-    /// </summary>
     public int? MinNoticeHours { get; set; }
 
     /// <summary>
@@ -90,18 +69,8 @@ public class SupplierServiceListing
     /// </summary>
     public int WeekdaysMask { get; set; } = SupplierServiceWeekdays.AllMask;
 
-    /// <summary>
-    /// The service accepts urgent requests, for today and tomorrow, even outside the supplier's working hours (SP-04c, decision
-    /// SP-D9). Off until the supplier says so. The supplier's own switch (<see cref="SupplierSettings.UrgentEnabled"/>) comes first:
-    /// with it off the flag stays saved here but has no effect (no urgent slot, no surcharge).
-    /// </summary>
     public bool UrgentEnabled { get; set; }
 
-    /// <summary>
-    /// The surcharge of an urgent request for this service, in euro cents (0 to
-    /// <see cref="SupplierAgendaLimits.MaxUrgentSurchargeCents"/>; a gross amount like the price, decision D4). <c>null</c>: the supplier's
-    /// default (<see cref="SupplierSettings.UrgentSurchargeCents"/>).
-    /// </summary>
     public int? UrgentSurchargeCents { get; set; }
 
     /// <summary>
@@ -111,24 +80,19 @@ public class SupplierServiceListing
     [Column(TypeName = "jsonb")]
     public string SupplementsJson { get; set; } = "[]";
 
-    /// <summary>JSON array of strings: what the price includes.</summary>
     [Column(TypeName = "jsonb")]
     public string IncludedJson { get; set; } = "[]";
 
-    /// <summary>JSON array of strings: what the price does not include.</summary>
     [Column(TypeName = "jsonb")]
     public string ExcludedJson { get; set; } = "[]";
 
-    /// <summary>JSON array of absolute photo URLs in display order (the first is the cover), at most <see cref="SupplierServiceCatalogLimits.MaxPhotos"/>.</summary>
     [Column(TypeName = "jsonb")]
     public string PhotoUrlsJson { get; set; } = "[]";
 
     public SupplierServiceListingStatus Status { get; set; } = SupplierServiceListingStatus.Draft;
 
-    /// <summary>Position in the catalog (ascending, then by creation).</summary>
     public int SortOrder { get; set; }
 
-    /// <summary>UTC moment the supplier deleted the service (soft delete); <c>null</c> while it exists.</summary>
     public DateTime? DeletedAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

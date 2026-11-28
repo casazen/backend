@@ -27,10 +27,6 @@ public class IdentityPathEgressArchitectureTests
     private const string IdentityNamespace = "Casazen.Infrastructure.Identity";
     private const string ExternalNamespace = "Casazen.Infrastructure.External";
 
-    /// <summary>
-    /// The classes of the identity path outside its namespace. <c>BiometricModelStore</c> is left out on purpose: it owns the HTTP client that downloads the
-    /// weights of a model (a file of the platform with a pinned SHA-256, never a picture), and no picture reaches it.
-    /// </summary>
     private static readonly Type[] NamedPathTypes =
     [
         typeof(IdentityVerificationFlowService), typeof(IdentityVerificationAgent), typeof(CaptureQualityAssessor), typeof(BiometricVerificationService),
@@ -49,7 +45,6 @@ public class IdentityPathEgressArchitectureTests
 
     private static readonly Type[] ModelFileDownloadClient = [typeof(IHttpClientFactory), typeof(Func<HttpClient>)];
 
-    /// <summary>The side channels the flow calls: the alerts to the operators, the lock code, the push and the e-mail queue that the flow and the alerts use.</summary>
     private static readonly Type[] SideChannels =
         [typeof(IVerificationOperatorAlerts), typeof(IAccessCodeService), typeof(IPushNotificationService), typeof(IEmailQueue)];
 
@@ -71,10 +66,6 @@ public class IdentityPathEgressArchitectureTests
             "the Hangfire job client: a picture could leave the process (NF-197, ADR-013-R21).\n" + string.Join("\n", offending));
     }
 
-    /// <summary>
-    /// Test B (AC-NF197-1): the document reader of the check-in that the registrations of the application build, in the order of Program.cs (the services with
-    /// the self-hosted identity verification, then the AI provider), is a type of the identity namespace; the AI registration adds none.
-    /// </summary>
     [Fact]
     public void IdentityPathEgress_CheckInDocumentReaderResolvesToTheIdentityNamespace()
     {
@@ -82,7 +73,6 @@ public class IdentityPathEgressArchitectureTests
 
         Assert.DoesNotContain(new ServiceCollection().AddCasazenAiProvider(configuration), descriptor => descriptor.ServiceType == typeof(ICheckInDocumentReader));
 
-        // The two readers of the document come from AddCasazenServices in the application: here they are doubles, so no model and no library is needed.
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(configuration);
         services.AddScoped(_ => Mock.Of<IMrzExtractionService>());
@@ -115,7 +105,6 @@ public class IdentityPathEgressArchitectureTests
     [Fact]
     public void IdentityPathEgress_SideChannelsCarryNoImages()
     {
-        // The channels checked here are the ones the flow and its alerts take: if they change, this list changes with them.
         var flow = ConstructorParameterTypes(typeof(IdentityVerificationFlowService));
         var alerts = ConstructorParameterTypes(typeof(VerificationOperatorAlerts));
         Assert.Contains(typeof(IVerificationOperatorAlerts), flow);
@@ -137,11 +126,6 @@ public class IdentityPathEgressArchitectureTests
             "may be bytes, a stream, a float vector, a decoded picture or an upload.\n" + string.Join("\n", offending));
     }
 
-    /// <summary>
-    /// Test D, sanity: the convention cannot silently scan nothing (the identity namespace holds the local reader of the check-in at least), the guard is not
-    /// blind (a class that broke each rule would be named with each member), and the allowance of the model files stays narrow: in the two readers that download
-    /// their language files only the factory of that client and the client it makes are allowed, and everywhere else they are named too.
-    /// </summary>
     [Fact]
     public void IdentityPathEgress_TheConventionScansTheIdentityNamespace()
     {
@@ -156,11 +140,8 @@ public class IdentityPathEgressArchitectureTests
         Assert.Contains(findings, finding => finding.StartsWith($"{planted}: constructor parameter 'stripe' is a type of {ExternalNamespace}", StringComparison.Ordinal));
         Assert.Contains(findings, finding => finding.StartsWith($"{planted}: constructor parameter 'jobs' is the Hangfire job client", StringComparison.Ordinal));
         Assert.Contains(findings, finding => finding.StartsWith($"{planted}: field '<Client>k__BackingField' is an HTTP client", StringComparison.Ordinal));
-        // The job client is a rule of the identity namespace only: the named classes are held to the other rules.
         Assert.DoesNotContain(ForbiddenDependencies(typeof(PlantedEgress), jobsForbidden: false), finding => finding.Contains("'jobs'", StringComparison.Ordinal));
 
-        // The allowance of the model files is narrow: exactly the two readers that download their language files (no class of the identity namespace), and in them only
-        // the factory of that client and the client it makes. The client itself, an AI provider and a wrapper of the factory are still named there...
         Assert.Equal(2, ModelFileDownloaders.Length);
         Assert.Contains(typeof(TesseractMrzTextReader), ModelFileDownloaders);
         Assert.Contains(typeof(TesseractPageTextReader), ModelFileDownloaders);
@@ -170,17 +151,11 @@ public class IdentityPathEgressArchitectureTests
         Assert.Equal("an HTTP client", Forbidden(typeof(HttpClient), jobsForbidden: true, modelFileDownloader: true));
         Assert.Equal("an AI provider", Forbidden(typeof(IAiProvider), jobsForbidden: true, modelFileDownloader: true));
         Assert.Equal("an HTTP client factory", Forbidden(typeof(Lazy<IHttpClientFactory>), jobsForbidden: true, modelFileDownloader: true));
-        // ...and everywhere else, the other named classes and the whole identity namespace, the factory and the client it makes are named too.
         Assert.Equal("an HTTP client factory", Forbidden(typeof(IHttpClientFactory), jobsForbidden: true, modelFileDownloader: false));
         Assert.Equal("an HTTP client factory", Forbidden(typeof(IHttpClientFactory), jobsForbidden: false, modelFileDownloader: false));
         Assert.Equal("an HTTP client", Forbidden(typeof(Func<HttpClient>), jobsForbidden: false, modelFileDownloader: false));
     }
 
-    /// <summary>
-    /// Test E, privacy (E71/F01/US03/T01): the service container is a way round test A (a class that takes it can resolve an AI provider or an HTTP client at run time with none of them
-    /// a parameter or a field), so no type of the identity namespace holds it but <see cref="ZonedPrefillServices"/>, which names what it gives: every service it gives is a type of the
-    /// identity namespace and none is a way out, and it has no method that resolves what it is asked for.
-    /// </summary>
     [Fact]
     public void IdentityPathEgress_TheContainerIsHeldByOneClassOnly_AndThatClassNamesWhatItGives()
     {
@@ -205,11 +180,9 @@ public class IdentityPathEgressArchitectureTests
         });
         Assert.DoesNotContain(typeof(ZonedPrefillServices).GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly), method => !method.IsSpecialName);
 
-        // The guard is not blind: a class that holds the container is named with its parameter.
         Assert.Contains(ContainerHolders(typeof(PlantedContainerHolder)), finding => finding.Contains("constructor parameter 'provider'", StringComparison.Ordinal));
     }
 
-    /// <summary>The constructor parameters and the fields of <paramref name="type"/> (those of its base types too) that are the service container, or a factory of its scopes.</summary>
     private static IEnumerable<string> ContainerHolders(Type type)
     {
         foreach (var constructor in type.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
@@ -229,7 +202,6 @@ public class IdentityPathEgressArchitectureTests
     private static bool IsContainer(Type type) =>
         Parts(type).Any(part => typeof(IServiceProvider).IsAssignableFrom(part) || typeof(IServiceScopeFactory).IsAssignableFrom(part));
 
-    /// <summary>Every type of the identity namespace and below in the assemblies of the application, nested and compiler-generated types included.</summary>
     private static List<Type> IdentityNamespaceTypes() =>
         new[] { typeof(ICheckInDocumentReader).Assembly, typeof(LocalCheckInDocumentReader).Assembly, typeof(IdentityVerificationServiceCollectionExtensions).Assembly }
             .Distinct()
@@ -243,7 +215,6 @@ public class IdentityPathEgressArchitectureTests
     private static List<Type> ConstructorParameterTypes(Type type) =>
         type.GetConstructors().SelectMany(constructor => constructor.GetParameters()).Select(parameter => parameter.ParameterType).ToList();
 
-    /// <summary>The constructor parameters and the fields of <paramref name="type"/> (those of its base types too) that break a rule of the path.</summary>
     private static IEnumerable<string> ForbiddenDependencies(Type type, bool jobsForbidden)
     {
         var downloader = ModelFileDownloaders.Contains(Outermost(type));
@@ -267,7 +238,6 @@ public class IdentityPathEgressArchitectureTests
         }
     }
 
-    /// <summary>Why a member of this type would let a picture out, or null. A wrapper counts as what it wraps (<c>Lazy&lt;IAiProvider&gt;</c> is an AI provider).</summary>
     private static string? Forbidden(Type type, bool jobsForbidden, bool modelFileDownloader)
     {
         if (modelFileDownloader && ModelFileDownloadClient.Contains(type))
@@ -292,10 +262,6 @@ public class IdentityPathEgressArchitectureTests
         return null;
     }
 
-    /// <summary>
-    /// Where a value of <paramref name="type"/> can carry a picture or a vector: the type and what it is made of and, for a type of the application, its public
-    /// properties and fields, followed down. Each finding names the path to it.
-    /// </summary>
     private static IEnumerable<string> ImageCarriers(Type type, string path, HashSet<Type> seen)
     {
         if (!seen.Add(type))
@@ -323,7 +289,6 @@ public class IdentityPathEgressArchitectureTests
         }
     }
 
-    /// <summary>Bytes, a float vector, a stream, a decoded picture or an upload, in any of their usual shapes.</summary>
     private static bool IsImageOrVector(Type type) =>
         typeof(IEnumerable<byte>).IsAssignableFrom(type) || typeof(IEnumerable<float>).IsAssignableFrom(type)
         || type == typeof(Memory<byte>) || type == typeof(ReadOnlyMemory<byte>) || type == typeof(Span<byte>) || type == typeof(ReadOnlySpan<byte>)
@@ -331,7 +296,6 @@ public class IdentityPathEgressArchitectureTests
         || typeof(Stream).IsAssignableFrom(type) || typeof(RasterImage).IsAssignableFrom(type)
         || typeof(IFormFile).IsAssignableFrom(type) || typeof(IEnumerable<IFormFile>).IsAssignableFrom(type);
 
-    /// <summary>The type and what it is made of: the element of an array or of a reference, and the arguments of a generic type, followed down.</summary>
     private static IEnumerable<Type> Parts(Type type)
     {
         yield return type;
@@ -358,7 +322,6 @@ public class IdentityPathEgressArchitectureTests
     private static bool InNamespace(Type type, string root) =>
         type.Namespace is { } name && (name == root || name.StartsWith(root + ".", StringComparison.Ordinal));
 
-    /// <summary>A readable name: namespace and type, with the generic arguments.</summary>
     private static string Name(Type type)
     {
         if (type.IsGenericParameter)
@@ -374,13 +337,11 @@ public class IdentityPathEgressArchitectureTests
         return $"{(tick < 0 ? name : name[..tick])}<{string.Join(", ", type.GetGenericArguments().Select(Name))}>";
     }
 
-    /// <summary>A class that holds the service container, kept outside the identity namespace (it would fail test E there): the guard must name its parameter.</summary>
     private sealed class PlantedContainerHolder(IServiceProvider provider)
     {
         public IServiceProvider Provider => provider;
     }
 
-    /// <summary>A class that breaks every rule of the path, kept outside the identity namespace (it would fail the guard there): the guard must name each member.</summary>
     private sealed class PlantedEgress(
         IAiProvider ai,
         Lazy<IAiRuntimeSettings> settings,

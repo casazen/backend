@@ -4,28 +4,18 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// The rules of the capture checks (E03/F04/US02/T02), versioned: a change of a value is a new <see cref="Version"/>, kept with every outcome in
-/// the log. Provisional values, set on pictures built in the tests; calibrate them with real captures before the flag is turned on.
-/// </summary>
 public static class CaptureQualityRules
 {
-    /// <summary>The version of these rules, written in <c>BiometricVerificationLog.ThresholdsJson</c>.</summary>
     public const string Version = "capture-2026.11-1";
 
-    /// <summary>Under this mean luminance (0 to 255) the face, or the document, is too dark.</summary>
     public const double MinMeanLuminance = 55;
 
-    /// <summary>Over this mean luminance the face, or the document, is too bright.</summary>
     public const double MaxMeanLuminance = 210;
 
-    /// <summary>Over this share of the edge energy that survives a 3 x 3 blur the picture is blurred (crisp text or skin is well under it).</summary>
     public const double MaxBlurRatio = 0.92;
 
-    /// <summary>Over this share of saturated pixels (250 or more) a reflection hides part of the document.</summary>
     public const double MaxDocumentGlareShare = 0.08;
 
-    /// <summary>The longest side the picture is brought to before the pixel statistics (enough for them, and fast).</summary>
     public const int StatisticsSide = 640;
 }
 
@@ -41,10 +31,6 @@ public sealed class CaptureQualityAssessor(IFaceDetector faceDetector, IOptions<
 {
     private static readonly IReadOnlyList<string> SelfieTips = [CaptureGuidanceCodes.TipRemoveGlasses, CaptureGuidanceCodes.TipRemoveMask];
 
-    /// <summary>
-    /// The assessment of <paramref name="image"/>. <see cref="CaptureAssessment.Assessed"/> is false when the face models are not available
-    /// (<see cref="BiometricUnavailableException"/>): the pixel checks of a document still give their guidance.
-    /// </summary>
     public CaptureAssessment Assess(RasterImage image, CaptureKind kind, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(image);
@@ -76,7 +62,6 @@ public sealed class CaptureQualityAssessor(IFaceDetector faceDetector, IOptions<
         {
             guidance.Add(CaptureGuidanceCodes.ShowYourFace);
 
-            // With no face the whole picture tells whether the light was the problem.
             using var whole = Statistics(image, null);
             AddLight(guidance, whole);
             return new CaptureAssessment(false, guidance, SelfieTips, true);
@@ -98,10 +83,6 @@ public sealed class CaptureQualityAssessor(IFaceDetector faceDetector, IOptions<
         return new CaptureAssessment(guidance.Count == 0, guidance, SelfieTips, true);
     }
 
-    /// <summary>
-    /// A document picture. <paramref name="expectFace"/> is false for the back of a card (E22/F01/US01/T02): the photo is on the front, so no face is
-    /// looked for, the face models are not asked and the pixel checks are the whole assessment.
-    /// </summary>
     private CaptureAssessment AssessDocument(RasterImage image, bool expectFace, CancellationToken cancellationToken)
     {
         var guidance = new List<string>();
@@ -149,10 +130,6 @@ public sealed class CaptureQualityAssessor(IFaceDetector faceDetector, IOptions<
             guidance.Add(CaptureGuidanceCodes.HoldStill);
     }
 
-    /// <summary>
-    /// A gray copy of the face box (or of the whole picture) brought within <see cref="CaptureQualityRules.StatisticsSide"/>; null when the box
-    /// is empty. The caller disposes it (zeroed).
-    /// </summary>
     internal static GrayBitmap? Statistics(RasterImage image, DetectedFace? face)
     {
         using var whole = image.ToGray();
@@ -173,7 +150,6 @@ public sealed class CaptureQualityAssessor(IFaceDetector faceDetector, IOptions<
         }
     }
 
-    /// <summary>The mean of the gray values, 0 to 255.</summary>
     internal static double MeanLuminance(GrayBitmap gray)
     {
         if (gray.Pixels.Length == 0)

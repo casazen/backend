@@ -18,130 +18,80 @@ public static class RoutineCodes
     public const string AiConditionFalse = "routine_ai_condition_false";
     public const string AiUnavailable = "routine_ai_unavailable";
 
-    /// <summary>The condition of the routine is not a valid one (a field routines do not know, an operator the field does not take, a value missing): the routine does not run and its execution says so.</summary>
     public const string ConditionInvalid = "routine_condition_invalid";
 
-    /// <summary>The action has no implementation yet, or the feature it needs is off (<c>RoutineActionCatalog</c>): it fails, it never pretends to have worked.</summary>
     public const string ActionNotAvailable = "routine_action_not_available";
 
-    /// <summary>The actions saved in the routine cannot be read, or one of them has a configuration the engine refuses.</summary>
     public const string ActionsInvalid = "routine_actions_invalid";
 
-    /// <summary>The routine was deactivated while an execution waited: the execution ends, it does not continue.</summary>
     public const string Inactive = "routine_inactive";
 
-    /// <summary>An action failed in a way nobody expected (the database, the queue): the execution is closed with this code and the failure goes on to the dispatcher, which delivers the event again.</summary>
     public const string ActionError = "routine_action_error";
 
-    /// <summary>The job that resumes a Wait could not be scheduled: the execution cannot continue, so it is closed with this code.</summary>
     public const string WaitNotScheduled = "routine_wait_not_scheduled";
 
-    /// <summary>The routine does not exist in the org of the caller (a routine of another org is the same 404).</summary>
     public const string NotFound = "routine_not_found";
 
-    /// <summary><c>CreateActivity</c> needs the booking of the event: the event names none, or the org has no such booking.</summary>
     public const string ActivityNeedsBooking = "routine_activity_needs_booking";
 
-    /// <summary><c>CreateCleaningRequest</c> needs the booking of the event: the event names none, or the org has no such booking.</summary>
     public const string CleaningNeedsBooking = "routine_cleaning_needs_booking";
 
-    /// <summary>
-    /// <c>CreateCleaningRequest</c> found nothing to do for the stay: its property has no cleaner set up (or the setup is switched off), so no cleaning is made and
-    /// the "To do" of a stay that ended without one appears as it always did. Recorded as the reason of a <c>blocked</c> action; the next ones go on.
-    /// </summary>
     public const string CleaningNotConfigured = "routine_cleaning_not_configured";
 
-    /// <summary><c>RequestReview</c> (E26/F01/US01/T01) needs the booking of the event: the event names none, or the org has no such booking.</summary>
     public const string ReviewNeedsBooking = "routine_review_needs_booking";
 
-    /// <summary>
-    /// <c>RequestReview</c> (E26/F01/US01/T01): the queue did not take the e-mail of the invitation (the provider is not configured, or it could not be queued). The
-    /// action fails, and the booking is not marked, so the host can still ask by hand. The code the host's button answers with too (422), so the interface has the
-    /// words for it already.
-    /// </summary>
     public const string ReviewInviteNotSent = "review_invite_not_sent";
 
-    /// <summary>
-    /// The booking of the event was cancelled, or marked as a no-show, while the execution waited: the actions after the wait are not run (a stay that does not
-    /// happen gets no To do and no message). Recorded as the reason of each action left, <c>blocked</c>; the routines of a cancellation are not stopped by it.
-    /// </summary>
     public const string BookingNotActive = "routine_booking_not_active";
 
-    /// <summary>API, 422: the name of a routine is empty or longer than <see cref="RoutineLimits.MaxNameLength"/>.</summary>
     public const string NameInvalid = "routine_name_invalid";
 
-    /// <summary>API, 422: the event type is not a member of <see cref="Casazen.Core.Entities.Enums.RoutineEventType"/>.</summary>
     public const string EventTypeInvalid = "routine_event_type_invalid";
 
-    /// <summary>API, 422: the event type exists but nothing starts a routine on it yet (<c>WeeklyRecurrence</c>: no job writes it).</summary>
     public const string EventNotAvailable = "routine_event_not_available";
 
-    /// <summary>API, 422: the configuration of the event is not valid for its type (days and hours 0 to 365 for the time triggers, nothing for the others).</summary>
     public const string EventConfigInvalid = "routine_event_config_invalid";
 
-    /// <summary>API, 422: the configuration of an action is not valid for its type (a wait out of range, a To do with no text…).</summary>
     public const string ActionConfigInvalid = "routine_action_config_invalid";
 
-    /// <summary>API, 409: the org already has <see cref="RoutineLimits.MaxRoutinesPerOrg"/> routines.</summary>
     public const string LimitReached = "routine_limit_reached";
 
-    /// <summary>API, 422: the sample payload of a simulation is not a JSON object.</summary>
     public const string SimulationPayloadInvalid = "routine_payload_invalid";
 
-    /// <summary>API, 403: a routine acts on every property of the org, so who changes one reaches the whole org.</summary>
     public const string NeedsOrgScope = "routines_need_org_scope";
 
-    /// <summary>Guardrail (ADR-022-R11): an access code goes out only once the identity of the guest is verified.</summary>
     public const string AccessCodeNeedsIdVerification = "access_code_needs_id_verification";
 
-    /// <summary>Guardrail (ADR-022-R11): an Airbnb guest is not contacted before the booking is confirmed.</summary>
     public const string AirbnbNotConfirmed = "airbnb_not_confirmed";
 
-    /// <summary>Guardrail (ADR-022-R11): a campaign goes only to a guest who consented to marketing.</summary>
     public const string CampaignNeedsConsent = "campaign_needs_consent";
 }
 
-/// <summary>The values of <c>RoutineExecution.Outcome</c> (a string column).</summary>
 public static class RoutineExecutionOutcomes
 {
-    /// <summary>Created and not started (the default of the column).</summary>
     public const string Pending = "Pending";
 
-    /// <summary>The actions are running.</summary>
     public const string Running = "Running";
 
-    /// <summary>A Wait is pending: <c>ResumeAt</c> is when the job that continues it runs.</summary>
     public const string Waiting = "Waiting";
 
-    /// <summary>Every action ended done, simulated, blocked or skipped.</summary>
     public const string Success = "Success";
 
-    /// <summary>The condition was invalid, the routine was deactivated while it waited, or an action failed.</summary>
     public const string Failed = "Failed";
 }
 
-/// <summary>The values of <see cref="RoutineActionResult.Outcome"/>.</summary>
 public static class RoutineActionOutcomes
 {
-    /// <summary>The action ran and did what it says.</summary>
     public const string Done = "done";
 
-    /// <summary>The routine is in test mode: nothing ran, nothing changed.</summary>
     public const string Simulated = "simulated";
 
-    /// <summary>A guardrail stopped the action (<see cref="RoutineActionResult.Code"/> is its reason); the next actions go on.</summary>
     public const string Blocked = "blocked";
 
-    /// <summary>
-    /// The action had nothing to do for this stay (E26/F01/US01/T01): it is not a failure and nothing was asked of anybody. <see cref="RoutineActionResult.Code"/>
-    /// is the reason (a booking of a portal, a guest with no address, an invitation already sent…); the next actions go on.
-    /// </summary>
     public const string Skipped = "skipped";
 
-    /// <summary>The action could not be done (<see cref="RoutineActionResult.Code"/> is a stable code); the actions after it do not run.</summary>
     public const string Failed = "failed";
 
-    /// <summary>A Wait: the execution continues at its <c>ResumeAt</c>. Becomes <see cref="Done"/> when the wait is over.</summary>
     public const string Waiting = "waiting";
 }
 
@@ -185,16 +135,10 @@ public sealed record RoutineExecutionResult(
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    /// <summary>An execution that did nothing yet.</summary>
     public static RoutineExecutionResult Empty => new([], null, 0);
 
-    /// <summary>The JSON kept in <c>ResultJson</c>.</summary>
     public string ToJson() => JsonSerializer.Serialize(this, JsonOptions);
 
-    /// <summary>
-    /// The result kept in <paramref name="json"/>. Never throws: what is not a result (the <c>{}</c> a new execution starts with, a text
-    /// written before this shape existed, a type no member declares) is an <see cref="Empty"/> one.
-    /// </summary>
     public static RoutineExecutionResult Parse(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -211,17 +155,9 @@ public sealed record RoutineExecutionResult(
         }
     }
 
-    /// <summary>
-    /// The result as the host reads it in the log of a routine: the saved payload is the engine's own state to continue a wait, not something to
-    /// show, so it is left out.
-    /// </summary>
     public static string WithoutPayload(string? json) => (Parse(json) with { PayloadJson = null }).ToJson();
 }
 
-/// <summary>
-/// One action of a routine as the engine reads it from <c>Routine.ActionsJson</c>: <c>{ "type": "CreateActivity", "config": { … } }</c>, the type by name
-/// and the configuration an object (the names of its members are read in any case). Built only by <see cref="TryParseList"/>.
-/// </summary>
 public sealed class RoutineAction
 {
     private static readonly IReadOnlyDictionary<string, JsonElement> NoConfig = new Dictionary<string, JsonElement>();
@@ -232,13 +168,10 @@ public sealed class RoutineAction
         Config = config;
     }
 
-    /// <summary>The type of the action.</summary>
     public RoutineActionType Type { get; }
 
-    /// <summary>The members of the configuration, by name in any case.</summary>
     public IReadOnlyDictionary<string, JsonElement> Config { get; }
 
-    /// <summary>The configuration as the JSON object it was written as (an empty object when there is none).</summary>
     public JsonElement ConfigElement => JsonSerializer.SerializeToElement(Config);
 
     /// <summary>
@@ -276,7 +209,6 @@ public sealed class RoutineAction
         }
     }
 
-    /// <summary>Reads one action; false when it is not an object with a known <c>type</c> and a <c>config</c> that is an object or missing.</summary>
     public static bool TryParse(JsonElement element, out RoutineAction action)
     {
         action = null!;
@@ -314,7 +246,6 @@ public sealed class RoutineAction
         return true;
     }
 
-    /// <summary>A whole number member of the configuration; false when it is missing or is not a whole number that fits an <see cref="int"/>.</summary>
     public bool TryGetInt(string name, out int value)
     {
         value = 0;
@@ -323,18 +254,12 @@ public sealed class RoutineAction
                && member.TryGetInt32(out value);
     }
 
-    /// <summary>A text member of the configuration; <c>null</c> when it is missing or is not a JSON string.</summary>
     public string? GetString(string name) =>
         Config.TryGetValue(name, out var member) && member.ValueKind == JsonValueKind.String ? member.GetString() : null;
 
-    /// <summary>
-    /// A switch of the configuration read the way a guardrail needs it, closed in the doubt: on for any value that is present and is not the JSON <c>false</c>
-    /// (<c>true</c>, a text, a number, <c>null</c>), off only when it is missing or <c>false</c>. Whoever wrote something there meant it to count.
-    /// </summary>
     public bool IsOnUnlessFalse(string name) =>
         Config.TryGetValue(name, out var member) && member.ValueKind != JsonValueKind.False;
 
-    /// <summary>A switch of the configuration: true only for the JSON <c>true</c>.</summary>
     public bool GetFlag(string name) =>
         Config.TryGetValue(name, out var member) && member.ValueKind == JsonValueKind.True;
 }
@@ -354,10 +279,4 @@ public sealed record RoutineSimulationResult(
     IReadOnlyList<RoutineSimulatedAction> Actions,
     string? Code = null);
 
-/// <summary>An action in <see cref="RoutineSimulationResult"/>.</summary>
-/// <param name="Index">The position of the action, from 0.</param>
-/// <param name="Type">Its type.</param>
-/// <param name="Config">Its configuration.</param>
-/// <param name="WouldBlock">It would not run: a guardrail stops it, or it has no implementation.</param>
-/// <param name="Code">The reason of <paramref name="WouldBlock"/>; <c>null</c> when it would run.</param>
 public sealed record RoutineSimulatedAction(int Index, RoutineActionType Type, JsonElement Config, bool WouldBlock, string? Code);

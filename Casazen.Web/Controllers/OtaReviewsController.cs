@@ -28,7 +28,6 @@ public class OtaReviewsController(
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService) : ControllerBase
 {
-    /// <summary>One review of a channel: the guest's review, the reply, the host's own review, the state of the read and what each action allows. 404 <c>ota_review_not_found</c>.</summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(OtaReviewDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -77,10 +76,6 @@ public class OtaReviewsController(
         return Answer(result);
     }
 
-    /// <summary>
-    /// The host's own review of the guest (<c>{ ratings: [{ category, value }], text, privateText? }</c>), once, while the window is open. The same header, answers and rules as the reply;
-    /// 409 <c>ota_review_window_closed</c> when the window is not open, 422 <c>ota_review_host_review_invalid</c> for no rating, a value that is not a whole number from 1 to 5, or no text.
-    /// </summary>
     [HttpPost("{id:guid}/host-review")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [EnableRateLimiting(RateLimitPolicies.HostMessageSend)]
@@ -111,7 +106,6 @@ public class OtaReviewsController(
         return result.State == OtaReviewActionState.ManualVerify ? StatusCode(StatusCodes.Status202Accepted, answer) : Ok(answer);
     }
 
-    // The review is authorized as a row of its property: org, permission and the caller's reach on the property.
     private async Task<bool> IsAuthorizedAsync(Guid reviewId, HostOperationRequirement operation, CancellationToken cancellationToken)
     {
         var propertyId = await reviews.FindPropertyIdAsync(reviewId, cancellationToken);

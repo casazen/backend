@@ -19,14 +19,8 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface ICheckInWizardService
 {
-    /// <summary>Everything the six steps show, with the step to open (<see cref="CheckInState.SuggestedStep"/>). Other tasks read it too.</summary>
     Task<CheckInState> GetStateAsync(Guid bookingId, CancellationToken cancellationToken);
 
-    /// <summary>
-    /// Replaces the guests of the stay with the host as author (<see cref="IStayGuestService.ReplaceAsync"/>): the input is the whole truth, the
-    /// exemption codes of the tourist tax included. Invalid data gives the field errors and saves nothing. <paramref name="vehiclePlate"/> is the plate
-    /// of the stay (NF-132): <c>null</c> keeps the stored one, an empty text clears it.
-    /// </summary>
     Task<CheckInSaveResult> SaveGuestsAsync(
         Guid bookingId,
         IReadOnlyList<StayGuestInput> guests,
@@ -41,7 +35,6 @@ public interface ICheckInWizardService
     Task<CheckInConfirmation> ConfirmAsync(Guid bookingId, string userId, CancellationToken cancellationToken);
 }
 
-/// <summary>The steps of the wizard, in order.</summary>
 public static class CheckInWizardSteps
 {
     public const string Guests = "guests";
@@ -52,13 +45,10 @@ public static class CheckInWizardSteps
     public const string Result = "result";
 }
 
-/// <summary>The codes of the wizard.</summary>
 public static class CheckInWizardCodes
 {
-    /// <summary>The confirmation found blocking issues (422).</summary>
     public const string NotReady = "checkin_not_ready";
 
-    /// <summary>The extension of the 422 that lists the blocking issues.</summary>
     public const string IssuesExtension = "issues";
 }
 
@@ -92,8 +82,6 @@ public sealed record CheckInState(
     string SuggestedStep,
     bool AskVehiclePlate = false);
 
-/// <summary>The booking of the wizard.</summary>
-/// <param name="VehiclePlate">The plate of the car of the stay (NF-132), null when none was given.</param>
 public sealed record CheckInBookingView(
     Guid BookingId,
     Guid PropertyId,
@@ -114,7 +102,6 @@ public sealed record CheckInBookingView(
 /// <param name="OctorateTaxValues">The tourist tax values travel to Octorate with the guests (<c>Octorate:WriteCityTaxValues</c>, mirrored booking).</param>
 public sealed record CheckInCapabilities(bool DocumentReading, bool CanRegisterArrival, bool CanMarkNoShow, bool OctorateTaxValues);
 
-/// <summary>The outcome of <see cref="ICheckInWizardService.SaveGuestsAsync"/>: the field errors, or the new state.</summary>
 public sealed record CheckInSaveResult(IReadOnlyList<StayGuestFieldError> Errors, CheckInState? State)
 {
     public bool Success => Errors.Count == 0;
@@ -131,27 +118,18 @@ public sealed record CheckInConfirmation(
     CheckInAlloggiatiNext Alloggiati,
     CheckInState State);
 
-/// <summary>The tourist tax of the confirmation: <paramref name="Saved"/>, or the code of why not (<c>tax_not_calculable</c>, ...).</summary>
 public sealed record CheckInTaxOutcome(bool Saved, string? Reason);
 
-/// <summary>What happens next to the police communication of the stay.</summary>
 public enum CheckInAlloggiatiNextStep
 {
-    /// <summary>The channel manager is the sender: Octorate transmits the guests sent with <c>draft = false</c>.</summary>
     ChannelManagerSends = 0,
 
     /// <summary>The host sends it on the Alloggiati Web portal, with the guide (CasaZen does not send in this release).</summary>
     Manual = 1,
 
-    /// <summary>It was already sent (receipt or the host's declaration).</summary>
     AlreadySent = 2,
 
-    /// <summary>
-    /// There is no police communication: the property is outside Italy, or the stay owes none (a no-show, a request still waiting or a cancelled
-    /// booking: the guests never came).
-    /// </summary>
     NotApplicable = 3,
 }
 
-/// <summary>The police communication line of the confirmation.</summary>
 public sealed record CheckInAlloggiatiNext(CheckInAlloggiatiNextStep Step, ComplianceSenderType Sender);

@@ -17,8 +17,6 @@ public sealed class AlloggiatiCodeBook
     private readonly Dictionary<(AlloggiatiCodeTable Table, string Code), AlloggiatiCodeEntry> _byCode = new();
     private readonly Dictionary<(AlloggiatiCodeTable Table, string Name), List<AlloggiatiCodeEntry>> _byName = new();
 
-    /// <param name="rowCounts">Rows of each imported table (a table with no rows is not loaded).</param>
-    /// <param name="entries">The entries of interest (usually those matching <see cref="KeysOf"/>).</param>
     public AlloggiatiCodeBook(IReadOnlyDictionary<AlloggiatiCodeTable, int> rowCounts, IEnumerable<AlloggiatiCodeEntry> entries)
     {
         _rowCounts = rowCounts;
@@ -32,22 +30,16 @@ public sealed class AlloggiatiCodeBook
         }
     }
 
-    /// <summary>No table imported: every code is to complete.</summary>
     public static AlloggiatiCodeBook Empty { get; } =
         new(new Dictionary<AlloggiatiCodeTable, int>(), []);
 
     public bool IsLoaded(AlloggiatiCodeTable table) => _rowCounts.TryGetValue(table, out var rows) && rows > 0;
 
-    /// <summary>The entry with this code in <paramref name="table"/>, if imported.</summary>
     public AlloggiatiCodeEntry? FindCode(AlloggiatiCodeTable table, string? code) =>
         AlloggiatiRecordRules.NormalizeCode(code) is { } normalized && _byCode.TryGetValue((table, normalized), out var entry)
             ? entry
             : null;
 
-    /// <summary>
-    /// Code of a value in one of <paramref name="tables"/>: the stored <paramref name="code"/> if it exists there, or else
-    /// the only entry whose description matches <paramref name="name"/> (and <paramref name="province"/> for comuni).
-    /// </summary>
     public ResolvedCode Resolve(IReadOnlyList<AlloggiatiCodeTable> tables, string? code, string? name, string? province = null)
     {
         if (!tables.Any(IsLoaded))
@@ -81,7 +73,6 @@ public sealed class AlloggiatiCodeBook
         };
     }
 
-    /// <summary>Codes of every coded field of the guest's record line.</summary>
     public StayGuestCodes ResolveGuest(StayGuest guest)
     {
         var type = Resolve([AlloggiatiCodeTable.TipiAlloggiato], null, AlloggiatiRecordRules.OfficialNormalizedName(guest.Type));
@@ -101,7 +92,6 @@ public sealed class AlloggiatiCodeBook
 
         var requiresDocument = AlloggiatiRecordRules.RequiresDocument(guest.Type);
         var documentType = requiresDocument
-            // Only the stored code counts: the document kinds of CasaZen have no official description to match.
             ? Resolve([AlloggiatiCodeTable.Documenti], guest.DocumentTypeCode, null)
             : ResolvedCode.NotRequired;
         var issuePlace = requiresDocument
@@ -111,7 +101,6 @@ public sealed class AlloggiatiCodeBook
         return new StayGuestCodes(type, birthComune, birthCountry, citizenship, documentType, issuePlace);
     }
 
-    /// <summary>Codes and normalized names to load from each table to resolve <paramref name="guests"/>.</summary>
     public static IReadOnlyDictionary<AlloggiatiCodeTable, CodeBookKeys> KeysOf(IEnumerable<StayGuest> guests)
     {
         var keys = Enum.GetValues<AlloggiatiCodeTable>().ToDictionary(t => t, _ => new CodeBookKeys());
@@ -130,7 +119,6 @@ public sealed class AlloggiatiCodeBook
             keys[AlloggiatiCodeTable.Comuni].Add(guest.DocumentIssuePlaceCode, guest.DocumentIssuePlaceName);
             keys[AlloggiatiCodeTable.Stati].Add(guest.DocumentIssuePlaceCode, guest.DocumentIssuePlaceName);
 
-            // NF-40: the residence is checked against the same tables as the birth place.
             keys[AlloggiatiCodeTable.Comuni].Add(guest.ResidenceComuneCode, guest.ResidenceComuneName);
             keys[AlloggiatiCodeTable.Stati].Add(guest.ResidenceCountryCode, guest.ResidenceCountryName);
         }
@@ -139,7 +127,6 @@ public sealed class AlloggiatiCodeBook
     }
 }
 
-/// <summary>Codes and normalized descriptions to look up in one table.</summary>
 public sealed class CodeBookKeys
 {
     public HashSet<string> Codes { get; } = new(StringComparer.Ordinal);
@@ -155,26 +142,19 @@ public sealed class CodeBookKeys
     }
 }
 
-/// <summary>How the code of a field was found.</summary>
 public enum CodeResolutionStatus
 {
-    /// <summary>Found in the imported official table.</summary>
     Resolved,
 
-    /// <summary>The field is not part of this guest's record line (e.g. document of a family member).</summary>
     NotRequired,
 
-    /// <summary>The official table has not been imported.</summary>
     TableEmpty,
 
-    /// <summary>No entry with the stored code, or no entry with the entered name.</summary>
     NotFound,
 
-    /// <summary>More than one entry matches the entered name: the code must be chosen.</summary>
     Ambiguous,
 }
 
-/// <summary>Code of one field of the record, with the official description when found.</summary>
 public sealed record ResolvedCode(string? Code, string? Description, CodeResolutionStatus Status)
 {
     public static ResolvedCode NotRequired { get; } = new(null, null, CodeResolutionStatus.NotRequired);
@@ -184,11 +164,9 @@ public sealed record ResolvedCode(string? Code, string? Description, CodeResolut
 
     public static ResolvedCode Found(AlloggiatiCodeEntry entry) => new(entry.Code, entry.Description, CodeResolutionStatus.Resolved);
 
-    /// <summary>True when the export has what it needs for this field.</summary>
     public bool IsComplete => Status is CodeResolutionStatus.Resolved or CodeResolutionStatus.NotRequired;
 }
 
-/// <summary>Codes of the coded fields of one guest's record line.</summary>
 public sealed record StayGuestCodes(
     ResolvedCode Type,
     ResolvedCode BirthComune,
@@ -197,7 +175,6 @@ public sealed record StayGuestCodes(
     ResolvedCode DocumentType,
     ResolvedCode DocumentIssuePlace)
 {
-    /// <summary>Record fields whose code is still to complete ("codice da completare"), as camelCase field names.</summary>
     public IReadOnlyList<string> CodesToComplete
     {
         get

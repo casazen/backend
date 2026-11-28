@@ -63,13 +63,10 @@ public class OctorateBookingCancelHandlerTests
         // The cancellation of the import (or of a channel booking Octorate confirmed first): never sent back.
         await HandleAsync(h, await EventAsync(h, fromOctorate, BookingEventOrigin.Octorate));
 
-        // A booking of a channel goes through the channel path, Octorate first.
         await HandleAsync(h, await EventAsync(h, ofAChannel, BookingEventOrigin.Host));
 
-        // An old event of a booking that is not cancelled any more (a hold confirmed again): nothing to cancel.
         await HandleAsync(h, await EventAsync(h, notCancelled, BookingEventOrigin.System));
 
-        // The connector is off: nothing is sent, nothing is written.
         await HandleAsync(h, await EventAsync(h, fromOctorate, BookingEventOrigin.Host), connector: false);
 
         h.Client.Verify(
@@ -89,7 +86,6 @@ public class OctorateBookingCancelHandlerTests
             .Returns(Task.CompletedTask);
         var delivered = await EventAsync(h, bookingId, BookingEventOrigin.Guest);
 
-        // No answer: the row says it, the exception goes up so the dispatcher delivers the event again. The cancellation of the booking stands.
         await Assert.ThrowsAsync<OctorateServerException>(() => HandleAsync(h, delivered));
         var failed = await h.ReadSyncAsync(bookingId);
         Assert.NotNull(failed);
@@ -98,7 +94,6 @@ public class OctorateBookingCancelHandlerTests
         Assert.Equal(OctorateSyncErrorCodes.Unavailable, failed.ErrorCode);
         Assert.Equal(BookingStatus.Cancelled, (await h.ReadBookingAsync(bookingId)).Status);
 
-        // The delivery that follows works: the row is synced.
         await HandleAsync(h, delivered);
         var synced = await h.ReadSyncAsync(bookingId);
         Assert.NotNull(synced);
@@ -125,7 +120,6 @@ public class OctorateBookingCancelHandlerTests
                 .Setup(c => c.CancelReservationAsync(It.IsAny<OctorateBookingTarget>(), "9001", It.IsAny<CancellationToken>()))
                 .ThrowsAsync(error);
 
-            // Handled: no exception, so the event is consumed; the host sees the row and asks again.
             await HandleAsync(h, await EventAsync(h, bookingId, BookingEventOrigin.Host));
 
             var sync = await h.ReadSyncAsync(bookingId);
@@ -160,7 +154,6 @@ public class OctorateBookingCancelHandlerTests
 
             await HandleAsync(h, await EventAsync(h, bookingId, BookingEventOrigin.Host));
 
-            // Linked to the booking, as the create does when it hears the answer, and cancelled on Octorate once.
             Assert.Equal("9301", (await h.ReadBookingAsync(bookingId)).OctorateReservationId);
             h.Client.Verify(
                 c => c.CancelReservationAsync(It.IsAny<OctorateBookingTarget>(), "9301", It.IsAny<CancellationToken>()), Times.Once);
@@ -183,7 +176,6 @@ public class OctorateBookingCancelHandlerTests
             .Setup(c => c.FindReservationByExternalReferenceAsync(OctorateSyncHarness.Accommodation, "L7Q2M9X4TB", It.IsAny<CancellationToken>()))
             .ReturnsAsync((OctorateReservation?)null);
 
-        // The whole list was read and has none: the reservation was never made, there is nothing to cancel.
         await HandleAsync(h, await EventAsync(h, bookingId, BookingEventOrigin.Host));
 
         h.Client.Verify(
@@ -219,7 +211,6 @@ public class OctorateBookingCancelHandlerTests
         Assert.Equal(OctorateSyncErrorCodes.Unavailable, failed.ErrorCode);
         Assert.Null((await h.ReadBookingAsync(bookingId)).OctorateReservationId);
 
-        // The delivery that follows finds the reservation (the row still says a create was tried), links it and cancels it.
         await HandleAsync(h, delivered);
         Assert.Equal("9301", (await h.ReadBookingAsync(bookingId)).OctorateReservationId);
         Assert.Equal(OctorateSyncState.Synced, (await h.ReadSyncAsync(bookingId))!.State);
@@ -235,7 +226,6 @@ public class OctorateBookingCancelHandlerTests
         await SeedCreateRowAsync(h, bookingId, OctorateSyncState.Failed, OctorateSyncErrorCodes.Unavailable, attempts: 1);
         await SetConnectionAsync(h, OctorateConnectionStatus.Disconnected);
 
-        // The property cannot be looked into: nothing is asked of Octorate, and the cancellation is not consumed with no trace.
         await HandleAsync(h, await EventAsync(h, bookingId, BookingEventOrigin.Host));
         var row = await h.ReadSyncAsync(bookingId);
         Assert.NotNull(row);
@@ -243,7 +233,6 @@ public class OctorateBookingCancelHandlerTests
         Assert.Equal(OctorateSyncOperation.Cancel, row.LastOperation);
         Assert.Equal(OctorateSyncErrorCodes.NotMirrored, row.ErrorCode);
 
-        // Back: the host asks again, the reservation of the create is found, linked and cancelled.
         await SetConnectionAsync(h, OctorateConnectionStatus.Connected);
         GivenReservationWithReference(h, "L7Q2M9X4TB", "9301");
         h.Client
@@ -262,10 +251,8 @@ public class OctorateBookingCancelHandlerTests
         var withNoRow = await SeedCancelledAsync(h, reservationId: null, withRow: false, bookingCode: "N7Q2M9X4TB");
         var neverSent = await SeedCancelledAsync(h, reservationId: null, withRow: false, bookingCode: "O7Q2M9X4TB");
 
-        // A row with no attempt: the create stopped before it called Octorate (the room was not chosen).
         await SeedCreateRowAsync(h, neverSent, OctorateSyncState.Failed, OctorateSyncErrorCodes.RoomNotChosen, attempts: 0);
 
-        // The strict client has no lookup and no cancellation set up: any call fails the test.
         await HandleAsync(h, await EventAsync(h, withNoRow, BookingEventOrigin.Host));
         await HandleAsync(h, await EventAsync(h, neverSent, BookingEventOrigin.Host));
 
@@ -283,7 +270,6 @@ public class OctorateBookingCancelHandlerTests
             .Setup(c => c.FindReservationByExternalReferenceAsync(OctorateSyncHarness.Accommodation, reference, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OctorateReservation { Id = reservationId, Refer = reference, Status = OctorateBookingStatus.Confirmed });
 
-    /// <summary>The row the create left on a booking: it called Octorate <paramref name="attempts"/> times and ended in <paramref name="state"/>.</summary>
     private static async Task SeedCreateRowAsync(OctorateSyncHarness h, Guid bookingId, OctorateSyncState state, string? errorCode, int attempts)
     {
         await using var seed = h.NewDb();
@@ -326,7 +312,6 @@ public class OctorateBookingCancelHandlerTests
         await HandleAsync(h, await EventAsync(h, failedCancel, BookingEventOrigin.System, DomainEventType.OctorateSyncRequested));
         await HandleAsync(h, await EventAsync(h, failedCreate, BookingEventOrigin.System, DomainEventType.OctorateSyncRequested));
 
-        // The failed cancellation was sent again and is synced; the row of a failed create is the business of the create, not of this handler.
         h.Client.Verify(
             c => c.CancelReservationAsync(It.IsAny<OctorateBookingTarget>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal(OctorateSyncState.Synced, (await h.ReadSyncAsync(failedCancel))!.State);
@@ -345,13 +330,10 @@ public class OctorateBookingCancelHandlerTests
     {
         var cases = new (Func<OctorateSyncHarness, Task> Break, Func<OctorateSyncHarness, Task> Restore)[]
         {
-            // The refresh token was refused: no call is made for the org until the host connects again.
             (harness => SetConnectionAsync(harness, OctorateConnectionStatus.Disconnected), harness => SetConnectionAsync(harness, OctorateConnectionStatus.Connected)),
 
-            // A mapping that is not confirmed any more: the property has no listing to write to.
             (harness => SetMappingAsync(harness, OctorateMappingStatus.Rejected), harness => SetMappingAsync(harness, OctorateMappingStatus.Confirmed)),
 
-            // A new proposal for the same property, still to decide: writes are blocked until a person confirms.
             (AddProposedMappingAsync, RemoveProposedMappingsAsync),
         };
 
@@ -361,15 +343,12 @@ public class OctorateBookingCancelHandlerTests
             var bookingId = await SeedCancelledAsync(h);
             await breakMirror(h);
 
-            // The cancellation arrives while the property is not mirrored: nothing leaves, the row says so.
             await HandleAsync(h, await EventAsync(h, bookingId, BookingEventOrigin.Host));
             await AssertNotSentAsync(h, bookingId);
 
-            // The host asks again before the connection or the mapping is back: the same row, nothing leaves.
             await HandleAsync(h, await EventAsync(h, bookingId, BookingEventOrigin.System, DomainEventType.OctorateSyncRequested));
             await AssertNotSentAsync(h, bookingId);
 
-            // Back: the host asks again and the cancellation is sent, once.
             await restoreMirror(h);
             h.Client
                 .Setup(c => c.CancelReservationAsync(It.IsAny<OctorateBookingTarget>(), "9001", It.IsAny<CancellationToken>()))
@@ -457,7 +436,6 @@ public class OctorateBookingCancelHandlerTests
         return flags.Object;
     }
 
-    /// <summary>The event the outbox delivers: ids, enums and dates only, as <c>BookingEvents</c> writes it.</summary>
     private static async Task<DomainEvent> EventAsync(
         OctorateSyncHarness h,
         Guid bookingId,
@@ -474,10 +452,6 @@ public class OctorateBookingCancelHandlerTests
             JsonSerializer.Serialize(BookingEventPayload.Of(booking, origin)));
     }
 
-    /// <summary>
-    /// A booking cancelled in CasaZen, of the org, mirrored on Octorate (reservation 9001) with the row of its create synced; without the
-    /// reservation or the row when the test says so.
-    /// </summary>
     private static async Task<Guid> SeedCancelledAsync(
         OctorateSyncHarness h,
         BookingSource source = BookingSource.Manual,

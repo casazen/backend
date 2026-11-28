@@ -46,20 +46,10 @@ public sealed class ComplianceArchiveController(
     IOptions<ComplianceOptions> options,
     IComplianceStatusService? complianceStatus = null) : ControllerBase
 {
-    /// <summary>Code of a <c>format</c> that is not <c>pdf</c> or <c>csv</c> (400).</summary>
     public const string InvalidFormatCode = "compliance_report_invalid_format";
 
-    /// <summary>
-    /// The largest upload request: the largest file the option allows and a margin for the other fields. The multipart body is buffered in memory
-    /// up to this size, so a proof is never spilled to a temporary file on disk.
-    /// </summary>
     private const int MaxRequestBytes = (ComplianceArchiveOptions.MaxUploadMegabytes * 1024 * 1024) + (64 * 1024);
 
-    /// <summary>
-    /// The proofs held, newest first, one page of them (<c>from</c> and <c>to</c> are days, both included, of the day or month a proof is about).
-    /// 404 for a property the caller does not reach. The receipts of a tax declaration or payment are in it, and in its total, only for who holds
-    /// <c>payment.read</c>.
-    /// </summary>
     [HttpGet("api/compliance/archive")]
     [ProducesResponseType(typeof(ComplianceArchivePageDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -158,10 +148,6 @@ public sealed class ComplianceArchiveController(
         return File(export.Content, "application/zip", export.FileName);
     }
 
-    /// <summary>
-    /// The obligations expected for every stay and month of the caller's reach in the period, with the proof CasaZen holds for each, the incomplete ones
-    /// included. Behind the traffic light (404 while it is off).
-    /// </summary>
     [HttpGet("api/compliance/report")]
     [FeatureGate(FeatureFlags.ComplianceTrafficLight)]
     [ProducesResponseType(typeof(ComplianceCoverageReportDto), StatusCodes.Status200OK)]
@@ -263,7 +249,6 @@ public sealed class ComplianceArchiveController(
         if (User.GetUserId() is not { Length: > 0 } userId)
             return Unauthorized();
 
-        // A tax proof is a record of money: the receipt of a declaration or of a payment needs the permission that records a payment too.
         if (IsTaxProof(form.Kind!.Value)
             && !(await authorizationService.AuthorizeAsync(User, CasazenPolicies.PaymentWrite)).Succeeded)
         {
@@ -273,7 +258,6 @@ public sealed class ComplianceArchiveController(
         if (await GetScopeAsync(cancellationToken) is not { } scope)
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
-        // No file chosen is an empty part with no name (a plain HTML form); an empty file that has a name is a proof, and an invalid one.
         if (form.File is not { } sent || (sent.Length == 0 && string.IsNullOrEmpty(sent.FileName)))
         {
             return this.ApiProblem(
@@ -289,17 +273,11 @@ public sealed class ComplianceArchiveController(
         return StatusCode(StatusCodes.Status201Created, ComplianceArchiveEntryDto.From(entry));
     }
 
-    /// <summary>True for the receipts of the tourist tax (declaration and payment): the money kinds (<see cref="ComplianceArchiveRules.MoneyKinds"/>).</summary>
     public static bool IsTaxProof(ManualProofKind kind) => ComplianceArchiveRules.IsMoneyKind(kind);
 
-    /// <summary>
-    /// Whether the caller may read money (<c>payment.read</c>): the owner, the administrators, the property managers and the accountant; never the
-    /// collaborator. It decides whether the receipts of a tax declaration or payment are part of what it reads (AM-03).
-    /// </summary>
     private async Task<bool> CanReadMoneyAsync() =>
         (await authorizationService.AuthorizeAsync(User, CasazenPolicies.PaymentRead)).Succeeded;
 
-    /// <summary><c>pdf</c> (the default) or <c>csv</c>, whatever the case; false for anything else.</summary>
     private static bool TryReadFormat(string? format, out ComplianceReportFormat reportFormat)
     {
         reportFormat = ComplianceReportFormat.Pdf;

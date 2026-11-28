@@ -12,7 +12,6 @@ public sealed record SupplierSettingsInput(
     bool? NotifyPayments,
     int? RespondWithinMinutes);
 
-/// <summary>The settings after <see cref="SupplierSettingsRules.Normalize"/>: all present and inside their limits.</summary>
 public sealed record SupplierSettingsContent(
     bool AutoAcceptRegulars,
     bool NotifyNewRequests,
@@ -20,10 +19,6 @@ public sealed record SupplierSettingsContent(
     bool NotifyPayments,
     int RespondWithinMinutes);
 
-/// <summary>
-/// JSON names of the fields of <c>api/supplier/settings</c>, as they appear in <c>fields</c> of a 422
-/// (<see cref="SupplierAgendaRuleException.Fields"/>).
-/// </summary>
 public static class SupplierSettingsFields
 {
     public const string AutoAcceptRegulars = "autoAcceptRegulars";
@@ -33,13 +28,6 @@ public static class SupplierSettingsFields
     public const string RespondWithinMinutes = "respondWithinMinutes";
 }
 
-/// <summary>
-/// What is a valid value of the supplier's own settings (SP-16a): the three notification switches and the automatic acceptance of the
-/// regular customers are booleans, and the time to answer a request of the public showcase is a whole number of minutes from
-/// <see cref="SupplierAgendaLimits.MinRespondWithinMinutes"/> to <see cref="SupplierAgendaLimits.MaxRespondWithinMinutes"/> (the same
-/// bounds as the database check). Pure, testable without a database; every value that is not valid is collected and refused together
-/// (422 <see cref="SupplierAgendaErrors.SettingsInvalid"/> naming all the fields at fault).
-/// </summary>
 public static class SupplierSettingsRules
 {
     public static SupplierSettingsContent Normalize(SupplierSettingsInput input)

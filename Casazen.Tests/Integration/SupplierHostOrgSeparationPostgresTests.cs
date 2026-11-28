@@ -33,7 +33,6 @@ public class SupplierHostOrgSeparationPostgresTests(CasazenWebApplicationFactory
 
         using var client = factory.CreateAuthenticatedClient(sub, roles: "Supplier", email: email);
 
-        // Supplier only: no host tenant, the host area is closed and shows nothing of the supplier org.
         await AssertOnboardingRequiredAsync(await client.GetAsync("/api/properties"));
 
         var onboarding = await client.PostAsJsonAsync("/api/users/onboarding", OnboardingPayload());
@@ -50,7 +49,6 @@ public class SupplierHostOrgSeparationPostgresTests(CasazenWebApplicationFactory
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            // The core A1-40 guarantee: the property is in the host org, a Host org, never in the supplier org.
             var property = await db.Properties.IgnoreQueryFilters().AsNoTracking().SingleAsync(p => p.Id == propertyId);
             Assert.Equal(hostOrgId, property.OrgId);
             Assert.Equal(OrgType.Host, (await db.Orgs.AsNoTracking().SingleAsync(o => o.Id == hostOrgId)).OrgType);
@@ -60,7 +58,6 @@ public class SupplierHostOrgSeparationPostgresTests(CasazenWebApplicationFactory
             Assert.Equal(supplierOrgId, user.SupplierOrgId);
         }
 
-        // Host context: its own property only, never another host's.
         var hostList = await client.GetAsync("/api/properties");
         Assert.Equal(HttpStatusCode.OK, hostList.StatusCode);
         var hostBody = await hostList.Content.ReadAsStringAsync();
@@ -68,13 +65,11 @@ public class SupplierHostOrgSeparationPostgresTests(CasazenWebApplicationFactory
         Assert.DoesNotContain(otherProperty.Id.ToString(), hostBody);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/properties/{otherProperty.Id}")).StatusCode);
 
-        // Supplier context of the same account: still its supplier org and its request.
         var inbox = await client.GetAsync("/api/service-requests?view=supplier");
         Assert.Equal(HttpStatusCode.OK, inbox.StatusCode);
         Assert.Contains(requestId.ToString(), await inbox.Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/supplier/profile")).StatusCode);
 
-        // The other host does not see the new host's property.
         using var other = factory.CreateAuthenticatedClient(otherOwner, roles: "PropertyOwner");
         Assert.Equal(HttpStatusCode.NotFound, (await other.GetAsync($"/api/properties/{propertyId}")).StatusCode);
     }
@@ -82,7 +77,6 @@ public class SupplierHostOrgSeparationPostgresTests(CasazenWebApplicationFactory
     [PostgresFact]
     public async Task LegacySupplierOrgInOrgId_IsNeverTheTenantAndOnboardingProvisionsANewHostOrg()
     {
-        // Pre-PL-05 shape: OrgId = SupplierOrgId = the supplier org.
         var sub = $"auth0|pl05-legacy-{Guid.NewGuid():N}";
         var email = $"pl05.legacy.{Guid.NewGuid():N}@example.com";
         var supplierOrgId = await SeedSupplierAsync(sub, email, legacyOrgIdLink: true);

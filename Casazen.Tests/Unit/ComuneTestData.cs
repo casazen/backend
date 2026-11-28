@@ -17,12 +17,10 @@ namespace Casazen.Tests.Unit;
 /// </summary>
 public static class ComuneTestData
 {
-    /// <summary>Reference date of the official file the sample comes from.</summary>
     public static readonly DateOnly ReferenceDate = new(2026, 2, 21);
 
     public const string SampleSourceVersion = "Test sample: rows of the ISTAT list updated to 21/02/2026";
 
-    // The comuni of the sample the tests refer to by name.
     public const string Roma = "058091";
     public const string Milano = "015146";
     public const string Firenze = "048017";
@@ -40,7 +38,6 @@ public static class ComuneTestData
     public const string CastroBergamo = "016065";
     public const string CastroLecce = "075096";
 
-    // The SEO view of four comuni of the sample, for tests that build a service by hand (codes of the official list).
     public static readonly ComuneInfo ComoInfo = new("013075", "Como", "LOM", "lombardia", "como");
     public static readonly ComuneInfo BellagioInfo = new("013250", "Bellagio", "LOM", "lombardia", "bellagio");
     public static readonly ComuneInfo MenaggioInfo = new("013145", "Menaggio", "LOM", "lombardia", "menaggio");
@@ -53,7 +50,6 @@ public static class ComuneTestData
     public static ComuneImportService CreateImportService(AppDbContext db, TimeProvider? clock = null) =>
         new(db, NullLogger<ComuneImportService>.Instance, clock);
 
-    /// <summary>Imports the sample as a full list, like an admin would.</summary>
     public static async Task<ComuneImportResult> ImportSampleAsync(AppDbContext db)
     {
         await using var stream = OpenSample();
@@ -68,7 +64,6 @@ public static class ComuneTestData
     }
 }
 
-/// <summary>The services built on the comuni list, on a test database (SU-04), for the tests that build a service by hand.</summary>
 public static class ComuneTestServices
 {
     public static IComuneDirectory Directory(AppDbContext db) => new ComuneDirectory(db);
@@ -81,7 +76,6 @@ public static class ComuneTestServices
     public static ISeoComuneCatalog SeoCatalog(AppDbContext db) => new SeoComuneCatalog(new ComuneDirectory(db));
 }
 
-/// <summary>A fixed SEO catalog, for tests of a service that only needs the comuni it names.</summary>
 public sealed class StaticSeoComuneCatalog(params ComuneInfo[] comuni) : ISeoComuneCatalog
 {
     public Task<ComuneInfo?> GetByCodeAsync(string? istatCode, CancellationToken cancellationToken = default) =>

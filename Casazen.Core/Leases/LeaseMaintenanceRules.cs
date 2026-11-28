@@ -5,15 +5,10 @@ using Casazen.Core.Exceptions;
 
 namespace Casazen.Core.Leases;
 
-/// <summary>
-/// The checks of a tenant maintenance request that do not need the database: lengths, the photo bytes, and
-/// which statuses can be decided or paid.
-/// </summary>
 public static class LeaseMaintenanceRules
 {
     public const int MaxPhotos = 5;
 
-    /// <summary>Five megabytes of image bytes, before base64.</summary>
     public const int MaxPhotoBytes = 5 * 1024 * 1024;
 
     public static string CleanTitle(string? title) => Required(title, LeaseMaintenanceRequest.TitleMaxLength, "maintenance_title_invalid", "MaintenanceTitleInvalid");

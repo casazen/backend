@@ -3,24 +3,17 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
-/// <summary>Period of a report: calendar dates in Europe/Rome, both included (CO-19).</summary>
 public sealed record FiscalReportPeriod(DateOnly From, DateOnly To)
 {
-    /// <summary>Longest period of a report, in days (a leap year).</summary>
     public const int MaxDays = 366;
 
     public static FiscalReportPeriod WholeYear(int year) => new(new DateOnly(year, 1, 1), new DateOnly(year, 12, 31));
 
-    /// <summary>From is not after To and the period lasts at most <see cref="MaxDays"/> days.</summary>
     public bool IsValid => From <= To && To.DayNumber - From.DayNumber < MaxDays;
 
     public bool IsWithinYear(int year) => From.Year == year && To.Year == year;
 }
 
-/// <summary>
-/// Rates and legal sources the reports apply, from configuration (<c>ShortStayFiscal</c>, fiscale.md § CO-18), printed in
-/// the notes of the PDF and shown by the frontend.
-/// </summary>
 public sealed record FiscalReportRules(
     decimal CedolareRate,
     decimal CedolareReducedRate,
@@ -68,9 +61,6 @@ public record AnnualIncomeLine(
     string? TaxNote,
     int? TaxpayerIndex);
 
-/// <param name="TaxableIncome">Sum of the lines with an estimate.</param>
-/// <param name="EstimatedTax">Sum of the lines with an estimate.</param>
-/// <param name="LinesWithoutEstimate">Lines with income but no estimate (IRPEF ordinaria, impresa, no regime, threshold).</param>
 public record AnnualIncomeTotals(
     decimal GrossIncome,
     decimal Withholding,
@@ -81,7 +71,6 @@ public record AnnualIncomeTotals(
     decimal EstimatedTax,
     int LinesWithoutEstimate);
 
-/// <summary>Subtotal of one taxpayer (titolare fiscale) in the summary (fiscale.md: report per contribuente e per immobile).</summary>
 public record AnnualTaxpayerTotals(
     int Index,
     string? FiscalCodeMasked,
@@ -106,9 +95,6 @@ public record AnnualIncomeReport(
 
 public record WithholdingOtaBucket(string Source, decimal Gross, decimal Withholding, decimal Net, int PayoutCount);
 
-/// <param name="PaidAt">Payment instant (UTC).</param>
-/// <param name="PaidOn">Payment date in Europe/Rome.</param>
-/// <param name="BookingCode">Booking code shown to host and guest (XXXXX-XXXXX).</param>
 public record WithholdingLine(
     Guid PaymentId,
     Guid PropertyId,
@@ -136,10 +122,6 @@ public record WithholdingReport(
     WithholdingTotals Totals,
     FiscalReportRules Rules);
 
-/// <summary>Stays of one comune whose check-in falls in one month of the period.</summary>
-/// <param name="Comune">Comune of the property (its city, as typed by the host; grouped case- and accent-insensitive).</param>
-/// <param name="Amount">Tourist tax recorded on the stays by the engine (BK-03).</param>
-/// <param name="StaysWithoutAmount">Stays with no tourist tax recorded (rate not available, exempt guests, OTA booking...).</param>
 public record TouristTaxPeriodRow(
     string Comune,
     int Year,
@@ -167,10 +149,6 @@ public record TouristTaxStayLine(
 
 public record TouristTaxTotals(int Stays, int Nights, int Guests, decimal Amount, int StaysWithoutAmount);
 
-/// <summary>
-/// Tourist tax per comune and month (CO-19, part of A5-16): confirmed stays with check-in in the period and the amount the
-/// tourist tax engine recorded on each (BK-03). A basis for the comune's statement, not the statement itself.
-/// </summary>
 public record TouristTaxRemittanceNote(string Comune, string Text);
 
 public record TouristTaxReport(

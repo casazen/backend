@@ -28,67 +28,42 @@ namespace Casazen.Core.Entities;
 [Table("SwissNotificationDeclarations")]
 public class SwissNotificationDeclaration : ITenantOwned
 {
-    /// <summary>Longest <see cref="RegimeCode"/>.</summary>
     public const int RegimeCodeMaxLength = 12;
 
-    /// <summary>Longest <see cref="Channel"/>.</summary>
     public const int ChannelMaxLength = 20;
 
-    /// <summary>Longest <see cref="DeclaredByUserId"/>: the column length of <c>User.Id</c>, the Auth0 subject.</summary>
     public const int UserIdMaxLength = 255;
 
-    /// <summary>Name of the unique index of the rows without a <see cref="RegimeCode"/> (the notification to the police of Ticino): a 23505 on it means the day is declared already.</summary>
     public const string DefaultRegimeIndexName = "UX_SwissNotificationDeclarations_Property_Day";
 
-    /// <summary>Name of the unique index of the rows with a <see cref="RegimeCode"/>.</summary>
     public const string NamedRegimeIndexName = "UX_SwissNotificationDeclarations_Property_Day_Regime";
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row, copied from the property (TN-2); never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The property the day belongs to. Foreign key, cascade.</summary>
     public Guid PropertyId { get; set; }
 
-    /// <summary>The arrival day the declaration closes, a calendar day in Switzerland (Europe/Zurich).</summary>
     public DateOnly ArrivalDay { get; set; }
 
-    /// <summary>The person who declared it (<c>User.Id</c>, the Auth0 subject). Not a foreign key: the declaration outlives the account.</summary>
     [Required, MaxLength(UserIdMaxLength)]
     public string DeclaredByUserId { get; set; } = string.Empty;
 
-    /// <summary>When it was declared (UTC).</summary>
     public DateTime DeclaredAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>How the notification was made (<see cref="SwissNotificationChannels"/>); <c>portal</c> for Ticino.</summary>
     [Required, MaxLength(ChannelMaxLength)]
     public string Channel { get; set; } = SwissNotificationChannels.Portal;
 
-    /// <summary>
-    /// The receipt of the portal that goes with the declaration: a <c>Police</c> receipt of the same property whose report date is the arrival day. <c>null</c> when the host declares
-    /// without one (the receipt is optional, decision D10) and after the retention removed it. Foreign key, SET NULL.
-    /// </summary>
     public Guid? ReceiptId { get; set; }
 
-    /// <summary>
-    /// The regime the declaration is about: <c>null</c> for the notification to the police of canton Ticino (E30), the code of the regime for the notification of another canton (E31). At
-    /// most <see cref="RegimeCodeMaxLength"/> characters.
-    /// </summary>
     [MaxLength(RegimeCodeMaxLength)]
     public string? RegimeCode { get; set; }
 }
 
-/// <summary>The values of <see cref="SwissNotificationDeclaration.Channel"/>: how the host made the notification. Text, so a regime of another canton adds its own value with no migration.</summary>
 public static class SwissNotificationChannels
 {
-    /// <summary>The host uploaded the file, or typed the guests, on the cantonal police portal: the only way of Ticino (notifiche.ti.ch), which has no API.</summary>
     public const string Portal = "portal";
 
-    /// <summary>
-    /// The host made the notification to the authority of a canton other than Ticino by the way that canton asks (a portal, a form, an e-mailed file, a paper) and told CasaZen
-    /// (E31/F02/US01/T01): CasaZen transmits nothing and does not know which of the ways it was, so the declaration says only that it was assisted. The regime of the row says which canton.
-    /// </summary>
     public const string Assisted = "assisted";
 }

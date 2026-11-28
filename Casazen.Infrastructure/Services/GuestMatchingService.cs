@@ -32,16 +32,12 @@ public class GuestMatchingService(
     TimeProvider timeProvider,
     ILogger<GuestMatchingService> logger) : IGuestMatchingService
 {
-    /// <summary>Longest chain of merged profiles followed to the one that survives; a longer one is a loop.</summary>
     private const int MaxMergeHops = 10;
 
-    /// <summary>Profiles read when looking for the ones that share a phone: the proposals keep five, this is only the pool.</summary>
     private const int PhoneCandidateReadLimit = 50;
 
-    /// <summary>Guests read when looking for the ones with the same name at the same properties.</summary>
     private const int NameCandidateReadLimit = 2000;
 
-    /// <summary>Properties kept in <see cref="GuestCrmProfile.PropertyIdsJson"/>: the column holds 2,000 characters, 39 for each id.</summary>
     private const int MaxPropertyIds = 50;
 
     private const int CountryMaxLength = 100;
@@ -69,11 +65,9 @@ public class GuestMatchingService(
         var orgId = guest.OrgId;
         var keys = KeysOf(guest, await LatestSourceAsync(orgId, guest.Id, cancellationToken));
 
-        // 1. The profile the guest already has; a merged one is followed to the profile that took its place.
         if (guest.GuestCrmProfileId is { } linkedId && await SurvivorAsync(orgId, linkedId, cancellationToken) is { } kept)
             return await KeepProfileAsync(guest, kept, keys, cancellationToken);
 
-        // 2. The profile of the e-mail contact with the same keyed hash, else the profile with the same name and birth date.
         var byEmail = keys.EmailKey is null ? null : await ProfileOfEmailAsync(orgId, keys.EmailKey, cancellationToken);
         var byNameBirth = keys.NameBirthKey is null ? null : await ProfileOfNameBirthAsync(orgId, keys.NameBirthKey, cancellationToken);
         var found = byEmail ?? byNameBirth;
@@ -98,8 +92,6 @@ public class GuestMatchingService(
             return found;
         }
 
-        // 3. None: a profile of its own, saved with a question for a person about the ones that may be the same guest. The profile is made under
-        // the lock of the guest (the event handler and the job can both be here for it): if the other sync made it first, its profile is the guest's.
         var (profile, created) = await CreateProfileOnceAsync(guest, keys, cancellationToken);
         return created ? profile : await KeepProfileAsync(guest, profile, keys, cancellationToken);
     }
@@ -134,7 +126,6 @@ public class GuestMatchingService(
             return byEmail;
         }
 
-        // A phone is shared by many people: it finds a profile only when it points to exactly one. With several the lead is told apart.
         var sharing = new List<Guid>();
         if (phoneKey is not null)
         {
@@ -215,14 +206,11 @@ public class GuestMatchingService(
         var today = timeProvider.TodayInRome();
         var stays = bookings.Where(b => GuestMatchRules.IsStay(b.Status, b.CheckOutDate, today)).ToList();
 
-        // With no stay yet the two dates are the creation of the profile: TotalStays is 0, which is what a reader looks at first.
         var totalStays = stays.Count;
         var totalSpend = stays.Sum(s => s.TotalPrice);
         var firstStay = totalStays == 0 ? profile.CreatedAt : AsUtc(stays.Min(s => s.CheckInDate));
         var lastStay = totalStays == 0 ? profile.CreatedAt : AsUtc(stays.Max(s => s.CheckInDate));
 
-        // Every booking that is not cancelled, the ones to come included, so the scope of a host sees the guest before the arrival. Sorted, so
-        // that the same bookings always write the same text and a second run changes nothing.
         var propertyIds = bookings.Select(b => b.PropertyId).Distinct().Order().ToList();
         if (propertyIds.Count > MaxPropertyIds)
         {
@@ -280,16 +268,12 @@ public class GuestMatchingService(
             propertyIds.Count);
     }
 
-    // ---- keys ---------------------------------------------------------------------------------------------------------------------
-
-    /// <summary>The keys of a guest: what it is found by, hashed. <c>null</c> where there is nothing usable to hash.</summary>
     private sealed record MatchKeys(string? EmailKey, string? PhoneKey, string? NameBirthKey, string NormalizedName);
 
     private MatchKeys KeysOf(Guest guest, BookingSource? source)
     {
         var settings = options.Value;
 
-        // An address that an online travel agency forwards the mail through is never a key (AC-NF88-2): two guests may get the same one.
         string? emailKey = null;
         if (CrmNormalizer.TryNormalizeEmail(guest.Email, out var email)
             && !OtaForwardAddress.IsForward(email, source, settings.OtaForwardDomains))
@@ -307,7 +291,6 @@ public class GuestMatchingService(
         return new MatchKeys(emailKey, phoneKey, nameBirthKey, name);
     }
 
-    /// <summary>The source of the latest booking of the guest, <c>null</c> for a guest with none.</summary>
     private async Task<BookingSource?> LatestSourceAsync(Guid orgId, Guid guestId, CancellationToken cancellationToken) =>
         await db.Bookings
             .AsNoTracking()
@@ -317,15 +300,8 @@ public class GuestMatchingService(
             .Select(b => (BookingSource?)b.Source)
             .FirstOrDefaultAsync(cancellationToken);
 
-    // ---- profiles -----------------------------------------------------------------------------------------------------------------
-
     private IQueryable<GuestCrmProfile> Profiles(Guid orgId) => db.GuestCrmProfiles.Where(p => p.OrgId == orgId);
 
-    /// <summary>
-    /// A guest that has a living profile (<paramref name="kept"/>, a merged one already followed to its survivor): links the guest to it when it
-    /// is not yet, fills what the profile has not got, saves what changed, and asks whether the address of the guest is held by a contact of
-    /// another profile.
-    /// </summary>
     private async Task<GuestCrmProfile> KeepProfileAsync(Guest guest, GuestCrmProfile kept, MatchKeys keys, CancellationToken cancellationToken)
     {
         var changed = false;
@@ -405,10 +381,6 @@ public class GuestMatchingService(
         return (profile, true);
     }
 
-    /// <summary>
-    /// The profile that is alive at the end of the merges that started at <paramref name="profileId"/> (a merged profile is a tombstone that
-    /// points to the one that took its place), tracked. <c>null</c> when the org has no such profile or the chain is a loop.
-    /// </summary>
     private async Task<GuestCrmProfile?> SurvivorAsync(Guid orgId, Guid profileId, CancellationToken cancellationToken)
     {
         var current = profileId;
@@ -428,7 +400,6 @@ public class GuestMatchingService(
         return null;
     }
 
-    /// <summary>The profile of the e-mail contact with the keyed hash, surviving; an OTA forward is not a way to find a person.</summary>
     private async Task<GuestCrmProfile?> ProfileOfEmailAsync(Guid orgId, string emailKey, CancellationToken cancellationToken)
     {
         var profileId = await db.GuestContacts
@@ -444,7 +415,6 @@ public class GuestMatchingService(
         return profileId is { } id ? await SurvivorAsync(orgId, id, cancellationToken) : null;
     }
 
-    /// <summary>The oldest living profile with the keyed name-and-birth hash, surviving.</summary>
     private async Task<GuestCrmProfile?> ProfileOfNameBirthAsync(Guid orgId, string nameBirthKey, CancellationToken cancellationToken)
     {
         var profileId = await Profiles(orgId)
@@ -457,10 +427,6 @@ public class GuestMatchingService(
         return profileId is { } id ? await SurvivorAsync(orgId, id, cancellationToken) : null;
     }
 
-    /// <summary>
-    /// Fills what the profile has not got and the guest gives: the keys, the guest shown as its name, the country. Never overwrites. Returns
-    /// whether something changed (and then the update time moves); the caller saves.
-    /// </summary>
     private bool FillEmpty(GuestCrmProfile profile, Guest guest, MatchKeys keys)
     {
         var changed = false;
@@ -494,7 +460,6 @@ public class GuestMatchingService(
         return changed;
     }
 
-    /// <summary>A lead found again gives what it has not given before: a phone key and a language. Saves when something changed.</summary>
     private async Task FillLeadAsync(GuestCrmProfile profile, string? phoneKey, string language, CancellationToken cancellationToken)
     {
         var changed = false;
@@ -516,8 +481,6 @@ public class GuestMatchingService(
         profile.UpdatedAt = Now();
         await db.SaveChangesAsync(cancellationToken);
     }
-
-    // ---- proposals ----------------------------------------------------------------------------------------------------------------
 
     /// <summary>
     /// A guest that kept its profile: if the address of the guest is held by a contact of another profile, the two profiles hold the same
@@ -574,10 +537,6 @@ public class GuestMatchingService(
         return (await StageProposalsAsync(orgId, profile.Id, candidates, cancellationToken)).Count;
     }
 
-    /// <summary>
-    /// The living profiles of other guests of the org who have the same normalized name and a booking, not cancelled, at a property this guest
-    /// has a booking at. The names are compared after the normalization, which the database cannot do, over the few guests of those properties.
-    /// </summary>
     private async Task<List<Guid>> ProfilesWithSameNameAtMyPropertiesAsync(
         GuestCrmProfile profile,
         Guest guest,
@@ -699,11 +658,6 @@ public class GuestMatchingService(
         return added;
     }
 
-    /// <summary>
-    /// Stores the proposals of a pair of profiles on their own: <see cref="StageProposalsAsync"/> and a save. When another sync proposed one of the
-    /// pairs at the same moment (the unique index refused the batch) only the pairs that are left are stored: staged again against the rows that
-    /// exist now, the pair that was already there is skipped and the others are not lost with it.
-    /// </summary>
     private async Task StoreProposalsAsync(
         Guid orgId,
         Guid profileId,
@@ -736,9 +690,6 @@ public class GuestMatchingService(
         }
     }
 
-    // ---- small helpers ------------------------------------------------------------------------------------------------------------
-
-    /// <summary>The tracked instance of the guest: the one the context already has, else the given one, attached.</summary>
     private Guest Track(Guest guest)
     {
         if (db.Entry(guest).State != EntityState.Detached)

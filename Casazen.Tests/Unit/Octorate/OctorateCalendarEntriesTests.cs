@@ -6,15 +6,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Octorate;
 
-/// <summary>
-/// E08/F05/US02/T01 (NF-36, NF-78): what is sent to the channel manager for the nights of a property (<see cref="OctorateCalendarEntries"/>), how a window is cut into
-/// calls (<see cref="CalendarChunkPlanner"/>) and the rules of the push that need no database (<see cref="CalendarPushRules"/>). The first test is the money rule of the brief.
-/// </summary>
 public class OctorateCalendarEntriesTests
 {
     private static readonly OctorateBookingTarget Target = new("ACC1", "956528");
 
-    // A Tuesday: 2026-12-04 and 2026-12-05 are the weekend nights (Friday and Saturday).
     private static readonly DateOnly First = new(2026, 12, 1);
 
     private static readonly IReadOnlySet<DateOnly> None = new HashSet<DateOnly>();
@@ -22,8 +17,6 @@ public class OctorateCalendarEntriesTests
     private static readonly IReadOnlyDictionary<DateOnly, DayRuleValues> NoRules = new Dictionary<DateOnly, DayRuleValues>();
 
     private static readonly IReadOnlyDictionary<DateOnly, decimal> NoPrices = new Dictionary<DateOnly, decimal>();
-
-    // --- The proof ---------------------------------------------------------------------------------------------------------------
 
     /// <summary>
     /// PROOF TEST: money rule. With a weekend surcharge, a seasonal price the host confirmed and a price of a day rule in the window, the price of every night in the entries is
@@ -55,15 +48,11 @@ public class OctorateCalendarEntriesTests
             sum += entry.Values.Price!.Value;
         }
 
-        // The nights of the whole window add up to what the quote of a stay of those nights says.
         Assert.Equal(StayPricing.Lodging(First, 14, 99.99m, 15m, hostPrices).Total, sum);
-        // The weekend surcharge is the quote's: 99.99 plus 15 percent, rounded to the cent.
         Assert.Equal(114.99m, entries.Single(e => e.From <= First.AddDays(3) && First.AddDays(3) <= e.To).Values.Price);
-        // The seasonal price and the price of the day rule are the nights' own.
         Assert.Equal(140.40m, entries.Single(e => e.From <= First.AddDays(4) && First.AddDays(4) <= e.To).Values.Price);
         Assert.Equal(77.77m, entries.Single(e => e.From <= First.AddDays(7) && First.AddDays(7) <= e.To).Values.Price);
 
-        // The price of the day rule is cleared: the night costs the usual price again.
         var cleared = new Dictionary<DateOnly, DayRuleValues> { [First.AddDays(7)] = new(MinNights: 2), [First.AddDays(8)] = new(MinNights: 3) };
         var clearedPrices = DayRulePricing.HostPrices(seasonal, cleared);
         var again = OctorateCalendarEntries.Build(property, Target, First, last, cleared, clearedPrices, None, None, new OctorateCalendarOptions());
@@ -71,8 +60,6 @@ public class OctorateCalendarEntriesTests
         Assert.Equal(StayPricing.NightPrice(First.AddDays(7), 99.99m, 15m, clearedPrices), night7.Values.Price);
         Assert.Equal(99.99m, night7.Values.Price);
     }
-
-    // --- Intervals and rules -----------------------------------------------------------------------------------------------------
 
     [Fact]
     public void Build_AdjacentNightsWithEqualValues_BecomeOneInterval_AndAChangeSplitsIt()
@@ -109,12 +96,10 @@ public class OctorateCalendarEntriesTests
         Assert.True(entry.Values.CloseToDeparture);
         Assert.Equal(2, entry.Values.CutOffDays);
 
-        // The maximum advance has no field on the channel manager: the same night without it is sent just the same.
         var withoutMaxAdvance = new Dictionary<DateOnly, DayRuleValues> { [First] = rule with { MaxAdvanceDays = null } };
         var same = Assert.Single(OctorateCalendarEntries.Build(property, Target, First, First, withoutMaxAdvance, prices, None, None, new OctorateCalendarOptions()));
         Assert.Equal(entry.Values, same.Values);
 
-        // A night with no rule: the minimum stay of the property, no restriction, no maximum, no minimum advance.
         var plain = Assert.Single(OctorateCalendarEntries.Build(property, Target, First, First, NoRules, NoPrices, None, None, new OctorateCalendarOptions()));
         Assert.Equal(2, plain.Values.MinStay);
         Assert.Null(plain.Values.MaxStay);
@@ -122,7 +107,6 @@ public class OctorateCalendarEntriesTests
         Assert.False(plain.Values.CloseToDeparture);
         Assert.Equal(0, plain.Values.CutOffDays);
 
-        // No minimum on the property either: one night. «No maximum» is written only when the configuration says which number it is.
         var noMinimum = new OctorateCalendarProperty(100m, 0m, null);
         var one = Assert.Single(OctorateCalendarEntries.Build(noMinimum, Target, First, First, NoRules, NoPrices, None, None, new OctorateCalendarOptions { NoMaxStay = 999 }));
         Assert.Equal(1, one.Values.MinStay);
@@ -138,7 +122,6 @@ public class OctorateCalendarEntriesTests
 
         var byStop = OctorateCalendarEntries.Build(property, Target, First, First.AddDays(6), NoRules, NoPrices, closed, held, new OctorateCalendarOptions());
 
-        // Closed: stopped for sale. Open: not stopped. Held by something else (a booking, a block of a channel): not written at all.
         Assert.Equal(
             [false, false, true, true, false, null, false],
             Enumerable.Range(0, 7).Select(i => byStop.Single(e => e.From <= First.AddDays(i) && First.AddDays(i) <= e.To).Values.StopSells));
@@ -151,16 +134,11 @@ public class OctorateCalendarEntriesTests
             Enumerable.Range(0, 7).Select(i => byUnits.Single(e => e.From <= First.AddDays(i) && First.AddDays(i) <= e.To).Values.Availability));
         Assert.All(byUnits, e => Assert.Null(e.Values.StopSells));
 
-        // A night a block closes is closed even when something else holds it too.
         var both = OctorateCalendarEntries.Build(
             property, Target, First, First, NoRules, NoPrices, new HashSet<DateOnly> { First }, new HashSet<DateOnly> { First }, new OctorateCalendarOptions());
         Assert.True(Assert.Single(both).Values.StopSells);
     }
 
-    /// <summary>
-    /// PROOF: money rule. A property with no base price (<c>0 = none</c>, what a listing imported from the channel manager has) and no price the host set for a night has no price
-    /// to quote: the night is sent with no <c>price</c> at all (the channel manager keeps its own), never with 0; a night the host priced keeps its price.
-    /// </summary>
     [Fact]
     public void Build_ANightWithNoPriceAtAll_SendsNoPrice_NeverZero_AndTheNightsTheHostPricedKeepTheirs()
     {
@@ -175,7 +153,6 @@ public class OctorateCalendarEntriesTests
             Enumerable.Range(0, 5).Select(i => entries.Single(e => e.From <= First.AddDays(i) && First.AddDays(i) <= e.To).Values.Price));
         Assert.DoesNotContain(entries, e => e.Values.Price == 0m);
 
-        // The closure of a block still goes out, with no price: nothing else is guessed.
         var block = OctorateCalendarEntries.Build(
             property, Target, First, First.AddDays(1), NoRules, NoPrices, new HashSet<DateOnly> { First }, None, new OctorateCalendarOptions());
         Assert.Equal(new bool?[] { true, false }, block.Select(e => e.Values.StopSells));
@@ -189,8 +166,6 @@ public class OctorateCalendarEntriesTests
 
         Assert.Empty(OctorateCalendarEntries.Build(property, Target, First.AddDays(1), First, NoRules, NoPrices, None, None, new OctorateCalendarOptions()));
     }
-
-    // --- The planner -------------------------------------------------------------------------------------------------------------
 
     [Fact]
     public void Split_AYearOfDays_IsCutIntoCallsOfAtMostTheConfiguredDays_WithoutGapOrOverlap()
@@ -228,7 +203,6 @@ public class OctorateCalendarEntriesTests
     [Fact]
     public void EstimateQuotaUnits_OfAWindow_IsTheSumOfItsCalls()
     {
-        // 365 days in calls of 62: five of 62 days (5 units each) and one of 55 (4 units).
         Assert.Equal(5 * 5 + 4, CalendarChunkPlanner.EstimateQuotaUnits(First, First.AddDays(364), 62, 15));
         Assert.Equal(0, CalendarChunkPlanner.EstimateQuotaUnits(First.AddDays(1), First, 62, 15));
     }
@@ -245,8 +219,6 @@ public class OctorateCalendarEntriesTests
         Assert.Null(wrong.NoMaxStayNights);
         Assert.Equal(730, new OctorateCalendarOptions { HorizonDays = 730 }.Horizon);
     }
-
-    // --- The rules of the push ---------------------------------------------------------------------------------------------------
 
     [Theory]
     [InlineData(new CalendarChunkState[0], CalendarChangeState.Applied)]
@@ -295,16 +267,10 @@ public class OctorateCalendarEntriesTests
         Assert.InRange(ids.Count, 1, 39);
     }
 
-    // No status of success is documented (the Postman examples are NEW, NOT_PROCESSED and ERROR): the tests name one of their own, SUCCESS_UNDER_TEST, which stands for whatever the
-    // sandbox shows and the configuration lists (Octorate:Calendar:ProcessSuccessStatuses).
     private static readonly IReadOnlySet<string> Success = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "SUCCESS_UNDER_TEST" };
 
     private static readonly IReadOnlySet<string> NoSuccess = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// PROOF: data rule. A process is confirmed only when it and every one of its dates show a status the configuration lists as a success; <c>ERROR</c> is an error wherever it is;
-    /// <c>NEW</c>, <c>NOT_PROCESSED</c>, no date, and any status that is not listed (unknown, an interim one) leave it unconfirmed.
-    /// </summary>
     [Theory]
     [InlineData("NEW", new[] { "NOT_PROCESSED" }, CalendarProcessVerdict.Pending)]
     [InlineData("SUCCESS_UNDER_TEST", new[] { "SUCCESS_UNDER_TEST", "NOT_PROCESSED" }, CalendarProcessVerdict.Pending)]
@@ -328,12 +294,10 @@ public class OctorateCalendarEntriesTests
         var dated = new OctorateCalendarProcessDate(null, "SUCCESS_UNDER_TEST");
         var withoutStatus = new OctorateCalendarProcessDate(null, null);
 
-        // The process shows no status, or a date shows none: not a success.
         Assert.Equal(CalendarProcessVerdict.Pending, CalendarPushRules.VerdictOf(new OctorateCalendarProcess("1", null, [dated]), Success));
         Assert.Equal(CalendarProcessVerdict.Pending, CalendarPushRules.VerdictOf(new OctorateCalendarProcess("1", "SUCCESS_UNDER_TEST", [dated, withoutStatus]), Success));
         Assert.Equal(CalendarProcessVerdict.Pending, CalendarPushRules.VerdictOf(new OctorateCalendarProcess("1", "SUCCESS_UNDER_TEST", [withoutStatus]), Success));
 
-        // Nothing listed as a success (the default): even a process that says it is done confirms nothing.
         var done = new OctorateCalendarProcess("1", "SUCCESS_UNDER_TEST", [dated]);
         Assert.Equal(CalendarProcessVerdict.Pending, CalendarPushRules.VerdictOf(done, NoSuccess));
         Assert.Equal(CalendarProcessVerdict.Pending, CalendarPushRules.VerdictOf(done, new OctorateCalendarOptions().SuccessStatuses));

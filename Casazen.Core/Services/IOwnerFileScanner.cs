@@ -10,10 +10,8 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IOwnerFileScanner
 {
-    /// <summary>The name and version of the engine, as the files record it.</summary>
     string Engine { get; }
 
-    /// <summary>The verdict on <paramref name="content"/>, the whole file (at most <see cref="OwnerFileRules.MaxBytes"/>).</summary>
     OwnerFileVerdict Scan(byte[] content);
 }
 
@@ -29,26 +27,20 @@ public sealed record OwnerFileVerdict(bool Clean, string? ContentType, string? E
     public static OwnerFileVerdict Rejected(string code) => new(false, null, null, code);
 }
 
-/// <summary>The rules of the files of the owner portal, with the stable codes of a refusal.</summary>
 public static class OwnerFileRules
 {
-    /// <summary>The largest file: 10 MB.</summary>
     public const int MaxBytes = 10 * 1024 * 1024;
 
     public const string Pdf = "application/pdf";
     public const string Jpeg = "image/jpeg";
     public const string Png = "image/png";
 
-    /// <summary>413: the file is larger than <see cref="MaxBytes"/>.</summary>
     public const string TooLarge = "owner_file_too_large";
 
-    /// <summary>400: no file, or an empty one.</summary>
     public const string Missing = "owner_file_missing";
 
-    /// <summary>422: not a PDF, a JPEG or a PNG by its content (whatever its name or declared type say).</summary>
     public const string TypeNotAllowed = "owner_file_type_not_allowed";
 
-    /// <summary>422: a PDF with active content (scripts, launch actions, embedded files, forms that submit) or that cannot be read safely.</summary>
     public const string ActiveContent = "owner_file_active_content";
 
     public const string TooLargeMessageKey = "OwnerFileTooLarge";
@@ -56,7 +48,6 @@ public static class OwnerFileRules
     public const string TypeNotAllowedMessageKey = "OwnerFileTypeNotAllowed";
     public const string ActiveContentMessageKey = "OwnerFileActiveContent";
 
-    /// <summary>The message key of a rejection code.</summary>
     public static string MessageKeyOf(string code) => code switch
     {
         TooLarge => TooLargeMessageKey,
@@ -65,7 +56,6 @@ public static class OwnerFileRules
         _ => TypeNotAllowedMessageKey,
     };
 
-    /// <summary>The extension, with its dot, a file of the type the scan recognised takes in the name of a download; empty for any other type.</summary>
     public static string ExtensionOf(string? contentType) => contentType switch
     {
         Pdf => ".pdf",

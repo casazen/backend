@@ -17,7 +17,6 @@ public sealed class ApprovalOriginActionRegistry : IApprovalOriginActionRegistry
 {
     private readonly Lazy<Dictionary<string, IApprovalOriginAction>> _byType;
 
-    /// <param name="actions">Where the actions are read from, once, at the first <see cref="Find"/> (the container's <c>GetServices&lt;IApprovalOriginAction&gt;</c>).</param>
     public ApprovalOriginActionRegistry(Func<IEnumerable<IApprovalOriginAction>> actions)
     {
         ArgumentNullException.ThrowIfNull(actions);

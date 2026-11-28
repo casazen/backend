@@ -4,10 +4,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs;
 
-/// <summary>
-/// Body of <c>POST /api/public/bookings/{id}/outcome</c> and <c>/payment-session</c> (BK-07): the checkout token returned
-/// by <c>POST /api/public/bookings</c>. In the body, not in the URL of the API call, so it never lands in access logs.
-/// </summary>
 public sealed class CheckoutTokenRequest
 {
     [Required(ErrorMessage = "CheckoutTokenRequired")]
@@ -55,7 +51,6 @@ public sealed record CheckoutOutcomeResponse(
         outcome.BookingCode);
 }
 
-/// <summary>What the Stripe Payment Element needs to pay the same hold again (BK-07).</summary>
 public sealed record CheckoutPaymentSessionResponse(
     Guid BookingId,
     PaymentOption PaymentOption,

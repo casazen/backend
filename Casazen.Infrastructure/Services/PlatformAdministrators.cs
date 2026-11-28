@@ -15,10 +15,8 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 internal static class PlatformAdministrators
 {
-    /// <summary>The key of the context of the platform administration (<c>UserContextMembership.ContextKey</c>): its members are staff.</summary>
     public const string ContextKey = "admin";
 
-    /// <summary>The accounts that are platform administrators, by their user role or by a membership of the administration context.</summary>
     public static IQueryable<User> Of(AppDbContext db) =>
         db.Users.Where(u =>
             u.Role == UserRole.Admin

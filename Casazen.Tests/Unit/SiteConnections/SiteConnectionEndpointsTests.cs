@@ -164,8 +164,6 @@ public sealed class SiteConnectionEndpointsTests : IDisposable
         Assert.IsType<UnauthorizedResult>(await Plugin(person).Disconnect(CancellationToken.None));
     }
 
-    // ─── Helpers ───────────────────────────────────────────────────────────────────────────────────
-
     private SiteConnectionService Service() => new(_db, _clock, NullLogger<SiteConnectionService>.Instance);
 
     private SiteConnectionsController Console(Guid? callerOrgId)
@@ -179,7 +177,6 @@ public sealed class SiteConnectionEndpointsTests : IDisposable
     private PublicSiteConnectionsController Exchange() =>
         new(Service()) { ControllerContext = Context(new ClaimsPrincipal(new ClaimsIdentity())) };
 
-    // The disconnection needs the connections only: the account and the domain of S023 have their own tests (SiteApiDomainEndpointsTests).
     private SiteApiController Plugin(ClaimsPrincipal user) =>
         new(Service(), Mock.Of<ISiteAccountBuilder>(), Mock.Of<IOrgDomainService>(), Mock.Of<IStringLocalizer<SharedResources>>())
         {

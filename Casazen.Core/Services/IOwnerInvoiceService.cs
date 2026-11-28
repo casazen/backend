@@ -26,11 +26,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IOwnerInvoiceService
 {
-    /// <summary>
-    /// The draft of the owner invoice of a statement version, or the draft the owner and period already have, made again from that version. 404
-    /// <c>owner_statement_version_not_found</c>; 409 <c>owner_invoice_version_superseded</c>, <c>document_already_issued</c>; 422
-    /// <c>owner_invoice_nothing_to_invoice</c>, <c>document_rule_not_configured</c>, <c>issuer_profile_incomplete</c>, <c>document_invoice_data_missing</c>.
-    /// </summary>
     Task<FiscalDocument> CreateDraftAsync(Guid orgId, Guid versionId, string? userId, CancellationToken ct = default);
 
     /// <summary>
@@ -49,14 +44,8 @@ public interface IOwnerInvoiceService
     /// </summary>
     Task<FiscalDocument> CreateCreditNoteAsync(Guid orgId, Guid documentId, decimal? amount, string reason, bool confirm, string? userId, CancellationToken ct = default);
 
-    /// <summary>
-    /// The draft of an owner invoice discarded (no number is consumed): its owner and month are free for a new draft. 404 <c>fiscal_document_not_found</c>
-    /// (another org, not an owner invoice); 422 <c>document_not_draft</c>. The one way to discard an owner invoice: the endpoints of the guest documents refuse it
-    /// (422 <c>document_owner_invoice</c>).
-    /// </summary>
     Task DiscardDraftAsync(Guid orgId, Guid documentId, CancellationToken ct = default);
 
-    /// <summary>The owner invoices of the org (drafts and issued ones, not the discarded ones nor the credit notes), the newest period first.</summary>
     Task<IReadOnlyList<OwnerInvoiceRow>> ListAsync(Guid orgId, OwnerInvoiceCriteria criteria, CancellationToken ct = default);
 
     /// <summary>
@@ -66,19 +55,11 @@ public interface IOwnerInvoiceService
     /// </summary>
     Task<FiscalDocument> GetAsync(Guid orgId, Guid documentId, CancellationToken ct = default);
 
-    /// <summary>
-    /// The drafts of a period for every owner with a statement version of it that is not superseded: made, or made again, with the counts; an owner whose
-    /// invoice is issued is left alone, one with nothing to invoice is counted. 422 <c>owner_period_invalid</c>; an issuer that cannot issue (profile, rule) is
-    /// 422 for the whole call, before anything is written.
-    /// </summary>
     Task<OwnerInvoiceGeneration> CreateDraftsForPeriodAsync(Guid orgId, int year, int month, string? userId, CancellationToken ct = default);
 }
 
-/// <summary>The filters of the list: a period (year and month together) and an owner.</summary>
 public sealed record OwnerInvoiceCriteria(int? Year = null, int? Month = null, Guid? OwnerId = null);
 
-/// <summary>One owner invoice of the list: the stored amounts in <see cref="Currency"/> and, once issued, how it is paid.</summary>
-/// <param name="Settlement">Offset in the statement, to pay (with the amount) or credited; <c>null</c> for a draft.</param>
 public sealed record OwnerInvoiceRow(
     Guid Id,
     Guid OwnerId,
@@ -98,22 +79,14 @@ public sealed record OwnerInvoiceRow(
     bool CreditedInFull,
     OwnerInvoiceSettlement? Settlement);
 
-/// <summary>How an issued owner invoice is paid: <see cref="OwnerInvoiceSettlements"/> and the amount the owner still has to pay.</summary>
 public sealed record OwnerInvoiceSettlement(string State, decimal AmountDue);
 
-/// <summary>
-/// Whether an owner invoice is offset in the statement or left to pay (E14/F01/US01/T02): the one rule of the list, the PDF and the QR-bill. The statement
-/// offsets the invoice with what the agency owes the owner; what the debt of the owner grew by in the period, up to what is left to pay of the invoice, is to pay.
-/// </summary>
 public static class OwnerInvoiceSettlements
 {
-    /// <summary>The statement of the period covers the invoice: nothing to pay.</summary>
     public const string Offset = "offset";
 
-    /// <summary>The statement leaves an amount for the owner to pay.</summary>
     public const string ToPay = "to_pay";
 
-    /// <summary>Credit notes credited the whole invoice.</summary>
     public const string Credited = "credited";
 
     /// <summary>
@@ -132,8 +105,6 @@ public static class OwnerInvoiceSettlements
     }
 }
 
-/// <summary>What the drafts of a period did: owners with a version, drafts made, drafts made again, invoices already issued, owners with nothing to invoice.</summary>
-/// <param name="Failed">The owners whose draft could not be made, with the code of the reason (the recipient data missing, an invalid version...).</param>
 public sealed record OwnerInvoiceGeneration(
     int Year,
     int Month,
@@ -144,21 +115,13 @@ public sealed record OwnerInvoiceGeneration(
     int NothingToInvoice,
     IReadOnlyList<OwnerInvoiceFailure> Failed);
 
-/// <summary>An owner whose draft could not be made, and why (a stable code).</summary>
 public sealed record OwnerInvoiceFailure(Guid OwnerId, string Code);
 
-/// <summary>The stable codes of the owner invoices, with the keys of their messages in <c>SharedResources</c>.</summary>
 public static class OwnerInvoiceErrors
 {
-    /// <summary>409: the version asked for was superseded by a later one: the invoice is made from the version of today.</summary>
     public const string VersionSuperseded = "owner_invoice_version_superseded";
 
-    /// <summary>422: the version has no commission, recharge or expense of the agency: there is nothing to invoice.</summary>
     public const string NothingToInvoice = "owner_invoice_nothing_to_invoice";
 
-    /// <summary>
-    /// 422: an owner invoice is made again, issued, credited and discarded from the owner invoices (<c>api/owner-invoices</c>, with <c>agency.statement.manage</c>
-    /// and its flag), never from the endpoints of the documents of the guests.
-    /// </summary>
     public const string UseOwnerInvoices = "document_owner_invoice";
 }

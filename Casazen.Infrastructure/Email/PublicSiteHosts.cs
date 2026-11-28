@@ -2,7 +2,6 @@ using System.Text.RegularExpressions;
 
 namespace Casazen.Infrastructure.Email;
 
-/// <summary>Normalization of the host names the public site receives (Host header, <c>host</c> query parameters).</summary>
 public static partial class PublicSiteHosts
 {
     /// <summary>

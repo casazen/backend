@@ -13,11 +13,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E29/F02/US01/T02 (NF-129): the onboarding part «Guest registration». It is done only when every active Swiss property the caller reaches has its municipality
-/// and, in Ticino, the structure number; each property that lacks something is named with its reason and the step of the wizard to reopen; an organization with
-/// no Swiss property has nothing to do here; only the properties the caller reaches (and of its org) are counted, and an empty reach is an empty answer.
-/// </summary>
 public class GuestRegistrationPartEvaluatorTests : IAsyncLifetime
 {
     private static readonly CancellationToken Ct = CancellationToken.None;
@@ -45,7 +40,6 @@ public class GuestRegistrationPartEvaluatorTests : IAsyncLifetime
         Assert.False(facts.IsComplete);
     }
 
-    /// <summary>An empty reach is an empty answer, never «every property of the org»: the Swiss property that lacks its number is not read for a caller that reaches none.</summary>
     [Fact]
     public async Task Evaluate_AnEmptyReach_IsNotAvailable_NeverEveryPropertyOfTheOrg()
     {
@@ -58,7 +52,6 @@ public class GuestRegistrationPartEvaluatorTests : IAsyncLifetime
         Assert.Empty(facts.Missing);
     }
 
-    /// <summary>Proof (data, acceptance criterion 3): a Ticino property without a structure number keeps the part open and is named; with the number the part is done.</summary>
     [Fact]
     public async Task Evaluate_ATicinoPropertyWithoutAStructureNumber_IsOpen_AndNamesTheProperty_Test()
     {
@@ -81,7 +74,6 @@ public class GuestRegistrationPartEvaluatorTests : IAsyncLifetime
         Assert.Empty(done.Missing);
     }
 
-    /// <summary>A municipality comes before a structure number (nobody knows a property is in Ticino without it), and the items follow the order of the plan.</summary>
     [Fact]
     public async Task Evaluate_AMunicipalityBeforeAStructureNumber_AndTheItemsInTheOrderOfThePlan()
     {
@@ -108,7 +100,6 @@ public class GuestRegistrationPartEvaluatorTests : IAsyncLifetime
         Assert.Equal((1, 1), (facts.Done, facts.Total));
     }
 
-    /// <summary>Proof (permission, AM-03): a collaborator «Solo alcuni» sees only the properties it was given: the other Swiss property of the org is not counted nor named.</summary>
     [Fact]
     public async Task Evaluate_CountsOnlyThePropertiesTheCallerReaches_Test()
     {
@@ -126,7 +117,6 @@ public class GuestRegistrationPartEvaluatorTests : IAsyncLifetime
         Assert.Equal(_world.Hidden.Id, Assert.Single(orgWide.Missing).PropertyId);
     }
 
-    /// <summary>Another organization's property is never counted, even when its id is among the ones given.</summary>
     [Fact]
     public async Task Evaluate_NeverCountsAPropertyOfAnotherOrganization_Test()
     {
@@ -138,7 +128,6 @@ public class GuestRegistrationPartEvaluatorTests : IAsyncLifetime
         Assert.Empty(facts.Missing);
     }
 
-    /// <summary>The plan is read often: a portfolio of hundreds of houses is not listed whole (the counts say how many lack something in all).</summary>
     [Fact]
     public async Task Evaluate_ListsAtMostFiftyProperties_AndCountsThemAll()
     {
@@ -163,10 +152,6 @@ public class GuestRegistrationPartEvaluatorTests : IAsyncLifetime
         Assert.Equal(ids.Take(50), facts.Missing.Select(m => m.PropertyId));
     }
 
-    /// <summary>
-    /// The plan shows the part before the activation, with what is missing for each property, and the API says it: <c>missing</c> of the part carries the property, the
-    /// reason and the step. For an organization with no Swiss property the part is not available and lists nothing; done, it lists nothing either.
-    /// </summary>
     [Fact]
     public async Task Plan_ShowsThePartBeforeTheActivation_WithTheMissingItems_AndTheApiSaysThem()
     {
@@ -198,7 +183,6 @@ public class GuestRegistrationPartEvaluatorTests : IAsyncLifetime
         Assert.Empty(done.ToDto().Missing);
     }
 
-    /// <summary>The part is a twelfth key appended to the others, a plan of twelve in a fixed order, and nothing requires it (so it can be put off).</summary>
     [Fact]
     public void TheCatalog_HasTheTwelfthPart_BeforeTheActivation_AndNothingRequiresIt()
     {

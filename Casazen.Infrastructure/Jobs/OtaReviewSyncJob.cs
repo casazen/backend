@@ -51,13 +51,10 @@ public class OtaReviewSyncJob(
 {
     public const string RecurringJobId = "ota-review-sync";
 
-    /// <summary>Every six hours, at minute 40 (UTC), so it does not start with the other jobs of the connector that run on the hour.</summary>
     public const string Cron = "40 */6 * * *";
 
-    /// <summary>The seconds a run waits for the previous one: <c>JobLockTimeouts.DefaultSeconds</c>.</summary>
     public const int LockTimeoutSeconds = 300;
 
-    /// <summary>The calls of an org that this job never uses: the last ones of its bucket are for the host who replies and for the chat.</summary>
     public const int RateReserve = 30;
 
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
@@ -98,7 +95,6 @@ public class OtaReviewSyncJob(
 
             foreach (var bookingId in due)
             {
-                // The last calls of the bucket are not this job's: the org is read again at the next run.
                 if (rateLimiter.AvailableCalls(orgId) <= RateReserve)
                 {
                     totals.RateLimited++;
@@ -146,10 +142,6 @@ public class OtaReviewSyncJob(
             totals.RateLimited);
     }
 
-    /// <summary>
-    /// The bookings of the org that are due, at most <paramref name="limit"/>: the ones never read first (the stay that ended last first), then the ones whose time has come (the most
-    /// overdue first). A system read of one org: the org is named in every predicate, and the properties of the org that have a confirmed listing are the only ones read.
-    /// </summary>
     private async Task<IReadOnlyList<Guid>> DueBookingsAsync(Guid orgId, int limit, CancellationToken ct)
     {
         var connected = (await mappings.ListAsync(orgId, ct))
@@ -164,7 +156,6 @@ public class OtaReviewSyncJob(
         var from = now.AddDays(-OtaReviewPollSchedule.WindowDays);
         BookingStatus[] active = AlloggiatiStatusRules.ActiveBookingStatuses;
 
-        // The stays that happen, of a property with a listing, that are over, with a reservation on the channel manager: the window of the reviews is not asked yet.
         var happened = db.Bookings
             .AsNoTracking()
             .Where(b => b.OrgId == orgId
@@ -175,10 +166,8 @@ public class OtaReviewSyncJob(
                         && b.OctorateReservationId != null
                         && b.CheckOutDate <= now);
 
-        // ...and the ones that ended inside the window of the reviews.
         var stays = happened.Where(b => b.CheckOutDate > from);
 
-        // Never read: no row of the review yet.
         var neverRead = await stays
             .Where(b => !db.OtaReviews.Any(r => r.OrgId == orgId && r.BookingId == b.Id && r.Channel == OtaChannel.Airbnb))
             .OrderByDescending(b => b.CheckOutDate)
@@ -191,8 +180,6 @@ public class OtaReviewSyncJob(
         if (ids.Count >= limit)
             return ids;
 
-        // The rows whose time has come, on a stay that still counts: the most overdue first. A row with an action nobody confirmed (a reply or a host's review in ManualVerify) counts
-        // whatever the age of the stay: only a read ends it, so the window of sixty days does not leave it behind.
         var overdue = await db.OtaReviews
             .AsNoTracking()
             .Where(r => r.OrgId == orgId
@@ -211,10 +198,8 @@ public class OtaReviewSyncJob(
         return ids;
     }
 
-    /// <summary>The kind of an error for a log line: the code of an Octorate error, else the type of the exception.</summary>
     private static string ErrorOf(Exception ex) => ex is OctorateException octorate ? octorate.Code : ex.GetType().Name;
 
-    /// <summary>The counts of a whole run, for its log line.</summary>
     private sealed class RunTotals
     {
         public int Read { get; private set; }
@@ -223,10 +208,8 @@ public class OtaReviewSyncJob(
 
         public int NotReadable { get; private set; }
 
-        /// <summary>The channel manager did not give the reviews of a booking: the service stored the code on its row.</summary>
         public int ReadFailed { get; private set; }
 
-        /// <summary>A booking failed in a way nobody foresaw (the type of the error is in the log).</summary>
         public int Failed { get; set; }
 
         public int RateLimited { get; set; }

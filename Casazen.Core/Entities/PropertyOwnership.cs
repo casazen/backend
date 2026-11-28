@@ -17,15 +17,12 @@ public class PropertyOwnership : ITenantOwned
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant key (ADR-012-R4). Inherited from the property; never client-supplied.</summary>
     public Guid OrgId { get; set; }
     public virtual Org Org { get; set; } = null!;
 
-    /// <summary>The property being owned.</summary>
     public Guid PropertyId { get; set; }
     public virtual Property Property { get; set; } = null!;
 
-    /// <summary>The owner of the property.</summary>
     public Guid PropertyOwnerId { get; set; }
     public virtual PropertyOwner PropertyOwner { get; set; } = null!;
 
@@ -43,12 +40,7 @@ public class PropertyOwnership : ITenantOwned
     [Column(TypeName = "decimal(5,2)")]
     public decimal SharePercent { get; set; }
 
-    /// <summary>When this ownership started (UTC). Preserves history per NF-03.</summary>
     public DateTime OwnershipStart { get; set; }
 
-    /// <summary>
-    /// When this ownership ended (UTC). Null = active ownership.
-    /// Preserves history per NF-03.
-    /// </summary>
     public DateTime? OwnershipEnd { get; set; }
 }

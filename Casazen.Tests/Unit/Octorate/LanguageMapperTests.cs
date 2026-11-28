@@ -5,10 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Octorate;
 
-/// <summary>
-/// NF-31: the languages of a listing are the 14 of the channel manager; a listing can be published when its headline and its description exist
-/// in Italian and in English, and the mapper says which of the four are missing.
-/// </summary>
 public class LanguageMapperTests
 {
     private static Property House(string description = "Una villa sul lago.") => new()
@@ -31,13 +27,10 @@ public class LanguageMapperTests
     [Fact]
     public void ValidateForPublish_ListsTheMissingItalianAndEnglishHeadlineAndDescription()
     {
-        // Italian is in the columns of the property; English was never written.
         Assert.Equal(["en.title", "en.description"], LanguageMapper.ValidateForPublish(House()));
 
-        // An Italian description left blank is missing too.
         Assert.Equal(["it.description", "en.title", "en.description"], LanguageMapper.ValidateForPublish(House(description: "  ")));
 
-        // Written in English: nothing is missing, and the other languages are optional.
         var property = House();
         property.SiteProfileJson = SitePropertyProfileJson.Serialize(new SitePropertyProfileDocument
         {

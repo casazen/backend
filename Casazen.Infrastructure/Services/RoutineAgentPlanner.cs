@@ -11,10 +11,8 @@ internal sealed record AgentPlan(IReadOnlySet<int> Selected, string? Error = nul
 
 internal sealed record AgentStay(string Channel, string Status, int Nights, int Guests, bool NoShow);
 
-/// <summary>Choose only among the configured operations. All arguments, waits and permissions stay in CasaZen.</summary>
 internal static class RoutineAgentPlanner
 {
-    // Some compatible models count reasoning and the final answer against the same allowance.
     internal const int DecisionTokens = 2048;
 
     internal static string DecisionText(string? response)

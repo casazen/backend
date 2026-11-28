@@ -5,18 +5,10 @@ using Casazen.Core.Utilities;
 
 namespace Casazen.Core.Services;
 
-// The collections report of the host (NF-97, E07/F03/US02/T01): what came in by date, by payment method and by channel, the balances still to
-// collect and the credits. By cash, like the Home's "incassato": the total of the report is the number the Home gives for the same days.
-
-// ---------------------------------------------------------------- what came in
-
-/// <summary>The unit of the buckets of the collections by date.</summary>
 public enum HostCollectionsBucketUnit
 {
-    /// <summary>One bucket for each day: a period of up to <see cref="HostCollectionsRules.MaxDailyDays"/> days.</summary>
     Day,
 
-    /// <summary>One bucket for each calendar month, the first and the last cut at the edges of the period: a longer period.</summary>
     Month,
 }
 
@@ -34,12 +26,8 @@ public sealed record HostCollectionsBucket(
     decimal Amount,
     int PaymentCount);
 
-/// <summary>The money collected with one payment method (<see cref="Payment.Method"/>).</summary>
-/// <param name="Share">Of the total collected, from 0 to 1 to four decimals; null when the total is zero (a share of nothing says nothing).</param>
 public sealed record HostCollectionsMethodRow(PaymentMethod Method, decimal Amount, int PaymentCount, decimal? Share);
 
-/// <summary>The money collected for the stays of one channel (<see cref="Booking.Source"/> of the booking of the payment).</summary>
-/// <param name="Share">Of the total collected, from 0 to 1 to four decimals; null when the total is zero.</param>
 public sealed record HostCollectionsChannelRow(BookingSource Source, decimal Amount, int PaymentCount, decimal? Share);
 
 /// <summary>
@@ -52,26 +40,19 @@ public sealed record HostCollectionsChannelRow(BookingSource Source, decimal Amo
 /// <param name="Source">The channel of the booking it pays.</param>
 public sealed record HostCollectedPayment(DateTime CollectedAt, decimal Amount, decimal RefundedAmount, PaymentMethod Method, BookingSource Source)
 {
-    /// <summary>What the payment brings: its amount minus what was refunded (<see cref="PaymentCashRules.Collected"/>).</summary>
     public decimal Collected => PaymentCashRules.Collected(Amount, RefundedAmount);
 }
 
-/// <summary>The figures of the money collected in a period, cut three ways (<see cref="HostCollectionsRules.Summarize"/>).</summary>
 public sealed record HostCollectionsFigures(
     HostDashboardCollected Total,
     IReadOnlyList<HostCollectionsBucket> ByDate,
     IReadOnlyList<HostCollectionsMethodRow> ByMethod,
     IReadOnlyList<HostCollectionsChannelRow> ByChannel);
 
-// ---------------------------------------------------------------- what reached the account
-
-/// <summary>Whether the day the provider credits the funds has come.</summary>
 public enum HostCreditStatus
 {
-    /// <summary>The credit day is still ahead: the money is on its way.</summary>
     Expected,
 
-    /// <summary>The credit day has come (today or before): the provider has credited the funds.</summary>
     Credited,
 }
 
@@ -99,13 +80,8 @@ public sealed record HostStripeCredits(
     int CardPaymentCount,
     int PaymentsWithoutFigures);
 
-/// <summary>The stored credit of one card payment: the net amount, the day it is credited and the currency of the balance.</summary>
 public sealed record HostStripeSettlement(DateTime AvailableOn, decimal Net, string? Currency);
 
-/// <summary>What the channels of the channel manager credited for the stays of one channel, as the channel manager reports it.</summary>
-/// <param name="Currency">The currency of the stays (their property).</param>
-/// <param name="Amount">The net amount of the stays the channel collected and reported a net for (<see cref="Booking.OtaNetAmount"/>), summed.</param>
-/// <param name="StayCount">The stays that make it.</param>
 public sealed record HostChannelCreditRow(BookingSource Source, string Currency, decimal Amount, int StayCount);
 
 /// <summary>
@@ -117,10 +93,8 @@ public sealed record HostChannelCreditRow(BookingSource Source, string Currency,
 /// <param name="StaysWithoutNet">The stays the channel collected for which the channel manager reported no net amount.</param>
 public sealed record HostChannelCredits(bool Available, IReadOnlyList<HostChannelCreditRow> Rows, int StaysWithoutNet);
 
-/// <summary>A stay the channel collected the money of, with the net amount the channel manager reported for it, if any.</summary>
 public sealed record HostChannelCreditStay(BookingSource Source, string? Currency, decimal? Net);
 
-/// <summary>The credits of the period: the card provider's and the channels'.</summary>
 public sealed record HostCredits(HostStripeCredits Stripe, HostChannelCredits Channels);
 
 /// <summary>The money collected in a period by date, by payment method and by channel, and what reached the account.</summary>
@@ -138,19 +112,12 @@ public sealed record HostCollectionsReport(
     IReadOnlyList<HostCollectionsChannelRow> ByChannel,
     HostCredits Credits);
 
-// ---------------------------------------------------------------- what is still to collect
-
-/// <summary>What the balances to collect ask of <see cref="IHostCollectionsReportService.GetBalancesToCollectAsync"/>.</summary>
-/// <param name="PropertyId">Only this property (it must be one the scope reaches); null = every property of the scope.</param>
 public sealed record HostBalancesQuery(Guid? PropertyId = null);
 
-/// <summary>Where the figures of a balance come from.</summary>
 public enum HostBalanceBasis
 {
-    /// <summary>CasaZen's own money: the total of the booking minus the payments collected for it.</summary>
     Payments,
 
-    /// <summary>The channel manager's: the balance Octorate reported for a reservation (<see cref="Booking.OtaBalanceAmount"/>), stored as read.</summary>
     ChannelManager,
 }
 
@@ -181,40 +148,19 @@ public sealed record HostBalanceRow(
     bool Overdue,
     HostBalanceBasis Basis);
 
-/// <summary>What is to collect in one currency: amounts of different currencies are never added together.</summary>
 public sealed record HostBalanceTotal(string Currency, decimal Amount, int StayCount);
 
-/// <summary>The balances still to collect, by check-in, with the total to collect.</summary>
-/// <param name="AsOf">The day the balances are read (today in Europe/Rome): what "overdue" is judged on.</param>
-/// <param name="Rows">The stays with an amount to collect, by check-in then code.</param>
-/// <param name="Totals">What is to collect, one entry for each currency of the rows.</param>
-/// <param name="Since">The first check-out day listed (<see cref="HostCollectionsRules.BalancesSince"/>): a stay that ended before it is not in the report.</param>
 public sealed record HostBalancesToCollect(DateOnly AsOf, IReadOnlyList<HostBalanceRow> Rows, IReadOnlyList<HostBalanceTotal> Totals, DateOnly? Since = null);
 
-// ---------------------------------------------------------------- the rules
-
-/// <summary>
-/// The rules of the collections report (NF-97), written once: the buckets, the shares, the credits and what makes a balance. Nothing here reads a database or a
-/// clock; the service gives it rows and today.
-/// </summary>
 public static class HostCollectionsRules
 {
-    /// <summary>
-    /// A period of up to this many days is cut by day, a longer one by month (a day of a year of days is a table nobody reads): the limit of the trends of
-    /// the reports (<see cref="HostReportRules.MaxWeeklyTrendDays"/>).
-    /// </summary>
     public const int MaxDailyDays = HostReportRules.MaxWeeklyTrendDays;
 
-    /// <summary>
-    /// The channels, as the one definition of the code says (<see cref="FiscalCopy.IsOtaBookingSource"/>): a booking of these is the channel's, never a
-    /// stay whose price the host entered. Derived from the enum, never written out, so a new channel is one here as soon as the definition says so.
-    /// </summary>
     public static IReadOnlyList<BookingSource> ChannelSources { get; } =
         Enum.GetValues<BookingSource>().Where(FiscalCopy.IsOtaBookingSource).ToArray();
 
     private static readonly BookingSource[] ChannelSourceArray = [.. ChannelSources];
 
-    /// <summary>Day for a period of up to <see cref="MaxDailyDays"/> days, month for a longer one.</summary>
     public static HostCollectionsBucketUnit UnitFor(HostDashboardPeriod period)
     {
         ArgumentNullException.ThrowIfNull(period);
@@ -222,10 +168,6 @@ public static class HostCollectionsRules
         return period.Nights <= MaxDailyDays ? HostCollectionsBucketUnit.Day : HostCollectionsBucketUnit.Month;
     }
 
-    /// <summary>
-    /// The buckets of <paramref name="period"/> before any money is in them, in order, covering it exactly: a bucket for each day, or for each month with the
-    /// first and the last cut at the edges of the period (the cut of the Home's chart, <see cref="HostOverviewSeriesRules.BucketsOf"/>).
-    /// </summary>
     public static IReadOnlyList<HostCollectionsBucket> EmptyBucketsOf(HostDashboardPeriod period)
     {
         ArgumentNullException.ThrowIfNull(period);
@@ -250,13 +192,6 @@ public static class HostCollectionsRules
         return buckets;
     }
 
-    /// <summary>
-    /// The money collected, cut by date, by payment method and by channel. Each payment counts for what it brings (the amount minus what was refunded) on the
-    /// Europe/Rome day it came in; the total is the Home's (<see cref="HostDashboardCollected"/>: the sum rounded once, and the count of the payments), and each
-    /// cut adds up to it.
-    /// </summary>
-    /// <param name="payments">The payments that count as collected in the period (<see cref="PaymentCashRules.CollectedBetweenInstants"/>), nothing else.</param>
-    /// <exception cref="InvalidOperationException">A payment came in on a day the period does not have: the rows are not the ones of the period.</exception>
     public static HostCollectionsFigures Summarize(HostDashboardPeriod period, IReadOnlyCollection<HostCollectedPayment> payments)
     {
         ArgumentNullException.ThrowIfNull(period);
@@ -289,7 +224,6 @@ public static class HostCollectionsRules
         return new HostStripeCredits(rows.Count > 0, rows, cardPaymentCount, paymentsWithoutFigures);
     }
 
-    /// <summary>The funds are credited when their day is today or before; later they are expected.</summary>
     public static HostCreditStatus CreditStatusOf(DateOnly arrivalDate, DateOnly today) =>
         arrivalDate <= today ? HostCreditStatus.Credited : HostCreditStatus.Expected;
 
@@ -314,22 +248,14 @@ public static class HostCollectionsRules
         return new HostChannelCredits(rows.Count > 0, rows, list.Count(s => s.Net is null));
     }
 
-    /// <summary>The check-out day is before today: the stay is over and something is still to collect.</summary>
     public static bool IsOverdue(DateOnly checkOut, DateOnly today) => checkOut < today;
 
-    /// <summary>How far back the balances to collect look, in calendar months: the horizon of every report (<see cref="HostReportRules.MaxMonths"/>).</summary>
     public const int BalancesMonths = HostReportRules.MaxMonths;
 
-    /// <summary>
-    /// The first check-out day the balances to collect list: <see cref="BalancesMonths"/> months before <paramref name="today"/>. A stay that ended before it is out of the
-    /// horizon of the report, so the list does not grow with the whole history of the host (a stay never marked as paid stays overdue for ever).
-    /// </summary>
     public static DateOnly BalancesSince(DateOnly today) => today.AddMonths(-BalancesMonths);
 
-    /// <summary>What is still to collect of a stay CasaZen holds the money of: the total minus what was collected, never below zero.</summary>
     public static decimal ToCollect(decimal total, decimal collected) => Math.Max(0m, total - collected);
 
-    /// <summary>The balances added up, by currency (the amounts of two currencies are never added), by currency code.</summary>
     public static IReadOnlyList<HostBalanceTotal> TotalsOf(IEnumerable<HostBalanceRow> rows)
     {
         ArgumentNullException.ThrowIfNull(rows);
@@ -371,7 +297,6 @@ public static class HostCollectionsRules
                     && !(!string.IsNullOrWhiteSpace(b.OctorateReservationId) && b.Source == BookingSource.Direct && !mirrors.Any(s => s.BookingId == b.Id));
     }
 
-    /// <summary>The key of a day in its bucket: the day (<c>2026-10-09</c>) or the month (<c>2026-10</c>).</summary>
     public static string LabelOf(DateOnly day, HostCollectionsBucketUnit unit) =>
         day.ToString(unit == HostCollectionsBucketUnit.Day ? "yyyy-MM-dd" : "yyyy-MM", CultureInfo.InvariantCulture);
 
@@ -412,8 +337,6 @@ public sealed class HostCollectionsSums
         _counts = new int[_empty.Count];
     }
 
-    /// <summary>Adds a payment that came in on a day of the period: it counts for what it brings, on the Europe/Rome day it came in.</summary>
-    /// <exception cref="InvalidOperationException">The payment came in on a day the period does not have: the rows are not the ones of the period.</exception>
     public void Add(HostCollectedPayment payment)
     {
         ArgumentNullException.ThrowIfNull(payment);
@@ -431,7 +354,6 @@ public sealed class HostCollectionsSums
         _count++;
     }
 
-    /// <summary>The figures of what was added: the total is the sum rounded once with the count of the payments, and each cut adds up to it.</summary>
     public HostCollectionsFigures Figures()
     {
         var total = HostCollectionsRules.Money(_total);

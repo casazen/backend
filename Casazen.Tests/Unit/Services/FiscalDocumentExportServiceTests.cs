@@ -27,7 +27,6 @@ public class FiscalDocumentExportServiceTests
     private static readonly DateTimeOffset Now = new(2026, 11, 12, 10, 0, 0, TimeSpan.Zero);
     private const string Anna = "auth0|anna-collaborator";
 
-    /// <summary>Permission rule: a caller with a partial scope never gets the documents of the properties it does not reach, nor the ones of another org.</summary>
     [Fact]
     public async Task DocumentExport_HostScope_OtherPropertiesNeverIncluded_Test()
     {
@@ -49,18 +48,15 @@ public class FiscalDocumentExportServiceTests
 
         Assert.Equal([mine.Id], restricted.Select(r => r.Id));
 
-        // Asking for the other property or booking by name does not widen what the caller reaches.
         Assert.Empty(await service.ListForExportAsync(collaborator, new FiscalDocumentCriteria(PropertyId: hiddenProperty), 100));
         Assert.Empty(await service.ListForExportAsync(collaborator, new FiscalDocumentCriteria(BookingId: hidden), 100));
 
-        // The whole org: its three documents, the one without a booking included, never the one of another org.
         var whole = await service.ListForExportAsync(new HostScope(OrgId), new FiscalDocumentCriteria(), 100);
         Assert.Equal(3, whole.Count);
         Assert.Contains(whole, r => r.Id == withoutBooking.Id);
         Assert.DoesNotContain(whole, r => r.Id == ofAnotherOrg.Id);
     }
 
-    /// <summary>A draft has no number and no day, and a discarded one is no document: only what was issued is exported, whatever the criteria say.</summary>
     [Fact]
     public async Task DocumentExport_OnlyIssuedDocuments_WhateverTheStatusAskedFor()
     {
@@ -81,7 +77,6 @@ public class FiscalDocumentExportServiceTests
         }
     }
 
-    /// <summary>Money rule: the payment state of a document CasaZen issued is the current one, as in the list; a credit note and an imported document keep their own.</summary>
     [Fact]
     public async Task DocumentExport_PaymentState_IsTheCurrentOne_AsInTheList()
     {
@@ -109,7 +104,6 @@ public class FiscalDocumentExportServiceTests
         Assert.Equal(FiscalDocumentPaymentState.Unknown, rows[creditNote.Id].PaymentState);
         Assert.Equal(FiscalDocumentPaymentState.ToCollect, rows[imported.Id].PaymentState);
 
-        // The list says the same of the same documents.
         var listed = (await service.ListAsync(new HostScope(OrgId), new FiscalDocumentCriteria(), 1, 100)).Items;
         Assert.All(listed, document => Assert.Equal(document.PaymentState, rows[document.Id].PaymentState));
     }
@@ -141,7 +135,6 @@ public class FiscalDocumentExportServiceTests
         Assert.Equal(new DateOnly(2026, 11, 12), row.IssueDate);
     }
 
-    /// <summary>The export narrows like the list (period in Rome days, kind, source, booking, property), newest first, and stops at the limit.</summary>
     [Fact]
     public async Task DocumentExport_FiltersLikeTheList_NewestFirst_AndStopsAtTheLimit()
     {
@@ -219,7 +212,6 @@ public class FiscalDocumentExportServiceTests
             Assert.Equal(2, (await service.ListForExportAsync(scope, criteria, 100)).Count);
         }
 
-        // A first day that is a day of the list still narrows it by the day asked for, not by the one the start of the list is clamped to.
         Assert.Equal([dated.Id], (await service.ListAsync(scope, new FiscalDocumentCriteria(From: new DateOnly(2026, 10, 1), To: new DateOnly(2026, 10, 31)), 1, 20)).Items.Select(d => d.Id));
     }
 

@@ -28,10 +28,8 @@ public class DocumentSideClassifierTests
 
     private static readonly DocumentSideClassifier Classifier = new();
 
-    /// <summary>The widest distance a policy may allow (<c>perceptualDuplicateMaxDistance</c> goes from 0 to 64): every hash is within it of every other one.</summary>
     private const int WidestPolicyDistance = 64;
 
-    /// <summary>The distance the committed policy file calls the same side photographed twice.</summary>
     private static int PolicyDistance()
     {
         Assert.True(IdentityConfigurationJson.TryCanonicalize(Encoding.UTF8.GetBytes(IdentityPolicyTestFiles.ShippedText()), out var canonical));
@@ -45,7 +43,6 @@ public class DocumentSideClassifierTests
 
     private static string Sha(RasterImage picture) => Convert.ToHexString(SHA256.HashData(picture.Rgb));
 
-    /// <summary>A passport as a format of one side: the portrait and the MRZ on the same page.</summary>
     private static DocumentFormat Passport() => Cie with
     {
         Id = "it-passport-test",
@@ -60,7 +57,6 @@ public class DocumentSideClassifierTests
         },
     };
 
-    /// <summary>A card of two sides whose MRZ is on the front, next to the portrait: the back has neither.</summary>
     private static DocumentFormat CardWithTheMrzOnTheFront() => Cie with
     {
         Id = "it-card-mrz-front-test",
@@ -74,8 +70,6 @@ public class DocumentSideClassifierTests
             },
         },
     };
-
-    // ---- Classify ----------------------------------------------------------------------------------------------------------------------------------------------
 
     [Fact]
     public void Classify_ThePortraitInItsZoneAndNoMrz_IsTheFront()
@@ -131,8 +125,6 @@ public class DocumentSideClassifierTests
         Assert.Throws<ArgumentNullException>(() => Classifier.Classify(Geometry(true), false, null!));
     }
 
-    // ---- CheckPair ---------------------------------------------------------------------------------------------------------------------------------------------
-
     [Fact]
     public void CheckPair_TheSameFileTwice_IsADuplicateSide()
     {
@@ -140,7 +132,6 @@ public class DocumentSideClassifierTests
         using var same = new RasterImage(front.Width, front.Height, (byte[])front.Rgb.Clone());
         var other = Picture(Sha(front), PerceptualHash.DHash64(front), DocumentSide.Front);
 
-        // The second picture is the first one sent again for the other side; it shows the front twice, and the bytes are the same.
         var code = Classifier.CheckPair(DocumentSide.Back, Picture(Sha(same), ulong.MaxValue, null), other, PolicyDistance());
 
         Assert.Equal(IdentityGuidanceCodes.DocumentSideDuplicate, code);
@@ -189,7 +180,6 @@ public class DocumentSideClassifierTests
     [InlineData(10, false)]
     public void CheckPair_TheDistanceOfTheHashes_IsComparedWithTheOneOfThePolicy(int pastThePolicyDistance, bool duplicate)
     {
-        // Two hashes that differ in exactly as many bits as the policy allows, plus the offset: the first `differing` bits of the other hash are set.
         var differing = PolicyDistance() + pastThePolicyDistance;
         var other = differing >= 64 ? ulong.MaxValue : (1UL << differing) - 1;
         Assert.Equal(differing, PerceptualHash.Distance(0, other));
@@ -209,7 +199,6 @@ public class DocumentSideClassifierTests
     [Fact]
     public void CheckPair_AMissingHashOnOnePicture_IsNeverADuplicateByTheHashAlone()
     {
-        // 0 is the hash of a plain picture, so a missing hash must not read as 0: nothing is close to a hash that is not there, whichever picture lacks it.
         Assert.Null(Classifier.CheckPair(DocumentSide.Back, Picture("AA", null, null), Picture("BB", 0, null), PolicyDistance()));
         Assert.Null(Classifier.CheckPair(DocumentSide.Back, Picture("AA", 0, null), Picture("BB", null, null), PolicyDistance()));
         Assert.Null(Classifier.CheckPair(DocumentSide.Back, Picture("AA", null, null), Picture("BB", 0b101, null), WidestPolicyDistance));
@@ -218,7 +207,6 @@ public class DocumentSideClassifierTests
     [Fact]
     public void CheckPair_AMissingHashOnBothPictures_IsNeverADuplicateByTheHashAlone()
     {
-        // Even with the widest distance a policy may allow (64: every hash is close to every other one), two pictures with no hash are not told apart by the hash.
         Assert.Null(Classifier.CheckPair(DocumentSide.Back, Picture("AA", null, null), Picture("BB", null, null), PolicyDistance()));
         Assert.Null(Classifier.CheckPair(DocumentSide.Back, Picture("AA", null, null), Picture("BB", null, null), WidestPolicyDistance));
         Assert.Equal(IdentityGuidanceCodes.DocumentSideDuplicate, Classifier.CheckPair(DocumentSide.Back, Picture("AA", 0, null), Picture("BB", ulong.MaxValue, null), WidestPolicyDistance));
@@ -298,13 +286,10 @@ public class DocumentSideClassifierTests
     [Fact]
     public void CheckPair_AnEmptyDigest_IsNotTheSameFile()
     {
-        // The flow keeps an empty digest while only the back was sent: two empty digests are not the same file, only the hashes and the sides can say it.
         var code = Classifier.CheckPair(DocumentSide.Back, Picture(string.Empty, 0, null), Picture(string.Empty, ulong.MaxValue, null), PolicyDistance());
 
         Assert.Null(code);
     }
-
-    // ---- no I/O, no logging, nothing kept -----------------------------------------------------------------------------------------------------------------------
 
     [Fact]
     public void TheClassifier_HasNoStateNoDependencyAndNoPictureToLeakThrough()

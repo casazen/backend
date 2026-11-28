@@ -65,7 +65,6 @@ public class ComuneDirectoryTests
         await using var db = CreateDb();
         await ComuneTestData.ImportSampleAsync(db);
 
-        // The exact name leads, whatever else contains or starts with the letters.
         var found = await new ComuneDirectory(db).SearchAsync("como", 10);
 
         Assert.Equal("013075", found[0].IstatCode);
@@ -140,11 +139,9 @@ public class ComuneDirectoryTests
         Assert.Equal("058091", resolved["H501"].IstatCode);
         Assert.Equal("058091", resolved["roma"].IstatCode);
         Assert.Equal("058091", resolved["058091"].IstatCode);
-        // F205 is Milano and D612 Firenze (the old registry had F205 as Firenze).
         Assert.Equal("015146", resolved["F205"].IstatCode);
         Assert.Equal("048017", resolved["D612"].IstatCode);
         Assert.Equal("048017", resolved["Firenze"].IstatCode);
-        // Two comuni with the name: not guessed. Unknown and English names: not found.
         Assert.False(resolved.ContainsKey("Castro"));
         Assert.False(resolved.ContainsKey("Livo"));
         Assert.False(resolved.ContainsKey("Nowhere"));
@@ -164,7 +161,6 @@ public class ComuneDirectoryTests
 
         Assert.Equal("058091", resolved["058091"].IstatCode);
         Assert.Equal("058091", resolved["H501"].IstatCode);
-        // A name only stands for an active comune.
         Assert.False(resolved.ContainsKey("Roma"));
     }
 

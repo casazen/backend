@@ -44,7 +44,6 @@ public sealed class GuestRegisterService(
     {
         var register = await ReadAsync(propertyId, from, to, cancellationToken);
 
-        // The words of the file are the resource keys, read in the language of the request: no text of the file is written in the code.
         var language = DocumentLanguages.Normalize(request?.Language);
         var content = GuestRegisterFile.Write(register.Rows, key => documentTexts.Get(key, language));
         var hash = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
@@ -76,7 +75,6 @@ public sealed class GuestRegisterService(
 
     private sealed record RegisterRead(Property Property, GuestRegistrationRegime Regime, IReadOnlyList<GuestRegisterRow> Rows);
 
-    /// <summary>The period, the property, its regime and the lines of the register: what both the info and the file are made of.</summary>
     private async Task<RegisterRead> ReadAsync(Guid propertyId, DateOnly from, DateOnly to, CancellationToken cancellationToken)
     {
         if (GuestRegisterFile.PeriodErrorOf(from, to) is { } periodError)
@@ -86,7 +84,6 @@ public sealed class GuestRegisterService(
                 : new DomainRuleException(periodError, "SwissPeriodInvalid");
         }
 
-        // The tenant filter of the context: another org's property is not found, the same answer as a property that does not exist.
         var property = await context.Properties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == propertyId, cancellationToken)
             ?? throw new NotFoundException($"Property {propertyId} not found") { Code = "property_not_found", MessageKey = "PropertyNotFound" };
 
@@ -105,13 +102,11 @@ public sealed class GuestRegisterService(
         return new RegisterRead(property, regime, rows);
     }
 
-    /// <summary>The lines of the register of <paramref name="property"/>: the guests of the stays that arrive from <paramref name="from"/> to <paramref name="to"/>, both included, by arrival and stay.</summary>
     private async Task<IReadOnlyList<GuestRegisterRow>> ReadRowsAsync(Property property, DateOnly from, DateOnly to, CancellationToken cancellationToken)
     {
         var first = StoredDay(from);
         var end = StoredDay(to.AddDays(1));
 
-        // A stay owes a police communication when it is confirmed, checked in or checked out and is not a no-show: the one definition of a stay that counts.
         var bookings = await context.Bookings
             .AsNoTracking()
             .Include(b => b.Guest)
@@ -140,6 +135,5 @@ public sealed class GuestRegisterService(
             .ToList();
     }
 
-    /// <summary>A calendar day as the bookings store it: midnight UTC of that day.</summary>
     private static DateTime StoredDay(DateOnly day) => DateTime.SpecifyKind(day.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
 }

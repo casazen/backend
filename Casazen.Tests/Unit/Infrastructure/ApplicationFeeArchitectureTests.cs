@@ -10,18 +10,15 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// </summary>
 public class ApplicationFeeArchitectureTests
 {
-    /// <summary>The only files that set the application fee, each with the reason.</summary>
     private static readonly IReadOnlyDictionary<string, string> AllowedFiles = new Dictionary<string, string>
     {
         ["Casazen.Infrastructure/External/StripeSupplierPaymentGateway.cs"] =
             "The gateway of the supplier payments: the commission of the direct charge on the supplier's account (decision D2).",
     };
 
-    // The property assigned (in an initializer or after a variable: "ApplicationFeeAmount = ..."), and the raw Stripe parameter.
     private static readonly Regex FeeAssignment = new(@"\bApplicationFeeAmount\s*=(?!=)", RegexOptions.Compiled);
     private static readonly Regex FeeParameterLiteral = new(@"""application_fee_(amount|percent)""", RegexOptions.Compiled);
 
-    // A fee on the Stripe objects that take a percentage (subscriptions, invoices) is not allowed either.
     private static readonly Regex FeePercentAssignment = new(@"\bApplicationFeePercent\s*=(?!=)", RegexOptions.Compiled);
 
     [Fact]
@@ -46,8 +43,6 @@ public class ApplicationFeeArchitectureTests
             "deferred charges and legacy rent remain fee-free. Offending files: " + string.Join(", ", offenders));
     }
 
-    // SP-15b: giving the commission back with a refund (refund_application_fee) is the other half of it. A refund of a guest booking or
-    // of the rent has no commission to give back, and asking Stripe to do so would be either an error or a surprise.
     private static readonly Regex RefundFeeAssignment = new(@"\bRefundApplicationFee\s*=(?!=)", RegexOptions.Compiled);
     private static readonly Regex RefundFeeParameterLiteral = new(@"""refund_application_fee""", RegexOptions.Compiled);
 
@@ -104,13 +99,10 @@ public class ApplicationFeeArchitectureTests
 
             var code = StripComments(File.ReadAllText(path));
             Assert.Matches(FeeAssignment, code);
-            // Never an unconditional assignment: the fee goes through the one rule that drops a zero or a fee not below the amount.
             Assert.Contains("SupplierCommission.IsSendable(", code, StringComparison.Ordinal);
         }
     }
 
-    // SP-15c-a: the money CasaZen holds. Its PaymentIntents live on the platform account and CasaZen keeps its commission by not transferring
-    // it: no application fee at all, and no connected account, anywhere in the gateway of the held money (decision VT-D1, R6).
     [Fact]
     public void ThePlatformGateway_SetsNoFee_AsksNoFeeRefund_AndNeverUsesAConnectedAccount()
     {
@@ -130,7 +122,6 @@ public class ApplicationFeeArchitectureTests
     [Fact]
     public void TheExistingPaymentIntentsOfCasaZen_StillSetNoFee()
     {
-        // The guarantee of A3-40 in the code that creates guest and rent PaymentIntents: none of these files sets a fee.
         var root = FindRepositoryRoot();
         foreach (var file in new[]
                  {
@@ -158,7 +149,6 @@ public class ApplicationFeeArchitectureTests
         Assert.Matches(FeeParameterLiteral, "values[\"application_fee_amount\"] = 10;");
     }
 
-    /// <summary>The code of every application source file (no tests, no migrations), without comments.</summary>
     private static IEnumerable<(string Relative, string Code)> ReadCode(string root)
     {
         foreach (var project in new[] { "Casazen.Core", "Casazen.Infrastructure", "Casazen.Web" })
@@ -176,7 +166,6 @@ public class ApplicationFeeArchitectureTests
         }
     }
 
-    /// <summary>Removes <c>//</c> and <c>///</c> lines and <c>/* */</c> blocks: what a comment says about the fee is not a use of it.</summary>
     private static string StripComments(string source)
     {
         var withoutBlocks = Regex.Replace(source, @"/\*.*?\*/", string.Empty, RegexOptions.Singleline);

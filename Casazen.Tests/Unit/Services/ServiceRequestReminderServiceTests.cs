@@ -17,7 +17,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class ServiceRequestReminderServiceTests
 {
-    /// <summary>Monday 12 October 2026, 10:00 in Rome: its reminder is due on Sunday 11 at 18:00 in Rome, 16:00 UTC.</summary>
     private static readonly DateTime MondayAt10 = ServiceRequestScenario.FridayAt10.AddDays(3);
 
     private static readonly DateTimeOffset SundayAt16 = new(2026, 10, 11, 16, 0, 0, TimeSpan.Zero);
@@ -73,7 +72,6 @@ public class ServiceRequestReminderServiceTests
         s.ForgetNotifications();
         var sent = 0;
 
-        // Hourly runs from just after 18:00 on Sunday until the work starts on Monday at 10:00.
         for (var hour = 0; hour < 16; hour++)
         {
             sent += (await Reminders(s).SendDueAsync()).Sent;
@@ -193,7 +191,6 @@ public class ServiceRequestReminderServiceTests
         var first = await Reminders(s).SendDueAsync();
         var second = await Reminders(s).SendDueAsync();
 
-        // At most once: the request is marked before the mail is queued, so a mail that cannot be queued is not retried forever.
         Assert.Equal(new ServiceRequestReminderRun(false, 0, 1), first);
         Assert.Equal(new ServiceRequestReminderRun(false, 0, 0), second);
         Assert.Empty(s.Emails.Snapshot());
@@ -233,9 +230,6 @@ public class ServiceRequestReminderServiceTests
         Assert.True(candidates[0].StartUtc < candidates[1].StartUtc);
     }
 
-    // ─── helpers ───
-
-    /// <summary>A showcase request for Monday 12 October at 10:00 in Rome that the supplier took on Thursday.</summary>
     private static async Task<ServiceRequest> TakenForMondayAsync(ServiceRequestScenario s, ShowcaseBookingInput? input = null)
     {
         await s.EnableBookingAsync();

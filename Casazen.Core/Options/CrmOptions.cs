@@ -14,22 +14,16 @@ public class CrmOptions
 {
     public const string SectionName = "Crm";
 
-    /// <summary>Shortest accepted key, in characters: 32 random bytes written as text are 44.</summary>
     public const int MinContactIndexKeyLength = 32;
 
-    /// <summary>Shortest and longest time a confirmation link works, in hours (an hour to thirty days).</summary>
     public const int MinConfirmationLinkValidityHours = 1;
 
-    /// <inheritdoc cref="MinConfirmationLinkValidityHours"/>
     public const int MaxConfirmationLinkValidityHours = 24 * 30;
 
-    /// <summary>Fewest and most confirmation messages sent to one contact.</summary>
     public const int MinConfirmationMaxSends = 1;
 
-    /// <inheritdoc cref="MinConfirmationMaxSends"/>
     public const int MaxConfirmationMaxSends = 10;
 
-    /// <summary>The calling code of the market of the product: the default of <see cref="DefaultCallingCode"/>.</summary>
     public const string DefaultCallingCodeValue = "+39";
 
     /// <summary>
@@ -49,13 +43,10 @@ public class CrmOptions
     /// </summary>
     public bool OctorateContactsEnabled { get; set; }
 
-    /// <summary>Fewest and most contact reads from Octorate one org may make in an hour (E07/F06/US02/T02).</summary>
     public const int MinOctorateContactReadsPerHour = 1;
 
-    /// <inheritdoc cref="MinOctorateContactReadsPerHour"/>
     public const int MaxOctorateContactReadsPerHour = 500;
 
-    /// <summary>The default of <see cref="OctorateContactReadsPerHour"/>.</summary>
     public const int DefaultOctorateContactReadsPerHour = 50;
 
     /// <summary>
@@ -83,24 +74,12 @@ public class CrmOptions
     /// </summary>
     public List<string> OtaForwardDomains { get; set; } = [];
 
-    /// <summary>
-    /// The calling code a phone number written without one takes when the CRM normalizes it (E07/F01/US02/T01): <c>333 1234567</c> becomes
-    /// <c>+39 333 1234567</c>. A plus sign and one to three digits, the first not zero. Used by the keys of the matching and by the contacts, so
-    /// changing it changes the key of every national number stored without a prefix; leave it at <c>+39</c>, the market of the product. Env var
-    /// <c>Crm__DefaultCallingCode</c>.
-    /// </summary>
     public string DefaultCallingCode { get; set; } = DefaultCallingCodeValue;
 
-    /// <summary>Hours a confirmation link (double opt-in) works (72). Env var <c>Crm__ConfirmationLinkValidityHours</c>.</summary>
     public int ConfirmationLinkValidityHours { get; set; } = 72;
 
-    /// <summary>How many confirmation messages one contact gets at most (3). Env var <c>Crm__ConfirmationMaxSends</c>.</summary>
     public int ConfirmationMaxSends { get; set; } = 3;
 
-    /// <summary>
-    /// True when <paramref name="value"/> is a calling code: a plus sign and one to three ASCII digits, the first not zero (<c>+39</c>,
-    /// <c>+1</c>, <c>+353</c>), with nothing around it.
-    /// </summary>
     public static bool IsCallingCode(string? value)
     {
         if (value is not { Length: >= 2 and <= 4 } || value[0] != '+' || value[1] is < '1' or > '9')
@@ -109,11 +88,6 @@ public class CrmOptions
         return value.AsSpan(1).IndexOfAnyExceptInRange('0', '9') < 0;
     }
 
-    /// <summary>
-    /// True when <paramref name="value"/> is a bare host name: dot-separated labels of letters, digits and hyphens (1 to 63 characters, none
-    /// starting or ending with a hyphen), at least two of them, not an IP address, with nothing around it. A scheme, a path, a port, a
-    /// wildcard, an address with <c>@</c> and a trailing dot are not.
-    /// </summary>
     public static bool IsBareHostName(string? value)
     {
         if (string.IsNullOrEmpty(value) || value.Length > 253)
@@ -135,7 +109,6 @@ public class CrmOptions
             }
         }
 
-        // 192.0.2.1 has valid labels and is not a host name: the last label of a name is never only digits.
         return !labels[^1].All(char.IsAsciiDigit);
     }
 }
@@ -166,14 +139,12 @@ public sealed class CrmOptionsValidator(IFeatureFlags featureFlags, IHostEnviron
                 $"Crm__ConfirmationMaxSends must be between {CrmOptions.MinConfirmationMaxSends} and {CrmOptions.MaxConfirmationMaxSends}.");
         }
 
-        // The cap of the contact reads from Octorate (E07/F06/US02/T02): zero or a huge number would switch the guard off, silently.
         if (options.OctorateContactReadsPerHour is < CrmOptions.MinOctorateContactReadsPerHour or > CrmOptions.MaxOctorateContactReadsPerHour)
         {
             failures.Add(
                 $"Crm__OctorateContactReadsPerHour must be between {CrmOptions.MinOctorateContactReadsPerHour} and {CrmOptions.MaxOctorateContactReadsPerHour}.");
         }
 
-        // The prefix of the keys of the phone numbers (E07/F01/US02/T01): a typo would key every national number differently, silently.
         if (!CrmOptions.IsCallingCode(options.DefaultCallingCode))
             failures.Add("Crm__DefaultCallingCode must be a plus sign and one to three digits, the first not zero (for example +39).");
 
@@ -191,7 +162,6 @@ public sealed class CrmOptionsValidator(IFeatureFlags featureFlags, IHostEnviron
             }
             else if (key.Length < CrmOptions.MinContactIndexKeyLength)
             {
-                // A key that is set is the key of every hash from then on: it cannot be corrected later, so a short one is refused now.
                 failures.Add(
                     $"Crm__ContactIndexKey is too short: use at least {CrmOptions.MinContactIndexKeyLength} random characters.");
             }
@@ -209,7 +179,6 @@ public sealed class CrmOptionsValidator(IFeatureFlags featureFlags, IHostEnviron
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 
-    /// <summary>True where the key cannot be left out: every environment except Development and Testing.</summary>
     public static bool RequiresKey(IHostEnvironment environment) =>
         !environment.IsDevelopment() && !environment.IsEnvironment("Testing");
 }

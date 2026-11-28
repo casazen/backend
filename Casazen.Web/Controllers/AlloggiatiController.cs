@@ -45,16 +45,13 @@ public class AlloggiatiController(
     IComplianceStatusService complianceStatus,
     ICheckInOctorateSyncService octorateSync, IDirectAlloggiatiRoute? directRoute = null, AppDbContext? directDb = null) : ControllerBase
 {
-    /// <summary>Code of a send request: CasaZen has no Alloggiati Web client (422).</summary>
     public const string TransmissionUnavailableCode = "alloggiati_transmission_unavailable";
 
     /// <summary>Code of a retry of the write of the guests while another send of the stay is running (409).</summary>
     public const string WriteInProgressCode = "alloggiati_write_in_progress";
 
-    /// <summary>Code of a code search on an unknown list (400).</summary>
     public const string CodeListUnknownCode = "alloggiati_code_list_unknown";
 
-    /// <summary>Results of a code search.</summary>
     public const int CodeSearchLimit = 20;
 
     [HttpGet("summary")]
@@ -64,7 +61,6 @@ public class AlloggiatiController(
         if (orgId is null)
             return Unauthorized();
 
-        // AM-03: the stays of the properties the caller reaches (a member «Solo alcuni» sees only its own).
         if (await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted) is not { } scope)
             return Forbid();
 
@@ -117,7 +113,6 @@ public class AlloggiatiController(
         var (booking, denied) = await AuthorizeBookingAsync(bookingId, BookingOperations.Read);
         if (denied != null) return denied;
         var ct = HttpContext.RequestAborted;
-        // A daily receipt can cover apartments outside a member's scope and records submitted on the portal itself.
         if ((await hostScopeResolver.ResolveHostScopeAsync(User, booking!.OrgId, ct))?.IsOrgWide != true) return Forbid();
         var receipt = await (from a in db.AlloggiatiSendAttempts
                              join r in db.AlloggiatiReceipts on a.ReceiptId equals r.Id
@@ -159,7 +154,6 @@ public class AlloggiatiController(
             "User {UserId} asked to try again the write of the guests of booking {BookingId} to the channel manager: {State} {Reason}",
             User.GetUserId(), bookingId, result.State, result.Reason);
 
-        // Another send of the stay holds the lock: nothing was tried, and «done» is never answered for it.
         if (result.Reason == CheckInOctorateSyncService.ReasonSendInProgress)
             return this.ApiProblem(StatusCodes.Status409Conflict, WriteInProgressCode, "AlloggiatiChannelManagerWriteInProgress");
 
@@ -214,10 +208,6 @@ public class AlloggiatiController(
         return File(file.Content, "text/plain; charset=utf-8", file.FileName);
     }
 
-    /// <summary>
-    /// Counts of the guest data of the stay (MO-08): declared, registered and complete guests, with no personal data. The
-    /// host app shows "K ospiti completi su N" in the booking detail without downloading the identity data of the guests.
-    /// </summary>
     [HttpGet("{bookingId:guid}/guest-progress")]
     public async Task<ActionResult<AlloggiatiGuestProgressDto>> GetGuestProgress(Guid bookingId)
     {
@@ -275,12 +265,6 @@ public class AlloggiatiController(
         return Ok(numbers);
     }
 
-    /// <summary>
-    /// Replaces the guests of the stay (host entry: walk-in, a guest who cannot use the link, corrections, codes to
-    /// complete). Same rules as the guest portal: kinds and order, document only for a single guest or a head of family
-    /// or group. Invalid data → 400 ValidationProblem keyed <c>Guests[i].Field</c>; answers the updated summary. The rows
-    /// record the host as author (CO-09); complete data schedules the communication like the guest portal does.
-    /// </summary>
     [HttpPut("{bookingId:guid}/stay-guests")]
     [Authorize(Policy = CasazenPolicies.AlloggiatiSubmit)]
     public async Task<ActionResult<AlloggiatiGuestSummaryDto>> ReplaceStayGuests(
@@ -333,10 +317,6 @@ public class AlloggiatiController(
         return Ok(AlloggiatiGuestSummaryDto.From(summary));
     }
 
-    /// <summary>
-    /// Official codes of a list (<c>comuni</c>, <c>stati</c>, <c>documenti</c>, <c>luoghi</c>) whose description matches
-    /// <paramref name="q"/>. Empty until an admin imports the tables.
-    /// </summary>
     [HttpGet("codes")]
     public async Task<ActionResult<IEnumerable<AlloggiatiCodeEntryDto>>> SearchCodes([FromQuery] string? list, [FromQuery] string? q)
     {
@@ -361,7 +341,6 @@ public class AlloggiatiController(
         if (denied is not null)
             return denied;
 
-        // The person who declares it goes in the log of what was sent (NF-47): the token's subject, never a field of the body.
         var status = await alloggiatiWebService.MarkSentManuallyAsync(bookingId, request.SentOn!.Value, User.GetUserId());
         logger.LogInformation("Alloggiati communication of booking {BookingId} declared sent manually", bookingId);
         return Ok(AlloggiatiStatusDto.From(status));
@@ -413,10 +392,6 @@ public class AlloggiatiController(
         return (booking, null);
     }
 
-    /// <summary>
-    /// The stay as the cockpit reads it (the guests on the channel manager, the receipt coverage, the light), by the caller's reach; <c>null</c> when the org
-    /// or the reach cannot be resolved (the status is then answered as before, without the block).
-    /// </summary>
     private async Task<ComplianceStayStatus?> GetStayStatusAsync(Guid bookingId)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);

@@ -31,13 +31,6 @@ public sealed record SupplierSlotPreview(
     SupplierPreviewCoverage? Coverage,
     bool Urgent = false);
 
-/// <summary>
-/// The supplier's preview "how customers see you" (SP-03b): the slots a customer would be offered for one of the supplier's
-/// services, computed by the same planner as the public page (<see cref="ISupplierAgendaService.PlanAsync(Guid, DateOnly, DateOnly, Suppliers.SupplierSlotQuery, CancellationToken)"/>)
-/// and cut by the same window (<see cref="Suppliers.PublicSlotWindow"/>), <b>but</b> for the supplier alone: no cache (a change of
-/// hours shows at once), no condition on the service being published or the supplier being active (a draft and a paused service
-/// can be tried), and behind the supplier's own authorization, not the public flag.
-/// </summary>
 public interface ISupplierSlotPreviewService
 {
     /// <summary>

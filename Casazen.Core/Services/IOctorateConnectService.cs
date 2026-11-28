@@ -10,10 +10,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IOctorateConnectService
 {
-    /// <summary>
-    /// The address of the consent page with a new single-use, expiring <c>state</c> bound to the org, the user and the redirect
-    /// address: <c>{AuthorizationEndpoint}?client_id=..&amp;redirect_uri=..&amp;state=..</c>. Only the hash of the state is stored.
-    /// </summary>
     Task<string> StartAsync(Guid orgId, string userId, CancellationToken ct);
 
     /// <summary>
@@ -23,10 +19,8 @@ public interface IOctorateConnectService
     /// </summary>
     Task<OctorateConnectResult> CompleteAsync(Guid orgId, string userId, string code, string state, CancellationToken ct);
 
-    /// <summary>Where the org's connection stands, with the quota Octorate reports while it is connected.</summary>
     Task<OctorateConnectionState> GetStatusAsync(Guid orgId, CancellationToken ct);
 
-    /// <summary>Disconnects the org: no call is made for it until it connects again. Mappings and imported data are kept.</summary>
     Task DisconnectAsync(Guid orgId, CancellationToken ct);
 }
 

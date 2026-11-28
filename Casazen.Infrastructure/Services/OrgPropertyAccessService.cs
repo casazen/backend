@@ -60,17 +60,13 @@ public sealed class OrgPropertyAccessService(
         {
             var actor = await OrgTeamAccess.RequireManagerAsync(db, orgId, actorUserId, cancellationToken);
 
-            // Tracked: its scope is written below.
             target = await db.OrgMembers.IgnoreQueryFilters()
                 .FirstOrDefaultAsync(m => m.Id == memberId && m.OrgId == orgId, cancellationToken)
                 ?? throw MemberNotFound(memberId);
 
-            // An administrator is in the hands of the owner only; the owner is not limited by anybody (it is not a collaborator,
-            // so «Solo alcuni» is refused below, and «Tutti» changes nothing).
             if (target.Role != OrgRole.Owner && !OrgTeamRules.CanActOn(actor.Role, target.Role))
                 throw new DomainForbiddenException(OrgInvitationErrors.OwnerRequired, "OrgOwnerRequired");
 
-            // «Solo alcuni» is the collaborator's; everybody else reaches the whole org.
             if (scope == PropertyScope.Selected && target.Role != OrgRole.Collaborator)
                 throw new DomainRuleException(OrgMembershipErrors.ScopeNotSupported, "OrgMemberScopeNotSupported");
 
@@ -99,18 +95,11 @@ public sealed class OrgPropertyAccessService(
 
             var newScope = target.Role == OrgRole.Collaborator ? scope : PropertyScope.All;
 
-            // A person who no longer reaches a property cannot stay in charge of it (AM-03b): the properties of "Solo alcuni" that
-            // are not in the new set lose their person in charge, in the same save as the grants that were taken away. With every
-            // property nothing was taken away, so nothing is released. A given property of a mode the person does not work in is
-            // not reached either (AM-02c): it is kept in the set of grants and not among the ones the person stays in charge of.
             released = newScope == PropertyScope.Selected
                 ? await PropertyResponsibility.ReleaseAsync(
                     db, orgId, target.UserId, await ReachedAmongAsync(orgId, target.UserId, wanted, cancellationToken), now, cancellationToken)
                 : [];
 
-            // Who gave what to whom (AM-02b): one line for the change, in the save that writes it, and none when nothing changed.
-            // The properties themselves are not named: the line says the scope the member now has and how many were given or taken,
-            // and (AM-03b) how many lost their person in charge with it, only when some did.
             if (given.Count + taken.Count + released.Count > 0 || newScope != target.PropertyScope)
             {
                 var details = new List<(string Key, string Value)>
@@ -137,9 +126,6 @@ public sealed class OrgPropertyAccessService(
                 await transaction.CommitAsync(cancellationToken);
         }
 
-        // The member's own snapshot carries its scope and its grants: this instance sees the change on its next request, the
-        // others when their cached copy expires (Authorization:UserCacheSeconds, 60 s). Narrowing the access is therefore
-        // seen by the other instances within a minute at most (docs/runbooks/org-team.md, section 26).
         authorizationCache.Invalidate(target.UserId);
         logger.LogInformation(
             "Org member property access set: memberId={MemberId} orgId={OrgId} scope={Scope} properties={Count} by={ActorUserId}",
@@ -196,7 +182,6 @@ public sealed class OrgPropertyAccessService(
 
         if (given.Count > 0)
         {
-            // Who gave what to whom (AM-02b): the inviter gave these properties, the line is written with the acceptance.
             activityLog.Record(OrgActivity.Of(
                 orgId,
                 OrgActivityType.MemberPropertyAccessChanged,
@@ -216,8 +201,6 @@ public sealed class OrgPropertyAccessService(
         string? responsibleUserId,
         CancellationToken cancellationToken = default)
     {
-        // The people lock, like every write of the access (AM-03b): that the person reaches the property is read and the name is
-        // written in one step that cannot interleave with the grant being taken away, which releases the name in its own save.
         Property property;
         await using (var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
                          db, cancellationToken, OrgMembershipService.OrgLock(orgId)))
@@ -245,9 +228,6 @@ public sealed class OrgPropertyAccessService(
             propertyId, orgId, property.ResponsibleUserId is not null);
     }
 
-    // ─── Rules and reads ────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>422 <see cref="OrgMembershipErrors.PropertyUnknown"/> when an id is not a (not deleted) property of the org.</summary>
     private async Task EnsurePropertiesExistAsync(Guid orgId, IReadOnlySet<Guid> propertyIds, CancellationToken cancellationToken)
     {
         if (propertyIds.Count == 0)
@@ -260,11 +240,6 @@ public sealed class OrgPropertyAccessService(
             throw new DomainRuleException(OrgMembershipErrors.PropertyUnknown, "OrgMemberPropertyUnknown");
     }
 
-    /// <summary>
-    /// The properties among <paramref name="given"/> that the person reaches (AM-02c): with one area only, those of its mode
-    /// (<see cref="OrgRoleCatalog.SingleModeOf"/>, the rule of the lists and of the snapshot); with both areas, or none known, all of
-    /// them. A soft-deleted property counts like any other, as it does in the release itself.
-    /// </summary>
     private async Task<IReadOnlyCollection<Guid>> ReachedAmongAsync(
         Guid orgId,
         string userId,
@@ -281,7 +256,6 @@ public sealed class OrgPropertyAccessService(
         if (OrgRoleCatalog.SingleModeOf(areas) is not { } mode)
             return given;
 
-        // IgnoreQueryFilters: scoped to the org explicitly (the same query filters the release below lifts).
         var ids = given.ToList();
         return await db.Properties.IgnoreQueryFilters().AsNoTracking()
             .Where(p => p.OrgId == orgId && p.RentalMode == mode && ids.Contains(p.Id))
@@ -289,10 +263,6 @@ public sealed class OrgPropertyAccessService(
             .ToListAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// The person in charge is an active member of the org, with an active account, who reaches the property: every property for a
-    /// member who is not a collaborator «Solo alcuni», the given ones of a mode it works in for one who is (AM-02c).
-    /// </summary>
     private async Task EnsureCanBeInChargeAsync(
         Guid orgId,
         Guid propertyId,
@@ -327,7 +297,6 @@ public sealed class OrgPropertyAccessService(
 
     internal async Task<OrgMemberPropertyAccessView> BuildViewAsync(Guid orgId, OrgMember member, CancellationToken cancellationToken)
     {
-        // Only a collaborator can be limited; for everybody else every property is granted whatever the stored scope says.
         var scopeSupported = member.Role == OrgRole.Collaborator;
         var restricted = scopeSupported && member.PropertyScope == PropertyScope.Selected;
 
@@ -346,10 +315,6 @@ public sealed class OrgPropertyAccessService(
                 .ToHashSet()
             : null;
 
-        // «Chi può accedere», two queries whatever the number of properties: the members who reach everything, and the
-        // grants of the active collaborators «Solo alcuni» counted per property. A grant counts only while the collaborator works
-        // in an area of the property's mode (AM-02c: the rule of the lists, OrgRoleCatalog.SingleModeOf: narrowed when it has the
-        // membership of exactly one rental context and that is not the mode's), so the number is the people who can open it.
         var reachEverything = await db.OrgMembers.IgnoreQueryFilters().AsNoTracking()
             .CountAsync(
                 m => m.OrgId == orgId

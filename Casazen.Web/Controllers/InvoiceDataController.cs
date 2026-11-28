@@ -52,13 +52,6 @@ public class InvoiceDataController(
         return Ok(view is null ? InvoiceDataDto.Empty(bookingId) : InvoiceDataDto.From(view));
     }
 
-    /// <summary>
-    /// Saves who the invoice is for, with the source <c>Host</c>: what the host sends replaces what is stored (a member left out keeps its value, one
-    /// sent empty clears it) and no import and no guest overwrites it afterwards. Answers the data as saved. 422 <c>invoice_data_fiscal_code_invalid</c>,
-    /// <c>invoice_data_vat_number_invalid</c>, <c>invoice_data_recipient_code_invalid</c>, <c>invoice_data_pec_invalid</c>,
-    /// <c>invoice_data_recipient_required</c> or <c>invoice_data_field_invalid</c>, each with the <c>field</c> and the list of <c>errors</c>. 404 for a
-    /// booking of another org, 403 for one the caller may not change.
-    /// </summary>
     [HttpPut]
     [Authorize(Policy = CasazenPolicies.PaymentWrite)]
     [ProducesResponseType(typeof(InvoiceDataDto), StatusCodes.Status200OK)]

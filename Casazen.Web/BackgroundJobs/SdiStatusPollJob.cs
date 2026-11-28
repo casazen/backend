@@ -25,10 +25,8 @@ public class SdiStatusPollJob(
 {
     public const string RecurringJobId = "fiscal-sdi-status";
 
-    /// <summary>Every 30 minutes.</summary>
     public const string Cron = "*/30 * * * *";
 
-    /// <summary>The most documents one run asks about; the rest are asked at the next run (the oldest state first).</summary>
     public const int MaxDocumentsPerRun = 200;
 
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
@@ -82,6 +80,5 @@ public class SdiStatusPollJob(
     }
 }
 
-/// <summary>Some documents could not be read by a run of <see cref="SdiStatusPollJob"/> (the others were): the run is a failed run, and the documents are read again at the next one.</summary>
 public sealed class SdiStatusPollException(int failed, int asked)
     : Exception($"The SDI status of {failed} of {asked} documents could not be read: they are read again at the next run.");

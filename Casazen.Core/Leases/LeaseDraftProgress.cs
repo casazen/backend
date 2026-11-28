@@ -3,49 +3,29 @@ using Casazen.Core.Regulatory;
 
 namespace Casazen.Core.Leases;
 
-/// <summary>The state of a step of the wizard, decided by the server (LR-12).</summary>
 public enum LeaseStepState
 {
-    /// <summary>Nothing is missing and the landlord has been through the step (a step from 6 to 8 follows the facts: review confirmed, signed, registered).</summary>
     Done,
 
-    /// <summary>There is something to do in the step, or the landlord has not been through it yet.</summary>
     Todo,
 
-    /// <summary>
-    /// The step waits for somebody else (the tenant filling in their own data). It exists in the type for the day the tenant is
-    /// invited (phase 2, decision D1); the first release never produces it.
-    /// </summary>
     Waiting,
 
-    /// <summary>The step cannot be done yet: a step before it is not complete.</summary>
     Locked,
 
-    /// <summary>The step does not apply to this contract (an imported one has no model and no review).</summary>
     NotApplicable,
 }
 
-/// <summary>One thing missing in a step, or one thing to know about it: a stable <see cref="Code"/> (<see cref="LeaseNeedCodes"/>) and its parameters.</summary>
 public sealed record LeaseNeed(string Code, IReadOnlyDictionary<string, object?>? Params = null)
 {
-    /// <summary>A need with the given parameters (an empty set is not sent).</summary>
     public static LeaseNeed Of(string code, params (string Key, object? Value)[] parameters) =>
         new(code, parameters.Length == 0 ? null : parameters.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal));
 }
 
-/// <summary>A step of the wizard (1 to 8) with its state and what is missing.</summary>
 public sealed record LeaseFlowStep(int Step, LeaseStepState State, IReadOnlyList<LeaseNeed> Needs);
 
-/// <summary>
-/// The eight steps of the wizard as the server sees them (<c>flow</c> of the draft endpoints): Immobile, Parti, Condizioni
-/// economiche, Durata e date, Modello e allegati, Revisione, Firma, Dopo la firma.
-/// </summary>
 public sealed record LeaseDraftFlow(IReadOnlyList<LeaseFlowStep> Steps)
 {
-    /// <summary>
-    /// Every value of the data steps is there and valid: only the facts about the property (the APE, the cadastral data) can still
-    /// be missing. Then the columns and the parties of the lease hold the values and <c>DraftData</c> is not kept.
-    /// </summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public bool DataComplete { get; init; }
 
@@ -60,39 +40,26 @@ public sealed record LeaseDraftFlow(IReadOnlyList<LeaseFlowStep> Steps)
     public LeaseFlowStep this[int step] => Steps[step - 1];
 }
 
-/// <summary>The facts about the property that the steps depend on (not values of the draft).</summary>
 public sealed record LeaseDraftFacts
 {
-    /// <summary>The property exists and the caller reaches it.</summary>
     public bool PropertyExists { get; init; } = true;
 
-    /// <summary>The property has an energy certificate (APE) that is valid.</summary>
     public bool HasApe { get; init; }
 
-    /// <summary>
-    /// At least one APE document of the property has its code and energy class (<c>PropertyDocument.HasApeIdentification</c>): what the
-    /// contract prints, which the reading of the certificate does not guarantee. The same rule as the contract's, so the review and the
-    /// final contract cannot disagree (LR-APE). Asked only of a contract made in CasaZen.
-    /// </summary>
     public bool HasApeIdentification { get; init; }
 
-    /// <summary>Sheet, parcel, category and income of the property are known (the subaltern is optional).</summary>
     public bool HasCadastralData { get; init; }
 
     /// <summary>The property is let for short stays (decision LR-D15: a warning in the review, not a block).</summary>
     public bool PropertyIsShortMode { get; init; }
 }
 
-/// <summary>What the server found out about the rent band of a canone concordato for the characteristics typed.</summary>
 public sealed record LeaseDraftConcordatoOutcome
 {
-    /// <summary>Why there is no range (<see cref="CanoneConcordatoReasonCodes"/>): no data for the comune, a zone that is missing, a surface out of the bands…; <c>null</c> when there is one.</summary>
     public string? UnavailableReason { get; init; }
 
-    /// <summary>The rent typed is outside the range.</summary>
     public bool RentOutOfBand { get; init; }
 
-    /// <summary>The range comes from agreement data that are not confirmed: it is a guide, it never blocks (A7-23).</summary>
     public bool Indicative { get; init; }
 
     public decimal? MinMonthly { get; init; }
@@ -100,7 +67,6 @@ public sealed record LeaseDraftConcordatoOutcome
     public decimal? MaxMonthly { get; init; }
 }
 
-/// <summary>Everything the flow of a lease depends on. No entity, no database: the service gathers it.</summary>
 public sealed record LeaseDraftProgressInput
 {
     public LeaseOrigin Origin { get; init; } = LeaseOrigin.Created;
@@ -117,10 +83,8 @@ public sealed record LeaseDraftProgressInput
 
     public LeaseDraftFacts Facts { get; init; } = new();
 
-    /// <summary>The outcome for the characteristics typed; <c>null</c> when the type is not a concordato or the characteristics are not valid.</summary>
     public LeaseDraftConcordatoOutcome? Concordato { get; init; }
 
-    /// <summary>Today in Rome (the verification of a document cannot be after it).</summary>
     public DateOnly Today { get; init; }
 }
 
@@ -137,7 +101,6 @@ public sealed record LeaseDraftProgressInput
 /// </remarks>
 public static class LeaseDraftProgress
 {
-    /// <summary>The needs that are about the property and not about the values: they do not keep <c>DraftData</c> alive.</summary>
     private static readonly HashSet<string> PropertyFacts =
         [LeaseNeedCodes.ApeMissing, LeaseNeedCodes.ApeIdentificationMissing, LeaseNeedCodes.CadastralMissing];
 
@@ -160,7 +123,6 @@ public static class LeaseDraftProgress
         if (!imported)
             Attachments(values, input.Today, needs[4]);
 
-        // A draft that left the wizard (signed, registered) was visited all the way; before that, the furthest step reached.
         var reached = input.Status == LeaseStatus.Draft ? input.WizardMaxStep : LeaseDraftDefaults.LastStep;
         var steps = new LeaseFlowStep[LeaseDraftDefaults.LastStep];
         for (var n = 1; n <= LeaseDraftDefaults.LastDataStep; n++)
@@ -176,7 +138,6 @@ public static class LeaseDraftProgress
         var signed = IsSigned(input.Status);
         var reviewDone = !imported && (input.ReviewConfirmedAt is not null || input.Status != LeaseStatus.Draft);
 
-        // 6 · Revisione
         steps[5] = imported
             ? new LeaseFlowStep(6, LeaseStepState.NotApplicable, [])
             : !dataStepsComplete
@@ -185,7 +146,6 @@ public static class LeaseDraftProgress
                     ? new LeaseFlowStep(6, LeaseStepState.Done, [])
                     : new LeaseFlowStep(6, LeaseStepState.Todo, [LeaseNeed.Of(LeaseNeedCodes.ReviewNotConfirmed)]);
 
-        // 7 · Firma (an imported contract: the signed contract)
         var signatureOpen = imported ? dataStepsComplete : steps[5].State == LeaseStepState.Done;
         steps[6] = !signatureOpen
             ? new LeaseFlowStep(7, LeaseStepState.Locked, [])
@@ -196,7 +156,6 @@ public static class LeaseDraftProgress
                     LeaseStepState.Todo,
                     [LeaseNeed.Of(!imported && input.SentForSignatureAt is null ? LeaseNeedCodes.NotSent : LeaseNeedCodes.SignedCopyMissing)]);
 
-        // 8 · Dopo la firma
         steps[7] = steps[6].State != LeaseStepState.Done
             ? new LeaseFlowStep(8, LeaseStepState.Locked, [])
             : input.Status == LeaseStatus.Registered
@@ -206,11 +165,8 @@ public static class LeaseDraftProgress
         return new LeaseDraftFlow(steps) { DataComplete = dataComplete };
     }
 
-    /// <summary>The contract is signed by every party (a status past the signature, except a rejected one).</summary>
     public static bool IsSigned(LeaseStatus status) =>
         status is LeaseStatus.Signed or LeaseStatus.RegistrationPending or LeaseStatus.SentToProvider or LeaseStatus.Registered;
-
-    // ---- 1 · the property ----------------------------------------------------------------------------------------
 
     private static void Property(LeaseDraftProgressInput input, bool imported, List<LeaseNeed> needs)
     {
@@ -220,7 +176,6 @@ public static class LeaseDraftProgress
             return;
         }
 
-        // An imported contract is already signed: the missing APE and cadastral data are warnings of the review (decision D2).
         if (imported)
             return;
 
@@ -236,14 +191,11 @@ public static class LeaseDraftProgress
             needs.Add(LeaseNeed.Of(LeaseNeedCodes.CadastralMissing));
     }
 
-    // ---- 2 · the parties -----------------------------------------------------------------------------------------
-
     private static void Parties(LeaseDraftValues values, List<LeaseNeed> needs)
     {
         Role(values.Landlords, PartyRole.Landlord, LeaseNeedCodes.LandlordMissing, LeaseNeedCodes.LandlordIncomplete, needs);
         Role(values.Tenants, PartyRole.Tenant, LeaseNeedCodes.TenantMissing, LeaseNeedCodes.TenantIncomplete, needs);
 
-        // No fiscal code twice in the same contract (LT-14): the later entries are the ones to change.
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var duplicates = new List<object>();
         foreach (var (role, party, index) in Entries(values))
@@ -274,7 +226,6 @@ public static class LeaseDraftProgress
         }
     }
 
-    /// <summary>Every entry with its role and its position among the entries of that role.</summary>
     internal static IEnumerable<(PartyRole Role, LeaseDraftParty Party, int Index)> Entries(LeaseDraftValues values)
     {
         for (var i = 0; i < values.Landlords.Count; i++)
@@ -282,8 +233,6 @@ public static class LeaseDraftProgress
         for (var i = 0; i < values.Tenants.Count; i++)
             yield return (PartyRole.Tenant, values.Tenants[i], i);
     }
-
-    // ---- 3 · type, regime, rent, deposit -------------------------------------------------------------------------
 
     private static void Economics(LeaseDraftProgressInput input, bool imported, LeaseDraftReading reading, List<LeaseNeed> needs)
     {
@@ -295,8 +244,6 @@ public static class LeaseDraftProgress
         }
         else if (!reading.TypeAvailable)
         {
-            // The type exists but is not one that can be created here, or names nothing (the student lease): kept as typed, never applied
-            // to the contract (decision D27).
             needs.Add(reading.Type is { } type
                 ? LeaseNeed.Of(LeaseNeedCodes.LeaseTypeNotAvailable, ("type", type.ToString()))
                 : LeaseNeed.Of(LeaseNeedCodes.LeaseTypeNotAvailable));
@@ -322,14 +269,9 @@ public static class LeaseDraftProgress
         else if (reading.Rent is null)
             needs.Add(LeaseNeed.Of(LeaseNeedCodes.RentInvalid));
 
-        // The range of a canone concordato is checked for a contract that is going to be signed. An imported one is already signed
-        // (decision LR-D13): the unit's characteristics, the agreement data of the comune and the range do not come into it.
         if (reading.Type == LeaseContractType.Concordato && reading.TypeAvailable && !imported)
             Concordato(input, reading, needs);
 
-        // The model of a contract made in CasaZen states the deposit (the {{deposito_cauzionale}} of its "Deposito cauzionale" article), so
-        // it has to be typed, and 0 is an answer ("none"). Without it the final contract would answer 422 contract_data_missing after the
-        // review was confirmed. An imported contract is already signed and prints nothing: its deposit stays optional (LR-DEP).
         if (values.SecurityDeposit is null && !imported)
             needs.Add(LeaseNeed.Of(LeaseNeedCodes.DepositMissing));
 
@@ -379,8 +321,6 @@ public static class LeaseDraftProgress
         }
     }
 
-    // ---- 4 · the start date --------------------------------------------------------------------------------------
-
     private static void Start(LeaseDraftValues values, bool imported, LeaseDraftReading reading, List<LeaseNeed> needs)
     {
         if (LeaseDraftRules.Clean(values.StartDate) is null)
@@ -403,11 +343,6 @@ public static class LeaseDraftProgress
         }
     }
 
-    /// <summary>
-    /// The documentation of the need of a transitory contract made in CasaZen: asked when the term lasts more than
-    /// <see cref="LeaseContractTerms.TransitorioDocumentationAfterDays"/> days, at most
-    /// <see cref="LeaseDraftRules.TransitoryDocumentationMaxLength"/> characters when typed (TR).
-    /// </summary>
     private static void Documentation(LeaseDraftValues values, DateOnly start, DateOnly end, List<LeaseNeed> needs)
     {
         if (!LeaseContractTerms.TransitoryNeedsDocumentation(LeaseDraftRules.ToStoredDate(start), LeaseDraftRules.ToStoredDate(end)))
@@ -419,12 +354,6 @@ public static class LeaseDraftProgress
             needs.Add(LeaseNeed.Of(LeaseNeedCodes.TransitoryDocumentationTooLong, ("maxLength", LeaseDraftRules.TransitoryDocumentationMaxLength)));
     }
 
-    /// <summary>
-    /// The term of an imported contract is the one it states (LR-13): the last day typed, inside the limits of its type
-    /// (<see cref="LeaseContractTerms.CheckTerm"/>). Without one it follows the type, except for the transitory type, which has no term
-    /// of its own and asks for it. A start in the past is no problem: the contract is already in force. A transitory contract made in
-    /// CasaZen is read the same way (TR): it states its end, from 1 to 18 months after the start.
-    /// </summary>
     private static void Term(LeaseDraftValues values, LeaseDraftReading reading, DateOnly start, List<LeaseNeed> needs)
     {
         if (LeaseDraftRules.Clean(values.EndDate) is null)
@@ -454,13 +383,8 @@ public static class LeaseDraftProgress
         needs.Add(LeaseNeed.Of(LeaseNeedCodes.TermOutOfRange, parameters.ToArray()));
     }
 
-    // ---- 5 · model and attachments -------------------------------------------------------------------------------
-
     private static void Attachments(LeaseDraftValues values, DateOnly today, List<LeaseNeed> needs)
     {
-        // Nothing is required at step 5: the template is chosen by the type and the regime, the APE is a fact of the property, and
-        // the documents of the parties are not kept (decision D3): only the day they were checked, which is optional but, if
-        // typed, a real day not after today.
         foreach (var (role, party, index) in Entries(values))
         {
             if (LeaseDraftRules.HasInvalidDocumentsDate(party, today))

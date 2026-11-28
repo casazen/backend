@@ -11,13 +11,10 @@ namespace Casazen.Core.Events;
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum BookingEventOrigin
 {
-    /// <summary>The host, in CasaZen (web, app): a booking entered by hand, an edit, a confirmation, a cancellation, a check-in or check-out.</summary>
     Host = 1,
 
-    /// <summary>The guest: a checkout of the booking site, a payment, a cancellation with the guest's link or from the guest area.</summary>
     Guest = 2,
 
-    /// <summary>CasaZen itself: an expired hold, a request declined, a deferred payment that was not completed, a payment that arrived when the dates were taken.</summary>
     System = 3,
 
     /// <summary>The channel manager (Octorate): set by its inbound handlers, never by a flow of CasaZen.</summary>
@@ -51,7 +48,6 @@ public sealed record BookingEventPayload(
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool Overwrite { get; init; }
 
-    /// <summary>The payload of an event about <paramref name="booking"/> as it is now, made by <paramref name="origin"/>.</summary>
     public static BookingEventPayload Of(Booking booking, BookingEventOrigin origin)
     {
         ArgumentNullException.ThrowIfNull(booking);

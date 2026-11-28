@@ -31,11 +31,6 @@ public class OwnerInvoicesController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
-    /// <summary>
-    /// The owner invoices of the org (drafts and issued ones), the newest period first: <c>period</c> (<c>yyyy-MM</c>) and <c>ownerId</c> narrow it. Each with
-    /// its number, owner, total, currency, status and, once issued, <c>payment</c> (<c>offset</c>, <c>to_pay</c> with the amount, <c>credited</c>). 422
-    /// <c>owner_period_invalid</c> for a period that is not one.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(List<OwnerInvoiceListItemDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -57,10 +52,6 @@ public class OwnerInvoicesController(
         return Ok(rows.Select(OwnerInvoiceListItemDto.From).ToList());
     }
 
-    /// <summary>
-    /// One owner invoice with its lines, as the creation of the draft answers them (<c>agency.statement.view</c>, the whole organization only): a draft is read again by its id
-    /// after a reload, without making it again. 404 <c>fiscal_document_not_found</c> for an invoice of another org and for a document that is not an owner invoice.
-    /// </summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(OwnerInvoiceDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -73,11 +64,6 @@ public class OwnerInvoicesController(
         return Ok(OwnerInvoiceDto.From(await invoices.GetAsync(orgId, id, HttpContext.RequestAborted)));
     }
 
-    /// <summary>
-    /// The draft of the owner invoice of a statement version (<c>{ versionId }</c>), or the draft its owner and period already have, made again from it. 404
-    /// <c>owner_statement_version_not_found</c>; 409 <c>owner_invoice_version_superseded</c>, <c>document_already_issued</c>; 422
-    /// <c>owner_invoice_nothing_to_invoice</c>, <c>document_rule_not_configured</c>, <c>issuer_profile_incomplete</c>, <c>document_invoice_data_missing</c>.
-    /// </summary>
     [HttpPost("drafts")]
     [Authorize(Policy = CasazenPolicies.AgencyStatementManage)]
     [ProducesResponseType(typeof(OwnerInvoiceDto), StatusCodes.Status201Created)]
@@ -135,10 +121,6 @@ public class OwnerInvoicesController(
         return Created($"/api/fiscal/documents/{note.Id}", OwnerInvoiceDto.From(note));
     }
 
-    /// <summary>
-    /// The draft of an owner invoice discarded (no number is consumed): its owner and month are free for a new draft. 404 for an invoice of another org or a
-    /// document that is not an owner invoice; 422 <c>document_not_draft</c>.
-    /// </summary>
     [HttpDelete("{id:guid}")]
     [Authorize(Policy = CasazenPolicies.AgencyStatementManage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -154,7 +136,6 @@ public class OwnerInvoicesController(
         return NoContent();
     }
 
-    /// <summary>The caller's org, only when its reach is the whole org.</summary>
     private Task<Guid?> OrgAsync() =>
         HostCallerResolver.OrgWideAsync(User, orgContextResolver, hostScopeResolver, HttpContext.RequestAborted);
 }

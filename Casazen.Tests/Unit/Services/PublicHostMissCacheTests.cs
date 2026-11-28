@@ -3,7 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>The memory of the hosts that resolve to no org is bounded (BK-16): a flood of made-up hosts cannot grow it.</summary>
 public class PublicHostMissCacheTests
 {
     [Fact]

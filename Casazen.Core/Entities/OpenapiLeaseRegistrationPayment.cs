@@ -5,11 +5,6 @@ using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// The prepaid Openapi and CasaZen service fee of one Openapi registration.
-/// <see cref="FeePercent"/> and <see cref="AmountCents"/> are snapshots of the quote at checkout: a later change of the
-/// rate does not rewrite a payment, and the gate accepts only a completed payment of the quote in force now.
-/// </summary>
 [Table("OpenapiLeaseRegistrationPayments")]
 public class OpenapiLeaseRegistrationPayment : ITenantOwned
 {
@@ -22,7 +17,6 @@ public class OpenapiLeaseRegistrationPayment : ITenantOwned
     public Guid LeaseContractId { get; set; }
     public virtual LeaseContract LeaseContract { get; set; } = null!;
 
-    /// <summary>The registration-tax rate in force at checkout (for example 0.02).</summary>
     public decimal FeePercent { get; set; }
 
     public int AmountCents { get; set; }

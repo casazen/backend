@@ -141,7 +141,6 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
         var ids = selections.Select(s => s.Id).ToArray();
         var catalog = await db.GuestHostExtras.AsNoTracking().Where(x => x.OrgId == booking.OrgId &&
             x.PropertyIds.Contains(property.Id) && ids.Contains(x.Id)).ToDictionaryAsync(x => x.Id, ct);
-        // Use the same stay facts as the portal without attaching the existing property to the new booking graph.
         var stay = new Booking
         {
             Id = booking.Id,
@@ -350,7 +349,6 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
         return true;
     }
 
-    // The signed Connect event and the initial order must agree on account, amount, currency and identity.
     public async Task ObserveAsync(PaymentIntent intent, string account, CancellationToken ct)
     {
         if (intent.Metadata?.TryGetValue("order_id", out var id) != true || !Guid.TryParse(id, out var orderId) ||
@@ -441,7 +439,6 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
         if (extra.Inventory is not { } inventory)
             return true;
 
-        // Inventory belongs to the host catalog. Count reservations only across overlapping stays.
         var occupied = await (from order in db.GuestHostExtraOrders
                               join other in db.Bookings on order.BookingId equals other.Id
                               where order.OrgId == booking.OrgId && other.OrgId == booking.OrgId && order.ExtraId == extra.Id &&

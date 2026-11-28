@@ -10,7 +10,6 @@ public static class HangfireServerIdentity
 {
     public static string ServerName { get; } = Environment.MachineName;
 
-    /// <summary>Prefix of the id of the server running in this process.</summary>
     public static string CurrentProcessIdPrefix { get; } =
         $"{ServerName}:{Environment.ProcessId}:".ToLowerInvariant();
 

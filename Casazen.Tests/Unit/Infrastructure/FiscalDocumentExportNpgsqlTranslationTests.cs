@@ -47,8 +47,6 @@ public class FiscalDocumentExportNpgsqlTranslationTests
 
         var rows = await Service(db).ListForExportAsync(Restricted, criteria, 500);
 
-        // The four statements of the export: the documents, the bookings of the rows (code and property), the payments of those bookings, and what the channel manager reports paid
-        // for the stays of those bookings (the money of a portal stay the host collects from, which has no payment of CasaZen).
         Assert.Equal(["FiscalDocuments", "Bookings", "Payments", "Bookings"], statements.Select(MainTable));
         var row = Assert.Single(rows);
         Assert.Equal(("ABCDEFGHJK", "Trullo"), (row.BookingCode, row.PropertyName));
@@ -59,25 +57,20 @@ public class FiscalDocumentExportNpgsqlTranslationTests
         Assert.Contains("LIMIT", documents, StringComparison.Ordinal);
         Assert.Contains("ORDER BY", documents, StringComparison.Ordinal);
 
-        // The reach of the caller is an EXISTS on its grants inside this statement; the status asked for is replaced by the issued one (a parameter or a constant).
         Assert.Contains("\"PropertyMemberAccesses\"", documents, StringComparison.Ordinal);
         Assert.Contains("EXISTS", documents, StringComparison.Ordinal);
 
-        // The amount of settled extras is a correlated aggregate. The export does not read the full line contents.
         Assert.Contains("\"FiscalDocumentLines\"", documents, StringComparison.Ordinal);
         Assert.Contains("SUM(", documents, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"LineType\"", documents, StringComparison.Ordinal);
-        // Never the XML or the fiscal data of the recipient.
         foreach (var never in new[] { "\"FatturaPaXml\"", "\"RecipientFiscalCode\"", "\"RecipientVatNumber\"", "\"RecipientAddressStreet\"", "\"RecipientPec\"" })
             Assert.DoesNotContain(never, documents, StringComparison.Ordinal);
 
-        // The bookings of the rows by their ids, with the name of the property even when it was deleted (no soft-delete filter on that read).
         var bookings = statements[1];
         Assert.Contains("\"OrgId\"", bookings, StringComparison.Ordinal);
         Assert.Contains("ANY", bookings, StringComparison.Ordinal);
         Assert.DoesNotContain("\"IsDeleted\"", bookings, StringComparison.Ordinal);
 
-        // What the channel manager reports paid: only for the bookings of the rows, only the stays whose portal does not collect, and for a deleted booking too (its document is still listed).
         var channel = statements[3];
         Assert.Contains("\"OtaPaidAmount\"", channel, StringComparison.Ordinal);
         Assert.Contains("\"OtaCompanyCollect\"", channel, StringComparison.Ordinal);
@@ -123,14 +116,9 @@ public class FiscalDocumentExportNpgsqlTranslationTests
         new FakeTimeProvider(new DateTimeOffset(2026, 11, 12, 10, 0, 0, TimeSpan.Zero)),
         NullLogger<FiscalDocumentService>.Instance);
 
-    /// <summary>The outer FROM is unindented. A projection may have a FROM inside a correlated subquery.</summary>
     private static string MainTable(string sql) =>
         Regex.Match(sql, "^FROM\\s+\"(?<table>\\w+)\"", RegexOptions.Multiline).Groups["table"].Value;
 
-    /// <summary>
-    /// One row for the documents and one for the bookings, so the statements that come after the first are compiled too; the payments and the figures of the channel manager (the second
-    /// statement on the bookings, the only one that reads <c>OtaPaidAmount</c>) answer nothing.
-    /// </summary>
     private static DataTable? Rows(string sql) => MainTable(sql) switch
     {
         "Bookings" when sql.Contains("\"OtaPaidAmount\"", StringComparison.Ordinal) => null,

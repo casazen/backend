@@ -16,10 +16,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.BackgroundJobs;
 
-/// <summary>
-/// FD-21 (A8-26): the SEO bootstrap queues the AI generation once per environment, under a distributed lock, instead
-/// of at every start while the page count is zero (each deploy paid for a new generation, each replica queued one).
-/// </summary>
 public class SeoBootstrapHostedServiceTests
 {
     private readonly Mock<IStorageConnection> _connection = new();
@@ -42,7 +38,6 @@ public class SeoBootstrapHostedServiceTests
 
         await CreateService().StartAsync(CancellationToken.None);
 
-        // SE-01 (A8-04): the bootstrap job only generates drafts, it carries no auto-approval flag any more.
         _jobClient.Verify(
             c => c.Create(
                 It.Is<Job>(j => j.Type == typeof(SeoPageGenerationJob) && j.Method.GetParameters().Length == 1),

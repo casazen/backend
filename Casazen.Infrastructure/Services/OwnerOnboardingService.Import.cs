@@ -13,7 +13,6 @@ namespace Casazen.Infrastructure.Services;
 
 public sealed partial class OwnerOnboardingService
 {
-    /// <summary>The longest text of the reference a row names its property by that the answer echoes.</summary>
     private const int MaxReferenceLength = 64;
 
     public async Task<OwnerImportResult> ImportAsync(
@@ -33,8 +32,6 @@ public sealed partial class OwnerOnboardingService
         var parsed = OwnerImportParser.Parse(OnboardingBulkImportService.ReadTable(fileName, content));
         var fingerprint = OwnerImportParser.Fingerprint(scope.OrgId, parsed.Rows);
 
-        // A write holds the lock of the owners of the org, and the file is judged only after it is taken: a second import of the same file waits,
-        // then finds what the first wrote and has nothing left to do. A dry run reads only.
         await using var transaction = dryRun
             ? null
             : await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
@@ -60,7 +57,6 @@ public sealed partial class OwnerOnboardingService
             valid.Count(r => r.OwnershipAction == OwnerImportActions.CreateOwnership),
             valid.Count(r => r.OwnershipAction == OwnerImportActions.UpdateFuturePeriod));
 
-        // Counts only: no cell of the file, no name, no identifier.
         logger.LogInformation(
             "Owner import for org {OrgId}: {Rows} rows, {Valid} valid, {Applied} written, nothing written {DryRun}",
             scope.OrgId,
@@ -70,8 +66,6 @@ public sealed partial class OwnerOnboardingService
             dryRun);
         return new OwnerImportResult(dryRun, fingerprint, summary, parsed.UnknownColumns, rows, judged.PropertyIssues);
     }
-
-    // ---------------------------------------------------------------- the answer
 
     private static OwnerImportRow ToAnswer(OwnerRowState row, bool dryRun)
     {
@@ -93,8 +87,6 @@ public sealed partial class OwnerOnboardingService
     }
 
     private static string Clip(string value) => value.Length <= MaxReferenceLength ? value : value[..MaxReferenceLength];
-
-    // ---------------------------------------------------------------- judging
 
     private sealed record PropertyFacts(Guid Id, string? CinCode);
 
@@ -126,10 +118,8 @@ public sealed partial class OwnerOnboardingService
             .GroupBy(o => OwnerFieldRules.NormalizeVat(o.VatNumber), StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
 
-        /// <summary>The keys of the org that belong to an owner outside the reach of the caller: a key the caller cannot take.</summary>
         public HashSet<string> HiddenKeys { get; } = new(StringComparer.Ordinal);
 
-        /// <summary>The fiscal codes of the owners outside the reach of the caller: identifiers the caller cannot give to another owner.</summary>
         public HashSet<string> HiddenFiscal { get; } = new(StringComparer.Ordinal);
 
         /// <summary>The VAT numbers of the owners outside the reach of the caller.</summary>
@@ -162,8 +152,6 @@ public sealed partial class OwnerOnboardingService
 
         await ResolvePropertiesAsync(scope, judged.Rows, ct);
 
-        // A caller with a partial reach writes nothing that is tied to no property it reaches: a row with no property would create or complete an
-        // owner of the whole org, and no declaration is never inside the reach.
         if (!scope.IsOrgWide)
         {
             foreach (var row in judged.Rows.Where(r => !r.Source.NamesProperty))
@@ -185,8 +173,6 @@ public sealed partial class OwnerOnboardingService
                 .ToListAsync(ct);
         var periodsByProperty = periods.ToLookup(p => p.PropertyId);
         var ownershipIds = periods.Select(p => p.Id).ToList();
-        // Only a mandate of one ownership (the shape of before E13) is bound to the period it must stay inside; the mandate of an owner covers all its
-        // properties and no period (E13/F01/US01/T01).
         var mandatesByOwnership = (ownershipIds.Count == 0
                 ? []
                 : await db.OwnerMandates
@@ -198,8 +184,6 @@ public sealed partial class OwnerOnboardingService
                 m => m.OwnershipId,
                 m => new MandateRow(m.OwnershipId, m.ValidFrom, m.ValidTo));
 
-        // The owners of the file, row after row: the same owner named twice is one owner, and what a row gives is checked against what the
-        // owner holds and against what the earlier valid rows gave it.
         var plansByExisting = new Dictionary<Guid, OwnerPlan>();
         var indexes = new PlanIndexes();
         var seenPeriods = new HashSet<(Guid Property, Guid Owner, DateOnly Start)>();
@@ -218,8 +202,6 @@ public sealed partial class OwnerOnboardingService
             ClassifyOwnership(row, today, periodsByProperty, mandatesByOwnership, seenPeriods);
         }
 
-        // The shares and the names are judged together: a row dropped for its name leaves its property short, and a row dropped for its shares
-        // may have been the one that carried the name of the owner the other rows create. Each pass fails more rows, never fewer.
         do
         {
             CheckShares(judged, today, periodsByProperty);
@@ -372,9 +354,6 @@ public sealed partial class OwnerOnboardingService
         }
     }
 
-    /// <summary>
-    /// For a caller with a partial reach: the owners it sees that also hold a period on a property it does not reach. Empty for an org-wide scope.
-    /// </summary>
     private Task<HashSet<Guid>> OwnersSharedOutsideReachAsync(HostScope scope, List<PropertyOwner> visible, CancellationToken ct) =>
         OwnersWithPeriodsOutsideReachAsync(db, scope, [.. visible.Select(o => o.Id)], ct);
 
@@ -453,12 +432,10 @@ public sealed partial class OwnerOnboardingService
         row.MatchedBy = matchedBy;
         row.OwnerAction = OwnerImportActions.MatchOwner;
 
-        // The identity the row gives has to be the identity the owner has: a key or a fiscal identifier that is somebody else's is a conflict.
         var held = OwnerRowRules.ValuesOf(found);
         foreach (var (column, code) in OwnerRowRules.Conflicts(held, values).Where(c => c.Code == OwnerImportRowCodes.OwnerIdentityConflict))
             row.Fail(column, code);
 
-        // A key the owner does not have yet cannot be one another owner has (or one outside the reach).
         if (held.Key is null && values.Key is { } wanted && (lookups.ByKey.ContainsKey(wanted) || lookups.HiddenKeys.Contains(wanted)))
             row.Fail(OwnerImportColumns.OwnerKey, OwnerImportRowCodes.OwnerIdentityConflict);
 
@@ -481,7 +458,6 @@ public sealed partial class OwnerOnboardingService
     {
         holders.TryGetValue(token, out var owners);
 
-        // The owner the row names holds it already: the row adds no second holder (a duplicate that was there before is not this file's).
         if (found is not null && owners is not null && owners.Any(o => o.Id == found.Id))
             return false;
 
@@ -513,16 +489,12 @@ public sealed partial class OwnerOnboardingService
         }
         else
         {
-            // An e-mail address identifies nobody: a new owner needs a key or a fiscal identifier of its own, or two imports of the same file
-            // would create it twice.
             if (values.Key is null && values.FiscalCode is null && values.Vat is null)
             {
                 row.Fail(OwnerImportColumns.OwnerKey, OwnerImportRowCodes.OwnerIdentityMissing);
                 return false;
             }
 
-            // An owner an earlier row of the file gave this key or identifier to (one that exists already or one the file creates) is this owner
-            // again; two of them are two owners the row cannot be.
             var found = new List<OwnerPlan>();
             AddPlan(found, values.Key, indexes.ByKey);
             AddPlan(found, values.FiscalCode, indexes.ByFiscal);
@@ -556,8 +528,6 @@ public sealed partial class OwnerOnboardingService
             }
         }
 
-        // An owner that also holds properties outside the reach of the caller is not the caller's to complete: the row may add a period, nothing
-        // the owner lacks.
         if (plan.Existing is { } stored && sharedOutsideReach.Contains(stored.Id) && OwnerRowRules.Fill(OwnerRowRules.ValuesOf(stored), values))
         {
             row.Fail(OwnerImportColumns.OwnerId, OwnerImportRowCodes.OwnerSharedOutsideReach);
@@ -581,14 +551,12 @@ public sealed partial class OwnerOnboardingService
             return false;
         }
 
-        // Nothing of a row that was refused reaches the owner: its values are merged only now.
         OwnerRowRules.Fill(plan.Given, values);
         Index(indexes, plan);
         row.Plan = plan;
         return true;
     }
 
-    /// <summary>What the owner holds: what is stored (for an owner that exists), then what earlier rows of the file gave it.</summary>
     private static OwnerValues HeldBy(OwnerPlan plan)
     {
         if (plan.Existing is not { } stored)
@@ -708,11 +676,6 @@ public sealed partial class OwnerOnboardingService
         }
     }
 
-    /// <summary>
-    /// The shares of each property the file touches, as they would be after the file: the stored periods (those the file changes in their new
-    /// form) and the valid rows, from the first day the file touches. An owner twice on the same days fails the rows of that owner; shares that
-    /// are not exactly 100.00 on every day fail every valid row of the property, and none of them is written.
-    /// </summary>
     private static void CheckShares(Judged judged, DateOnly today, ILookup<Guid, PeriodRow> periodsByProperty)
     {
         foreach (var group in judged.Rows.Where(r => r.Valid && r.IsOwnershipRow && r.PropertyId is not null).GroupBy(r => r.PropertyId!.Value))
@@ -752,8 +715,6 @@ public sealed partial class OwnerOnboardingService
         }
     }
 
-    // ---------------------------------------------------------------- writing
-
     /// <summary>
     /// Writes the valid rows in one unit of work, inside the lock of the org: the owners the file creates, what the owners it matches lack (an
     /// empty field is filled, a value is never overwritten), and the periods; and the line of the activity log. The property of a row is looked
@@ -782,7 +743,6 @@ public sealed partial class OwnerOnboardingService
 
         var valid = judged.Rows.Where(r => r.Valid).ToList();
 
-        // 1. The owners: each one the valid rows name, once, with what those rows gave it.
         foreach (var plan in valid.Select(r => r.Plan!).Distinct())
         {
             var rows = valid.Where(r => r.Plan == plan).ToList();
@@ -803,7 +763,6 @@ public sealed partial class OwnerOnboardingService
                 };
                 OwnerRowRules.FillEntity(owner, given, creating: true);
 
-                // Through the DbSet: the Guid of the row is preset, so a row attached any other way would be tracked as modified.
                 db.PropertyOwners.Add(owner);
                 rows[0].Applied = true;
                 continue;
@@ -822,7 +781,6 @@ public sealed partial class OwnerOnboardingService
                 rows[0].Applied = true;
         }
 
-        // 2. The periods.
         foreach (var row in valid.Where(r => r.Valid && r.IsOwnershipRow))
         {
             if (row.OwnershipAction == OwnerImportActions.CreateOwnership)

@@ -21,19 +21,14 @@ namespace Casazen.Core.Regulatory.GuestRegistration;
 /// </remarks>
 public static class GuestRegistrationRegimeCatalog
 {
-    /// <summary>The code of Italy: the existing Alloggiati flows.</summary>
     public const string ItalyCode = "IT";
 
-    /// <summary>The code of Ticino: the one regime that raises a legal deadline by default (24 hours, the police portal).</summary>
     public const string TicinoCode = "CH-TI";
 
-    /// <summary>The code of a Swiss property whose municipality is unknown or ambiguous.</summary>
     public const string UnknownSwissCode = "CH-UNKNOWN";
 
-    /// <summary>The resource key of the note «the deadline is not verified: ask the cantonal police».</summary>
     public const string DeadlineNotVerifiedKey = "GuestRegimeDeadlineNotVerified";
 
-    /// <summary>The resource key of the note «no deadline of transmission: the register is kept at the disposal of the police».</summary>
     public const string DeadlineNoSubmissionKey = "GuestRegimeDeadlineNoSubmission";
 
     private static readonly DateOnly ResearchDay = new(2026, 11, 20);
@@ -45,21 +40,14 @@ public static class GuestRegistrationRegimeCatalog
         Ticino(), UriCanton(), Vaud(), Valais(), Zug(), Zurich(),
     ];
 
-    // Declared before «All» on purpose: the static initializers run in this order, and the list holds the very instances the two properties give.
-
-    /// <summary>The regime of Italy: the existing Alloggiati flows, nothing changes.</summary>
     public static GuestRegistrationRegime Italian { get; } = Italy();
 
-    /// <summary>The regime of a Swiss property whose municipality is unknown or ambiguous: nothing is assumed about its canton.</summary>
     public static GuestRegistrationRegime UnknownSwissPlace { get; } = UnknownSwiss();
 
-    /// <summary>Italy, the 26 cantons (by code) and the Swiss place nobody knows, in this order.</summary>
     public static IReadOnlyList<GuestRegistrationRegime> All { get; } = [Italian, .. Cantons, UnknownSwissPlace];
 
-    /// <summary>The 26 cantons, by code.</summary>
     public static IReadOnlyList<GuestRegistrationRegime> SwissCantons => Cantons;
 
-    /// <summary>The regime of a canton by its two letters (any case); the regime of the unknown Swiss place when the catalog has no such canton.</summary>
     public static GuestRegistrationRegime ForCanton(string? cantonCode)
     {
         var code = cantonCode?.Trim();
@@ -68,21 +56,15 @@ public static class GuestRegistrationRegimeCatalog
             : Cantons.FirstOrDefault(c => string.Equals(c.CantonCode, code, StringComparison.OrdinalIgnoreCase)) ?? UnknownSwissPlace;
     }
 
-    /// <summary>The regime with this code (any case); <c>null</c> when the catalog has none.</summary>
     public static GuestRegistrationRegime? Find(string? code)
     {
         var wanted = code?.Trim();
         return string.IsNullOrEmpty(wanted) ? null : All.FirstOrDefault(r => string.Equals(r.Code, wanted, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>The resource key of the sentence of a regime: <c>GuestRegime_CH_TI_Summary</c>.</summary>
     public static string SummaryKeyOf(string code) => $"GuestRegime_{code.Replace('-', '_')}_Summary";
 
-    /// <summary>The resource key of the deadline note of a regime that has one of its own: <c>GuestRegime_CH_SH_Deadline</c>.</summary>
     public static string DeadlineKeyOf(string code) => $"GuestRegime_{code.Replace('-', '_')}_Deadline";
-
-    // ---------------------------------------------------------------------------------------------------------------------------------------
-    // Italy and the unknown Swiss place
 
     private static GuestRegistrationRegime Italy() => new()
     {
@@ -123,10 +105,6 @@ public static class GuestRegistrationRegimeCatalog
         CasaZenSupport = GuestRegistrationSupport.InformationOnly,
         SummaryKey = SummaryKeyOf(UnknownSwissCode),
     };
-
-    // ---------------------------------------------------------------------------------------------------------------------------------------
-    // The 26 cantons, by code. ricerca-ovest.md: FR, GE, JU, NE, VD, VS. ricerca-centro.md: BE, GL, LU, NW, OW, SZ, UR, ZG, ZH.
-    // ricerca-nordest.md: AG, AI, AR, BL, BS, GR, SG, SH, SO, TG. specifica-ticino.md: TI.
 
     private static GuestRegistrationRegime Aargau() => new()
     {
@@ -531,8 +509,6 @@ public static class GuestRegistrationRegimeCatalog
         DeadlineKind = GuestRegistrationDeadlineKind.DailyByTime,
         DeadlineNoteKey = DeadlineKeyOf("CH-SH"),
 
-        // The daily notification «by 02:00» of the brochure of the Schaffhauser Polizei (11/2023, ricerca-nordest.md): read as the night after the arrival day, the prudent reading;
-        // the note of the regime says that the brochure does not say which day the time refers to.
         DeadlineTime = new TimeOnly(2, 0),
         PrivateRentals = GuestRegistrationPrivateRentals.Yes,
         PortalUrl = "https://gast.sh.ch",

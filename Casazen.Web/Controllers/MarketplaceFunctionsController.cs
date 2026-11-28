@@ -124,7 +124,6 @@ public sealed class MarketplaceFunctionsController(
         return Ok(MarketplaceFunctionDto.From(entry));
     }
 
-    /// <summary>The caller's id, org and scope; <c>null</c> when it has no org or reaches nothing in it.</summary>
     private Task<HostCaller?> CallerAsync(CancellationToken cancellationToken) =>
         HostCallerResolver.CallerAsync(User, orgContextResolver, hostScopeResolver, cancellationToken);
 

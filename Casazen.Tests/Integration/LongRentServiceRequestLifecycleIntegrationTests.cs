@@ -49,7 +49,7 @@ public class LongRentServiceRequestLifecycleIntegrationTests(CasazenWebApplicati
     {
         var world = await ServiceRequestWorlds.SeedAsync(factory);
         var slot = ServiceRequestWorlds.Slot();
-        await factory.CreateRequestAsync(world, slot); // a short-rent request holds it
+        await factory.CreateRequestAsync(world, slot);
         using var landlord = LandlordClient(world);
 
         var response = await landlord.PostAsJsonAsync(LongRent, LongRentBody(world, slot));
@@ -175,7 +175,6 @@ public class LongRentServiceRequestLifecycleIntegrationTests(CasazenWebApplicati
         Assert.Equal(HttpStatusCode.OK, upload.StatusCode);
         var photoId = (await upload.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("workPhotos")[0].GetProperty("id").GetGuid();
 
-        // Each reader finds the photo at the route of its own context, and the landlord's request is not reachable from short-rent.
         var detail = await landlord.GetFromJsonAsync<JsonElement>($"{LongRent}?pageSize=50");
         var landlordUrl = detail.GetProperty("items").EnumerateArray()
             .Single(item => item.GetProperty("id").GetGuid() == id)
@@ -217,8 +216,6 @@ public class LongRentServiceRequestLifecycleIntegrationTests(CasazenWebApplicati
     [Fact]
     public async Task Detail_OutsideTheScopeOfTheCaller_Returns404_AndInsideItReturnsTheRequest()
     {
-        // LR-08a: GET {id} reads a request only inside the scope of the caller. A landlord with no org-wide role reaches the
-        // properties it created; a manager of the org reaches them all; another org, the short-rent context and an unknown id never.
         var world = await ServiceRequestWorlds.SeedAsync(factory);
         var stranger = await ServiceRequestWorlds.SeedAsync(factory);
         var own = await CreateLongRentAsync(world);
@@ -241,11 +238,8 @@ public class LongRentServiceRequestLifecycleIntegrationTests(CasazenWebApplicati
         }
     }
 
-    // ─── helpers ───
-
     private HttpClient LandlordClient(ServiceRequestWorld world) => factory.CreateAuthenticatedClient(world.HostUserId, Landlord);
 
-    /// <summary>A long-rent request on a property of the world's org that another user created: outside the reach of a landlord with no org-wide role.</summary>
     private async Task<Guid> SeedRequestOnAColleaguesPropertyAsync(ServiceRequestWorld world)
     {
         await using var scope = factory.Services.CreateAsyncScope();

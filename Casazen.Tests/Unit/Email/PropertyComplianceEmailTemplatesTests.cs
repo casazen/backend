@@ -5,7 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Email;
 
-/// <summary>CO-06: suspension email of a property to the host, IT/EN, every dynamic value HTML-encoded (FD-13).</summary>
 public class PropertyComplianceEmailTemplatesTests
 {
     private const string ActivationUrl = "https://casazen-app.test/app/short-rent/properties/1/activation";

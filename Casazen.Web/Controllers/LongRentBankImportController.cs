@@ -106,8 +106,6 @@ public class LongRentBankImportController(
         return Ok(await bankImport.ConfirmAsync(scope, file!, mapping, selections, userId, MayChangeAsync, cancellationToken));
     }
 
-    // ---------------------------------------------------------------- request
-
     private async Task<(byte[]? File, ObjectResult? Problem)> ReadFileAsync(IFormFile? file, CancellationToken cancellationToken)
     {
         if (file is null || file.Length == 0)
@@ -130,7 +128,6 @@ public class LongRentBankImportController(
     private ObjectResult MappingProblem() =>
         this.ApiProblem(StatusCodes.Status422UnprocessableEntity, BankStatementErrorCodes.MappingInvalid, "BankStatementMappingInvalid");
 
-    /// <summary>The mapping the landlord chose; none is fine (the importer finds the columns), a mapping that is not JSON or lacks the three columns it needs is not.</summary>
     private static bool TryReadMapping(string? json, out BankColumnMapping? mapping)
     {
         mapping = null;
@@ -194,15 +191,12 @@ public class LongRentBankImportController(
         }
     }
 
-    // ---------------------------------------------------------------- who
-
     private async Task<HostScope?> GetHostScopeAsync(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
     }
 
-    /// <summary>May the caller declare payments on the installments of this property? Asked once per property by the service.</summary>
     private async Task<bool> MayChangeAsync(Guid propertyId, CancellationToken cancellationToken)
     {
         var resource = await hostResources.ForPropertyAsync(propertyId, cancellationToken);

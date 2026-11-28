@@ -6,11 +6,6 @@ using Casazen.Core.Regulatory;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// What the assistant does with each kind of item, as pure rules (no database, no clock of its own): the plan of the service only
-/// gathers the facts and asks these. Every answer is a status and a reason (<see cref="AutopilotReasons"/>); what is not here the
-/// assistant does not do.
-/// </summary>
 public static class AutopilotDecisions
 {
     /// <summary>
@@ -50,7 +45,6 @@ public static class AutopilotDecisions
         return (AutopilotItemStatus.Ready, AutopilotReasons.AskGuests, channels);
     }
 
-    /// <summary>The ways to reach the guest of a booking: the e-mail when CasaZen can send it and the address is one, the chat when the number can be written in international form.</summary>
     public static IReadOnlyList<string> ChannelsOf(Guest guest, bool emailConfigured)
     {
         ArgumentNullException.ThrowIfNull(guest);
@@ -63,12 +57,6 @@ public static class AutopilotDecisions
         return channels;
     }
 
-    /// <summary>
-    /// A departure of the cockpit. The assistant closes only the stay it is sure is over: checked in (a confirmed one needs the host to say
-    /// that the guest arrived) and whose last day is before today (today's guest may still be in the house). A stay whose guests are being
-    /// asked for their data waits: the link of the guest works only while the stay is open, so closing it now would cut the answer.
-    /// </summary>
-    /// <param name="guestData">The status of the item of the same stay about the data of the guests, when it has one.</param>
     public static (AutopilotItemStatus Status, string Reason) Departure(
         bool canWrite,
         BookingStatus status,
@@ -104,45 +92,25 @@ public static class AutopilotDecisions
         return summary.ExportReady ? AutopilotReasons.ReadyToUpload : AutopilotReasons.CodesToComplete;
     }
 
-    /// <summary>The number of the message to a guest asked again: the first one, then the two reminders.</summary>
     public static int ReminderOf(int requestsAlready) => Math.Clamp(requestsAlready + 1, 1, AutopilotLimits.MaxRequestsPerStay);
 }
 
-/// <summary>
-/// How much the assistant may do in one go, and how often it may ask the same guest. Fixed numbers of the rules, not settings: a limit
-/// that can be raised from outside is a limit nobody trusts.
-/// </summary>
 public static class AutopilotLimits
 {
-    /// <summary>
-    /// The most times the assistant (or the daily job, or the host) asks the guests of one stay for their data: the first message and two
-    /// reminders. After that the stay is the host's to chase.
-    /// </summary>
     public const int MaxRequestsPerStay = 3;
 
-    /// <summary>The same guest is never asked twice in this time, whatever the number of runs.</summary>
     public static readonly TimeSpan RequestCooldown = TimeSpan.FromHours(24);
 
-    /// <summary>Guests asked in one run (every one is an e-mail from CasaZen in the host's name).</summary>
     public const int MaxGuestRequestsPerRun = 20;
 
-    /// <summary>Departures closed in one run.</summary>
     public const int MaxDeparturesPerRun = 30;
 }
 
-/// <summary>How a guest can be reached, from what the booking holds.</summary>
 public static partial class AutopilotContacts
 {
-    /// <summary>An address that looks like one: something, an at sign, a domain with a dot. The provider is the one that knows if it exists.</summary>
     public static bool IsUsableEmail(string? email) =>
         !string.IsNullOrWhiteSpace(email) && EmailShape().IsMatch(email.Trim());
 
-    /// <summary>
-    /// The number as WhatsApp wants it: digits with the country code first, no plus and no zeros in front (<c>393331234567</c>); null
-    /// when it cannot be said without guessing. A number with <c>+</c> or <c>00</c> is read as given. A number with neither is taken for an
-    /// Italian mobile only when the guest is Italian or has no country on file (the host is: his guests of a manual booking are mostly
-    /// too); any other country asks for the prefix, which the host adds to the guest.
-    /// </summary>
     public static string? InternationalPhone(string? phone, string? country)
     {
         if (string.IsNullOrWhiteSpace(phone))
@@ -166,14 +134,9 @@ public static partial class AutopilotContacts
         return international.Length is >= 8 and <= 15 && international[0] != '0' ? international : null;
     }
 
-    /// <summary>The link that opens WhatsApp on a chat with the guest, the text already typed.</summary>
     public static string WhatsAppUrl(string internationalPhone, string text) =>
         $"https://wa.me/{internationalPhone}?text={Uri.EscapeDataString(text)}";
 
-    /// <summary>
-    /// The link that opens the messages app on a text to the guest, the text already typed. The <c>?&amp;body=</c> form is the one both Android
-    /// and iOS read.
-    /// </summary>
     public static string SmsUrl(string internationalPhone, string text) =>
         $"sms:+{internationalPhone}?&body={Uri.EscapeDataString(text)}";
 
@@ -181,7 +144,6 @@ public static partial class AutopilotContacts
     private static partial Regex EmailShape();
 }
 
-/// <summary>The language of a message to a guest: the guest's own when the booking says where he comes from.</summary>
 public static class AutopilotLanguages
 {
     public const string Italian = "it";
@@ -190,7 +152,6 @@ public static class AutopilotLanguages
     public const string French = "fr";
     public const string Spanish = "es";
 
-    /// <summary>The languages the plain texts exist in.</summary>
     public static readonly IReadOnlyList<string> Supported = [Italian, English, German, French, Spanish];
 
     private static readonly Dictionary<string, string> ByWord = Build();
@@ -217,7 +178,6 @@ public static class AutopilotLanguages
         return any ? English : Italian;
     }
 
-    /// <summary>True when the country is Italy, or is not on file.</summary>
     public static bool IsItalian(string? country)
     {
         var word = Normalize(country);
@@ -278,10 +238,8 @@ public static partial class AutopilotChatText
     public const int MinLength = 30;
     public const int MaxLength = 420;
 
-    /// <summary>The key of a text of the answer: <c>it-1</c> is the first message in Italian.</summary>
     public static string VariantKey(string language, int reminder) => $"{language}-{reminder}";
 
-    /// <summary>The plain text of CasaZen for a language and a reminder (1 first message, 2 and 3 the reminders).</summary>
     public static string Fallback(string language, int reminder)
     {
         var texts = PlainTexts.GetValueOrDefault(language) ?? PlainTexts[AutopilotLanguages.English];
@@ -314,10 +272,6 @@ public static partial class AutopilotChatText
         return found.Contains(Link) ? text : $"{text} {{{Link}}}";
     }
 
-    /// <summary>
-    /// The message of one guest: the placeholders filled with his first name (left out, with the space before it, when he has none), the
-    /// name of the property, the day of the arrival and the link of the check-in.
-    /// </summary>
     public static string Fill(string template, string? firstName, string? propertyName, DateTime checkIn, string link)
     {
         ArgumentNullException.ThrowIfNull(template);
@@ -335,7 +289,6 @@ public static partial class AutopilotChatText
             .Replace($"{{{Link}}}", link, StringComparison.Ordinal);
     }
 
-    /// <summary>A value typed by a person, fit to go in a message: one line, no braces (it cannot become a placeholder), cut.</summary>
     private static string Clean(string? value, int limit)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -385,10 +338,6 @@ public static partial class AutopilotChatText
     [GeneratedRegex(@"\{([^{}]*)\}", RegexOptions.CultureInvariant)]
     private static partial Regex PlaceholderToken();
 
-    /// <summary>
-    /// What a message to a guest never holds: a digit (dates and amounts are not the AI's to write), a link or an address, a mark of
-    /// markup or of a list, and the words of a threat or of the authorities.
-    /// </summary>
     [GeneratedRegex(
         @"[0-9]|https?:|www\.|@|[*_`<>\[\]|#~\\]|\b(?:polizia|questura|carabinieri|multa|multe|sanzion\w*|denunc\w*|penale|penali|police|fined|penalt\w*|polizei|strafe\w*|amende\w*|polic[ií]a)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]

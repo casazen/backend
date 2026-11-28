@@ -22,13 +22,11 @@ namespace Casazen.Tests.Integration;
 public class LongRentBillingAccessPostgresTests(CasazenWebApplicationFactory factory)
     : IClassFixture<CasazenWebApplicationFactory>
 {
-    /// <summary>Public URL of the web app configured by <see cref="CasazenWebApplicationFactory"/>.</summary>
     private const string PublicSite = "https://casazen-app.vercel.app";
 
     private const string LongRentPlanPage = "/app/long-rent/settings/plan";
     private const string LongRentBillingPage = "/app/long-rent/settings/billing";
 
-    /// <summary>Role id of the seeded long-rent <c>long_term_landlord</c> role (<c>AppDbContext</c> seed).</summary>
     private const int LongTermLandlordRoleId = 2;
 
     private FakeStripeBillingService StripeFake =>
@@ -58,7 +56,6 @@ public class LongRentBillingAccessPostgresTests(CasazenWebApplicationFactory fac
     [PostgresFact]
     public async Task Entitlement_AsLongTermLandlordWithoutJwtRole_Returns200FromTheLongRentMembership()
     {
-        // A JWT issued while the Auth0 role sync was failing: the DB membership of the long-rent context decides (A1-02).
         var (landlord, _) = await NewLongTermLandlordAsync();
         using var client = factory.CreateAuthenticatedClient(landlord);
 
@@ -92,7 +89,6 @@ public class LongRentBillingAccessPostgresTests(CasazenWebApplicationFactory fac
         Assert.Null(stored.BillingCountry);
         Assert.Null(stored.StripeCustomerId);
 
-        // The owner of the same org is not affected.
         using var owner = factory.CreateAuthenticatedClient(landlord, "LongTermLandlord");
         Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync("/api/orgs/me/entitlement")).StatusCode);
     }
@@ -119,15 +115,10 @@ public class LongRentBillingAccessPostgresTests(CasazenWebApplicationFactory fac
         AssertAllForbidden(responses, "a member of the org with a DB membership and no Staff claim");
         await AssertOrgBillingUntouchedAsync(org);
 
-        // The owner of the same org is not affected.
         using var owner = factory.CreateAuthenticatedClient(landlord, "LongTermLandlord");
         Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync("/api/orgs/me/entitlement")).StatusCode);
     }
 
-    /// <summary>
-    /// AM-00 (D12): a property manager runs the properties but does not manage plan and invoices, as a JWT role (with and
-    /// without the membership of its role) and as a membership alone.
-    /// </summary>
     [PostgresTheory]
     [InlineData(null, null, "PropertyManager")]
     [InlineData("short-rent", "property_manager", "PropertyManager")]
@@ -249,10 +240,6 @@ public class LongRentBillingAccessPostgresTests(CasazenWebApplicationFactory fac
         await AssertValidationProblemAsync(response);
     }
 
-    /// <summary>
-    /// A host who chose "Locazioni di lungo periodo" at the onboarding: DB role <c>LongTermLandlord</c>, the long-rent
-    /// membership only, owner of its own org (PL-02 onboarding and consents done).
-    /// </summary>
     private async Task<(string UserId, OrgEntity Org)> NewLongTermLandlordAsync(bool withStripeCustomer = false)
     {
         var landlord = $"auth0|pl16-ltr-{Guid.NewGuid():N}";
@@ -278,7 +265,6 @@ public class LongRentBillingAccessPostgresTests(CasazenWebApplicationFactory fac
         return (landlord, org);
     }
 
-    /// <summary>A collaborator of the org with the <c>Staff</c> role, onboarded for that org (PL-02).</summary>
     private async Task<string> AddStaffCollaboratorAsync(Guid orgId)
     {
         var collaborator = $"auth0|pl16-staff-{Guid.NewGuid():N}";
@@ -343,7 +329,6 @@ public class LongRentBillingAccessPostgresTests(CasazenWebApplicationFactory fac
         return member;
     }
 
-    /// <summary>The billing, plan and entitlement endpoints of the org (the ones the org policy protects), with empty-ish bodies.</summary>
     private static async Task<HttpResponseMessage[]> SendBillingRequestsAsync(HttpClient client) =>
     [
         await client.GetAsync("/api/orgs/me/entitlement"),
@@ -361,7 +346,6 @@ public class LongRentBillingAccessPostgresTests(CasazenWebApplicationFactory fac
             r.StatusCode == HttpStatusCode.Forbidden,
             $"{r.RequestMessage!.Method} {r.RequestMessage.RequestUri} answered {(int)r.StatusCode} to {caller}."));
 
-    /// <summary>No checkout started, nothing written on the org: the refusals happened before any action ran.</summary>
     private async Task AssertOrgBillingUntouchedAsync(OrgEntity org)
     {
         Assert.Empty(StripeFake.SessionsOf(FakeStripeBillingService.CustomerIdFor(org.Id)));
@@ -379,7 +363,6 @@ public class LongRentBillingAccessPostgresTests(CasazenWebApplicationFactory fac
             .SingleAsync(o => o.Id == orgId);
     }
 
-    /// <summary>Query of the fake Stripe URL in <paramref name="property"/>: the return pages it was created with.</summary>
     private static async Task<NameValueCollection> QueryOfAsync(HttpResponseMessage response, string property)
     {
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);

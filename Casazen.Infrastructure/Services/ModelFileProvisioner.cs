@@ -26,7 +26,6 @@ internal static class ModelFileProvisioner
     public const string DownloadFailed = "download_failed";
     public const string PathInvalid = "path_invalid";
 
-    /// <summary>A model is far smaller than this; a stream that goes on is not the file it was announced as.</summary>
     internal const long MaxDownloadBytes = 1_500_000_000;
 
     public static async Task<ModelFileCheck> EnsureAsync(
@@ -77,7 +76,6 @@ internal static class ModelFileProvisioner
         }
     }
 
-    /// <summary>The SHA-256 of a file, read in blocks (a model can be hundreds of megabytes).</summary>
     public static async Task<string> HashFileAsync(string path, CancellationToken cancellationToken)
     {
         await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true);
@@ -149,7 +147,6 @@ internal static class ModelFileProvisioner
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // A leftover partial file is not used by anything: the next start overwrites it.
             }
         }
     }

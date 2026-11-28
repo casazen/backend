@@ -26,11 +26,6 @@ public class GuestCancellationController(
     IGuestBookingCancellationService cancellation,
     ILogger<GuestCancellationController> logger) : ControllerBase
 {
-    /// <summary>
-    /// What cancelling the booking would do now: whether the guest can, the refund (the policy's share of the price of the stay and the
-    /// whole tourist tax), what stays with the host and why, the days the policy's windows end on, and the cancellation policy. 401 without
-    /// a valid session; 404 <c>guest_booking_not_found</c>; 429.
-    /// </summary>
     [HttpGet("cancellation")]
     [EnableRateLimiting(RateLimitPolicies.PublicBookingLookup)]
     [ProducesResponseType(typeof(GuestCancellationPreviewDto), StatusCodes.Status200OK)]
@@ -77,7 +72,6 @@ public class GuestCancellationController(
         if (ticket is null)
             return Unauthorized();
 
-        // The uniform 404 comes first: nothing in the body can tell a booking of another guest from one that does not exist.
         var booking = await sessions.FindBookingAsync(ticket, code, HttpContext.RequestAborted);
 
         if (request.Confirm is not true)

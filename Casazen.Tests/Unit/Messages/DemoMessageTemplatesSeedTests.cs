@@ -66,7 +66,6 @@ public class DemoMessageTemplatesSeedTests : IAsyncLifetime
         Assert.Contains(templates, t => t.Language == "it");
         Assert.Contains(templates, t => t.Language == "en");
 
-        // A stay with a value for every variable, so a template that names a variable the renderer does not have fails here.
         var values = new MessageTemplateValues(
             "Laura (TEST)", "Villa Lago (TEST)", "TEST-0001", new DateOnly(2026, 11, 8), new DateOnly(2026, 11, 11), new TimeOnly(15, 0), new TimeOnly(10, 0), "Marco (TEST)",
             CheckInLink: "https://example.com/checkin/TEST", CheckInMethod: "ritiro delle chiavi nella cassetta (TEST)", AccessCode: "0000", PropertyAddress: "Via del Lago 1, Como (TEST)", ReviewLink: "https://example.com/review/TEST");
@@ -111,7 +110,6 @@ public class DemoMessageTemplatesSeedTests : IAsyncLifetime
     [Fact]
     public async Task TheShowcase_WritesTheTemplatesOfTheCatalog_MarksThem_AndNeverTouchesOneTheHostHas()
     {
-        // The host has a template with the name and language of the first one of the showcase, and another of its own.
         var first = DemoShowcaseCatalog.HostMessageTemplates[0];
         _db.MessageTemplates.AddRange(
             new MessageTemplate { OrgId = _world.OrgId, Name = first.Name, Language = first.Language, Body = "Il mio testo" },
@@ -126,7 +124,6 @@ public class DemoMessageTemplatesSeedTests : IAsyncLifetime
         Assert.All(rows, r => Assert.True(r.IsActive));
         Assert.Equal("Il mio testo", Assert.Single(rows, r => r.Name == first.Name && r.Language == first.Language).Body);
 
-        // Every showcase template but the one the host already had is marked; the rows of the host are not.
         var markers = await _db.TestDataMarkers.AsNoTracking().Where(m => m.EntityType == TestDataEntities.MessageTemplate).ToListAsync();
         Assert.Equal(DemoShowcaseCatalog.HostMessageTemplates.Count - 1, markers.Count);
         Assert.All(markers, m =>
@@ -141,11 +138,6 @@ public class DemoMessageTemplatesSeedTests : IAsyncLifetime
             markers.Select(m => m.TemplateKey!).Order(StringComparer.Ordinal));
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (the reset deletes only showcase data). The reset of one org deletes the showcase templates of that org and their markers,
-    /// and nothing else: not a template the host wrote (it has no marker), not the showcase templates of another org. Run again after the removal, the
-    /// seed writes the same templates.
-    /// </summary>
     [Fact]
     public async Task DemoReset_RemovesOnlyTheShowcaseTemplatesOfTheOrg_Test()
     {

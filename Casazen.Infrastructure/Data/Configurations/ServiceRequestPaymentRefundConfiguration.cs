@@ -26,7 +26,6 @@ internal sealed class ServiceRequestPaymentRefundConfiguration : IEntityTypeConf
             .IsUnique()
             .HasDatabaseName("UIX_ServiceRequestPaymentRefunds_IdempotencyKey")
             .HasFilter("\"IdempotencyKey\" IS NOT NULL");
-        // The sync job looks for the refunds that wait for Stripe, by status.
         entity.HasIndex(r => r.Status);
 
         entity.ToTable(t =>
@@ -35,7 +34,6 @@ internal sealed class ServiceRequestPaymentRefundConfiguration : IEntityTypeConf
                 "CK_ServiceRequestPaymentRefunds_Amounts",
                 $"\"AmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents} AND \"Sequence\" >= 1 "
                 + "AND (\"ApplicationFeeRefundedCents\" IS NULL OR \"ApplicationFeeRefundedCents\" >= 0)");
-            // A refund that succeeded says when.
             t.HasCheckConstraint(
                 "CK_ServiceRequestPaymentRefunds_Succeeded",
                 $"\"Status\" <> {(int)ServicePaymentRefundStatus.Succeeded} OR \"CompletedAt\" IS NOT NULL");

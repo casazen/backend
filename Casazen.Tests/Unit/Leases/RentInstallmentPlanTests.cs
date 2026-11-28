@@ -4,7 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Leases;
 
-/// <summary>LT-06 (#269, A7-07): the rent schedule is computed from the lease only (dates, rent, cadence, due day).</summary>
 public class RentInstallmentPlanTests
 {
     [Fact]
@@ -26,7 +25,6 @@ public class RentInstallmentPlanTests
         var plan = RentInstallmentPlan.Build(new DateOnly(2026, 3, 15), new DateOnly(2027, 3, 14), RentCadence.Monthly, 5, 800m);
 
         Assert.Equal(12, plan.Installments.Count);
-        // 15 March - 14 April: the 5th of March is before the period, so the 5th of April.
         Assert.Equal(new RentInstallment(new DateOnly(2026, 3, 15), new DateOnly(2026, 4, 14), new DateOnly(2026, 4, 5), 800m), plan.Installments[0]);
         Assert.All(plan.Installments, i => Assert.InRange(i.DueDate, i.PeriodStart, i.PeriodEnd));
     }

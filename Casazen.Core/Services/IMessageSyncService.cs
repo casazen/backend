@@ -39,7 +39,6 @@ public interface IMessageSyncService
     /// </summary>
     Task<SyncResult> SyncThreadAsync(Guid orgId, string accommodationId, string octorateThreadId, DateTime? createdAfter, CancellationToken ct);
 
-    /// <summary>The messages of the last 24 hours of every listing of the organization, then <see cref="SyncThreadAsync"/> for each thread they name.</summary>
     Task<SyncResult> ReconcileRecentAsync(Guid orgId, CancellationToken ct);
 
     /// <summary>
@@ -58,10 +57,8 @@ public interface IMessageSyncService
 /// <param name="NotFound">The threads that were asked for and that Octorate does not know: a notification may name something that is not a thread of the chat.</param>
 public sealed record SyncResult(int ThreadsSeen, int MessagesAdded, int SkippedChannel, int Unassigned, bool Complete = true, int NotFound = 0)
 {
-    /// <summary>Nothing seen, nothing stored.</summary>
     public static SyncResult Empty { get; } = new(0, 0, 0, 0);
 
-    /// <summary>The sum of two results; complete only when both are.</summary>
     public SyncResult Plus(SyncResult other)
     {
         ArgumentNullException.ThrowIfNull(other);
@@ -76,7 +73,6 @@ public sealed record SyncResult(int ThreadsSeen, int MessagesAdded, int SkippedC
     }
 }
 
-/// <summary>The stable codes of the failures of the sync of a listing, as kept in <see cref="Entities.OtaMessageSyncState.LastError"/>.</summary>
 public static class OtaMessageSyncErrorCodes
 {
     /// <summary>

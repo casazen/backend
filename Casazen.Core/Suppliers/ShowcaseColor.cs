@@ -9,13 +9,8 @@ namespace Casazen.Core.Suppliers;
 /// </summary>
 public static class ShowcaseColor
 {
-    /// <summary>The color the editor falls back to when nothing darker reaches the contrast (the graphite of the "Impianti" style).</summary>
     public const string Fallback = "#1F2933";
 
-    /// <summary>
-    /// <c>#RRGGBB</c> in upper case from what the supplier wrote (<c>#0b5fa5</c>, <c>0B5FA5</c>); <c>false</c> for anything else,
-    /// a three-digit color included: the contract says six.
-    /// </summary>
     public static bool TryNormalize(string? value, out string hex)
     {
         hex = string.Empty;
@@ -33,16 +28,10 @@ public static class ShowcaseColor
         return true;
     }
 
-    /// <summary>The WCAG contrast ratio of white text on <paramref name="hex"/> (<c>#RRGGBB</c>), from 1 to 21.</summary>
     public static double ContrastWithWhite(string hex) => 1.05 / (RelativeLuminance(Channels(hex)) + 0.05);
 
-    /// <summary>True when white text on <paramref name="hex"/> reads at <see cref="ShowcaseContentLimits.MinContrastWithWhite"/> or more.</summary>
     public static bool IsReadableWithWhite(string hex) => ContrastWithWhite(hex) >= ShowcaseContentLimits.MinContrastWithWhite;
 
-    /// <summary>
-    /// The same hue made darker, step by step, until white text on it reads at the minimum contrast; <see cref="Fallback"/> when no
-    /// step reaches it. What the editor proposes as "Usa il colore consigliato".
-    /// </summary>
     public static string Darkened(string hex)
     {
         var channels = Channels(hex);

@@ -11,7 +11,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>The calls with images (<see cref="AiRequest"/>): what each provider receives, and the text alone when the images are refused.</summary>
 public class DeepSeekAiProviderImagesTests
 {
     private const string ChatAnswer =
@@ -104,7 +103,6 @@ public class DeepSeekAiProviderImagesTests
     [InlineData(AiOptions.DeepSeekProvider, false)]
     public async Task GenerateAsync_DirectAnswer_AsksACompatibleServerToSwitchTheReasoningOffThroughTheChatTemplate(string providerName, bool expectsSwitch)
     {
-        // #936: a model that reasons before it answers (Qwen on the compatible server of the platform) spent the short limit of the assistant on its reasoning.
         var handler = new RecordingHandler(_ => Ok(ChatAnswer));
         var options = Options(providerName);
         options.Model = "reasoning-model";

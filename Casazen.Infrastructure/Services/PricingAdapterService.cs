@@ -9,10 +9,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Seasonal price suggestions (D4, PC-15, A2-14 / A2-34): the property's real nightly rate times the host's rule of the
-/// day (<see cref="SeasonalPriceCalculator"/>), stored as one row per stay date and regenerated in place.
-/// </summary>
 public class PricingAdapterService(
     AppDbContext db,
     IPricingAdapterConfigRepository configRepository,
@@ -68,7 +64,6 @@ public class PricingAdapterService(
         }
         catch
         {
-            // The job reuses the context for the next property: nothing of a failed run may be saved with it.
             db.ChangeTracker.Clear();
             throw;
         }
@@ -79,7 +74,6 @@ public class PricingAdapterService(
         bool onlyIfDue,
         CancellationToken cancellationToken)
     {
-        // One computation per property at a time (job, manual recalculation, save): the upsert by date never races.
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db, cancellationToken, (PostgresAdvisoryLocks.Scope.SeasonalPriceSuggestions, propertyId.ToString("N")));
 
@@ -103,7 +97,6 @@ public class PricingAdapterService(
 
         if (property.NightlyRate <= 0)
         {
-            // Without a real base there is nothing to suggest: no invented base price. The run stays due.
             db.SeasonalPriceSuggestions.RemoveRange(existing);
             await db.SaveChangesAsync(cancellationToken);
             if (transaction is not null)
@@ -129,10 +122,8 @@ public class PricingAdapterService(
             row.Rule = day.Rule;
             row.Holiday = day.Holiday;
             row.ComputedAt = now;
-            // AppliedPrice is kept: a new suggestion does not silently change a price the host already confirmed.
         }
 
-        // Dates left over are past or beyond the window: no history of old suggestions is kept.
         db.SeasonalPriceSuggestions.RemoveRange(byDate.Values);
 
         config.LastAdaptedAt = now;
@@ -193,8 +184,6 @@ public class PricingAdapterService(
         DateOnly toExclusive,
         CancellationToken cancellationToken = default)
     {
-        // The price of a night is public data of a property (the quote and the calendar of the booking site read it): it names the
-        // property, so a signed-in host of another org who looks at the site sees the same price as everybody else.
         var seasonal = await db.SeasonalPriceSuggestions
             .AsNoTracking()
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -204,9 +193,6 @@ public class PricingAdapterService(
                 && s.StayDate < toExclusive)
             .ToDictionaryAsync(s => s.StayDate, s => s.AppliedPrice!.Value, cancellationToken);
 
-        // E08/F05/US01/T03 (NF-36): the price the host set for a night in the calendar (a day rule) is the last and most specific thing it said
-        // about that night, so it overrides the seasonal price it confirmed; clearing it gives the seasonal price, or the rate, back. The quote,
-        // the checkout, the public calendar and the host's own quote all take their prices from here.
         var dayPrices = await db.PropertyDayRules
             .AsNoTracking()
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])

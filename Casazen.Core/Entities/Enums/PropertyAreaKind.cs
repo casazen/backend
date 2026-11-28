@@ -7,12 +7,9 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum PropertyAreaKind
 {
-    /// <summary>Campagna: among fields, olive groves, vineyards.</summary>
     Country = 0,
 
-    /// <summary>Costa: by the sea or a short walk from it.</summary>
     Coast = 1,
 
-    /// <summary>Centro storico: in the heart of a town.</summary>
     Historic = 2,
 }

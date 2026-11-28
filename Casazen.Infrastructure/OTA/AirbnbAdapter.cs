@@ -22,9 +22,6 @@ public class AirbnbAdapter : IChannelAdapter
 
     public string Platform => "Airbnb";
 
-    /// <summary>
-    /// Sets the authentication header for Airbnb API requests
-    /// </summary>
     private void SetAuthenticationHeader(string apiKey)
     {
         _apiKey = apiKey;
@@ -231,9 +228,6 @@ public class AirbnbAdapter : IChannelAdapter
         }
     }
 
-    /// <summary>
-    /// Maps Airbnb reservation status to internal status
-    /// </summary>
     private string MapAirbnbStatusToInternal(string airbnbStatus)
     {
         return airbnbStatus.ToLowerInvariant() switch
@@ -357,9 +351,6 @@ public class AirbnbAdapter : IChannelAdapter
         }
     }
 
-    /// <summary>
-    /// Determines if HTTP status code is retryable.
-    /// </summary>
     private bool IsRetryableStatusCode(System.Net.HttpStatusCode statusCode)
     {
         return statusCode == System.Net.HttpStatusCode.RequestTimeout ||

@@ -10,10 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// FD-20 on a real Hangfire storage: the OTA partner recurring jobs registered by an earlier deploy disappear on the
-/// first startup with <c>Features:OtaPartnerApi</c> off, while the iCal sync keeps its schedule.
-/// </summary>
 public class OtaRecurringJobsPostgresTests : IAsyncLifetime
 {
     private PostgresTestDatabase? _database;
@@ -47,7 +43,6 @@ public class OtaRecurringJobsPostgresTests : IAsyncLifetime
     [PostgresFact]
     public void Configure_SupplierRequestAutoCancelTurnedOff_DeletesTheJobOfAnEarlierDeployFromStorage()
     {
-        // SP-04 (D8): the job that cancels the requests nobody answered is scheduled only with the flag on.
         var storage = CreateStorage();
         var manager = new RecurringJobManager(storage);
 

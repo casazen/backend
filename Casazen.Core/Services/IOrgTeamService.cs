@@ -2,10 +2,6 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
-/// <summary>A member of the org as the team page shows it (name and email come from the account).</summary>
-/// <param name="Id">The member row (<c>OrgMember.Id</c>): what the endpoints address, not the account id.</param>
-/// <param name="UserId">The account (<c>User.Id</c>).</param>
-/// <param name="Areas">The rental contexts the person works in, from its memberships (<c>short-rent</c>, <c>long-rent</c>).</param>
 public sealed record OrgMemberView(
     Guid Id,
     string UserId,
@@ -19,7 +15,6 @@ public sealed record OrgMemberView(
     DateTime CreatedAt,
     DateTime? DeactivatedAt);
 
-/// <summary>The org's people and its seats, in one read.</summary>
 public sealed record OrgTeamView(IReadOnlyList<OrgMemberView> Members, OrgSeatUsage Seats);
 
 /// <summary>
@@ -37,27 +32,10 @@ public sealed record OrgTeamView(IReadOnlyList<OrgMemberView> Members, OrgSeatUs
 /// </remarks>
 public interface IOrgTeamService
 {
-    /// <summary>The org's members (owner first, then by name) with its seats.</summary>
     Task<OrgTeamView> ListAsync(Guid orgId, CancellationToken cancellationToken = default);
 
-    /// <summary>Gives the member another role, keeping the areas it works in.</summary>
-    /// <exception cref="Casazen.Core.Exceptions.NotFoundException"><see cref="OrgInvitationErrors.MemberNotFound"/>.</exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainForbiddenException"><see cref="OrgInvitationErrors.OwnerRequired"/>.</exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException"><see cref="OrgMembershipErrors.OwnerNotAssignable"/>.</exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException"><see cref="OrgMembershipErrors.LastOwner"/>.</exception>
     Task<OrgMemberView> ChangeRoleAsync(Guid orgId, Guid memberId, OrgRole role, string actorUserId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Sets the areas the member works in (AM-02c): at least one of <c>short-rent</c> and <c>long-rent</c>, the role and the
-    /// properties it reaches staying as they are (a collaborator «Solo alcuni» keeps what it was given). Same rules of who may do
-    /// what as <see cref="ChangeRoleAsync"/>: an administrator is in the hands of the owner only, the owner is not touched. The
-    /// change is seen on the member's next request on this API instance (the cache of the member is invalidated), within the
-    /// cache duration on the others.
-    /// </summary>
-    /// <exception cref="Casazen.Core.Exceptions.NotFoundException"><see cref="OrgInvitationErrors.MemberNotFound"/>.</exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainForbiddenException"><see cref="OrgInvitationErrors.OwnerRequired"/>.</exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException"><see cref="OrgMembershipErrors.AreaRequired"/>.</exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException"><see cref="OrgMembershipErrors.LastOwner"/>.</exception>
     Task<OrgMemberView> SetAreasAsync(
         Guid orgId,
         Guid memberId,
@@ -65,24 +43,9 @@ public interface IOrgTeamService
         string actorUserId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Switches the member's access off at once (<c>member_inactive</c> from the next request) and frees its seat.</summary>
-    /// <exception cref="Casazen.Core.Exceptions.NotFoundException"><see cref="OrgInvitationErrors.MemberNotFound"/>.</exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainForbiddenException"><see cref="OrgInvitationErrors.OwnerRequired"/>.</exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException"><see cref="OrgMembershipErrors.LastOwner"/>.</exception>
     Task<OrgMemberView> DeactivateAsync(Guid orgId, Guid memberId, string actorUserId, CancellationToken cancellationToken = default);
 
-    /// <summary>Gives the access back; takes a seat again.</summary>
-    /// <exception cref="Casazen.Core.Exceptions.NotFoundException"><see cref="OrgInvitationErrors.MemberNotFound"/>.</exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainForbiddenException"><see cref="OrgInvitationErrors.OwnerRequired"/>.</exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException"><see cref="OrgSeatErrors.LimitReached"/>.</exception>
     Task<OrgMemberView> ReactivateAsync(Guid orgId, Guid memberId, string actorUserId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Takes the person out of the org for good: the member row, every membership the org gave and the link of the account
-    /// to the org (it can onboard its own org afterwards). Frees the seat.
-    /// </summary>
-    /// <exception cref="Casazen.Core.Exceptions.NotFoundException"><see cref="OrgInvitationErrors.MemberNotFound"/>.</exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainForbiddenException"><see cref="OrgInvitationErrors.OwnerRequired"/>.</exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException"><see cref="OrgMembershipErrors.LastOwner"/>.</exception>
     Task RemoveAsync(Guid orgId, Guid memberId, string actorUserId, CancellationToken cancellationToken = default);
 }

@@ -6,45 +6,30 @@ using Swashbuckle.AspNetCore.Annotations;
 
 namespace Casazen.Web.DTOs;
 
-/// <summary>
-/// Request body for creating or updating the seasonal price suggestions ("Suggerimenti stagionali") of a property.
-/// A rule field left out keeps its current value (the example rule for a new configuration).
-/// </summary>
 public class PricingAdapterConfigRequest : IValidatableObject
 {
-    /// <summary>Whether the seasonal suggestions are computed for this property.</summary>
     [Required]
     public bool IsEnabled { get; set; }
 
-    /// <summary>
-    /// How often the suggestions are recomputed. Allowed values: <c>daily</c>, <c>weekly</c>.
-    /// </summary>
     [Required]
     [RegularExpression("^(daily|weekly)$", ErrorMessage = "PricingFrequencyInvalid")]
     [SwaggerSchema("Recalculation frequency of the suggestions. Allowed values: daily, weekly.")]
     public string AdaptationFrequency { get; set; } = string.Empty;
 
-    /// <summary>When <c>true</c>, the high/low season months apply.</summary>
     public bool IncludeSeasonality { get; set; }
 
-    /// <summary>When <c>true</c>, the holiday multiplier applies on Italian national holidays.</summary>
     public bool IncludePublicHolidays { get; set; }
 
-    /// <summary>High-season months (1-12).</summary>
     public List<int>? HighSeasonMonths { get; set; }
 
-    /// <summary>Multiplier of the nightly rate in high season.</summary>
     [Range(SeasonalPricingRules.MinMultiplier, SeasonalPricingRules.MaxMultiplier, ErrorMessage = "PricingMultiplierRange")]
     public decimal? HighSeasonMultiplier { get; set; }
 
-    /// <summary>Low-season months (1-12), none of them also a high-season month.</summary>
     public List<int>? LowSeasonMonths { get; set; }
 
-    /// <summary>Multiplier of the nightly rate in low season.</summary>
     [Range(SeasonalPricingRules.MinMultiplier, SeasonalPricingRules.MaxMultiplier, ErrorMessage = "PricingMultiplierRange")]
     public decimal? LowSeasonMultiplier { get; set; }
 
-    /// <summary>Multiplier of the nightly rate on national holidays.</summary>
     [Range(SeasonalPricingRules.MinMultiplier, SeasonalPricingRules.MaxMultiplier, ErrorMessage = "PricingMultiplierRange")]
     public decimal? HolidayMultiplier { get; set; }
 

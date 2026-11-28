@@ -77,10 +77,6 @@ internal static class HostNotificationAudience
                 && m.Status == OrgMemberStatus.Active
                 && (m.Role == OrgRole.Owner || m.Role == OrgRole.Admin)));
 
-    /// <summary>
-    /// The users of <paramref name="orgId"/> to tell about the property <paramref name="propertyId"/>, whose person in charge is
-    /// <paramref name="responsibleUserId"/> (<c>null</c> = nobody named) and whose creator is <paramref name="creatorUserId"/>.
-    /// </summary>
     public static IQueryable<User> UsersToTell(
         AppDbContext db,
         Guid orgId,
@@ -88,7 +84,6 @@ internal static class HostNotificationAudience
         string? responsibleUserId,
         string creatorUserId)
     {
-        // The creator stands in only while nobody is named: once someone is in charge, they are the ones told.
         var inCharge = responsibleUserId ?? creatorUserId;
 
         return db.Users
@@ -97,7 +92,6 @@ internal static class HostNotificationAudience
             .Where(u => !db.OrgMembers.IgnoreQueryFilters().Any(m => m.UserId == u.Id && m.Status == OrgMemberStatus.Deactivated))
             .Where(u => (u.Id == inCharge
                          && (
-                             // A member of the team reaches the property by its role, or by the grant of «Solo alcuni».
                              db.OrgMembers.IgnoreQueryFilters().Any(m =>
                                  m.UserId == u.Id
                                  && m.OrgId == orgId
@@ -122,7 +116,6 @@ internal static class HostNotificationAudience
                                                      && c.ContextKey == (p.RentalMode == RentalMode.Long
                                                          ? OrgRoleCatalog.ShortRent
                                                          : OrgRoleCatalog.LongRent)))))))
-                             // An account in no team keeps the rule of before it: it reaches the property it created.
                              || (u.Id == creatorUserId && !db.OrgMembers.IgnoreQueryFilters().Any(m => m.UserId == u.Id))))
                         || db.OrgMembers.IgnoreQueryFilters().Any(m =>
                             m.UserId == u.Id

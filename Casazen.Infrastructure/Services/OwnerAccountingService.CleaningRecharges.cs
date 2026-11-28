@@ -35,25 +35,17 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed partial class OwnerAccountingService
 {
-    /// <summary>The key, in <c>EmailTexts</c> (Italian and English), of the words of a cleaning recharge line: «Pulizia del {0}».</summary>
     internal const string CleaningRechargeTextKey = "OwnerLedger_CleaningRecharge";
 
     /// <summary>The key, in <c>EmailTexts</c> (Italian and English), of the reason of the «Da fare» that asks the agency whether the cleaning company applied VAT.</summary>
     internal const string CleaningVatReasonKey = "TodoReason_CleaningVatToState";
 
-    /// <summary>The key, in <c>EmailTexts</c> (Italian and English), of the reason of the same «Da fare» proposed once more at the close of the month.</summary>
     internal const string CleaningVatAgainReasonKey = "TodoReason_CleaningVatToStateAgain";
 
-    /// <summary>The states of a cleaning request whose invoice the company issued: completed, or paid.</summary>
     private static readonly ServiceRequestStatus[] CleaningDone = [ServiceRequestStatus.Completato, ServiceRequestStatus.Pagato];
 
-    /// <summary>The prefix of the key of a line of a cleaning request: <c>clean:{requestId:N}</c>, once for each request and owner.</summary>
     internal const string CleaningKeyPrefix = "clean:";
 
-    /// <summary>
-    /// The cleanings completed in the month that a mandate asking for the actual cost may recharge: read only through <see cref="ICleaningCostSource"/>, for the properties of the owners
-    /// that have such a mandate (any version of it: the stay of a cleaning may belong to the version before), and not at all when no mandate asks for it or the source is not given.
-    /// </summary>
     private async Task<IReadOnlyList<CompletedCleaning>> ReadCleaningsAsync(Guid orgId, Period period, IReadOnlyList<OwnerMandate> mandates, CancellationToken ct)
     {
         if (cleaningCosts is null)
@@ -75,11 +67,6 @@ public sealed partial class OwnerAccountingService
         return properties.Count == 0 ? [] : await cleaningCosts.GetCompletedAsync(orgId, properties, period.First, period.Last, ct);
     }
 
-    /// <summary>
-    /// The charges of the cleanings read for the month: for each one recharged to the owner, the share of each owner of the property whose mandate asks for the actual cost, in the
-    /// currency of the property (or the settlement currency of the owner for the flat rate of a staff cleaning), split by the shares like every charge. A share whose mandate is the
-    /// flat rate gets nothing here: it gets the flat fee of the stay. An owner whose month is closed is only compared (the plan holds the lines, the posting leaves them).
-    /// </summary>
     private async Task PlanCleaningsAsync(PlanInputs inputs, IReadOnlyList<CompletedCleaning> cleanings, CancellationToken ct)
     {
         if (cleanings.Count == 0)
@@ -94,16 +81,13 @@ public sealed partial class OwnerAccountingService
         CultureInfo? culture = null;
         foreach (var cleaning in cleanings)
         {
-            // A staff cleaning the agency does not recharge is its own cost.
             if (!cleaning.RechargeToOwner)
                 continue;
 
-            // The owners, the shares and the mandate of the day of the stay the cleaning is for, so the flat fee of the stay and its cleanings are decided by the same mandate.
             var day = cleaning.BookingId is { } bookingId && checkOuts.TryGetValue(bookingId, out var checkOut) ? checkOut : cleaning.CompletedOn;
             if (!ActiveOwnerships(inputs.Ownerships, cleaning.PropertyId, day).Any(o => AsksActualCost(inputs, o, day)))
                 continue;
 
-            // The cleaning is shared by the owners of the property: a gap in the shares is told (and holds the owners back), never guessed.
             if (SharesOn(plan, inputs.Ownerships, cleaning.PropertyId, day, cleaning.SourceId) is not { } shares)
                 continue;
 
@@ -130,7 +114,6 @@ public sealed partial class OwnerAccountingService
                 var (total, currency) = PriceOf(cleaning, mandate, context);
                 if (total <= 0m)
                 {
-                    // No price at all is never a charge of zero: the owner's statement waits until the cleaning has one.
                     plan.Issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.SourceAmountMissing, share.OwnerId, cleaning.PropertyId, cleaning.SourceId));
                     continue;
                 }
@@ -163,17 +146,12 @@ public sealed partial class OwnerAccountingService
         }
     }
 
-    /// <summary>True when the mandate in force on <paramref name="day"/> for the share held through <paramref name="ownership"/> recharges the cleaning at its cost.</summary>
     private static bool AsksActualCost(PlanInputs inputs, PropertyOwnership ownership, DateOnly day)
     {
         return OwnerMandateRules.InForce(inputs.Mandates, ownership.PropertyOwnerId, ownership.Id, day) is { } mandate
             && OwnerMandateRules.CleaningRechargeModeOf(mandate) == CleaningRechargeMode.ActualCost;
     }
 
-    /// <summary>
-    /// What the cleaning costs, and in which currency: its price in the currency of its property; for a staff cleaning with no price, the flat rate of the mandate in the settlement
-    /// currency of the owner (the mandate says it in that currency). A total of 0 is a cleaning with no price at all (never a supplier's: a supplier without an amount has no price to guess).
-    /// </summary>
     private static (decimal Total, string Currency) PriceOf(CompletedCleaning cleaning, OwnerMandate mandate, OwnerContext context)
     {
         var propertyCurrency = StayCurrency.Normalize(cleaning.Currency);
@@ -186,7 +164,6 @@ public sealed partial class OwnerAccountingService
         return (0m, propertyCurrency);
     }
 
-    /// <summary>The check-out day of the stays the cleanings are for (a stay that is gone, or is not the org's, is not in the answer).</summary>
     private async Task<Dictionary<Guid, DateOnly>> CheckOutDaysAsync(Guid orgId, IReadOnlyList<CompletedCleaning> cleanings, CancellationToken ct)
     {
         var ids = cleanings.Where(c => c.RechargeToOwner && c.BookingId is not null).Select(c => c.BookingId!.Value).Distinct().ToList();
@@ -200,7 +177,6 @@ public sealed partial class OwnerAccountingService
         return rows.ToDictionary(b => b.Id, b => DateOnly.FromDateTime(b.CheckOutDate));
     }
 
-    /// <summary>The culture of the words the org writes down (<c>Org.DefaultLanguage</c>, Italian without one): the line of a cleaning and the reason of its «Da fare».</summary>
     private async Task<CultureInfo> OrgCultureAsync(Guid orgId, CancellationToken ct)
     {
         var language = await db.Orgs.AsNoTracking()
@@ -331,7 +307,6 @@ public sealed partial class OwnerAccountingService
         if (sources.Count == 0)
             return;
 
-        // The requests of a company among them (a staff activity is not one), completed or paid, not asked again yet.
         var requests = await db.ServiceRequests
             .Where(r => r.OrgId == orgId && sources.Contains(r.Id) && r.RentalContext != ServiceRequestRentalContext.Showcase && r.PropertyId != null
                         && r.Category == ServiceCategories.Cleaning && CleaningDone.Contains(r.Status) && r.SupplierVatAskedAgainAt == null)
@@ -339,7 +314,6 @@ public sealed partial class OwnerAccountingService
         if (requests.Count == 0)
             return;
 
-        // Only where the answer changes the invoice of the agency: the rule of its owner invoices on the last day of the closed month and the country of each cleaning.
         var rule = await CleaningSupplierVatReader.OwnerInvoiceRuleAsync(db, taxRules, orgId, period.Last, ct);
         if (rule is null || !CleaningVatRules.ChargesVatOnRecharge(rule))
             return;

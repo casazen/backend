@@ -12,7 +12,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>Booking actions delegated by the routine engine after its event and consent checks.</summary>
 public sealed class RoutineBookingActions(
     AppDbContext db,
     IMessageReplyService messages,
@@ -95,7 +94,6 @@ public sealed class RoutineBookingActions(
         if (code is null)
             return "routine_access_code_unavailable";
 
-        // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
         var branding = await emailBranding.ForOrgOrNullAsync(orgId, ct);
         var content = EmailTemplates.GuestAccessCode(EmailTemplates.GuestAccessCodeCulture(null),
             $"{booking.FirstName} {booking.LastName}".Trim(), booking.Name, booking.CheckInDate, code, branding);

@@ -38,7 +38,6 @@ public class ShowcaseBookingEncryptionPostgresTests
         var provider = TestDataProtection.Shared;
         var seed = await SeedAsync(database, provider, encrypted: true);
 
-        // A context without Data Protection reads the stored text.
         await using var stored = database.CreateContext();
         var customer = await stored.ServiceCustomers.AsNoTracking().SingleAsync(c => c.Id == seed.CustomerId);
         var hold = await stored.ShowcaseBookingHolds.AsNoTracking().SingleAsync(h => h.Id == seed.HoldId);
@@ -52,12 +51,10 @@ public class ShowcaseBookingEncryptionPostgresTests
                 Assert.DoesNotContain(secret, column, StringComparison.OrdinalIgnoreCase);
         });
 
-        // Not encrypted: what the supplier sees before the take, and the index the customer is found by.
         Assert.Equal("Monza", request.LocationCity);
         Assert.Equal("20900", request.LocationPostalCode);
         Assert.Matches("^[0-9a-f]{64}$", customer.EmailHash);
 
-        // And in the table itself, whatever EF would have made of it.
         var names = await stored.Database.SqlQueryRaw<string>("SELECT \"FullName\" AS \"Value\" FROM \"ServiceCustomers\"").ToListAsync();
         var payloads = await stored.Database.SqlQueryRaw<string>("SELECT \"PayloadEncrypted\" AS \"Value\" FROM \"ShowcaseBookingHolds\"").ToListAsync();
         var streets = await stored.Database.SqlQueryRaw<string>("SELECT \"LocationAddress\" AS \"Value\" FROM \"ServiceRequests\" WHERE \"LocationAddress\" IS NOT NULL").ToListAsync();
@@ -113,7 +110,6 @@ public class ShowcaseBookingEncryptionPostgresTests
             Assert.Equal(Address, (await stored.ServiceRequests.IgnoreQueryFilters().AsNoTracking().SingleAsync(r => r.Id == seed.RequestId)).LocationAddress);
         }
 
-        // Before the step the clear values are readable as they are (the legacy rule), so nothing breaks while it has not run.
         await using (var reader = new AppDbContext(database.CreateOptions(), tenantContext: null, provider))
             Assert.Equal(Email, (await reader.ServiceCustomers.AsNoTracking().SingleAsync(c => c.Id == seed.CustomerId)).Email);
 
@@ -135,11 +131,8 @@ public class ShowcaseBookingEncryptionPostgresTests
         Assert.Equal(0, await EncryptedColumns.EncryptLegacyPlaintextAsync(again, NullLogger.Instance));
     }
 
-    // ─── helpers ───
-
     private sealed record Seed(Guid OrgId, Guid CustomerId, Guid RequestId, Guid HoldId);
 
-    /// <summary>A supplier with a customer, a showcase request and a hold, written with or without the encryption.</summary>
     private static async Task<Seed> SeedAsync(
         PostgresTestDatabase database,
         IDataProtectionProvider provider,

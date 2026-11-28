@@ -20,19 +20,15 @@ public class AlloggiatiCodeEntry
 
     public AlloggiatiCodeTable Table { get; set; }
 
-    /// <summary>Code as written in the official file (uppercase, no spaces).</summary>
     [Required, MaxLength(9)]
     public string Code { get; set; } = string.Empty;
 
-    /// <summary>Description as written in the official file.</summary>
     [Required, MaxLength(200)]
     public string Description { get; set; } = string.Empty;
 
-    /// <summary>Description normalized for matching and search: uppercase, no accents, letters and digits only.</summary>
     [Required, MaxLength(200)]
     public string NormalizedDescription { get; set; } = string.Empty;
 
-    /// <summary>Province (two-letter car plate code) of a comune; null for the other tables.</summary>
     [MaxLength(2)]
     public string? Province { get; set; }
 
@@ -54,23 +50,18 @@ public class AlloggiatiCodeTableImport
 
     public AlloggiatiCodeTable Table { get; set; }
 
-    /// <summary>Name of the uploaded file.</summary>
     [Required, MaxLength(255)]
     public string SourceFileName { get; set; } = string.Empty;
 
-    /// <summary>Version of the official table given by the admin (e.g. the download date shown on the portal).</summary>
     [Required, MaxLength(100)]
     public string SourceVersion { get; set; } = string.Empty;
 
-    /// <summary>SHA-256 (hex) of the uploaded file.</summary>
     [Required, MaxLength(64)]
     public string Sha256 { get; set; } = string.Empty;
 
-    /// <summary>Official download URL of the table. Null for an admin upload of a local file.</summary>
     [MaxLength(500)]
     public string? SourceUrl { get; set; }
 
-    /// <summary>Publishing body (Polizia di Stato). Null when not stated.</summary>
     [MaxLength(200)]
     public string? Authority { get; set; }
 
@@ -78,7 +69,6 @@ public class AlloggiatiCodeTableImport
 
     public DateTime ImportedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>Auth0 id of the admin who imported the file.</summary>
     [Required, MaxLength(200)]
     public string ImportedBy { get; set; } = string.Empty;
 }
@@ -89,15 +79,11 @@ public class AlloggiatiCodeTableImport
 /// </summary>
 public enum AlloggiatiCodeTable
 {
-    /// <summary>Comuni (birth place and place of issue in Italy), 9-character codes.</summary>
     Comuni = 1,
 
-    /// <summary>Stati (state of birth, citizenship, place of issue abroad), 9-character codes.</summary>
     Stati = 2,
 
-    /// <summary>Tipi documento, 5-character codes.</summary>
     Documenti = 3,
 
-    /// <summary>Tipi alloggiato, 2-character codes.</summary>
     TipiAlloggiato = 4,
 }

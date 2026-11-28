@@ -41,11 +41,9 @@ public class PublicOrgController(
 
         var dto = PublicOrgDto.FromOrg(org, entitlementService.ResolveEffectiveTier(org));
         dto.CanonicalUrl = siteUrls.TryLandingUrl(org);
-        // DB-03: the checkout offers the "send me offers" box only when its text has a version (CO-15), like the check-in portal.
         dto.MarketingConsentVersion = GdprOptions.Normalize(gdprOptions.Value.MarketingConsentVersion);
         // E07/F04/US01/T02: the soft opt-in notice (art. 130 c. 4), shown only when its text has a version; null while the product owner has not set one.
         dto.SoftOptInNoticeVersion = GdprOptions.Normalize(gdprOptions.Value.SoftOptInNoticeVersion);
-        // E40/F01/US01: the embed shell on the CasaZen domain has no host to resolve; the rule is the one of resolve-host (HostSurfaceRules).
         dto.EmbedEnabled = HostSurfaceRules.Evaluate(
             org,
             siteUrls.ServedMode(org),
@@ -87,17 +85,11 @@ public class PublicOrgController(
 
         property.CanonicalUrl = siteUrls.TryPropertyUrl(
             org, string.IsNullOrWhiteSpace(property.Slug) ? property.Id.ToString() : property.Slug);
-        // DB-12a: the count and the average of the public reviews; absent (not zero) while the property has none.
         var summary = await reviews.GetSummaryAsync(org.Id, property.Id, cancellationToken);
         property.RatingSummary = summary is null ? null : new PublicRatingSummaryDto { Count = summary.Count, Average = summary.Average };
         return Ok(property);
     }
 
-    /// <summary>
-    /// The operator's privacy notice or booking terms (BK-14, A3-21): <c>kind</c> is <c>privacy</c> or <c>terms</c>.
-    /// 200 with <c>published: false</c> when the operator has not published it (or withdrew it): that is a normal state of
-    /// the page, not an error. 404 for an unknown org or kind.
-    /// </summary>
     [HttpGet("{slug}/documents/{kind}")]
     [ProducesResponseType(typeof(PublicOrgDocumentDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

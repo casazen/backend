@@ -68,8 +68,6 @@ public class OrgActivityServiceTests
         return items;
     }
 
-    // ─── Order and paging ───────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task List_NewestFirst_WithTheTotalAndThePageAsked()
     {
@@ -94,7 +92,6 @@ public class OrgActivityServiceTests
         var org = await OrgAsync();
         for (var i = 0; i < 5; i++)
             await AddAsync(org, OrgActivityType.MemberDeactivated, T0.AddMinutes(i), subject: $"auth0|p{i}");
-        // A job (nobody did it) between the newest ones: the home of the account shows what people did.
         await AddAsync(org, OrgActivityType.PlanChanged, T0.AddMinutes(10), actor: null, subject: org.ToString());
         await AddAsync(org, OrgActivityType.MemberDeactivated, T0.AddMinutes(-3), subject: "auth0|old");
 
@@ -102,7 +99,6 @@ public class OrgActivityServiceTests
         var latest = await _kit.ActivityReader(db).LatestAsync(org, new OrgActivityFilter(PeopleOnly: true), 3);
 
         Assert.Equal(["auth0|p4", "auth0|p3", "auth0|p2"], latest.Select(i => i.SubjectId));
-        // More than there are: all of them, still no job; and a count below one is one line.
         Assert.Equal(6, (await _kit.ActivityReader(db).LatestAsync(org, new OrgActivityFilter(PeopleOnly: true), 50)).Count);
         Assert.Single(await _kit.ActivityReader(db).LatestAsync(org, new OrgActivityFilter(PeopleOnly: true), 0));
     }
@@ -202,8 +198,6 @@ public class OrgActivityServiceTests
         Assert.Equal(paged.Select(i => i.Id), streamed.Select(i => i.Id));
         Assert.Equal(6, streamed.Count);
     }
-
-    // ─── Filters ────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task List_FromAndTo_AreBothIncluded()
@@ -321,8 +315,6 @@ public class OrgActivityServiceTests
         Assert.Equal(new Dictionary<string, string> { ["fromRole"] = "Collaborator", ["toRole"] = "Admin" }, item.Details);
     }
 
-    // ─── Whose lines ────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task List_AnOrgReadsItsOwnLinesOnly()
     {
@@ -344,7 +336,6 @@ public class OrgActivityServiceTests
         await AddAsync(orgA, OrgActivityType.MemberDeactivated, T0, subject: "auth0|in-a");
         await AddAsync(orgB, OrgActivityType.MemberDeactivated, T0, subject: "auth0|in-b");
 
-        // The caller is a member of org A; asking for the lines of org B (a mistake in a controller) finds nothing.
         await using var asA = new AppDbContext(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_kit.Database).Options,
             new FixedTenantContext(orgA));

@@ -13,10 +13,6 @@ using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Reads an administrator PDF into a proposal for the condominium's fiscal year. The book changes only on confirm.
-/// Manual budget and final entry stay on the condominium service.
-/// </summary>
 public sealed class AdministratorStatementReaderService(
     AppDbContext db,
     ICondominiumAccountingService condominiums,

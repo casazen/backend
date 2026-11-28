@@ -29,10 +29,6 @@ public class CollectionsReportsController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
-    /// <summary>
-    /// The money collected between two days, by cash and net of refunds: per day (up to 92 days) or month, per payment method and per channel, with the total
-    /// the Home gives for the same days, and the credits of the card provider and of the channels (<c>available: false</c> where the figures are not stored).
-    /// </summary>
     [HttpGet("collections")]
     [ProducesResponseType(typeof(CollectionsReportDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -62,10 +58,6 @@ public class CollectionsReportsController(
                 HostReportDocuments.FileName("incassato-per-cassa", report.Period, ReportRequestChecks.FileExtensionOf(fileFormat)));
     }
 
-    /// <summary>
-    /// The stays that still have something to collect, as of today: not cancelled, not an expired checkout hold, not ended more than 24 months ago, with the amount due above what was collected;
-    /// the total for each currency. Never a guest name or contact.
-    /// </summary>
     [HttpGet("balances-to-collect")]
     [ProducesResponseType(typeof(BalancesToCollectReportDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

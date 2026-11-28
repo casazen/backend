@@ -27,14 +27,12 @@ public static class ForwardedHeadersServiceCollectionExtensions
 
     public static IServiceCollection AddCasazenForwardedHeaders(this IServiceCollection services)
     {
-        // Read from the final configuration (IConfiguration from DI), not while Program.cs is still building it.
         services.AddOptions<ForwardedHeadersOptions>()
             .Configure<IConfiguration>((options, configuration) =>
                 Configure(options, configuration.GetSection(SectionName)));
         return services;
     }
 
-    /// <summary>Applies the <c>ForwardedHeaders</c> section; throws on an invalid value so a typo fails the startup.</summary>
     public static void Configure(ForwardedHeadersOptions options, IConfiguration section)
     {
         var forwardLimit = section.GetValue<int?>("ForwardLimit") ?? DefaultForwardLimit;
@@ -47,7 +45,7 @@ public static class ForwardedHeadersServiceCollectionExtensions
         // Replace the defaults (loopback only, which never matches the Railway proxy) with the configured lists.
         options.KnownIPNetworks.Clear();
         options.KnownProxies.Clear();
-#pragma warning disable ASPDEPR005 // Obsolete list replaced by KnownIPNetworks: cleared too, so no default survives.
+#pragma warning disable ASPDEPR005
         options.KnownNetworks.Clear();
 #pragma warning restore ASPDEPR005
 
@@ -66,7 +64,6 @@ public static class ForwardedHeadersServiceCollectionExtensions
         }
     }
 
-    // Accepts both an array (KnownNetworks:0, KnownNetworks__0 on Railway) and a single comma-separated string.
     private static IEnumerable<string> ReadList(IConfigurationSection section)
     {
         var values = string.IsNullOrWhiteSpace(section.Value)

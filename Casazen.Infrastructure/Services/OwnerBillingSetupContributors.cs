@@ -14,17 +14,13 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public static class OwnerBillingSetupItemKeys
 {
-    /// <summary>The agency never saved its commission rules of the channels (reason <see cref="BillingSetupReasons.Unconfirmed"/>): the defaults of the configuration are shown but nobody confirmed them.</summary>
     public const string ChannelCommissionsUnconfirmed = "channel_commissions_unconfirmed";
 
-    /// <summary>Some owners with an ownership not ended have no mandate in force (reason <see cref="BillingSetupReasons.Required"/>, with the count of those owners).</summary>
     public const string OwnersWithoutMandate = "owners_without_mandate";
 }
 
-/// <summary>What the two contributors of the owner ledger ask of the database: both are for agencies only, and both name the org in every query.</summary>
 internal static class OwnerBillingSetupReads
 {
-    /// <summary>True when the org is on the Agency plan (<c>Org.PlanTier</c>, the definition of the agency tier): any other organization gets no item from them.</summary>
     public static Task<bool> IsAgencyAsync(AppDbContext db, Guid orgId, CancellationToken ct) =>
         db.Orgs.AsNoTracking().AnyAsync(org => org.Id == orgId && org.PlanTier == PlanTier.Agency, ct);
 }

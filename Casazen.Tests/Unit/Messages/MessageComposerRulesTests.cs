@@ -7,11 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Messages;
 
-/// <summary>
-/// E05/F02/US02: the pure rules of the composer. What the channels refuse in a text before the booking (OCT-11), how the variables of a template of the host are
-/// filled in and what is refused (an unknown variable, a variable the conversation has no value for, a literal brace left in the text), and what leaves the
-/// building when a message is translated (the names the conversation knows, the contact data).
-/// </summary>
 public class MessageComposerRulesTests
 {
     private static readonly CultureInfo Italian = CultureInfo.GetCultureInfo("it");
@@ -26,8 +21,6 @@ public class MessageComposerRulesTests
         new TimeOnly(15, 0),
         new TimeOnly(10, 30),
         "Giulia");
-
-    // ---- The rules of the channels ----------------------------------------------------------------------------------------------------
 
     [Theory]
     [InlineData("Scrivimi a anna@example.com")]
@@ -87,8 +80,6 @@ public class MessageComposerRulesTests
         Assert.Equal("channel_rule_violation", MessageChannelRules.CheckOutgoing((OtaChannel)99, OtaThreadKind.Reservation, "Ciao"));
     }
 
-    // ---- The variables of a template ----------------------------------------------------------------------------------------------------
-
     [Fact]
     public void Render_FillsTheEightVariables_ThePlainDatesInTheLanguageOfTheTemplate()
     {
@@ -140,7 +131,6 @@ public class MessageComposerRulesTests
         Assert.Equal("check_in_date", Assert.Single(date.MessageArgs));
         Assert.Equal("guest_name", Assert.Single(name.MessageArgs));
 
-        // A variable the template does not use is not asked of the conversation.
         Assert.Equal("Ciao Trullo Bianco", MessageTemplateRenderer.Render("Ciao {{property_name}}", request, Italian));
     }
 
@@ -174,8 +164,6 @@ public class MessageComposerRulesTests
         Assert.Equal(13, MessageTemplateRenderer.Variables.Distinct().Count());
     }
 
-    // ---- What leaves the building when a message is translated -------------------------------------------------------------------------------
-
     [Fact]
     public void Scrub_TakesOutTheContactData_AndTheNamesOfTheConversation_AndRestoreGivesTheNamesBack()
     {
@@ -190,7 +178,6 @@ public class MessageComposerRulesTests
         Assert.Contains("[tel]", scrubbed.Text, StringComparison.Ordinal);
         Assert.Equal(["Giulia", "Jonas", "Berg", "jonas"], scrubbed.Names);
 
-        // The translator keeps the tokens in its sentence; the names come back as they were written, the contact data does not.
         var translated = MessageTranslationPrompt.Restore("Hello [[N1]], I am [[N2]] [[N3]]. Write to [email] or call [tel]: is [[N4]] ok?", scrubbed);
         Assert.Equal("Hello Giulia, I am Jonas Berg. Write to [email] or call [tel]: is jonas ok?", translated);
     }
@@ -200,7 +187,6 @@ public class MessageComposerRulesTests
     {
         var scrubbed = MessageTranslationPrompt.Scrub("Al mare con Albert e Li Albertini", ["Al Albert", "Li"]);
 
-        // «Al» is a particle (it is a word of the text, not a name): left alone. «Li» is a name of two letters: taken, as a name on its own. «Albertini» is not «Albert».
         Assert.Equal("Al mare con [[N1]] e [[N2]] Albertini", scrubbed.Text);
         Assert.Equal(["Albert", "Li"], scrubbed.Names);
 
@@ -210,10 +196,6 @@ public class MessageComposerRulesTests
         Assert.Equal(["Maria", "Luca", "Marco", "Rossi"], particles.Names);
     }
 
-    /// <summary>
-    /// PROOF TEST: privacy rule (FD-21). A name whose words are all short never goes to the provider: «Li Wu», «Xu Ma» (any spacing and case) are replaced as a whole
-    /// name, and the lone «ma» (but) or «li» (them) of the text is not taken for it.
-    /// </summary>
     [Theory]
     [InlineData("Li Wu", "Mi chiamo Li Wu, arrivo domani. Li aspetto", "Mi chiamo [[N1]], arrivo domani. Li aspetto", "Li Wu")]
     [InlineData("Xu Ma", "Sono XU  ma, ma arrivo tardi", "Sono [[N1]], ma arrivo tardi", "XU  ma")]
@@ -231,7 +213,6 @@ public class MessageComposerRulesTests
     {
         var alone = MessageTranslationPrompt.Scrub("Ciao Bo, sono Anna Li di Roma", ["Bo", "Anna Li"]);
 
-        // The long word of «Anna Li» is taken by itself too, and the whole name first when the two words are together.
         Assert.Equal("Ciao [[N1]], sono [[N2]] di Roma", alone.Text);
         Assert.Equal(["Bo", "Anna Li"], alone.Names);
     }

@@ -8,10 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Messages;
 
-/// <summary>
-/// E05/F02/US01/T01 (ADR-032-R5): the attachment proxy treats the address as untrusted input (it was read from a channel): only an https address of
-/// a public host is fetched, a redirect is checked like the first address, and what comes back must be small enough and of one of three types.
-/// </summary>
 public class OtaAttachmentRulesTests
 {
     [Theory]
@@ -296,11 +292,9 @@ public class OtaAttachmentFetcherTests
     [Fact]
     public async Task TheDeadline_IsNoFile_ButTheCancellationOfTheCallerStillCancels()
     {
-        // The deadline of the fetch fires as a cancellation that is not the caller's: the file is not available.
         var timedOut = new OtaAttachmentFetcher(new HttpClient(new FakeHandler((_, _) => throw new TaskCanceledException("deadline"))), new LogSpy());
         Assert.Null(await timedOut.FetchAsync(Address));
 
-        // The caller going away is not an answer about the file: it propagates.
         var waiting = new OtaAttachmentFetcher(
             new HttpClient(new FakeHandler(async (_, cancellationToken) =>
             {

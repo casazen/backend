@@ -12,7 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>SE-04 (A8-11, #300 AC3 and AC9): funnel events without personal data and the report of the comuni that convert.</summary>
 public class SeoEventServiceTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 1, 10, 0, 0, TimeSpan.Zero);
@@ -122,12 +121,10 @@ public class SeoEventServiceTests
     {
         await using var db = CreateDb();
         var service = CreateService(db);
-        // Como: 3 clicks, 2 signup starts; Milano: 1 click; Roma: 5 clicks.
         for (var i = 0; i < 3; i++) await service.RecordAsync(Click("como"));
         for (var i = 0; i < 2; i++) await service.RecordAsync(new SeoEventInput("signup_start", "como", null, null, null, null));
         await service.RecordAsync(Click("milano"));
         for (var i = 0; i < 5; i++) await service.RecordAsync(Click("roma"));
-        // Two host signups attributed to Como in the window, one to Roma, one without a comune.
         db.Orgs.AddRange(NewOrg("a"), NewOrg("b"), NewOrg("c"), NewOrg("d"));
         await db.SaveChangesAsync();
         var orgs = await db.Orgs.OrderBy(o => o.Slug).ToListAsync();

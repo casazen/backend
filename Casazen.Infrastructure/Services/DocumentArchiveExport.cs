@@ -19,7 +19,6 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 internal static class DocumentArchiveExport
 {
-    /// <summary>The index at the root of the archive.</summary>
     public const string IndexFileName = "indice.csv";
 
     private const int CopyBufferBytes = 81_920;
@@ -30,7 +29,6 @@ internal static class DocumentArchiveExport
     private static readonly object?[] IndexHeader =
         ["Tipo", "Data", "Immobile", "Codice prenotazione", "Titolo", "File", "Dimensione (byte)", "SHA-256"];
 
-    /// <summary>The folder of a type inside the archive (Italian, like the rest of the file the accountant opens).</summary>
     public static string FolderOf(ArchiveDocumentType type) => type switch
     {
         ArchiveDocumentType.Invoice => "fatture",
@@ -44,11 +42,6 @@ internal static class DocumentArchiveExport
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown archive document type."),
     };
 
-    /// <summary>
-    /// Writes the archive of <paramref name="rows"/>, in the order they come, to <paramref name="destination"/> (left open). <paramref name="open"/>
-    /// gives the file of a row, or <c>null</c> for a document that has none (or whose file is gone): it is listed in the index with an empty file
-    /// name and nothing else. A failure of the storage is not swallowed: it ends the export.
-    /// </summary>
     public static async Task<DocumentArchiveExportResult> WriteAsync(
         IReadOnlyList<ArchiveRow> rows,
         Func<ArchiveRow, CancellationToken, Task<ArchiveFile?>> open,
@@ -103,11 +96,6 @@ internal static class DocumentArchiveExport
         return new DocumentArchiveExportResult(rows.Count, files, total);
     }
 
-    /// <summary>
-    /// The path of a document inside the archive: <c>{folder}/{yyyy-MM-dd}-{title}{extension}</c>. The title is made safe to extract on any
-    /// system (letters, digits, <c>._()</c>, everything else a hyphen) and cut; the extension is the one of the real file; a name already taken
-    /// in the archive gets <c>-2</c>, <c>-3</c>, ... before the extension. <paramref name="used"/> holds the names taken and gets the new one.
-    /// </summary>
     internal static string EntryName(ArchiveRow row, string fileName, ISet<string> used)
     {
         ArgumentNullException.ThrowIfNull(row);
@@ -128,7 +116,6 @@ internal static class DocumentArchiveExport
         }
     }
 
-    /// <summary>A name safe to write on any file system: letters, digits and <c>._()</c> are kept, every other run of characters becomes one hyphen.</summary>
     internal static string Sanitize(string value)
     {
         ArgumentNullException.ThrowIfNull(value);
@@ -140,7 +127,6 @@ internal static class DocumentArchiveExport
         }
         catch (ArgumentException)
         {
-            // Not valid Unicode: the characters below are replaced one by one all the same.
         }
 
         var builder = new StringBuilder(text.Length);
@@ -168,17 +154,14 @@ internal static class DocumentArchiveExport
         return stem.Length == 0 ? FallbackStem : stem;
     }
 
-    /// <summary>The extension of the real file (<c>.pdf</c>), lower case, or nothing when it is not a short run of letters and digits.</summary>
     private static string ExtensionOf(string fileName)
     {
         var extension = Path.GetExtension(fileName).ToLowerInvariant();
         return extension.Length is > 1 and <= MaxExtensionLength && extension.Skip(1).All(char.IsAsciiLetterOrDigit) ? extension : string.Empty;
     }
 
-    /// <summary>A day as the archive writes it: <c>2026-11-06</c>, whatever the culture of the server.</summary>
     internal static string Date(DateOnly day) => day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-    /// <summary>Copies <paramref name="source"/> to <paramref name="target"/> in chunks; returns the bytes copied and their SHA-256 (hex, lower case).</summary>
     private static async Task<(long Size, string Sha256)> CopyAsync(Stream source, Stream target, CancellationToken cancellationToken)
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
@@ -202,13 +185,6 @@ internal static class DocumentArchiveExport
         }
     }
 
-    /// <summary>
-    /// What the ZIP writer writes to. It writes the body of a file with asynchronous calls, but finishes each entry (the last block of the
-    /// compressor and the data descriptor) and writes parts of the directory with synchronous ones, which a response of Kestrel refuses
-    /// (<c>AllowSynchronousIO</c> is off). A synchronous write is therefore kept here, a few kilobytes at most, and goes to the destination, in
-    /// order, with the next asynchronous write or the final <see cref="FlushAsync(CancellationToken)"/>: nothing blocks and no thread waits for
-    /// the network.
-    /// </summary>
     internal sealed class DeferredWriteStream(Stream destination) : Stream
     {
         private readonly ArrayBufferWriter<byte> _pending = new();
@@ -240,7 +216,6 @@ internal static class DocumentArchiveExport
         public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
             WriteAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
 
-        // Nothing to send synchronously: what was written waits for the next asynchronous call, which keeps the order.
         public override void Flush()
         {
         }

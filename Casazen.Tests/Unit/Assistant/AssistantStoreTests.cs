@@ -153,7 +153,6 @@ public class AssistantStoreTests
         "save failed",
         new PostgresException("duplicate key value violates unique constraint", "ERROR", "ERROR", PostgresErrorCodes.UniqueViolation, constraintName: index));
 
-    /// <summary>A context over an InMemory store whose save throws <see cref="Failure"/> while it is set, and saves as any other when it is not.</summary>
     private sealed class FailingSaveDbContext(string store)
         : AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(store).Options)
     {

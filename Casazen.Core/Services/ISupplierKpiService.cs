@@ -9,39 +9,17 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface ISupplierKpiService
 {
-    /// <summary>
-    /// KPIs of the service requests assigned to <paramref name="supplierOrgId"/> (and to no other org). "Today" and the
-    /// period are Europe/Rome calendar dates.
-    /// </summary>
     Task<SupplierServiceRequestKpis> GetKpisAsync(
         Guid supplierOrgId,
         SupplierKpiPeriod period,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The numbers of the console home for the supplier (SP-04): the earnings of the current Europe/Rome month and the amount
-    /// still to collect, from the <b>final amounts</b> the supplier declared when it completed its jobs, and the average time
-    /// it takes to answer. Read-only.
-    /// </summary>
     Task<SupplierEarningsSummary> GetEarningsSummaryAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// True when the supplier ever answered a request: it took one (it has a <c>TakenAt</c>) or rejected one. The step "answer the
-    /// first request" of the console checklist (SP-04).
-    /// </summary>
     Task<bool> HasAnsweredARequestAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The requests the supplier received from its public showcase (<c>RentalContext = Showcase</c>) in the last <paramref name="days"/> days, and how
-    /// many of them still wait for its answer (<c>Richiesto</c>): the two true numbers of the showcase editor (SP-13a, decision VT-D15; visits and
-    /// conversion are not counted). Read-only; scoped by the supplier org.
-    /// </summary>
     Task<ShowcaseRequestStats> GetShowcaseRequestStatsAsync(Guid supplierOrgId, int days, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The jobs the supplier completed: its requests in <c>Completato</c> or <c>Pagato</c>, of any origin. A real count, shown to customers
-    /// only from <see cref="ShowcaseContentLimits.JobsDoneMinToShow"/> of them. Read-only.
-    /// </summary>
     Task<int> CountJobsDoneAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -54,24 +32,10 @@ public interface ISupplierKpiService
     /// </summary>
     Task<int?> GetMedianResponseMinutesAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// <see cref="GetMedianResponseMinutesAsync"/> for several suppliers in one read (the supplier picker of the marketplace, SR-09a):
-    /// the same window of 90 days, the same requests (the ones accepted automatically, SP-04d, are left out), the same sample (the
-    /// latest <see cref="PublicShowcaseLimits.ResponseTimeMaxSamples"/> taken by each supplier) and the same minimum of
-    /// <see cref="PublicShowcaseLimits.ResponseTimeMinSamples"/> requests. Every id
-    /// asked about is in the result; a supplier whose response time is not measured has <c>null</c>. Read-only; independent of the
-    /// <c>SupplierShowcaseBooking</c> flag.
-    /// </summary>
     Task<IReadOnlyDictionary<Guid, int?>> GetMedianResponseMinutesBatchAsync(
         IReadOnlyCollection<Guid> supplierOrgIds,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The three numbers of the console home with the period before them (SP-04e, <c>GET api/supplier/dashboard/overview</c>):
-    /// what the supplier received, accepted and refused, how often it said yes, how long it took to answer, the jobs it completed
-    /// and the money that came in, for <paramref name="period"/> and for the same number of Europe/Rome days just before it.
-    /// <paramref name="period"/> is one of <see cref="SupplierKpiPeriods.OverviewPeriods"/>. Read-only; scoped by the supplier org.
-    /// </summary>
     Task<SupplierOverview> GetOverviewAsync(
         Guid supplierOrgId,
         SupplierKpiPeriod period,
@@ -134,11 +98,6 @@ public sealed record SupplierOverviewPeriod(
     long? ToCollectCents,
     int? ToCollectJobs);
 
-/// <summary>Service-request KPIs of a supplier org.</summary>
-/// <summary>The requests that came from a supplier's public showcase: how many in a period and how many wait for an answer.</summary>
-/// <param name="Days">The period: the last <paramref name="Days"/> days up to now.</param>
-/// <param name="Requests">Requests created in the period.</param>
-/// <param name="Pending">Of those, the ones still waiting for the supplier's answer (<c>Richiesto</c>).</param>
 public sealed record ShowcaseRequestStats(int Days, int Requests, int Pending);
 
 /// <summary>Service-request KPIs of a supplier org.</summary>
@@ -187,6 +146,5 @@ public sealed record SupplierEarningsSummary(
     int? AverageResponseMinutes,
     bool IsEstimate)
 {
-    /// <summary>The window of the average response time: the requests taken in the last 90 days.</summary>
     public const int ResponseWindowDays = 90;
 }

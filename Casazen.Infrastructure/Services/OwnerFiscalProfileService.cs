@@ -10,11 +10,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc cref="IOwnerFiscalProfileService"/>
-/// <remarks>
-/// Logs carry ids, codes and field names: never a value of a profile. The Italian short-let rule of the configuration (<paramref name="accountingOptions"/>,
-/// E18/F01/US01/T01) is seeded as a draft that is not approved; a service built without the options (a test) seeds nothing.
-/// </remarks>
 public sealed partial class OwnerFiscalProfileService(
     AppDbContext db,
     TimeProvider timeProvider,
@@ -62,8 +57,6 @@ public sealed partial class OwnerFiscalProfileService(
         var name = approverName?.Trim() ?? string.Empty;
         RequirePolicyField(name.Length is > 0 and <= OwnerAccountingPolicy.ApproverNameMaxLength, "approvedByName");
 
-        // The seeded draft has no hash of its source (E18/F01/US01/T01): the accountant pins the document checked when approving. A pinned rule keeps its hash, and a
-        // hash that differs from it is not the document the rule was written from.
         var checkedSource = string.IsNullOrWhiteSpace(sourceSha256) ? null : sourceSha256.Trim().ToLowerInvariant();
         if (string.IsNullOrEmpty(policy.SourceSha256))
         {
@@ -89,7 +82,6 @@ public sealed partial class OwnerFiscalProfileService(
         if (template is null || template.ValidFrom is not { } validFrom)
             return null;
 
-        // The same checks as a rule set an agency writes, except the hash of the source: the draft is seeded unpinned when the configuration has none.
         OwnerAccountingPolicy draft;
         try
         {
@@ -124,7 +116,6 @@ public sealed partial class OwnerFiscalProfileService(
         }
         catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex, OwnerAccountingPolicy.RuleVersionIndexName))
         {
-            // Another instance seeded it at the same start: one draft, not two.
             db.Entry(draft).State = EntityState.Detached;
             return null;
         }
@@ -182,7 +173,6 @@ public sealed partial class OwnerFiscalProfileService(
         if (others.Any(p => p.ValidFrom >= command.ValidFrom))
             throw new DomainConflictException(OwnerFiscalErrors.ProfileOverlap, "OwnerFiscalProfileOverlap");
 
-        // The profile in force before the new one ends the day before it starts.
         foreach (var open in others.Where(p => p.ValidTo is null || p.ValidTo >= command.ValidFrom))
             open.ValidTo = command.ValidFrom.AddDays(-1);
 
@@ -237,7 +227,6 @@ public sealed partial class OwnerFiscalProfileService(
         return new OwnerFiscalResolution(profile, policy, parameters);
     }
 
-    /// <summary>What a profile still needs to be used: the identity, the residence, the jurisdiction, an identifier, the currency and the recognition rule.</summary>
     internal static IReadOnlyList<string> MissingFields(OwnerFiscalProfile profile)
     {
         var missing = new List<string>();
@@ -278,11 +267,6 @@ public sealed partial class OwnerFiscalProfileService(
         return code;
     }
 
-    /// <summary>
-    /// A rule set made of <paramref name="command"/> after the checks of a rule set (422 <c>owner_policy_invalid</c> with the <c>field</c>): the jurisdiction, the code and
-    /// the version, the https address of the source and its SHA-256 (or, when <paramref name="pinnedSource"/> is false, none: the approval pins it), the validity and
-    /// complete parameters. Without its org, its creation time and its author.
-    /// </summary>
     private static OwnerAccountingPolicy Validated(OwnerAccountingPolicyCommand command, bool pinnedSource)
     {
         var jurisdiction = command.Jurisdiction?.Trim().ToUpperInvariant() ?? string.Empty;

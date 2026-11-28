@@ -5,13 +5,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Leases;
 
-/// <summary>
-/// LR-01, B3 (gap report 04 § 4.1): the views of the lease list are derived from the status and the end date. One rule, written
-/// once as an expression; these tests run it over every status and over the days around the edges.
-/// </summary>
 public class LeaseListViewsTests
 {
-    /// <summary>9 October 2026 in Rome, as midnight UTC (the storage convention of the dates).</summary>
     private static readonly DateTime Today = new(2026, 10, 9, 0, 0, 0, DateTimeKind.Utc);
 
     private static readonly LeaseStatus[] NotRegistered =
@@ -45,7 +40,6 @@ public class LeaseListViewsTests
     [InlineData(LeaseStatus.SentToProvider)]
     public void ALeaseNotRegisteredYet_IsInPreparation_WhateverItsDates(LeaseStatus status)
     {
-        // The edge dates: far ahead, the last day, already ended. A draft or a signed contract still to be registered is work to finish.
         foreach (var end in new[] { Today.AddYears(4), Today, Today.AddDays(-1), Today.AddYears(-2) })
             Assert.Equal([LeaseListView.InPreparation], ViewsOf(status, end));
     }
@@ -60,7 +54,6 @@ public class LeaseListViewsTests
     [Fact]
     public void ARegisteredLeaseThatEndsWithinSixMonths_IsActiveAndExpiring()
     {
-        // 9 October 2026 + 6 months = 9 April 2027, the last day included.
         Assert.Equal([LeaseListView.Active, LeaseListView.Expiring], ViewsOf(LeaseStatus.Registered, Today.AddMonths(6)));
         Assert.Equal([LeaseListView.Active, LeaseListView.Expiring], ViewsOf(LeaseStatus.Registered, Today.AddDays(1)));
         Assert.Equal([LeaseListView.Active, LeaseListView.Expiring], ViewsOf(LeaseStatus.Registered, new DateTime(2026, 11, 30, 0, 0, 0, DateTimeKind.Utc)));
@@ -124,8 +117,6 @@ public class LeaseListViewsTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => LeaseListViews.Predicate((LeaseListView)99, Today));
     }
-
-    // --- The query --------------------------------------------------------------------------------------
 
     [Theory]
     [InlineData(null, null)]

@@ -28,8 +28,6 @@ public class SupplierServiceCatalogIntegrationTests(CasazenWebApplicationFactory
     private static readonly byte[] PngBytes = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
 
-    // ─── Who may call it ─────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Catalog_Anonymous_Returns401()
     {
@@ -64,8 +62,8 @@ public class SupplierServiceCatalogIntegrationTests(CasazenWebApplicationFactory
     }
 
     [Theory]
-    [InlineData(false)] // a supplier-only account: User.SupplierOrgId, no User.OrgId (PL-05)
-    [InlineData(true)] // the legacy shape: the supplier org also in User.OrgId
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task Catalog_BothSupplierLinkShapes_ReachTheSuppliersOwnCatalog(bool legacyOrgIdLink)
     {
         var (userId, orgId) = await SupplierCatalogTestData.SeedSupplierAsync(factory, legacyOrgIdLink);
@@ -79,8 +77,6 @@ public class SupplierServiceCatalogIntegrationTests(CasazenWebApplicationFactory
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.Equal(orgId, (await db.SupplierServiceListings.AsNoTracking().SingleAsync(l => l.Id == id)).OrgId);
     }
-
-    // ─── Create and read ─────────────────────────────────────────────────────────
 
     [Fact]
     public async Task List_ANewSupplier_IsEmptyWithTheLimit()
@@ -207,8 +203,6 @@ public class SupplierServiceCatalogIntegrationTests(CasazenWebApplicationFactory
         Assert.Equal(1, second.GetProperty("sortOrder").GetInt32());
     }
 
-    // ─── Create and update: the error contract ───────────────────────────────────
-
     [Fact]
     public async Task Create_NameMissing_Returns422NamingTheField()
     {
@@ -308,11 +302,9 @@ public class SupplierServiceCatalogIntegrationTests(CasazenWebApplicationFactory
         Assert.Equal("Pulizia profonda", dto.GetProperty("name").GetString());
         Assert.Equal(12000, dto.GetProperty("priceFromCents").GetInt32());
         Assert.Equal(240, dto.GetProperty("durationMinutes").GetInt32());
-        // A draft's slug follows its name; the status is still Draft.
         Assert.Equal("pulizia-profonda", dto.GetProperty("slug").GetString());
         Assert.Equal("Draft", dto.GetProperty("status").GetString());
 
-        // A version nobody has ever had is stale on PostgreSQL and in memory alike.
         var stale = await client.PutAsJsonAsync($"{Url}/{id}", UpdateBody("Altro", uint.MaxValue - 7));
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
         var problem = await ReadAsync(stale);
@@ -339,8 +331,6 @@ public class SupplierServiceCatalogIntegrationTests(CasazenWebApplicationFactory
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
         Assert.Equal("Due", (await ReadAsync(second)).GetProperty("name").GetString());
     }
-
-    // ─── Publish, pause, delete, duplicate ───────────────────────────────────────
 
     [Fact]
     public async Task Publish_IncompleteDraft_Returns422NotPublishableNamingWhatIsMissing_ThenWorksOnceComplete()
@@ -477,7 +467,6 @@ public class SupplierServiceCatalogIntegrationTests(CasazenWebApplicationFactory
         Assert.Equal(HttpStatusCode.Created, english.StatusCode);
         Assert.Equal("Pulizia cambio ospiti (copy)", (await ReadAsync(english)).GetProperty("name").GetString());
 
-        // The original is untouched.
         Assert.Equal("Active", (await ReadAsync(await client.GetAsync($"{Url}/{id}"))).GetProperty("status").GetString());
         Assert.Equal(3, (await ReadAsync(await client.GetAsync(Url))).GetProperty("total").GetInt32());
     }
@@ -509,8 +498,6 @@ public class SupplierServiceCatalogIntegrationTests(CasazenWebApplicationFactory
         Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync($"{Url}/{first}")).StatusCode);
         Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync(Url, Body("Ora c'è posto"))).StatusCode);
     }
-
-    // ─── Photos ──────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Photos_AValidImage_IsStoredInTheSuppliersFolderAndListed_AndCanBeRemovedWithAPut()
@@ -571,8 +558,6 @@ public class SupplierServiceCatalogIntegrationTests(CasazenWebApplicationFactory
         Assert.DoesNotContain(Directory.GetFiles(factory.StorageRoot, "*", SearchOption.AllDirectories), path => path.Contains(orgId.ToString()));
     }
 
-    // ─── Another supplier's services ─────────────────────────────────────────────
-
     [Fact]
     public async Task AnotherSuppliersService_IsNotFoundOnEveryEndpoint_AndStaysUntouched()
     {
@@ -606,7 +591,6 @@ public class SupplierServiceCatalogIntegrationTests(CasazenWebApplicationFactory
             Assert.Equal("supplier_service_not_found", (await ReadAsync(response)).GetProperty("code").GetString());
         }
 
-        // The other supplier sees none of it, and the owner's service is exactly as it was.
         Assert.Equal(0, (await ReadAsync(await other.GetAsync(Url))).GetProperty("total").GetInt32());
         var mine = await ReadAsync(await owner.GetAsync($"{Url}/{id}"));
         Assert.Equal("Pulizia", mine.GetProperty("name").GetString());
@@ -632,8 +616,6 @@ public class SupplierServiceCatalogIntegrationTests(CasazenWebApplicationFactory
         Assert.Equal(fromB.GetProperty("id").GetGuid(), (await ReadAsync(await b.GetAsync(Url))).GetProperty("items")[0].GetProperty("id").GetGuid());
     }
 
-    // ─── Feature flags (SP-02) ───────────────────────────────────────────────────
-
     [Fact]
     public async Task PublicFeatures_ListsEveryFlagWithTheTwoSupplierOnesOffByDefault()
     {
@@ -649,8 +631,6 @@ public class SupplierServiceCatalogIntegrationTests(CasazenWebApplicationFactory
         Assert.False(body.GetProperty("supplierShowcaseBooking").GetBoolean());
         Assert.False(body.GetProperty("supplierOnlinePayments").GetBoolean());
     }
-
-    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private HttpClient SupplierClient(string userId) => factory.CreateAuthenticatedClient(userId, roles: "Supplier");
 
@@ -691,7 +671,6 @@ public sealed class SupplierCatalogHostsCollection
     public const string Name = "SupplierCatalogHosts";
 }
 
-/// <summary>The default integration factory with both SP-02 supplier flags on.</summary>
 public sealed class SupplierFlagsEnabledFactory : CasazenWebApplicationFactory
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -707,10 +686,6 @@ public sealed class SupplierFlagsEnabledFactory : CasazenWebApplicationFactory
     }
 }
 
-/// <summary>
-/// SP-02: with both supplier flags on the frontend sees them (<c>GET /api/public/features</c>), and the catalog behaves exactly
-/// as with them off (it never depends on a flag: every supplier has one).
-/// </summary>
 [Collection(SupplierCatalogHostsCollection.Name)]
 public class SupplierFlagsEnabledTests(SupplierFlagsEnabledFactory factory) : IClassFixture<SupplierFlagsEnabledFactory>
 {
@@ -723,7 +698,6 @@ public class SupplierFlagsEnabledTests(SupplierFlagsEnabledFactory factory) : IC
 
         Assert.True(body.GetProperty("supplierShowcaseBooking").GetBoolean());
         Assert.True(body.GetProperty("supplierOnlinePayments").GetBoolean());
-        // The flags that stay off stay off.
         Assert.False(body.GetProperty("otaPartnerApi").GetBoolean());
     }
 

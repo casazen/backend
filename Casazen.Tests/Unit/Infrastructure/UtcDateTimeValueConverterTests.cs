@@ -5,9 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>
-/// FD-06: every DateTime/DateTime? column of the model goes through <see cref="UtcDateTimeValueConverter"/>.
-/// </summary>
 public class UtcDateTimeValueConverterTests
 {
     private static AppDbContext NewDb() =>

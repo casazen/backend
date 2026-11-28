@@ -12,28 +12,21 @@ namespace Casazen.Core.Services;
 /// </summary>
 public static class OwnerStayRules
 {
-    /// <summary>The days a calendar shows when the caller does not say: today and the next 90 nights.</summary>
     public const int DefaultCalendarDays = 90;
 
-    /// <summary>The most nights a calendar shows at once.</summary>
     public const int MaxCalendarDays = 366;
 
-    /// <summary>The most blocked ranges a rule holds.</summary>
     public const int MaxBlackouts = 50;
 
-    /// <summary>The largest notice or window of a rule, in days: ten years.</summary>
     public const int MaxRuleDays = 3660;
 
-    /// <summary>The most nights of an owner in a calendar year a rule may allow.</summary>
     public const int MaxYearlyNights = 366;
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    /// <summary>The rule of a property that has none: every request waits for the agency, with no other limit than the free dates.</summary>
     public static OwnerStayRuleView DefaultFor(Guid propertyId) =>
         new(null, propertyId, null, null, 0, null, 1, null, true, null, null, [], null);
 
-    /// <summary>A stored rule as the API reads it.</summary>
     public static OwnerStayRuleView ViewOf(OwnerStayRule rule)
     {
         ArgumentNullException.ThrowIfNull(rule);
@@ -53,7 +46,6 @@ public static class OwnerStayRules
             rule.UpdatedAt);
     }
 
-    /// <summary>The rule <paramref name="propertyOwnerId"/> follows on <paramref name="propertyId"/>: its own row, else the row of the property, else the default.</summary>
     public static OwnerStayRuleView EffectiveFor(Guid propertyId, Guid propertyOwnerId, IEnumerable<OwnerStayRule> rules)
     {
         ArgumentNullException.ThrowIfNull(rules);
@@ -62,19 +54,15 @@ public static class OwnerStayRules
         return rule is null ? DefaultFor(propertyId) : ViewOf(rule);
     }
 
-    /// <summary>The blocked ranges a rule stores (jsonb written by <see cref="WriteBlackouts"/>).</summary>
     public static IReadOnlyList<OwnerStayBlackout> ReadBlackouts(string? json) =>
         string.IsNullOrWhiteSpace(json) ? [] : JsonSerializer.Deserialize<List<OwnerStayBlackout>>(json, Json) ?? [];
 
-    /// <summary>The blocked ranges as a rule stores them, in order.</summary>
     public static string WriteBlackouts(IReadOnlyList<OwnerStayBlackout> blackouts)
     {
         ArgumentNullException.ThrowIfNull(blackouts);
         return JsonSerializer.Serialize(blackouts.OrderBy(b => b.From).ThenBy(b => b.To).ToList(), Json);
     }
 
-    /// <summary>Refuses a rule with a value out of bounds.</summary>
-    /// <exception cref="DomainRuleException"><see cref="OwnerStayErrors.RuleInvalid"/> with the field.</exception>
     public static void EnsureValid(OwnerStayRuleInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -89,12 +77,6 @@ public static class OwnerStayRules
         Check(blackouts.All(b => b.From <= b.To && b.To.DayNumber - b.From.DayNumber < MaxCalendarDays), "blackouts");
     }
 
-    /// <summary>
-    /// Refuses a stay from <paramref name="start"/> (arrival) to <paramref name="end"/> (departure) that breaks <paramref name="rule"/> on a day whose today
-    /// is <paramref name="today"/>: the range, the past, the shortest and longest stay, the notice, the window, the active period and the blocked dates.
-    /// The allowance and the free dates need the database: <see cref="EnsureAllowance"/> and the service.
-    /// </summary>
-    /// <exception cref="DomainRuleException">The first rule broken, with its stable code.</exception>
     public static void EnsureObeys(DateOnly today, DateOnly start, DateOnly end, OwnerStayRuleView rule)
     {
         ArgumentNullException.ThrowIfNull(rule);
@@ -121,7 +103,6 @@ public static class OwnerStayRules
             throw new DomainRuleException(OwnerStayErrors.Blackout, OwnerStayErrors.BlackoutMessageKey);
     }
 
-    /// <summary>The nights from <paramref name="start"/> to <paramref name="end"/> (excluded) in each calendar year.</summary>
     public static IReadOnlyDictionary<int, int> NightsByYear(DateOnly start, DateOnly end)
     {
         var byYear = new Dictionary<int, int>();
@@ -130,11 +111,6 @@ public static class OwnerStayRules
         return byYear;
     }
 
-    /// <summary>
-    /// Refuses <paramref name="asked"/> nights that, added to the <paramref name="held"/> ones of the same calendar year (requested and approved stays of the
-    /// owner profile on the property), pass <paramref name="allowance"/>. No allowance, no limit.
-    /// </summary>
-    /// <exception cref="DomainRuleException"><see cref="OwnerStayErrors.AllowanceExceeded"/> with the allowance and the year.</exception>
     public static void EnsureAllowance(int? allowance, IReadOnlyDictionary<int, int> held, IReadOnlyDictionary<int, int> asked)
     {
         ArgumentNullException.ThrowIfNull(held);
@@ -149,12 +125,6 @@ public static class OwnerStayRules
         }
     }
 
-    /// <summary>
-    /// How the calendar change of a block (or of its release) reads for the stay. <paramref name="recorded"/> is false when no change was recorded at all
-    /// (nothing records the changes): the block lives in CasaZen only and is acknowledged. A change in CasaZen only (<c>Applied</c>) or accepted by the
-    /// channel manager (<c>Sent</c>, <c>Confirmed</c>) is acknowledged; one to send or being sent is pending, and so is a change that cannot be read; one
-    /// refused in whole or in part has failed.
-    /// </summary>
     public static OwnerStaySyncState SyncOf(bool recorded, CalendarChangeState? state)
     {
         if (!recorded)
@@ -168,7 +138,6 @@ public static class OwnerStayRules
         };
     }
 
-    /// <summary>How a stay reads (<see cref="OwnerStayStates"/>): an approved stay is «confirmed» only once its block is acknowledged.</summary>
     public static string StateOf(OwnerStayStatus status, OwnerStaySyncState liveSync) => status switch
     {
         OwnerStayStatus.Requested => OwnerStayStates.Requested,
@@ -182,7 +151,6 @@ public static class OwnerStayRules
         _ => OwnerStayStates.Cancelled,
     };
 
-    /// <summary>The nights of a calendar, one per day in order, put together into runs of the same kind (and of the same stay).</summary>
     public static IReadOnlyList<OwnerCalendarRange> Compress(IEnumerable<OwnerCalendarRange> nights)
     {
         ArgumentNullException.ThrowIfNull(nights);

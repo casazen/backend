@@ -25,7 +25,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 internal static class VerificationOperatorAudience
 {
-    /// <summary>The users of <paramref name="orgId"/> who decide the verifications of the property <paramref name="propertyId"/>, created by <paramref name="creatorUserId"/>.</summary>
     public static IQueryable<User> UsersToTell(AppDbContext db, Guid orgId, Guid propertyId, string creatorUserId)
     {
         const string permission = HostPermissions.VerificationDecision;
@@ -36,7 +35,6 @@ internal static class VerificationOperatorAudience
             .IgnoreQueryFilters()
             .Where(u => u.OrgId == orgId && u.IsActive)
             .Where(u =>
-                // A member of the team: it holds the permission through its short-rent role and reaches the property.
                 (db.UserContextMemberships.Any(c =>
                      c.UserId == u.Id
                      && c.ContextKey == shortRent
@@ -49,8 +47,6 @@ internal static class VerificationOperatorAudience
                          || m.PropertyScope != PropertyScope.Selected
                          || db.PropertyMemberAccesses.IgnoreQueryFilters().Any(a =>
                              a.UserId == u.Id && a.OrgId == orgId && a.PropertyId == propertyId))))
-                // An account in no team: the creator of the property, as before the team, when its short-rent role holds the permission
-                // or it has no such role yet (the owner on its token, ContextAccessBootstrap).
                 || (u.Id == creatorUserId
                     && !db.OrgMembers.IgnoreQueryFilters().Any(m => m.UserId == u.Id)
                     && (!db.UserContextMemberships.Any(c => c.UserId == u.Id && c.ContextKey == shortRent)

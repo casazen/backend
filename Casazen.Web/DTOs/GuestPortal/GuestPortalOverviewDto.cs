@@ -2,30 +2,18 @@ using Casazen.Core.GuestPortal;
 
 namespace Casazen.Web.DTOs.GuestPortal;
 
-/// <summary>
-/// The overview of the guest portal (<c>GET api/public/guest-portal/{token}</c>, E50/F01/US01/T02, NF-153), camelCase:
-/// <c>{ stay: { propertyName, city, checkIn, checkOut, nights, guests, status, bookingCode, isOta, isDirect }, branding: { name, logoUrl, primaryColor,
-/// themeId, fontId, tagline, phone }, language, sections: [{ key, order, state, badge }], nextStep: { key, section, panel, params } | null,
-/// canSeeReserved, checkInCompleted, features: { paidServices, supplierServices, autoReplies } }</c>. Keys are only ever added.
-/// </summary>
 public sealed class GuestPortalOverviewDto
 {
     public required GuestPortalStayDto Stay { get; init; }
 
     public required GuestPortalBrandingDto Branding { get; init; }
 
-    /// <summary>The language of the guest: it, en, de, fr or es.</summary>
     public required string Language { get; init; }
 
     public required IReadOnlyList<GuestPortalSectionDto> Sections { get; init; }
 
-    /// <summary>The block in evidence, or <c>null</c> when no section proposes one.</summary>
     public GuestPortalNextStepDto? NextStep { get; init; }
 
-    /// <summary>
-    /// Whether the sections may show the reserved data of the stay: only after the check-in, and only for a stay to come or in progress (never for a
-    /// cancelled stay, a no-show or a stay already checked out).
-    /// </summary>
     public bool CanSeeReserved { get; init; }
 
     public bool CheckInCompleted { get; init; }
@@ -86,28 +74,22 @@ public sealed class GuestPortalOverviewDto
     }
 }
 
-/// <summary>The summary of the stay: never the address of the house.</summary>
 public sealed class GuestPortalStayDto
 {
     public required string PropertyName { get; init; }
 
-    /// <summary>The town of the house (public, like on the booking site); the precise address is reserved.</summary>
     public required string City { get; init; }
 
-    /// <summary>The arrival day, <c>yyyy-MM-dd</c>.</summary>
     public required string CheckIn { get; init; }
 
-    /// <summary>The departure day, <c>yyyy-MM-dd</c>.</summary>
     public required string CheckOut { get; init; }
 
     public int Nights { get; init; }
 
     public int Guests { get; init; }
 
-    /// <summary><c>confirmed</c>, <c>checkedIn</c>, <c>checkedOut</c> or <c>cancelled</c>.</summary>
     public required string Status { get; init; }
 
-    /// <summary>The booking code as the guest reads it (<c>XXXXX-XXXXX</c>).</summary>
     public required string BookingCode { get; init; }
 
     public bool IsOta { get; init; }
@@ -115,14 +97,12 @@ public sealed class GuestPortalStayDto
     public bool IsDirect { get; init; }
 }
 
-/// <summary>The brand of the host (D3): the values of the public profile of the org.</summary>
 public sealed class GuestPortalBrandingDto
 {
     public required string Name { get; init; }
 
     public string? LogoUrl { get; init; }
 
-    /// <summary><c>#rrggbb</c>, or <c>null</c> for the theme's own color.</summary>
     public string? PrimaryColor { get; init; }
 
     public required string ThemeId { get; init; }
@@ -131,11 +111,9 @@ public sealed class GuestPortalBrandingDto
 
     public string? Tagline { get; init; }
 
-    /// <summary>The phone the host chose to publish on its site, or <c>null</c>.</summary>
     public string? Phone { get; init; }
 }
 
-/// <summary>An offered section: <c>state</c> is <c>available</c>, <c>locked</c>, <c>done</c> or <c>attention</c>; <c>badge</c> a count or <c>null</c>.</summary>
 public sealed class GuestPortalSectionDto
 {
     public required string Key { get; init; }
@@ -147,7 +125,6 @@ public sealed class GuestPortalSectionDto
     public int? Badge { get; init; }
 }
 
-/// <summary>The next step: a message key of the section that proposes it, the section and panel it opens, the values the message names.</summary>
 public sealed class GuestPortalNextStepDto
 {
     public required string Key { get; init; }
@@ -159,7 +136,6 @@ public sealed class GuestPortalNextStepDto
     public required IReadOnlyDictionary<string, string> Params { get; init; }
 }
 
-/// <summary>What the portal offers for the stay.</summary>
 public sealed class GuestPortalFeaturesDto
 {
     public bool PaidServices { get; init; }

@@ -88,7 +88,6 @@ public class QuesturaCredentialsPostgresIntegrationTests : IClassFixture<Casazen
             var stored = await db.PropertyQuesturaCredentials.IgnoreQueryFilters().AsNoTracking()
                 .Where(c => c.PropertyId == property.Id).ToListAsync();
             var only = Assert.Single(stored);
-            // Username and key trimmed, password kept exactly as typed.
             Assert.Equal((Username, Password, WsKey), (only.Username, only.Password, only.WsKey));
         }
 
@@ -181,7 +180,6 @@ public class QuesturaCredentialsPostgresIntegrationTests : IClassFixture<Casazen
         return status.RootElement.GetProperty("configuredAt").GetDateTime();
     }
 
-    /// <summary>The row as the database stores it (context without converters).</summary>
     private async Task<string> RawRowAsync(Guid propertyId)
     {
         using var scope = _factory.Services.CreateScope();

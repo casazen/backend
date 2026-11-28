@@ -15,7 +15,6 @@ public sealed class SimulatedConcordatoFacileApiClient(AppDbContext db) : IConco
 {
     private const int MaxPracticesOfALease = 20;
 
-    /// <summary>Always: the simulator reads a table of the application, there is no key to configure (CF-BE: the status cache asks).</summary>
     public bool IsConfigured => true;
 
     public async Task<List<PracticeDto>> GetPracticesByLeaseIdAsync(Guid leaseId, CancellationToken cancellationToken = default)
@@ -27,7 +26,6 @@ public sealed class SimulatedConcordatoFacileApiClient(AppDbContext db) : IConco
             .Take(MaxPracticesOfALease)
             .ToListAsync(cancellationToken);
 
-        // As in the list of the real API, a practice carries no leaseId: the list already is the lease's.
         return practices.Select(p => ToDto(p, withLease: false)).ToList();
     }
 
@@ -35,7 +33,6 @@ public sealed class SimulatedConcordatoFacileApiClient(AppDbContext db) : IConco
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(practiceId);
 
-        // A number that is not one is not known, as the real API answers (404 practice_not_found).
         if (!CfSimulatorService.TryNormalizePracticeId(practiceId, out var number))
             return null;
 

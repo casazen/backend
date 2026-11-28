@@ -19,7 +19,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public sealed record FiscalIssuerSnapshot
 {
-    /// <summary>The version of the JSON shape.</summary>
     public const int CurrentVersion = 1;
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -30,10 +29,8 @@ public sealed record FiscalIssuerSnapshot
 
     public int Version { get; init; } = CurrentVersion;
 
-    /// <summary>The legal name of the issuer.</summary>
     public string? LegalName { get; init; }
 
-    /// <summary>The name of the organization, shown when the profile has no legal name (a draft of an issuer that has not finished the wizard); <c>null</c> for an owner.</summary>
     public string? OrgName { get; init; }
 
     public string? AddressStreet { get; init; }
@@ -46,28 +43,22 @@ public sealed record FiscalIssuerSnapshot
 
     public string? Province { get; init; }
 
-    /// <summary>The country of the issuer: <c>IT</c> or <c>CH</c> (the Swiss layout of the PDF is chosen by it).</summary>
     public string CountryCode { get; init; } = OrgFiscalIssuerProfile.DefaultCountryCode;
 
     /// <summary>The Italian VAT number of the issuer (the organization's, or the owner's own); <c>null</c> when it has none.</summary>
     public string? VatNumber { get; init; }
 
-    /// <summary>The Italian fiscal code of the issuer (the organization's, or the owner's own).</summary>
     public string? FiscalCode { get; init; }
 
-    /// <summary>The Swiss VAT number (UID) of a registered Swiss issuer, <c>CHE-123.456.789</c>.</summary>
     public string? SwissVatNumber { get; init; }
 
-    /// <summary>The issuer is registered for the VAT.</summary>
     public bool VatRegistered { get; init; }
 
-    /// <summary>The regime of the issuer.</summary>
     public DocumentRegime? Regime { get; init; }
 
     /// <summary>The regime code of FatturaPA that was used (the profile's own, else the rule's). Italian issuers only.</summary>
     public string? FatturaPaRegimeCode { get; init; }
 
-    /// <summary>The IBAN of the issuer, masked.</summary>
     public string? IbanMasked { get; init; }
 
     /// <summary>
@@ -77,17 +68,8 @@ public sealed record FiscalIssuerSnapshot
     /// </summary>
     public string? QrBillAccount { get; init; }
 
-    /// <summary>
-    /// The authorization of the virtual stamp duty or the number of the physical stamp of the issuer (⚖ I4, Italy), printed on a document with a stamp duty;
-    /// <c>null</c> when it gave none (then <see cref="VirtualStampConfirmed"/> says how the stamp is paid).
-    /// </summary>
     public string? StampDutyReference { get; init; }
 
-    /// <summary>
-    /// How the stamp duty of a document is paid when the issuer gave no reference (⚖ I4, Italy): <c>true</c> when it confirmed the virtual stamp («assolta in modo
-    /// virtuale»), <c>false</c> when it did not («da assolvere»); <c>null</c> for a Swiss issuer and for a snapshot written before the issuer said it, whose
-    /// document prints nothing about it (it stays as it was issued).
-    /// </summary>
     public bool? VirtualStampConfirmed { get; init; }
 
     /// <summary>
@@ -96,14 +78,11 @@ public sealed record FiscalIssuerSnapshot
     /// </summary>
     public FiscalIssuerIntermediary? Intermediary { get; init; }
 
-    /// <summary>The co-owners the document of several owners lists, with their shares (⚖ I6); <c>null</c> for one issuer.</summary>
     public IReadOnlyList<FiscalIssuerCoOwner>? CoOwners { get; init; }
 
-    /// <summary>True for an issuer in Switzerland.</summary>
     [JsonIgnore]
     public bool IsSwiss => string.Equals(CountryCode, "CH", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>The name printed for the issuer: its legal name, else the name of the organization.</summary>
     [JsonIgnore]
     public string DisplayName => !string.IsNullOrWhiteSpace(LegalName) ? LegalName : OrgName ?? string.Empty;
 
@@ -142,10 +121,8 @@ public sealed record FiscalIssuerSnapshot
         };
     }
 
-    /// <summary>The snapshot as it is stored.</summary>
     public string ToJson() => JsonSerializer.Serialize(this, Json);
 
-    /// <summary>The snapshot stored in <paramref name="json"/>, or <c>null</c> when there is none or it cannot be read (the caller falls back to the profile).</summary>
     public static FiscalIssuerSnapshot? FromJson(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -174,7 +151,6 @@ public sealed record FiscalIssuerSnapshot
 /// <param name="CountryCode">The country of the agency.</param>
 public sealed record FiscalIssuerIntermediary(string Name, string? VatNumber, string? FiscalCode, string CountryCode)
 {
-    /// <summary>The agency as its issuer profile and its organization say now.</summary>
     public static FiscalIssuerIntermediary Of(OrgFiscalIssuerProfile? organization, Org org)
     {
         ArgumentNullException.ThrowIfNull(org);
@@ -189,5 +165,4 @@ public sealed record FiscalIssuerIntermediary(string Name, string? VatNumber, st
     }
 }
 
-/// <summary>A co-owner a document lists (⚖ I6): the name it prints and the share in percent.</summary>
 public sealed record FiscalIssuerCoOwner(string Name, decimal SharePercent);

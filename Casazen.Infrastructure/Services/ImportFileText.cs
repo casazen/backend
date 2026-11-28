@@ -2,10 +2,6 @@ using System.Text;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// How the services that import an official list from a file (<see cref="AlloggiatiCodeTableService"/>, <see cref="ComuneImportService"/>) read it: the
-/// bytes, within a size limit, and the text in them.
-/// </summary>
 internal static class ImportFileText
 {
     /// <summary>UTF-8 (with or without BOM) when valid, otherwise Windows-1252; null when neither applies.</summary>
@@ -31,7 +27,6 @@ internal static class ImportFileText
         }
     }
 
-    /// <summary>The whole content, or <c>null</c> when it is longer than <paramref name="maxBytes"/>.</summary>
     public static async Task<byte[]?> ReadAllAsync(Stream content, long maxBytes, CancellationToken cancellationToken)
     {
         using var buffer = new MemoryStream();

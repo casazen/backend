@@ -9,10 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Contracts;
 
-/// <summary>
-/// <c>PUT /api/properties/{id}</c> has PATCH semantics (A2-04): a field left out of the body keeps its stored value.
-/// The body is read as MVC reads it (web JSON defaults, enums as strings).
-/// </summary>
 public class UpdatePropertyRequestTests
 {
     private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web)
@@ -104,19 +100,15 @@ public class UpdatePropertyRequestTests
         Assert.Equal([PropertyAmenity.Heating], property.Amenities);
         Assert.Equal(string.Empty, property.HouseRules);
         Assert.Equal(otherPolicy, property.CancellationPolicyId);
-        // PC-03, A2-05: isActive is no longer writable through the generic update, the property stays visible.
         Assert.True(property.IsActive);
         Assert.Equal("IT001272A1ABCDEFGH", property.CinCode);
         Assert.Equal("monolocale-centro", property.Slug);
-        // Not in the body: kept.
         Assert.Equal(["https://cdn.example/1.jpg"], property.PhotoUrls);
     }
 
     [Fact]
     public void ApplyTo_IsActiveFalseSent_IsIgnoredAndKeepsThePropertyVisibleAndUnpaused()
     {
-        // PC-03, A2-05: the old form checkbox / "Pausa" toggle sent { isActive: false } and the property vanished
-        // from its own host's list and detail. Pausing is the dedicated pause/activate action only.
         var property = StoredProperty();
 
         Read("""{ "isActive": false, "isPaused": true, "pausedAt": "2026-01-01T00:00:00Z" }""").ApplyTo(property);
@@ -322,8 +314,6 @@ public class UpdatePropertyRequestTests
         Assert.True(Validator.TryValidateObject(request, new ValidationContext(request), results, validateAllProperties: true));
     }
 
-    // ─── Minimum stay and weekend surcharge (DB-03) ─────────────────────────────────────────────────
-
     [Fact]
     public void ApplyTo_MinNightsAndSurchargeLeftOut_KeepsTheStoredValues()
     {
@@ -394,8 +384,6 @@ public class UpdatePropertyRequestTests
         Assert.Equal(0m, withDefaults.WeekendSurchargePercent);
     }
 
-    // ─── The fields of the wizard «Aggiungi immobile» (SR-07a) ──────────────────────────────────────
-
     private static Property StoredPropertyWithTheWizardFields()
     {
         var property = StoredProperty();
@@ -418,8 +406,6 @@ public class UpdatePropertyRequestTests
     [Fact]
     public void ApplyTo_AFormThatDoesNotKnowTheWizardFields_NeverTouchesThem()
     {
-        // The long-rent form, the activation step and the edit page of today send the fields they know: the new ones stay as the
-        // wizard stored them, the switch «Mostra la casa sul sito» included.
         var property = StoredPropertyWithTheWizardFields();
 
         Read("""{ "name": "Casa al mare rinnovata", "bedrooms": 3, "amenities": ["WiFi"], "houseRules": "Niente feste" }""").ApplyTo(property);

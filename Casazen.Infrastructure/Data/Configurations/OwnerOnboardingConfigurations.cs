@@ -13,14 +13,12 @@ internal sealed class PropertyOwnerConfiguration : IEntityTypeConfiguration<Prop
 {
     public void Configure(EntityTypeBuilder<PropertyOwner> entity)
     {
-        // The index on the org alone stays: the filtered one below does not hold the owners without a key, so it cannot serve a read of the org's owners.
         entity.HasIndex(o => o.OrgId);
         entity.HasIndex(o => new { o.OrgId, o.ExternalKey })
             .IsUnique()
             .HasFilter("\"ExternalKey\" IS NOT NULL")
             .HasDatabaseName(PropertyOwner.OrgExternalKeyIndexName);
 
-        // The apartments the owner lets short outside the agency (E18/F01/US03/T01): a count, never negative and never more than a person can declare.
         entity.ToTable(table => table.HasCheckConstraint(
             "CK_PropertyOwners_ExternalShortLetUnits",
             $"\"ExternalShortLetUnits\" >= 0 AND \"ExternalShortLetUnits\" <= {PropertyOwner.ExternalShortLetUnitsMax}"));

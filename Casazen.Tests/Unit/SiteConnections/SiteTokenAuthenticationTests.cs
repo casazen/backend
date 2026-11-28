@@ -130,7 +130,6 @@ public class SiteTokenAuthenticationTests
         var policy = await RegisteredPolicyAsync(CasazenPolicies.SiteConnection);
         await using var provider = Services(out _, withAuthorization: true);
 
-        // A person signed in by the default scheme with its bearer JWT: the policy authenticates with SiteToken only, the person is dropped and challenged (401).
         await using (var scope = provider.CreateAsyncScope())
         {
             var person = Request(scope.ServiceProvider, "Bearer eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJhdXRoMHxzb21lb25lIn0.c2lnbmF0dXJl");
@@ -217,7 +216,6 @@ public class SiteTokenAuthenticationTests
         Assert.Equal(SiteTokenDefaults.AuthenticationScheme, pluginAuthorize.AuthenticationSchemes);
         Assert.Equal(CasazenPolicies.SiteConnection, pluginAuthorize.Policy);
         Assert.Equal("api/site/v1", plugin.GetCustomAttribute<RouteAttribute>()?.Template);
-        // S022 has the disconnection; S023 the account and the domain (the plugin's own tests: SiteApiDomainEndpointsTests).
         Assert.Equal(
             ["Disconnect", "GetAccount", "SetDomain", "SetSurfaces", "VerifyDomain"],
             Actions(plugin).Select(a => a.Name).Order(StringComparer.Ordinal));
@@ -238,7 +236,6 @@ public class SiteTokenAuthenticationTests
             Assert.NotNull(controller.GetCustomAttribute<PrivateAnswerAttribute>());
             Assert.All(Actions(controller), action =>
             {
-                // No action changes the decision of its class.
                 Assert.Empty(action.GetCustomAttributes<AuthorizeAttribute>(inherit: true));
                 Assert.Empty(action.GetCustomAttributes<AllowAnonymousAttribute>(inherit: true));
             });
@@ -271,7 +268,6 @@ public class SiteTokenAuthenticationTests
             Assert.Equal(StatusCodes.Status404NotFound, off.Response.StatusCode);
             Assert.False(reached, $"{controller.Name}.{action.Name} ran with SiteEmbed off.");
 
-            // Several gates on one endpoint need every flag on: the surfaces of the domain (S023) are behind WhiteLabelHost too, like the console's.
             flags.Set(FeatureFlags.SiteEmbed, true);
             foreach (var gate in metadata.OfType<FeatureGateAttribute>())
                 flags.Set(gate.Flag, true);
@@ -293,11 +289,9 @@ public class SiteTokenAuthenticationTests
         var api = Policy(RateLimitPolicies.SiteApi);
         Assert.Equal((120, TimeSpan.FromMinutes(1), false, true), (api.DefaultPermitLimit, api.DefaultWindow, api.PartitionByUser, api.PartitionBySiteConnection));
 
-        // S023: the check of the domain has a budget of its own, tighter, and counts per credential too.
         var verify = Policy(RateLimitPolicies.SiteDomainVerify);
         Assert.Equal((20, TimeSpan.FromMinutes(10), false, true), (verify.DefaultPermitLimit, verify.DefaultWindow, verify.PartitionByUser, verify.PartitionBySiteConnection));
 
-        // Two sites behind one hosting address have a budget each; a call with no credential counts by address.
         var siteA = SiteCall(Guid.NewGuid());
         var siteB = SiteCall(Guid.NewGuid());
         var keyA = RateLimitingServiceCollectionExtensions.GetPartitionKey(siteA, partitionByToken: false, partitionBySiteConnection: true);
@@ -309,8 +303,6 @@ public class SiteTokenAuthenticationTests
         Assert.Equal("203.0.113.7", RateLimitingServiceCollectionExtensions.GetPartitionKey(anonymous, partitionByToken: false, partitionBySiteConnection: true));
         Assert.Equal("203.0.113.7", RateLimitingServiceCollectionExtensions.GetPartitionKey(siteA, partitionByToken: false));
     }
-
-    // ─── Helpers ───────────────────────────────────────────────────────────────────────────────────
 
     private static ServiceProvider Services(out Mock<ISiteConnectionService> connections, bool withAuthorization = false)
     {
@@ -373,7 +365,6 @@ public class SiteTokenAuthenticationTests
             .Where(m => m.GetCustomAttributes<HttpMethodAttribute>(inherit: true).Any())
             .ToList();
 
-    /// <summary>The writer side of the tenant of a request, as <c>TenantContext</c> keeps it: from none to one org, never to another.</summary>
     private sealed class RecordingTenant : IRequestTenantContext
     {
         public Guid? OrgId { get; private set; }

@@ -29,12 +29,9 @@ public sealed record HostCalendarOverviewProperty(
 /// </summary>
 public static class PropertyICalSchedule
 {
-    /// <summary>Minutes between two rounds of the recurring job <c>property-ical-sync</c>.</summary>
     public const int SyncEveryMinutes = 15;
 
-    /// <summary>The cron expression of <c>property-ical-sync</c> (UTC), made from <see cref="SyncEveryMinutes"/>.</summary>
     public static readonly string SyncCron = $"*/{SyncEveryMinutes} * * * *";
 
-    /// <summary>A feed not tried for this long is marked "to check" (eight rounds of the job).</summary>
     public const int StaleAfterMinutes = 8 * SyncEveryMinutes;
 }

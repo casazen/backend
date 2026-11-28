@@ -24,7 +24,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class ComplianceStatusServiceTests
 {
-    // 2026-11-06 11:00 in Rome.
     private static readonly DateTimeOffset Start = new(2026, 11, 6, 10, 0, 0, TimeSpan.Zero);
 
     private static DateTime Day(int offsetFromToday) => new DateTime(2026, 11, 6, 0, 0, 0, DateTimeKind.Utc).AddDays(offsetFromToday);
@@ -48,8 +47,6 @@ public class ComplianceStatusServiceTests
         Assert.Empty(status.Actions);
     }
 
-    // ─── The reach of the caller ────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task ComplianceStatus_RespectsHostScope_Test()
     {
@@ -61,7 +58,6 @@ public class ComplianceStatusServiceTests
         await using var db = world.Db();
         var service = world.StatusService(db);
 
-        // The collaborator «Solo alcuni» was given the first property only: every light is of that property and of its stays.
         var restricted = await service.EvaluateAsync(world.Restricted, CancellationToken.None);
         Assert.NotEmpty(restricted.Items);
         Assert.All(restricted.Items, item => Assert.Equal(world.Granted.Id, item.PropertyId));
@@ -69,7 +65,6 @@ public class ComplianceStatusServiceTests
         Assert.Equal([world.Granted.Id], restricted.Evaluated.PropertyIds);
         Assert.Equal([grantedStay.Id], restricted.Evaluated.BookingIds);
 
-        // The whole org sees both, and never the stays of another org.
         var orgWide = await service.EvaluateAsync(world.OrgWide, CancellationToken.None);
         Assert.Equal(
             new[] { grantedStay.Id, hiddenStay.Id }.Order(),
@@ -77,7 +72,6 @@ public class ComplianceStatusServiceTests
         Assert.DoesNotContain(orgWide.Items, i => i.PropertyId == world.Foreign.Id || i.BookingId == foreignStay.Id);
         Assert.Equal(new[] { world.Granted.Id, world.Hidden.Id }.Order(), orgWide.Evaluated.PropertyIds.Order());
 
-        // The To do the feeder raises from the collaborator's status are those of its property alone.
         var activities = new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, world.Clock);
         var feeder = new ComplianceActivityFeeder(activities, db, new MemoryCache(new MemoryCacheOptions()), NullLogger<ComplianceActivityFeeder>.Instance);
         await feeder.FeedAsync(world.Restricted, restricted, CancellationToken.None);
@@ -88,7 +82,6 @@ public class ComplianceStatusServiceTests
         Assert.DoesNotContain(raised, a => a.EntityId == hiddenStay.Id || a.EntityId == world.Hidden.Id || a.EntityId == foreignStay.Id);
         Assert.Contains(raised, a => a.EntityType == InternalActivity.BookingEntityType && a.EntityId == grantedStay.Id);
 
-        // And the whole org's status raises the hidden property's, once the whole org is the caller.
         await feeder.FeedAsync(world.OrgWide, orgWide, CancellationToken.None);
         Assert.Contains(await db.InternalActivities.AsNoTracking().ToListAsync(), a => a.EntityId == hiddenStay.Id);
     }
@@ -111,8 +104,6 @@ public class ComplianceStatusServiceTests
             new MemoryCache(new MemoryCacheOptions()),
             NullLogger<ComplianceActivityFeeder>.Instance);
 
-        // Every stay that has arrived and owes the communication has its To do, red; a To do someone else raised for a stay that arrives later is
-        // not touched by anything below.
         await Feeder().FeedAsync(world.OrgWide, await world.StatusService(db).EvaluateAsync(world.OrgWide, CancellationToken.None), CancellationToken.None);
         var others = new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, world.Clock);
         await others.CreateAsync(
@@ -129,14 +120,11 @@ public class ComplianceStatusServiceTests
         foreach (var stay in new[] { cancelled, noShow, stillOwes, pastTheLookback, hiddenCancelled })
             Assert.Single(await OpenTodosOfAsync(db, stay.Id));
 
-        // The host cancels one stay, marks another as a no-show (at the hidden property too), and ten days pass: the stay of 85 days ago is now past the
-        // lookback of 90 days.
         await world.UpdateStayAsync(cancelled, b => b.Status = BookingStatus.Cancelled);
         await world.UpdateStayAsync(noShow, b => b.NoShowAt = Day(-1));
         await world.UpdateStayAsync(hiddenCancelled, b => b.Status = BookingStatus.Cancelled);
         world.Clock.Advance(TimeSpan.FromDays(10));
 
-        // The collaborator's read closes what is in its reach and nothing else: the hidden property's To do stays until someone who reaches it reads.
         await Feeder().FeedAsync(world.Restricted, await world.StatusService(db).EvaluateAsync(world.Restricted, CancellationToken.None), CancellationToken.None);
         foreach (var gone in new[] { cancelled, noShow, pastTheLookback })
             Assert.Empty(await OpenTodosOfAsync(db, gone.Id));
@@ -155,8 +143,6 @@ public class ComplianceStatusServiceTests
 
     private static Task<List<InternalActivity>> OpenTodosOfAsync(AppDbContext db, Guid bookingId) =>
         db.InternalActivities.AsNoTracking().Where(a => a.Action != null && a.EntityId == bookingId && a.CompletedAt == null).ToListAsync();
-
-    // ─── Handoff ────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task ComplianceStatus_AnOctorateHandoffInTheAuditNeverChangesALight_Test()
@@ -177,7 +163,6 @@ public class ComplianceStatusServiceTests
                 (yellow.Light, yellow.Reason, yellow.HandoffTopic!.Value));
             Assert.Equal((ComplianceLight.Red, ComplianceReasonCodes.ReceiptMissing), (ItemOf(before, overdue).Verdict.Light, ItemOf(before, overdue).Verdict.Reason));
 
-            // The host starts the handoff for the stays and comes back: the passage is a line of the activity log and nothing else.
             for (var line = 0; line < 2; line++)
             {
                 db.OrgActivityEntries.Add(new OrgActivityEntry
@@ -200,8 +185,6 @@ public class ComplianceStatusServiceTests
         }
     }
 
-    // ─── Alloggiati: proofs, entrusting, the stays that count ───────────────────────────────────────────
-
     [Fact]
     public async Task Alloggiati_ARealReceiptOrOneTheHostUploadedForThatPropertyAndDay_IsTheProof()
     {
@@ -213,7 +196,6 @@ public class ComplianceStatusServiceTests
         var (otherProperty, _) = await world.AddStayAsync(world.Granted, checkInOffset: -2);
         await world.AddReceiptAsync(reportA!, AlloggiatiMode.Live);
         await world.AddReceiptAsync(reportB!, AlloggiatiMode.Simulated);
-        // The proof of the host is filed under the property and the arrival day: another property's, or another day's, proves nothing here.
         await world.AddProofAsync(world.Hidden.Id, ManualProofKind.AlloggiatiReceipt, DateOnly.FromDateTime(Day(-2)));
         await world.AddProofAsync(world.Hidden.Id, ManualProofKind.AlloggiatiReceipt, DateOnly.FromDateTime(Day(-5)));
         await world.AddProofAsync(world.Hidden.Id, ManualProofKind.TouristTaxPayment, DateOnly.FromDateTime(Day(-1)));
@@ -224,7 +206,6 @@ public class ComplianceStatusServiceTests
         var live = ItemOf(status, viaReceipt).Verdict;
         Assert.Equal((ComplianceLight.Green, ComplianceReasonCodes.ReceiptArchived, ComplianceEvidenceSources.CasazenReceipt), (live.Light, live.Reason, live.EvidenceSource));
         Assert.StartsWith("receipt:", live.ProofReference, StringComparison.Ordinal);
-        // A simulated receipt never stands for a real one: the stay is sent, with no receipt, three days ago.
         Assert.Equal((ComplianceLight.Red, ComplianceReasonCodes.ReceiptMissing), (ItemOf(status, viaSimulated).Verdict.Light, ItemOf(status, viaSimulated).Verdict.Reason));
         var uploaded = ItemOf(status, viaUpload).Verdict;
         Assert.Equal((ComplianceLight.Green, ComplianceEvidenceSources.ManualUpload), (uploaded.Light, uploaded.EvidenceSource));
@@ -249,7 +230,6 @@ public class ComplianceStatusServiceTests
         Assert.Equal((ComplianceLight.Red, ComplianceReasonCodes.ReceiptMissing), (ItemOf(first, yesterday).Verdict.Light, ItemOf(first, yesterday).Verdict.Reason));
         Assert.Equal(ComplianceLight.Yellow, ItemOf(first, pending).Verdict.Light);
 
-        // The host uploads the receipt of the day: both turn green.
         await world.AddProofAsync(world.Granted.Id, ManualProofKind.AlloggiatiReceipt, DateOnly.FromDateTime(Day(-1)));
         await world.AddProofAsync(world.Granted.Id, ManualProofKind.AlloggiatiReceipt, DateOnly.FromDateTime(Day(0)));
         await using var later = world.Db();
@@ -280,21 +260,17 @@ public class ComplianceStatusServiceTests
         Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.EntrustedToChannelManager), (ItemOf(status, all).Verdict.Light, ItemOf(status, all).Verdict.Reason));
         foreach (var notEntrusted in new[] { some, draft, none })
         {
-            // Not entrusted: the host still has to send it (a link that is a draft or missing is not a send).
             Assert.Equal((ComplianceCockpitAction.SendAlloggiati, ComplianceLight.Red), (ItemOf(status, notEntrusted).Action, ItemOf(status, notEntrusted).Verdict.Light));
         }
 
-        // A guest that could not be written is not «to send» either: it is a failure to resolve, on the booking (E20/F01/US01/T02).
         Assert.Equal(
             (ComplianceCockpitAction.ResolveAlloggiatiFailure, ComplianceLight.Red, ComplianceReasonCodes.AlloggiatiFailed),
             (ItemOf(status, failed).Action, ItemOf(status, failed).Verdict.Light, ItemOf(status, failed).Verdict.Reason));
         Assert.Equal(failed.Id, ItemOf(status, failed).TargetId);
 
-        // Over 30 nights the channel manager does not send, entrusted or not.
         Assert.Equal((ComplianceCockpitAction.SendAlloggiatiManually, ComplianceReasonCodes.OverThirtyNightsNotSent),
             (ItemOf(status, longStay).Action, ItemOf(status, longStay).Verdict.Reason));
 
-        // With the connector off nothing is entrusted to the channel manager and the host sends: the same stays are all to send.
         world.ConnectorOn = false;
         await using var off = world.Db();
         var withoutConnector = await world.StatusService(off).EvaluateAsync(world.OrgWide, CancellationToken.None);
@@ -358,8 +334,6 @@ public class ComplianceStatusServiceTests
         Assert.Empty(await OpenTodosOfAsync(db, goneGuest.Id));
     }
 
-    // ─── Identity ───────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Identity_OnlyWhileTheVerificationIsOn_AndOnlyForAStayWithACheckInSession()
     {
@@ -378,7 +352,6 @@ public class ComplianceStatusServiceTests
         await world.AddVerificationLogAsync(verified, BiometricOutcome.Accept, byOperator: false);
         await world.AddVerificationLogAsync(decided, BiometricOutcome.Escalate, byOperator: true);
 
-        // Off (the default): the identity of nobody is asked about.
         await using var off = world.Db();
         var without = await world.StatusService(off).EvaluateAsync(world.OrgWide, CancellationToken.None);
         Assert.DoesNotContain(without.Items, i => i.Kind == ComplianceItemKind.Identity);
@@ -394,8 +367,6 @@ public class ComplianceStatusServiceTests
         var passed = IdentityOf(status, verified);
         Assert.Equal((ComplianceLight.Green, ComplianceEvidenceSources.BiometricLog), (passed.Light, passed.EvidenceSource));
         Assert.Equal((ComplianceLight.Red, ComplianceReasonCodes.OperatorDecisionRequired), (IdentityOf(status, escalated).Light, IdentityOf(status, escalated).Reason));
-        // An operator's row that is not an approval (here the one that asks the guest for a new photo) is no pass, and it answers the hand-off: the
-        // guest has to send a new photo, so nothing waits for an operator any more.
         Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.SelfieAwaited), (IdentityOf(status, decided).Light, IdentityOf(status, decided).Reason));
         Assert.Null(IdentityOf(status, decided).ProofReference);
         Assert.DoesNotContain(status.Items, i => i.Kind == ComplianceItemKind.Identity && i.BookingId == noSession.Id);
@@ -408,7 +379,6 @@ public class ComplianceStatusServiceTests
         var world = await World.SeedAsync();
         world.IdentityOn = true;
 
-        // Far from the arrival (more than the 24 hours before which a missing verification is red): only «an operator has to decide» is red.
         var (asked, _) = await world.AddStayAsync(world.Granted, checkInOffset: 6);
         var (refused, _) = await world.AddStayAsync(world.Granted, checkInOffset: 6);
         var (attemptsUsed, _) = await world.AddStayAsync(world.Granted, checkInOffset: 6);
@@ -425,7 +395,6 @@ public class ComplianceStatusServiceTests
         await world.AddSessionAsync(answered, operatorRequested: true);
         await world.AddSessionAsync(waitingForTheSelfie);
         await world.AddSessionAsync(noShowIsNotAsked, operatorRequested: true);
-        // An operator wrote a row after the hand-off (here the new photo asked for): the decision has been taken, the guest sends the selfie again.
         await world.AddVerificationLogAsync(answered, BiometricOutcome.Escalate, byOperator: true);
 
         await using var db = world.Db();
@@ -436,9 +405,6 @@ public class ComplianceStatusServiceTests
             Assert.Equal((ComplianceLight.Red, ComplianceReasonCodes.OperatorDecisionRequired), (IdentityOf(status, stay).Light, IdentityOf(status, stay).Reason));
         }
 
-        // A consent that was given with the attempts used is still the old rule of the queue (no request recorded: a usable session that used its
-        // attempts WITHOUT a consent); a review of a session that expired is nobody's to decide; an answered hand-off is answered; and the stay
-        // that waits for the selfie is only waiting.
         foreach (var stay in new[] { consentGivenAttemptsUsed, reviewExpired, answered, waitingForTheSelfie })
         {
             Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.SelfieAwaited), (IdentityOf(status, stay).Light, IdentityOf(status, stay).Reason));
@@ -469,7 +435,6 @@ public class ComplianceStatusServiceTests
         await world.AddSessionAsync(acceptedThenReopened, outcome: BiometricOutcome.Escalate);
         await world.AddSessionAsync(noRow, outcome: BiometricOutcome.Accept);
 
-        // The rows an operator writes name who decided, not what: a rejection and the request for a new photo are rows of an operator too.
         await world.AddVerificationLogAsync(operatorRejected, BiometricOutcome.Reject, byOperator: true);
         await world.AddVerificationLogAsync(operatorReopened, BiometricOutcome.Escalate, byOperator: true);
         await world.AddVerificationLogAsync(automaticRejected, BiometricOutcome.Reject, byOperator: false);
@@ -490,7 +455,6 @@ public class ComplianceStatusServiceTests
             Assert.Null(verdict.LastVerifiedAt);
         }
 
-        // Only an Accept is a pass; who wrote it names the source.
         var approved = IdentityOf(status, operatorApproved);
         Assert.Equal((ComplianceLight.Green, ComplianceEvidenceSources.OperatorDecision, ComplianceReasonCodes.IdentityVerified), (approved.Light, approved.EvidenceSource, approved.Reason));
         var accepted = IdentityOf(status, automaticAccepted);
@@ -516,7 +480,6 @@ public class ComplianceStatusServiceTests
         await FeedAsync(await world.StatusService(db).EvaluateAsync(world.OrgWide, CancellationToken.None));
         var oldTodo = await db.InternalActivities.AsNoTracking().SingleAsync(a => a.EntityId == stay.Id && a.Action == ActivityAction.VerifyIdentity);
 
-        // A photo request recorded before the fix can leave an open row. Direct reads hide it even before reconciliation.
         await world.AddVerificationLogAsync(stay, BiometricOutcome.Escalate, byOperator: true);
         Assert.DoesNotContain(await activities.GetPendingAsync(world.OrgWide, CancellationToken.None), a => a.Id == oldTodo.Id);
         var waiting = await world.StatusService(db).EvaluateAsync(world.OrgWide, CancellationToken.None);
@@ -534,8 +497,6 @@ public class ComplianceStatusServiceTests
         await FeedAsync(reopened);
         Assert.Contains(await activities.GetPendingAsync(world.OrgWide, CancellationToken.None), a => a.Action == ActivityAction.VerifyIdentity && a.EntityId == stay.Id && a.Id != oldTodo.Id);
     }
-
-    // ─── Properties: connection, credentials, CIN, rate, periods ────────────────────────────────────────
 
     [Fact]
     public async Task Property_ConnectionCredentialsAndCin_AreLightedFromWhatIsKnown()
@@ -575,7 +536,6 @@ public class ComplianceStatusServiceTests
         world.Granted.City = "Milano";
         await world.SaveAsync(world.Granted);
 
-        // A stay in October with a tax recorded, and one in September with none, both finished.
         await world.AddStayAsync(world.Granted, checkInOffset: -10, nights: 2, status: BookingStatus.CheckedOut, touristTax: 12m);
         await world.AddStayAsync(world.Granted, checkInOffset: -45, nights: 2, status: BookingStatus.CheckedOut, touristTax: 0m);
 
@@ -589,7 +549,6 @@ public class ComplianceStatusServiceTests
             Assert.Equal(("2026-10", ComplianceCockpitAction.DeclareTouristTax, ComplianceLight.Red, ComplianceReasonCodes.EvidenceMissing), (tax.Period, tax.Action, tax.Verdict.Light, tax.Verdict.Reason));
             var rate = Assert.Single(status.Items, i => i.Kind == ComplianceItemKind.MunicipalityRate);
             Assert.Equal(ComplianceReasonCodes.MunicipalityRateMissing, rate.Verdict.Reason);
-            // The months looked at: the closed ones inside the lookback (the month in progress is not one).
             Assert.Contains("2026-10", status.Evaluated.Periods);
             Assert.DoesNotContain("2026-11", status.Evaluated.Periods);
         }
@@ -610,13 +569,11 @@ public class ComplianceStatusServiceTests
             Assert.Equal((ComplianceLight.Red, ComplianceReasonCodes.DeadlineOverdue), (istat["2026-09"].Verdict.Light, istat["2026-09"].Verdict.Reason));
             Assert.Equal(ComplianceCockpitAction.UploadIstatProof, istat["2026-09"].Action);
 
-            // Both receipts of October's tax are archived; September owes nothing (the one stay carries no tax); the rate is known.
             var tax = Assert.Single(status.Items, i => i.Kind == ComplianceItemKind.TouristTax);
             Assert.Equal(("2026-10", ComplianceLight.Green), (tax.Period, tax.Verdict.Light));
             Assert.DoesNotContain(status.Items, i => i.Kind == ComplianceItemKind.MunicipalityRate);
         }
 
-        // A rate the host declared for the comune counts as known.
         world.Rates.Clear();
         await world.AddDeclaredRateAsync("Milano");
         await using (var db = world.Db())
@@ -635,7 +592,6 @@ public class ComplianceStatusServiceTests
         await world.AddStayAsync(world.Granted, checkInOffset: -10, nights: 2, status: BookingStatus.CheckedOut, touristTax: 12m);
         await world.AddStayAsync(world.Granted, checkInOffset: -45, nights: 2, status: BookingStatus.CheckedOut, touristTax: 8m);
 
-        // What is not a proof: a payment with no receipt, one that covers part of the month, one of another comune.
         await world.AddRemittanceAsync("Milano", new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31), withReceipt: false);
         await world.AddRemittanceAsync("Milano", new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 15), withReceipt: true);
         await world.AddRemittanceAsync("Bergamo", new DateOnly(2026, 7, 1), new DateOnly(2026, 10, 31), withReceipt: true);
@@ -647,7 +603,6 @@ public class ComplianceStatusServiceTests
             Assert.All(tax.Values, item => Assert.Equal((ComplianceLight.Red, ComplianceReasonCodes.EvidenceMissing), (item.Verdict.Light, item.Verdict.Reason)));
         }
 
-        // The payment of October with its receipt, and a quarterly one (typed in lower case) that covers September: the existing archive is the proof.
         await world.AddRemittanceAsync("Milano", new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31), withReceipt: true);
         await world.AddRemittanceAsync("milano", new DateOnly(2026, 7, 1), new DateOnly(2026, 9, 30), withReceipt: true);
         await using (var db = world.Db())
@@ -665,18 +620,14 @@ public class ComplianceStatusServiceTests
     [Fact]
     public void ClosedMonths_AreTheFullMonthsInsideTheLookback_BeforeTheMonthInProgress()
     {
-        // 90 days before 2026-11-06 is 2026-08-08: August is cut by the lookback, September and October are whole, November is in progress.
         Assert.Equal(
             [new DateOnly(2026, 9, 1), new DateOnly(2026, 10, 1)],
             ComplianceStatusService.ClosedMonths(new DateOnly(2026, 11, 6), 90));
-        // The lookback starts on the 1st: that month counts.
         Assert.Equal(
             [new DateOnly(2026, 10, 1)],
             ComplianceStatusService.ClosedMonths(new DateOnly(2026, 11, 1), 31));
         Assert.Empty(ComplianceStatusService.ClosedMonths(new DateOnly(2026, 11, 6), 5));
     }
-
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────────
 
     private static ComplianceStatusItem ItemOf(ComplianceStatusResult status, Booking stay) =>
         Assert.Single(status.Items, i => i.Kind == ComplianceItemKind.Alloggiati && i.BookingId == stay.Id);
@@ -684,10 +635,6 @@ public class ComplianceStatusServiceTests
     private static ComplianceVerdict IdentityOf(ComplianceStatusResult status, Booking stay) =>
         Assert.Single(status.Items, i => i.Kind == ComplianceItemKind.Identity && i.BookingId == stay.Id).Verdict;
 
-    /// <summary>
-    /// One org with a collaborator «Solo alcuni» who was given the first property, a hidden property, and a property of another org; the
-    /// services under test over the real context, with the senders, the connection health, the rates and the flags under the test's control.
-    /// </summary>
     internal sealed class World
     {
         private readonly string _database = Guid.NewGuid().ToString();
@@ -948,7 +895,6 @@ public class ComplianceStatusServiceTests
             await db.SaveChangesAsync();
         }
 
-        /// <summary>A payment of the tourist tax the host recorded (<see cref="TouristTaxRemittance"/>), with the receipt of the payment or without it.</summary>
         public async Task AddRemittanceAsync(string comune, DateOnly from, DateOnly to, bool withReceipt)
         {
             await using var db = Db();
@@ -986,10 +932,6 @@ public class ComplianceStatusServiceTests
             await db.SaveChangesAsync();
         }
 
-        /// <summary>
-        /// A check-in session of the stay, created five hours before the clock of the test. <paramref name="outcome"/> is the last comparison;
-        /// the other members are what makes the session wait for an operator (the guest asked for one or refused the consent) or end (expired).
-        /// </summary>
         public async Task AddSessionAsync(
             Booking stay,
             BiometricOutcome? outcome = null,

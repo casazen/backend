@@ -67,7 +67,6 @@ public class BookingReviewsController(
         return Ok(BookingReviewsDto.From(await reviews.RefreshAsync(scope.Scope!, id, cancellationToken)));
     }
 
-    /// <summary>The caller's reach and the row check of the booking: the booking is authorized as a row of its property, or it is a 404 (a booking of another org is a missing one).</summary>
     private async Task<(HostScope? Scope, ActionResult? Failure)> AuthorizedScopeAsync(Guid bookingId, CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);

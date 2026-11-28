@@ -16,7 +16,6 @@ public class PaymentProviderFeeJob(
 {
     public const string RecurringJobId = "payment-provider-fees";
 
-    /// <summary>Every 15 minutes.</summary>
     public const string Cron = "*/15 * * * *";
 
     [DisableConcurrentExecution(JobLockTimeouts.FrequentSeconds)]

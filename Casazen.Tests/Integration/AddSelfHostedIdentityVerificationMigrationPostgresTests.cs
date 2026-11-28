@@ -114,7 +114,6 @@ public class AddSelfHostedIdentityVerificationMigrationPostgresTests : IAsyncLif
         Assert.Empty(await after.Database.GetPendingMigrationsAsync());
     }
 
-    /// <summary>Data: two processes that close the same attempt (the same key, the same booking) write one row; the legacy rows, without a key, are not limited.</summary>
     [PostgresFact]
     public async Task AddSelfHostedIdentityVerificationMigration_DuplicateIdempotencyKeyIsRejected()
     {
@@ -135,7 +134,6 @@ public class AddSelfHostedIdentityVerificationMigrationPostgresTests : IAsyncLif
             Assert.Equal(BiometricVerificationLog.IdempotencyIndexName, postgres.ConstraintName);
         }
 
-        // The legacy path writes no key: any number of its rows; another key of the same booking, and the same key of another booking, are other attempts.
         await using (var more = _database.CreateContext())
         {
             more.BiometricVerificationLogs.AddRange(Log(world, null), Log(world, null), Log(world, "a7f3c2d1-another-attempt"));
@@ -158,7 +156,6 @@ public class AddSelfHostedIdentityVerificationMigrationPostgresTests : IAsyncLif
         var world = await MigratedWorldAsync();
         await using (var db = _database!.CreateContext())
         {
-            // The row of every property and the row of one property, the same format and channel: both are kept.
             db.IdentitySegmentSettings.AddRange(Segment(world.OrgId, null), Segment(world.OrgId, world.PropertyId));
             await db.SaveChangesAsync();
         }
@@ -168,7 +165,6 @@ public class AddSelfHostedIdentityVerificationMigrationPostgresTests : IAsyncLif
 
         await using (var db = _database.CreateContext())
         {
-            // Another channel is another segment; a row written without mode and assurance takes the defaults of the columns.
             db.IdentitySegmentSettings.Add(Segment(world.OrgId, null, IdentityChannels.IosSafari));
             await db.SaveChangesAsync();
             await db.Database.ExecuteSqlAsync($"""
@@ -244,14 +240,12 @@ public class AddSelfHostedIdentityVerificationMigrationPostgresTests : IAsyncLif
         Assert.Contains("WHERE (\"PropertyId\" IS NOT NULL)", await IndexDefinitionAsync(read, IdentitySegmentSetting.PropertyIndexName), StringComparison.Ordinal);
     }
 
-    /// <summary>A check-in session as the schema before the migration had it: the legacy path, a verification accepted at the first attempt.</summary>
     internal static FormattableString LegacySessionStatement(Guid id, Guid bookingId, Guid orgId) => $"""
         INSERT INTO "GuestCheckInSessions" (
             "Id", "BookingId", "OrgId", "TokenHash", "ExpiresAt", "Status", "BiometricAttempts", "BiometricOutcome", "CreatedAt", "UpdatedAt")
         VALUES ({id}, {bookingId}, {orgId}, {id.ToString("N")}, {Now.AddDays(7)}, 1, 1, 0, now(), now());
         """;
 
-    /// <summary>The log row of that verification, with the columns of the schema before the migration (the agent decided, no policy, no key).</summary>
     internal static FormattableString LegacyLogStatement(Guid id, Guid orgId, Guid bookingId, Guid guestId) => $"""
         INSERT INTO "BiometricVerificationLogs" (
             "Id", "OrgId", "BookingId", "GuestId", "Outcome", "Attempts", "ModelName", "ModelVersion", "ThresholdsJson", "Provisional", "CreatedAt")
@@ -260,7 +254,6 @@ public class AddSelfHostedIdentityVerificationMigrationPostgresTests : IAsyncLif
 
     private sealed record World(Guid OrgId, Guid PropertyId, Guid GuestId, Guid BookingId, Guid OtherBookingId, Guid SessionId, Guid DefaultsSegmentId);
 
-    /// <summary>A database at the latest migration with an org, its owner, a property, a guest, two bookings and a check-in session, written through the model.</summary>
     private async Task<World> MigratedWorldAsync()
     {
         await _database!.MigrateEmptyToAsync();

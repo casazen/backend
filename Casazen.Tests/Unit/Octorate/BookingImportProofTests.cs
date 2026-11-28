@@ -19,8 +19,6 @@ namespace Casazen.Tests.Unit.Octorate;
 /// </summary>
 public class BookingImportProofTests
 {
-    // ─── Money ───────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task BookingImport_PaymentAmounts_Accurate_Test()
     {
@@ -55,18 +53,15 @@ public class BookingImportProofTests
         Assert.Equal(2, result.Created);
         await using var read = h.NewDb();
         var first = await read.Bookings.AsNoTracking().SingleAsync(b => b.OctorateReservationId == "7001");
-        // Exactly what Octorate gave, to the cent: the commission is the sum of its COMMISSION lines, the paid amount is totalPaid.
         Assert.Equal(18.15m, first.OtaCommission);
         Assert.Equal(123.45m, first.OtaPaidAmount);
         Assert.Equal(300.10m, first.BasePrice);
         Assert.Equal(330.55m, first.TotalPrice);
         Assert.Equal(6.50m, first.TouristTax);
-        // Net and balance have no documented source: never derived from the other figures.
         Assert.Null(first.OtaNetAmount);
         Assert.Null(first.OtaBalanceAmount);
 
         var second = await read.Bookings.AsNoTracking().SingleAsync(b => b.OctorateReservationId == "7002");
-        // No COMMISSION line: no commission, net or balance, and nothing is made up from roomGross.
         Assert.Null(second.OtaCommission);
         Assert.Null(second.OtaNetAmount);
         Assert.Null(second.OtaBalanceAmount);
@@ -82,14 +77,11 @@ public class BookingImportProofTests
         await using var db = h.NewDb();
         var service = h.Service(db);
 
-        // The first version is in the currency of the property: its figures are stored.
         h.Serve(Res("7001"));
         await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
         var held = await h.ReadBookingAsync("7001");
         Assert.Equal((300m, 330m, 6m, 45m, 100m), (held.BasePrice, held.TotalPrice, held.TouristTax, held.OtaCommission, held.OtaPaidAmount));
 
-        // A newer version in francs, and a newer one that states no currency at all: its amounts are in another unit, or in an unknown one, so
-        // none is written, and no zero takes the place of the figures held.
         var inFrancs = Res("7001") with
         {
             UpdatedAt = SecondVersion,
@@ -112,7 +104,6 @@ public class BookingImportProofTests
             Assert.Equal(version.UpdatedAt, booking.OctorateUpdatedAt);
         }
 
-        // A booking made from such a reservation takes no amount of it: the OTA figures are "not available", and no price is written.
         h.Serve(Res("7002") with { Currency = "CHF" }, Res("7003") with { Currency = null });
         await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
         foreach (var id in new[] { "7002", "7003" })
@@ -135,7 +126,6 @@ public class BookingImportProofTests
         h.Serve(Res("7001"));
         await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
 
-        // A newer version, in the currency of the property, that moves the stay and gives no price at all.
         h.Serve(Res("7001") with
         {
             UpdatedAt = SecondVersion,
@@ -149,7 +139,6 @@ public class BookingImportProofTests
         });
         var result = await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
 
-        // The dates follow the reservation; the prices are the ones held, not zero. What the channel kept and what was paid are "not available".
         Assert.Equal(1, result.Updated);
         var booking = await h.ReadBookingAsync("7001");
         Assert.Equal(new DateTime(2026, 11, 24, 0, 0, 0, DateTimeKind.Utc), booking.CheckInDate);
@@ -192,8 +181,6 @@ public class BookingImportProofTests
         Assert.Equal(BookingStatus.Cancelled, (await read.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId)).Status);
     }
 
-    // ─── Once, and in order ──────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task BookingImport_UniqueKey_NoDuplicates_Test()
     {
@@ -206,14 +193,12 @@ public class BookingImportProofTests
         var second = await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
         var third = await service.ImportIncrementalAsync(h.PropertyId, Now.UtcDateTime.AddDays(-2), CancellationToken.None);
 
-        // The same reservation read three times is one booking, and never an error.
         Assert.Equal(1, first.Created);
         Assert.Equal((0, 0, 1), (second.Created, second.Updated, second.Skipped));
         Assert.Equal((0, 0, 1), (third.Created, third.Updated, third.Skipped));
         await using var read = h.NewDb();
         Assert.Equal(1, await read.Bookings.CountAsync(b => b.OctorateReservationId == "7001"));
 
-        // The database enforces it too: a unique index on (org, Octorate id) for the rows that have one.
         var index = read.Model.FindEntityType(typeof(Booking))!.GetIndexes().Single(i => i.GetDatabaseName() == Booking.OctorateReservationIndexName);
         Assert.True(index.IsUnique);
         Assert.Equal([nameof(Booking.OrgId), nameof(Booking.OctorateReservationId)], index.Properties.Select(p => p.Name));
@@ -230,7 +215,6 @@ public class BookingImportProofTests
         await using var db = h.NewDb();
         var service = h.Service(db);
 
-        // The newer version arrives first, the older one after it.
         h.Serve(newer);
         await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
         h.Serve(older);
@@ -243,7 +227,6 @@ public class BookingImportProofTests
         Assert.Equal(3, booking.NumberOfGuests);
         Assert.Equal(SecondVersion, booking.OctorateUpdatedAt);
 
-        // Out of order, even when the older one is read first and the newer is a later read: the newer one wins.
         var h2 = new BookingImportHarness();
         await using var db2 = h2.NewDb();
         var service2 = h2.Service(db2);
@@ -267,11 +250,8 @@ public class BookingImportProofTests
         await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
         await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
 
-        // One single read for the first run; the second run saw the same updateTime in the list and read nothing more.
         h.Client.Verify(c => c.GetReservationAsync(Accommodation, "7001", It.IsAny<CancellationToken>()), Times.Once);
     }
-
-    // ─── One org never sees another's ────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task BookingImport_TenantIsolation_Test()
@@ -284,7 +264,6 @@ public class BookingImportProofTests
 
         var result = await h.Service(db).ImportAllAsync(h.PropertyId, CancellationToken.None);
 
-        // The same Octorate id in another org is another reservation: org A's booking is new, org B's is untouched.
         Assert.Equal(1, result.Created);
         await using var read = h.NewDb();
         var all = await read.Bookings.AsNoTracking().Where(b => b.OctorateReservationId == "7001").ToListAsync();
@@ -297,7 +276,6 @@ public class BookingImportProofTests
         Assert.Equal(77m, theirs.TotalPrice);
         Assert.Equal(FirstVersion, theirs.UpdatedAt);
 
-        // What each org sees through its own tenant filter.
         await using var asB = h.NewDb(new RequestTenant(OrgB));
         Assert.Equal(foreignId, Assert.Single(await asB.Bookings.ToListAsync()).Id);
         await using var asA = h.NewDb(new RequestTenant(OrgA));
@@ -310,13 +288,11 @@ public class BookingImportProofTests
         var h = new BookingImportHarness();
         h.Serve(Res("7001"));
 
-        // Inside a request of org B the Octorate calls are org B's: the property is org A's, so the run is refused before any call.
         await using var asB = h.NewDb(new RequestTenant(OrgB));
         var asOrgB = h.Service(asB, tenant: new RequestTenant(OrgB));
         await Assert.ThrowsAsync<InvalidOperationException>(() => asOrgB.ImportAllAsync(h.PropertyId, CancellationToken.None));
         h.Client.Verify(c => c.GetReservationsAsync(It.IsAny<string>(), It.IsAny<OctorateReservationQuery>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // The handler of an event of org A runs under org A's tenant filter: the same run works, the queries name the org themselves.
         await using var asA = h.NewDb(new RequestTenant(OrgA));
         var result = await h.Service(asA, tenant: new RequestTenant(OrgA)).ImportAllAsync(h.PropertyId, CancellationToken.None);
         Assert.Equal(1, result.Created);
@@ -338,9 +314,7 @@ public class BookingImportProofTests
         Assert.All(result.Unmapped, u => Assert.Equal(Accommodation, u.AccommodationId));
         await using var read = h.NewDb();
         Assert.Equal(["7001"], await read.Bookings.Select(b => b.OctorateReservationId!).ToListAsync());
-        // The reservations of other rooms were not even read one by one.
         h.Client.Verify(c => c.GetReservationAsync(Accommodation, "7002", It.IsAny<CancellationToken>()), Times.Never);
-        // And no property was created for them.
         Assert.Equal(1, await read.Properties.IgnoreQueryFilters().CountAsync());
     }
 
@@ -355,15 +329,12 @@ public class BookingImportProofTests
         var before = await h.ReadBookingAsync("7001");
         Assert.Equal(h.PropertyId, before.PropertyId);
 
-        // Octorate moves the reservation to the room of another property of the org: a newer version, nothing else in it has changed.
         var other = await h.AddListingAsync("111111", "222222");
         h.Clock.Advance(TimeSpan.FromHours(1));
         h.ServeMore("111111", Res("7001", product: "222222") with { UpdatedAt = SecondVersion });
 
         var result = await service.ImportAllAsync(other, CancellationToken.None);
 
-        // It is the same booking, now on the other property (its nights are no longer held on the old one), with a modification recorded for
-        // the new property; no second booking is made.
         Assert.Equal((0, 1), (result.Created, result.Updated));
         var after = await h.ReadBookingAsync("7001");
         Assert.Equal((before.Id, other, SecondVersion), (after.Id, after.PropertyId, after.OctorateUpdatedAt));
@@ -405,8 +376,6 @@ public class BookingImportProofTests
         Assert.Equal(ImportOutcome.RoomNotChosen, result.Outcome);
         h.Client.VerifyNoOtherCalls();
     }
-
-    // ─── The stay, the guest, the state ──────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task BookingImport_TheStayDatesAreTheLocalDatesOfTheProperty()
@@ -452,7 +421,6 @@ public class BookingImportProofTests
         Assert.Null(byId["7001"].ChannelLabel);
         Assert.NotNull(byId["7001"].ConfirmedAt);
         Assert.NotNull(byId["7003"].CancelledAt);
-        // The id of Octorate is not the reference on the channel.
         Assert.All(byId.Values, b => Assert.Equal(string.Empty, b.ExternalId));
     }
 
@@ -471,13 +439,11 @@ public class BookingImportProofTests
         Assert.Equal((OrgA, "Giulia", "Rossi"), (guest.OrgId, guest.FirstName, guest.LastName));
         Assert.Equal(string.Empty, guest.Email);
         Assert.Equal(BookingImportService.GuestPurpose, guest.DataProcessingPurpose);
-        // No consent is claimed: the basis is the contract.
         Assert.Null(guest.ConsentDate);
         Assert.Null(guest.DataProcessingConsentDate);
         Assert.False(guest.MarketingConsent);
         Assert.Equal("Arriviamo tardi", booking.SpecialRequests);
 
-        // The booker is the first line of the Alloggiati communication.
         var line = await read.StayGuests.AsNoTracking().SingleAsync();
         Assert.Equal((booking.Id, OrgA, 0, StayGuestType.HeadOfFamily, "Giulia"), (line.BookingId, line.OrgId, line.Position, line.Type, line.FirstName));
         Assert.Equal(booking.GuestId, line.GuestId);
@@ -501,11 +467,8 @@ public class BookingImportProofTests
         var second = await read.Bookings.AsNoTracking().SingleAsync(b => b.OctorateReservationId == "7002");
         Assert.Equal(existing, first.GuestId);
         Assert.NotEqual(existing, second.GuestId);
-        // The two seeded guests, and one new for the other name; the first booking made no new one.
         Assert.Equal(3, await read.Guests.CountAsync());
     }
-
-    // ─── The events ──────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task BookingImport_RecordsTheEventsOfEachChangeOnce_WithIdsEnumsAndDatesOnly()
@@ -514,7 +477,6 @@ public class BookingImportProofTests
         await using var db = h.NewDb();
         var service = h.Service(db);
 
-        // New and confirmed: created and confirmed.
         h.Serve(Res("7001") with { Notes = "Allergica ai gatti", FirstName = "Giulietta", LastName = "Capuleti" });
         await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
         await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
@@ -522,13 +484,11 @@ public class BookingImportProofTests
             [DomainEventType.BookingCreated, DomainEventType.BookingConfirmed],
             (await h.ReadEventsAsync()).Select(e => e.EventType).Order());
 
-        // New dates: modified, once.
         h.Serve(Res("7001") with { UpdatedAt = SecondVersion, CheckIn = "2026-11-24", CheckOut = "2026-11-27", Notes = "Allergica ai gatti" });
         await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
         await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
         Assert.Equal(1, (await h.ReadEventsAsync()).Count(e => e.EventType == DomainEventType.BookingModified));
 
-        // Cancelled on the channel: cancelled, once, and not modified as well.
         var thirdVersion = SecondVersion.AddHours(3);
         h.Serve(Res("7001", OctorateBookingStatus.Cancelled) with { UpdatedAt = thirdVersion, CheckIn = "2026-11-24", CheckOut = "2026-11-27" });
         await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
@@ -547,7 +507,6 @@ public class BookingImportProofTests
             Assert.Equal(
                 ["BookingId", "CheckIn", "CheckOut", "Origin", "PropertyId", "Source", "Status"],
                 json.RootElement.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
-            // No name, no note: ids, enums and dates only.
             foreach (var forbidden in new[] { "Giulietta", "Capuleti", "gatti" })
                 Assert.DoesNotContain(forbidden, e.PayloadJson, StringComparison.OrdinalIgnoreCase);
         });
@@ -567,12 +526,9 @@ public class BookingImportProofTests
 
         var result = await h.Service(db).ImportAllAsync(h.PropertyId, CancellationToken.None);
 
-        // Both are stored, for the record; nothing is told, scheduled or cleaned for them.
         Assert.Equal(2, result.Created);
         Assert.Empty(await h.ReadEventsAsync());
     }
-
-    // ─── Where the run stops ─────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task BookingImport_ACompleteFullReadMarksTheListing_AWindowMarksItOnlyIfItReachesBack()
@@ -582,21 +538,17 @@ public class BookingImportProofTests
         await using var db = h.NewDb();
         var service = h.Service(db);
 
-        // A window before any complete read: it does not mark the listing.
         await service.ImportIncrementalAsync(h.PropertyId, Now.UtcDateTime.AddDays(-2), CancellationToken.None);
         Assert.Null(await h.ReadCheckpointAsync());
 
-        // The full read does.
         var full = await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
         Assert.True(full.IsComplete);
         Assert.Equal(Now.UtcDateTime, await h.ReadCheckpointAsync());
 
-        // A window that starts after the last complete read leaves a gap behind it: the mark stays where it was.
         h.Clock.SetUtcNow(Now.AddDays(5));
         await service.ImportIncrementalAsync(h.PropertyId, Now.UtcDateTime.AddDays(3), CancellationToken.None);
         Assert.Equal(Now.UtcDateTime, await h.ReadCheckpointAsync());
 
-        // One that reaches back to it moves the mark forward.
         await service.ImportIncrementalAsync(h.PropertyId, Now.UtcDateTime.AddDays(-1), CancellationToken.None);
         Assert.Equal(Now.AddDays(5).UtcDateTime, await h.ReadCheckpointAsync());
     }
@@ -611,7 +563,6 @@ public class BookingImportProofTests
 
         var result = await h.Service(db).ImportAllAsync(h.PropertyId, CancellationToken.None);
 
-        // The other reservation is imported; the failed one is read again by the next run; the mark does not move.
         Assert.Equal(ImportOutcome.Incomplete, result.Outcome);
         Assert.Equal((1, 1), (result.Created, result.Failed));
         Assert.Null(await h.ReadCheckpointAsync());
@@ -621,7 +572,6 @@ public class BookingImportProofTests
     public async Task BookingImport_AShortPageIsNotTheEnd_AndAnItemThatCannotBeReadMakesTheRunIncomplete()
     {
         var h = new BookingImportHarness();
-        // A server that serves fewer reservations than the 200 asked for, an item on the first page with no usable id, and one more page after it.
         h.Client
             .Setup(c => c.GetReservationsAsync(Accommodation, It.IsAny<OctorateReservationQuery>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string _, OctorateReservationQuery query, CancellationToken _) => query.Page switch
@@ -636,8 +586,6 @@ public class BookingImportProofTests
 
         var result = await h.Service(db).ImportAllAsync(h.PropertyId, CancellationToken.None);
 
-        // The page after the short one was read (7002 is imported) and the list was followed to its empty end. The item that could not be read
-        // counts as failed, so the run is not complete and the mark does not move: the next run reads the window again.
         Assert.Equal(2, result.Created);
         Assert.Equal(ImportOutcome.Incomplete, result.Outcome);
         Assert.Equal(1, result.Failed);
@@ -687,19 +635,15 @@ public class BookingImportProofTests
         await using var db = h.NewDb();
         var service = h.Service(db);
 
-        // The reconciliation protects what a person changed five minutes ago...
         var guarded = await service.ImportAllAsync(h.PropertyId, CancellationToken.None, new BookingImportOptions(TimeSpan.FromMinutes(5)));
         Assert.Equal((0, 0, 1), (guarded.Created, guarded.Updated, guarded.Skipped));
         Assert.Equal(BookingStatus.Confirmed, (await h.ReadBookingAsync("7001")).Status);
 
-        // ...the daily import and the webhooks have no such protection.
         var open = await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
         Assert.Equal(1, open.Updated);
         Assert.Equal(BookingStatus.Cancelled, (await h.ReadBookingAsync("7001")).Status);
         Assert.Equal(bookingId, (await h.ReadBookingAsync("7001")).Id);
     }
-
-    // ─── What CasaZen sends back ─────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task SyncBookingState_ArrivalAndDeparture_UseTheCheckInStatusOperation()
@@ -711,7 +655,6 @@ public class BookingImportProofTests
 
         await service.SyncBookingStateAsync(bookingId, BookingStatus.CheckedIn, CancellationToken.None);
         await service.SyncBookingStateAsync(bookingId, BookingStatus.CheckedOut, CancellationToken.None);
-        // A state Octorate has no operation for sends nothing.
         await service.SyncBookingStateAsync(bookingId, BookingStatus.Confirmed, CancellationToken.None);
         await service.SyncBookingStateAsync(bookingId, BookingStatus.Pending, CancellationToken.None);
 

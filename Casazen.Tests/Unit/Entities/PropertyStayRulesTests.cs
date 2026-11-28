@@ -7,10 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Entities;
 
-/// <summary>
-/// DB-03: the limits of the minimum stay and of the weekend surcharge are written once (<see cref="PropertyStayRules"/>) and
-/// every place that bounds them (entity, create and update forms, CHECK constraints) must say the same thing.
-/// </summary>
 public class PropertyStayRulesTests
 {
     [Theory]
@@ -87,7 +83,6 @@ public class PropertyStayRulesTests
     [Fact]
     public void MinimumStay_CannotExceedTheLongestShortTermLet()
     {
-        // 30 nights: the longest "locazione breve"; a longer minimum would make the property unbookable by the guests.
         Assert.Equal(30, PropertyStayRules.MaxMinNights);
         Assert.Equal(1, PropertyStayRules.MinMinNights);
     }

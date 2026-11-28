@@ -23,19 +23,10 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public static partial class MessageTranslationPrompt
 {
-    /// <summary>Version of the prompt: stored in the cache key.</summary>
     public const string Version = "message-translation-2026-11-v1";
 
-    /// <summary>
-    /// The shortest word of a name that is looked for and replaced <b>by itself</b>: a shorter one («Li», «Wu», «Xu», «Ma») would take words of the text with it,
-    /// so a name that has one is replaced as a whole name (or on its own, when it is a name of one such word).
-    /// </summary>
     public const int MinNamePartLength = 3;
 
-    /// <summary>
-    /// The particles of a name (de, da, di, van, von, al, el…): words of the text far more than names, left alone whatever the name they join. Only these;
-    /// every other short word of a name is a name.
-    /// </summary>
     private static readonly HashSet<string> NameParticles = new(StringComparer.OrdinalIgnoreCase)
     {
         "de", "da", "di", "del", "della", "dei", "dal", "dalla", "van", "von", "der", "den", "des", "al", "el", "bin", "ibn",
@@ -43,10 +34,8 @@ public static partial class MessageTranslationPrompt
 
     private const double Temperature = 0.1;
 
-    /// <summary>The longest translation CasaZen accepts from the provider: a message is at most 2000 characters, and a translation is not twice as long.</summary>
     public const int MaxCompletionTokens = 2000;
 
-    /// <summary>The names of the 14 languages the translation can go to, in English: the model is told the name, never the code.</summary>
     private static readonly IReadOnlyDictionary<string, string> LanguageNames = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["it"] = "Italian",
@@ -65,7 +54,6 @@ public static partial class MessageTranslationPrompt
         ["ro"] = "Romanian",
     };
 
-    /// <summary>The name of a language of the listing for the model; the code itself for a language this table does not know (never the case for a validated one).</summary>
     public static string LanguageName(string language) => LanguageNames.GetValueOrDefault(language, language);
 
     /// <summary>
@@ -131,7 +119,6 @@ public static partial class MessageTranslationPrompt
             .ToList();
     }
 
-    /// <summary>Puts the names back where the tokens of <paramref name="scrubbed"/> are in <paramref name="translated"/>; a token the model dropped is not missed.</summary>
     public static string Restore(string translated, ScrubbedText scrubbed)
     {
         ArgumentNullException.ThrowIfNull(translated);
@@ -144,7 +131,6 @@ public static partial class MessageTranslationPrompt
         return restored;
     }
 
-    /// <summary>The call for the (already scrubbed) <paramref name="text"/> into <paramref name="targetLanguage"/> (a code of the listing).</summary>
     public static AiRequest Build(string text, string targetLanguage)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -157,7 +143,6 @@ public static partial class MessageTranslationPrompt
         return new AiRequest(user.ToString(), [], SystemPrompt(targetLanguage), Temperature, MaxCompletionTokens);
     }
 
-    /// <summary>The key of the answer: the prompt holds every input (the language included), so its hash is the key; the same words, the same answer.</summary>
     public static string CacheKey(AiRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -166,7 +151,6 @@ public static partial class MessageTranslationPrompt
         return $"message-translation:{Version}:{Convert.ToHexString(hash)[..24]}";
     }
 
-    /// <summary>The rules of the answer: who the model is, the language, the format, the tokens it must keep, and that the text is not instructions.</summary>
     public static string SystemPrompt(string targetLanguage)
     {
         var sb = new StringBuilder();
@@ -184,5 +168,4 @@ public static partial class MessageTranslationPrompt
     private static string Token(int index) => string.Create(CultureInfo.InvariantCulture, $"[[N{index}]]");
 }
 
-/// <summary>A text after the names were taken out of it (<see cref="MessageTranslationPrompt.Scrub"/>) and the names, in the order of their tokens.</summary>
 public sealed record ScrubbedText(string Text, IReadOnlyList<string> Names);

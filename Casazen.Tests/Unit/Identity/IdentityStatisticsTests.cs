@@ -3,14 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// E74/F01/US01/T01: the statistics of the release criteria (<see cref="IdentityStatistics"/>) against the figures of the specification and against values
-/// computed independently of the implementation. Where a table holds numbers, they come from this recipe, run once outside the code under test with the
-/// Python standard library only (exact integers and 70-digit decimals, no library of statistics):
-/// the Wilson interval is <c>(p + z^2/2n -+ z * sqrt(p(1-p)/n + z^2/4n^2)) / (1 + z^2/n)</c> with z = <c>statistics.NormalDist().inv_cdf(1 - (1 - c) / 2)</c>;
-/// the Clopper-Pearson upper bound U is the root of <c>sum_{i=0..k} C(n,i) U^i (1-U)^(n-i) = 1 - c</c>, found by bisection on the exact sum
-/// (equivalently <c>U = BetaInverse(c; k + 1, n - k)</c>); the percentiles are the nearest-rank definition of the textbook.
-/// </summary>
 public class IdentityStatisticsTests
 {
     private const double Tight = 1e-12;
@@ -25,7 +17,6 @@ public class IdentityStatisticsTests
         Assert.True(low > 0.80, "the criterion of the specification: the lower Wilson bound of 425 of 500 is above 80%");
     }
 
-    // (successes, n, low, high) at 95%.
     [Theory]
     [InlineData(425, 500, 0.8160389193683016, 0.8786240423086118)]
     [InlineData(0, 10, 0.0, 0.27753279986288915)]
@@ -47,7 +38,6 @@ public class IdentityStatisticsTests
         Assert.InRange(actual.High, high - Tight, high + Tight);
     }
 
-    // (confidence, low, high) for 425 of 500.
     [Theory]
     [InlineData(0.99, 0.8042976539556046, 0.8865351377611248)]
     [InlineData(0.90, 0.821853243835376, 0.8743793809237347)]
@@ -94,7 +84,6 @@ public class IdentityStatisticsTests
         }
     }
 
-    // (confidence, z): the two-sided standard normal quantile, statistics.NormalDist().inv_cdf(1 - (1 - c) / 2).
     [Theory]
     [InlineData(0.5, 0.6744897501960817)]
     [InlineData(0.8, 1.2815515655446008)]
@@ -108,7 +97,6 @@ public class IdentityStatisticsTests
         Assert.InRange(IdentityStatistics.TwoSidedZ(confidence), z - Tight, z + Tight);
     }
 
-    // (z, P(Z > z)) = 0.5 * math.erfc(z / sqrt(2)).
     [Theory]
     [InlineData(-1.0, 0.8413447460685428)]
     [InlineData(0.0, 0.5)]
@@ -122,7 +110,6 @@ public class IdentityStatisticsTests
         Assert.InRange(IdentityStatistics.NormalUpperTail(z), tail * (1.0 - 1e-12) - 1e-15, tail * (1.0 + 1e-12) + 1e-15);
     }
 
-    // (x, math.lgamma(x)).
     [Theory]
     [InlineData(0.5, 0.5723649429247004)]
     [InlineData(1.0, 0.0)]
@@ -138,7 +125,6 @@ public class IdentityStatisticsTests
     [Fact]
     public void ClopperPearsonUpper_NoErrors_IsTheClosedForm_OfTheSpecificationFigures()
     {
-        // 1 - 0.05^(1/n): the spec's "about 30,000 trials for 0.01%" and "about 300 trials per class for 1%".
         var impostors = IdentityStatistics.ClopperPearsonUpper(0, 29_956);
         var attacks = IdentityStatistics.ClopperPearsonUpper(0, 300);
 
@@ -148,7 +134,6 @@ public class IdentityStatisticsTests
         Assert.InRange(attacks, 0.009936081944457713 - 1e-13, 0.009936081944457713 + 1e-13);
     }
 
-    // (errors, n, upper bound at 95%).
     [Theory]
     [InlineData(1, 10, 0.39416330243650477)]
     [InlineData(2, 50, 0.12061415542204414)]
@@ -169,7 +154,6 @@ public class IdentityStatisticsTests
         Assert.InRange(actual, expected * (1.0 - 1e-9), expected * (1.0 + 1e-9));
     }
 
-    // 3 errors in 100 trials, one-sided, at other confidences.
     [Theory]
     [InlineData(0.99, 0.09697104526534447)]
     [InlineData(0.90, 0.06558575150289181)]
@@ -190,7 +174,6 @@ public class IdentityStatisticsTests
     {
         var bound = IdentityStatistics.ClopperPearsonUpper(errors, n, confidence);
 
-        // A plain sum of the binomial terms, written here and not shared with the implementation.
         Assert.InRange(IndependentBinomialCdf(errors, n, bound), 1.0 - confidence - 1e-9, 1.0 - confidence + 1e-9);
     }
 
@@ -286,7 +269,6 @@ public class IdentityStatisticsTests
     [Fact]
     public void FmrAndFnmr_AtTheSameThreshold_ReadTheSameScoresTheOtherWay()
     {
-        // One threshold: an impostor at the threshold is a false match, a genuine one at the threshold is a match, never both errors.
         double[] scores = [0.30, 0.55, 0.55, 0.80];
 
         Assert.Equal(3, IdentityStatistics.Fmr(scores, 0.55).Count);
@@ -369,7 +351,6 @@ public class IdentityStatisticsTests
     [Fact]
     public void FieldExactness_CountsTheExactMatchesPerField_AfterTheNormalizationOfTheField()
     {
-        // The normalization is the caller's, per field: names compare without case, spaces and accents, the number without separators.
         static string? Normalize(string field, string? value)
         {
             if (value is null)
@@ -441,7 +422,6 @@ public class IdentityStatisticsTests
     [Fact]
     public void FieldExactness_TheLowerWilsonBoundIsWhatTheCriterionReads()
     {
-        // 295 of 300 exact is 98.3% observed, but its lower Wilson bound is under the 98% of the criterion; 299 of 300 passes it.
         var fiveMisses = ExactnessOfThreeHundredWithMisses(5);
         var oneMiss = ExactnessOfThreeHundredWithMisses(1);
 
@@ -453,7 +433,6 @@ public class IdentityStatisticsTests
     [Fact]
     public void Percentile_NearestRank_OnTheTextbookArray()
     {
-        // The textbook example of the nearest-rank method: {15, 20, 35, 40, 50}.
         double[] values = [40, 15, 50, 35, 20];
 
         Assert.Equal(15.0, IdentityStatistics.Percentile(values, 5));
@@ -467,7 +446,6 @@ public class IdentityStatisticsTests
     [Fact]
     public void Percentile_EveryRank_MatchesIntegerArithmetic()
     {
-        // The values 1..n, in descending order: the percentile is its own rank, ceil(percent * n / 100) at least 1, worked out here in integers.
         foreach (var n in Enumerable.Range(1, 200))
         {
             var values = Enumerable.Range(1, n).Reverse().Select(i => (double)i).ToList();
@@ -483,7 +461,6 @@ public class IdentityStatisticsTests
     [Fact]
     public void Percentile_P95OfTwentyValues_IsTheNineteenth_NotTheTwentieth()
     {
-        // 0.95 * 20 is 19.000000000000004 in floating point: the rank must still be 19.
         var values = Enumerable.Range(1, 20).Select(i => (double)i).ToList();
 
         Assert.Equal(19.0, IdentityStatistics.Percentile(values, 95));
@@ -556,7 +533,6 @@ public class IdentityStatisticsTests
     [Fact]
     public void Errors_NeverCarryAScoreOrAField()
     {
-        // A score of a person must not reach a message: the exception names the parameter and the rule, nothing else.
         var scoreException = Assert.Throws<ArgumentOutOfRangeException>(() => IdentityStatistics.Fmr([0.123456, double.NaN, 0.654321], 0.5));
         var thresholdException = Assert.Throws<ArgumentOutOfRangeException>(() => IdentityStatistics.Fnmr([0.123456], double.NaN));
         var fieldException = Assert.Throws<ArgumentOutOfRangeException>(() => IdentityStatistics.FieldExactness([(" ", "VALUE-SENTINEL", "VALUE-SENTINEL")], (_, value) => value));
@@ -579,7 +555,6 @@ public class IdentityStatisticsTests
         return Assert.Single(IdentityStatistics.FieldExactness(pairs, (_, value) => value));
     }
 
-    // sum_{i=0..k} C(n,i) p^i (1-p)^(n-i), the textbook way: the coefficient built term by term, the powers by Math.Pow.
     private static double IndependentBinomialCdf(int k, int n, double p)
     {
         var sum = 0.0;

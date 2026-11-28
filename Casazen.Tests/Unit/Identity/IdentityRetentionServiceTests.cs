@@ -37,12 +37,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// E73/F01/US02/T03 (NF-195, decision D9): the retention and the verifiable deletion of what the self-hosted identity verification keeps. The evidence past its time (and of a
-/// booking decided) is deleted, object and row marked; an abandoned session is closed as <c>abandoned</c> and loses its kept pictures and its challenge; the checks of the
-/// document and the logs past their retention go; every organization is judged with its own rows; a second run finds nothing; the erasure of a guest deletes its evidence; the
-/// platform administrators see what is overdue and the last run; the hourly job is scheduled only with one of the two flags on and carries no data.
-/// </summary>
 public sealed class IdentityRetentionServiceTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 27, 9, 0, 0, TimeSpan.Zero);
@@ -51,7 +45,6 @@ public sealed class IdentityRetentionServiceTests
     [Fact]
     public async Task IdentityRetention_ExpiredEvidence_IsDeletedWithFile()
     {
-        // Proof (data, AC1): the evidence past its expiry loses its object and its row is marked deleted (expired); a live one stays; a second run deletes nothing more.
         await using var world = new RetentionWorld();
         var booking = await world.StayAsync(world.OrgA);
         var expired = await world.EvidenceAsync(world.OrgA, booking, expiresAt: Now.UtcDateTime.AddMinutes(-1));
@@ -74,8 +67,6 @@ public sealed class IdentityRetentionServiceTests
     [Fact]
     public async Task IdentityRetention_TheEvidenceOfADecidedBooking_IsDeleted_WhateverItsExpiry()
     {
-        // The safety sweep: a decision after the evidence was kept (an operator's approval or rejection, or an approval of the policy) deletes it (decided); the reopening of an
-        // operator (a new photo asked, Escalate) is no decision; a decision before the evidence was kept does not count.
         await using var world = new RetentionWorld();
         var decided = await world.StayAsync(world.OrgA);
         var reopened = await world.StayAsync(world.OrgA);
@@ -100,8 +91,6 @@ public sealed class IdentityRetentionServiceTests
     [Fact]
     public async Task IdentityRetention_AbandonedSession_DeletesDocumentImages()
     {
-        // Proof (data, AC2): a verification opened 25 hours ago and never closed is closed as abandoned, its presence challenge cleared, its evidence deleted (abandoned) and the
-        // kept pictures of its document deleted, objects and rows. A verification opened an hour ago keeps everything.
         await using var world = new RetentionWorld();
         var abandonedStay = await world.StayAsync(world.OrgA);
         var activeStay = await world.StayAsync(world.OrgA);
@@ -135,8 +124,6 @@ public sealed class IdentityRetentionServiceTests
     [Fact]
     public async Task IdentityRetention_AnExpiredSession_LeavesThePicturesOfTheSessionThatReplacedItInUse()
     {
-        // The pictures are of the booking: an expired session (never opened, on the legacy path) of a booking whose new link is in use leaves them; once no session uses them
-        // (the new one expired too) they go.
         await using var world = new RetentionWorld();
         var stay = await world.StayAsync(world.OrgA);
         await world.SessionAsync(world.OrgA, stay, openedAt: null, expiresAt: Now.UtcDateTime.AddDays(-1));
@@ -183,8 +170,6 @@ public sealed class IdentityRetentionServiceTests
     [Fact]
     public async Task IdentityRetention_LogsOfOtherOrgUntouched()
     {
-        // Proof (data, isolation, AC3): the logs of the stays of org A whose check-out is older than 12 months are deleted; the logs of org B are judged with the stays of org B only
-        // (a row of B that names a booking of A is not deleted with A's), and a stay of A that ended 11 months ago keeps its logs.
         await using var world = new RetentionWorld();
         var oldStayOfA = await world.StayAsync(world.OrgA, checkOut: new DateTime(2025, 11, 1, 0, 0, 0, DateTimeKind.Utc));
         var recentStayOfA = await world.StayAsync(world.OrgA, checkOut: new DateTime(2026, 1, 10, 0, 0, 0, DateTimeKind.Utc));
@@ -227,7 +212,6 @@ public sealed class IdentityRetentionServiceTests
         await world.LogAsync(world.OrgA, rejected, VerificationMethod.Operator, BiometricOutcome.Reject, handedOff.AddDays(1));
         await world.LogAsync(world.OrgA, approved, VerificationMethod.Operator, BiometricOutcome.Accept, handedOff.AddDays(1));
 
-        // Three sessions need an operator (the rejected one, the replaced link of the approved stay, the waiting one): only the rows of an operator tell that two were answered.
         await using (var db = world.NewContext())
             Assert.Equal(3, await db.GuestCheckInSessions.IgnoreQueryFilters().Where(VerificationOperatorRules.NeedsOperator).CountAsync());
 
@@ -268,8 +252,6 @@ public sealed class IdentityRetentionServiceTests
     [Fact]
     public async Task IdentityRetention_WithBothFlagsOff_DeletesOnlyTheEvidencePastItsTime()
     {
-        // Proof (privacy, review of S015, point 2): a flag switched off never leaves an evidence with no expiry, so with both flags off a run deletes the evidence past its time (and
-        // only that: the sweep of the decided stays, the abandoned sessions, the kept pictures, the checks of the document and the logs wait for a flag).
         await using var world = new RetentionWorld();
         world.Flags.Set(FeatureFlags.CheckInIdentitySelfHosted, false);
         world.Flags.Set(FeatureFlags.CheckInIdentityReviewEvidence, false);
@@ -304,7 +286,6 @@ public sealed class IdentityRetentionServiceTests
 
         Assert.Equal(Now.UtcDateTime, world.RunLog.Last!.RanAt);
 
-        // One of the two flags is enough for the whole retention: the rest of the categories run.
         world.Flags.Set(FeatureFlags.CheckInIdentityReviewEvidence, true);
         var whole = await world.Service().PurgeAsync(Now.UtcDateTime, Ct);
 
@@ -315,8 +296,6 @@ public sealed class IdentityRetentionServiceTests
     [Fact]
     public async Task IdentityRetention_ALimitOutsideTheRetentionOutOfRange_DoesNotStopTheRun()
     {
-        // Review of S015, point 4: the run needs the three periods of IdentityVerification:Retention and nothing else of the section. A limit of the capture that is out of its range
-        // (Presence:MaxFrames) makes the section as a whole invalid for the capture, and must not make the retention skip its categories and end green with zeros.
         await using var world = new RetentionWorld();
         var stay = await world.StayAsync(world.OrgA);
         var expired = await world.EvidenceAsync(world.OrgA, stay, expiresAt: Now.UtcDateTime.AddMinutes(-1));
@@ -362,7 +341,6 @@ public sealed class IdentityRetentionServiceTests
         Assert.Null((await read.GuestCheckInSessions.IgnoreQueryFilters().AsNoTracking().SingleAsync(session => session.Id == abandoned.Id)).IdentityClosedAt);
         Assert.True(world.Storage.Objects.ContainsKey(image.FrontImageUrl));
 
-        // The same periods with the flags off: nothing of the periods is needed, the evidence goes and the run is not a failure.
         world.Flags.Set(FeatureFlags.CheckInIdentitySelfHosted, false);
         world.Flags.Set(FeatureFlags.CheckInIdentityReviewEvidence, false);
         await world.EvidenceAsync(world.OrgA, stay, expiresAt: Now.UtcDateTime.AddMinutes(-2));
@@ -398,8 +376,6 @@ public sealed class IdentityRetentionServiceTests
     [Fact]
     public async Task AdminBiometricsStatus_ReportsOverdueEvidence()
     {
-        // Proof (data, verifiable deletion, AC5): the status of the platform administrators counts the evidence past its time and the pictures of documents nobody uses any more,
-        // across the organizations, and the last run; after the purge nothing overdue remains.
         await using var world = new RetentionWorld();
         var stayOfA = await world.StayAsync(world.OrgA);
         var stayOfB = await world.StayAsync(world.OrgB);
@@ -422,7 +398,6 @@ public sealed class IdentityRetentionServiceTests
         Assert.Equal(Now.UtcDateTime, after.LastRunAt);
         Assert.Equal((2, 1, 1, 0), (after.LastRunCounts!.ExpiredEvidence, after.LastRunCounts.AbandonedSessions, after.LastRunCounts.AbandonedDocumentImages, after.LastRunCounts.FailedOrgs));
 
-        // A closed shape: counts and a time, nothing of a guest, a key or a picture.
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(after, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         Assert.Equal(
             ["lastRunAt", "lastRunCounts", "overdueDocumentImages", "overdueEvidence"],
@@ -437,8 +412,6 @@ public sealed class IdentityRetentionServiceTests
     [InlineData(true, true)]
     public void IdentityEvidencePurgeJob_IsScheduledHourly_WhateverTheFlagsSay_AndCarriesNoData(bool selfHosted, bool evidence)
     {
-        // Review of S015, point 2: a flag switched off must never leave an evidence with no expiry, so the job is always there (as GuestDocumentPurgeJob and
-        // SwissComplianceRetentionJob are); what a run does with both flags off is proved by IdentityRetention_WithBothFlagsOff_DeletesOnlyTheEvidencePastItsTime.
         var flags = new TestFeatureFlags();
         flags.Set(FeatureFlags.CheckInIdentitySelfHosted, selfHosted);
         flags.Set(FeatureFlags.CheckInIdentityReviewEvidence, evidence);
@@ -458,7 +431,6 @@ public sealed class IdentityRetentionServiceTests
         Assert.Equal(("40 * * * *", TimeZoneInfo.Utc), (cron, options.TimeZone));
         Assert.Equal((typeof(IdentityEvidencePurgeJob), nameof(IdentityEvidencePurgeJob.ExecuteAsync)), (job.Type, job.Method.Name));
 
-        // No data in the arguments: the token Hangfire gives, nothing else.
         Assert.Equal([typeof(CancellationToken)], job.Method.GetParameters().Select(parameter => parameter.ParameterType));
         Assert.All(job.Args, argument => Assert.True(argument is null or CancellationToken));
 
@@ -527,7 +499,6 @@ public sealed class IdentityRetentionServiceTests
 
         foreach (var table in new[] { "IdentityReviewEvidences", "GuestCheckInSessions", "DocumentImages", "BiometricVerificationLogs" })
         {
-            // The statements of the organization found: not the search of the organizations (DISTINCT) and not the counts of the status, which span every organization on purpose.
             var ofTheOrg = statements
                 .Where(sql => Root(sql) == table
                               && !sql.Contains("DISTINCT", StringComparison.OrdinalIgnoreCase)
@@ -567,7 +538,6 @@ public sealed class IdentityRetentionServiceTests
         return document.RootElement.TryGetProperty("presence", out var presence) && presence.ValueKind == JsonValueKind.Object;
     }
 
-    /// <summary>Two orgs (A and B) on a database in memory, a bucket in memory, the flags of the self-hosted verification on, the clock at <see cref="Now"/>.</summary>
     private sealed class RetentionWorld : IAsyncDisposable
     {
         private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
@@ -590,7 +560,6 @@ public sealed class IdentityRetentionServiceTests
 
         public AppDbContext NewContext() => new(_options);
 
-        /// <summary>The service on a context of its own, as the job has it.</summary>
         public IdentityRetentionService Service(Microsoft.Extensions.Logging.ILogger<IdentityRetentionService>? logger = null, IdentityVerificationOptions? options = null) =>
             new(NewContext(), Storage, Flags, Options.Create(options ?? new IdentityVerificationOptions()), RunLog, Clock, logger ?? NullLogger<IdentityRetentionService>.Instance);
 
@@ -687,7 +656,6 @@ public sealed class IdentityRetentionServiceTests
             return session;
         }
 
-        /// <summary>A session of the legacy path that was handed to an operator at <paramref name="handedOffAt"/> and is in the given state.</summary>
         public async Task<GuestCheckInSession> HandedOffSessionAsync(
             Guid orgId,
             Guid bookingId,
@@ -714,9 +682,6 @@ public sealed class IdentityRetentionServiceTests
             return session;
         }
 
-        /// <summary>
-        /// The stays of <paramref name="orgId"/> that wait for an operator: what the queue of the operators lists, which must be what the one definition of <c>Unanswered</c> selects.
-        /// </summary>
         public async Task<List<Guid>> WaitingForAnOperatorAsync(Guid orgId)
         {
             await using var db = NewContext();
@@ -778,7 +743,6 @@ public sealed class IdentityRetentionServiceTests
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
-    /// <summary>A private bucket in memory that can refuse the deletion of one object (a storage down for that key).</summary>
     private sealed class RetentionStorage : IFileStorage
     {
         public Dictionary<string, byte[]> Objects { get; } = new(StringComparer.Ordinal);

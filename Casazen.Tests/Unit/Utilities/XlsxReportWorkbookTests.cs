@@ -42,7 +42,6 @@ public class XlsxReportWorkbookTests
         return styles.Descendants(Main + "cellXfs").Single().Elements(Main + "xf").ElementAt(int.Parse(position));
     }
 
-    /// <summary>The format code of a cell: the custom one its style points to, <c>General</c> for the default style.</summary>
     private static string FormatCode(XDocument styles, XElement cell)
     {
         var id = (string)Style(styles, cell).Attribute("numFmtId")!;
@@ -101,7 +100,6 @@ public class XlsxReportWorkbookTests
         Assert.Contains("/xl/worksheets/sheet1.xml", overrides);
         Assert.Contains("/xl/worksheets/sheet2.xml", overrides);
 
-        // The reader of the bank statements reads the first sheet: the title row, the header, then the row, numbers as numbers.
         var table = XlsxTableReader.Read(workbook);
         Assert.Equal(3, table.Count);
         Assert.Equal(new Cell("Incassato, per cassa, dal 01/10/2026 al 31/10/2026", false), Assert.Single(table[0]));
@@ -114,7 +112,6 @@ public class XlsxReportWorkbookTests
         Assert.Equal(new Cell("12.50", true), table[2][5]);
     }
 
-    /// <summary>Numbers are number cells with their format (an amount <c>#,##0.00</c>, a percentage the fraction with <c>0.00%</c>, a day <c>dd/mm/yyyy</c>), never text.</summary>
     [Fact]
     public void Write_NumbersAreNumberCellsWithTheirFormats_AndADayIsADateSerial()
     {
@@ -175,16 +172,11 @@ public class XlsxReportWorkbookTests
         Assert.True(IsBold(styles, CellAt(sheet, "B2")!));
         Assert.False(IsBold(styles, CellAt(sheet, "A3")!));
 
-        // The title runs over the empty cells beside it: it does not make the first column as wide as the title.
         var widths = sheet.Descendants(Main + "col").Select(c => double.Parse((string)c.Attribute("width")!, System.Globalization.CultureInfo.InvariantCulture)).ToList();
         Assert.Equal(2, widths.Count);
         Assert.All(widths, width => Assert.InRange(width, 10, 20));
     }
 
-    /// <summary>
-    /// A text that a spreadsheet would run is an inline string with the quote prefix in its style, in the title, the header and the rows alike; there is no formula
-    /// element in any sheet, and a negative amount is a number cell, not a text.
-    /// </summary>
     [Fact]
     public void Write_ATextThatLooksLikeAFormula_IsNeverAFormula_AndANegativeAmountIsStillANumber()
     {
@@ -226,7 +218,6 @@ public class XlsxReportWorkbookTests
         Assert.Equal(new Cell("@SUM(A1)", false), read[5][0]);
     }
 
-    /// <summary>The numbers are the exact decimal text of the value: no floating point, no exponent, rounded once to the places the file shows.</summary>
     [Fact]
     public void Write_AmountsAreTheExactDecimalText_NeverAFloat()
     {
@@ -246,7 +237,6 @@ public class XlsxReportWorkbookTests
         Assert.All(values, value => Assert.DoesNotContain('E', value));
     }
 
-    /// <summary>A day is a date serial with the date format, worked out from the real calendar; before 1 March 1900 it is the text of the day.</summary>
     [Fact]
     public void Write_ADay_IsADateCell_AndADayBeforeMarch1900IsText()
     {
@@ -302,7 +292,6 @@ public class XlsxReportWorkbookTests
         Assert.Throws<ArgumentOutOfRangeException>(() => XlsxWriter.Write(new List<ReportSheet>()));
     }
 
-    /// <summary>A name a workbook would refuse is cleaned (31 characters at most, none of <c>[ ] : * ? / \</c>) and two the same, whatever the case, are told apart.</summary>
     [Fact]
     public void SheetNamesOf_AreCleaned_AndUniqueWhateverTheCase()
     {

@@ -26,7 +26,6 @@ public sealed class PropertyDocumentArchiveSource(AppDbContext db, IFileStorage 
 {
     public ArchiveDocumentType Type => ArchiveDocumentType.PropertyDocument;
 
-    /// <summary>The property core is read by a landlord of either rental context (<c>SharedPropertyRead</c>).</summary>
     public string ContextKey => $"{OrgRoleCatalog.ShortRent}|{OrgRoleCatalog.LongRent}";
 
     public string PermissionKey => "property.read";
@@ -74,7 +73,6 @@ public sealed class PropertyDocumentArchiveSource(AppDbContext db, IFileStorage 
     }
 }
 
-/// <summary>The files attached to the leases (the contract, the attestation, the registration receipt): the private bucket, <c>LeaseDocument.StorageKey</c>.</summary>
 public sealed class LeaseDocumentArchiveSource(AppDbContext db, IFileStorage storage) : IDocumentArchiveSource
 {
     private const string PdfContentType = "application/pdf";
@@ -128,11 +126,6 @@ public sealed class LeaseDocumentArchiveSource(AppDbContext db, IFileStorage sto
     }
 }
 
-/// <summary>
-/// The receipts of the tourist tax payments (NF-100): the private bucket, <c>TouristTaxRemittance.ReceiptStorageKey</c>. A payment belongs to the
-/// org and to no property, so only a scope that reaches the whole org sees it (as the tourist tax summary and its receipt endpoint do). A payment
-/// recorded without a receipt has no document and is not a row.
-/// </summary>
 public sealed class TouristTaxRemittanceArchiveSource(AppDbContext db, IFileStorage storage) : IDocumentArchiveSource
 {
     public ArchiveDocumentType Type => ArchiveDocumentType.TouristTax;
@@ -182,7 +175,6 @@ public sealed class TouristTaxRemittanceArchiveSource(AppDbContext db, IFileStor
         var orgId = scope.OrgId;
         var receipts = db.TouristTaxRemittances.AsNoTracking().Where(r => r.OrgId == orgId && r.ReceiptStorageKey != null);
 
-        // No property to narrow by: a scope limited to some properties reaches none of these rows, decided in the same statement.
         return scope.IsOrgWide ? receipts : receipts.Where(_ => false);
     }
 }
@@ -265,7 +257,6 @@ public sealed class AlloggiatiReceiptArchiveSource(AppDbContext db, IFileStorage
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        // The title is the word the file name is made of (ComplianceArchiveRules.SlugOf); the day is the one the proof is about, the arrival day of the stays.
         return InReach(scope).Select(p => new ArchiveRow
         {
             Type = ArchiveDocumentType.AlloggiatiReceipt,

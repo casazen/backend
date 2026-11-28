@@ -36,7 +36,6 @@ public partial class OrgDomainService(
     IFeatureFlags? featureFlags = null,
     OwnerLoginHostSync? ownerLogin = null) : IOrgDomainService
 {
-    /// <summary>The longest queue of the owner sign-ins one read answers (<see cref="ListOwnerLoginHostsAsync"/>).</summary>
     public const int OwnerLoginQueueMax = 500;
 
     private const string DefaultDomainRequiredMessage = "OrgDomainRequired";
@@ -100,7 +99,6 @@ public partial class OrgDomainService(
                     org.Subdomain = null;
                     if (domainChanged || string.IsNullOrEmpty(org.DomainVerificationToken))
                     {
-                        // A new domain starts from nothing: its own ownership token, no state of the previous one.
                         org.DomainVerificationStatus = DomainVerificationStatus.Pending;
                         org.DomainVerificationToken = GenerateVerificationToken();
                         ResetDomainCheck(org);
@@ -115,8 +113,6 @@ public partial class OrgDomainService(
                     }
                     else if (org.DomainVerificationStatus != DomainVerificationStatus.Verified)
                     {
-                        // The same domain saved again while it is not live keeps the records the host already created
-                        // (the token stays) and restarts the periodic checks, which stop some days after the first save.
                         org.DomainConfiguredAt = now;
                     }
                     break;
@@ -124,7 +120,6 @@ public partial class OrgDomainService(
 
             case PublicHostMode.CasazenSubdomain:
                 {
-                    // D3: no default base domain; without PublicHost:BaseDomain there is no subdomain to publish on.
                     if (options.Value.NormalizedBaseDomain is null)
                         return new SetOrgDomainResult(SetOrgDomainOutcome.SubdomainsNotConfigured, null);
 
@@ -166,7 +161,6 @@ public partial class OrgDomainService(
 
         org.UpdatedAt = now;
 
-        // A domain that was on the Vercel project and is no longer this org's custom domain leaves the project (BK-17).
         if (previousOnVercel
             && previousCustomDomain is not null
             && !publicSiteLinks.IsPublicSiteHost(previousCustomDomain)
@@ -209,11 +203,9 @@ public partial class OrgDomainService(
             string.IsNullOrEmpty(org.DomainVerificationToken))
             return new VerifyOrgDomainResult(VerifyOrgDomainOutcome.NotConfigured, null);
 
-        // The effective tier, not the stored one (A3-07): a domain of an org that no longer pays for Pro is not served.
         if (!await entitlementService.CanUseCustomDomainAsync(orgId, cancellationToken))
             return new VerifyOrgDomainResult(VerifyOrgDomainOutcome.PlanRequired, null);
 
-        // Verified, demoted or unchanged, the check itself drops the cached answers of the host (BK-17).
         var result = await domainVerificationService.VerifyAsync(org, cancellationToken);
         return new VerifyOrgDomainResult(VerifyOrgDomainOutcome.Success, result);
     }
@@ -229,7 +221,6 @@ public partial class OrgDomainService(
         if (org is null)
             return new SetOrgDomainSurfacesResult(SetOrgDomainSurfacesOutcome.NotFound, null);
 
-        // The surfaces follow the domain's plan (the effective tier, A3-07): an org that cannot have a custom domain has nothing to set.
         var canUseCustomDomain = await entitlementService.CanUseCustomDomainAsync(orgId, cancellationToken);
         if (!canUseCustomDomain)
             return new SetOrgDomainSurfacesResult(SetOrgDomainSurfacesOutcome.PlanRequired, null);
@@ -249,11 +240,9 @@ public partial class OrgDomainService(
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        // E40/F01/US02/T01: with Auth0HostSync on, a verified domain whose registration was never asked or failed is registered now.
         if (settings.OwnerPortalOnOwnDomain && ownerLogin is not null)
             await ownerLogin.OwnerPortalSavedOnAsync(org, ownerLoginBefore, cancellationToken);
 
-        // The answer of resolve-host carries the surfaces: the next call reads them at once.
         publicHostResolver.InvalidateCacheForHost(org.CustomDomain);
 
         return new SetOrgDomainSurfacesResult(SetOrgDomainSurfacesOutcome.Success, BuildConfig(org, canUseCustomDomain));
@@ -264,7 +253,6 @@ public partial class OrgDomainService(
         string? gtmContainerId,
         CancellationToken cancellationToken = default)
     {
-        // The one rule of the format (NF-149): the typed text is never stored, logged or answered as it is.
         if (!GtmContainerIds.TryNormalize(gtmContainerId, out var normalized))
             return new SetOrgDomainTrackingResult(SetOrgDomainTrackingOutcome.Invalid, null);
 
@@ -276,7 +264,6 @@ public partial class OrgDomainService(
         org.UpdatedAt = timeProvider.GetUtcNow().UtcDateTime;
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        // The answer of resolve-host carries the container: every host of the org reads the new one at once.
         if (org.CustomDomain is not null)
             publicHostResolver.InvalidateCacheForHost(org.CustomDomain);
         if (SubdomainHost(org.Subdomain) is { } subdomainHost)
@@ -301,7 +288,6 @@ public partial class OrgDomainService(
             return new RetryOwnerLoginResult(RetryOwnerLoginOutcome.DomainNotVerified, null);
         }
 
-        // The owner sign-in follows the domain's plan, as the surfaces do (the effective tier, A3-07): a verified domain whose plan lapsed registers nothing.
         var canUseCustomDomain = await entitlementService.CanUseCustomDomainAsync(orgId, cancellationToken);
         if (!canUseCustomDomain)
             return new RetryOwnerLoginResult(RetryOwnerLoginOutcome.PlanRequired, null);
@@ -316,7 +302,6 @@ public partial class OrgDomainService(
         OwnerLoginHostState state,
         CancellationToken cancellationToken = default)
     {
-        // Orgs are not tenant-owned: the platform administrators read every org, on purpose. Active orgs with a custom domain only.
         return await dbContext.Orgs.AsNoTracking()
             .Where(o => o.IsActive
                         && o.PublicHostMode == PublicHostMode.CustomDomain
@@ -343,7 +328,6 @@ public partial class OrgDomainService(
         if (org is null)
             return new SetOwnerLoginStateResult(SetOwnerLoginStateOutcome.NotFound, null);
 
-        // Ready says the owners can sign in on the domain: only a verified custom domain the org pays for (the one resolve-host serves) can be that.
         if (state == OwnerLoginHostState.Ready && siteUrls.ServedMode(org) != PublicHostMode.CustomDomain)
             return new SetOwnerLoginStateResult(SetOwnerLoginStateOutcome.DomainNotVerified, null);
 
@@ -372,10 +356,6 @@ public partial class OrgDomainService(
         org.DomainConfiguredAt = null;
     }
 
-    /// <summary>
-    /// What a check found out belongs to one domain: a new domain starts from nothing (BK-17). So does the Auth0 registration of the owner
-    /// sign-in (E40/F01/US01): it was made for the previous domain. The surface choices of the agency stay.
-    /// </summary>
     private static void ResetDomainCheck(Org org)
     {
         org.DomainStatusDetail = null;
@@ -407,7 +387,6 @@ public partial class OrgDomainService(
             IsEnabled(FeatureFlags.SiteEmbed) ? new OrgDomainTracking(org.GtmContainerId) : null);
     }
 
-    /// <summary>The surfaces block of the settings (E40/F01/US01): <c>null</c> while <c>WhiteLabelHost</c> is off, so nothing changes for anybody.</summary>
     private OrgDomainSurfaces? BuildSurfaces(Org org)
     {
         if (!IsEnabled(FeatureFlags.WhiteLabelHost))
@@ -435,7 +414,6 @@ public partial class OrgDomainService(
         VercelTxtHost: org.DomainVercelTxtHost,
         VercelTxtValue: org.DomainVercelTxtValue);
 
-    /// <summary>The honest state of the custom domain: why it waits, when it was last checked, whether the platform can activate it at all.</summary>
     private DomainStatusInfo BuildStatus(Org org)
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -454,26 +432,22 @@ public partial class OrgDomainService(
 
     private PublicUrls BuildPublicUrls(Org org)
     {
-        // On App:PublicSiteBaseUrl (D3, no fallback domain); a relative path only when it is not configured
-        // (Development/Testing: elsewhere the startup fails).
         var path = $"/book/{Uri.EscapeDataString(org.Slug)}";
         var pathUrl = publicSiteLinks.TryPublicPage(path) ?? path;
         var subdomainHost = SubdomainHost(org.Subdomain);
         var subdomainUrl = subdomainHost is null ? null : $"https://{subdomainHost}";
-        // Only a domain that is served is a link: a pending one is not "your site" yet (BK-17, A3-25).
         var customDomainUrl = org.CustomDomain is not null && string.Equals(siteUrls.OwnHost(org), org.CustomDomain, StringComparison.Ordinal)
             ? $"https://{org.CustomDomain}"
             : null;
         return new PublicUrls(pathUrl, subdomainUrl, customDomainUrl);
     }
 
-    /// <summary>Host of an org subdomain, <c>null</c> without a label or without <c>PublicHost:BaseDomain</c>.</summary>
     private string? SubdomainHost(string? label) =>
         label is null || options.Value.NormalizedBaseDomain is not { } baseDomain ? null : $"{label}.{baseDomain}";
 
     private static string GenerateVerificationToken()
     {
-        var bytes = RandomNumberGenerator.GetBytes(16); // 128-bit
+        var bytes = RandomNumberGenerator.GetBytes(16);
         return Convert.ToBase64String(bytes)
             .TrimEnd('=')
             .Replace('+', '-')
@@ -485,12 +459,10 @@ public partial class OrgDomainService(
         normalized = string.Empty;
         var candidate = input.Trim().ToLowerInvariant();
 
-        // Strip an accidental scheme (e.g. pasted "https://www.example.it") and trailing slash/path.
         if (candidate.Contains("://"))
             candidate = candidate[(candidate.IndexOf("://", StringComparison.Ordinal) + 3)..];
         candidate = candidate.Split('/')[0];
 
-        // Strip a port suffix and a trailing dot.
         if (candidate.Contains(':'))
             candidate = candidate.Split(':')[0];
         candidate = candidate.TrimEnd('.');
@@ -524,7 +496,6 @@ public partial class OrgDomainService(
 
     private bool IsUnderPublicSiteHost(string candidate)
     {
-        // "foo.<public host>": checked one label at a time, so no host name has to be rebuilt from the configuration.
         var parent = candidate;
         while (parent.IndexOf('.') is var dot and > 0)
         {

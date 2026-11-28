@@ -19,45 +19,29 @@ public class OrgDomainConfigDto
     public DnsInstructionsDto? DnsInstructions { get; set; }
     public PublicUrlsDto PublicUrls { get; set; } = new();
 
-    /// <summary>Why the domain is pending or failed, when it was last checked and whether the platform can activate it (BK-17).</summary>
     public DomainStatusDto Status { get; set; } = new();
 
-    /// <summary>The surfaces of the agency's own domain (E40/F01/US01); <c>null</c> while the flag <c>WhiteLabelHost</c> is off.</summary>
     public OrgDomainSurfacesDto? Surfaces { get; set; }
 
-    /// <summary>The tracking of the agency's pages (E40/F01/US01/T04); <c>null</c> while the flag <c>SiteEmbed</c> is off.</summary>
     public OrgDomainTrackingDto? Tracking { get; set; }
 }
 
-/// <summary>
-/// The Google Tag Manager container of the agency's pages (NF-149): the answer of <c>PUT /api/orgs/{orgId}/domain/tracking</c> and the <c>tracking</c>
-/// block of the domain settings. <c>null</c> when the agency set none.
-/// </summary>
 public class OrgDomainTrackingDto
 {
     public string? GtmContainerId { get; set; }
 }
 
-/// <summary>
-/// Request body for <c>PUT /api/orgs/{orgId}/domain/tracking</c> (E40/F01/US01/T04): <c>GTM-</c> plus 4 to 12 letters or digits (case and spaces around
-/// are forgiven), <c>null</c> or empty to clear it. The format is checked by <c>GtmContainerIds</c> only, so no length attribute here.
-/// </summary>
 public class SetOrgDomainTrackingRequest
 {
     public string? GtmContainerId { get; set; }
 }
 
-/// <summary>
-/// The surfaces of the agency's own domain (E40/F01/US01, NF-140..NF-142): the agency's choices, the state of the owner sign-in on the domain
-/// and what is really served (<see cref="Effective"/>: nothing until the domain is verified and paid for).
-/// </summary>
 public class OrgDomainSurfacesDto
 {
     public bool GuestAreaOnOwnDomain { get; set; }
     public bool OwnerPortalOnOwnDomain { get; set; }
     public bool UseOwnDomainForLinks { get; set; }
 
-    /// <summary>The Auth0 registration of the domain for the owner sign-in (NF-141).</summary>
     public OwnerLoginHostState OwnerLoginHostState { get; set; }
 
     /// <summary>The registration is automatic (flag <c>Auth0HostSync</c>); otherwise CasaZen does it and the agency waits.</summary>
@@ -66,21 +50,15 @@ public class OrgDomainSurfacesDto
     public OrgDomainEffectiveSurfacesDto Effective { get; set; } = new();
 }
 
-/// <summary>What the domain really serves now (<c>HostSurfaceRules</c>).</summary>
 public class OrgDomainEffectiveSurfacesDto
 {
     public bool GuestArea { get; set; }
     public bool OwnerPortal { get; set; }
     public bool OwnerLoginReady { get; set; }
 
-    /// <summary>Some links CasaZen sends are built on the domain (the guest links, the owner links, or both).</summary>
     public bool LinksOnOwnDomain { get; set; }
 }
 
-/// <summary>
-/// One org of the queue of the owner sign-ins on the agencies' domains (E40/F01/US02/T01, NF-141): <c>GET /api/admin/owner-login-hosts?state=Pending</c>, for
-/// the platform administrators who register the domains in Auth0 by hand while <c>Auth0HostSync</c> is off.
-/// </summary>
 public class OwnerLoginHostDto
 {
     public Guid OrgId { get; set; }
@@ -88,21 +66,15 @@ public class OwnerLoginHostDto
     public string Domain { get; set; } = string.Empty;
     public OwnerLoginHostState State { get; set; }
 
-    /// <summary>The custom domain is verified: <c>Ready</c> can be set only for a verified domain the org pays for.</summary>
     public bool DomainVerified { get; set; }
 }
 
-/// <summary>
-/// The state of the owner sign-in of an org: the body of <c>PUT /api/admin/orgs/{orgId}/owner-login-state</c> (<c>NotRequested</c>, <c>Pending</c>,
-/// <c>Ready</c> or <c>Failed</c>, required) and its whole answer (E40/F01/US02/T01).
-/// </summary>
 public class OwnerLoginStateDto
 {
     [Required]
     public OwnerLoginHostState? State { get; set; }
 }
 
-/// <summary>Request body for <c>PUT /api/orgs/{orgId}/domain/surfaces</c> (E40/F01/US01): the three choices, all required.</summary>
 public class SetOrgDomainSurfacesRequest
 {
     [Required]
@@ -115,11 +87,6 @@ public class SetOrgDomainSurfacesRequest
     public bool? UseOwnDomainForLinks { get; set; }
 }
 
-/// <summary>
-/// Honest state of the custom domain (BK-17, A3-25). <see cref="Detail"/> is a stable code the web app explains in the user's
-/// language; <see cref="Message"/> is the same explanation from the server (the language of the request), for a client that
-/// does not know the code.
-/// </summary>
 public class DomainStatusDto
 {
     public string? Detail { get; set; }
@@ -127,48 +94,38 @@ public class DomainStatusDto
     public DateTime? CheckedAt { get; set; }
     public DateTime? VerifiedAt { get; set; }
 
-    /// <summary>False while the platform has no Vercel token and project: no domain can be activated, whatever the host does.</summary>
     public bool ActivationAvailable { get; set; }
 
-    /// <summary>The periodic check still runs for this domain.</summary>
     public bool AutoCheckActive { get; set; }
 }
 
-/// <summary>Request body for <c>POST /api/orgs/{orgId}/domain</c>.</summary>
 public class SetOrgDomainRequest
 {
     [Required]
     public PublicHostMode HostMode { get; set; }
 
-    /// <summary>FQDN, required when <see cref="HostMode"/> is <c>CustomDomain</c>. Max 253 chars.</summary>
     [StringLength(253)]
     public string? CustomDomain { get; set; }
 
-    /// <summary>Label, required when <see cref="HostMode"/> is <c>CasazenSubdomain</c>. Max 63 chars.</summary>
     [StringLength(63)]
     public string? Subdomain { get; set; }
 }
 
-/// <summary>Result of <c>POST /api/orgs/{orgId}/domain/verify</c>.</summary>
 public class OrgDomainVerifyResultDto
 {
     public DomainVerificationStatus DomainVerificationStatus { get; set; }
     public string CustomDomain { get; set; } = string.Empty;
     public DateTime CheckedAt { get; set; }
 
-    /// <summary>Why the domain is not verified (a stable code), <c>null</c> when it is.</summary>
     public string? Detail { get; set; }
 
-    /// <summary>The explanation of <see cref="Detail"/> in the language of the request; <c>null</c> when verified.</summary>
     public string? Message { get; set; }
 
-    /// <summary>Vercel's own TXT record, only with <c>vercel_verification_pending</c>.</summary>
     public string? VercelTxtHost { get; set; }
 
     public string? VercelTxtValue { get; set; }
 }
 
-/// <summary>CNAME/TXT records the owner must add at their DNS provider to activate a custom domain.</summary>
 public class DnsInstructionsDto
 {
     public string CnameHost { get; set; } = string.Empty;
@@ -177,16 +134,13 @@ public class DnsInstructionsDto
     public string TxtValue { get; set; } = string.Empty;
     public string SslNote { get; set; } = string.Empty;
 
-    /// <summary>IPv4 addresses for an A record, the alternative to the CNAME for the root of a domain (which cannot have a CNAME).</summary>
     public IReadOnlyList<string> ARecordValues { get; set; } = [];
 
-    /// <summary>Vercel's own verification TXT record, only when Vercel asks for it (domain used on another Vercel account).</summary>
     public string? VercelTxtHost { get; set; }
 
     public string? VercelTxtValue { get; set; }
 }
 
-/// <summary>Preview links for each publication mode, for the settings panel.</summary>
 public class PublicUrlsDto
 {
     public string PathUrl { get; set; } = string.Empty;

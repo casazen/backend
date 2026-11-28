@@ -5,10 +5,6 @@ using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// One <c>condo-export-v1</c> copy waiting in staging. Confirming a house with a verified property is what writes the book.
-/// The same hash is stored once.
-/// </summary>
 [Table("CondominiumImportBatches")]
 public class CondominiumImportBatch : ITenantOwned
 {

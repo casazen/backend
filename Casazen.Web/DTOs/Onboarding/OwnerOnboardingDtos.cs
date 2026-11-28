@@ -48,7 +48,6 @@ public sealed record OwnerImportResultDto(
         [.. result.PropertyIssues.Select(p => new OwnerImportPropertyIssueDto(p.PropertyId, [.. p.Issues.Select(OwnershipIssueDto.Of)]))]);
 }
 
-/// <summary>How many rows the file has, how many are valid, how many changed something, and what the valid ones do.</summary>
 public sealed record OwnerImportSummaryDto(
     int Rows,
     int Valid,
@@ -79,10 +78,8 @@ public sealed record OwnerImportRowDto(
     IReadOnlyList<OwnerImportCandidateDto> Candidates,
     bool Applied);
 
-/// <summary>An owner an ambiguous row could be: its id, its key and the name the agency keeps for it.</summary>
 public sealed record OwnerImportCandidateDto(Guid OwnerId, string? ExternalKey, string DisplayName);
 
-/// <summary>The days where the shares of a property would be wrong after the file.</summary>
 public sealed record OwnerImportPropertyIssueDto(Guid PropertyId, IReadOnlyList<OwnershipIssueDto> Issues);
 
 /// <summary>
@@ -145,10 +142,6 @@ public sealed record OwnerReadinessDto(
         report.Truncated);
 }
 
-/// <summary>
-/// The counts of the readiness. <c>financialReady</c> is true only when there is an owner, every owner is ready for the accounting and every property
-/// has its shares right: until then the owner accounting is «to complete», whatever the OTA channels say.
-/// </summary>
 public sealed record OwnerReadinessSummaryDto(
     int Owners,
     int Properties,
@@ -178,7 +171,6 @@ public sealed record OwnerReadinessSummaryDto(
         s.FinancialReady);
 }
 
-/// <summary>How many owners are ready and how many are to complete.</summary>
 public sealed record OwnerReadinessCountDto(int Ready, int ToComplete)
 {
     public static OwnerReadinessCountDto From(OwnerReadinessCount count) => new(count.Ready, count.ToComplete);
@@ -211,19 +203,13 @@ public sealed record OwnerReadinessWarningDto(string Code, int ManagedUnits, int
         new(warning.Code, warning.ManagedUnits, warning.ExternalUnits, warning.MaxUnits, warning.Suggestion);
 }
 
-/// <summary>For which of the six dimensions an owner is ready.</summary>
 public sealed record OwnerReadinessFlagsDto(bool Registry, bool Ownership, bool Mandate, bool FiscalProfile, bool Payment, bool Portal);
 
-/// <summary>
-/// One missing or wrong fact: its <c>dimension</c> (<c>registry</c>, <c>ownership</c>, <c>mandate</c>, <c>fiscalProfile</c>, <c>payment</c>,
-/// <c>portal</c>), its <c>code</c>, the <c>field</c> it is about (a column name, never a value) and the <c>propertyId</c> when it is about one property.
-/// </summary>
 public sealed record OwnerReadinessReasonDto(string Dimension, string Code, string? Field, Guid? PropertyId)
 {
     public static OwnerReadinessReasonDto From(OwnerReadinessReason reason) => new(reason.Dimension, reason.Code, reason.Field, reason.PropertyId);
 }
 
-/// <summary>A property whose ownership is not ready: no owner at all, or shares that are not exactly 100% on some days (<c>issues</c>).</summary>
 public sealed record OwnerReadinessPropertyDto(
     Guid PropertyId,
     string Name,

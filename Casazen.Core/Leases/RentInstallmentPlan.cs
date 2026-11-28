@@ -2,17 +2,10 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Leases;
 
-/// <summary>One installment of a rent plan: the period it pays, its due date and amount.</summary>
 public sealed record RentInstallment(DateOnly PeriodStart, DateOnly PeriodEnd, DateOnly DueDate, decimal Amount);
 
-/// <summary>
-/// The installments of a lease, and the final period shorter than the cadence when the lease ends inside one
-/// (<see cref="PartialFinalPeriod"/>): no amount is computed for it (a pro rata rule is a contract choice), the landlord
-/// handles it.
-/// </summary>
 public sealed record RentPlan(IReadOnlyList<RentInstallment> Installments, RentPeriod? PartialFinalPeriod);
 
-/// <summary>A period of the lease, both days included.</summary>
 public sealed record RentPeriod(DateOnly Start, DateOnly End);
 
 /// <summary>
@@ -31,10 +24,8 @@ public static class RentInstallmentPlan
 {
     public const int MinBillingDay = 1;
 
-    /// <summary>At most 28, so the due day exists in every month (no clamping rule to choose).</summary>
     public const int MaxBillingDay = 28;
 
-    /// <summary>Upper bound of the generated installments (a 4+4 monthly lease has 96): protects against absurd dates.</summary>
     public const int MaxInstallments = 600;
 
     public static int MonthsPer(RentCadence cadence) => cadence switch
@@ -48,14 +39,11 @@ public static class RentInstallmentPlan
 
     public static bool IsValidBillingDay(int day) => day is >= MinBillingDay and <= MaxBillingDay;
 
-    /// <summary>Default due day: the day of the lease start, at most <see cref="MaxBillingDay"/>.</summary>
     public static int DefaultBillingDay(DateOnly leaseStart) => Math.Min(leaseStart.Day, MaxBillingDay);
 
-    /// <summary>Default installment amount: the lease's monthly rent times the months of the cadence.</summary>
     public static decimal DefaultAmount(decimal monthlyRent, RentCadence cadence) =>
         decimal.Round(monthlyRent * MonthsPer(cadence), 2, MidpointRounding.AwayFromZero);
 
-    /// <summary>The first <paramref name="billingDay"/> of a month on or after <paramref name="periodStart"/>.</summary>
     public static DateOnly DueDate(DateOnly periodStart, int billingDay)
     {
         if (!IsValidBillingDay(billingDay))
@@ -65,13 +53,6 @@ public static class RentInstallmentPlan
         return sameMonth >= periodStart ? sameMonth : sameMonth.AddMonths(1);
     }
 
-    /// <summary>
-    /// The installments from <paramref name="leaseStart"/> to <paramref name="leaseEnd"/> (both included), with
-    /// <paramref name="amount"/> each. With <paramref name="trackFrom"/> (LR-04a: a lease already running when its rents are
-    /// first set up) the periods that <b>ended before</b> that day get no installment, so none is born «in ritardo»: the period
-    /// the day falls in is the first one, whole, and the periods stay anchored on the lease start, so a later plan of the same
-    /// lease lines up with this one. Null, or a day on or before the lease start, plans every period of the lease.
-    /// </summary>
     public static RentPlan Build(
         DateOnly leaseStart, DateOnly leaseEnd, RentCadence cadence, int billingDay, decimal amount, DateOnly? trackFrom = null)
     {
@@ -86,7 +67,6 @@ public static class RentInstallmentPlan
         RentPeriod? partial = null;
         for (var i = 0; i < MaxInstallments; i++)
         {
-            // Always from the lease start (AddMonths clamps to the month end: 31 Jan + 1 = 28/29 Feb, + 2 = 31 Mar).
             var start = leaseStart.AddMonths(i * months);
             if (start > leaseEnd)
                 break;
@@ -94,13 +74,11 @@ public static class RentInstallmentPlan
             var end = leaseStart.AddMonths((i + 1) * months).AddDays(-1);
             if (end > leaseEnd)
             {
-                // The short final period is told to the landlord only if it is not already behind the day the plan starts from.
                 if (leaseEnd >= tracked)
                     partial = new RentPeriod(start, leaseEnd);
                 break;
             }
 
-            // A period that ended before the day the plan is tracked from is not owed in CasaZen: no installment, so none overdue.
             if (end < tracked)
                 continue;
 

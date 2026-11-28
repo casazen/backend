@@ -4,23 +4,13 @@ using Casazen.Core.Suppliers;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// Small helpers of the SP-04e tests: requests and payments written straight to the database, in the state the flows reach slowly,
-/// over the scenario of SP-04 (Thursday 8 October 2026, 12:00 in Rome, a host and a supplier).
-/// </summary>
 internal static class SupplierReadModelsTestSupport
 {
-    /// <summary>The scenario clock as a UTC instant.</summary>
     public static DateTime Now => ServiceRequestScenario.Instant.UtcDateTime;
 
-    /// <summary>A UTC instant written like <c>2026-10-05T09:00:00Z</c>.</summary>
     public static DateTime Utc(string value) =>
         DateTime.Parse(value, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal);
 
-    /// <summary>
-    /// A request of the supplier written straight to the database with the dates the test names (each <c>null</c> where the request has
-    /// none). The creation date is the one the periods and the response time are counted on.
-    /// </summary>
     public static Task<ServiceRequest> SeedRequestAsync(
         this ServiceRequestScenario s,
         ServiceRequestStatus status,
@@ -44,10 +34,6 @@ internal static class SupplierReadModelsTestSupport
             supplierOrgId,
             Utc(created));
 
-    /// <summary>
-    /// A payment record of a request, as the payments service would have written it: 10 % commission on <paramref name="amountCents"/>,
-    /// sent at <paramref name="requestedAt"/> (the scenario clock by default), paid by Stripe when <paramref name="status"/> says it was.
-    /// </summary>
     public static async Task<ServiceRequestPayment> AddPaymentAsync(
         this ServiceRequestScenario s,
         Guid requestId,
@@ -91,7 +77,6 @@ internal static class SupplierReadModelsTestSupport
         return payment;
     }
 
-    /// <summary>A request completed with a final amount, as a supplier that is paid by hand leaves it.</summary>
     public static Task<ServiceRequest> SeedCompletedAsync(
         this ServiceRequestScenario s,
         int? finalAmountCents = ServiceRequestScenario.ServicePriceCents,

@@ -64,7 +64,6 @@ public class PropertySenderControllerTests
             .Setup(s => s.DeclareActivatedAsync(PropertyOfOrgA, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(View(PropertyOfOrgA));
 
-        // The property of the org A, which belongs to its owner; the property of the org B is hidden by the tenant filter.
         var lookup = new Mock<IHostResourceLookup>();
         lookup
             .Setup(l => l.ForPropertyAsync(PropertyOfOrgA, It.IsAny<CancellationToken>()))
@@ -80,14 +79,12 @@ public class PropertySenderControllerTests
             DelegationTextVersion = AlloggiatiDelegationTexts.CurrentVersion,
         };
 
-        // A member of the org with no org-wide role and no grant reaches only the properties it created: nothing of this one, no call.
         var outsider = Controller(senders, lookup, HostAuthorizationTestHarness.User("auth0|staff-a", "Staff"));
         Assert.IsType<ForbidResult>((await outsider.Get(PropertyOfOrgA, CancellationToken.None)).Result);
         Assert.IsType<ForbidResult>((await outsider.Switch(PropertyOfOrgA, change, CancellationToken.None)).Result);
         Assert.IsType<ForbidResult>((await outsider.TestConnection(PropertyOfOrgA, CancellationToken.None)).Result);
         Assert.IsType<ForbidResult>((await outsider.DeclareActivated(PropertyOfOrgA, CancellationToken.None)).Result);
 
-        // Another organization's property is not found, even for a manager of the whole org A: the same 404 as a property that does not exist.
         var manager = Controller(senders, lookup, HostAuthorizationTestHarness.User("auth0|manager-a", "PropertyManager"));
         AssertNotFound((await manager.Get(PropertyOfOrgB, CancellationToken.None)).Result);
         AssertNotFound((await manager.Switch(PropertyOfOrgB, change, CancellationToken.None)).Result);
@@ -96,8 +93,6 @@ public class PropertySenderControllerTests
 
         Assert.Empty(senders.Invocations);
 
-        // Whoever reaches the property reads and changes its sender, and the change is made in the name of the caller, with the version of
-        // the delegation text the request names.
         var owner = Controller(senders, lookup, HostAuthorizationTestHarness.User(Owner, "PropertyOwner"));
         var read = Assert.IsType<OkObjectResult>((await owner.Get(PropertyOfOrgA, CancellationToken.None)).Result);
         Assert.Equal(PropertyOfOrgA, Assert.IsType<PropertySenderDto>(read.Value).PropertyId);
@@ -153,11 +148,6 @@ public class PropertySenderControllerTests
         Assert.Equal("property_not_found", Assert.IsAssignableFrom<ProblemDetails>(problem.Value).Extensions["code"]);
     }
 
-    /// <summary>
-    /// Proof (permission, E20/F01/US01/T01, decision O1): the guests written to the channel manager on their own is an org-wide setting, so only the
-    /// organization administrator changes it. A member who reaches the property and may change its sender is refused (403) when the request changes the
-    /// setting, and nothing of the request is done (the sender is not switched, the setting stays); the same member may send the value it already has.
-    /// </summary>
     [Fact]
     public async Task PropertySender_AutoSendOfTheOrg_ChangesOnlyForTheOrganizationAdministrator_Test()
     {
@@ -182,7 +172,6 @@ public class PropertySenderControllerTests
             AutoSendGuestsToOctorate = true,
         };
 
-        // Not the organization administrator: refused, the sender not switched, the setting not written.
         var member = Controller(senders, lookup, HostAuthorizationTestHarness.User(Owner, "PropertyOwner"), setting, orgAdmin: false);
         Assert.IsType<ForbidResult>((await member.Switch(PropertyOfOrgA, turnOn, CancellationToken.None)).Result);
         senders.Verify(
@@ -192,7 +181,6 @@ public class PropertySenderControllerTests
             Times.Never);
         setting.Verify(s => s.SetAsync(It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // The value it already has is no change: the member is not asked for more than it is allowed.
         var unchanged = new SwitchSenderRequest
         {
             Sender = ComplianceSenderType.Manual,
@@ -202,7 +190,6 @@ public class PropertySenderControllerTests
         };
         Assert.IsType<OkObjectResult>((await member.Switch(PropertyOfOrgA, unchanged, CancellationToken.None)).Result);
 
-        // The organization administrator changes it, after the sender, in its own name, and the answer says so.
         var admin = Controller(senders, lookup, HostAuthorizationTestHarness.User(Owner, "PropertyOwner"), setting, orgAdmin: true);
         var answer = Assert.IsType<OkObjectResult>((await admin.Switch(PropertyOfOrgA, turnOn, CancellationToken.None)).Result);
         Assert.True(Assert.IsType<PropertySenderDto>(answer.Value).AutoSendGuestsToOctorate);
@@ -232,10 +219,6 @@ public class PropertySenderControllerTests
         };
     }
 
-    /// <summary>
-    /// The production-like authorization of the property (the harness) with the policy of the organization administrator decided by the test: the
-    /// harness registers no policy of that name, and what is under test is that the controller asks for it, not how the policy is evaluated.
-    /// </summary>
     private sealed class OrgAdminAuthorization(IAuthorizationService inner, bool orgAdmin) : IAuthorizationService
     {
         public Task<AuthorizationResult> AuthorizeAsync(ClaimsPrincipal user, object? resource, IEnumerable<IAuthorizationRequirement> requirements) =>

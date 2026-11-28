@@ -46,7 +46,6 @@ public class ServiceRequestPaymentScopeTests
         LongRent,
     }
 
-    /// <summary>The permissions of the roles: what a collaborator holds, and what a manager holds on top.</summary>
     private static readonly string[] CollaboratorPermissions = ["property.read", "servicerequest.write"];
     private static readonly string[] ManagerPermissions = ["property.read", "property.write", "servicerequest.write"];
 
@@ -90,7 +89,6 @@ public class ServiceRequestPaymentScopeTests
             var orgContext = new Mock<IOrgContextResolver>();
             orgContext.Setup(o => o.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(OrgId);
 
-            // The extras of the host (the stay, the contact, the action) are not what these tests are about: none.
             HostReader
                 .Setup(r => r.DescribeAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<ServiceRequest>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new Dictionary<Guid, HostServiceRequestExtras>());
@@ -123,7 +121,6 @@ public class ServiceRequestPaymentScopeTests
             Controller.ControllerContext = new ControllerContext { HttpContext = http };
         }
 
-        /// <summary>The service answers with <paramref name="request"/> for the id, whatever the scope (or null: not found).</summary>
         public Guid Serves(ServiceRequest? request, Context context)
         {
             var id = request?.Id ?? Guid.NewGuid();
@@ -170,7 +167,6 @@ public class ServiceRequestPaymentScopeTests
             }
         }
 
-        /// <summary>True when the action went through to the service that moves the money or the state.</summary>
         public bool Executed(HostAction action, Guid id)
         {
             try
@@ -228,8 +224,6 @@ public class ServiceRequestPaymentScopeTests
         ? ManagerPermissions
         : ["property.read", "property.write"];
 
-    // --- A request outside the reach of the caller ---------------------------------------------------
-
     [Theory]
     [MemberData(nameof(Actions))]
     public async Task ARequestOfAPropertyNotGiven_IsNotFoundWhenTheServiceScopesTheRead(Context context, HostAction action)
@@ -248,8 +242,6 @@ public class ServiceRequestPaymentScopeTests
     [MemberData(nameof(Actions))]
     public async Task ARequestOfAPropertyNotGiven_IsForbidden_EvenWithEveryPermission_IfAServiceHandedTheRowOver(Context context, HostAction action)
     {
-        // The second layer: the service returns the row of the hidden property as if it had forgotten the scope, the caller holds
-        // every permission of the context, and the resource still carries the property it is bound to.
         var harness = new Harness(context, SelectedCollaborator, Everything(context));
         var id = harness.Serves(RequestOn(Hidden, context), context);
 
@@ -259,15 +251,11 @@ public class ServiceRequestPaymentScopeTests
         Assert.False(harness.Executed(action, id));
     }
 
-    // --- A request of a property the collaborator was given ----------------------------------------------
-
     [Theory]
     [InlineData(HostAction.ConfirmFinalAmount)]
     [InlineData(HostAction.CreatePaymentSession)]
     public async Task ThePaymentsThatChargeOrConfirmAPrice_NeedPropertyWrite_ACollaboratorWithServiceRequestWriteIsRefused(HostAction action)
     {
-        // The default of AM-03 stays: a collaborator marks an intervention paid but does not confirm a higher final amount or pay
-        // online (property.write). Whether it may is a decision of the product owner.
         var harness = new Harness(Context.ShortRent, SelectedCollaborator, CollaboratorPermissions);
         var id = harness.Serves(RequestOn(Granted, Context.ShortRent), Context.ShortRent);
 
@@ -295,7 +283,6 @@ public class ServiceRequestPaymentScopeTests
     [InlineData(HostAction.MarkPaid)]
     public async Task ThePositiveControl_WhoHoldsThePermissionAndReachesTheProperty_IsAllowed(HostAction action)
     {
-        // Without this the refusals above could be a harness that refuses everything.
         var harness = new Harness(Context.ShortRent, SelectedCollaborator, ManagerPermissions);
         var id = harness.Serves(RequestOn(Granted, Context.ShortRent), Context.ShortRent);
 
@@ -335,8 +322,6 @@ public class ServiceRequestPaymentScopeTests
         Assert.True(harness.Executed(action, id));
     }
 
-    // --- A request that belongs to no property ------------------------------------------------------------
-
     [Theory]
     [MemberData(nameof(Actions))]
     public async Task ARequestWithNoProperty_IsRefusedToEveryone_FailClosed(Context context, HostAction action)
@@ -349,7 +334,6 @@ public class ServiceRequestPaymentScopeTests
 
         var result = await harness.CallAsync(action, id);
 
-        // 403 on the short-rent endpoints; the long-rent ones, which are about properties only, answer 404.
         Assert.True(result is ForbidResult || result is ObjectResult { StatusCode: StatusCodes.Status404NotFound }, result?.GetType().Name);
         Assert.False(harness.Executed(action, id));
     }

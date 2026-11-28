@@ -12,7 +12,6 @@ public sealed class CleaningVatAnswerRequest
     /// <summary><c>Applied</c> («Sì», the rate of <c>standardRatePercent</c>), <c>NotApplied</c> («No, senza IVA») or <c>Unknown</c> («Non lo so»).</summary>
     public CleaningSupplierVat? Answer { get; set; }
 
-    /// <summary>«Ricorda per questa ditta»: the answer is kept for every cleaning of the company with no answer of its own. Not with <c>Unknown</c>; the whole organization only.</summary>
     public bool Remember { get; set; }
 }
 
@@ -54,7 +53,6 @@ public sealed record CleaningVatDto(
     bool StatedByCompany,
     bool CanRemember)
 {
-    /// <summary>The question for a caller that may (<paramref name="canRemember"/>) or may not remember the answer for the company.</summary>
     public static CleaningVatDto From(CleaningVatQuestion question, bool canRemember)
     {
         ArgumentNullException.ThrowIfNull(question);

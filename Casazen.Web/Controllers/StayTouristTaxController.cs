@@ -29,10 +29,6 @@ public class StayTouristTaxController(
     IFeatureFlags? featureFlags = null,
     IOrgContextResolver? orgContextResolver = null) : ControllerBase
 {
-    /// <summary>
-    /// The tax of the stay per guest, the collector and what the host must collect; <c>missingRate</c> when no rate is known. With
-    /// <c>Features:TouristTaxOnlinePayment</c> on, also the <c>collection</c> block (what is still to collect, paid online, owed back).
-    /// </summary>
     [HttpGet("bookings/{bookingId:guid}/tourist-tax")]
     [Authorize(Policy = CasazenPolicies.BookingRead)]
     [ProducesResponseType(typeof(StayTouristTaxDto), StatusCodes.Status200OK)]
@@ -50,12 +46,6 @@ public class StayTouristTaxController(
         return Ok(StayTouristTaxDto.From(view, await CanReadGuestsAsync(bookingId, cancellationToken), collection));
     }
 
-    /// <summary>
-    /// The host records that the guest paid the tourist tax at the property («Pagata in struttura», E25/F01/US01/T01): the guest can no longer pay it
-    /// online. Needs <c>payment.write</c> on the property. 422 <c>tourist_tax_collection_not_applicable</c> for a stay that is not active or whose channel
-    /// collects the tax, 409 <c>tourist_tax_paid_online</c> when the guest already paid online, 409 <c>tourist_tax_payment_in_progress</c> while a
-    /// payment is on its way. Behind <see cref="FeatureFlags.TouristTaxOnlinePayment"/>.
-    /// </summary>
     [HttpPost("bookings/{bookingId:guid}/tourist-tax/paid-at-property")]
     [FeatureGate(FeatureFlags.TouristTaxOnlinePayment)]
     [Authorize(Policy = CasazenPolicies.PaymentWrite)]
@@ -96,10 +86,6 @@ public class StayTouristTaxController(
         return settings is null ? OrganizationNotFound() : Ok(TouristTaxSettingsDto.From(settings));
     }
 
-    /// <summary>
-    /// Turns the online payment of the tourist tax on or off for the caller's organization (off by default), and whether the guest page asks for it before the
-    /// lock code (saved as off while the payment is off). Nobody pays until the connected account takes payments.
-    /// </summary>
     [HttpPut("orgs/me/tourist-tax-settings")]
     [FeatureGate(FeatureFlags.TouristTaxOnlinePayment)]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
@@ -122,7 +108,6 @@ public class StayTouristTaxController(
         return settings is null ? OrganizationNotFound() : Ok(TouristTaxSettingsDto.From(settings));
     }
 
-    /// <summary>The exemptions the host chooses for the guests (a null code clears one); 422 for an unknown reason or position.</summary>
     [HttpPut("bookings/{bookingId:guid}/tourist-tax/exemptions")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [ProducesResponseType(typeof(StayTouristTaxDto), StatusCodes.Status200OK)]
@@ -168,7 +153,6 @@ public class StayTouristTaxController(
         return Ok(StayTouristTaxDto.From(view, await CanReadGuestsAsync(bookingId, cancellationToken)));
     }
 
-    /// <summary>Confirms the tax of the stay (the record kept 10 years); 422 <c>tax_not_calculable</c> while no amount is known.</summary>
     [HttpPost("bookings/{bookingId:guid}/tourist-tax/confirm")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [ProducesResponseType(typeof(StayTouristTaxDto), StatusCodes.Status200OK)]
@@ -187,7 +171,6 @@ public class StayTouristTaxController(
         return Ok(StayTouristTaxDto.From(view, await CanReadGuestsAsync(bookingId, cancellationToken)));
     }
 
-    /// <summary>The comune of the property for its tourist tax and the rate the org declared for it.</summary>
     [HttpGet("properties/{propertyId:guid}/tourist-tax-rate")]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
     [ProducesResponseType(typeof(MunicipalityRateDto), StatusCodes.Status200OK)]
@@ -200,10 +183,6 @@ public class StayTouristTaxController(
         return Ok(MunicipalityRateDto.From(await stayTouristTax.GetMunicipalityRateAsync(propertyId, cancellationToken)));
     }
 
-    /// <summary>
-    /// Declares the org's rate for the comune of the property, private to the org: 409 <c>tax_rate_official_exists</c> where an official rate is
-    /// in force, 422 <c>tax_rate_source_required</c> without a source, 422 <c>tax_rate_invalid</c> for values out of range.
-    /// </summary>
     [HttpPut("properties/{propertyId:guid}/tourist-tax-rate")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(MunicipalityRateDto), StatusCodes.Status200OK)]
@@ -224,7 +203,6 @@ public class StayTouristTaxController(
         return Ok(MunicipalityRateDto.From(view));
     }
 
-    /// <summary>TN-3: the booking is visible (tenant filter) and the caller has <paramref name="operation"/> on its property.</summary>
     private async Task<bool> CanUseBookingAsync(Guid bookingId, HostOperationRequirement operation, CancellationToken cancellationToken)
     {
         var resource = await hostResources.ForBookingAsync(bookingId, cancellationToken);
@@ -247,7 +225,6 @@ public class StayTouristTaxController(
         return resource is not null && await authorizationService.IsAuthorizedAsync(User, resource, GuestOperations.Read);
     }
 
-    /// <summary>TN-3: the property is visible (tenant filter) and the caller has <paramref name="operation"/> on it.</summary>
     private async Task<bool> CanUsePropertyAsync(Guid propertyId, HostOperationRequirement operation, CancellationToken cancellationToken)
     {
         var resource = await hostResources.ForPropertyAsync(propertyId, cancellationToken);
@@ -259,10 +236,6 @@ public class StayTouristTaxController(
         return false;
     }
 
-    /// <summary>
-    /// The confirmation of the tax, an exemption and the declaration of the collector record no event (E25/F01/US01/T01, AC2): with the collection on, it is
-    /// evaluated here, so a confirmed amount lower than what the price included or the guest paid raises the host's «To do» at once. Never throws.
-    /// </summary>
     private Task ReconcileCollectionAsync(Guid bookingId, CancellationToken cancellationToken) =>
         touristTaxCollection is null ? Task.CompletedTask : touristTaxCollection.ReconcileAfterChangeAsync(bookingId, cancellationToken);
 

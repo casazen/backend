@@ -33,10 +33,8 @@ public class PaymentsController(
     IPaymentRefundService refundService,
     ILogger<PaymentsController> logger) : ControllerBase
 {
-    /// <summary>Code of a <c>from</c> after <c>to</c>.</summary>
     public const string InvalidRangeCode = "payment_list_invalid_range";
 
-    /// <summary>Header of the key that makes a recorded payment happen once, however many times the request is sent (SR-06b).</summary>
     public const string IdempotencyKeyHeader = "Idempotency-Key";
 
     /// <summary>Code of a record sent without the <see cref="IdempotencyKeyHeader"/>.</summary>
@@ -85,7 +83,6 @@ public class PaymentsController(
                 return NotFound();
         }
 
-        // Org (and ownership) filter applied in SQL: never the whole platform filtered in memory (A3-38).
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
         if (orgId is null
             || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted) is not { } scope)
@@ -187,7 +184,6 @@ public class PaymentsController(
         return Ok(PaymentRefundDto.From(refund));
     }
 
-    /// <summary>Refunds of the payment (newest first) with the refunded, pending and still refundable amounts.</summary>
     [HttpGet("{id}/refunds")]
     public async Task<ActionResult<PaymentRefundsResponse>> GetRefunds(Guid id)
     {
@@ -218,10 +214,6 @@ public class PaymentsController(
             ? Task.FromResult(false)
             : CanOnPropertyAsync(payment.Booking.PropertyId, operation, payment.OrgId);
 
-    /// <summary>
-    /// Authorizes <paramref name="operation"/> on a row bound to <paramref name="propertyId"/>. When the row carries
-    /// its own org (<paramref name="rowOrgId"/>), that org is the one checked, with the property's owner.
-    /// </summary>
     private async Task<bool> CanOnPropertyAsync(Guid propertyId, HostOperationRequirement operation, Guid? rowOrgId = null)
     {
         var property = await hostResources.ForPropertyAsync(propertyId, HttpContext.RequestAborted);

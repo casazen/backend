@@ -109,8 +109,6 @@ public class BookingServiceTests
     [Fact]
     public async Task CreateDirectBookingAsync_OnSiteStayLongerThanConfiguredMaxNights_Throws422RuleBeforePersisting()
     {
-        // A3-06: a "pay at the property" request holds dates with no guarantee, so its length is capped
-        // (DirectBooking:OnSiteMaxNights, 14 here).
         var property = new Property
         {
             OrgId = Guid.NewGuid(),
@@ -166,7 +164,6 @@ public class BookingServiceTests
         _mockRepository.Setup(x => x.IsAvailableAsync(
                 It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<int?>()))
             .ReturnsAsync(true);
-        // The notifier reads the saved request from the database, as in production.
         _mockRepository.Setup(x => x.AddAsync(It.IsAny<Booking>())).ReturnsAsync((Booking b) =>
         {
             _db.Bookings.Add(b);
@@ -181,15 +178,12 @@ public class BookingServiceTests
         var result = await _service.CreateDirectBookingAsync(OnSiteInput(property.Id, checkIn, checkIn.AddDays(14)));
 
         var stored = await _db.Bookings.AsNoTracking().SingleAsync(b => b.Id == result.BookingId);
-        // D5: never confirmed by the checkout.
         Assert.Equal(BookingStatus.Pending, stored.Status);
         Assert.Equal(PaymentOption.OnSite, stored.PaymentOption);
         Assert.Null(stored.GuestEmailVerifiedAt);
         _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Booking>()), Times.Never);
-        // BK-18: the guest snapshot is saved with its booking (one insert), never on its own.
         _mockGuestRepository.Verify(x => x.AddAsync(It.IsAny<Guest>()), Times.Never);
         Assert.Equal("guest@example.com", (await _db.Guests.AsNoTracking().SingleAsync(g => g.Id == stored.GuestId)).Email);
-        // Email confirmation window = the checkout TTL (15 minutes) when OnSiteEmailVerificationMinutes is not set.
         Assert.InRange(stored.RequestExpiresAt!.Value, DateTime.UtcNow.AddMinutes(14), DateTime.UtcNow.AddMinutes(16));
         Assert.Equal(stored.RequestExpiresAt, result.OnSiteRequestExpiresAt);
 
@@ -200,10 +194,8 @@ public class BookingServiceTests
             email.Content.HtmlBody,
             $"href=\"{EmailTestHelpers.PublicSiteBaseUrl}/book/villa-rosa/requests/{stored.Id:D}/confirm\\?token=([A-Za-z0-9_-]+)\"");
         Assert.True(link.Success, "confirmation link missing");
-        // Only the hash is stored; the raw token is only in the email.
         Assert.NotEqual(link.Groups[1].Value, stored.GuestEmailVerificationTokenHash);
         Assert.True(OnSiteRequests.EmailVerificationTokenMatches(stored.GuestEmailVerificationTokenHash, link.Groups[1].Value));
-        // BK-07: the checkout token of the outcome page is returned once; only its hash is stored.
         Assert.False(string.IsNullOrWhiteSpace(result.CheckoutToken));
         Assert.NotEqual(result.CheckoutToken, stored.CheckoutTokenHash);
         Assert.True(CheckoutOutcomes.TokenMatches(stored.CheckoutTokenHash, result.CheckoutToken));
@@ -212,7 +204,6 @@ public class BookingServiceTests
     [Fact]
     public async Task CreateDirectBookingAsync_PastCheckIn_Throws422WithoutStoringBookingOrGuest()
     {
-        // A3-33: the guest (personal data and consent) used to be saved before this check and left behind.
         var property = ConnectReadyProperty();
         var yesterday = TimeProvider.System.TodayInRome().AddDays(-1);
 
@@ -341,7 +332,6 @@ public class BookingServiceTests
         await Assert.ThrowsAsync<PaymentProcessingException>(() => _service.CreateDirectBookingAsync(
             DirectInput(property.Id, checkIn, checkIn.AddDays(3), option)));
 
-        // Removed with its guest, not left as a cancelled booking that keeps the guest's personal data.
         _mockRepository.Verify(x => x.DiscardCheckoutAttemptAsync(It.IsAny<Guid>()), Times.Once);
         _mockRepository.Verify(x => x.UpdateAsync(It.IsAny<Booking>()), Times.Never);
     }
@@ -366,7 +356,6 @@ public class BookingServiceTests
     [Fact]
     public async Task CreateDirectBookingAsync_DeferredPaymentWithArrivalTomorrow_Throws422RuleBeforePersisting()
     {
-        // A3-16: 10 nights from tomorrow used to be offered "Paga alla scadenza" with a deadline already past.
         var property = ConnectReadyProperty();
         var checkIn = TimeProvider.System.TodayInRome().AddDays(1);
 
@@ -389,11 +378,9 @@ public class BookingServiceTests
         var quote = await _service.QuoteDirectBookingAsync(
             new DirectBookingQuoteInput(property.Id, checkIn, checkIn.AddDays(3), 2, 0));
 
-        // 14 days before the start of the check-in day: the last whole day is the 15th day before.
         Assert.Equal(checkIn.AddDays(-15), quote.FreeRefundDeadline);
         Assert.True(quote.PaymentOptions.DeferredPaymentAvailable);
         Assert.Equal(checkIn.AddDays(-15), quote.PaymentOptions.DeferredChargeDate);
-        // DB-08a: the guest cancels by themselves, so the free cancellation is promised, until that same last whole day.
         Assert.Equal(checkIn.AddDays(-15), quote.PaymentOptions.FreeCancellationUntil);
     }
 
@@ -425,9 +412,6 @@ public class BookingServiceTests
         Assert.Null(quote.PaymentOptions.DeferredChargeDate);
     }
 
-    // ─── Minimum stay, weekend surcharge and marketing consent (DB-03) ───────────────────────────────
-
-    /// <summary>The first Friday on or after <paramref name="from"/>: a stay from it has two weekend nights.</summary>
     private static DateTime FridayOnOrAfter(DateTime from)
     {
         var day = from.Date;
@@ -450,7 +434,6 @@ public class BookingServiceTests
         Assert.Equal(DirectBookingErrorCodes.MinNightsNotMet, ex.Code);
         Assert.Equal("DirectBookingMinNightsNotMet", ex.MessageKey);
         Assert.Equal(3, Assert.Single(ex.MessageArgs));
-        // Nothing is priced for a stay that cannot be booked.
         _mockTouristTax.Verify(
             x => x.QuoteAsync(It.IsAny<TouristTaxComune>(), It.IsAny<TouristTaxStay>(), It.IsAny<CancellationToken>()),
             Times.Never);
@@ -514,7 +497,6 @@ public class BookingServiceTests
     [Fact]
     public async Task PriceHostStayAsync_StayShorterThanTheMinimum_IsPricedBecauseTheMinimumIsARuleOfTheGuests()
     {
-        // A stay the host enters by hand (a friend for a night, a block for the owner) is not refused by the minimum.
         var property = ConnectReadyProperty();
         property.MinNights = 5;
         var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
@@ -528,8 +510,6 @@ public class BookingServiceTests
     [Fact]
     public async Task QuoteDirectBookingAsync_DefaultRules_TotalIsTheNightlyRateTimesTheNightsPlusCleaningAndTax()
     {
-        // The non-regression of DB-03: a property with no minimum and no surcharge (every property until the host sets them)
-        // is priced as it always was, whatever the day the stay starts, Fridays and Saturdays included.
         var property = ConnectReadyProperty();
         property.NightlyRate = 123.45m;
         property.CleaningFee = 60m;
@@ -568,7 +548,6 @@ public class BookingServiceTests
             .Setup(x => x.QuoteAsync(It.IsAny<TouristTaxComune>(), It.IsAny<TouristTaxStay>(), It.IsAny<CancellationToken>()))
             .Callback<TouristTaxComune, TouristTaxStay, CancellationToken>((_, stay, _) => taxStay = stay)
             .ReturnsAsync(new TouristTaxQuote(TouristTaxQuoteStatus.Calculated, 10m, 4, 4, false, [], []));
-        // Thursday to Monday: Thursday, Friday, Saturday, Sunday.
         var checkIn = FridayOnOrAfter(TimeProvider.System.TodayInRome().AddDays(30)).AddDays(-1);
 
         var quote = await _service.QuoteDirectBookingAsync(
@@ -580,7 +559,6 @@ public class BookingServiceTests
         Assert.Equal(2 * 100m + 2 * 115m, quote.Lodging.Total);
         Assert.Equal(quote.Lodging.Total + 40m, quote.BasePrice);
         Assert.Equal(quote.BasePrice + 10m, quote.TotalPrice);
-        // The tax engine reads the price of each night of the stay (a percentage rate follows the surcharge).
         Assert.NotNull(taxStay);
         Assert.Equal([100m, 115m, 115m, 100m], taxStay.NightlyPrices);
         Assert.Equal(100m, taxStay.NightlyPrice);
@@ -598,7 +576,6 @@ public class BookingServiceTests
             .Setup(x => x.QuoteAsync(It.IsAny<TouristTaxComune>(), It.IsAny<TouristTaxStay>(), It.IsAny<CancellationToken>()))
             .Callback<TouristTaxComune, TouristTaxStay, CancellationToken>((_, stay, _) => taxStay = stay)
             .ReturnsAsync(new TouristTaxQuote(TouristTaxQuoteStatus.Calculated, 10m, 4, 4, false, [], []));
-        // Thursday to Monday; the host confirmed 180 for the Friday and 90 for the Sunday (PC-15).
         var checkIn = FridayOnOrAfter(TimeProvider.System.TodayInRome().AddDays(30)).AddDays(-1);
         var friday = DateOnly.FromDateTime(checkIn).AddDays(1);
         var sunday = DateOnly.FromDateTime(checkIn).AddDays(3);
@@ -612,7 +589,6 @@ public class BookingServiceTests
         var quote = await _service.QuoteDirectBookingAsync(
             new DirectBookingQuoteInput(property.Id, checkIn, checkIn.AddDays(4), 2, 0));
 
-        // Thursday 100, Friday 180 (the host's price, no surcharge on top), Saturday 115 (rate + 15 %), Sunday 90.
         Assert.Equal(DateOnly.FromDateTime(checkIn), askedFrom);
         Assert.Equal(DateOnly.FromDateTime(checkIn).AddDays(4), askedTo);
         Assert.Equal(100m + 180m + 115m + 90m, quote.Lodging.Total);
@@ -666,7 +642,6 @@ public class BookingServiceTests
             new DirectBookingQuoteInput(property.Id, checkIn, checkIn.AddDays(3), 2, 0));
         var result = await _service.CreateDirectBookingAsync(DirectInput(property.Id, checkIn, checkIn.AddDays(3), PaymentOption.Immediate));
 
-        // Fri + Sat at 115, Sun at 100, plus 40 of cleaning: 370.
         Assert.Equal(370m, quote.TotalPrice);
         Assert.NotNull(inserted);
         Assert.Equal(quote.TotalPrice, inserted.TotalPrice);
@@ -678,7 +653,6 @@ public class BookingServiceTests
     [Fact]
     public async Task QuoteDirectBookingAsync_HouseInSwissFrancs_QuotesInFrancsAndAHouseInEurosStaysInEuros()
     {
-        // CHF-MONEY: the currency of a quote is the one of its property, never a constant; same rates, no conversion.
         var swiss = ConnectReadyProperty();
         swiss.Country = "CH";
         swiss.Currency = StayCurrency.SwissFranc;
@@ -712,8 +686,6 @@ public class BookingServiceTests
     public async Task CreateDirectBookingAsync_ImmediatePayment_ChargesTheTotalOfTheQuoteInTheCurrencyOfTheProperty(
         string currency, string expectedStripeCurrency)
     {
-        // The PaymentIntent is in the currency the guest was quoted, with the amount of the quote in its minor units (two decimals for
-        // both): a house in francs is never charged in euros.
         var property = ConnectReadyProperty();
         property.Currency = currency;
         property.NightlyRate = 150m;
@@ -780,16 +752,13 @@ public class BookingServiceTests
         Assert.Equal(GuestConsentSource.BookingCheckout, insertedConsent.Source);
         Assert.Equal("203.0.113.7", insertedConsent.IpAddress);
         Assert.Equal(guest.MarketingConsentDate, insertedConsent.RecordedAt);
-        // The legacy box is the e-mail channel, and the row of the register says so.
         Assert.Equal(GuestConsentChannelNote.Email, insertedConsent.Note);
-        // The plain insert is for the checkouts without consent.
         _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
     }
 
     [Fact]
     public async Task CreateDirectBookingAsync_MarketingConsentWithoutAVersion_Throws422AndStoresNothing()
     {
-        // Like the check-in portal (CO-15): no versioned text, no consent that can be proved.
         var property = ConnectReadyProperty();
         var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
         var input = DirectInput(property.Id, checkIn, checkIn.AddDays(3), PaymentOption.Immediate) with { MarketingConsent = true };
@@ -830,7 +799,6 @@ public class BookingServiceTests
         _mockRepository.Verify(x => x.AddWithGuestConsentsAsync(It.IsAny<Booking>(), It.IsAny<IReadOnlyList<GuestConsentRecord>>()), Times.Never);
     }
 
-    /// <summary>A service like <c>_service</c> with more settings (same mocks), for the settings that default to none.</summary>
     private BookingService NewServiceWithSettings(params (string Key, string? Value)[] settings)
     {
         var values = new Dictionary<string, string?>
@@ -1042,7 +1010,6 @@ public class BookingServiceTests
         var result = await _service.IsPropertyAvailableAsync(propertyId, checkIn, checkOut);
 
         Assert.True(result);
-        // BK-21: the expired holds of these dates go through the expiry routine (intent cancelled on Stripe) before the check.
         Assert.Equal(["expire", "availability"], sequence);
     }
 
@@ -1058,7 +1025,6 @@ public class BookingServiceTests
         var result = await _service.GetCalendarAsync(propertyId, start, end);
 
         Assert.Empty(result);
-        // BK-21: expired holds are left out by the read itself; cancelling them is the job's work, never a read's.
         _mockRepository.Verify(x => x.GetByDateRangeAsync(propertyId, start, end, 15), Times.Once);
         _mockHoldExpiry.VerifyNoOtherCalls();
     }

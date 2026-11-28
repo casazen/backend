@@ -18,7 +18,6 @@ public class OwnerDirectoryNpgsqlTranslationTests
     private static readonly Guid OrgId = Guid.Parse("7a3c1d52-9f0e-4b8a-8d65-2c4e1f0b9a11");
     private static readonly Casazen.Tests.Unit.FakeTimeProvider Clock = new(HostScopeScenario.Now);
 
-    // The org as a parameter of the statement, never a literal: EF names it @orgId, or after the closure that holds it (@_8__locals1_orgId) inside a nested lambda.
     private static readonly Regex OrgPredicate = new(@"""OrgId"" = @\w*orgId\b", RegexOptions.Compiled);
 
     public static TheoryData<string> Scopes => ["collaborator", "account-in-no-team", "whole-org"];
@@ -40,7 +39,6 @@ public class OwnerDirectoryNpgsqlTranslationTests
 
         await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.ListAsync(ScopeOf(scopeKind)));
 
-        // One statement for the whole list: the facts of each owner are read with it, never one read for each owner.
         var sql = Assert.Single(statements);
         Assert.Contains("FROM \"PropertyOwners\"", sql, StringComparison.Ordinal);
         Assert.Contains("\"PropertyOwnerships\"", sql, StringComparison.Ordinal);
@@ -48,12 +46,9 @@ public class OwnerDirectoryNpgsqlTranslationTests
         Assert.Contains("\"OwnerMandates\"", sql, StringComparison.Ordinal);
         Assert.Contains("ORDER BY", sql, StringComparison.OrdinalIgnoreCase);
 
-        // The org on the owners, on the periods and the properties of the count, on the two sub-queries of the profile and the six of the mandate; and, for a partial reach,
-        // on the properties it reaches and on the two checks on the periods of the owner.
         var expectedOrgChecks = scopeKind == "whole-org" ? 11 : 14;
         Assert.True(OrgPredicate.Matches(sql).Count >= expectedOrgChecks, $"the org is not asked of every table ({OrgPredicate.Matches(sql).Count} of {expectedOrgChecks}):{Environment.NewLine}{sql}");
 
-        // A partial reach is the grants of the caller (a collaborator) or the creator of the property (an account outside the team), inside the same statement.
         if (scopeKind == "collaborator")
             Assert.Contains("\"PropertyMemberAccesses\"", sql, StringComparison.Ordinal);
         if (scopeKind == "account-in-no-team")
@@ -61,7 +56,6 @@ public class OwnerDirectoryNpgsqlTranslationTests
         if (scopeKind == "whole-org")
             Assert.DoesNotContain("\"PropertyMemberAccesses\"", sql, StringComparison.Ordinal);
 
-        // The list reads the columns it shows: no identifier, address or bank account of the owner nor of its fiscal profile is in the statement.
         foreach (var column in new[] { "FiscalCode", "VatNumber", "\"Bic\"", "BillingStreet", "BillingCity", "LegalAddress", "BankAccountReference", "ForeignTaxId", "MandatePdfUrl" })
             Assert.DoesNotContain(column, sql, StringComparison.Ordinal);
     }

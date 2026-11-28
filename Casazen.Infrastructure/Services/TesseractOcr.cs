@@ -6,45 +6,27 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>The text reader cannot run: the library or a language file is not there, or its SHA-256 is not the pinned one (ADR-013-R8).</summary>
 public sealed class DocumentReaderUnavailableException(string reasonCode) : InvalidOperationException("The document text reader is not available.")
 {
-    /// <summary>Why, as a code (<c>library_missing</c>, <c>hash_mismatch</c>, <c>file_missing</c>, ...).</summary>
     public string ReasonCode { get; } = reasonCode;
 }
 
-/// <summary>Reads the characters of one line of the machine readable zone of a document (OCR-B).</summary>
 public interface IMrzTextReader
 {
-    /// <summary>
-    /// The text of the strip, which holds a single line, or null when nothing was read. The strip is read from memory: no file. Throws
-    /// <see cref="DocumentReaderUnavailableException"/> when the reader cannot run at all.
-    /// </summary>
     Task<string?> ReadLineAsync(GrayBitmap strip, CancellationToken cancellationToken);
 }
 
-/// <summary>Reads the printed text of a whole document page (the visual zone).</summary>
 public interface IPageTextReader
 {
-    /// <summary>
-    /// The text of the page, or null when nothing was read. The page is read from memory: no file. Throws
-    /// <see cref="DocumentReaderUnavailableException"/> when the reader cannot run at all.
-    /// </summary>
     Task<string?> ReadPageAsync(GrayBitmap page, CancellationToken cancellationToken);
 
     Task<string?> ReadLayoutAsync(GrayBitmap page, bool sparse, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
 }
 
-/// <summary>
-/// The C interface of Tesseract (<c>capi.h</c>), bound at run time to the library installed in the image (the package that already serves the
-/// energy certificate). Only the dozen calls the readers need. The picture goes in as raw pixels from memory: nothing is written to disk. The
-/// library is not loaded until a reader is used, and its absence is a code, not a crash.
-/// </summary>
 internal static class TesseractNative
 {
     private static readonly Lazy<Api?> Library = new(Load, LazyThreadSafetyMode.ExecutionAndPublication);
 
-    /// <summary>The bound library, or null when no Tesseract was found on this machine.</summary>
     public static Api? Get() => Library.Value;
 
     private static Api? Load()
@@ -71,7 +53,6 @@ internal static class TesseractNative
             }
             catch (EntryPointNotFoundException)
             {
-                // A library with that name that is not Tesseract: try the next name.
             }
         }
 
@@ -173,7 +154,6 @@ internal sealed class TesseractPool : IDisposable
         _pixelsPerInch = pixelsPerInch;
         _whitelist = whitelist;
         _slots = new SemaphoreSlim(size, size);
-        // The first engine is created now, so a language file the library cannot load is found before the first document.
         var first = CreateEngine();
         _idle.Add(first);
     }
@@ -265,10 +245,6 @@ internal sealed class TesseractPool : IDisposable
     }
 }
 
-/// <summary>
-/// Creates a <see cref="TesseractPool"/> once the language files are proved (ADR-013-R8) and keeps it; a failure is remembered for five minutes,
-/// so a document that arrives while the files are wrong costs one check, not one per request.
-/// </summary>
 internal sealed class LazyTesseractPool(
     Func<CancellationToken, Task<TesseractPool>> create,
     ILogger logger,
@@ -323,11 +299,6 @@ internal sealed class LazyTesseractPool(
     }
 }
 
-/// <summary>
-/// The OCR-B reader of the lines of the MRZ (E03/F04/US01/T02): Tesseract in process, one line at a time (page-segmentation mode 7), only the
-/// characters of the MRZ allowed. The language file is an external model file with a pinned SHA-256 (ADR-013-R8); without the library or with a
-/// file that is not the pinned one the reader is unavailable and the document goes to the guided manual entry.
-/// </summary>
 public sealed class TesseractMrzTextReader : IMrzTextReader, IDisposable
 {
     private const int PageSegmentationSingleLine = 7;
@@ -380,14 +351,9 @@ public sealed class TesseractMrzTextReader : IMrzTextReader, IDisposable
     public void Dispose() => _pool.Dispose();
 }
 
-/// <summary>
-/// The reader of the printed fields of a document (the visual zone): Tesseract in process with the Italian and English language files, whole
-/// page, from memory. The files are external model files with a pinned SHA-256 (ADR-013-R8), like the OCR-B file.
-/// </summary>
 public sealed class TesseractPageTextReader : IPageTextReader, IDisposable
 {
     private const int PageSegmentationAuto = 3;
-    // Phone images often have no meaningful DPI. At 300 DPI the small labels on a full card look like undersized print to page segmentation.
     private const int PhotoPixelsPerInch = 96;
 
     private readonly LazyTesseractPool _pool;
@@ -434,7 +400,6 @@ public sealed class TesseractPageTextReader : IPageTextReader, IDisposable
     public async Task<string?> ReadLayoutAsync(GrayBitmap page, bool sparse, CancellationToken cancellationToken)
     {
         var pool = await _pool.GetAsync(cancellationToken);
-        // Sparse text (11) preserves isolated printed fields. A single block (6) preserves values sharing a row.
         return await pool.ReadAsync(page, cancellationToken, sparse ? 11 : 6);
     }
 

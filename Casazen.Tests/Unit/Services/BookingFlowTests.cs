@@ -16,7 +16,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>casazen/backend#978: the settings of the booking flow, their defaults (every step automatic) and their bounds.</summary>
 public class BookingFlowSettingsServiceTests
 {
     private static readonly IOptions<GuestCheckInOptions> Options =
@@ -107,16 +106,11 @@ public class BookingFlowSettingsServiceTests
         new(db, Options, TimeProvider.System, NullLogger<BookingFlowSettingsService>.Instance);
 }
 
-/// <summary>
-/// casazen/backend#978: the steps <see cref="StayLifecycleService"/> does in the host's place: the property declared ready (at the check-out or when the cleaning is done),
-/// the automatic arrival and departure, and what the host decided first always winning.
-/// </summary>
 public class StayLifecycleBookingFlowTests
 {
     private static readonly DateTime October1 = new(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
     private static readonly DateTime October3 = new(2026, 10, 3, 0, 0, 0, DateTimeKind.Utc);
 
-    // 12:00 in Rome on the departure day.
     private static readonly DateTimeOffset DepartureNoon = new(2026, 10, 3, 10, 0, 0, TimeSpan.Zero);
 
     private readonly Mock<IPushNotificationService> _push = new();
@@ -275,7 +269,6 @@ public class StayLifecycleBookingFlowTests
             pushNotifications: _push.Object);
 }
 
-/// <summary>casazen/backend#978: what the hourly job of the booking flow does for a stay, and when.</summary>
 public class BookingFlowAutomationJobTests
 {
     private static readonly DateTime October1 = new(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -286,7 +279,6 @@ public class BookingFlowAutomationJobTests
     [Fact]
     public void StepOf_ArrivalDayNotOver_Nothing()
     {
-        // 20:00 in Rome on the arrival day: the host may still register it or mark a no-show.
         Assert.Null(BookingFlowAutomationJob.StepOf(Stay(BookingStatus.Confirmed), Automatic, October1, new DateTime(2026, 10, 1, 18, 0, 0, DateTimeKind.Utc)));
     }
 
@@ -301,14 +293,12 @@ public class BookingFlowAutomationJobTests
     [Fact]
     public void StepOf_BeforeTheCheckOutTime_Nothing()
     {
-        // 09:00 in Rome, check-out at 10:00 (the property says none).
         Assert.Null(BookingFlowAutomationJob.StepOf(Stay(BookingStatus.CheckedIn), Automatic, October3, new DateTime(2026, 10, 3, 7, 0, 0, DateTimeKind.Utc)));
     }
 
     [Fact]
     public void StepOf_AfterTheCheckOutTimeOfTheProperty_RegistersTheDeparture()
     {
-        // 11:30 in Rome, the property checks out at 11:00.
         Assert.Equal(
             BookingFlowAutomaticStep.Departure,
             BookingFlowAutomationJob.StepOf(Stay(BookingStatus.CheckedIn, new TimeOnly(11, 0)), Automatic, October3, new DateTime(2026, 10, 3, 9, 30, 0, DateTimeKind.Utc)));
@@ -336,7 +326,6 @@ public class BookingFlowAutomationJobTests
         new(Guid.NewGuid(), Guid.NewGuid(), status, October1, October3, checkOutBy, "Europe/Rome");
 }
 
-/// <summary>casazen/backend#978: the cleaning a supplier completed declares the property of its stay ready, through the booking flow.</summary>
 public class PropertyReadyAutomationHandlerTests
 {
     [Fact]
@@ -385,7 +374,6 @@ public class PropertyReadyAutomationHandlerTests
     }
 }
 
-/// <summary>The data of the tests of the booking flow: a stay with its org, property and guest, the flow of an org, a staff cleaning.</summary>
 internal static class BookingFlowTestData
 {
     public static AppDbContext CreateDb() =>

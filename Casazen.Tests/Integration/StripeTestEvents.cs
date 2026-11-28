@@ -2,7 +2,6 @@ using Stripe;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>Stripe events as <c>Event.FromJson</c> would build them, for the webhook handler tests.</summary>
 internal static class StripeTestEvents
 {
     public static string NewEventId() => $"evt_test_{Guid.NewGuid():N}";

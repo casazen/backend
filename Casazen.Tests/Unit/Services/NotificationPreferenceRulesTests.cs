@@ -4,10 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E05/F03/US01/T02 (NF-65, PO-10, ADR-025-R3): the pure rules of the notification preferences — the defaults of each kind of event, what a save
-/// may do, and how the quiet hours split the channels of an alert. No database, no clock.
-/// </summary>
 public class NotificationPreferenceRulesTests
 {
     private const NotificationChannels PushAndCounter = NotificationChannels.MobilePush | NotificationChannels.CounterOnly;
@@ -17,8 +13,6 @@ public class NotificationPreferenceRulesTests
 
     private static DateTime Utc(int year, int month, int day, int hour, int minute = 0) =>
         new(year, month, day, hour, minute, 0, DateTimeKind.Utc);
-
-    // ─── Defaults (PO-10) ───
 
     [Theory]
     [InlineData(NotificationEventType.NewGuestMessage, PushAndCounter)]
@@ -50,7 +44,6 @@ public class NotificationPreferenceRulesTests
             NotificationChannels.Email,
             NotificationPreferenceRules.EffectiveChannelsOf(NotificationEventType.NewGuestMessage, NotificationChannels.Email));
 
-        // «Nothing at all» is a choice for any kind of event but the legal deadline.
         Assert.Equal(
             NotificationChannels.None,
             NotificationPreferenceRules.EffectiveChannelsOf(NotificationEventType.NewBooking, NotificationChannels.None));
@@ -65,8 +58,6 @@ public class NotificationPreferenceRulesTests
 
         Assert.Equal(NotificationPreferenceRules.DefaultChannelsOf(NotificationEventType.LegalDeadline), channels);
     }
-
-    // ─── What a save may do ───
 
     [Fact]
     public void ValidateSave_ALegalDeadlineWithoutAChannel_IsRefused()
@@ -97,8 +88,6 @@ public class NotificationPreferenceRulesTests
         Assert.False(NotificationPreferenceRules.IsDeclared((NotificationChannels)64));
     }
 
-    // ─── Quiet hours ───
-
     [Fact]
     public void Decide_OutsideTheQuietHours_EverythingGoesNow()
     {
@@ -120,7 +109,6 @@ public class NotificationPreferenceRulesTests
     [InlineData(23, 59, 7)]
     public void Decide_InTheEveningOfTheQuietHours_PushAndEmailWaitForTheNextMorning_TheCounterDoesNot(int hourInRome, int minute, int dueHourUtc)
     {
-        // November: Rome is UTC+1, so 22:00 in Rome is 21:00 UTC and 08:00 the next morning is 07:00 UTC.
         var decision = NotificationPreferenceRules.Decide(
             NotificationEventType.NewGuestMessage,
             PushAndCounter | NotificationChannels.Email,
@@ -153,7 +141,6 @@ public class NotificationPreferenceRulesTests
     [Fact]
     public void Decide_TheEndOfTheQuietHoursIsOutsideThem()
     {
-        // 08:00 in Rome (07:00 UTC) is the first instant after the quiet hours.
         var decision = NotificationPreferenceRules.Decide(NotificationEventType.NewGuestMessage, PushAndCounter, QuietStart, QuietEnd, true, Utc(2026, 11, 7, 7));
 
         Assert.Equal(PushAndCounter, decision.Now);
@@ -163,7 +150,6 @@ public class NotificationPreferenceRulesTests
     [Fact]
     public void Decide_TheQuietHoursStayOnTheClockOfRome_AlsoOnTheDayTheClockChanges()
     {
-        // 28 March 2026, 23:00 in Rome is 22:00 UTC (CET); the next morning's 08:00 is already summer time (UTC+2): 06:00 UTC.
         var decision = NotificationPreferenceRules.Decide(NotificationEventType.NewGuestMessage, PushAndCounter, QuietStart, QuietEnd, true, Utc(2026, 3, 28, 22));
 
         Assert.Equal(Utc(2026, 3, 29, 6), decision.DueAtUtc);
@@ -232,7 +218,6 @@ public class NotificationPreferenceRulesTests
     [Fact]
     public void QuietHoursEndUtc_AMorningWindowThatDoesNotCrossMidnight_EndsToday()
     {
-        // 13:00-15:00 in Rome; 14:00 in Rome is 13:00 UTC in November.
         var end = NotificationPreferenceRules.QuietHoursEndUtc(new TimeOnly(13, 0), new TimeOnly(15, 0), Utc(2026, 11, 6, 13));
 
         Assert.Equal(Utc(2026, 11, 6, 14), end);

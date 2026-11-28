@@ -3,7 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services.LeaseContracts;
 
-/// <summary>LT-03 (A7-03): the contract states the term computed from the dates, never a fixed "3+2".</summary>
 public class LeaseTermTests
 {
     [Theory]

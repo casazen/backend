@@ -56,7 +56,6 @@ public sealed class BookingTimelineService(AppDbContext db, TimeProvider? timePr
         return BookingTimeline.Build(booking, new BookingTimelineFacts(payments, refunds, checkIn, alloggiati), now, includeAmounts);
     }
 
-    // Only the columns the state of a link is read from (the hash of its token stays in the database).
     private async Task<List<GuestCheckInSession>> LoadSessionsAsync(Guid orgId, Guid bookingId, CancellationToken cancellationToken) =>
         await db.GuestCheckInSessions
             .AsNoTracking()
@@ -73,8 +72,6 @@ public sealed class BookingTimelineService(AppDbContext db, TimeProvider? timePr
             })
             .ToListAsync(cancellationToken);
 
-    // The state is the one the Home reads (one rule: the link the guest submitted wins, else the latest). The link that counts is the
-    // one the guest submitted, else the latest; one whose email failed went nowhere, so nothing was sent.
     private static BookingTimelineCheckIn CheckInOf(IReadOnlyList<GuestCheckInSession> sessions, DateTime nowUtc)
     {
         var state = HostTodayService.StateOf(sessions, nowUtc);

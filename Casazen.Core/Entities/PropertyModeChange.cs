@@ -27,41 +27,28 @@ namespace Casazen.Core.Entities;
 [Table("PropertyModeChanges")]
 public class PropertyModeChange : ITenantOwned
 {
-    /// <summary>Column length of <see cref="FailureReason"/>.</summary>
     public const int FailureReasonMaxLength = 100;
 
-    /// <summary>
-    /// Name of the partial unique index that allows one <see cref="PropertyModeChangeStatus.Scheduled"/> change per property:
-    /// a 23505 on it means another change was programmed first (<c>property_mode_change_exists</c>).
-    /// </summary>
     public const string OneScheduledIndexName = "UIX_PropertyModeChanges_PropertyId_Scheduled";
 
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row, copied from the property (TN-2).</summary>
     public Guid OrgId { get; set; }
 
     [ForeignKey(nameof(Property))]
     public Guid PropertyId { get; set; }
     public virtual Property Property { get; set; } = null!;
 
-    /// <summary>The mode of the property when the change was programmed. Checked again when it is applied.</summary>
     public RentalMode FromMode { get; set; }
 
     public RentalMode ToMode { get; set; }
 
-    /// <summary>
-    /// First day in <see cref="ToMode"/>: a calendar day of Europe/Rome, stored as midnight UTC of that date (the storage
-    /// convention of the stay and contract dates). It is at least tomorrow when programmed: the job applies the change at
-    /// the first run after midnight of Rome of this day (<c>RomeCalendar.TodayInRome</c>).
-    /// </summary>
     public DateTime EffectiveDate { get; set; }
 
     public PropertyModeChangeStatus Status { get; set; } = PropertyModeChangeStatus.Scheduled;
 
-    /// <summary>Auth0 subject of the person who programmed the change.</summary>
     [MaxLength(255)]
     public string CreatedByUserId { get; set; } = string.Empty;
 
@@ -73,7 +60,6 @@ public class PropertyModeChange : ITenantOwned
     /// <summary>UTC instant a person withdrew the change; null unless <see cref="Status"/> is <see cref="PropertyModeChangeStatus.Cancelled"/>.</summary>
     public DateTime? CancelledAt { get; set; }
 
-    /// <summary>Auth0 subject of the person who withdrew it.</summary>
     [MaxLength(255)]
     public string? CancelledByUserId { get; set; }
 

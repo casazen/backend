@@ -8,7 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>FD-21 (A8-01, A8-07): the paid AI provider is budgeted before the call, with real or estimated tokens.</summary>
 public class BudgetGuardedAiProviderTests
 {
     private const int MaxCompletionTokens = 2048;

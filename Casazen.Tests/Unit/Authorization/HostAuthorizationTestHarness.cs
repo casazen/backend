@@ -54,10 +54,6 @@ public static class HostAuthorizationTestHarness
         return services.BuildServiceProvider().GetRequiredService<IAuthorizationService>();
     }
 
-    /// <summary>
-    /// The real scope resolver over <paramref name="snapshot"/> for every user (AM-03). Without a snapshot the user is unknown
-    /// to the database, which is decided by the token roles: the rule of before the team.
-    /// </summary>
     public static IHostScopeResolver ScopeResolver(UserAuthorizationSnapshot? snapshot = null)
     {
         var store = new Mock<IUserAuthorizationSnapshotStore>();

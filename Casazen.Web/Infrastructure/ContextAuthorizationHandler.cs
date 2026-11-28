@@ -5,13 +5,8 @@ using Microsoft.AspNetCore.Authorization;
 
 namespace Casazen.Web.Infrastructure;
 
-/// <summary>
-/// Requirement of a context policy (<c>CasazenPolicies</c>): <see cref="PermissionKey"/> held in at least one of
-/// <see cref="ContextKeys"/>. A permission counts only in the context that grants it.
-/// </summary>
 public sealed record ContextPermissionRequirement(IReadOnlyList<string> ContextKeys, string PermissionKey, IReadOnlyList<string>? OtherPermissionKeys = null) : IAuthorizationRequirement
 {
-    /// <summary>A requirement on a single context.</summary>
     public ContextPermissionRequirement(string contextKey, string permissionKey)
         : this([contextKey], permissionKey)
     {

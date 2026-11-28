@@ -78,19 +78,13 @@ internal sealed class TaxReportingPeople
         return new TaxReportingPeople(owners, profiles.ToLookup(p => p.PropertyOwnerId), properties);
     }
 
-    /// <summary>The property as the registry has it, <c>null</c> for an id that is not one of the org's.</summary>
     public CuProperty? PropertyOf(Guid propertyId) => _properties.GetValueOrDefault(propertyId);
 
-    /// <summary>The name the owner accounting gives an owner: the legal name, else first and last name; <c>null</c> for an owner that is not in the registry.</summary>
     public string? NameOf(Guid ownerId) =>
         _owners.TryGetValue(ownerId, out var owner)
             ? Clean(owner.LegalName) ?? Clean($"{owner.FirstName} {owner.LastName}")
             : null;
 
-    /// <summary>
-    /// Who the data of the owner makes out its Certificazione Unica to: the fiscal profile in force on <paramref name="day"/> (the latest that started on or before it and has not ended,
-    /// else the latest there is), then the registry for what the profile has not got. What is missing is said, never guessed.
-    /// </summary>
     public CuRecipient RecipientOf(Guid ownerId, DateOnly day)
     {
         if (!_owners.TryGetValue(ownerId, out var owner))
@@ -147,7 +141,6 @@ internal sealed class TaxReportingPeople
         return string.IsNullOrEmpty(text) ? null : text;
     }
 
-    /// <summary>The codes of <see cref="CuRecipient.Missing"/>.</summary>
     internal static class Missing
     {
         public const string Name = "name";

@@ -29,8 +29,6 @@ public sealed class BiometricSettingsController(
     IBiometricSettingsService settings,
     IOrgContextResolver orgContextResolver) : ControllerBase
 {
-    /// <summary>The settings in force: the row of the organization, or today's defaults (<c>isDefault</c>) while it has none.</summary>
-    /// <response code="200">The settings and whether they are provisional.</response>
     [HttpGet]
     [ProducesResponseType(typeof(BiometricSettingsDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -45,12 +43,6 @@ public sealed class BiometricSettingsController(
         return Ok(BiometricSettingsDto.From(await settings.GetAsync(orgId.Value, cancellationToken)));
     }
 
-    /// <summary>
-    /// Saves the settings: a member left out keeps its value. 422 <c>biometric_thresholds_out_of_range</c> (escalate under 0.50 or accept over 0.95),
-    /// <c>biometric_thresholds_order_invalid</c> (escalate not lower than accept) or <c>biometric_attempts_out_of_range</c> (not 1 to 5), and nothing is saved.
-    /// A change leaves the thresholds provisional and writes a line in the activity log; the same values again write nothing.
-    /// </summary>
-    /// <response code="200">The settings in force after the change.</response>
     [HttpPut]
     [ProducesResponseType(typeof(BiometricSettingsDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -72,12 +64,6 @@ public sealed class BiometricSettingsController(
         return Ok(BiometricSettingsDto.From(view));
     }
 
-    /// <summary>
-    /// The segments of the self-hosted identity verification of the organization (E70/F02/US01/T02, NF-194, decision D4): what each lets the policy do now, the formats and
-    /// channels a new one can name, the policy in force and whether the platform permission of the automatic approval is on. Behind
-    /// <see cref="FeatureFlags.CheckInIdentitySelfHosted"/> too (404 while it is off).
-    /// </summary>
-    /// <response code="200">The segments and what they allow.</response>
     [HttpGet("segments")]
     [FeatureGate(FeatureFlags.CheckInIdentitySelfHosted)]
     [ProducesResponseType(typeof(IdentitySegmentsDto), StatusCodes.Status200OK)]
@@ -93,12 +79,6 @@ public sealed class BiometricSettingsController(
         return Ok(IdentitySegmentsDto.From(await segments.ListAsync(orgId.Value, cancellationToken)));
     }
 
-    /// <summary>
-    /// Creates a segment in observation: <c>{ propertyId?, formatId, channel }</c>, a property of the organization (none: every property), a format of the registry and a
-    /// channel of the list. A segment that exists already is answered as it is. 422 <c>identity_segment_invalid</c> for a format, a channel or a property that is not one of
-    /// those. A line goes to the activity log of the organization.
-    /// </summary>
-    /// <response code="200">The segment.</response>
     [HttpPost("segments")]
     [FeatureGate(FeatureFlags.CheckInIdentitySelfHosted)]
     [ProducesResponseType(typeof(IdentitySegmentDto), StatusCodes.Status200OK)]

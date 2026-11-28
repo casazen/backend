@@ -48,7 +48,6 @@ public class GuestPhoneLookupLockoutTests
             Assert.Equal(StatusCodes.Status404NotFound, failed.Status);
         }
 
-        // Another spelling of the same code is the same code.
         var locked = await world.OpenAsync(
             GuestSessionPhoneWorld.PhoneBody(org, BookingCodes.Format(booking.BookingCode).ToLowerInvariant(), GuestSessionPhoneWorld.RightDigits));
 
@@ -59,13 +58,11 @@ public class GuestPhoneLookupLockoutTests
         Assert.Equal("rate_limited", problem.GetProperty("code").GetString());
         Assert.Equal(3600, problem.GetProperty("retryAfterSeconds").GetInt32());
 
-        // The e-mail proof keeps its own limits: the same code opens with the address of the booking.
         Assert.Equal(
             StatusCodes.Status200OK,
             (await world.OpenAsync(GuestSessionPhoneWorld.EmailBody(org, booking.BookingCode, "anna@example.com"))).Status);
     }
 
-    /// <summary>Privacy rule: a code that does not exist counts and locks exactly as a real one, with the same 429 (status, headers, body).</summary>
     [Fact]
     public async Task UnknownCode_LocksLikeAKnownOne()
     {
@@ -91,10 +88,6 @@ public class GuestPhoneLookupLockoutTests
         Assert.False(real.ActionRan || fake.ActionRan);
     }
 
-    /// <summary>
-    /// Data rule: the key of a code is the SHA-256 of its stored form, whatever the spelling, never the code or the digits; and the store is bounded.
-    /// A flood of made-up codes never makes it follow more codes than its bound, and a code it cannot follow is refused, never let through uncounted.
-    /// </summary>
     [Fact]
     public void Key_IsHashOfNormalizedCode_StoreIsBounded()
     {
@@ -104,7 +97,6 @@ public class GuestPhoneLookupLockoutTests
         Assert.Equal(key, GuestPhoneLookupLockout.KeyOf("7K2XM9QD4T"));
         Assert.Matches("^[0-9A-F]{64}$", key);
 
-        // Something that is not a code is counted as typed (trimmed, upper case), still as a hash.
         Assert.Equal(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("NOT-A-CODE"))), GuestPhoneLookupLockout.KeyOf(" not-a-code "));
 
         using var lockout = Lockout(new GuestPhoneLookupLockoutOptions { MaxTrackedCodes = 3 });
@@ -153,14 +145,12 @@ public class GuestPhoneLookupLockoutTests
         Assert.False(locked.ActionRan);
     }
 
-    /// <summary>The lock lasts until the window of the code ends (60 minutes from its first attempt), then the code starts again; a match clears the count.</summary>
     [Fact]
     public void LockEndsWithTheWindow_AndAMatchClearsTheCount()
     {
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 20, 9, 0, 0, TimeSpan.Zero));
         using var lockout = Lockout(new GuestPhoneLookupLockoutOptions(), clock);
 
-        // Four failures, then the fifth attempt matches: the count goes back to zero.
         for (var i = 0; i < 5; i++)
             Assert.True(lockout.TryAcquire(Code));
         lockout.Reset(Code);
@@ -176,7 +166,6 @@ public class GuestPhoneLookupLockoutTests
         Assert.True(lockout.TryAcquire(Code));
     }
 
-    /// <summary>The two settings: 5 and 60 by default, read from <c>GuestArea:PhoneLockout:*</c>, and a value below 1 is refused.</summary>
     [Fact]
     public void Settings_FiveAndSixtyByDefault_ReadFromTheConfiguration_AtLeastOne()
     {
@@ -202,10 +191,6 @@ public class GuestPhoneLookupLockoutTests
         Assert.Throws<InvalidOperationException>(() => Lockout(new GuestPhoneLookupLockoutOptions { WindowMinutes = -5 }));
     }
 
-    /// <summary>
-    /// The wiring of the endpoint (AC4): the session keeps its per-IP policy (10 per 5 minutes) for both proofs, takes the body of the session, and
-    /// carries the limit per address, the limit per code and the lock, which runs after the other two.
-    /// </summary>
     [Fact]
     public void Endpoint_KeepsThePerIpPolicy_AndRunsTheLockAfterTheOtherLimits()
     {
@@ -223,10 +208,6 @@ public class GuestPhoneLookupLockoutTests
         Assert.True(phoneLock.Order > perCode.Order);
     }
 
-    /// <summary>
-    /// The limit per code reads the code through <see cref="IGuestBookingCodeRequest"/>: the body of the session is counted whichever proof it
-    /// carries, so the new body did not take the endpoint out of it.
-    /// </summary>
     [Fact]
     public async Task CodeLimit_CountsTheSessionBody_WithEitherProof()
     {
@@ -245,7 +226,6 @@ public class GuestPhoneLookupLockoutTests
     private static GuestPhoneLookupLockout Lockout(GuestPhoneLookupLockoutOptions options, TimeProvider? clock = null) =>
         new(Options.Create(options), clock ?? new FakeTimeProvider(new DateTimeOffset(2026, 11, 20, 9, 0, 0, TimeSpan.Zero)));
 
-    /// <summary>Runs <paramref name="filter"/> on an action that takes <paramref name="body"/>: true when the action ran.</summary>
     private static async Task<bool> RanAsync(IAsyncActionFilter filter, object body)
     {
         var http = new DefaultHttpContext { RequestServices = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider() };

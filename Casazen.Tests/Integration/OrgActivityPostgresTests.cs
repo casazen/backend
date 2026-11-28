@@ -53,8 +53,6 @@ public class OrgActivityPostgresTests : IAsyncLifetime
         return Convert.ToString(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
     }
 
-    // ─── The table ──────────────────────────────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task Table_HasItsIndexesItsJsonColumnItsCascadeAndNoKeyToTheAccount()
     {
@@ -67,7 +65,6 @@ public class OrgActivityPostgresTests : IAsyncLifetime
         Assert.Equal(
             "timestamp with time zone",
             await TextAsync("SELECT data_type FROM information_schema.columns WHERE table_name = 'OrgActivityEntries' AND column_name = 'When'"));
-        // The lines go with their org; the only foreign key of the table is that one (the history outlives the account).
         Assert.Equal("c", await TextAsync("SELECT confdeltype FROM pg_constraint WHERE conname = 'FK_OrgActivityEntries_Orgs_OrgId'"));
         Assert.Equal("1", await TextAsync("SELECT COUNT(*) FROM pg_constraint WHERE conrelid = '\"OrgActivityEntries\"'::regclass AND contype = 'f'"));
     }
@@ -87,7 +84,6 @@ public class OrgActivityPostgresTests : IAsyncLifetime
 
         var line = Assert.Single(await _kit.ReadActivityAsync(org.Id));
 
-        // PostgreSQL keeps microseconds: what the clock said, cut to them, is exactly what comes back.
         Assert.Equal(new DateTime(2026, 10, 9, 8, 7, 6, DateTimeKind.Utc).AddTicks(9_876_540), line.When);
         Assert.Equal(
             (OrgActivityType.MemberRoleChanged, OrgActivityArea.Account, OrgActivitySubjectType.Member, OwnerId, "auth0|anna"),
@@ -95,7 +91,6 @@ public class OrgActivityPostgresTests : IAsyncLifetime
         Assert.Equal(
             new Dictionary<string, string> { ["fromRole"] = "Collaborator", ["toRole"] = "Admin" },
             OrgActivityDetails.Parse(line.DetailsJson));
-        // jsonb holds the object (its text form is normalized by the database).
         Assert.Equal(
             "Admin",
             await TextAsync($"SELECT \"DetailsJson\"->>'toRole' FROM \"OrgActivityEntries\" WHERE \"Id\" = '{line.Id}'"));
@@ -106,8 +101,6 @@ public class OrgActivityPostgresTests : IAsyncLifetime
     [PostgresFact]
     public async Task ForeignKey_DeletingTheOrg_TakesItsLinesWithIt()
     {
-        // An org with people cannot be deleted at all: its users and its members reference it with a restricting key. The cascade
-        // of the log is therefore proved on an org nobody belongs to, and the other org, which has an owner, keeps its lines.
         Guid emptyOrg;
         await using (var db = _kit.NewDb())
         {
@@ -160,13 +153,10 @@ public class OrgActivityPostgresTests : IAsyncLifetime
         Assert.Empty(await noOrg.OrgActivityEntries.ToListAsync());
         Assert.Equal(2, await system.OrgActivityEntries.CountAsync());
 
-        // The reader of the page, handed another org's id by mistake, finds nothing.
         var page = await new OrgActivityService(asA).ListAsync(orgB.Id, new OrgActivityFilter(), 1, 50);
         Assert.Empty(page.Items);
         Assert.Equal(["inv-a"], (await new OrgActivityService(asA).ListAsync(orgA.Id, new OrgActivityFilter(), 1, 50)).Items.Select(i => i.SubjectId));
     }
-
-    // ─── The same transaction as the change ─────────────────────────────────────────────────────────────
 
     [PostgresFact]
     public async Task ARolledBackTransaction_TakesTheChangeAndItsLineAway_ACommittedOneKeepsBoth()
@@ -174,7 +164,6 @@ public class OrgActivityPostgresTests : IAsyncLifetime
         var (org, _) = await _kit.SeedOwnerOrgAsync();
         var (_, member) = await _kit.SeedMemberAsync(org.Id, "auth0|anna", OrgRole.Collaborator);
 
-        // The services join a transaction that is already open and leave the commit to its owner.
         await using (var db = _kit.NewDb())
         {
             await using var outer = await db.Database.BeginTransactionAsync();
@@ -232,7 +221,6 @@ public class OrgActivityPostgresTests : IAsyncLifetime
             await Assert.ThrowsAsync<DbUpdateException>(() => team.ChangeRoleAsync(org.Id, member.Id, OrgRole.Accountant, OwnerId));
         }
 
-        // The role was saved before the line, in the same transaction: the failure of the line took it back.
         var stored = await _kit.ReadMemberAsync("auth0|anna");
         Assert.Equal(OrgRole.Collaborator, stored!.Role);
         Assert.Equal(["short-rent/staff"], await _kit.MembershipsAsync("auth0|anna"));
@@ -254,7 +242,6 @@ public class OrgActivityPostgresTests : IAsyncLifetime
         await using (var verify = _kit.NewDb())
             Assert.Empty(await verify.OrgInvitations.IgnoreQueryFilters().Where(i => i.OrgId == org.Id).ToListAsync());
 
-        // And an acceptance: the invitation stays pending, the person is no member, no consent was kept.
         var (invitation, token) = await _kit.SeedInvitationAsync(org.Id, "anna@example.com");
         await using (var db = _kit.NewDb())
         {
@@ -318,7 +305,6 @@ public class OrgActivityPostgresTests : IAsyncLifetime
         NullLogger<OrgInvitationService>.Instance,
         _kit.Clock);
 
-    /// <summary>A log that writes a line no database accepts (an org that does not exist): the way to make the save of the line fail.</summary>
     private sealed class LineOfNoOrgLog(AppDbContext db) : IActivityLog
     {
         public void Record(OrgActivity activity) => db.OrgActivityEntries.Add(new OrgActivityEntry
@@ -332,8 +318,6 @@ public class OrgActivityPostgresTests : IAsyncLifetime
         });
     }
 
-    // ─── Reading ────────────────────────────────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task List_Filters_AndPaging_OnRealSql_NeverRepeatOrSkipALine()
     {
@@ -342,7 +326,6 @@ public class OrgActivityPostgresTests : IAsyncLifetime
         var t0 = _kit.Now;
         for (var i = 0; i < 9; i++)
         {
-            // Three lines share each instant, to make the tie-break by id matter.
             _kit.Clock.SetUtcNow(new DateTimeOffset(t0.AddMinutes(i / 3)));
             await RecordAsync(
                 org.Id,
@@ -383,8 +366,6 @@ public class OrgActivityPostgresTests : IAsyncLifetime
             list.Add(item);
         return list;
     }
-
-    // ─── Retention ──────────────────────────────────────────────────────────────────────────────────────
 
     [PostgresFact]
     public async Task Retention_DeletesWhatIsOlderThanTwelveMonths_InBatches_AndTheSecondRunFindsNothing()
@@ -469,8 +450,6 @@ public class OrgActivityPostgresTests : IAsyncLifetime
         Assert.Empty(await _kit.ReadActivityAsync(org.Id));
     }
 
-    // ─── The daily limit of the access requests, together ───────────────────────────────────────────────
-
     [PostgresFact]
     public async Task AccessRequests_SixAtOnceFromOnePerson_ThreeWork_AndTheOthersAreTheLimit()
     {
@@ -491,7 +470,6 @@ public class OrgActivityPostgresTests : IAsyncLifetime
         var lines = await _kit.ReadActivityAsync(org.Id);
         Assert.Equal(3, lines.Count);
         Assert.All(lines, l => Assert.Equal(OrgActivityType.AccessRequested, l.Type));
-        // Two administrators told, three times: nobody was told for a request that was refused.
         Assert.Equal(6, _kit.Emails.Snapshot().Count(e => e.Template == EmailTemplates.Names.OrgAccessRequest));
     }
 
@@ -514,8 +492,6 @@ public class OrgActivityPostgresTests : IAsyncLifetime
         Assert.All(outcomes, o => Assert.True(o.Succeeded, o.Code));
         Assert.Equal(people.Order(), (await _kit.ReadActivityAsync(org.Id)).Select(l => l.ActorUserId!).Order());
     }
-
-    // ─── Shared ─────────────────────────────────────────────────────────────────────────────────────────
 
     private async Task RecordAsync(Guid orgId, OrgActivityType type, string? actor = OwnerId, string subject = "auth0|anna")
     {
@@ -550,7 +526,6 @@ public class OrgActivityPostgresTests : IAsyncLifetime
         }
     }
 
-    /// <summary>Starts every action at the same moment (a shared gate) and waits for all of them.</summary>
     private static async Task<Outcome[]> InParallelAsync(params Func<Task>[] actions)
     {
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

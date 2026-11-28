@@ -32,8 +32,6 @@ public class LongRentTenantsIntegrationTests(LongRentAggregatesFactory factory) 
 
     public Task DisposeAsync() => Task.CompletedTask;
 
-    // --- What the caller reaches, and what the pages carry ----------------------------------------------------------
-
     [Fact]
     public async Task List_StaysInTheReachOfTheCaller_AndNeverCarriesAFiscalCodeOrAClearEmail()
     {
@@ -43,7 +41,6 @@ public class LongRentTenantsIntegrationTests(LongRentAggregatesFactory factory) 
         var ownerBody = await owner.GetStringAsync("/api/long-rent/tenants?pageSize=100");
         var colleagueBody = await colleague.GetStringAsync("/api/long-rent/tenants?pageSize=100");
 
-        // The owner of P1 and P2 sees their tenants (the co-tenants of a draft too) and not the colleague's tenant of P3, and vice versa.
         var owners = NamesIn(ownerBody);
         Assert.Contains("Giulia Verdi", owners);
         Assert.Contains("Marta Colucci", owners);
@@ -51,10 +48,8 @@ public class LongRentTenantsIntegrationTests(LongRentAggregatesFactory factory) 
         Assert.DoesNotContain("Valentina Marra", owners);
         Assert.Equal(["Valentina Marra"], NamesIn(colleagueBody));
 
-        // The tenant whose data were anonymized is no longer a person of the page.
         Assert.DoesNotContain(owners, name => name.Contains("Cognome", StringComparison.Ordinal));
 
-        // The fiscal code is never on the page, the e-mail only masked, and the id is not made of either.
         foreach (var body in new[] { ownerBody, colleagueBody })
         {
             Assert.DoesNotContain("CF-", body, StringComparison.Ordinal);
@@ -84,13 +79,10 @@ public class LongRentTenantsIntegrationTests(LongRentAggregatesFactory factory) 
         }
     }
 
-    // --- The copy of a person's data --------------------------------------------------------------------------------
-
     [Fact]
     public async Task Export_HoldsTheDataOfThePersonAndOfNobodyElse_UnderANeutralFileName()
     {
         using var owner = _world.OwnerClient(factory);
-        // Marco Bianchi is a tenant of the draft with Anna Rossi, and the landlord is its other party.
         var marco = await PartyIdAsync(_world, "Marco");
 
         var response = await owner.GetAsync($"/api/long-rent/tenants/{marco}/export");
@@ -100,22 +92,18 @@ public class LongRentTenantsIntegrationTests(LongRentAggregatesFactory factory) 
         Assert.Contains("no-store", response.Headers.CacheControl?.ToString(), StringComparison.Ordinal);
 
         var body = await response.Content.ReadAsStringAsync();
-        // His own data, in clear.
         Assert.Contains(FiscalCodeOf("Marco"), body, StringComparison.Ordinal);
         Assert.Contains(_world.EmailOf("Marco", "Bianchi"), body, StringComparison.OrdinalIgnoreCase);
         using var document = JsonDocument.Parse(body);
         var lease = Assert.Single(document.RootElement.GetProperty("leases").EnumerateArray());
         Assert.Equal(_world.Draft, lease.GetProperty("leaseId").GetGuid());
         Assert.Equal("Marco", lease.GetProperty("party").GetProperty("firstName").GetString());
-        // Nothing of the co-tenant, nothing of the landlord.
         Assert.DoesNotContain(FiscalCodeOf("Anna"), body, StringComparison.Ordinal);
         Assert.DoesNotContain(_world.EmailOf("Anna", "Rossi"), body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(LandlordFiscalCode, body, StringComparison.Ordinal);
         Assert.DoesNotContain(LandlordEmail, body, StringComparison.Ordinal);
         Assert.DoesNotContain("Mario", body, StringComparison.Ordinal);
     }
-
-    // --- The erasure request ----------------------------------------------------------------------------------------
 
     [Fact]
     public async Task Erasure_RemovesTheDataOfALeaseThatEnded_AndOnlySchedulesTheOneThatRuns()
@@ -124,7 +112,6 @@ public class LongRentTenantsIntegrationTests(LongRentAggregatesFactory factory) 
         var marta = await PartyIdAsync(_world, "Marta");
         var giulia = await PartyIdAsync(_world, "Giulia");
 
-        // Marta's lease ended on 2026-06-30: her data go now. The landlord is also a party of leases that run, so he stays.
         var ended = await ErasureAsync(owner, marta);
         var endedLease = Assert.Single(ended.GetProperty("leases").EnumerateArray());
         Assert.Equal(_world.Ended, endedLease.GetProperty("leaseId").GetGuid());
@@ -137,7 +124,6 @@ public class LongRentTenantsIntegrationTests(LongRentAggregatesFactory factory) 
         Assert.Null(stored.Parties.Single(p => p.Role == PartyRole.Landlord).AnonymizedAt);
         Assert.Single(stored.Events, e => e.EventType == LeaseEventType.ErasureRequested);
 
-        // Giulia's lease runs until 2028-08-31: nothing is removed, the request waits for the day after it ends.
         var running = await ErasureAsync(owner, giulia);
         var runningLease = Assert.Single(running.GetProperty("leases").EnumerateArray());
         Assert.Equal(_world.Active, runningLease.GetProperty("leaseId").GetGuid());
@@ -157,8 +143,6 @@ public class LongRentTenantsIntegrationTests(LongRentAggregatesFactory factory) 
         Assert.Equal(HttpStatusCode.NotFound, (await owner.GetAsync($"/api/long-rent/tenants/{marta}")).StatusCode);
     }
 
-    // --- Helpers ----------------------------------------------------------------------------------------------------
-
     private static string FiscalCodeOf(string firstName) => $"CF-{firstName.ToUpperInvariant()}";
 
     private static List<string> NamesIn(string body)
@@ -177,7 +161,6 @@ public class LongRentTenantsIntegrationTests(LongRentAggregatesFactory factory) 
         return document.RootElement.Clone();
     }
 
-    /// <summary>The world gives every tenant the same fiscal code: here each one gets its own, <c>CF-FIRSTNAME</c>.</summary>
     private async Task GiveEachTenantItsOwnFiscalCodeAsync(LongRentWorld world)
     {
         await using var scope = factory.Services.CreateAsyncScope();

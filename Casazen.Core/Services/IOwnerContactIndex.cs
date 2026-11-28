@@ -8,11 +8,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IOwnerContactIndex
 {
-    /// <summary>
-    /// True when <see cref="HashEmail"/> can be computed: <c>OwnerPortal:ContactIndexKey</c> is configured, or the fixed key of Development and Testing stands
-    /// in. False outside them without the key, which the application allows while <c>Features:AgencyTier</c> is off (the startup asks for the key only with the
-    /// flag on).
-    /// </summary>
     bool IsConfigured { get; }
 
     /// <summary>

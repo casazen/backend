@@ -9,7 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>Where an org's site lives and its canonical URLs (BK-16): the own host only when it really serves the site.</summary>
 public class PublicOrgSiteUrlsTests
 {
     private const string PublicSite = "https://public.example.test";

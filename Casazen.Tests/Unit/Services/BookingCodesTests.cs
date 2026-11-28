@@ -4,7 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>BK-11 (A3-10): the readable booking code of "Le mie prenotazioni".</summary>
 public class BookingCodesTests
 {
     [Fact]
@@ -14,7 +13,6 @@ public class BookingCodesTests
 
         Assert.All(codes, code => Assert.Matches("^[0-9A-HJKMNP-TV-Z]{10}$", code));
         Assert.Equal(codes.Count, codes.Distinct(StringComparer.Ordinal).Count());
-        // Every character of the alphabet shows up: the code uses the whole alphabet, not a biased part of it.
         Assert.Equal(BookingCodes.Alphabet.Length, codes.SelectMany(c => c).Distinct().Count());
     }
 

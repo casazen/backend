@@ -9,11 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// E40/F01/US01/T03 (NF-142, AC-NF142-4): links already sent keep working. The check-in link of an org whose verified domain serves its guest area is
-/// built on that domain, and its token opens through the CasaZen endpoint whatever Host or Origin the request carries: nothing about a token depends
-/// on the host of its link, and no route, token or endpoint changed.
-/// </summary>
 public class AgencyDomainCheckInLinkIntegrationTests(SiteIntegrationFlagsFactory factory) : IClassFixture<SiteIntegrationFlagsFactory>
 {
     [Fact]
@@ -37,14 +32,12 @@ public class AgencyDomainCheckInLinkIntegrationTests(SiteIntegrationFlagsFactory
         });
         var token = await IssueLinkAsync(seed.BookingId, orgId);
 
-        // The link a message carries is on the agency's domain...
         using (var scope = factory.Services.CreateScope())
         {
             var links = await scope.ServiceProvider.GetRequiredService<AgencyDomainLinks>().ForOrgAsync(orgId);
             Assert.Equal($"https://{domain}/checkin/{token}", links.GuestCheckIn(token));
         }
 
-        // ...and its token opens through the CasaZen endpoint, whatever the request says about where it comes from.
         var requests = new (string? Host, string? Origin)[]
         {
             (null, null),

@@ -5,9 +5,6 @@ using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// A budget or final read from an administrator PDF. It does not change the book until someone confirms it.
-/// </summary>
 [Table("CondominiumStatementProposals")]
 public class CondominiumStatementProposal : ITenantOwned
 {
@@ -57,7 +54,6 @@ public class CondominiumStatementProposal : ITenantOwned
     [Column(TypeName = "decimal(5,4)")]
     public decimal Confidence { get; set; }
 
-    /// <summary>False when the reading is uncertain: the confirmed line stays <see cref="TenantRecoverability.NeedsReview"/>.</summary>
     public bool ChargesTenant { get; set; }
 
     [MaxLength(ExcerptMaxLength)]

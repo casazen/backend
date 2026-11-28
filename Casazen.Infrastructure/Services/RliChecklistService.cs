@@ -39,7 +39,6 @@ public class RliChecklistService(
                 && OpenapiRegistrationFee.Applies(lease.ContractType));
         var auth = await authorizations.GetByLeaseIdAsync(lease.Id);
         var leaseEvents = (await events.GetByLeaseIdAsync(lease.Id)).ToList();
-        // min(stipula, start) + 30 on the Rome calendar, or null while it is to be determined (LT-04, A7-04).
         var today = _clock.TodayInRome();
         var deadline = RliRegistrationDeadline.Resolve(lease, today);
         int? daysRemaining = deadline is { } due ? RliRegistrationDeadline.DaysRemaining(due, today) : null;
@@ -64,8 +63,6 @@ public class RliChecklistService(
                 && !string.IsNullOrWhiteSpace(registration.ReceiptStoragePath),
             Failed: registration is { Status: RegistrationStatus.Failed }));
 
-        // LT-07 (A7-08): only with an extra-EU tenant, ticked only by the landlord's explicit declaration, never by a
-        // reminder that CasaZen sent.
         QuesturaCommunicationStatus? questura = null;
         if (QuesturaCommunicationDeadline.IsRequired(lease))
         {

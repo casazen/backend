@@ -28,7 +28,6 @@ public class PropertyWelcomeLinkService(
     TimeProvider timeProvider,
     ILogger<PropertyWelcomeLinkService> logger) : IPropertyWelcomeLinkService
 {
-    /// <summary>How many times a write is repeated when another writer won the unique index at the same moment.</summary>
     private const int MaxAttempts = 3;
 
     public async Task<PropertyWelcomeLink?> GetActiveAsync(Guid orgId, Guid propertyId, CancellationToken cancellationToken = default)
@@ -62,7 +61,6 @@ public class PropertyWelcomeLinkService(
             }
             catch (DbUpdateException ex) when (attempt < MaxAttempts && CrmDatabaseErrors.IsUniqueViolation(ex))
             {
-                // Another request made the active link of the property at the same moment: look again, and take theirs.
                 Forget();
                 logger.LogInformation("The welcome link of property {PropertyId} was made by another request at the same moment", propertyId);
             }
@@ -81,7 +79,6 @@ public class PropertyWelcomeLinkService(
         {
             await using var transaction = await BeginTransactionAsync(cancellationToken);
 
-            // The old link is revoked, and saved, before the new one is added: the unique index lets one active link of the property in.
             var active = await db.PropertyWelcomeLinks
                 .Where(l => l.OrgId == orgId && l.PropertyId == propertyId && l.RevokedAt == null)
                 .ToListAsync(cancellationToken);
@@ -110,15 +107,12 @@ public class PropertyWelcomeLinkService(
             }
             catch (DbUpdateException ex) when (attempt < MaxAttempts && CrmDatabaseErrors.IsUniqueViolation(ex))
             {
-                // Another rotation won at the same moment: this attempt is undone (the transaction ends without a commit) and made again
-                // from what is stored.
                 Forget();
                 logger.LogInformation("The welcome link of property {PropertyId} was rotated by another request at the same moment", propertyId);
             }
         }
     }
 
-    /// <summary>The property must be one of the org (a deleted one is not): the link copies its org (TN-2).</summary>
     private async Task EnsurePropertyAsync(Guid orgId, Guid propertyId, CancellationToken cancellationToken)
     {
         if (!await db.Properties.AnyAsync(p => p.Id == propertyId && p.OrgId == orgId, cancellationToken))

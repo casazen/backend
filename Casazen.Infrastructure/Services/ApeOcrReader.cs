@@ -67,7 +67,6 @@ internal static class ApeOcrReader
             }
             else
             {
-                // A single photo sent as such by an older client: read as it is.
                 var output = Path.Combine(directory, "ocr");
                 await LocalOcr.RunAsync("tesseract", [input, output, "-l", "ita+eng", "--psm", "3"], token);
                 text.AppendLine(await LocalOcr.ReadTextAsync(output + ".txt", token));
@@ -77,7 +76,6 @@ internal static class ApeOcrReader
         return text.ToString();
     }
 
-    /// <summary>One page in gray: as it is, as its negative, then zone by zone around the labels the two readings found.</summary>
     private static async Task ReadPageAsync(string directory, string pagePath, StringBuilder text, bool extraPasses, CancellationToken token)
     {
         var plain = Path.Combine(directory, "plain");

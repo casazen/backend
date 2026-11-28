@@ -16,15 +16,12 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public sealed class WithholdingService(AppDbContext db, TimeProvider time) : IWithholdingService
 {
-    /// <inheritdoc />
     public async Task<F24Record> GenerateF24Async(
         Guid orgId,
         int month,
         int year,
         CancellationToken cancellationToken = default)
     {
-        // One at a time per org (the lock of the owner accounting): two requests for the same month never make two records, and a record is rebuilt from the
-        // evidence as it is when the lock is held.
         await using var tx = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db, cancellationToken, (PostgresAdvisoryLocks.Scope.OwnerAccounting, orgId.ToString("N")));
 
@@ -111,7 +108,6 @@ public sealed class WithholdingService(AppDbContext db, TimeProvider time) : IWi
         var breakdown = evidence
             .Select(e =>
             {
-                // A reversal carries the opposite amounts of its decision, and so do the figures of its payout: every column adds up to what the month is.
                 var sign = e.ReversesEvidenceId is null ? 1m : -1m;
                 var payout = payouts.GetValueOrDefault(e.OwnerPayoutId);
                 return new F24PayoutLine(
@@ -141,12 +137,9 @@ public sealed class WithholdingService(AppDbContext db, TimeProvider time) : IWi
         return new F24MonthData(year, month, lines, breakdown);
     }
 
-    /// <inheritdoc />
-    /// <remarks>Reads the row of the year of the org, decrypts and parses its payload; the stored data is what the accountant reviewed, so nothing here builds or changes it.</remarks>
     public Task<StoredCuDataset> GetCuDatasetAsync(Guid orgId, int year, CancellationToken cancellationToken = default) =>
         ReadCuDatasetAsync(db, orgId, year, cancellationToken);
 
-    /// <summary>The stored annual data of the year with its records: the one reader of the exports and of the draft CU of an owner.</summary>
     internal static async Task<StoredCuDataset> ReadCuDatasetAsync(AppDbContext db, Guid orgId, int year, CancellationToken cancellationToken)
     {
         RequireYear(year);
@@ -203,7 +196,6 @@ public sealed class WithholdingService(AppDbContext db, TimeProvider time) : IWi
         return new Withholding770Data(year, lines);
     }
 
-    /// <inheritdoc />
     public async Task<ContractsCommunication> GetContractsCommunicationAsync(Guid orgId, int year, CancellationToken cancellationToken = default)
     {
         RequireYear(year);

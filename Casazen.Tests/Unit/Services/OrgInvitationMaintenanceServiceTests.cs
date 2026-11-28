@@ -24,7 +24,6 @@ public class OrgInvitationMaintenanceServiceTests
         return await _kit.Maintenance(db).RunAsync();
     }
 
-    /// <summary>An invitation sent <paramref name="daysAgo"/> days ago (a week of validity from then).</summary>
     private async Task<(OrgInvitation Invitation, string Token)> SentAsync(
         Guid orgId,
         string email,
@@ -37,8 +36,6 @@ public class OrgInvitationMaintenanceServiceTests
             orgId, email, expiresAt: sentAt + OrgInvitationRules.Validity, language: language, name: name);
         return (invitation, token);
     }
-
-    // ─── Reminder ───────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Run_OnTheThirdDay_SendsTheReminderWithAFreshLinkAndRemembersIt()
@@ -59,7 +56,6 @@ public class OrgInvitationMaintenanceServiceTests
         var stored = await _kit.ReadInvitationAsync(invitation.Id);
         Assert.Equal(OrgInvitationTokens.Hash(newToken), stored.TokenHash);
         Assert.Equal(_kit.Now, stored.ReminderSentAt);
-        // The expiry is not extended by a reminder.
         Assert.Equal(invitation.ExpiresAt, stored.ExpiresAt);
         Assert.Equal(OrgInvitationStatus.Pending, stored.Status);
     }
@@ -120,7 +116,6 @@ public class OrgInvitationMaintenanceServiceTests
         await RunAsync();
         Assert.Equal(2, _kit.Emails.Snapshot().Count);
 
-        // Sent again on day 3: the reminder is due on day 6, not before.
         await using (var db = _kit.NewDb())
             await _kit.Invitations(db).ResendAsync(org.Id, created.Invitation.Id, "auth0|owner");
         _kit.Emails.Queued.Clear();
@@ -170,7 +165,6 @@ public class OrgInvitationMaintenanceServiceTests
 
         Assert.Equal(0, failed.Reminded);
         var untouched = await _kit.ReadInvitationAsync(invitation.Id);
-        // The person is not left with a dead link: the token and the reminder are as they were.
         Assert.Equal(OrgInvitationTokens.Hash(token), untouched.TokenHash);
         Assert.Null(untouched.ReminderSentAt);
 
@@ -194,8 +188,6 @@ public class OrgInvitationMaintenanceServiceTests
 
         Assert.Equal(0, result.Reminded);
     }
-
-    // ─── Expiry ─────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Run_AfterTheExpiry_MarksTheInvitationExpiredAndTellsTheInviterOnce()
@@ -273,8 +265,6 @@ public class OrgInvitationMaintenanceServiceTests
         Assert.Equal(OrgInvitationStatus.Accepted, (await _kit.ReadInvitationAsync(accepted.Id)).Status);
     }
 
-    // ─── Retention ──────────────────────────────────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData(OrgInvitationStatus.Accepted)]
     [InlineData(OrgInvitationStatus.Revoked)]
@@ -350,7 +340,6 @@ public class OrgInvitationMaintenanceServiceTests
         }
         catch (InvalidOperationException)
         {
-            // An unreadable number is a configuration error, not a reason to delete.
         }
 
         Assert.NotNull(await _kit.ReadInvitationAsync(fresh.Id));

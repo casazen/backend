@@ -18,27 +18,19 @@ public static class MarketplaceServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
-        // The cache of Octorate's portal catalog and its daily refresh (E09/F01/US01/T02).
         services.AddScoped<IMarketplacePortalCatalogService, MarketplacePortalCatalogService>();
         services.AddScoped<MarketplacePortalRefreshJob>();
 
-        // The words of the marketplace in the language the page asks for, and the catalog with the Active tab (E09/F01/US01/T03).
         services.AddSingleton<IMarketplaceTexts, ResxMarketplaceTexts>();
         services.AddScoped<IMarketplaceCatalogService, MarketplaceCatalogService>();
 
-        // The detail card of an entry (E09/F01/US01/T04).
         services.AddScoped<IMarketplaceEntryDetailService, MarketplaceEntryDetailService>();
 
-        // The activation of a channel or a tool through the channel manager's API, and the check of the guided step «access to a channel» that reads
-        // it (E09/F02/US01/T02). The verifier has the order 10 and replaces the default one (order 0) of the activation epic for that kind of step.
         services.AddScoped<IMarketplaceChannelActivationService, MarketplaceChannelActivationService>();
         services.AddScoped<IPanelStepVerifier, ChannelAccessPanelVerifier>();
 
-        // The functions of the channel manager's license for a property: the list, the guided request and the reconciliation that the health sync of the
-        // active integrations calls (E09/F02/US02/T01). It keeps the plan and the room limit of the last read in the memory cache (AddMemoryCache).
         services.AddScoped<IMarketplaceLicensedFunctionService, MarketplaceLicensedFunctionService>();
 
-        // The hand-off of a partner activated on its own site: the brief the host takes there and the record that it did it (E09/F02/US03/T01). It calls no one.
         services.AddScoped<IMarketplacePartnerActivationService, MarketplacePartnerActivationService>();
 
         // The health of the active integrations and its sync every 30 minutes (E09/F03/US01/T01). The quota warning is the one setting, Marketplace:Health:QuotaWarnPercent
@@ -47,7 +39,6 @@ public static class MarketplaceServiceCollectionExtensions
         services.AddScoped<IMarketplaceHealthService, MarketplaceHealthService>();
         services.AddScoped<MarketplaceConnectionSyncJob>();
 
-        // The change of the settings of an activation, its confirmed deactivation and the change request of a function of the license (E09/F03/US01/T02).
         services.AddScoped<IMarketplaceChangeService, MarketplaceChangeService>();
 
         return services;

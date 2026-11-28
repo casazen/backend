@@ -40,13 +40,10 @@ public sealed class DomainVerificationService(
     {
         Verified,
 
-        /// <summary>The host has something to do (a record is missing, Vercel's own TXT).</summary>
         HostPending,
 
-        /// <summary>Only the platform can fix it (not configured, token refused, Vercel unavailable).</summary>
         PlatformPending,
 
-        /// <summary>A hard no: Vercel refuses the domain or it belongs to another project.</summary>
         Failed,
     }
 
@@ -78,14 +75,12 @@ public sealed class DomainVerificationService(
             await dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        // Every check is a chance that what the host serves changed (verified, demoted): drop the cached answers of the host.
         if (statusBefore != org.DomainVerificationStatus)
             hostResolver.InvalidateCacheForHost(domain);
 
         logger.LogInformation(
             "Domain check of org {OrgId}: {Status} ({Detail})", org.Id, org.DomainVerificationStatus, org.DomainStatusDetail ?? "ok");
 
-        // E40/F01/US02/T01: once per verification, the notice to the administrators and the Auth0 registration of the owner sign-in.
         if (ownerLogin is not null
             && statusBefore != DomainVerificationStatus.Verified
             && org.DomainVerificationStatus == DomainVerificationStatus.Verified)
@@ -106,7 +101,6 @@ public sealed class DomainVerificationService(
     {
         var hostOptions = options.Value;
 
-        // 0. One org per domain: another org that already has it verified keeps it (the unique index says the same).
         var takenByAnotherOrg = await dbContext.Orgs.AsNoTracking().AnyAsync(
             o => o.Id != org.Id
                  && o.CustomDomain == domain
@@ -115,17 +109,14 @@ public sealed class DomainVerificationService(
         if (takenByAnotherOrg)
             return new Check(Outcome.Failed, DomainIssues.DomainTaken);
 
-        // 1. Ownership: the TXT record with the org's random token.
         var txtHost = $"{hostOptions.TxtRecordPrefix}.{domain}";
         var records = await LookupAsync(ct => dnsTxtLookup.LookupTxtAsync(txtHost, ct), cancellationToken);
         if (!records.Any(r => string.Equals(r, org.DomainVerificationToken, StringComparison.Ordinal)))
             return new Check(Outcome.HostPending, DomainIssues.OwnershipTxtMissing);
 
-        // 2. The domain points at Vercel (CNAME to its target, or an A record of Vercel).
         if (!await PointsAtVercelAsync(domain, hostOptions, cancellationToken))
             return new Check(Outcome.HostPending, DomainIssues.DnsNotPointing);
 
-        // 3. The domain is on the Vercel project and Vercel accepts it.
         if (!vercel.IsConfigured)
             return new Check(Outcome.PlatformPending, DomainIssues.VercelNotConfigured);
 
@@ -140,7 +131,6 @@ public sealed class DomainVerificationService(
             var added = await vercel.AddDomainAsync(domain, cancellationToken);
             if (added.Status == VercelCallStatus.Rejected)
             {
-                // A 400 also means "already on the project": read it again before calling it a refusal.
                 var reread = await vercel.GetDomainAsync(domain, cancellationToken);
                 if (reread.IsOk)
                     added = reread;
@@ -156,12 +146,10 @@ public sealed class DomainVerificationService(
         if (onProject.Verified)
             return new Check(Outcome.Verified, OnVercelProject: true);
 
-        // On the project but not accepted yet: ask Vercel to check its challenge again, now that the DNS is right.
         var verified = await vercel.VerifyDomainAsync(domain, cancellationToken);
         if (verified.IsOk && verified.Value!.Verified)
             return new Check(Outcome.Verified, OnVercelProject: true);
 
-        // A 400 on this call is "the challenge is not satisfied yet" (the host still has something to do), not a refusal.
         if (!verified.IsOk && verified.Status != VercelCallStatus.Rejected)
             return FromFailedCall(verified.Status) with { OnVercelProject = true };
 
@@ -174,7 +162,6 @@ public sealed class DomainVerificationService(
     {
         VercelCallStatus.Conflict => new Check(Outcome.Failed, DomainIssues.VercelDomainInUse),
         VercelCallStatus.Rejected => new Check(Outcome.Failed, DomainIssues.VercelRejected),
-        // A refused token, or a project that is not found: a platform setting is wrong, the host did nothing wrong.
         VercelCallStatus.Unauthorized or VercelCallStatus.NotFound => new Check(Outcome.PlatformPending, DomainIssues.VercelUnauthorized),
         VercelCallStatus.NotConfigured => new Check(Outcome.PlatformPending, DomainIssues.VercelNotConfigured),
         _ => new Check(Outcome.PlatformPending, DomainIssues.VercelUnavailable),
@@ -186,12 +173,10 @@ public sealed class DomainVerificationService(
         if (targets.Any(target => IsVercelTarget(target, hostOptions)))
             return true;
 
-        // The root of a domain cannot have a CNAME: an A record (or a flattened CNAME) with Vercel's address is as good.
         var addresses = await LookupAsync(ct => dnsRecordLookup.LookupAddressesAsync(domain, ct), cancellationToken);
         return addresses.Any(address => hostOptions.VercelAddresses.Contains(address, StringComparer.Ordinal));
     }
 
-    /// <summary>True for the configured CNAME target and for a name under one of the accepted suffixes (never a look-alike).</summary>
     internal static bool IsVercelTarget(string target, PublicHostOptions hostOptions)
     {
         var name = target.Trim().TrimEnd('.').ToLowerInvariant();
@@ -227,7 +212,6 @@ public sealed class DomainVerificationService(
                 break;
 
             case Outcome.PlatformPending:
-                // Not the host's doing: a verified site stays up and is checked again soon; a pending one says why it waits.
                 if (!wasVerified)
                 {
                     org.DomainVerificationStatus = DomainVerificationStatus.Pending;
@@ -284,7 +268,6 @@ public sealed class DomainVerificationService(
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            // Timed out, not caller-cancelled: a lookup miss.
             return [];
         }
     }

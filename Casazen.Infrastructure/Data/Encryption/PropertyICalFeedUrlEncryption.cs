@@ -10,13 +10,8 @@ namespace Casazen.Infrastructure.Data.Encryption;
 /// </summary>
 public static class PropertyICalFeedUrlEncryption
 {
-    /// <summary>Data Protection purpose of the import URLs (never change it: stored values could not be read).</summary>
     public const string Purpose = "Casazen.PropertyICalFeed.ImportUrl";
 
-    /// <summary>
-    /// True for a URL stored in clear before PC-11. A Data Protection payload is base64url (it starts with
-    /// <c>CfDJ8</c>) and never contains <c>://</c>.
-    /// </summary>
     public static bool IsLegacyPlaintext(string stored) =>
         stored.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
         || stored.StartsWith("http://", StringComparison.OrdinalIgnoreCase);

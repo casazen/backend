@@ -19,23 +19,16 @@ public static class PublicSiteThemes
     public const string Mare = "mare";
     public const string Citta = "citta";
 
-    /// <summary>Theme of an org that never chose one, and of any stored value the frontend does not support.</summary>
     public const string Default = Terra;
 
-    /// <summary>Supported theme ids, in the order the console offers them.</summary>
     public static IReadOnlyList<string> All { get; } = [Terra, Mare, Citta];
 
-    /// <summary>
-    /// Ids that existed before DB-01 and no longer name a theme, with the theme that replaces them. <c>mare</c> is not here: it
-    /// is a supported id again, with a new look, and the migration is what moves the orgs that had the old one.
-    /// </summary>
     private static readonly Dictionary<string, string> LegacyIds = new(StringComparer.Ordinal)
     {
         ["montagna"] = Terra,
         ["urban"] = Citta,
     };
 
-    /// <summary>True when <paramref name="themeId"/> is a supported theme id (exact, lower case).</summary>
     public static bool IsSupported(string? themeId) => themeId is not null && All.Contains(themeId, StringComparer.Ordinal);
 
     /// <summary>

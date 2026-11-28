@@ -1,6 +1,5 @@
 namespace Casazen.Core.Entities.Enums;
 
-/// <summary>Where a condominium fiscal year stands. Stored as an integer: never renumber.</summary>
 public enum CondominiumPeriodStatus
 {
     Draft = 0,

@@ -23,7 +23,6 @@ public class GuestConsentRecord : ITenantOwned
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row: the org of the guest (TN-2).</summary>
     public Guid OrgId { get; set; }
 
     public Guid GuestId { get; set; }
@@ -42,31 +41,23 @@ public class GuestConsentRecord : ITenantOwned
 
     public GuestConsentSource Source { get; set; }
 
-    /// <summary>Client IP of the guest's own action (portal); null for the host and the retention job. Cleared on anonymization.</summary>
     [MaxLength(50)]
     public string? IpAddress { get; set; }
 
-    /// <summary>
-    /// How the guest asked the host to withdraw (date, channel): required for <see cref="GuestConsentSource.HostOnGuestRequest"/>. On the row
-    /// of a marketing consent that is granted, the channel it was given on (<see cref="GuestConsentChannelNote"/>). Cleared on anonymization.
-    /// </summary>
     [MaxLength(500)]
     public string? Note { get; set; }
 
-    /// <summary>User id (Auth0 <c>sub</c>) of the host who recorded the withdrawal; null for the guest and the retention job.</summary>
     [MaxLength(200)]
     public string? RecordedByUserId { get; set; }
 
     public DateTime RecordedAt { get; set; } = DateTime.UtcNow;
 }
 
-/// <summary>What the row is about. Stored as an integer: never renumber.</summary>
 public enum GuestConsentPurpose
 {
     /// <summary>Privacy notice (art. 13 GDPR) of the check-in portal: presented, never a consent.</summary>
     PrivacyNotice = 1,
 
-    /// <summary>Marketing communications: optional consent of the guest (art. 6.1.a GDPR).</summary>
     Marketing = 2,
 
     /// <summary>
@@ -76,49 +67,33 @@ public enum GuestConsentPurpose
     SoftOptInNotice = 3,
 }
 
-/// <summary>What happened. Stored as an integer: never renumber.</summary>
 public enum GuestConsentAction
 {
-    /// <summary>The notice was presented to the guest, who then submitted the data (no checkbox: legal obligation).</summary>
     NoticePresented = 1,
 
-    /// <summary>The guest gave the consent (opt-in).</summary>
     Granted = 2,
 
-    /// <summary>The consent was withdrawn (art. 7.3 GDPR).</summary>
     Withdrawn = 3,
 
-    /// <summary>The consent ended with the configured retention period (<c>Gdpr:Retention:Marketing</c>).</summary>
     Expired = 4,
 
     NoticeAcknowledged = 5,
 }
 
-/// <summary>Who recorded the row. Stored as an integer: never renumber.</summary>
 public enum GuestConsentSource
 {
-    /// <summary>The guest, on the public check-in portal.</summary>
     GuestPortal = 1,
 
-    /// <summary>The host, on the guest's documented request (withdrawal only: the host can never grant a consent).</summary>
     HostOnGuestRequest = 2,
 
-    /// <summary>The GDPR retention job.</summary>
     RetentionPolicy = 3,
 
-    /// <summary>
-    /// The guest, on the checkout of the public booking site (DB-03): the optional "send me offers" box, granted together
-    /// with the booking and never preselected.
-    /// </summary>
     BookingCheckout = 4,
 
-    /// <summary>The guest, on the welcome page of a property reached with its QR code (NF-90).</summary>
     WelcomePage = 5,
 
-    /// <summary>The guest, on the guest page of a stay (NF-90).</summary>
     GuestPage = 6,
 
-    /// <summary>Existing evidence declared by the host when importing historical contacts.</summary>
     HistoricalImport = 7,
 }
 
@@ -129,13 +104,10 @@ public enum GuestConsentSource
 /// </summary>
 public static class GuestConsentChannelNote
 {
-    /// <summary>A consent to offers by e-mail.</summary>
     public const string Email = "channel=email";
 
-    /// <summary>A consent to offers on WhatsApp.</summary>
     public const string WhatsApp = "channel=whatsapp";
 
-    /// <summary>The note of a consent on <paramref name="channel"/>; <c>null</c> for a channel a marketing consent is not given on.</summary>
     public static string? For(GuestContactChannel channel) => channel switch
     {
         GuestContactChannel.Email => Email,

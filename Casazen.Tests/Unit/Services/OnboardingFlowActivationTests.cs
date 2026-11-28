@@ -26,11 +26,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The activation of the flows, the final read-only test and the "To do" sync (E10/F01/US01/T04, NF-104, NF-106, NF-108): the proofs of the
-/// permission rule of the activation (ONB-05 «Prova») and of the data rule of the final test, with the real flow status of T02 on EF InMemory and the
-/// world of <see cref="HostScopeScenario"/> (an org with two properties, the collaborator «Solo alcuni» given the first, another org).
-/// </summary>
 public class OnboardingFlowActivationTests : IAsyncLifetime
 {
     private static readonly CancellationToken Ct = CancellationToken.None;
@@ -58,14 +53,12 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
     [Fact]
     public async Task FlowActivation_PrerequisitesUnmet_NeverActivated_Test()
     {
-        // No connection at all: the connection does not hold, nothing is written.
         var noConnection = await Activation().ActivateAsync(_world.OrgWide, _world.OwnerUserId, OnboardingFlow.Bookings, [_world.Granted.Id], Ct);
         var refused = Assert.Single(noConnection);
         Assert.Equal(FlowActivationOutcomes.PrerequisitesNotMet, refused.Outcome);
         Assert.Contains(OnboardingPrerequisiteKeys.Connection, refused.UnmetPrerequisites);
         await AssertNothingWrittenAsync();
 
-        // Connected; the listing of Granted is confirmed, the one of Hidden is not.
         await ConnectAsync(OctorateConnectionStatus.Connected);
         var unknown = Guid.NewGuid();
         var mixed = await Activation(_world.Granted.Id).ActivateAsync(
@@ -90,7 +83,6 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
         Assert.Equal((DomainEventType.OnboardingFlowActivated, _world.Granted.Id, _world.OrgId), (activated.EventType, activated.EntityId, activated.OrgId));
         Assert.Contains(row.Id.ToString(), activated.PayloadJson, StringComparison.Ordinal);
 
-        // The check-in and compliance flow also needs a single stored sender: Granted has none, so it is refused and nothing more is written.
         var compliance = await Activation(_world.Granted.Id).ActivateAsync(
             _world.OrgWide, _world.OwnerUserId, OnboardingFlow.CheckInCompliance, [_world.Granted.Id], Ct);
         Assert.Equal(FlowActivationOutcomes.PrerequisitesNotMet, Assert.Single(compliance).Outcome);
@@ -98,22 +90,16 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
         Assert.Single(await _db.PropertyFlowActivations.AsNoTracking().ToListAsync());
         Assert.Single(await _db.OutboxEvents.AsNoTracking().ToListAsync());
 
-        // The collaborator «Solo alcuni» reaches Granted only: Hidden is notFound for it, even with every prerequisite met.
         var restricted = await Activation([_world.Granted.Id, _world.Hidden.Id]).ActivateAsync(
             _world.Restricted, _world.CollaboratorId, OnboardingFlow.Bookings, [_world.Hidden.Id], Ct);
         Assert.Equal(FlowActivationOutcomes.NotFound, Assert.Single(restricted).Outcome);
         Assert.Single(await _db.PropertyFlowActivations.AsNoTracking().ToListAsync());
 
-        // An empty list never means «all».
         var empty = await Assert.ThrowsAsync<DomainRuleException>(
             () => Activation().ActivateAsync(_world.OrgWide, _world.OwnerUserId, OnboardingFlow.Bookings, [], Ct));
         Assert.Equal(OnboardingActivationCodes.PropertyIdsEmpty, empty.Code);
     }
 
-    /// <summary>
-    /// Proof (data): the final test adds, changes and deletes nothing and records no outbox event: no save of the unit of work, the same rows in
-    /// the tables before and after, nothing pending at the end. It answers one check per flow on the most recent imported booking.
-    /// </summary>
     [Fact]
     public async Task FlowTestRun_ReadOnly_NoSideEffects_Test()
     {
@@ -151,11 +137,9 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
             new[] { OnboardingFlow.Messages, OnboardingFlow.Documents, OnboardingFlow.Reports },
             flow => Assert.Equal((FlowCheckOutcomes.Skipped, FlowCheckReasons.NotProvided), (Check(result, flow).Outcome, Check(result, flow).Reasons.Single())));
 
-        // The older booking of an OTA without any documented amount fails the bookings check: still nothing written.
         var onOlder = await service.RunAsync(_world.OrgWide, _world.Granted.Id, older, Ct);
         Assert.Equal((FlowCheckOutcomes.Fail, FlowCheckReasons.OtaAmountsMissing), (Check(onOlder, OnboardingFlow.Bookings).Outcome, Check(onOlder, OnboardingFlow.Bookings).Reasons.Single()));
 
-        // No save, nothing pending, the same rows everywhere and no outbox event.
         Assert.Equal(saves, _saves.Count);
         Assert.False(db.ChangeTracker.HasChanges());
         Assert.Equal(counts, await CountsAsync(db));
@@ -163,18 +147,12 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
         wizard.Verify(w => w.GetStateAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
         wizard.VerifyNoOtherCalls();
 
-        // A property with no imported booking, and a property of another org: not found.
         var none = await Assert.ThrowsAsync<NotFoundException>(() => service.RunAsync(_world.OrgWide, _world.Hidden.Id, null, Ct));
         Assert.Equal(OnboardingActivationCodes.TestBookingNotFound, none.Code);
         var foreign = await Assert.ThrowsAsync<NotFoundException>(() => service.RunAsync(_world.OrgWide, _world.OtherOrgProperty.Id, null, Ct));
         Assert.Equal(OnboardingActivationCodes.PropertyNotFound, foreign.Code);
     }
 
-    /// <summary>
-    /// AC-NF104-12, AC-NF106-1: a repeated activation answers <c>alreadyActive</c> and writes nothing; an activated flow stops counting as active
-    /// while a prerequisite does not hold (the row stays), and is active again when it holds; a deactivation sets <c>DeactivatedAt</c> and records
-    /// its event, and a reactivation reuses the row.
-    /// </summary>
     [Fact]
     public async Task Activation_Repeated_Lost_Deactivated_Reactivated()
     {
@@ -187,7 +165,6 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
         Assert.Single(await _db.OutboxEvents.AsNoTracking().ToListAsync());
         Assert.True(await Reader(_world.Granted.Id).IsActiveAsync(_world.Granted.Id, OnboardingFlow.Bookings, Ct));
 
-        // The connection is lost: the flow is no longer active, its row stays as it was.
         var connection = await _db.OctorateConnections.SingleAsync();
         connection.Status = OctorateConnectionStatus.Error;
         await _db.SaveChangesAsync();
@@ -213,10 +190,6 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
         Assert.Equal(3, await _db.OutboxEvents.CountAsync());
     }
 
-    /// <summary>
-    /// AC-NF106-3, AC-NF108-4: the sync keeps ONE "To do" per flow with properties to complete and ONE high-urgency reconnect "To do" while the
-    /// connection is lost, raises nothing twice, and closes them when the condition clears. Codes and ids only.
-    /// </summary>
     [Fact]
     public async Task TodoSync_KeepsOneTodoPerIncompleteFlow_AndTheReconnectOne_AndClosesThemWhenCleared()
     {
@@ -238,7 +211,6 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
         Assert.Equal((ActivityUrgency.High, ActivityAction.ReconnectChannel), (reconnect.Urgency, reconnect.Action));
         Assert.All(open, a => Assert.True(a.PropertyId is null && a.StaffUserId is null && a.Notes is null));
 
-        // Connected again and nothing to complete: both close; the closed rows stay.
         var connection = await _db.OctorateConnections.SingleAsync();
         connection.Status = OctorateConnectionStatus.Connected;
         await _db.SaveChangesAsync();
@@ -248,17 +220,11 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
         Assert.Empty(await OpenTodosAsync());
         Assert.Equal(2, await _db.InternalActivities.CountAsync(a => a.CompletedAt != null));
 
-        // With the flag off a run writes nothing.
         statuses.Set(_world.OrgId, OnboardingFlow.Bookings, OnboardingFlowStates.ToComplete);
         await Job(statuses, new TestFeatureFlags()).ExecuteAsync(Ct);
         Assert.Empty(await OpenTodosAsync());
     }
 
-    /// <summary>
-    /// The "To do" of a part the host put off closes by itself once the part is done (here the prices: both houses have a nightly price), and the
-    /// deferral is cleared as a resume does, so nothing is left standing for work that no longer exists; the one of a part still to do (no channel
-    /// yet) stays open, run after run.
-    /// </summary>
     [Fact]
     public async Task TodoSync_ClosesTheTodoOfAPartThatIsDone_AndKeepsTheOneOfAPartStillToDo()
     {
@@ -281,11 +247,6 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
         Assert.Equal((OnboardingPartStatus.Deferred, (Guid?)open.TodoId), (stillDeferred.Status, stillDeferred.ActivityId));
     }
 
-    /// <summary>
-    /// Permission: a deactivation reaches what the caller reaches and the caller's org. The collaborator «Solo alcuni» (the first property only) and
-    /// the administrator of another org get <c>notFound</c> for the properties they do not reach, and the activation of those stays as it was, with
-    /// no event.
-    /// </summary>
     [Fact]
     public async Task Deactivation_ReachesOnlyTheCallersPropertiesAndOrg_TheOthersAreNotFound()
     {
@@ -307,10 +268,6 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
         Assert.Equal(events + 1, await _db.OutboxEvents.CountAsync());
     }
 
-    /// <summary>
-    /// The check of the bookings flow reads the state of the booking back through the mapper (derived from it, with no table of its own): every
-    /// CasaZen state maps both ways, and a booking of an OTA with none of the documented amounts fails on that alone.
-    /// </summary>
     [Fact]
     public async Task BookingsDryRunCheck_EveryBookingStatusMapsBothWays_AndAnOtaBookingWithoutAmountsFailsOnThatAlone()
     {
@@ -406,7 +363,6 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
         Assert.False(state.Prerequisites.Single(p => p.Key == OnboardingPrerequisiteKeys.Connection).Met);
         Assert.NotEqual(OnboardingFlowStates.Active, state.State);
 
-        // An explicit conflicting property record cannot be hidden by the valid account preference.
         _db.PropertyComplianceSenders.Add(new PropertyComplianceSender
         {
             OrgId = _world.OrgId,
@@ -430,7 +386,6 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
 
     private FlowActivationReader Reader(params Guid[] confirmed) => new(_db, FlowStatus(confirmed));
 
-    /// <summary>The real flow status of T02, with the listings of <paramref name="confirmed"/> confirmed and a tourist tax rate in force everywhere.</summary>
     private OnboardingFlowStatusService FlowStatus(Guid[] confirmed)
     {
         var environment = new Mock<IHostEnvironment>();
@@ -466,7 +421,6 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
             NullLogger<OnboardingFlowTodoSyncJob>.Instance);
     }
 
-    /// <summary>A part the host put off, with its stored intent and its open "To do" (written as the plan writes them: a done part cannot be put off now).</summary>
     private async Task<(Guid TodoId, Guid PartStateId)> DeferredPartAsync(OnboardingPartKey key)
     {
         var now = _clock.GetUtcNow().UtcDateTime;
@@ -576,7 +530,6 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
         return (manager, jobs);
     }
 
-    /// <summary>The confirmed mapping of the properties named, and no other.</summary>
     private sealed class StubMappingReader(IReadOnlyCollection<Guid> confirmed) : IPropertyMappingReader
     {
         public bool IsProvided => true;
@@ -591,7 +544,6 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
         }
     }
 
-    /// <summary>A flow status that answers the state the test sets for each org and flow, on one property.</summary>
     private sealed class StubFlowStatus : IOnboardingFlowStatusService
     {
         private readonly Dictionary<(Guid OrgId, OnboardingFlow Flow), string> _states = [];
@@ -632,7 +584,6 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
         }
     }
 
-    /// <summary>Counts the saves of the unit of work.</summary>
     private sealed class SaveCounter : SaveChangesInterceptor
     {
         public int Count { get; private set; }

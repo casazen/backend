@@ -25,7 +25,6 @@ public class TouristTaxRateRepository(AppDbContext context) : ITouristTaxRateRep
         DateTime to,
         CancellationToken cancellationToken = default)
     {
-        // One day of margin on both sides: the calculator checks every night on the Europe/Rome calendar date.
         var fromBound = from.AddDays(-1);
         var toBound = to.AddDays(1);
         return await context.TouristTaxRates

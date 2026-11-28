@@ -26,38 +26,26 @@ namespace Casazen.Infrastructure.Email;
 /// <param name="ReplyTo">The address of the host a guest's answer goes to (<c>Org.ContactEmail</c>), or <c>null</c>.</param>
 public sealed record GuestEmailBranding(string? Name, string? LogoUrl, string? PrimaryColor, string? ReplyTo)
 {
-    /// <summary>The longest sender name that is used: the display name of an e-mail is kept short, so no client cuts it in the middle of a word.</summary>
     public const int NameMaxLength = 64;
 
-    /// <summary>The longest logo address that is used (the column of <c>Org.LogoUrl</c> holds 1000).</summary>
     public const int LogoUrlMaxLength = 1000;
 
-    /// <summary>The color of the buttons and of the header of every other e-mail of CasaZen, used when the host has no usable color.</summary>
     public const string DefaultAccent = "#0d8abc";
 
-    /// <summary>The color of the text on <see cref="DefaultAccent"/> (white, as the buttons of every e-mail have always been).</summary>
     public const string DefaultAccentText = "#ffffff";
 
     private const string White = "#ffffff";
     private const string Black = "#000000";
 
-    /// <summary>The brand with only what is safe left: see the remarks of the type. Cleaning it again changes nothing.</summary>
     public GuestEmailBranding Cleaned() => new(CleanName(Name), CleanLogoUrl(LogoUrl), CleanColor(PrimaryColor), CleanReplyTo(ReplyTo));
 
-    /// <summary>True when there is nothing to show or to send in the name of the host (every member is missing or was dropped).</summary>
     public bool IsEmpty => Name is null && LogoUrl is null && PrimaryColor is null && ReplyTo is null;
 
-    /// <summary>The color of the buttons and of the header of a cleaned brand: its own, or <see cref="DefaultAccent"/>.</summary>
     public string Accent => PrimaryColor ?? DefaultAccent;
 
     /// <summary>The color of the text on <see cref="Accent"/>: white on the CasaZen blue (as ever), otherwise the one of white and black that reads better on the color.</summary>
     public string AccentText => PrimaryColor is null ? DefaultAccentText : ReadableTextOn(PrimaryColor);
 
-    /// <summary>
-    /// A display name that is safe to put in the <c>From</c> header and in the page: the control and format characters of any kind (a line break, a tab, a
-    /// right-to-left override, a zero-width joiner) become a space, the quotes, the brackets and the separators of an address (<c>" “ ” « » &lt; &gt; [ ] ( ) { } \ , ; : @</c>)
-    /// are dropped, the spaces are collapsed and the result has at most <see cref="NameMaxLength"/> characters. <c>null</c> when nothing is left.
-    /// </summary>
     public static string? CleanName(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -90,7 +78,6 @@ public sealed record GuestEmailBranding(string? Name, string? LogoUrl, string? P
         var name = string.Join(' ', builder.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries));
         if (name.Length > NameMaxLength)
         {
-            // Never in the middle of a surrogate pair.
             var length = char.IsHighSurrogate(name[NameMaxLength - 1]) ? NameMaxLength - 1 : NameMaxLength;
             name = name[..length].TrimEnd();
         }
@@ -161,10 +148,6 @@ public sealed record GuestEmailBranding(string? Name, string? LogoUrl, string? P
         return EmailOptions.IsValidAddress(address) ? address : null;
     }
 
-    /// <summary>
-    /// The color of the text on <paramref name="background"/> (<c>#rrggbb</c>): white or black, whichever has the better contrast (WCAG relative luminance). One of them is
-    /// always readable (at least 4.5 to 1). A value that is not <c>#rrggbb</c> gets white.
-    /// </summary>
     public static string ReadableTextOn(string background)
     {
         if (CleanColor(background) is not { } color)
@@ -176,7 +159,6 @@ public sealed record GuestEmailBranding(string? Name, string? LogoUrl, string? P
         return againstWhite >= againstBlack ? White : Black;
     }
 
-    /// <summary>The channel of a <c>#rrggbb</c> color that starts at <paramref name="start"/>, linearized as sRGB is.</summary>
     private static double Linear(string color, int start)
     {
         var channel = int.Parse(color.AsSpan(start, 2), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture) / 255.0;
@@ -187,27 +169,11 @@ public sealed record GuestEmailBranding(string? Name, string? LogoUrl, string? P
         rune.Value is '"' or '“' or '”' or '„' or '‟' or '«' or '»' or '<' or '>' or '[' or ']' or '(' or ')' or '{' or '}' or '\\' or ',' or ';' or ':' or '@';
 }
 
-/// <summary>
-/// Gives the brand a host's guest e-mails carry (E50/F01/US03/T01). Used by every service that sends an e-mail to a guest, which takes it as an optional
-/// dependency: without it, or with <c>GuestPortal</c> off, the e-mail is the one CasaZen has always sent.
-/// </summary>
 public interface IGuestEmailBrandingProvider
 {
-    /// <summary>
-    /// The brand of the org's guest e-mails, or <c>null</c> while <c>Features:GuestPortal</c> is off, when the org is not there, when nothing of it is usable and when
-    /// it cannot be read (logged): the e-mail is then the CasaZen one, never lost for it. Never throws except for a cancellation.
-    /// </summary>
     Task<GuestEmailBranding?> ForOrgAsync(Guid orgId, CancellationToken cancellationToken = default);
 }
 
-/// <inheritdoc cref="IGuestEmailBrandingProvider"/>
-/// <remarks>
-/// The values are the ones the public profile of the org shows (<c>GET api/public/orgs/{slug}</c>, <c>PublicOrgDto</c> and <c>OrgBrandingDto</c>): the logo, the primary color
-/// (<c>Org.ThemeColor</c>) and the name, which is how the host is named on the site (<c>Org.HostName</c>), else the name of the account shown on the site
-/// (<c>Org.DisplayName</c>), else <c>Org.Name</c>. The reply-to is <c>Org.ContactEmail</c> when it is a valid address: the guests already see it in the confirmation. Each is cleaned
-/// on its own (<see cref="GuestEmailBranding"/>), so a hostile name falls back to the next one and a hostile logo or color leaves only the name and the default color. The logs carry the
-/// id of the org only.
-/// </remarks>
 public sealed class GuestEmailBrandingProvider(
     AppDbContext db,
     IFeatureFlags featureFlags,
@@ -245,10 +211,8 @@ public sealed class GuestEmailBrandingProvider(
     }
 }
 
-/// <summary>The one way the services read the brand when it is an optional dependency of theirs.</summary>
 public static class GuestEmailBrandingProviderExtensions
 {
-    /// <summary>The brand of the org's guest e-mails, or <c>null</c> when the service was built without a provider (an older test, a tool): the CasaZen e-mail.</summary>
     public static async Task<GuestEmailBranding?> ForOrgOrNullAsync(
         this IGuestEmailBrandingProvider? provider,
         Guid orgId,

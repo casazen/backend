@@ -6,10 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Email;
 
-/// <summary>
-/// E05/F02/US02/T01: the email a host sends to the guest of a booking of a channel with no chat. It is in Italian and in English, every dynamic value is
-/// HTML-encoded (the text of the host included, with its line breaks kept), the answer goes to the organization, and the language follows the guest's country.
-/// </summary>
 public class HostGuestMessageEmailTemplateTests
 {
     private const string Payload = "<a href=\"https://phish.example\">Paga qui</a>";
@@ -28,7 +24,6 @@ public class HostGuestMessageEmailTemplateTests
 
         Assert.DoesNotContain("<a href=\"https://phish.example\"", content.HtmlBody, StringComparison.Ordinal);
         Assert.Contains(EncodedPayload, content.HtmlBody, StringComparison.Ordinal);
-        // The name of the host, the name of the property and the text of the host each go through the builder.
         Assert.True(Regex.Matches(content.HtmlBody, Regex.Escape(EncodedPayload)).Count >= 3);
     }
 

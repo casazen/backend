@@ -9,12 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// E72/F01/US01/T03 (NF-192, ADR-013-R17, decisions D6 and D7): the validation of a sequence of frames. A person who answers the challenge in order passes; each defect has
-/// its code and the documented flag of whether a new recording can fix it: a recording too short, a timing that is not plausible, two faces, a frame that cannot be judged,
-/// a still picture played again, a splice of two people, a recording made before the challenge, a move missing or out of order. The faces, the landmarks and the vectors come from
-/// scripts (<see cref="SequenceTestFrames"/>) through the doubles of the face models, frame by frame; every threshold is the committed policy's.
-/// </summary>
 public class PresenceSequenceValidatorTests
 {
     private static readonly IdentityDecisionPolicy Policy = IdentityTestPolicy.Shipped();
@@ -31,7 +25,6 @@ public class PresenceSequenceValidatorTests
         Assert.False(report.IsUnavailable);
         Assert.False(report.AllFailuresCorrectable);
 
-        // Every frame was looked at, once, in order, and shows the one face the script says, good enough to judge.
         Assert.Equal(51, report.Frames.Count);
         Assert.Equal(51, run.Detector.Calls);
         Assert.All(report.Frames, frame =>
@@ -42,7 +35,6 @@ public class PresenceSequenceValidatorTests
         });
         Assert.Equal(run.Sequence.Frames.Select(frame => frame.TimestampMs), report.Frames.Select(frame => frame.TimestampMs));
 
-        // The three steps, in the order of the challenge, answered one after the other, as far as the script went (1.5 times the least departure of the policy).
         Assert.Equal(run.Challenge.Steps, report.StepPeaks.Select(peak => peak.Action));
         var answered = report.StepPeaks.Select(peak => Assert.NotNull(peak.AnsweredAtMs)).ToList();
         Assert.True(answered[0] < answered[1] && answered[1] < answered[2]);
@@ -52,7 +44,6 @@ public class PresenceSequenceValidatorTests
         Assert.InRange(report.Frames[0].YawDegrees, -0.5, 0.5);
         Assert.InRange(report.Frames[0].PitchDegrees, -0.5, 0.5);
 
-        // The faces of five frames spread over the sequence were compared, and their vectors were zeroed.
         Assert.Equal(5, run.Embedder.Embedded.Count);
         Assert.Equal(0, run.Embedder.Embedded[0]);
         Assert.Equal(50, run.Embedder.Embedded[^1]);
@@ -76,7 +67,6 @@ public class PresenceSequenceValidatorTests
     [Fact]
     public async Task ValidateAsync_TheBaselineIsThePoseAtRest_NotTheFrontalPose()
     {
-        // A guest who rests turned by 12 degrees and looking 6 degrees down answers the same challenge: a move is measured from the lead-in of the same person.
         var report = await JudgeAsync(SequenceTestFrames.Genuine(Policy, baselineYaw: 12, baselinePitch: -6));
 
         Assert.True(report.Passed);
@@ -100,7 +90,6 @@ public class PresenceSequenceValidatorTests
     [Fact]
     public async Task ValidateAsync_TheDepartureNeededIsTheOneOfTheActiveConfiguration()
     {
-        // The least departure is the policy's: the same 22 degrees that answer a turn of 20 do not answer a turn of 25.
         var stricter = Policy with { Presence = Policy.Presence with { Pose = Policy.Presence.Pose with { TurnMinYawDegrees = 25 } } };
         var script = SequenceTestFrames.Genuine(Policy, amplitude: 1.1);
 
@@ -114,8 +103,6 @@ public class PresenceSequenceValidatorTests
     [Fact]
     public async Task PresenceSequenceValidator_StaticReplay_FailsContinuity()
     {
-        // Security (NF-192, AC-NF192-2): a picture played again, with the face where it was and no move, is never a presence: not with the same bytes in every frame, not with
-        // a grey level of noise either; and no new recording explains it.
         foreach (var noise in new[] { 0, 1 })
         {
             var report = await JudgeAsync(SequenceTestFrames.StaticReplay(Policy, noise));
@@ -131,8 +118,6 @@ public class PresenceSequenceValidatorTests
     [Fact]
     public async Task ValidateAsync_TheLeastPixelDifferenceOfAMovingSequence_IsTheOneOfThePolicy_NotOneOfTheCode()
     {
-        // One grey level up on half of the pixels of every later frame: on average half a level from the first frame. It is a still picture for the policy of the plan (one
-        // level) and not for a policy that asks for a quarter of a level: the number is the file's. The same bytes in every frame are a still picture whatever the number.
         var lenient = Policy with { Presence = Policy.Presence with { Continuity = Policy.Presence.Continuity with { MinPixelDifference = 0.25 } } };
 
         var strict = await JudgeAsync(SequenceTestFrames.StaticReplay(Policy, noise: 1));
@@ -148,7 +133,6 @@ public class PresenceSequenceValidatorTests
     [Fact]
     public async Task ValidateAsync_AMovingHead_IsNotAStillPicture_EvenWithTheSamePixelsOutsideTheFace()
     {
-        // The pixels of the frames differ (the script draws noise for each), so a sequence that answers the challenge is not called still.
         var report = await JudgeAsync(SequenceTestFrames.Genuine(Policy));
 
         Assert.DoesNotContain(report.Failures, failure => failure.Code == IdentityGuidanceCodes.PresenceContinuity);
@@ -157,7 +141,6 @@ public class PresenceSequenceValidatorTests
     [Fact]
     public async Task PresenceSequenceValidator_LongerThanSinceIssue_Fails()
     {
-        // Security (NF-192, AC-NF192-3): a recording that lasted longer than the time between the challenge and its receipt was made before the challenge existed.
         var script = SequenceTestFrames.PreChallenge(Policy);
 
         var report = await JudgeAsync(script);
@@ -202,14 +185,12 @@ public class PresenceSequenceValidatorTests
                 policy = Policy with { Presence = Policy.Presence with { Sequence = Policy.Presence.Sequence with { MaxDurationMs = 5000 } } };
                 break;
             case "too few frames":
-                // One frame in three, which is a rate of 2.7 a second: under half of the 8 the page captures at, and fewer frames than the policy asks for.
                 script.Frames.RemoveAll(frame => frame.TimestampMs / 125 % 3 != 0);
                 break;
             case "too many frames":
                 policy = Policy with { Presence = Policy.Presence with { Sequence = Policy.Presence.Sequence with { MaxFrames = 40 } } };
                 break;
             case "too fast":
-                // 20 frames a second against a target of 8: more than twice.
                 var fast = Policy with { Presence = Policy.Presence with { Sequence = Policy.Presence.Sequence with { TargetFps = 20, MaxFrames = 300 } } };
                 script = SequenceTestFrames.Genuine(fast);
                 policy = Policy with { Presence = Policy.Presence with { Sequence = Policy.Presence.Sequence with { MaxFrames = 300 } } };
@@ -246,7 +227,6 @@ public class PresenceSequenceValidatorTests
     [InlineData(6, false)]
     public async Task ValidateAsync_FramesWithoutAFace_AreToleratedUpToTheShareOfThePolicy(int frames, bool passes)
     {
-        // The policy tolerates a tenth of the frames: 5 of 51 is 9.8 per cent, 6 is 11.8.
         var script = SequenceTestFrames.Genuine(Policy);
         foreach (var frame in script.Frames.TakeLast(frames))
             frame.Faces = [];
@@ -277,7 +257,6 @@ public class PresenceSequenceValidatorTests
         var script = SequenceTestFrames.Genuine(Policy);
         foreach (var frame in script.Frames.TakeLast(frames))
         {
-            // Too dark: a tenth of the light. Out of focus: one flat gray, no edge at all (the blur that is a picture of nothing).
             frame.Gray = defect == "dark" ? [.. frame.Gray.Select(value => (byte)(value / 10))] : [.. frame.Gray.Select(_ => (byte)128)];
         }
 
@@ -319,7 +298,6 @@ public class PresenceSequenceValidatorTests
         Assert.Equal((IdentityGuidanceCodes.PresenceContinuity, VerificationReasons.Checks.PresenceContinuity, false), (failure.Code, failure.Check, failure.Correctable));
         Assert.False(report.AllFailuresCorrectable);
 
-        // The frames compared were spread over the sequence, from both halves, and their vectors were zeroed.
         Assert.Contains(run.Embedder.Embedded, index => index < 25);
         Assert.Contains(run.Embedder.Embedded, index => index > 25);
         Assert.All(run.Embedder.Issued, vector => Assert.All(vector, value => Assert.Equal(0f, value)));
@@ -332,7 +310,6 @@ public class PresenceSequenceValidatorTests
         foreach (var frame in script.Frames.Skip(25))
             frame.Person = [0.8f, 0.6f, 0, 0, 0, 0, 0, 0];
 
-        // A cosine of 0.8 between the halves: above the 0.5 of the policy, under 0.9.
         var alike = await JudgeAsync(script);
         var stricter = Policy with { Presence = Policy.Presence with { Continuity = Policy.Presence.Continuity with { MinPairSimilarity = 0.9 } } };
         var unlike = await JudgeAsync(script, stricter);
@@ -374,7 +351,6 @@ public class PresenceSequenceValidatorTests
     [Fact]
     public async Task ValidateAsync_AFaceThatMovesALittle_IsContinuous()
     {
-        // The centre moves by 0.04 face widths and the size by 5 per cent from one frame to the next: well within the policy.
         var script = SequenceTestFrames.Genuine(Policy);
         for (var index = 0; index < script.Frames.Count; index++)
         {
@@ -397,7 +373,6 @@ public class PresenceSequenceValidatorTests
         Assert.Equal((IdentityGuidanceCodes.PresenceChallengeNotFollowed, VerificationReasons.Checks.PresenceChallenge, true), (failure.Code, failure.Check, failure.Correctable));
         Assert.True(report.AllFailuresCorrectable);
 
-        // Both moves were made, so both are answered, but the look came before the turn it should follow.
         Assert.All(report.StepPeaks, peak => Assert.NotNull(peak.AnsweredAtMs));
         Assert.True(report.StepPeaks[1].AnsweredAtMs < report.StepPeaks[0].AnsweredAtMs);
     }
@@ -526,8 +501,6 @@ public class PresenceSequenceValidatorTests
     [Fact]
     public async Task ValidateAsync_FramesLargerThanTheDetectorSide_AreReducedForTheDetector_AndTheReducedCopiesAreZeroed()
     {
-        // 640 x 480 frames, a detector side of 320: the detector is shown 320 x 240 copies, the faces come back in the pixels of the frame as it was received, and the
-        // copies are zeroed while the frames stay the caller's.
         var script = SequenceTestFrames.Genuine(Policy, width: 640, height: 480);
         using var run = script.Run(Policy);
 
@@ -599,7 +572,6 @@ public class PresenceSequenceValidatorTests
         return await Validator(run).ValidateAsync(run.Sequence, run.Challenge, policy ?? Policy, CancellationToken.None);
     }
 
-    /// <summary>A sequence that could not be judged: never passed, the one failure of the check <c>processing</c>, nothing asked of the guest, nothing else in the report.</summary>
     private static void AssertNotAvailable(SequenceValidationReport report)
     {
         Assert.False(report.Passed);

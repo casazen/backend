@@ -23,33 +23,26 @@ namespace Casazen.Core.Entities;
 [Table("PropertyWelcomeLinks")]
 public class PropertyWelcomeLink : ITenantOwned
 {
-    /// <summary>Random bytes of a <see cref="Token"/>: 192 bits.</summary>
     public const int TokenBytes = 24;
 
-    /// <summary>Column length of <see cref="Token"/>: room beyond the 32 characters of a base64url token of <see cref="TokenBytes"/> bytes.</summary>
     public const int TokenMaxLength = 64;
 
-    /// <summary>Column length of <see cref="CreatedByUserId"/>: the one of <c>User.Id</c>, the Auth0 subject.</summary>
     public const int CreatedByUserIdMaxLength = 255;
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row, copied from the property when the link is created (TN-2). Server-set, never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
     public Guid PropertyId { get; set; }
 
-    /// <summary>The random token in the address of the welcome page (base64url, unique).</summary>
     [Required, MaxLength(TokenMaxLength)]
     public string Token { get; set; } = string.Empty;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>UTC instant the link was revoked; <c>null</c> = the link is the active one of its property.</summary>
     public DateTime? RevokedAt { get; set; }
 
-    /// <summary>The person who created the link (<c>User.Id</c>, the Auth0 subject: a string in this code base, not a Guid); <c>null</c> when the system did.</summary>
     [MaxLength(CreatedByUserIdMaxLength)]
     public string? CreatedByUserId { get; set; }
 }

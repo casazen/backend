@@ -36,9 +36,6 @@ public class WithholdingController(
     IDocumentTexts texts,
     ILogger<WithholdingController> logger) : ControllerBase
 {
-    /// <summary>The applicable withholding evidence of a month (the payouts paid in it and their reversals), per owner.</summary>
-    /// <param name="month">Reference month (1-12).</param>
-    /// <param name="year">Reference year (e.g., 2026).</param>
     [HttpGet("summary")]
     [ProducesResponseType(typeof(WithholdingSummaryDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<WithholdingSummaryDto>> GetSummary(
@@ -219,7 +216,6 @@ public class WithholdingController(
         return Ok();
     }
 
-    /// <summary>The annual Certificazione Unica data of the year (404 while there is none).</summary>
     [HttpGet("annual/{year:int}")]
     [ProducesResponseType(typeof(TaxReportingDatasetDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -347,7 +343,6 @@ public class WithholdingController(
         return Download(content, fileFormat, TaxReportingExports.ContractsFileName(year, FiscalDocumentExportFormats.ExtensionOf(fileFormat)));
     }
 
-    /// <summary>Builds the annual data of the year from the evidence, again while it is only generated. 422 <c>tax_no_obligations</c>; 409 <c>tax_file_already_filed</c>.</summary>
     [HttpPost("annual/{year:int}")]
     [ProducesResponseType(typeof(TaxReportingDatasetDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
@@ -392,12 +387,10 @@ public class WithholdingController(
         return File(content, FiscalDocumentExportFormats.ContentTypeOf(format), fileName);
     }
 
-    /// <summary>The org of the caller when it reaches the whole of it; <c>null</c> (403) for a caller restricted to some properties or without an org.</summary>
     private Task<Guid?> OrgAsync() =>
         HostCallerResolver.OrgWideAsync(User, orgContextResolver, hostScopeResolver, HttpContext.RequestAborted);
 }
 
-/// <summary>DTO for withholding summary response.</summary>
 public record WithholdingSummaryDto
 {
     public int Month { get; init; }
@@ -407,7 +400,6 @@ public record WithholdingSummaryDto
     public List<OwnerWithholdingSummaryDto> OwnerSummaries { get; init; } = new();
 }
 
-/// <summary>DTO for per-owner withholding summary.</summary>
 public record OwnerWithholdingSummaryDto
 {
     public Guid OwnerId { get; init; }
@@ -420,7 +412,6 @@ public record OwnerWithholdingSummaryDto
     public int BookingCount => PayoutCount;
 }
 
-/// <summary>DTO for F24 record.</summary>
 public record F24RecordDto
 {
     public Guid Id { get; init; }
@@ -457,10 +448,6 @@ public record F24RecordDto
     };
 }
 
-/// <summary>
-/// The annual tax data with its filing state. <see cref="PayloadJson"/> holds the totals of each owner (<c>ownerId</c>, <c>grossBase</c>, <c>withheld</c>, <c>evidence</c>) and nothing else
-/// (E18/F01/US02/T01): the recipients of the Certificazione Unica (fiscal code, address) are personal data, read only by the exports that ask <c>agency.owner.financial.manage</c>.
-/// </summary>
 public sealed record TaxReportingDatasetDto(
     Guid Id,
     string Kind,
@@ -481,7 +468,6 @@ public sealed record TaxReportingDatasetDto(
         d.ReceiptReference, d.RejectionReason, d.GeneratedAt);
 }
 
-/// <summary>Request to reconcile F24 payment.</summary>
 public record ReconcileF24Request
 {
     public Guid F24Id { get; init; }

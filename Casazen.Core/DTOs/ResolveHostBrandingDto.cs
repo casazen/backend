@@ -13,10 +13,8 @@ public class ResolveHostBrandingDto
 {
     public string? LogoUrl { get; set; }
     public string? PrimaryColor { get; set; }
-    /// <summary>The theme the site renders: always one of <c>PublicSiteThemes.All</c> (unset or unsupported → default).</summary>
     public string PublicThemeId { get; set; } = PublicSiteThemes.Default;
 
-    /// <summary>The font pair the host chose (<c>PublicSiteFonts.All</c>), or null: the site uses the font its theme starts with.</summary>
     public string? PublicFontId { get; set; }
 
     public string? HeroImageUrl { get; set; }
@@ -25,10 +23,6 @@ public class ResolveHostBrandingDto
     public string Slug { get; set; } = string.Empty;
     public bool ShowPoweredBy { get; set; }
 
-    /// <param name="org">The resolved org.</param>
-    /// <param name="effectiveTier">
-    /// The org's effective tier (<c>IEntitlementService.ResolveEffectiveTier</c>), never the stored one (A3-37).
-    /// </param>
     public static ResolveHostBrandingDto FromOrg(Org org, PlanTier effectiveTier) => new()
     {
         LogoUrl = org.LogoUrl,

@@ -4,10 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Configuration;
 
-/// <summary>
-/// LT-08: the advisory parameters committed in appsettings.json are the values verified by RS-5 in fiscale.md (L5-L12,
-/// C11-C12), each group with its source, and a missing or impossible value stops the startup.
-/// </summary>
 public class CedolareAdvisoryConfigurationTests
 {
     [Fact]
@@ -56,7 +52,6 @@ public class CedolareAdvisoryConfigurationTests
             Assert.Contains(result.Failures!, f => f.StartsWith(key + " ", StringComparison.Ordinal));
         }
 
-        // Without brackets the IRPEF comparison is simply not computed: not a startup failure.
         Assert.DoesNotContain(result.Failures!, f => f.Contains("Irpef", StringComparison.Ordinal));
     }
 
@@ -88,7 +83,6 @@ public class CedolareAdvisoryConfigurationTests
         Assert.Contains(failures, f => f.StartsWith("CedolareAdvisory__Irpef__Brackets__2__UpToEur must be empty", StringComparison.Ordinal));
     }
 
-    /// <summary>The <c>CedolareAdvisory</c> section of the committed appsettings.json.</summary>
     internal static CedolareAdvisoryOptions FromAppsettings()
     {
         var configuration = new ConfigurationBuilder()

@@ -27,7 +27,6 @@ public sealed class GuestPortalSetupSuggestions(
             return fast ? PropertySuggestion(draft) : await GenerateGuideAsync(property, draft, ct);
         }
 
-        // Send the structured accommodation facts. The name, street address, access codes and guest data never enter a prompt.
         var facts = JsonSerializer.Serialize(new
         {
             property.AccommodationType,
@@ -91,7 +90,6 @@ public sealed class GuestPortalSetupSuggestions(
 
     private async Task<Suggestion> GenerateGuideAsync(Property property, GuestHouseGuide fallback, CancellationToken ct)
     {
-        // Only the accommodation facts go to the provider. Arrival directions, codes, credentials and contacts stay out of the prompt.
         var amenities = AmenityCatalog.Entries.Where(entry => property.Amenities.Contains(entry.Amenity)).Select(entry => entry.LabelIt);
         var facts = JsonSerializer.Serialize(new
         {
@@ -114,7 +112,6 @@ public sealed class GuestPortalSetupSuggestions(
         {
             if (!cache.TryGet<GuestHouseGuide>(property.OrgId, key, out var draft) || draft is null)
             {
-                // The host can still fill the guide if the platform provider is slow or absent.
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 deadline.CancelAfter(TimeSpan.FromSeconds(12));
                 var reply = await ai.GenerateAsync(new AiRequest(prompt, [], Temperature: 0.2,

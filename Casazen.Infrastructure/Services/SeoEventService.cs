@@ -22,12 +22,10 @@ public sealed class SeoEventService(
     ILogger<SeoEventService> logger,
     TimeProvider? timeProvider = null) : ISeoEventService
 {
-    /// <summary>Most rows the admin report returns.</summary>
     public const int MaxTopLimit = 50;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    /// <summary>Wire names of the events.</summary>
     public static class WireNames
     {
         public const string CtaClick = "cta_click";
@@ -67,7 +65,6 @@ public sealed class SeoEventService(
     public async Task<SeoTopComuniResult> GetTopComuniAsync(int days, int limit, CancellationToken cancellationToken = default)
     {
         var retention = options.Value.EffectiveRetentionDays;
-        // Older events are deleted: a longer window would show less than it claims.
         days = Math.Clamp(days, 1, retention);
         limit = Math.Clamp(limit, 1, MaxTopLimit);
 
@@ -85,7 +82,6 @@ public sealed class SeoEventService(
             })
             .ToListAsync(cancellationToken);
 
-        // Platform report of the AdminOnly endpoint: the signups of every org, counted, never listed.
         var signups = (await db.SignupAttributions.IgnoreQueryFilters().AsNoTracking()
                 .Where(a => a.ComuneCode != null && a.RecordedAt >= from && a.RecordedAt <= to)
                 .GroupBy(a => a.ComuneCode!)

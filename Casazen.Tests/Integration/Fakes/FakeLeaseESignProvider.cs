@@ -19,14 +19,12 @@ public sealed class FakeLeaseESignProvider : ILeaseESignService
 
     public bool IsConfigured { get; set; } = true;
 
-    /// <summary>Every call to the provider (initiate, parse, download).</summary>
     public int Calls => Volatile.Read(ref _calls);
 
     public static string SessionIdFor(Guid leaseId) => $"fake-session-{leaseId:N}";
 
     public static string SignerIdFor(Guid partyId) => $"fake-signer-{partyId:N}";
 
-    /// <summary>Webhook body understood by <see cref="ParseWebhookEventAsync"/>: <c>kind</c> is signer_signed or all_signed.</summary>
     public static string EventBody(Guid leaseId, string kind, Guid? partyId = null) =>
         JsonSerializer.Serialize(new
         {

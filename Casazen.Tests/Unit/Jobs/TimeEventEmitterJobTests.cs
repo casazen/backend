@@ -21,17 +21,11 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Jobs;
 
-/// <summary>
-/// ADR-022-R8: <see cref="TimeEventEmitterJob"/> writes a time trigger for each stay and offset an active routine of its org asks
-/// for, when it becomes due (the stay date at Rome midnight shifted by the offset), once, whatever the number of runs.
-/// </summary>
 public class TimeEventEmitterJobTests
 {
     private static readonly Guid OrgA = Guid.Parse("0f6c1a52-3b7e-4c11-9d2a-5e8b7c6d4a01");
     private static readonly Guid OrgB = Guid.Parse("8e2d4b19-6a5f-4f3c-b1e7-2c9a0d3e5f02");
 
-    // Check-in on 10 November, check-out on 12 November (winter time, Rome is UTC+1): Rome midnight of the 10th is 23:00 UTC
-    // of the 9th, so "2 days before check-in" is due at 23:00 UTC on 7 November, "3 hours after check-out" at 02:00 UTC on 12 November.
     private static readonly DateTime CheckIn = new(2026, 11, 10, 0, 0, 0, DateTimeKind.Utc);
     private static readonly DateTime CheckOut = new(2026, 11, 12, 0, 0, 0, DateTimeKind.Utc);
     private static readonly DateTime TwoDaysBeforeCheckIn = new(2026, 11, 7, 23, 0, 0, DateTimeKind.Utc);
@@ -49,14 +43,14 @@ public class TimeEventEmitterJobTests
         var stay = await SeedBookingAsync(OrgA, BookingStatus.Confirmed);
         await SeedBookingAsync(OrgA, BookingStatus.Pending);
         await SeedBookingAsync(OrgA, BookingStatus.Cancelled);
-        await SeedBookingAsync(OrgA, BookingStatus.Confirmed, noShow: true); // a no-show is a stay that never happens: no time trigger
-        await SeedBookingAsync(OrgB, BookingStatus.Confirmed); // no routine in org B
+        await SeedBookingAsync(OrgA, BookingStatus.Confirmed, noShow: true);
+        await SeedBookingAsync(OrgB, BookingStatus.Confirmed);
 
-        await RunAsync(TwoDaysBeforeCheckIn.AddMinutes(-5)); // not due yet
+        await RunAsync(TwoDaysBeforeCheckIn.AddMinutes(-5));
         Assert.Empty(await EventsAsync());
 
         await RunAsync(TwoDaysBeforeCheckIn.AddMinutes(2));
-        await RunAsync(TwoDaysBeforeCheckIn.AddMinutes(7)); // the next run, overlapping window: nothing new
+        await RunAsync(TwoDaysBeforeCheckIn.AddMinutes(7));
         await RunAsync(ThreeHoursAfterCheckOut.AddMinutes(1));
 
         var events = await EventsAsync();
@@ -75,7 +69,6 @@ public class TimeEventEmitterJobTests
             events.OrderBy(e => e.OccurredAt).First().PayloadJson);
     }
 
-    /// <summary>E01/F04/US01/T03: with <c>Features:Routines</c> off the module is closed and a run writes nothing, whatever routines the orgs saved.</summary>
     [Fact]
     public async Task ExecuteAsync_WithTheRoutinesFlagOff_WritesNothing()
     {
@@ -116,7 +109,6 @@ public class TimeEventEmitterJobTests
     [Fact]
     public async Task ExecuteAsync_SummerTime_IsDueAtRomeMidnight()
     {
-        // 10 July: Rome is UTC+2, its midnight is 22:00 UTC of the 9th; one day before check-in is 22:00 UTC on the 8th.
         await SeedRoutineAsync(OrgA, RoutineEventType.BeforeCheckin, """{ "days": 1 }""");
         var stay = await SeedBookingAsync(OrgA, BookingStatus.Confirmed, new DateTime(2026, 7, 10, 0, 0, 0, DateTimeKind.Utc));
 
@@ -127,12 +119,6 @@ public class TimeEventEmitterJobTests
         Assert.Equal($"BeforeCheckIn:24:{stay.Id}:2026-07-08T22Z", Assert.Single(await EventsAsync()).DedupKey);
     }
 
-    // ─── E01/F04/US01/T01: due at the time of the property, in its zone ──────────────────────────────
-
-    /// <summary>
-    /// "2 hours before check-in" fires two hours before guests may arrive: with arrivals from 15:00 in Rome (UTC+1 on 10 November) that is 13:00 Rome,
-    /// 12:00 UTC, and not 22:00 UTC of the day before, two hours before the start of the day.
-    /// </summary>
     [Fact]
     public async Task ExecuteAsync_TheCheckInTimeOfTheProperty_IsWhatABeforeCheckInTriggerCountsFrom()
     {
@@ -166,7 +152,6 @@ public class TimeEventEmitterJobTests
     [Fact]
     public async Task ExecuteAsync_SummerTime_TheTimeOfTheProperty_IsItsRomeWallClock()
     {
-        // 10 July: Rome is UTC+2, so 15:00 is 13:00 UTC and one hour before it is 12:00 UTC.
         await SeedRoutineAsync(OrgA, RoutineEventType.BeforeCheckin, """{ "hours": 1 }""");
         var property = await SeedPropertyAsync(OrgA, new TimeOnly(15, 0), null);
         var stay = await SeedBookingAsync(OrgA, BookingStatus.Confirmed, new DateTime(2026, 7, 10, 0, 0, 0, DateTimeKind.Utc), property.Id);
@@ -178,7 +163,6 @@ public class TimeEventEmitterJobTests
         Assert.Equal($"BeforeCheckIn:1:{stay.Id}:2026-07-10T12Z", Assert.Single(await EventsAsync()).DedupKey);
     }
 
-    /// <summary>A property in another zone counts its own clock: 15:00 in London on 10 November is 15:00 UTC, so two hours before is 13:00 UTC.</summary>
     [Fact]
     public async Task ExecuteAsync_ThePropertyOfAnotherZone_CountsItsOwnClock()
     {
@@ -193,10 +177,6 @@ public class TimeEventEmitterJobTests
         Assert.Equal($"BeforeCheckIn:2:{stay.Id}:2026-11-10T13Z", Assert.Single(await EventsAsync()).DedupKey);
     }
 
-    /// <summary>
-    /// 20:00 in Los Angeles on 10 November is 04:00 UTC of the 11th, a day after the stored date: the stays to look at are found by a window wide enough
-    /// for the time of the day and the zone, not by the UTC day of the check-in.
-    /// </summary>
     [Fact]
     public async Task ExecuteAsync_ACheckInTimeThatIsTheNextUtcDay_IsStillFound()
     {
@@ -209,7 +189,6 @@ public class TimeEventEmitterJobTests
         Assert.Equal($"BeforeCheckIn:0:{stay.Id}:2026-11-11T04Z", Assert.Single(await EventsAsync()).DedupKey);
     }
 
-    /// <summary>A zone the machine does not know is Rome's, like a property that never had a zone.</summary>
     [Fact]
     public async Task ExecuteAsync_AnUnknownZone_IsRome()
     {
@@ -222,7 +201,6 @@ public class TimeEventEmitterJobTests
         Assert.Equal($"BeforeCheckIn:2:{stay.Id}:2026-11-10T12Z", Assert.Single(await EventsAsync()).DedupKey);
     }
 
-    /// <summary>A property with no time counts the start of the day, as before; one of another org is not read for this org's stays.</summary>
     [Fact]
     public async Task ExecuteAsync_APropertyWithNoTime_OrOfAnotherOrg_CountsTheStartOfTheDay()
     {
@@ -326,7 +304,6 @@ public class TimeEventEmitterJobTests
         var trigger = Assert.Single(await read.OutboxEvents.ToListAsync());
         Assert.Equal($"BeforeCheckIn:48:{stay.Id}:2026-11-07T23Z", trigger.DedupKey);
 
-        // The same key in the same org is refused; in another org, and without a key, it is not.
         read.OutboxEvents.Add(new OutboxEvent { OrgId = OrgB, EventType = DomainEventType.TimeTrigger, DedupKey = trigger.DedupKey, OccurredAt = now });
         read.OutboxEvents.Add(new OutboxEvent { OrgId = OrgA, EventType = DomainEventType.BookingCreated, OccurredAt = now });
         read.OutboxEvents.Add(new OutboxEvent { OrgId = OrgA, EventType = DomainEventType.BookingCreated, OccurredAt = now });
@@ -376,7 +353,6 @@ public class TimeEventEmitterJobTests
         if (propertyId is { } property)
             booking.PropertyId = property;
 
-        // A no-show stays Confirmed and carries the mark of the host (NF-45): the stay never happened.
         if (noShow)
             booking.NoShowAt = TwoDaysBeforeCheckIn;
 
@@ -385,7 +361,6 @@ public class TimeEventEmitterJobTests
         return booking;
     }
 
-    /// <summary>A property with its clock: the time guests may arrive, the time they must leave, and its zone.</summary>
     private async Task<Property> SeedPropertyAsync(Guid orgId, TimeOnly? checkInFrom, TimeOnly? checkOutBy, string? timezone = null)
     {
         await using var db = NewDb();

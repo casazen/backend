@@ -3,16 +3,13 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs.Supplier;
 
-/// <summary>Body of <c>POST /api/admin/suppliers/{orgId}/suspend</c>: the reason is required and stays internal (SU-12).</summary>
 public class SuspendSupplierRequest
 {
-    /// <summary>Why the admin suspends the supplier: required, at most 500 characters, never shown to the supplier.</summary>
     [Required(ErrorMessage = "SupplierSuspendReasonRequired")]
     [MaxLength(500, ErrorMessage = "SupplierSuspendReasonTooLong")]
     public string Reason { get; set; } = string.Empty;
 }
 
-/// <summary>A supplier in the admin list (SU-12).</summary>
 public class AdminSupplierDto
 {
     public Guid OrgId { get; set; }
@@ -20,7 +17,6 @@ public class AdminSupplierDto
     public string Email { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
 
-    /// <summary><c>Pending</c>, <c>Active</c> or <c>Suspended</c>.</summary>
     public string Status { get; set; } = string.Empty;
 
     public IEnumerable<string> Categories { get; set; } = [];
@@ -29,7 +25,6 @@ public class AdminSupplierDto
     public DateTime? SuspendedAt { get; set; }
     public string? SuspensionReason { get; set; }
 
-    /// <summary>Requests the supplier still has to work (new, taken, in progress).</summary>
     public int OpenRequests { get; set; }
 
     internal static AdminSupplierDto From(AdminSupplierItem item) => new()
@@ -48,7 +43,6 @@ public class AdminSupplierDto
     };
 }
 
-/// <summary>An invite in the admin list. It never carries the link token: only its hash is stored (SU-01).</summary>
 public class AdminInviteDto
 {
     public Guid Id { get; set; }
@@ -57,7 +51,6 @@ public class AdminInviteDto
     public IEnumerable<string> Categories { get; set; } = [];
     public string? Message { get; set; }
 
-    /// <summary><c>Pending</c>, <c>Used</c>, <c>Expired</c> or <c>Revoked</c>.</summary>
     public string State { get; set; } = string.Empty;
 
     public DateTime CreatedAt { get; set; }
@@ -78,17 +71,14 @@ public class AdminInviteDto
     };
 }
 
-/// <summary>One line of the audit trail of a supplier (SU-12).</summary>
 public class SupplierAdminAuditDto
 {
     public Guid Id { get; set; }
 
-    /// <summary><c>Suspended</c>, <c>Reactivated</c>, <c>InviteResent</c>, <c>InviteRevoked</c> or <c>CommissionChanged</c>.</summary>
     public string Action { get; set; } = string.Empty;
 
     public string ActorUserId { get; set; } = string.Empty;
 
-    /// <summary>The admin's name (or email), null when the account is unknown.</summary>
     public string? ActorName { get; set; }
 
     public DateTime OccurredAt { get; set; }

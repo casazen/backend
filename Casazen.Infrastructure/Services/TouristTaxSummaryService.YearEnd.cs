@@ -9,13 +9,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// The tourist tax at year end (E18/F01/US02/T03, NF-117, acceptance steps C9 and D3 of the complete flow): the declaration data per comune, the account of the agent and the yearly count of nights of
-/// Ticino. They are made of what the tourist tax summary already gives (<see cref="BuildSummaryAsync"/>: owed from the stays the engine recorded, remitted from the payments with their days and
-/// references, the difference to the cent) and of what the stays and the documents store (the reason a stay has no amount, the guests' exemptions by reason, the tourist tax lines of the issued documents
-/// of the stays of Ticino): nothing is recomputed, and nothing is filed by CasaZen. All three need a scope that reaches the whole org (a declaration of some of the properties would be false, and the
-/// payments belong to the org): 403 before anything is read.
-/// </summary>
 public sealed partial class TouristTaxSummaryService
 {
     public async Task<TouristTaxDeclaration> GetDeclarationAsync(HostScope scope, int year, bool withExemptionReasons, CancellationToken cancellationToken = default)
@@ -24,7 +17,6 @@ public sealed partial class TouristTaxSummaryService
 
         var built = await BuildSummaryAsync(scope, FiscalReportPeriod.WholeYear(year), cancellationToken);
 
-        // The stays of the report in Italy (the summary leaves out a house abroad), with what each stores of its tourist tax.
         var stays = built.Report.Stays.Where(s => !built.Reach.ForeignPropertyIds.Contains(s.PropertyId)).ToList();
         var facts = await StayFactsAsync(scope.OrgId, [.. stays.Select(s => s.BookingId)], cancellationToken);
 
@@ -47,7 +39,6 @@ public sealed partial class TouristTaxSummaryService
     {
         RequireYearEnd(scope, year);
 
-        // The summary of each month or quarter: what each comune is owed in it and what was remitted for it (a payment counts in the period its declared period lies inside).
         var rows = new List<TouristTaxAgentAccountRow>();
         foreach (var (label, from, to) in TouristTaxYearEndRules.PeriodsOf(year, by))
         {
@@ -55,7 +46,6 @@ public sealed partial class TouristTaxSummaryService
             rows.AddRange(summary.Comuni.Select(c => AccountRow(c, label, from, to, isYear: false)));
         }
 
-        // The line of the year of each comune: every payment of the year, so a payment that spans two periods is still in the account.
         var whole = (await BuildSummaryAsync(scope, FiscalReportPeriod.WholeYear(year), cancellationToken)).Summary;
         var first = new DateOnly(year, 1, 1);
         var last = new DateOnly(year, 12, 31);
@@ -106,8 +96,6 @@ public sealed partial class TouristTaxSummaryService
         if (properties.Count == 0)
             return new TicinoYearlyCount(year, due, []);
 
-        // The stays with check-in in the year that happened (the one definition of an active stay, AlloggiatiStatusRules: confirmed, checked in or checked out, never a request, a cancelled
-        // booking or a no-show), and the documents issued for them.
         var propertyIds = properties.Select(p => p.Property.Id).ToList();
         var firstNight = new DateOnly(year, 1, 1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var nextYear = new DateOnly(year + 1, 1, 1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
@@ -149,7 +137,6 @@ public sealed partial class TouristTaxSummaryService
             if (count.Stays == 0 && property.IsDeleted)
                 continue;
 
-            // A known place gives its municipality (stored, or derived and said so); an unknown canton keeps the number stored on the property, if any.
             var known = place is { IsKnown: true } ? place : null;
             counts.Add(new TicinoPropertyCount(
                 property.Id,
@@ -174,7 +161,6 @@ public sealed partial class TouristTaxSummaryService
         return new TicinoYearlyCount(year, due, [.. counts.OrderBy(c => c.PropertyName, StringComparer.OrdinalIgnoreCase).ThenBy(c => c.PropertyId)]);
     }
 
-    /// <summary>In the count of Ticino: a property the resolver places in Ticino, or one whose canton is not known (it may be in Ticino).</summary>
     private static bool InTheTicinoCount(SwissPlace? place) => place is not { IsKnown: true } || place.IsInTicino;
 
     /// <summary>
@@ -216,7 +202,6 @@ public sealed partial class TouristTaxSummaryService
         return count;
     }
 
-    /// <summary>What a stay stores of its tourist tax (<see cref="StayTouristTax"/>) and, once confirmed, of its guests: the one record of a booking, and its guest lines.</summary>
     private async Task<Dictionary<Guid, TouristTaxStayFacts>> StayFactsAsync(Guid orgId, IReadOnlyCollection<Guid> bookingIds, CancellationToken cancellationToken)
     {
         var facts = new Dictionary<Guid, TouristTaxStayFacts>();
@@ -253,7 +238,6 @@ public sealed partial class TouristTaxSummaryService
         return facts;
     }
 
-    /// <summary>The stays with no amount of a comune, by the reason they have none (<see cref="TouristTaxYearEndRules.NoAmountReasonOf"/>); their sum is the comune's <c>StaysWithoutAmount</c>.</summary>
     private static List<TouristTaxReasonCount> NoAmountOf(IReadOnlyList<TouristTaxStayLine> stays, IReadOnlyDictionary<Guid, TouristTaxStayFacts> facts) =>
         stays
             .Where(s => s.Amount <= 0)
@@ -262,10 +246,6 @@ public sealed partial class TouristTaxSummaryService
             .OrderBy(r => r.Reason, StringComparer.Ordinal)
             .ToList();
 
-    /// <summary>
-    /// The exempt guests of the confirmed stays of a comune by reason, with the stays they are in and the nights they spent: a count, never a guest, a name or a booking. A stay may have taxed
-    /// and exempt guests, so the stays with an amount are counted here too.
-    /// </summary>
     private static List<TouristTaxReasonCount> ExemptionsOf(IReadOnlyList<TouristTaxStayLine> stays, IReadOnlyDictionary<Guid, TouristTaxStayFacts> facts, bool withReasons)
     {
         var exempt = new List<(string Reason, Guid BookingId, int Nights)>();
@@ -288,14 +268,9 @@ public sealed partial class TouristTaxSummaryService
             .ToList();
     }
 
-    /// <summary>A comune of a period of the account of the agent: the figures of the summary (the payments are shown to a scope of the whole org, as it always is here).</summary>
     private static TouristTaxAgentAccountRow AccountRow(ComuneTaxSummary comune, string period, DateOnly from, DateOnly to, bool isYear) =>
         new(comune.Comune, period, from, to, isYear, comune.Stays, comune.Nights, comune.Guests, comune.Owed, comune.StaysWithoutAmount, comune.Paid ?? 0m, comune.Balance ?? 0m);
 
-    /// <summary>
-    /// The year-end exports need a scope that reaches the whole org (403 <see cref="TouristTaxErrorCodes.YearEndNeedsWholeOrg"/>, before anything is read) and a year the reports support (400
-    /// <c>fiscal_report_period_invalid</c>).
-    /// </summary>
     private static void RequireYearEnd(HostScope scope, int year)
     {
         ArgumentNullException.ThrowIfNull(scope);

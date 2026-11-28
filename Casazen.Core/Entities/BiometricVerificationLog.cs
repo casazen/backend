@@ -24,7 +24,6 @@ public class BiometricVerificationLog : ITenantOwned
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant key (ITenantOwned). Inherited from the booking's property.</summary>
     public Guid OrgId { get; set; }
     public virtual Org Org { get; set; } = null!;
 
@@ -36,22 +35,13 @@ public class BiometricVerificationLog : ITenantOwned
     public Guid GuestId { get; set; }
     public virtual Guest Guest { get; set; } = null!;
 
-    /// <summary>
-    /// Final outcome of the verification (ADR-013-R4):
-    /// Accept (similarity >= AcceptThreshold),
-    /// Escalate (EscalateThreshold < similarity < AcceptThreshold),
-    /// Reject (similarity <= EscalateThreshold).
-    /// </summary>
     public BiometricOutcome Outcome { get; set; }
 
-    /// <summary>Number of biometric attempts made before reaching the final outcome.</summary>
     public int Attempts { get; set; }
 
-    /// <summary>Name of the face recognition model used (e.g., "AuraFace-v1", "SFace").</summary>
     [Required, MaxLength(100)]
     public string ModelName { get; set; } = string.Empty;
 
-    /// <summary>Version of the model used (e.g., "1.0.0"). For audit trail and model provenance (ADR-013-R14).</summary>
     [Required, MaxLength(50)]
     public string ModelVersion { get; set; } = string.Empty;
 
@@ -64,25 +54,13 @@ public class BiometricVerificationLog : ITenantOwned
     [Column(TypeName = "jsonb")]
     public string ThresholdsJson { get; set; } = "{}";
 
-    /// <summary>
-    /// If the verification was manually reviewed by an operator, the user ID of that operator.
-    /// Null for fully automated outcomes (Accept, Reject without operator intervention).
-    /// </summary>
     [MaxLength(255)]
     [ForeignKey("OperatorUser")]
     public string? OperatorUserId { get; set; }
     public virtual User? OperatorUser { get; set; }
 
-    /// <summary>
-    /// Free-text note from the operator if manually verified (why accepted/rejected).
-    /// Null for automated outcomes.
-    /// </summary>
     public string? OperatorNote { get; set; }
 
-    /// <summary>
-    /// Who decided (E03/F04/US02/T01): the verification agent (<see cref="VerificationMethod.Biometric"/>, the default of the rows written before
-    /// the column) or an operator from the queue (<see cref="VerificationMethod.Operator"/>, with <see cref="OperatorUserId"/> and <see cref="OperatorNote"/>).
-    /// </summary>
     public VerificationMethod Method { get; set; } = VerificationMethod.Biometric;
 
     /// <summary>
@@ -94,40 +72,23 @@ public class BiometricVerificationLog : ITenantOwned
     [Column(TypeName = "jsonb")]
     public string ReasonsJson { get; set; } = "[]";
 
-    /// <summary>
-    /// The thresholds in force were not calibrated when the decision was taken (<c>BiometricSettings.CalibratedAt</c> was null): the operator
-    /// console says the outcome rests on provisional thresholds (AC-NF51 point 7).
-    /// </summary>
     public bool Provisional { get; set; }
 
-    /// <summary>How long the automatic verification took, in milliseconds; null for an operator decision and for the rows written before the column.</summary>
     public int? DurationMs { get; set; }
 
-    // E70/F01/US01/T02 (NF-194, ADR-013-R18, R19): how the self-hosted policy decided. A row of the legacy path, and every row written before the columns, has no
-    // policy, the mode Legacy, no shadow outcome and no key. Codes and hashes only.
-
-    /// <summary>The version of the policy file that decided; null on the legacy path.</summary>
     [MaxLength(50)]
     public string? PolicyVersion { get; set; }
 
-    /// <summary>The canonical SHA-256 (hex) of that policy file; null on the legacy path.</summary>
     [MaxLength(64)]
     public string? PolicyHash { get; set; }
 
-    /// <summary>
-    /// How the decision was taken: <see cref="IdentityDecisionMode.Legacy"/> (the default, and every row written before the column), by the policy in observation,
-    /// or by the policy in a qualified segment.
-    /// </summary>
     public IdentityDecisionMode DecisionMode { get; set; } = IdentityDecisionMode.Legacy;
 
-    /// <summary>The decision of the policy recorded as the shadow decision while a person decides (ADR-013-R19); null on the legacy path.</summary>
     public BiometricOutcome? ShadowOutcome { get; set; }
 
-    /// <summary>The id of the format of the registry the document was read as.</summary>
     [MaxLength(40)]
     public string? FormatId { get; set; }
 
-    /// <summary>The coarse family of the browser, a code of <c>IdentityChannels</c>.</summary>
     [MaxLength(40)]
     public string? Channel { get; set; }
 
@@ -138,6 +99,5 @@ public class BiometricVerificationLog : ITenantOwned
     [MaxLength(64)]
     public string? IdempotencyKey { get; set; }
 
-    /// <summary>When this log entry was created (UTC).</summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

@@ -7,21 +7,16 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum OnboardingFlow
 {
-    /// <summary>The content of the property on the channels.</summary>
     Listings = 1,
 
-    /// <summary>The bookings and the calendar of the property.</summary>
     Bookings = 2,
 
     /// <summary>The check-in of the guests and the Alloggiati, ISTAT and tourist tax obligations.</summary>
     CheckInCompliance = 3,
 
-    /// <summary>The messages with the guests.</summary>
     Messages = 4,
 
-    /// <summary>The fiscal documents.</summary>
     Documents = 5,
 
-    /// <summary>The reports.</summary>
     Reports = 6,
 }

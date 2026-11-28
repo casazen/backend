@@ -5,16 +5,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>
-/// SP-03: what is a valid value of the supplier's agenda (<see cref="SupplierAgendaRules"/>): the weekly hours, a time off, a
-/// block or an extra opening, the five rules. Pure functions; every refusal is a 422 that names all the fields at fault.
-/// </summary>
 public class SupplierAgendaRulesTests
 {
     private static readonly DateOnly Today = new(2026, 10, 8);
     private static readonly DateTime Now = Utc("2026-10-08T10:00:00Z");
-
-    // ─── Weekly hours ────────────────────────────────────────────────────────────
 
     [Fact]
     public void NormalizeHours_TheWeekOfTheDemo_IsReturnedMondayFirstThenByStart()
@@ -51,7 +45,7 @@ public class SupplierAgendaRulesTests
 
     [Theory]
     [InlineData(0, 1)]
-    [InlineData(0, 1440)] // the whole day, up to midnight
+    [InlineData(0, 1440)]
     [InlineData(1439, 1440)]
     public void NormalizeHours_TheEdgesOfTheDay_AreAccepted(int start, int end)
     {
@@ -92,8 +86,8 @@ public class SupplierAgendaRulesTests
     }
 
     [Theory]
-    [InlineData(600, 600)] // an end that is the start
-    [InlineData(600, 540)] // an end before the start
+    [InlineData(600, 600)]
+    [InlineData(600, 540)]
     public void NormalizeHours_AnEndThatIsNotAfterItsStart_IsRefused(int start, int end)
     {
         var ex = Assert.Throws<SupplierAgendaRuleException>(
@@ -120,8 +114,6 @@ public class SupplierAgendaRulesTests
     [Fact]
     public void NormalizeHours_OverlappingBands_AreRefusedNamingTheLaterOne()
     {
-        // Sent out of order: index 0 is 14:00-18:00, index 1 is 08:00-13:30, index 2 is 13:00-15:00. In time order they are
-        // 1, 2, 0: band 2 starts inside band 1 and band 0 starts inside band 2, so the later band of each pair is named.
         var input = Hours(Day(DayOfWeek.Monday, Band(14 * 60, 18 * 60), Band(8 * 60, 13 * 60 + 30), Band(13 * 60, 15 * 60)));
 
         var ex = Assert.Throws<SupplierAgendaRuleException>(() => SupplierAgendaRules.NormalizeHours(input));
@@ -187,8 +179,6 @@ public class SupplierAgendaRulesTests
         Assert.Equal("days[0].bands[0].endMinute, days[1].bands[0].startMinute, days[2].bands[1]", ex.MessageArgs.Single());
     }
 
-    // ─── Time off ────────────────────────────────────────────────────────────────
-
     [Fact]
     public void NormalizeTimeOff_AValidPeriod_IsReturnedWithTheReasonAndATrimmedLabel()
     {
@@ -210,12 +200,12 @@ public class SupplierAgendaRulesTests
     }
 
     [Theory]
-    [InlineData("2026-10-08", "2026-10-08", true)] // a single day, today
-    [InlineData("2026-10-09", "2026-10-08", false)] // last day before the first
-    [InlineData("2026-10-07", "2026-10-07", false)] // already over
-    [InlineData("2026-10-01", "2026-10-08", true)] // started, ends today: still counts
-    [InlineData("2026-10-08", "2027-10-08", true)] // 366 days, both ends counted
-    [InlineData("2026-10-08", "2027-10-09", false)] // 367 days
+    [InlineData("2026-10-08", "2026-10-08", true)]
+    [InlineData("2026-10-09", "2026-10-08", false)]
+    [InlineData("2026-10-07", "2026-10-07", false)]
+    [InlineData("2026-10-01", "2026-10-08", true)]
+    [InlineData("2026-10-08", "2027-10-08", true)]
+    [InlineData("2026-10-08", "2027-10-09", false)]
     public void NormalizeTimeOff_TheDates_AreCheckedAgainstTodayAndTheLength(string from, string to, bool valid)
     {
         var input = new SupplierTimeOffInput(
@@ -292,8 +282,6 @@ public class SupplierAgendaRulesTests
         Assert.Equal(["label"], Assert.Throws<SupplierAgendaRuleException>(() => SupplierAgendaRules.NormalizeTimeOff(input, Today)).Fields);
     }
 
-    // ─── Blocks and extra openings ───────────────────────────────────────────────
-
     [Fact]
     public void NormalizeBlock_AValidBlock_IsReturnedInUtcWithATrimmedLabel()
     {
@@ -324,7 +312,7 @@ public class SupplierAgendaRulesTests
 
     [Theory]
     [InlineData(null)]
-    [InlineData(SupplierBusyWindowKind.External)] // written by the calendar feed, never by the supplier
+    [InlineData(SupplierBusyWindowKind.External)]
     [InlineData((SupplierBusyWindowKind)9)]
     public void NormalizeBlock_AKindTheSupplierCannotCreate_IsRefused(SupplierBusyWindowKind? kind)
     {
@@ -347,12 +335,12 @@ public class SupplierAgendaRulesTests
     }
 
     [Theory]
-    [InlineData("2026-10-09T13:00:00Z", "2026-10-09T13:00:00Z", false)] // no length
-    [InlineData("2026-10-09T13:00:00Z", "2026-10-09T12:00:00Z", false)] // an end before the start
-    [InlineData("2026-10-09T13:00:00Z", "2026-10-09T13:14:00Z", false)] // shorter than 15 minutes
-    [InlineData("2026-10-09T13:00:00Z", "2026-10-09T13:15:00Z", true)] // exactly 15 minutes
-    [InlineData("2026-10-09T13:00:00Z", "2026-11-09T13:00:00Z", true)] // exactly 31 days
-    [InlineData("2026-10-09T13:00:00Z", "2026-11-09T13:01:00Z", false)] // 31 days and a minute
+    [InlineData("2026-10-09T13:00:00Z", "2026-10-09T13:00:00Z", false)]
+    [InlineData("2026-10-09T13:00:00Z", "2026-10-09T12:00:00Z", false)]
+    [InlineData("2026-10-09T13:00:00Z", "2026-10-09T13:14:00Z", false)]
+    [InlineData("2026-10-09T13:00:00Z", "2026-10-09T13:15:00Z", true)]
+    [InlineData("2026-10-09T13:00:00Z", "2026-11-09T13:00:00Z", true)]
+    [InlineData("2026-10-09T13:00:00Z", "2026-11-09T13:01:00Z", false)]
     public void NormalizeBlock_TheLengthOfABlock_IsBetweenFifteenMinutesAndThirtyOneDays(string start, string end, bool valid)
     {
         var input = new SupplierBlockInput(SupplierBusyWindowKind.Block, Utc(start), Utc(end), null);
@@ -364,14 +352,11 @@ public class SupplierAgendaRulesTests
     }
 
     [Theory]
-    // 8 October 2026 is a summer-time day (+02:00): Rome 22:00-24:00 is 20:00-22:00 UTC.
-    [InlineData("2026-10-09T20:00:00Z", "2026-10-09T22:00:00Z", true)] // up to the midnight that ends the day: allowed
-    [InlineData("2026-10-09T20:00:00Z", "2026-10-09T22:01:00Z", false)] // a minute into the next day
+    [InlineData("2026-10-09T20:00:00Z", "2026-10-09T22:00:00Z", true)]
+    [InlineData("2026-10-09T20:00:00Z", "2026-10-09T22:01:00Z", false)]
     [InlineData("2026-10-09T08:00:00Z", "2026-10-09T09:00:00Z", true)]
-    // 25 October 2026 is 25 hours long: 00:00 CEST (22:00 UTC) to 00:00 CET (23:00 UTC of the 25th).
-    [InlineData("2026-10-24T22:00:00Z", "2026-10-25T23:00:00Z", true)] // the whole long day is one day
+    [InlineData("2026-10-24T22:00:00Z", "2026-10-25T23:00:00Z", true)]
     [InlineData("2026-10-24T22:00:00Z", "2026-10-25T23:01:00Z", false)]
-    // The day is the day of the START in Rome: 22:30 UTC on the 9th is 00:30 on the 10th.
     [InlineData("2026-10-09T22:30:00Z", "2026-10-10T21:30:00Z", true)]
     [InlineData("2026-10-09T22:30:00Z", "2026-10-10T22:30:00Z", false)]
     public void NormalizeBlock_AnExtraOpening_StaysInsideOneDayOfRome(string start, string end, bool valid)
@@ -396,9 +381,9 @@ public class SupplierAgendaRulesTests
     }
 
     [Theory]
-    [InlineData("2026-10-08T09:59:00Z", "2026-10-08T10:00:00Z", false)] // over: ends exactly now
-    [InlineData("2026-10-08T09:00:00Z", "2026-10-08T10:15:00Z", true)] // started, not over
-    [InlineData("2026-10-01T09:00:00Z", "2026-10-07T10:00:00Z", false)] // long past
+    [InlineData("2026-10-08T09:59:00Z", "2026-10-08T10:00:00Z", false)]
+    [InlineData("2026-10-08T09:00:00Z", "2026-10-08T10:15:00Z", true)]
+    [InlineData("2026-10-01T09:00:00Z", "2026-10-07T10:00:00Z", false)]
     public void NormalizeBlock_ABlockThatIsOver_IsRefused(string start, string end, bool valid)
     {
         var input = new SupplierBlockInput(SupplierBusyWindowKind.Block, Utc(start), Utc(end), null);
@@ -437,8 +422,6 @@ public class SupplierAgendaRulesTests
             Assert.Equal(["label"], Assert.Throws<SupplierAgendaRuleException>(() => SupplierAgendaRules.NormalizeBlock(input, Now)).Fields);
     }
 
-    // ─── Rules ───────────────────────────────────────────────────────────────────
-
     [Fact]
     public void NormalizeRules_TheDefaults_AreValid()
     {
@@ -454,8 +437,8 @@ public class SupplierAgendaRulesTests
     }
 
     [Theory]
-    [InlineData(0, 1, 0, 1, 15)] // the lowest of every rule
-    [InlineData(240, 50, 720, 365, 240)] // the highest of every rule
+    [InlineData(0, 1, 0, 1, 15)]
+    [InlineData(240, 50, 720, 365, 240)]
     public void NormalizeRules_TheLimits_AreAccepted(int buffer, int maxJobs, int notice, int horizon, int step)
     {
         var content = SupplierAgendaRules.NormalizeRules(new SupplierRulesInput(buffer, maxJobs, notice, horizon, step));
@@ -466,7 +449,7 @@ public class SupplierAgendaRulesTests
     [Theory]
     [InlineData(-5, "bufferMinutes")]
     [InlineData(245, "bufferMinutes")]
-    [InlineData(7, "bufferMinutes")] // not a multiple of 5
+    [InlineData(7, "bufferMinutes")]
     [InlineData(null, "bufferMinutes")]
     public void NormalizeRules_TheBuffer_IsZeroToTwoHundredFortyInFives(int? buffer, string field)
     {
@@ -517,9 +500,9 @@ public class SupplierAgendaRulesTests
     [Theory]
     [InlineData(10, "slotStepMinutes")]
     [InlineData(245, "slotStepMinutes")]
-    [InlineData(20, null)] // 20 is a multiple of 5 and in range: valid
+    [InlineData(20, null)]
     [InlineData(25, null)]
-    [InlineData(22, "slotStepMinutes")] // not a multiple of 5
+    [InlineData(22, "slotStepMinutes")]
     [InlineData(null, "slotStepMinutes")]
     public void NormalizeRules_TheSlotStep_IsFifteenToTwoHundredFortyInFives(int? step, string? field)
     {
@@ -542,8 +525,6 @@ public class SupplierAgendaRulesTests
             ex.Fields);
     }
 
-    // ─── Small pieces ────────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData(DayOfWeek.Monday, 0)]
     [InlineData(DayOfWeek.Wednesday, 2)]
@@ -557,13 +538,9 @@ public class SupplierAgendaRulesTests
     [Fact]
     public void TheDefaults_AreTheOnesOfTheSpec()
     {
-        // gap/05 §4.1: BufferMinutes 30, MaxJobsPerDay 3, MinNoticeHours 24, HorizonDays 35, SlotStepMinutes 60, ParallelJobs 1
-        // (decision D10), RespondWithinMinutes 180.
         Assert.Equal(new SupplierPlanningRules(30, 3, 24, 35, 60, 1), SupplierPlanningRules.Default);
         Assert.Equal(180, SupplierAgendaDefaults.RespondWithinMinutes);
     }
-
-    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private static DateTime Utc(string value) =>
         DateTime.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal);

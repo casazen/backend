@@ -12,18 +12,15 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface ISupplierComuneMatcher
 {
-    /// <summary>The profiles of <paramref name="suppliers"/> that operate in <paramref name="target"/>, in the same order.</summary>
     Task<IReadOnlyList<SupplierProfile>> FilterAsync(
         IReadOnlyCollection<SupplierProfile> suppliers,
         ComuneTarget target,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The profiles that operate in any target, in the same order and without duplicates.</summary>
     Task<IReadOnlyList<SupplierProfile>> FilterAnyAsync(
         IReadOnlyCollection<SupplierProfile> suppliers,
         IReadOnlyCollection<ComuneTarget> targets,
         CancellationToken cancellationToken = default);
 
-    /// <summary>True when <paramref name="supplier"/> operates in <paramref name="target"/>.</summary>
     Task<bool> CoversAsync(SupplierProfile supplier, ComuneTarget target, CancellationToken cancellationToken = default);
 }

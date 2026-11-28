@@ -13,9 +13,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// Integration tests for the guest check-in portal (AC15 — 6 scenarios).
-/// </summary>
 public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private readonly CasazenWebApplicationFactory _factory;
@@ -94,7 +91,6 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
         var root = json.RootElement;
         Assert.False(root.GetProperty("completed").GetBoolean());
         Assert.Equal("InCompilazione", root.GetProperty("status").GetString());
-        // NF-140: the answer says which org the stay belongs to, with or without a published privacy notice (this org has none).
         Assert.Equal(await OrgSlugOfAsync(seed.BookingId), root.GetProperty("orgSlug").GetString());
         Assert.False(root.TryGetProperty("privacyNoticeOrgSlug", out _));
         Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("propertyName").GetString()));
@@ -129,14 +125,12 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
         var body = await response.Content.ReadAsStringAsync();
         using var json = JsonDocument.Parse(body);
         var root = json.RootElement;
-        // The slug of the org is public data and holds a random id, digits included: the guest's data is looked for in every other property.
         var guestData = string.Concat(root.EnumerateObject().Where(p => p.Name != "orgSlug").Select(p => p.Value.ToString()));
         foreach (var pii in new[] { "YA1234567", "567", "Luigi", "Verdi", "1990", "Roma", "Italia", "example.com" })
             Assert.DoesNotContain(pii, guestData);
         Assert.True(root.GetProperty("completed").GetBoolean());
         // Alloggiati is only scheduled for the arrival day: without a receipt the session stays Completo (CO-11).
         Assert.Equal("Completo", root.GetProperty("status").GetString());
-        // NF-140: a completed link still says which org it belongs to (public data), and nothing else.
         Assert.Equal(await OrgSlugOfAsync(seed.BookingId), root.GetProperty("orgSlug").GetString());
         var properties = root.EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToArray();
         Assert.Equal(new[] { "completed", "orgSlug", "status" }, properties);
@@ -386,7 +380,6 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        // Look up the OrgId from the seeded booking
         var booking = await db.Bookings.FindAsync(seed.BookingId);
         var orgId = booking!.OrgId;
         booking.Status = bookingStatus;
@@ -408,7 +401,6 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
         return await service.CreateSessionAsync(bookingId, booking!.OrgId);
     }
 
-    /// <summary>The slug of the org that owns the booking, as the database holds it.</summary>
     private async Task<string> OrgSlugOfAsync(Guid bookingId)
     {
         using var scope = _factory.Services.CreateScope();

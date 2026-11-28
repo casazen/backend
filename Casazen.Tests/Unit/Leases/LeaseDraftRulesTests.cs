@@ -4,11 +4,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Leases;
 
-/// <summary>LR-12: how the values typed in the wizard are read — what is valid, what is not, and what a valid value means.</summary>
 public class LeaseDraftRulesTests
 {
-    // ---- type, regime, dates -------------------------------------------------------------------------------------
-
     [Theory]
     [InlineData("Libero", LeaseContractType.Libero)]
     [InlineData("libero", LeaseContractType.Libero)]
@@ -23,8 +20,8 @@ public class LeaseDraftRulesTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData("Studenti")] // there is no such type
-    [InlineData("7")] // a number that names no type
+    [InlineData("Studenti")]
+    [InlineData("7")]
     [InlineData("4+4")]
     public void ParseContractType_AnythingElse_IsNull(string? text)
     {
@@ -58,7 +55,7 @@ public class LeaseDraftRulesTests
     [InlineData("01/11/2026")]
     [InlineData("2026-11")]
     [InlineData("2026-13-01")]
-    [InlineData("2027-02-29")] // not a leap year
+    [InlineData("2027-02-29")]
     [InlineData("2026-11-01T00:00:00Z")]
     [InlineData("1969-12-31")]
     [InlineData("2101-01-01")]
@@ -66,8 +63,6 @@ public class LeaseDraftRulesTests
     {
         Assert.Null(LeaseDraftRules.ParseDate(text));
     }
-
-    // ---- amounts -------------------------------------------------------------------------------------------------
 
     [Theory]
     [InlineData(0.01, true)]
@@ -77,7 +72,7 @@ public class LeaseDraftRulesTests
     [InlineData(0, false)]
     [InlineData(-1, false)]
     [InlineData(1_000_000.01, false)]
-    [InlineData(850.555, false)] // more than cents: the database would round it silently
+    [InlineData(850.555, false)]
     public void IsValidRent_AMoneyAmountAboveZero_IsValid(double amount, bool expected)
     {
         Assert.Equal(expected, LeaseDraftRules.IsValidRent((decimal)amount));
@@ -91,7 +86,7 @@ public class LeaseDraftRulesTests
     }
 
     [Theory]
-    [InlineData(0, true)] // a deposit of zero is a deposit that was thought about
+    [InlineData(0, true)]
     [InlineData(1800, true)]
     [InlineData(-0.01, false)]
     [InlineData(1_000_001, false)]
@@ -99,8 +94,6 @@ public class LeaseDraftRulesTests
     {
         Assert.Equal(expected, LeaseDraftRules.IsValidDeposit((decimal)amount));
     }
-
-    // ---- parties -------------------------------------------------------------------------------------------------
 
     [Fact]
     public void PartyProblems_ACompleteEntry_HasNone()
@@ -207,9 +200,9 @@ public class LeaseDraftRulesTests
     [Theory]
     [InlineData(null, false)]
     [InlineData("", false)]
-    [InlineData("2026-10-09", false)] // today
+    [InlineData("2026-10-09", false)]
     [InlineData("2026-10-08", false)]
-    [InlineData("2026-10-10", true)] // tomorrow: a document cannot have been checked tomorrow
+    [InlineData("2026-10-10", true)]
     [InlineData("yesterday", true)]
     [InlineData("1969-01-01", true)]
     public void HasInvalidDocumentsDate_ADateThatIsThereAndNotAPastDay_IsInvalid(string? text, bool invalid)
@@ -218,8 +211,6 @@ public class LeaseDraftRulesTests
 
         Assert.Equal(invalid, LeaseDraftRules.HasInvalidDocumentsDate(party, LeaseDraftTestData.Today));
     }
-
-    // ---- canone concordato ---------------------------------------------------------------------------------------
 
     [Fact]
     public void IsConcordatoValid_TheLimitsOfTheCompleteCreation_AreTheLimits()
@@ -269,8 +260,6 @@ public class LeaseDraftRulesTests
         Assert.Null(characteristics.CadastralSheet);
     }
 
-    // ---- Read ----------------------------------------------------------------------------------------------------
-
     [Fact]
     public void Read_ACompleteLibero_GivesTheFourYearsFirstPeriod()
     {
@@ -304,7 +293,6 @@ public class LeaseDraftRulesTests
         Assert.Equal(LeaseContractType.Transitorio, withoutEnd.Type);
         Assert.True(withoutEnd.TypeAvailable);
         Assert.Null(withoutEnd.Months);
-        // The term of a transitory contract is the one its landlord types (TR); the libero and the concordato never read the end.
         Assert.Equal(new DateOnly(2027, 4, 30), withEnd.End);
         Assert.Equal(6, withEnd.Months);
         Assert.Equal(new DateOnly(2030, 10, 31), LeaseDraftRules.Read(LeaseDraftTestData.Complete() with { EndDate = "2027-04-30" }).End);

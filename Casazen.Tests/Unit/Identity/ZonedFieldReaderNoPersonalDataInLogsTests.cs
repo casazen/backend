@@ -9,16 +9,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// E71/F01/US02/T01, privacy rule (NF-190, ADR-013-R6, R19): reading the fields of a document writes no value read on it to any log, at any level, whether the reading
-/// succeeds, runs out of time, is cancelled, loses its OCR library or breaks (an error whose message holds the values is not logged either). The logs have codes and
-/// counts: the format, the side, how many zones and fields.
-/// </summary>
 public class ZonedFieldReaderNoPersonalDataInLogsTests
 {
     private static readonly DocumentFormat Cie = IdentityTestDocuments.Cie();
 
-    /// <summary>Everything a log must not say about the specimen holder: the values, the text of the zones, the MRZ, in the forms a log would write them.</summary>
     private static readonly string[] Forbidden =
     [
         "ROSSI", "MARIA", "GIUSEPPINA", "CA12345AA", "ROMA", IdentityTestDocuments.FiscalCode,
@@ -53,7 +47,6 @@ public class ZonedFieldReaderNoPersonalDataInLogsTests
         foreach (var token in Forbidden)
             Assert.DoesNotContain(token, output, StringComparison.OrdinalIgnoreCase);
 
-        // The exception itself is never handed to the logger: its message could carry the values that were being read.
         Assert.All(log.Entries, entry => Assert.Null(entry.Exception));
     }
 
@@ -62,7 +55,6 @@ public class ZonedFieldReaderNoPersonalDataInLogsTests
     {
         var mrzReading = new MrzReading(IdentityTestDocuments.Mrz(), []);
 
-        // The reading succeeds on both sides: the values come out of the reader and into none of the logs.
         var success = new CapturingLogger<ZonedFieldReader>();
         using (var front = ZonedFieldTestCard.Of(Cie, DocumentSide.Front))
         using (var back = ZonedFieldTestCard.Of(Cie, DocumentSide.Back))
@@ -80,7 +72,6 @@ public class ZonedFieldReaderNoPersonalDataInLogsTests
 
         AssertNoPersonalData("success", success);
 
-        // The OCR runs out of time: the cancellation says what it says, and the log does not repeat it.
         var timeout = new CapturingLogger<ZonedFieldReader>();
         using (var card = ZonedFieldTestCard.Of(Cie, DocumentSide.Front))
         {
@@ -91,7 +82,6 @@ public class ZonedFieldReaderNoPersonalDataInLogsTests
         AssertNoPersonalData("timeout", timeout);
         Assert.Contains("timeout", timeout.AllOutput, StringComparison.Ordinal);
 
-        // The caller gives up.
         var cancelled = new CapturingLogger<ZonedFieldReader>();
         using (var card = ZonedFieldTestCard.Of(Cie, DocumentSide.Front))
         {
@@ -107,7 +97,6 @@ public class ZonedFieldReaderNoPersonalDataInLogsTests
 
         AssertNoPersonalData("cancelled", cancelled);
 
-        // The OCR library is not there.
         var unavailable = new CapturingLogger<ZonedFieldReader>();
         using (var card = ZonedFieldTestCard.Of(Cie, DocumentSide.Front))
         {
@@ -118,7 +107,6 @@ public class ZonedFieldReaderNoPersonalDataInLogsTests
         AssertNoPersonalData("unavailable", unavailable);
         Assert.Contains("library_missing", unavailable.AllOutput, StringComparison.Ordinal);
 
-        // The OCR breaks, in one zone and in every zone, and the message of its error holds what was being read.
         var broken = new CapturingLogger<ZonedFieldReader>();
         using (var card = ZonedFieldTestCard.Of(Cie, DocumentSide.Front))
         {
@@ -129,7 +117,6 @@ public class ZonedFieldReaderNoPersonalDataInLogsTests
         AssertNoPersonalData("error in the zones", broken);
         Assert.Contains(nameof(InvalidOperationException), broken.AllOutput, StringComparison.Ordinal);
 
-        // The MRZ reader breaks and the message of its error holds the lines of the MRZ.
         var brokenMrz = new CapturingLogger<ZonedFieldReader>();
         using (var card = ZonedFieldTestCard.Of(Cie, DocumentSide.Back))
         {

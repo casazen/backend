@@ -9,16 +9,12 @@ public sealed class SafeExternalHttpOptions
 {
     public const string SectionName = "SafeExternalHttp";
 
-    /// <summary>Ports a URL may use. Default: 443 only.</summary>
     public int[]? AllowedPorts { get; set; }
 
-    /// <summary>Time budget for the whole download (connection, redirects and body). Default: 15 s.</summary>
     public int TimeoutSeconds { get; set; } = 15;
 
-    /// <summary>Largest response body that is read; a larger response is aborted. Default: 5 MB.</summary>
     public long MaxResponseBytes { get; set; } = 5L * 1024 * 1024;
 
-    /// <summary>Redirects followed, each checked like the original URL. Default: 3.</summary>
     public int MaxRedirects { get; set; } = 3;
 
     internal static readonly int[] DefaultAllowedPorts = [443];

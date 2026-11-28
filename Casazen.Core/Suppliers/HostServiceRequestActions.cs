@@ -3,38 +3,24 @@ using Casazen.Core.Services;
 
 namespace Casazen.Core.Suppliers;
 
-/// <summary>
-/// The words the API uses for what the host can do about a request (SR-08a, <c>hostAction.kind</c> and
-/// <c>availableActions[]</c> of <c>GET api/service-requests</c>). <b>An open set</b>: a client shows nothing for a word it does not
-/// know. The camel-case values are the wire format (they are not enum names on purpose).
-/// </summary>
 public static class HostRequestActionKinds
 {
-    /// <summary>Nothing asks for the host: the supplier is at work, or the request is over.</summary>
     public const string None = "none";
 
-    /// <summary>A new request nobody answered: the host can remind the supplier (not before <c>remindAvailableAt</c>).</summary>
     public const string Remind = "remind";
 
-    /// <summary>The supplier proposed another time: the host accepts it (or turns it down, <see cref="RejectProposal"/>).</summary>
     public const string AcceptProposal = "acceptProposal";
 
-    /// <summary>A finished job whose final amount is above the quote by more than the tolerance: the host confirms it (decision D7).</summary>
     public const string ConfirmFinalAmount = "confirmFinalAmount";
 
-    /// <summary>A finished job paid inside CasaZen (<see cref="ServiceRequestPaymentMode.Online"/>): the host pays it.</summary>
     public const string Pay = "pay";
 
-    /// <summary>A finished job paid outside CasaZen (<see cref="ServiceRequestPaymentMode.Manual"/>): the host marks it paid.</summary>
     public const string MarkPaid = "markPaid";
 
-    /// <summary>A request that was refused or cancelled: the host asks again (a new request, not an endpoint of this one).</summary>
     public const string RequestAgain = "requestAgain";
 
-    /// <summary>Only in <c>availableActions</c>: the host turns the proposed time down.</summary>
     public const string RejectProposal = "rejectProposal";
 
-    /// <summary>Only in <c>availableActions</c>: the host cancels the request (always free, with a reason).</summary>
     public const string Cancel = "cancel";
 }
 
@@ -47,7 +33,6 @@ public static class HostRequestActionKinds
 /// <param name="Available">Every action the endpoints would accept now, the <paramref name="Kind"/> first.</param>
 public sealed record HostServiceRequestAction(string Kind, DateTime? RemindAvailableAt, IReadOnlyList<string> Available);
 
-/// <summary>What the rule needs to know about a request. Nothing else of the request counts.</summary>
 public readonly record struct HostRequestFacts(
     ServiceRequestStatus Status,
     bool HasProposal,
@@ -73,8 +58,6 @@ public readonly record struct HostRequestFacts(
 /// </summary>
 public static class HostServiceRequestActions
 {
-    /// <summary>What the host can do about a request in <paramref name="facts"/> at <paramref name="nowUtc"/>.</summary>
-    /// <param name="remindIntervalHours">Hours between two reminders (<c>Suppliers:ServiceRequests:RemindIntervalHours</c>).</param>
     public static HostServiceRequestAction Of(in HostRequestFacts facts, DateTime nowUtc, int remindIntervalHours)
     {
         var available = new List<string>(4);
@@ -103,7 +86,6 @@ public static class HostServiceRequestActions
                 switch (facts.Status)
                 {
                     case ServiceRequestStatus.Richiesto:
-                        // Without a proposal (that case is above): a reminder, if the last one is old enough.
                         if (facts.LastRemindedAt is { } last && last.AddHours(remindIntervalHours) > nowUtc)
                         {
                             remindAvailableAt = last.AddHours(remindIntervalHours);
@@ -122,7 +104,6 @@ public static class HostServiceRequestActions
                         break;
 
                     case ServiceRequestStatus.Pagato:
-                        // Nothing is asked of the host, but a job done can be asked again.
                         available.Add(HostRequestActionKinds.RequestAgain);
                         break;
                 }

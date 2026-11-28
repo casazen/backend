@@ -52,13 +52,10 @@ public sealed class AssistantDraftService(
     ILogger<AssistantDraftService> logger,
     TimeProvider? timeProvider = null) : IAssistantDraftService
 {
-    /// <summary>The type of the entity of the «To do» of a conversation of a channel (the «To do» of a direct booking is about the <c>Booking</c>).</summary>
     public const string ThreadEntityType = nameof(OtaMessageThread);
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
     private readonly AssistantOptions _options = options.Value;
-
-    // ─── The pipeline ───
 
     public async Task<AssistantDraftOutcome> ProcessInboundAsync(
         Guid orgId,
@@ -69,15 +66,12 @@ public sealed class AssistantDraftService(
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        // One row per message: a message processed before is found again, and only a person who asks for a new draft writes the row again.
         var existing = await FindLogAsync(orgId, inboundMessageId, ct);
         if (existing is not null && !options.Requested)
             return OutcomeOf(existing, alreadyProcessed: true);
 
         if (threadKey.Source == MessageThreadSource.Direct)
         {
-            // A manual regeneration or later legacy inbox event may share this transcript.
-            // Keep the conversation local once an off-guide portal question entered the queue.
             var key = threadKey.ToString();
             var local = await db.ApprovalQueueItems.AsNoTracking()
                 .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -94,7 +88,6 @@ public sealed class AssistantDraftService(
 
         var run = new Run(orgId, threadKey, inboundMessageId, options, existing);
 
-        // (a) The conversation, read for the whole org (a job has no caller): its property, its channel, the message.
         var thread = await ThreadOfAsync(orgId, threadKey, ct);
         if (thread is null)
             return await NotHandledAsync(run, null, AssistantDecisionCodes.ThreadNotFound, ct);
@@ -105,14 +98,12 @@ public sealed class AssistantDraftService(
 
         var conversation = await MessageConversationLookup.FindAsync(db, new HostScope(orgId), threadKey, ct);
 
-        // An unassigned conversation (or one whose property is gone) has no knowledge base to answer from.
         if (thread.PropertyId is not { } propertyId || conversation.PropertyId != propertyId)
             return await NotHandledAsync(run, null, AssistantDecisionCodes.PropertyUnassigned, ct);
 
         if (thread.Closed)
             return await NotHandledAsync(run, propertyId, AssistantDecisionCodes.ThreadClosed, ct);
 
-        // OCT-04: an answer could never be sent to a channel with the connector off or a listing nobody decided.
         if (thread.Source == HostMessageSource.Ota)
         {
             if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
@@ -130,7 +121,6 @@ public sealed class AssistantDraftService(
         if (!aiOptions.IsExternalProviderActive())
             return await NotHandledAsync(run, propertyId, AssistantDecisionCodes.AiProviderNotConfigured, effective.InstructionVersion, ct);
 
-        // (b) History never wakes the assistant: a message too old, one that is not the last of the guest, one the host already answered.
         if (!options.Requested)
         {
             if (message.At < Now() - _options.MaxMessageAge())
@@ -143,7 +133,6 @@ public sealed class AssistantDraftService(
                 return await NotHandledAsync(run, propertyId, AssistantDecisionCodes.HostAlreadyReplied, effective.InstructionVersion, ct);
         }
 
-        // (c), (d), (e): the classification, the setting of the situation, the facts, the draft, the confidence.
         var names = await NamesOfAsync(orgId, conversation, ct);
         var transcript = await TranscriptAsync(orgId, thread, names, ct);
         var composed = await ComposeAsync(
@@ -155,7 +144,6 @@ public sealed class AssistantDraftService(
         if (composed.Classification is not { } classification)
             return await NotHandledAsync(run, propertyId, composed.Failure!, effective.InstructionVersion, ct);
 
-        // An escalated message, or an urgent one, raises the «To do» of the conversation (one while it is open).
         var activityId = run.Existing is { ActivityId: { } kept, ActivityClosedAt: null } ? kept : (Guid?)null;
         if (composed.Escalation is not null || classification.Urgency == AssistantUrgency.Urgent)
             activityId = await RaiseTodoAsync(orgId, propertyId, thread, classification.Urgency, composed.Info!.Code, ct);
@@ -181,7 +169,6 @@ public sealed class AssistantDraftService(
         }
         else if (composed.Failure is { } failure)
         {
-            // The draft could not be written (the budget, the provider, an answer that cannot be used): the classification is kept, the reason is the code.
             row.Decision = AssistantDecision.NotHandled;
             row.GateFailures = [failure];
             outcome = await SaveDecisionAsync(run, row, ct);
@@ -208,7 +195,6 @@ public sealed class AssistantDraftService(
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
-        // The row check: the conversation in the org and the reach of the caller, else the 404 of a conversation that does not exist.
         await MessageConversationLookup.FindAsync(db, scope, threadKey, ct);
 
         var thread = await ThreadOfAsync(scope.OrgId, threadKey, ct);
@@ -245,7 +231,6 @@ public sealed class AssistantDraftService(
             .FirstOrDefaultAsync(ct)
             ?? throw new NotFoundException("The property was not found") { Code = "property_not_found", MessageKey = "PropertyNotFound" };
 
-        // The current settings of the property: the switch of the organization is not looked at (a host tries the assistant before turning it on).
         var effective = await rules.ResolveEffectiveAsync(orgId, propertyId, ct);
         if (!(await aiSettings.GetEffectiveAsync(ct)).IsExternalProviderActive())
             return NotSimulated(AssistantDecisionCodes.AiProviderNotConfigured);
@@ -285,9 +270,6 @@ public sealed class AssistantDraftService(
             verdict.FailureCodes);
     }
 
-    // ─── (c), (d), (e) ───
-
-    /// <summary>What <see cref="ComposeAsync"/> works on: the conversation (minimized), the names it knows, the rules, the values of the variables and the rule of the channel.</summary>
     private sealed record Composing(
         Guid OrgId,
         Guid PropertyId,
@@ -299,10 +281,6 @@ public sealed class AssistantDraftService(
         string? GuestLanguage,
         Guid MessageId);
 
-    /// <summary>
-    /// What the classification and the draft gave. <see cref="Classification"/> is <c>null</c> when the classification itself failed (<see cref="Failure"/> says why); with a classification,
-    /// <see cref="Escalation"/> says why a person answers, or <see cref="Failure"/> why the draft could not be written, or the draft is there with its confidence.
-    /// </summary>
     private sealed record Composition(
         AssistantClassification? Classification,
         AssistantSituationInfo? Info,
@@ -322,7 +300,6 @@ public sealed class AssistantDraftService(
 
     private async Task<Composition> ComposeAsync(Composing input, CancellationToken ct)
     {
-        // (c) The classification (Economy tier) and the setting of its situation.
         var classified = await CallOnceMoreIfEmptyAsync(AssistantPromptBuilder.BuildClassification(input.Transcript), AiModelTier.Economy, "classify", input, ct);
         if (classified.Failure is { } classificationFailure)
             return Composition.Failed(classificationFailure, classified.Tier);
@@ -341,7 +318,6 @@ public sealed class AssistantDraftService(
         if (escalation is not null)
             return new Composition(classification, info, resolved, sensitive, escalation, [], null, false, null, classified.Tier, null);
 
-        // (d) The facts and the draft: the template of the situation when every variable resolves, else the model from the facts.
         var language = DraftLanguageOf(classification.Language, input.Rules);
         IReadOnlyList<RetrievedFact> facts = topics.Count == 0 ? [] : await knowledge.RetrieveAsync(input.OrgId, input.PropertyId, topics, language, ct);
         var culture = CultureOf(language);
@@ -385,7 +361,6 @@ public sealed class AssistantDraftService(
             draftTopics = answer.Topics;
         }
 
-        // (e) The confidence of the text the guest would read.
         var finalText = AssistantPromptBuilder.WithSignature(body, input.Rules.Signature);
         var confidence = AssistantConfidence.Compute(new AssistantConfidenceInput(
             classification.Situation,
@@ -425,7 +400,6 @@ public sealed class AssistantDraftService(
         return null;
     }
 
-    /// <summary>The topics the facts of a situation are looked for in: the ones it requires and the one its answer comes from. None for a situation that needs none («no topics is no facts»).</summary>
     private static List<KnowledgeTopic> TopicsOf(AssistantSituationInfo info, KnowledgeTopic? source)
     {
         var topics = info.RequiredTopics.ToList();
@@ -435,7 +409,6 @@ public sealed class AssistantDraftService(
         return topics;
     }
 
-    /// <summary>The language of the draft: the guest's when the rules allow it, else the first language of the rules.</summary>
     private static string DraftLanguageOf(string? guestLanguage, EffectiveAssistantRules effective) =>
         guestLanguage is not null && effective.Languages.Contains(guestLanguage, StringComparer.OrdinalIgnoreCase)
             ? guestLanguage
@@ -453,7 +426,6 @@ public sealed class AssistantDraftService(
         }
     }
 
-    /// <summary>The template filled in, or <c>null</c> when a variable has no value in this conversation (the model then writes the draft).</summary>
     private static string? RenderTemplate(string template, MessageTemplateValues values, CultureInfo culture)
     {
         try
@@ -465,8 +437,6 @@ public sealed class AssistantDraftService(
             return null;
         }
     }
-
-    // ─── The calls to the AI ───
 
     private sealed record CallResult(string? Content, AiModelTier? Tier, string? Failure);
 
@@ -489,7 +459,6 @@ public sealed class AssistantDraftService(
         return await CallAsync(AssistantPromptBuilder.WithRoomToReason(request), tier, AssistantPromptBuilder.CallLabel($"{kind}-retry", input.MessageId), ct);
     }
 
-    /// <summary>One call to the provider. The budget used up and any failure of the provider are codes, never exceptions; a provider that did not answer is «not configured».</summary>
     private async Task<CallResult> CallAsync(AiRequest request, AiModelTier tier, string label, CancellationToken ct)
     {
         try
@@ -510,13 +479,10 @@ public sealed class AssistantDraftService(
         }
         catch (Exception ex)
         {
-            // A timeout of the provider is a TaskCanceledException too: it is the provider that did not answer, not the caller who left. The type only: never the prompt.
             logger.LogWarning("The AI provider failed on a call of the assistant ({ErrorType})", ex.GetType().Name);
             return new CallResult(null, null, AssistantDecisionCodes.AiProviderError);
         }
     }
-
-    // ─── (f), (g): the gate, the send or the queue, the log ───
 
     private async Task<AssistantDraftOutcome> DecideAsync(
         Run run,
@@ -585,10 +551,6 @@ public sealed class AssistantDraftService(
 
     private sealed record SendResult(Guid? MessageId, string? Failure);
 
-    /// <summary>
-    /// The send of a draft the gate allowed, as the assistant (origin <see cref="MessageOrigin.Assistant"/>, the situation as the rule code), with the key of the message so a run that is
-    /// repeated sends nothing twice. A send whose outcome is not known is the same message and counts as sent; a refusal of the channel is its code, and the draft then waits for a person.
-    /// </summary>
     private async Task<SendResult> SendAsync(Run run, string text, string situationCode, CancellationToken ct)
     {
         try
@@ -614,11 +576,6 @@ public sealed class AssistantDraftService(
         }
     }
 
-    /// <summary>
-    /// The draft in the approval queue, which raises the «Draft ready» alert: an item of type <see cref="ApprovalItemTypes.MessageDraft"/> about the message (<c>ItemId</c> is the inbound
-    /// message), with the property, the action that sends it, the score, the situation and the conversation. A run repeated after it was queued finds that item; a draft a person asked
-    /// for supersedes the drafts of the conversation that still wait (rejected with <see cref="AssistantDecisionCodes.RegeneratedReason"/>).
-    /// </summary>
     private async Task<Guid> QueueAsync(Run run, Guid propertyId, string text, Composition composed, int instructionVersion, CancellationToken ct)
     {
         if (run.Options.Requested)
@@ -646,7 +603,6 @@ public sealed class AssistantDraftService(
         return item.Id;
     }
 
-    /// <summary>The draft of this message already in the queue (waiting or approved), if a run stopped after queueing it.</summary>
     private Task<Guid?> QueuedDraftOfAsync(Guid orgId, Guid messageId, CancellationToken ct) =>
         db.ApprovalQueueItems
             .AsNoTracking()
@@ -658,10 +614,8 @@ public sealed class AssistantDraftService(
             .Select(i => (Guid?)i.Id)
             .FirstOrDefaultAsync(ct);
 
-    /// <summary>The drafts of the conversation that still wait are rejected with <see cref="AssistantDecisionCodes.RegeneratedReason"/>, in the reach of the person who asked for a new one.</summary>
     private async Task SupersedeAsync(Run run, CancellationToken ct)
     {
-        // Only a person supersedes, in its own reach: a request with nobody behind it supersedes nothing.
         if (run.Options.RequestedBy is not { } requestedBy || run.Options.RequestedByUserId is not { Length: > 0 } requestedByUserId)
             return;
 
@@ -680,13 +634,10 @@ public sealed class AssistantDraftService(
             }
             catch (Exception ex) when (ex is NotFoundException or DomainConflictException)
             {
-                // Decided meanwhile, or out of the reach of the person: it is not this request's to supersede.
                 logger.LogInformation("The waiting draft {ItemId} of org {OrgId} was not superseded ({ErrorType})", itemId, run.OrgId, ex.GetType().Name);
             }
         }
     }
-
-    // ─── (h) and the «To do» ───
 
     /// <summary>
     /// The «To do» of the conversation. There is one while it is open (<see cref="IInternalActivityService.CreateAsync"/> returns the open one and changes nothing), so a message that
@@ -723,8 +674,6 @@ public sealed class AssistantDraftService(
             new HostMessageAlert(orgId, thread.Source, NotificationEventType.UrgentGuestMessage, thread.RowId, message.Id, message.At),
             ct);
 
-    // ─── The log ───
-
     private sealed record Run(Guid OrgId, MessageThreadKey Key, Guid MessageId, AssistantProcessOptions Options, AssistantDecisionLog? Existing);
 
     private Task<AssistantDecisionLog?> FindLogAsync(Guid orgId, Guid messageId, CancellationToken ct) =>
@@ -743,7 +692,6 @@ public sealed class AssistantDraftService(
         CreatedAt = Now(),
     };
 
-    /// <summary>A message not handled: the row with the code and nothing else.</summary>
     private Task<AssistantDraftOutcome> NotHandledAsync(Run run, Guid? propertyId, string code, CancellationToken ct) =>
         NotHandledAsync(run, propertyId, code, 0, ct);
 
@@ -763,19 +711,11 @@ public sealed class AssistantDraftService(
         return outcome;
     }
 
-    /// <summary>
-    /// A decision that is not a draft. A person who asked for a new draft of a message the assistant had decided already, and got none, changes nothing of that decision (the draft that waits
-    /// still waits); the reason is in the answer.
-    /// </summary>
     private async Task<AssistantDraftOutcome> SaveDecisionAsync(Run run, AssistantDecisionLog row, CancellationToken ct) =>
         run.Existing is { } existing && row.Decision == AssistantDecision.NotHandled
             ? OutcomeOf(existing, alreadyProcessed: false) with { Decision = AssistantDecision.NotHandled, Reason = row.GateFailures.FirstOrDefault(), ApprovalItemId = null }
             : await SaveAsync(run, row, ct);
 
-    /// <summary>
-    /// Writes the row of the message: a new one, or the one of a message a person asked a new draft for (its «To do» is kept when the new decision raised none). Two runs that write the row
-    /// of one message at once: the unique index keeps the first, which is returned.
-    /// </summary>
     private async Task<AssistantDraftOutcome> SaveAsync(Run run, AssistantDecisionLog row, CancellationToken ct)
     {
         if (run.Existing is { } existing)
@@ -838,7 +778,6 @@ public sealed class AssistantDraftService(
         row.ActivityId,
         alreadyProcessed);
 
-    /// <summary>The sources of the draft for the log, as JSON: the references of the facts (<c>entry:{id}</c>, <c>listing:{field}</c>) and <c>template:{situation}</c> for a template. No text.</summary>
     private static string SourceRefsOf(Composition composed)
     {
         var sources = composed.Facts.Select(fact => fact.SourceRef).Distinct(StringComparer.Ordinal).ToList();
@@ -858,9 +797,6 @@ public sealed class AssistantDraftService(
         : value.Length <= AssistantDecisionLog.ModelMaxLength ? value
         : value[..AssistantDecisionLog.ModelMaxLength];
 
-    // ─── The conversation ───
-
-    /// <summary>A conversation as the pipeline reads it: where its rows are, its property (its own: an unassigned conversation has none), its channel, and whether it takes an answer.</summary>
     private sealed record ThreadState(
         MessageThreadKey Key,
         HostMessageSource Source,
@@ -870,12 +806,10 @@ public sealed class AssistantDraftService(
         OtaThreadKind? Kind,
         bool Closed);
 
-    /// <summary>The message of the guest: its id and when it was written (on the channel for a conversation of a channel).</summary>
     private sealed record InboundMessage(Guid Id, DateTime At, DateTime CreatedAt);
 
     private async Task<ThreadState?> ThreadOfAsync(Guid orgId, MessageThreadKey key, CancellationToken ct)
     {
-        // The key of a review is not a conversation of a guest: there is no message to answer (E05/F06/US01/T03).
         if (key.IsReview)
             return null;
 
@@ -921,7 +855,6 @@ public sealed class AssistantDraftService(
                 .Select(m => new InboundMessage(m.Id, m.CreatedAt, m.CreatedAt))
                 .FirstOrDefaultAsync(ct);
 
-    /// <summary>The last message the guest wrote in the conversation, or <c>null</c> when it wrote none.</summary>
     private Task<Guid?> LastGuestMessageAsync(Guid orgId, ThreadState thread, CancellationToken ct) =>
         thread.Source == HostMessageSource.Ota
             ? db.OtaMessages
@@ -939,7 +872,6 @@ public sealed class AssistantDraftService(
                 .Select(m => (Guid?)m.Id)
                 .FirstOrDefaultAsync(ct);
 
-    /// <summary>The guest wrote again after this message: the later one is the one to answer.</summary>
     private Task<bool> HasLaterGuestMessageAsync(Guid orgId, ThreadState thread, InboundMessage message, CancellationToken ct) =>
         thread.Source == HostMessageSource.Ota
             ? db.OtaMessages.AnyAsync(
@@ -953,10 +885,6 @@ public sealed class AssistantDraftService(
                 m => m.OrgId == orgId && m.ThreadId == thread.RowId && m.Sender == GuestMessageSender.Guest && m.Id != message.Id && m.CreatedAt > message.At,
                 ct);
 
-    /// <summary>
-    /// The host side wrote after this message (a message that the channel refused is not an answer, and neither is an automatic message of CasaZen, such as the check-in link:
-    /// <see cref="MessageOrigin.Automation"/> answers nobody, the thread still waits for its answer).
-    /// </summary>
     private Task<bool> HostAnsweredSinceAsync(Guid orgId, ThreadState thread, InboundMessage message, CancellationToken ct) =>
         thread.Source == HostMessageSource.Ota
             ? db.OtaMessages.AnyAsync(
@@ -971,7 +899,6 @@ public sealed class AssistantDraftService(
                 m => m.OrgId == orgId && m.ThreadId == thread.RowId && m.Sender == GuestMessageSender.Host && m.CreatedAt > message.At,
                 ct);
 
-    /// <summary>The last <see cref="AssistantPromptBuilder.ConversationMessages"/> messages of the conversation, oldest first, minimized; a message the channel refused is left out.</summary>
     private async Task<List<AssistantPromptMessage>> TranscriptAsync(Guid orgId, ThreadState thread, AssistantPromptNames names, CancellationToken ct)
     {
         List<(bool FromGuest, string Text)> latest;
@@ -1011,10 +938,6 @@ public sealed class AssistantDraftService(
             .ToList();
     }
 
-    /// <summary>
-    /// The names and the codes the conversation knows: the guest's (the booking and the name the channel gives; none for an erased guest, whose name is gone), the host's, the code of the
-    /// booking and its references on the channel.
-    /// </summary>
     private async Task<AssistantPromptNames> NamesOfAsync(Guid orgId, ConversationFacts conversation, CancellationToken ct)
     {
         var codes = new List<string?> { conversation.BookingCode };
@@ -1035,7 +958,6 @@ public sealed class AssistantDraftService(
         return new AssistantPromptNames(guest, [conversation.HostName], codes);
     }
 
-    /// <summary>The values of the variables of a template in this conversation (the same as the composer's).</summary>
     private static MessageTemplateValues ValuesOf(ConversationFacts conversation) => new(
         conversation.GuestFirstNameForTemplates,
         conversation.PropertyName,
@@ -1046,17 +968,14 @@ public sealed class AssistantDraftService(
         conversation.CheckOutBy,
         conversation.HostNameForTemplates);
 
-    /// <summary>The rule of the channel that refuses <paramref name="text"/> in this conversation, or <c>null</c> when it may go out.</summary>
     private static string? RefusalOf(ThreadState thread, string text) =>
         thread is { Source: HostMessageSource.Ota, Channel: { } channel, Kind: { } kind }
             ? MessageChannelRules.CheckOutgoing(channel, kind, text)
             : DirectRefusalOf(text);
 
-    /// <summary>The rule of a conversation with the guest of a direct booking: a text of 1 to <see cref="GuestMessageRules.TextMaxLength"/> characters.</summary>
     private static string? DirectRefusalOf(string text) =>
         GuestMessageRules.NormalizeText(text) is { Length: <= GuestMessageRules.TextMaxLength } ? null : MessageChannelRules.TextInvalidCode;
 
-    /// <summary>Now, cut to the microsecond PostgreSQL keeps.</summary>
     private DateTime Now()
     {
         var utc = _clock.GetUtcNow().UtcDateTime;

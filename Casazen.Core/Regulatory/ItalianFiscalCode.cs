@@ -1,9 +1,7 @@
 namespace Casazen.Core.Regulatory;
 
-/// <summary>Kind of a valid Italian fiscal code (<see cref="ItalianFiscalCode"/>).</summary>
 public enum ItalianFiscalCodeKind
 {
-    /// <summary>16 characters of a natural person (D.M. 23/12/1976), possibly with omocodia substitutions.</summary>
     Person,
 
     /// <summary>
@@ -29,22 +27,17 @@ public enum ItalianFiscalCodeKind
 /// </summary>
 public static class ItalianFiscalCode
 {
-    /// <summary>Letters that replace the digits 0-9 in an omocodia.</summary>
     private const string OmocodiaLetters = "LMNPQRSTUV";
 
     private const string MonthLetters = "ABCDEHLMPRST";
 
-    /// <summary>Positions (0-based) of the 16-character code that hold a digit, or its omocodia letter.</summary>
     private static readonly int[] DigitPositions = [6, 7, 9, 10, 12, 13, 14];
 
-    /// <summary>Values of the characters in odd positions (1st, 3rd, ... 15th) for the check character.</summary>
     private static readonly int[] OddValues =
     [
-        // A  B  C  D  E   F   G   H   I   J  K  L   M   N   O  P  Q  R   S   T   U   V   W   X   Y   Z
         1, 0, 5, 7, 9, 13, 15, 17, 19, 21, 2, 4, 18, 20, 11, 3, 6, 8, 12, 14, 16, 10, 22, 25, 24, 23,
     ];
 
-    /// <summary>Upper case, without spaces of any kind; null becomes empty.</summary>
     public static string Normalize(string? code)
     {
         if (string.IsNullOrEmpty(code))
@@ -54,7 +47,6 @@ public static class ItalianFiscalCode
         return new string(chars);
     }
 
-    /// <summary>The kind of the code once normalized, or null when it is not a valid fiscal code.</summary>
     public static ItalianFiscalCodeKind? Classify(string? code)
     {
         var normalized = Normalize(code);
@@ -65,21 +57,14 @@ public static class ItalianFiscalCode
         return null;
     }
 
-    /// <summary>True when the normalized code is a valid 16-character or 11-digit fiscal code.</summary>
     public static bool IsValid(string? code) => Classify(code) is not null;
 
-    /// <summary>
-    /// True for the valid code of a natural person who was born in Italy: the place of birth (positions 12 to 15) is a municipality, whose
-    /// code begins with a letter other than Z (the codes of the foreign states begin with Z). False for a company, a person born abroad and
-    /// anything that is not a valid code.
-    /// </summary>
     public static bool IsPersonBornInItaly(string? code)
     {
         var normalized = Normalize(code);
         return IsValidPersonCode(normalized) && normalized[11] != 'Z';
     }
 
-    /// <summary>16-character code of a natural person, already normalized: structure, month, day and check character.</summary>
     public static bool IsValidPersonCode(string code)
     {
         if (code.Length != 16)
@@ -106,7 +91,6 @@ public static class ItalianFiscalCode
         return code[15] == CheckCharacter(code.AsSpan(0, 15));
     }
 
-    /// <summary>11-digit code, already normalized: digits only and check digit.</summary>
     public static bool IsValidNumericCode(string code)
     {
         if (code.Length != 11 || !code.All(IsAsciiDigit))
@@ -129,7 +113,6 @@ public static class ItalianFiscalCode
         return code[10] - '0' == (10 - sum % 10) % 10;
     }
 
-    /// <summary>Check character of the first 15 characters of a 16-character code (upper case, ASCII).</summary>
     public static char CheckCharacter(ReadOnlySpan<char> first15)
     {
         var sum = 0;
@@ -137,7 +120,6 @@ public static class ItalianFiscalCode
         {
             var c = first15[i];
             var index = IsAsciiDigit(c) ? c - '0' : c - 'A';
-            // 1st, 3rd, ... character (odd position counting from 1): odd table; digits count as the letter of the same index.
             sum += i % 2 == 0 ? OddValues[index] : index;
         }
 

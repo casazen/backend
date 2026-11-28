@@ -7,23 +7,12 @@ public interface IBookingRepository
 {
     Task<Booking?> GetByIdAsync(Guid id);
 
-    /// <summary>
-    /// Bookings in the caller's <paramref name="scope"/> (TN-3: the org and, for a non org-wide role, the properties the
-    /// caller owns), optionally of one property and/or one guest, with their property and guest, latest check-in first.
-    /// One SQL query whatever the number of bookings (A2-17).
-    /// </summary>
     Task<IReadOnlyList<Booking>> GetByScopeAsync(
         HostScope scope,
         Guid? propertyId = null,
         Guid? guestId = null,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Bookings of the property shown by the host calendar from <paramref name="startDate"/> to <paramref name="endDate"/>
-    /// (stay dates, both included: <see cref="Services.HostCalendarRange.BookingShownIn"/>) that take their dates: not cancelled and, when
-    /// <paramref name="directPendingTtlMinutes"/> is given, not expired checkout holds
-    /// (<see cref="Services.CheckoutHolds.OccupiesDates"/>, BK-21).
-    /// </summary>
     Task<IEnumerable<Booking>> GetByDateRangeAsync(
         Guid propertyId,
         DateTime startDate,

@@ -40,7 +40,6 @@ public class LeaseIstatServiceTests : IDisposable
         return new LeaseOperationsService(db, catalog, new MigraDocPdfDocumentRenderer(), NullLogger<LeaseOperationsService>.Instance, _h.Clock);
     }
 
-    /// <summary>A registered lease of a property that began on 1 November 2025 and ends on 31 October 2029.</summary>
     private async Task<LeaseContract> SeedAsync(LeaseTaxRegime? regime, decimal rent = 650m)
     {
         var property = await _h.SeedPropertyAsync(RentalMode.Long);
@@ -68,7 +67,6 @@ public class LeaseIstatServiceTests : IDisposable
         Assert.Equal("lease_istat_waived", letterRefused.Code);
         Assert.Empty(await db.LeaseEvents.ToListAsync());
 
-        // The row of the update is off and the one of the communication of the option is on, never the other way round.
         var operations = await service.GetAsync(lease.Id);
         Assert.False(operations.Istat.Available);
         Assert.True(operations.CedolareNotice.Available);
@@ -102,8 +100,8 @@ public class LeaseIstatServiceTests : IDisposable
         Assert.Contains("euro 15,60", text, StringComparison.Ordinal);
         Assert.Contains("euro 665,60", text, StringComparison.Ordinal);
         Assert.Contains("1 novembre 2026", text, StringComparison.Ordinal);
-        Assert.Contains("BOZZA", text, StringComparison.Ordinal); // a draft until the product owner approves the text
-        Assert.Empty(await db.LeaseEvents.ToListAsync()); // preparing the letter writes nothing
+        Assert.Contains("BOZZA", text, StringComparison.Ordinal);
+        Assert.Empty(await db.LeaseEvents.ToListAsync());
     }
 
     [Fact]
@@ -119,7 +117,6 @@ public class LeaseIstatServiceTests : IDisposable
             Assert.Equal("lease_istat_no_increase", refused.Code);
         }
 
-        // An increase that rounds to nothing is no update either: 0.0001 % of 10.00 is 0.00001, which is 0.00 to the cent.
         var tiny = await SeedAsync(LeaseTaxRegime.Ordinario, rent: 10m);
         Assert.Equal("lease_istat_no_increase", (await Assert.ThrowsAsync<DomainRuleException>(() => service.CalculateIstatAsync(tiny.Id, 0.01m, 1m))).Code);
 
@@ -143,7 +140,6 @@ public class LeaseIstatServiceTests : IDisposable
             Assert.Equal("lease_letter_effect_date_invalid", refused.Code);
         }
 
-        // Today and the last day of the period are inside.
         Assert.NotEmpty((await service.BuildAggiornamentoIstatAsync(lease.Id, 3.2m, 75m, new DateOnly(2026, 10, 10))).Pdf);
         Assert.NotEmpty((await service.BuildAggiornamentoIstatAsync(lease.Id, 3.2m, 75m, new DateOnly(2029, 10, 31))).Pdf);
     }
@@ -165,7 +161,6 @@ public class LeaseIstatServiceTests : IDisposable
         Assert.Equal("lease_letter_effect_date_invalid", outside.Code);
     }
 
-    /// <summary>The words of the body of the PDF in reading order: the rotated watermark is not interleaved with the sentences it crosses.</summary>
     private static string BodyText(byte[] pdf) => string.Join(' ', PdfTestReader.BodyWords(pdf));
 
     private static string LettersDirectory()

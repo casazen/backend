@@ -120,7 +120,6 @@ public class CalendarSyncService
 
         if (feed.CalendarSyncType != CalendarSyncType.ICalFeed || string.IsNullOrWhiteSpace(feed.IcalFeedUrl))
         {
-            // Nothing to download (feed removed after the job was queued): no "syncing" left behind.
             if (feed.CalendarSyncStatus == SupplierCalendarSyncStatus.Syncing)
             {
                 var profile = await _db.SupplierProfiles.FirstAsync(sp => sp.OrgId == orgId, ct);
@@ -137,9 +136,8 @@ public class CalendarSyncService
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            // Unexpected failure (database, client, ...): the supplier gets its own error state, the days are kept.
             _logger.LogError(ex, "iCal sync failed for supplier {OrgId}", orgId);
-            _db.ChangeTracker.Clear(); // never save the rejected changes a second time (A2-12)
+            _db.ChangeTracker.Clear();
             await SaveFailureAsync(orgId, feed.IcalFeedUrl, ICalErrorCodes.SyncFailed, ct);
         }
     }
@@ -149,7 +147,6 @@ public class CalendarSyncService
         string icsContent;
         try
         {
-            // Anti-SSRF download (FD-16): https only, public addresses only, size and time limits.
             icsContent = await _externalHttpClient.GetStringAsync(feedUrl, ct);
         }
         catch (ExternalFetchException ex)
@@ -166,7 +163,6 @@ public class CalendarSyncService
         }
         catch (ICalFormatException ex)
         {
-            // Type only: the parser's message can quote the downloaded document.
             _logger.LogWarning(
                 "iCal feed of supplier {OrgId} is not a readable iCalendar ({Failure}, {ErrorType})",
                 orgId, ex.Failure, ex.InnerException?.GetType().Name);
@@ -209,7 +205,6 @@ public class CalendarSyncService
             written.FreeEvents, written.FreeEventsPending, written.FreeEventsRemoved);
     }
 
-    /// <summary>What a sync changed: days marked busy and freed, windows of hours added, updated and removed.</summary>
     private readonly record struct SyncOutcome(
         int Marked,
         int Freed,
@@ -237,7 +232,6 @@ public class CalendarSyncService
     {
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(_db, ct, AvailabilityLock(orgId));
 
-        // Read under the lock: a run that held it has committed, READ COMMITTED sees its days.
         var profile = await _db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, ct);
         if (profile is null || profile.IcalFeedUrl != feedUrl)
         {
@@ -245,8 +239,6 @@ public class CalendarSyncService
             return null;
         }
 
-        // The free-looking events the supplier has not answered about (and those it answered "Busy") stay occupied. The answers are
-        // read under the lock, so one given while the feed was downloading is taken into account.
         var freeRows = await _db.SupplierFreeCalendarEvents.Where(e => e.OrgId == orgId).ToListAsync(ct);
         var decisions = new Dictionary<string, SupplierFreeEventDecision>(StringComparer.Ordinal);
         foreach (var freeRow in freeRows)
@@ -281,19 +273,15 @@ public class CalendarSyncService
             }
             else if (row.Available)
             {
-                // Open day, busy in the supplier's own calendar: the feed takes it (and frees it when the event goes).
                 row.Available = false;
                 row.Source = SupplierAvailabilitySource.ICalFeed;
                 marked++;
             }
-
-            // A day already closed keeps its source: a manual closure stays manual even when the feed agrees.
         }
 
         var freed = 0;
         if (!keepFeedRows)
         {
-            // An empty feed frees every day it had marked (A9-13), never a day the supplier set by hand.
             var released = rows
                 .Where(r => r.Source == SupplierAvailabilitySource.ICalFeed && !busyDays.Contains(r.Date))
                 .ToList();
@@ -335,7 +323,7 @@ public class CalendarSyncService
         foreach (var row in existing)
         {
             if (!byKey.TryAdd(row.DecisionKey, row))
-                leftovers.Add(row); // twice the same key: one is enough
+                leftovers.Add(row);
         }
 
         var kept = new HashSet<string>(StringComparer.Ordinal);
@@ -408,13 +396,12 @@ public class CalendarSyncService
     {
         var existing = await FeedWindowsOf(_db, orgId).ToListAsync(ct);
 
-        // Equal after the round trip: the instants of a feed are whole seconds and the column keeps microseconds.
         var byKey = new Dictionary<(string Uid, DateTime StartUtc), SupplierBusyWindow>();
         var leftovers = new List<SupplierBusyWindow>();
         foreach (var row in existing)
         {
             if (!byKey.TryAdd((row.ExternalUid ?? string.Empty, row.StartUtc), row))
-                leftovers.Add(row); // twice the same key (no unique index on this provider): one is enough
+                leftovers.Add(row);
         }
 
         var added = 0;
@@ -541,7 +528,6 @@ public class CalendarSyncService
     {
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(_db, ct, AvailabilityLock(orgId));
 
-        // Read under the lock: a sync that held it has committed what it wrote, and this removes it.
         var profile = await _db.SupplierProfiles.FirstOrDefaultAsync(sp => sp.OrgId == orgId, ct);
         if (profile is null)
             return false;
@@ -554,7 +540,6 @@ public class CalendarSyncService
         var hadFeed = profile.CalendarSyncType == CalendarSyncType.ICalFeed || !string.IsNullOrWhiteSpace(profile.IcalFeedUrl);
         if (hadFeed)
         {
-            // Only the iCal feed: another kind of calendar link (never written today) is not the one being unlinked.
             if (profile.CalendarSyncType == CalendarSyncType.ICalFeed)
                 profile.CalendarSyncType = CalendarSyncType.None;
 

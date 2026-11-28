@@ -19,7 +19,6 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// </summary>
 public class ServiceRequestPaymentTenancyTests
 {
-    /// <summary>The files that may read or write the table, each with the reason.</summary>
     private static readonly IReadOnlyDictionary<string, string> AllowedFiles = new Dictionary<string, string>
     {
         ["Casazen.Infrastructure/Data/AppDbContext.cs"] = "Declares the DbSet and the model.",
@@ -43,8 +42,6 @@ public class ServiceRequestPaymentTenancyTests
         ["Casazen.Infrastructure/Services/SupplierPaymentReadModels.cs"] = "The supplier console's read models (SP-04e): the payment summary of a job, the counters and the figures of the home. Read-only, and every statement carries the caller's SupplierOrgId.",
     };
 
-    // The statements that are allowed after "db.ServiceRequestPayments" (whitespace removed): an insert, or a predicate on the
-    // payment id, on the request, on the PaymentIntent (the webhook), or (for the host) on the request and the payer org.
     private static readonly string[] AllowedContinuations =
     [
         ".Add(",
@@ -55,8 +52,6 @@ public class ServiceRequestPaymentTenancyTests
         ".AsNoTracking().Where(p=>p.StripePaymentIntentId==",
     ];
 
-    // The files that work over many payments by design, with the extra statements they may use: the jobs filter by state and time,
-    // the admin tools read across the suppliers. Every payment they change is still handled by id under the payment lock.
     private static readonly IReadOnlyDictionary<string, string[]> ExtraContinuations = new Dictionary<string, string[]>
     {
         ["Casazen.Infrastructure/Services/SupplierPaymentService.Jobs.cs"] = [".AsNoTracking().Where(p=>"],
@@ -64,14 +59,11 @@ public class ServiceRequestPaymentTenancyTests
         ["Casazen.Infrastructure/Services/SupplierPaymentService.DisputesJobs.cs"] = [".AsNoTracking().Where(p=>"],
         ["Casazen.Infrastructure/Services/SupplierPaymentService.FundsWebhook.cs"] = [".AsNoTracking().Where(p=>p.StripeTransferId=="],
         ["Casazen.Infrastructure/Services/SupplierPaymentAdminService.cs"] = [".AsNoTracking()"],
-        // The console reads one supplier's payments: the supplier org of the caller is the first predicate of every statement.
         ["Casazen.Infrastructure/Services/SupplierPaymentReadModels.cs"] = [".AsNoTracking().Where(p=>p.SupplierOrgId=="],
     };
 
-    // Any way to reach the table from code: the DbSet through whatever the context variable is called, or Set<T>().
     private static readonly Regex AnyTableUse = new(@"\.ServiceRequestPayments\b|Set<ServiceRequestPayment>\(", RegexOptions.Compiled);
 
-    // The statements of the allowed files: they call the context "db".
     private static readonly Regex DbSetUse = new(@"db\.ServiceRequestPayments(?<rest>[\s\S]{0,90})", RegexOptions.Compiled);
 
     [Fact]
@@ -87,10 +79,8 @@ public class ServiceRequestPaymentTenancyTests
         var entity = db.Model.FindEntityType(typeof(ServiceRequestPayment));
         Assert.NotNull(entity);
 
-        // Not tenant-filtered: a host filter would hide the row from the supplier, and the payer comes with a link, with no tenant.
         Assert.Null(entity.FindDeclaredQueryFilter(AppDbContext.TenantQueryFilter));
 
-        // Nothing under a payment is deleted by the database: a request, a supplier or a payer org with a payment cannot be removed.
         var foreignKeys = entity.GetForeignKeys().ToList();
         Assert.Equal(3, foreignKeys.Count);
         Assert.All(foreignKeys, foreignKey => Assert.Equal(DeleteBehavior.Restrict, foreignKey.DeleteBehavior));
@@ -107,7 +97,6 @@ public class ServiceRequestPaymentTenancyTests
         var live = Assert.Single(entity.GetIndexes(), index => index.GetDatabaseName() == "UIX_ServiceRequestPayments_ServiceRequestId_Live");
         Assert.True(live.IsUnique);
         Assert.Equal(new[] { nameof(ServiceRequestPayment.ServiceRequestId) }, live.Properties.Select(p => p.Name));
-        // The only status that frees the request is Canceled.
         Assert.Equal($"\"Status\" <> {(int)ServicePaymentStatus.Canceled}", live.GetFilter());
         Assert.Equal(4, (int)ServicePaymentStatus.Canceled);
 
@@ -139,7 +128,6 @@ public class ServiceRequestPaymentTenancyTests
     [Fact]
     public void Model_TheFeeVatOfTheCommission_IsEmptyByDefault_UntilTheConsultantDecides()
     {
-        // [CONSULENTE FISCALE] (decision D4): the schema is ready, nothing decides yet.
         var payment = new ServiceRequestPayment();
 
         Assert.Null(payment.FeeVatMode);
@@ -153,7 +141,6 @@ public class ServiceRequestPaymentTenancyTests
     public void Model_DatabaseChecksMirrorTheRules()
     {
         using var db = NewNpgsqlContext();
-        // The check constraints are design-time metadata: not in the read-optimized runtime model.
         var model = db.GetService<IDesignTimeModel>().Model;
 
         var payment = model.FindEntityType(typeof(ServiceRequestPayment))!.GetCheckConstraints().Select(c => c.Name).Order().ToList();
@@ -181,12 +168,10 @@ public class ServiceRequestPaymentTenancyTests
         var request = db.Model.FindEntityType(typeof(ServiceRequest))!;
         var profile = db.Model.FindEntityType(typeof(SupplierProfile))!;
 
-        // A request that exists before the payments is paid by hand; the column is not nullable and defaults to Manual (0).
         Assert.False(request.FindProperty(nameof(ServiceRequest.PaymentMode))!.IsNullable);
         Assert.Equal(0, (int)ServiceRequestPaymentMode.Manual);
         Assert.Equal(ServiceRequestPaymentMode.Manual, new ServiceRequest().PaymentMode);
         Assert.True(request.FindProperty(nameof(ServiceRequest.FinalAmountConfirmedAt))!.IsNullable);
-        // Who made the request paid is known only from SP-15a on: the requests paid before have none and the history shows the host.
         Assert.True(request.FindProperty(nameof(ServiceRequest.PaidBy))!.IsNullable);
         // No override of the commission unless an admin sets one.
         Assert.True(profile.FindProperty(nameof(SupplierProfile.CommissionPercentOverride))!.IsNullable);

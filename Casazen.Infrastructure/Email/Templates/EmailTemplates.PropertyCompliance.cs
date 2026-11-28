@@ -3,7 +3,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Email.Templates;
 
-/// <summary>Host emails about the compliance status of a property (CO-06).</summary>
 public static partial class EmailTemplates
 {
     public static partial class Names
@@ -11,10 +10,6 @@ public static partial class EmailTemplates
         public const string PropertyComplianceSuspended = "property-compliance-suspended";
     }
 
-    /// <summary>
-    /// Ids of the blocking steps of the activation (<see cref="IPropertyComplianceStatusService.GetBlockingStepsAsync"/>)
-    /// and the EmailTexts key of their line in the suspension email.
-    /// </summary>
     private static readonly IReadOnlyDictionary<string, string> SuspensionStepKeys = new Dictionary<string, string>
     {
         ["base-data"] = "PropertyComplianceSuspended_StepBaseData",

@@ -32,7 +32,6 @@ public partial class LegalDocumentService(
     public const string DefaultLanguage = "it";
     private static readonly string[] SupportedLanguages = [DefaultLanguage, "en"];
 
-    // Texts and values change only with a deploy: one read and rendering per file and process.
     private readonly ConcurrentDictionary<string, TextEntry> _entries = new(StringComparer.Ordinal);
 
     private string GetVersion(string key) =>
@@ -99,8 +98,6 @@ public partial class LegalDocumentService(
         var missing = new SortedSet<string>(italian.Missing, StringComparer.Ordinal);
         var problems = new List<string>(italian.Problems);
 
-        // A translation is optional, but one that cannot be published is a problem to report: the English reader would
-        // silently get the Italian text.
         foreach (var language in SupportedLanguages.Where(l => l != DefaultLanguage))
         {
             var translation = GetEntry(kind, version, language);
@@ -121,11 +118,6 @@ public partial class LegalDocumentService(
         return _entries.GetOrAdd(path, p => ReadText(kind, p, language));
     }
 
-    /// <summary>
-    /// The subprocessors the running configuration uses (<see cref="LegalSubprocessorCatalog"/>). When an external AI
-    /// provider is active the version gets <c>+ai-{provider}</c>, so the list acknowledged during the onboarding changes
-    /// with it (A8-15).
-    /// </summary>
     public SubprocessorsDocument GetSubprocessors()
     {
         var version = GetVersion("Subprocessors");
@@ -163,7 +155,6 @@ public partial class LegalDocumentService(
                 return new TextEntry(FileFound: true, Text: null, rendered.MissingConfiguration, rendered.Problems);
             }
 
-            // Same allowlist as the public editorial pages: the frontend sanitizes again before rendering.
             var html = SeoHtmlSanitizer.Sanitize(rendered.Html);
             return html.Length == 0
                 ? new TextEntry(FileFound: true, Text: null, [], ["the text is empty"])

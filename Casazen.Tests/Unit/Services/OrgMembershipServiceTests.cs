@@ -27,8 +27,6 @@ public class OrgMembershipServiceTests
     private OrgMembershipService NewService(AppDbContext db) =>
         new(db, _cache.Object, NullLogger<OrgMembershipService>.Instance, new FixedTimeProvider(Now));
 
-    // ─── EnsureOwnerAsync ───────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task EnsureOwnerAsync_NewOwner_WritesTheMemberAndTheAccountMembershipTogether()
     {
@@ -50,7 +48,6 @@ public class OrgMembershipServiceTests
         Assert.Equal(Now.UtcDateTime, stored.CreatedAt);
         Assert.Null(stored.CreatedByUserId);
         Assert.Null(stored.DeactivatedAt);
-        // The owner's own rental membership is the onboarding's: it is still there, untouched.
         Assert.Equal(["account/org_owner", "short-rent/property_owner"], await MembershipsOfAsync(verify, "auth0|owner"));
         _cache.Verify(c => c.Invalidate("auth0|owner"), Times.Once);
     }
@@ -136,7 +133,6 @@ public class OrgMembershipServiceTests
     [InlineData(OrgRole.Collaborator)]
     public async Task EnsureOwnerAsync_UserThatIsAlreadyAnotherRoleOfTheOrg_IsRefused(OrgRole existing)
     {
-        // The onboarding of a member never makes it the owner (AM-00, S2): the org member row is the source of truth.
         await using var db = NewDb(_database);
         var org = AddOrg(db);
         AddUser(db, "auth0|member", org.Id);
@@ -150,8 +146,6 @@ public class OrgMembershipServiceTests
         await using var verify = NewDb(_database);
         Assert.Equal(existing, (await verify.OrgMembers.SingleAsync()).Role);
     }
-
-    // ─── AddMemberAsync ─────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task AddMemberAsync_Admin_WritesTheMemberAndItsProjectionInOneSave()
@@ -177,7 +171,6 @@ public class OrgMembershipServiceTests
         Assert.Equal(
             ["account/org_admin", "long-rent/property_manager", "short-rent/property_manager"],
             await MembershipsOfAsync(verify, "auth0|admin"));
-        // The user had no org: it now belongs to this one.
         Assert.Equal(org.Id, (await verify.Users.AsNoTracking().SingleAsync(u => u.Id == "auth0|admin")).OrgId);
         _cache.Verify(c => c.Invalidate("auth0|admin"), Times.Once);
     }
@@ -297,8 +290,6 @@ public class OrgMembershipServiceTests
     [Fact]
     public async Task AddMemberAsync_ARoleRowIsMissing_SavesNothingNotEvenTheMember()
     {
-        // All or nothing: the staff role of short-rent does not exist, the projection cannot be written, so the member
-        // row, staged first, is not saved either, and the user is not moved into the org.
         await using var db = NewDb(_database);
         var org = AddOrg(db);
         AddUser(db, "auth0|member", orgId: null);
@@ -318,7 +309,6 @@ public class OrgMembershipServiceTests
     [Fact]
     public async Task AddMemberAsync_KeepsTheMembershipsOfOtherContexts()
     {
-        // A supplier link or a staff membership of the same account is not an org matter: the add never touches it.
         await using var db = NewDb(_database);
         var org = AddOrg(db);
         AddUser(db, "auth0|member", orgId: null);
@@ -330,8 +320,6 @@ public class OrgMembershipServiceTests
         await using var verify = NewDb(_database);
         Assert.Equal(["admin/platform_admin", "short-rent/staff"], await MembershipsOfAsync(verify, "auth0|member"));
     }
-
-    // ─── ChangeRoleAsync ────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task ChangeRoleAsync_AdminToCollaborator_RepointsTheRentalRowsAndDropsTheAccountRow()
@@ -366,7 +354,6 @@ public class OrgMembershipServiceTests
         await service.ChangeRoleAsync("auth0|member", OrgRole.Admin);
 
         await using var verify = NewDb(_database);
-        // Only long-rent: the areas are the contexts the person already worked in.
         Assert.Equal(["account/org_admin", "long-rent/property_manager"], await MembershipsOfAsync(verify, "auth0|member"));
     }
 
@@ -400,8 +387,6 @@ public class OrgMembershipServiceTests
         await Assert.ThrowsAsync<NotFoundException>(() => NewService(db).ChangeRoleAsync("auth0|nobody", OrgRole.Admin));
     }
 
-    // ─── DeactivateAsync / ReactivateAsync ──────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task DeactivateAsync_Member_SetsTheStatusAndKeepsTheMembershipsForTheReactivation()
     {
@@ -421,7 +406,6 @@ public class OrgMembershipServiceTests
         Assert.Equal(OrgMemberStatus.Deactivated, stored.Status);
         Assert.Equal(Now.UtcDateTime, stored.DeactivatedAt);
         Assert.Equal(["account/org_admin", "short-rent/property_manager"], await MembershipsOfAsync(verify, "auth0|member"));
-        // The user's account is not touched: only the org membership is.
         Assert.True((await verify.Users.SingleAsync()).IsActive);
         _cache.Verify(c => c.Invalidate("auth0|member"), Times.Once);
     }
@@ -437,7 +421,6 @@ public class OrgMembershipServiceTests
         await NewService(db).DeactivateAsync("auth0|member");
         _cache.Invocations.Clear();
 
-        // Later, with another clock: the first deactivation date is kept.
         var later = new OrgMembershipService(
             db, _cache.Object, NullLogger<OrgMembershipService>.Instance, new FixedTimeProvider(Now.AddDays(3)));
         await later.DeactivateAsync("auth0|member");
@@ -511,8 +494,6 @@ public class OrgMembershipServiceTests
         await Assert.ThrowsAsync<NotFoundException>(() => service.ReactivateAsync("auth0|nobody"));
     }
 
-    // ─── RemoveAsync ────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task RemoveAsync_Member_DeletesTheRowAndEveryMembershipTheOrgGaveButNotTheStaffOnes()
     {
@@ -530,7 +511,6 @@ public class OrgMembershipServiceTests
         await using var verify = NewDb(_database);
         Assert.Empty(await verify.OrgMembers.ToListAsync());
         Assert.Equal(["admin/platform_admin"], await MembershipsOfAsync(verify, "auth0|member"));
-        // The org link is cleared with the row: onboarding must not reuse it and create a second owner.
         Assert.Null((await verify.Users.AsNoTracking().SingleAsync(u => u.Id == "auth0|member")).OrgId);
         _cache.Verify(c => c.Invalidate("auth0|member"), Times.Once);
     }

@@ -24,12 +24,6 @@ public class OwnerPayoutsController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
-    /// <summary>
-    /// What a payout of the version paid on <c>paidOn</c> would be, read only: the facts of the ledger (each stay, whether it is in the base and why), the balance
-    /// still unpaid, the decision of the approved rule in force that day with the withholding in euro and in the currency of the payout, or the code that would refuse
-    /// the confirmation (<c>blockingCode</c>, <c>blockingField</c>). 404 <c>owner_statement_version_not_found</c>; 422 <c>owner_payout_invalid</c>,
-    /// <c>owner_statement_not_approved</c>.
-    /// </summary>
     [HttpGet("preview")]
     [ProducesResponseType(typeof(OwnerPayoutPreviewDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -43,7 +37,6 @@ public class OwnerPayoutsController(
         return Ok(OwnerPayoutPreviewDto.From(preview));
     }
 
-    /// <summary>The payouts of the org, or of one owner, the newest first.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(List<OwnerPayoutDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<List<OwnerPayoutDto>>> List([FromQuery] Guid? ownerId)
@@ -53,7 +46,6 @@ public class OwnerPayoutsController(
         return Ok((await payouts.ListPayoutsAsync(orgId, ownerId, HttpContext.RequestAborted)).Select(p => OwnerPayoutDto.From(p, [])).ToList());
     }
 
-    /// <summary>A payout with its evidence. 404 <c>owner_payout_not_found</c>.</summary>
     [HttpGet("{payoutId:guid}")]
     [ProducesResponseType(typeof(OwnerPayoutDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -88,7 +80,6 @@ public class OwnerPayoutsController(
         return result.Replayed ? Ok(dto) : CreatedAtAction(nameof(Get), new { payoutId = result.Payout.Id }, dto);
     }
 
-    /// <summary>Reverses a payout with its reason (<c>{ reason }</c>): the evidence and the ledger lines get their reversals. 409 <c>owner_payout_reversed</c>.</summary>
     [HttpPost("{payoutId:guid}/reverse")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
     [ProducesResponseType(typeof(OwnerPayoutDto), StatusCodes.Status200OK)]
@@ -107,7 +98,6 @@ public class OwnerPayoutsController(
         HostCallerResolver.OrgWideAsync(User, orgContextResolver, hostScopeResolver, HttpContext.RequestAborted);
 }
 
-/// <summary>The reversal of a payout, with its reason.</summary>
 public sealed record OwnerPayoutReversal(string? Reason);
 
 /// <summary>
@@ -137,16 +127,9 @@ public sealed record TaxObligationEvidenceDto(
         e.Id, e.Decision, e.ReasonCode, e.Jurisdiction, e.RuleCode, e.RuleVersion, e.GrossBase, e.RatePercent, e.Rounding, e.Amount, e.TaxCode, e.PaidOn,
         e.PeriodYear, e.PeriodMonth, e.ReversesEvidenceId, e.CreatedAt, FactsOf(e.FactsJson));
 
-    /// <summary>The facts of the ledger a decision was taken on (<see cref="PayoutFactRules.FromJson"/>); <c>null</c> for the facts typed before E18/F01/US01.</summary>
     public static PayoutFacts? FactsOf(string? json) => PayoutFactRules.FromJson(json);
 }
 
-/// <summary>
-/// What a payout of a version would be (<c>GET api/owner-accounting/payouts/preview</c>): the facts of the ledger, the balance still unpaid (the gross of a payout that
-/// names none) and the currency of the version; the decision of the approved rule (its base, rate, rounding and amount in euro, its tax code), the withholding kept
-/// in the currency of the payout and the net of a payout of the whole balance; or <see cref="BlockingCode"/> (and <see cref="BlockingField"/>), the code the
-/// confirmation would answer, and no decision.
-/// </summary>
 public sealed record OwnerPayoutPreviewDto(
     PayoutFacts Facts,
     decimal Balance,
@@ -180,7 +163,6 @@ public sealed record OwnerPayoutPreviewDto(
         p.BlockingField);
 }
 
-/// <summary>A payout with its evidence.</summary>
 public sealed record OwnerPayoutDto(
     Guid Id,
     Guid OwnerId,

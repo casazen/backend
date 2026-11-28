@@ -8,19 +8,12 @@ namespace Casazen.Core.Entities;
 [Table("CalendarBlocks")]
 public class CalendarBlock : ITenantOwned
 {
-    /// <summary>Column length of <see cref="ExternalUid"/>: longer feed UIDs are stored as a hash (PC-10).</summary>
     public const int ExternalUidMaxLength = 500;
 
-    /// <summary>Column length of <see cref="Summary"/>: longer feed summaries are truncated (PC-10).</summary>
     public const int SummaryMaxLength = 500;
 
-    /// <summary>Longest note the host may write on a manual block (PC-09), stored in <see cref="Summary"/>.</summary>
     public const int ManualNoteMaxLength = 200;
 
-    /// <summary>
-    /// Name of the unique index on (<see cref="PropertyId"/>, <see cref="ExternalUid"/>) of the blocks read from the Octorate calendar
-    /// (<see cref="CalendarBlockSource.Octorate"/>, E02/F02/US01/T03): they have no feed, so the index on (<see cref="FeedId"/>, <see cref="ExternalUid"/>) does not cover them.
-    /// </summary>
     public const string OctorateUidIndexName = "UIX_CalendarBlocks_PropertyId_ExternalUid_Octorate";
 
     [Key]
@@ -33,11 +26,6 @@ public class CalendarBlock : ITenantOwned
 
     public CalendarBlockSource Source { get; set; } = CalendarBlockSource.ICalImport;
 
-    /// <summary>
-    /// Import feed the block comes from (PC-11): each feed replaces only its own blocks, and removing the feed deletes
-    /// them (FK cascade). Null for blocks that do not come from a feed (<see cref="CalendarBlockSource.Manual"/>).
-    /// <see cref="ExternalUid"/> is unique per feed.
-    /// </summary>
     public Guid? FeedId { get; set; }
 
     [MaxLength(ExternalUidMaxLength)]
@@ -47,31 +35,16 @@ public class CalendarBlock : ITenantOwned
 
     public DateTime EndUtc { get; set; }
 
-    /// <summary>
-    /// SUMMARY of the imported event, or the note of the host on a manual block (at most <see cref="ManualNoteMaxLength"/>
-    /// characters, PC-09). Shown to the host only: never exported (<c>ICalExportService</c> writes a neutral text).
-    /// </summary>
     [MaxLength(SummaryMaxLength)]
     public string? Summary { get; set; }
 
-    /// <summary>Why the host closed the dates (PC-09): set on a <see cref="CalendarBlockSource.Manual"/> block only.</summary>
     public CalendarBlockReason? ManualReason { get; set; }
 
-    /// <summary>
-    /// ISO 4217 currency code (e.g. "EUR", "CHF") for imported blocks with non-EUR currency (ADR-002-R9, NF-02).
-    /// Null for blocks without explicit currency, defaults to Property.Currency at read time.
-    /// </summary>
     [MaxLength(3)]
     public string? Currency { get; set; }
 
     public DateTime? LastSyncedAt { get; set; }
 
-    /// <summary>
-    /// The OTA stay the host created from this imported block (CO-21, decision D7). The block stays linked to it and keeps
-    /// following its feed; while the stay is not cancelled and has the block's dates, the nights are counted once,
-    /// through the stay (<see cref="Services.PropertyOccupancy.BlockTakesNightIn"/>). Null for a block not converted.
-    /// Unique: one stay per block.
-    /// </summary>
     public Guid? BookingId { get; set; }
 
     [ForeignKey(nameof(BookingId))]

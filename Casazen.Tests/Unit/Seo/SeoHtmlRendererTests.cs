@@ -6,7 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Seo;
 
-/// <summary>The head a crawler reads (BK-15): title, description, robots, canonical, hreflang, Open Graph, JSON-LD.</summary>
 public class SeoHtmlRendererTests
 {
     private const string Canonical = "https://public.example.test/book/villa";
@@ -70,7 +69,6 @@ public class SeoHtmlRendererTests
     [Fact]
     public void Render_ImageWithTheSmallCardRequested_KeepsTheImageTagsAndUsesTheRequestedCard()
     {
-        // A square mark (the brand of the guides) is a «summary», not a large image that would crop it.
         var html = SeoHtmlRenderer.Render(Document(twitterCard: "summary"));
 
         Assert.Contains("<meta name=\"twitter:card\" content=\"summary\">", html);
@@ -115,7 +113,6 @@ public class SeoHtmlRendererTests
 
         var html = SeoHtmlRenderer.Render(document);
 
-        // The only <script> elements are the JSON-LD blocks; nothing else is markup written by the host.
         Assert.Single(Regex.Matches(html, "<script", RegexOptions.IgnoreCase));
         Assert.Single(Regex.Matches(html, "</script>", RegexOptions.IgnoreCase));
         Assert.DoesNotContain("<script>alert", html);

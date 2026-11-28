@@ -26,7 +26,6 @@ public sealed class ShowcaseReplyReminderService(
     ILogger<ShowcaseReplyReminderService> logger,
     TimeProvider? timeProvider = null) : IShowcaseReplyReminderService
 {
-    /// <summary>Requests one pass looks at, at most: the ones waiting for an answer, nearest deadline first (a day is the longest wait there can be).</summary>
     public const int MaxPerRun = 500;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -91,7 +90,6 @@ public sealed class ShowcaseReplyReminderService(
             .Select(r => new WaitingRequest(r.Id, r.CreatedAt, r.ResponseDueAt!.Value, r.ReplyReminderHalfSentAt != null))
             .Take(MaxPerRun);
 
-    /// <summary>A request waiting for its supplier's first answer: what <see cref="ShowcaseReplyReminderRules.DueOf"/> needs.</summary>
     internal sealed record WaitingRequest(Guid Id, DateTime CreatedAt, DateTime DueAt, bool HalfSent);
 
     private enum Outcome
@@ -127,7 +125,6 @@ public sealed class ShowcaseReplyReminderService(
             if (reminder == ShowcaseReplyReminder.None)
                 return Outcome.NotDue;
 
-            // A supplier that is not active cannot answer: nothing is sent and nothing is marked (SupplierProfile is keyed by the supplier org).
             var status = await db.SupplierProfiles
                 .AsNoTracking()
                 .Where(sp => sp.OrgId == request.SupplierOrgId)
@@ -141,7 +138,6 @@ public sealed class ShowcaseReplyReminderService(
             else
                 request.ReplyReminderHalfSentAt = now;
 
-            // Saved only if the request is as it was read (xmin): a supplier that answered meanwhile wins and is not reminded.
             await db.SaveChangesAsync(cancellationToken);
 
             await notifier.NotifySupplierOfReplyReminderAsync(request, lastCall: reminder == ShowcaseReplyReminder.Last, cancellationToken);

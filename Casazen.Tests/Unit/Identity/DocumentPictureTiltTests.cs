@@ -12,12 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// IDENT-TILT (NF-189, NF-190): what the document step hands to its readers when the card is held crooked. <c>DocumentPicture</c> owns the levelled card of every report it made and
-/// zeroes it with the picture; the reader of the zones (and, through it, the reading of the MRZ band on the card) is given that card, the very one, when the card is turned by more than the
-/// rounding step, and the card cut out as it lies when it is not; a card held more crooked than the limit is not read at all. Nothing of the picture is logged by the inspector, which has
-/// no logger, and a report prints no pixel.
-/// </summary>
 public class DocumentPictureTiltTests
 {
     private static readonly DocumentFormat Cie = DocumentStepSelfHostedTests.Cie;
@@ -42,7 +36,6 @@ public class DocumentPictureTiltTests
 
         await picture.ReadFieldsAsync(Cie, DocumentSide.Front, report, CancellationToken.None);
 
-        // The card the reader was given is the one the report carries (levelled by its angle, turned upright), and reading it did not zero it.
         Assert.Equal(1, zoned.Calls);
         Assert.NotNull(report.RectifiedCard);
         Assert.Same(report.RectifiedCard, zoned.Card);
@@ -55,8 +48,6 @@ public class DocumentPictureTiltTests
     [Fact]
     public async Task ReadFields_TheMrzReadingOfACardHeldCrooked_IsHandedTheLevelledCardUpright()
     {
-        // The real reader of the zones, with the OCR and the MRZ reader scripted: what the MRZ reader is handed, as a PNG held in memory, is the back of the card levelled and upright (the
-        // band at the foot of it, the size of the card), not the picture of the guest and not the box that holds the crooked card.
         var mrz = new ScriptedMrzReader();
         var zoned = new ZonedFieldReader(
             ZoneScriptedPageReader.Answering(new Dictionary<byte, string>()), mrz, NullLogger<ZonedFieldReader>.Instance, Options.Create(new MrzOcrOptions()));
@@ -125,7 +116,6 @@ public class DocumentPictureTiltTests
 
         picture.Dispose();
 
-        // The picture is gone and so is every levelled card it made: zero, and empty.
         Assert.All(pixelsOfFirst, value => Assert.Equal(0, value));
         Assert.All(pixelsOfSecond, value => Assert.Equal(0, value));
         Assert.Empty(firstCard.Rgb);
@@ -142,7 +132,6 @@ public class DocumentPictureTiltTests
     [InlineData(9.5, true)]
     public void UsesRectifiedCard_IsTheCardTurnedByMoreThanTheRoundingStep(double degrees, bool expected)
     {
-        // A card that is turned by no more than the rounding step is cut as it lies, even when a levelled copy is carried; a card that is not measurable is not read on any copy.
         using var measurable = new DocumentGeometryReport(
             true, new NormalizedBox(0.1, 0.1, 0.8, 0.8), true, 1.586, true, 0, true, 0, 0.5, [], DocumentGeometryRules.Version, degrees, new RasterImage(2, 2, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]));
         using var notVisible = measurable with { EdgesVisible = false };
@@ -153,12 +142,9 @@ public class DocumentPictureTiltTests
         Assert.False(DocumentPicture.UsesRectifiedCard(measurable with { Codes = [IdentityGuidanceCodes.DocumentOrientation] }));
     }
 
-    // ---- nothing of the picture is logged or printed ----------------------------------------------------------------------------------------------------------------
-
     [Fact]
     public void TheInspectorAndItsHelpers_HaveNoLogger_SoTheyCanLogNothingOfAPicture()
     {
-        // The inspector takes the face detector and the options, the helpers hold only buffers: nothing there could log a picture, a value read on the document or a score.
         var constructor = Assert.Single(typeof(DocumentGeometryInspector).GetConstructors());
         Assert.Equal([typeof(IFaceDetector), typeof(IOptions<BiometricModelOptions>)], constructor.GetParameters().Select(parameter => parameter.ParameterType));
 
@@ -185,7 +171,6 @@ public class DocumentPictureTiltTests
             Assert.DoesNotContain(pixel, printed, StringComparison.Ordinal);
     }
 
-    /// <summary>A reader of the zones that reads nothing and keeps the card it was handed (the very instance), to show which card the step gives it.</summary>
     private sealed class RecordingZonedReader : IZonedFieldReader
     {
         public int Calls { get; private set; }

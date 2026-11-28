@@ -15,7 +15,6 @@ internal static class LeaseLetterData
 {
     private static readonly CultureInfo Italian = CultureInfo.GetCultureInfo("it-IT");
 
-    /// <summary>The values every letter of a lease shares. The lease comes with its property and its parties.</summary>
     public static Dictionary<string, string?> Common(LeaseContract lease)
     {
         ArgumentNullException.ThrowIfNull(lease);
@@ -36,7 +35,6 @@ internal static class LeaseLetterData
         };
     }
 
-    /// <summary>A text the landlord typed, as it goes into a sentence: on one line, without the stops that would meet the one the sentence has; <c>null</c> when there is none.</summary>
     private static string? OneLine(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -46,20 +44,15 @@ internal static class LeaseLetterData
         return line.Length == 0 ? null : line;
     }
 
-    /// <summary>A day as a person writes it in a letter: «31 ottobre 2030».</summary>
     public static string Day(DateOnly day) => day.ToString("d MMMM yyyy", Italian);
 
-    /// <summary>The line of a year of the interest of a deposit: «2024: tasso 2,5% per 366 giorni su 366: euro 30,00».</summary>
     public static string YearInterestLine(int year, decimal ratePercent, int days, int daysInYear, decimal interest) =>
         $"{year}: tasso {Percent(ratePercent)}% per {days} giorni su {daysInYear}: euro {Money(interest)}";
 
-    /// <summary>An amount of euros as it is written in a letter, with the cents: «1.250,50».</summary>
     public static string Money(decimal amount) => amount.ToString("N2", Italian);
 
-    /// <summary>A percentage as it is written in a letter, without trailing zeros: «3,2», «75», «2,4375».</summary>
     public static string Percent(decimal value) => value.ToString("0.####", Italian);
 
-    /// <summary>The parties of a role in the order they were entered, without the ones whose data were anonymized.</summary>
     private static List<Party> Parties(LeaseContract lease, PartyRole role) =>
         lease.Parties
             .Where(p => p.Role == role && p.AnonymizedAt is null)
@@ -68,7 +61,6 @@ internal static class LeaseLetterData
 
     private static string FullName(Party party) => $"{party.FirstName} {party.LastName}".Trim();
 
-    /// <summary>«Mario Rossi», «Mario Rossi e Anna Bianchi», «A, B e C»; <c>null</c> without parties.</summary>
     private static string? Names(IReadOnlyList<Party> parties)
     {
         var names = parties.Select(FullName).Where(n => n.Length > 0).ToList();
@@ -80,7 +72,6 @@ internal static class LeaseLetterData
         };
     }
 
-    /// <summary>One line per party: «Mario Rossi, residente in Monza, via Roma 1»; the residence the lease does not have is «[da completare]».</summary>
     private static string? WithResidence(IReadOnlyList<Party> parties)
     {
         var lines = parties
@@ -90,7 +81,6 @@ internal static class LeaseLetterData
         return lines.Count == 0 ? null : string.Join('\n', lines);
     }
 
-    /// <summary>«Via Roma 1, 20900 Monza».</summary>
     private static string? Address(Property? property)
     {
         if (property is null || string.IsNullOrWhiteSpace(property.Address))

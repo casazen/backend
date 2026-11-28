@@ -22,10 +22,6 @@ public static partial class EmailTemplates
         public const string ServicePaymentAdminAlert = "service-payment-admin-alert";
     }
 
-    /// <summary>
-    /// The supplier completed a job and asks for its payment, to the payer: who, what, where, how much, and the personal link to
-    /// pay online on the supplier's Stripe account. The link stops working at <paramref name="validUntilUtc"/>.
-    /// </summary>
     public static EmailContent ServicePaymentRequest(
         CultureInfo culture,
         string supplierName,
@@ -47,10 +43,6 @@ public static partial class EmailTemplates
             .Build("ServicePaymentRequest_Subject", serviceName, supplierName);
     }
 
-    /// <summary>
-    /// A reminder to the payer of a payment that is still to be made (the supplier asked again, or the daily job of SP-15b): the
-    /// same facts and a new personal link, which replaces the previous one.
-    /// </summary>
     public static EmailContent ServicePaymentReminder(
         CultureInfo culture,
         string supplierName,
@@ -101,10 +93,6 @@ public static partial class EmailTemplates
             .Build("ServicePaymentReceived_Subject", serviceName);
     }
 
-    /// <summary>
-    /// A payment that Stripe was processing failed afterwards (a SEPA debit that came back), to the payer (SP-15b): the same facts
-    /// as the request and a new personal link, which replaces the previous one. It says nothing about the commission.
-    /// </summary>
     public static EmailContent ServicePaymentFailed(
         CultureInfo culture,
         string supplierName,
@@ -126,10 +114,6 @@ public static partial class EmailTemplates
             .Build("ServicePaymentFailed_Subject", serviceName);
     }
 
-    /// <summary>
-    /// A refund of a service payment succeeded, to the payer (SP-15b): how much was given back. Nothing about the commission, and
-    /// no promise about when the money reaches the payer: that depends on the bank.
-    /// </summary>
     public static EmailContent ServicePaymentRefundedToPayer(
         CultureInfo culture,
         string supplierName,
@@ -137,7 +121,6 @@ public static partial class EmailTemplates
         string propertyName,
         int refundedCents)
     {
-        // A customer of a supplier's showcase has no property (SP-15c-a): the sentence does not name one.
         var bodyKey = string.IsNullOrWhiteSpace(propertyName) ? "ServicePaymentRefundedCustomer_Body" : "ServicePaymentRefundedPayer_Body";
         return new EmailHtmlBuilder(culture)
             .Paragraph(bodyKey, supplierName, serviceName, propertyName, FormatEuro(refundedCents, culture))
@@ -145,10 +128,6 @@ public static partial class EmailTemplates
             .Build("ServicePaymentRefundedPayer_Subject", serviceName);
     }
 
-    /// <summary>
-    /// The same refund, to the supplier (SP-15b): the amount that went back to the payer from its Stripe balance and, when the
-    /// payment carried one, the part of CasaZen's commission that came back to it with the refund.
-    /// </summary>
     public static EmailContent ServicePaymentRefundedToSupplier(
         CultureInfo culture,
         string serviceName,
@@ -204,10 +183,6 @@ public static partial class EmailTemplates
             .Build(subjectKey, supplierName);
     }
 
-    /// <summary>
-    /// The supplier recorded a payment received outside CasaZen, to the host that owed it: the request is now paid. When the
-    /// request was to be paid inside CasaZen the supplier's reason is shown (the trace of the exception, decision D5).
-    /// </summary>
     public static EmailContent ServicePaymentOfflineRecorded(
         CultureInfo culture,
         string supplierName,

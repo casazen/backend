@@ -50,41 +50,26 @@ public sealed class IdentityReviewEvidenceStore(
     ILogger<IdentityReviewEvidenceStore> logger,
     IActivityLog? activityLog = null)
 {
-    /// <summary>Data Protection purpose of an evidence object; the id of the evidence is its sub-purpose. Never change it: the objects kept would become unreadable.</summary>
     public const string ContentPurpose = "Casazen.IdentityEvidence.Content.v1";
 
-    /// <summary>The start of the key of every evidence object in the private bucket.</summary>
     public const string StorageKeyPrefix = "identity-evidence/";
 
-    /// <summary>The content type of the crop of the portrait, and of a frame that had to be scaled or turned.</summary>
     public const string PngContentType = "image/png";
 
-    /// <summary>The content type of a frame kept as it came, without its metadata.</summary>
     public const string JpegContentType = "image/jpeg";
 
-    /// <summary>
-    /// The margin around the box of the portrait, as a share of its width (left and right) and of its height (top and bottom): the reviewer sees the whole head, not only the
-    /// face the detector boxed. A choice of presentation, not a threshold: it decides nothing.
-    /// </summary>
     public const double PortraitMargin = 0.25;
 
-    /// <summary>The content type of the stored object: ciphertext.</summary>
     private const string StoredContentType = "application/octet-stream";
 
-    /// <summary>The evidence is kept and read: the self-hosted flow and the evidence are on.</summary>
     public bool EvidenceOn =>
         featureFlags.IsEnabled(FeatureFlags.CheckInIdentityVerification)
         && featureFlags.IsEnabled(FeatureFlags.CheckInIdentitySelfHosted)
         && featureFlags.IsEnabled(FeatureFlags.CheckInIdentityReviewEvidence);
 
-    /// <summary>The key of an evidence object: <c>identity-evidence/{orgId}/{bookingId}/{evidenceId}</c>, ids only.</summary>
     public static string StorageKeyOf(Guid orgId, Guid bookingId, Guid evidenceId) =>
         StorageKeys.EnsureValid($"{StorageKeyPrefix}{orgId}/{bookingId}/{evidenceId}");
 
-    /// <summary>
-    /// Keeps the evidence of a review that was just committed (<see cref="ReviewEvidenceInput"/>), when the flags are on and the property keeps documents. Returns how many
-    /// pictures were kept: 0 when nothing was (off, Ticino, nothing to keep, or an error, logged by its code). Never throws but for a cancellation of <paramref name="ct"/>.
-    /// </summary>
     public async Task<int> SaveForReviewAsync(ReviewEvidenceInput input, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -109,7 +94,6 @@ public sealed class IdentityReviewEvidenceStore(
         {
             var now = UtcNow();
 
-            // One set per booking: the set of an earlier review goes first, kept or not this time.
             var replaced = await DeleteLiveAsync(input.OrgId, input.BookingId, IdentityEvidenceDeletionReasons.Replaced, now, ct);
 
             if (PortraitCrop(input.DocumentFront, options.Evidence.MaxSide, input.CheckInSessionId) is { } crop)
@@ -139,7 +123,6 @@ public sealed class IdentityReviewEvidenceStore(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The type only: a message could carry what was being read. The review goes on without evidence.
             logger.LogError("Review evidence of session {SessionId} not kept (evidence_store_failed, {ErrorType})", input.CheckInSessionId, ex.GetType().Name);
             return 0;
         }
@@ -150,10 +133,6 @@ public sealed class IdentityReviewEvidenceStore(
         }
     }
 
-    /// <summary>
-    /// The live evidence of a booking the caller reaches (E73/F01/US02/T02): not deleted, not expired, newest last; null when the booking is not one of the org of
-    /// <paramref name="scope"/> on a property it reaches (the caller answers the same 404 as for an evidence that does not exist).
-    /// </summary>
     public async Task<IReadOnlyList<IdentityEvidenceItem>?> ListAsync(HostScope scope, Guid bookingId, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(scope);
@@ -174,12 +153,6 @@ public sealed class IdentityReviewEvidenceStore(
             .ToListAsync(ct);
     }
 
-    /// <summary>
-    /// One evidence of a booking the caller reaches, decrypted (E73/F01/US02/T02), with its line <see cref="OrgActivityType.IdentityEvidenceViewed"/> in the activity log of the
-    /// org written FIRST, in its own save: no line, no content. Null (the same 404 for every case) when the evidence is not of that booking, of the org of
-    /// <paramref name="scope"/> and of a property it reaches, is deleted or expired, its object is gone, its ciphertext is not the one stored, or it cannot be decrypted. The
-    /// bytes returned are the caller's to zero once they are written to the response.
-    /// </summary>
     public async Task<IdentityEvidenceContent?> ReadAsync(HostScope scope, Guid bookingId, Guid evidenceId, string actorUserId, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(scope);
@@ -260,10 +233,6 @@ public sealed class IdentityReviewEvidenceStore(
         }
     }
 
-    /// <summary>
-    /// What the operator queue shows of the evidence of <paramref name="bookingIds"/> (E73/F01/US02/T02): how many live pictures each booking has and when the first of them
-    /// expires. Empty while the evidence is off: the reviewer could not open it.
-    /// </summary>
     public async Task<IReadOnlyDictionary<Guid, PendingEvidenceSummary>> SummariesAsync(Guid orgId, IReadOnlyCollection<Guid> bookingIds, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(bookingIds);
@@ -321,7 +290,6 @@ public sealed class IdentityReviewEvidenceStore(
         return deleted;
     }
 
-    /// <summary>Encrypts and writes the pictures, then their rows in one save; on a failure the objects written are deleted (best effort) and the rows forgotten.</summary>
     private async Task<int> WriteAsync(ReviewEvidenceInput input, List<EvidencePicture> pictures, DateTime now, int retentionHours, CancellationToken ct)
     {
         var rows = new List<IdentityReviewEvidence>(pictures.Count);
@@ -385,10 +353,6 @@ public sealed class IdentityReviewEvidenceStore(
         }
     }
 
-    /// <summary>
-    /// The crop of the portrait of the document front, as a PNG whose longest side is at most <paramref name="maxSide"/>; null when there is no picture, it cannot be decoded,
-    /// no portrait is found, the models are not there or their time is over. The decoded pictures are zeroed before this returns.
-    /// </summary>
     private byte[]? PortraitCrop(byte[]? documentFront, int maxSide, Guid sessionId)
     {
         if (documentFront is not { Length: > 0 })
@@ -414,7 +378,6 @@ public sealed class IdentityReviewEvidenceStore(
                 return null;
             }
 
-            // The face is in the coordinates of the picture it was found in: the document, or a smaller copy turned upright. The crop is cut from the document at full size.
             var source = document;
             var factor = 1.0;
             if (orientation != 1 && rotated is not null)
@@ -483,7 +446,6 @@ public sealed class IdentityReviewEvidenceStore(
         return new EvidencePicture(IdentityEvidenceKind.Frame, PngContentType, CardPngEncoder.Encode(scaled ?? image));
     }
 
-    /// <summary>A copy of <paramref name="image"/> whose longest side is <paramref name="maxSide"/>, or null when it already fits.</summary>
     private static RasterImage? Fit(RasterImage image, int maxSide)
     {
         var longest = Math.Max(image.Width, image.Height);
@@ -498,15 +460,9 @@ public sealed class IdentityReviewEvidenceStore(
 
     private DateTime UtcNow() => clock.GetUtcNow().UtcDateTime;
 
-    /// <summary>One picture to keep, in clear until it is encrypted; zeroed by the caller.</summary>
     private sealed record EvidencePicture(IdentityEvidenceKind Kind, string ContentType, byte[] Bytes);
 }
 
-/// <summary>
-/// What the closure hands to <see cref="IdentityReviewEvidenceStore.SaveForReviewAsync"/> once a review is committed (E73/F01/US02/T01): the ids of the verification, whether its
-/// property keeps no document (the one rule of the flow, ADR-013-R6: true keeps nothing), the picture of the front of the document and the frames of the request, both owned and
-/// zeroed by the request, and the frames the server chose for the match.
-/// </summary>
 public sealed record ReviewEvidenceInput(
     Guid OrgId,
     Guid BookingId,
@@ -518,19 +474,15 @@ public sealed record ReviewEvidenceInput(
     FrameSequence? Sequence,
     IReadOnlyList<int>? ChosenFrames);
 
-/// <summary>One live evidence of a booking, as the reviewer lists them: ids, the kind and the times, never the picture.</summary>
 public sealed record IdentityEvidenceItem(Guid Id, IdentityEvidenceKind Kind, DateTime CreatedAt, DateTime ExpiresAt);
 
-/// <summary>One evidence decrypted for its reader: the bytes are the caller's to zero once written to the response.</summary>
 public sealed record IdentityEvidenceContent(Guid Id, IdentityEvidenceKind Kind, string ContentType, byte[] Bytes);
 
-/// <summary>The codes of the kinds of an evidence, as the API and the activity log write them.</summary>
 public static class IdentityEvidenceKinds
 {
     public const string DocumentPortrait = "documentPortrait";
     public const string Frame = "frame";
 
-    /// <summary>The code of <paramref name="kind"/>.</summary>
     public static string Code(IdentityEvidenceKind kind) => kind switch
     {
         IdentityEvidenceKind.DocumentPortrait => DocumentPortrait,
@@ -559,7 +511,6 @@ internal static class IdentityReviewEvidenceCleaner
             if (row.DeletedAt is not null)
                 continue;
 
-            // A key that is not one (never written by the store) has nothing to delete: the row is marked all the same.
             if (StorageKeys.IsValid(row.StorageKey))
                 await storage.DeleteAsync(StorageBucket.Private, row.StorageKey, ct);
 

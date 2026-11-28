@@ -5,10 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Documents;
 
-/// <summary>
-/// LT-09 (A7-14): the single PDF renderer lays out A4 pages, wraps and paginates without dropping text, keeps every
-/// Unicode character, draws the watermark on every page and embeds its own fonts.
-/// </summary>
 public class MigraDocPdfDocumentRendererTests
 {
     private readonly MigraDocPdfDocumentRenderer _sut = new();
@@ -117,7 +113,6 @@ public class MigraDocPdfDocumentRendererTests
 
         Assert.Equal(bold ? EmbeddedFontResolver.BoldFace : EmbeddedFontResolver.RegularFace, info.FaceName);
         var font = EmbeddedFontResolver.Instance.GetFont(info.FaceName);
-        // TrueType outline font (sfnt version 1.0), read from the assembly resources.
         Assert.Equal(new byte[] { 0, 1, 0, 0 }, font[..4]);
     }
 
@@ -144,7 +139,6 @@ public class MigraDocPdfDocumentRendererTests
     [Fact]
     public void Render_WordWiderThanTheLine_IsSplitInsideTheMargins()
     {
-        // MigraDoc breaks only at blanks: without splitting, these words would run past the right edge of the page.
         var longWord = string.Concat(Enumerable.Range(0, 30).Select(i => $"https://casazen.example/{i:D2}/"));
         const string iban = "IT60X0542811101000000123456";
         var content = new PdfDocumentContent("Link", [
@@ -162,7 +156,6 @@ public class MigraDocPdfDocumentRendererTests
         var from = words.IndexOf("Vedi") + 1;
         var to = words.IndexOf("fine");
         Assert.Equal(longWord, string.Concat(words.Skip(from).Take(to - from)));
-        // The eight cells are rendered line by line across the row: each piece of the IBAN appears once per cell.
         var pieces = words.Skip(words.IndexOf("C8") + 1).ToList();
         var distinct = pieces.Distinct(StringComparer.Ordinal).ToList();
         Assert.True(distinct.Count > 1, "the IBAN should not fit a 60 pt column on one line");
@@ -188,7 +181,6 @@ public class MigraDocPdfDocumentRendererTests
             blocks);
     }
 
-    /// <summary>Paragraphs of numbered words (w00001 …), about 6 characters each.</summary>
     private static IReadOnlyList<PdfBlock> LongParagraphs(int words) =>
         Enumerable.Range(1, words)
             .Chunk(90)

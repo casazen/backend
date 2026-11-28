@@ -53,21 +53,17 @@ public class PublicSiteSearchDayRulesTests
 
         var result = await search.SearchStaysAsync(org, Criteria(Arrival, 2));
 
-        // One read of the rules for the whole search, whatever the number of houses.
         Assert.Equal(1, rules.SiteReads);
         var cards = result.Items.ToDictionary(card => card.Name);
         Assert.Equal(3, cards.Count);
 
-        // The house with a day price: free, and its card prices the stay as the quote does: 150 and 100 for the two nights.
         Assert.True(cards["A con prezzo"].Availability.Available);
         Assert.Equal((12500L, 25000L), (cards["A con prezzo"].Price.PerNightCents, cards["A con prezzo"].Price.TotalCents));
-        // The house closed to arrival on the 14th: not free, with its reason, no total, and a first free date that is not the 14th.
         var refused = cards["B chiusa"];
         Assert.False(refused.Availability.Available);
         Assert.Equal(PublicStayReasons.ArrivalClosed, refused.Availability.Reason);
         Assert.Null(refused.Price.TotalCents);
         Assert.Equal(Arrival.AddDays(1), refused.Availability.FirstFreeCheckIn);
-        // The house with no rule is as it always was.
         Assert.True(cards["C senza regole"].Availability.Available);
         Assert.Equal(20000L, cards["C senza regole"].Price.TotalCents);
         Assert.Equal(2, result.AvailableCount);
@@ -76,8 +72,6 @@ public class PublicSiteSearchDayRulesTests
     [Fact]
     public async Task SearchStays_TheAdvanceOfARule_IsCountedOnTheClockOfEachHouse()
     {
-        // 11:01 UTC on the 9th of October: still the 9th in Rome, already the 10th in Auckland (13 hours ahead). A night with a minimum advance of one
-        // day is a day ahead of the house in Rome and is today for the one in Auckland.
         var now = new DateTimeOffset(2026, 10, 9, 11, 1, 0, TimeSpan.Zero);
         var arrival = new DateOnly(2026, 10, 10);
         await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"search-advance-clock-{Guid.NewGuid():N}").Options);
@@ -143,8 +137,6 @@ public class PublicSiteSearchDayRulesTests
             calendar.Days.Select(day => (day.AnyAvailable, day.MinNights)));
     }
 
-    // --- Helpers -----------------------------------------------------------------------------------------------
-
     private static OrgEntity NewOrg() => new()
     {
         Id = Guid.NewGuid(),
@@ -174,7 +166,6 @@ public class PublicSiteSearchDayRulesTests
     private static PublicStaysCriteria Criteria(DateOnly checkIn, int nights) => new(
         checkIn, checkIn.AddDays(nights), 2, 0, false, null, null, null, null, null, null, [], [], [], PublicSiteSearch.Recommended, 1, null, []);
 
-    // The real service, counting how many times the search asked it for the rules of the houses of a site.
     private sealed class CountingRules(IPropertyDayRuleService inner) : IPropertyDayRuleService
     {
         public int SiteReads { get; private set; }

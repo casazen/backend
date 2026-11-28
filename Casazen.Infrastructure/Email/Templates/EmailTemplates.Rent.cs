@@ -2,7 +2,6 @@ using System.Globalization;
 
 namespace Casazen.Infrastructure.Email.Templates;
 
-/// <summary>Recurring rent of a long-term lease (LT-06, #269).</summary>
 public static partial class EmailTemplates
 {
     public static partial class Names
@@ -42,7 +41,6 @@ public static partial class EmailTemplates
             .Muted("Rent_Personal")
             .Build("RentPaymentRequest_Subject", propertyName, AsDate(dueDate));
 
-    /// <summary>An online payment of an installment failed (e.g. a SEPA debit returned), to a tenant: a new link to pay again.</summary>
     public static EmailContent RentPaymentFailed(
         CultureInfo culture,
         string tenantName,
@@ -64,7 +62,6 @@ public static partial class EmailTemplates
             .Muted("Rent_Personal")
             .Build("RentPaymentFailed_Subject", propertyName);
 
-    /// <summary>An installment was paid online (Stripe confirmed it), to a landlord, with the link to the lease.</summary>
     public static EmailContent RentPaymentReceived(
         CultureInfo culture,
         string propertyName,
@@ -131,6 +128,5 @@ public static partial class EmailTemplates
         return builder.Build("RentReminder_Subject", propertyName, AsDate(dueDate));
     }
 
-    /// <summary>Date-only values are formatted as dates (midnight UTC of the day, no time zone conversion).</summary>
     private static DateTime AsDate(DateOnly day) => day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 }

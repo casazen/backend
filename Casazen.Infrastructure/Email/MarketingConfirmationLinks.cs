@@ -7,18 +7,8 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Email;
 
-/// <summary>
-/// A signed confirmation link, as <see cref="MarketingConfirmationLinks.Create"/> makes it.
-/// </summary>
-/// <param name="SignedQuery">
-/// <c>contactId</c>, <c>expiresAt</c> and <c>signature</c> as a query string, without the question mark: the part of the link that goes in the
-/// fragment of the page address (<see cref="PublicSiteLinks.MarketingConfirm"/>) and that the page posts unchanged to
-/// <c>POST api/public/marketing/confirm</c>.
-/// </param>
-/// <param name="ExpiresAtUtc">When the link stops working (UTC, whole seconds), for the e-mail to say it.</param>
 public sealed record MarketingConfirmationLink(string SignedQuery, DateTime ExpiresAtUtc);
 
-/// <summary>Outcome of the check of a confirmation link (<see cref="MarketingConfirmationLinks.Verify"/>), in the order it is checked.</summary>
 public enum MarketingConfirmationCheck
 {
     Valid,
@@ -42,19 +32,14 @@ public sealed class MarketingConfirmationLinks(
     IOptions<CrmOptions> options,
     TimeProvider timeProvider)
 {
-    /// <summary>The variable of the secret of the signed links (ADR-007-R20), read through the configuration.</summary>
     public const string SecretVariable = MarketingUnsubscribeLinks.SecretVariable;
 
-    /// <summary>Format of <c>expiresAt</c>, in UTC.</summary>
     public const string ExpiresAtFormat = MarketingUnsubscribeLinks.ExpiresAtFormat;
 
-    /// <summary>True when a link can be built and checked: the secret is configured.</summary>
     public bool IsConfigured => Secret is not null;
 
     private string? Secret => configuration[SecretVariable] is { } secret && !string.IsNullOrWhiteSpace(secret) ? secret : null;
 
-    /// <summary>The signed values for <paramref name="contactId"/>, valid for <c>Crm:ConfirmationLinkValidityHours</c> hours.</summary>
-    /// <exception cref="EmailConfigurationException">The secret of the signed links is missing.</exception>
     public MarketingConfirmationLink Create(Guid contactId)
     {
         if (contactId == Guid.Empty)
@@ -69,17 +54,12 @@ public sealed class MarketingConfirmationLinks(
             CrmOptions.MaxConfirmationLinkValidityHours);
         var expiry = timeProvider.GetUtcNow().UtcDateTime.AddHours(hours);
 
-        // The text carries whole seconds: the instant the e-mail shows is the one the signature covers.
         var expiresAtUtc = new DateTime(expiry.Ticks - (expiry.Ticks % TimeSpan.TicksPerSecond), DateTimeKind.Utc);
         var expiresAt = expiresAtUtc.ToString(ExpiresAtFormat, CultureInfo.InvariantCulture);
         var query = $"contactId={contactId:D}&expiresAt={Uri.EscapeDataString(expiresAt)}&signature={Sign(secret, contactId, expiresAt)}";
         return new MarketingConfirmationLink(query, expiresAtUtc);
     }
 
-    /// <summary>
-    /// Checks the values of a link, in the order the endpoints of the signed links answer them: the timestamp, the expiry, the secret, then the
-    /// signature, compared in constant time.
-    /// </summary>
     public MarketingConfirmationCheck Verify(Guid contactId, string expiresAt, string signature)
     {
         ArgumentNullException.ThrowIfNull(expiresAt);
@@ -108,7 +88,6 @@ public sealed class MarketingConfirmationLinks(
             : MarketingConfirmationCheck.InvalidSignature;
     }
 
-    /// <summary>HMAC-SHA256 of <c>contactId + "." + expiresAt</c> (UTF-8), hex lowercase.</summary>
     private static string Sign(string secret, Guid contactId, string expiresAt)
     {
         var hash = HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes($"{contactId:D}.{expiresAt}"));

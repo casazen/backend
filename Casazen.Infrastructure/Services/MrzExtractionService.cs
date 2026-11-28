@@ -27,30 +27,19 @@ public class MrzExtractionService(
     IOptions<MrzOcrOptions>? options = null,
     TimeProvider? timeProvider = null) : IMrzExtractionService
 {
-    // ICAO 9303 check digit weights for mod-10 weighted sum
     private static readonly int[] CheckDigitWeights = [7, 3, 1];
 
-    /// <summary>Confidence of a reading whose check digits all pass.</summary>
     internal const double CertainConfidence = 0.95;
 
-    /// <summary>Confidence of a reading with a failed check digit.</summary>
     internal const double DoubtfulConfidence = 0.40;
 
-    /// <summary>The turns tried, as EXIF orientation values (1 as it is, 6 a quarter clockwise, 8 a quarter counter-clockwise, 3 a half).</summary>
     private static readonly int[] TurnsLandscape = [1, 6, 8, 3];
 
     private static readonly int[] TurnsPortrait = [6, 8, 1, 3];
 
-    /// <summary>
-    /// Extracts data from the MRZ of an identity document image. Validates check digits per ICAO 9303.
-    /// For passports (TD-3): 2 lines of 44 characters each.
-    /// For ID cards (TD-1): 3 lines of 30 characters each.
-    /// For residence permits (TD-2): 2 lines of 36 characters each.
-    /// </summary>
     public async Task<MrzExtractionResult?> ExtractAsync(Stream imageStream, CancellationToken cancellationToken = default) =>
         (await ReadAsync(imageStream, cancellationToken)).Result;
 
-    /// <summary>The reading and the quality hints of the picture, also when nothing could be read.</summary>
     public async Task<MrzReading> ReadAsync(Stream imageStream, CancellationToken cancellationToken = default)
     {
         var settings = options?.Value ?? new MrzOcrOptions();
@@ -136,7 +125,6 @@ public class MrzExtractionService(
         }
         catch (Exception ex)
         {
-            // The type only: a message could carry what was being read.
             logger.LogError("MRZ reading failed ({ErrorType}); the guided manual entry applies", ex.GetType().Name);
             return new MrzReading(null, []);
         }
@@ -149,10 +137,8 @@ public class MrzExtractionService(
         }
     }
 
-    /// <summary>What reading one picture orientation found: the best interpretation, which format it is and what the picture raises.</summary>
     private sealed record Attempt(MrzExtractionResult Result, string Format, IReadOnlyList<string> Hints)
     {
-        /// <summary>Valid digits first, then the fields whose own digit passed, then the confidence.</summary>
         public double Rank =>
             (Result.CheckDigitsValid ? 100 : 0)
             + (Result.DocumentNumber is null ? 0 : 10)
@@ -161,7 +147,6 @@ public class MrzExtractionService(
             + Result.Confidence;
     }
 
-    /// <summary>Reads the candidate blocks of a location in order, the gray strips first and then the binarised ones; the first valid reading wins.</summary>
     private async Task<Attempt?> ReadGroupsAsync(MrzLocation location, DateOnly today, MrzOcrOptions settings, CancellationToken cancellationToken)
     {
         if (location.Groups.Count == 0)
@@ -205,7 +190,6 @@ public class MrzExtractionService(
             }
         }
 
-        // A block that was found but could not be read: the hints of the best block say why (a reflection, a shaken hand).
         return best;
     }
 
@@ -224,7 +208,6 @@ public class MrzExtractionService(
         return hints;
     }
 
-    /// <summary>The characters of one OCR-B line: upper case, no spaces, nothing outside A-Z, 0-9 and the filler; the longest part when the OCR returned several lines.</summary>
     internal static string CleanLine(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
@@ -249,7 +232,6 @@ public class MrzExtractionService(
         return best;
     }
 
-    /// <summary>Which format the cleaned lines of a block are, and what they say; null when they are no MRZ at all.</summary>
     internal static (MrzExtractionResult Result, string Format)? Interpret(IReadOnlyList<string> lines, DateOnly today)
     {
         var candidates = new List<(MrzExtractionResult Result, string Format)>();
@@ -258,7 +240,6 @@ public class MrzExtractionService(
             if (FitAll(lines, 30) is { } cardLines && ParseTd1Mrz(cardLines[0], cardLines[1], cardLines[2], today) is { } card)
                 candidates.Add((card, "TD1"));
 
-            // A block of three lines can be an MRZ of two with one line of other text above or below it.
             AddTwoLines(candidates, lines[1], lines[2], today);
             AddTwoLines(candidates, lines[0], lines[1], today);
         }
@@ -333,10 +314,6 @@ public class MrzExtractionService(
         return calculatedCheckDigit == providedCheckDigit;
     }
 
-    /// <summary>
-    /// Converts a character to its ICAO 9303 numeric value.
-    /// Digits 0-9 = 0-9, Letters A-Z = 10-35, filler &lt; = 0.
-    /// </summary>
     private static int CharToValue(char c)
     {
         return c switch
@@ -348,14 +325,6 @@ public class MrzExtractionService(
         };
     }
 
-    /// <summary>
-    /// Parses a date from MRZ format (YYMMDD) to DateTime. The century is not in the MRZ: a date of birth is the latest year of that ending
-    /// that is not in the future; an expiry date is the year of that ending from 2000 to 30 years ahead, and 19xx past it (a document that
-    /// expired long ago). Null when the six characters are not a real date.
-    /// </summary>
-    /// <param name="yymmdd">Six digits.</param>
-    /// <param name="isExpiry">True for a date of expiry, false for a date of birth.</param>
-    /// <param name="today">Today in Europe/Rome; read from the system clock when not given.</param>
     internal static DateTime? ParseMrzDate(string yymmdd, bool isExpiry = false, DateOnly? today = null)
     {
         if (string.IsNullOrWhiteSpace(yymmdd) || yymmdd.Length != 6 || !yymmdd.All(char.IsAsciiDigit))
@@ -380,11 +349,6 @@ public class MrzExtractionService(
         }
     }
 
-    /// <summary>
-    /// Parses TD-3 (passport) MRZ format: 2 lines of 44 characters.
-    /// Line 1: P&lt;ITA&lt;&lt;SURNAME&lt;&lt;GIVENNAMES (type, issuing state, name)
-    /// Line 2: document number, nationality, DOB, sex, expiration, personal number (each with its check digit) and the composite digit.
-    /// </summary>
     internal static MrzExtractionResult? ParseTd3Mrz(string line1, string line2, DateOnly? today = null)
     {
         if (line1.Length != 44 || line2.Length != 44)
@@ -411,11 +375,6 @@ public class MrzExtractionService(
             today ?? TimeProvider.System.TodayInRomeAsDateOnly());
     }
 
-    /// <summary>
-    /// Parses TD-2 (residence permit and some ID cards) MRZ format: 2 lines of 36 characters.
-    /// Line 1: document code, issuing state, name. Line 2: document number, nationality, DOB, sex, expiration, optional data and the composite digit.
-    /// A document number longer than nine characters continues in the optional data (ICAO 9303 part 6).
-    /// </summary>
     internal static MrzExtractionResult? ParseTd2Mrz(string line1, string line2, DateOnly? today = null)
     {
         if (line1.Length != 36 || line2.Length != 36)
@@ -431,7 +390,6 @@ public class MrzExtractionService(
         var optional = line2[28..35];
         var compositeCheck = Numeric(line2[35..36], ref corrected)[0];
 
-        // The composite digit covers the fields as they are written, before a long document number is joined.
         var composite = document + documentCheck + birth + birthCheck + expiry + expiryCheck + optional;
         ResolveLongDocumentNumber(ref document, ref documentCheck, optional);
 
@@ -441,10 +399,6 @@ public class MrzExtractionService(
             today ?? TimeProvider.System.TodayInRomeAsDateOnly());
     }
 
-    /// <summary>
-    /// Parses TD-1 (ID card) MRZ format: 3 lines of 30 characters. Line 1: document code, issuing state, document number with its check digit,
-    /// optional data. Line 2: DOB, sex, expiration, nationality, optional data, composite digit. Line 3: the name.
-    /// </summary>
     internal static MrzExtractionResult? ParseTd1Mrz(string line1, string line2, string line3, DateOnly? today = null)
     {
         if (line1.Length != 30 || line2.Length != 30 || line3.Length != 30)
@@ -461,7 +415,6 @@ public class MrzExtractionService(
         var optionalSecond = line2[18..29];
         var compositeCheck = Numeric(line2[29..30], ref corrected)[0];
 
-        // The composite digit covers the fields as they are written, before a long document number is joined.
         var composite = document + documentCheck + optionalFirst + birth + birthCheck + expiry + expiryCheck + optionalSecond;
         ResolveLongDocumentNumber(ref document, ref documentCheck, optionalFirst);
 
@@ -471,10 +424,6 @@ public class MrzExtractionService(
             today ?? TimeProvider.System.TodayInRomeAsDateOnly());
     }
 
-    /// <summary>
-    /// A document number longer than nine characters is written in the first nine, a filler in the place of its check digit, and the rest
-    /// followed by the check digit in the optional data: join them. Nothing changes for a number that fits.
-    /// </summary>
     private static void ResolveLongDocumentNumber(ref string document, ref char documentCheck, string optional)
     {
         if (documentCheck != '<')
@@ -488,7 +437,6 @@ public class MrzExtractionService(
         documentCheck = optional[end - 1];
     }
 
-    /// <summary>Builds the result of any format from the fields and the outcome of every digit; null when no field of the document has a valid digit.</summary>
     private static MrzExtractionResult? Build(
         string formatDocumentType,
         string mrzType,
@@ -538,7 +486,6 @@ public class MrzExtractionService(
         return result;
     }
 
-    /// <summary>Surname before the double filler, given names after it; single fillers are spaces; digits the OCR took for letters are corrected.</summary>
     private static (string? Surname, string? GivenNames) ParseNames(string nameField)
     {
         var corrected = false;
@@ -562,7 +509,6 @@ public class MrzExtractionService(
                 _ => byFormat,
             };
 
-    /// <summary>A numeric field read by an OCR-B model: the letters it confuses with digits go back to digits (O, I, S, B, Z for 0, 1, 5, 8, 2).</summary>
     internal static string Numeric(string value, ref bool corrected)
     {
         var chars = value.ToCharArray();
@@ -587,7 +533,6 @@ public class MrzExtractionService(
         return new string(chars);
     }
 
-    /// <summary>An alphabetic field (a country code, a name): the digits an OCR-B model confuses with letters go back to letters (0, 1, 5, 8, 2 for O, I, S, B, Z).</summary>
     internal static string Letters(string value, ref bool corrected)
     {
         var chars = value.ToCharArray();

@@ -14,7 +14,6 @@ public sealed record SignupAttributionInput(
     string? LandingPath,
     string? ReferrerHost);
 
-/// <summary>A stored attribution, for the admin report.</summary>
 public sealed record SignupAttributionRecord(
     Guid OrgId,
     DateTime RecordedAt,
@@ -28,13 +27,10 @@ public sealed record SignupAttributionRecord(
     string? LandingPath,
     string? ReferrerHost);
 
-/// <summary>Where host signups come from (SE-03, A8-03): UTM, comune of the SEO page, landing path, referrer host.</summary>
 public interface ISignupAttributionService
 {
-    /// <summary>Code of the 422 when the caller has not completed the onboarding with an org.</summary>
     public const string OnboardingRequiredCode = "signup_attribution_onboarding_required";
 
-    /// <summary>Code of the 422 when the comune is well-formed but not one CasaZen knows (nothing is stored).</summary>
     public const string UnknownComuneCode = "signup_attribution_unknown_comune";
 
     /// <summary>
@@ -47,7 +43,6 @@ public interface ISignupAttributionService
     /// </exception>
     Task<bool> RecordAsync(string userId, SignupAttributionInput input, CancellationToken cancellationToken = default);
 
-    /// <summary>Attributions of every org, newest first (platform admin report).</summary>
     Task<(IReadOnlyList<SignupAttributionRecord> Items, int TotalCount)> ListAsync(
         DateTime? recordedFromUtc,
         string? comuneCode,

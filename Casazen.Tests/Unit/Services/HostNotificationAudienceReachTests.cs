@@ -41,7 +41,6 @@ public class HostNotificationAudienceReachTests : IDisposable
 
     private static string Id(string name) => $"auth0|{name}";
 
-    /// <summary>One person of the org: a user and, for a member of the team, its row.</summary>
     private void AddPerson(
         string name,
         OrgRole? role,
@@ -155,8 +154,6 @@ public class HostNotificationAudienceReachTests : IDisposable
         return told.Order(StringComparer.Ordinal).ToArray();
     }
 
-    // --- The audience -----------------------------------------------------------------------------------
-
     [Fact]
     public async Task UsersToTell_ACollaboratorWithEveryProperty_InCharge_IsTold()
     {
@@ -170,7 +167,6 @@ public class HostNotificationAudienceReachTests : IDisposable
     {
         await SeedAsync();
 
-        // The name is stale: the access was taken away and the name is still there. Only the administrators hear.
         Assert.Equal(["admin", "owner"], await ToldAsync("collab-none"));
     }
 
@@ -205,7 +201,6 @@ public class HostNotificationAudienceReachTests : IDisposable
     {
         await SeedAsync();
 
-        // A stale name, and a name that is nobody's.
         Assert.Equal(["admin", "owner"], await ToldAsync("collab-none"));
         Assert.Equal(["admin", "owner"], await ToldAsync("nobody-here"));
     }
@@ -215,11 +210,9 @@ public class HostNotificationAudienceReachTests : IDisposable
     {
         await SeedAsync();
 
-        // A manager, a collaborator given the property and a collaborator with every property reach it.
         Assert.Equal(["admin", "manager", "owner"], await ToldAsync(null, "manager"));
         Assert.Equal(["admin", "collab-granted", "owner"], await ToldAsync(null, "collab-granted"));
         Assert.Equal(["admin", "collab-all", "owner"], await ToldAsync(null, "collab-all"));
-        // A collaborator who made the property (it was a manager before it was made a collaborator) and was not given it does not.
         Assert.Equal(["admin", "owner"], await ToldAsync(null, "collab-none"));
     }
 
@@ -236,7 +229,6 @@ public class HostNotificationAudienceReachTests : IDisposable
     {
         await SeedAsync();
 
-        // A person who is in no team can only have been put in charge by hand: nobody but the administrators is told.
         Assert.Equal(["admin", "owner"], await ToldAsync("legacy", "owner"));
     }
 
@@ -263,8 +255,6 @@ public class HostNotificationAudienceReachTests : IDisposable
 
         Assert.Equal(["admin", "owner"], await ToldAsync("manager-away"));
     }
-
-    // --- The area of the collaborator (AM-02c) -----------------------------------------------------------
 
     private async Task WorksInAsync(string name, params string[] contexts)
     {
@@ -304,11 +294,8 @@ public class HostNotificationAudienceReachTests : IDisposable
             _ => [],
         };
         await WorksInAsync("collab-granted", contexts);
-        // The property changed mode after it was given to the collaborator (the daily job of PM-02), or it was given in the other area.
         await SetModeAsync(propertyMode);
 
-        // The grant is still there: what decides is the area, read on the live property. With no area known nothing narrows it
-        // (OrgRoleCatalog.SingleModeOf, as the lists do).
         var expected = told ? new[] { "admin", "collab-granted", "owner" } : new[] { "admin", "owner" };
         Assert.Equal(expected, await ToldAsync("collab-granted"));
     }
@@ -317,7 +304,6 @@ public class HostNotificationAudienceReachTests : IDisposable
     public async Task UsersToTell_TheAreaRule_IsTheOneOfACollaboratorSoloAlcuniOnly()
     {
         await SeedAsync();
-        // A manager and an accountant who work in one area only still reach every property of the org by their role.
         await WorksInAsync("manager", "short-rent");
         await WorksInAsync("accountant", "short-rent");
         await WorksInAsync("collab-all", "short-rent");
@@ -327,8 +313,6 @@ public class HostNotificationAudienceReachTests : IDisposable
         Assert.Equal(["accountant", "admin", "owner"], await ToldAsync("accountant"));
         Assert.Equal(["admin", "collab-all", "owner"], await ToldAsync("collab-all"));
     }
-
-    // --- The emails -------------------------------------------------------------------------------------
 
     private BookingNotifier Notifier() =>
         new(_db, _emails, EmailTestHelpers.Links(), _pushes, NullLogger<BookingNotifier>.Instance);
@@ -352,7 +336,6 @@ public class HostNotificationAudienceReachTests : IDisposable
 
         var recipients = await HostRecipientsAsync();
 
-        // The contact of the org, the owner and the administrator: not the collaborator.
         Assert.Equal(["admin@example.com", "contatto@example.com", "owner@example.com"], recipients);
         Assert.DoesNotContain(_emails.Snapshot(), e => e.To == "collab-none@example.com");
     }
@@ -381,8 +364,6 @@ public class HostNotificationAudienceReachTests : IDisposable
 
         Assert.DoesNotContain("collab-other@example.com", recipients);
     }
-
-    // --- The push ---------------------------------------------------------------------------------------
 
     private PushDeliveryJob Job() => new(
         _db,
@@ -433,19 +414,15 @@ public class HostNotificationAudienceReachTests : IDisposable
         Assert.Equal(["ExponentPushToken[admin]", "ExponentPushToken[collab-granted]", "ExponentPushToken[owner]"], tokens);
     }
 
-    // --- The whole journey ------------------------------------------------------------------------------
-
     [Fact]
     public async Task Journey_TheOwnerTakesThePropertyAway_ThePersonInChargeIsNoLongerToldByEitherChannel()
     {
         await SeedAsync();
         var access = new AccessWriter(_db);
-        // The collaborator is in charge of the property it was given.
         await access.SetResponsibleAsync(_orgId, _propertyId, "collab-granted");
         Assert.Contains("collab-granted@example.com", await HostRecipientsAsync());
         Assert.Contains("ExponentPushToken[collab-granted]", await PushedTokensAsync(PushAudience.PropertyHosts(_propertyId), "key-before"));
 
-        // The owner takes the property away.
         await access.NarrowAsync(_orgId, "collab-granted", _otherPropertyId);
 
         Assert.DoesNotContain("collab-granted@example.com", await HostRecipientsAsync());
@@ -453,7 +430,6 @@ public class HostNotificationAudienceReachTests : IDisposable
         Assert.Null((await _db.Properties.AsNoTracking().SingleAsync(p => p.Id == _propertyId)).ResponsibleUserId);
     }
 
-    /// <summary>The access service over the same context as the rest of the test, as one instance of the API would run it.</summary>
     private sealed class AccessWriter(AppDbContext db)
     {
         private OrgPropertyAccessService Access() => new(

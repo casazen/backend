@@ -6,13 +6,10 @@ using Casazen.Core.Exceptions;
 
 namespace Casazen.Core.SiteProfile;
 
-/// <summary>Stable <c>code</c> values of the site profile (422): part of the API contract, never rename one. Each carries <c>field</c> in the problem.</summary>
 public static class SitePropertyProfileErrorCodes
 {
-    /// <summary>A text is longer than the field allows.</summary>
     public const string TextTooLong = "property_site_profile_text_too_long";
 
-    /// <summary>A text has an English part and no Italian one: Italian is always written.</summary>
     public const string ItalianRequired = "property_site_profile_italian_required";
 
     public const string TooManyHighlights = "property_site_profile_too_many_highlights";
@@ -31,30 +28,19 @@ public static class SitePropertyProfileErrorCodes
 
     public const string EnergyIndexInvalid = "property_site_profile_energy_index_invalid";
 
-    /// <summary>An energy index without the class it belongs to.</summary>
     public const string EnergyIndexWithoutClass = "property_site_profile_energy_index_without_class";
 
-    /// <summary>The latest arrival time is not after the earliest one.</summary>
     public const string CheckInWindowInvalid = "property_site_profile_check_in_window_invalid";
 
     public const string VideoUrlInvalid = "property_site_profile_video_url_invalid";
 
     public const string TourUrlInvalid = "property_site_profile_tour_url_invalid";
 
-    /// <summary>A text of the listing is written in a language that is not one of <see cref="ListingLanguages.All"/> (NF-31).</summary>
     public const string LanguageUnknown = "property_site_profile_language_unknown";
 }
 
-/// <summary>
-/// A text as the host form sends it: both parts optional until the rules have looked at them. <paramref name="Others"/> is the same text in the
-/// other languages of the listing (NF-31): <c>null</c> = not sent, and the stored ones are kept; an empty map removes them.
-/// </summary>
 public sealed record LocalizedTextInput(string? It, string? En, IReadOnlyDictionary<string, string?>? Others = null);
 
-/// <summary>
-/// The texts of a listing in one language as the host form sends them (NF-31): a field that is blank is not written. For Italian only the
-/// transport counts (the other Italian texts are in the property and in the profile texts).
-/// </summary>
 public sealed record ListingTextsInput(
     string? Title = null,
     string? Description = null,
@@ -77,7 +63,6 @@ public sealed record ListingTextsInput(
     };
 }
 
-/// <summary>A highlight as the host form sends it.</summary>
 public sealed record SiteHighlightInput(string? Icon, LocalizedTextInput? Title, LocalizedTextInput? Text);
 
 /// <summary>
@@ -107,7 +92,6 @@ public sealed record SitePropertyProfileInput(
     IReadOnlyList<string>? Tags,
     IReadOnlyDictionary<string, ListingTextsInput>? Translations = null);
 
-/// <summary>The profile after the rules: what is stored in the columns of the property.</summary>
 public sealed record SitePropertyProfileValues(
     int? FloorLevel,
     int? RenovatedYear,
@@ -157,10 +141,6 @@ public sealed record SitePropertyProfileView(
     IReadOnlyDictionary<string, TextOrigin> Origins,
     DateTime UpdatedAt);
 
-/// <summary>
-/// The rules of the site profile (DB-11a): what is accepted, how it is stored, and what the system adds. One place for the host form, the
-/// service, the public page and the tests. Everything here is optional and nothing is read to decide a booking, a price or a refund.
-/// </summary>
 public static class SitePropertyProfileRules
 {
     /// <summary>
@@ -243,11 +223,6 @@ public static class SitePropertyProfileRules
             document);
     }
 
-    /// <summary>
-    /// The labels of the site a house has from its own data, in the order of <see cref="SitePropertyProfileLimits.Tags"/>: a pool gives
-    /// «piscina», a terrace «terrazza», a place that welcomes pets «pet», the coast (or a beach) «mare», a historic centre «centro»,
-    /// the countryside «campagna». «Vista mare» comes only from the host. The host cannot remove one of these, only change the data.
-    /// </summary>
     public static IReadOnlyList<string> DerivedTags(IEnumerable<PropertyAmenity> amenities, PropertyAreaKind? areaKind, PetsPolicy? pets)
     {
         ArgumentNullException.ThrowIfNull(amenities);
@@ -270,7 +245,6 @@ public static class SitePropertyProfileRules
         return [.. SitePropertyProfileLimits.Tags.Where(derived.Contains)];
     }
 
-    /// <summary>The labels a house shows: the ones the host chose and the ones its data give, each once, in the order of the vocabulary.</summary>
     public static IReadOnlyList<string> EffectiveTags(IEnumerable<string> chosen, IEnumerable<string> derived)
     {
         ArgumentNullException.ThrowIfNull(chosen);
@@ -279,7 +253,6 @@ public static class SitePropertyProfileRules
         return [.. SitePropertyProfileLimits.Tags.Where(all.Contains)];
     }
 
-    /// <summary>The profile of a property as the host editor reads it.</summary>
     public static SitePropertyProfileView ToView(Property property)
     {
         ArgumentNullException.ThrowIfNull(property);
@@ -363,7 +336,6 @@ public static class SitePropertyProfileRules
         };
     }
 
-    /// <summary>Writes the normalized profile into the columns of the property; the caller saves.</summary>
     public static void Apply(Property property, SitePropertyProfileValues values)
     {
         ArgumentNullException.ThrowIfNull(property);
@@ -404,7 +376,6 @@ public static class SitePropertyProfileRules
                 SitePropertyProfileLimits.MaxEnergyIndex);
         }
 
-        // An index states the class's performance: alone it says nothing a guest can compare, and it would hide that the class is missing.
         if (energyClass is null)
             throw Error(SitePropertyProfileErrorCodes.EnergyIndexWithoutClass, "PropertySiteProfileEnergyIndexWithoutClass", "energyIndex");
 
@@ -420,7 +391,6 @@ public static class SitePropertyProfileRules
             var text = NormalizeText(item?.Text, SitePropertyProfileLimits.HighlightTextMaxLength, "highlights");
             var icon = item?.Icon?.Trim().ToLowerInvariant();
 
-            // A row of the form the host left empty is not a highlight.
             if (title is null && text is null && string.IsNullOrEmpty(icon))
                 continue;
 
@@ -477,14 +447,9 @@ public static class SitePropertyProfileRules
             chosen.Add(tag);
         }
 
-        // The order of the vocabulary, so the same choice is always stored the same way.
         return [.. SitePropertyProfileLimits.Tags.Where(chosen.Contains)];
     }
 
-    /// <summary>
-    /// A text as stored (<see cref="CleanText"/>), Italian always present, within <paramref name="maxLength"/>; <c>null</c> when the host wrote nothing.
-    /// </summary>
-    /// <exception cref="DomainRuleException">422 <see cref="SitePropertyProfileErrorCodes.ItalianRequired"/> or <see cref="SitePropertyProfileErrorCodes.TextTooLong"/> with the <paramref name="field"/>.</exception>
     public static LocalizedText? NormalizeText(
         LocalizedTextInput? input,
         int maxLength,
@@ -505,14 +470,12 @@ public static class SitePropertyProfileRules
         if (italian.Length > maxLength || (english?.Length ?? 0) > maxLength)
             throw Error(SitePropertyProfileErrorCodes.TextTooLong, "PropertySiteProfileTextTooLong", field, maxLength);
 
-        // The other languages the input does not mention are the ones stored: a client that does not know them cannot erase them (NF-31).
         if (allowOthers && input?.Others is null)
             others = previous?.Others;
 
         return new LocalizedText(italian, english) { Others = others };
     }
 
-    // The same text in the other languages of the listing: each a language of ListingLanguages.Others, within the same length as the Italian one.
     private static IReadOnlyDictionary<string, string>? NormalizeOthers(
         IReadOnlyDictionary<string, string?> sent,
         int maxLength,
@@ -539,8 +502,6 @@ public static class SitePropertyProfileRules
         return others.Count == 0 ? null : others;
     }
 
-    // The translations of a save by a person: the ones sent replace the stored ones (a language or a field left out is cleared), the origin of
-    // each text follows from the one stored before (ListingTextOrigins.WhenPersonSaves). Left out altogether (null), nothing changes.
     private static (IReadOnlyDictionary<string, ListingTexts> Translations, IReadOnlyDictionary<string, TextOrigin> Origins) NormalizeTranslations(
         IReadOnlyDictionary<string, ListingTextsInput>? input,
         SitePropertyProfileDocument? previous)
@@ -554,7 +515,6 @@ public static class SitePropertyProfileRules
             var language = ListingLanguages.Normalize(rawCode)
                 ?? throw Error(SitePropertyProfileErrorCodes.LanguageUnknown, "PropertySiteProfileLanguageUnknown", "translations");
 
-            // The same language sent twice (IT and it) is one language: the fields of the later one win.
             var merged = translations.GetValueOrDefault(language) ?? new ListingTexts();
             var written = NormalizeListingTexts(texts, language);
             foreach (var field in ListingTextResolver.Fields)
@@ -584,8 +544,6 @@ public static class SitePropertyProfileRules
         return (translations, origins);
     }
 
-    // The texts of one language, cleaned and within their limits. Italian keeps only the transport: its other texts are the columns of the
-    // property and the profile texts, and a second copy here would be a second store.
     private static ListingTexts NormalizeListingTexts(ListingTextsInput? texts, string language)
     {
         var result = new ListingTexts();
@@ -614,7 +572,6 @@ public static class SitePropertyProfileRules
         return result;
     }
 
-    /// <summary>The most characters a text of <paramref name="field"/> can have, in any language: the limit of the headline, of the description, or <see cref="SitePropertyProfileLimits.ListingTextMaxLength"/>.</summary>
     public static int ListingTextMaxLength(ListingTextField field) => field switch
     {
         ListingTextField.Title => Casazen.Core.Services.ListingTextLimits.TitleMaxLength,
@@ -622,10 +579,6 @@ public static class SitePropertyProfileRules
         _ => SitePropertyProfileLimits.ListingTextMaxLength,
     };
 
-    /// <summary>
-    /// A text as stored: no control characters, one space where there were several (and, in a one-line text, where there were line
-    /// breaks), trimmed; <c>null</c> when nothing is left. A multi-line text keeps its line breaks, at most one blank line in a row.
-    /// </summary>
     public static string? CleanText(string? value, bool multiline = false)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -647,7 +600,6 @@ public static class SitePropertyProfileRules
 
             if (char.IsWhiteSpace(c) || char.IsControl(c))
             {
-                // A tab or a no-break space is a space; any other control character is dropped.
                 if (char.IsWhiteSpace(c))
                     pendingSpace = true;
 

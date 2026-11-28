@@ -64,8 +64,6 @@ public class HostResourceArchitectureTests
     [Fact]
     public void ThePaymentActionsOfTheInterventions_BuildTheirResourceFromTheRequestAndItsProperty()
     {
-        // The three actions that move money (confirm the amount, pay online, mark paid), short-rent and long-rent: each one builds
-        // the resource from the request it read inside the caller's scope, with the id of the property of that request.
         foreach (var controller in new[] { "ServiceRequestsController", "LongRentServiceRequestsController" })
         {
             var hits = Scan("new HostResource(existing.OrgId")
@@ -101,7 +99,6 @@ public class HostResourceArchitectureTests
                     if (at < 0)
                         continue;
 
-                    // The call may span lines: read until the parenthesis that closes it.
                     var text = code[at..];
                     for (var next = i + 1; next < lines.Length && !Closed(text); next++)
                         text += " " + StripComment(lines[next]).Trim();
@@ -114,7 +111,6 @@ public class HostResourceArchitectureTests
         return hits;
     }
 
-    /// <summary>The top-level arguments of the call that starts <paramref name="text"/> (<c>new HostResource(a, b(c, d), e)</c> has three).</summary>
     private static List<string> ArgumentsOf(string text, string fallback)
     {
         var open = text.IndexOf('(', StringComparison.Ordinal);

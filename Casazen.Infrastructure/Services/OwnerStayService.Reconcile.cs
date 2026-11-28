@@ -8,20 +8,12 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// The background work of the owner stays (E07/F07/US01/T01): the automatic approvals, the blocks to give back, the sync results and the «To do» of
-/// the agency. Run by <c>OwnerPortalOperationsJob</c>, outside any request (no tenant filter), every few minutes and right after an owner request or
-/// withdrawal.
-/// </summary>
 public sealed partial class OwnerStayService
 {
-    /// <summary>The most stays of each kind one run looks at; what is left waits for the next run.</summary>
     private const int ReconcileBatch = 200;
 
-    /// <summary>The line of a «To do» about a stay: a code, never a name or a date.</summary>
     public const string ReviewReason = "owner_stay_to_review";
 
-    /// <summary>The line of a «To do» about a block the channel manager refused.</summary>
     public const string SyncFailedReason = "owner_stay_sync_failed";
 
     public async Task<OwnerStayReconcileResult> ReconcileAsync(CancellationToken cancellationToken = default)
@@ -32,8 +24,6 @@ public sealed partial class OwnerStayService
         var reviewType = nameof(ActivityType.OwnerStayToReview);
         var ids = new List<Guid>();
 
-        // The requests still to work on, oldest first: the ones to approve automatically and the ones whose «To do» was never raised. A request already on
-        // the list of the agency waits for a person (who, closing its «To do» by hand, does not get it back), so it never fills the batch.
         ids.AddRange(await stays
             .Where(s => s.Status == OwnerStayStatus.Requested && (s.AutoApprove || !todos.Any(a => a.EntityId == s.Id && a.ActivityType == reviewType)))
             .OrderBy(s => s.CreatedAt)
@@ -41,7 +31,6 @@ public sealed partial class OwnerStayService
             .Take(ReconcileBatch)
             .ToListAsync(cancellationToken));
 
-        // The approved stays that have not ended: the channel manager may still accept, refuse or confirm their block. The least recently checked first.
         ids.AddRange(await stays
             .Where(s => s.Status == OwnerStayStatus.Approved && s.EndDate > today)
             .OrderBy(s => s.SyncCheckedAt)
@@ -49,7 +38,6 @@ public sealed partial class OwnerStayService
             .Take(ReconcileBatch)
             .ToListAsync(cancellationToken));
 
-        // The withdrawn or cancelled stays whose block is still to give back, or whose release is not settled.
         ids.AddRange(await stays
             .Where(s => s.Status == OwnerStayStatus.Cancelled && s.CalendarBlockId != null
                         && (s.BlockReleasedAt == null || s.ReleaseSyncState == OwnerStaySyncState.Pending || s.ReleaseSyncState == OwnerStaySyncState.Failed))
@@ -73,8 +61,6 @@ public sealed partial class OwnerStayService
             .Take(ReconcileBatch)
             .ToListAsync(cancellationToken));
 
-        // The «To do» still open that no longer hold (the stay was decided, withdrawn or is over): closed. Only those, the same rules as SyncTodosAsync,
-        // so the ones that still hold never fill the batch.
         var waiting = stays.Where(s => s.Status == OwnerStayStatus.Requested && !s.AutoApprove).Select(s => s.Id);
         var failingIds = failing.Select(s => s.Id);
         var live = stays.Select(s => s.Id);
@@ -96,7 +82,6 @@ public sealed partial class OwnerStayService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // One stay never stops the others; the failure is not swallowed: the run ends in error once the rest is done, and the next run tries again.
                 logger.LogError(ex, "Owner stay {StayId}: the background work failed", id);
                 firstFailure ??= ex;
                 db.ChangeTracker.Clear();
@@ -111,13 +96,8 @@ public sealed partial class OwnerStayService
 
     public Task ProcessAsync(Guid stayId, CancellationToken cancellationToken = default) => ProcessCoreAsync(stayId, new Counter(), cancellationToken);
 
-    /// <summary>
-    /// The work of one stay, under the lock of its property: the automatic approval, the block to give back, the sync result (a line of the activity log at
-    /// every change). Then, outside the lock, its «To do».
-    /// </summary>
     private async Task ProcessCoreAsync(Guid stayId, Counter counter, CancellationToken cancellationToken)
     {
-        // A stay of a deleted property is left as it is: its calendar is gone, and so is the list of the agency it would show on.
         var propertyId = await LiveStays().AsNoTracking().Where(s => s.Id == stayId).Select(s => (Guid?)s.PropertyId).FirstOrDefaultAsync(cancellationToken);
         if (propertyId is null)
             return;
@@ -143,14 +123,9 @@ public sealed partial class OwnerStayService
                 await transaction.CommitAsync(cancellationToken);
         }
 
-        // The «To do» are written by their own service, which saves on its own: outside the lock and the transaction of the stay.
         await SyncTodosAsync(stay, counter, cancellationToken);
     }
 
-    /// <summary>
-    /// Approves a request whose rule asks for no person. Dates taken meanwhile, an arrival that passed or an owner that does not hold the property any more
-    /// are expected answers: the request stays, a person of the agency decides (its «To do»), and the automatic approval is not tried again.
-    /// </summary>
     private async Task AutoApproveAsync(OwnerStayRequest stay, Counter counter, CancellationToken cancellationToken)
     {
         try
@@ -166,7 +141,6 @@ public sealed partial class OwnerStayService
         }
     }
 
-    /// <summary>Compares the block (or the release) of the stay with its calendar change and records a change of its state, with its line of the activity log.</summary>
     private async Task RecordSyncAsync(OwnerStayRequest stay, Counter counter, CancellationToken cancellationToken)
     {
         if (stay.CalendarBlockId is null)
@@ -182,7 +156,6 @@ public sealed partial class OwnerStayService
                 stay.SyncState = live;
                 stay.SyncErrorCode = live == OwnerStaySyncState.Failed ? ErrorOf(stay.BlockChangeProcessId, processes) : null;
 
-                // The moment the block failed: the «To do» of that failure is one created from then on (SyncTodosAsync).
                 if (live == OwnerStaySyncState.Failed)
                     stay.UpdatedAt = now;
                 Audit(stay, null, live switch
@@ -241,7 +214,6 @@ public sealed partial class OwnerStayService
             counter.TodosRaised++;
         }
 
-        // A block refused, then its release refused before the first «To do» was closed: still one item on the list.
         if (failed
             && !open.Any(item => item.ActivityType == nameof(ActivityType.OwnerStaySyncFailed))
             && !await WasRaisedSinceAsync(stay, ActivityType.OwnerStaySyncFailed, stay.UpdatedAt, cancellationToken))
@@ -250,7 +222,6 @@ public sealed partial class OwnerStayService
             counter.TodosRaised++;
         }
 
-        // Every open item about the stay that no longer holds is closed by the system (the closed rows stay for the audit).
         foreach (var item in open)
         {
             var stillHolds = item.ActivityType == nameof(ActivityType.OwnerStayToReview) ? toReview : failed;
@@ -262,15 +233,12 @@ public sealed partial class OwnerStayService
         }
     }
 
-    /// <summary>The stays of the properties that are not deleted (the soft-delete filter of the properties stays on).</summary>
     private IQueryable<OwnerStayRequest> LiveStays()
     {
-        // Built outside the predicate: an expression tree cannot hold the list of the filters to ignore.
         var properties = db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]);
         return Stays().Where(s => properties.Any(p => p.Id == s.PropertyId));
     }
 
-    /// <summary>The «To do» about the owner stays, of every org: the background work runs outside any request.</summary>
     private IQueryable<InternalActivity> StayTodos() =>
         db.InternalActivities
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -292,7 +260,6 @@ public sealed partial class OwnerStayService
             },
             cancellationToken);
 
-    /// <summary>An item of <paramref name="type"/> about the stay was raised already, open or closed.</summary>
     private Task<bool> WasRaisedAsync(OwnerStayRequest stay, ActivityType type, CancellationToken cancellationToken)
     {
         var typeName = type.ToString();
@@ -323,7 +290,6 @@ public sealed partial class OwnerStayService
         _ => ex.GetType().Name,
     };
 
-    /// <summary>What one run did, counted as it goes.</summary>
     private sealed class Counter
     {
         public int Approved { get; set; }

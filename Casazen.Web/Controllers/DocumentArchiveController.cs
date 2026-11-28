@@ -41,16 +41,12 @@ public class DocumentArchiveController(
     IHostScopeResolver hostScopeResolver,
     ILogger<DocumentArchiveController> logger) : ControllerBase
 {
-    /// <summary>Code of a <c>type</c> that is not the key of a kind of document.</summary>
     public const string InvalidTypeCode = "archive_invalid_type";
 
-    /// <summary>Code of days that are out of order or out of the supported years.</summary>
     public const string InvalidPeriodCode = "archive_invalid_period";
 
-    /// <summary>Code of a <c>page</c> below 1 or a <c>pageSize</c> outside 1 to <see cref="DocumentArchiveQuery.MaxPageSize"/>.</summary>
     public const string InvalidPageCode = "archive_invalid_page";
 
-    /// <summary>The documents of the caller, a page at a time, newest day first.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(DocumentArchivePageDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -77,7 +73,6 @@ public class DocumentArchiveController(
         return Ok(DocumentArchivePageDto.From(result));
     }
 
-    /// <summary>The types the caller may read, each with how many documents match the filters (the type filter left out).</summary>
     [HttpGet("types")]
     [ProducesResponseType(typeof(DocumentArchiveTypesDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -99,7 +94,6 @@ public class DocumentArchiveController(
         return Ok(DocumentArchiveTypesDto.From(counts));
     }
 
-    /// <summary>One file, from the private bucket, as the original: its name and its content type.</summary>
     [HttpGet("{type}/{id:guid}/download")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -114,7 +108,6 @@ public class DocumentArchiveController(
 
         var file = await archive.OpenAsync(caller.Scope, caller.Access, documentType, id, cancellationToken);
 
-        // A compliance proof carries data about guests: who opened one is in the log, by id, with no name of a document.
         if (ArchiveDocumentTypes.IsComplianceProof(documentType))
         {
             logger.LogInformation(
@@ -129,10 +122,6 @@ public class DocumentArchiveController(
         return File(file.Content, file.ContentType, file.FileName);
     }
 
-    /// <summary>
-    /// The documents of a period as a ZIP, streamed from the storage to the response: a folder for each type and <c>indice.csv</c>. It holds
-    /// exactly what the list shows to the same caller for the same days (and the optional type and property).
-    /// </summary>
     [HttpGet("export")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -152,8 +141,6 @@ public class DocumentArchiveController(
         if (await ResolveCallerAsync(cancellationToken) is not { } caller)
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
-        // The headers of the ZIP are set when the first byte goes out, and only for a 200: the service refuses an export beyond the caps before
-        // it writes anything, and that answer is a problem (422), which must not carry the name of a file to save.
         Response.Headers.CacheControl = "private, no-store";
         ZipDownloadHeaders.WhenTheResponseStarts(Response, ExportFileName(first, last));
 
@@ -170,11 +157,9 @@ public class DocumentArchiveController(
         return new EmptyResult();
     }
 
-    /// <summary>The name of the ZIP of a period: <c>casazen-documenti-20260101-20261231.zip</c>.</summary>
     public static string ExportFileName(DateOnly from, DateOnly to) =>
         $"casazen-documenti-{from.ToString("yyyyMMdd", CultureInfo.InvariantCulture)}-{to.ToString("yyyyMMdd", CultureInfo.InvariantCulture)}.zip";
 
-    // The words of a list or a count, before anything is read: the types, then the days. The problem to answer, or null with the query.
     private ObjectResult? ReadFilters(
         string[]? types,
         DateOnly? fromDay,
@@ -196,7 +181,6 @@ public class DocumentArchiveController(
         return null;
     }
 
-    /// <summary>No <c>type</c> is every type; each one must be the key of a kind of document (a blank one is not).</summary>
     private static bool TryReadTypes(string[]? types, out IReadOnlyCollection<ArchiveDocumentType>? kinds)
     {
         kinds = null;
@@ -216,7 +200,6 @@ public class DocumentArchiveController(
         return true;
     }
 
-    /// <summary>Each day in the years the dashboard supports and, when there are two, the first not after the last.</summary>
     private static bool IsValidPeriod(DateOnly? fromDay, DateOnly? toDay) =>
         (fromDay is null || IsSupportedYear(fromDay.Value))
         && (toDay is null || IsSupportedYear(toDay.Value))
@@ -227,7 +210,6 @@ public class DocumentArchiveController(
 
     private sealed record Caller(HostScope Scope, DocumentArchiveAccess Access, string UserId);
 
-    /// <summary>The caller's reach and the types it may read; null without a user, an org or a scope (never widened to the whole org).</summary>
     private async Task<Caller?> ResolveCallerAsync(CancellationToken cancellationToken)
     {
         if (User.GetUserId() is not { } userId)

@@ -97,7 +97,6 @@ public class ReportExportsControllersTests
         return controller;
     }
 
-    /// <summary>The endpoints, each with the stem of the file name of its CSV (the extension is the format).</summary>
     private static readonly Dictionary<string, string> Stems = new()
     {
         ["revenue-by-property"] = "casazen-ricavo-per-immobile-competenza-20261001-20261031",
@@ -146,9 +145,6 @@ public class ReportExportsControllersTests
 
     public static IEnumerable<object[]> Endpoints() => Stems.Keys.Select(endpoint => new object[] { endpoint });
 
-    // ---------------------------------------------------------------- the formats
-
-    /// <summary>Excel: the content type of an <c>.xlsx</c>, the name of the CSV with the new extension, never cached, a workbook the reader opens; read with the scope of the caller.</summary>
     [Theory]
     [MemberData(nameof(Endpoints))]
     public async Task Endpoint_AsXlsx_IsAnExcelFileNamedLikeTheCsv_NeverCached(string endpoint)
@@ -162,7 +158,6 @@ public class ReportExportsControllersTests
         Assert.True(XlsxTableReader.LooksLikeWorkbook(file.FileContents));
     }
 
-    /// <summary>The CSV is the one it was: its type, its name, and the same header that keeps it from being stored.</summary>
     [Theory]
     [MemberData(nameof(Endpoints))]
     public async Task Endpoint_AsCsv_IsStillTheCsvFileItWas(string endpoint)
@@ -205,7 +200,6 @@ public class ReportExportsControllersTests
         _touristTax.VerifyNoOtherCalls();
     }
 
-    /// <summary>The message of <c>report_invalid_format</c> names the three formats, in Italian (the default) and in English.</summary>
     [Fact]
     public void TheInvalidFormatMessage_NamesTheThreeFormats_InItalianAndInEnglish()
     {
@@ -223,9 +217,6 @@ public class ReportExportsControllersTests
         }
     }
 
-    // ---------------------------------------------------------------- the scope
-
-    /// <summary>The file is read with the scope the controller resolved for the caller (a service that gets another one is not set up, and the call fails): never the org of the request.</summary>
     [Fact]
     public async Task Xlsx_OfACallerWhoReachesSomeOfThePropertiesOnly_IsReadWithThatScope_AndTheTouristTaxPaymentsStayHidden()
     {
@@ -262,12 +253,6 @@ public class ReportExportsControllersTests
         _touristTax.VerifyNoOtherCalls();
     }
 
-    // ---------------------------------------------------------------- the permissions
-
-    /// <summary>
-    /// Money is protected as it was: <c>payment.read</c> on every class (the owner report asks <c>agency.statement.view</c> too), nothing anonymous and nothing
-    /// but a read, so the Excel file is behind the same doors as the CSV and the JSON.
-    /// </summary>
     [Theory]
     [InlineData(typeof(ReportsController), "api/reports", false)]
     [InlineData(typeof(CollectionsReportsController), "api/reports", false)]

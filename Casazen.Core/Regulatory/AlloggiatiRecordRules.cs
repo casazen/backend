@@ -14,22 +14,16 @@ namespace Casazen.Core.Regulatory;
 /// </summary>
 public static partial class AlloggiatiRecordRules
 {
-    /// <summary>Cognome: 50 characters in the record.</summary>
     public const int MaxLastNameLength = 50;
 
-    /// <summary>Nome: 30 characters in the record.</summary>
     public const int MaxFirstNameLength = 30;
 
-    /// <summary>Numero documento: 20 characters in the record.</summary>
     public const int MaxDocumentNumberLength = 20;
 
-    /// <summary>Guests per booking accepted by CasaZen (a sanity limit of the application, not a legal one).</summary>
     public const int MaxStayGuests = 30;
 
-    /// <summary>Age under which a guest is shown as a minor.</summary>
     public const int AdultAge = 18;
 
-    // Field names of the record, as reported in MissingFields/CodesToComplete (camelCase, shared with the frontend).
     public const string FieldType = "type";
     public const string FieldLastName = "lastName";
     public const string FieldFirstName = "firstName";
@@ -44,10 +38,8 @@ public static partial class AlloggiatiRecordRules
     public const string FieldDocumentNumber = "documentNumber";
     public const string FieldDocumentIssuePlace = "documentIssuePlace";
 
-    /// <summary>Normalized description of Italy in the "Stati" table: the state of birth of those born in Italy.</summary>
     public const string ItalyNormalizedDescription = "ITALIA";
 
-    /// <summary>True for the kinds of guest that carry the identity document (single guest, head of family or group).</summary>
     public static bool RequiresDocument(StayGuestType type) =>
         type is StayGuestType.SingleGuest or StayGuestType.HeadOfFamily or StayGuestType.HeadOfGroup;
 
@@ -55,7 +47,6 @@ public static partial class AlloggiatiRecordRules
 
     public static bool IsMember(StayGuestType type) => type is StayGuestType.FamilyMember or StayGuestType.GroupMember;
 
-    /// <summary>The kind of the guests that follow a head: family member or group member; null for a single guest.</summary>
     public static StayGuestType? MemberTypeOf(StayGuestType head) => head switch
     {
         StayGuestType.HeadOfFamily => StayGuestType.FamilyMember,
@@ -63,10 +54,6 @@ public static partial class AlloggiatiRecordRules
         _ => null,
     };
 
-    /// <summary>
-    /// Normalized official name of each kind in the "Tipi alloggiato" table (Ospite singolo, Capo famiglia, Capo gruppo,
-    /// Familiare, Membro gruppo; RS-1, verified U). The code comes from the imported table by this name, never from here.
-    /// </summary>
     public static string OfficialNormalizedName(StayGuestType type) => type switch
     {
         StayGuestType.SingleGuest => "OSPITESINGOLO",
@@ -77,11 +64,6 @@ public static partial class AlloggiatiRecordRules
         _ => string.Empty,
     };
 
-    /// <summary>
-    /// Checks the order of the guests of a stay: a family member follows its head of family (or another family member
-    /// of that head), a group member its head of group, and a head is followed by at least one member ("Capofamiglia e
-    /// capogruppo richiedono l'inserimento delle schedine collegate", RS-1). Returns the error of each position at fault.
-    /// </summary>
     public static IReadOnlyList<StayGuestCompositionError> CompositionErrors(IReadOnlyList<StayGuestType> types)
     {
         var errors = new List<StayGuestCompositionError>();
@@ -123,11 +105,6 @@ public static partial class AlloggiatiRecordRules
         return errors.OrderBy(e => e.Index).ToList();
     }
 
-    /// <summary>
-    /// Fields of the record the guest lacks or has in a form the record does not accept (too long, sex other than
-    /// male/female, document kind "other"), as camelCase names (<c>Field*</c> constants). Codes are checked apart
-    /// (<see cref="AlloggiatiCodeBook"/>): a missing code does not make the data incomplete, it only blocks the export.
-    /// </summary>
     public static IReadOnlyList<string> MissingFields(StayGuest guest)
     {
         var missing = new List<string>();
@@ -169,16 +146,11 @@ public static partial class AlloggiatiRecordRules
         return missing;
     }
 
-    /// <summary>
-    /// True when the stay has at least one guest, the order of the guests is valid and no guest lacks a record field.
-    /// Codes are not part of it: they block only the export.
-    /// </summary>
     public static bool IsDataComplete(IReadOnlyList<StayGuest> guests) =>
         guests.Count > 0
         && CompositionErrors(guests.Select(g => g.Type).ToList()).Count == 0
         && guests.All(g => MissingFields(g).Count == 0);
 
-    /// <summary>Stable snake_case code of a composition error, shown per guest.</summary>
     public static string CompositionIssueCode(StayGuestCompositionErrorKind kind) => kind switch
     {
         StayGuestCompositionErrorKind.MemberWithoutHead => "member_without_head",
@@ -186,7 +158,6 @@ public static partial class AlloggiatiRecordRules
         _ => "invalid_type",
     };
 
-    /// <summary>True when the guest was under <see cref="AdultAge"/> on the arrival date; null without a date of birth.</summary>
     public static bool? IsMinor(DateTime? dateOfBirth, DateTime arrivalDate)
     {
         if (dateOfBirth is not { } birth)
@@ -198,9 +169,6 @@ public static partial class AlloggiatiRecordRules
         return age < AdultAge;
     }
 
-    /// <summary>
-    /// Italian province codes, including the ones abolished in 2016 that still appear on older documents (CI, OG, OT, VS).
-    /// </summary>
     private static readonly HashSet<string> Provinces = new(StringComparer.Ordinal)
     {
         "AG", "AL", "AN", "AO", "AP", "AQ", "AR", "AT", "AV", "BA", "BG", "BI", "BL", "BN", "BO", "BR", "BS", "BT",
@@ -212,11 +180,9 @@ public static partial class AlloggiatiRecordRules
         "VS", "VT", "VV",
     };
 
-    /// <summary>Province of birth: a real Italian province code (e.g. RM), not any two letters.</summary>
     public static bool IsValidProvince(string? province) =>
         province is not null && Provinces.Contains(province.Trim().ToUpperInvariant());
 
-    /// <summary>Length of the codes of a table in the record: 9 (comuni, stati), 5 (documents), 2 (kind of guest).</summary>
     public static int CodeLength(AlloggiatiCodeTable table) => table switch
     {
         AlloggiatiCodeTable.Comuni or AlloggiatiCodeTable.Stati => 9,
@@ -225,35 +191,24 @@ public static partial class AlloggiatiRecordRules
         _ => 0,
     };
 
-    /// <summary>
-    /// Shape check of a table code: uppercase letters and digits, at most the length of the field in the record. The
-    /// exact code list comes only from the imported official table.
-    /// </summary>
     public static bool IsValidCodeShape(AlloggiatiCodeTable table, string? code) =>
         code is not null
         && code.Length >= 1
         && code.Length <= CodeLength(table)
         && code.All(c => c is >= 'A' and <= 'Z' or >= '0' and <= '9');
 
-    /// <summary>Trimmed, uppercase code, or null when blank.</summary>
     public static string? NormalizeCode(string? code)
     {
         var value = code?.Trim().ToUpperInvariant();
         return string.IsNullOrEmpty(value) ? null : value;
     }
 
-    /// <summary>Document number without spaces, uppercase.</summary>
     public static string NormalizeDocumentNumber(string? documentNumber) =>
         string.Concat((documentNumber ?? string.Empty).Where(c => !char.IsWhiteSpace(c))).ToUpperInvariant();
 
-    /// <summary>Letters and digits only (no special symbols in the record), at most 20 characters.</summary>
     public static bool IsValidDocumentNumber(string? documentNumber) =>
         documentNumber is not null && DocumentNumberRegex().IsMatch(documentNumber);
 
-    /// <summary>
-    /// Description normalized for matching a table entry: accents removed, uppercase, letters and digits only
-    /// ("Reggio nell'Emilia" → "REGGIONELLEMILIA"). Used for search and for the unique-name match of a code.
-    /// </summary>
     public static string NormalizeDescription(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -278,18 +233,13 @@ public static partial class AlloggiatiRecordRules
     private static partial Regex DocumentNumberRegex();
 }
 
-/// <summary>Why a guest does not fit in the order of the stay.</summary>
 public enum StayGuestCompositionErrorKind
 {
-    /// <summary>A family or group member without its head before it.</summary>
     MemberWithoutHead,
 
-    /// <summary>A head of family or group with no member after it.</summary>
     HeadWithoutMembers,
 
-    /// <summary>Unknown kind of guest.</summary>
     InvalidType,
 }
 
-/// <param name="Index">Position (0-based) of the guest at fault.</param>
 public sealed record StayGuestCompositionError(int Index, StayGuestCompositionErrorKind Kind);

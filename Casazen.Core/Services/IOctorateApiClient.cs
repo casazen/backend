@@ -16,16 +16,10 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IOctorateApiClient
 {
-    /// <summary>The application's configuration: the environment of the credentials, the quota (<c>GET /rest/v1/api/configuration</c>).</summary>
     Task<OctorateConfiguration> GetConfigurationAsync(CancellationToken ct);
 
-    /// <summary>
-    /// The accommodations the connection of the org sees (<c>GET /rest/v1/accommodation</c>): with an OAuth consent the ones of that
-    /// consent, an agency's whole network included. Every page is read.
-    /// </summary>
     Task<OctorateProperty[]> GetPropertiesAsync(CancellationToken ct);
 
-    /// <summary>One accommodation (<c>GET /rest/v1/accommodation/{acc}</c>).</summary>
     Task<OctorateProperty> GetPropertyAsync(string accommodationId, CancellationToken ct);
 
     /// <summary>
@@ -60,13 +54,8 @@ public interface IOctorateApiClient
     /// </summary>
     Task<OctorateLicense> GetAccommodationLicenseAsync(string accommodationCode, CancellationToken ct);
 
-    /// <summary>Changes the members of <paramref name="update"/> that are set, and nothing else (<c>PATCH /rest/v2/accommodation/{acc}</c>).</summary>
     Task UpdatePropertyAsync(string accommodationId, OctoratePropertyUpdate update, CancellationToken ct);
 
-    /// <summary>
-    /// The products of an accommodation, rooms and the rates derived from them, with their guests, bedrooms, bathrooms and beds
-    /// (<c>GET /rest/v3/roomrates/{acc}?fields=...</c>; the v3 read requires <c>fields</c>).
-    /// </summary>
     Task<OctorateRoom[]> GetRoomsAsync(string accommodationId, CancellationToken ct);
 
     /// <summary>
@@ -76,16 +65,8 @@ public interface IOctorateApiClient
     /// </summary>
     Task<OctorateChannelConnection[]> GetConnectionsAsync(string accommodationId, CancellationToken ct);
 
-    /// <summary>
-    /// One page of the reservations of an accommodation (<c>GET /rest/v1/reservation/{acc}</c>, E02/F02/US01/T01): the kind of list,
-    /// the Rome dates, the page (from 0) and its size (at most 200). The list has the identification, the dates, the state and
-    /// <c>updateTime</c> of each reservation, not the payments nor the price breakdown (<see cref="GetReservationAsync"/> has them). An
-    /// item without a usable id is left out of the reservations of the page but counted in its <see cref="OctorateReservationPage.ItemCount"/>.
-    /// The list ends with a page that has no item at all, not with a short one: a server may serve fewer reservations than the size asked for.
-    /// </summary>
     Task<OctorateReservationPage> GetReservationsAsync(string accommodationId, OctorateReservationQuery query, CancellationToken ct);
 
-    /// <summary>One reservation with its payments and price breakdown (<c>GET /rest/v1/reservation/{acc}/{id}</c>); 404 is <c>OctorateNotFoundException</c>.</summary>
     Task<OctorateReservation> GetReservationAsync(string accommodationId, string reservationId, CancellationToken ct);
 
     /// <summary>
@@ -110,7 +91,6 @@ public interface IOctorateApiClient
         DateOnly to,
         CancellationToken ct);
 
-    /// <summary>Cancels a reservation (<c>DELETE /rest/v1/reservation/{acc}/{id}</c>): a change of the status to <c>CANCELLED</c> with <c>PATCH</c> answers 400.</summary>
     Task CancelReservationAsync(string accommodationId, string reservationId, CancellationToken ct);
 
     /// <summary>
@@ -127,7 +107,6 @@ public interface IOctorateApiClient
     /// </summary>
     Task CancelReservationAsync(OctorateBookingTarget target, string reservationId, CancellationToken ct);
 
-    /// <summary>The state of the stay CasaZen owns (<c>PUT /rest/v1/checkin/{acc}/{id}?status=</c>): arrival, departure, no-show.</summary>
     Task SetCheckInStatusAsync(string accommodationId, string reservationId, OctorateCheckInStatus status, CancellationToken ct);
 
     /// <summary>
@@ -142,10 +121,8 @@ public interface IOctorateApiClient
         IReadOnlyList<OctorateCheckInGuestUpsert> guests,
         CancellationToken ct);
 
-    /// <summary>Deletes a check-in guest of a reservation (<c>DELETE /rest/v1/checkin/{acc}/{id}/guest/{guestId}</c>).</summary>
     Task DeleteCheckInGuestAsync(string accommodationId, string reservationId, string octorateGuestId, CancellationToken ct);
 
-    /// <summary>The arrival Octorate registered for a reservation (<c>effectiveCheckin</c>, <c>arrivalTime</c> of the single read).</summary>
     Task<OctorateReservationArrival> GetReservationArrivalAsync(string accommodationId, string reservationId, CancellationToken ct);
 
     /// <summary>
@@ -226,10 +203,6 @@ public interface IOctorateApiClient
     /// </summary>
     Task<OctorateReservation?> FindReservationByExternalReferenceAsync(string accommodationId, string externalReference, CancellationToken ct);
 
-    /// <summary>
-    /// The PMS rooms of an accommodation (<c>GET /rest/v1/pms/{acc}</c>): each with the unit it belongs to (<c>parentId</c>). The id Octorate
-    /// wants as <c>pmsProduct</c> to create and change a reservation on a unit that has one (sandbox 2026-11-04).
-    /// </summary>
     Task<OctoratePmsRoom[]> GetPmsRoomsAsync(string accommodationId, CancellationToken ct);
 
     /// <summary>
@@ -244,10 +217,6 @@ public interface IOctorateApiClient
     /// </summary>
     Task<OctorateChatThreadPage> GetChatThreadsAsync(string accommodationId, int offset, CancellationToken ct);
 
-    /// <summary>
-    /// One chat thread (<c>GET /rest/v1/chat/{property}/threads/{id}</c>, E05/F01/US01/T02): its default processor, the reservation it is linked to,
-    /// the connection it comes through and the flag of Octorate's own assistant for the thread (<c>aiDriven</c>). 404 is <c>OctorateNotFoundException</c>.
-    /// </summary>
     Task<OctorateChatThread> GetChatThreadAsync(string accommodationId, string threadId, CancellationToken ct);
 
     /// <summary>
@@ -370,16 +339,10 @@ public interface IOctorateApiClient
     /// </summary>
     Task<OctorateConnectionActionResult> ImportRoomsAsync(string accommodationId, string connectionId, CancellationToken ct);
 
-    /// <summary><c>IMPORT_RESERVATIONS</c> on one connection (the future reservations of the channel, inside Octorate): same shape and errors as <see cref="ImportRoomsAsync"/>.</summary>
     Task<OctorateConnectionActionResult> ImportReservationsAsync(string accommodationId, string connectionId, CancellationToken ct);
 
-    /// <summary><c>IMPORT_CALENDAR</c> on one connection (the calendar of the channel, inside Octorate): same shape and errors as <see cref="ImportRoomsAsync"/>.</summary>
     Task<OctorateConnectionActionResult> ImportCalendarAsync(string accommodationId, string connectionId, CancellationToken ct);
 
-    /// <summary>
-    /// <c>MARK_CONNECTED</c> on one connection (tells Octorate, and the channel when needed, that the connection is ready): same shape and
-    /// errors as <see cref="ImportRoomsAsync"/>. Called only for a listing a person confirmed.
-    /// </summary>
     Task<OctorateConnectionActionResult> MarkConnectedAsync(string accommodationId, string connectionId, CancellationToken ct);
 
     /// <summary>
@@ -403,10 +366,8 @@ public interface IOctorateApiClient
     /// </summary>
     Task<OctorateConnectionInfo> CreateConnectionAsync(string accommodationCode, OctorateConnectionCreate request, CancellationToken ct);
 
-    /// <summary>Changes the members of <paramref name="patch"/> that are set, and nothing else (<c>PATCH /rest/v1/connection/{acc}/{connection}</c>).</summary>
     Task UpdateConnectionAsync(string accommodationCode, string connectionId, OctorateConnectionPatch patch, CancellationToken ct);
 
-    /// <summary>Deletes the connection (<c>DELETE /rest/v1/connection/{acc}/{connection}</c>); a connection Octorate does not know is <c>OctorateNotFoundException</c>.</summary>
     Task DeleteConnectionAsync(string accommodationCode, string connectionId, CancellationToken ct);
 
     /// <summary>
@@ -420,11 +381,6 @@ public interface IOctorateApiClient
         OctorateConnectionAction action,
         CancellationToken ct);
 
-    /// <summary>
-    /// The rooms of the listing on the channel with the Octorate product each is mapped to (<c>GET /rest/v1/connection/external/{acc}/{connection}</c>
-    /// and <c>GET /rest/v1/connection/mapping/{acc}/{connection}</c>, two calls). A room Octorate cannot manage is listed with
-    /// <see cref="OctorateChannelRoom.Manageable"/> false.
-    /// </summary>
     Task<OctorateChannelRoom[]> GetConnectionMappingAsync(string accommodationCode, string connectionId, CancellationToken ct);
 
     /// <summary>
@@ -444,40 +400,20 @@ public interface IOctorateApiClient
     /// </summary>
     Task<OctoratePropertyCreated> CreatePropertyAsync(OctoratePropertyCreate request, CancellationToken ct);
 
-    /// <summary>
-    /// Creates the unit of a listing (<c>POST /rest/v3/roomrates/{acc}</c>, E02/F03/US01/T02) and returns its product id. An answer without a
-    /// product id is <c>OctorateServerException</c>: the unit is then looked up by its name, never assumed.
-    /// </summary>
     Task<string> CreateRoomAsync(string accommodationId, OctorateRoomCreate room, CancellationToken ct);
 
-    /// <summary>Writes the descriptions of a unit (<c>POST /rest/v1/content/products/{acc}/{pid}/descriptions</c>); a member that is empty is not sent.</summary>
     Task UpdateDescriptionsAsync(string accommodationId, string productId, OctorateDescriptions descriptions, CancellationToken ct);
 
-    /// <summary>
-    /// The descriptions of a unit as the channel manager holds them (<c>GET .../descriptions</c>); <c>null</c> while it holds none (404
-    /// <c>ApiResourceEmpty</c>). Read only: the baseline of the changes made outside CasaZen and the adoption of a text.
-    /// </summary>
     Task<OctorateDescriptions?> GetDescriptionsAsync(string accommodationId, string productId, CancellationToken ct);
 
-    /// <summary>Writes the rooms of a unit with their beds (<c>POST .../rooms</c>, one call for each room).</summary>
     Task UpdateRoomsAsync(string accommodationId, string productId, IReadOnlyList<OctorateContentRoom> rooms, CancellationToken ct);
 
-    /// <summary>The rooms of a unit as the channel manager holds them (<c>GET .../rooms</c>); empty while it holds none.</summary>
     Task<IReadOnlyList<OctorateContentRoom>> GetContentRoomsAsync(string accommodationId, string productId, CancellationToken ct);
 
-    /// <summary>
-    /// Writes the amenities of a unit (<c>POST .../amenities</c>) from the ids of the catalog of the channel manager. Called only when
-    /// <c>ListingChannels:SendAmenities</c> is on: the codes of <c>AmenityCatalogMapper</c> were not compared with the sandbox yet.
-    /// </summary>
     Task UpdateAmenitiesAsync(string accommodationId, string productId, IReadOnlyCollection<long> amenityIds, CancellationToken ct);
 
-    /// <summary>Writes the structured rules of the stay of a unit (<c>POST .../reservation</c>); a member that is not set is not sent.</summary>
     Task UpdateReservationRulesAsync(string accommodationId, string productId, OctorateReservationRules rules, CancellationToken ct);
 
-    /// <summary>
-    /// Writes the cancellation policy of a unit (<c>POST .../cancellation</c>). Called only when <c>ListingChannels:SendCancellationPolicy</c> is
-    /// on: the members of this part were not proven on the sandbox.
-    /// </summary>
     Task UpdateCancellationPolicyAsync(string accommodationId, string productId, OctorateCancellationPolicy policy, CancellationToken ct);
 
     /// <summary>
@@ -486,16 +422,10 @@ public interface IOctorateApiClient
     /// </summary>
     Task<OctorateChannelPush> PushChannelAsync(string accommodationId, string productId, OctorateChannelTarget target, CancellationToken ct);
 
-    /// <summary>
-    /// Asks the channel manager to download a photo from its public address (<c>POST /rest/v1/accommodation/{acc}/photos</c>, a form body with
-    /// <c>url</c>, 202): the answer is the entry of the photo queue.
-    /// </summary>
     Task<OctoratePhotoQueueEntry> UploadPhotoAsync(string accommodationId, string photoUrl, CancellationToken ct);
 
-    /// <summary>Removes a photo from the channel manager (<c>DELETE /rest/v1/accommodation/{acc}/photos/{name}</c>); a photo it does not have is not an error.</summary>
     Task DeletePhotoAsync(string accommodationId, string photoName, CancellationToken ct);
 
-    /// <summary>An entry of the photo queue (<c>GET /rest/v1/accommodation/{acc}/queue/{id}</c>); <c>null</c> when the channel manager does not know it.</summary>
     Task<OctoratePhotoQueueEntry?> GetPhotoQueueAsync(string accommodationId, string queueId, CancellationToken ct);
 
     /// <summary>
@@ -520,10 +450,6 @@ public interface IOctorateApiClient
     /// </summary>
     Task<Stream> GetDocumentPdfAsync(string accommodationId, string documentId, CancellationToken ct);
 
-    /// <summary>
-    /// The collections of a reservation (E06/F04/US01/T03, FIS-05): the <c>payments</c> of its single read (<c>GET /rest/v1/reservation/{acc}/{id}</c>) with
-    /// the amount, the day, the mode and who collects (<c>companyCollect</c>, absent on the sandbox OTA samples). A payment without an amount is left out.
-    /// </summary>
     Task<IReadOnlyList<OctoratePayment>> GetReservationPaymentsAsync(string accommodationId, string reservationId, CancellationToken ct);
 
     /// <summary>

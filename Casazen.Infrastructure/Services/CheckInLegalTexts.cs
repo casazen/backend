@@ -33,13 +33,10 @@ public sealed partial class CheckInLegalTexts(
     IHostEnvironment environment,
     ILogger<CheckInLegalTexts> logger) : ICheckInLegalTexts
 {
-    /// <summary>The folder of the registry under the folder of the legal documents.</summary>
     public const string FolderName = "checkin";
 
-    /// <summary>The manifest of the registry in <see cref="FolderName"/>.</summary>
     public const string ManifestFileName = "manifest.json";
 
-    /// <summary>How long a registry that a failure of the file system kept from being read in full is served as it is before it is read again.</summary>
     public static readonly TimeSpan TransientRetryInterval = TimeSpan.FromSeconds(60);
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -48,7 +45,6 @@ public sealed partial class CheckInLegalTexts(
         AllowTrailingCommas = true,
     };
 
-    // The language the guest asked for, then English, then Italian (the reference of the legal texts).
     private static readonly string[] FallbackLanguages = ["en", GuestLanguages.Default];
 
     private readonly ConcurrentDictionary<(string Kind, string Version, string Language, bool NotArchived), string> _rendered = new();
@@ -57,7 +53,6 @@ public sealed partial class CheckInLegalTexts(
     private TimeProvider _clock = TimeProvider.System;
     private ILegalFileReader _files = PhysicalFiles.Instance;
 
-    /// <summary>The registry with the clock and the files of the caller: what the tests use to make the file system fail.</summary>
     internal CheckInLegalTexts(
         IConfiguration configuration,
         IHostEnvironment environment,
@@ -76,7 +71,6 @@ public sealed partial class CheckInLegalTexts(
         var texts = new List<CheckInLegalText>();
         foreach (var kind in CheckInLegalTextKinds.All)
         {
-            // The Ticino notice is for a property that keeps no document; nobody else is told about Switzerland.
             if (kind == CheckInLegalTextKinds.TicinoNotice && !documentNotArchived)
                 continue;
 
@@ -100,10 +94,6 @@ public sealed partial class CheckInLegalTexts(
             : null;
     }
 
-    /// <summary>
-    /// The version served now for a kind: the last approved one in production, the last one elsewhere. A version without a text that can be served
-    /// (the Italian file is the reference) was left out when the registry was read.
-    /// </summary>
     private TextVersion? Active(string kind)
     {
         if (!CheckInLegalTextKinds.IsKnown(kind))
@@ -129,7 +119,6 @@ public sealed partial class CheckInLegalTexts(
         return null;
     }
 
-    /// <summary>The registry as it was read, read again when a failure of the file system kept it from being read in full and the interval has passed.</summary>
     private Registry Current()
     {
         if (_loaded is { } loaded && !MustBeReadAgain(loaded))
@@ -164,13 +153,11 @@ public sealed partial class CheckInLegalTexts(
         }
         catch (JsonException ex)
         {
-            // The manifest is what it is: the next read says the same, so this is kept until the process restarts.
             logger.LogError(ex, "Check-in legal texts: the manifest in {Folder} cannot be read, no text is served", folder);
             return Registry.Empty;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // The file system said no: nothing is known about the manifest, so nothing is served for now and it is read again later.
             logger.LogError(
                 ex,
                 "Check-in legal texts: the manifest in {Folder} cannot be read, no text is served for now and it is read again in {Seconds} seconds",
@@ -246,7 +233,6 @@ public sealed partial class CheckInLegalTexts(
         }
         else if (string.Equals(entry.Status, CheckInLegalTextStatuses.Approved, StringComparison.Ordinal))
         {
-            // The approval is part of the text: who approved it and when, written by the pull request that approves it.
             if (string.IsNullOrWhiteSpace(entry.ApprovedBy)
                 || !DateTimeOffset.TryParse(entry.ApprovedAt, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out _))
             {
@@ -294,10 +280,6 @@ public sealed partial class CheckInLegalTexts(
         return true;
     }
 
-    /// <summary>
-    /// The text of a file of the registry and its SHA-256, only when the file is where the manifest says and its hash is the recorded one. <paramref name="transient"/> is true only when the file
-    /// system failed to read it (the same file may read in a minute); a file that is missing or whose hash is not the recorded one says the same at every read.
-    /// </summary>
     private bool TryRead(string folder, ManifestFile? file, out string text, out string hash, out string problem, out bool transient)
     {
         text = string.Empty;
@@ -373,7 +355,6 @@ public sealed partial class CheckInLegalTexts(
 
     private sealed record TextVersion(string Kind, string Version, bool IsDraft, string ReferenceHash, IReadOnlyDictionary<string, string> Markdown);
 
-    /// <summary>The versions that can be served and, when a failure of the file system kept something from being read, the instant to read the files again.</summary>
     private sealed record Registry(IReadOnlyList<TextVersion> Versions, DateTime? RetryAt = null)
     {
         public static Registry Empty { get; } = new([]);
@@ -418,7 +399,6 @@ public sealed partial class CheckInLegalTexts(
     }
 }
 
-/// <summary>The files the registry of the check-in legal texts reads: the real ones, or, in a test, ones that fail the way a file system does.</summary>
 internal interface ILegalFileReader
 {
     bool Exists(string path);

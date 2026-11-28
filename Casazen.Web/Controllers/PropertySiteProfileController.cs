@@ -98,12 +98,6 @@ public class PropertySiteProfileController(
         return Ok(view);
     }
 
-    /// <summary>
-    /// The photos of the gallery in display order, each with its alternative text and size in pixels (<c>null</c> = the host wrote none / not known).
-    /// </summary>
-    /// <response code="200">The photos.</response>
-    /// <response code="403">The caller may not read this property.</response>
-    /// <response code="404">No property with this id in the caller's org.</response>
     [HttpGet("photos")]
     [ProducesResponseType(typeof(IReadOnlyList<PublicPropertyPhotoDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -152,10 +146,6 @@ public class PropertySiteProfileController(
         return photos is null ? NotFound() : Ok(photos);
     }
 
-    /// <summary>The levels of the floor plan, lowest floor first (each with its image address, size and area).</summary>
-    /// <response code="200">The levels.</response>
-    /// <response code="403">The caller may not read this property.</response>
-    /// <response code="404">No property with this id in the caller's org.</response>
     [HttpGet("floor-plans")]
     [ProducesResponseType(typeof(IReadOnlyList<PublicFloorPlanDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -198,11 +188,6 @@ public class PropertySiteProfileController(
         return plan is null ? NotFound() : Ok(plan);
     }
 
-    /// <summary>Changes the name, the floor and the area of a level (the image stays).</summary>
-    /// <response code="200">The level as stored.</response>
-    /// <response code="403">The caller may not change this property.</response>
-    /// <response code="404">No property in the caller's org, or <c>property_floor_plan_not_found</c>.</response>
-    /// <response code="422">The rules of the name, the floor and the area, as for an upload.</response>
     [HttpPut("floor-plans/{planId:guid}")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(PublicFloorPlanDto), StatusCodes.Status200OK)]
@@ -223,10 +208,6 @@ public class PropertySiteProfileController(
         return plan is null ? NotFound() : Ok(plan);
     }
 
-    /// <summary>Removes a level and its image.</summary>
-    /// <response code="204">Removed.</response>
-    /// <response code="403">The caller may not change this property.</response>
-    /// <response code="404">No property in the caller's org, or <c>property_floor_plan_not_found</c>.</response>
     [HttpDelete("floor-plans/{planId:guid}")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -286,10 +267,6 @@ public class PropertySiteProfileController(
         return list is null ? NotFound() : Ok(list);
     }
 
-    /// <summary>
-    /// TN-3 check, like the photo endpoints: the property of the caller's org (the tenant filter hides another org's one, so 404), the
-    /// host permission for the row (403), and the audit of an org-wide role acting on a colleague's property.
-    /// </summary>
     private async Task<(Property? Property, ActionResult? Denied)> AuthorizeAsync(
         Guid id,
         HostOperationRequirement operation,

@@ -31,31 +31,20 @@ public sealed record OctorateAvailabilityResult(bool Available, string? Reason);
 /// </summary>
 public sealed record OctorateReservationCreate
 {
-    /// <summary>The CasaZen booking code, sent as <c>refer</c>: how the reservation is found again when the answer of a create was lost.</summary>
     public required string ExternalReference { get; init; }
 
-    /// <summary>The arrival day of the stay (Europe/Rome); sent as the UTC instant that day starts in Rome.</summary>
     public required DateOnly CheckIn { get; init; }
 
-    /// <summary>The departure day of the stay (Europe/Rome), not a night; sent as the UTC instant that day starts in Rome.</summary>
     public required DateOnly CheckOut { get; init; }
 
-    /// <summary>All the guests (<c>totalGuest</c>), at least one.</summary>
     public required int Guests { get; init; }
 
-    /// <summary>The minors among <see cref="Guests"/> (<c>totalChildren</c>).</summary>
     public required int Children { get; init; }
 
-    /// <summary>
-    /// The price of the stay without the tourist tax, to the cent (<c>roomGross</c>): <see cref="Booking.BasePrice"/>, lodging and cleaning,
-    /// the same figure the import reads back from <c>roomGross</c>.
-    /// </summary>
     public required decimal RoomGross { get; init; }
 
-    /// <summary>The first name of the guest who booked (<c>guests[0].givenName</c>, type <c>BOOKER</c>).</summary>
     public required string BookerFirstName { get; init; }
 
-    /// <summary>The last name of the guest who booked (<c>guests[0].familyName</c>).</summary>
     public required string BookerLastName { get; init; }
 
     /// <summary>
@@ -72,22 +61,16 @@ public sealed record OctorateReservationCreate
 /// </summary>
 public sealed record OctorateReservationUpdate
 {
-    /// <summary>The arrival day of the stay (Europe/Rome); sent as the UTC instant that day starts in Rome.</summary>
     public required DateOnly CheckIn { get; init; }
 
-    /// <summary>The departure day of the stay (Europe/Rome), not a night.</summary>
     public required DateOnly CheckOut { get; init; }
 
-    /// <summary>All the guests (<c>totalGuest</c>), at least one.</summary>
     public required int Guests { get; init; }
 
-    /// <summary>The minors among <see cref="Guests"/> (<c>totalChildren</c>).</summary>
     public required int Children { get; init; }
 
-    /// <summary>The price of the stay without the tourist tax, to the cent (<c>roomGross</c>): <see cref="Booking.BasePrice"/>, as the create sends it.</summary>
     public required decimal RoomGross { get; init; }
 
-    /// <summary>The notes of the booking (<c>privateNotes</c>), sent only when there are some; <c>null</c> leaves the notes of the reservation as they are.</summary>
     public string? Notes { get; init; }
 
     /// <summary>
@@ -109,8 +92,6 @@ public sealed record OctorateReservationUpdate
 /// <param name="ReceivedAt">When the money came in (UTC), sent as <c>referenceTime</c>.</param>
 public sealed record OctoratePaymentRegistration(string Transaction, string PaymentMode, decimal Amount, DateTime ReceivedAt);
 
-/// <summary>What Octorate answered to a payment registration: the id of the payment on the reservation, when it gave one.</summary>
 public sealed record OctoratePaymentResult(string? PaymentId);
 
-/// <summary>A PMS room of an accommodation (<c>GET /rest/v1/pms/{acc}</c>): its id and the unit (<c>parentId</c>) it belongs to.</summary>
 public sealed record OctoratePmsRoom(string Id, string? ParentId, string? Name);

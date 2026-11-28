@@ -3,11 +3,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs;
 
-/// <summary>
-/// One booking as its guest sees it in "Le mie prenotazioni" (BK-11): see <see cref="GuestBookingView"/>. No personal
-/// data of the guest; the host's contact is the one of the booking site. Not sealed: the booking of the account of the mobile app
-/// (<see cref="GuestAccountBookingDetailResponse"/>) is this same body plus two fields.
-/// </summary>
 public record GuestBookingLookupResponse(
     string BookingCode,
     GuestBookingStatus Status,
@@ -57,8 +52,6 @@ public record GuestBookingLookupResponse(
         new GuestCheckInAccessResponse(view.CheckIn.Status, view.CheckIn.OpensOn, view.CheckIn.LinkSentAt));
 }
 
-/// <summary>The host's contact shown on the booking site; either may be null.</summary>
 public sealed record GuestBookingHostContactResponse(string? Name, string? Email);
 
-/// <summary>The online check-in of the booking (see <see cref="GuestCheckInAccess"/>).</summary>
 public sealed record GuestCheckInAccessResponse(GuestCheckInAccessStatus Status, DateOnly? OpensOn, DateTime? LinkSentAt);

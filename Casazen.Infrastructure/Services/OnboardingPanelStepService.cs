@@ -38,7 +38,6 @@ public sealed class OnboardingPanelStepService(
     TimeProvider timeProvider,
     ILogger<OnboardingPanelStepService> logger) : IOnboardingPanelStepService
 {
-    /// <summary>Random bytes of a state (256 bits).</summary>
     public const int StateBytes = 32;
 
     public async Task<PanelStepStart> StartAsync(HostScope scope, string userId, PanelStepStartRequest request, CancellationToken ct)
@@ -53,14 +52,12 @@ public sealed class OnboardingPanelStepService(
         var channelCode = CheckedChannel(request.Kind, request.ChannelCode);
         var resume = CheckedResume(request);
 
-        // The access to a channel whose code is a number opens the page of that portal's connection on the panel; every other step opens the panel.
         var panelUrl = OnboardingChannelAccessHandoff.PanelUrlOf(octorateOptions.Value.FrontendBaseUrl, channelCode)
             ?? throw new DomainConflictException("octorate_panel_url_missing", "OctoratePanelUrlMissing");
         await OnboardingReach.EnsureAsync(db, scope, request.PropertyId, ct);
         if (request.Kind is PanelStepKind.PoliceConnection or PanelStepKind.IstatConnection)
             await OnboardingReach.EnsureItalianComplianceAsync(db, scope, request.PropertyId, ct);
 
-        // A panel that sends the person back uses the registered callback of CasaZen; one that does not is a window CasaZen manages.
         var callbackBase = VerifierOf(request.Kind) is { SupportsCallback: true } ? ParseCallbackBase(octorateOptions.Value.RedirectUri) : null;
         var mode = callbackBase is null ? PanelHandoffMode.ManagedWindow : PanelHandoffMode.RedirectCallback;
         var now = Now();
@@ -71,7 +68,6 @@ public sealed class OnboardingPanelStepService(
         {
             var found = await FindAsync(scope.OrgId, request.PropertyId, request.Kind, channelCode, ct);
 
-            // A step that is done, or that support is handling, is answered as it is: nothing is restarted and no new hand-over is made.
             if (found is { Status: PanelStepStatus.Verified or PanelStepStatus.Confirmed or PanelStepStatus.AssistRequested })
                 return new PanelStepStart(ViewOf(found), panelUrl, null);
 
@@ -93,13 +89,11 @@ public sealed class OnboardingPanelStepService(
 
             try
             {
-                // Stored before any address leaves: the step, the single hand-over and the point to resume.
                 await db.SaveChangesAsync(ct);
                 break;
             }
             catch (DbUpdateException ex) when (attempt == 0 && OrgTeamAccess.IsUniqueViolation(ex, OnboardingPanelStep.StepIndexName))
             {
-                // A parallel start of the same step won: read its row and apply the same restart to it.
                 db.Entry(step).State = EntityState.Detached;
             }
         }
@@ -138,7 +132,6 @@ public sealed class OnboardingPanelStepService(
         CheckUserId(userId);
         var step = await LoadAsync(scope, stepId, ct);
 
-        // Already done: the same answer again.
         if (step.Status is PanelStepStatus.Verified or PanelStepStatus.Confirmed)
             return ViewOf(step);
 
@@ -147,7 +140,6 @@ public sealed class OnboardingPanelStepService(
         if (step.Status == PanelStepStatus.AssistRequested)
             throw new DomainConflictException(OnboardingPanelStepCodes.AssistOpen, "PanelStepAssistOpen");
 
-        // Only after a real verification stored «could not tell»: the confirmation is the technical fallback, never the normal path.
         if (step.LastVerificationOutcome != PanelVerificationOutcomes.Unverifiable)
             throw new DomainConflictException(OnboardingPanelStepCodes.VerificationRequired, "PanelStepVerificationRequired");
 
@@ -170,7 +162,6 @@ public sealed class OnboardingPanelStepService(
 
         await ConsumeStateAsync(step, state, ct);
 
-        // The person just came back from the panel: the check is due now, whatever the schedule said.
         if (IsOpen(step))
             await VerifyOnceAsync(step, explicitTrigger: true, ct);
 
@@ -195,12 +186,6 @@ public sealed class OnboardingPanelStepService(
         return [.. rows.Select(ViewOf)];
     }
 
-    // ─── Verification ────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// One check of the step: under the lock of the step (a holder that finds it taken leaves, and the one that holds it stores the outcome), the
-    /// attempt is claimed and the schedule moved, then the verifier of the kind is asked and its outcome stored.
-    /// </summary>
     private async Task VerifyOnceAsync(OnboardingPanelStep step, bool explicitTrigger, CancellationToken ct)
     {
         await using var verifying = await PostgresAdvisoryLocks.TryAcquireSessionLockAsync(
@@ -208,7 +193,6 @@ public sealed class OnboardingPanelStepService(
         if (verifying is null)
             return;
 
-        // Read again inside the lock: the request that held it may have finished just before.
         await db.Entry(step).ReloadAsync(ct);
         var now = Now();
         if (!IsOpen(step) || !IsDue(step, now, explicitTrigger))
@@ -253,7 +237,6 @@ public sealed class OnboardingPanelStepService(
         await ApplyAsync(step, outcome, ct);
     }
 
-    /// <summary>Stores what the verification found; a step found done is completed and its "To do" closed in the same save.</summary>
     private async Task ApplyAsync(OnboardingPanelStep step, PanelVerificationOutcome outcome, CancellationToken ct)
     {
         step.LastVerificationOutcome = outcome.Code();
@@ -287,11 +270,6 @@ public sealed class OnboardingPanelStepService(
 
     private static bool IsOpen(OnboardingPanelStep step) => step.Status is PanelStepStatus.Started or PanelStepStatus.NotValid;
 
-    /// <summary>
-    /// Whether a check may run now. By the schedule when <paramref name="now"/> reached <c>NextVerificationAt</c>; a step with no schedule only
-    /// when the person asked. The explicit trigger of the person also runs before the schedule, if the previous check is at least
-    /// <see cref="PanelStepLimits.ExplicitCheckMinGapSeconds"/> old.
-    /// </summary>
     internal static bool IsDue(OnboardingPanelStep step, DateTime now, bool explicitTrigger)
     {
         if (step.NextVerificationAt is not { } next)
@@ -301,7 +279,6 @@ public sealed class OnboardingPanelStepService(
         if (!explicitTrigger)
             return false;
 
-        // The previous check is the schedule minus the wait that followed it; with no check yet there is nothing to wait for.
         if (step.VerificationAttempts == 0)
             return true;
 
@@ -312,12 +289,6 @@ public sealed class OnboardingPanelStepService(
     private IPanelStepVerifier? VerifierOf(PanelStepKind kind) =>
         verifiers.Where(v => v.Kind == kind).OrderByDescending(v => v.Order).FirstOrDefault();
 
-    // ─── The callback ────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Consumes the state of the callback: it must be the one of this hand-over, before its expiry, not used. Every refusal is the same 400, so
-    /// the answer tells nothing about which check refused it, and nothing of the state is logged.
-    /// </summary>
     private async Task ConsumeStateAsync(OnboardingPanelStep step, string? state, CancellationToken ct)
     {
         var presented = state?.Trim();
@@ -372,9 +343,6 @@ public sealed class OnboardingPanelStepService(
 
     private static DomainRuleException StateInvalid() => new(OnboardingPanelStepCodes.StateInvalid, "PanelStepStateInvalid");
 
-    // ─── The "To do" ─────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The one open "To do" of the step, due tomorrow at 09:00 in Rome: a step left half way never disappears unnoticed. Codes and ids only.</summary>
     private async Task<Guid> RaiseTodoAsync(OnboardingPanelStep step, CancellationToken ct) =>
         await activities.CreateAsync(
             new CreateTodoRequest
@@ -391,7 +359,6 @@ public sealed class OnboardingPanelStepService(
             },
             ct);
 
-    /// <summary>Closes the "To do" of the step when it is open (the save is the caller's).</summary>
     private async Task CloseTodoAsync(OnboardingPanelStep step, string closedBy, CancellationToken ct)
     {
         if (step.ActivityId is not { } activityId)
@@ -403,8 +370,6 @@ public sealed class OnboardingPanelStepService(
         if (open)
             await activities.CloseAsync(activityId, closedBy, ct);
     }
-
-    // ─── Loading and views ───────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The step of the scope's org that the scope reaches, tracked; otherwise the 404 of a step that does not exist.</summary>
     private async Task<OnboardingPanelStep> LoadAsync(HostScope scope, Guid stepId, CancellationToken ct)
@@ -432,7 +397,6 @@ public sealed class OnboardingPanelStepService(
     {
         var info = PanelStepCatalog.Of(step.Kind);
 
-        // The "To do" stands for the step while it is open: a step that is done has closed it, and the page is not given a link to it.
         var activityId = step.Status is PanelStepStatus.Verified or PanelStepStatus.Confirmed ? null : step.ActivityId;
         return new PanelStepView(
             step.Id,
@@ -450,8 +414,6 @@ public sealed class OnboardingPanelStepService(
             step.StartedAt,
             step.CompletedAt);
     }
-
-    // ─── Start ───────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// A new hand-over (the nonce, its expiry, the mode) for a step that is started again, and a new window of checks when none is running. A window
@@ -486,7 +448,6 @@ public sealed class OnboardingPanelStepService(
         }
     }
 
-    /// <summary>The code of the channel of a channel access (1 to 40 characters); none for the other kinds.</summary>
     private static string? CheckedChannel(PanelStepKind kind, string? channelCode)
     {
         var code = channelCode?.Trim();
@@ -502,7 +463,6 @@ public sealed class OnboardingPanelStepService(
             : throw new DomainRuleException(OnboardingPanelStepCodes.ChannelInvalid, "PanelStepChannelInvalid");
     }
 
-    /// <summary>The point to resume asked for, or <c>null</c> when the request names none (what is stored stays).</summary>
     private static PanelStepResume? CheckedResume(PanelStepStartRequest request)
     {
         var stepCode = request.ResumeStepCode?.Trim();
@@ -538,13 +498,11 @@ public sealed class OnboardingPanelStepService(
         return secure && string.IsNullOrEmpty(uri.UserInfo) && string.IsNullOrEmpty(uri.Fragment) ? uri.AbsoluteUri : null;
     }
 
-    /// <summary>The callback address of a step: the configured page with the step and the state (<c>?step=…&amp;state=…</c>).</summary>
     private static string CallbackUrl(string callbackBase, Guid stepId, string state) =>
         $"{callbackBase}{(callbackBase.Contains('?', StringComparison.Ordinal) ? '&' : '?')}step={stepId:D}&state={Uri.EscapeDataString(state)}";
 
     private static string NewState() => Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(StateBytes));
 
-    /// <summary>The SHA-256 of a state, lowercase hex: what the table holds.</summary>
     internal static string HashOf(string state) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(state)));
 
     private static string LockKey(Guid stepId) => $"step:{stepId:N}";

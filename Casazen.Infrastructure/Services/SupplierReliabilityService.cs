@@ -44,7 +44,6 @@ public sealed class SupplierReliabilityService(
         Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry<SupplierReliabilityEvent>? entry = null;
         try
         {
-            // Once for each supplier, request and kind: the unique index is the last guard, this is the usual one.
             if (requestId is { } id
                 && await db.SupplierReliabilityEvents.AsNoTracking()
                     .AnyAsync(e => e.SupplierOrgId == supplierOrgId && e.RequestId == id && e.Kind == kind, cancellationToken))
@@ -66,8 +65,6 @@ public sealed class SupplierReliabilityService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Another writer recorded the same event first (the unique index), or the record could not be written: the work of the caller
-            // is done either way. What was not saved must not stay in the context, or the next save of the caller would try it again.
             if (entry is not null)
                 entry.State = EntityState.Detached;
 
@@ -90,7 +87,6 @@ public sealed class SupplierReliabilityService(
         bool asBackup = false,
         CancellationToken cancellationToken = default)
     {
-        // A request with no deadline asks for no punctuality, and a late reply earns nothing.
         if (dueAt is not { } due || UtcDateTime.Normalize(repliedAt) > UtcDateTime.Normalize(due))
             return Task.CompletedTask;
 
@@ -114,7 +110,6 @@ public sealed class SupplierReliabilityService(
 
             await RecordAsync(supplierOrgId, SupplierReliabilityEventKind.NoReplyInTime, requestId, due, asBackup, null, cancellationToken);
 
-            // The supplier is told it loses points only if it does.
             return options.Value.ReliabilityEnabled && SupplierRanking.NoReplyPenaltyOf(options.Value, asBackup) > 0;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -150,13 +145,8 @@ public sealed class SupplierReliabilityService(
                     SupplierRanking.Tally(group.Select(row => new ReliabilityEventRecord(row.Kind, row.RequestId, row.AsBackup)))));
     }
 
-    /// <summary>
-    /// Whether the supplier could have answered while the request waited: it is active and some part of the window falls in a working
-    /// band of a day that is not time off. Without any working hours written nothing says it was away.
-    /// </summary>
     private async Task<bool> WasReachableAsync(Guid supplierOrgId, DateTime windowStartUtc, DateTime windowEndUtc, CancellationToken cancellationToken)
     {
-        // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the supplier org id.
         var status = await db.SupplierProfiles
             .AsNoTracking()
             .Where(sp => sp.OrgId == supplierOrgId)
@@ -165,8 +155,6 @@ public sealed class SupplierReliabilityService(
         if (status != SupplierStatus.Active)
             return false;
 
-        // The tables of the agenda are read through the agenda service only (SupplierAgendaTenancyTests). Its list of time off keeps what
-        // has not ended yet: a holiday that ended before today is not seen, which only matters when the job is a day late.
         var hours = await agenda.GetHoursAsync(supplierOrgId, cancellationToken);
         if (hours.Bands.Count == 0)
             return true;

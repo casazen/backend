@@ -13,8 +13,6 @@ public class BatchPricingUpdateTests
     [Fact]
     public void UpdatePricingBatchAsync_BatchMethodExistsOnAllAdapters()
     {
-        // This test verifies that the UpdatePricingBatchAsync method exists
-        // on all IChannelAdapter implementations - a compile-time check
         var adapterType = typeof(Casazen.Infrastructure.OTA.IChannelAdapter);
         var method = adapterType.GetMethod("UpdatePricingBatchAsync");
         Assert.NotNull(method);
@@ -24,14 +22,12 @@ public class BatchPricingUpdateTests
     [Fact]
     public void UpdatePricingBatchAsync_ReturnsCorrectType()
     {
-        // Verify that UpdatePricingBatchAsync returns a Dictionary<DateOnly, bool>
         var adapterType = typeof(Casazen.Infrastructure.OTA.IChannelAdapter);
         var method = adapterType.GetMethod("UpdatePricingBatchAsync");
 
         Assert.NotNull(method);
         var returnType = method.ReturnType;
 
-        // Check that it returns Task<Dictionary<DateOnly, bool>>
         Assert.True(returnType.IsGenericType);
         var genericArg = returnType.GetGenericArguments()[0];
         Assert.True(genericArg.IsGenericType);
@@ -41,14 +37,12 @@ public class BatchPricingUpdateTests
     [Fact]
     public void UpdatePricingBatchAsync_MethodSignatureIsCorrect()
     {
-        // Verify method has correct parameters
         var adapterType = typeof(Casazen.Infrastructure.OTA.IChannelAdapter);
         var method = adapterType.GetMethod("UpdatePricingBatchAsync");
 
         Assert.NotNull(method);
         var parameters = method.GetParameters();
 
-        // Should have 2 parameters: externalPropertyId (string) and pricesByDate (Dictionary<DateOnly, decimal>)
         Assert.Equal(2, parameters.Length);
         Assert.Equal("externalPropertyId", parameters[0].Name);
         Assert.Equal(typeof(string), parameters[0].ParameterType);

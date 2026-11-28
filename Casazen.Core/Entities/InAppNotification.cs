@@ -30,61 +30,39 @@ namespace Casazen.Core.Entities;
 [Table("InAppNotifications")]
 public class InAppNotification : ITenantOwned
 {
-    /// <summary>Column length of <see cref="DeliveryKey"/>: the one of <c>PushDelivery.DeliveryKey</c> (a push key is at most 200 characters).</summary>
     public const int DeliveryKeyMaxLength = 200;
 
-    /// <summary>Column length of <see cref="Type"/>: the one of <c>PushDelivery.Type</c>.</summary>
     public const int TypeMaxLength = 64;
 
-    /// <summary>Name of the unique index on (<see cref="DeliveryKey"/>, <see cref="UserId"/>): a 23505 on it means the row already exists.</summary>
     public const string OncePerEventAndUserIndexName = "UIX_InAppNotifications_DeliveryKey_UserId";
 
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row: the org the event belongs to (see the remarks). Server-set, never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The user who is told (<c>User.Id</c>, the Auth0 subject). Foreign key with <c>ON DELETE CASCADE</c>.</summary>
     [Required, MaxLength(255)]
     public string UserId { get; set; } = string.Empty;
 
-    /// <summary>Kind of event: a value of <c>PushTypes</c> (e.g. <c>new-booking</c>). The client picks the text from it.</summary>
     [Required, MaxLength(TypeMaxLength)]
     public string Type { get; set; } = string.Empty;
 
-    /// <summary>
-    /// The service request the event is about for the <c>service-request-*</c> types, the <b>property</b> for the Ticino types
-    /// (<c>ticino-notification-due</c> and <c>ticino-notification-overdue</c>, E30/F02/US01/T01, and <c>ticino-notification-declared</c>, E30/F02/US02/T01: an arrival day is not an entity, so the row names the property and
-    /// not the day; the client opens the Ticino page of that property on its first day to notify), the booking for every other one;
-    /// <c>null</c> when the event names none. Not a foreign key: the notification outlives the removal of what it points to.
-    /// </summary>
     public Guid? EntityId { get; set; }
 
-    /// <summary>Identity of the event: the delivery key of its push (<c>PushDeliveryKeys</c>). Never shown.</summary>
     [Required, MaxLength(DeliveryKeyMaxLength)]
     public string DeliveryKey { get; set; } = string.Empty;
 
-    /// <summary>UTC instant of the event, whole microseconds.</summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>UTC instant the user read it (or marked every notification as read); <c>null</c> while unread.</summary>
     public DateTime? ReadAt { get; set; }
 }
 
-/// <summary>Limits of the in-app notifications (UI-12a).</summary>
 public static class InAppNotificationLimits
 {
-    /// <summary>
-    /// A notification is deleted this many days after it was created, read or not (decision of the task UI-12a: the bell is a
-    /// feed of what happened lately, not an archive; the things that need an answer stay on their own screens).
-    /// </summary>
     public const int RetentionDays = 90;
 
-    /// <summary>Notifications in a page of the list when the client does not say.</summary>
     public const int DefaultPageSize = 20;
 
-    /// <summary>Most notifications in a page of the list.</summary>
     public const int MaxPageSize = 50;
 }

@@ -15,11 +15,6 @@ public interface ISupplierOrgContextResolver
 {
     Task<Guid?> GetOrProvisionSupplierOrgIdAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Resolves only an already-linked supplier org. This is for business
-    /// actions where silently creating or email-linking supplier membership
-    /// would be an authorization side effect.
-    /// </summary>
     Task<Guid?> GetLinkedSupplierOrgIdAsync(CancellationToken cancellationToken = default);
 }
 
@@ -52,7 +47,6 @@ public sealed class SupplierOrgContextResolver(
             if (profile is not null && !string.IsNullOrWhiteSpace(profile.Email))
             {
                 email = profile.Email;
-                // Backfill the DB so future requests don't need the API call
                 user.Email = email;
                 await userService.UpdateUserAsync(user);
             }

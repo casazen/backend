@@ -23,13 +23,10 @@ namespace Casazen.Core.Services;
 /// </summary>
 public static class DeferredCharges
 {
-    /// <summary><c>metadata.kind</c> of the deferred charge PaymentIntents (read by the webhooks).</summary>
     public const string Kind = "direct-booking-deadline-charge";
 
-    /// <summary>Description of the deferred payment row created by the checkout (the SetupIntent, then its PaymentIntent).</summary>
     public const string PaymentDescription = "Direct checkout - deferred payment (charged at deadline)";
 
-    /// <summary>Description of deferred charges recorded before the checkout created the row itself.</summary>
     public const string LegacyPaymentDescription = "Direct booking - charged at deadline";
 
     public const string MaxAttemptsSetting = "DirectBooking:DeferredChargeMaxAttempts";
@@ -48,18 +45,15 @@ public static class DeferredCharges
     /// </summary>
     public const int ProvisionalCancelAfterDays = 3;
 
-    /// <summary>Off-session attempts in total (at least 1).</summary>
     public static int GetMaxAttempts(IConfiguration configuration) =>
         Math.Max(1, configuration.GetValue(MaxAttemptsSetting, ProvisionalMaxAttempts));
 
-    /// <summary>Days from the first failure to the automatic cancellation; <c>null</c> when disabled (0 or less).</summary>
     public static int? GetCancelAfterDays(IConfiguration configuration)
     {
         var days = configuration.GetValue(CancelAfterDaysSetting, ProvisionalCancelAfterDays);
         return days > 0 ? days : null;
     }
 
-    /// <summary>Whether <paramref name="payment"/> is the deferred payment of <paramref name="booking"/>.</summary>
     public static bool IsDeferredPayment(Booking booking, Payment payment) =>
         payment.BookingId == booking.Id &&
         (payment.Description is PaymentDescription or LegacyPaymentDescription ||
@@ -77,14 +71,9 @@ public static class DeferredCharges
             .ThenByDescending(p => p.UpdatedAt)
             .FirstOrDefault();
 
-    /// <summary>The money was collected (possibly refunded afterwards): never charged again.</summary>
     public static bool IsCollected(PaymentStatus status) =>
         status is PaymentStatus.Completed or PaymentStatus.Refunded or PaymentStatus.PartiallyRefunded;
 
-    /// <summary>
-    /// Payment status for a PaymentIntent status. <c>requires_action</c> and <c>requires_payment_method</c> (and
-    /// <c>requires_confirmation</c>) need the guest: <see cref="PaymentStatus.Failed"/>, never Completed.
-    /// </summary>
     public static PaymentStatus StatusOf(string? paymentIntentStatus) => paymentIntentStatus switch
     {
         "succeeded" => PaymentStatus.Completed,
@@ -105,10 +94,6 @@ public static class DeferredCharges
     public static string ConfirmationIdempotencyKey(string paymentIntentId, int attempt) =>
         $"direct-booking-deadline-confirm:{paymentIntentId}:{attempt}";
 
-    /// <summary>
-    /// The deferred charge failed and waits for the guest: the outcome page shows "Pagamento non riuscito" with the
-    /// payment to complete (<see cref="CheckoutOutcomeState.PaymentFailed"/>). Needs the booking's payments.
-    /// </summary>
     public static bool AwaitsGuestPayment(Booking booking)
     {
         ArgumentNullException.ThrowIfNull(booking);
@@ -118,18 +103,12 @@ public static class DeferredCharges
                FindPayment(booking, booking.Payments)?.Status == PaymentStatus.Failed;
     }
 
-    /// <summary>
-    /// Europe/Rome day on which a booking still unpaid is cancelled: the day of the first failure plus
-    /// <paramref name="cancelAfterDays"/>, only when that day is before the check-in day (from the arrival on the stay may
-    /// have started: the host decides). <c>null</c> when nothing failed, the cancellation is disabled or does not apply.
-    /// </summary>
     public static DateOnly? CancellationDay(Booking booking, int? cancelAfterDays)
     {
         ArgumentNullException.ThrowIfNull(booking);
         return CancellationDay(booking.DeferredChargeFailedAt, booking.CheckInDate, cancelAfterDays);
     }
 
-    /// <inheritdoc cref="CancellationDay(Booking, int?)"/>
     public static DateOnly? CancellationDay(DateTime? failedAt, DateTime checkInDate, int? cancelAfterDays)
     {
         if (cancelAfterDays is not { } days || failedAt is not { } failed)
@@ -139,10 +118,6 @@ public static class DeferredCharges
         return day < RomeCalendar.DateInRome(checkInDate) ? day : null;
     }
 
-    /// <summary>
-    /// Until when the guest can pay before the automatic cancellation: the start (Europe/Rome) of the
-    /// <see cref="CancellationDay"/>, as a UTC instant. <c>null</c> when no cancellation applies.
-    /// </summary>
     public static DateTime? PayByUtc(Booking booking, int? cancelAfterDays) =>
         CancellationDay(booking, cancelAfterDays) is { } day
             ? RomeCalendar.StartOfDayUtc(day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc))

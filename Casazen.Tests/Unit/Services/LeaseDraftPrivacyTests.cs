@@ -11,10 +11,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// LR-12: the anonymization of the parties (LT-12) takes the new data with it — the residence, the day the documents were checked and the
-/// values the landlord typed in the wizard — and the readers that act on a date or send an e-mail leave a draft still being typed alone.
-/// </summary>
 public class LeaseDraftPrivacyTests
 {
     [Fact]
@@ -72,7 +68,6 @@ public class LeaseDraftPrivacyTests
                 EndDate = new DateTime(2023, 12, 31, 0, 0, 0, DateTimeKind.Utc),
                 MonthlyRent = 900m,
                 DraftData = """{"landlords":[{"firstName":"Mario"}]}""",
-                // The need of a transitory contract and its documents (TR) are free text about a person: they go with the parties.
                 TransitoryParty = PartyRole.Landlord,
                 TransitoryNeed = "Assistenza a un familiare a Bari",
                 TransitoryDocumentation = "Certificato riservato",
@@ -121,8 +116,6 @@ public class LeaseDraftPrivacyTests
     [Fact]
     public async Task AnErasureRequest_OnAnEndedDraftWhoseEntriesNeverBecameParties_StillRemovesTheTypedState()
     {
-        // The entries of a draft are rows of Parties only when they are complete: a draft whose entries all lack something lives in
-        // DraftData alone, with the names and the fiscal codes, and there is no row to anonymize.
         var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
         var leaseId = Guid.NewGuid();
         await using (var seed = new AppDbContext(options))

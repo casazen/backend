@@ -31,10 +31,6 @@ public class ReviewHubTests
         OtaReview Unpublished,
         OtaReview Other);
 
-    /// <summary>
-    /// Four published reviews and a row that is not one: the review of a stay of the booking site (an hour ago) and the Airbnb review of the granted house (two hours ago) and of the hidden one (five
-    /// hours ago), both of the org; the Airbnb review of another org; and a read that found no review on a stay of the granted house.
-    /// </summary>
     private static async Task<Seeded> SeedAsync()
     {
         var h = await OtaReviewHarness.CreateAsync();
@@ -85,8 +81,6 @@ public class ReviewHubTests
 
     private static readonly MessageHubFilter ReviewsOnly = new(Kind: MessageHubThreadKind.Review);
 
-    // ─── The list ───
-
     [Fact]
     public async Task List_KindReview_ListsTheReviewsOfBothSources_NewestFirst_EachAsAHubItem()
     {
@@ -94,7 +88,6 @@ public class ReviewHubTests
 
         var page = await ListAsync(s.H, s.H.World.OrgWide, ReviewsOnly);
 
-        // The published ones of the org: the booking site an hour ago, the granted house two hours ago, the hidden house five hours ago. Not the unpublished row, not the other org.
         Assert.Equal(3, page.TotalCount);
         Assert.Equal(
             [MessageThreadKey.ForReview(s.Site.Id), MessageThreadKey.ForOtaReview(s.Granted.Id), MessageThreadKey.ForOtaReview(s.Hidden.Id)],
@@ -143,7 +136,6 @@ public class ReviewHubTests
         Assert.Equal(2, first.Items.Count);
         Assert.Equal([MessageThreadKey.ForOtaReview(s.Hidden.Id)], second.Items.Select(i => i.Key));
 
-        // The default view is the conversations, and the other filters of the list never turn up a review.
         foreach (var filter in new[]
                  {
                      new MessageHubFilter(),
@@ -204,12 +196,6 @@ public class ReviewHubTests
         Assert.Equal(3, read.TotalCount);
     }
 
-    // ─── Scope and tenant ───
-
-    /// <summary>
-    /// PROOF TEST: permission rule (AM-03). A collaborator limited to some properties lists and opens the reviews of the houses it was given and no other: the reviews of the house it was not
-    /// given, and of another org, are not in its list and are a 404 when it asks for them (the key of one that is not there and of one that is out of reach answer the same).
-    /// </summary>
     [Fact]
     public async Task ReviewHub_Collaborator_SeesOnlyGrantedProperties_Test()
     {
@@ -222,7 +208,6 @@ public class ReviewHubTests
         Assert.Equal([MessageThreadKey.ForReview(s.Site.Id), MessageThreadKey.ForOtaReview(s.Granted.Id)], page.Items.Select(i => i.Key));
         Assert.All(page.Items, i => Assert.Equal(s.H.Granted.PropertyId, i.PropertyId));
 
-        // The detail follows the same reach.
         Assert.Equal(s.H.Granted.PropertyId, (await DetailAsync(s.H, restricted, MessageThreadKey.ForOtaReview(s.Granted.Id))).PropertyId);
         Assert.Equal(s.H.Granted.PropertyId, (await DetailAsync(s.H, restricted, MessageThreadKey.ForReview(s.Site.Id))).PropertyId);
         foreach (var hidden in new[] { MessageThreadKey.ForOtaReview(s.Hidden.Id), MessageThreadKey.ForOtaReview(s.Other.Id), MessageThreadKey.ForReview(Guid.NewGuid()) })
@@ -231,13 +216,10 @@ public class ReviewHubTests
             Assert.Equal(MessageHubService.ReviewNotFoundCode, error.Code);
         }
 
-        // The owner of the org reaches the three of the org and none of the other org.
         var all = await ListAsync(s.H, s.H.World.OrgWide, ReviewsOnly);
         Assert.DoesNotContain(all.Items, i => i.Key == MessageThreadKey.ForOtaReview(s.Other.Id));
         await Assert.ThrowsAsync<NotFoundException>(() => DetailAsync(s.H, s.H.World.OrgWide, MessageThreadKey.ForOtaReview(s.Other.Id)));
     }
-
-    // ─── The detail ───
 
     [Fact]
     public async Task Detail_OfAReviewOfAChannel_ShowsTheStarsTheWordsTheStatesTheBookingAndWhatTheChannelAllows()
@@ -273,12 +255,10 @@ public class ReviewHubTests
         Assert.Equal(OtaReviewHarness.Now.UtcDateTime, detail.LastSyncedAt);
         Assert.Null(detail.LastSyncError);
 
-        // A caller who may not read payments gets the card with no money.
         var withoutMoney = await DetailAsync(s.H, s.H.World.OrgWide, key, includeAmounts: false);
         Assert.NotNull(withoutMoney.Booking);
         Assert.Null(withoutMoney.Booking.Amounts);
 
-        // The connector off, or the listing no longer confirmed: nothing can be sent, and the reason says why.
         s.H.Flags.Set(FeatureFlags.OctorateConnector, false);
         var off = await DetailAsync(s.H, s.H.World.OrgWide, key);
         Assert.False(off.Capabilities.CanReply);
@@ -336,8 +316,6 @@ public class ReviewHubTests
         }
     }
 
-    // ─── A review is not a conversation ───
-
     [Fact]
     public async Task TheKeyOfAReview_IsA404ForTheEndpointsOfAConversation_AndNothingIsWrittenToIt()
     {
@@ -359,7 +337,6 @@ public class ReviewHubTests
             Assert.Equal(MessageHubService.ThreadNotFoundCode, lookup.Code);
         }
 
-        // The reply of a conversation neither: it would have written a message where a review is.
         var conversations = HostScopeScenario.NewInMemoryDb();
         var world = await MessageHubTestKit.SeedAsync(conversations);
         var rig = new MessageReplyRig(conversations);

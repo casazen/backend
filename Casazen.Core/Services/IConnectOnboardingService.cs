@@ -76,10 +76,6 @@ public interface IConnectOnboardingService
     /// </summary>
     Task<ConnectStatus> EnsureExpressAccountAsync(Guid orgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Account Link of the onboarding. <paramref name="returnUrl"/> and <paramref name="refreshUrl"/> are built by the
-    /// server on the public web app (<c>App:PublicSiteBaseUrl</c>), never taken from the client (A3-42).
-    /// </summary>
     Task<string> CreateOnboardingLinkAsync(
         Guid orgId,
         string returnUrl,
@@ -96,11 +92,6 @@ public interface IConnectOnboardingService
     /// </summary>
     Task<string> CreateDashboardLinkAsync(Guid orgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Applies an <c>account.updated</c> to the org that owns the account and says whether a supplier has just become able to
-    /// receive payments (SP-15b): the caller then queues the payment requests that waited for it. An unknown account changes
-    /// nothing and is <see cref="ConnectAccountUpdate.None"/>.
-    /// </summary>
     Task<ConnectAccountUpdate> ApplyAccountUpdatedAsync(ConnectAccountSnapshot snapshot, CancellationToken cancellationToken = default);
 }
 
@@ -116,6 +107,5 @@ public interface IConnectOnboardingService
 /// </param>
 public sealed record ConnectAccountUpdate(Guid? OrgId, bool SupplierBecameReady, bool SupplierReadinessChanged = false)
 {
-    /// <summary>No org owns the account: nothing changed.</summary>
     public static ConnectAccountUpdate None { get; } = new(null, false);
 }

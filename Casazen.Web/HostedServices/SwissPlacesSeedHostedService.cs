@@ -31,7 +31,6 @@ public class SwissPlacesSeedHostedService(
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-    /// <summary>Loads <paramref name="seed"/> (the file of the build, <c>null</c> when the build has none) and logs what happened; never throws but on cancellation.</summary>
     public async Task SeedAsync(byte[]? seed, CancellationToken cancellationToken)
     {
         if (seed is null)
@@ -51,7 +50,6 @@ public class SwissPlacesSeedHostedService(
                 "Swiss places seed on startup: imported={Imported} municipalities={Municipalities} localities={Localities} removedMunicipalities={RemovedMunicipalities} removedLocalities={RemovedLocalities} sha256={Sha256}",
                 result.Imported, result.Municipalities, result.Localities, result.MunicipalitiesRemoved, result.LocalitiesRemoved, result.Sha256);
 
-            // A municipality the directory dropped (a merger) that a property still carries is kept: its host has to confirm the new one.
             if (result.MunicipalitiesKept > 0)
             {
                 logger.LogWarning(

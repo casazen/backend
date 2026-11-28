@@ -48,8 +48,6 @@ public sealed class BookingSearchService(
             .Take(pageSize)
             .ToListAsync(cancellationToken);
 
-        // A page that is not full is the last one, and says how many there are: no second query. A full page, or a page past the
-        // end, does not, and the count is asked.
         var isLastPage = items.Count < pageSize && (items.Count > 0 || skipped == 0);
         var total = isLastPage ? skipped + items.Count : await query.CountAsync(cancellationToken);
 
@@ -70,7 +68,6 @@ public sealed class BookingSearchService(
         var (today, nowUtc, cutoff) = Now();
         var query = Filter(db.Bookings.AsNoTracking().Where(b => b.OrgId == scope.OrgId).InScope(scope), criteria, nowUtc);
 
-        // One group for the whole set: COUNT(*) and a COUNT(*) FILTER per chip, the chips being the very predicates of the list.
         var counts = await query
             .GroupBy(_ => 1)
             .Select(CountsSelector(today, cutoff))
@@ -85,8 +82,6 @@ public sealed class BookingSearchService(
         return (RomeCalendar.TodayAt(now), nowUtc, CheckoutHolds.CutoffAt(nowUtc, CheckoutHolds.GetTtlMinutes(_configuration)));
     }
 
-    // g => new BookingCounts(g.Count(), g.Count(chip 1), ...): built from the predicates of the chips, so the counters and the lists
-    // of the chips cannot disagree. EF turns each Count(predicate) into a COUNT(*) FILTER (WHERE ...).
     private static Expression<Func<IGrouping<int, Booking>, BookingCounts>> CountsSelector(DateTime today, HoldExpiryCutoff cutoff)
     {
         var group = Expression.Parameter(typeof(IGrouping<int, Booking>), "g");
@@ -112,7 +107,6 @@ public sealed class BookingSearchService(
         return Expression.Lambda<Func<IGrouping<int, Booking>, BookingCounts>>(body, group);
     }
 
-    // The orders of the list. Without one: the latest check-in first, as GET /api/bookings always was. The id closes every order.
     private static IOrderedQueryable<Booking> Order(IQueryable<Booking> query, BookingSort? sort)
     {
         var ordered = (sort?.Key ?? BookingSortKey.CheckIn, sort?.Descending ?? true) switch
@@ -133,7 +127,6 @@ public sealed class BookingSearchService(
         return ordered.ThenBy(b => b.Id);
     }
 
-    // The filters of the criteria but the chip, which the list adds and the counters of the chips replace.
     private IQueryable<Booking> Filter(IQueryable<Booking> query, BookingSearchCriteria criteria, DateTime nowUtc)
     {
         if (criteria.PropertyId is { } propertyId)
@@ -153,29 +146,24 @@ public sealed class BookingSearchService(
             query = query.Where(b => sources.Contains(b.Source));
         }
 
-        // The origin the host reads (E27/F01/US01/T01, NF-123): the one rule of BookingOrigins, as a predicate. It only narrows: the scope is applied apart.
         if (criteria.Origins is { Count: > 0 } origins)
             query = query.Where(BookingOrigins.Matching(origins));
 
         if (criteria.CheckInStates is { Count: > 0 } states)
             query = query.Where(CheckInStateIn(states.Distinct().ToList(), nowUtc));
 
-        // Stay dates, as the calendar reads them (HostCalendarRange): midnight UTC of the day, never moved to a time zone. A stay
-        // is in the range when it has a day in it, from its arrival day to its departure day, both included.
         if (criteria.From is { } from)
         {
             var firstDay = StayDate(from);
             query = query.Where(b => b.CheckOutDate >= firstDay);
         }
 
-        // The last day the calendar has is no upper bound: the day after it cannot be written.
         if (criteria.To is { } to && to != DateOnly.MaxValue)
         {
             var dayAfter = StayDate(to).AddDays(1);
             query = query.Where(b => b.CheckInDate < dayAfter);
         }
 
-        // The arrival day only (SR-03b): the check-in date, same convention.
         if (criteria.ArrivalFrom is { } arrivalFrom)
         {
             var firstArrival = StayDate(arrivalFrom);
@@ -240,7 +228,6 @@ public sealed class BookingSearchService(
                 HostTodayCheckInState.Sent => BookingListRules.And(notSubmitted, latestSent),
                 HostTodayCheckInState.InProgress => BookingListRules.And(notSubmitted, latestInProgress),
                 HostTodayCheckInState.Expired => BookingListRules.And(notSubmitted, latestExpired),
-                // No usable link: none was issued, or the email of the latest failed and left the guest with nothing to open.
                 _ => BookingListRules.And(notSubmitted, BookingListRules.Or(noLink, latestEmailFailed)),
             });
         }
@@ -307,7 +294,6 @@ public sealed class BookingSearchService(
             booking =>
             {
                 var facts = payments[booking.Id].ToList();
-                // A communication exists for a stay that is confirmed; a request, a hold, a cancelled booking or a no-show (NF-45) has none.
                 AlloggiatiWebStatus? alloggiati = AlloggiatiStatusRules.IsDue(booking)
                     ? AlloggiatiStatusRules.Effective(
                         AlloggiatiStatusRules.SlotReport(reports[booking.Id].ToList(), booking.GuestId)?.Status,

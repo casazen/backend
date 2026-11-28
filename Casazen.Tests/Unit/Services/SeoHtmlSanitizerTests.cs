@@ -3,10 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// A8-08 / A9-29: the SEO body is rendered with dangerouslySetInnerHTML, so only the editorial allowlist
-/// may survive. Keep these payloads aligned with the frontend test src/lib/__tests__/sanitize-html.test.ts.
-/// </summary>
 public class SeoHtmlSanitizerTests
 {
     public static TheoryData<string> XssPayloads => new()
@@ -100,7 +96,6 @@ public class SeoHtmlSanitizerTests
     [Fact]
     public void Sanitize_StubProviderArticleWrapper_KeepsParagraphText()
     {
-        // Shape produced by StubAiProvider and the bootstrap seed: the wrapper goes, the text stays.
         var result = SeoHtmlSanitizer.Sanitize(
             "<article><p>Como: contenuto generato per affitti brevi, CIN e tassa di soggiorno.</p></article>");
 
@@ -127,7 +122,6 @@ public class SeoHtmlSanitizerTests
     [Fact]
     public void Sanitize_ListItemWithNoTextOrAnEmptyLink_DropsTheItemAndKeepsTheOthers()
     {
-        // The «Fonti ufficiali» of a published guide ended with a bullet and nothing after it.
         var result = SeoHtmlSanitizer.Sanitize(
             "<ul><li><a href=\"https://example.com\">fonte</a></li><li><a href=\"https://example.com/x\"></a></li><li></li></ul>");
 

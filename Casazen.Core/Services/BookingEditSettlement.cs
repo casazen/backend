@@ -2,29 +2,21 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Core.Services;
 
-/// <summary>What the edit of a booking of the booking site does with the money (E08/F02/US01/T01, NF-75).</summary>
 public enum BookingSettlementAction
 {
-    /// <summary>No money moves online: the price is the same, or it is collected as the booking was agreed (at the property, at the deadline).</summary>
     None = 0,
 
-    /// <summary>The price is lower than what the guest paid: the difference goes back on the Stripe payment(s).</summary>
     Refund = 1,
 
-    /// <summary>The price is higher: the difference is charged, off-session, to the card the booking saved.</summary>
     ChargeSavedCard = 2,
 
-    /// <summary>The price is higher and no card is saved: the guest gets a payment link for the difference.</summary>
     PaymentLink = 3,
 }
 
-/// <summary>Where the money of an edit stands once the edit is saved.</summary>
 public enum BookingSettlementState
 {
-    /// <summary>Nothing moved (and nothing was needed).</summary>
     None = 0,
 
-    /// <summary>The refund or the charge is confirmed by Stripe, or the payment link was made and sent.</summary>
     Done = 1,
 
     /// <summary>Stripe has the refund or the charge and has not confirmed it yet (it is confirmed by its webhook or by the retry job).</summary>
@@ -66,39 +58,25 @@ public sealed record BookingEditSettlement(
     decimal OfflineRefundDue,
     string Currency)
 {
-    /// <summary>An edit that moved no money.</summary>
     public static BookingEditSettlement NotNeeded(string currency) =>
         new(BookingSettlementAction.None, BookingSettlementState.None, 0m, 0m, currency);
 }
 
-/// <summary>The booking as the edit left it and what happened to the money (<see cref="IHostBookingService.UpdateAsync"/>).</summary>
 public sealed record HostBookingUpdateResult(Booking Booking, BookingEditSettlement Settlement);
 
-/// <summary>A Stripe payment of a booking and how much of it can still be refunded online.</summary>
 public sealed record BookingRefundableShare(Guid PaymentId, decimal Refundable);
 
-/// <summary>One refund of an edit: <see cref="Amount"/> on the payment <see cref="PaymentId"/>.</summary>
 public sealed record BookingRefundPart(Guid PaymentId, decimal Amount);
 
-/// <summary>What the money of an edit comes to (<see cref="BookingEditSettlementRules.Plan"/>).</summary>
-/// <param name="Action">What happens to the difference.</param>
-/// <param name="Amount">The money that moves online.</param>
-/// <param name="OfflineRefundDue">The overpayment that cannot go back online.</param>
-/// <param name="Refunds">For <see cref="BookingSettlementAction.Refund"/>: the refund of each payment, newest payment first.</param>
 public sealed record BookingEditPlan(
     BookingSettlementAction Action,
     decimal Amount,
     decimal OfflineRefundDue,
     IReadOnlyList<BookingRefundPart> Refunds)
 {
-    /// <summary>No money moves.</summary>
     public static BookingEditPlan None { get; } = new(BookingSettlementAction.None, 0m, 0m, []);
 }
 
-/// <summary>
-/// The rules of the money of an edit (E08/F02/US01/T01, NF-75), pure: the difference between the new total and what the guest has paid is refunded
-/// when it is negative, collected when it is positive, and left alone when it is zero. Every amount is to the cent.
-/// </summary>
 public static class BookingEditSettlementRules
 {
     /// <summary>The idempotency key of the refund of one payment in the edit of a booking at <paramref name="updatedAt"/>: the same for the same edit, so a retried request returns the refund Stripe already made.</summary>
@@ -161,6 +139,5 @@ public static class BookingEditSettlementRules
         return new BookingEditPlan(online > 0m ? BookingSettlementAction.Refund : BookingSettlementAction.None, online, remaining, parts);
     }
 
-    /// <summary>An amount to the cent (half away from zero, as every amount of CasaZen).</summary>
     public static decimal Cents(decimal amount) => decimal.Round(amount, 2, MidpointRounding.AwayFromZero);
 }

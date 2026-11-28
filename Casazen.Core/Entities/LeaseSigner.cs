@@ -17,7 +17,6 @@ public class LeaseSigner : ITenantOwned
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant key, the lease's org.</summary>
     public Guid OrgId { get; set; }
     public virtual Org Org { get; set; } = null!;
 
@@ -39,21 +38,14 @@ public class LeaseSigner : ITenantOwned
     [Required]
     public LeaseSignerStatus Status { get; set; } = LeaseSignerStatus.Pending;
 
-    /// <summary>Provider id of the signer (matches the webhook events); null offline.</summary>
     [MaxLength(200)]
     public string? ExternalSignerId { get; set; }
 
-    /// <summary>Personal signing link of the provider, shown to the landlord only while pending; null offline.</summary>
     [MaxLength(2000)]
     public string? SigningUrl { get; set; }
 
-    /// <summary>Expiry of <see cref="SigningUrl"/> (UTC instant).</summary>
     public DateTime? SigningUrlExpiresAt { get; set; }
 
-    /// <summary>
-    /// When the party signed: the provider event instant, or the declared stipula date (midnight UTC of the Rome date)
-    /// for an offline signature.
-    /// </summary>
     public DateTime? SignedAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

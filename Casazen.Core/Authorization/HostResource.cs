@@ -21,16 +21,13 @@ namespace Casazen.Core.Authorization;
 /// </param>
 public sealed record HostResource(Guid OrgId, string? PropertyOwnerId, Guid? PropertyId = null)
 {
-    /// <summary>True when the row follows a property (and so its reach is decided by the caller's scope).</summary>
     public bool IsBoundToProperty => PropertyOwnerId is not null || PropertyId is not null;
 
-    /// <summary>The property itself, or any row whose access follows its property.</summary>
     public static HostResource ForProperty(Property property)
     {
         ArgumentNullException.ThrowIfNull(property);
         return new HostResource(property.OrgId, property.OwnerId, property.Id);
     }
 
-    /// <summary>An org-level row that is not bound to one property (e.g. a guest of the org).</summary>
     public static HostResource ForOrg(Guid orgId) => new(orgId, null);
 }

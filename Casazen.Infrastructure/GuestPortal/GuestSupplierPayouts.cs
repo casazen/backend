@@ -6,7 +6,6 @@ using Stripe;
 
 namespace Casazen.Infrastructure.GuestPortal;
 
-/// <summary>Release captured sandbox funds to connected balances after the service dispute window.</summary>
 public sealed class GuestSupplierPayouts(AppDbContext db, IConfiguration configuration, TimeProvider clock)
 {
     private IStripeClient? client;
@@ -27,7 +26,6 @@ public sealed class GuestSupplierPayouts(AppDbContext db, IConfiguration configu
             throw new ArgumentOutOfRangeException(nameof(order));
         var commissionRefund = (int)Math.Round(returned * (decimal)order.CommissionCents / total, MidpointRounding.AwayFromZero);
         var netCommission = order.CommissionCents - commissionRefund;
-        // D34 assigns the actual card processing cost to the supplier for both private and marketplace orders.
         var supplier = order.SupplierPriceCents - (returned - commissionRefund) - cardFeeCents;
         return new Shares(supplier, order.HostOrigin ? netCommission : 0, order.HostOrigin ? 0 : netCommission);
     }
@@ -48,7 +46,6 @@ public sealed class GuestSupplierPayouts(AppDbContext db, IConfiguration configu
     public async Task<bool> ReleaseAsync(Guid id, CancellationToken ct)
     {
         if (!Enabled(configuration)) return false;
-        // Commit the plan before any Stripe write, then each transfer receipt separately.
         for (var step = 0; step < 4; step++)
         {
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
@@ -65,7 +62,6 @@ public sealed class GuestSupplierPayouts(AppDbContext db, IConfiguration configu
             try { failure = await AdvanceAsync(order, now, ct); }
             catch (StripeException ex)
             {
-                // A timeout after creation is safe: the next attempt recovers the receipt from the order's transfer group.
                 failure = ex.StripeError?.Code ?? "stripe_temporarily_unavailable";
             }
             order.StripePayoutFailureCode = failure;
@@ -111,7 +107,6 @@ public sealed class GuestSupplierPayouts(AppDbContext db, IConfiguration configu
 
         if (!order.StripePayoutClaimedAt.HasValue && order.BankLossCents + order.RefundCents == intent.AmountReceived)
         {
-            // The entire charge was returned to the guest. There is no connected balance to pay.
             order.StripeCardFeeCents = (int)balance.Fee;
             order.StripeReleasedAt = now;
             return null;

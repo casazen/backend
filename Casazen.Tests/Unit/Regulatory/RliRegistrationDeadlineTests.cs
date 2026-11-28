@@ -6,19 +6,12 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Regulatory;
 
-/// <summary>
-/// LT-04 (A7-04): RLI deadline = min(stipula, start) + 30 days (fiscale.md L1), on the Europe/Rome calendar.
-/// </summary>
 public class RliRegistrationDeadlineTests
 {
     [Theory]
-    // Signed 1/8, start 1/10: 30 days from the stipula (the audit scenario: CasaZen showed 31/10).
     [InlineData("2026-08-01", "2026-10-01", "2026-08-31")]
-    // Start 1/9 before the stipula 20/9: 30 days from the start.
     [InlineData("2026-09-20", "2026-09-01", "2026-10-01")]
-    // Same day.
     [InlineData("2026-09-01", "2026-09-01", "2026-10-01")]
-    // Across the end of February (2028 is a leap year).
     [InlineData("2028-02-10", "2028-03-01", "2028-03-11")]
     public void Compute_StipulaAndStart_ThirtyDaysFromTheEarlier(string stipula, string start, string expected)
     {
@@ -31,7 +24,6 @@ public class RliRegistrationDeadlineTests
     [Fact]
     public void Compute_StipulaInstantAfterMidnightInRome_UsesRomeCalendarDay()
     {
-        // 22:30 UTC on 31/7 is already 1/8 in Rome (CEST).
         var deadline = RliRegistrationDeadline.Compute(
             new DateTime(2026, 7, 31, 22, 30, 0, DateTimeKind.Utc),
             Date("2026-10-01"));
@@ -42,7 +34,6 @@ public class RliRegistrationDeadlineTests
     [Fact]
     public void Compute_StartStoredAsRomeMidnightInUtc_UsesRomeCalendarDay()
     {
-        // A start date stored as Rome midnight (22:00 UTC of the day before) is still 1/9.
         var deadline = RliRegistrationDeadline.Compute(
             Date("2026-09-20"),
             new DateTime(2026, 8, 31, 22, 0, 0, DateTimeKind.Utc));
@@ -56,7 +47,6 @@ public class RliRegistrationDeadlineTests
     [InlineData(LeaseStatus.PartiallySigned)]
     public void Resolve_NotSignedYetStartReached_DeadlineFromStart(LeaseStatus status)
     {
-        // Not signed yet: the stipula can only be today or later, so the start (1/9) is the earlier date.
         var deadline = RliRegistrationDeadline.Resolve(status, null, Date("2026-09-01"), Date("2026-09-24"));
 
         Assert.Equal(Date("2026-10-01"), deadline);
@@ -127,9 +117,6 @@ public class RliRegistrationDeadlineTests
     [Fact]
     public void Compute_DeadlineFallsOnSaturday_NoShiftToNextWorkingDay()
     {
-        // Stipula 13 Aug 2026 (Thursday). Start 1 Oct 2026 (after stipula).
-        // min(stipula, start) = 13 Aug. +30 = 12 Sep 2026 (Saturday).
-        // LT-04 / PO 2026-10-08: no shift; deadline stays on Saturday.
         var deadline = RliRegistrationDeadline.Compute(Date("2026-08-13"), Date("2026-10-01"));
 
         Assert.Equal(DayOfWeek.Saturday, deadline.DayOfWeek);

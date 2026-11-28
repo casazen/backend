@@ -49,7 +49,6 @@ public class CheckInIdentityVerificationFeatureFlagTests(CasazenWebApplicationFa
             config.AddInMemoryCollection(new Dictionary<string, string?> { ["Features:CheckInIdentityVerification"] = "true" })));
         using var client = enabled.CreateClient();
 
-        // A form without the image: the model validation of the action answers, so the request went past the gate.
         var document = await client.PostAsync($"/api/public/checkin/{Guid.NewGuid():N}/document", FormWithoutImage());
         var selfie = await client.PostAsync($"/api/public/checkin/{Guid.NewGuid():N}/selfie", FormWithoutImage());
 
@@ -57,7 +56,6 @@ public class CheckInIdentityVerificationFeatureFlagTests(CasazenWebApplicationFa
         Assert.Equal(HttpStatusCode.BadRequest, selfie.StatusCode);
     }
 
-    /// <summary>The document takes one picture (10 MB); the selfie takes up to three, the selfie and the two sides of a document of Ticino (15 MB, E22/F01/US01/T02).</summary>
     [Theory]
     [InlineData(nameof(PublicGuestCheckInController.UploadDocument), PublicGuestCheckInController.MaxImageRequestBytes)]
     [InlineData(nameof(PublicGuestCheckInController.UploadSelfie), PublicGuestCheckInController.MaxSelfieRequestBytes)]
@@ -90,7 +88,6 @@ public class CheckInIdentityVerificationFeatureFlagTests(CasazenWebApplicationFa
         return (token, sessionId, seed.BookingId);
     }
 
-    /// <summary>A form with one small PNG under <paramref name="field"/>.</summary>
     private static MultipartFormDataContent ImageForm(string field)
     {
         var image = new ByteArrayContent([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D]);

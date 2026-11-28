@@ -15,7 +15,6 @@ public class GuestsControllerAuthorizationTests
             .Select(a => a.Policy)
             .ToArray();
 
-        // TN-3: the context permission alone; the old "PropertyOwner" policy only required a signed-in user.
         Assert.DoesNotContain("PropertyOwner", classPolicies);
         Assert.Contains("RequireContext:short-rent:guest.read", classPolicies);
     }
@@ -23,7 +22,6 @@ public class GuestsControllerAuthorizationTests
     [Theory]
     [InlineData(nameof(GuestsController.Create), "RequireContext:short-rent:guest.write")]
     [InlineData(nameof(GuestsController.Update), "RequireContext:short-rent:guest.write")]
-    // AM-03: deleting a guest is guest.manage (the collaborator registers and corrects guests, it does not erase them).
     [InlineData(nameof(GuestsController.Delete), "RequireContext:short-rent:guest.manage")]
     public void GuestsController_WriteEndpointsRequireTheirContextPermission(string actionName, string expectedPolicy)
     {

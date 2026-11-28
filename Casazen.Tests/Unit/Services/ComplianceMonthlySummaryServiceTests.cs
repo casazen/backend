@@ -33,7 +33,7 @@ public class ComplianceMonthlySummaryServiceTests : IDisposable
     private static readonly DateOnly FirstOfNovember = new(2026, 11, 1);
 
     private readonly AppDbContext _db = OrgTeamTestData.NewDb();
-    private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 11, 1, 6, 0, 0, TimeSpan.Zero)); // 07:00 in Rome
+    private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 11, 1, 6, 0, 0, TimeSpan.Zero));
     private readonly Mock<IComplianceArchiveService> _archive = new();
     private readonly Mock<IFeatureFlags> _flags = new();
     private readonly RecordingEmailQueue _emails = new();
@@ -136,8 +136,6 @@ public class ComplianceMonthlySummaryServiceTests : IDisposable
             .Select(_ => Row(ComplianceItemKind.Alloggiati, ComplianceEvidenceClass.OfficialProof, ComplianceCockpitAction.UploadAlloggiatiReceipt, ComplianceReasonCodes.ReceiptArchived))
             .ToArray());
 
-    // ─── Once per organization and month ───
-
     [Fact]
     public async Task RunAsync_OnTheFirstOfTheMonth_SendsTheSummaryOfTheMonthBefore_OnceHoweverManyRuns()
     {
@@ -158,7 +156,6 @@ public class ComplianceMonthlySummaryServiceTests : IDisposable
         Assert.Contains("soggiorni del mese <strong>42</strong>", email.Content.HtmlBody, StringComparison.Ordinal);
         var row = await _db.ComplianceMonthlySummaryLogs.SingleAsync();
         Assert.Equal((orgId, "2026-10", ComplianceMonthlySummaryLog.AllCompliant, 1), (row.OrgId, row.YearMonth, row.Outcome, row.RecipientCount));
-        // The report was asked for once: a month already sent costs nothing more.
         _archive.Verify(a => a.GetCoverageReportAsync(It.IsAny<HostScope>(), It.IsAny<ComplianceReportQuery>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -216,8 +213,6 @@ public class ComplianceMonthlySummaryServiceTests : IDisposable
             Times.Once);
     }
 
-    // ─── What it says ───
-
     [Fact]
     public async Task RunAsync_WithItemsMissing_ListsThemByActionAndNeverSaysAllCompliant()
     {
@@ -233,7 +228,6 @@ public class ComplianceMonthlySummaryServiceTests : IDisposable
         await Service().RunAsync(FirstOfNovember, CancellationToken.None);
 
         var email = Assert.Single(_emails.Queued);
-        // Four stays owe a communication (the no-show owes none); four obligations are missing.
         Assert.Equal("Adempimenti di ottobre 2026: soggiorni 4, da sistemare 4", email.Content.Subject);
         var body = email.Content.HtmlBody;
         Assert.Contains("Non tutto è in regola", body, StringComparison.Ordinal);
@@ -241,7 +235,6 @@ public class ComplianceMonthlySummaryServiceTests : IDisposable
         Assert.Contains("Ricevute Alloggiati Web da caricare: 2", body, StringComparison.Ordinal);
         Assert.Contains("Comunicazioni Alloggiati Web da inviare: 1", body, StringComparison.Ordinal);
         Assert.Contains("Comunicazioni ISTAT da provare: 1", body, StringComparison.Ordinal);
-        // The count of the obligations by state: proof, held by the channel manager, no proof, not owed.
         Assert.Contains("Con prova archiviata: 1", body, StringComparison.Ordinal);
         Assert.Contains("Da verificare nel pannello del channel manager: 0", body, StringComparison.Ordinal);
         Assert.Contains("Senza prova: 4", body, StringComparison.Ordinal);
@@ -254,7 +247,6 @@ public class ComplianceMonthlySummaryServiceTests : IDisposable
     public async Task RunAsync_AnItemHeldOnlyByTheChannelManager_IsNeverCollapsedIntoCompliant()
     {
         var orgId = await SeedOrgAsync();
-        // Every stay was entrusted to the channel manager: CasaZen holds no proof of any of them.
         ArchiveSays(orgId, Report(
             Row(ComplianceItemKind.Alloggiati, ComplianceEvidenceClass.ExternalVerificationRequired, ComplianceCockpitAction.UploadAlloggiatiReceipt, ComplianceReasonCodes.EntrustedToChannelManager),
             Row(ComplianceItemKind.Alloggiati, ComplianceEvidenceClass.ExternalVerificationRequired, ComplianceCockpitAction.UploadAlloggiatiReceipt, ComplianceReasonCodes.EntrustedToChannelManager)));
@@ -297,16 +289,12 @@ public class ComplianceMonthlySummaryServiceTests : IDisposable
         Assert.Contains("<html lang=\"en\">", email.Content.HtmlBody, StringComparison.Ordinal);
     }
 
-    // ─── Privacy ───
-
     [Theory]
     [InlineData("it")]
     [InlineData("en")]
     public async Task ComplianceMonthlySummary_NoGuestPersonalData_Test(string language)
     {
-        // The same scan for the organization that writes in Italian and for the one that writes in English: the final text of each language.
         var orgId = await SeedOrgAsync(language: language);
-        // A month with stays of a guest with a name, an email, a phone and a document, whose booking codes the report knows and whose rows are open.
         var guest = new Guest
         {
             OrgId = orgId,
@@ -346,11 +334,9 @@ public class ComplianceMonthlySummaryServiceTests : IDisposable
             Assert.DoesNotContain(GuestPhone, text, StringComparison.Ordinal);
             Assert.DoesNotContain(DocumentNumber, text, StringComparison.Ordinal);
             Assert.DoesNotContain(BookingCode, text, StringComparison.Ordinal);
-            // Not even the property: the email names actions and counts.
             Assert.DoesNotContain(PropertyName, text, StringComparison.Ordinal);
         }
 
-        // What is kept is the month, the outcome and how many addresses it went to.
         var row = await _db.ComplianceMonthlySummaryLogs.SingleAsync();
         Assert.Equal("2026-10", row.YearMonth);
         Assert.Equal(ComplianceMonthlySummaryLog.ItemsMissing, row.Outcome);
@@ -368,13 +354,10 @@ public class ComplianceMonthlySummaryServiceTests : IDisposable
         Assert.Equal(ComplianceCockpitAction.SendAlloggiati, item.Action);
         Assert.Equal(report.Rows[0].BookingId, item.TargetId);
         Assert.Equal(ComplianceReasonCodes.DeadlineOverdue, item.Reason);
-        // The whole of an item: no name of a guest or a property, no code of a booking.
         Assert.Equal(
             ["Action", "EvidenceClass", "Reason", "TargetId"],
             typeof(ComplianceMonthItem).GetProperties().Select(p => p.Name).Order(StringComparer.Ordinal).ToArray());
     }
-
-    // ─── Who ───
 
     [Fact]
     public async Task RunAsync_WithTheRecipientPort_GoesToTheOrganizationAndItsAdministrators()
@@ -426,8 +409,6 @@ public class ComplianceMonthlySummaryServiceTests : IDisposable
         Assert.Single(await _db.ComplianceMonthlySummaryLogs.ToListAsync());
     }
 
-    // ─── Which organizations ───
-
     [Fact]
     public async Task RunAsync_OnlyActiveShortRentHostOrganizationsThatExistedInTheMonth_GetTheSummary()
     {
@@ -457,14 +438,12 @@ public class ComplianceMonthlySummaryServiceTests : IDisposable
             .ThrowsAsync(new InvalidOperationException("boom"));
         ArchiveSays(fine, AllCompliantMonth(1));
 
-        // The other organization was sent; the failure is not swallowed.
         var failure = await Assert.ThrowsAsync<AggregateException>(() => Service().RunAsync(FirstOfNovember, CancellationToken.None));
 
         Assert.Single(failure.InnerExceptions);
         Assert.Equal(fine, (await _db.ComplianceMonthlySummaryLogs.SingleAsync()).OrgId);
         Assert.Single(_emails.Queued);
 
-        // The run that Hangfire repeats sends only what is left: the organization that was sent has its row, the one that failed is retried.
         ArchiveSays(broken, AllCompliantMonth(2));
         var second = await Service().RunAsync(FirstOfNovember, CancellationToken.None);
 

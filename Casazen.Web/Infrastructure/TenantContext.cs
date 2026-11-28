@@ -21,10 +21,6 @@ public interface IRequestTenantContext : ITenantContext
     /// </summary>
     Task ResolveAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// True when the caller's <c>Users</c> row exists and was deactivated (<c>IsActive = false</c>, PL-03): the request is
-    /// refused by <see cref="Casazen.Web.Middleware.InactiveAccountMiddleware"/>. False for anonymous requests and for a first access (no row).
-    /// </summary>
     bool IsCallerInactive { get; }
 
     /// <summary>
@@ -36,10 +32,6 @@ public interface IRequestTenantContext : ITenantContext
     /// </summary>
     bool IsCallerOrgMemberDeactivated { get; }
 
-    /// <summary>
-    /// Sets the caller's org after it has been provisioned or linked in this request. The org of a request can
-    /// only go from none to one: a different org than the one already resolved is refused.
-    /// </summary>
     void SetOrgId(Guid orgId);
 }
 
@@ -123,7 +115,6 @@ public sealed class TenantContext(
             _callerOrgMemberDeactivated = row is { MemberStatus: OrgMemberStatus.Deactivated };
         }
 
-        // SetOrgId may have run while the query was in flight; never overwrite it with an older value.
         if (_resolved)
             return;
 
@@ -143,11 +134,6 @@ public sealed class TenantContext(
         _resolved = true;
     }
 
-    /// <inheritdoc />
-    /// <remarks>
-    /// The scope is then scoped like an authenticated request of that org: <see cref="OrgId"/> is the org and
-    /// <see cref="FilterEnabled"/> is true, so the EF tenant filter of every <c>ITenantOwned</c> read of the scope applies.
-    /// </remarks>
     public void EnterOrg(Guid orgId)
     {
         if (orgId == Guid.Empty)
@@ -169,11 +155,6 @@ public sealed class TenantContext(
     }
 }
 
-/// <summary>
-/// Resolves the request's tenant (<see cref="IRequestTenantContext.ResolveAsync"/>) right after authentication
-/// and before authorization, so policies, controllers and the EF tenant filter all read the same, already
-/// loaded, <c>OrgId</c> (A1-20).
-/// </summary>
 public sealed class TenantResolutionMiddleware(RequestDelegate next)
 {
     public async Task InvokeAsync(HttpContext context, IRequestTenantContext tenantContext)
@@ -185,7 +166,6 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
 
 public static class TenantResolutionMiddlewareExtensions
 {
-    /// <summary>Adds <see cref="TenantResolutionMiddleware"/>: after <c>UseAuthentication</c>, before <c>UseAuthorization</c>.</summary>
     public static IApplicationBuilder UseTenantResolution(this IApplicationBuilder app) =>
         app.UseMiddleware<TenantResolutionMiddleware>();
 }

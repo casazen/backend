@@ -17,10 +17,8 @@ namespace Casazen.Infrastructure.Services;
 /// <param name="AreaRatio">Area of the box over the area of the picture, 0 to 1.</param>
 public sealed record DetectedFace(float X, float Y, float Width, float Height, float Score, float[] Landmarks, double AreaRatio);
 
-/// <summary>How many faces a picture has and how much of it the largest covers: what the capture guidance needs, without the faces.</summary>
 public sealed record FaceDetectionSummary(int FaceCount, double LargestAreaRatio);
 
-/// <summary>Finds the faces of a picture (E03/F04/US01/T01).</summary>
 public interface IFaceDetector
 {
     /// <summary>The faces whose score reaches <paramref name="minScore"/>, the largest first. Needs the models: <see cref="BiometricUnavailableException"/> otherwise.</summary>
@@ -29,19 +27,12 @@ public interface IFaceDetector
 
 internal static class DocumentPortrait
 {
-    // A document shared through a messenger can lose its orientation tag. YuNet expects upright faces.
-    // Keep the rotated image and its landmarks together, so SFace uses the same coordinates as YuNet.
     public static DetectedFace? Find(IFaceDetector detector, RasterImage document, BiometricModelOptions settings,
         CancellationToken token, out RasterImage? rotatedDocument, bool requireAlignment = true)
     {
         return FindOriented(detector, document, settings, token, out rotatedDocument, out _, requireAlignment);
     }
 
-    /// <summary>
-    /// <see cref="Find"/> that also says in which orientation of <paramref name="document"/> the face was found (E71/F01/US01/T01): the EXIF value that makes
-    /// the document upright, as <see cref="RasterImage.Oriented"/> takes it (1 upright, 6 a quarter turn clockwise, 8 counter-clockwise, 3 a half turn); 1 as
-    /// well when no face was found. The face is in the coordinates of <paramref name="rotatedDocument"/> when there is one, else of <paramref name="document"/>.
-    /// </summary>
     public static DetectedFace? FindOriented(IFaceDetector detector, RasterImage document, BiometricModelOptions settings,
         CancellationToken token, out RasterImage? rotatedDocument, out int exifOrientation, bool requireAlignment = true)
     {
@@ -51,8 +42,6 @@ internal static class DocumentPortrait
         if (!requireAlignment && face is not null)
             return face;
 
-        // Sideways faces can also yield a detection, with inaccurate eye and mouth landmarks.
-        // Select the orientation by detector confidence before comparing any identities.
         var longest = Math.Max(document.Width, document.Height);
         var scale = Math.Min(1.0, (double)settings.DetectorInputSize / longest);
         using var reduced = scale < 1
@@ -85,11 +74,6 @@ internal static class DocumentPortrait
     }
 }
 
-/// <summary>
-/// YuNet (MIT, OpenCV Zoo) run with ONNX Runtime: the faces of a picture with five landmarks each (ADR-013, NF-24, NF-51). The picture is scaled to
-/// fit <c>Biometrics:DetectorInputSize</c>, padded with black to multiples of 32 and given as blue-green-red values; the twelve outputs (class,
-/// objectness, box and landmarks at the strides 8, 16 and 32) are decoded as OpenCV's <c>FaceDetectorYN</c> does, then overlapping boxes are merged.
-/// </summary>
 public sealed class FaceDetector(IBiometricModelStore store, IOptions<BiometricModelOptions> options) : IFaceDetector
 {
     public IReadOnlyList<DetectedFace> Detect(RasterImage image, double minScore, CancellationToken cancellationToken)
@@ -139,7 +123,6 @@ public sealed class FaceDetector(IBiometricModelStore store, IOptions<BiometricM
         }
     }
 
-    /// <summary>The count of faces and the share of the picture the largest covers, from the bytes of an upload (zeroed before returning).</summary>
     public async Task<FaceDetectionSummary> DetectAsync(Stream imageStream, double minScore, CancellationToken cancellationToken)
     {
         var settings = options.Value;
@@ -182,17 +165,14 @@ public sealed class FaceDetector(IBiometricModelStore store, IOptions<BiometricM
     }
 }
 
-/// <summary>The arithmetic of YuNet: input layout, decoding of the twelve outputs, merging of boxes, return to the coordinates of the picture.</summary>
 internal static class YuNetDecoder
 {
     private static readonly int[] Strides = [8, 16, 32];
 
-    /// <summary>A candidate in the coordinates of the network input.</summary>
     internal sealed record Raw(float X, float Y, float Width, float Height, float Score, float[] Landmarks);
 
     public static int AlignToStride(int size) => Math.Max(32, (size + 31) / 32 * 32);
 
-    /// <summary>Planar blue, green, red, 0 to 255 (YuNet takes unnormalised values); the part of the input the picture does not cover is black.</summary>
     public static float[] BuildInput(RasterImage image, int netWidth, int netHeight)
     {
         var plane = netWidth * netHeight;
@@ -212,7 +192,6 @@ internal static class YuNetDecoder
         return tensor;
     }
 
-    /// <param name="outputs">The twelve tensors in the order of <see cref="BiometricModelStore.RequiredDetectorOutputs"/>: class, objectness, box, landmarks, each at stride 8, 16, 32.</param>
     public static List<Raw> Decode(IReadOnlyList<float[]> outputs, int netWidth, int netHeight, double minScore, double nmsIou)
     {
         if (outputs.Count != 12)
@@ -260,7 +239,6 @@ internal static class YuNetDecoder
         return NonMaxSuppression(candidates.OrderByDescending(c => c.Score).Take(300).ToList(), nmsIou);
     }
 
-    /// <summary>Keeps the best box of every group of boxes that overlap by more than <paramref name="iouThreshold"/> (intersection over union).</summary>
     public static List<Raw> NonMaxSuppression(List<Raw> sortedByScore, double iouThreshold)
     {
         var kept = new List<Raw>();
@@ -285,7 +263,6 @@ internal static class YuNetDecoder
         return union <= 0 ? 0 : intersection / union;
     }
 
-    /// <summary>Back to the pixels of the picture (divides by <paramref name="scale"/>), the box cut to the picture; the largest face first.</summary>
     public static List<DetectedFace> ToPicture(List<Raw> faces, double scale, int imageWidth, int imageHeight)
     {
         var result = new List<DetectedFace>();

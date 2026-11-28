@@ -9,14 +9,12 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc cref="ITrustedSupplierService" />
 public sealed class TrustedSupplierService(
     AppDbContext db,
     ISupplierService supplierService,
     IActivityLog activityLog,
     ILogger<TrustedSupplierService> logger) : ITrustedSupplierService
 {
-    /// <summary>The length of <see cref="SupplierInviteRecord.Email"/>.</summary>
     private const int EmailMaxLength = 255;
 
     public async Task<InviteSupplierResult> InviteSupplierAsync(Guid orgId, InviteSupplierRequest request, string actorUserId)
@@ -25,13 +23,11 @@ public sealed class TrustedSupplierService(
         if (email.Length == 0 || email.Length > EmailMaxLength || !new EmailAddressAttribute().IsValid(email))
             throw new DomainRuleException("trusted_supplier_invite_email_invalid", "TrustedSupplierInviteEmailInvalid");
 
-        // Only the org's own properties can be assigned (the tenant filter keeps the others out of the count too).
         var propertyIds = (request.PropertyIds ?? []).Distinct().ToList();
         if (propertyIds.Count > 0
             && await db.Properties.CountAsync(p => p.OrgId == orgId && propertyIds.Contains(p.Id)) != propertyIds.Count)
             throw new DomainRuleException("trusted_supplier_property_invalid", "TrustedSupplierPropertyInvalid");
 
-        // A supplier with this email that already works for the org has nothing to accept.
         var normalized = SupplierProfileEmailIndex.Normalize(email);
         var alreadyTrusted = await db.TrustedSuppliers
             .Where(ts => ts.OrgId == orgId)
@@ -40,7 +36,6 @@ public sealed class TrustedSupplierService(
         if (alreadyTrusted)
             throw new DomainConflictException("trusted_supplier_already_added", "TrustedSupplierAlreadyAdded");
 
-        // The invite, its email and its acceptance are the ones of the supplier registration (#977).
         var invite = await supplierService.CreateTrustedSupplierInviteAsync(orgId, email, propertyIds, identity: new(request.VatNumber, request.FiscalCode, request.Phone));
 
         logger.LogInformation(
@@ -107,7 +102,6 @@ public sealed class TrustedSupplierService(
             };
         }
 
-        // Older data can contain several active rows for the same supplier, each exposing a different property.
         var removedAt = DateTime.UtcNow;
         foreach (var relation in activeRelations)
             relation.RemovedAt = removedAt;
@@ -118,7 +112,6 @@ public sealed class TrustedSupplierService(
             offer.Enabled = false;
             offer.Accepted = false;
         }
-        // Record activity event
         activityLog.Record(OrgActivity.Of(
             orgId,
             OrgActivityType.TrustedSupplierRemoved,

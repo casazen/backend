@@ -29,13 +29,6 @@ public class CrmContactsController(
     IHostScopeResolver hostScopeResolver,
     ILogger<CrmContactsController> logger) : ControllerBase
 {
-    /// <summary>
-    /// Asks for the double opt-in e-mail of a contact to be sent now (or again). 202 <c>{ sent }</c>: <c>true</c> when the e-mail was queued,
-    /// <c>false</c> when the last one went out less than ten minutes ago and nothing was sent. 404 <c>crm_contact_not_found</c> (not a contact of
-    /// the caller's org, or out of the caller's reach); 422 <c>crm_confirmation_not_required</c> (not an e-mail address with a consent, or
-    /// already confirmed); 409 <c>crm_confirmation_limit_reached</c> (the maximum number of messages was sent), <c>crm_contact_suppressed</c>
-    /// (the person opted out: nothing is ever sent); 503 <c>marketing_confirmation_unavailable</c> (the e-mail could not be queued).
-    /// </summary>
     [HttpPost("{id:guid}/send-confirmation")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -112,7 +105,5 @@ public class CrmContactsController(
     private static NotFoundException ContactNotFound() =>
         new("CRM contact not found") { Code = "crm_contact_not_found", MessageKey = "CrmContactNotFound" };
 
-    /// <summary>The answer of <see cref="SendConfirmation"/>: whether an e-mail was queued by this call.</summary>
-    /// <param name="Sent"><c>true</c> when the e-mail was queued, <c>false</c> when one was queued less than ten minutes ago.</param>
     public sealed record SendConfirmationResponse(bool Sent);
 }

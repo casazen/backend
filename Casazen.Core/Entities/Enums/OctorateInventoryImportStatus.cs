@@ -8,36 +8,23 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum OctorateInventoryImportStatus
 {
-    /// <summary>The channel is chosen and nothing was started.</summary>
     Draft = 1,
 
-    /// <summary>The person was sent to the Octorate panel to give CasaZen's channel manager the access to the channel, and the result is awaited.</summary>
     AwaitingChannelAccess = 2,
 
-    /// <summary>The access is given: the rooms of the channel are being imported into the channel manager (<c>IMPORT_ROOMS</c>).</summary>
     ImportingRooms = 3,
 
-    /// <summary>The rooms are imported and the listings are read: a person confirms, chooses or leaves for later each one. Nothing else runs.</summary>
     AwaitingMapping = 4,
 
-    /// <summary>The reservations of the confirmed listings are being imported (<c>IMPORT_RESERVATIONS</c> and the import into CasaZen).</summary>
     ImportingReservations = 5,
 
-    /// <summary>The calendars of the confirmed listings are being imported (<c>IMPORT_CALENDAR</c>).</summary>
     ImportingCalendar = 6,
 
-    /// <summary>The confirmed listings are being marked as connected (<c>MARK_CONNECTED</c>).</summary>
     MarkingConnected = 7,
 
-    /// <summary>Every listing of the channel is connected, left for later or rejected: nothing is left for the import to do.</summary>
     Completed = 8,
 
-    /// <summary>Octorate refused the operation or the channel failed on its side: a stable error code says which. A later command tries again.</summary>
     Failed = 9,
 
-    /// <summary>
-    /// A person (or time) has to act before the import goes on: an operation not verified yet for the channel, an unknown result, the rate
-    /// limit, an access to confirm, a connection to remake. A stable error code says which; a later command resumes from the last durable step.
-    /// </summary>
     NeedsAttention = 10,
 }

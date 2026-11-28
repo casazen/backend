@@ -43,7 +43,6 @@ public class OtaManager(
         try
         {
             var adapter = channelFactory.GetAdapter(platform);
-            // Sync logic here
             logger.LogInformation("Synced {Platform} for external ID {ExternalId}", platform, externalId);
             return true;
         }
@@ -65,7 +64,6 @@ public class OtaManager(
             foreach (var integration in property.OtaIntegrations.Where(i => i.SyncEnabled))
             {
                 var adapter = channelFactory.GetAdapter(integration.Platform);
-                // Pull bookings from platform
             }
 
             logger.LogInformation("Pulled bookings for property {PropertyId}", propertyId);
@@ -152,7 +150,6 @@ public class OtaManager(
                 }
             }
 
-            // Write PricingHistory record with sync status
             var syncStatusJson = JsonSerializer.Serialize(allResults);
             var syncedPlatforms = allResults
                 .Where(kvp => kvp.Value.Values.Any(v => v))

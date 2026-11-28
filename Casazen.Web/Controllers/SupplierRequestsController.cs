@@ -31,12 +31,6 @@ public class SupplierRequestsController(
     ISupplierTodayService today,
     ISupplierOrgContextResolver supplierOrgContextResolver) : ControllerBase
 {
-    /// <summary>
-    /// Takes several new requests as they are (at most 20 ids; a repeated id counts once). Each request is taken on its own, as
-    /// <c>POST api/service-requests/{id}/take</c> would: one that cannot be taken (no longer new, changed meanwhile, not the
-    /// supplier's, the supplier suspended) does not stop the others and comes back with its <c>code</c> and localized
-    /// <c>message</c>. The answer is 200 with one result per request, in the order received.
-    /// </summary>
     [HttpPost("inbox/accept")]
     [ProducesResponseType(typeof(AcceptServiceRequestsResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
@@ -45,7 +39,6 @@ public class SupplierRequestsController(
         [FromBody] AcceptServiceRequestsRequest request,
         CancellationToken cancellationToken)
     {
-        // A write: the org comes only from the caller's own supplier link, like take and reject.
         var orgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
         var userId = User.GetUserId();
         if (orgId is null || userId is null)
@@ -136,14 +129,12 @@ public class SupplierRequestsController(
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ServicePaymentDto>> RequestPayment(Guid id, CancellationToken cancellationToken)
     {
-        // A write: the org comes only from the caller's own supplier link, like take and reject.
         var orgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
         if (orgId is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         var payment = await serviceRequests.RequestPaymentAsync(id, orgId.Value, cancellationToken);
 
-        // The request stays completed: asking for the payment does not move it.
         return Ok(ServicePaymentDto.From(payment, ServiceRequestStatus.Completato));
     }
 

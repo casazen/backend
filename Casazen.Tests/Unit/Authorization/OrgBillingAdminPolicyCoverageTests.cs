@@ -11,17 +11,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Authorization;
 
-/// <summary>
-/// AM-00 (S1): the endpoints under the policy <c>OrgBillingAdmin</c> (Orgs, Billing, Connect, Branding, Domain,
-/// SiteDocuments) are found by reflection, and each of them refuses a member of the org who has a DB membership and no
-/// <c>Staff</c> claim, while the owner passes. Over the real pipeline see <c>OrgBillingAdminMembershipAccessTests</c>.
-/// </summary>
 public class OrgBillingAdminPolicyCoverageTests
 {
-    /// <summary>
-    /// Actions that must stay under the policy, on every version of the API: the plan, the billing profile and the
-    /// portal, the Connect onboarding, the plan entitlement and the custom domain (PL-16, A3-42).
-    /// </summary>
     private static readonly string[] RequiredActions =
     [
         "BillingController.CreateCheckoutSession",
@@ -35,22 +26,15 @@ public class OrgBillingAdminPolicyCoverageTests
         "OrgDomainController.GetDomain",
         "OrgDomainController.SetDomain",
         "OrgDomainController.VerifyDomain",
-        // E40/F01/US01: the surfaces of the agency's own domain and the tracking of its pages.
         "OrgDomainController.SetSurfaces",
         "OrgDomainController.SetTracking",
-        // S022 (PLG-BE-CONNECT): the connection of a site, the list and the revocation of the connected sites.
         "SiteConnectionsController.Authorize",
         "SiteConnectionsController.List",
         "SiteConnectionsController.Revoke",
     ];
 
-    /// <summary>
-    /// Controllers of the same family that exist on some versions of the API (public-site branding, operator
-    /// documents): when they exist every action of them is under the policy.
-    /// </summary>
     private static readonly string[] OrgAdminControllers = ["OrgBrandingController", "OrgSiteDocumentsController"];
 
-    /// <summary>Org settings actions of <c>OrgsController</c> (PL-04): under the policy when the version has them.</summary>
     private static readonly string[] OrgAdminActionsIfPresent =
     [
         "OrgsController.GetMySettings",
@@ -149,7 +133,6 @@ public class OrgBillingAdminPolicyCoverageTests
     [MemberData(nameof(Actions))]
     public async Task Policy_OwnerWithOwnerMembership_Passes(string action)
     {
-        // The positive control: the refusals above are about the member, not about a policy nobody can pass.
         var handler = OrgBillingAdminAuthorizationHandlerTests.CreateHandler(
             OrgBillingAdminAuthorizationHandlerTests.Snapshot(UserRole.PropertyOwner, ["short-rent/property_owner"]));
 
@@ -167,8 +150,6 @@ public class OrgBillingAdminPolicyCoverageTests
     [MemberData(nameof(Actions))]
     public async Task Policy_OrgAdministratorOfTheAccountContext_Passes(string action)
     {
-        // AM-01: the owner and the administrator of the account context hold org.billing.manage, which this policy
-        // evaluates. The administrator is no owner of a rental context, only a property manager of it.
         var handler = OrgBillingAdminAuthorizationHandlerTests.CreateHandler(
             OrgBillingAdminAuthorizationHandlerTests.Snapshot(UserRole.None, ["account/org_admin", "short-rent/property_manager"]));
 
@@ -186,8 +167,6 @@ public class OrgBillingAdminPolicyCoverageTests
     [MemberData(nameof(Actions))]
     public async Task Policy_AccountantAndPropertyManagerOfTheOrgTeam_AreRefused(string action)
     {
-        // The accountant reads the invoices (org.billing.read) and manages nothing; the property manager has no account
-        // membership: neither passes any of the billing, Connect, org, domain, branding or site document endpoints.
         var accountant = OrgBillingAdminAuthorizationHandlerTests.CreateHandler(
             OrgBillingAdminAuthorizationHandlerTests.Snapshot(UserRole.None, ["account/org_accountant", "short-rent/accountant"]));
         var manager = OrgBillingAdminAuthorizationHandlerTests.CreateHandler(
@@ -206,7 +185,6 @@ public class OrgBillingAdminPolicyCoverageTests
         }
     }
 
-    /// <summary>The registered <c>OrgBillingAdmin</c> policy (the real <c>AddCasazenAuthorization</c> set) of an action.</summary>
     private static async Task<List<AuthorizationPolicy>> OrgPoliciesOfAsync(string action)
     {
         var found = OrgBillingAdminActions.All.Single(a => a.ToString() == action);
@@ -227,7 +205,6 @@ public class OrgBillingAdminPolicyCoverageTests
         return policies;
     }
 
-    /// <summary>The caller: an authenticated user with the given JWT roles (none for a user who has only DB memberships).</summary>
     private static ClaimsPrincipal Principal(params string[] jwtRoles) =>
         OrgBillingAdminAuthorizationHandlerTests.Context(jwtRoles.Select(role => new Claim(ClaimTypes.Role, role))).User;
 }

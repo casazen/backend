@@ -23,15 +23,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IMarketplacePartnerActivationService
 {
-    /// <summary>
-    /// The brief of the partner for the host: its name and site, the checklist of what to choose and what to authorise on the partner's site (the lines
-    /// of the activation guide in <paramref name="language"/>, Italian when the partner has no text in it), and, when <paramref name="propertyId"/> is
-    /// given, the property's data the partner is likely to ask for. Reads only; nothing is recorded.
-    /// </summary>
-    /// <exception cref="Casazen.Core.Exceptions.NotFoundException">
-    /// <c>marketplace_property_not_found</c> (the property is not the org's or is outside the scope), <c>marketplace_entry_not_found</c> (the partner is
-    /// unknown, hidden, or not for the org's plan or country).
-    /// </exception>
     Task<MarketplacePartnerBrief> GetBriefAsync(
         Guid orgId,
         HostScope scope,
@@ -79,13 +70,10 @@ public interface IMarketplacePartnerActivationService
         CancellationToken ct = default);
 }
 
-/// <summary>The stable codes of the partner hand-off (E09/F02/US03/T01): the answers of the declaration.</summary>
 public static class MarketplacePartnerErrorCodes
 {
-    /// <summary>422: the day of the declaration is missing or after today (Europe/Rome).</summary>
     public const string DeclaredDateInvalid = "marketplace_declared_date_invalid";
 
-    /// <summary>403: a declaration for the whole org is an org-level decision, and the caller is limited to some properties.</summary>
     public const string NeedsWholeOrg = "marketplace_partner_needs_whole_org";
 }
 

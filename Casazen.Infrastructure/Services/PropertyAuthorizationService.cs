@@ -23,7 +23,6 @@ public class PropertyAuthorizationService(
 
     public async Task<bool> CanAccessPropertyAsync(string userId, Guid propertyId, IEnumerable<string> userRoles)
     {
-        // The property row alone: never its bookings and OTA integrations just to read the owner (A2-17).
         var property = await propertyRepository.GetRecordAsync(propertyId);
         return property is not null && await CanAccessAsync(userId, property, userRoles);
     }

@@ -7,12 +7,9 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum GuestContactChannel
 {
-    /// <summary>An e-mail address.</summary>
     Email = 1,
 
-    /// <summary>A phone number.</summary>
     Phone = 2,
 
-    /// <summary>A phone number that is reached with WhatsApp.</summary>
     WhatsApp = 3,
 }

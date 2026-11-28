@@ -41,7 +41,6 @@ public sealed class SupplierEarningsService(
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        // One row more than the limit says that there are too many, without reading them all.
         var (items, _) = await payments.ListEarningsAsync(
             supplierOrgId,
             query with { Page = 1, PageSize = SupplierEarningsLimits.MaxExportRows + 1 },
@@ -78,7 +77,6 @@ public sealed class SupplierEarningsService(
             paidThisMonth.Sum(p => (long)p.CommissionCents),
             late,
             series,
-            // A free period is an override of 0 % that ends: the date is told only then.
             new SupplierCommissionInfo(
                 setting.EffectivePercent,
                 setting is { OverrideActive: true, OverridePercent: 0m } ? setting.OverrideUntil : null),

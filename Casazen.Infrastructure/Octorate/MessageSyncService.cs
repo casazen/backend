@@ -69,31 +69,23 @@ public sealed class MessageSyncService(
     /// <summary>A read of the messages of a thread starts this much before the newest message that is stored (clock and ordering slack).</summary>
     public static readonly TimeSpan ThreadOverlap = TimeSpan.FromMinutes(5);
 
-    /// <summary>An outbound row left in manual verification is matched with a message of Octorate sent within this time of it.</summary>
     public static readonly TimeSpan ManualVerifyWindow = TimeSpan.FromMinutes(10);
 
-    /// <summary>A new inbound message older than this is stored and raises no event (the import of a history).</summary>
     public static readonly TimeSpan EventFreshness = TimeSpan.FromHours(48);
 
     /// <summary>The smallest overlap of a deep pass: the retry window of the webhook of Octorate (OCT-09).</summary>
     public static readonly TimeSpan MinDeepOverlap = TimeSpan.FromDays(2);
 
-    /// <summary>The longest a run waits for the bucket of an org to refill.</summary>
     public static readonly TimeSpan MaxRateWait = TimeSpan.FromMinutes(2);
 
-    /// <summary>A listing whose chat is not in its license is asked again after this long.</summary>
     public static readonly TimeSpan LicenseProbeInterval = TimeSpan.FromHours(1);
 
-    /// <summary>The recent pass reads the messages of the threads it names from this far back (the 24 hours it asks for, and an hour of slack).</summary>
     public static readonly TimeSpan RecentFloor = TimeSpan.FromHours(25);
 
-    /// <summary>Calls of the bucket of the org that the sync leaves to the people who use CasaZen.</summary>
     public const int RateReserve = 5;
 
-    /// <summary>The pages of the thread list a deep pass reads at most, for one listing.</summary>
     internal const int MaxDeepPages = 100;
 
-    /// <summary>The minutes between two passes of the reconciliation (<c>ota-message-reconcile</c> runs every ten): the window of the key of <c>OtaThreadSynced</c> while the assistant of Octorate is on.</summary>
     internal const int PassWindowMinutes = 10;
 
     private const string ThreadKeyPrefix = "ota:";
@@ -103,7 +95,6 @@ public sealed class MessageSyncService(
         if (!IsEnabled())
             return SyncResult.Empty;
 
-        // The soft-delete filter stays: a property that was deleted is not imported.
         var orgId = await db.Properties
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -204,7 +195,6 @@ public sealed class MessageSyncService(
         if (!IsEnabled())
             return SyncResult.Empty;
 
-        // The webhook is retried for two days (OCT-09): a window narrower than that would lose a notification that arrived late.
         var window = overlap < MinDeepOverlap ? MinDeepOverlap : overlap;
         var org = await LoadOrgAsync(orgId, ct);
         var started = Now();
@@ -227,8 +217,6 @@ public sealed class MessageSyncService(
         LogPass("deep", orgId, result);
         return result;
     }
-
-    // ─── The import ──────────────────────────────────────────────────────────────
 
     private async Task<SyncResult> ImportListingAsync(SyncOrg org, SyncListing listing, TimeSpan? budget, CancellationToken ct)
     {
@@ -256,7 +244,6 @@ public sealed class MessageSyncService(
                 var fresh = page.Threads.Where(t => seen.Add(t.Id)).ToList();
                 if (page.Threads.Count > 0 && fresh.Count == 0)
                 {
-                    // A page that repeats what was read ignores the offset: there is nothing more to get from the list.
                     logger.LogWarning(
                         "Octorate chat import of org {OrgId}, listing {AccommodationId}: the page at {Offset} repeats the threads already read, the list ends here",
                         org.OrgId,
@@ -278,7 +265,6 @@ public sealed class MessageSyncService(
                     result = result.Plus(await SyncOneThreadAsync(org, listing, thread.Id, null, ct));
                 }
 
-                // The position moves only past a page that was read to its end: a run that stops inside one reads it again, which adds nothing.
                 if (stopped)
                     break;
 
@@ -323,8 +309,6 @@ public sealed class MessageSyncService(
     private static int OffsetOf(string? cursor) =>
         int.TryParse(cursor, NumberStyles.None, CultureInfo.InvariantCulture, out var offset) && offset >= 0 ? offset : 0;
 
-    // ─── The deep pass ───────────────────────────────────────────────────────────
-
     /// <summary>
     /// The threads of a listing with activity since <paramref name="since"/>, newest first: the list is read page after page until a page holds none
     /// (the list is ordered by recent activity, as the inbox of Octorate is). A thread whose last message is not in the answer is read: not knowing is
@@ -359,14 +343,6 @@ public sealed class MessageSyncService(
         return result;
     }
 
-    // ─── One listing after the other ─────────────────────────────────────────────
-
-    /// <summary>
-    /// Runs <paramref name="pass"/> for each listing of the org, then <paramref name="complete"/>. A listing that fails does not stop the others:
-    /// its code is kept on its checkpoints and the first failure is thrown once all have run. A license without the chat module is a state of
-    /// the listing, not a failure: it is kept and the pass goes on (and the listing rests for <see cref="LicenseProbeInterval"/>). A rate limit,
-    /// an org that is not connected and the wrong environment end the run at once.
-    /// </summary>
     private async Task<SyncResult> ForEachListingAsync(
         SyncOrg org,
         Func<SyncListing, Task<SyncResult>> pass,
@@ -421,12 +397,9 @@ public sealed class MessageSyncService(
         return result;
     }
 
-    /// <summary>The errors that say something about a listing. A rate limit, an org without a connection and the wrong environment say something about the org.</summary>
     private static bool IsListingFailure(OctorateException ex) =>
         ex is not (OctorateRateLimitException or OctorateWrongEnvironmentException)
         && ex is not OctorateAuthException { IsNotConnected: true };
-
-    // ─── One thread ──────────────────────────────────────────────────────────────
 
     private async Task<SyncResult> SyncOneThreadAsync(
         SyncOrg org,
@@ -445,7 +418,6 @@ public sealed class MessageSyncService(
         {
             remote = await client.GetChatThreadAsync(listing.AccommodationId, threadId, ct);
 
-            // The thread must belong to the listing it is read through: never attached to another one.
             if (remote.AccommodationId is { } owner && !string.Equals(owner, listing.AccommodationId, StringComparison.Ordinal))
             {
                 logger.LogWarning(
@@ -467,7 +439,6 @@ public sealed class MessageSyncService(
         }
         catch (OctorateNotFoundException)
         {
-            // Gone between the list (or the notification) and the read: nothing to copy.
             logger.LogInformation("Octorate chat thread {OctorateThreadId} of org {OrgId} is not there any more", threadId, org.OrgId);
             return SyncResult.Empty with { NotFound = 1 };
         }
@@ -482,10 +453,6 @@ public sealed class MessageSyncService(
         return new SyncResult(1, added, 0, listing.PropertyId is null ? 1 : 0);
     }
 
-    /// <summary>
-    /// The channel of a thread: the one of its reservation, else the one of the connection it comes through, else the sign of an Airbnb booking.
-    /// <c>null</c> for a thread of a channel with no integrated chat, or whose channel nothing says.
-    /// </summary>
     private async Task<OtaChannel?> ChannelOfAsync(SyncOrg org, SyncListing listing, OctorateChatThread remote, CancellationToken ct)
     {
         if (remote.ReservationChannelId is not null || remote.ReservationChannelName is not null)
@@ -524,11 +491,6 @@ public sealed class MessageSyncService(
         return isFloor && start is { } defaultStart && createdAfter is { } floor && floor < defaultStart ? floor : start;
     }
 
-    /// <summary>
-    /// The default start of a read of the messages of a thread: the newest message that is stored, minus <see cref="ThreadOverlap"/>, and not later than the
-    /// oldest one still on its way (created, waiting for the channel or to be verified), so its state is read again. <c>null</c> for a thread that is
-    /// not stored or has no message: everything is read.
-    /// </summary>
     private async Task<DateTime?> ReadWindowStartAsync(Guid orgId, string octorateThreadId, CancellationToken ct)
     {
         var threadId = await db.OtaMessageThreads
@@ -555,8 +517,6 @@ public sealed class MessageSyncService(
         return (oldestOnItsWay is { } way && way < last ? way : last) - ThreadOverlap;
     }
 
-    // ─── The unit of work of one thread ──────────────────────────────────────────
-
     private async Task<int> ApplyAsync(
         Guid orgId,
         SyncListing listing,
@@ -577,7 +537,6 @@ public sealed class MessageSyncService(
         }
         finally
         {
-            // Whatever happened, nothing of this thread (not even an event that was not saved) is left for the next one.
             db.ChangeTracker.Clear();
         }
     }
@@ -632,8 +591,6 @@ public sealed class MessageSyncService(
             thread.Kind = OtaThreadKind.Request;
         }
 
-        // The guest of the booking may have been erased before this thread was copied or linked to it, when there was nothing of it to erase: the
-        // thread is then kept anonymous from its first copy, as if the erasure had met it, and what it holds already goes (ADR-032-R13).
         if (thread.AnonymizedAt is null
             && thread.BookingId is { } linkedBooking
             && (await ErasedGuestBookingsAsync(orgId, [linkedBooking], ct)).Contains(linkedBooking))
@@ -651,7 +608,6 @@ public sealed class MessageSyncService(
         Touch(thread, now);
         await db.SaveChangesAsync(ct);
 
-        // What the thread says about itself now, from all of its messages: the unread inbound ones and the newest message.
         var unread = await db.OtaMessages
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .CountAsync(m => m.OrgId == orgId && m.ThreadId == thread.Id && m.Direction == OtaMessageDirection.Inbound && m.ReadAt == null, ct);
@@ -668,8 +624,6 @@ public sealed class MessageSyncService(
         {
             thread.LastMessageAt = newest.SentAt;
 
-            // An automatic message of CasaZen (the check-in link) is the newest in time but answers nobody: the direction of the thread is the one of the newest message that is
-            // not automatic, so a question of the guest keeps waiting for its answer (E23/F01/US01/T01).
             thread.LastMessageDirection = newest.Origin != MessageOrigin.Automation
                 ? newest.Direction
                 : await db.OtaMessages
@@ -696,7 +650,6 @@ public sealed class MessageSyncService(
             }
         }
 
-        // The instant to the millisecond, as Octorate gives it: what the database hands back is the same key (it keeps microseconds).
         var lastMessage = thread.LastMessageAt.ToUniversalTime().ToString("yyyyMMddHHmmssfff", CultureInfo.InvariantCulture);
         var syncedKey = SyncedEventKey(thread.Id, lastMessage, thread.AiAssistantOn, now);
         if (!await IsEventKeyTakenAsync(orgId, syncedKey, ct))
@@ -714,10 +667,6 @@ public sealed class MessageSyncService(
         return added;
     }
 
-    /// <summary>
-    /// Stores the messages Octorate gave that are not stored yet and completes the ones that are (see the remarks of the class). Returns how many
-    /// were added and the new inbound ones that are recent enough to raise an event.
-    /// </summary>
     private async Task<(int Added, List<OtaMessage> NewInbound)> StoreMessagesAsync(
         Guid orgId,
         OtaMessageThread thread,
@@ -810,7 +759,6 @@ public sealed class MessageSyncService(
         return (added, newInbound);
     }
 
-    /// <summary>What a message already stored gets from a later read: the state it reached (never back from sent), the time it was read and an attachment it did not have.</summary>
     private static void Complete(OtaMessage row, OctorateChatMessage remote, bool anonymized)
     {
         if (row.Direction == OtaMessageDirection.Outbound
@@ -831,7 +779,6 @@ public sealed class MessageSyncService(
         }
     }
 
-    /// <summary>The row left in manual verification that has the same text as <paramref name="remote"/> and was sent within <see cref="ManualVerifyWindow"/> of it.</summary>
     private static OtaMessage? TakeMatching(List<OtaMessage> pending, OctorateChatMessage remote)
     {
         var text = NormalizedText(remote.Text);
@@ -853,7 +800,6 @@ public sealed class MessageSyncService(
             .Select(b => (Guid?)b.Id)
             .FirstOrDefaultAsync(ct);
 
-    /// <summary>The threads whose reservation CasaZen did not hold yet are linked to the booking now that it does (a Request that became a booking).</summary>
     private async Task LinkUnlinkedThreadsAsync(Guid orgId, CancellationToken ct)
     {
         db.ChangeTracker.Clear();
@@ -888,8 +834,6 @@ public sealed class MessageSyncService(
             thread.UpdatedAt = now;
             linked++;
 
-            // The guest of that booking may have been erased before the thread was linked to it, when the erasure could not find the thread: what
-            // the thread holds goes now, as the erasure would have done it (ADR-032-R13).
             if (thread.AnonymizedAt is null && erased.Contains(bookingId))
             {
                 await AnonymizeThreadAsync(thread, now, ct);
@@ -910,7 +854,6 @@ public sealed class MessageSyncService(
         db.ChangeTracker.Clear();
     }
 
-    /// <summary>The bookings among <paramref name="bookingIds"/> whose guest was erased or anonymized: the guest has no conversation left to copy (ADR-032-R13).</summary>
     private async Task<HashSet<Guid>> ErasedGuestBookingsAsync(Guid orgId, IReadOnlyCollection<Guid> bookingIds, CancellationToken ct)
     {
         if (bookingIds.Count == 0)
@@ -925,10 +868,6 @@ public sealed class MessageSyncService(
         return [.. erased];
     }
 
-    /// <summary>
-    /// Anonymizes a thread of an erased guest the way the erasure does (<see cref="GuestDataEraser.AnonymizeOtaThread"/>): the thread is marked and what
-    /// the messages already stored hold of a person goes. Stages the changes; the unit of work of the caller saves them.
-    /// </summary>
     private async Task AnonymizeThreadAsync(OtaMessageThread thread, DateTime now, CancellationToken ct)
     {
         List<OtaMessage> stored = [];
@@ -943,7 +882,6 @@ public sealed class MessageSyncService(
         GuestDataEraser.AnonymizeOtaThread(thread, stored, now);
     }
 
-    /// <summary>Sets <c>UpdatedAt</c> when the thread is new or changed: a read that finds nothing new leaves the row as it was.</summary>
     private void Touch(OtaMessageThread thread, DateTime now)
     {
         db.ChangeTracker.DetectChanges();
@@ -951,7 +889,6 @@ public sealed class MessageSyncService(
             thread.UpdatedAt = now;
     }
 
-    /// <summary>The key is in the outbox of the org already, or in the events of this unit of work.</summary>
     private async Task<bool> IsEventKeyTakenAsync(Guid orgId, string key, CancellationToken ct)
     {
         if (db.ChangeTracker.Entries<OutboxEvent>().Any(e => e.State == EntityState.Added && e.Entity.OrgId == orgId && e.Entity.DedupKey == key))
@@ -986,7 +923,6 @@ public sealed class MessageSyncService(
         return aiAssistantOn == true ? $"{key}:{PassWindowOf(nowUtc)}" : key;
     }
 
-    /// <summary>The ten minutes of the reconciliation (<c>ota-message-reconcile</c>, OCT-09) an instant (UTC) falls in, as a stamp: <c>202611061500</c> for 15:03.</summary>
     internal static string PassWindowOf(DateTime nowUtc)
     {
         var start = new DateTime(nowUtc.Year, nowUtc.Month, nowUtc.Day, nowUtc.Hour, nowUtc.Minute - (nowUtc.Minute % PassWindowMinutes), 0, DateTimeKind.Utc);
@@ -1009,12 +945,6 @@ public sealed class MessageSyncService(
         return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
     }
 
-    // ─── The listings of an org and their checkpoints ────────────────────────────
-
-    /// <summary>
-    /// The listings of the org that can be read: the rows of its mapping that are not rejected, each with the connection it was found through, and
-    /// the property only when the mapping is confirmed and the property is one of the org's.
-    /// </summary>
     private async Task<SyncOrg> LoadOrgAsync(Guid orgId, CancellationToken ct)
     {
         var rows = await mappings.ListAsync(orgId, ct);
@@ -1030,7 +960,6 @@ public sealed class MessageSyncService(
 
         var listings = new Dictionary<string, SyncListing>(StringComparer.Ordinal);
 
-        // A confirmed row first: when a listing has two rows, the confirmed one decides.
         foreach (var row in rows.Where(r => r.Status != OctorateMappingStatus.Rejected).OrderBy(r => r.Status == OctorateMappingStatus.Confirmed ? 0 : 1))
         {
             if (listings.ContainsKey(row.OctorateAccommodationId) || !connectionOf.TryGetValue(row.OctorateAccommodationId, out var connectionId))
@@ -1056,7 +985,6 @@ public sealed class MessageSyncService(
             .Where(s => s.OrgId == orgId)
             .ToDictionaryAsync(s => s.OctorateAccommodationId, StringComparer.Ordinal, ct);
 
-    /// <summary>Changes the checkpoints of a listing and saves them, in a unit of work of their own (the context is cleared before and after).</summary>
     private async Task SaveStateAsync(Guid orgId, SyncListing listing, Action<OtaMessageSyncState> change, CancellationToken ct)
     {
         db.ChangeTracker.Clear();
@@ -1085,7 +1013,6 @@ public sealed class MessageSyncService(
     private Task RecordErrorAsync(Guid orgId, SyncListing listing, string code, CancellationToken ct) =>
         SaveStateAsync(orgId, listing, state => state.LastError = Clip(code, OtaMessageSyncState.LastErrorMaxLength), ct);
 
-    /// <summary>A pass over a listing worked: its mark, no error, and the newest message of the listing as the high-water mark.</summary>
     private async Task CompletePassAsync(Guid orgId, SyncListing listing, Action<OtaMessageSyncState> mark, CancellationToken ct)
     {
         db.ChangeTracker.Clear();
@@ -1108,11 +1035,8 @@ public sealed class MessageSyncService(
             ct);
     }
 
-    // ─── The clock, the flag, the bucket ─────────────────────────────────────────
-
     private DateTime Now() => timeProvider.GetUtcNow().UtcDateTime;
 
-    /// <summary>The sync writes only while the connector is on (the flag of the module): off, nothing is read from Octorate and nothing is stored.</summary>
     private bool IsEnabled()
     {
         if (featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
@@ -1122,17 +1046,10 @@ public sealed class MessageSyncService(
         return false;
     }
 
-    /// <summary>
-    /// Waits, at most <see cref="MaxRateWait"/>, until the bucket of the org has more than <see cref="RateReserve"/> calls; the run ends with
-    /// <see cref="OctorateRateLimitException"/> when it did not refill in time (the checkpoints are saved, the next run continues). The handler of a
-    /// notification does not wait (<see cref="MessageSyncPacing"/>): with the bucket down to the reserve it ends at once.
-    /// </summary>
     private async Task WaitForCapacityAsync(Guid orgId, CancellationToken ct)
     {
         if (!pacing.WaitForCapacity)
         {
-            // The handler of a notification runs in the outbox dispatcher, one event after the other for every org within a budget of seconds: it does
-            // not wait for the bucket, it ends at once and the dispatcher delivers the event again at its next run (ADR-022-R4).
             if (rateLimiter.AvailableCalls(orgId) <= RateReserve)
                 throw new OctorateRateLimitException(null);
 
@@ -1160,10 +1077,8 @@ public sealed class MessageSyncService(
             result.SkippedChannel,
             result.Unassigned);
 
-    /// <summary>A listing of the org: its accommodation, the connection it was found through and its property while the mapping is confirmed.</summary>
     private sealed record SyncListing(string AccommodationId, Guid ConnectionId, Guid? PropertyId);
 
-    /// <summary>The listings of an org read once for a run, and the connections of an accommodation read once for it.</summary>
     private sealed class SyncOrg(Guid orgId, IReadOnlyDictionary<string, SyncListing> listings)
     {
         public Guid OrgId { get; } = orgId;

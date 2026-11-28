@@ -74,10 +74,6 @@ public class CfStatusCacheServiceTests
         Assert.Contains("ConcordatoFacile:StatusApiKey not configured", warning.Message);
     }
 
-    /// <summary>
-    /// CF-BE (closes CF-FIX2-FU1): a first read that fails, with no snapshot to fall back on, is not a 500 and is not tried again at every
-    /// opening: the outcome "not available" is kept five minutes under the same key, so ConcordatoFacile (and its three attempts) is asked once.
-    /// </summary>
     [Fact]
     public async Task GetPractices_FirstReadFailsWithNoSnapshot_IsNotAvailable_AndCfIsAskedOnceInFiveMinutes()
     {
@@ -99,7 +95,6 @@ public class CfStatusCacheServiceTests
         Assert.Null(second.LastCheckedAt);
         _apiClientMock.Verify(c => c.GetPracticesByLeaseIdAsync(leaseId, It.IsAny<CancellationToken>()), Times.Once);
 
-        // Five minutes later the memory is gone and ConcordatoFacile is asked again, and a good answer is available again.
         _cache.Set($"Testing:{orgId}:{leaseId}", ExpiredNotAvailable(orgId), new MemoryCacheEntryOptions());
         _apiClientMock.Setup(c => c.GetPracticesByLeaseIdAsync(leaseId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<PracticeDto>
@@ -151,7 +146,6 @@ public class CfStatusCacheServiceTests
 
         var service = CreateService(db);
 
-        // The owner reads its lease: the snapshot is now in the cache
         await service.GetPracticesAsync(leaseId, ownerOrgId);
         _apiClientMock.Invocations.Clear();
 
@@ -180,14 +174,11 @@ public class CfStatusCacheServiceTests
 
         var service = CreateService(db);
 
-        // First call caches
         await service.GetPracticesAsync(leaseId, orgId);
 
-        // Second call should use cache
         _apiClientMock.Invocations.Clear();
         var result = await service.GetPracticesAsync(leaseId, orgId);
 
-        // Verify the API was NOT called again (cache was used)
         _apiClientMock.Verify(c => c.GetPracticesByLeaseIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
         Assert.Single(result.Practices);
         Assert.False(result.IsStale);
@@ -211,14 +202,11 @@ public class CfStatusCacheServiceTests
 
         var service = CreateService(db);
 
-        // First call succeeds and caches
         var firstResult = await service.GetPracticesAsync(leaseId, orgId);
         Assert.False(firstResult.IsStale);
 
-        // Manually insert expired snapshot to trigger refresh
         _cache.Set($"Testing:{orgId}:{leaseId}", ExpiredSnapshot(orgId, practices), new MemoryCacheEntryOptions());
 
-        // Second call: cache entry exists but expired, API fails
         var secondResult = await service.GetPracticesAsync(leaseId, orgId);
 
         Assert.True(secondResult.IsStale);
@@ -284,22 +272,15 @@ public class CfStatusCacheServiceTests
 
         var service = CreateService(db);
 
-        // First call caches newer data
         var firstResult = await service.GetPracticesAsync(leaseId, orgId);
         Assert.Equal(CfPracticeStatus.InProgress, firstResult.Practices[0].Status);
 
-        // Manually insert expired snapshot with newer data to trigger refresh
         _cache.Set($"Testing:{orgId}:{leaseId}", ExpiredSnapshot(orgId, newerPractices), new MemoryCacheEntryOptions());
 
-        // Second call: cache expired, API returns older data, but keeps cached newer data
         var secondResult = await service.GetPracticesAsync(leaseId, orgId);
         Assert.Equal(CfPracticeStatus.InProgress, secondResult.Practices[0].Status);
     }
 
-    /// <summary>
-    /// CF-FIX2: the lookup of a practice for the upload page is read from ConcordatoFacile once in 15 minutes (the README promises it),
-    /// not at every opening. What is cached is ConcordatoFacile's own answer; the controller checks the org of the lease each time.
-    /// </summary>
     [Fact]
     public async Task GetPractice_SecondOpening_IsServedFromTheCache_NotReadFromCfAgain()
     {
@@ -335,7 +316,6 @@ public class CfStatusCacheServiceTests
             logger ?? NullLogger<ConcordatoFacileStatusCacheService>.Instance);
     }
 
-    /// <summary>The memory of a failed read whose five minutes are over.</summary>
     private static CfStatusSnapshot ExpiredNotAvailable(Guid orgId) => new()
     {
         OrgId = orgId,
@@ -348,13 +328,12 @@ public class CfStatusCacheServiceTests
         LastAttemptAt = DateTime.UtcNow.AddMinutes(-6)
     };
 
-    /// <summary>A snapshot whose time has come, as it is 15 minutes after it was read.</summary>
     private static CfStatusSnapshot ExpiredSnapshot(Guid orgId, List<PracticeDto> practices) => new()
     {
         OrgId = orgId,
         Practices = practices,
         FetchedAt = DateTime.UtcNow.AddMinutes(-20),
-        ExpiresAt = DateTime.UtcNow.AddMinutes(-1), // Expired
+        ExpiresAt = DateTime.UtcNow.AddMinutes(-1),
         IsStale = false,
         LastError = null,
         LastAttemptAt = null

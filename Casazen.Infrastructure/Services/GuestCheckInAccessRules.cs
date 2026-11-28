@@ -6,11 +6,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Where the online check-in of a booking stands for its guest, in ONE place (E23/F02/US01/T01): the guest page (<see cref="GuestBookingLookupService"/>, «Le mie prenotazioni») and the
-/// e-mail that confirms the booking (<see cref="BookingNotifier"/>) read it here, so the two cannot disagree on when the check-in opens. The daily job <c>GuestCheckInSendJob</c> selects
-/// the same window as a filter on calendar days: the arrival from today to today + <c>CheckIn:SendWindowDays</c>, on the Europe/Rome calendar (<see cref="RomeCalendar"/>).
-/// </summary>
 internal static class GuestCheckInAccessRules
 {
     /// <summary>

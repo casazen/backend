@@ -35,7 +35,6 @@ public sealed class SupplierShowcaseMediaService(
     ILogger<SupplierShowcaseMediaService> logger,
     TimeProvider? timeProvider = null) : ISupplierShowcaseMediaService
 {
-    /// <summary>The key of the session lock of a run of the cleanup (<see cref="PostgresAdvisoryLocks.Scope.SupplierShowcaseMediaCleanupRun"/>).</summary>
     internal const string RunLockKey = "supplier-showcase-media-cleanup";
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -46,7 +45,6 @@ public sealed class SupplierShowcaseMediaService(
         IFormFile? file,
         CancellationToken cancellationToken = default)
     {
-        // The rules first: nothing is read or stored for a request that cannot be accepted.
         if (!ShowcaseMediaKinds.TryParse(kind, out var mediaKind))
             throw ShowcaseMediaErrors.BadKind();
 
@@ -56,17 +54,14 @@ public sealed class SupplierShowcaseMediaService(
         if (file.Length > ShowcaseMediaKinds.MaxBytesOf(mediaKind))
             throw ShowcaseMediaErrors.Large(mediaKind);
 
-        // The file in memory (10 MB at most): the type, the rewriting and the measure all read it.
         var original = new byte[file.Length];
         await using (var input = file.OpenReadStream())
             await input.ReadExactlyAsync(original, cancellationToken);
 
-        // The content decides: the name and the declared type of the upload are the client's word.
         var type = ImageSignature.Detect(original.AsSpan(0, Math.Min(original.Length, ImageSignature.HeaderLength)));
         if (type is null)
             throw ShowcaseMediaErrors.WrongType();
 
-        // The same image without its metadata (EXIF and GPS, XMP, comments, whatever follows the end of the image).
         var clean = ShowcaseImageSanitizer.Clean(original, type) ?? throw ShowcaseMediaErrors.NotAnImage();
 
         (int Width, int Height)? measured;
@@ -81,11 +76,9 @@ public sealed class SupplierShowcaseMediaService(
             || (long)size.Width * size.Height > ShowcaseMediaLimits.MaxPixels)
             throw ShowcaseMediaErrors.TooManyPixels();
 
-        // A cheap answer before the object is stored; the limit is checked again under the lock.
         if (await Rows(supplierOrgId).CountAsync(cancellationToken) >= ShowcaseMediaLimits.MaxStoredFiles)
             throw ShowcaseMediaErrors.TooManyFiles();
 
-        // A random name: nobody can guess the address of another file, and two uploads never clash.
         var id = Guid.NewGuid();
         var extension = type switch
         {
@@ -138,7 +131,6 @@ public sealed class SupplierShowcaseMediaService(
     {
         await using var transaction = await LockAsync(supplierOrgId, cancellationToken);
 
-        // A row of another supplier does not exist here: the predicate carries the org.
         var row = await Rows(supplierOrgId).FirstOrDefaultAsync(m => m.Id == mediaId, cancellationToken)
                   ?? throw ShowcaseMediaErrors.Missing();
 
@@ -168,8 +160,6 @@ public sealed class SupplierShowcaseMediaService(
 
         var cutoff = Now() - ShowcaseMediaLimits.OrphanGrace;
 
-        // The suppliers that have a file old enough to be judged; the others have nothing to remove yet. A system job over the rows that match:
-        // each supplier is then judged alone, under its own lock.
         var orgIds = await db.SupplierShowcaseMedia
             .AsNoTracking()
             .Where(m => m.CreatedAt < cutoff)
@@ -182,7 +172,6 @@ public sealed class SupplierShowcaseMediaService(
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // A bound on the work of one run: the next one takes the rest.
             if (removed >= ShowcaseMediaLimits.CleanupBatch)
                 break;
 
@@ -215,7 +204,6 @@ public sealed class SupplierShowcaseMediaService(
             if (old.Count == 0)
                 return 0;
 
-            // Judged after the lock is taken, on the content as it is now: a save cannot land between this question and the removal.
             var inUse = await content.FindKeysInUseAsync(orgId, [.. old.Select(m => m.StorageKey)], cancellationToken);
 
             var gone = new List<SupplierShowcaseMedia>();
@@ -223,8 +211,6 @@ public sealed class SupplierShowcaseMediaService(
             {
                 try
                 {
-                    // The object first, then the row: a storage that fails leaves the row and the next run tries again (deleting a missing
-                    // object is not an error).
                     await storage.DeleteAsync(StorageBucket.Public, row.StorageKey, cancellationToken);
                     gone.Add(row);
                 }
@@ -256,10 +242,6 @@ public sealed class SupplierShowcaseMediaService(
         }
     }
 
-    /// <summary>
-    /// The images of <paramref name="orgId"/>. <b>The way</b> this service reads or changes the rows of one supplier: the table is not
-    /// tenant-filtered, so the supplier org is always an explicit predicate.
-    /// </summary>
     private IQueryable<SupplierShowcaseMedia> Rows(Guid orgId) => db.SupplierShowcaseMedia.Where(m => m.OrgId == orgId);
 
     private Task<IDbContextTransaction?> LockAsync(Guid orgId, CancellationToken cancellationToken) =>
@@ -269,7 +251,6 @@ public sealed class SupplierShowcaseMediaService(
     private ShowcaseMediaItem ToItem(SupplierShowcaseMedia row) =>
         new(row.Id, row.Kind, storage.GetPublicUrl(row.StorageKey), row.ContentType, row.Bytes, row.Width, row.Height, row.CreatedAt);
 
-    /// <summary>Best effort removal of the object of an upload that did not end in a row; never hides the original error.</summary>
     private async Task RemoveObjectAsync(string key)
     {
         try

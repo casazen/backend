@@ -3,13 +3,10 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>Kind of change recorded on a <see cref="RegulatoryDataAuditEntry"/> (LT-13, A7-22).</summary>
 public enum RegulatoryAuditAction
 {
-    /// <summary>Fields of the row were changed (status, rules, rate, contacts...).</summary>
     Updated = 0,
 
-    /// <summary>The row was marked verified against an official source, without other field changes.</summary>
     MarkedVerified = 1,
 }
 
@@ -25,11 +22,9 @@ public class RegulatoryDataAuditEntry
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Kind of row changed: <c>TerritorialRentAgreement</c> or <c>ComuneImuChannel</c>.</summary>
     [Required, MaxLength(100)]
     public string EntityType { get; set; } = string.Empty;
 
-    /// <summary>Id of the changed row (the agreement's id for a band edit too, so it shows in the agreement's trail).</summary>
     public Guid EntityId { get; set; }
 
     public RegulatoryAuditAction Action { get; set; }
@@ -39,7 +34,6 @@ public class RegulatoryDataAuditEntry
 
     public DateTime OccurredAt { get; set; }
 
-    /// <summary>Human-readable summary of what changed (field list) or of the verification (date and source).</summary>
     [Required]
     public string Changes { get; set; } = string.Empty;
 }

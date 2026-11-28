@@ -149,7 +149,6 @@ internal static class LeaseDraftProjection
         return rows;
     }
 
-    /// <summary>True when the rows already are the ones the values give (nothing to rewrite).</summary>
     public static bool SameRows(ICollection<Party> existing, ICollection<Party> desired)
     {
         if (existing.Count != desired.Count)
@@ -206,8 +205,6 @@ internal static class LeaseDraftProjection
         lease.StartDate = reading.Start is { } start ? LeaseDraftRules.ToStoredDate(start) : LeaseDraftDefaults.PlaceholderDate;
         lease.EndDate = reading.End is { } end ? LeaseDraftRules.ToStoredDate(end) : LeaseDraftDefaults.PlaceholderDate;
 
-        // A range is stored only as the complete creation of a lease stores it: for a concordato, with the rent inside it or
-        // with data that are only indicative (A7-23). A rent outside a verified range is a block, never stored.
         lease.ConcordatoAssessment = type == LeaseContractType.Concordato
             && reading.Rent is not null
             && concordato is { Kind: ConcordatoAssessmentKind.Assessed, Assessment: { } assessment }

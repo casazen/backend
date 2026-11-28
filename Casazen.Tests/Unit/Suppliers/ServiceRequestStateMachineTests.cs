@@ -4,7 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>SU-10 (A4-19) and SP-04: the table of the transitions of a service request, pair by pair, and who may cancel from where.</summary>
 public class ServiceRequestStateMachineTests
 {
     private static readonly HashSet<(ServiceRequestStatus From, ServiceRequestStatus To)> Allowed =
@@ -64,8 +63,6 @@ public class ServiceRequestStateMachineTests
     {
         var all = Enum.GetValues<ServiceRequestStatus>();
 
-        // SP-03b: what the agenda counts and the conflicts check is "still a job": the statuses from which a request can still be
-        // cancelled. A new status makes this fail until it is placed.
         Assert.Equal(
             all.Where(status => ServiceRequestStateMachine.CanTransition(status, ServiceRequestStatus.Annullato)),
             all.Where(ServiceRequestStateMachine.IsOpenJob));
@@ -78,7 +75,6 @@ public class ServiceRequestStateMachineTests
     [Fact]
     public void Status_ValuesAreStoredAsIntegers_SoTheyNeverMove()
     {
-        // ServiceRequests.Status is an integer column and the mobile app reads names: never reorder, only append (SP-04).
         Assert.Equal(
             new[] { 0, 1, 2, 3, 4, 5, 6 },
             new[]
@@ -98,8 +94,6 @@ public class ServiceRequestStateMachineTests
     {
         Assert.Equal(new[] { 0, 1, 2 }, new[] { (int)ServiceRequestActorParty.Host, (int)ServiceRequestActorParty.Supplier, (int)ServiceRequestActorParty.System });
     }
-
-    // ─── Who may cancel from where ───
 
     [Theory]
     [InlineData(ServiceRequestStatus.Richiesto, true)]

@@ -20,11 +20,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// SR-03: <c>GET /api/bookings/search</c>, the booking list that holds up with many bookings, and the booking code in the
-/// booking DTO. The query itself is <c>BookingSearchServiceTests</c>; here what the endpoint decides: the words of the status,
-/// the range, the property the caller may read, the page it answers.
-/// </summary>
 public class BookingsControllerSearchTests
 {
     private const string OwnerId = "auth0|owner_123";
@@ -57,7 +52,6 @@ public class BookingsControllerSearchTests
                 HttpContext = new DefaultHttpContext
                 {
                     User = HostAuthorizationTestHarness.User(OwnerId),
-                    // ApiProblem (FD-05 contract) localizes the detail through SharedResources.
                     RequestServices = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider(),
                 },
             },
@@ -111,8 +105,6 @@ public class BookingsControllerSearchTests
         Source = BookingSource.Direct,
         BookingCode = "ABCDEFGHJK",
     };
-
-    // --- What the request says --------------------------------------------------------------------------
 
     [Theory]
     [InlineData("Done")]
@@ -174,8 +166,6 @@ public class BookingsControllerSearchTests
         Assert.Empty(statuses);
     }
 
-    // --- What it answers --------------------------------------------------------------------------------
-
     [Fact]
     public async Task Search_PassesTheCriteriaAndTheScopeOfTheCaller_AndAnswersThePageWithTheCodeOfEachBooking()
     {
@@ -199,7 +189,6 @@ public class BookingsControllerSearchTests
         Assert.Equal((41, 3, 10), (page.TotalCount, page.Page, page.PageSize));
         var dto = Assert.Single(page.Items);
         Assert.Equal(booking.Id, dto.Id);
-        // The code the guest knows, as shown to people.
         Assert.Equal("ABCDE-FGHJK", dto.BookingCode);
         Assert.Equal("Trullo", dto.PropertyName);
         Assert.Equal("anna@example.com", dto.Guest.Email);
@@ -257,8 +246,6 @@ public class BookingsControllerSearchTests
     private static PagedResultDto<BookingListItemDto> PageOf(ActionResult<PagedResultDto<BookingListItemDto>> result) =>
         Assert.IsType<PagedResultDto<BookingListItemDto>>(Assert.IsType<OkObjectResult>(result.Result).Value);
 
-    // --- The property the caller asks about ---------------------------------------------------------------
-
     [Fact]
     public async Task Search_APropertyOfAnotherOrg_Is404_AndSearchesNothing()
     {
@@ -300,8 +287,6 @@ public class BookingsControllerSearchTests
             s => s.SearchAsync(It.IsAny<HostScope>(), It.Is<BookingSearchCriteria>(c => c.PropertyId == PropertyId), It.IsAny<CancellationToken>()),
             Times.Once);
     }
-
-    // --- The booking code in every booking answer -----------------------------------------------------
 
     [Fact]
     public void BookingMapper_TheBookingCodeIsShownAsThePeopleReadIt()

@@ -7,12 +7,9 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>E05/F04/US01 (NF-68): the pure rules of the approval queue, with no clock and no database.</summary>
 public class ApprovalQueueRulesTests
 {
     private static readonly Guid Item = Guid.Parse("3f2504e0-4f89-41d3-9a0c-0305e82c3301");
-
-    // ─── The keys of an alert ───
 
     /// <summary>
     /// The keys of the push, of the bell and of the e-mail slot write the instant of the alert with a custom format of a date, which takes its calendar from the culture of the machine
@@ -55,7 +52,6 @@ public class ApprovalQueueRulesTests
         Assert.InRange(hashed.Length, 1, Casazen.Core.Entities.InAppNotification.DeliveryKeyMaxLength);
         Assert.Equal(hashed, PushDeliveryKeys.ApprovalQueueItem(Item, at, longUser));
         Assert.DoesNotContain(longUser, hashed, StringComparison.Ordinal);
-        // A Local or an Unspecified instant is read as the UTC one it is meant to be.
         Assert.Equal(ApprovalQueueRules.StampOf(at), ApprovalQueueRules.StampOf(DateTime.SpecifyKind(at, DateTimeKind.Unspecified)));
     }
 
@@ -69,11 +65,9 @@ public class ApprovalQueueRulesTests
         var second = ApprovalQueueRules.SendKeyOf(id, text, 2);
         var last = ApprovalQueueRules.SendKeyOf(id, text, ApprovalQueueRules.MaxSendAttempts);
 
-        // The item and the first eight hexadecimal digits of the SHA-256 of the text that goes out.
         Assert.Equal("approval-3f2504e0-4f89-41d3-9a0c-0305e82c3301-8fa90ebc", first);
         Assert.Equal("approval-3f2504e0-4f89-41d3-9a0c-0305e82c3301-8fa90ebc-2", second);
         Assert.InRange(last.Length, 8, 64);
-        // The same text is the same key (a double click reaches the guest once); another text is another key (a message that was approved later is not the one that went before).
         Assert.Equal(first, ApprovalQueueRules.SendKeyOf(id, text));
         Assert.NotEqual(first, ApprovalQueueRules.SendKeyOf(id, text + "!"));
         Assert.NotEqual(first, ApprovalQueueRules.SendKeyOf(Guid.NewGuid(), text));
@@ -109,8 +103,6 @@ public class ApprovalQueueRulesTests
         Assert.True(MessageThreadKey.MaxLength <= ApprovalQueueItem.ThreadKeyMaxLength);
     }
 
-    // ─── The text of an edit ───
-
     [Theory]
     [InlineData(ApprovalItemTypes.MessageDraft, "  Buongiorno,\r\n\r\n\r\n\r\ntutto bene  ", "Buongiorno,\n\ntutto bene")]
     [InlineData(ApprovalItemTypes.MessageDraft, "Ciao\u0007 a tutti", "Ciao a tutti")]
@@ -138,7 +130,6 @@ public class ApprovalQueueRulesTests
     {
         Assert.Equal(GuestMessageRules.TextMaxLength, ApprovalQueueRules.NormalizeEditedText(ApprovalItemTypes.MessageDraft, new string('a', 2000))!.Length);
         Assert.Null(ApprovalQueueRules.NormalizeEditedText(ApprovalItemTypes.MessageDraft, new string('a', 2001)));
-        // The limit is the one of the message of the guest: a text of another type is not cut by it.
         Assert.Equal(5000, ApprovalQueueRules.NormalizeEditedText(ApprovalItemTypes.AiText, new string('a', 5000))!.Length);
     }
 
@@ -161,8 +152,6 @@ public class ApprovalQueueRulesTests
         Assert.False(ApprovalQueueRules.TryParseCampaignText(new string('s', 201) + "\n\nTesto", out _, out _));
     }
 
-    // ─── The reason of a rejection ───
-
     [Theory]
     [InlineData("Il tono non va", "Il tono non va")]
     [InlineData("  Il tono\r\nnon va  ", "Il tono\nnon va")]
@@ -178,8 +167,6 @@ public class ApprovalQueueRulesTests
         Assert.Equal(500, ApprovalQueueRules.NormalizeRejectionReason(new string('r', 500))!.Length);
         Assert.Null(ApprovalQueueRules.NormalizeRejectionReason(new string('r', 501)));
     }
-
-    // ─── The result of an action ───
 
     [Fact]
     public void ApprovalActionResult_AFailureCodeLongerThanTheColumn_IsCut()

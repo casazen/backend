@@ -6,7 +6,6 @@ namespace Casazen.Infrastructure.Data;
 
 public class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbContext>
 {
-    /// <summary>Must match UserSecretsId in Casazen.Web.csproj.</summary>
     private const string UserSecretsId = "casazen-backend-local";
 
     public AppDbContext CreateDbContext(string[] args) =>

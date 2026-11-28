@@ -4,10 +4,6 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Condominium;
 
-/// <summary>
-/// Reads the text of a free-form administrator PDF and proposes a budget or a final statement.
-/// It does not post. A line it is not sure of is not a tenant charge.
-/// </summary>
 public static partial class AdministratorStatementReader
 {
     public const decimal ChargeConfidence = 0.85m;
@@ -25,7 +21,6 @@ public static partial class AdministratorStatementReader
         string Excerpt,
         IReadOnlyList<string> NotExtracted);
 
-    /// <summary>What this reader never takes from a free-form administrator PDF.</summary>
     public static readonly IReadOnlyList<string> NeverExtracted =
     [
         "singole voci di spesa",
@@ -256,10 +251,6 @@ public static partial class AdministratorStatementReader
         return found;
     }
 
-    /// <summary>
-    /// Text after one label, up to the next label. Two amounts in that span stay ambiguous.
-    /// A following heading is the next label, so its amount is not counted twice.
-    /// </summary>
     private static string WindowAfter(string text, int start)
     {
         var rest = text.Length - start > 240 ? text.Substring(start, 240) : text[start..];

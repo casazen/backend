@@ -267,7 +267,6 @@ public sealed partial class TenantAreaController(
 
     private async Task<List<AccessibleLease>> AccessibleLeasesAsync(string email, CancellationToken cancellationToken, Guid? leaseId = null)
     {
-        // Every action of the area reaches a lease through this query, so the rule of what a tenant may read (no drafts) lives here, once.
         var rows = await db.LeaseContracts.IgnoreQueryFilters().AsNoTracking()
             .Where(LeaseTenantAreaRules.VisibleToTenant)
             .Where(x => leaseId == null || x.Id == leaseId)

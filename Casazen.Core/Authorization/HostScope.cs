@@ -32,6 +32,5 @@ public sealed record HostScope(
     string? GrantedToUserId = null,
     Casazen.Core.Entities.Enums.RentalMode? GrantedMode = null)
 {
-    /// <summary>The whole org: no property restriction at all.</summary>
     public bool IsOrgWide => OwnerId is null && GrantedToUserId is null;
 }

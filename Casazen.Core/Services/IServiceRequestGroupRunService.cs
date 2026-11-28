@@ -16,7 +16,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IServiceRequestGroupRunService
 {
-    /// <summary>One run. Never throws for a group it cannot handle: it counts it and the next run looks again.</summary>
     Task<ServiceRequestGroupRun> RunAsync(CancellationToken cancellationToken = default);
 }
 
@@ -29,9 +28,7 @@ public interface IServiceRequestGroupRunService
 /// <param name="Failed">Groups that could not be handled because of an error: retried by the next run.</param>
 public sealed record ServiceRequestGroupRun(bool Skipped, int Examined, int Closed, int BackupWindowsOpened, int Conflicts, int Failed)
 {
-    /// <summary>Another run is in progress.</summary>
     public static ServiceRequestGroupRun LockTaken { get; } = new(Skipped: true, 0, 0, 0, 0, 0);
 
-    /// <summary>Nothing was due.</summary>
     public static ServiceRequestGroupRun Empty { get; } = new(Skipped: false, 0, 0, 0, 0, 0);
 }

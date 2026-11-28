@@ -7,9 +7,6 @@ namespace Casazen.Web.BackgroundJobs;
 
 public static partial class RecurringJobsRegistration
 {
-    /// <summary>
-    /// The marketing studio dispatch, the monthly agency usage and the expiry of the activation credentials.
-    /// </summary>
     private static void RegisterPlatformJobs(IRecurringJobManager recurringJobManager, IFeatureFlags featureFlags)
     {
         if (featureFlags.IsEnabled(FeatureFlags.CrmMarketing))

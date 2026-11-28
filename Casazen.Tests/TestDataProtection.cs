@@ -12,9 +12,5 @@ namespace Casazen.Tests;
 /// </summary>
 public static class TestDataProtection
 {
-    /// <summary>
-    /// One instance for the whole process, shared by the unit tests and by the web hosts of the integration tests
-    /// (<c>CasazenWebApplicationFactory.SharedDataProtectionProvider</c> is this same instance). Never dispose it.
-    /// </summary>
     public static EphemeralDataProtectionProvider Shared { get; } = new();
 }

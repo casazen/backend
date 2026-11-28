@@ -58,7 +58,6 @@ public class StayAlertsPostgresTests : IClassFixture<CasazenWebApplicationFactor
         var pushes = alerts.Push.Sent;
         Assert.Equal(expectedTemplates.Length, pushes.Count);
         Assert.All(pushes, p => Assert.Equal(booking.Id, p.BookingId));
-        // Phases: day before at 10:00, arrival day at 12:00, end of the arrival day (Europe/Rome).
         var expectedTimes = new List<DateTime>();
         if (!guestDataComplete)
             expectedTimes.Add(RomeToUtc(checkIn.AddDays(-1), 10));
@@ -144,8 +143,6 @@ public class StayAlertsPostgresTests : IClassFixture<CasazenWebApplicationFactor
     [PostgresFact]
     public async Task RunAsync_NoShowStay_SendsNoAlloggiatiAlertNorCheckoutReminder()
     {
-        // NF-45: the guests never came. The host marked the no-show on the day of arrival: no alert about a police communication that is not
-        // due (data missing, deadline, overdue), and no reminder to check out a stay that never started.
         var checkIn = Date(Year + 1, 5, 12);
         var booking = await SeedStayAsync(checkIn, checkIn.AddDays(2));
         await UpdateBookingAsync(booking.Id, b => b.NoShowAt = RomeToUtc(checkIn, 10));
@@ -173,7 +170,6 @@ public class StayAlertsPostgresTests : IClassFixture<CasazenWebApplicationFactor
         Assert.StartsWith("Check-out di oggi - ", reminder.Content.Subject, StringComparison.Ordinal);
         var push = Assert.Single(alerts.Push.Sent, p => p.Type == "checkout-reminder");
         Assert.Equal(bookingId, push.BookingId);
-        // No time zone on the property: Europe/Rome.
         Assert.Equal(RomeToUtc(checkIn.AddDays(3), CheckoutReminderHour), push.At);
     }
 
@@ -245,7 +241,7 @@ public class StayAlertsPostgresTests : IClassFixture<CasazenWebApplicationFactor
         var checkIn = Date(Year + 1, 1, 12);
         var booking = await SeedStayAsync(checkIn, checkIn.AddDays(10));
         var alerts = NewHarness(RomeToUtc(checkIn.AddDays(-1), 6));
-        await alerts.RunHourlyAsync(32); // up to 14:00 of the arrival day: guest data, then deadline approaching
+        await alerts.RunHourlyAsync(32);
 
         using (var scope = _factory.Services.CreateScope())
         {
@@ -501,10 +497,6 @@ public class StayAlertsPostgresTests : IClassFixture<CasazenWebApplicationFactor
             new DateTime(date.Year, date.Month, date.Day, hour, 0, 0, DateTimeKind.Unspecified),
             RomeCalendar.TimeZone);
 
-    /// <summary>
-    /// The stay alert service as the hourly job builds it, on the factory's database, with a recording email queue and
-    /// push service and a clock the test moves.
-    /// </summary>
     private sealed class AlertHarness(CasazenWebApplicationFactory factory, FakeTimeProvider clock, StayAlertOptions options)
     {
         public FakeTimeProvider Clock { get; } = clock;
@@ -539,7 +531,6 @@ public class StayAlertsPostgresTests : IClassFixture<CasazenWebApplicationFactor
                 Clock);
     }
 
-    /// <summary>Records the booking pushes queued, with the time of the (fake) clock.</summary>
     private sealed class RecordingPushService(FakeTimeProvider clock) : IPushNotificationService
     {
         private readonly List<(string Type, Guid BookingId, DateTime At)> _sent = [];

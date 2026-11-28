@@ -53,7 +53,6 @@ public class AddSupplierBusyWindowFeedKeyPostgresTests : IAsyncLifetime
         db.SupplierBusyWindows.Add(Window(orgA, "uid", Ten, SupplierBusyWindowKind.External, SupplierBusyWindowSource.ICalFeed));
         await db.SaveChangesAsync();
 
-        // Same supplier, UID and start: refused (also with another end or another kind of window).
         await using (var duplicate = _database.CreateContext())
         {
             duplicate.SupplierBusyWindows.Add(Window(orgA, "uid", Ten, SupplierBusyWindowKind.External, SupplierBusyWindowSource.ICalFeed, hours: 4));
@@ -63,7 +62,6 @@ public class AddSupplierBusyWindowFeedKeyPostgresTests : IAsyncLifetime
             Assert.Equal(IndexName, postgres.ConstraintName);
         }
 
-        // Another start, another UID, another supplier, and any number of windows with no UID: all accepted.
         db.SupplierBusyWindows.Add(Window(orgA, "uid", Ten.AddDays(1), SupplierBusyWindowKind.External, SupplierBusyWindowSource.ICalFeed));
         db.SupplierBusyWindows.Add(Window(orgA, "other", Ten, SupplierBusyWindowKind.External, SupplierBusyWindowSource.ICalFeed));
         db.SupplierBusyWindows.Add(Window(orgB, "uid", Ten, SupplierBusyWindowKind.External, SupplierBusyWindowSource.ICalFeed));
@@ -72,8 +70,6 @@ public class AddSupplierBusyWindowFeedKeyPostgresTests : IAsyncLifetime
         await db.SaveChangesAsync();
         Assert.Equal(6, await db.SupplierBusyWindows.CountAsync());
     }
-
-    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private static async Task<int> CountIndexesAsync(AppDbContext db) =>
         (int)await db.Database
@@ -92,8 +88,6 @@ public class AddSupplierBusyWindowFeedKeyPostgresTests : IAsyncLifetime
             OrgType = OrgType.Supplier,
             PlanTier = PlanTier.Starter,
         };
-        // Plain SQL: the org and the profile are written with the helpers that name only the columns they need, so a column that
-        // a later migration adds to the org (DB-03: HostName, PublicPhone, Subtitle) or to the profile cannot break this test.
         await LegacyOrgRows.InsertAsync(db, org);
         await db.Database.ExecuteSqlAsync($"""UPDATE "Orgs" SET "OrgType" = {(int)org.OrgType} WHERE "Id" = {org.Id}""");
         await SupplierProfileSql.InsertAsync(db, new SupplierProfile

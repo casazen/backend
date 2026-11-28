@@ -31,26 +31,21 @@ public class RentBankMovement : ITenantOwned
 
     public Guid RentLedgerEntryId { get; set; }
 
-    /// <summary>SHA-256 (hex, lower case) of the movement as the bank wrote it, the org and the order among identical lines.</summary>
     [Required]
     [MaxLength(64)]
     public string Fingerprint { get; set; } = string.Empty;
 
-    /// <summary>Keyed hash of the payer's IBAN (with the org); null when the file had none or there is no key. Cleared when the tenants are anonymized.</summary>
     [MaxLength(64)]
     public string? PayerIbanHash { get; set; }
 
-    /// <summary>Keyed hash of the payer's name (with the org); null when the file had none or there is no key. Cleared when the tenants are anonymized.</summary>
     [MaxLength(64)]
     public string? PayerNameHash { get; set; }
 
-    /// <summary>Value date of the credit: the day the installment was declared paid.</summary>
     public DateOnly ValueDate { get; set; }
 
     [Column(TypeName = "decimal(18,2)")]
     public decimal Amount { get; set; }
 
-    /// <summary>The user who confirmed the match.</summary>
     [Required]
     [MaxLength(200)]
     public string ConfirmedByUserId { get; set; } = string.Empty;

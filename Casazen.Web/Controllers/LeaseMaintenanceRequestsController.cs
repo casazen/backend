@@ -24,7 +24,6 @@ public class LeaseMaintenanceRequestsController(
     IOrgContextResolver orgContextResolver,
     IAccountEmailResolver emails) : ControllerBase
 {
-    /// <summary>Opens a request. Status is <see cref="LeaseMaintenanceStatus.InAttesa"/>. Photos are optional.</summary>
     [HttpPost]
     [ProducesResponseType(typeof(LeaseMaintenanceRequestView), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
@@ -64,7 +63,6 @@ public class LeaseMaintenanceRequestsController(
         return Created($"/api/leases/{leaseId}/maintenance-requests/{created.Id}", created);
     }
 
-    /// <summary>The requests of this lease the caller may see: the tenant, or anyone who may read the lease.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(LeaseMaintenanceListView), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -78,10 +76,6 @@ public class LeaseMaintenanceRequestsController(
         return Ok(await maintenance.ListAsync(caller.Caller!, leaseId, cancellationToken));
     }
 
-    /// <summary>
-    /// One photo of a request, for the tenant of the lease or anyone who may read it. The file is private:
-    /// this response is the only copy, it is not cached, and it has no public URL.
-    /// </summary>
     [HttpGet("{id:guid}/photos/{photoId:guid}")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -97,10 +91,6 @@ public class LeaseMaintenanceRequestsController(
         return File(photo.Content, photo.ContentType, photo.FileName);
     }
 
-    /// <summary>
-    /// Approves or rejects. <c>decision</c> is <c>Approved</c> or <c>Rejected</c>. A rejection needs <c>reason</c>.
-    /// Approval does not mark the request paid.
-    /// </summary>
     [HttpPost("{id:guid}/decision")]
     [Authorize(Policy = CasazenPolicies.LeaseCreate)]
     [ProducesResponseType(typeof(LeaseMaintenanceRequestView), StatusCodes.Status200OK)]
@@ -177,7 +167,6 @@ public class LeaseMaintenanceRequestsController(
     private sealed record CallerResolution(LeaseMaintenanceCaller? Caller, ActionResult? Missing);
 }
 
-/// <summary>What the tenant sends. <c>urgency</c> is <c>Normal</c>, <c>High</c> or <c>Emergency</c>.</summary>
 public sealed class CreateLeaseMaintenanceRequestDto
 {
     [Required(ErrorMessage = "MaintenanceTitleInvalid")]
@@ -194,7 +183,6 @@ public sealed class CreateLeaseMaintenanceRequestDto
     public List<LeaseMaintenancePhotoDto>? Photos { get; set; }
 }
 
-/// <summary>One photo, as base64 of a JPEG, PNG or WebP. Omitted when the tenant attaches none.</summary>
 public sealed class LeaseMaintenancePhotoDto
 {
     [Required(ErrorMessage = "MaintenancePhotoInvalid")]
@@ -205,10 +193,6 @@ public sealed class LeaseMaintenancePhotoDto
     public string ContentBase64 { get; set; } = string.Empty;
 }
 
-/// <summary>
-/// <c>decision</c> is <c>Approved</c> or <c>Rejected</c>. <c>reason</c> is required when rejecting.
-/// <c>amountCents</c> is the euros to pay, required when approving, and the later debit must use that amount.
-/// </summary>
 public sealed class LeaseMaintenanceDecisionDto
 {
     [Required(ErrorMessage = "MaintenanceDecisionInvalid")]
@@ -221,14 +205,12 @@ public sealed class LeaseMaintenanceDecisionDto
     public long? AmountCents { get; set; }
 }
 
-/// <summary>Must equal the amount stored when the request was approved. A different amount is rejected.</summary>
 public sealed class LeaseMaintenancePaymentDto
 {
     [Range(1, 100_000_000, ErrorMessage = "BankLinkAmountInvalid")]
     public long AmountCents { get; set; }
 }
 
-/// <summary>Lengths shared with the entity, so the DTO does not take a dependency on the column type.</summary>
 public static class LeaseMaintenanceRequestLimits
 {
     public const int Title = 120;

@@ -56,14 +56,11 @@ public class PublicHostControllerTests
         Assert.IsType<NotFoundResult>(result.Result);
     }
 
-    // ─── E40/F01/US01/T01: the surfaces of the agency's own domain ──────────────────────────────────────
-
     private const string AgencyHost = "prenota.villa-mare.it";
 
     [Fact]
     public async Task ResolveHost_FlagsOff_NewFieldsFalse_ExistingFieldsUnchanged()
     {
-        // An org whose verified domain could serve everything: with every flag off nothing new is served and the old members are as before.
         var controller = new PublicHostController(RealResolver(new Dictionary<string, string?>()));
 
         var result = await controller.ResolveHost(AgencyHost, CancellationToken.None);

@@ -3,19 +3,14 @@ using Casazen.Core.Exceptions;
 
 namespace Casazen.Core.Services;
 
-/// <summary>Error codes of the owner portal operations shared by its services (E07/F07/US01).</summary>
 public static class OwnerPortalErrors
 {
-    /// <summary>403: the caller holds the permission nowhere (a delegated contact the owner did not give it to).</summary>
     public const string PermissionMissing = "owner_portal_permission_missing";
 
-    /// <summary>422: an explicit list of permissions that is empty. An empty list never means «all of them».</summary>
     public const string PermissionsEmpty = "owner_portal_permissions_empty";
 
-    /// <summary>422: a permission that is not one of <see cref="OwnerPortalPermissions.All"/>.</summary>
     public const string PermissionUnknown = "owner_portal_permission_unknown";
 
-    /// <summary>404: the property is not one the caller reaches with that permission now (another owner's, an ended ownership, missing: one answer).</summary>
     public const string PropertyNotFound = "owner_portal_property_not_found";
 
     public const string PermissionMissingMessageKey = "OwnerPortalPermissionMissing";
@@ -24,29 +19,19 @@ public static class OwnerPortalErrors
     public const string PropertyNotFoundMessageKey = "OwnerPortalPropertyNotFound";
 }
 
-/// <summary>
-/// What an item of the owner portal operations is, in the <c>part</c> detail of its lines of the activity log (<c>OrgActivityType.OwnerPortalChanged</c>):
-/// the subject id of the line is the id of that item. A closed list of codes.
-/// </summary>
 public static class OwnerPortalParts
 {
-    /// <summary>An owner stay (<c>OwnerStayRequest.Id</c>).</summary>
     public const string Stay = "stay";
 
-    /// <summary>A rule of the owner stays (<c>OwnerStayRule.Id</c>).</summary>
     public const string StayRule = "stayRule";
 
-    /// <summary>A document shared with an owner (<c>OwnerDocument.Id</c>).</summary>
     public const string Document = "document";
 
-    /// <summary>A delegated contact of an owner (<c>OwnerPortalContact.Id</c>).</summary>
     public const string Contact = "contact";
 
-    /// <summary>A conversation of the owner inbox (<c>OwnerConversation.Id</c>): its opening; the messages are the record of what was said.</summary>
     public const string Conversation = "conversation";
 }
 
-/// <summary>What happened to an item of the owner portal operations, in the <c>status</c> detail of its lines of the activity log. A closed list of codes.</summary>
 public static class OwnerPortalAuditStatuses
 {
     public const string Requested = "requested";
@@ -73,7 +58,6 @@ public static class OwnerPortalAuditStatuses
     public const string Opened = "opened";
 }
 
-/// <summary>The codes of the permissions of the owner portal (AC-NF111-4), as the API speaks them.</summary>
 public static class OwnerPortalPermissions
 {
     public const string CalendarRead = "calendar.read";
@@ -82,10 +66,8 @@ public static class OwnerPortalPermissions
     public const string DocumentsRead = "documents.read";
     public const string InboxUse = "inbox.use";
 
-    /// <summary>Every permission, in the order of the brief.</summary>
     public static IReadOnlyList<string> All { get; } = [CalendarRead, StaysRequest, AccountingRead, DocumentsRead, InboxUse];
 
-    /// <summary>Every permission at once: what the owner holds on its own ownerships.</summary>
     public const OwnerPortalPermission Everything =
         OwnerPortalPermission.CalendarRead | OwnerPortalPermission.StaysRequest | OwnerPortalPermission.AccountingRead
         | OwnerPortalPermission.DocumentsRead | OwnerPortalPermission.InboxUse;
@@ -117,7 +99,6 @@ public static class OwnerPortalPermissions
         return mask;
     }
 
-    /// <summary>The codes of a mask, in the order of <see cref="All"/>.</summary>
     public static IReadOnlyList<string> CodesOf(OwnerPortalPermission permissions)
     {
         var codes = new List<string>();
@@ -155,11 +136,6 @@ public sealed record OwnerPortalGrant(
     OwnerPortalPermission Permissions,
     Guid? ContactId);
 
-/// <summary>
-/// What the caller of the owner portal reaches at the moment of the request (E07/F07/US01, ADR-011-R2, AC-NF111-4): every read and every write of the
-/// owner portal operations is judged against it, and it is resolved again at every request, so an ownership that ended, a removed owner or a withdrawn
-/// delegation closes the access at the next call.
-/// </summary>
 public sealed class OwnerPortalAccess
 {
     public OwnerPortalAccess(Guid ownerUserId, IReadOnlyList<OwnerPortalGrant> grants)
@@ -169,43 +145,31 @@ public sealed class OwnerPortalAccess
         Grants = grants;
     }
 
-    /// <summary>The person of the portal (<c>OwnerUser.Id</c>): an owner, a delegated contact, or both.</summary>
     public Guid OwnerUserId { get; }
 
-    /// <summary>Every property reached, once per ownership and delegation.</summary>
     public IReadOnlyList<OwnerPortalGrant> Grants { get; }
 
-    /// <summary>The actor of what the caller does, as the audit writes it: <c>owner:{OwnerUser.Id}</c>, never a name.</summary>
     public string Actor => ActorOf(OwnerUserId);
 
-    /// <summary>The actor of a person of the portal: <c>owner:{OwnerUser.Id}</c>.</summary>
     public static string ActorOf(Guid ownerUserId) => $"owner:{ownerUserId:D}";
 
-    /// <summary>The grants that carry <paramref name="permission"/>.</summary>
     public IReadOnlyList<OwnerPortalGrant> With(OwnerPortalPermission permission) =>
         Grants.Where(g => g.Permissions.HasFlag(permission)).ToList();
 
-    /// <summary>The grants on <paramref name="propertyId"/> that carry <paramref name="permission"/>; the owner's own first.</summary>
     public IReadOnlyList<OwnerPortalGrant> On(Guid propertyId, OwnerPortalPermission permission) =>
         Grants.Where(g => g.PropertyId == propertyId && g.Permissions.HasFlag(permission))
             .OrderBy(g => g.ContactId is null ? 0 : 1)
             .ToList();
 
-    /// <summary>True when the caller holds <paramref name="permission"/> on some property of the owner profile <paramref name="propertyOwnerId"/> of <paramref name="orgId"/>.</summary>
     public bool Covers(Guid orgId, Guid propertyOwnerId, OwnerPortalPermission permission) =>
         Grants.Any(g => g.OrgId == orgId && g.PropertyOwnerId == propertyOwnerId && g.Permissions.HasFlag(permission));
 
-    /// <summary>Refuses a caller that holds <paramref name="permission"/> nowhere.</summary>
-    /// <exception cref="DomainForbiddenException"><see cref="OwnerPortalErrors.PermissionMissing"/>.</exception>
     public void Require(OwnerPortalPermission permission)
     {
         if (!Grants.Any(g => g.Permissions.HasFlag(permission)))
             throw new DomainForbiddenException(OwnerPortalErrors.PermissionMissing, OwnerPortalErrors.PermissionMissingMessageKey);
     }
 
-    /// <summary>The first grant on <paramref name="propertyId"/> with <paramref name="permission"/> (the owner's own first).</summary>
-    /// <exception cref="DomainForbiddenException">The caller holds the permission nowhere.</exception>
-    /// <exception cref="NotFoundException"><see cref="OwnerPortalErrors.PropertyNotFound"/>: not a property the caller reaches with it now.</exception>
     public OwnerPortalGrant RequireOn(Guid propertyId, OwnerPortalPermission permission)
     {
         Require(permission);
@@ -224,10 +188,5 @@ public sealed class OwnerPortalAccess
 /// </summary>
 public interface IOwnerPortalAccessResolver
 {
-    /// <summary>
-    /// The grants of <paramref name="ownerUserId"/> now: every ownership of the account in force (started, not ended) on a property of the same org that
-    /// is not deleted, of an owner profile that is not anonymized, with every permission; and every delegation that is active, with the permissions the
-    /// owner gave, on the ownerships in force of the owner that gave it. Empty for nobody.
-    /// </summary>
     Task<OwnerPortalAccess> ResolveAsync(Guid ownerUserId, CancellationToken cancellationToken = default);
 }

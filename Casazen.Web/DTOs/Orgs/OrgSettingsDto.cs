@@ -7,11 +7,6 @@ using Casazen.Web.DTOs.Users;
 
 namespace Casazen.Web.DTOs.Orgs;
 
-/// <summary>
-/// The caller org's editable identity (A1-22, A1-23): <c>GET/PUT /api/orgs/me/settings</c>. Unlike
-/// <see cref="OrgSummaryDto"/> (shown to every member) this carries the contact email and its publication
-/// opt-in, so it is only ever returned to the org's billing/settings administrator (policy <c>OrgBillingAdmin</c>).
-/// </summary>
 public class OrgSettingsDto
 {
     public Guid Id { get; set; }
@@ -22,16 +17,12 @@ public class OrgSettingsDto
     /// <summary>When true, <see cref="ContactEmail"/> is shown on the public booking site (<c>PublicOrgDto</c>). Off by default (GDPR opt-in).</summary>
     public bool ContactEmailPublic { get; set; }
 
-    /// <summary>The legal name of the operator that the booking site shows in its footer (DB-03b-a), or null while not entered.</summary>
     public string? LegalName { get; set; }
 
-    /// <summary>The registered office ("sede legale") that the booking site shows in its footer (DB-03b-a), or null while not entered.</summary>
     public string? RegisteredOffice { get; set; }
 
-    /// <summary>The phone number of the account (AM-08b-b), or null while not entered. Never published: only the org's administrators read it.</summary>
     public string? ContactPhone { get; set; }
 
-    /// <summary>The language of the account (AM-08b-b): <c>it</c> or <c>en</c>. The language of the emails to the team when nobody chooses another.</summary>
     public string DefaultLanguage { get; set; } = OrgInvitationRules.DefaultLanguage;
 
     public static OrgSettingsDto FromOrg(Org org) => new()
@@ -64,10 +55,6 @@ public class UpdateOrgSettingsDto
     [MaxLength(200, ErrorMessage = "OrgNameTooLong")]
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Free text is accepted and sanitized into slug form server-side (<c>OrgSlugHelper</c>: 3-63 characters, not
-    /// reserved, unique). The current slug sent back unchanged is kept as is, even a legacy one.
-    /// </summary>
     [Required(ErrorMessage = "OrgSlugRequired")]
     [MaxLength(100, ErrorMessage = "OrgSlugTooLong")]
     public string Slug { get; set; } = string.Empty;
@@ -77,14 +64,8 @@ public class UpdateOrgSettingsDto
     [MaxLength(255, ErrorMessage = "OrgContactEmailTooLong")]
     public string ContactEmail { get; set; } = string.Empty;
 
-    /// <summary>Explicit opt-in to publish <see cref="ContactEmail"/> on the public booking site. Defaults to false when omitted.</summary>
     public bool ContactEmailPublic { get; set; }
 
-    /// <summary>
-    /// The legal name of the operator (DB-03b-a), plain text, at most <see cref="OrgOperatorRules.LegalNameMaxLength"/> characters
-    /// once whitespace is collapsed. Whatever is saved here is shown in the footer of the booking site. Left out = unchanged;
-    /// <c>null</c> or blank = none.
-    /// </summary>
     [MaxLength(OrgOperatorRules.LegalNameMaxLength, ErrorMessage = "OrgOperatorLegalNameTooLongInput")]
     public string? LegalName
     {
@@ -96,11 +77,6 @@ public class UpdateOrgSettingsDto
         }
     }
 
-    /// <summary>
-    /// The registered office ("sede legale") of the operator (DB-03b-a), one line of plain text, at most
-    /// <see cref="OrgOperatorRules.RegisteredOfficeMaxLength"/> characters once whitespace is collapsed. Left out = unchanged;
-    /// <c>null</c> or blank = none.
-    /// </summary>
     [MaxLength(OrgOperatorRules.RegisteredOfficeMaxLength, ErrorMessage = "OrgOperatorRegisteredOfficeTooLongInput")]
     public string? RegisteredOffice
     {
@@ -128,10 +104,6 @@ public class UpdateOrgSettingsDto
         }
     }
 
-    /// <summary>
-    /// The language of the account (AM-08b-b): <c>it</c> or <c>en</c> (any case); the language of the emails the org sends to its team
-    /// when nobody chooses another. Left out = unchanged; <c>null</c> or blank = Italian, the default.
-    /// </summary>
     [MaxLength(8, ErrorMessage = "OrgDefaultLanguageInvalid")]
     public string? DefaultLanguage
     {
@@ -143,31 +115,24 @@ public class UpdateOrgSettingsDto
         }
     }
 
-    /// <summary>True when the body carries <see cref="LegalName"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool LegalNameSent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="RegisteredOffice"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool RegisteredOfficeSent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="ContactPhone"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool ContactPhoneSent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="DefaultLanguage"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool DefaultLanguageSent { get; private set; }
 }
 
-/// <summary>Result of <c>GET /api/orgs/me/settings/slug-availability</c> (A1-23).</summary>
 public class OrgSlugAvailabilityDto
 {
-    /// <summary>The slug as it would be saved (sanitized).</summary>
     public string Slug { get; set; } = string.Empty;
 
     public bool Available { get; set; }
 
-    /// <summary>Why it is not available: <c>org_slug_invalid</c>, <c>org_slug_reserved</c> or <c>org_slug_taken</c>; null when available.</summary>
     public string? Code { get; set; }
 }
