@@ -133,29 +133,14 @@ public sealed class ZonedFieldReader(
     }
 
     /// <summary>
-    /// The fields of the MRZ of the card, with the confidence the MRZ reading gives them: the card goes to the MRZ reader as a PNG held in memory (the reader takes the
-    /// upload as a stream), at the working size of the document readers. A field whose own check digit failed is not in the reading, so it is not here. Returns how many
+    /// The fields of the MRZ of the card, with the confidence the MRZ reading gives them. A field whose own check digit failed is not in the reading, so it is not here. Returns how many
     /// fields it added; a reading that fails adds none and never stops the zones.
     /// </summary>
     private async Task<int> ReadMrzAsync(RasterImage card, DocumentSide side, MrzOcrOptions settings, List<ZonedField> fields, CancellationToken token)
     {
-        RasterImage? scaled = null;
-        byte[]? png = null;
         try
         {
-            var source = card;
-            var longest = Math.Max(card.Width, card.Height);
-            if (longest > settings.MaxWorkingSide)
-            {
-                scaled = card.Resized(
-                    Math.Max(1, (int)Math.Round((double)card.Width * settings.MaxWorkingSide / longest)),
-                    Math.Max(1, (int)Math.Round((double)card.Height * settings.MaxWorkingSide / longest)));
-                source = scaled;
-            }
-
-            png = CardPngEncoder.Encode(source);
-            using var stream = new MemoryStream(png, writable: false);
-            var reading = await mrz.ReadAsync(stream, token);
+            var reading = await CardMrzReader.ReadCardAsync(mrz, card, settings.MaxWorkingSide, token);
             if (reading.Result is not { } result)
                 return 0;
 
@@ -173,11 +158,6 @@ public sealed class ZonedFieldReader(
         {
             logger.LogWarning("Zoned reading: the MRZ could not be read ({ErrorType})", ex.GetType().Name);
             return 0;
-        }
-        finally
-        {
-            ImageBytes.Zero(png);
-            scaled?.Dispose();
         }
     }
 

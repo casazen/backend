@@ -503,20 +503,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
             Add(stages, QualificationStages.DocumentCapture, started);
 
             started = Stopwatch.GetTimestamp();
-            MrzReading mrz;
-            try
-            {
-                using var stream = new MemoryStream(bytes, writable: false);
-                mrz = await pipeline.Mrz.ReadAsync(stream, ct);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                mrz = new MrzReading(null, []);
-            }
-
-            Add(stages, QualificationStages.DocumentMrz, started);
-
-            started = Stopwatch.GetTimestamp();
             DocumentPicture picture;
             try
             {
@@ -530,6 +516,22 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
             using (picture)
             {
                 var report = picture.Inspect(format, side, ct);
+                Add(stages, QualificationStages.DocumentGeometry, started);
+
+                started = Stopwatch.GetTimestamp();
+                MrzReading mrz;
+                try
+                {
+                    mrz = await CardMrzReader.ReadAsync(pipeline.Mrz, picture, report, bytes, pipeline.MrzOptions.MaxWorkingSide, ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    mrz = new MrzReading(null, []);
+                }
+
+                Add(stages, QualificationStages.DocumentMrz, started);
+
+                started = Stopwatch.GetTimestamp();
                 var shown = pipeline.Sides.Classify(report, mrz.Result is not null, format);
                 var fingerprint = new DocumentPictureFingerprint(Convert.ToHexString(SHA256.HashData(bytes)), picture.DHash(), shown);
                 var pair = pipeline.Sides.CheckPair(side, fingerprint, other, policy.Document.PerceptualDuplicateMaxDistance);
