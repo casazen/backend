@@ -1,7 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
-using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;

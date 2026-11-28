@@ -8,7 +8,6 @@ using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
-using Casazen.Tests.Unit.Email;
 using Casazen.Tests.Unit.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;

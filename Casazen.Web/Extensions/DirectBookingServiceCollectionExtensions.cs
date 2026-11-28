@@ -49,9 +49,6 @@ public static class DirectBookingServiceCollectionExtensions
         services.AddScoped<IGuestMessageService, GuestMessageService>();
         // «Scrivi a {host}» of the booking site: the visitor's message as one email to the host, answered from their mailbox (DB-03b).
         services.AddScoped<IHostContactService, HostContactService>();
-        services.AddScoped<NotificationRouter>();
-        services.AddScoped<INotificationChannel, EmailNotificationChannel>();
-        services.AddScoped<INotificationChannel, DashboardNotificationChannel>();
 
         return services;
     }

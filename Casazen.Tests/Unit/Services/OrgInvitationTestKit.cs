@@ -2,7 +2,6 @@ using System.Text.RegularExpressions;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Features;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;

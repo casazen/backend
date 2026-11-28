@@ -1,6 +1,5 @@
 using System.Text.Json.Serialization;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 

@@ -1,5 +1,4 @@
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
 
 namespace Casazen.Infrastructure.Services;

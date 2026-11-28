@@ -32,17 +32,11 @@ public static class OnSiteRequests
     /// </summary>
     public const int DefaultApprovalHours = 24;
 
-    /// <summary>Kept name for callers compiled against the previous constant; same value as <see cref="DefaultApprovalHours"/>.</summary>
-    public const int ProvisionalApprovalHours = DefaultApprovalHours;
-
     /// <summary>
     /// Product default (PO 2026-10-08): a "pay at the property" request may last at most 30 nights. Longer stays get
     /// 422 <c>onsite_request_too_many_nights</c>. Override with <c>DirectBooking:OnSiteMaxNights</c>.
     /// </summary>
     public const int DefaultMaxNights = 30;
-
-    /// <summary>Kept name for callers compiled against the previous constant; same value as <see cref="DefaultMaxNights"/>.</summary>
-    public const int ProvisionalMaxNights = DefaultMaxNights;
 
     /// <summary>Hours the host has to accept or decline a request once the guest confirmed the email (at least 1).</summary>
     public static int GetApprovalHours(IConfiguration configuration) =>

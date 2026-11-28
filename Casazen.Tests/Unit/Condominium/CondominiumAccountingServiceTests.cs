@@ -1,7 +1,6 @@
 using Casazen.Core.Authorization;
 using Xunit;
 using Casazen.Core.Condominium;
-using Casazen.Core.Documents;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;

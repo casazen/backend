@@ -280,10 +280,6 @@ public interface IRentBillingService
     /// <summary>Anonymous: the installment of a payment link; 404 <c>rent_payment_link_invalid</c> for a wrong id or token.</summary>
     Task<PublicRentPayment> GetPublicPaymentAsync(Guid installmentId, string token, CancellationToken cancellationToken = default);
 
-    /// <summary>Anonymous: the PaymentIntent to confirm (created, or the current one reused: never two payable at once).</summary>
-    Task<PublicRentPaymentSession> CreatePaymentSessionAsync(
-        Guid installmentId, string token, CancellationToken cancellationToken = default);
-
     /// <summary>
     /// Applies a rent PaymentIntent event inside the webhook event transaction. Pass the notice to
     /// <see cref="CompleteAsync"/> once the event is committed.

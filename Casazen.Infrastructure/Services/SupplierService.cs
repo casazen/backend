@@ -13,7 +13,6 @@ using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Npgsql;
 
 namespace Casazen.Infrastructure.Services;

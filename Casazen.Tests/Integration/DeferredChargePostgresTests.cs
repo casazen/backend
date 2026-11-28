@@ -637,8 +637,6 @@ internal sealed class ScriptedDeferredChargeStripe : IStripeService
         CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
-    public Task<PaymentIntent> ConfirmPaymentAsync(string paymentIntentId) => throw new NotSupportedException();
-
     public Task<Refund> CreateRefundAsync(StripeRefundCreateRequest request, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 

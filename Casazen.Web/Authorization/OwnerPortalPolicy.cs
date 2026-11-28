@@ -147,43 +147,4 @@ public static class OwnerPortalPrincipalExtensions
             return [];
         }
     }
-
-    /// <summary>
-    /// Gets the owned property IDs from the JWT (ADR-011-R7). Returns empty list if not an owner portal context.
-    /// </summary>
-    /// <param name="user">The claims principal to read from.</param>
-    /// <param name="customClaimNamespace">An Auth0 custom claim namespace to use instead of the documented claim names.</param>
-    public static IReadOnlyList<Guid> GetOwnedPropertyIds(this ClaimsPrincipal user, string? customClaimNamespace = null)
-    {
-        ArgumentNullException.ThrowIfNull(user);
-        var propertyIdsClaim = user.FindFirstValue(OwnerPortalClaims.Type(customClaimNamespace, OwnerPortalClaims.OwnedPropertyIds, "owned_property_ids"));
-        if (string.IsNullOrWhiteSpace(propertyIdsClaim))
-            return Array.Empty<Guid>();
-
-        // Parse JSON array or comma-separated list
-        try
-        {
-            // Try JSON array first (e.g., ["uuid1","uuid2"])
-            if (propertyIdsClaim.StartsWith('['))
-            {
-                var ids = System.Text.Json.JsonSerializer.Deserialize<string[]>(propertyIdsClaim);
-                if (ids is null)
-                    return Array.Empty<Guid>();
-
-                return ids.Select(id => Guid.TryParse(id, out var guid) ? guid : Guid.Empty)
-                          .Where(id => id != Guid.Empty)
-                          .ToList();
-            }
-
-            // Fallback to comma-separated
-            return propertyIdsClaim.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                .Select(id => Guid.TryParse(id.Trim(), out var guid) ? guid : Guid.Empty)
-                .Where(id => id != Guid.Empty)
-                .ToList();
-        }
-        catch
-        {
-            return Array.Empty<Guid>();
-        }
-    }
 }

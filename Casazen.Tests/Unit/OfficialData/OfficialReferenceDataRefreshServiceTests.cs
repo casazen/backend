@@ -4,7 +4,6 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.OfficialData;
 using Casazen.Core.Options;
-using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.OfficialData;
 using Casazen.Infrastructure.Services;
@@ -13,7 +12,6 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
-using Casazen.Tests.Unit;
 
 namespace Casazen.Tests.Unit.OfficialData;
 

@@ -10,7 +10,6 @@ using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Resources;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;

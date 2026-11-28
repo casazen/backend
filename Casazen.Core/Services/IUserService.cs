@@ -1,12 +1,10 @@
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
 public interface IUserService
 {
     Task<User?> GetUserAsync(string id);
-    Task<User?> GetUserByEmailAsync(string email);
     Task<User> UpdateUserAsync(User user);
 
     /// <summary>

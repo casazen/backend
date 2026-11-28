@@ -3,7 +3,6 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Casazen.Core.Documents;
 using MigraDoc.DocumentObjectModel;
-using MigraDoc.DocumentObjectModel.Tables;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using MigraDocRenderer = MigraDoc.Rendering.PdfDocumentRenderer;

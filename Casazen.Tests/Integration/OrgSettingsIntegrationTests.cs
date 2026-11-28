@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Http.Json;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;

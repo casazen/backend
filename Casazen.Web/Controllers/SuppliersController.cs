@@ -6,7 +6,6 @@ using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Supplier;
@@ -15,7 +14,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Controllers;
 

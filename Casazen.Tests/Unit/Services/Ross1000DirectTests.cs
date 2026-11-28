@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text;
 using System.Xml.Linq;
 using Casazen.Core.Entities;
 using Casazen.Infrastructure.Ross1000;

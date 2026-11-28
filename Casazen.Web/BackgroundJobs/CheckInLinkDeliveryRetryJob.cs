@@ -1,7 +1,6 @@
 using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Hangfire;
-using Microsoft.Extensions.Logging;
 
 namespace Casazen.Web.BackgroundJobs;
 

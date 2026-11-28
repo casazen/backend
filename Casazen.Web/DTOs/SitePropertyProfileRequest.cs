@@ -1,7 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.SiteProfile;
-using Microsoft.AspNetCore.Http;
 
 namespace Casazen.Web.DTOs;
 

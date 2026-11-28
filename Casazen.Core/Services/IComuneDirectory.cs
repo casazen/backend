@@ -44,9 +44,6 @@ public interface IComuneDirectory
         IEnumerable<string> identifiers,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The active comune with this name (any language of the denomination is not used: the Italian name) in this province.</summary>
-    Task<Comune?> FindByNameAndProvinceAsync(string name, string provinceCode, CancellationToken cancellationToken = default);
-
     /// <summary>
     /// The active comuni of these (name, province) pairs, e.g. the pilots of the SEO pages; a pair that is not in the
     /// list is absent.

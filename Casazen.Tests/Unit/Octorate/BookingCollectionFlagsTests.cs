@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Services;
 using Casazen.Infrastructure.Octorate;
 using Microsoft.EntityFrameworkCore;
 using Xunit;

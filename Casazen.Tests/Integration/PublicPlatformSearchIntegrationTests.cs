@@ -3,10 +3,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Enums;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
-using Casazen.Tests.Unit.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
