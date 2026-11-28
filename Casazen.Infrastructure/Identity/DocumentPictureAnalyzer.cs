@@ -104,14 +104,21 @@ public sealed class DocumentPicture : IDisposable
     public async Task<IReadOnlyList<ZonedField>> ReadFieldsAsync(
         DocumentFormat format, DocumentSide side, DocumentGeometryReport report, CancellationToken cancellationToken)
     {
+        return await ReadOnCardAsync(report, card => _zonedFields.ReadAsync(card, format, side, cancellationToken)) ?? [];
+    }
+
+    internal async Task<T?> ReadOnCardAsync<T>(DocumentGeometryReport report, Func<RasterImage, Task<T>> read)
+        where T : class
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        ArgumentNullException.ThrowIfNull(read);
+
+        // The levelled card belongs to the report; a card cut out is a copy zeroed when the reading ends, so the reader must not keep it.
         if (UsesRectifiedCard(report))
-            return await _zonedFields.ReadAsync(report.RectifiedCard!, format, side, cancellationToken);
+            return await read(report.RectifiedCard!);
 
         using var card = CutCard(report);
-        if (card is null)
-            return [];
-
-        return await _zonedFields.ReadAsync(card, format, side, cancellationToken);
+        return card is null ? null : await read(card);
     }
 
     internal static bool UsesRectifiedCard(DocumentGeometryReport report)

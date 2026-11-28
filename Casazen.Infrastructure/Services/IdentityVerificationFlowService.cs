@@ -86,7 +86,8 @@ public sealed partial class IdentityVerificationFlowService(
     IPresenceEvidenceCollector? evidenceCollector = null,
     IIdentitySegmentService? segments = null,
     IdentityDecisionEngine? decisionEngine = null,
-    IdentityReviewEvidenceStore? reviewEvidence = null) : IIdentityVerificationFlowService
+    IdentityReviewEvidenceStore? reviewEvidence = null,
+    IOptions<MrzOcrOptions>? mrzOptions = null) : IIdentityVerificationFlowService
 {
     public const string DocumentImageContentPurpose = "Casazen.DocumentImage.Content";
 
@@ -218,6 +219,7 @@ public sealed partial class IdentityVerificationFlowService(
         var context = await ContextAsync(session, ct);
 
         byte[]? bytes = null;
+        OpenedDocumentPicture? opened = null;
         try
         {
             bytes = await ImageBytes.ReadAllAsync(image, MaxImageBytes, ct);
@@ -232,8 +234,7 @@ public sealed partial class IdentityVerificationFlowService(
             }
 
             MrzReading mrzReading;
-            using (var copy = new MemoryStream(bytes, writable: false))
-                mrzReading = await mrz.ReadAsync(copy, ct);
+            (mrzReading, opened) = await ReadUploadMrzAsync(session, bytes, side, consented, ct);
 
             DocumentReading reading;
             if (mrzReading.Result is { } fromMrz)
@@ -254,7 +255,9 @@ public sealed partial class IdentityVerificationFlowService(
             DocumentPictureChecks? selfChecks = null;
             if (DocumentStepOn && consented)
             {
-                var step = await CheckDocumentPictureAsync(session, context, bytes, side, mrzReading, reading, assessment, ct);
+                var step = await CheckDocumentPictureAsync(session, context, bytes, side, mrzReading, reading, assessment, opened, ct);
+                opened?.Dispose();
+                opened = null;
                 if (step.Answer is { } answer)
                     return answer;
 
@@ -379,6 +382,7 @@ public sealed partial class IdentityVerificationFlowService(
         }
         finally
         {
+            opened?.Dispose();
             ImageBytes.Zero(bytes);
         }
     }

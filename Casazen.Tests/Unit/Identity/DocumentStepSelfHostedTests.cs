@@ -543,6 +543,80 @@ public sealed class DocumentStepSelfHostedTests
     }
 
     [Fact]
+    public async Task DocumentStep_TheMrzOfAnUpload_IsReadOnItsCard_AndTheGeometryIsMadeOnce()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        var back = Picture(DocumentSide.Back);
+        world.Mrz.Add(back, CieMrz());
+
+        var result = await world.Flow().SubmitDocumentAsync(session, new MemoryStream(back), DocumentSide.Back, Ct);
+
+        Assert.Equal(DocumentReadingMethod.Mrz, result.Reading.Method);
+        var read = Assert.Single(world.Mrz.Reads);
+        Assert.InRange(read.Width, 470, 495);
+        Assert.InRange(read.Height, 295, 315);
+        Assert.Equal(DetectorCallsOfOneInspection(back, DocumentSide.Back), world.Detector.Calls);
+    }
+
+    [Fact]
+    public async Task DocumentStep_APictureWithNoCardToStraighten_HasItsMrzReadAsItLies_AndIsAskedAgain()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        var cutByTheFrame = Picture(DocumentSide.Back, new DocumentImageFactory.Placement(-100, 70, 480, 303));
+        world.Mrz.Add(cutByTheFrame, CieMrz());
+
+        var result = await world.Flow().SubmitDocumentAsync(session, new MemoryStream(cutByTheFrame), DocumentSide.Back, Ct);
+
+        Assert.Equal([(DocumentImageFactory.Width, DocumentImageFactory.Height)], world.Mrz.Reads);
+        Assert.Equal([IdentityGuidanceCodes.DocumentEdgesNotVisible], result.GuidanceCodes);
+        Assert.False(result.Acceptable);
+        Assert.False(result.DocumentStored);
+    }
+
+    [Fact]
+    public async Task DocumentStep_TheSideKeptOfTheOtherPicture_IsReadOnItsCardToo()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        var back = Picture(DocumentSide.Back);
+        world.Mrz.Add(back, CieMrz());
+        world.Zoned.Fields[DocumentSide.Front] = FrontFields();
+
+        await world.Flow().SubmitDocumentAsync(session, new MemoryStream(Picture(DocumentSide.Front)), DocumentSide.Front, Ct);
+        await world.Flow().SubmitDocumentAsync(session, new MemoryStream(back), DocumentSide.Back, Ct);
+
+        // The front as it came, the back as it came, and the front again from its kept picture for the coherence of the two sides.
+        Assert.Equal(3, world.Mrz.Reads.Count);
+        Assert.All(world.Mrz.Reads, read =>
+        {
+            Assert.InRange(read.Width, 470, 495);
+            Assert.InRange(read.Height, 295, 315);
+        });
+        Assert.NotNull(ReadCheck(await world.ReadBackAsync(session.Id)).Coherence);
+    }
+
+    [Fact]
+    public async Task DocumentStep_ABackWhoseMrzIsNotRead_IsRefused_AndNeverPasses()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+
+        var result = await world.Flow().SubmitDocumentAsync(session, new MemoryStream(Picture(DocumentSide.Back)), DocumentSide.Back, Ct);
+
+        Assert.False(result.Acceptable);
+        Assert.False(result.DocumentStored);
+        Assert.Equal(DocumentReadingMethod.None, result.Reading.Method);
+        Assert.Contains(CaptureGuidanceCodes.ShowWholeDocument, result.GuidanceCodes);
+        Assert.Contains("document_not_recognized", result.GuidanceCodes);
+        var saved = await world.ReadBackAsync(session.Id);
+        Assert.Equal(new Dictionary<string, int> { ["back"] = 1 }, ReadCheck(saved).Refusals);
+        Assert.Null(saved.IdentityFormatId);
+        Assert.Empty(world.Storage.Objects);
+    }
+
+    [Fact]
     public async Task DocumentStep_AModelThatFails_SendsTheVerificationToAPerson_AndNothingIsApproved()
     {
         await using var world = await World.CreateAsync();
@@ -776,6 +850,7 @@ public sealed class DocumentStepSelfHostedTests
         Assert.Contains(CaptureGuidanceCodes.DocumentBackNeeded, result.GuidanceCodes);
         Assert.DoesNotContain(IdentityGuidanceCodes.DocumentEdgesNotVisible, result.GuidanceCodes);
         Assert.Equal(0, world.Detector.Calls);
+        Assert.Equal([(DocumentImageFactory.Width, DocumentImageFactory.Height)], world.Mrz.Reads);
         Assert.Empty(world.Zoned.Cards);
         var saved = await world.ReadBackAsync(session.Id);
         var check = ReadCheck(saved);
@@ -840,6 +915,16 @@ public sealed class DocumentStepSelfHostedTests
     {
         using var image = DocumentImageFactory.Render(Cie, side, placement ?? DocumentImageFactory.WholeCard);
         return TestImages.Png(image.Width, image.Height, image.Rgb);
+    }
+
+    private static int DetectorCallsOfOneInspection(byte[] picture, DocumentSide side)
+    {
+        var detector = new PortraitStandInDetector();
+        var analyzer = new DocumentPictureAnalyzer(
+            new DocumentGeometryInspector(detector, Options.Create(new BiometricModelOptions())), new ScriptedZonedReader(), Options.Create(new BiometricModelOptions()));
+        using var opened = analyzer.Open(picture);
+        opened.Inspect(Cie, side, Ct);
+        return detector.Calls;
     }
 
     internal static byte[] PlainPicture(int level = 120)
@@ -1180,22 +1265,59 @@ public sealed class DocumentStepSelfHostedTests
     internal sealed class ScriptedMrz : IMrzExtractionService
     {
         private readonly Dictionary<string, MrzExtractionResult> _results = new(StringComparer.Ordinal);
+        private MrzExtractionResult? _lastTold;
 
-        public void Add(byte[] picture, MrzExtractionResult result) => _results[Key(picture)] = result;
+        public List<(int Width, int Height)> Reads { get; } = [];
+
+        public void Add(byte[] picture, MrzExtractionResult result)
+        {
+            _results[Key(picture)] = result;
+            _lastTold = result;
+        }
 
         public async Task<MrzExtractionResult?> ExtractAsync(Stream imageStream, CancellationToken cancellationToken = default)
         {
             return (await ReadAsync(imageStream, cancellationToken)).Result;
         }
 
+        // The flow reads the MRZ on the card cut out of the upload, or on the upload itself when it has no card to straighten: a picture told about is known by its bytes, a card by the MRZ band it shows.
         public async Task<MrzReading> ReadAsync(Stream imageStream, CancellationToken cancellationToken = default)
         {
             using var copy = new MemoryStream();
             await imageStream.CopyToAsync(copy, cancellationToken);
-            return new MrzReading(_results.GetValueOrDefault(Key(copy.ToArray())), []);
+            var bytes = copy.ToArray();
+            RasterImage picture;
+            try
+            {
+                picture = RasterImage.Decode(bytes, 25_000_000);
+            }
+            catch (InvalidDataException)
+            {
+                return new MrzReading(_results.GetValueOrDefault(Key(bytes)), []);
+            }
+
+            using (picture)
+            {
+                Reads.Add((picture.Width, picture.Height));
+                if (_results.TryGetValue(Key(bytes), out var told))
+                    return new MrzReading(told, []);
+
+                return new MrzReading(ShowsTheMrzBand(picture) ? _lastTold : null, []);
+            }
         }
 
         private static string Key(byte[] picture) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(picture));
+
+        private static bool ShowsTheMrzBand(RasterImage picture)
+        {
+            var ratio = (double)picture.Width / picture.Height;
+            if (Math.Abs(ratio - Cie.Layout.AspectRatio) > Cie.Layout.AspectTolerance)
+                return false;
+
+            var band = Cie.Layout.Sides[DocumentSides.Back].MrzRegion!;
+            var opposite = new DocumentFormatRegion(1 - band.X - band.W, 1 - band.Y - band.H, band.W, band.H);
+            return DocumentGeometryInspectorTests.InkShare(picture, band) > 1.5 * DocumentGeometryInspectorTests.InkShare(picture, opposite);
+        }
     }
 
     internal sealed class EvidentDocumentOcr : IDocumentOcrService

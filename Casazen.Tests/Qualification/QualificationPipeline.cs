@@ -56,6 +56,7 @@ public sealed class QualificationPipeline : IAsyncDisposable
         var services = scope.ServiceProvider;
         Models = services.GetRequiredService<IBiometricModelStore>();
         BiometricOptions = services.GetRequiredService<IOptions<BiometricModelOptions>>().Value;
+        MrzOptions = services.GetRequiredService<IOptions<MrzOcrOptions>>().Value;
         IdentityOptions = services.GetRequiredService<IOptions<IdentityVerificationOptions>>().Value;
         PolicyProvider = services.GetRequiredService<IdentityPolicyProvider>();
         Fingerprint = services.GetRequiredService<IdentityConfigurationFingerprint>();
@@ -81,6 +82,8 @@ public sealed class QualificationPipeline : IAsyncDisposable
     public IBiometricModelStore Models { get; }
 
     public BiometricModelOptions BiometricOptions { get; }
+
+    public MrzOcrOptions MrzOptions { get; }
 
     public IdentityVerificationOptions IdentityOptions { get; }
 

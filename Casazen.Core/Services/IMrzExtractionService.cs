@@ -5,6 +5,10 @@ public interface IMrzExtractionService
     Task<MrzExtractionResult?> ExtractAsync(Stream imageStream, CancellationToken cancellationToken = default);
 
     Task<MrzReading> ReadAsync(Stream imageStream, CancellationToken cancellationToken = default);
+
+    // The picture lies upright (the geometry of the document turned it): it is read as it lies, and turned the other ways only when nothing that looks like an MRZ is found in it.
+    // A block that is found and does not pass its check digits is the answer, not a reason to look for it again in three other turns.
+    Task<MrzReading> ReadUprightAsync(Stream imageStream, CancellationToken cancellationToken = default) => ReadAsync(imageStream, cancellationToken);
 }
 
 public sealed record MrzReading(MrzExtractionResult? Result, IReadOnlyList<string> Quality);

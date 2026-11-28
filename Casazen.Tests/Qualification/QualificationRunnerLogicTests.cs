@@ -159,6 +159,10 @@ internal sealed class PixelAntiSpoofing : IAntiSpoofingService
 // The MRZ spells the true values of the owner of the card, as the dataset declares them for the booking.
 internal sealed class MarkerMrzReader : IMrzExtractionService
 {
+    private readonly System.Collections.Concurrent.ConcurrentQueue<(int Width, int Height)> _reads = new();
+
+    public IReadOnlyList<(int Width, int Height)> Reads => [.. _reads];
+
     public async Task<MrzExtractionResult?> ExtractAsync(Stream imageStream, CancellationToken cancellationToken = default)
     {
         return (await ReadAsync(imageStream, cancellationToken)).Result;
@@ -169,10 +173,11 @@ internal sealed class MarkerMrzReader : IMrzExtractionService
         using var copy = new MemoryStream();
         await imageStream.CopyToAsync(copy, cancellationToken);
         using var picture = RasterImage.Decode(copy.ToArray(), 1_000_000);
-        if (!PixelCode.IsCard(picture) || PixelCode.Level(picture, PixelCode.CardSideX + 4, PixelCode.CardMarkY + 4) < 128)
+        _reads.Enqueue((picture.Width, picture.Height));
+        if (StampLevelAt(picture, PixelCode.CardSideX + 4, PixelCode.CardMarkY + 4) < 128)
             return new MrzReading(null, []);
 
-        var person = PixelCode.PersonOfLevel(PixelCode.Level(picture, PixelCode.CardPersonX + 4, PixelCode.CardMarkY + 4));
+        var person = PixelCode.PersonOfLevel(StampLevelAt(picture, PixelCode.CardPersonX + 4, PixelCode.CardMarkY + 4));
         return new MrzReading(
             new MrzExtractionResult
             {
@@ -192,6 +197,19 @@ internal sealed class MarkerMrzReader : IMrzExtractionService
                 Confidence = 0.95,
             },
             []);
+    }
+
+    // The runner hands the reader the card cut out of the picture, so the stamp is read where the whole picture has it or where the card has it.
+    private static int StampLevelAt(RasterImage picture, int x, int y)
+    {
+        if (PixelCode.IsCard(picture))
+            return PixelCode.Level(picture, x, y);
+
+        var place = DocumentImageFactory.WholeCard;
+        if (Math.Abs(picture.Width - place.Width) <= 4 && Math.Abs(picture.Height - place.Height) <= 4)
+            return PixelCode.Level(picture, x - place.Left, y - place.Top);
+
+        return -1;
     }
 }
 
@@ -400,6 +418,19 @@ public sealed class QualificationRunnerLogicTests(QualificationLogicFixture run)
     }
 
     [Fact]
+    public void Run_TheMrzIsReadOnTheCardOfEveryPicture_NeverOnTheWholePicture()
+    {
+        var reads = Assert.IsType<MarkerMrzReader>(run.Pipeline.Mrz).Reads;
+
+        Assert.NotEmpty(reads);
+        Assert.All(reads, read =>
+        {
+            Assert.InRange(read.Width, 470, 495);
+            Assert.InRange(read.Height, 295, 315);
+        });
+    }
+
+    [Fact]
     public void Run_TheStagesAreTimed_AndTheFieldsOfTheGroundTruthAreCountedAsReadOrNot_NeverQuoted()
     {
         var genuine = Case("g-p1");
@@ -408,7 +439,7 @@ public sealed class QualificationRunnerLogicTests(QualificationLogicFixture run)
             Assert.True(genuine.StageMs[stage] >= 0, stage);
 
         Assert.Contains(genuine.Document!.Fields, field => field.Field == "surname" && field.Total >= 1 && field.Exact == 0);
-        Assert.Contains(genuine.Document.Fields, field => field.Field == "documentNumber.mrz" && field.Exact == 0);
+        Assert.Contains(genuine.Document.Fields, field => field.Field == "documentNumber.mrz" && field.Total >= 1 && field.Exact == field.Total);
         Assert.Equal(run.Results.Metrics.Latency.Select(stage => stage.Stage), QualificationStages.All.Where(stage => run.Results.Metrics.Latency.Any(entry => entry.Stage == stage)));
         Assert.All(run.Results.Metrics.Latency, stage => Assert.True(stage.P95Ms >= stage.P50Ms && stage.MaxMs >= stage.P95Ms));
         Assert.DoesNotContain("ZQSURNAME", run.Results.ToJson(), StringComparison.OrdinalIgnoreCase);

@@ -40,7 +40,13 @@ public class MrzExtractionService(
     public async Task<MrzExtractionResult?> ExtractAsync(Stream imageStream, CancellationToken cancellationToken = default) =>
         (await ReadAsync(imageStream, cancellationToken)).Result;
 
-    public async Task<MrzReading> ReadAsync(Stream imageStream, CancellationToken cancellationToken = default)
+    public Task<MrzReading> ReadAsync(Stream imageStream, CancellationToken cancellationToken = default) =>
+        ReadTurnsAsync(imageStream, upright: false, cancellationToken);
+
+    public Task<MrzReading> ReadUprightAsync(Stream imageStream, CancellationToken cancellationToken = default) =>
+        ReadTurnsAsync(imageStream, upright: true, cancellationToken);
+
+    private async Task<MrzReading> ReadTurnsAsync(Stream imageStream, bool upright, CancellationToken cancellationToken)
     {
         var settings = options?.Value ?? new MrzOcrOptions();
         var started = Stopwatch.GetTimestamp();
@@ -68,7 +74,7 @@ public class MrzExtractionService(
 
             var today = (timeProvider ?? TimeProvider.System).TodayInRomeAsDateOnly();
             Attempt? best = null;
-            foreach (var turn in page.Height > page.Width * 1.15 ? TurnsPortrait : TurnsLandscape)
+            foreach (var turn in upright || page.Height <= page.Width * 1.15 ? TurnsLandscape : TurnsPortrait)
             {
                 turned = turn == 1 ? null : page.Oriented(turn);
                 Attempt? attempt;
@@ -90,6 +96,9 @@ public class MrzExtractionService(
 
                 if (best is null || attempt.Rank > best.Rank)
                     best = attempt;
+
+                if (upright)
+                    break;
             }
 
             if (best is not null)

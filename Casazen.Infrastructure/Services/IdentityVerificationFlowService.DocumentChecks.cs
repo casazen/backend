@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Identity;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +26,9 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>A card held crooked</b> (IDENT-TILT): the geometry of the picture finds the card at its angle up to <see cref="DocumentGeometryRules.MaxTiltDegrees"/> either way and hands the step the card levelled
 /// (<see cref="DocumentGeometryReport.RectifiedCard"/>, owned by the <see cref="DocumentPicture"/> and zeroed with it): the zones of the format, the MRZ band and the portrait are read on that card, not on
 /// the picture, so that they are where the layout puts them. A card held more crooked is a picture with the guidance code <c>document_edges_not_visible</c> like any other. Nothing changes for a card that lies straight.</para>
+/// <para><b>The MRZ is read on the card</b> (<see cref="CardMrzReader"/>), the one the zones are read on, and not on the whole photo: the ground around the card fills the rows the band is looked for in.
+/// The upload is opened and inspected once, for the format of the attempt (<see cref="ReadUploadMrzAsync"/>), and the checks take that report unless the MRZ names another format; the picture kept of
+/// the other side is read the same way. Only a picture with no card to straighten is read as it lies.</para>
 /// <para><b>Fail closed.</b> A model that fails, a policy file or a registry that is not usable, a service that is not there: the verification goes to a person and nothing is approved.</para>
 /// <para><b>Privacy</b>: the log names the session, the side, the codes and the counts; never a picture, a value read, an MRZ text or a hash. The values read live in the memory of the
 /// request, are handed to the checker of the coherence and dropped; what is kept is flags, hashes and the names and results of the checks.</para>
@@ -48,6 +52,19 @@ public sealed partial class IdentityVerificationFlowService
     private sealed record DocumentPictureStep(DocumentStepResult? Answer, DocumentPictureChecks? Checks);
 
     private sealed record KeptSide(IReadOnlyList<ZonedField> Fields, MrzReading Mrz);
+
+    private sealed class OpenedDocumentPicture(DocumentPicture picture, DocumentFormat format, DocumentSide side) : IDisposable
+    {
+        public DocumentPicture Picture { get; } = picture;
+
+        public DocumentFormat Format { get; } = format;
+
+        public DocumentSide Side { get; } = side;
+
+        public DocumentGeometryReport? Report { get; set; }
+
+        public void Dispose() => Picture.Dispose();
+    }
 
     /// <summary>
     /// The services of the document step are all there. The application registers them (the part <c>DocumentStep</c> and the ones it relies on); a flow built by hand without them (a
@@ -94,6 +111,51 @@ public sealed partial class IdentityVerificationFlowService
         return new DocumentStepServices(documentPictures, sideClassifier, coherenceChecker, formats, snapshot.Policy);
     }
 
+    private int MrzWorkingSide => (mrzOptions?.Value ?? new MrzOcrOptions()).MaxWorkingSide;
+
+    private async Task<(MrzReading Reading, OpenedDocumentPicture? Opened)> ReadUploadMrzAsync(
+        GuestCheckInSession session, byte[] bytes, DocumentSide side, bool consented, CancellationToken ct)
+    {
+        var services = DocumentStepOn && consented ? StepServices() : null;
+        DocumentFormat? format = null;
+        if (services is not null)
+            format = services.Formats.Get(session.IdentityFormatId) ?? DocumentPictureAnalyzer.DefaultCardFormat(services.Formats.All);
+
+        if (services is null || format is null || !format.Sides.Contains(DocumentSides.CodeOf(side), StringComparer.Ordinal))
+            return (await CardMrzReader.ReadPhotoAsync(mrz, bytes, ct), null);
+
+        DocumentPicture picture;
+        try
+        {
+            picture = services.Pictures.Open(bytes);
+        }
+        catch (InvalidDataException)
+        {
+            return (await CardMrzReader.ReadPhotoAsync(mrz, bytes, ct), null);
+        }
+
+        var opened = new OpenedDocumentPicture(picture, format, side);
+        try
+        {
+            try
+            {
+                opened.Report = picture.Inspect(format, side, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // The checks inspect the picture again, fail the same way and hand the verification to a person.
+                return (await CardMrzReader.ReadPhotoAsync(mrz, bytes, ct), opened);
+            }
+
+            return (await CardMrzReader.ReadAsync(mrz, picture, opened.Report, bytes, MrzWorkingSide, ct), opened);
+        }
+        catch
+        {
+            opened.Dispose();
+            throw;
+        }
+    }
+
     private async Task<DocumentPictureStep> CheckDocumentPictureAsync(
         GuestCheckInSession session,
         FlowContext context,
@@ -102,6 +164,7 @@ public sealed partial class IdentityVerificationFlowService
         MrzReading mrzReading,
         DocumentReading reading,
         CaptureAssessment? assessment,
+        OpenedDocumentPicture? opened,
         CancellationToken ct)
     {
         var services = StepServices();
@@ -150,23 +213,35 @@ public sealed partial class IdentityVerificationFlowService
         if (!format.Sides.Contains(DocumentSides.CodeOf(side), StringComparer.Ordinal))
             return Answer(await Refuse([IdentityGuidanceCodes.DocumentWrongSide]));
 
+        DocumentPicture? own = null;
         DocumentPicture picture;
-        try
+        if (opened is not null)
         {
-            picture = services.Pictures.Open(bytes);
+            picture = opened.Picture;
         }
-        catch (InvalidDataException)
+        else
         {
-            return Answer(await Refuse([CaptureGuidanceCodes.RetakePicture]));
+            try
+            {
+                own = services.Pictures.Open(bytes);
+            }
+            catch (InvalidDataException)
+            {
+                return Answer(await Refuse([CaptureGuidanceCodes.RetakePicture]));
+            }
+
+            picture = own;
         }
 
-        using (picture)
+        using (own)
         {
             DocumentGeometryReport report;
             ulong hash;
             try
             {
-                report = picture.Inspect(format, side, ct);
+                report = opened is { Report: { } inspected } && opened.Side == side && string.Equals(opened.Format.Id, format.Id, StringComparison.Ordinal)
+                    ? inspected
+                    : picture.Inspect(format, side, ct);
                 hash = picture.DHash();
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -404,15 +479,13 @@ public sealed partial class IdentityVerificationFlowService
             if (bytes is null)
                 return null;
 
-            MrzReading machine;
-            using (var stream = new MemoryStream(bytes, writable: false))
-                machine = await mrz.ReadAsync(stream, ct);
-
+            MrzReading? machine = null;
             IReadOnlyList<ZonedField> fields = [];
             try
             {
                 using var picture = services.Pictures.Open(bytes);
                 var report = picture.Inspect(format, side, ct);
+                machine = await CardMrzReader.ReadAsync(mrz, picture, report, bytes, MrzWorkingSide, ct);
                 fields = await picture.ReadFieldsAsync(format, side, report, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -421,7 +494,7 @@ public sealed partial class IdentityVerificationFlowService
                     "Document step of session {SessionId}: the {Side} side kept could not be read again ({ErrorType})", session.Id, DocumentSides.CodeOf(side), ex.GetType().Name);
             }
 
-            return new KeptSide(fields, machine);
+            return new KeptSide(fields, machine ?? await CardMrzReader.ReadPhotoAsync(mrz, bytes, ct));
         }
         finally
         {
