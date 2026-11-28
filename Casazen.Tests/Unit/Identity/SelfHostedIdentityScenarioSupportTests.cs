@@ -9,11 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// E74/F02/US01/T02: the parts of the builder of the acceptance scenario that need no host, proved where they can run on any machine (the HTTP scenario itself runs in CI, over a
-/// database): the policy the host is configured with is usable, pinned by its canonical hash and calibrated; the store of the models gives a fingerprint that a new weight changes; and the
-/// doubles of the models take the generated card for a document, only when they are given the stand-in of the portrait to answer for what the script does not know.
-/// </summary>
 public sealed class SelfHostedIdentityScenarioSupportTests : IDisposable
 {
     private const string Version = "identity-policy-scenario-2026.11-1";
@@ -44,7 +39,7 @@ public sealed class SelfHostedIdentityScenarioSupportTests : IDisposable
         Assert.Equal(policy.Version, snapshot.Policy.Version);
         Assert.False(policy.Provisional);
 
-        // The committed file is not the one the scenario runs with: it stays provisional, as it is committed.
+        // The premise of the calibrated copy: the committed policy is provisional, and a provisional policy is never qualified.
         Assert.True(IdentityTestPolicy.Shipped().Provisional);
     }
 
@@ -85,7 +80,7 @@ public sealed class SelfHostedIdentityScenarioSupportTests : IDisposable
     {
         using var picture = DocumentImageFactory.Render(DocumentStepSelfHostedTests.Cie, DocumentSide.Front, DocumentImageFactory.WholeCard);
 
-        // The card as the geometry inspector hands it to the detector: cut out of the picture, never the picture as it was sent.
+        // The geometry inspector hands the detector the card cut out of the picture, never the picture as it was sent.
         var place = DocumentImageFactory.WholeCard;
         using var card = picture.Cropped(place.Left, place.Top, place.Width, place.Height);
         var plain = new ScriptedModels();
@@ -96,7 +91,7 @@ public sealed class SelfHostedIdentityScenarioSupportTests : IDisposable
         Assert.Throws<InvalidOperationException>(() => plain.Embed(card, face, CancellationToken.None));
         var portrait = withFallback.Embed(card, face, CancellationToken.None);
 
-        // The portrait of a card is the one the similarity of the script says, against the first person of the script.
+        // Axis 0 is the cosine with the first person of the script.
         Assert.Equal(0.9, portrait[0], precision: 5);
         Assert.Equal(1, withFallback.PortraitEmbeddings);
     }

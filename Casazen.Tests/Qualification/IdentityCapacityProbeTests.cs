@@ -13,20 +13,13 @@ using Xunit;
 
 namespace Casazen.Tests.Qualification;
 
-// E74/F02/US01/T03 (NF-198, D12): the tests of the latency and capacity probe. The smoke tests RUN IN CI, over the real models of the build output and the published configuration, like
-// the smoke test of the qualification: a request completes with every stage measured, the report holds numbers and the description of the machine and nothing else, the probe registers no
-// service of its own, and a pipeline that is too slow, or a budget that is not valid, sends the guest to a person and never approves. The real run is opt-in (CapacityFact).
-
-/// <summary>The pipeline of the probe, built once for the tests of the class (the models are loaded once), and the report of one small run that several tests read.</summary>
 public sealed class CapacityProbeFixture : IAsyncLifetime
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private CapacityReport? _small;
 
-    /// <summary>The pipeline of the qualification with the detector of the probe. The published configuration only, unless the real run is asked for (then the variables of the environment count too).</summary>
     public QualificationPipeline Pipeline { get; private set; } = null!;
 
-    /// <summary>The detector of the probe: the tests make it stall to stand for a machine that is too slow.</summary>
     public ProbeFaceDetector Detector { get; private set; } = null!;
 
     public async Task InitializeAsync()
@@ -43,7 +36,6 @@ public sealed class CapacityProbeFixture : IAsyncLifetime
         _gate.Dispose();
     }
 
-    /// <summary>The report of a small run: two requests at one at a time and at two at once. Run once, the tests that read it share it.</summary>
     public async Task<CapacityReport> SmallRunAsync()
     {
         await _gate.WaitAsync();
@@ -60,7 +52,6 @@ public sealed class CapacityProbeFixture : IAsyncLifetime
     }
 }
 
-/// <summary>The probe of the latency and the capacity of the presence pipeline (see the comments at the top of the file).</summary>
 public sealed class IdentityCapacityProbeTests(CapacityProbeFixture fixture) : IClassFixture<CapacityProbeFixture>
 {
     private static readonly CancellationToken Ct = CancellationToken.None;
@@ -78,7 +69,7 @@ public sealed class IdentityCapacityProbeTests(CapacityProbeFixture fixture) : I
         foreach (var stage in new[] { QualificationStages.PresenceIntake, QualificationStages.PresenceValidation, QualificationStages.PresenceLiveness, QualificationStages.PresenceMatch })
             Assert.Contains(level.Stages, measured => measured.Stage == stage && measured.Count == 1);
 
-        // One request: its p50, its p95 and its largest time are the same number, and the whole is at least as long as each stage.
+        // With one request p50, p95 and the largest time are the same number.
         Assert.All(
             level.Stages.Append(level.Total),
             measured =>
@@ -94,7 +85,6 @@ public sealed class IdentityCapacityProbeTests(CapacityProbeFixture fixture) : I
         Assert.True(level.AllocatedMbPerRequest > 0);
         Assert.InRange(level.OverTheLimit, 0, 1);
 
-        // What the request carried is what the policy and the limits of the application give: the frames of the challenge at the longest side the intake accepts.
         var policy = fixture.Pipeline.ActivePolicy;
         var challenge = policy.Presence.Challenge;
         var interval = (long)Math.Round(1000.0 / policy.Presence.Sequence.TargetFps);
@@ -102,7 +92,7 @@ public sealed class IdentityCapacityProbeTests(CapacityProbeFixture fixture) : I
         Assert.Equal(fixture.Pipeline.IdentityOptions.Presence.MaxFrameSide, report.Scene.FrameWidth);
         Assert.True(report.Scene.FrameBytes <= fixture.Pipeline.IdentityOptions.Presence.MaxFrameBytes);
 
-        // The limit a request is counted against is the one of the application, not the widened one the qualification works with.
+        // The limit is the one of the application, not the widened one of the qualification.
         Assert.InRange(report.Scene.SequenceTimeoutMs, 1, QualificationPipeline.WidenedSequenceTimeoutMs - 1);
     }
 
@@ -124,7 +114,6 @@ public sealed class IdentityCapacityProbeTests(CapacityProbeFixture fixture) : I
         Assert.Equal(CapacityReport.SchemaName, report.Schema);
     }
 
-    /// <summary>Proof (privacy, ADR-013-R2, R17): the report holds numbers, codes and the description of the machine; no name of the host or of the user, no folder, no picture.</summary>
     [Fact]
     public async Task IdentityCapacityProbe_Report_HoldsNoHostNameAndNoImageData()
     {
@@ -132,7 +121,6 @@ public sealed class IdentityCapacityProbeTests(CapacityProbeFixture fixture) : I
         var json = report.ToJson();
         var markdown = report.ToMarkdown();
 
-        // The machine is described by the number of its processors, its system, its runtime and its architecture: that is all the record has.
         Assert.Equal(
             ["Architecture", "Framework", "ModelThreads", "OperatingSystem", "ProcessorCount"],
             typeof(CapacityMachine).GetProperties().Select(property => property.Name).Order(StringComparer.Ordinal));
@@ -142,7 +130,7 @@ public sealed class IdentityCapacityProbeTests(CapacityProbeFixture fixture) : I
             Assert.DoesNotContain(PropertyNames(document.RootElement), name => ForbiddenNames.Contains(name, StringComparer.OrdinalIgnoreCase));
         }
 
-        // The name of the host and of the user are not in it (unless a description of the system itself says the same word: a name that is a word of the system is no leak).
+        // A name that is also a word of the description of the system is no leak.
         var described = RuntimeInformation.OSDescription + RuntimeInformation.FrameworkDescription;
         foreach (var name in new[] { Environment.MachineName, Environment.UserName })
         {
@@ -153,7 +141,6 @@ public sealed class IdentityCapacityProbeTests(CapacityProbeFixture fixture) : I
             }
         }
 
-        // No picture: no data address, no base64 of a JPEG or a PNG, and a size of numbers.
         foreach (var text in new[] { json, markdown })
         {
             Assert.DoesNotContain("data:image", text, StringComparison.OrdinalIgnoreCase);
@@ -164,10 +151,6 @@ public sealed class IdentityCapacityProbeTests(CapacityProbeFixture fixture) : I
         }
     }
 
-    /// <summary>
-    /// The probe reuses the pipeline of the qualification instead of a second registration of the services (AC4): every run takes a <see cref="QualificationPipeline"/>, and the one thing the
-    /// probe adds to the registrations of that pipeline is the detector it feeds the pipeline's models with.
-    /// </summary>
     [Fact]
     public void IdentityCapacityProbe_UsesThePipelineOfTheQualification_AndRegistersOnlyItsDetector()
     {
@@ -199,13 +182,7 @@ public sealed class IdentityCapacityProbeTests(CapacityProbeFixture fixture) : I
         Assert.Equal(7, CapacityEnvironment.Iterations(_ => "7"));
     }
 
-    // ───── a slow pipeline never approves ─────
-
-    /// <summary>
-    /// Proof (security, NF-194, ADR-013-R17, decision D8): when the pipeline does not finish within <c>IdentityVerification:Presence:SequenceTimeoutMs</c> (the least the section allows, 500 ms, with a
-    /// detector that never answers: a machine too slow for the guests it has), the closure answers a review with <c>technical_error</c> and the reason <c>processing: timeout</c>, in a segment qualified
-    /// for the automatic approval with the global flag on: a slow CPU sends the guest to a person, it never approves anybody, and the way to a person stays open.
-    /// </summary>
+    // 500 ms is the least the section allows: the detector that never answers makes the pipeline outlast it.
     [Fact]
     public async Task IdentityCapacityProbe_TimeoutBudget_GoesToReview()
     {
@@ -237,17 +214,12 @@ public sealed class IdentityCapacityProbeTests(CapacityProbeFixture fixture) : I
         Assert.Equal(IdentityOutcomeCodes.TechnicalError, saved.IdentityOutcomeCode);
         Assert.Equal([(session.Id, VerificationAlertReasons.TechnicalError)], world.Inner.Alerts.Raised);
 
-        // The guest can still ask for a person: no error, the way open, the closure as it was.
         var afterwards = await world.Flow().RequestOperatorAsync(session, Ct);
         Assert.True(afterwards.OperatorPathOpen);
         Assert.Equal(IdentityOutcomeCodes.TechnicalError, (await world.ReadBackAsync(session.Id)).IdentityOutcomeCode);
     }
 
-    /// <summary>
-    /// Proof (security, decision D8): a budget the section does not allow (1 ms is below its least) is not a budget the pipeline runs with: the section is not available, the pipeline is not asked,
-    /// and a person decides, with the outcome <c>unavailable</c>, never an approval. (The brief names <c>technical_error</c> for 1 ms; the section refuses 1 ms before the pipeline runs, so the
-    /// outcome is <c>unavailable</c>, and a budget that is valid and exceeded is the proof above.)
-    /// </summary>
+    // 1 ms is below the least the section allows: the section is unavailable, the pipeline is not asked and a person decides.
     [Fact]
     public async Task IdentityCapacityProbe_ABudgetTheSectionDoesNotAllow_GoesToReview_AsUnavailable()
     {
@@ -269,13 +241,6 @@ public sealed class IdentityCapacityProbeTests(CapacityProbeFixture fixture) : I
         Assert.Equal(IdentityOutcomeCodes.Unavailable, (await world.ReadBackAsync(session.Id)).IdentityOutcomeCode);
     }
 
-    // ───── the real run ─────
-
-    /// <summary>
-    /// The real run (opt-in: <c>CASAZEN_CAPACITY_PROBE=1</c> and <c>CASAZEN_CAPACITY_OUT</c>; <c>CASAZEN_CAPACITY_ITERATIONS</c> sets the requests of each level): the probe at one, two and four requests
-    /// at once over the models and the configuration of the machine it runs on (the variables of the environment count, as on Railway), the report written as <c>capacity-report.json</c> and
-    /// <c>capacity-report.md</c>. Run it on the machine the check-in will run on, at the volume expected at the peak; it prints nothing but where it wrote.
-    /// </summary>
     [CapacityFact]
     public async Task IdentityCapacityProbe_RealRun_WritesTheReport()
     {
@@ -293,11 +258,8 @@ public sealed class IdentityCapacityProbeTests(CapacityProbeFixture fixture) : I
         Assert.Equal([1, 2, 4], report.Levels.Select(level => level.Concurrency));
     }
 
-    // ───── helpers ─────
-
     private static readonly string[] ForbiddenNames = ["host", "hostName", "machineName", "user", "userName", "path", "folder", "directory", "computer"];
 
-    /// <summary>A world of the closure whose pipeline is the real one of the qualification (its models and its policy) and whose segment allows the automatic approval.</summary>
     private async Task<SyntheticIdentityWorld> RealPipelineWorldAsync()
     {
         var world = await SyntheticIdentityWorld.CreateAsync(

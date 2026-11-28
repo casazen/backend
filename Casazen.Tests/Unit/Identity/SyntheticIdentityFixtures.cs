@@ -20,16 +20,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-// E74/F02/US01/T01 (NF-198, NF-192, decisions D6, D7, D12): the shared builder of the synthetic proofs of the self-hosted identity verification. Everything here is generated in code: no
-// photograph of a person, no picture of a document, no value read on a document is in the repository (it is public), and nothing here prints or logs an image, a frame, a name, a
-// document number or an embedding. The acceptance scenario of E74/F02/US01/T02 (the HTTP host) takes the models, the sequences and the pictures from here.
-
-/// <summary>
-/// The doubles of the three face models, written so that the REAL validation, the REAL choice of the frames, the REAL liveness and the REAL match of the application run over them, and so
-/// that they work wherever the frames come from: the frames of a request are decoded again by the application (a new picture each time), so a double that knows a frame by the object (like
-/// <see cref="FrameKeyedEmbedder"/>) cannot serve a request over HTTP. These know a picture by what it shows (the SHA-256 of its decoded pixels, and of the bytes of its JPEG for the liveness),
-/// so the same script answers in the flow, in the closure and in the host. Thread safe (two requests at once); what is scripted is the answer of a model, never a verdict of the policy.
-/// </summary>
+// A picture is known by what it shows (the SHA-256 of its decoded pixels, and of the bytes of its JPEG for the liveness): the application decodes the frames
+// of a request again, so a double keyed by the object cannot serve a request over HTTP.
 internal sealed class ScriptedModels : IFaceDetector, IFaceEmbedder, IAntiSpoofingService
 {
     private readonly ConcurrentDictionary<string, IReadOnlyList<DetectedFace>> _faces = new(StringComparer.Ordinal);
@@ -43,50 +35,34 @@ internal sealed class ScriptedModels : IFaceDetector, IFaceEmbedder, IAntiSpoofi
     private int _livenessCalls;
     private int _portraitEmbeddings;
 
-    /// <summary>The score the anti-spoofing double gives a frame the script gave none: a screen replay is scripted with a low one, a person with a high one.</summary>
     public double Liveness { get; set; } = 0.99;
 
-    /// <summary>The cosine of a person of the script (<see cref="SequenceTestFrames.Person"/> 0) with the portrait of the document: what the match finds.</summary>
+    // The cosine of the first person of the script with the portrait of the document.
     public double Similarity { get; set; } = 0.99;
 
-    /// <summary>The detector throws this on every call.</summary>
     public Exception? DetectorFailure { get; set; }
 
-    /// <summary>The detector waits (up to 20 seconds) for the token to be cancelled, then raises the cancellation: a model that never answers.</summary>
     public bool DetectorStalls { get; set; }
 
-    /// <summary>The embedder throws this on every call.</summary>
     public Exception? EmbedderFailure { get; set; }
 
-    /// <summary>The anti-spoofing double throws this on every call.</summary>
     public Exception? LivenessFailure { get; set; }
 
-    /// <summary>
-    /// What answers for the pictures the script does not know. The host of the acceptance scenario shows the models the pictures of the card at the document step, before the script can
-    /// know them: a detector that finds the stand-in of the portrait the generated cards draw answers there, and the portrait it finds is the one of the document (the embedder gives it the
-    /// vector that makes <see cref="Similarity"/>). Null: a picture the script does not know has no face, and no vector.
-    /// </summary>
+    // Answers for the pictures the script does not know: the host shows the models the generated card at the document step, before the script can know it.
     public IFaceDetector? Fallback { get; set; }
 
-    /// <summary>How many pictures the detector was shown.</summary>
     public int Detections => Volatile.Read(ref _detections);
 
-    /// <summary>How many faces the embedder was asked for.</summary>
     public int Embeddings => Volatile.Read(ref _embeddings);
 
-    /// <summary>How many frames the anti-spoofing double was asked about.</summary>
     public int LivenessCalls => Volatile.Read(ref _livenessCalls);
 
-    /// <summary>How many times the embedder was asked for the portrait of a document (the match ran that many times).</summary>
     public int PortraitEmbeddings => Volatile.Read(ref _portraitEmbeddings);
 
-    /// <summary>Whether the embedder was ever asked for the face of the portrait of the document (the match ran).</summary>
     public bool PortraitWasEmbedded => _documentKey is not null && _embedded.Contains(_documentKey);
 
-    /// <summary>The SHA-256 (upper case hexadecimal) of <paramref name="bytes"/>: how a picture is known.</summary>
     public static string Key(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes));
 
-    /// <summary>The vector of the portrait of the document for a similarity of <paramref name="similarity"/> with a person of the script (the first axis).</summary>
     public static float[] PortraitFor(double similarity)
     {
         var vector = new float[8];
@@ -95,11 +71,7 @@ internal sealed class ScriptedModels : IFaceDetector, IFaceEmbedder, IAntiSpoofi
         return vector;
     }
 
-    /// <summary>
-    /// Writes the frames of <paramref name="sequence"/> as the JPEG pictures the browser would send and teaches the doubles what each one shows: its faces and the vector of its person
-    /// (by the pixels the application will decode from the very bytes), and the score of its liveness (by the bytes). The frames must fit the side the detector is shown, so the
-    /// application shows the detector the frame itself and not a reduced copy.
-    /// </summary>
+    // The detector is shown the frame itself, not a reduced copy, so a frame must fit the side it is shown.
     public PreparedSequence Prepare(ScriptedSequence sequence, IdentityDecisionPolicy policy, double? liveness = null)
     {
         ArgumentNullException.ThrowIfNull(sequence);
@@ -126,7 +98,6 @@ internal sealed class ScriptedModels : IFaceDetector, IFaceEmbedder, IAntiSpoofi
         return new PreparedSequence(jpegs, PreparedSequence.TimestampsOf(sequence.Frames.Select(frame => frame.TimestampMs)), sequence.ReceivedAfterIssue);
     }
 
-    /// <summary>Teaches the doubles the portrait of a document: the picture (a JPEG or a PNG) has one face, and the embedder gives it the vector that makes <see cref="Similarity"/>.</summary>
     public void UseDocument(byte[] picture)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -203,48 +174,33 @@ internal sealed class ScriptedModels : IFaceDetector, IFaceEmbedder, IAntiSpoofi
     }
 }
 
-/// <summary>
-/// A sequence written as the browser sends it: the JPEG of each frame, the timestamps as the JSON array of the request, and how long after the challenge the server received it. The bytes are
-/// the caller's to keep: every <see cref="Uploads"/> gives new streams over them.
-/// </summary>
 internal sealed class PreparedSequence(IReadOnlyList<byte[]> jpegs, string timestampsJson, TimeSpan receivedAfterIssue)
 {
     public IReadOnlyList<byte[]> Jpegs { get; } = jpegs;
 
-    /// <summary>The <c>timestamps</c> part of the request: a JSON array of integers in milliseconds.</summary>
     public string TimestampsJson { get; } = timestampsJson;
 
-    /// <summary>How long after the challenge was issued the sequence reaches the server: the test moves its clock by this much before it sends the request.</summary>
     public TimeSpan ReceivedAfterIssue { get; } = receivedAfterIssue;
 
     public int Count => Jpegs.Count;
 
-    /// <summary>The frames as the parts of a request, over new read-only streams.</summary>
     public List<PresenceFrameUpload> Uploads() =>
         [.. Jpegs.Select(bytes => new PresenceFrameUpload(new MemoryStream(bytes, writable: false), bytes.Length, "image/jpeg"))];
 
-    /// <summary>A JSON array of integers.</summary>
     public static string TimestampsOf(IEnumerable<long> timestamps) =>
         "[" + string.Join(',', timestamps.Select(timestamp => timestamp.ToString(CultureInfo.InvariantCulture))) + "]";
 }
 
-/// <summary>The sequences of the synthetic proofs, built on <see cref="SequenceTestFrames"/>: what the previous proof accepted, and what must never be accepted.</summary>
 internal static class SyntheticIdentityFixtures
 {
     public static readonly CancellationToken Ct = CancellationToken.None;
 
-    /// <summary>The key of a new attempt (a UUID fits the header).</summary>
     public static string NewKey() => Guid.NewGuid().ToString();
 
-    /// <summary>A still picture played again: the same frame, with its face where it was, every time.</summary>
     public static ScriptedSequence StillFrameRepeated(IdentityDecisionPolicy policy) => SequenceTestFrames.StaticReplay(policy);
 
-    /// <summary>
-    /// A still picture held a little differently each time (a hand that trembles, a screen that is moved): the sensor of a camera that films it changes two pixels by a grey level from one
-    /// frame to the next (the frames are not the same bytes, and the mean difference of their pixels from the first one stays a small share of a grey level, far under the least the policy
-    /// asks of a recording that moves: <see cref="MeanDifferenceFromTheFirst"/> proves it), and the face moves by a few pixels, a few percent of its size and a degree or two. Far from what
-    /// a head that answers the challenge does.
-    /// </summary>
+    // Two pixels change by one grey level from frame to frame, far under the continuity rule (MeanDifferenceFromTheFirst proves it),
+    // and the face moves by a few pixels and a degree or two.
     public static ScriptedSequence StillFrameWithJitter(IdentityDecisionPolicy policy, int seed = 11)
     {
         var sequence = SequenceTestFrames.StaticReplay(policy);
@@ -273,10 +229,6 @@ internal static class SyntheticIdentityFixtures
         return sequence;
     }
 
-    /// <summary>
-    /// The two stills of the previous proof sent as a sequence of two frames: a neutral one and one turned by 25 degrees, a second and a half apart. Both are the same person with a face the
-    /// detector finds, and the models are scripted to say what they said then (live, a perfect match).
-    /// </summary>
     public static ScriptedSequence NeutralAndTurnedPair(IdentityDecisionPolicy policy)
     {
         var genuine = SequenceTestFrames.Genuine(policy);
@@ -299,10 +251,6 @@ internal static class SyntheticIdentityFixtures
         return sequence;
     }
 
-    /// <summary>
-    /// The largest mean difference, in grey levels, between a frame of <paramref name="sent"/> and its first frame, as the application sees them (the JPEG decoded): the number the rule of the
-    /// still picture reads (<c>presence.continuity.minPixelDifference</c>). A sequence under the least of the policy is a still picture played again.
-    /// </summary>
     public static double MeanDifferenceFromTheFirst(PreparedSequence sent)
     {
         ArgumentNullException.ThrowIfNull(sent);
@@ -322,13 +270,13 @@ internal static class SyntheticIdentityFixtures
         return farthest;
     }
 
-    /// <summary>A picture of a document that the models of the doubles can decode (a JPEG of generated noise, never the picture of a document).</summary>
+    // Generated noise, never the picture of a document: the repository is public.
     public static byte[] DocumentPicture(int seed = 7) => TestJpeg.Noise(120, 80, seed);
 
     private static double Jitter(Random random, double amplitude) => ((random.NextDouble() * 2) - 1) * amplitude;
 }
 
-/// <summary>An agent that finds every capture good: the quality of the pictures of the document is the business of the geometry, not of these proofs.</summary>
+// The quality of the pictures of the document is the business of the geometry, not of these proofs.
 internal sealed class AcceptingAgent : IIdentityVerificationAgent
 {
     public Task<CaptureAssessment> AssessCaptureAsync(Stream image, CaptureKind kind, CancellationToken ct) =>
@@ -338,12 +286,7 @@ internal sealed class AcceptingAgent : IIdentityVerificationAgent
         throw new NotSupportedException("The self-hosted flow runs no verification of the legacy agent.");
 }
 
-/// <summary>
-/// The world of the synthetic proofs: the world of the closure of the presence (<see cref="PresenceClosureWorld"/>: the database in memory, the clock, the storage, the alerts, the
-/// segments) with, in place of the scripted pipeline, the REAL pipeline of the application (validation of the sequence, choice of the frames, liveness, match, the engine of the policy)
-/// over <see cref="ScriptedModels"/>. A decision is therefore the policy's, taken on what the models say, never scripted. The policy is the committed file (or an edit of it), pinned by its
-/// canonical hash; the limits of the request are <see cref="Limits"/>.
-/// </summary>
+// The real pipeline of the application over scripted models: a decision is the policy's, never scripted.
 internal sealed class SyntheticIdentityWorld : IAsyncDisposable
 {
     private const string PolicyFile = "identity-policy-of-the-synthetic-world.json";
@@ -374,44 +317,32 @@ internal sealed class SyntheticIdentityWorld : IAsyncDisposable
         Collector = collector?.Invoke(this) ?? RealPipeline();
     }
 
-    /// <summary>The world of the closure that this one builds on: its database, clock, storage, alerts and segments.</summary>
     public PresenceClosureWorld Inner { get; }
 
-    /// <summary>The doubles of the models the pipeline runs over.</summary>
     public ScriptedModels Models { get; } = new();
 
-    /// <summary>The policy in force, as a value (the sequences of the proofs are written from it).</summary>
     public IdentityDecisionPolicy Policy { get; }
 
-    /// <summary>The limits of the request and of the sequence (<c>IdentityVerification</c>): the flow, the reader of the frames and the validation read this very object.</summary>
     public IdentityVerificationOptions Limits { get; } = new();
 
-    /// <summary>The pipeline of the presence the closure runs.</summary>
     public IPresenceEvidenceCollector Collector { get; }
 
-    /// <summary>The picture of the front of the document the stays of this world keep.</summary>
     public byte[] DocumentPicture { get; }
 
-    /// <summary>False makes the store of the models report that they are not loaded.</summary>
     public bool ModelsReady { get; set; } = true;
 
-    /// <summary>The detector of the pictures of a card, for the document step (a stand-in that finds the portrait the factory draws).</summary>
     public PortraitStandInDetector DocumentDetector { get; } = new();
 
-    /// <summary>What the reader of the MRZ says of the pictures it was told about (the document step).</summary>
     public DocumentStepSelfHostedTests.ScriptedMrz DocumentMrz { get; } = new();
 
-    /// <summary>What the reader of the zones says of each side (the document step).</summary>
     public DocumentStepSelfHostedTests.ScriptedZonedReader DocumentZones { get; } = new();
 
-    /// <summary>The world with the committed policy (or its text with the edits of <paramref name="policyText"/>), a segment in observation unless the test says otherwise.</summary>
     public static async Task<SyntheticIdentityWorld> CreateAsync(string? policyText = null, Func<SyntheticIdentityWorld, IPresenceEvidenceCollector>? collector = null)
     {
         var inner = await PresenceClosureWorld.CreateAsync();
         return new SyntheticIdentityWorld(inner, policyText ?? IdentityPolicyTestFiles.ShippedText(), collector);
     }
 
-    /// <summary>The flow of the application with the closure over the pipeline of this world.</summary>
     public IdentityVerificationFlowService Flow(ILogger<IdentityVerificationFlowService>? logger = null)
     {
         var context = Inner.Db;
@@ -442,7 +373,6 @@ internal sealed class SyntheticIdentityWorld : IAsyncDisposable
             decisionEngine: new IdentityDecisionEngine());
     }
 
-    /// <summary>The flow with the services of the document step (the geometry, the side, the coherence), over the doubles of the readers of the document.</summary>
     public IdentityVerificationFlowService DocumentFlow()
     {
         var context = Inner.Db;
@@ -471,7 +401,7 @@ internal sealed class SyntheticIdentityWorld : IAsyncDisposable
             identityPolicy: _policyProvider);
     }
 
-    /// <summary>A stay whose guest opened the identity step, gave the consent, and has the Italian card read and checked (coherent), its front kept encrypted: the front is a picture the doubles decode.</summary>
+    // The doubles know DocumentPicture, so the kept front is replaced by it.
     public async Task<GuestCheckInSession> ReadyStayAsync()
     {
         var before = Inner.Storage.Objects.Keys.ToHashSet(StringComparer.Ordinal);
@@ -481,7 +411,6 @@ internal sealed class SyntheticIdentityWorld : IAsyncDisposable
         return session;
     }
 
-    /// <summary>A stay whose guest gave the biometric consent and opened the identity step, with no document yet (the guest the cards of the document step name).</summary>
     public async Task<GuestCheckInSession> ConsentedStayAsync()
     {
         var now = PresenceClosureKit.Now.UtcDateTime;
@@ -529,7 +458,6 @@ internal sealed class SyntheticIdentityWorld : IAsyncDisposable
         return loaded;
     }
 
-    /// <summary>Asks for the challenge of the next attempt of <paramref name="session"/> (the real one: the moves are drawn at random from the policy).</summary>
     public async Task<PresenceChallengeIssue> IssueAsync(GuestCheckInSession session)
     {
         var issue = await Flow().IssuePresenceChallengeAsync(session, SyntheticIdentityFixtures.Ct);
@@ -537,11 +465,6 @@ internal sealed class SyntheticIdentityWorld : IAsyncDisposable
         return issue;
     }
 
-    /// <summary>
-    /// One attempt as the page makes it: the challenge, the sequence <paramref name="script"/> writes for its moves (the models taught what it shows, with the liveness
-    /// <paramref name="liveness"/> and the match <paramref name="similarity"/> when given), the clock moved to when the sequence reaches the server, and the request with the key
-    /// <paramref name="key"/> (a new one by default). Returns the answer and what was sent.
-    /// </summary>
     public async Task<(PresenceStepResult Answer, PreparedSequence Sent, PresenceChallengeIssue Issue)> AttemptAsync(
         GuestCheckInSession session,
         Func<IReadOnlyList<string>, ScriptedSequence> script,
@@ -558,7 +481,6 @@ internal sealed class SyntheticIdentityWorld : IAsyncDisposable
         return (answer, sent, issue);
     }
 
-    /// <summary>Moves the clock to when <paramref name="sent"/> reaches the server and sends it with the proof of <paramref name="issue"/>.</summary>
     public async Task<PresenceStepResult> SubmitAsync(GuestCheckInSession session, PreparedSequence sent, PresenceChallengeIssue issue, string? key = null)
     {
         Inner.Clock.Advance(sent.ReceivedAfterIssue);
@@ -568,16 +490,10 @@ internal sealed class SyntheticIdentityWorld : IAsyncDisposable
             SyntheticIdentityFixtures.Ct);
     }
 
-    /// <summary>The log rows of the booking of <paramref name="session"/>, read by another context.</summary>
     public Task<List<BiometricVerificationLog>> LogRowsAsync(GuestCheckInSession session) => Inner.LogRowsAsync(session);
 
-    /// <summary>The session as it was saved, read by another context.</summary>
     public Task<GuestCheckInSession> ReadBackAsync(Guid sessionId) => Inner.ReadBackAsync(sessionId);
 
-    /// <summary>
-    /// What must hold of every attempt of these proofs: nothing was approved. The answer is not <c>ok</c> and carries no lock code, no code was released, no approval was announced on the
-    /// bus, and no row of the log is an approval or a shadow approval (<paramref name="shadowApprovalAllowed"/> allows the shadow of an observation).
-    /// </summary>
     public async Task AssertNeverApprovedAsync(GuestCheckInSession session, PresenceStepResult? answer, bool shadowApprovalAllowed = false)
     {
         if (answer is not null)
@@ -606,7 +522,6 @@ internal sealed class SyntheticIdentityWorld : IAsyncDisposable
             Directory.Delete(_directory, recursive: true);
     }
 
-    /// <summary>The pipeline of the application over the doubles of the models: the very classes the registrations of the application build.</summary>
     private PresenceEvidenceCollector RealPipeline()
     {
         var biometric = Options.Create(new BiometricModelOptions());

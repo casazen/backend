@@ -17,27 +17,15 @@ using Xunit;
 
 namespace Casazen.Tests.Qualification;
 
-// E74/F02/US01/T03 (NF-198, D12): the latency and capacity probe of the presence pipeline. The specification asks to measure the p95 latency, the saturation of the CPU and the memory at
-// the expected peak, and the capacity of the CPU on the real volume, before buying a GPU. The inference runs inside the web process (IntraOpThreads 2) next to the API and Hangfire, so the
-// probe runs the REAL pipeline of the application, the one the qualification builds (QualificationPipeline: the services the application registers, with the models of the machine, the
-// published configuration), and nothing else: it registers no service of its own. Everything it feeds the pipeline is GENERATED (no photograph of a person and no picture of a document is in
-// the repository, which is public) and nothing it measures or writes is more than a number, a code or the description of the machine.
-
-/// <summary>
-/// The environment variables of the opt-in run of the capacity probe (they belong to test runs only: not a setting of the application, and CI sets none). <see cref="ProbeVariable"/> set to
-/// <c>1</c> asks for the run, <see cref="OutVariable"/> is the folder <c>capacity-report.json</c> and <c>capacity-report.md</c> are written to, <see cref="IterationsVariable"/>
-/// (optional) the requests of each level of concurrency.
-/// </summary>
+// Variables of test runs only, not settings of the application: CI sets none.
 public static class CapacityEnvironment
 {
     public const string ProbeVariable = "CASAZEN_CAPACITY_PROBE";
     public const string OutVariable = "CASAZEN_CAPACITY_OUT";
     public const string IterationsVariable = "CASAZEN_CAPACITY_ITERATIONS";
 
-    /// <summary>The requests of each level of concurrency of a real run when <see cref="IterationsVariable"/> says nothing.</summary>
     public const int DefaultIterations = 20;
 
-    /// <summary>Why the run must be skipped, or null when it can run. <paramref name="read"/> reads a variable (null or blank when it is not set).</summary>
     public static string? SkipReason(Func<string, string?> read)
     {
         ArgumentNullException.ThrowIfNull(read);
@@ -48,28 +36,21 @@ public static class CapacityEnvironment
         return string.IsNullOrWhiteSpace(read(OutVariable)) ? $"{OptIn} Set {OutVariable} (the folder the report is written to) to run it." : null;
     }
 
-    /// <summary>True when the run was asked for: <c>1</c> or <c>true</c>, whatever the letter case.</summary>
     public static bool IsOn(string? value)
     {
         var text = value?.Trim();
         return string.Equals(text, "1", StringComparison.Ordinal) || string.Equals(text, "true", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>The requests of each level: the variable when it is a positive integer, otherwise <see cref="DefaultIterations"/>.</summary>
     public static int Iterations(Func<string, string?> read)
     {
         ArgumentNullException.ThrowIfNull(read);
         return int.TryParse(read(IterationsVariable), NumberStyles.None, CultureInfo.InvariantCulture, out var value) && value > 0 ? value : DefaultIterations;
     }
 
-    /// <summary>The variable of the process; null when it is not set.</summary>
     internal static string? Read(string variable) => Environment.GetEnvironmentVariable(variable);
 }
 
-/// <summary>
-/// A fact of the real run of the capacity probe: reported as skipped, with the reason, unless <c>CASAZEN_CAPACITY_PROBE=1</c> and <c>CASAZEN_CAPACITY_OUT</c> are set
-/// (see <see cref="CapacityEnvironment"/>). CI sets none of them, so the long run never runs there and is never reported as passed either.
-/// </summary>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class CapacityFactAttribute : FactAttribute
 {
@@ -80,45 +61,22 @@ public sealed class CapacityFactAttribute : FactAttribute
     }
 }
 
-/// <summary>How a run of the probe goes. The defaults are the ones of a real run.</summary>
 public sealed record CapacityProbeOptions
 {
-    /// <summary>The requests of each level of concurrency, after the warm-up (a level runs at least as many requests as it has in flight at once).</summary>
     public int Iterations { get; init; } = CapacityEnvironment.DefaultIterations;
 
-    /// <summary>The numbers of requests in flight at once, one level each: the expected peak of a property is a few guests at the same moment.</summary>
     public IReadOnlyList<int> Concurrency { get; init; } = [1, 2, 4];
 
-    /// <summary>The requests run before the first level and not counted (the models and the code warm up once).</summary>
     public int WarmupIterations { get; init; } = 1;
 
-    /// <summary>The longest side of a frame; the limit of the application (<c>IdentityVerification:Presence:MaxFrameSide</c>) when null.</summary>
     public int? FrameSide { get; init; }
 }
 
-/// <summary>The machine a probe ran on: the number of processors, the system, the runtime and the threads of each model. No name of the host, of the user or of a folder.</summary>
 public sealed record CapacityMachine(int ProcessorCount, string OperatingSystem, string Framework, string Architecture, int ModelThreads);
 
-/// <summary>What the probe fed the pipeline: the size of what one request carries and the limit of time the requests are measured against.</summary>
-/// <param name="Frames">The frames of the sequence: the target rate of the policy times the duration of its challenge.</param>
-/// <param name="FrameWidth">The width of a frame, in pixels.</param>
-/// <param name="FrameHeight">The height of a frame, in pixels.</param>
-/// <param name="FrameBytes">The size of the largest JPEG of the sequence.</param>
-/// <param name="DocumentPixels">The pixels of the picture of the document the portrait is cut from.</param>
-/// <param name="SequenceTimeoutMs">The time the application gives the pipeline of one request (<c>IdentityVerification:Presence:SequenceTimeoutMs</c>): past it a person decides.</param>
 public sealed record CapacityScene(int Frames, int FrameWidth, int FrameHeight, int FrameBytes, int DocumentPixels, int SequenceTimeoutMs);
 
-/// <summary>One level of concurrency: what a request cost on this machine with this many in flight.</summary>
-/// <param name="Concurrency">How many requests were in flight at once.</param>
-/// <param name="Requests">How many requests the level ran.</param>
-/// <param name="WallSeconds">How long the level took, from the first request to the last.</param>
-/// <param name="RequestsPerSecond">The requests the machine finished a second at this level.</param>
-/// <param name="Stages">The p50, the p95 and the largest time of each stage, in milliseconds (a stage that was not run is not listed).</param>
-/// <param name="Total">The same for a whole request, the intake of the frames included.</param>
-/// <param name="CpuMsPerRequest">The CPU time of the process a request took (the delta of <c>Process.TotalProcessorTime</c> over the requests), in milliseconds.</param>
-/// <param name="PeakWorkingSetMb">The most memory the process held while the level ran, sampled, in megabytes.</param>
-/// <param name="AllocatedMbPerRequest">The managed memory allocated for a request, in megabytes (the delta of the bytes the GC allocated over the requests).</param>
-/// <param name="OverTheLimit">How many requests took longer than <see cref="CapacityScene.SequenceTimeoutMs"/> from the validation of the sequence to the match (past it the application sends the guest to a person).</param>
+// OverTheLimit: requests that took longer than the application allows from the validation to the match.
 public sealed record CapacityLevel(
     int Concurrency,
     int Requests,
@@ -131,10 +89,8 @@ public sealed record CapacityLevel(
     double AllocatedMbPerRequest,
     int OverTheLimit);
 
-/// <summary>The report of a run of the probe: numbers, codes and the description of the machine, nothing else.</summary>
 public sealed record CapacityReport(string Schema, CapacityMachine Machine, CapacityScene Scene, IReadOnlyList<string> Notes, IReadOnlyList<CapacityLevel> Levels)
 {
-    /// <summary>The name of the schema of the file, to read it back.</summary>
     public const string SchemaName = "casazen.identity-capacity.v1";
 
     public const string JsonFileName = "capacity-report.json";
@@ -144,7 +100,6 @@ public sealed record CapacityReport(string Schema, CapacityMachine Machine, Capa
 
     public string ToJson() => JsonSerializer.Serialize(this, JsonOptions);
 
-    /// <summary>The report for a person: the machine, the scene, a table of the stages for each level and the notes.</summary>
     public string ToMarkdown()
     {
         var text = new StringBuilder();
@@ -177,15 +132,10 @@ public sealed record CapacityReport(string Schema, CapacityMachine Machine, Capa
     private static string F(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
 }
 
-/// <summary>
-/// The detector the probe gives the pipeline. The pictures of the probe are generated, so the real detector finds no face in them and the models after it would never run; this one runs
-/// the REAL detector on every picture (the cost of a detection is the picture's, not the verdict's) and answers one face in the middle of the picture whatever the real one found, so that the
-/// liveness and the recognition models run on every frame the way they do on a guest. With <see cref="Stalls"/> on it waits for its token to be cancelled and never answers: a machine too slow
-/// to finish within the time of the request.
-/// </summary>
+// Generated pictures hold no face: the detection is run for its cost, and a fixed face lets the liveness and the recognition models run on every frame
+// as they do for a guest.
 public sealed class ProbeFaceDetector(IFaceDetector real) : IFaceDetector
 {
-    /// <summary>The detector never answers: it waits (up to 20 seconds) for the token to be cancelled, then raises the cancellation.</summary>
     public bool Stalls { get; set; }
 
     public IReadOnlyList<DetectedFace> Detect(RasterImage image, double minScore, CancellationToken cancellationToken)
@@ -201,23 +151,8 @@ public sealed class ProbeFaceDetector(IFaceDetector real) : IFaceDetector
     }
 }
 
-/// <summary>
-/// The probe of the latency and the capacity of the presence pipeline (E74/F02/US01/T03, NF-198). <see cref="RunAsync(QualificationPipeline, CapacityProbeOptions, CancellationToken)"/> runs, for
-/// each level of concurrency, the requests the application would run for a guest, over the <see cref="QualificationPipeline"/> it is given (it registers no service of its own): the intake of the
-/// frames with the limits of the application, the validation of the sequence, the choice of the frames by the server, the liveness of the chosen frames and the comparison of the portrait of the
-/// document with them. It measures, per stage and per request, the p50, the p95 and the largest time (<see cref="IdentityStatistics.Percentile"/>), and per level the CPU time, the peak working set
-/// and the managed memory a request took, and how many requests took longer than <c>IdentityVerification:Presence:SequenceTimeoutMs</c>.
-/// <para>
-/// <b>What it measures.</b> The pictures are generated: frames at the longest side the application accepts, as many as the target rate of the policy gives for the duration of its challenge, and a
-/// picture of a document. The stages run one after the other whatever the verdict of the one before (a guest who is live and matches is the request whose cost is measured), on the frames the server
-/// would choose, or on frames spread over the sequence when the validation of the generated pictures does not pass. The verdicts are not measured: the qualification measures them. Every limit of time of the
-/// pipeline is the widened one of the qualification, so a slow machine finishes and is counted over the limit instead of being stopped.
-/// </para>
-/// <para><b>Privacy.</b> Nothing is stored, logged or printed but numbers; the frames are zeroed when each request ends.</para>
-/// </summary>
 public static class IdentityCapacityProbe
 {
-    /// <summary>The names of the stages of a request, those of <see cref="QualificationStages"/>.</summary>
     private static readonly string[] StageNames =
     [
         QualificationStages.PresenceIntake,
@@ -227,13 +162,8 @@ public static class IdentityCapacityProbe
         QualificationStages.PresenceMatch,
     ];
 
-    /// <summary>The name of the total of a request.</summary>
     public const string TotalStage = "total";
 
-    /// <summary>
-    /// The whole probe: builds the pipeline of the qualification (with the detector of the probe, <see cref="ProbeFaceDetector"/>), waits for the models, runs
-    /// <see cref="RunAsync(QualificationPipeline, CapacityProbeOptions, CancellationToken)"/> and releases the pipeline.
-    /// </summary>
     public static async Task<CapacityReport> RunAsync(CapacityProbeOptions options, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -242,10 +172,6 @@ public static class IdentityCapacityProbe
             return await RunAsync(pipeline, options, ct);
     }
 
-    /// <summary>
-    /// The pipeline of the qualification with the detector of the probe in place of the one of the models alone. It is the one pipeline the application registers (the same services, the
-    /// published configuration, the models of the machine): only the answer of the detector, which no generated picture can make a face, is the probe's.
-    /// </summary>
     public static async Task<(QualificationPipeline Pipeline, ProbeFaceDetector Detector)> CreatePipelineAsync(bool includeEnvironmentVariables, CancellationToken ct = default)
     {
         ProbeFaceDetector? detector = null;
@@ -259,10 +185,6 @@ public static class IdentityCapacityProbe
         return (pipeline, detector ?? throw new InvalidOperationException("The pipeline did not ask for the face detector."));
     }
 
-    /// <summary>
-    /// The one registration the probe makes over the registrations of the pipeline of the qualification: the face detector of the models, wrapped in the detector of the probe
-    /// (<see cref="ProbeFaceDetector"/>). <paramref name="created"/> is told the detector when the container builds it.
-    /// </summary>
     public static void RegisterProbeDetector(IServiceCollection services, Action<ProbeFaceDetector>? created = null)
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -274,7 +196,6 @@ public static class IdentityCapacityProbe
         });
     }
 
-    /// <summary>The levels of <paramref name="options"/> over <paramref name="pipeline"/>.</summary>
     public static async Task<CapacityReport> RunAsync(QualificationPipeline pipeline, CapacityProbeOptions options, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(pipeline);
@@ -312,7 +233,6 @@ public static class IdentityCapacityProbe
             levels);
     }
 
-    /// <summary>One level: <paramref name="requests"/> requests, <paramref name="concurrency"/> at a time, with the CPU, the memory and the allocations of the process measured around them.</summary>
     private static async Task<CapacityLevel> RunLevelAsync(
         QualificationPipeline pipeline,
         ProbeScene scene,
@@ -394,13 +314,9 @@ public static class IdentityCapacityProbe
             overTheLimit);
     }
 
-    /// <summary>What one request did: the time of each stage it ran, the pipeline from the validation to the match, and the whole of it.</summary>
     private sealed record RequestTimings(IReadOnlyDictionary<string, double> Stages, double PipelineMs, double TotalMs);
 
-    /// <summary>
-    /// One request, as the closure of the presence runs it: the frames read with the limits of the application, then the validation, the choice of the frames, the liveness and the match.
-    /// Every picture it makes is zeroed before it returns.
-    /// </summary>
+    // Every stage runs whatever the verdict of the one before: the cost measured is the one of a guest who passes.
     private static async Task<RequestTimings> RunRequestAsync(QualificationPipeline pipeline, ProbeScene scene, IdentityDecisionPolicy policy, CancellationToken ct)
     {
         var stages = new Dictionary<string, double>(StringComparer.Ordinal);
@@ -419,7 +335,7 @@ public static class IdentityCapacityProbe
         var validation = await pipeline.Validator.ValidateAsync(sequence, scene.Challenge, policy, ct);
         stages[QualificationStages.PresenceValidation] = Since(started);
 
-        // The frames the server would choose when the validation passes; else the frames spread over the sequence: the cost of the models does not depend on which frames they are given.
+        // The frames the server would choose when the validation passes, else frames spread over the sequence: the cost of the models does not depend on which they are.
         IReadOnlyList<int> livenessFrames = Spread(sequence.Frames.Count, policy.Presence.Liveness.Frames);
         IReadOnlyList<int> matchFrames = Spread(sequence.Frames.Count, policy.Match.Frames);
         if (validation.Passed)
@@ -438,7 +354,7 @@ public static class IdentityCapacityProbe
         _ = await pipeline.Liveness.EvaluateAsync(sequence, livenessFrames, policy, ct);
         stages[QualificationStages.PresenceLiveness] = Since(started);
 
-        // The picture of the document is decoded for every request, as the closure does: the kept picture is encrypted and read again for each attempt.
+        // Decoded for every request, as the closure does: the kept picture is encrypted and read again for each attempt.
         started = Stopwatch.GetTimestamp();
         using (var document = RasterImage.Decode(scene.DocumentFront, pipeline.BiometricOptions.MaxImagePixels))
             _ = await pipeline.Matcher.MatchAsync(document, sequence, matchFrames, policy, ct);
@@ -447,7 +363,6 @@ public static class IdentityCapacityProbe
         return new RequestTimings(stages, Since(pipelineStarted), Since(request));
     }
 
-    /// <summary>The time the application gives the pipeline of one request: the section of the published configuration, which the pipeline widens for itself.</summary>
     private static int LiveLimitMs(QualificationPipeline pipeline)
     {
         var configuration = new ConfigurationBuilder().SetBasePath(AppContext.BaseDirectory).AddJsonFile("appsettings.json", optional: false, reloadOnChange: false).Build();
@@ -456,7 +371,6 @@ public static class IdentityCapacityProbe
         return published.Presence.SequenceTimeoutMs;
     }
 
-    /// <summary><paramref name="count"/> places spread evenly over <paramref name="frames"/> frames, in order, never the same twice.</summary>
     private static List<int> Spread(int frames, int count)
     {
         var places = new List<int>(count);
@@ -477,10 +391,6 @@ public static class IdentityCapacityProbe
 
     private static double Round(double value) => Math.Round(value, 3);
 
-    /// <summary>
-    /// What a request is made of, generated once for a run: the JPEG of each frame, their timestamps, the challenge they answer and the picture of the document. Frames are the size and the
-    /// number of the policy; their pixels are blocky texture (a few pixels a cell) plus a slope, so the JPEG weighs what a camera frame weighs and not what noise would.
-    /// </summary>
     private sealed class ProbeScene : IDisposable
     {
         private ProbeScene(IReadOnlyList<byte[]> jpegs, string timestampsJson, int width, int height, StoredPresenceChallenge challenge, byte[] documentFront, int documentPixels)
@@ -531,7 +441,7 @@ public static class IdentityCapacityProbe
             var stored = new StoredPresenceChallenge(Guid.NewGuid(), steps, issued, issued.AddSeconds(challenge.LifetimeSeconds), 1);
             var timestamps = PreparedSequence.TimestampsOf(Enumerable.Range(0, frames).Select(index => index * interval));
 
-            // A card on a table, as large as a photograph of a phone of the page (1280 x 960): drawn in code.
+            // The size of a photograph taken by the page on a phone.
             var format = pipeline.Formats.Get("it-cie-3.0") ?? throw new InvalidOperationException("The Italian card is not in the registry.");
             using var card = DocumentImageFactory.Render(format, DocumentSide.Front, new DocumentImageFactory.Placement(160, 140, 960, 606), imageWidth: 1280, imageHeight: 960);
             return new ProbeScene(jpegs, timestamps, width, height, stored, CardPngEncoder.Encode(card), card.Width * card.Height);
@@ -545,7 +455,7 @@ public static class IdentityCapacityProbe
             Array.Clear(DocumentFront);
         }
 
-        /// <summary>Gray pixels: cells of six by six pixels at random levels (six either way) around the middle, a slope across the picture, the same for the same seed; a JPEG of it weighs what a camera frame weighs.</summary>
+        // Blocky texture plus a slope: a JPEG of it weighs what a camera frame weighs, not what noise would.
         private static byte[] Texture(int width, int height, int seed)
         {
             const int Cell = 6;

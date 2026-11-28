@@ -28,17 +28,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration.Identity;
 
-// E74/F02/US01/T02 (NF-198, NF-188, NF-194, NF-195, NF-196, decisions D2, D3, D4, D8, D9, D10): the builder of the acceptance scenario of the self-hosted identity verification on the backend. It
-// starts the REAL host of the application (every controller, policy, filter, service and registration, with the four flags on in its own configuration), over the database of the factory
-// (PostgreSQL in CI, the fallback of EF InMemory on a machine without it), and changes only what no test may do for real: the three face models and the readers of the document answer from a
-// script (ScriptedModels, the doubles of the readers of the document step), the clock is the test's, the push is recorded and the code of the lock is a double. The decision is the policy's,
-// taken by the real pipeline on what the doubles say. Everything is generated in code: no photograph of a person and no picture of a document is in the repository (it is public), and
-// nothing here prints a frame, a name, a document number or an embedding.
-
-/// <summary>
-/// The store of the models of the host of the scenario: the three models loaded, each with a weight hash that a test can change (a new weight file of one model): the fingerprint a decision
-/// is bound to (<see cref="IdentityConfigurationFingerprint"/>) reads the snapshot every time, so a change makes a qualified segment go back to observation without a restart.
-/// </summary>
 internal sealed class ScenarioModelStore : IBiometricModelStore
 {
     private static readonly string[] Roles = [BiometricModelRoles.FaceDetector, BiometricModelRoles.AntiSpoofing, BiometricModelRoles.FaceRecognition];
@@ -69,7 +58,6 @@ internal sealed class ScenarioModelStore : IBiometricModelStore
 
     public LoadedBiometricModel? FaceRecognition => null;
 
-    /// <summary>A new weight file of the model of <paramref name="role"/>: its hash changes.</summary>
     public void ChangeWeights(string role)
     {
         lock (_gate)
@@ -89,7 +77,6 @@ internal sealed class ScenarioModelStore : IBiometricModelStore
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{role}:{generation}")));
 }
 
-/// <summary>The push notifications the host queued, in order: the operators are told of a review by a push, and the scenario proves it.</summary>
 internal sealed class RecordingPush : IPushNotificationService
 {
     public ConcurrentQueue<(string DeliveryKey, PushAudience Audience, PushNotificationPayload Payload)> Sent { get; } = new();
@@ -101,60 +88,40 @@ internal sealed class RecordingPush : IPushNotificationService
     }
 }
 
-/// <summary>How a host of the scenario is configured: the defaults are the four flags on and the committed policy, calibrated for the test.</summary>
 internal sealed record ScenarioOptions
 {
-    /// <summary><c>Features:CheckInIdentitySelfHosted</c>.</summary>
     public bool SelfHosted { get; init; } = true;
 
-    /// <summary><c>Features:CheckInIdentityAutoApproval</c>.</summary>
     public bool AutoApproval { get; init; } = true;
 
-    /// <summary><c>Features:CheckInIdentityReviewEvidence</c>.</summary>
     public bool ReviewEvidence { get; init; } = true;
 
-    /// <summary><c>IdentityVerification:Presence:SequenceTimeoutMs</c>; the committed value when null.</summary>
     public int? SequenceTimeoutMs { get; init; }
 
-    /// <summary>The version of the policy file of this host: another version is another file, so another hash, and the segments qualified for the first are void for it.</summary>
     public string PolicyVersion { get; init; } = "identity-policy-scenario-2026.11-1";
 }
 
-/// <summary>A stay of the scenario: a confirmed booking of an org on the agency plan, its guest (whose names and birth date are the ones the scripted MRZ says) and the link of its check-in.</summary>
 internal sealed record ScenarioStay(string OwnerId, Guid OrgId, Guid PropertyId, Guid BookingId, Guid GuestId, Guid SessionId, string Token);
 
-/// <summary>What one request of the presence got: the status, the body, the key and the proof it was sent with, and the frames.</summary>
 internal sealed record PresenceAttempt(HttpStatusCode Status, JsonElement Body, string Key, string ChallengeToken, PreparedSequence Sent)
 {
-    /// <summary>The <c>result</c> of the answer: <c>ok</c>, <c>retry</c> or <c>operator</c>.</summary>
     public string? Result => Body.ValueKind == JsonValueKind.Object && Body.TryGetProperty("result", out var result) ? result.GetString() : null;
 
-    /// <summary>The guidance codes of the answer.</summary>
     public IReadOnlyList<string> Guidance => Body.ValueKind == JsonValueKind.Object && Body.TryGetProperty("guidance", out var guidance)
         ? [.. guidance.EnumerateArray().Select(code => code.GetString()!)]
         : [];
 
-    /// <summary>The lock code of the answer, null when it carries none.</summary>
     public string? LockCode => Body.ValueKind == JsonValueKind.Object && Body.TryGetProperty("lockCode", out var code) ? code.GetString() : null;
 }
 
-/// <summary>
-/// The host of the acceptance scenario with its doubles and its helpers: stays to seed, the calls of the guest (the opening, the consent, the two sides of the card, the challenge and the
-/// sequence), the calls of the operators and of the platform administrators, a clock to move, and the database to read. One host for each test: the database is the factory's, and every
-/// test seeds its own orgs.
-/// </summary>
 internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
 {
-    /// <summary>The browser of the guests of the scenario: Chrome on Android (<see cref="IdentityChannels.AndroidChrome"/>).</summary>
     public const string AndroidChromeAgent = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36";
 
-    /// <summary>The lock code the double of the code service releases.</summary>
     public const string LockCode = "4321";
 
-    /// <summary>The format of the registry the scenario qualifies: the Italian electronic identity card.</summary>
     public const string FormatId = "it-cie-3.0";
 
-    /// <summary>The identity of the platform staff who qualifies a segment.</summary>
     private const string StaffUserId = "auth0|identity-staff";
 
     private static readonly CancellationToken Ct = CancellationToken.None;
@@ -168,7 +135,7 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         Options = options;
         Directory.CreateDirectory(_directory);
 
-        // The policy of the plan, calibrated: a qualification is refused for a provisional one (NF-194). Its own file and its own pin, so that another host can run another policy.
+        // A provisional policy is never qualified: the host runs a calibrated copy with its own version and pin, so that another host can run another policy.
         (PolicyPath, PolicyHash, Policy) = WriteCalibratedPolicy(_directory, options.PolicyVersion);
 
         AccessCodes.Setup(codes => codes.ReleaseToGuestAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(LockCode);
@@ -177,11 +144,9 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(Configuration(options)));
             builder.ConfigureTestServices(services =>
             {
-                // The clock of the test: it starts now and moves only when the test moves it.
                 services.RemoveAll<TimeProvider>();
                 services.AddSingleton<TimeProvider>(Clock);
 
-                // The models answer from a script, the store has weights that a test can change, and the readers of the document answer for the pictures of the scenario.
                 services.RemoveAll<IFaceDetector>();
                 services.AddSingleton<IFaceDetector>(Models);
                 services.RemoveAll<IFaceEmbedder>();
@@ -199,7 +164,6 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
                 services.RemoveAll<IZonedFieldReader>();
                 services.AddSingleton<IZonedFieldReader>(Zones);
 
-                // The push is recorded and the code of the lock is a double: neither is the business of this scenario.
                 services.RemoveAll<IPushNotificationService>();
                 services.AddSingleton<IPushNotificationService>(Push);
                 services.RemoveAll<IAccessCodeService>();
@@ -212,49 +176,36 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
 
     public ScenarioOptions Options { get; }
 
-    /// <summary>The host: the application as it runs, with the flags and the doubles of this scenario.</summary>
     public WebApplicationFactory<Program> Host { get; }
 
-    /// <summary>The clock of the host.</summary>
     public FakeTimeProvider Clock { get; } = new(DateTimeOffset.UtcNow);
 
-    /// <summary>The doubles of the three models; the generated cards of the document step are answered by the stand-in of the portrait.</summary>
     public ScriptedModels Models { get; } = new() { Fallback = new PortraitStandInDetector() };
 
     public ScenarioModelStore Store { get; } = new();
 
     public RecordingPush Push { get; } = new();
 
-    /// <summary>The service of the code of the lock: it releases <see cref="LockCode"/>, and the scenario verifies when it was asked.</summary>
     public Mock<IAccessCodeService> AccessCodes { get; } = new();
 
     public DocumentStepSelfHostedTests.ScriptedMrz Mrz { get; } = new();
 
     public DocumentStepSelfHostedTests.ScriptedZonedReader Zones { get; } = new();
 
-    /// <summary>The policy in force in this host, as a value (the sequences are written from it).</summary>
     public IdentityDecisionPolicy Policy { get; }
 
-    /// <summary>The path of the file of the policy of this host.</summary>
     public string PolicyPath { get; }
 
-    /// <summary>The canonical hash of the policy of this host, the one its pin says.</summary>
     public string PolicyHash { get; }
 
-    /// <summary>A sequence of a guest who does what the challenge asks, in order: what the policy accepts.</summary>
     public Func<IReadOnlyList<string>, ScriptedSequence> Genuine => steps => SequenceTestFrames.Genuine(Policy, steps);
 
-    /// <summary>A host with <paramref name="options"/> on <paramref name="factory"/>.</summary>
     public static SelfHostedIdentityScenario Start(CasazenWebApplicationFactory factory, ScenarioOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(factory);
         return new SelfHostedIdentityScenario(factory, options ?? new ScenarioOptions());
     }
 
-    /// <summary>
-    /// The committed policy made calibrated (the committed file says it is provisional, and a provisional policy is never qualified) and given a version of its own, written to
-    /// <paramref name="directory"/>: its path, its canonical hash (the pin the host is configured with) and the policy as a value. The committed file is never touched.
-    /// </summary>
     internal static (string Path, string Hash, IdentityDecisionPolicy Policy) WriteCalibratedPolicy(string directory, string version)
     {
         var text = IdentityPolicyTestFiles.Apply(
@@ -270,9 +221,6 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         return (path, hash, policy);
     }
 
-    // ───── clients ─────
-
-    /// <summary>An anonymous client of a guest, with the browser of <paramref name="userAgent"/>.</summary>
     public HttpClient Guest(string userAgent = AndroidChromeAgent)
     {
         var client = Host.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
@@ -281,7 +229,6 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         return client;
     }
 
-    /// <summary>A signed-in client of a host (an owner, by default), as the test authentication gives it: the user and the roles of its token.</summary>
     public HttpClient Operator(string userId, string roles = "PropertyOwner")
     {
         var client = Host.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
@@ -294,15 +241,10 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         return client;
     }
 
-    /// <summary>A platform administrator.</summary>
     public HttpClient Admin() => Operator($"auth0|identity-admin-{Guid.NewGuid():N}", "Admin");
 
-    // ───── data ─────
-
-    /// <summary>
-    /// A stay of an org on the agency plan (the org of <paramref name="ownerId"/>, or of a new owner): its booking is confirmed for one guest, whose names and birth date are the ones the
-    /// scripted MRZ says, and a check-in link is open. Another stay of the same owner is another property and another booking of the same org.
-    /// </summary>
+    // The Agency plan is the one with the identity verification on by default; the names and the birth date of the guest are those of the scripted MRZ,
+    // or the document would conflict with the booking.
     public async Task<ScenarioStay> SeedStayAsync(string? ownerId = null)
     {
         ownerId ??= $"auth0|identity-owner-{Guid.NewGuid():N}";
@@ -324,10 +266,6 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         return new ScenarioStay(ownerId, booking.OrgId, booking.PropertyId, booking.Id, guest.Id, sessionId, token);
     }
 
-    /// <summary>
-    /// A stay whose guest opened the identity step, gave the biometric consent and sent the two sides of the card (the document is complete and the presence is the next step), with the
-    /// browser of the scenario.
-    /// </summary>
     public async Task<(ScenarioStay Stay, HttpClient Guest)> ReadyStayAsync(string? ownerId = null)
     {
         var stay = await SeedStayAsync(ownerId);
@@ -337,10 +275,7 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         return (stay, guest);
     }
 
-    /// <summary>
-    /// A person of the org of <paramref name="orgId"/> who owns none of its properties but one of their own: the token says the property owner and the person reaches only what it created
-    /// (the account with no team of the org). Returns its id.
-    /// </summary>
+    // The account with no team of the org: the token says property owner, so it reaches only the properties it created.
     public async Task<string> SeedColleagueAsync(Guid orgId)
     {
         var userId = $"auth0|identity-colleague-{Guid.NewGuid():N}";
@@ -374,7 +309,6 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         return userId;
     }
 
-    /// <summary>Reads the database of the host in a scope of its own (the filters of the tenant are the caller's to lift).</summary>
     public async Task<T> ReadAsync<T>(Func<AppDbContext, Task<T>> read)
     {
         ArgumentNullException.ThrowIfNull(read);
@@ -382,19 +316,15 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         return await read(scope.ServiceProvider.GetRequiredService<AppDbContext>());
     }
 
-    /// <summary>The log rows of a booking, oldest first.</summary>
     public Task<List<BiometricVerificationLog>> LogRowsAsync(Guid bookingId) =>
         ReadAsync(db => db.BiometricVerificationLogs.IgnoreQueryFilters().AsNoTracking().Where(log => log.BookingId == bookingId).OrderBy(log => log.CreatedAt).ToListAsync(Ct));
 
-    /// <summary>The session as the database holds it.</summary>
     public Task<GuestCheckInSession> SessionAsync(Guid sessionId) =>
         ReadAsync(db => db.GuestCheckInSessions.IgnoreQueryFilters().AsNoTracking().SingleAsync(session => session.Id == sessionId, Ct));
 
-    /// <summary>The evidence rows kept for a booking, deleted ones included.</summary>
     public Task<List<IdentityReviewEvidence>> EvidenceRowsAsync(Guid bookingId) =>
         ReadAsync(db => db.IdentityReviewEvidences.IgnoreQueryFilters().AsNoTracking().Where(evidence => evidence.BookingId == bookingId).OrderBy(evidence => evidence.CreatedAt).ToListAsync(Ct));
 
-    /// <summary>The open "To do" of the identity verification of a booking.</summary>
     public Task<List<InternalActivity>> OpenTodosAsync(Guid bookingId) =>
         ReadAsync(db => db.InternalActivities.IgnoreQueryFilters().AsNoTracking()
             .Where(activity => activity.EntityType == InternalActivity.BookingEntityType
@@ -403,26 +333,21 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
                                && activity.CompletedAt == null)
             .ToListAsync(Ct));
 
-    /// <summary>The pictures of the document the platform keeps for a booking, deleted ones included.</summary>
     public Task<List<DocumentImage>> DocumentImagesAsync(Guid bookingId) =>
         ReadAsync(db => db.DocumentImages.IgnoreQueryFilters().AsNoTracking().Where(image => image.BookingId == bookingId).ToListAsync(Ct));
 
-    /// <summary>The events of a type on the bus for a booking.</summary>
     public Task<List<OutboxEvent>> EventsAsync(Guid bookingId, DomainEventType type) =>
         ReadAsync(db => db.OutboxEvents.IgnoreQueryFilters().AsNoTracking().Where(@event => @event.EntityId == bookingId && @event.EventType == type).ToListAsync(Ct));
 
-    /// <summary>The lines of the activity log of an org of a type, oldest first.</summary>
     public Task<List<OrgActivityEntry>> ActivityAsync(Guid orgId, OrgActivityType type) =>
         ReadAsync(db => db.OrgActivityEntries.IgnoreQueryFilters().AsNoTracking().Where(entry => entry.OrgId == orgId && entry.Type == type).OrderBy(entry => entry.When).ToListAsync(Ct));
 
-    /// <summary>Whether the object of a key is in the private bucket of the host.</summary>
     public async Task<bool> ObjectExistsAsync(string key)
     {
         using var scope = Host.Services.CreateScope();
         return await scope.ServiceProvider.GetRequiredService<IFileStorage>().ExistsAsync(StorageBucket.Private, key, Ct);
     }
 
-    /// <summary>The first bytes of an object of the private bucket as it is stored (what an evidence is in the bucket: ciphertext, never a picture).</summary>
     public async Task<byte[]> ObjectHeadAsync(string key, int count)
     {
         using var scope = Host.Services.CreateScope();
@@ -433,9 +358,6 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         return head[..read];
     }
 
-    // ───── the guest ─────
-
-    /// <summary>The guest opens the identity step and gives the biometric consent, with the version of the text the page served: returns that version.</summary>
     public async Task<string> OpenAndConsentAsync(HttpClient guest, ScenarioStay stay)
     {
         var texts = await ReadOkAsync(await guest.GetAsync($"/api/public/checkin/{stay.Token}/legal-texts"));
@@ -449,16 +371,11 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         return version;
     }
 
-    /// <summary>The picture of the front of the card of the scenario, as a PNG (generated in code, the same for every stay).</summary>
     public static byte[] FrontPicture() => DocumentStepSelfHostedTests.Picture(DocumentSide.Front);
 
-    /// <summary>The picture of the back of the card of the scenario.</summary>
     public static byte[] BackPicture() => DocumentStepSelfHostedTests.Picture(DocumentSide.Back);
 
-    /// <summary>
-    /// The guest sends the two sides of the card: the front first (the document is not complete without the back), then the back, whose MRZ the scripted reader knows. Once the document is
-    /// complete the doubles of the models learn the portrait of the kept front, which the presence will be compared with.
-    /// </summary>
+    // The presence is compared with the portrait of the kept front, which the doubles of the models learn once the document is complete.
     public async Task CompleteDocumentAsync(HttpClient guest, ScenarioStay stay)
     {
         var front = FrontPicture();
@@ -473,7 +390,6 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         Models.UseDocument(front);
     }
 
-    /// <summary>One picture of the document, as the page sends it: the field <c>document</c> and the field <c>side</c>.</summary>
     public async Task<JsonElement> UploadDocumentAsync(HttpClient guest, ScenarioStay stay, string side, byte[] picture)
     {
         using var form = new MultipartFormDataContent();
@@ -484,15 +400,9 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         return await ReadOkAsync(await guest.PostAsync($"/api/public/checkin/{stay.Token}/document", form));
     }
 
-    /// <summary>The guest asks for the challenge of the next attempt: its body (<c>challengeToken</c>, <c>steps</c>, ...).</summary>
     public async Task<JsonElement> ChallengeAsync(HttpClient guest, ScenarioStay stay) =>
         await ReadOkAsync(await guest.PostAsync($"/api/public/checkin/{stay.Token}/presence-challenge", null));
 
-    /// <summary>
-    /// One attempt as the page makes it: the challenge, the sequence <paramref name="script"/> writes for its moves (the models taught what it shows, with the liveness
-    /// <paramref name="liveness"/> and the similarity <paramref name="similarity"/> when given), the clock moved to when the sequence reaches the server, and the request with the key
-    /// <paramref name="key"/> (a new one by default).
-    /// </summary>
     public async Task<PresenceAttempt> AttemptAsync(
         HttpClient guest,
         ScenarioStay stay,
@@ -505,7 +415,7 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         return await SendPresenceAsync(guest, stay, challengeToken, sent, key ?? NewKey());
     }
 
-    /// <summary>The first half of an attempt: the challenge, the sequence written for its moves and the clock moved to when the sequence reaches the server. Nothing is sent yet.</summary>
+    // The clock moves to when the sequence reaches the server: a recording longer than the time since the challenge is refused.
     public async Task<(string ChallengeToken, PreparedSequence Sent)> PrepareAttemptAsync(
         HttpClient guest,
         ScenarioStay stay,
@@ -523,7 +433,6 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         return (challenge.GetProperty("challengeToken").GetString()!, sent);
     }
 
-    /// <summary>The request of the presence: the frames, their timestamps (<paramref name="timestamps"/> when the test tampers with them), the proof and the key of the attempt.</summary>
     public async Task<PresenceAttempt> SendPresenceAsync(HttpClient guest, ScenarioStay stay, string challengeToken, PreparedSequence sent, string key, string? timestamps = null)
     {
         using var form = new MultipartFormDataContent();
@@ -542,16 +451,9 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         return new PresenceAttempt(response.StatusCode, ParseBody(await response.Content.ReadAsStringAsync(Ct)), key, challengeToken, sent);
     }
 
-    /// <summary>A new key of an attempt (a UUID: 36 letters, digits and hyphens).</summary>
     public static string NewKey() => Guid.NewGuid().ToString();
 
-    // ───── the segments ─────
-
-    /// <summary>
-    /// The way the platform staff and the org make a segment automatic: the segment of the whole org for the Italian card on <paramref name="channel"/> is created, qualified for the policy
-    /// and the weights in force (the report of the qualification is a hash that stands for it) and put in the automatic mode by the org. With the global flag on the segment may then approve
-    /// (<paramref name="approvalAllowed"/> true); with it off it never may, whatever its mode says. Returns its id.
-    /// </summary>
+    // A hash stands for the report of the qualification.
     public async Task<Guid> QualifySegmentAsync(ScenarioStay stay, string channel = IdentityChannels.AndroidChrome, bool approvalAllowed = true)
     {
         using var scope = Host.Services.CreateScope();
@@ -567,21 +469,15 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         return segment.Id;
     }
 
-    // ───── the retention ─────
-
-    /// <summary>One run of the hourly retention job of the identity verification, as the scheduler runs it, at the time of the clock of the host.</summary>
     public async Task RunRetentionAsync()
     {
         using var scope = Host.Services.CreateScope();
         await ActivatorUtilities.CreateInstance<IdentityEvidencePurgeJob>(scope.ServiceProvider).ExecuteAsync(Ct);
     }
 
-    /// <summary>What a platform administrator reads of the models and of the retention: <c>GET api/admin/biometrics/status</c>.</summary>
     public async Task<JsonElement> AdminStatusAsync() => await ReadOkAsync(await Admin().GetAsync("/api/admin/biometrics/status"));
 
-    // ───── what an answer says ─────
-
-    /// <summary>The body of a successful answer; a failure shows the status and the body of the problem (codes and texts of the application, never a picture).</summary>
+    // A failure shows the status and the body of the problem: codes and texts of the application, never a picture.
     public static async Task<JsonElement> ReadOkAsync(HttpResponseMessage response)
     {
         using (response)
@@ -592,14 +488,12 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         }
     }
 
-    /// <summary>The <c>code</c> of a problem answer (<c>ApiProblem</c>), or null when the body is not one.</summary>
     public static async Task<string?> ProblemCodeAsync(HttpResponseMessage response)
     {
         var body = ParseBody(await response.Content.ReadAsStringAsync(Ct));
         return body.ValueKind == JsonValueKind.Object && body.TryGetProperty("code", out var code) ? code.GetString() : null;
     }
 
-    /// <summary>The answer is the problem <paramref name="code"/> with the status <paramref name="status"/> (the guest or the host is told why, in a code the page translates).</summary>
     public static async Task AssertProblemAsync(HttpResponseMessage response, HttpStatusCode status, string code)
     {
         using (response)
@@ -609,7 +503,7 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         }
     }
 
-    /// <summary>The rows of the CSV of the pilot as the cells of each one by the name of its column; the first line is the header, a byte order mark is not a cell.</summary>
+    // The file starts with a byte order mark, which is not a cell.
     public static List<Dictionary<string, string>> ParseCsv(string csv)
     {
         var lines = csv.TrimStart((char)0xFEFF).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
@@ -625,7 +519,6 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         ];
     }
 
-    /// <summary>The CSV of the pilot of the caller, as rows.</summary>
     public static async Task<List<Dictionary<string, string>>> PilotRowsAsync(HttpClient host)
     {
         using var response = await host.GetAsync("/api/verification/metrics/export.csv", Ct);
@@ -633,15 +526,12 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         return ParseCsv(await response.Content.ReadAsStringAsync(Ct));
     }
 
-    /// <summary>The <c>identity</c> counters of <c>GET api/verification/metrics</c> of the caller.</summary>
     public static async Task<JsonElement> IdentityMetricsAsync(HttpClient host) =>
         (await ReadOkAsync(await host.GetAsync("/api/verification/metrics"))).GetProperty("identity");
 
-    /// <summary>The queue of the operator of the caller: the pending verifications.</summary>
     public static async Task<List<JsonElement>> PendingAsync(HttpClient host) =>
         [.. (await ReadOkAsync(await host.GetAsync("/api/verification/pending"))).EnumerateArray()];
 
-    /// <summary>The live evidence of a booking as the reviewer lists it: <c>[{ id, kind, createdAt, expiresAt }]</c>.</summary>
     public static async Task<List<JsonElement>> EvidenceListAsync(HttpClient host, Guid bookingId) =>
         [.. (await ReadOkAsync(await host.GetAsync($"/api/verification/{bookingId}/evidence"))).EnumerateArray()];
 
@@ -679,16 +569,16 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
             ["Features:CheckInIdentitySelfHosted"] = options.SelfHosted ? "true" : "false",
             ["Features:CheckInIdentityAutoApproval"] = options.AutoApproval ? "true" : "false",
             ["Features:CheckInIdentityReviewEvidence"] = options.ReviewEvidence ? "true" : "false",
-            // The legal texts of the identity step (the consent the guest answers) are read from the folder the API ships: the host of the tests runs in the Testing environment, which serves the drafts.
+            // The Testing environment serves the drafts of the legal texts, read from the folder the API ships.
             ["Legal:ContentPath"] = LegalTextFixtures.ShippedRoot(),
             ["IdentityVerification:PolicyFile"] = PolicyPath,
             ["IdentityVerification:PolicySha256"] = PolicyHash,
 
-            // The guests of the scenario send more in a minute than the limits of production allow: they are out of the way, as the factory does for the rest.
+            // The scenario sends more requests a minute than the limits of production allow.
             ["RateLimiting:GuestIdentity:PermitLimit"] = "1000",
             ["RateLimiting:GuestIdentityUpload:PermitLimit"] = "1000",
 
-            // The real store of the models is asked for nothing here: with no hash to prove it stops at once and loads (and downloads) nothing, and the store of the scenario answers instead.
+            // An empty hash makes the real store of the models stop at once, without loading or downloading anything: the store of the scenario answers instead.
             ["Biometrics:FaceDetector:Sha256"] = string.Empty,
             ["Biometrics:AntiSpoofing:Sha256"] = string.Empty,
             ["Biometrics:FaceRecognition:Sha256"] = string.Empty,
