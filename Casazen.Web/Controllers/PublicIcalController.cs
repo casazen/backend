@@ -28,7 +28,6 @@ public class PublicIcalController(
     {
         try
         {
-            // Neutral SUMMARY in the request language (Italian by default): never a name or a note.
             var ics = await syncService.BuildPublicExportAsync(
                 exportToken, localizer["ICalExportBusySummary"], cancellationToken);
             return Content(ics, "text/calendar; charset=utf-8");

@@ -50,20 +50,15 @@ public class UserServiceTests
             _loggerMock.Object);
     }
 
-    // ─── GetCurrentUserAsync ────────────────────────────────────────────────
-
     [Fact]
     public async Task GetCurrentUserAsync_UserExists_ReturnsExistingUser()
     {
-        // Arrange
         var sub = "auth0|existing123";
         var existing = new User { Id = sub, Email = "test@example.com", FirstName = "Mario", LastName = "Rossi" };
         _repoMock.Setup(r => r.GetBySubAsync(sub)).ReturnsAsync(existing);
 
-        // Act
         var result = await _service.GetCurrentUserAsync(sub, "test@example.com", "Mario", "Rossi");
 
-        // Assert
         Assert.Equal(existing, result);
         _repoMock.Verify(r => r.AddIfAbsentAsync(It.IsAny<User>()), Times.Never);
     }
@@ -87,21 +82,17 @@ public class UserServiceTests
     [Fact]
     public async Task GetCurrentUserAsync_UserNotExists_CreatesAndReturnsNewUser()
     {
-        // Arrange
         var sub = "auth0|newuser456";
         _repoMock.Setup(r => r.GetBySubAsync(sub)).ReturnsAsync((User?)null);
         _repoMock.Setup(r => r.AddIfAbsentAsync(It.IsAny<User>()))
                  .ReturnsAsync((User u) => (u, true));
 
-        // Act
         var result = await _service.GetCurrentUserAsync(sub, "new@example.com", "Luigi", "Verdi");
 
-        // Assert
         Assert.Equal(sub, result.Id);
         Assert.Equal("new@example.com", result.Email);
         Assert.Equal("Luigi", result.FirstName);
         Assert.True(result.IsActive);
-        // PL-02 (A1-05): no host role before the onboarding and its consents.
         Assert.Equal(UserRole.None, result.Role);
         Assert.Null(result.OnboardingCompletedAt);
         _repoMock.Verify(r => r.AddIfAbsentAsync(It.Is<User>(u => u.Id == sub)), Times.Once);
@@ -123,12 +114,9 @@ public class UserServiceTests
         Assert.Equal(stored.OrgId, result.OrgId);
     }
 
-    // ─── ChangeRoleAsync ────────────────────────────────────────────────────
-
     [Fact]
     public async Task ChangeRoleAsync_UserExists_AddsNewRoleAndRemovesOnlyPreviousRole()
     {
-        // Arrange
         var userId = "auth0|user789";
         var adminSub = "auth0|admin000";
         var user = new User { Id = userId, Email = "user@example.com", Role = UserRole.PropertyOwner };
@@ -136,10 +124,8 @@ public class UserServiceTests
         _repoMock.Setup(r => r.GetByIdAsync(userId)).ReturnsAsync(user);
         _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
 
-        // Act
         var result = await _service.ChangeRoleAsync(userId, UserRole.Admin, adminSub);
 
-        // Assert
         Assert.True(result.Succeeded);
         Assert.Equal(UserRole.Admin, user.Role);
         _repoMock.Verify(r => r.UpdateAsync(user), Times.Once);
@@ -198,10 +184,8 @@ public class UserServiceTests
     [Fact]
     public async Task ChangeRoleAsync_UserNotFound_ThrowsKeyNotFoundException()
     {
-        // Arrange
         _repoMock.Setup(r => r.GetByIdAsync("nonexistent")).ReturnsAsync((User?)null);
 
-        // Act + Assert
         await Assert.ThrowsAsync<KeyNotFoundException>(
             () => _service.ChangeRoleAsync("nonexistent", UserRole.Admin, "admin"));
     }
@@ -221,31 +205,25 @@ public class UserServiceTests
         _repoMock.Verify(r => r.UpdateAsync(It.IsAny<User>()), Times.Never);
     }
 
-    // ─── UpdateRolesAsync / GetRolesAsync (A1-17) ────────────────────────────
-
     [Fact]
     public async Task UpdateRolesAsync_AddsSupplierWithoutTouchingExistingHostRoles()
     {
-        // Arrange: a dual-role "Both" host (PropertyOwner + LongTermLandlord) that the admin also makes a supplier.
         var userId = "auth0|dual-role";
         var user = new User { Id = userId, Role = UserRole.PropertyOwner };
         _repoMock.Setup(r => r.GetByIdAsync(userId)).ReturnsAsync(user);
         _auth0Mock.Setup(a => a.GetUserRolesAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Auth0UserRolesResult(Auth0SyncResult.Synced, [UserRole.PropertyOwner, UserRole.LongTermLandlord]));
 
-        // Act
         var result = await _service.UpdateRolesAsync(
             userId, [UserRole.PropertyOwner, UserRole.LongTermLandlord, UserRole.Supplier], "auth0|admin");
 
-        // Assert
         Assert.True(result.RoleSync.Succeeded);
-        Assert.Equal(UserRole.PropertyOwner, user.Role); // highest-priority role still held stays primary
+        Assert.Equal(UserRole.PropertyOwner, user.Role);
         Assert.Equal([UserRole.Supplier], result.RolesGranted);
         Assert.Empty(result.RolesRevoked);
         _auth0Mock.Verify(a => a.AssignRolesAsync(
             userId, It.Is<IReadOnlyCollection<UserRole>>(r => r.SequenceEqual(new[] { UserRole.Supplier })), It.IsAny<CancellationToken>()), Times.Once);
         _auth0Mock.Verify(a => a.RemoveRolesAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<UserRole>>(), It.IsAny<CancellationToken>()), Times.Never);
-        // DB memberships reconciled with the whole target set: every held role granted, only Admin (not held) revoked.
         _membershipMock.Verify(m => m.GrantAsync(
             userId,
             It.Is<IEnumerable<UserRole>>(r => r.ToHashSet().SetEquals(new[] { UserRole.PropertyOwner, UserRole.LongTermLandlord, UserRole.Supplier })),
@@ -266,10 +244,8 @@ public class UserServiceTests
             .ReturnsAsync(new Auth0UserRolesResult(
                 Auth0SyncResult.Synced, [UserRole.PropertyOwner, UserRole.LongTermLandlord, UserRole.Supplier]));
 
-        // Act
         var result = await _service.UpdateRolesAsync(userId, [UserRole.PropertyOwner, UserRole.Supplier], "auth0|admin");
 
-        // Assert
         Assert.True(result.RoleSync.Succeeded);
         Assert.Equal([UserRole.PropertyOwner, UserRole.Supplier], result.Roles);
         Assert.Equal([UserRole.LongTermLandlord], result.RolesRevoked);
@@ -284,7 +260,6 @@ public class UserServiceTests
     [Fact]
     public async Task UpdateRolesAsync_NoManageableRoleLeftOnGuest_KeepsUnmanagedPrimaryRole()
     {
-        // A Guest (role outside the admin-manageable set) saved without any checkbox keeps Guest, not None.
         var userId = "auth0|guest";
         var user = new User { Id = userId, Role = UserRole.Guest };
         _repoMock.Setup(r => r.GetByIdAsync(userId)).ReturnsAsync(user);
@@ -341,7 +316,7 @@ public class UserServiceTests
 
         _auth0Mock.Verify(a => a.GetUserProfileAsync("auth0|complete"), Times.Never);
         Assert.All(incomplete, u => Assert.Equal(("Nome", "Cognome"), (u.FirstName, u.LastName)));
-        Assert.All(incomplete, u => Assert.StartsWith("u", u.Email)); // existing e-mail never overwritten
+        Assert.All(incomplete, u => Assert.StartsWith("u", u.Email));
         _repoMock.Verify(r => r.UpdateAsync(It.IsAny<User>()), Times.Exactly(6));
     }
 
@@ -434,7 +409,6 @@ public class UserServiceTests
     [Fact]
     public async Task UpdateRolesAsync_RemovesOneOfSeveralRoles_KeepsTheOthers()
     {
-        // Arrange: admin unchecks Supplier only; Admin (primary) and PropertyOwner stay.
         var userId = "auth0|multi-admin";
         var user = new User { Id = userId, Role = UserRole.Admin };
         _repoMock.Setup(r => r.GetByIdAsync(userId)).ReturnsAsync(user);
@@ -442,10 +416,8 @@ public class UserServiceTests
         _auth0Mock.Setup(a => a.GetUserRolesAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Auth0UserRolesResult(Auth0SyncResult.Synced, [UserRole.Admin, UserRole.PropertyOwner, UserRole.Supplier]));
 
-        // Act
         var result = await _service.UpdateRolesAsync(userId, [UserRole.Admin, UserRole.PropertyOwner], "auth0|admin");
 
-        // Assert
         Assert.True(result.RoleSync.Succeeded);
         Assert.Equal(UserRole.Admin, user.Role);
         Assert.Equal([UserRole.Supplier], result.RolesRevoked);
@@ -552,8 +524,6 @@ public class UserServiceTests
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() => _service.GetRolesAsync("nonexistent"));
     }
-
-    // ─── DeactivateUserAsync / ReactivateUserAsync (PL-03) ──────────────────
 
     [Fact]
     public async Task DeactivateUserAsync_OwnAccount_ThrowsCannotDeactivateSelfWithoutChanges()
@@ -708,8 +678,6 @@ public class UserServiceTests
         _auth0Mock.Verify(a => a.SetBlockedAsync("auth0|target", false, It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    // ─── CompleteOnboardingAsync ────────────────────────────────────────────
-
     [Fact]
     public async Task CompleteOnboardingAsync_ShortTerm_AddsRoleAndRemovesOnlyUnselectedOnboardingRole()
     {
@@ -735,7 +703,6 @@ public class UserServiceTests
             It.Is<IReadOnlyCollection<UserRole>>(list => list.Count == 1 && list.Contains(UserRole.PropertyOwner)),
             It.IsAny<CancellationToken>()),
             Times.Once);
-        // Admin / Supplier roles are never part of an onboarding removal.
         _auth0Mock.Verify(a => a.RemoveRolesAsync(
             sub,
             It.Is<IReadOnlyCollection<UserRole>>(list => list.Count == 1 && list.Contains(UserRole.LongTermLandlord)),
@@ -747,8 +714,6 @@ public class UserServiceTests
     [Fact]
     public async Task CompleteOnboardingAsync_NewOrg_MakesTheCallerItsOwnerRightAfterTheOrgAndBeforeTheRoleMemberships()
     {
-        // AM-01: the one who sets up an org is its owner (org member + account membership), written by the one service
-        // that owns that, once the org exists and before the owner's rental memberships.
         var sub = "auth0|onboard-owner";
         var orgId = Guid.NewGuid();
         var calls = new List<string>();
@@ -776,8 +741,6 @@ public class UserServiceTests
     [Fact]
     public async Task CompleteOnboardingAsync_OwnerRowCannotBeWritten_DoesNotGrantTheRoleMemberships()
     {
-        // A refusal of the org membership (e.g. the user already belongs to another org) stops the onboarding before the
-        // owner's rental memberships and the Auth0 roles are written.
         var sub = "auth0|onboard-owner-refused";
         var orgId = Guid.NewGuid();
         var user = new User { Id = sub, Email = "refused@b.com", FirstName = "Re", LastName = "Fused" };
@@ -911,7 +874,6 @@ public class UserServiceTests
     [Fact]
     public async Task CompleteOnboardingAsync_SetsOnboardingCompletedAtTimestamp()
     {
-        // Arrange
         var sub = "auth0|onboard2";
         var user = new User { Id = sub, Email = "c@d.com", FirstName = "C", LastName = "D", OnboardingCompletedAt = null };
         var beforeCall = DateTime.UtcNow;
@@ -919,19 +881,17 @@ public class UserServiceTests
         _repoMock.Setup(r => r.GetBySubAsync(sub)).ReturnsAsync(user);
         _repoMock.Setup(r => r.GetByIdAsync(sub)).ReturnsAsync(user);
         _repoMock.Setup(r => r.UpdateAsync(It.IsAny<User>()))
-            .Callback<User>(u => { /* capture updated user */ })
+            .Callback<User>(u => { })
             .Returns(Task.CompletedTask);
         _orgMock.Setup(o => o.EnsureOrgForUserAsync(
                 sub, "c@d.com", "C D", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OrgEntity { Id = Guid.NewGuid(), PlanTier = PlanTier.Starter, Name = "C D" });
 
-        // Act
         var (result, _, _) = await _service.CompleteOnboardingAsync(
             sub, RentalType.ShortTerm, "c@d.com", "C", "D");
 
         var afterCall = DateTime.UtcNow;
 
-        // Assert
         Assert.NotNull(result.OnboardingCompletedAt);
         Assert.True(result.OnboardingCompletedAt >= beforeCall && result.OnboardingCompletedAt <= afterCall);
     }
@@ -939,7 +899,6 @@ public class UserServiceTests
     [Fact]
     public async Task CompleteOnboardingAsync_DoesNotOverwriteExistingTimestamp()
     {
-        // Arrange
         var sub = "auth0|onboard3";
         var existingTimestamp = DateTime.UtcNow.AddDays(-1);
         var user = new User { Id = sub, Email = "e@f.com", FirstName = "E", LastName = "F", OnboardingCompletedAt = existingTimestamp };
@@ -951,28 +910,21 @@ public class UserServiceTests
                 sub, "e@f.com", "E F", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OrgEntity { Id = Guid.NewGuid(), PlanTier = PlanTier.Starter, Name = "E F" });
 
-        // Act
         var (result, _, _) = await _service.CompleteOnboardingAsync(
             sub, RentalType.ShortTerm, "e@f.com", "E", "F");
 
-        // Assert
         Assert.Equal(existingTimestamp, result.OnboardingCompletedAt);
     }
-
-    // ─── GetPagedAsync ──────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetPagedAsync_DelegatesToRepository()
     {
-        // Arrange
         var users = new List<User> { new() { Id = "u1" }, new() { Id = "u2" } };
         _repoMock.Setup(r => r.GetPagedAsync("mario", "PropertyOwner", true, 1, 20))
                  .ReturnsAsync((users, 2));
 
-        // Act
         var (result, count) = await _service.GetPagedAsync("mario", "PropertyOwner", true, 1, 20);
 
-        // Assert
         Assert.Equal(2, count);
         Assert.Equal(2, result.Count());
     }

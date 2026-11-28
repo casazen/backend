@@ -22,7 +22,6 @@ public class AdminServiceCinCompliancePostgresTests
         await using var database = PostgresTestDatabase.CreateMigrated("admincin");
         var orgId = await SeedOrgAsync(database);
 
-        // 25 valid CINs (real BDSR examples share a comune prefix here; only the random tail differs) — 2 pages of 20.
         await using (var seed = database.CreateContext())
         {
             for (var i = 0; i < 25; i++)
@@ -42,7 +41,6 @@ public class AdminServiceCinCompliancePostgresTests
         Assert.Equal(25, total2);
         Assert.Equal(20, page1.Count());
         Assert.Equal(5, page2.Count());
-        // No overlap between pages (SQL Skip/Take, not an in-memory slice of an already-paged list).
         Assert.Empty(page1.Select(i => i.PropertyId).Intersect(page2.Select(i => i.PropertyId)));
     }
 
@@ -55,10 +53,9 @@ public class AdminServiceCinCompliancePostgresTests
         await using (var seed = database.CreateContext())
         {
             seed.Properties.AddRange(
-                NewProperty(orgId, "Valid", "IT058091C27G5FFZDZ"), // real BDSR example (Roma)
+                NewProperty(orgId, "Valid", "IT058091C27G5FFZDZ"),
                 NewProperty(orgId, "Missing", null),
                 NewProperty(orgId, "Garbage", "NOT-A-CIN"),
-                // Old CasaZen-invented format, normalized: IT + 15 digits — must be "invalid", not "valid" (CO-01).
                 NewProperty(orgId, "LegacyFormat", "IT123451234567890"));
             await seed.SaveChangesAsync();
         }
@@ -142,7 +139,6 @@ public class AdminServiceCinCompliancePostgresTests
         return orgId;
     }
 
-    // Address+City+PostalCode+IsActive is unique (PC-06): every seeded property needs its own address.
     private static Property NewProperty(Guid orgId, string name, string? cinCode) => new()
     {
         Id = Guid.NewGuid(),

@@ -20,10 +20,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IComplianceConnectionHealthService
 {
-    /// <summary>
-    /// The health of the connection of one property, read now. Throws <c>NotFoundException</c> (<c>property_not_found</c>) for a property the
-    /// caller's org does not have.
-    /// </summary>
     Task<ComplianceConnectionHealth> GetAsync(Guid propertyId, CancellationToken ct);
 
     /// <summary>
@@ -38,19 +34,14 @@ public interface IComplianceConnectionHealthService
     Task<IReadOnlyDictionary<Guid, ComplianceConnectionHealth>> GetManyAsync(IReadOnlyCollection<Guid> propertyIds, CancellationToken ct);
 }
 
-/// <summary>The state of the automatic send of one communication of a property, as CasaZen can tell it.</summary>
 public enum ConnectionHealthState
 {
-    /// <summary>The channel manager sends and Octorate itself says so: the police account is valid and its automatic send is on, both read.</summary>
     Active = 1,
 
-    /// <summary>The channel manager is the sender and Octorate says it does not send (account not valid or automatic send off), or the credentials kept in CasaZen were refused.</summary>
     Inactive = 2,
 
-    /// <summary>CasaZen cannot tell: the API does not expose it, Octorate could not be reached, or there is no usable connection to read it from. The host is asked to confirm.</summary>
     Unknown = 3,
 
-    /// <summary>Nobody sends automatically: the host sends on the portals (or the property is outside Italy).</summary>
     Manual = 4,
 }
 
@@ -94,22 +85,14 @@ public sealed record ComplianceConnectionHealth(
     bool CredentialsUsable,
     DateTime CheckedAt);
 
-/// <summary>The rules and the limits of the connection health.</summary>
 public static class ComplianceConnectionHealthRules
 {
-    /// <summary>How long an answer of <see cref="IComplianceConnectionHealthService.GetManyAsync"/> is reused before Octorate is asked again.</summary>
     public static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
 
-    /// <summary>
-    /// How long the moment a property was last read is kept after its answer expired: the properties never read, or read longest ago, are read first
-    /// by <see cref="IComplianceConnectionHealthService.GetManyAsync"/>, so over the calls every property gets its turn.
-    /// </summary>
     public static readonly TimeSpan LastReadMemory = TimeSpan.FromHours(6);
 
-    /// <summary>The most properties <see cref="IComplianceConnectionHealthService.GetManyAsync"/> reads from Octorate in one call.</summary>
     public const int MaxLiveReadsPerCall = 5;
 
-    /// <summary>The reason of a property that was not read yet (over the limit of a call, no answer in memory).</summary>
     public const string NotCheckedYetReason = "connection_not_checked_yet";
 
     /// <summary>

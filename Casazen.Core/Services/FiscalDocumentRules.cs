@@ -9,26 +9,15 @@ namespace Casazen.Core.Services;
 /// </summary>
 public static class FiscalDocumentRules
 {
-    /// <summary>Italy.</summary>
     public const string Italy = "IT";
 
-    /// <summary>Switzerland.</summary>
     public const string Switzerland = "CH";
 
-    /// <summary>
-    /// True for a mode the API refuses (422 <c>issuer_mode_retired</c>): every defined mode but <see cref="DocumentIssuerMode.CasaZen"/>, retired on
-    /// 2026-11-14 and kept only for the stored rows.
-    /// </summary>
     public static bool IsRetiredMode(DocumentIssuerMode mode) => Enum.IsDefined(mode) && mode != DocumentIssuerMode.CasaZen;
 
-    /// <summary>The country a regime belongs to: <see cref="Switzerland"/> for the two Swiss regimes, <see cref="Italy"/> for the others.</summary>
     public static string CountryOfRegime(DocumentRegime regime) =>
         regime is DocumentRegime.SwissVatRegistered or DocumentRegime.SwissNotRegistered ? Switzerland : Italy;
 
-    /// <summary>
-    /// True when <paramref name="regime"/> may be the regime of an issuer of <paramref name="countryCode"/>: the Swiss regimes in Switzerland only, the
-    /// Italian ones everywhere else (an Italian regime abroad keeps the old checks; no tax rule applies to it and nothing is issued).
-    /// </summary>
     public static bool IsRegimeOfCountry(DocumentRegime regime, string? countryCode) =>
         IsSwiss(countryCode) == (CountryOfRegime(regime) == Switzerland);
 
@@ -36,7 +25,6 @@ public static class FiscalDocumentRules
     public static bool IsVatRegisteredRegime(DocumentRegime regime) =>
         regime is DocumentRegime.VatOrdinary or DocumentRegime.VatFlatRate or DocumentRegime.SwissVatRegistered;
 
-    /// <summary>True for an issuer in Switzerland.</summary>
     public static bool IsSwiss(string? countryCode) => string.Equals(countryCode?.Trim(), Switzerland, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>

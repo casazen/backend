@@ -26,10 +26,8 @@ public class ListingOutsideChangeJob(
 {
     public const string RecurringJobId = "listing-outside-change";
 
-    /// <summary>Every hour (UTC).</summary>
     public const string Cron = "0 * * * *";
 
-    /// <summary>The seconds a run waits for the previous one.</summary>
     public const int LockTimeoutSeconds = 300;
 
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
@@ -39,7 +37,6 @@ public class ListingOutsideChangeJob(
         if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
             return;
 
-        // A published channel is read whatever it keeps (the read also confirms it); an accepted one only when it has a baseline to compare.
         var pushed = await db.ListingChannelStates
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()

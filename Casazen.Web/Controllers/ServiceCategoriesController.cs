@@ -17,7 +17,6 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.Authenticated)]
 public class ServiceCategoriesController : ControllerBase
 {
-    /// <summary>Every service category code, in display order.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(ServiceCategoriesResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

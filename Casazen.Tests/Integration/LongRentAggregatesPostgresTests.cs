@@ -56,9 +56,6 @@ public class LongRentAggregatesPostgresTests : IAsyncLifetime
             await _database.DisposeAsync();
     }
 
-    // --- One command, whatever the size -------------------------------------------------------------------
-
-    /// <summary>Counts the commands a context sends to the server.</summary>
     private sealed class CommandCounter : DbCommandInterceptor
     {
         private int _count;
@@ -83,7 +80,6 @@ public class LongRentAggregatesPostgresTests : IAsyncLifetime
     private AppDbContext NewCountingContext(CommandCounter counter) =>
         new(new DbContextOptionsBuilder<AppDbContext>(_database!.CreateOptions()).AddInterceptors(counter).Options);
 
-    /// <summary>The commands each call sends, by name, for a caller with the given reach (by default the owner of the properties).</summary>
     private async Task<Dictionary<string, int>> CommandsPerCallAsync(HostScope? reach = null)
     {
         var scope = reach ?? new HostScope(_orgId, OwnerId);
@@ -115,22 +111,15 @@ public class LongRentAggregatesPostgresTests : IAsyncLifetime
         await AddLeasesAsync(3);
         var before = await CommandsPerCallAsync();
 
-        // The lease list is the one statement of the list + the one that asks which registered leases have an active rent plan (LR-01b: the
-        // stage and the next step of each row; none more for a draft-free list), the register the numbers of the month + the page + the org,
-        // the agenda the leases + the installments, the overview its five + the lease list it takes "now" from (those two); the lookup of the
-        // ids one.
         Assert.Equal(
             new Dictionary<string, int> { ["lease list"] = 2, ["rent register"] = 3, ["deadlines"] = 2, ["overview"] = 7, ["find installments"] = 1 },
             before);
 
-        // Ten times the leases, each with its tenants, its schedule and twelve installments.
         await AddLeasesAsync(27);
         var after = await CommandsPerCallAsync();
 
         Assert.Equal(before, after);
 
-        // The collaborator «Solo alcuni» (AM-03), given some of the properties, reads its grants inside the same statements: the same
-        // commands, not one more. (One who was given nothing sees nothing, and the register then has no page to read.)
         var collaborator = await GrantSomePropertiesToACollaboratorAsync(10);
         await using (var db = _database!.CreateContext())
         {
@@ -148,7 +137,6 @@ public class LongRentAggregatesPostgresTests : IAsyncLifetime
         var world = await HostScopeScenario.SeedAsync(seeding);
         await LongRentHostScopePoints.SeedAsync(seeding, world);
 
-        // All the points are run and reported together, so one run of CI tells everything that is wrong.
         var failures = new List<string>();
         var points = new (string Name, Func<AppDbContext, HostScopeWorld, Task> Run)[]
         {
@@ -188,15 +176,12 @@ public class LongRentAggregatesPostgresTests : IAsyncLifetime
         {
             Assert.Equal("Giulia", r.TenantFirstName);
             Assert.Equal("Verdi", r.TenantLastName);
-            // September and October unpaid and past due; November and December to come; the earlier months paid.
             Assert.Equal(new DateOnly(2026, 9, 5), r.NextRentDueDate);
             Assert.Equal(2, r.OverdueRentCount);
             Assert.Equal(1800m, r.OverdueRentAmount);
             Assert.Equal(34, r.OverdueDays);
         });
     }
-
-    // --- The reminders take turns ---------------------------------------------------------------------------
 
     private RentBillingService NewBilling(AppDbContext db, RecordingEmailQueue emails, TimeProvider clock) => new(
         db,
@@ -282,7 +267,6 @@ public class LongRentAggregatesPostgresTests : IAsyncLifetime
 
             var outcomes = await Task.WhenAll(Task.Run(RemindAsync), Task.Run(PayAsync));
 
-            // The payment always lands; the reminder either went out before it (and then it is recorded) or met the paid installment.
             Assert.Equal("paid", outcomes[1]);
             await using var check = _database!.CreateContext();
             var stored = await check.RentLedgerEntries.IgnoreQueryFilters().AsNoTracking().SingleAsync(e => e.Id == installment);
@@ -306,7 +290,6 @@ public class LongRentAggregatesPostgresTests : IAsyncLifetime
     {
         var (leaseId, installments) = await AddOneLeaseWithOpenInstallmentsAsync(1);
         var emails = new RecordingEmailQueue();
-        // 08:00:00.1234567: PostgreSQL keeps microseconds (.123456), the clock has 100 nanoseconds.
         var clock = new FakeTimeProvider(Now.AddTicks(1_234_567));
 
         await using (var db = _database!.CreateContext())
@@ -316,7 +299,6 @@ public class LongRentAggregatesPostgresTests : IAsyncLifetime
         var stored = await check.RentLedgerEntries.IgnoreQueryFilters().AsNoTracking().SingleAsync(e => e.Id == installments[0]);
         Assert.Equal(0, stored.LastReminderAt!.Value.Ticks % 10);
 
-        // Exactly the interval after the recorded instant: allowed. One microsecond before: not.
         clock.SetUtcNow(new DateTimeOffset(stored.LastReminderAt.Value.AddHours(24).AddTicks(-10), TimeSpan.Zero));
         await using (var db = _database.CreateContext())
         {
@@ -329,9 +311,6 @@ public class LongRentAggregatesPostgresTests : IAsyncLifetime
             Assert.Equal(2, (await NewBilling(db, emails, clock).SendReminderAsync(leaseId, installments[0], null)).ReminderCount);
     }
 
-    // --- seeding ----------------------------------------------------------------------------------------
-
-    /// <summary>A collaborator of the org «Solo alcuni», given <paramref name="count"/> of the owner properties: its scope.</summary>
     private async Task<HostScope> GrantSomePropertiesToACollaboratorAsync(int count)
     {
         const string collaboratorId = "auth0|lr01-postgres-collaborator";
@@ -361,10 +340,6 @@ public class LongRentAggregatesPostgresTests : IAsyncLifetime
         return new HostScope(_orgId, GrantedToUserId: collaboratorId);
     }
 
-    /// <summary>
-    /// <paramref name="count"/> more leases of the owner, each with its tenant, its schedule and twelve installments of 2026: January to
-    /// August paid, September to December to collect (September and October are past due on 9 October).
-    /// </summary>
     private async Task<List<Guid>> AddLeasesAsync(int count)
     {
         await using var db = _database!.CreateContext();
@@ -398,7 +373,6 @@ public class LongRentAggregatesPostgresTests : IAsyncLifetime
         return ids;
     }
 
-    /// <summary>One lease with <paramref name="count"/> open installments (January, February… of 2026: all past due on 9 October).</summary>
     private async Task<(Guid LeaseId, List<Guid> Installments)> AddOneLeaseWithOpenInstallmentsAsync(int count)
     {
         await using var db = _database!.CreateContext();

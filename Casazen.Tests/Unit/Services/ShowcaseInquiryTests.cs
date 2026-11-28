@@ -22,8 +22,6 @@ public class ShowcaseInquiryTests
 {
     private const string Words = "Vorrei far sistemare la ringhiera del balcone e controllare la porta d'ingresso che si blocca.";
 
-    // ─── Before the check ────────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Create_KeepsWhatTheCustomerWrote_OnlyTheCustomerIsWrittenTo_TheTokenIsInTheFragmentOfTheLink()
     {
@@ -40,16 +38,13 @@ public class ShowcaseInquiryTests
         Assert.Equal(result.ExpiresAt, inquiry.ExpiresAt);
         Assert.Null(inquiry.ConsumedAt);
         Assert.Null(inquiry.ServiceRequestId);
-        // The column encrypts it (EncryptedColumnsTests); here it is only there to be read when the address is checked.
         Assert.Contains("ringhiera", inquiry.Payload);
 
-        // Decision D34: nothing a stranger types reaches the supplier before the address is checked.
         Assert.Empty(await s.ShowcaseRequestsAsync());
         Assert.Empty(s.Pushes);
         var email = Assert.Single(s.Emails.Snapshot());
         Assert.Equal(ShowcaseScenario.CustomerEmail, email.To);
         Assert.Equal(EmailTemplates.Names.SupplierInquiryVerification, email.Template);
-        // The id is in the query and the token in the fragment, which a browser never sends to a server: it is in no access log.
         Assert.Matches($"/fornitori/{ShowcaseScenario.Slug}/conferma\\?inquiry={result.Id:D}#token=[A-Za-z0-9_-]{{43}}", email.Content.HtmlBody);
         Assert.DoesNotContain("ringhiera", email.Content.Subject + email.Content.HtmlBody);
     }
@@ -70,7 +65,6 @@ public class ShowcaseInquiryTests
         Assert.Single(await InquiriesAsync(s));
         Assert.Empty(s.Emails.Snapshot());
 
-        // Once it lapsed (and the upkeep job has not yet deleted it) the same id starts again, with a new link.
         s.Clock.Advance(TimeSpan.FromMinutes(40));
         var afterTheTime = await s.Kit.Inquiry.CreateAsync(supplier, Input(clientRequestId: clientRequestId));
 
@@ -90,18 +84,15 @@ public class ShowcaseInquiryTests
         s.ForgetNotifications();
 
         await Assert.ThrowsAsync<ShowcaseBookingTooManyHoldsException>(async () => await s.Kit.Inquiry.CreateAsync(supplier, Input()));
-        // The spelling of the address does not matter: capitals are the same address.
         await Assert.ThrowsAsync<ShowcaseBookingTooManyHoldsException>(
             async () => await s.Kit.Inquiry.CreateAsync(supplier, Input(email: "MARIO.ROSSI@Example.com")));
         Assert.Equal(3, (await InquiriesAsync(s)).Count);
         Assert.Empty(s.Emails.Snapshot());
 
-        // Checking one does not free the place: the request it became waits for the supplier's answer, and counts as much as before.
         await s.Kit.Inquiry.ConfirmEmailAsync(supplier, first.Result.Id, first.Token);
         s.ForgetNotifications();
         await Assert.ThrowsAsync<ShowcaseBookingTooManyHoldsException>(async () => await s.Kit.Inquiry.CreateAsync(supplier, Input()));
 
-        // Another person is not held back by it.
         await s.Kit.Inquiry.CreateAsync(supplier, Input(email: "altra.persona@example.com"));
         Assert.Single(s.Emails.Snapshot());
     }
@@ -129,8 +120,6 @@ public class ShowcaseInquiryTests
         Assert.Empty(await InquiriesAsync(s));
         Assert.Empty(s.Emails.Snapshot());
     }
-
-    // ─── The check of the address ────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task ConfirmEmail_CreatesTheRequestOnMeasure_WithoutATime_AndTheWordsAreItsFirstMessage()
@@ -162,7 +151,6 @@ public class ShowcaseInquiryTests
         Assert.Null(request.LocationAddress);
         Assert.True(ServiceCategories.IsKnown(request.Category));
         Assert.Equal(string.Empty, request.Notes);
-        // The hour starts when the address is checked, not when the customer wrote.
         Assert.Equal(now.AddMinutes(60), request.ResponseDueAt);
 
         var message = Assert.Single(await MessagesAsync(s, request.Id));
@@ -176,14 +164,12 @@ public class ShowcaseInquiryTests
             new ShowcaseInquiryConfirmation(request.PublicCode!, ServiceRequestStatus.Richiesto, null, request.ResponseDueAt, AlreadyConfirmed: false),
             confirmation);
 
-        // The inquiry becomes the request: its payload goes (the words are the message now), the token hash stays for the replay.
         var consumed = Assert.Single(await InquiriesAsync(s));
         Assert.Equal(now, consumed.ConsumedAt);
         Assert.Equal(request.Id, consumed.ServiceRequestId);
         Assert.Null(consumed.Payload);
         Assert.Equal(ShowcaseBookingTokens.Hash(token), consumed.TokenHash);
 
-        // The customer of the supplier is the one of the bookings: name, e-mail, phone, language and the consent given.
         Assert.Equal(ShowcaseScenario.CustomerName, customer.FullName);
         Assert.Equal(ShowcaseScenario.CustomerEmail, customer.Email);
         Assert.Equal("+393331234567", customer.Phone);
@@ -237,7 +223,6 @@ public class ShowcaseInquiryTests
         foreach (var secret in new[] { "Mario", "ringhiera", "balcone" })
             Assert.DoesNotContain(secret, pushText);
 
-        // The customer gets the receipt, with the code to find the request again; not its own words either.
         var receipt = Assert.Single(emails, e => e.To == ShowcaseScenario.CustomerEmail);
         Assert.Equal(EmailTemplates.Names.SupplierInquiryReceipt, receipt.Template);
         Assert.Contains(BookingCodes.Format(confirmation.PublicCode), receipt.Content.HtmlBody);
@@ -332,8 +317,6 @@ public class ShowcaseInquiryTests
         Assert.Empty(s.Emails.Snapshot());
     }
 
-    // ─── Helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────
-
     private static ShowcaseInquiryInput Input(
         string? email = ShowcaseScenario.CustomerEmail,
         Guid? clientRequestId = null,
@@ -356,7 +339,6 @@ public class ShowcaseInquiryTests
         return change is null ? input : change(input);
     }
 
-    /// <summary>An inquiry made through the service: the result, and the token that the e-mail to the customer carries.</summary>
     private static async Task<(ShowcaseInquiryResult Result, string Token)> CreatedAsync(
         ServiceRequestScenario s,
         SupplierProfile supplier,

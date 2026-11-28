@@ -43,7 +43,6 @@ public sealed class IdentityPilotExportTests
 
     private static readonly CancellationToken Ct = CancellationToken.None;
 
-    /// <summary>What each column may hold, as a closed alphabet: a cell outside of it is a defect, whatever the data was.</summary>
     private static readonly Dictionary<string, Regex> Alphabet = new(StringComparer.Ordinal)
     {
         ["attempt_ref"] = new("^[0-9a-f]{16}$"),
@@ -76,7 +75,6 @@ public sealed class IdentityPilotExportTests
         return string.Concat(file.Lines());
     }
 
-    /// <summary>The rows of a CSV of RFC 4180 as text (a cell in quotes may hold a comma, a quote doubled, or a line break), the lines ended by CRLF.</summary>
     private static List<List<string>> Parse(string csv)
     {
         var rows = new List<List<string>>();
@@ -123,7 +121,6 @@ public sealed class IdentityPilotExportTests
         return rows;
     }
 
-    /// <summary>The data rows of a file, each as column name to cell, after checking that the header is the contract and that every row has every column.</summary>
     private static List<Dictionary<string, string>> Rows(string csv)
     {
         var table = Parse(csv);
@@ -132,9 +129,6 @@ public sealed class IdentityPilotExportTests
         return table.Skip(1).Select(row => table[0].Zip(row).ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal)).ToList();
     }
 
-    // ─── The header and the rows ─────────────────────────────────────────────────────────────────────────
-
-    /// <summary>AC1: the header is exactly the contract, the file of a period with nothing in it is the header alone, and the lines end with CRLF (RFC 4180).</summary>
     [Fact]
     public async Task IdentityPilotExport_TheHeaderRowIsExact_AndAnEmptyPeriodIsTheHeaderAlone()
     {
@@ -148,10 +142,6 @@ public sealed class IdentityPilotExportTests
         Assert.Equal(Header + "\r\n", text);
     }
 
-    /// <summary>
-    /// AC1, AC3 of the brief: one row for each step opened in the period by the scope, oldest first, with the cells the contract lists: the pseudonym of the attempt, the property, the
-    /// times in UTC ISO 8601, the format and the channel (<c>unknown</c> and <c>web:other</c> for what is missing), the category, what the policy decided and what a person did.
-    /// </summary>
     [Fact]
     public async Task IdentityPilotExport_OneRowForEachStepOpened_WithTheCellsOfTheContract()
     {
@@ -186,7 +176,6 @@ public sealed class IdentityPilotExportTests
         var abandoned = world.AddSession(world.AddStay(world.GrantedPropertyId), IdentityMetricsWorld.Now.UtcDateTime.AddDays(-2));
         var inProgress = world.AddSession(world.AddStay(world.GrantedPropertyId), IdentityMetricsWorld.Now.UtcDateTime.AddHours(-1));
 
-        // Not in the file: opened before the period, and a step of the other org.
         world.AddSession(world.AddStay(world.GrantedPropertyId), IdentityMetricsWorld.From.AddSeconds(-1), IdentityMetricsWorld.From.AddMinutes(5), IdentityOutcomeCodes.Review);
         world.AddSession(world.AddStay(world.ForeignPropertyId), IdentityMetricsWorld.At(10), IdentityMetricsWorld.At(10, 10, 5), IdentityOutcomeCodes.Review);
 
@@ -207,32 +196,24 @@ public sealed class IdentityPilotExportTests
         Assert.Equal(("reject", "2026-11-10T10:35:00.000Z", "1800", "1200"), (review["human_outcome"], review["human_decided_at"], review["review_seconds"], review["duration_ms"]));
         Assert.Equal((IdentityMetricsWorld.PolicyVersion, IdentityMetricsWorld.PolicyHash[..12]), (review["policy_version"], review["policy_hash_prefix"]));
 
-        // An automatic approval: nothing failed, nobody else decided, no review time.
         var auto = rows[1];
         Assert.Equal(("auto_approved", "web:android-chrome", "automatic", "approve", string.Empty), (auto["outcome_code"], auto["channel"], auto["decision_mode"], auto["shadow_outcome"], auto["reason_codes"]));
         Assert.Equal((string.Empty, string.Empty, string.Empty, "800"), (auto["human_outcome"], auto["human_decided_at"], auto["review_seconds"], auto["duration_ms"]));
 
-        // A refusal: closed, no decision of the policy; the format and the browser that are not known are named, not left out.
         var refusal = rows[2];
         Assert.Equal(("consent_refused", "unknown", "web:other", "2026-11-12T10:01:00.000Z"), (refusal["outcome_code"], refusal["format_id"], refusal["channel"], refusal["closed_at"]));
         Assert.All(
             new[] { "decision_mode", "shadow_outcome", "reason_codes", "human_outcome", "human_decided_at", "review_seconds", "duration_ms", "policy_version", "policy_hash_prefix" },
             column => Assert.Equal(string.Empty, refusal[column]));
 
-        // A step still open: abandoned once old enough, in progress before; neither has a time of closing.
         Assert.Equal(("abandoned", string.Empty), (rows[3]["outcome_code"], rows[3]["closed_at"]));
         Assert.Equal(("in_progress", string.Empty), (rows[4]["outcome_code"], rows[4]["closed_at"]));
 
-        // The pseudonym is stable, tells the org apart, and is not the id of the session.
         Assert.Equal(IdentityPilotExport.AttemptRef(reviewed.Id, world.OrgId), IdentityPilotExport.AttemptRef(reviewed.Id, world.OrgId));
         Assert.NotEqual(IdentityPilotExport.AttemptRef(reviewed.Id, world.OrgId), IdentityPilotExport.AttemptRef(reviewed.Id, world.OtherOrgId));
         Assert.DoesNotContain(reviewed.Id.ToString("N")[..8], text, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// The file and the counters are made of the same records, so they cannot disagree: for every scope the rows are the steps opened, and the rows of each category are the count of
-    /// that category (AC4: the scope is the one of the metrics).
-    /// </summary>
     [Fact]
     public async Task IdentityPilotExport_TheRowsAreTheStepsOfTheCounters_ForTheSameScope()
     {
@@ -251,7 +232,6 @@ public sealed class IdentityPilotExportTests
             world.AddSession(world.AddStay(property), IdentityMetricsWorld.Now.UtcDateTime.AddHours(-1));
         }
 
-        // A step of the other org planted on a stay of this one is nobody's.
         world.AddSession(world.AddStay(world.GrantedPropertyId), IdentityMetricsWorld.At(13), IdentityMetricsWorld.At(13, 10, 5), IdentityOutcomeCodes.AutoApproved, orgId: world.OtherOrgId);
         await world.SaveAsync();
 
@@ -278,8 +258,6 @@ public sealed class IdentityPilotExportTests
                 Assert.Equal(metrics.Outcomes.Of(category), rows.Count(row => row["outcome_code"] == IdentityOutcomeCategories.CodeOf(category)));
         }
     }
-
-    // ─── Privacy and security ────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Proof (privacy): the file has no personal data. A guest with a name, an e-mail and a document number (on the guest and on the stay guest), a note of the operator with a
@@ -323,11 +301,9 @@ public sealed class IdentityPilotExportTests
             Assert.DoesNotContain(forbidden, text, StringComparison.OrdinalIgnoreCase);
         }
 
-        // What of the reasons is left is codes only: the checks that failed, and not the entry that held a name.
         var row = Assert.Single(Rows(text));
         Assert.Equal("similarity:failed|liveness:failed|processing:error", row["reason_codes"]);
 
-        // A closed alphabet for every column.
         foreach (var cells in Rows(text))
         {
             foreach (var (column, value) in cells)
@@ -335,11 +311,6 @@ public sealed class IdentityPilotExportTests
         }
     }
 
-    /// <summary>
-    /// The row of the file follows the same rule as the counters: the step an abandonment closed after a later session of the stay decided has no decision cells (the retention job closes
-    /// it at the time of the job, so its time holds the row of the later session), and the later step keeps its own: the shadow outcome, the time of the presence, the decision of the
-    /// person and the time of the review.
-    /// </summary>
     [Fact]
     public async Task IdentityPilotExport_AnAbandonedStepClosedAfterALaterDecision_HasNoDecision_AndTheLaterStepKeepsItsOwn()
     {
@@ -360,7 +331,6 @@ public sealed class IdentityPilotExportTests
             (second["decision_mode"], second["shadow_outcome"], second["human_outcome"], second["human_decided_at"], second["review_seconds"], second["duration_ms"]));
     }
 
-    /// <summary>Proof (security): a cell that starts with <c>=</c>, <c>+</c>, <c>-</c>, <c>@</c>, a tab or a carriage return gets a leading apostrophe, and a cell that needs quotes gets them (RFC 4180).</summary>
     [Theory]
     [InlineData("=1+1", "'=1+1")]
     [InlineData("+1", "'+1")]
@@ -407,10 +377,6 @@ public sealed class IdentityPilotExportTests
         Assert.Equal(new[] { '\t', '\r', '+', '-', '=', '@' }, neutralized);
     }
 
-    /// <summary>
-    /// Proof (security), on the file: hostile text stored in the columns the export copies (the format, the channel, the version of the policy) never starts a cell the way a formula
-    /// does; each is written with its leading apostrophe, quoted where it has a comma or a quote.
-    /// </summary>
     [Fact]
     public async Task IdentityPilotExport_NeutralizesFormulas()
     {
@@ -428,7 +394,6 @@ public sealed class IdentityPilotExportTests
         var text = await TextAsync(world);
         var table = Parse(text);
 
-        // After the file is read back as a spreadsheet would: no cell of any row starts like a formula, and the hostile ones are the text with an apostrophe in front.
         Assert.Equal(hostile.Length + 1, table.Count);
         foreach (var cell in table.Skip(1).SelectMany(row => row))
             Assert.True(cell.Length == 0 || "=+-@\t\r".IndexOf(cell[0], StringComparison.Ordinal) < 0, $"a cell starts like a formula: {cell}");
@@ -437,16 +402,9 @@ public sealed class IdentityPilotExportTests
         foreach (var value in hostile)
             Assert.Contains("'" + value, formats.Concat(table.Skip(1).Select(row => row[5])).Concat(table.Skip(1).Select(row => row[15])));
 
-        // The one with a comma and quotes is in quotes with the quotes doubled.
         Assert.Contains("\"'=HYPERLINK(\"\"http://example.invalid\"\",\"\"x\"\")\"", text, StringComparison.Ordinal);
     }
 
-    // ─── The endpoint ────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// AC4: the export is under the policy of the operators (the owner, the administrators and the property managers, for the properties they reach), like the rest of the queue and
-    /// the metrics, and behind both flags of the self-hosted verification; anonymous never.
-    /// </summary>
     [Fact]
     public void ExportPilot_IsUnderThePolicyOfTheMetrics_BehindBothFlags()
     {
@@ -461,13 +419,11 @@ public sealed class IdentityPilotExportTests
         Assert.Empty(method.GetCustomAttributes<AllowAnonymousAttribute>(inherit: true));
         Assert.DoesNotContain(method.GetCustomAttributes<AuthorizeAttribute>(inherit: true), attribute => attribute.Policy != CasazenPolicies.VerificationDecision);
 
-        // The same attributes that decide who may ask: the policies of the two actions are the same set.
         Assert.Equal(
             metrics.GetCustomAttributes<AuthorizeAttribute>(inherit: true).Select(attribute => attribute.Policy).Order(),
             method.GetCustomAttributes<AuthorizeAttribute>(inherit: true).Select(attribute => attribute.Policy).Order());
     }
 
-    /// <summary>The gate: with either flag off the middleware answers 404 like a route that does not exist, before anything else; with both on the request goes through.</summary>
     [Theory]
     [InlineData(false, false, false)]
     [InlineData(true, false, false)]
@@ -497,7 +453,6 @@ public sealed class IdentityPilotExportTests
         Assert.Equal(reached ? StatusCodes.Status200OK : StatusCodes.Status404NotFound, context.Response.StatusCode);
     }
 
-    /// <summary>A direct call keeps the gate honest too: with a flag off the action is a 404 and reads nothing (the database it was given is disposed, so a read would throw).</summary>
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
@@ -521,7 +476,6 @@ public sealed class IdentityPilotExportTests
         harness.Scopes.VerifyNoOtherCalls();
     }
 
-    /// <summary>AC4: the period is the one of the metrics (30 days by default, 366 at most, never ending before it starts), the same 400, and nothing is read for a refused one.</summary>
     [Theory]
     [InlineData("2025-11-27", "2026-11-27", true)]
     [InlineData("2025-11-26", "2026-11-27", false)]
@@ -553,7 +507,6 @@ public sealed class IdentityPilotExportTests
         Assert.Equal("verification_metrics_period_invalid", Assert.IsType<ProblemDetails>(problem.Value).Extensions["code"]);
     }
 
-    /// <summary>A caller with no reach is 401 and the export reads nothing; the scope is never widened to the whole org.</summary>
     [Fact]
     public async Task ExportPilot_WithoutAScope_Is401_AndReadsNothing()
     {
@@ -596,7 +549,6 @@ public sealed class IdentityPilotExportTests
         Assert.StartsWith("attachment", disposition, StringComparison.Ordinal);
         Assert.Contains("identity-verifications-2026-11-01-2026-11-30.csv", disposition, StringComparison.Ordinal);
 
-        // The byte order mark, then the file.
         Assert.Equal([0xEF, 0xBB, 0xBF], body[..3]);
         var text = new UTF8Encoding(false).GetString(body, 3, body.Length - 3);
         Assert.StartsWith(Header + "\r\n", text, StringComparison.Ordinal);
@@ -605,7 +557,6 @@ public sealed class IdentityPilotExportTests
         Assert.Equal(IdentityPilotExport.AttemptRef(session.Id, world.OrgId), only["attempt_ref"]);
         Assert.Equal(world.GrantedPropertyId.ToString("D"), only["property_id"]);
 
-        // One line in the log: who, how many, which days; never a cell. And no entry of the activity log.
         var line = Assert.Single(harness.Log.Entries);
         Assert.Contains(VerificationEndpointHarness.Operator, line.Message, StringComparison.Ordinal);
         Assert.Contains(" 1 rows", line.Message, StringComparison.Ordinal);
@@ -617,10 +568,6 @@ public sealed class IdentityPilotExportTests
         Assert.DoesNotContain(typeof(IActivityLog), typeof(VerificationController).GetConstructors().SelectMany(constructor => constructor.GetParameters()).Select(parameter => parameter.ParameterType));
     }
 
-    /// <summary>
-    /// Streaming: every read is done before the first byte (<see cref="IdentityPilotExport.OpenAsync"/>), so an error of the database is an error answer and not a file cut short, and
-    /// the lines are then written one at a time with no further read (the file still writes with its database gone).
-    /// </summary>
     [Fact]
     public async Task IdentityPilotExport_OpenReadsEverything_ThenTheLinesComeOneByOne()
     {
@@ -677,7 +624,6 @@ public sealed class IdentityPilotExportTests
         }
     }
 
-    /// <summary>Registration: the counters and the exporter are registered with the self-hosted verification, scoped like the database they read, and resolve with what the application has.</summary>
     [Fact]
     public void AddSelfHostedIdentityVerification_RegistersTheCountersAndTheExporter_Scoped()
     {

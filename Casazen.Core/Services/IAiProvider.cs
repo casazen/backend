@@ -14,8 +14,6 @@ public record AiGenerationResult(
     string Content, int PromptTokens, int CompletionTokens, AiModelTier TierUsed, bool FromCache,
     bool ProviderConfigured = true, int ImagesRead = 0);
 
-/// <summary>An image sent with a prompt to a model that can read it (vision): the bytes and their content type.</summary>
-/// <param name="MediaType"><c>image/jpeg</c>, <c>image/png</c> or <c>image/webp</c>.</param>
 public sealed record AiImage(string MediaType, byte[] Data);
 
 /// <summary>
@@ -37,7 +35,6 @@ public sealed record AiRequest(
     int? MaxCompletionTokens = null,
     bool DisableThinking = false)
 {
-    /// <summary>The instructions and the request as one text, for a provider that takes a single prompt.</summary>
     public string ToTextPrompt() =>
         string.IsNullOrWhiteSpace(SystemPrompt) ? Prompt : $"{SystemPrompt}\n\n{Prompt}";
 }
@@ -47,10 +44,6 @@ public interface IAiProvider
     Task<AiGenerationResult> GenerateAsync(
         string prompt, AiModelTier tier, string cacheKey, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// A call with instructions and images (<see cref="AiRequest"/>). This default sends the text alone and reads no image
-    /// (<see cref="AiGenerationResult.ImagesRead"/> 0): a provider that can read images overrides it.
-    /// </summary>
     Task<AiGenerationResult> GenerateAsync(
         AiRequest request, AiModelTier tier, string cacheKey, CancellationToken cancellationToken = default) =>
         GenerateAsync(request.ToTextPrompt(), tier, cacheKey, cancellationToken);

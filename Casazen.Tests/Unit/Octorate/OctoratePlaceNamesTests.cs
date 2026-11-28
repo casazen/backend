@@ -24,10 +24,6 @@ public class OctoratePlaceNamesTests
         new OctoratePlaceEntry("San Pietro", "405022002", "CITY"),
     ]);
 
-    /// <summary>
-    /// Proof (data, O2): the police code of a comune, as CasaZen holds it, becomes the exact name of Octorate's table in the payload, whatever the guest
-    /// typed (case, accents, a nickname of the place); the place of issue of a document too.
-    /// </summary>
     [Fact]
     public void OctoratePlaceNames_PoliceCodeToRecognizedName_Test()
     {
@@ -44,11 +40,9 @@ public class OctoratePlaceNamesTests
         Assert.True(places.IsRecognized);
         Assert.Equal(("ROMA", "COMO", "ROMA"), (places.BirthCity, places.ResidenceCity, places.DocumentIssuePlace));
 
-        // What leaves is what the table says, not what the guest typed.
         var upsert = OctorateCheckInMapper.Map(guest, new DateOnly(2026, 11, 20), new DateOnly(2026, 11, 23), draft: false, null, null, places);
         Assert.Equal(("ROMA", "COMO", "ROMA"), (upsert.BirthCity, upsert.ResidenceCity, upsert.DocumentIssuePlace));
 
-        // Without the table (an old caller) the names go as typed, as before.
         var legacy = OctorateCheckInMapper.Map(guest, new DateOnly(2026, 11, 20), new DateOnly(2026, 11, 23), draft: false, null, null);
         Assert.Equal(("roma capitale", "como (co)"), (legacy.BirthCity, legacy.ResidenceCity));
     }
@@ -57,7 +51,7 @@ public class OctoratePlaceNamesTests
     public void ACodeTheTableDoesNotKnow_HoldsThatGuestBack_NamingTheField()
     {
         var guest = Guest();
-        guest.BirthComuneCode = "499999999"; // not in the table, whatever the guest typed
+        guest.BirthComuneCode = "499999999";
         guest.BirthComuneName = "Roma";
         guest.ResidenceComuneCode = "403013075";
         guest.DocumentIssuePlaceCode = "488888888";
@@ -78,7 +72,7 @@ public class OctoratePlaceNamesTests
         guest.BirthComuneCode = null;
         guest.BirthComuneName = " rOmA ";
         guest.ResidenceComuneCode = null;
-        guest.ResidenceComuneName = "San Pietro"; // two different places carry this name: never guessed
+        guest.ResidenceComuneName = "San Pietro";
 
         var places = OctoratePlaceRules.Resolve(guest, Table);
 
@@ -94,7 +88,7 @@ public class OctoratePlaceNamesTests
         foreign.BirthCountryName = "GERMANIA";
         foreign.ResidenceInItaly = false;
         foreign.ResidenceCountryName = "SVIZZERA";
-        foreign.DocumentIssuePlaceCode = "100000216"; // a state: not a comune, not looked up
+        foreign.DocumentIssuePlaceCode = "100000216";
         foreign.DocumentIssuePlaceName = "GERMANIA";
 
         Assert.False(OctoratePlaceRules.NeedsItalianPlaces(foreign));
@@ -104,7 +98,6 @@ public class OctoratePlaceNamesTests
         Assert.Null(places.BirthCity);
         Assert.Null(places.ResidenceCity);
 
-        // A member of a family has no document: its places are the comune of birth and of residence only.
         var member = Guest();
         member.Type = StayGuestType.FamilyMember;
         Assert.True(OctoratePlaceRules.NeedsItalianPlaces(member));
@@ -172,7 +165,6 @@ public class OctoratePlaceNamesTests
         Assert.Equal([new OctoratePlaceEntry("ROMA", "412058091", null)], fromArray);
     }
 
-    /// <summary>A complete head of family born, living and holding a document in Italy, every place with its police code.</summary>
     private static StayGuest Guest() => new()
     {
         BookingId = Guid.NewGuid(),

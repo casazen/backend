@@ -39,10 +39,8 @@ public class FiscalDocumentRulesOptions
     public int DueLookbackDays { get; set; } = 31;
 }
 
-/// <summary>What kind of document the issuer of a regime gives (<see cref="FiscalTaxRuleSetOptions.DocumentKind"/>).</summary>
 public enum FiscalDocumentKind
 {
-    /// <summary>Not decided: a rule set of this kind stops the startup (the catalog accepts only a receipt or an invoice).</summary>
     None = 0,
 
     /// <summary>A receipt: no VAT (an Italian private person, a Swiss issuer that is not registered).</summary>
@@ -51,6 +49,5 @@ public enum FiscalDocumentKind
     /// <summary>An invoice (FatturaPA in Italy, the document of MWSTG art. 26 in Switzerland).</summary>
     Invoice = 2,
 
-    /// <summary>An invoice with a double heading, owner and agency. CasaZen does not issue it today; the member is the one of the configuration format.</summary>
     DualHeadingInvoice = 3,
 }

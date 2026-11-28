@@ -1,4 +1,3 @@
-using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
@@ -24,13 +23,9 @@ public static class ComplianceServiceCollectionExtensions
         services.AddScoped<ITouristTaxDeadlineSource, NoTouristTaxDeadlineSource>();
         services.AddScoped<IComplianceAlertFollowUp, ComplianceAlertFollowUp>();
         services.AddScoped<IComplianceAlertService, ComplianceAlertService>();
-        // The monthly compliance summary email of every active short-rent org (E03/F02/US02/T02, NF-52): the previous month through the coverage report of the
-        // archive, once per org and month (ComplianceMonthlySummaryLogs), to the address of the org and its administrators through the recipient port.
         services.AddScoped<IComplianceMonthlySummaryService, ComplianceMonthlySummaryService>();
         services.AddScoped<ComplianceMonthlySummaryJob>();
-        // Approval queue for items requiring human decision before taking effect (NF-06)
         services.AddScoped<IApprovalQueueService, ApprovalQueueService>();
-        // CIN deadline (CO-20): optional date, validated at startup; daily host alert.
         services.AddOptions<Casazen.Core.Options.CinOptions>()
             .BindConfiguration(Casazen.Core.Options.CinOptions.SectionName)
             .ValidateOnStart();
@@ -39,10 +34,8 @@ public static class ComplianceServiceCollectionExtensions
         services.AddScoped<ICinDeadlineAlertService, CinDeadlineAlertService>();
         services.AddScoped<ITouristTaxService, TouristTaxService>();
         services.AddScoped<ITouristTaxQuoteService, TouristTaxQuoteService>();
-        // NF-46, ADR-037: the tourist tax of a stay guest by guest, the exemptions, the collector and the rate an org declares.
         services.AddScoped<IStayTouristTaxService, StayTouristTaxService>();
         services.AddScoped<IGdprService, GdprService>();
-        // CO-15: guest data rights and retention per category; no period has a default.
         services.AddScoped<GuestDataEraser>();
         services.AddScoped<IGuestDataRetentionService, GuestDataRetentionService>();
         services.AddScoped<ILeasePartyPrivacyService, LeasePartyPrivacyService>();

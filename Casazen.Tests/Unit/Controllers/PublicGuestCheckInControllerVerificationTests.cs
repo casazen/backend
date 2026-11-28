@@ -18,10 +18,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// E03/F04/US02/T04: what the public endpoints of the identity verification answer to each outcome of the flow (the flag that closes them is the
-/// <c>FeatureGate</c> of the integration test): the codes and the statuses the page translates, and nothing sent to the flow when the request is wrong.
-/// </summary>
 public class PublicGuestCheckInControllerVerificationTests
 {
     private const string Token = "token";
@@ -71,7 +67,6 @@ public class PublicGuestCheckInControllerVerificationTests
 
         var ok = Assert.IsType<OkObjectResult>((await Controller().UploadSelfie(Token, Image("selfie"))).Result);
 
-        // The verification passed but the code is held back until the tourist tax is paid (E25/F01/US01/T01): a clear state, never a bare empty answer.
         var response = Assert.IsType<SelfieUploadResponse>(ok.Value);
         Assert.Equal(IdentityVerificationGuestResults.Ok, response.Result);
         Assert.Null(response.LockCode);
@@ -178,8 +173,6 @@ public class PublicGuestCheckInControllerVerificationTests
         _flow.VerifyNoOtherCalls();
     }
 
-    // ─── E70/F02/US01/T01: the session of the self-hosted verification ─────────────────────────────────
-
     [Fact]
     public async Task OpenIdentity_EachOutcomeOfTheFlow_AnswersItsStatus()
     {
@@ -224,7 +217,6 @@ public class PublicGuestCheckInControllerVerificationTests
         _flow.VerifyNoOtherCalls();
     }
 
-    /// <summary>The flow gets the family of the browser (NF-188): the User-Agent stops at the endpoint, for the opening and for the consent alike.</summary>
     [Fact]
     public async Task OpenIdentityAndConsent_TheFlowGetsTheFamilyOfTheBrowser_NeverItsUserAgent()
     {
@@ -245,7 +237,6 @@ public class PublicGuestCheckInControllerVerificationTests
         _flow.Verify(f => f.RecordConsentAsync(It.IsAny<GuestCheckInSession>(), It.IsAny<bool>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    /// <summary>A closed self-hosted verification takes no new picture: 409 <c>identity_already_closed</c> with the state, and the flow never sees the picture.</summary>
     [Fact]
     public async Task UploadDocument_AClosedSelfHostedSession_Answers409WithTheState_AndTheFlowNeverSeesThePicture()
     {
@@ -268,7 +259,6 @@ public class PublicGuestCheckInControllerVerificationTests
         Assert.Equal("identity_already_closed", Assert.IsType<ProblemDetails>(problem.Value).Extensions["code"]);
         _flow.Verify(f => f.SubmitDocumentAsync(It.IsAny<GuestCheckInSession>(), It.IsAny<Stream>(), It.IsAny<DocumentSide>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // The same closed session with the self-hosted flow off: the legacy step, as before.
         _flow.Setup(f => f.SubmitDocumentAsync(It.IsAny<GuestCheckInSession>(), It.IsAny<Stream>(), DocumentSide.Single, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DocumentStepResult(DocumentReading.Nothing, false, [], false, false));
         Assert.IsType<OkObjectResult>((await Controller().UploadDocument(Token, Image("document"))).Result);

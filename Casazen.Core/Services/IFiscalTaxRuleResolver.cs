@@ -3,23 +3,10 @@ using FiscalDocumentKind = Casazen.Core.Options.FiscalDocumentKind;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// The tax rule of a document (NF-82, NF-83, NF-113, D2, E11/F01/US01/T02): the rule set of the catalog <c>FiscalDocuments:TaxRules</c> in force for the
-/// country and the regime of the issuer at a date, with the choices of the issuer applied (the exempt stay, the cleaning with the stay).
-/// </summary>
-/// <remarks>
-/// The date is the check-out of the stay for a document of a guest, the last day of the period for an invoice to an owner: a stay that ended before a
-/// new version keeps the old rate.
-/// </remarks>
 public interface IFiscalTaxRuleResolver
 {
-    /// <summary>
-    /// The rule in force, or 422 <c>document_rule_not_configured</c> when no rule set applies (no regime, a country or a date the catalog does not cover):
-    /// nothing is issued with a rate nobody approved.
-    /// </summary>
     FiscalTaxRule Resolve(string? countryCode, DocumentRegime? regime, StayVatTreatment stayVatTreatment, CleaningFeeTreatment cleaningFeeTreatment, DateOnly date);
 
-    /// <summary>The rule in force, or <c>null</c> when none applies.</summary>
     FiscalTaxRule? TryResolve(string? countryCode, DocumentRegime? regime, StayVatTreatment stayVatTreatment, CleaningFeeTreatment cleaningFeeTreatment, DateOnly date);
 }
 

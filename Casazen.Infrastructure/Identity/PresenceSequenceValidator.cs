@@ -37,20 +37,12 @@ public sealed class PresenceSequenceValidator(
     IOptions<IdentityVerificationOptions> identityOptions,
     ILogger<PresenceSequenceValidator> logger)
 {
-    /// <summary>The mean rate of the frames may be down to this share of the target rate the page captures at: half (the spec).</summary>
     private const double MinRateShare = 0.5;
 
-    /// <summary>The mean rate of the frames may be up to this multiple of the target rate: twice (the spec).</summary>
     private const double MaxRateShare = 2;
 
-    /// <summary>A move is looked for in the window of its step widened by this share of a step on each side: half a step (the spec).</summary>
     private const double StepToleranceShare = 0.5;
 
-    /// <summary>
-    /// Judges <paramref name="sequence"/> against <paramref name="challenge"/> with <paramref name="policy"/>. A <c>null</c> policy (the policy is not available) gives
-    /// <see cref="SequenceValidationReport.NotAvailable"/>. A cancellation of <paramref name="ct"/> is an <see cref="OperationCanceledException"/>; the time of
-    /// <c>SequenceTimeoutMs</c> being over is the report of a sequence that could not be judged.
-    /// </summary>
     public Task<SequenceValidationReport> ValidateAsync(FrameSequence sequence, StoredPresenceChallenge challenge, IdentityDecisionPolicy? policy, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(sequence);
@@ -97,7 +89,6 @@ public sealed class PresenceSequenceValidator(
         }
         catch (Exception ex)
         {
-            // The type only: a message could carry what was being read.
             logger.LogError("The presence sequence could not be validated ({ErrorType}); a person decides", ex.GetType().Name);
             return SequenceValidationReport.NotAvailable();
         }
@@ -120,7 +111,6 @@ public sealed class PresenceSequenceValidator(
         CheckContinuity(sequence, frames, rules.Continuity, motion, token, failures);
         var peaks = CheckChallenge(frames, challenge, rules, failures);
 
-        // Counts and codes only: never a frame, a landmark, an angle or a similarity.
         logger.LogInformation(
             "Presence sequence validated: passed={Passed}, {Frames} frames, failures=[{Failures}]",
             failures.Count == 0,
@@ -128,8 +118,6 @@ public sealed class PresenceSequenceValidator(
             string.Join(',', failures.Select(failure => failure.Code ?? failure.Check)));
         return new SequenceValidationReport(failures.Count == 0, failures, frames, peaks);
     }
-
-    // ───── 1. timing ─────
 
     private static void CheckTiming(FrameSequence sequence, StoredPresenceChallenge challenge, IdentitySequencePolicy rules, List<SequenceFailure> failures)
     {
@@ -141,7 +129,6 @@ public sealed class PresenceSequenceValidator(
         else if (duration > rules.MaxDurationMs)
             Add(failures, IdentityGuidanceCodes.PresenceTiming, VerificationReasons.Checks.PresenceTiming, correctable: true);
 
-        // Too many frames, or too few for a recording that is long enough (a sparse one); a recording that is too short says so once.
         if (frames.Count > rules.MaxFrames || (frames.Count < rules.MinFrames && duration >= rules.MinDurationMs))
             Add(failures, IdentityGuidanceCodes.PresenceTiming, VerificationReasons.Checks.PresenceTiming, correctable: true);
 
@@ -159,15 +146,10 @@ public sealed class PresenceSequenceValidator(
         if (largestGap > rules.MaxGapMs)
             Add(failures, IdentityGuidanceCodes.PresenceTiming, VerificationReasons.Checks.PresenceTiming, correctable: true);
 
-        // The recording cannot have lasted longer than the time the server saw between the challenge and the sequence: one made before the challenge existed (or with a
-        // clock that runs faster than the server's) is impossible, and no new recording explains it.
         if (duration > (sequence.ReceivedAt - challenge.IssuedAt).TotalMilliseconds)
             Add(failures, IdentityGuidanceCodes.PresenceTiming, VerificationReasons.Checks.PresenceTiming, correctable: false);
     }
 
-    // ───── what every frame shows ─────
-
-    /// <summary>What the frames say, taken together, of a still picture: whether they are the same bytes and how far the farthest is from the first one.</summary>
     private sealed record MotionEvidence(bool BytesIdentical, double MaxMeanDifference);
 
     private List<FrameObservation> Observe(FrameSequence sequence, int detectorMaxSide, BiometricModelOptions settings, CancellationToken token, out MotionEvidence motion)
@@ -205,7 +187,6 @@ public sealed class PresenceSequenceValidator(
         GrayBitmap? gray = null;
         try
         {
-            // The detector is shown the frame scaled to detectorMaxSide on its long side; a frame already within it is shown as it is.
             var longest = Math.Max(image.Width, image.Height);
             if (longest > detectorMaxSide)
             {
@@ -222,7 +203,6 @@ public sealed class PresenceSequenceValidator(
             if (faces.Count == 0)
                 return new FrameObservation(frame.Index, frame.TimestampMs, 0, null, double.NaN, double.NaN, false);
 
-            // The largest face, in the pixels of the frame as it was received (the liveness and the match work on it, not on the reduced copy).
             var face = ToFramePixels(faces[0], (double)image.Width / shown.Width, (double)image.Height / shown.Height);
             if (faces.Count > 1)
                 return new FrameObservation(frame.Index, frame.TimestampMs, faces.Count, face, double.NaN, double.NaN, false);
@@ -238,7 +218,6 @@ public sealed class PresenceSequenceValidator(
         }
     }
 
-    /// <summary>The face in the pixels of the picture it was found in, scaled to the frame.</summary>
     private static DetectedFace ToFramePixels(DetectedFace face, double scaleX, double scaleY)
     {
         if (scaleX == 1 && scaleY == 1)
@@ -258,7 +237,6 @@ public sealed class PresenceSequenceValidator(
             face.AreaRatio);
     }
 
-    /// <summary>Keeps the first gray picture and the largest mean difference of any later one from it; a frame of another size is as different as can be.</summary>
     private static void Compare(GrayBitmap gray, ref GrayBitmap? first, ref double farthest)
     {
         if (first is null)
@@ -291,8 +269,6 @@ public sealed class PresenceSequenceValidator(
         return frames.Count >= 2;
     }
 
-    // ───── 2. faces and 3. quality ─────
-
     private static void CheckFaces(IReadOnlyList<FrameObservation> frames, IdentitySequencePolicy rules, List<SequenceFailure> failures)
     {
         if (frames.Count == 0)
@@ -314,8 +290,6 @@ public sealed class PresenceSequenceValidator(
             Add(failures, IdentityGuidanceCodes.PresenceQuality, VerificationReasons.Checks.PresenceQuality, correctable: true);
     }
 
-    // ───── 4. continuity ─────
-
     private void CheckContinuity(
         FrameSequence sequence,
         IReadOnlyList<FrameObservation> frames,
@@ -328,8 +302,6 @@ public sealed class PresenceSequenceValidator(
         var similar = AllFacesAlike(sequence, frames, rules, token);
         if (similar is null)
         {
-            // Fewer than two frames to compare. When something else already failed that says why; when nothing did, identity continuity cannot be established, which is
-            // itself a failure (a sequence never passes without it).
             broken |= failures.Count == 0;
         }
         else
@@ -341,10 +313,6 @@ public sealed class PresenceSequenceValidator(
             Add(failures, IdentityGuidanceCodes.PresenceContinuity, VerificationReasons.Checks.PresenceContinuity, correctable: false);
     }
 
-    /// <summary>
-    /// A still picture played again: the frames are the same bytes, or none is farther, on average, from the first than <c>minPixelDifference</c> grey levels of the policy.
-    /// A person who answers the challenge moves, and a moving head changes the pixels far more; a picture repeated by the page does not. Judged only when the sequence shows a face.
-    /// </summary>
     private static bool IsStill(IReadOnlyList<FrameObservation> frames, MotionEvidence motion, IdentityContinuityPolicy rules)
     {
         if (frames.Count(frame => frame.FaceCount >= 1) < 2)
@@ -353,7 +321,6 @@ public sealed class PresenceSequenceValidator(
         return motion.BytesIdentical || motion.MaxMeanDifference < rules.MinPixelDifference;
     }
 
-    /// <summary>Between consecutive frames that each have one face: the centre of the face moves more than <c>maxCenterJump</c> face widths (the mean width of the two boxes, never a share of the frame), or its width changes by more than <c>maxSizeChange</c> of the first one.</summary>
     private static bool JumpsOrChangesSize(IReadOnlyList<FrameObservation> frames, IdentityContinuityPolicy rules)
     {
         for (var index = 1; index < frames.Count; index++)
@@ -374,10 +341,6 @@ public sealed class PresenceSequenceValidator(
         return false;
     }
 
-    /// <summary>
-    /// Whether the faces of <c>pairSamples</c> frames spread over the sequence (among those with one face and good enough) are all at least <c>minPairSimilarity</c> alike;
-    /// null when fewer than two frames can be compared. The vectors are zeroed before this returns.
-    /// </summary>
     private bool? AllFacesAlike(FrameSequence sequence, IReadOnlyList<FrameObservation> frames, IdentityContinuityPolicy rules, CancellationToken token)
     {
         var usable = new List<int>();
@@ -419,8 +382,6 @@ public sealed class PresenceSequenceValidator(
         }
     }
 
-    // ───── 5. the challenge ─────
-
     private static List<StepPeak> CheckChallenge(
         IReadOnlyList<FrameObservation> frames,
         StoredPresenceChallenge challenge,
@@ -432,7 +393,6 @@ public sealed class PresenceSequenceValidator(
         var leadIn = rules.Challenge.LeadInMs;
         var stepMs = rules.Challenge.StepMs;
 
-        // The baseline: the median pose of the lead-in (the frames before the first move); with no lead-in, or no pose in it, the first frame that has one.
         var baseline = poses.Where(frame => frame.TimestampMs < leadIn).ToList();
         if (baseline.Count == 0 && poses.Count > 0)
             baseline = [poses[0]];
@@ -461,7 +421,6 @@ public sealed class PresenceSequenceValidator(
 
             peaks.Add(new StepPeak(step, action, double.IsFinite(peak) ? peak : 0, answeredAt));
 
-            // Not answered, or answered no later than the step before: missing or out of order.
             if (answeredAt is null || answeredAt <= previousAnswer)
                 followed = false;
             else
@@ -474,7 +433,6 @@ public sealed class PresenceSequenceValidator(
         return peaks;
     }
 
-    /// <summary>How far the head is from the baseline in the direction of the move, in degrees; NaN for a move that is not one of <see cref="PresenceActions"/>.</summary>
     private static double Departure(string action, FrameObservation pose, double baseYaw, double basePitch)
     {
         return action switch
@@ -487,7 +445,6 @@ public sealed class PresenceSequenceValidator(
         };
     }
 
-    /// <summary>The departure at which a move counts, from the policy: the yaw for a turn, the pitch for a look; unreachable (NaN) for a move that is not known.</summary>
     private static double MinimumDeparture(string action, IdentityPosePolicy pose)
     {
         return action switch

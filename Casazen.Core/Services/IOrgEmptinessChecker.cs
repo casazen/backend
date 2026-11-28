@@ -36,9 +36,5 @@ public sealed record OrgEmptiness(bool IsEmpty, IReadOnlyList<string> Blockers)
 /// </summary>
 public interface IOrgEmptinessChecker
 {
-    /// <summary>
-    /// The state of <paramref name="orgId"/> for <paramref name="userId"/>, who is expected to be its only user and its
-    /// owner. Read without the tenant filter (the org is not necessarily the one of the request).
-    /// </summary>
     Task<OrgEmptiness> CheckAsync(Guid orgId, string userId, CancellationToken cancellationToken = default);
 }

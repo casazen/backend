@@ -32,16 +32,10 @@ public sealed record HeldChargeObservation(
 /// </summary>
 public static class HeldChargeVerification
 {
-    /// <summary>The transfer went to another account than the supplier's.</summary>
     public const string DestinationMismatch = "destination";
 
-    /// <summary>The transfer was reversed (all or in part) by somebody.</summary>
     public const string ReversedMismatch = "reversed";
 
-    /// <summary>
-    /// What differs for a <b>block</b> (the PaymentIntent is <c>requires_capture</c>): the whole price is capturable and nothing is charged.
-    /// In a stable order (account, amount, currency, fee, intent); empty when the payment may be recorded as authorized.
-    /// </summary>
     public static IReadOnlyList<string> AuthorizationMismatches(HeldChargeExpectation expected, HeldChargeObservation observed)
     {
         ArgumentNullException.ThrowIfNull(expected);
@@ -53,10 +47,6 @@ public static class HeldChargeVerification
         return Check(expected, observed, amountWrong);
     }
 
-    /// <summary>
-    /// What differs for a <b>charge</b> (the PaymentIntent is <c>succeeded</c>): the whole price was received. In a stable order (account,
-    /// amount, currency, fee, intent); empty when the payment may be recorded as held.
-    /// </summary>
     public static IReadOnlyList<string> CaptureMismatches(HeldChargeExpectation expected, HeldChargeObservation observed)
     {
         ArgumentNullException.ThrowIfNull(expected);
@@ -66,9 +56,6 @@ public static class HeldChargeVerification
         return Check(expected, observed, amountWrong);
     }
 
-    /// <summary>
-    /// What differs for the <b>transfer</b> to the supplier: the amount CasaZen meant to release, the supplier's account, and not reversed.
-    /// </summary>
     public static IReadOnlyList<string> TransferMismatches(
         long expectedAmountCents,
         string? expectedDestination,
@@ -94,7 +81,6 @@ public static class HeldChargeVerification
     {
         var mismatches = new List<string>(5);
 
-        // A held payment lives on the platform: an event of a connected account is not about it.
         if (!string.IsNullOrWhiteSpace(observed.AccountId))
             mismatches.Add(ServiceChargeVerification.AccountMismatch);
 

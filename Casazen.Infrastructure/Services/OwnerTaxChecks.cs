@@ -37,10 +37,8 @@ public sealed class OwnerTaxChecks(
     TimeProvider time,
     ILogger<OwnerTaxChecks> logger) : IOwnerTaxChecks
 {
-    /// <summary>The key of the sentence of the «Da fare» of a company tenant in <c>EmailTexts</c> (Italian and English): the two readings in plain words.</summary>
     public const string CompanyTenantReasonKey = "TodoReason_CompanyTenantDecision";
 
-    /// <summary>How many of the most recent stays of a company tenant a list examines before it keeps the ones that need a decision.</summary>
     private const int ExaminedStays = 2_000;
 
     private ShortStayFiscalOptions Rules => fiscalOptions.Value;
@@ -67,8 +65,6 @@ public sealed class OwnerTaxChecks(
         if (owners.Count == 0)
             return checks;
 
-        // The properties the agency manages for each owner: an Italian property in short-rent mode (a long lease is no short let, and the regime is Italian), through an
-        // ownership in force on the day. The join to the property carries its soft-delete filter: a deleted property is no unit.
         var periods = await db.PropertyOwnerships
             .AsNoTracking()
             .Where(po => po.OrgId == orgId
@@ -144,7 +140,6 @@ public sealed class OwnerTaxChecks(
         var stay = (await FactsAsync(scope.OrgId, [command.BookingId], scope, withDeletedProperties: false, ct)).SingleOrDefault()
                    ?? throw new NotFoundException($"Booking {command.BookingId} was not found") { Code = OwnerTaxErrors.BookingNotFound, MessageKey = "BookingNotFound" };
 
-        // A regime is never recorded for a stay that needs none: it would switch the withholding off for a stay nobody questioned.
         if (!stay.IsCase)
             throw new DomainRuleException(OwnerTaxErrors.DecisionNotApplicable, "OwnerTaxDecisionNotApplicable");
 
@@ -170,7 +165,6 @@ public sealed class OwnerTaxChecks(
         await db.SaveChangesAsync(ct);
         await CloseTodoAsync(scope.OrgId, stay.BookingId, userId, ct);
 
-        // The reason is the agency's note: the log names the decision, the booking and who decided it, never what was written.
         logger.LogInformation(
             "Short-let tax decision {DecisionId} of booking {BookingId} of org {OrgId}: {Regime} (by {UserId})",
             decision.Id,
@@ -193,7 +187,6 @@ public sealed class OwnerTaxChecks(
             .Where(d => d.OrgId == scope.OrgId && d.RecipientKind == InvoiceRecipientKind.Company)
             .Select(d => d.BookingId);
 
-        // The stays of a company in an Italian property, active, in the reach of the caller, the most recent first; the kind of the owners is judged on what is loaded.
         var rows = await db.Bookings
             .AsNoTracking()
             .Where(b => b.OrgId == scope.OrgId
@@ -232,7 +225,6 @@ public sealed class OwnerTaxChecks(
 
     public async Task<bool> RaiseCompanyTenantDecisionAsync(Guid orgId, Guid bookingId, CancellationToken ct = default)
     {
-        // The warnings of the UI: while the flag is off nothing is raised (the facts of the withholding do not wait for it).
         if (!WarningsEnabled || bookingId == Guid.Empty)
             return false;
 
@@ -240,8 +232,6 @@ public sealed class OwnerTaxChecks(
         if (stay is null)
             return false;
 
-        // The stay is no case (any more): the invoice data became a private person's, or the dates, the status or the owners changed. There is nothing to decide, and a decision
-        // would be refused (422 owner_tax_decision_not_applicable): the item raised before is closed by the system, as the cancellation and the no-show close it.
         if (!stay.IsCase)
         {
             await CloseTodoAsync(orgId, bookingId, InternalActivity.ClosedBySystem, ct);
@@ -301,7 +291,6 @@ public sealed class OwnerTaxChecks(
         var stays = (await FactsAsync(orgId, ids, null, withDeletedProperties: true, ct)).ToDictionary(s => s.BookingId);
         var decisions = await DecisionsAsync(orgId, [.. stays.Keys], ct);
 
-        // In the order they were asked; a booking of another org, or one that does not exist, is left out.
         return
         [
             .. ids
@@ -310,18 +299,12 @@ public sealed class OwnerTaxChecks(
         ];
     }
 
-    // ---------------------------------------------------------------- the owner
-
     private async Task<OwnerUnitsCheck> CheckOfAsync(Guid orgId, Guid ownerId, CancellationToken ct)
     {
         var checks = await CheckUnitsAsync(orgId, [ownerId], time.TodayInRomeAsDateOnly(), ct);
         return checks.TryGetValue(ownerId, out var check) ? check : throw OwnerNotFound(ownerId);
     }
 
-    /// <summary>
-    /// The owner is of the org of the scope and inside its reach: any owner for an org-wide scope; for a partial one only an owner that holds at least one ownership period and
-    /// every one of them on a property the scope reaches (no declaration is never in reach). Anything else is the 404 of an owner that does not exist.
-    /// </summary>
     private async Task RequireOwnerInReachAsync(HostScope scope, Guid ownerId, CancellationToken ct)
     {
         if (!await db.PropertyOwners.AsNoTracking().AnyAsync(o => o.OrgId == scope.OrgId && o.Id == ownerId, ct))
@@ -340,16 +323,9 @@ public sealed class OwnerTaxChecks(
             throw OwnerNotFound(ownerId);
     }
 
-    /// <summary>The ownership is in force on <paramref name="day"/>: it started on or before it and is not over (its last day is that day or later).</summary>
     private static bool IsLiveOn(DateTime start, DateTime? end, DateOnly day) =>
         RomeCalendar.DateInRome(start) <= day && (end is not { } last || RomeCalendar.DateInRome(last) >= day);
 
-    // ---------------------------------------------------------------- the stays
-
-    /// <summary>
-    /// The stays among <paramref name="bookingIds"/> of the org (and of the reach of <paramref name="scope"/>, when given) with whether each is one of a company tenant;
-    /// with <paramref name="withDeletedProperties"/> the stays of a deleted property too (the soft delete of the property is ignored, never the tenant).
-    /// </summary>
     private async Task<List<StayFacts>> FactsAsync(
         Guid orgId,
         IReadOnlyCollection<Guid> bookingIds,
@@ -432,7 +408,6 @@ public sealed class OwnerTaxChecks(
         return stays;
     }
 
-    /// <summary>The decision in force for each of the bookings that has one.</summary>
     private async Task<Dictionary<Guid, ShortLetTaxDecision>> DecisionsAsync(Guid orgId, List<Guid> bookingIds, CancellationToken ct)
     {
         if (bookingIds.Count == 0)
@@ -445,7 +420,6 @@ public sealed class OwnerTaxChecks(
         return rows.GroupBy(d => d.BookingId).ToDictionary(g => g.Key, g => OwnerTaxRules.CurrentDecision(g)!);
     }
 
-    /// <summary>Closes the open «Da fare» of the company tenant of the booking (closed by the person who decided); nothing when there is none.</summary>
     private async Task CloseTodoAsync(Guid orgId, Guid bookingId, string closedBy, CancellationToken ct)
     {
         var type = nameof(ActivityType.CompanyTenantDecision);
@@ -464,10 +438,6 @@ public sealed class OwnerTaxChecks(
             await activities.CloseAsync(id, closedBy, ct);
     }
 
-    /// <summary>
-    /// A «Da fare» of the company tenant of the booking is open, or a person closed one (the decision closes it too): the stay was asked about, and it is not asked again. One the
-    /// system closed (the stay was no case, was cancelled or was a no-show) does not count: it says nothing about the person.
-    /// </summary>
     private Task<bool> IsOpenOrAnsweredByAPersonAsync(Guid orgId, Guid bookingId, CancellationToken ct)
     {
         var type = nameof(ActivityType.CompanyTenantDecision);
@@ -489,7 +459,6 @@ public sealed class OwnerTaxChecks(
     private static DomainRuleException DecisionInvalid(string field) =>
         new(OwnerTaxErrors.DecisionInvalid, "OwnerTaxDecisionInvalid") { Extensions = new Dictionary<string, object?> { ["field"] = field } };
 
-    /// <summary>A booking as the checks read it: the code and the property to name it by, the dates and what says whether it is active.</summary>
     private sealed record BookingRow(
         Guid Id,
         string BookingCode,
@@ -501,6 +470,5 @@ public sealed class OwnerTaxChecks(
         DateTime CheckIn,
         DateTime CheckOut);
 
-    /// <summary>A stay with whether it is one of a company tenant (<see cref="OwnerTaxRules.IsCompanyTenantCase"/>).</summary>
     private sealed record StayFacts(Guid BookingId, string BookingCode, Guid PropertyId, string PropertyName, DateOnly CheckIn, DateOnly CheckOut, bool IsCase);
 }

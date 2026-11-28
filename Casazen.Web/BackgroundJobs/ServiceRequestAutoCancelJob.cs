@@ -14,7 +14,6 @@ public class ServiceRequestAutoCancelJob(IServiceRequestAutoCancelService autoCa
 {
     public const string RecurringJobId = "service-request-auto-cancel";
 
-    /// <summary>Every 10 minutes: a request is cancelled at most 10 minutes after its deadline.</summary>
     public const string Cron = "*/10 * * * *";
 
     // One run at a time; a second run started anyway (a retry, the dashboard) waits for the first and then finds nothing due.

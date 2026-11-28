@@ -29,8 +29,6 @@ public class SupplierCalendarDisconnectTests
         "BEGIN:VEVENT\r\nUID:meeting\r\nDTSTART;TZID=Europe/Rome:20261020T100000\r\nDTEND;TZID=Europe/Rome:20261020T110000\r\nSUMMARY:Dentista\r\nEND:VEVENT\r\n",
         "BEGIN:VEVENT\r\nUID:free-day\r\nDTSTART;VALUE=DATE:20261105\r\nDTEND;VALUE=DATE:20261106\r\nSUMMARY:Libero\r\nTRANSP:TRANSPARENT\r\nEND:VEVENT\r\n");
 
-    // ─── What goes, and what stays ───────────────────────────────────────────────
-
     [Fact]
     public async Task Disconnect_RemovesTheFeedAndEverythingItWrote_ButNothingTheSupplierSetByHand()
     {
@@ -39,8 +37,6 @@ public class SupplierCalendarDisconnectTests
         await Sync(db, new ScriptedFeed(BusyFeed)).SyncIcalFeedAsync(orgId);
         await AnswerAsync(db, orgId, SupplierFreeEventDecision.Busy);
         await SeedByHandAsync(db, orgId);
-        // The feed wrote two closed days (the busy one and the free-looking one, occupied until answered), one window of hours and
-        // one row for the free-looking event with the supplier's answer.
         Assert.Equal((2, 1, 1), (await SnapshotAsync(db, orgId)).FeedRows);
 
         var done = await Sync(db, new ScriptedFeed(BusyFeed)).DisconnectIcalFeedAsync(orgId);
@@ -49,7 +45,6 @@ public class SupplierCalendarDisconnectTests
         Assert.Empty(await db.SupplierAvailability.Where(a => a.OrgId == orgId && a.Source == SupplierAvailabilitySource.ICalFeed).ToListAsync());
         Assert.Empty(await db.SupplierBusyWindows.Where(w => w.OrgId == orgId && w.Source == SupplierBusyWindowSource.ICalFeed).ToListAsync());
         Assert.Empty(await db.SupplierFreeCalendarEvents.Where(e => e.OrgId == orgId).ToListAsync());
-        // What the supplier set by hand stays.
         var manualDay = Assert.Single(await db.SupplierAvailability.Where(a => a.OrgId == orgId).ToListAsync());
         Assert.Equal(new DateOnly(2026, 12, 24), manualDay.Date);
         Assert.Equal(SupplierAvailabilitySource.Manual, manualDay.Source);
@@ -75,7 +70,7 @@ public class SupplierCalendarDisconnectTests
         var after = await db.SupplierProfiles.AsNoTracking().SingleAsync(sp => sp.OrgId == orgId);
         Assert.Equal(CalendarSyncType.None, after.CalendarSyncType);
         Assert.Null(after.IcalFeedUrl);
-        Assert.Equal(SupplierCalendarSyncStatus.None, after.CalendarSyncStatus); // Syncing included
+        Assert.Equal(SupplierCalendarSyncStatus.None, after.CalendarSyncStatus);
         Assert.Null(after.CalendarSyncError);
         Assert.Null(after.CalendarLastSyncAt);
         Assert.Equal(0, await new SupplierFreeEventService(db, NullLogger<SupplierFreeEventService>.Instance).CountPendingAsync(orgId));
@@ -165,8 +160,6 @@ public class SupplierCalendarDisconnectTests
         Assert.Equal(CalendarSyncType.GoogleCalendar, (await db.SupplierProfiles.AsNoTracking().SingleAsync(sp => sp.OrgId == orgId)).CalendarSyncType);
     }
 
-    // ─── The sync after the unlink ───────────────────────────────────────────────
-
     [Fact]
     public async Task AfterTheUnlink_AQueuedSync_DownloadsNothing_AndLeavesNoSyncingStateBehind()
     {
@@ -175,14 +168,14 @@ public class SupplierCalendarDisconnectTests
         var feed = new ScriptedFeed(BusyFeed);
         var sync = Sync(db, feed);
         await sync.SyncIcalFeedAsync(orgId);
-        await sync.RequestSyncAsync(orgId); // a sync is queued: the state says Syncing
+        await sync.RequestSyncAsync(orgId);
         Assert.Equal(SupplierCalendarSyncStatus.Syncing, (await db.SupplierProfiles.AsNoTracking().SingleAsync(sp => sp.OrgId == orgId)).CalendarSyncStatus);
         var downloads = feed.Downloads;
 
         await sync.DisconnectIcalFeedAsync(orgId);
-        await sync.SyncIcalFeedAsync(orgId); // the job that was queued runs now
+        await sync.SyncIcalFeedAsync(orgId);
 
-        Assert.Equal(downloads, feed.Downloads); // it found no feed
+        Assert.Equal(downloads, feed.Downloads);
         Assert.Equal(SupplierCalendarSyncStatus.None, (await db.SupplierProfiles.AsNoTracking().SingleAsync(sp => sp.OrgId == orgId)).CalendarSyncStatus);
         Assert.Equal((0, 0, 0), (await SnapshotAsync(db, orgId)).FeedRows);
     }
@@ -195,7 +188,6 @@ public class SupplierCalendarDisconnectTests
         CalendarSyncService? unlinker = null;
         var feed = new ScriptedFeed(BusyFeed)
         {
-            // The supplier unlinks while the feed is being downloaded: the download finishes, the run finds the URL gone.
             OnDownload = async () => await unlinker!.DisconnectIcalFeedAsync(orgId),
         };
         var sync = Sync(db, feed);
@@ -218,7 +210,7 @@ public class SupplierCalendarDisconnectTests
         var orgId = await SeedProfileAsync(db);
         var before = new Mock<IServiceScopeFactory>();
         await Sync(db, new ScriptedFeed(BusyFeed), before.Object).SyncAllIcalFeedsAsync();
-        before.Verify(factory => factory.CreateScope(), Times.Once); // with a feed, the supplier is one of the batch
+        before.Verify(factory => factory.CreateScope(), Times.Once);
 
         await Sync(db, new ScriptedFeed(BusyFeed)).DisconnectIcalFeedAsync(orgId);
         var after = new Mock<IServiceScopeFactory>();
@@ -245,11 +237,9 @@ public class SupplierCalendarDisconnectTests
 
         var snapshot = await SnapshotAsync(db, orgId);
         Assert.Equal(1, snapshot.FeedWindows);
-        Assert.Equal(2, snapshot.FeedDays); // the busy day and the free-looking one, occupied again until answered
+        Assert.Equal(2, snapshot.FeedDays);
         Assert.Equal(SupplierFreeEventDecision.Pending, (await db.SupplierFreeCalendarEvents.SingleAsync(e => e.OrgId == orgId)).Decision);
     }
-
-    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private static string Feed(params string[] events) =>
         "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//Test//EN\r\n" + string.Concat(events) + "END:VCALENDAR\r\n";
@@ -277,7 +267,6 @@ public class SupplierCalendarDisconnectTests
         return profile.OrgId;
     }
 
-    /// <summary>What the supplier set by hand: a day closed, a block and an extra opening.</summary>
     private static async Task SeedByHandAsync(AppDbContext db, Guid orgId)
     {
         db.SupplierAvailability.Add(new SupplierAvailability
@@ -316,10 +305,8 @@ public class SupplierCalendarDisconnectTests
         db.ChangeTracker.Clear();
     }
 
-    /// <summary>What the feed left in the agenda of a supplier, and what the supplier set by hand: to compare before and after.</summary>
     private sealed record Counts(int FeedDays, int FeedWindows, int FreeEvents, int ManualDays, int ManualWindows)
     {
-        /// <summary>What the feed left: closed days, windows of hours and free-looking events with their answers.</summary>
         public (int Days, int Windows, int FreeEvents) FeedRows => (FeedDays, FeedWindows, FreeEvents);
     }
 
@@ -331,7 +318,6 @@ public class SupplierCalendarDisconnectTests
             await db.SupplierAvailability.CountAsync(a => a.OrgId == orgId && a.Source == SupplierAvailabilitySource.Manual),
             await db.SupplierBusyWindows.CountAsync(w => w.OrgId == orgId && w.Source == SupplierBusyWindowSource.Manual));
 
-    /// <summary>The download client: a scripted body, and a hook that runs while it is "downloading".</summary>
     private sealed class ScriptedFeed(string content) : ISafeExternalHttpClient
     {
         public int Downloads { get; private set; }

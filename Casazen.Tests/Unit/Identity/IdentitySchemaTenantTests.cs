@@ -18,7 +18,6 @@ public class IdentitySchemaTenantTests
 {
     private static readonly Guid CallerOrgId = Guid.Parse("3f0c8a5e-6b1d-4f27-9e44-8d2a7c1b5e90");
 
-    /// <summary>Data: a caller of one org never reads the segments or the evidence of another (TN-2).</summary>
     [Fact]
     public void NewEntitiesAreTenantOwned()
     {
@@ -49,7 +48,6 @@ public class IdentitySchemaTenantTests
         var idempotency = Index(log, BiometricVerificationLog.IdempotencyIndexName);
         Assert.Equal((true, "\"IdempotencyKey\" IS NOT NULL"), (idempotency.IsUnique, idempotency.GetFilter()));
         Assert.Equal(["BookingId", "IdempotencyKey"], idempotency.Properties.Select(p => p.Name));
-        // The readers of the last row of a booking keep their index on the booking alone.
         Assert.Contains(log.GetIndexes(), index => Columns(index) == "BookingId" && !index.IsUnique && index.GetFilter() is null);
 
         var segment = db.Model.FindEntityType(typeof(IdentitySegmentSetting))!;
@@ -66,7 +64,6 @@ public class IdentitySchemaTenantTests
         var live = Index(evidence, IdentityReviewEvidence.LiveExpiryIndexName);
         Assert.Equal((false, "\"DeletedAt\" IS NULL", "ExpiresAt"), (live.IsUnique, live.GetFilter(), Columns(live)));
         Assert.Contains(evidence.GetIndexes(), index => Columns(index) == "OrgId,BookingId" && index.GetFilter() is null);
-        // On purpose, only the org: a row outlives a hard delete of its booking or session until the purge deleted its object.
         Assert.Equal([typeof(OrgEntity)], evidence.GetForeignKeys().Select(key => key.PrincipalEntityType.ClrType));
 
         var session = db.Model.FindEntityType(typeof(GuestCheckInSession))!;
@@ -83,16 +80,11 @@ public class IdentitySchemaTenantTests
         Assert.Equal(IdentitySegmentMode.Observation, DefaultOf(db, typeof(IdentitySegmentSetting), nameof(IdentitySegmentSetting.Mode)));
         Assert.Equal("consistency", DefaultOf(db, typeof(IdentitySegmentSetting), nameof(IdentitySegmentSetting.RequiredAssurance)));
 
-        // A row made by the code starts the same way.
         Assert.Equal(0, new GuestCheckInSession().IdentityGuidedRetries);
         Assert.Equal(IdentityDecisionMode.Legacy, new BiometricVerificationLog().DecisionMode);
         Assert.Equal((IdentitySegmentMode.Observation, "consistency"), (new IdentitySegmentSetting().Mode, new IdentitySegmentSetting().RequiredAssurance));
     }
 
-    /// <summary>
-    /// Privacy (ADR-013-R2, R20): the columns of the self-hosted verification are ids, hashes, codes, counters and times. None is binary, an array or JSON, and
-    /// every text is bounded, so no column can hold an image, a frame or a face representation.
-    /// </summary>
     [Fact]
     public void IdentitySchema_NoColumnCanHoldAnImageOrAVector()
     {

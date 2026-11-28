@@ -13,24 +13,17 @@ namespace Casazen.Core.Suppliers;
 /// <param name="Max">Most units a customer can pick; <c>null</c> for no limit.</param>
 public sealed record SupplierServiceSupplement(string Code, string Label, int AmountCents, string Per, int? Max);
 
-/// <summary>The values of <see cref="SupplierServiceSupplement.Per"/> (lowercase codes, stored and exposed as they are).</summary>
 public static class SupplierServiceSupplementUnits
 {
-    /// <summary>A fixed amount, added once.</summary>
     public const string Flat = "flat";
 
-    /// <summary>Per extra bathroom.</summary>
     public const string Bathroom = "bathroom";
 
-    /// <summary>Per 30 square meters (the estimate of the booking decides from which surface it counts, SP-09).</summary>
     public const string Sqm30 = "sqm30";
 
-    /// <summary>Per set, e.g. of linen.</summary>
     public const string Set = "set";
 
-    /// <summary>Per extra hour.</summary>
     public const string Hour = "hour";
 
-    /// <summary>Every unit, in the order the console offers them.</summary>
     public static IReadOnlyList<string> All { get; } = [Flat, Bathroom, Sqm30, Set, Hour];
 }

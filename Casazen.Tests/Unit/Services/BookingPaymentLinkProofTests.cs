@@ -16,21 +16,11 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The payment link of a booking the host entered (E08/F01/US01/T05, NF-74): the link opens the checkout page of the booking site with a token
-/// that is the only access check of an anonymous page. The rule that costs if it fails: a token opens the payment of the booking it was made
-/// for and of no other, and a new link makes the previous one stop working.
-/// </summary>
 public class BookingPaymentLinkProofTests
 {
     private static readonly Guid OrgA = Guid.Parse("4f1e2d3c-6b5a-4978-8a1b-2c3d4e5f6a51");
     private const string Account = "acct_host_a";
 
-    /// <summary>
-    /// PROOF TEST: permission rule (the token of a link). Two host bookings get a link each. The token of the first resumes the payment of the
-    /// first, for exactly its balance, and opens neither the page nor the payment of the second (the same 404 as a wrong token). After a new link
-    /// for the first booking its old token stops working and the new one works.
-    /// </summary>
     [Fact]
     public async Task BookingPaymentLink_TokenOpensOnlyItsBooking_Test()
     {
@@ -46,18 +36,15 @@ public class BookingPaymentLinkProofTests
         var firstToken = TokenOf(firstLink.Url);
         var secondToken = TokenOf(secondLink.Url);
 
-        // The token of the first booking pays the first booking, for exactly its balance.
         var session = await h.Outcomes().ResumePaymentAsync(first, firstToken);
         Assert.Equal(h.ClientSecretOf(30000), session.ClientSecret);
         Assert.Equal(Account, session.StripeAccountId);
         Assert.Equal(CheckoutOutcomeState.AwaitingPayment, (await h.Outcomes().GetOutcomeAsync(first, firstToken)).State);
 
-        // ... and opens nothing of the second booking: the page and the payment answer the 404 of a wrong link.
         await Assert.ThrowsAsync<NotFoundException>(() => h.Outcomes().GetOutcomeAsync(second, firstToken));
         await Assert.ThrowsAsync<NotFoundException>(() => h.Outcomes().ResumePaymentAsync(second, firstToken));
         Assert.Equal(h.ClientSecretOf(15000), (await h.Outcomes().ResumePaymentAsync(second, secondToken)).ClientSecret);
 
-        // A new link of the first booking: the old token stops working, the new one works.
         var newLink = await h.LinkAsync(first);
         var newToken = TokenOf(newLink.Url);
         Assert.NotEqual(firstToken, newToken);
@@ -65,7 +52,6 @@ public class BookingPaymentLinkProofTests
         await Assert.ThrowsAsync<NotFoundException>(() => h.Outcomes().GetOutcomeAsync(first, firstToken));
         Assert.NotNull((await h.Outcomes().ResumePaymentAsync(first, newToken)).ClientSecret);
 
-        // The raw token is never stored: only its hash is on the booking.
         await using var read = h.NewDb(null);
         var stored = await read.Bookings.AsNoTracking().SingleAsync(b => b.Id == first);
         Assert.NotEqual(newToken, stored.CheckoutTokenHash);
@@ -88,7 +74,6 @@ public class BookingPaymentLinkProofTests
         await h.LinkAsync(booking);
         var intentId = h.LastIntentId;
 
-        // The guest is paying right now: the receipt waits, nothing is cancelled and nothing is written.
         h.SetIntentStatus(intentId, "processing");
         var waiting = await Assert.ThrowsAsync<DomainConflictException>(() => h.RecordCashAsync(booking, 100m, "receipt-1"));
         Assert.Equal("payment_in_progress", waiting.Code);
@@ -99,7 +84,6 @@ public class BookingPaymentLinkProofTests
             Assert.Equal(PaymentStatus.Pending, link.Status);
         }
 
-        // The guest has not paid: the receipt is recorded and the open PaymentIntent of the link is cancelled, its row marked Canceled.
         h.SetIntentStatus(intentId, "requires_payment_method");
         var receipt = await h.RecordCashAsync(booking, 100m, "receipt-2");
         Assert.True(receipt.Created);
@@ -113,7 +97,6 @@ public class BookingPaymentLinkProofTests
             Assert.Equal(PaymentStatus.Completed, rows.Single(p => p.StripePaymentIntentId == null).Status);
         }
 
-        // The same receipt sent again records nothing and cancels nothing more.
         var again = await h.RecordCashAsync(booking, 100m, "receipt-2");
         Assert.False(again.Created);
         Assert.Single(h.CancelledIntents);
@@ -130,7 +113,6 @@ public class BookingPaymentLinkProofTests
     {
         var h = new Harness();
 
-        // The card is saved, nothing is charged yet: the setup row is pending.
         var waiting = await h.SeedBookingAsync(
             total: 300.00m,
             configure: AtItsDeadline,
@@ -138,7 +120,6 @@ public class BookingPaymentLinkProofTests
         var refused = await Assert.ThrowsAsync<DomainRuleException>(() => h.LinkAsync(waiting));
         Assert.Equal(BookingPaymentLinkErrorCodes.Unavailable, refused.Code);
 
-        // The charge at the deadline failed: the guest is asked to pay that PaymentIntent, not a second one.
         var failed = await h.SeedBookingAsync(
             total: 300.00m,
             configure: AtItsDeadline,
@@ -146,7 +127,6 @@ public class BookingPaymentLinkProofTests
         refused = await Assert.ThrowsAsync<DomainRuleException>(() => h.LinkAsync(failed));
         Assert.Equal(BookingPaymentLinkErrorCodes.Unavailable, refused.Code);
 
-        // No PaymentIntent was made for either, and nothing was written.
         Assert.Equal(string.Empty, h.LastIntentId);
         await using (var read = h.NewDb(null))
         {
@@ -155,7 +135,6 @@ public class BookingPaymentLinkProofTests
             Assert.All(await read.Bookings.AsNoTracking().ToListAsync(), b => Assert.Null(b.PaymentLinkSentAt));
         }
 
-        // The deadline charge is collected and the price was raised afterwards (the total is 380, 300 are in): the balance of 80 has its link.
         var collected = await h.SeedBookingAsync(
             total: 380.00m,
             configure: AtItsDeadline,
@@ -173,7 +152,6 @@ public class BookingPaymentLinkProofTests
         booking.StripePaymentMethodId = "pm_1";
     }
 
-    /// <summary>The payment row of the deferred charge of a booking "Paga alla scadenza": the setup of the card, then the PaymentIntent of the charge.</summary>
     private static Payment DeferredRow(string setupIntentId, PaymentStatus status, string? intentId) => new()
     {
         OrgId = OrgA,
@@ -357,18 +335,14 @@ public class BookingPaymentLinkProofTests
                 });
         }
 
-        /// <summary>The PaymentIntent the last link made.</summary>
         public string LastIntentId { get; private set; } = string.Empty;
 
         public void AddIntent(PaymentIntent intent) => _intents.Add(intent.Id, intent);
 
-        /// <summary>The PaymentIntents cancelled on Stripe, in order.</summary>
         public List<string> CancelledIntents { get; } = [];
 
-        /// <summary>What Stripe says of a PaymentIntent from now on (the guest pays, or is paying).</summary>
         public void SetIntentStatus(string intentId, string status) => _intents[intentId].Status = status;
 
-        /// <summary>A cash receipt the host records by hand, in an authenticated request of org A.</summary>
         public async Task<ManualPaymentResult> RecordCashAsync(Guid bookingId, decimal amount, string key)
         {
             await using var db = NewDb(new HostTenant(OrgA));
@@ -423,7 +397,6 @@ public class BookingPaymentLinkProofTests
             return booking.Id;
         }
 
-        /// <summary>A link made in an authenticated request of org A (the tenant filter of the host).</summary>
         public async Task<BookingPaymentLink> LinkAsync(Guid bookingId)
         {
             await using var db = NewDb(new HostTenant(OrgA));
@@ -444,7 +417,6 @@ public class BookingPaymentLinkProofTests
                 new FixedTimeProvider(new DateTimeOffset(2026, 11, 6, 9, 0, 0, TimeSpan.Zero)));
         }
 
-        /// <summary>The anonymous checkout page of the guest (no tenant: the token is the only check).</summary>
         public CheckoutOutcomeService Outcomes()
         {
             var configuration = new ConfigurationBuilder()

@@ -43,8 +43,6 @@ public class OnboardingBulkControllersTests
     private readonly Mock<IHostScopeResolver> _scopes = new();
     private readonly HostScope _scope = new(OrgId);
 
-    // ---------------------------------------------------------------- the choice and the confirmation
-
     /// <summary>
     /// Proof (data): an apply writes nothing unless the body says <c>dryRun</c> false AND <c>confirmed</c> true, and both are false when the body
     /// leaves them out (no body, <c>{}</c>, a body without the confirmation). The service then judges and writes nothing
@@ -66,7 +64,6 @@ public class OnboardingBulkControllersTests
         foreach (var body in new[] { null, empty, Read<BulkApplyRequestDto>(Rest + ",\"dryRun\":false}") })
             Assert.IsType<OkObjectResult>((await controller.Apply(body, Ct)).Result);
 
-        // Nothing named: no selection (an empty kind, no ids, no filter) and no choice. The service refuses it.
         _bulk.Verify(
             b => b.ApplyAsync(_scope, UserId, It.Is<BulkSelection>(s => s.Kind == string.Empty && s.PropertyIds == null && s.Filter == null), It.Is<BulkChoice>(c => c.ComplianceSender == null), false, false, Ct),
             Times.Exactly(2));
@@ -74,14 +71,12 @@ public class OnboardingBulkControllersTests
             b => b.ApplyAsync(_scope, UserId, It.Is<BulkSelection>(s => s.Kind == "all"), It.Is<BulkChoice>(c => c.ComplianceSender == ComplianceSenderType.Manual), false, false, Ct),
             Times.Once);
 
-        // Only a body that says so asks for the confirmation, and a dry run is passed on as it is.
         await controller.Apply(Read<BulkApplyRequestDto>(Rest + ",\"confirmed\":true}"), Ct);
         await controller.Apply(Read<BulkApplyRequestDto>(Rest + ",\"dryRun\":true,\"confirmed\":true}"), Ct);
         _bulk.Verify(b => b.ApplyAsync(_scope, UserId, It.IsAny<BulkSelection>(), It.IsAny<BulkChoice>(), false, true, Ct), Times.Once);
         _bulk.Verify(b => b.ApplyAsync(_scope, UserId, It.IsAny<BulkSelection>(), It.IsAny<BulkChoice>(), true, true, Ct), Times.Once);
     }
 
-    /// <summary>An empty body names no selection: it is passed on empty (and refused as invalid by the service), never read as «all».</summary>
     [Fact]
     public async Task Preview_AndPilot_AnEmptyBody_IsNeverAllAndNeverNone()
     {
@@ -99,7 +94,6 @@ public class OnboardingBulkControllersTests
             b => b.PreviewAsync(_scope, It.Is<BulkSelection>(s => s.Kind == string.Empty && s.PropertyIds == null && s.Filter == null), Ct),
             Times.Exactly(2));
 
-        // The pilot group: no list is an empty list (422 in the service), not «clear the group» and not «every property».
         await controller.SetPilot(Read<BulkPilotRequestDto>("{}"), Ct);
         await controller.SetPilot(null, Ct);
         _bulk.Verify(b => b.SetPilotAsync(_scope, UserId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 0), Ct), Times.Exactly(2));
@@ -135,7 +129,6 @@ public class OnboardingBulkControllersTests
         _bulk.Verify(b => b.ActivateAsync(_scope, UserId, string.Empty, It.Is<IReadOnlyCollection<OnboardingFlow>>(f => f.Count == 0), Ct), Times.Once);
     }
 
-    /// <summary>A caller with no scope (a deactivated member, another org's) reaches nothing: 403 for every action, and the service is never called.</summary>
     [Fact]
     public async Task ACallerWithNoScope_IsRefused403_AndNothingIsCalled()
     {
@@ -154,8 +147,6 @@ public class OnboardingBulkControllersTests
         _import.VerifyNoOtherCalls();
     }
 
-    // ---------------------------------------------------------------- the file
-
     /// <summary>
     /// Proof (data): the import checks the file and writes nothing unless the call says <c>dryRun=false</c>: the default of the query is true, so a
     /// call with no <c>dryRun</c> is a check, and <c>false</c> is passed on as it is.
@@ -173,17 +164,14 @@ public class OnboardingBulkControllersTests
         Assert.Equal(true, dryRun.DefaultValue);
         Assert.NotNull(dryRun.GetCustomAttribute<FromQueryAttribute>());
 
-        // The call as the binder makes it when the query has no dryRun.
         var content = "propertyId,lockCode\r\n"u8.ToArray();
         Assert.IsType<OkObjectResult>((await controller.Import(Upload("x.csv", content))).Result);
         _import.Verify(i => i.ImportAsync(_scope, UserId, "x.csv", It.Is<byte[]>(b => b.SequenceEqual(content)), true, It.IsAny<CancellationToken>()), Times.Once);
 
-        // Written for real only when the call says so.
         await controller.Import(Upload("x.csv", content), dryRun: false, Ct);
         _import.Verify(i => i.ImportAsync(_scope, UserId, "x.csv", It.IsAny<byte[]>(), false, Ct), Times.Once);
     }
 
-    /// <summary>No file in the field <c>file</c> (a multipart body without it) or an empty one: 400 <c>import_file_missing</c>, and nothing is read.</summary>
     [Fact]
     public async Task Import_NoFile_Is400ImportFileMissing()
     {
@@ -197,10 +185,6 @@ public class OnboardingBulkControllersTests
         _import.VerifyNoOtherCalls();
     }
 
-    /// <summary>
-    /// A file whose declared size is over 2 MB is 413 <c>import_file_too_large</c> before a byte of it is copied (the stream is never opened);
-    /// exactly 2 MB goes on to the service.
-    /// </summary>
     [Fact]
     public async Task Import_AFileOverTheDeclaredLimit_Is413_BeforeAByteIsRead()
     {
@@ -215,7 +199,6 @@ public class OnboardingBulkControllersTests
         big.VerifyNoOtherCalls();
         _import.VerifyNoOtherCalls();
 
-        // The limit itself is allowed; it is the service that reads the file.
         _import
             .Setup(i => i.ImportAsync(It.IsAny<HostScope>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new BulkImportResult(true, new BulkImportSummary(0, 0, 0, 0), [], []));
@@ -223,13 +206,6 @@ public class OnboardingBulkControllersTests
         Assert.IsType<OkObjectResult>(atTheLimit.Result);
     }
 
-    // ---------------------------------------------------------------- the rate limit
-
-    /// <summary>
-    /// The import is rate limited per signed-in person, like the import of a bank statement it is modelled on: each call parses a file of up to
-    /// 2 MB (20 MB once unzipped) and, without <c>dryRun</c>, writes up to a thousand rows. Thirty calls in ten minutes, set by
-    /// <c>RateLimiting:OnboardingBulkImport:*</c>, no queue.
-    /// </summary>
     [Fact]
     public void Import_IsRateLimitedPerSignedInPerson_ThirtyEveryTenMinutes()
     {
@@ -244,14 +220,6 @@ public class OnboardingBulkControllersTests
         Assert.Equal((30, TimeSpan.FromMinutes(10), 0), (options.PermitLimit, options.Window, options.QueueLimit));
     }
 
-    // ---------------------------------------------------------------- the policy and the flag
-
-    /// <summary>
-    /// Proof (permission): the seven actions of the two controllers are under the org policy <see cref="CasazenPolicies.OrgBillingAdmin"/> and
-    /// behind <c>Features:OctorateOnboarding</c> (404 before the authorization while it is off), none is anonymous, and the controllers have no
-    /// other routed action. The policy itself is proved over the real pipeline for every <c>OrgBillingAdmin</c> action by
-    /// <c>OrgBillingAdminMembershipAccessTests</c>.
-    /// </summary>
     [Fact]
     public void EveryAction_IsUnderOrgBillingAdmin_AndBehindTheModuleFlag()
     {
@@ -271,8 +239,6 @@ public class OnboardingBulkControllersTests
             Assert.Equal([FeatureFlags.OctorateOnboarding], action.FeatureGates);
         });
     }
-
-    // ---------------------------------------------------------------- the world
 
     private OnboardingBulkController BulkController(bool hasScope = true)
     {

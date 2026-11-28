@@ -2,7 +2,6 @@ using Casazen.Core.Services;
 using Casazen.Web.DTOs.Crm;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 
@@ -23,11 +22,6 @@ namespace Casazen.Web.Controllers;
 [PrivateAnswer]
 public class PublicWelcomeController(IWelcomeConsentService welcome) : ControllerBase
 {
-    /// <summary>
-    /// What the page shows: <c>{ orgName, propertyName, marketingConsentVersion }</c>, no personal data. <c>marketingConsentVersion</c> is
-    /// <c>null</c> while the consent text has no version: the page then offers no consent. 404 <c>welcome_link_invalid</c> for an unknown or
-    /// revoked token; 429.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(WelcomePageDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]

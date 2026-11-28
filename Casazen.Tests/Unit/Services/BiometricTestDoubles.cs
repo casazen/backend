@@ -4,7 +4,6 @@ using Casazen.Infrastructure.Services;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>PNG pictures built in memory, so the decoder of the application is proved on bytes the test knows pixel by pixel.</summary>
 internal static class TestImages
 {
     private static readonly uint[] CrcTable = Enumerable.Range(0, 256).Select(n =>
@@ -16,7 +15,6 @@ internal static class TestImages
         return crc;
     }).ToArray();
 
-    /// <summary>Red, green, blue for every pixel, from a seed: the same pixels every time.</summary>
     public static byte[] RandomRgb(int width, int height, int seed)
     {
         var rgb = new byte[width * height * 3];
@@ -24,7 +22,6 @@ internal static class TestImages
         return rgb;
     }
 
-    /// <summary>A PNG (8 bits, RGB, no interlace) of the given pixels.</summary>
     public static byte[] Png(int width, int height, byte[] rgb)
     {
         var scanlines = new byte[height * ((width * 3) + 1)];
@@ -48,7 +45,6 @@ internal static class TestImages
         return png.ToArray();
     }
 
-    /// <summary>A PNG of random pixels.</summary>
     public static byte[] Png(int width, int height, int seed) => Png(width, height, RandomRgb(width, height, seed));
 
     private static byte[] BigEndian(int value) => [(byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value];
@@ -66,7 +62,6 @@ internal static class TestImages
     }
 }
 
-/// <summary>A model store that is ready (or not) without any model behind it: the verification only asks whether the models are available.</summary>
 internal sealed class FakeBiometricModelStore(bool available = true) : IBiometricModelStore
 {
     public BiometricModelsSnapshot Snapshot { get; } = new(
@@ -83,12 +78,10 @@ internal sealed class FakeBiometricModelStore(bool available = true) : IBiometri
     public LoadedBiometricModel? FaceRecognition => null;
 }
 
-/// <summary>A detector that answers from a script, keeps the pixel arrays it was shown (to prove they are zeroed afterwards) and can fail or wait.</summary>
 internal sealed class ScriptedFaceDetector(params IReadOnlyList<DetectedFace>[] answers) : IFaceDetector
 {
     private readonly Queue<IReadOnlyList<DetectedFace>> _answers = new(answers);
 
-    /// <summary>The pixel arrays of the pictures it was shown, as the application held them.</summary>
     public List<byte[]> SeenPixels { get; } = [];
 
     public Exception? Failure { get; set; }
@@ -114,12 +107,10 @@ internal sealed class ScriptedFaceDetector(params IReadOnlyList<DetectedFace>[] 
     }
 }
 
-/// <summary>An embedder that hands out the vectors of a script and keeps them, to prove the application zeroes them after the comparison.</summary>
 internal sealed class ScriptedFaceEmbedder(params float[][] vectors) : IFaceEmbedder
 {
     private readonly Queue<float[]> _vectors = new(vectors);
 
-    /// <summary>The vectors it handed out (the same arrays the application held).</summary>
     public List<float[]> Issued { get; } = [];
 
     /// <summary>Raised on the n-th call (1-based) instead of answering.</summary>

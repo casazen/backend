@@ -6,7 +6,6 @@ using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.Supplier;
@@ -15,13 +14,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Public supplier registration + host-facing supplier discovery endpoints (US-022 / #292).
-/// </summary>
 [ApiController]
 [Route("api/suppliers")]
 public class SuppliersController(
@@ -57,8 +52,6 @@ public class SuppliersController(
         [FromBody] SupplierRegisterRequest request,
         CancellationToken cancellationToken)
     {
-        // The endpoint is anonymous, but a signed-in caller (bearer token sent by the web app) registers for their own
-        // account: the account email is checked against the form and the invite, and the user is linked at once.
         var userId = User.GetUserId();
         string? accountEmail = null;
         if (userId is not null)
@@ -102,7 +95,6 @@ public class SuppliersController(
             AuthRedirectUrl = "/supplier/activation",
             RolesSynced = roleSync?.Succeeded == true,
             RolesSyncError = roleSync is { Succeeded: false } ? roleSync.ErrorCode : null,
-            // Anonymous self-serve: the web app keeps it through the Auth0 signup and claims the profile (SU-02).
             ClaimToken = registration.Claim?.Token,
             ClaimExpiresAt = registration.Claim?.ExpiresAt,
         });
@@ -131,11 +123,9 @@ public class SuppliersController(
         if (userId is null)
             return Unauthorized();
 
-        // The verified flag is needed only without a token: it may cost a Management API call.
         var hasToken = !string.IsNullOrWhiteSpace(request.ClaimToken);
         var (accountEmail, emailVerified) = await ResolveAccountEmailAsync(userId, needVerified: !hasToken);
 
-        // The claim page is outside the app shell: /api/users/me may not have run yet.
         if (accountEmail is not null)
             await userService.GetCurrentUserAsync(userId, accountEmail, string.Empty, string.Empty);
 
@@ -162,7 +152,6 @@ public class SuppliersController(
         });
     }
 
-    /// <summary>Activation wizard of the web supplier console, where a newly linked supplier continues.</summary>
     private const string SupplierActivationPath = "/app/supplier/activation";
 
     /// <summary>
@@ -193,9 +182,6 @@ public class SuppliersController(
         });
     }
 
-    /// <summary>
-    /// Whether suppliers can register without an invite, and for which pilot comuni (<c>Suppliers:PilotComuni</c>).
-    /// </summary>
     [HttpGet("registration-options")]
     [AllowAnonymous]
     [EnableRateLimiting(RateLimitPolicies.PublicRead)]
@@ -236,20 +222,12 @@ public class SuppliersController(
         return (email, verified == true);
     }
 
-    /// <summary>
-    /// Email of the signed-in account: the Auth0 Action claim (<c>https://casazen.app/email</c>, runbook auth0.md §6),
-    /// else the standard claims.
-    /// </summary>
     private static string? GetAccountEmail(ClaimsPrincipal user) =>
         new[] { AccountEmailClaim, "email", ClaimTypes.Email }
             .Select(user.FindFirstValue)
             .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
             ?.Trim();
 
-    /// <summary>
-    /// Auth0 <c>email_verified</c> of the access token: the Action claim (<c>https://casazen.app/email_verified</c>), else
-    /// the standard one; null when the token carries neither (or an unreadable value).
-    /// </summary>
     private static bool? GetAccountEmailVerified(ClaimsPrincipal user)
     {
         var value = new[] { AccountEmailVerifiedClaim, "email_verified" }
@@ -299,17 +277,13 @@ public class SuppliersController(
 
         var (suppliers, hostOriginIds) = await PickerSuppliersAsync(query.IncludeTrusted, query.PropertyId, targets, query.Category, cancellationToken);
 
-        // The comuni chosen from the official list are shown by name (SU-04).
         var listed = await comuneDirectory.GetByIstatCodesAsync(
             suppliers.SelectMany(SupplierComuniView.IstatCodes), cancellationToken);
 
-        // SR-09a: the services and the response times of all the suppliers, one read each (never one per supplier).
         var orgIds = suppliers.Select(sp => sp.OrgId).ToList();
         var services = await catalog.ListPickerServicesAsync(orgIds, cancellationToken);
         var medians = await kpis.GetMedianResponseMinutesBatchAsync(orgIds, cancellationToken);
 
-        // SP-REL: the default order is the ranking, the same score that recommends a supplier and picks its backups. Read only for that
-        // order; the number is never sent, only the order and the "recommended" marker of the first one.
         var scores = sort == SupplierPickerSort.Recommended
             ? await matcher.ScoresAsync(suppliers, ServiceRequestUrgency.Normal, cancellationToken)
             : null;
@@ -334,13 +308,6 @@ public class SuppliersController(
         });
     }
 
-    /// <summary>
-    /// One supplier of the area of a property, for its own page in the marketplace (MKT): the same entry as the list of
-    /// <see cref="GetSuppliers"/>, with the same fields and no more, but with <b>every</b> published service (the list carries the
-    /// first three). The target is the one of the list: <c>propertyId</c> (authorized as a <see cref="HostResource"/>) or
-    /// <c>comune</c>, or <c>accountScope</c> for all accessible short-rental municipalities. 404 <c>supplier_not_found</c> when
-    /// the supplier is not active or does not work in any of the selected municipalities.
-    /// </summary>
     [HttpGet("{orgId:guid}")]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
     [ProducesResponseType(typeof(SupplierPickerDto), StatusCodes.Status200OK)]
@@ -390,7 +357,6 @@ public class SuppliersController(
         return new PropertySupplierChoices(await supplierService.GetActiveByComuniAsync(targets, category, ct), null);
     }
 
-    /// <summary>Resolves the search areas, using the caller's property permissions for account and property searches.</summary>
     private async Task<(IReadOnlyCollection<ComuneTarget> Targets, ActionResult? Failure)> ResolveSearchTargetsAsync(
         Guid? propertyId,
         string? comune,

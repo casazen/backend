@@ -20,43 +20,26 @@ namespace Casazen.Core.GuestPortal;
 /// </remarks>
 public static class GuestPortalRules
 {
-    /// <summary>Days after the departure the link keeps opening: the link works up to the end of the 30th one.</summary>
     public const int DaysAfterDeparture = 30;
 
-    /// <summary>409 of the host endpoints: the booking cannot get a stay link (<see cref="IneligibleReason"/>).</summary>
     public const string BookingNotEligibleCode = "guest_portal_booking_not_eligible";
 
-    /// <summary>The one 404 of the public portal: a token that is unknown, revoked, expired or not a token at all.</summary>
     public const string LinkInvalidCode = "guest_portal_link_invalid";
 
-    /// <summary>Why a booking gets no link: its status (a request, cancelled, a no-show).</summary>
     public const string BookingStatusReason = "booking_status";
 
-    /// <summary>Why a booking gets no link: the stay ended more than <see cref="DaysAfterDeparture"/> days ago.</summary>
     public const string StayEndedReason = "stay_ended";
 
-    /// <summary>State of the link of a booking for the host: it has none (or only revoked ones).</summary>
     public const string StateNone = "none";
 
-    /// <summary>State of the link of a booking for the host: the active link opens.</summary>
     public const string StateActive = "active";
 
-    /// <summary>State of the link of a booking for the host: the active link no longer opens (its stay ended).</summary>
     public const string StateExpired = "expired";
 
-    /// <summary>
-    /// The statuses a link resolves for: the active ones and the cancelled one (the guest still reads the stay); never a request. An array, like
-    /// <see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/>, so the queries translate it.
-    /// </summary>
     public static readonly BookingStatus[] ResolvableStatuses = [.. AlloggiatiStatusRules.ActiveBookingStatuses, BookingStatus.Cancelled];
 
-    /// <summary>The shortest token that can be one: 128 random bits in base64url (22 characters). Anything shorter is not even looked up.</summary>
     public const int MinTokenLength = 22;
 
-    /// <summary>
-    /// True when <paramref name="token"/> can be a token of a stay link: base64url characters only, at least <see cref="MinTokenLength"/> and at most
-    /// <see cref="GuestPortalLink.TokenMaxLength"/> long. A token that is not is answered like an unknown one, without a query.
-    /// </summary>
     public static bool IsWellFormedToken(string? token)
     {
         if (token is null || token.Length < MinTokenLength || token.Length > GuestPortalLink.TokenMaxLength)
@@ -71,7 +54,6 @@ public static class GuestPortalRules
         return true;
     }
 
-    /// <summary>True when <paramref name="status"/> is one of the active statuses of the code (confirmed, checked in, checked out).</summary>
     public static bool IsEligibleStatus(BookingStatus status) => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(status);
 
     /// <summary>
@@ -85,34 +67,21 @@ public static class GuestPortalRules
     public static bool IsStayOpenToReservedData(BookingStatus status, DateTime? noShowAt) =>
         AlloggiatiStatusRules.ActiveBookingStatuses.Contains(status) && status != BookingStatus.CheckedOut && noShowAt is null;
 
-    /// <summary>
-    /// The end of the 30th day after the departure, in UTC: <c>checkOutDate.Date + 31 days</c>. A departure on 13 October gives a link that opens
-    /// until 13 November 00:00 UTC, the end of 12 November.
-    /// </summary>
     public static DateTime ExpiryFor(DateTime checkOutDate) =>
         DateTime.SpecifyKind(checkOutDate.Date.AddDays(DaysAfterDeparture + 1), DateTimeKind.Utc);
 
-    /// <summary>
-    /// When a link stored with <paramref name="storedExpiresAt"/> stops opening for a stay that leaves on <paramref name="checkOutDate"/>: the later of
-    /// the two, so a departure moved later extends the link and one moved earlier never shortens it.
-    /// </summary>
     public static DateTime EffectiveExpiry(DateTime storedExpiresAt, DateTime checkOutDate)
     {
         var expiry = ExpiryFor(checkOutDate);
         return storedExpiresAt >= expiry ? storedExpiresAt : expiry;
     }
 
-    /// <summary>
-    /// Why <paramref name="booking"/> cannot get a stay link at <paramref name="nowUtc"/>: <see cref="BookingStatusReason"/> (not an active status, or a
-    /// no-show), <see cref="StayEndedReason"/> (the link would already be over), or <c>null</c> when it can.
-    /// </summary>
     public static string? IneligibleReason(Booking booking, DateTime nowUtc)
     {
         ArgumentNullException.ThrowIfNull(booking);
         return IneligibleReason(booking.Status, booking.NoShowAt, booking.CheckOutDate, nowUtc);
     }
 
-    /// <inheritdoc cref="IneligibleReason(Booking, DateTime)"/>
     public static string? IneligibleReason(BookingStatus status, DateTime? noShowAt, DateTime checkOutDate, DateTime nowUtc)
     {
         if (!IsEligibleStatus(status) || noShowAt is not null)

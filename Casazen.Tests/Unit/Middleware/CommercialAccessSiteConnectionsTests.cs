@@ -70,7 +70,6 @@ public sealed class CommercialAccessSiteConnectionsTests : IDisposable
         Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
     }
 
-    /// <summary>An org of a commercial sign-up, paid and active, with only <paramref name="paidAddons"/>.</summary>
     private Guid SeedCommercialOrg(string[] paidAddons)
     {
         var org = new OrgEntity
@@ -89,7 +88,6 @@ public sealed class CommercialAccessSiteConnectionsTests : IDisposable
         return org.Id;
     }
 
-    /// <summary>The middleware on the endpoint of <paramref name="controller"/>.<paramref name="action"/>, for a signed-in caller of <paramref name="orgId"/>.</summary>
     private async Task<(DefaultHttpContext Context, bool NextCalled)> InvokeAsync(Type controller, string action, Guid orgId)
     {
         var method = controller.GetMethod(action, BindingFlags.Public | BindingFlags.Instance)!;

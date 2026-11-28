@@ -6,7 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Leases;
 
-/// <summary>LR-12, decision LR-D29: the figures of the area are read by the backend and handed to the screens from one place.</summary>
 public class LongRentRulesTests
 {
     [Fact]
@@ -54,7 +53,7 @@ public class LongRentRulesTests
     [Theory]
     [InlineData(LeaseContractType.Libero)]
     [InlineData(LeaseContractType.Concordato)]
-    [InlineData(LeaseContractType.Transitorio)] // TR: made in CasaZen with the Allegato B, as well as brought in already signed (LR-13)
+    [InlineData(LeaseContractType.Transitorio)]
     public void TheLiberoTheConcordatoAndTheTransitory_CanBeCreated(LeaseContractType type)
     {
         Assert.True(LongRentRules.IsAvailable(type));
@@ -87,8 +86,8 @@ public class LongRentRulesTests
     [Theory]
     [InlineData(2026, 11, 1, 48, 2030, 10, 31)]
     [InlineData(2026, 11, 15, 36, 2029, 11, 14)]
-    [InlineData(2024, 2, 29, 48, 2028, 2, 28)] // a leap day: the 29th of February 2028 exists, the first period ends the day before
-    [InlineData(2024, 2, 29, 36, 2027, 2, 27)] // 2027 has no 29th: the period ends on 27 February
+    [InlineData(2024, 2, 29, 48, 2028, 2, 28)]
+    [InlineData(2024, 2, 29, 36, 2027, 2, 27)]
     [InlineData(2026, 1, 31, 48, 2030, 1, 30)]
     public void FirstTermEnd_IsTheDayBeforeTheSameDayOfTheMonthAfterTheMonths(
         int year, int month, int day, int months, int endYear, int endMonth, int endDay)

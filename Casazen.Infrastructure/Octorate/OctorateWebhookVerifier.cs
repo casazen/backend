@@ -20,25 +20,16 @@ namespace Casazen.Infrastructure.Octorate;
 /// </remarks>
 public sealed class OctorateWebhookVerifier(IConfiguration configuration)
 {
-    /// <summary>Configuration key of the secret (<c>Octorate__WebhookSecret</c>).</summary>
     public const string SecretKey = "Octorate:WebhookSecret";
 
-    /// <summary>The shortest secret accepted: it is a password in an address.</summary>
     public const int MinSecretLength = 32;
 
-    /// <summary>A longer secret in the address is refused without being compared.</summary>
     private const int MaxPresentedLength = 512;
 
-    /// <summary>The configured secret, trimmed; <c>null</c> when empty.</summary>
     public string? ConfiguredSecret => configuration[SecretKey]?.Trim() is { Length: > 0 } secret ? secret : null;
 
-    /// <summary>True when a secret of at least <see cref="MinSecretLength"/> characters is configured.</summary>
     public bool HasUsableSecret => ConfiguredSecret is { Length: >= MinSecretLength };
 
-    /// <summary>
-    /// True when <paramref name="presented"/>, the secret of the address of the call, is the configured one. Compared in constant time
-    /// on the SHA-256 of both, so neither the content nor the length of the configured secret leaks through the time of the answer.
-    /// </summary>
     public bool IsValid(string? presented)
     {
         var configured = ConfiguredSecret;
@@ -73,7 +64,6 @@ public sealed record OctorateWebhookNotification(string? EventName, string? Acco
 
     private static readonly Regex Identifier = new("^[A-Za-z0-9_.:-]{1,64}$", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
 
-    /// <summary>The keys of a call: its body, its content type, and the <c>event</c> parameter of its address.</summary>
     public static OctorateWebhookNotification Read(string? body, string? contentType, string? eventOfTheAddress)
     {
         var fields = IsForm(contentType) ? FormFields(body) : JsonFields(body);
@@ -100,7 +90,6 @@ public sealed record OctorateWebhookNotification(string? EventName, string? Acco
 
     private static string? IdentifierOrNull(string? value) => value is not null && Identifier.IsMatch(value) ? value : null;
 
-    /// <summary>The fields of a form body (<c>a=1&amp;b=2</c>).</summary>
     private static Dictionary<string, string> FormFields(string? body)
     {
         var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -121,10 +110,6 @@ public sealed record OctorateWebhookNotification(string? EventName, string? Acco
         return fields;
     }
 
-    /// <summary>
-    /// The plain members of a JSON body, of its <c>data</c> object and of a <c>ping</c> that holds a JSON object; an object member
-    /// named like an accommodation (<c>{"accommodation": {"id": "..."}}</c>) gives its <c>id</c>. The first value found wins.
-    /// </summary>
     private static Dictionary<string, string> JsonFields(string? body)
     {
         var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -138,7 +123,6 @@ public sealed record OctorateWebhookNotification(string? EventName, string? Acco
         }
         catch (JsonException)
         {
-            // Not JSON: no keys, the call is acknowledged and recorded nowhere.
         }
 
         return fields;
@@ -188,7 +172,6 @@ public sealed record OctorateWebhookNotification(string? EventName, string? Acco
         }
         catch (JsonException)
         {
-            // A ping that only looks like JSON: nothing to read from it.
         }
     }
 }

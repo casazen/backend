@@ -52,7 +52,6 @@ public class GdprControllerOrgExportTests
         };
         _org.Setup(o => o.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(OrgId);
 
-        // The activity log keeps its own permission inside the export (AM-02b): not held here, so the log stays out of these tests.
         _authorization
             .Setup(a => a.AuthorizeAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), It.IsAny<string>()))
             .ReturnsAsync(AuthorizationResult.Failed());
@@ -76,7 +75,6 @@ public class GdprControllerOrgExportTests
     [Fact]
     public void AnonymizeOrgFiscal_NeedsTheOrgPolicy_NotThePropertyOne()
     {
-        // Wiping the fiscal identifiers of the whole org cannot be undone: it is an act of the holder, like the export (AM-03b-FU1).
         var method = typeof(GdprController).GetMethod(nameof(GdprController.AnonymizeOrgFiscal))!;
 
         var policies = method.GetCustomAttributes<AuthorizeAttribute>().Select(a => a.Policy).ToList();

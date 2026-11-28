@@ -13,16 +13,11 @@ using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Supplier-facing endpoints: activation wizard, profile, inbox shell, availability, and calendar sync (US-022 / #292).
-/// All routes are scoped to the caller's supplier org via <c>ISupplierOrgContextResolver</c>.
-/// </summary>
 [ApiController]
 [Route("api/supplier")]
 [Authorize(Policy = "RequireSupplier")]
@@ -36,13 +31,6 @@ public class SupplierProfileController(
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
-    // ─── Activation ──────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The 5-step activation wizard (SU-05): the step each requirement belongs to, the step to resume at (saved by the
-    /// server) and the Terms of Service acceptance. The same shape for a pending, active or suspended supplier: an
-    /// active one whose accepted Terms are not the current version sees <c>tos.reacceptanceRequired</c>.
-    /// </summary>
     [HttpGet("profile/activation")]
     [ProducesResponseType(typeof(ActivationStatusDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -80,7 +68,6 @@ public class SupplierProfileController(
         });
     }
 
-    /// <summary>Saves the wizard step (1-5) the supplier reached, so the wizard resumes there on any device.</summary>
     [HttpPut("profile/activation/step")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -104,12 +91,6 @@ public class SupplierProfileController(
         }
     }
 
-    /// <summary>
-    /// Completes the activation wizard and sets the profile to <c>Active</c> (SU-05). 409
-    /// <c>supplier_activation_blocked</c> with <c>blockers</c> (stable codes, e.g. <c>categories_missing</c>) when the stored
-    /// profile does not meet the requirements or the Terms are not accepted; 409 <c>supplier_tos_version_stale</c> when
-    /// <c>tosVersion</c> is not the current version. The acceptance is recorded with version, time and IP.
-    /// </summary>
     [HttpPost("profile/activation/complete")]
     [ProducesResponseType(typeof(CompleteActivationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -149,10 +130,6 @@ public class SupplierProfileController(
         }
     }
 
-    /// <summary>
-    /// Re-acceptance of the current Terms of Service by an active supplier after a new version (SU-05, A4-31). It never
-    /// changes the status. 409 <c>supplier_tos_version_stale</c> when <c>tosVersion</c> is not the current version.
-    /// </summary>
     [HttpPost("profile/tos/accept")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -177,9 +154,6 @@ public class SupplierProfileController(
         }
     }
 
-    // ─── Profile ─────────────────────────────────────────────────────────────
-
-    /// <summary>Returns the caller's supplier profile.</summary>
     [HttpGet("profile")]
     [ProducesResponseType(typeof(SupplierProfileDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -237,14 +211,6 @@ public class SupplierProfileController(
         return Ok(dto);
     }
 
-    // ─── Public showcase (SU-13) ─────────────────────────────────────────────
-
-    /// <summary>
-    /// The owner's preview of the public showcase (<c>/fornitori/{slug}</c>): the same content the public page shows, built
-    /// from the caller's own profile whatever its status, with where it is published. An active supplier without a slug
-    /// (activated before SU-13) gets one here. <c>published</c> is true only for an active supplier with a slug; a pending or
-    /// suspended supplier previews a page nobody else can open yet (<c>publicUrl</c> null).
-    /// </summary>
     [HttpGet("showcase")]
     [ProducesResponseType(typeof(SupplierShowcasePreviewDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -275,15 +241,11 @@ public class SupplierProfileController(
             Published = profile.Status == SupplierStatus.Active && path is not null,
             Slug = profile.ShowcaseSlug,
             PublicPath = path,
-            // The public base URL is configuration (App__PublicSiteBaseUrl), never written here (decision D3).
             PublicUrl = path is null ? null : publicSiteLinks.TryPublicPage(path),
-            // The public page is indexed once it is published and has something to show (categories or text).
             Indexable = profile.Status == SupplierStatus.Active && path is not null
                 && SupplierShowcaseMapper.HasPublicContent(profile),
         });
     }
-
-    // ─── Inbox ───────────────────────────────────────────────────────────────
 
     /// <summary>
     /// A page of the service requests sent to the caller's supplier org (SU-08, A4-14; SP-04), server-side paginated.
@@ -330,7 +292,6 @@ public class SupplierProfileController(
         bool? awaitingCustomer = null;
         if (!string.IsNullOrWhiteSpace(tab))
         {
-            // The tab says which requests and in which order; the status is left out.
             if (!SupplierInboxTabs.TryParse(tab, out var inboxTab))
                 return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierInboxTabInvalid");
 
@@ -408,10 +369,6 @@ public class SupplierProfileController(
         });
     }
 
-    /// <summary>
-    /// One request of the caller's supplier org with its history (SU-08): 404 <c>service_request_not_found</c> when it
-    /// does not exist or was sent to another supplier. Street address and host contact only after the take.
-    /// </summary>
     [HttpGet("inbox/{id:guid}")]
     [ProducesResponseType(typeof(SupplierServiceRequestDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -451,13 +408,9 @@ public class SupplierProfileController(
         return Ok(SupplierReadModelsMapper.ToDto(await reader.GetInboxCountsAsync(orgId.Value, cancellationToken)));
     }
 
-    /// <summary>A filter of the inbox cut to <paramref name="maxLength"/> characters: a longer value matches nothing anyway.</summary>
     private static string? Truncate(string? value, int maxLength) =>
         value is { Length: > 0 } && value.Length > maxLength ? value[..maxLength] : value;
 
-    // ─── Availability ─────────────────────────────────────────────────────────
-
-    /// <summary>Returns the supplier's saved availability for a date range (defaults: today → +13 days, max 90 days).</summary>
     [HttpGet("availability")]
     [ProducesResponseType(typeof(SupplierAvailabilityResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -492,7 +445,6 @@ public class SupplierProfileController(
         });
     }
 
-    /// <summary>Updates the supplier's availability for a list of dates.</summary>
     [HttpPut("availability")]
     [ProducesResponseType(typeof(UpdateAvailabilityResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -509,9 +461,6 @@ public class SupplierProfileController(
         return Ok(new UpdateAvailabilityResponse { Updated = updated });
     }
 
-    // ─── Dashboard ────────────────────────────────────────────────────────────
-
-    /// <summary>Returns aggregated KPIs for the supplier dashboard.</summary>
     [HttpGet("dashboard")]
     [ProducesResponseType(typeof(SupplierDashboardDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -547,10 +496,6 @@ public class SupplierProfileController(
         });
     }
 
-    /// <summary>
-    /// Work KPIs of the caller's supplier org from its service requests (SU-11, A4-15): completed and rejected in the
-    /// Europe/Rome <paramref name="period"/>, waiting to be taken and taken (upcoming) now.
-    /// </summary>
     [HttpGet("dashboard/kpis")]
     [ProducesResponseType(typeof(SupplierKpisDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -560,7 +505,6 @@ public class SupplierProfileController(
         [FromQuery] SupplierKpiPeriod period = SupplierKpiPeriod.CurrentMonth,
         CancellationToken cancellationToken = default)
     {
-        // A number that is not a period ("?period=9") binds as an undefined enum value.
         if (!Enum.IsDefined(period))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierKpiPeriodInvalid");
 
@@ -612,9 +556,6 @@ public class SupplierProfileController(
         return Ok(SupplierReadModelsMapper.ToDto(await kpiService.GetOverviewAsync(orgId.Value, overviewPeriod, cancellationToken)));
     }
 
-    // ─── Photo Upload ─────────────────────────────────────────────────────────
-
-    /// <summary>Uploads supplier photos. Accepts up to 10 JPEG/PNG/WebP files (max 5 MB each).</summary>
     [HttpPost("profile/photos")]
     [ProducesResponseType(typeof(SupplierPhotoUploadResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -671,9 +612,6 @@ public class SupplierProfileController(
         return Ok(new SupplierPhotoUploadResponse { Urls = allUrls });
     }
 
-    // ─── Calendar Sync ───────────────────────────────────────────────────────
-
-    /// <summary>Returns the supplier's calendar sync status (<c>lastSyncStatus</c> <c>Syncing</c> while a sync is queued).</summary>
     [HttpGet("calendar/status")]
     [ProducesResponseType(typeof(CalendarSyncStatusDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -722,7 +660,6 @@ public class SupplierProfileController(
         }
         catch (DomainRuleException ex) when (ex.Code == ICalErrorCodes.InvalidUrl)
         {
-            // Only an external https URL: the server downloads it (FD-16, A4-10).
             return this.ApiProblem(StatusCodes.Status400BadRequest, ex.Code, ex.MessageKey);
         }
 
@@ -732,10 +669,6 @@ public class SupplierProfileController(
         return Accepted(MapCalendarStatus(profile, localizer, await freeEventService.CountPendingAsync(orgId.Value, cancellationToken)));
     }
 
-    /// <summary>
-    /// "Sync now": 202 with <c>lastSyncStatus</c> <c>Syncing</c> and a queued job, or the current state when a sync is
-    /// already queued (nothing more is queued). 422 <c>ical_supplier_no_feed</c> when no iCal URL is saved.
-    /// </summary>
     [HttpPost("calendar/sync")]
     [ProducesResponseType(typeof(CalendarSyncStatusDto), StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -758,11 +691,6 @@ public class SupplierProfileController(
         return Accepted(MapCalendarStatus(profile, localizer, await freeEventService.CountPendingAsync(orgId.Value, cancellationToken)));
     }
 
-    /// <summary>
-    /// The events of the supplier's calendar that the calendar marks "Available" and the supplier has not answered about, the
-    /// next to happen first. Until answered they keep their days or hours occupied (Google writes every all-day event as
-    /// "Available"). Only the caller's own events: no id of another supplier is ever reachable.
-    /// </summary>
     [HttpGet("calendar/free-events")]
     [ProducesResponseType(typeof(SupplierFreeEventsResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -791,12 +719,6 @@ public class SupplierProfileController(
         });
     }
 
-    /// <summary>
-    /// Answers about one event of the calendar: <c>Available</c> (the supplier is free: it stops occupying its days or hours, at
-    /// the sync queued right away, and is not asked again) or <c>Busy</c> (it stays occupied). One answer for a whole
-    /// recurring series. 204; 404 when the event is not the caller's; 422 <c>free_event_decision_invalid</c> for any other
-    /// value; 409 <c>free_event_already_decided</c> when it was already answered.
-    /// </summary>
     [HttpPost("calendar/free-events/{id:guid}/decision")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -818,7 +740,6 @@ public class SupplierProfileController(
 
         if (frees.Value)
         {
-            // Frees the days and hours the event occupied: the sync of "Sync now" (a sync already queued reads the answer too).
             try
             {
                 var (profile, queue) = await calendarSyncService.RequestSyncAsync(orgId.Value, cancellationToken);
@@ -827,7 +748,6 @@ public class SupplierProfileController(
             }
             catch (DomainRuleException ex) when (ex.Code == ICalFeedErrorCodes.SupplierNoFeed)
             {
-                // The feed was unlinked meanwhile: nothing to free.
             }
         }
 
@@ -855,8 +775,6 @@ public class SupplierProfileController(
         return NoContent();
     }
 
-    // ─── Helpers ──────────────────────────────────────────────────────────────
-
     private void QueueSupplierSync(Guid orgId, IBackgroundJobClient backgroundJobClient)
     {
         try
@@ -865,7 +783,6 @@ public class SupplierProfileController(
         }
         catch (Exception ex)
         {
-            // The URL is saved and the state says Syncing: the recurring ical-supplier-sync job (every 15 minutes) syncs it.
             logger.LogError(ex, "Could not queue the iCal sync of supplier {OrgId}", orgId);
         }
     }

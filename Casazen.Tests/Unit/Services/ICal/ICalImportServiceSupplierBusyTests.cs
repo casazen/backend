@@ -5,14 +5,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services.ICal;
 
-/// <summary>
-/// SP-05: what a supplier's feed occupies. An all-day event closes its days (as it always did), a timed event with a length
-/// becomes a window of hours with a key that is stable between syncs, a timed event with no length keeps closing its day. The
-/// import window, the folding of the same key twice, the long UIDs and the limit on the windows of a supplier.
-/// </summary>
 public class ICalImportServiceSupplierBusyTests
 {
-    // Friday 25 September 2026, 12:00 in Rome. Import window: 25 August 2026 to 25 March 2028 (1 month back, 18 ahead).
     private static readonly DateTimeOffset Now = new(2026, 9, 25, 10, 0, 0, TimeSpan.Zero);
 
     private static ICalImportService Service(ICalImportOptions? options = null) =>
@@ -30,8 +24,6 @@ public class ICalImportServiceSupplierBusyTests
 
     private static DateTime Utc(string value) =>
         DateTime.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal);
-
-    // ─── The split between days and hours ────────────────────────────────────────
 
     [Fact]
     public void ToSupplierBusy_AnHourOfTheDay_IsAWindowOfThatHourAndClosesNoDay()
@@ -58,7 +50,6 @@ public class ICalImportServiceSupplierBusyTests
     [Fact]
     public void ToSupplierBusy_ATimedEventFromMidnightToMidnight_ClosesThoseDaysAndKeepsTheTitle()
     {
-        // An all-day event written as 00:00–00:00 in Rome, not as VALUE=DATE. 13 October 2026 is still summer time.
         var busy = Busy(
             "UID:busy\nDTSTART;TZID=Europe/Rome:20261013T000000\nDTEND;TZID=Europe/Rome:20261014T000000\nSUMMARY:busy - TEST");
 
@@ -85,7 +76,6 @@ public class ICalImportServiceSupplierBusyTests
     [Fact]
     public void ToSupplierBusy_AnEventByTheHourThatCrossesDays_IsOneWindowNotTheDaysItTouches()
     {
-        // A night shift, 22:00 to 06:00: it occupies those eight hours, the Tuesday morning is free after 06:00.
         var busy = Busy("UID:night\nDTSTART;TZID=Europe/Rome:20261012T220000\nDTEND;TZID=Europe/Rome:20261013T060000");
 
         var window = Assert.Single(busy.Windows);
@@ -96,7 +86,6 @@ public class ICalImportServiceSupplierBusyTests
     [Fact]
     public void ToSupplierBusy_ATimedEventWithNoLength_KeepsClosingItsDay_AsBefore()
     {
-        // Nothing to occupy: the cautious reading is the one of before SP-05 (dropping it would offer a slot the supplier closed).
         var busy = Busy("UID:reminder\nDTSTART;TZID=Europe/Rome:20261010T100000");
 
         Assert.Empty(busy.Windows);
@@ -112,7 +101,6 @@ public class ICalImportServiceSupplierBusyTests
         Assert.Equal(4, busy.Windows.Count);
         Assert.All(busy.Windows, w => Assert.Equal("daily", w.ExternalUid));
         Assert.Equal(4, busy.Windows.Select(w => w.StartUtc).Distinct().Count());
-        // The clock changes on the 25th: 08:00 UTC before, 09:00 UTC from then on.
         Assert.Equal(
             [Utc("2026-10-23T08:00:00Z"), Utc("2026-10-24T08:00:00Z"), Utc("2026-10-25T09:00:00Z"), Utc("2026-10-26T09:00:00Z")],
             busy.Windows.Select(w => w.StartUtc));
@@ -134,8 +122,6 @@ public class ICalImportServiceSupplierBusyTests
         Assert.Equal(4, busy.BusyDays.Count);
     }
 
-    // ─── Keys ────────────────────────────────────────────────────────────────────
-
     [Fact]
     public void ToSupplierBusy_AnEventWithoutUid_GetsTheSameKeyAtEverySync_AndTwoEventsOfTheSameHourGetTwo()
     {
@@ -148,7 +134,7 @@ public class ICalImportServiceSupplierBusyTests
         Assert.Equal(2, once.Windows.Count);
         Assert.Equal(2, once.Windows.Select(w => w.ExternalUid).Distinct().Count());
         Assert.Equal(once.Windows.Select(w => w.ExternalUid).Order(), again.Windows.Select(w => w.ExternalUid).Order());
-        Assert.All(once.Windows, w => Assert.Equal(64, w.ExternalUid.Length)); // a SHA-256 in hex
+        Assert.All(once.Windows, w => Assert.Equal(64, w.ExternalUid.Length));
     }
 
     [Fact]
@@ -202,8 +188,6 @@ public class ICalImportServiceSupplierBusyTests
         Assert.Null(busy.Windows.Single(w => w.ExternalUid == "none").Label);
     }
 
-    // ─── The import window ───────────────────────────────────────────────────────
-
     [Fact]
     public void ToSupplierBusy_AnEventWhollyBeforeOrAfterTheImportWindow_IsLeftOutAndCounted()
     {
@@ -220,7 +204,6 @@ public class ICalImportServiceSupplierBusyTests
     [Fact]
     public void ToSupplierBusy_TheEdgesOfTheImportWindow_AreTheStartOfADayInRome()
     {
-        // Window: from 25 August 2026 00:00 (22:00 UTC on the 24th) to 25 March 2028 00:00 (23:00 UTC on the 24th).
         var busy = Busy(
             "UID:ends-at-the-start\nDTSTART;TZID=Europe/Rome:20260824T230000\nDTEND;TZID=Europe/Rome:20260825T000000",
             "UID:reaches-in\nDTSTART;TZID=Europe/Rome:20260824T233000\nDTEND;TZID=Europe/Rome:20260825T003000",
@@ -255,8 +238,6 @@ public class ICalImportServiceSupplierBusyTests
         Assert.Equal([new DateOnly(2025, 1, 10), new DateOnly(2030, 1, 10)], busy.BusyDays.Order());
     }
 
-    // ─── The limit ───────────────────────────────────────────────────────────────
-
     [Fact]
     public void ToSupplierBusy_MoreWindowsThanTheLimit_KeepsTheNearestAndCountsTheRest()
     {
@@ -277,7 +258,6 @@ public class ICalImportServiceSupplierBusyTests
     [Fact]
     public void ToSupplierBusy_TheLimitOfADaysSeries_IsNotReachedByARealisticCalendar()
     {
-        // The default limit: a daily series over the whole import window is ~550 windows, twenty of them are not the limit.
         Assert.Equal(10_000, ICalImportService.MaxWindowsPerSupplier);
         var busy = Busy(
             "UID:daily\nDTSTART;TZID=Europe/Rome:20261001T100000\nDTEND;TZID=Europe/Rome:20261001T110000\nRRULE:FREQ=DAILY");
@@ -285,8 +265,6 @@ public class ICalImportServiceSupplierBusyTests
         Assert.InRange(busy.Windows.Count, 500, 600);
         Assert.Equal(0, busy.OverLimit);
     }
-
-    // ─── Idempotency of the mapping ──────────────────────────────────────────────
 
     [Fact]
     public void ToSupplierBusy_TheSameFeedTwice_GivesTheSameWindowsInTheSameOrder()

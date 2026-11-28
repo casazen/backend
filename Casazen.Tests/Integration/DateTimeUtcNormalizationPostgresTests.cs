@@ -60,7 +60,6 @@ public class DateTimeUtcNormalizationPostgresTests(CasazenWebApplicationFactory 
             checkOutDate = "2026-10-04",
         });
 
-        // BK-03 / A8-12: a comune without rate is an explicit state, not an error.
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
         Assert.Equal("RateUnavailable", body.GetProperty("status").GetString());
@@ -81,7 +80,6 @@ public class DateTimeUtcNormalizationPostgresTests(CasazenWebApplicationFactory 
     [PostgresFact]
     public async Task AdminTouristTaxRatePayload_DateOnlyValues_DeserializeAndPersistAsUtcMidnight()
     {
-        // Same JSON options as the API; the admin create/update flow itself is tracked by A5-06 (CO-03).
         var jsonOptions = factory.Services.GetRequiredService<IOptions<JsonOptions>>().Value.JsonSerializerOptions;
         var rate = JsonSerializer.Deserialize<TouristTaxRate>(
             """{"city":"Torino","regionCode":"PIE","ratePerPersonPerNight":2.30,"effectiveFrom":"2026-04-01","effectiveTo":"2026-12-31"}""",
@@ -129,7 +127,6 @@ public class DateTimeUtcNormalizationPostgresTests(CasazenWebApplicationFactory 
     public async Task GetPublicAvailability_DateOnlyQuery_Returns200()
     {
         var property = await factory.SeedPropertyAsync($"auth0|fd06-avail-{Guid.NewGuid():N}");
-        // Only a published property has a public availability (BK-05).
         await WithDbAsync(db => db.Properties.Where(p => p.Id == property.Id).ExecuteUpdateAsync(
             set => set.SetProperty(p => p.ComplianceStatus, Casazen.Core.Entities.Enums.PropertyComplianceStatus.Active)));
         using var client = factory.CreateClient();
@@ -197,7 +194,6 @@ public class DateTimeUtcNormalizationPostgresTests(CasazenWebApplicationFactory 
     private Task SeedTouristTaxRateAsync(string city, decimal rate) =>
         WithDbAsync(async db =>
         {
-            // The migrations seed real rates for some comuni (CO-03): pin them to the test amount.
             var existing = await db.TouristTaxRates.Where(r => r.City == city).ToListAsync();
             if (existing.Count > 0)
             {

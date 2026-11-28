@@ -3,10 +3,6 @@ using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
 
-/// <summary>
-/// Background job for pulling new bookings from OTA platforms
-/// Runs more frequently than full sync (every 15 minutes by default)
-/// </summary>
 public class BookingPullJob
 {
     private readonly IOtaManager _otaManager;
@@ -18,11 +14,7 @@ public class BookingPullJob
         _logger = logger;
     }
 
-    /// <summary>
-    /// Pulls new bookings for a specific property from all integrated platforms
-    /// </summary>
-    /// <param name="propertyId">Property ID to pull bookings for</param>
-    [DisableConcurrentExecution("BookingPullJob.ExecuteAsync:{0}", JobLockTimeouts.FrequentSeconds)] // one pull per property at a time
+    [DisableConcurrentExecution("BookingPullJob.ExecuteAsync:{0}", JobLockTimeouts.FrequentSeconds)]
     public async Task ExecuteAsync(Guid propertyId)
     {
         try

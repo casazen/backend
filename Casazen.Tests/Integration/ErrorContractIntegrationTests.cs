@@ -10,10 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// The API's single error shape (FD-05): ProblemDetails with a stable <c>code</c>, a localized <c>detail</c>
-/// (Italian by default, English with <c>Accept-Language: en</c>) and a <c>traceId</c>.
-/// </summary>
 public class ErrorContractIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private readonly CasazenWebApplicationFactory _factory;
@@ -160,7 +156,6 @@ public class ErrorContractIntegrationTests : IClassFixture<CasazenWebApplication
         var problem = await ReadJsonAsync(response);
         Assert.Equal("property_has_upcoming_bookings", problem.GetProperty("code").GetString());
 
-        // The property must still be there, reachable and unchanged.
         var stillThere = await client.GetAsync($"/api/properties/{property.Id}");
         Assert.Equal(HttpStatusCode.OK, stillThere.StatusCode);
     }
@@ -178,7 +173,6 @@ public class ErrorContractIntegrationTests : IClassFixture<CasazenWebApplication
 
         var afterDelete = await client.GetAsync($"/api/properties/{property.Id}");
         Assert.Equal(HttpStatusCode.NotFound, afterDelete.StatusCode);
-        // PC-03 x PC-05: a deleted property cannot be paused or reactivated either, nor deleted twice.
         Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsync($"/api/properties/{property.Id}/activate", content: null)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.DeleteAsync($"/api/properties/{property.Id}")).StatusCode);
         var list = JsonSerializer.Deserialize<JsonElement>(await (await client.GetAsync("/api/properties")).Content.ReadAsStringAsync());
@@ -186,7 +180,6 @@ public class ErrorContractIntegrationTests : IClassFixture<CasazenWebApplication
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        // Test assertion: read the stored row past every filter.
         var raw = await db.Properties.IgnoreQueryFilters().AsNoTracking().SingleAsync(p => p.Id == property.Id);
         Assert.True(raw.IsDeleted);
         Assert.NotNull(raw.DeletedAt);

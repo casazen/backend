@@ -2,7 +2,6 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>A PDF supplied by the seller for an accepted guest order. The original is kept in private storage.</summary>
 public sealed class GuestSupplierOrderDocument
 {
     public Guid Id { get; set; } = Guid.NewGuid();

@@ -49,10 +49,8 @@ public sealed record ShowcaseBookingPayload(
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    /// <summary>The payload as the JSON that is stored (and then encrypted by the column).</summary>
     public string ToJson() => JsonSerializer.Serialize(this, Json);
 
-    /// <summary>The payload stored in <paramref name="json"/>; <c>null</c> for a missing or unreadable value.</summary>
     public static ShowcaseBookingPayload? FromJson(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))

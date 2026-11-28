@@ -19,13 +19,10 @@ internal sealed class AlloggiatiWebReportConfiguration : IEntityTypeConfiguratio
             .HasForeignKey(r => r.GuestId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // CO-11: "Inviato" only with a real receipt, never as a simulation.
         entity.ToTable(t => t.HasCheckConstraint(
                 "CK_AlloggiatiWebReports_SentRequiresReceipt",
                 $"\"Status\" <> {(int)AlloggiatiWebStatus.Inviato} OR btrim(coalesce(\"ConfirmationNumber\", '')) <> ''"));
 
-        // AW-R05: the daily receipt of the account that covers the communication; a receipt removed at the end of its retention leaves
-        // the communication without it (SET NULL), never removes it.
         entity.HasOne<AlloggiatiReceipt>()
             .WithMany()
             .HasForeignKey(r => r.ReceiptId)
@@ -49,7 +46,6 @@ internal sealed class StayAlertStateConfiguration : IEntityTypeConfiguration<Sta
 {
     public void Configure(EntityTypeBuilder<StayAlertState> entity)
     {
-        // CO-10: the alert stages of a stay go with it.
         entity.HasOne(s => s.Booking)
             .WithMany()
             .HasForeignKey(s => s.BookingId)
@@ -61,7 +57,6 @@ internal sealed class CinAlertStateConfiguration : IEntityTypeConfiguration<CinA
 {
     public void Configure(EntityTypeBuilder<CinAlertState> entity)
     {
-        // CO-20: the CIN alert stage of a property goes with it.
         entity.HasOne(s => s.Property)
             .WithMany()
             .HasForeignKey(s => s.PropertyId)
@@ -84,9 +79,6 @@ internal sealed class SwissLocalityConfiguration : IEntityTypeConfiguration<Swis
 {
     public void Configure(EntityTypeBuilder<SwissLocality> locality)
     {
-        // E29/F01/US01/T01 (NF-124): the localities of the official swisstopo directory, one row per locality and municipality. The key starts with
-        // the postal code, so it is the index of the postal code lookups (the search, the resolver of the place of a property); the search name and
-        // the municipality have their own.
         locality.HasKey(l => new { l.PostalCode, l.AddOn, l.MunicipalityCode, l.Name });
         locality.HasIndex(l => l.NormalizedName);
         locality.HasIndex(l => l.MunicipalityCode);
@@ -115,8 +107,6 @@ internal sealed class BiometricVerificationLogConfiguration : IEntityTypeConfigu
 {
     public void Configure(EntityTypeBuilder<BiometricVerificationLog> entity)
     {
-        // E03/F04/US02/T01: who decided a verification and why. The rows written before the columns are the agent's (Biometric = 1) with no
-        // reasons; the sentinel makes EF always write the value of the entity, so a new row is never left to the default by mistake.
         entity.Property(l => l.Method)
             .HasDefaultValue(VerificationMethod.Biometric)
             .HasSentinel((VerificationMethod)(-1));

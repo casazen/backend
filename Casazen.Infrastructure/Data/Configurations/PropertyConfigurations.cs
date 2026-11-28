@@ -50,17 +50,12 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
 
     internal static void ConfigureGPSCoordinates(EntityTypeBuilder<Property> entity)
     {
-        // GPS coordinates (PC-06, A2-33): 6 decimals are about 0.1 m, the old 2 decimals placed a house up to a kilometre
-        // away on the map. numeric(9,6) holds -999.999999..999.999999: the API accepts only -90..90 and -180..180.
         entity.Property(p => p.Latitude)
             .HasPrecision(9, PropertyAddress.CoordinateScale);
 
         entity.Property(p => p.Longitude)
             .HasPrecision(9, PropertyAddress.CoordinateScale);
 
-        // DB-03: the stay rules the public quote and checkout read (minimum stay, weekend surcharge). The host forms and the
-        // property service validate them; the constraints keep any other writer honest. Both columns are nullable or 0 for
-        // every row that existed before them, so the migration changes no behavior (docs/runbooks/direct-booking.md § 11).
         entity.ToTable(t =>
         {
             t.HasCheckConstraint(
@@ -101,23 +96,15 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
                 $"\"EnergyIndex\" IS NULL OR (\"EnergyClass\" IS NOT NULL AND \"EnergyIndex\" >= 0 AND \"EnergyIndex\" <= {SitePropertyProfileLimits.MaxEnergyIndex})");
         });
 
-        // E29/F02/US01/T01 (NF-125): what the host decided about notifying the guests of a Swiss property, stored as the number of the enum;
-        // null = follow the regime of the place (every row that existed before the column, and the default). The service validates it; the
-        // constraint keeps any other writer honest.
         entity.ToTable(t => t.HasCheckConstraint(
             "CK_Properties_GuestNotificationOverride",
             $"\"GuestNotificationOverride\" IS NULL OR \"GuestNotificationOverride\" IN ({(int)Casazen.Core.Enums.GuestNotificationOverride.Required}, "
             + $"{(int)Casazen.Core.Enums.GuestNotificationOverride.NotRequired})"));
 
-        // Indexes
         entity.HasIndex(p => p.OwnerId);
 
-        // SU-04: the comune chosen from the official list; the region follows it.
         entity.HasIndex(p => p.ComuneIstatCode);
 
-        // PM-01: the lists of the host areas filter the properties of an org by rental mode (GET /api/properties?mode=), and
-        // the jobs and the public site read the short-rent ones; the column is stored as an integer (append only) and the
-        // existing rows keep the default 0 = Short (migration AddPropertyRentalMode, docs/runbooks/property-rental-mode.md).
         entity.HasIndex(p => new { p.OrgId, p.RentalMode });
 
         // Unique address PER ORG and per unit (PC-06, A2-19). Before, the index was global: a host with two apartments in
@@ -144,12 +131,9 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
 
         entity.HasIndex(p => new { p.OrgId, p.Slug })
             .IsUnique()
-            // A soft-deleted property (PC-05) frees its slug: SlugExistsInOrgAsync no longer sees it either.
             .HasFilter("\"Slug\" IS NOT NULL AND \"IsDeleted\" = false")
             .HasDatabaseName("UIX_Properties_OrgId_Slug");
 
-        // E22/F01/US02/T01: the door token of the QR code printed for the door is unique in the whole table (the public door page finds the property by
-        // it alone), and a property that never asked for the code has none. A soft-deleted property keeps its token: a printed code is never given to another.
         entity.HasIndex(p => p.DoorToken)
             .IsUnique()
             .HasFilter("\"DoorToken\" IS NOT NULL")
@@ -158,22 +142,17 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
 
     internal static void ConfigureOrgIdIndex(EntityTypeBuilder<Property> entity)
     {
-        // OrgId indexes on the tenant-scoped tables + Users (AC2/AC9).
         entity.HasIndex(p => p.OrgId);
     }
 
     internal static void ConfigureOrgIdForeignKey(EntityTypeBuilder<Property> entity)
     {
-        // OrgId FK constraints (AC2). Restrict: an Org can never be deleted while it still owns
-        // tenant rows. The four tenant tables are required (Guid); User.OrgId is nullable (AC9).
         entity.HasOne(p => p.Org).WithMany().HasForeignKey(p => p.OrgId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 
     internal static void ConfigureMemberChargeProperty(EntityTypeBuilder<Property> entity)
     {
-        // The member in charge of a property (AM-03): notified together with the org's administrators. The account can go;
-        // the property keeps its history and is simply left without a named person.
         entity.HasOne<User>()
             .WithMany()
             .HasForeignKey(p => p.ResponsibleUserId)
@@ -187,7 +166,6 @@ internal sealed class PricingAdapterConfigConfiguration : IEntityTypeConfigurati
 {
     public void Configure(EntityTypeBuilder<PricingAdapterConfig> entity)
     {
-        // PricingAdapterConfig → Property (1-to-1)
         entity.HasOne(c => c.Property)
             .WithOne(p => p.PricingAdapterConfig)
             .HasForeignKey<PricingAdapterConfig>(c => c.PropertyId)
@@ -212,7 +190,6 @@ internal sealed class PricingHistoryConfiguration : IEntityTypeConfiguration<Pri
 {
     public void Configure(EntityTypeBuilder<PricingHistory> entity)
     {
-        // PricingHistory → Property
         entity.HasOne(h => h.Property)
             .WithMany()
             .HasForeignKey(h => h.PropertyId)
@@ -237,7 +214,6 @@ internal sealed class PropertyDocumentConfiguration : IEntityTypeConfiguration<P
 {
     public void Configure(EntityTypeBuilder<PropertyDocument> entity)
     {
-        // PropertyDocument → Property
         entity.HasOne(d => d.Property)
             .WithMany(p => p.PropertyDocuments)
             .HasForeignKey(d => d.PropertyId)
@@ -253,14 +229,11 @@ internal sealed class PropertyDocumentConfiguration : IEntityTypeConfiguration<P
 
     internal static void ConfigureOrgIdIndex(EntityTypeBuilder<PropertyDocument> entity)
     {
-        // TN-2: child rows that controllers expose carry their parent's OrgId.
         entity.HasIndex(d => d.OrgId);
     }
 
     internal static void ConfigureOrgIdForeignKey(EntityTypeBuilder<PropertyDocument> entity)
     {
-        // TN-2: child rows copy the OrgId of their parent (property or booking) when they are created.
-        // Restrict like every other OrgId FK; no navigation, the org is never loaded through a child.
         entity.HasOne<Org>().WithMany().HasForeignKey(d => d.OrgId)
             .OnDelete(DeleteBehavior.Restrict);
     }
@@ -276,8 +249,6 @@ internal sealed class PropertyFiscalYearConfiguration : IEntityTypeConfiguration
             .OnDelete(DeleteBehavior.Cascade);
         entity.HasIndex(y => new { y.PropertyId, y.TaxYear })
             .IsUnique();
-        // No unique "one primary per org and year" index any more: the 21% unit is one per taxpayer (CO-18), and one org
-        // can manage several taxpayers. FiscalService checks it under the OrgFiscalRegime advisory lock.
         entity.HasIndex(y => new { y.OrgId, y.TaxYear });
         entity.HasIndex(y => y.OrgId);
     }

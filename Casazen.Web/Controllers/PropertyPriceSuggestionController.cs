@@ -91,10 +91,6 @@ public class PropertyPriceSuggestionController(
         return Ok(new PriceSuggestionAvailabilityResponse { Available = await suggestions.IsAvailableAsync(cancellationToken) });
     }
 
-    /// <summary>
-    /// Loads the property (tenant-filtered: another org's property is 404) and authorizes <paramref name="operation"/> on it; a visible
-    /// property the caller may not use is 403.
-    /// </summary>
     private async Task<(Property Property, ActionResult? Denied)> AuthorizeAsync(Guid propertyId, HostOperationRequirement operation)
     {
         var property = await propertyService.GetPropertyAsync(propertyId);

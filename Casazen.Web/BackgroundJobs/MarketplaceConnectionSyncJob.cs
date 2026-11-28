@@ -25,7 +25,6 @@ public class MarketplaceConnectionSyncJob(
 {
     public const string RecurringJobId = "marketplace-connection-sync";
 
-    /// <summary>Every 30 minutes, at minute 0 and 30 (UTC).</summary>
     public const string Cron = "*/30 * * * *";
 
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
@@ -52,7 +51,6 @@ public class MarketplaceConnectionSyncJob(
             }
             catch (OctorateRateLimitException)
             {
-                // The rate limit stops the run: the orgs not reached are the first of the next run.
                 stoppedByRateLimit = true;
                 logger.LogWarning(
                     "Marketplace connection sync stopped by the rate limit at org {OrgId}: the rest of the {Orgs} orgs is left to the next run", orgId, orgs.Count);

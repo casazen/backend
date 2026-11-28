@@ -11,13 +11,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Authorization;
 
-/// <summary>
-/// AM-02c: the matrix of the roles (<see cref="OrgCapabilityCatalog"/>, <see cref="OrgRoleMatrix"/>). The levels are read
-/// from the permissions of the roles the model seeds (what the migrations leave in the database) and checked three ways: against
-/// the table of the analysis (§2.3, written by hand), against the actions of the API (a role that has «Yes» on a capability can
-/// call the action that writes it, one that has «Read» can only call the one that reads it), and as a tripwire (a permission
-/// that a seeded role holds and the matrix does not know fails the test).
-/// </summary>
 public class OrgCapabilityCatalogTests
 {
     private static readonly string[] CapabilityIds =
@@ -25,7 +18,6 @@ public class OrgCapabilityCatalogTests
         "booking", "prices", "marketing", "guests", "money", "leases", "rents", "jobs", "people", "billing", "suppliers", "settings", "security",
     ];
 
-    /// <summary>The permissions of every seeded role, by context and role key (the model's seed data).</summary>
     private static readonly Lazy<IReadOnlyDictionary<(string ContextKey, string RoleKey), IReadOnlyCollection<string>>> Seeded = new(() =>
     {
         using var db = OrgTeamTestData.NewDb();
@@ -36,8 +28,6 @@ public class OrgCapabilityCatalogTests
 
     private static OrgRoleView RoleOf(OrgRole role, OrgRole caller = OrgRole.Owner) =>
         OrgRoleMatrix.Build(Seeded.Value, caller).Single(r => r.Role == role);
-
-    // ─── The twelve capabilities ────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void Catalog_TheCapabilities_HaveStableIdsInTheOrderOfTheScreen()
@@ -63,19 +53,14 @@ public class OrgCapabilityCatalogTests
     public void Catalog_EveryCapability_BelongsToItsGroup(string id, string group) =>
         Assert.Equal(group, OrgCapabilityCatalog.All.Single(c => c.Id == id).Group);
 
-    // ─── The table of the analysis (§2.3), by hand ──────────────────────────────────────────────────────
-
-    /// <summary>The levels of each role, in the order of <see cref="CapabilityIds"/>: Y = Yes, R = Read, N = No.</summary>
     public static TheoryData<OrgRole, string> ExpectedLevels => new()
     {
-        //                          booking prices guests money leases rents jobs people billing suppliers settings security
         { OrgRole.Owner,           "Y Y Y Y Y Y Y Y Y Y Y Y Y" },
         { OrgRole.Admin,           "Y Y N Y Y Y Y Y Y Y Y Y Y" },
         { OrgRole.PropertyManager, "Y Y N Y Y Y Y Y N N Y N N" },
         // D14: the collaborator reads the prices. Guests and interventions are the limited «Yes» (no erasure, no Alloggiati
         // declaration; no final amount, no online payment): the matrix says Yes, the words say limited.
         { OrgRole.Collaborator,    "R R N Y N N N Y N N N N N" },
-        // LR-01: the accountant reads the list and the register of the rents with lease.read.
         { OrgRole.Accountant,      "R R N N R R R R N R N N N" },
     };
 
@@ -97,11 +82,8 @@ public class OrgCapabilityCatalogTests
     [Fact]
     public void Levels_OfAnyRole_HaveNoLevelForOnlyHisProperties()
     {
-        // Which properties a person reaches is the person's (PropertyScope), never the role's: three levels, no more.
         Assert.Equal(["No", "Read", "Yes"], Enum.GetNames<OrgCapabilityLevel>().Order(StringComparer.Ordinal));
     }
-
-    // ─── The roles, as the endpoint describes them ──────────────────────────────────────────────────────
 
     [Fact]
     public void Build_TheRoles_AreTheFiveOnesOwnerFirst()
@@ -157,7 +139,6 @@ public class OrgCapabilityCatalogTests
     [Fact]
     public void Build_ARoleWithoutARowInAContext_HasNoEntryThere()
     {
-        // The collaborator has no account membership at all; its long-term row only reads the property list.
         var collaborator = RoleOf(OrgRole.Collaborator);
 
         Assert.False(collaborator.PermissionsByContext.ContainsKey("account"));
@@ -191,7 +172,6 @@ public class OrgCapabilityCatalogTests
     [Fact]
     public void LevelOf_APermissionOfAnotherContext_DoesNotCount()
     {
-        // org.members.manage in short-rent is not the team permission: contexts do not leak into each other.
         var wrongContext = new Dictionary<string, IReadOnlyCollection<string>> { ["short-rent"] = ["org.members.manage", "lease.create"] };
 
         var levels = OrgCapabilityCatalog.LevelsFor(wrongContext).ToDictionary(g => g.Id, g => g.Level);
@@ -199,8 +179,6 @@ public class OrgCapabilityCatalogTests
         Assert.Equal(OrgCapabilityLevel.No, levels["people"]);
         Assert.Equal(OrgCapabilityLevel.No, levels["leases"]);
     }
-
-    // ─── Tripwire: a seeded permission without a place in the matrix ────────────────────────────────────
 
     [Fact]
     public void Tripwire_EveryPermissionOfTheSeededRoles_HasACapability()
@@ -225,7 +203,6 @@ public class OrgCapabilityCatalogTests
     [Fact]
     public void Tripwire_EveryPermissionTheMatrixReads_IsHeldByAtLeastOneSeededRole()
     {
-        // The other direction: a capability that reads a permission nobody holds is a typo that would make everybody «No».
         var held = Enum.GetValues<OrgRole>()
             .SelectMany(role => RoleOf(role).PermissionsByContext.SelectMany(c => c.Value.Permissions.Select(p => new ContextPermission(c.Key, p))))
             .ToHashSet();
@@ -239,12 +216,6 @@ public class OrgCapabilityCatalogTests
         Assert.True(neverHeld.Count == 0, "No seeded role holds: " + string.Join("; ", neverHeld));
     }
 
-    // ─── Coherence with the actions of the API (the same policies OrgRoleActionMatrixTests reads) ───────
-
-    /// <summary>
-    /// For each capability, an action of the API that reads it and one that changes it (null where the API has none yet: the
-    /// billing is behind the org policy, the suppliers, the settings and the integrations arrive with their tasks).
-    /// </summary>
     public static TheoryData<string, Type, string, Type?, string?> Probes => new()
     {
         { "booking", typeof(BookingsController), nameof(BookingsController.GetAll), typeof(BookingsController), nameof(BookingsController.Create) },
@@ -277,8 +248,6 @@ public class OrgCapabilityCatalogTests
             var canRead = Allows(role, read);
             var canWrite = write is not null && Allows(role, write);
 
-            // Yes: it can change it (and so can look at it). Read: it can look at it and cannot change it. No: neither.
-            // The capabilities that have only one action (the activity log is read-only) are compared on that one.
             var expectedRead = level != OrgCapabilityLevel.No;
             var expectedWrite = level == OrgCapabilityLevel.Yes;
 
@@ -297,7 +266,6 @@ public class OrgCapabilityCatalogTests
         return roleKey is not null && Seeded.Value.TryGetValue((context, roleKey), out var permissions) ? permissions.ToHashSet() : [];
     }
 
-    /// <summary>The policies of an action are all required; a role passes when it holds the permission in one of the contexts of each.</summary>
     private static bool Allows(OrgRole role, MethodInfo action)
     {
         var policies = action.DeclaringType!.GetCustomAttributes<AuthorizeAttribute>(inherit: true)

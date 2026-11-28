@@ -3,7 +3,6 @@ using Casazen.Infrastructure.GuestPortal;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
-using Casazen.Infrastructure.Services;
 using Casazen.Web.DTOs.Alloggiati;
 using Casazen.Web.DTOs.CheckIn;
 using Casazen.Web.Infrastructure;
@@ -15,10 +14,6 @@ using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Public (no-auth) guest check-in portal endpoints (AC3-AC5, AC8, US-020).
-/// Route: api/public/checkin/{token}
-/// </summary>
 [ApiController]
 [Route("api/public/checkin")]
 [AllowAnonymous]
@@ -34,22 +29,14 @@ public partial class PublicGuestCheckInController(
     ITouristTaxCollectionService? touristTaxCollection = null,
     ICheckInLegalTexts? legalTexts = null) : ControllerBase
 {
-    /// <summary>Problem code of a submit on a session the guest has already completed (409).</summary>
     public const string AlreadySubmittedCode = "checkin_already_submitted";
 
-    /// <summary>Problem code of a language the page does not offer (400).</summary>
     public const string LanguageUnsupportedCode = "language_unsupported";
 
-    /// <summary>Problem code of a selfie without a recorded biometric consent (409, ADR-013-R9).</summary>
     public const string BiometricConsentRequiredCode = "biometric_consent_required";
 
-    /// <summary>Problem code of a consent that refers to a version the registry of the legal texts does not serve now (422, E22/F01/US02/T02).</summary>
     public const string BiometricConsentVersionUnknownCode = "biometric_consent_version_unknown";
 
-    /// <summary>
-    /// Extension of the 400 of the submit (NF-40): a map from each field key (<c>Guests[1].DocumentNumber</c>) to the message key of
-    /// <see cref="CheckInValidationKeys"/>, so the page, in five languages, translates the error itself.
-    /// </summary>
     public const string ValidationCodesExtension = "codes";
 
     /// <summary>
@@ -59,7 +46,6 @@ public partial class PublicGuestCheckInController(
     /// </summary>
     public const int MaxImageRequestBytes = 10_000_000;
 
-    /// <summary>Two live captures and up to two document sides, 5 MiB each plus multipart headers, buffered in memory.</summary>
     public const int MaxSelfieRequestBytes = 4 * CheckInDocumentLimits.MaxImageBytes + 64 * 1024;
 
     private static readonly string[] AllowedImageTypes = ["image/jpeg", "image/jpg", "image/png"];
@@ -79,7 +65,6 @@ public partial class PublicGuestCheckInController(
         if (view is null)
             return NotFound();
 
-        // The slug of the org is public data, so a completed link carries it too: the page on an agency's own domain needs it to tell a link of another agency (NF-140).
         if (view.IsCompleted)
             return Ok(new PublicCheckInContextResponse { Completed = true, Status = view.Status.ToString(), OrgSlug = view.OrgSlug });
 
@@ -98,7 +83,6 @@ public partial class PublicGuestCheckInController(
             PrivacyNoticeVersion = view.PrivacyNoticeVersion,
             PrivacyNoticeOrgSlug = view.PrivacyNoticeOrgSlug,
             MarketingConsentVersion = view.MarketingConsentVersion,
-            // Two booleans, never the data (E06/F02/US01/T03): the link is anonymous.
             InvoiceRequested = view.InvoiceRequested,
             HasInvoiceData = view.HasInvoiceData,
             RequiredGuestFields = view.RequiredGuestFields ?? [],
@@ -126,11 +110,6 @@ public partial class PublicGuestCheckInController(
         return Ok(response);
     }
 
-    /// <summary>
-    /// Saves the language the guest chose on the page (NF-40: <c>it</c>, <c>en</c>, <c>de</c>, <c>fr</c>, <c>es</c>); the page and the emails
-    /// of the session use it. 400 <c>language_unsupported</c> for another language, 404 for an unknown or expired link, 409
-    /// <c>checkin_already_completed</c> once the guest submitted.
-    /// </summary>
     [HttpPut("{token}/language")]
     [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
     public async Task<ActionResult<PublicCheckInLanguageResponse>> SetLanguage(
@@ -204,8 +183,6 @@ public partial class PublicGuestCheckInController(
         CheckInDocumentRead read;
         if (zonedPrefill)
         {
-            // The face of the document is looked for (to find the portrait and to turn the card) only for a guest the verification is offered to who gave the current consent: the way the
-            // document step does it. Before the consent, for a minor and after a refusal the card is read as it lies, and no face detector is asked (ADR-013, amendment 2026-11).
             var state = await verificationFlow.GetStateAsync(session, HttpContext.RequestAborted);
             var lookForPortrait = state is { BiometricOffered: true, ConsentRecorded: true };
             zoned = await documentReader.ReadZonedAsync(stream, lookForPortrait, HttpContext.RequestAborted);
@@ -234,7 +211,6 @@ public partial class PublicGuestCheckInController(
             response.ConfirmGuest = match.Value.Confirm;
         }
 
-        // Nothing read, nothing of a guest of the stay: no value of the zones leaves, and everything asked is still to be typed.
         if (zoned is not null)
             response.WithZoned(read.Read && read.Fields is not null ? zoned.Fields : [], read.Read && read.Fields is not null ? zoned.Missing : CheckInPrefillFields.Asked);
 
@@ -296,7 +272,6 @@ public partial class PublicGuestCheckInController(
 
         if (result.ValidationErrors.Count > 0)
         {
-            // The field keys stay as before; "codes" adds the message key of each, which the page translates in its own language.
             var codes = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var error in result.ValidationErrors)
             {
@@ -325,8 +300,6 @@ public partial class PublicGuestCheckInController(
             }
             catch (Exception ex)
             {
-                // The guest's data is saved: the host check-in schedules it again, and from the arrival day the booking
-                // shows "to send manually" anyway.
                 logger.LogError(ex, "Alloggiati report of booking {BookingId} could not be scheduled", result.BookingId);
             }
         }
@@ -390,7 +363,6 @@ public partial class PublicGuestCheckInController(
         if (session is null)
             return NotFound();
 
-        // E70/F02/US01/T01: on the self-hosted flow the answer is also the choice of the guest and may open the identity step, with the family of the browser only.
         var result = SelfHostedIdentityOn()
             ? await verificationFlow.RecordConsentAsync(session, consentGiven, request.ConsentVersion, RequestChannel(), HttpContext.RequestAborted)
             : await verificationFlow.RecordConsentAsync(session, consentGiven, request.ConsentVersion, HttpContext.RequestAborted);
@@ -442,7 +414,6 @@ public partial class PublicGuestCheckInController(
         if (session is null)
             return NotFound();
 
-        // E70/F02/US01/T01: a closed self-hosted verification takes no new picture of the document (409 identity_already_closed, with the state).
         if (await RefuseClosedIdentityAsync(session) is { } closed)
             return closed;
 
@@ -460,7 +431,6 @@ public partial class PublicGuestCheckInController(
 
         try
         {
-            // Read in memory only (ADR-013-R2): the multipart body is buffered in memory, the service zeroes its copy.
             await using var image = document.OpenReadStream();
             var result = await verificationFlow.SubmitDocumentAsync(session, image, documentSide, HttpContext.RequestAborted);
             var reading = result.Reading;
@@ -503,16 +473,11 @@ public partial class PublicGuestCheckInController(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The type only: a message could carry what was being read.
             logger.LogError("Error processing document upload for session {SessionId} ({ErrorType})", session.Id, ex.GetType().Name);
             return this.ApiProblem(StatusCodes.Status500InternalServerError, "document_processing_failed", "CheckInDocumentProcessingFailed");
         }
     }
 
-    /// <summary>
-    /// Issues a short-lived, one-time pose challenge after consent and a document ready for comparison. With <see cref="FeatureFlags.CheckInIdentitySelfHosted"/> on
-    /// (E73/F01/US01/T02) the two-frame selfie is closed: 409 <c>presence_sequence_required</c> (409 <c>identity_already_closed</c> for a closed verification).
-    /// </summary>
     [HttpPost("{token}/selfie-challenge")]
     [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
     [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
@@ -523,11 +488,9 @@ public partial class PublicGuestCheckInController(
         if (session is null)
             return NotFound();
 
-        // E70/F02/US01/T01: a closed self-hosted verification issues no new challenge.
         if (await RefuseClosedIdentityAsync(session) is { } closed)
             return closed;
 
-        // E73/F01/US01/T02: the weaker two-frame check is not usable with the self-hosted flow on: the presence sequence takes its place.
         if (SelfHostedIdentityOn())
             return PresenceSequenceRequired();
 
@@ -575,11 +538,9 @@ public partial class PublicGuestCheckInController(
         if (session is null)
             return NotFound();
 
-        // E70/F02/US01/T01: a closed self-hosted verification takes no new attempt.
         if (await RefuseClosedIdentityAsync(session) is { } closed)
             return closed;
 
-        // E73/F01/US01/T02: the weaker two-frame check is not usable with the self-hosted flow on: nothing of the request is read.
         if (SelfHostedIdentityOn())
             return PresenceSequenceRequired();
 
@@ -602,7 +563,6 @@ public partial class PublicGuestCheckInController(
         SelfieStepResult result;
         try
         {
-            // ADR-013-R1: in the request, not in a job. ADR-013-R2: in memory only, zeroed by the agent and the pipeline.
             await using var selfieStream = selfie.OpenReadStream();
             await using var documentStream = documentPhoto?.OpenReadStream();
             await using var documentBackStream = documentPhotoBack?.OpenReadStream();

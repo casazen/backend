@@ -13,7 +13,6 @@ namespace Casazen.Infrastructure.Octorate;
 /// </summary>
 public sealed partial class OctorateApiClient
 {
-    /// <summary>Longest template body kept (a template longer than a message can be is cut off by the composer anyway).</summary>
     internal const int MaxTemplateTextLength = 10_000;
 
     public async Task<OctorateChatSendResult> SendChatMessageAsync(string accommodationId, string threadId, string text, CancellationToken ct)
@@ -22,9 +21,6 @@ public sealed partial class OctorateApiClient
         var thread = CheckedThreadId(threadId);
         ArgumentException.ThrowIfNullOrWhiteSpace(text);
 
-        // The message names the person who writes and the thread on the channel (both required by the OpenAPI); they are read from the thread
-        // first. A failure of this read leaves nothing written: the message was not sent, and the caller is told so (it is not the outcome
-        // nobody knows of the POST below, which is an OctorateServerException).
         OctorateChatThread remote;
         try
         {
@@ -49,7 +45,6 @@ public sealed partial class OctorateApiClient
             ct,
             mapError: ChatErrorOf);
 
-        // The words of the message are in the request, never in anything logged. An answer without an id is not a success: the message may exist.
         using var document = ParseJson(answer);
         if (OctorateChatReader.ReadSendResult(Unwrap(document.RootElement)) is not { } sent)
         {
@@ -69,7 +64,6 @@ public sealed partial class OctorateApiClient
         OctorateAnswer answer;
         try
         {
-            // The operation has no body (OpenAPI); every read is recorded by Octorate (CONTACT_INFO_SHOWN).
             answer = await SendAsync(
                 () => new HttpRequestMessage(
                     HttpMethod.Post,
@@ -88,7 +82,6 @@ public sealed partial class OctorateApiClient
             throw new OctorateSensitiveDataNotAllowedException(ex.OctorateStatusCode);
         }
 
-        // The answer is the booker's contact data: it is read and returned, never logged (not even when it cannot be parsed).
         using var document = ParseJson(answer);
         var root = Unwrap(document.RootElement);
         return root.ValueKind == JsonValueKind.Object
@@ -103,7 +96,6 @@ public sealed partial class OctorateApiClient
         using var document = await GetChatJsonAsync(
             $"/rest/v1/chat/{Uri.EscapeDataString(accommodation)}/threads/{Uri.EscapeDataString(thread)}/templates", "chat-templates", ct);
 
-        // An answer that is not a list is one CasaZen cannot read, not a thread with no template.
         return OctorateChatReader.ReadTemplates(document.RootElement) ?? throw new OctorateServerException(null);
     }
 
@@ -122,7 +114,6 @@ public sealed partial class OctorateApiClient
             ct,
             mapError: ChatErrorOf);
 
-        // The translation is read from the answer and returned; an answer that holds none in that language is not a translation.
         using var document = ParseJson(answer);
         return OctorateChatReader.ReadTranslation(Unwrap(document.RootElement), target) ?? throw new OctorateServerException(answer.StatusCode);
     }
@@ -142,11 +133,9 @@ public sealed partial class OctorateApiClient
             mapError: ChatErrorOf);
     }
 
-    /// <summary>The address of <see cref="SetThreadAiAssistantAsync"/>: the thread of the accommodation and the value the assistant of Octorate is set to.</summary>
     internal static string AiAssistantPath(string accommodationId, string threadId, bool enabled) =>
         $"/rest/v1/chat/{Uri.EscapeDataString(accommodationId)}/threads/{Uri.EscapeDataString(threadId)}/aiAssistant?enabled={(enabled ? "true" : "false")}";
 
-    /// <summary>The id of a message, trimmed: a number of 1 to <see cref="MaxConnectionIdDigits"/> digits, as the specification declares it (<c>int64</c>).</summary>
     internal static string CheckedMessageId(string messageId)
     {
         var id = messageId?.Trim();
@@ -156,7 +145,6 @@ public sealed partial class OctorateApiClient
         return id!;
     }
 
-    /// <summary>The language of a translation as the channel manager spells it (<c>EN</c>): one of the 14 it has. Anything else is refused before a call leaves.</summary>
     internal static string CheckedLanguage(string language)
     {
         var code = language?.Trim().ToUpperInvariant();
@@ -170,10 +158,8 @@ public sealed partial class OctorateApiClient
 /// <summary>The bodies of the chat requests CasaZen makes (E05/F02/US02/T01), built apart from the client so that they can be read and tested.</summary>
 internal static class OctorateChatRequests
 {
-    /// <summary>The way a message goes, toward the channel (<c>OTA_FLOW_DIRECTION</c> = <c>TO</c>).</summary>
     internal const string ToChannel = "TO";
 
-    /// <summary>The processor of a message for a channel.</summary>
     internal const string ChannelProcessor = "CHANNEL";
 
     /// <summary>

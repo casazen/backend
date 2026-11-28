@@ -13,30 +13,6 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 internal static class StayCleaningState
 {
-    /// <summary>A cleaning of the stay is planned: a request that was not declined or cancelled, or a staff activity that was not cancelled.</summary>
-    internal static async Task<bool> IsPlannedAsync(AppDbContext db, Guid orgId, Guid bookingId, CancellationToken cancellationToken) =>
-        await db.ServiceRequests
-            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-            .AsNoTracking()
-            .AnyAsync(
-                r => r.OrgId == orgId
-                     && r.BookingId == bookingId
-                     && r.Category == ServiceCategories.Cleaning
-                     && r.Status != ServiceRequestStatus.Annullato
-                     && r.Status != ServiceRequestStatus.Rifiutato,
-                cancellationToken)
-        || await db.InternalActivities
-            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-            .AsNoTracking()
-            .AnyAsync(
-                a => a.OrgId == orgId
-                     && a.BookingId == bookingId
-                     && a.Action == null
-                     && a.ActivityType == InternalActivity.CleaningActivityType
-                     && a.Status != InternalActivity.StatusCancelled,
-                cancellationToken);
-
-    /// <summary>A cleaning of the stay is done: the supplier completed the request (or it is paid), or the staff member completed the activity.</summary>
     internal static async Task<bool> IsDoneAsync(AppDbContext db, Guid orgId, Guid bookingId, CancellationToken cancellationToken) =>
         await db.ServiceRequests
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])

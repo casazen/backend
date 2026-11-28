@@ -13,13 +13,8 @@ public static class ShowcaseTextFields
     public const string Bio = "bio";
     public const string Prep = "prep";
 
-    /// <summary>Every member that can be drafted, in the order of the editor.</summary>
     public static IReadOnlyList<string> All { get; } = [Tagline, Intro, Bio, Prep];
 
-    /// <summary>
-    /// The members of <paramref name="requested"/> that can be drafted, once each and in the order of <see cref="All"/>; a name that is not a
-    /// member is ignored, and every member is drafted when the request names none that is.
-    /// </summary>
     public static IReadOnlyList<string> Normalize(IEnumerable<string?>? requested)
     {
         var asked = requested?.Where(field => !string.IsNullOrWhiteSpace(field)).Select(field => field!.Trim().ToLowerInvariant()).ToHashSet();
@@ -28,7 +23,6 @@ public static class ShowcaseTextFields
     }
 }
 
-/// <summary>The keys that name the answers of <see cref="ShowcaseTextAnswers"/> in the basis of a suggestion.</summary>
 public static class ShowcaseTextAnswerKeys
 {
     public const string About = "about";
@@ -53,20 +47,16 @@ public sealed record ShowcaseTextAnswers(string? About = null, string? Years = n
     public const int SpecialtiesMax = 200;
     public const int DifferentiatorMax = 200;
 
-    /// <summary>No answer at all.</summary>
     public static ShowcaseTextAnswers None { get; } = new();
 
-    /// <summary>True when the supplier typed nothing.</summary>
     public bool IsEmpty => About is null && Years is null && Specialties is null && Differentiator is null;
 
-    /// <summary>The answers as one line each (<see cref="ShowcaseText.Line"/>) and cut at their limit; a blank answer is <c>null</c>.</summary>
     public ShowcaseTextAnswers Cleaned() => new(
         Clean(About, AboutMax),
         Clean(Years, YearsMax),
         Clean(Specialties, SpecialtiesMax),
         Clean(Differentiator, DifferentiatorMax));
 
-    /// <summary>The keys (<see cref="ShowcaseTextAnswerKeys"/>) of the answers that are there.</summary>
     public IReadOnlyList<string> Keys()
     {
         var keys = new List<string>();
@@ -88,10 +78,8 @@ public sealed record ShowcaseTextAnswers(string? About = null, string? Years = n
     }
 }
 
-/// <summary>The texts the supplier already has in the draft: they are not rewritten, they only tell the AI which tone to keep.</summary>
 public sealed record ShowcaseTextCurrent(string? Tagline, string? Intro, string? Bio, IReadOnlyList<string> Prep)
 {
-    /// <summary>No text written yet.</summary>
     public static ShowcaseTextCurrent Empty { get; } = new(null, null, null, []);
 }
 
@@ -106,31 +94,20 @@ public sealed record ShowcaseTextFacts(
     IReadOnlyList<string> Services,
     ShowcaseTextCurrent Current)
 {
-    /// <summary>True when there is nothing true to write from: no category, no zone, no service.</summary>
     public bool IsEmpty => Categories.Count == 0 && Zones.Count == 0 && Services.Count == 0;
 }
 
-/// <summary>Body of the request of a suggestion.</summary>
-/// <param name="Fields">The members to draft (<see cref="ShowcaseTextFields"/>); none = every member.</param>
-/// <param name="Answers">What the supplier typed about itself, if anything.</param>
-/// <param name="Regenerate">Write a new text even when the same inputs were answered before.</param>
 public sealed record ShowcaseTextSuggestionRequest(
     IReadOnlyList<string>? Fields = null,
     ShowcaseTextAnswers? Answers = null,
     bool Regenerate = false);
 
-/// <summary>What a suggestion was really based on, so the editor can say it: categories (codes), zones, services, and the answers used.</summary>
 public sealed record ShowcaseTextBasis(
     IReadOnlyList<string> Categories,
     IReadOnlyList<string> Zones,
     IReadOnlyList<string> Services,
     IReadOnlyList<string> Answers);
 
-/// <summary>
-/// A suggestion: the members the AI wrote and that passed the checks (<see cref="ShowcaseTextRules"/>), what it was based on, and the members
-/// it wrote but that were dropped (<see cref="Rejected"/>: over the limit, or with a claim the supplier did not make). It is a draft: the
-/// supplier reads it, changes it and publishes it, and nothing is public before.
-/// </summary>
 public sealed record ShowcaseTextSuggestion(
     string? Tagline,
     string? Intro,
@@ -140,7 +117,6 @@ public sealed record ShowcaseTextSuggestion(
     IReadOnlyList<string> Rejected,
     bool AiUsed = true);
 
-/// <summary>What <see cref="ShowcaseTextRules.Check"/> keeps of the answer of the model.</summary>
 public sealed record ShowcaseTextOutcome(
     string? Tagline,
     string? Intro,
@@ -148,6 +124,5 @@ public sealed record ShowcaseTextOutcome(
     IReadOnlyList<string> Prep,
     IReadOnlyList<string> Rejected)
 {
-    /// <summary>True when no requested member survived the checks.</summary>
     public bool IsEmpty => Tagline is null && Intro is null && Bio is null && Prep.Count == 0;
 }

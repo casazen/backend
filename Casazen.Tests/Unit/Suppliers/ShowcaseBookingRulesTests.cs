@@ -4,10 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>
-/// SP-10: the rules on the values of a booking from a supplier's showcase. Pure functions: which fields are required, how long
-/// they can be, what shape they have, the consent with the version of the notice, and the name shown before the take (D9).
-/// </summary>
 public class ShowcaseBookingRulesTests
 {
     private const string Version = "2026-11-test";
@@ -65,7 +61,6 @@ public class ShowcaseBookingRulesTests
         Assert.Equal(3, content.Quote.Quantity);
         Assert.Equal(80, content.Quote.SurfaceSqm);
         Assert.Same(options, content.Quote.Options);
-        // The code of the comune is what is checked against the supplier's zones; the postal code is echoed.
         Assert.Equal("015146", content.Quote.Comune);
         Assert.Equal("20121", content.Quote.PostalCode);
     }
@@ -210,7 +205,6 @@ public class ShowcaseBookingRulesTests
     {
         var local = new DateTime(2026, 10, 13, 9, 0, 0, DateTimeKind.Unspecified);
 
-        // The API always sends instants; an unspecified time is taken as UTC (UtcDateTime.Normalize).
         Assert.Equal(new DateTime(2026, 10, 13, 9, 0, 0, DateTimeKind.Utc), ShowcaseBookingRules.Normalize(Valid() with { StartUtc = local }, Version).StartUtc);
     }
 
@@ -228,7 +222,6 @@ public class ShowcaseBookingRulesTests
         Assert.False(ShowcaseBookingRules.IsWithinSlotWindow(behind.AddMinutes(-1), now));
         Assert.False(ShowcaseBookingRules.IsWithinSlotWindow(ahead.AddMinutes(1), now));
 
-        // The window covers the largest horizon a supplier can set, whatever the time zone of the customer.
         Assert.True(ShowcaseBookingLimits.SlotWindowAheadDays >= SupplierAgendaLimits.MaxHorizonDays + 1);
     }
 
@@ -244,7 +237,6 @@ public class ShowcaseBookingRulesTests
         var now = new DateTime(2026, 10, 12, 6, 45, 0, DateTimeKind.Utc);
         var time = DateTime.Parse(start, null, System.Globalization.DateTimeStyles.AdjustToUniversal);
 
-        // These are whole minutes, so Normalize lets them through: the window is what keeps them out of the planner.
         Assert.Equal(time, ShowcaseBookingRules.Normalize(Valid() with { StartUtc = time }, Version).StartUtc);
         Assert.False(ShowcaseBookingRules.IsWithinSlotWindow(time, now));
     }

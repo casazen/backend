@@ -7,7 +7,6 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,12 +14,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// PM-02 (D16) over the real pipeline: preview, programming and cancellation of
-/// the change of rental mode, in Italian and English; the property of another org is invisible; the calendar closes from the
-/// day (public availability, iCal export, the host's own bookings and blocks) when the change is to long-term; the hourly
-/// application runs from the real service graph.
-/// </summary>
 public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private const string HostRole = "PropertyOwner";
@@ -28,8 +21,6 @@ public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationF
     private readonly CasazenWebApplicationFactory _factory;
 
     public PropertyModeIntegrationTests(CasazenWebApplicationFactory factory) => _factory = factory;
-
-    // ─── Access ─────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Endpoints_WithoutAToken_Are401()
@@ -70,7 +61,6 @@ public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationF
     [Fact]
     public async Task Endpoints_ACollaboratorWithoutTheWritePermission_CannotPreviewScheduleOrCancel()
     {
-        // The org-wide roles see every property; a role with no host permission does not reach the shared property core.
         var property = await _factory.SeedPropertyAsync($"auth0|pm02-nogo-{Guid.NewGuid():N}");
         using var supplier = _factory.CreateAuthenticatedClient($"auth0|pm02-supplier-{Guid.NewGuid():N}", "Supplier");
 
@@ -83,8 +73,6 @@ public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationF
         Assert.Contains((await supplier.GetAsync($"/api/properties/{property.Id}/mode")).StatusCode, refused);
         Assert.False(await AnyChangeAsync(property.Id));
     }
-
-    // ─── State and preview ──────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task State_NewProperty_IsShortWithNoChange()
@@ -124,7 +112,6 @@ public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationF
         Assert.Equal("Stay", blocker.GetProperty("kind").GetString());
         Assert.Equal("Confirmed", blocker.GetProperty("status").GetString());
         Assert.Equal(Day(13).ToString("yyyy-MM-dd"), blocker.GetProperty("freeFrom").GetString());
-        // Ids, dates and a status: nothing of the guest.
         Assert.DoesNotContain("Mario", raw);
         Assert.DoesNotContain("@example.com", raw);
         Assert.False(await AnyChangeAsync(property.Id));
@@ -182,8 +169,6 @@ public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationF
             "property_mode_unchanged");
     }
 
-    // ─── Schedule and cancel ────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Schedule_ThenAgain_Then_Cancel_AllTheStepsOfTheRoundTrip()
     {
@@ -202,7 +187,6 @@ public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationF
         Assert.Equal(Day(20).ToString("yyyy-MM-dd"), change.GetProperty("effectiveDate").GetString());
         Assert.False(change.TryGetProperty("createdByUserId", out _));
 
-        // One at a time.
         await AssertProblemAsync(
             await client.PostAsJsonAsync(
                 $"/api/properties/{property.Id}/mode/change", new { to = "Long", effectiveDate = Day(30).ToString("yyyy-MM-dd") }),
@@ -230,7 +214,6 @@ public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationF
             HttpStatusCode.NotFound,
             "property_mode_change_not_found");
 
-        // Free again: a new one can be programmed.
         Assert.Equal(
             HttpStatusCode.Created,
             (await client.PostAsJsonAsync(
@@ -251,7 +234,6 @@ public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationF
             $"/api/properties/{property.Id}/mode/change", new { to = "Long", effectiveDate = Day(10).ToString("yyyy-MM-dd") });
 
         var problem = await AssertProblemAsync(response, HttpStatusCode.Conflict, "property_mode_blocked_by_bookings");
-        // The first free day is the day after the departure, written as the language of the request writes a date.
         Assert.Contains(
             Day(16).ToString("d MMMM yyyy", CultureInfo.GetCultureInfo(language)), problem.GetProperty("detail").GetString());
         Assert.False(await AnyChangeAsync(property.Id));
@@ -301,7 +283,6 @@ public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationF
         var changeId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
         using var intruder = _factory.CreateAuthenticatedClient(intruderProperty.OwnerId, HostRole);
 
-        // Through the property of the owner: invisible. Through its own: the change is not there.
         await AssertProblemAsync(
             await intruder.DeleteAsync($"/api/properties/{property.Id}/mode/change/{changeId}"), HttpStatusCode.NotFound, "property_not_found");
         await AssertProblemAsync(
@@ -331,7 +312,6 @@ public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationF
         Assert.Equal(
             HttpStatusCode.Created,
             (await client.PostAsJsonAsync(url, new { to = "Short", effectiveDate = Day(41).ToString("yyyy-MM-dd") })).StatusCode);
-        // To short stays nothing closes in the calendar.
         Assert.Equal(0, await ModeChangeBlockCountAsync(property.Id));
     }
 
@@ -357,7 +337,6 @@ public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationF
     [Fact]
     public async Task Schedule_ALongTermLandlord_CanBringHisOwnPropertyBackToShortStays()
     {
-        // The property core is shared by both kinds of landlord (A7-06): the landlord has no short-rent context.
         var property = await SeedLongPropertyAsync($"auth0|pm02-landlord-{Guid.NewGuid():N}");
         using var landlord = _factory.CreateAuthenticatedClient(property.OwnerId, "LongTermLandlord");
 
@@ -368,8 +347,6 @@ public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationF
         Assert.Equal(HttpStatusCode.OK, preview.StatusCode);
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
     }
-
-    // ─── The calendar closes ────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Schedule_ToLong_ClosesTheNightsOnTheSiteTheExportAndTheHost_AndCancelOpensThemAgain()
@@ -384,14 +361,11 @@ public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationF
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         var changeId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
 
-        // The booking site: the night that checks out on the day of the change is taken, and the nights from the day on.
-        // A stay that leaves the morning before stays free.
         var booked = (await anonymous.GetFromJsonAsync<JsonElement>(
                 PublicAvailabilityPostgresTests.AvailabilityPath(property.Id, from.AddDays(-2), from.AddDays(3))))
             .GetProperty("bookedDates").EnumerateArray().Select(d => d.GetString()).ToList();
         Assert.Equal(new[] { -1, 0, 1, 2 }.Select(d => from.AddDays(d).ToString("yyyy-MM-dd")), booked);
 
-        // The export read by the portals: an all-day event from the night before the day, for two years, neutral.
         var block = await ModeChangeBlockAsync(property.Id);
         var ics = await ExportAsync(host, property.Id);
         Assert.Contains($"UID:block-{block.Id}", ics);
@@ -399,7 +373,6 @@ public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationF
         Assert.Contains($"DTEND;VALUE=DATE:{from.AddYears(2):yyyyMMdd}", ics);
         Assert.DoesNotContain("ModeChange", ics);
 
-        // The host: a booking on a closed night is refused, the blocks list shows the block, and it cannot be touched.
         var booking = await host.PostAsJsonAsync("/api/bookings", new
         {
             propertyId = property.Id,
@@ -423,7 +396,6 @@ public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationF
             "calendar_block_invalid_reason");
         Assert.Equal(1, await ModeChangeBlockCountAsync(property.Id));
 
-        // Withdrawn: the nights are free again everywhere.
         Assert.Equal(HttpStatusCode.NoContent, (await host.DeleteAsync($"/api/properties/{property.Id}/mode/change/{changeId}")).StatusCode);
         Assert.Empty(
             (await anonymous.GetFromJsonAsync<JsonElement>(
@@ -432,8 +404,6 @@ public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationF
         Assert.DoesNotContain($"block-{block.Id}", await ExportAsync(host, property.Id));
         Assert.Equal(0, await ModeChangeBlockCountAsync(property.Id));
     }
-
-    // ─── The hourly application, from the real service graph ────────────────────────────────────────
 
     [Fact]
     public async Task ApplyDue_AChangeToLongOnItsDay_TheModeChangesAndThePublicSiteLetsGo_ThenBackToShort()
@@ -452,21 +422,17 @@ public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationF
         Assert.Equal(RentalMode.Long, (await LoadAsync(property.Id)).RentalMode);
         Assert.Equal(PropertyModeChangeStatus.Applied, (await LoadChangeAsync(toLong)).Status);
         Assert.Equal("Long", (await host.GetFromJsonAsync<JsonElement>($"/api/properties/{property.Id}")).GetProperty("rentalMode").GetString());
-        // PM-01: a long-term property is not on the public site any more.
         Assert.Equal(HttpStatusCode.NotFound, (await anonymous.GetAsync($"/api/properties/{property.Id}/public")).StatusCode);
         Assert.Equal(1, await ModeChangeBlockCountAsync(property.Id));
-        // The same run again changes nothing.
         var second = await RunJobAsync();
         Assert.Equal(0, second.Applied);
         Assert.Equal(1, await ModeChangeBlockCountAsync(property.Id));
 
-        // And back.
         var toShort = await SeedChangeAsync(property, RentalMode.Short, today);
         Assert.True((await RunJobAsync()).Applied >= 1);
         Assert.Equal(RentalMode.Short, (await LoadAsync(property.Id)).RentalMode);
         Assert.Equal(PropertyModeChangeStatus.Applied, (await LoadChangeAsync(toShort)).Status);
         Assert.Equal(0, await ModeChangeBlockCountAsync(property.Id));
-        // Its requirements are complete: the evaluation after the return keeps it active, and it is published again.
         Assert.Equal(PropertyComplianceStatus.Active, (await LoadAsync(property.Id)).ComplianceStatus);
         Assert.Equal(HttpStatusCode.OK, (await anonymous.GetAsync($"/api/properties/{property.Id}/public")).StatusCode);
     }
@@ -515,9 +481,6 @@ public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationF
         Assert.Equal("property_mode_blocked_by_bookings", state.GetProperty("lastChange").GetProperty("failureReason").GetString());
     }
 
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The given day counted from today in Rome (negative: the past).</summary>
     private static DateTime Day(int plusDays) => TimeProvider.System.TodayInRome().AddDays(plusDays);
 
     private static async Task<JsonElement> AssertProblemAsync(HttpResponseMessage response, HttpStatusCode status, string code)

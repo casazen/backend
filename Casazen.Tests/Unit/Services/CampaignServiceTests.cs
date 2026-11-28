@@ -21,18 +21,12 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// NF-24: Campaign service proof tests for consent and suppression filtering.
-/// These tests prove that privacy rules (consent required, suppression list checked) are enforced.
-/// DEB-01: the unsubscribe link of a campaign is signed and carries no address.
-/// </summary>
 public class CampaignServiceTests
 {
     private const string LinkSecret = "test-signed-link-secret-0123456789abcdef";
     private const string WebApp = "https://app.casazen.test";
     private const string Api = "https://api.casazen.test";
 
-    /// <summary>The signed unsubscribe links as a configured environment builds them; no secret: not configured.</summary>
     internal static MarketingUnsubscribeLinks Links(string? secret = LinkSecret) =>
         new(
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -44,10 +38,6 @@ public class CampaignServiceTests
             TimeProvider.System,
             CrmTestIndex.Create());
 
-    /// <summary>
-    /// Proof test for DEB-01: the unsubscribe link of a campaign e-mail is the signed link of ADR-007-R18 on the web app (no address in
-    /// it, the old one was unsigned and carried the address in the query), and the e-mail carries the one-click headers of RFC 8058.
-    /// </summary>
     [Fact]
     public async Task Campaign_UnsubscribeLink_IsSignedWithoutTheAddress_AndTheHeadersOfferTheOneClick()
     {
@@ -79,7 +69,6 @@ public class CampaignServiceTests
         Assert.DoesNotContain("example.com", oneClick, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("List-Unsubscribe=One-Click", headers["List-Unsubscribe-Post"]);
 
-        // The values of the header are the ones the unsubscribe endpoint checks: valid as built, refused once tampered with.
         var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(oneClick.Trim('<', '>')).Query);
         var (expiresAt, signature) = (query["expiresAt"].ToString(), query["signature"].ToString());
         Assert.Equal(emailHash, query["emailHash"].ToString());
@@ -146,7 +135,6 @@ public class CampaignServiceTests
         Assert.Equal(MarketingUnsubscribeCheck.InvalidSignature, links.Verify(org, hash, $"v2-{Guid.NewGuid():N}", signature));
     }
 
-    /// <summary>DEB-01: without the secret of the signed links a campaign sends nothing (no e-mail without its unsubscribe link).</summary>
     [Fact]
     public async Task Campaign_WithoutTheLinkSecret_SendsNothing()
     {
@@ -228,11 +216,9 @@ public class CampaignServiceTests
             TimeProvider.System,
             Mock.Of<ILogger<CampaignService>>());
 
-    /// <summary>The flag of the marketing module as an environment that turned it on has it (E07/F06/US01/T01).</summary>
     private static IFeatureFlags ModuleOn() => new TestFeatureFlags(FeatureFlags.CrmMarketing);
 
-    /// <summary>One guest with marketing consent, a segment that takes everybody and an approved campaign to it.</summary>
-    internal static void AddContact(AppDbContext db, Guid orgId, string email, bool confirmed = true)
+    internal static GuestCrmProfile AddContact(AppDbContext db, Guid orgId, string email, bool confirmed = true)
     {
         var profile = new GuestCrmProfile { OrgId = orgId, CompositeKeyHash = Guid.NewGuid().ToString("N") };
         db.GuestCrmProfiles.Add(profile);
@@ -246,6 +232,7 @@ public class CampaignServiceTests
             LegalBasis = GuestContactLegalBasis.Consent,
             Confirmation = confirmed ? GuestContactConfirmation.Confirmed : GuestContactConfirmation.Unconfirmed,
         });
+        return profile;
     }
 
     private static async Task<(DbContextOptions<AppDbContext> Options, Guid OrgId, Guid CampaignId)> SeedApprovedCampaignAsync(string guestEmail)
@@ -300,7 +287,6 @@ public class CampaignServiceTests
     [Fact]
     public async Task Campaign_ConsentRequired()
     {
-        // Arrange: Set up in-memory database with guests (one with consent, one without)
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
@@ -315,7 +301,7 @@ public class CampaignServiceTests
             Email = "consented@example.com",
             FirstName = "Alice",
             LastName = "Consented",
-            MarketingConsent = true, // Explicit consent
+            MarketingConsent = true,
             MarketingConsentDate = DateTime.UtcNow.AddDays(-30),
             IsDeleted = false
         };
@@ -327,11 +313,10 @@ public class CampaignServiceTests
             Email = "no-consent@example.com",
             FirstName = "Bob",
             LastName = "NoConsent",
-            MarketingConsent = false, // NO consent
+            MarketingConsent = false,
             IsDeleted = false
         };
 
-        // Create segment with a condition that matches both guests
         var segment = new GuestSegment
         {
             Id = segmentId,
@@ -353,7 +338,6 @@ public class CampaignServiceTests
             await context.SaveChangesAsync();
         }
 
-        // Act: Get recipients for the segment
         await using (var context = new AppDbContext(options))
         {
             var logger = Mock.Of<ILogger<CampaignService>>();
@@ -376,7 +360,6 @@ public class CampaignServiceTests
             var scope = new HostScope(orgId);
             var recipients = await service.GetRecipientsAsync(segmentId, orgId, scope);
 
-            // Assert: Only the guest with consent is included
             Assert.Single(recipients);
             Assert.Contains("consented@example.com", recipients);
             Assert.DoesNotContain("no-consent@example.com", recipients);
@@ -390,7 +373,6 @@ public class CampaignServiceTests
     [Fact]
     public async Task Campaign_SuppressionListChecked()
     {
-        // Arrange: Set up in-memory database with a guest who has consent but is suppressed
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
@@ -407,7 +389,7 @@ public class CampaignServiceTests
             Email = suppressedEmail,
             FirstName = "Charlie",
             LastName = "Unsubscribed",
-            MarketingConsent = true, // Had consent initially
+            MarketingConsent = true,
             MarketingConsentDate = DateTime.UtcNow.AddDays(-30),
             IsDeleted = false
         };
@@ -424,7 +406,6 @@ public class CampaignServiceTests
             IsDeleted = false
         };
 
-        // Create segment that matches both
         var segment = new GuestSegment
         {
             Id = segmentId,
@@ -445,12 +426,10 @@ public class CampaignServiceTests
             context.GuestSegments.Add(segment);
             await context.SaveChangesAsync();
 
-            // Add suppressed email to suppression list (one-click unsubscribe)
             var suppressionService = new SuppressionService(context, CrmTestIndex.Create(), Mock.Of<ILogger<SuppressionService>>());
             await suppressionService.AddToSuppressionListAsync(orgId, suppressedEmail, "unsubscribe");
         }
 
-        // Act: Get recipients for the segment
         await using (var context = new AppDbContext(options))
         {
             var logger = Mock.Of<ILogger<CampaignService>>();
@@ -473,20 +452,15 @@ public class CampaignServiceTests
             var scope = new HostScope(orgId);
             var recipients = await service.GetRecipientsAsync(segmentId, orgId, scope);
 
-            // Assert: Only the non-suppressed guest is included
             Assert.Single(recipients);
             Assert.Contains("active@example.com", recipients);
             Assert.DoesNotContain(suppressedEmail, recipients);
         }
     }
 
-    /// <summary>
-    /// Test that campaign status transitions follow the workflow: Draft -> PendingApproval -> Approved -> Scheduled -> Sent.
-    /// </summary>
     [Fact]
     public async Task Campaign_StatusWorkflow()
     {
-        // Arrange
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
@@ -516,7 +490,6 @@ public class CampaignServiceTests
             var backgroundJobClient = Mock.Of<IBackgroundJobClient>();
             var timeProvider = TimeProvider.System;
 
-            // The queue creates the item of the approval (E05/F04): here a double that answers with one, so the workflow of the campaign itself is what is tested.
             var queue = new Mock<IApprovalQueueService>();
             queue
                 .Setup(q => q.SubmitForApprovalAsync(
@@ -546,7 +519,6 @@ public class CampaignServiceTests
                 logger,
                 queue.Object);
 
-            // Act: Create draft
             var campaign = await service.CreateDraftAsync(
                 orgId,
                 segmentId,
@@ -556,7 +528,6 @@ public class CampaignServiceTests
 
             Assert.Equal(CampaignStatus.Draft, campaign.Status);
 
-            // Act: Submit for approval
             await service.SubmitForApprovalAsync(campaign.Id, orgId);
 
             var campaignAfterSubmit = await context.Campaigns.FindAsync(campaign.Id);
@@ -578,10 +549,8 @@ public class CampaignServiceTests
                     It.IsAny<CancellationToken>()),
                 Times.Once);
 
-            // Approval: the one place that sets Approved is the approval of the queue (E05/F04); before it nothing in production code did.
             await service.MarkApprovedAsync(campaign.Id, orgId, null, null);
 
-            // Act: Schedule
             var scheduledTime = DateTime.UtcNow.AddDays(1);
             await service.ScheduleAsync(campaign.Id, scheduledTime, orgId);
 

@@ -13,12 +13,7 @@ public class LeaseLetterOptions
     public const string SectionName = "LeaseLetters";
     public const string DefaultLettersDirectory = "LeaseLetters";
 
-    /// <summary>Folder of the letter files, absolute or relative to the content root of the API.</summary>
     public string LettersDirectory { get; set; } = DefaultLettersDirectory;
 
-    /// <summary>
-    /// One entry per letter kind (the names of <c>LeaseLetterKind</c>). A kind without an entry, or without a <c>VersionId</c>, uses the
-    /// draft text shipped with the API and is not approved; a <c>VersionId</c> names the file the product owner had reviewed.
-    /// </summary>
     public Dictionary<string, LeaseTemplateVariantOptions> Variants { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }

@@ -6,13 +6,8 @@ namespace Casazen.Core.Services;
 /// </summary>
 public enum SitePublicAddressKind
 {
-    /// <summary>
-    /// The org's own custom domain, verified, paid for and served now (the one <c>resolve-host</c> and the console serve): the manifest, <c>resolve-host</c> and the
-    /// widgets answer there, and they need no slug.
-    /// </summary>
     CustomDomain,
 
-    /// <summary>The address of CasaZen (<c>App:PublicSiteBaseUrl</c>), also for an org on a platform subdomain: the widgets there need the slug of the org.</summary>
     Casazen,
 }
 
@@ -38,13 +33,8 @@ public enum SiteAccountOutcome
 {
     Success,
 
-    /// <summary>The org of the credential does not exist or is no longer active — the plugin's API answers 404.</summary>
     NotFound,
 
-    /// <summary>
-    /// The org is not on a served custom domain and <c>App:PublicSiteBaseUrl</c> is not configured, so there is no address to give (Development and Testing only: elsewhere
-    /// the startup fails) — the plugin's API answers 503, never a wrong address.
-    /// </summary>
     PublicAddressNotConfigured,
 }
 
@@ -56,10 +46,6 @@ public sealed record SiteAccountResult(SiteAccountOutcome Outcome, SiteAccount? 
 /// </summary>
 public interface ISiteAccountBuilder
 {
-    /// <summary>
-    /// The account of the org of <paramref name="site"/>. <paramref name="domain"/> is the domain configuration the caller has just read or saved (the answer of
-    /// <see cref="IOrgDomainService"/>), so it is not read twice; <c>null</c>, or the configuration of another org, reads it now.
-    /// </summary>
     Task<SiteAccountResult> BuildAsync(
         SiteConnectionPrincipal site,
         OrgDomainConfig? domain = null,

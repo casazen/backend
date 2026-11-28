@@ -84,7 +84,6 @@ public sealed class MarketingGuestImport(AppDbContext db, ICrmContactIndex index
         var hashes = candidates.SelectMany(c => new[] { c.EmailHash, c.PhoneHash }).OfType<string>().Distinct().ToArray();
         var seen = (await db.GuestContacts.AsNoTracking().Where(c => c.OrgId == scope.OrgId && hashes.Contains(c.ValueHash))
             .Select(c => c.ValueHash).ToListAsync(ct)).ToHashSet();
-        // Legacy profiles may already carry a matching phone key without a contact row.
         seen.UnionWith(await db.GuestCrmProfiles.AsNoTracking().Where(p => p.OrgId == scope.OrgId && p.PhoneKeyHash != null && hashes.Contains(p.PhoneKeyHash))
             .Select(p => p.PhoneKeyHash!).ToListAsync(ct));
         var suppressionHashes = hashes.Concat(candidates.Where(c => c.EmailHash != null).Select(c => SuppressionService.LegacyEmailHash(c.Email))).ToArray();
@@ -153,7 +152,6 @@ public sealed class MarketingGuestImport(AppDbContext db, ICrmContactIndex index
         }
         catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex))
         {
-            // SaveChanges rolls back the entire import. Re-reading the same file will see the competing commit.
             throw new DomainConflictException("import_concurrent_write", "marketing_import_busy");
         }
         return result with { Imported = imported, Skipped = candidates.Count - imported };
@@ -163,7 +161,6 @@ public sealed class MarketingGuestImport(AppDbContext db, ICrmContactIndex index
     {
         if (DateTime.TryParseExact(raw, ["yyyy-MM-dd", "dd/MM/yyyy"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
             return DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
-        // Excel stores dates as day numbers in the workbook.
         if (int.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out var serial) && serial is > 60 and < 100000)
             return DateTime.SpecifyKind(DateTime.FromOADate(serial), DateTimeKind.Utc);
         return null;

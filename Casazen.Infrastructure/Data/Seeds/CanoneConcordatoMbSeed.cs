@@ -26,7 +26,6 @@ public static class CanoneConcordatoMbSeed
     public const string SourceUrl = "https://municipium-images-production.s3-eu-west-1.amazonaws.com/s3/6875/allegati/accordo-canone-concordato-mb.pdf";
     public const string AtaSource = "Secondary sources converging on CIPE 13/11/2003 / Delibera 87/2003 — not verified against primary text";
 
-    /// <summary>D-elements that count for sub-fascia 3 (F1 p. 6-8, class U).</summary>
     public const string SubFascia3QualifyingTypeDElements = "D1,D2,D4,D6,D7,D9";
 
     public static readonly DateTime SignedDate = new(2024, 3, 15, 0, 0, 0, DateTimeKind.Utc);
@@ -41,17 +40,14 @@ public static class CanoneConcordatoMbSeed
 
     public const bool RemainsInForceUntilReplaced = true;
 
-    /// <summary>RS-8, August 2026 (research-canone-concordato-mb.md § 2): no more recent agreement was found.</summary>
     public const string ExpiryNote =
         "Nessun accordo più recente reperito nelle ricerche (RS-8, agosto 2026) — verificare con le associazioni firmatarie o i Comuni prima di un uso vincolante.";
 
-    /// <summary>RS-8 check of the tables and zones of Seveso and Cesano Maderno against the official text (F1).</summary>
     public static readonly DateTime PilotTablesVerifiedAt = new(2026, 9, 23, 0, 0, 0, DateTimeKind.Utc);
 
     public const string PilotVerificationSource =
         "RS-8: research-canone-concordato-mb.md, confronto con il testo ufficiale dell'accordo (PDF)";
 
-    /// <summary>The 55 comuni of the agreement (F1 p. 1, p. 4 art. 3).</summary>
     public static readonly string[] ProvinceComuni =
     [
         "Agrate Brianza", "Aicurzio", "Albiate", "Arcore", "Barlassina", "Bellusco",
@@ -97,13 +93,8 @@ public static class CanoneConcordatoMbSeed
         return new Guid(hash);
     }
 
-    /// <summary>Id of a signatory row: stable for a given agreement and organization name.</summary>
     public static Guid SignatoryIdFor(Guid agreementId, string name) => IdFor($"{agreementId:N}:{name}");
 
-    /// <summary>
-    /// Id of a band row, from the first square metre of its label ("Da 51 a 74 mq" → 51): the same id the 2024 seed
-    /// gave the band before its bounds became half-open.
-    /// </summary>
     public static Guid BandIdFor(Guid agreementId, string zone, int labelFromSqm) => IdFor($"{agreementId:N}:{zone}:{labelFromSqm}");
 
     public static IReadOnlyList<TerritorialRentAgreement> BuildAgreements()
@@ -115,46 +106,6 @@ public static class CanoneConcordatoMbSeed
     [
         Ata("Seveso"),
         Ata("Cesano Maderno"),
-    ];
-
-    /// <summary>
-    /// Comune offices receiving the IMU communication (LT-13, A7-22): destinatari, PEC and aliquota out of the code and
-    /// onto the database, an admin CRUD (<c>AdminCanoneConcordatoController</c>) away from a fix. Same uncertainty the
-    /// hand-written draft used to carry (a PEC seen in two channels for Seveso, a rate derived — not published — for
-    /// Cesano Maderno), now data instead of a literal in <c>ComuneImuNotificationService</c>.
-    /// </summary>
-    public static IReadOnlyList<ComuneImuChannel> BuildImuChannels() =>
-    [
-        new ComuneImuChannel
-        {
-            Id = IdFor("imu:Seveso"),
-            Comune = "Seveso",
-            Region = Region,
-            RecipientOffice = "Ufficio Tributi",
-            Email = "protocollo@comune.seveso.mb.it",
-            Pec = "comune.seveso@pec.it",
-            Instructions =
-                "Canale ufficiale NON univoco — la ricerca registra anche tributi@comune.seveso.mb.it e il portale " +
-                "SPID/CIE/CNS Servizi Sociali (Contratti di locazione a canone concordato). Verificare con l'Ufficio Tributi prima dell'invio.",
-            DataCompleteness = DataCompleteness.Partial,
-            SourceUrl = SourceUrl,
-        },
-        new ComuneImuChannel
-        {
-            Id = IdFor("imu:Cesano Maderno"),
-            Comune = "Cesano Maderno",
-            Region = Region,
-            RecipientOffice = "U.O. Risorse Tributarie",
-            Email = "risorse.tributarie@comune.cesano-maderno.mb.it",
-            Pec = "risorse.finanziarie@pec.comune.cesano-maderno.mb.it",
-            RatePercent = 1.04m,
-            EffectiveRatePercent = 0.78m,
-            RateYear = 2025,
-            RateKind = ImuRateKind.Derived,
-            RateNotes = "Valore derivato (aliquota 1,04% x riduzione nazionale 75% ex L. 160/2019 art. 1 c. 760), NON un'aliquota ufficiale pubblicata. Delibera 2026 non reperita alla data della ricerca.",
-            DataCompleteness = DataCompleteness.Partial,
-            SourceUrl = SourceUrl,
-        },
     ];
 
     private static HighTensionAreaComune Ata(string comune) => new()
@@ -191,10 +142,6 @@ public static class CanoneConcordatoMbSeed
         return agreement;
     }
 
-    /// <summary>
-    /// Rules of the agreement (F1 p. 6-9, class U), the same for every comune. Coefficients: "cumulabili", added (class D,
-    /// configurable). Surface uplifts cap the square metres (40, 60), the reduction above 120 mq never goes below 120.
-    /// </summary>
     private static TerritorialRentAgreement BaseAgreement(string comune, DataCompleteness completeness) => new()
     {
         Id = IdFor(comune),

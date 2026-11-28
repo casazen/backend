@@ -40,7 +40,6 @@ public class LeaseConcordatoAndContractDataIntegrationTests : IClassFixture<Leas
         var property = await SeedPropertyInAsync(owner, comune);
         using var client = _factory.CreateAuthenticatedClient(owner, "LongTermLandlord");
 
-        // 65 mq, sub-fascia 2, 3 years: 1.300,00-5.525,00 euro a year, 108,34-460,41 a month.
         var response = await client.PostAsJsonAsync("/api/leases", ConcordatoBody(property.Id, monthlyRent: 900m));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
@@ -48,7 +47,6 @@ public class LeaseConcordatoAndContractDataIntegrationTests : IClassFixture<Leas
         Assert.Equal("concordato_rent_out_of_range", problem.GetProperty("code").GetString());
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        // No tenant in this scope: the filter is bypassed on purpose to see every lease of the property.
         Assert.False(await db.LeaseContracts.IgnoreQueryFilters().AnyAsync(l => l.PropertyId == property.Id));
     }
 
@@ -78,7 +76,6 @@ public class LeaseConcordatoAndContractDataIntegrationTests : IClassFixture<Leas
     [PostgresFact]
     public async Task CreateLease_ConcordatoRentOutsideRangeWithPartialData_CreatesTheLeaseWithAnIndicativeRange()
     {
-        // Seveso comes from the migrated MB data: Partial (RS-8), so the range is a guide and never blocks (A7-23).
         var owner = UniqueOwner("partial");
         var property = await SeedPropertyInAsync(owner, "Seveso");
         using var client = _factory.CreateAuthenticatedClient(owner, "LongTermLandlord");
@@ -141,7 +138,6 @@ public class LeaseConcordatoAndContractDataIntegrationTests : IClassFixture<Leas
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         var leaseId = (await ReadJson(created)).GetProperty("id").GetGuid();
 
-        // The approved template of this factory uses the cadastral data and the APE: without them no final contract.
         var blocked = await client.GetAsync($"/api/leases/{leaseId}/contract.pdf");
         Assert.Equal(HttpStatusCode.UnprocessableEntity, blocked.StatusCode);
         Assert.Equal("contract_data_missing", (await ReadJson(blocked)).GetProperty("code").GetString());
@@ -196,7 +192,6 @@ public class LeaseConcordatoAndContractDataIntegrationTests : IClassFixture<Leas
         Assert.Equal("document_not_ape", (await ReadJson(notApe)).GetProperty("code").GetString());
     }
 
-    /// <summary>The body the lease form sends (dates without time, characteristics, no year count).</summary>
     private static object ConcordatoBody(Guid propertyId, decimal monthlyRent, string endDate = "2029-08-31") => new
     {
         propertyId,
@@ -230,7 +225,6 @@ public class LeaseConcordatoAndContractDataIntegrationTests : IClassFixture<Leas
         var property = await _factory.SeedPropertyAsync(owner);
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        // Test setup outside a request (no tenant): the filter is bypassed on purpose to move the seeded property.
         await db.Properties.IgnoreQueryFilters()
             .Where(p => p.Id == property.Id)
             .ExecuteUpdateAsync(p => p.SetProperty(x => x.City, city));
@@ -238,9 +232,6 @@ public class LeaseConcordatoAndContractDataIntegrationTests : IClassFixture<Leas
         return property;
     }
 
-    /// <summary>
-    /// A comune whose agreement data are verified (Complete): the Seveso tables under another name, so the check blocks.
-    /// </summary>
     private async Task<string> SeedVerifiedAgreementAsync()
     {
         var comune = $"Verificato {Guid.NewGuid():N}"[..20];
@@ -279,10 +270,6 @@ public class LeaseConcordatoAndContractDataIntegrationTests : IClassFixture<Leas
         JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync(), JsonOpts);
 }
 
-/// <summary>
-/// Lease flow whose <c>RegimeOrdinario</c> template is approved and uses the data LT-10 added to the model: cadastral
-/// data, APE identification, security deposit (fixture <c>RegimeOrdinario/test-fixture-data-v1</c>, test texts only).
-/// </summary>
 public class LeaseContractDataWebApplicationFactory : LeaseFlowWebApplicationFactory
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)

@@ -118,7 +118,6 @@ public class CanoneConcordatoEligibilityService(
         var minAnnuo = RoundMoney(band.SubFascia1MinEurSqmYear * reducedSqm * minFactor);
         var maxAnnuo = RoundMoney(MaxRate(band, subFascia) * maxSqm * maxFactor);
 
-        // Same rule as the lease tax advisory (LT-08): the ATA reliefs only for a verified listing.
         var ataApplies = HighTensionArea.ReliefsApply(await ataComuni.GetByComuneAsync(property.City, cancellationToken));
 
         return new CanoneConcordatoEligibilityDto(
@@ -187,7 +186,6 @@ public class CanoneConcordatoEligibilityService(
     private static bool HasNegativeAppurtenance(RentBandCharacteristics c) =>
         c.GarageSqm < 0 || c.BalconySqm < 0 || c.OtherAppurtenanceSqm < 0 || c.PrivateGreenSqm < 0;
 
-    /// <summary>Surface plus the appurtenances leased with it, at the agreement's percentages.</summary>
     private static decimal UsableSqm(TerritorialRentAgreement agreement, RentBandCharacteristics c) =>
         c.Sqm
         + (c.GarageSqm * agreement.GarageAppurtenancePercent / 100m)
@@ -195,7 +193,6 @@ public class CanoneConcordatoEligibilityService(
         + (c.OtherAppurtenanceSqm * agreement.OtherAppurtenancePercent / 100m)
         + (c.PrivateGreenSqm * agreement.GreenAreaAppurtenancePercent / 100m);
 
-    /// <summary>Square metres the band is looked up on: whole metres, 0,5 up (class D).</summary>
     private static decimal BandSqm(decimal usableSqm) => decimal.Round(usableSqm, 0, MidpointRounding.AwayFromZero);
 
     private sealed record BandLookup(ConcordatoRentBand? Band, string? Failure);
@@ -228,7 +225,6 @@ public class CanoneConcordatoEligibilityService(
             !string.Equals(band.ZoneName, zoneName.Trim(), StringComparison.OrdinalIgnoreCase))
             return false;
 
-        // A zone defined without sheets (Seveso: the whole comune) holds every sheet.
         if (string.IsNullOrWhiteSpace(sheet) || string.IsNullOrWhiteSpace(band.CadastralSheets))
             return true;
 
@@ -274,7 +270,6 @@ public class CanoneConcordatoEligibilityService(
         return usableSqm;
     }
 
-    /// <summary>Surface after the small or mid uplift, capped at its threshold; null when neither applies.</summary>
     private static decimal? UpliftedSqm(TerritorialRentAgreement agreement, decimal usableSqm)
     {
         if (agreement.SmallSqmMax > 0 && usableSqm < agreement.SmallSqmMax)
@@ -287,7 +282,6 @@ public class CanoneConcordatoEligibilityService(
         return null;
     }
 
-    /// <summary>Term uplift of 4, 5 or 6 whole years; none below 4 or above 6 years (the agreement has none).</summary>
     private static decimal DurationUpliftPercent(TerritorialRentAgreement agreement, LeaseTerm term)
     {
         if (LeaseContractTerms.IsLongerThan(term, SixYearsInMonths))

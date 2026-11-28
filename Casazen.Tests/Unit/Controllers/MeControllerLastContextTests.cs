@@ -13,10 +13,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// UI-13a: <c>PUT /api/me/last-context</c> remembers the area the caller entered last, only among the contexts
-/// <c>GET /api/me/contexts</c> lists for it; and that endpoint tells the stored area only while the caller can still enter it.
-/// </summary>
 public class MeControllerLastContextTests
 {
     private const string UserId = "auth0|owner";
@@ -75,7 +71,7 @@ public class MeControllerLastContextTests
     }
 
     [Theory]
-    [InlineData("supplier")] // a context the caller does not have
+    [InlineData("supplier")]
     [InlineData("admin")]
     [InlineData("nonexistent")]
     [InlineData("short-rent; DROP TABLE")]
@@ -95,7 +91,6 @@ public class MeControllerLastContextTests
     [Fact]
     public async Task Put_TheAccountContext_IsAccessibleWhereTheListTellsIt()
     {
-        // GET /api/me/contexts lists the account context: the same list decides here.
         var controller = NewController(contexts: [ShortRent, Account]);
 
         var result = await controller.PutLastContext(Body("account"), CancellationToken.None);
@@ -139,8 +134,6 @@ public class MeControllerLastContextTests
         Assert.Equal(64, key.GetCustomAttribute<System.ComponentModel.DataAnnotations.MaxLengthAttribute>()!.Length);
     }
 
-    // ─── GET /api/me/contexts gives it back ─────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Get_TheStoredContext_IsGivenBack_AsTheListSpellsIt()
     {
@@ -153,7 +146,7 @@ public class MeControllerLastContextTests
     }
 
     [Theory]
-    [InlineData("supplier")] // an access the caller no longer has
+    [InlineData("supplier")]
     public async Task Get_AStoredContextTheCallerCannotEnterAnymore_IsNotGivenBack(string stored)
     {
         var controller = NewController(lastUsed: stored, contexts: [ShortRent, Account]);

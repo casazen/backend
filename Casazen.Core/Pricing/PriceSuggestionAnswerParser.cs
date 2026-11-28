@@ -4,12 +4,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Core.Pricing;
 
-/// <summary>
-/// Reads the answer of the AI to the nightly price prompt (WIZ-AI-PRICE): one JSON object, maybe wrapped in a code fence or in a
-/// sentence, with numbers that may come as text («140», «140 €»). A model that reasons aloud (a <c>&lt;think&gt;</c> block, drafts of the
-/// answer before the answer) is read from its last object that has a rate, after the reasoning. Anything that is not that is
-/// <c>null</c>: the caller does not guess.
-/// </summary>
 public static class PriceSuggestionAnswerParser
 {
     /// <summary>

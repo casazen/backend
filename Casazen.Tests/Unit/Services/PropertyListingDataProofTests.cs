@@ -10,10 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// Proof of the rooms and the length-of-stay discounts of a unit (NF-34, NF-35, E02/F03/US01/T05): they are read and written only for a
-/// property of the caller's organization; another organization's property is not found, neither to read nor to write (permission rule, TN-2).
-/// </summary>
 public class PropertyListingDataProofTests
 {
     private sealed class FixedTenantContext(Guid orgId) : ITenantContext
@@ -25,10 +21,6 @@ public class PropertyListingDataProofTests
 
     private static readonly IReadOnlyList<RoomInput> OneBedroom = [new RoomInput(null, PropertyRoomType.Bedroom, [new RoomBed(BedType.Double, 1)])];
 
-    /// <summary>
-    /// Permission rule: organization A saves the rooms and the discounts of its property; organization B asks for the same property and finds
-    /// none, to read or to write, and nothing of B is stored. The rooms of A also set its counters, and A reads its own.
-    /// </summary>
     [Fact]
     public async Task PropertyRooms_PropertyOfAnotherOrg_NotFound_Test()
     {
@@ -96,7 +88,6 @@ public class PropertyListingDataProofTests
         var tier = Assert.Single(storedTiers!);
         Assert.Equal(new StayDiscountTier(7, 10m), tier);
 
-        // The rooms of A set the counters of A's property: one bedroom and one bed, the maximum of guests untouched.
         var counters = await again.Properties.SingleAsync(p => p.Id == property.Id);
         Assert.Equal(1, counters.Bedrooms);
         Assert.Equal(1, counters.Beds);

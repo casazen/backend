@@ -7,10 +7,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Where host signups come from (SE-03, A8-03): the attributions recorded after the first onboarding, for the platform
-/// admin. Read-only; the dashboard widget is task SE-04.
-/// </summary>
 [ApiController]
 [Route("api/admin/signup-attributions")]
 [Authorize(Policy = CasazenPolicies.AdminOnly)]

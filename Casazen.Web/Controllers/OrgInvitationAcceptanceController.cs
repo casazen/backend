@@ -73,7 +73,6 @@ public class OrgInvitationAcceptanceController(
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized();
 
-        // The consents first: nothing is read or written for a request that cannot be accepted anyway.
         var consents = request.Consents.ToInput();
         var (consentsValid, consentsError) = onboardingService.ValidateConsents(consents, requireConsents: true);
         if (!consentsValid || consents is null)
@@ -82,7 +81,6 @@ public class OrgInvitationAcceptanceController(
         // The email and its verification come from the token or from Auth0, never from the body.
         var (email, emailVerified) = await accountEmails.ResolveAsync(User, userId, cancellationToken);
 
-        // The acceptance page lives outside the app shell: the account row may not exist yet.
         var (_, firstName, lastName) = AccountEmailResolver.ReadProfile(User);
         await userService.GetCurrentUserAsync(userId, email ?? string.Empty, firstName, lastName);
 
@@ -100,7 +98,6 @@ public class OrgInvitationAcceptanceController(
         return Ok(AcceptOrgInvitationResponse.From(accepted));
     }
 
-    /// <summary>The same answers as the onboarding: <c>consents_incomplete</c>, or <c>stale_documents</c> with the list of documents.</summary>
     private ActionResult ToConsentProblem(ConsentValidationError? error)
     {
         if (error?.Type != ConsentValidationErrorType.StaleVersion)

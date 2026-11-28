@@ -46,9 +46,8 @@ public class LeaseGdprRetentionTests
                 new CreatePartyRequest(PartyRole.Tenant, "Giulia", "Verdi", "VRDGLI85B02F205A", "IT", "giulia@example.com"),
             ]));
 
-        // LT-12 (A7-18): no stored StartDate + 10 years; the retention is counted from the end date on read.
         Assert.Null(result.PartiesAnonymizedAt);
-        Assert.Null(result.RegistrationDeadline); // fixed at the stipula (LT-04), not StartDate + 30
+        Assert.Null(result.RegistrationDeadline);
         Assert.False(result.ErasureRequested);
         Assert.Null(result.ErasureRequestedAt);
     }

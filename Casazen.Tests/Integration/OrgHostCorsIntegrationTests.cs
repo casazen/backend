@@ -62,7 +62,6 @@ public class OrgHostCorsIntegrationTests : IClassFixture<CasazenWebApplicationFa
     [Fact]
     public async Task Preflight_VerifiedCustomDomainWithoutAPaidProPlan_IsRejected()
     {
-        // A Pro tier nobody pays for is Starter (A3-07): the custom domain is a Pro feature, so it stops being served.
         var domain = $"www.{Guid.NewGuid():N}.example.test";
         await SeedOrgAsync(PlanTier.Pro, paid: false, customDomain: domain, verified: true);
 
@@ -94,7 +93,6 @@ public class OrgHostCorsIntegrationTests : IClassFixture<CasazenWebApplicationFa
     [Fact]
     public async Task Preflight_SubdomainOfAnOrgOnThePathMode_IsRejected()
     {
-        // The slug of an org that did not choose the subdomain mode is not a host of the platform.
         var org = await SeedOrgAsync(PlanTier.Starter);
 
         using var response = await PreflightAsync($"https://{org.Slug}.casazen.it", PublicApi);
@@ -143,7 +141,6 @@ public class OrgHostCorsIntegrationTests : IClassFixture<CasazenWebApplicationFa
             var stored = await db.Orgs.FindAsync(org.Id);
             stored!.DomainVerificationStatus = DomainVerificationStatus.Verified;
             await db.SaveChangesAsync();
-            // What OrgDomainService.VerifyDomainAsync does after a successful verification.
             scope.ServiceProvider.GetRequiredService<Casazen.Core.Services.IPublicHostResolver>().InvalidateCacheForHost(domain);
         }
 
@@ -165,8 +162,6 @@ public class OrgHostCorsIntegrationTests : IClassFixture<CasazenWebApplicationFa
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal($"https://{domain}", Assert.Single(response.Headers.GetValues("Access-Control-Allow-Origin")));
     }
-
-    // ─── E40/F01/US01/T02: the owner portal from an agency's own domain ─────────────────────────────────
 
     [Theory]
     [InlineData("/api/owner-portal/properties")]
@@ -245,7 +240,6 @@ public class OrgHostCorsIntegrationTests : IClassFixture<CasazenWebApplicationFa
     [InlineData("/api/public/checkin/some-token")]
     public async Task GuestAreaPreflight_VerifiedDomain_IsAllowedAsBefore(string path)
     {
-        // The guest area is under /api/public: no surface and no flag are needed for its CORS, exactly as before E40.
         var domain = $"www.{Guid.NewGuid():N}.example.test";
         await SeedOrgAsync(PlanTier.Pro, customDomain: domain, verified: true);
 

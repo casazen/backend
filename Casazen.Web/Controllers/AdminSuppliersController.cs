@@ -10,9 +10,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Platform-admin endpoints for supplier management (US-022 / #292, AC3).
-/// </summary>
 [ApiController]
 [Route("api/admin/suppliers")]
 [Authorize(Policy = CasazenPolicies.AdminOnly)]
@@ -21,10 +18,6 @@ public class AdminSuppliersController(
     ISupplierAdminService supplierAdminService,
     ILogger<AdminSuppliersController> logger) : ControllerBase
 {
-    /// <summary>
-    /// The suppliers, newest first, paginated in SQL (SU-12, A4-29). <c>status</c> is <c>Pending</c>, <c>Active</c> or
-    /// <c>Suspended</c> (anything else leaves the filter off); <c>search</c> matches the legal name or the email.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(PagedResultDto<AdminSupplierDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResultDto<AdminSupplierDto>>> List(
@@ -34,11 +27,9 @@ public class AdminSuppliersController(
         [FromQuery] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
-        // Out-of-range values would become a negative OFFSET/LIMIT in SQL, i.e. a 500: clamp them.
         page = Math.Max(page, 1);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
-        // Enum.TryParse alone also accepts a numeric string with no declared member: it would filter by nothing.
         SupplierStatus? statusFilter = EnumNames.TryParseDefined<SupplierStatus>(status, out var parsed) ? parsed : null;
 
         var (items, total) = await supplierAdminService.ListAsync(
@@ -87,7 +78,6 @@ public class AdminSuppliersController(
         return Ok(AdminSupplierDto.From(item));
     }
 
-    /// <summary>The audit trail of a supplier (suspensions and reactivations), newest first, at most 50 lines.</summary>
     [HttpGet("{orgId:guid}/audit")]
     [ProducesResponseType(typeof(IEnumerable<SupplierAdminAuditDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -99,10 +89,6 @@ public class AdminSuppliersController(
         return Ok(entries.Select(SupplierAdminAuditDto.From));
     }
 
-    /// <summary>
-    /// The invites, newest first, paginated in SQL. <c>state</c> is <c>Pending</c>, <c>Used</c>, <c>Expired</c> or
-    /// <c>Revoked</c> (anything else leaves the filter off); <c>search</c> matches the invited email.
-    /// </summary>
     [HttpGet("invites")]
     [ProducesResponseType(typeof(PagedResultDto<AdminInviteDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResultDto<AdminInviteDto>>> ListInvites(
@@ -129,11 +115,6 @@ public class AdminSuppliersController(
         });
     }
 
-    /// <summary>
-    /// Sends a pending or expired invite again: a new link and a new 7-day expiry, the old link stops working. 404
-    /// <c>supplier_invite_not_found</c>, 409 <c>supplier_invite_not_resendable</c> (used or revoked),
-    /// <c>duplicate_invite</c> or <c>supplier_email_taken</c>.
-    /// </summary>
     [HttpPost("invites/{inviteId:guid}/resend")]
     [ProducesResponseType(typeof(AdminInviteResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -144,10 +125,6 @@ public class AdminSuppliersController(
         return Ok(new AdminInviteResponse { InviteId = invite.InviteId, ExpiresAt = invite.ExpiresAt });
     }
 
-    /// <summary>
-    /// Revokes a pending invite: its link no longer works. 404 <c>supplier_invite_not_found</c>, 409
-    /// <c>supplier_invite_not_pending</c> (used, expired or already revoked).
-    /// </summary>
     [HttpDelete("invites/{inviteId:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -162,11 +139,6 @@ public class AdminSuppliersController(
     private string ActorUserId() =>
         User.GetUserId() ?? throw new UnauthorizedAccessException("Admin without subject claim");
 
-    /// <summary>
-    /// Creates an invite for a prospective supplier of a given comune and queues its email (delivered by a Hangfire
-    /// job, so a provider error no longer fails the request). 409 <c>duplicate_invite</c> when a pending invite exists
-    /// for the email, 409 <c>supplier_email_taken</c> when a supplier profile already has it (SU-14).
-    /// </summary>
     [HttpPost("invite")]
     [ProducesResponseType(typeof(AdminInviteResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -253,11 +225,6 @@ public class AdminSuppliersController(
         });
     }
 
-    /// <summary>
-    /// Stored service categories that are not canonical codes (SU-03): values the migration
-    /// <c>NormalizeServiceCategories</c> could not map are kept and listed here, so an admin can fix them
-    /// (runbook <c>docs/runbooks/service-categories.md</c>).
-    /// </summary>
     [HttpGet("unmapped-categories")]
     [ProducesResponseType(typeof(UnmappedServiceCategoriesResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<UnmappedServiceCategoriesResponse>> GetUnmappedCategories(CancellationToken cancellationToken)

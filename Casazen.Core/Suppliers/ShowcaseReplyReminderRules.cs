@@ -2,16 +2,12 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Suppliers;
 
-/// <summary>Which reminder to the supplier of a request on measure is due now (SP-10c).</summary>
 public enum ShowcaseReplyReminder
 {
-    /// <summary>None: it is too early for the first, both were sent, or there is nothing to answer any more.</summary>
     None = 0,
 
-    /// <summary>At half of the time the supplier has to answer.</summary>
     Half = 1,
 
-    /// <summary>Ten minutes before the deadline: the last call.</summary>
     Last = 2,
 }
 
@@ -28,13 +24,8 @@ public enum ShowcaseReplyReminder
 /// </remarks>
 public static class ShowcaseReplyReminderRules
 {
-    /// <summary>How long before the deadline the last reminder is sent (10 minutes).</summary>
     public static readonly TimeSpan LastLead = TimeSpan.FromMinutes(10);
 
-    /// <summary>
-    /// Whether a request is one the supplier can still be reminded of: a request on measure from a public showcase that is new, with a
-    /// deadline to answer and no offer waiting for the customer (the deadline of a pending offer is the customer's, not the supplier's).
-    /// </summary>
     public static bool Applies(
         ServiceRequestRentalContext context,
         ServiceRequestKind kind,
@@ -59,8 +50,6 @@ public static class ShowcaseReplyReminderRules
     {
         var wait = dueUtc - waitStartUtc;
 
-        // Nothing to remind of once the last call went, once the time has passed, or when the whole wait is no longer than the lead of the last
-        // call: the supplier was told of the request a moment ago, a reminder would be the same mail twice.
         if (lastSent || nowUtc >= dueUtc || wait <= LastLead)
             return ShowcaseReplyReminder.None;
 

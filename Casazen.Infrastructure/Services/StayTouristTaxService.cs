@@ -63,7 +63,6 @@ public sealed class StayTouristTaxService(
         var rows = await db.StayGuests.Where(s => s.BookingId == booking.Id).ToListAsync(cancellationToken);
         var choosable = (await ChoosableReasonsAsync(cancellationToken)).Select(r => r.Code).ToHashSet(StringComparer.Ordinal);
 
-        // Every exemption is checked before any is written: the request is applied whole or not at all.
         var changes = new List<(StayGuest Row, string? Code)>(exemptions.Count);
         foreach (var exemption in exemptions)
         {
@@ -100,7 +99,6 @@ public sealed class StayTouristTaxService(
         var booking = await LoadBookingAsync(bookingId, cancellationToken);
         var state = await CalculateAsync(booking, cancellationToken);
 
-        // A declaration only where nothing else knows: a channel stay whose comune has no rule. Any other stay is the host's (or the rule's).
         if (!TouristTaxCollectorRules.IsChannelBooking(booking.Source) || state.Rule is not null)
             throw new DomainRuleException(CollectorNotApplicableCode, "TouristTaxCollectorNotApplicable");
 
@@ -108,8 +106,6 @@ public sealed class StayTouristTaxService(
         var record = state.Record;
         if (record is null)
         {
-            // A declaration before any confirmation: the row is created unconfirmed, with no line and no amount (only a row with ConfirmedAt is
-            // a confirmed calculation).
             record = new StayTouristTax
             {
                 OrgId = booking.OrgId,
@@ -158,7 +154,6 @@ public sealed class StayTouristTaxService(
         if (comune.IsEmpty)
             throw new DomainRuleException(RateInvalidCode, "TouristTaxRateInvalid");
 
-        // The official rate applies wherever there is one: a host never declares over it (AC-NF46-6, ADR-037-R5).
         if (await OfficialRateInForceAsync(comune, cancellationToken))
             throw new DomainConflictException(RateOfficialExistsCode, "TouristTaxRateOfficialExists");
 
@@ -242,14 +237,12 @@ public sealed class StayTouristTaxService(
         ReplaceLines(record, breakdown.Guests);
         await SaveRecordAsync(cancellationToken);
 
-        // No PII: the booking, the outcome and the counts only.
         logger.LogInformation(
             "Tourist tax of booking {BookingId} confirmed by {UserId}: {Guests} guests, collector {Collector}",
             booking.Id, userId, breakdown.Guests.Count, record.Collector);
         return (await CalculateAsync(booking, cancellationToken)).View;
     }
 
-    /// <summary>The age in full years on <paramref name="checkIn"/>; null without a date of birth or with one after it.</summary>
     public static int? AgeAt(DateTime? dateOfBirth, DateOnly checkIn)
     {
         if (dateOfBirth is not { } birth)
@@ -262,7 +255,6 @@ public sealed class StayTouristTaxService(
         return age < 0 ? null : age;
     }
 
-    /// <summary>The stay as it is now, its breakdown, the collector, the record and the view.</summary>
     private async Task<StayTaxState> CalculateAsync(Booking booking, CancellationToken cancellationToken)
     {
         var guests = await stayGuests.GetForBookingAsync(booking, cancellationToken);
@@ -330,10 +322,6 @@ public sealed class StayTouristTaxService(
         return new StayTaxState(stay, breakdown, rule, decision, record, hash, view);
     }
 
-    /// <summary>
-    /// The lines of the record, updated in place by position (a line per guest, unique: the same guest is never taxed twice), the lines of the
-    /// positions that are gone removed.
-    /// </summary>
     private void ReplaceLines(StayTouristTax record, IReadOnlyList<TouristTaxGuestResult> guests)
     {
         foreach (var stale in record.Guests.Where(l => guests.All(g => g.Position != l.Position)).ToList())
@@ -358,12 +346,6 @@ public sealed class StayTouristTaxService(
         }
     }
 
-    /// <summary>
-    /// The SHA-256 (hex) of what the tax of the stay depends on: the dates, the rates used, each guest's position, the amounts and the collector
-    /// with its rule. A confirmed record whose hash differs from the current one is stale. Neither the age nor the reason of an exemption is in
-    /// it: an unsalted hash of a reason (which can reveal a health condition) can be tried against the short list of reasons, even after the
-    /// reason was erased. A change of age shows in the amounts, a change of reason in <see cref="LinesMatch"/>.
-    /// </summary>
     private static string Hash(
         TouristTaxGuestStay stay,
         TouristTaxBreakdown breakdown,
@@ -391,11 +373,6 @@ public sealed class StayTouristTaxService(
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString()))).ToLowerInvariant();
     }
 
-    /// <summary>
-    /// The lines of the confirmed record are still what the calculation gives now, guest by guest: the same kind of exemption and the same
-    /// reason. The reason is compared here, on the (decrypted) lines, and not through the hash, so a change of one reason into another (both
-    /// exempt, the same amounts) still makes the record stale.
-    /// </summary>
     private static bool LinesMatch(StayTouristTax record, TouristTaxBreakdown breakdown) =>
         record.Guests.Count == breakdown.Guests.Count
         && breakdown.Guests.All(guest =>
@@ -403,10 +380,6 @@ public sealed class StayTouristTaxService(
             && stored.ExemptionKind == guest.ExemptionKind
             && string.Equals(stored.ExemptionCode, guest.ExemptionCode, StringComparison.Ordinal));
 
-    /// <summary>
-    /// The price of a night of the booking, for a percentage rate: the lodging the booking recorded (its base price without the cleaning) over
-    /// its nights, or the rate of the property when the booking has none.
-    /// </summary>
     private static decimal NightlyPrice(Booking booking, int nights)
     {
         var lodging = booking.BasePrice - booking.CleaningFee;
@@ -439,7 +412,6 @@ public sealed class StayTouristTaxService(
             .FirstOrDefaultAsync(r => r.Channel == booking.Source && r.IstatCode == istatCode && r.IsActive, cancellationToken);
     }
 
-    /// <summary>The rate <paramref name="orgId"/> declared for the comune (an explicit predicate on the org), the latest when several.</summary>
     private async Task<OrgTouristTaxRate?> FindDeclaredRateAsync(
         Guid orgId,
         TouristTaxComune comune,
@@ -466,7 +438,6 @@ public sealed class StayTouristTaxService(
             .ThenBy(r => r.Code)
             .ToListAsync(cancellationToken);
 
-    /// <summary>Saves the record; two writers of the first record of the same booking at once: the second answers 409.</summary>
     private async Task SaveRecordAsync(CancellationToken cancellationToken)
     {
         try

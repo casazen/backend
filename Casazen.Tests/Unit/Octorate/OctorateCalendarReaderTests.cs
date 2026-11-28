@@ -17,8 +17,6 @@ public class OctorateCalendarReaderTests
     [Fact]
     public void TheShapeOfTheSandbox_UnitsWithDays_IsRead_WithEveryValueOfTheDay()
     {
-        // `GET calendar/{acc}` answers {data: [units with days], page}; a day is {availability, bookable, closeToArrival, closeToDeparture,
-        // cutOffDays, date, maxStay, minStay, price, stopSells} (sandbox runs of 2026-11-04).
         using var document = JsonDocument.Parse("""
             {
               "data": [
@@ -79,7 +77,6 @@ public class OctorateCalendarReaderTests
         const string body = """{ "data": [ { "date": "2026-11-10", "availability": 0, "price": 70 } ] }""";
         using var document = JsonDocument.Parse(body);
 
-        // One room asked: the day is its day. Two asked: it is nobody's, and a day nobody owns is not made up.
         Assert.Equal("956528", Assert.Single(OctorateCalendarReader.Read(document.RootElement, OneRoom)).ProductId);
         Assert.Empty(OctorateCalendarReader.Read(document.RootElement, TwoRooms));
     }
@@ -173,7 +170,6 @@ public class OctorateCalendarReaderTests
         var day = new OctorateCalendarDay("956528", new DateOnly(2026, 11, 10), availability, price, stopSell, null, null, null, null);
 
         Assert.Equal(expectedOpened, day.IsOpened);
-        // A closed night is always an opened day, and an opened day always has a signal: the three never disagree.
         Assert.True(!day.IsClosed || day.IsOpened);
         Assert.True(!day.IsOpened || day.HasSignal);
     }

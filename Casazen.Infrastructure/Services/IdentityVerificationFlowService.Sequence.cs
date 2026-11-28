@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.ExceptionServices;
-using System.Security.Cryptography;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -40,18 +39,12 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed partial class IdentityVerificationFlowService
 {
-    /// <summary>The longest public answer kept for the replay of a key (<see cref="GuestCheckInSession.IdentityLastAttemptResult"/>, 80 characters).</summary>
     internal const int LastAttemptResultMaxLength = 80;
 
-    /// <summary>The longest name and version of a model in the log row (<see cref="BiometricVerificationLog.ModelName"/>, <see cref="BiometricVerificationLog.ModelVersion"/>).</summary>
     private const int ModelNameMaxLength = 100;
 
     private const int ModelVersionMaxLength = 50;
 
-    /// <summary>
-    /// The services of the closure are all there. The application registers them (the parts <c>Presence</c>, <c>Session</c>, <c>Foundations</c> and <c>Decision</c>); a flow built by
-    /// hand without them answers that the presence is not available, and that the application does register them all is proved by <c>PresenceClosureTests</c>.
-    /// </summary>
     internal bool PresenceClosureWired =>
         frameReader is not null && evidenceCollector is not null && segments is not null && decisionEngine is not null && identityPolicy is not null;
 
@@ -64,15 +57,12 @@ public sealed partial class IdentityVerificationFlowService
         if (!IdentityHeaders.IsValidIdempotencyKey(key))
             return NotRun(PresenceStepStatus.IdempotencyKeyRequired);
 
-        // Off, or built without the services of the closure: the step is not there (the route answers 404 before, with the flags off).
         if (!SelfHostedOn || !PresenceClosureWired)
             return NotRun(PresenceStepStatus.SessionUnavailable);
 
-        // a. The replay first: the same key is the same attempt, answered as it was, also after the challenge expired, and no frame is read.
         if (await FindReplayAsync(session, key, ct) is { } replay)
             return await AnswerReplayAsync(session, replay, ct);
 
-        // h. The frames and the pictures of the document of this request live until it ends (the effects after the commit included) and are zeroed then, whatever happens.
         using var buffers = new PresenceBuffers();
         PresenceClosure closure;
         try
@@ -81,7 +71,6 @@ public sealed partial class IdentityVerificationFlowService
         }
         catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex, BiometricVerificationLog.IdempotencyIndexName))
         {
-            // g. A twin of this attempt in another process wrote the row of this key first (the unique index on booking and key): its outcome is the answer.
             logger.LogInformation("Presence of session {SessionId}: a twin request closed the attempt first; its outcome is answered", session.Id);
             db.ChangeTracker.Clear();
             await db.Entry(session).ReloadAsync(ct);
@@ -94,10 +83,6 @@ public sealed partial class IdentityVerificationFlowService
         return await AfterCommitAsync(session, closure, buffers);
     }
 
-    /// <summary>
-    /// The checks of the closure under the lock of the row of the session, and the one save of its outcome. Nothing is written before the decision. What is read of the request goes
-    /// into <paramref name="buffers"/>, which the caller zeroes when the request ends.
-    /// </summary>
     private async Task<PresenceClosure> CloseUnderLockAsync(
         GuestCheckInSession session,
         PresenceSubmission submission,
@@ -109,14 +94,12 @@ public sealed partial class IdentityVerificationFlowService
         if (await FindReplayAsync(session, key, ct) is { } replay)
             return PresenceClosure.Replay(replay);
 
-        // c. The guards. A closed verification takes no new attempt; the request for a person stays open.
         if (session.IdentityClosedAt is not null || session.BiometricOutcome == BiometricOutcome.Accept)
             return PresenceClosure.Refused(PresenceStepStatus.AlreadyClosed);
 
         if (session.IdentityOpenedAt is null || session.IdentityChoice == IdentityChoices.Assisted)
             return PresenceClosure.Refused(PresenceStepStatus.ChallengeRequired);
 
-        // The hand-offs of today's selfie, in its order: a person has the verification, the organization does not offer it, a minor, the bound guest left, no text of the consent.
         var context = await ContextAsync(session, ct);
         if (InOperatorPath(session, context))
             return await HandOffUnderLockAsync(session, context, key, null, ct);
@@ -143,7 +126,6 @@ public sealed partial class IdentityVerificationFlowService
         if (stored is null || !DocumentComplete(session, stored))
             return PresenceClosure.Refused(PresenceStepStatus.DocumentRequired);
 
-        // The challenge: present, its proof of this session and attempt, not expired.
         if (stored.Presence is not { } challenge)
             return PresenceClosure.Refused(PresenceStepStatus.ChallengeRequired);
 
@@ -152,7 +134,6 @@ public sealed partial class IdentityVerificationFlowService
             return PresenceClosure.Refused(token == PresenceTokenStatus.Expired ? PresenceStepStatus.ChallengeExpired : PresenceStepStatus.ChallengeRequired);
         }
 
-        // d. The front of the document: the picture sent again (a property that keeps no document), recognised by its SHA-256, or the kept one, decrypted.
         byte[] documentBytes;
         if (submission.DocumentPhoto is not null)
         {
@@ -167,7 +148,6 @@ public sealed partial class IdentityVerificationFlowService
         }
         else
         {
-            // The storage and Data Protection errors propagate (the guest tries again with the same key): they say nothing about the guest.
             var kept = await LoadStoredDocumentAsync(session, ct);
             buffers.Document = kept;
             if (kept is null)
@@ -176,7 +156,6 @@ public sealed partial class IdentityVerificationFlowService
             documentBytes = kept;
         }
 
-        // A property that keeps nothing: the back of a document of two sides comes again too, and must be the one that was read.
         if (context.DocumentNotArchived && stored.BackSha256 is not null)
         {
             if (submission.DocumentPhotoBack is null)
@@ -188,7 +167,6 @@ public sealed partial class IdentityVerificationFlowService
                 return PresenceClosure.Refused(PresenceStepStatus.DocumentPhotoMismatch);
         }
 
-        // d. The frames, in memory, with the limits of IdentityVerification:Presence: a request that breaks one is refused and nothing is consumed.
         var parts = submission.Frames.Select(frame => new FramePart(frame.Content, frame.Length, frame.ContentType)).ToList();
         var read = await frameReader!.ReadAsync(parts, submission.TimestampsJson, clock.GetUtcNow(), ct);
         if (!read.Succeeded)
@@ -204,7 +182,6 @@ public sealed partial class IdentityVerificationFlowService
         var snapshot = identityPolicy!.Snapshot;
         var (evidence, fault) = await CollectEvidenceAsync(session, sequence, challenge, documentBytes, snapshot, ct);
 
-        // The segment of the property, the format and the channel: what the policy may do. An error of the database propagates: it never approves anybody.
         SegmentResolution? segment = null;
         if (snapshot.IsReady)
             segment = await segments!.ResolveAsync(session.OrgId, session.Booking.PropertyId, session.IdentityFormatId, session.IdentityChannel, ct);
@@ -214,11 +191,6 @@ public sealed partial class IdentityVerificationFlowService
         return await RecordDecisionAsync(session, stored, key, decision, evidence, snapshot, durationMs, ct);
     }
 
-    /// <summary>
-    /// The pipeline of the presence within <c>IdentityVerification:Presence:SequenceTimeoutMs</c>, or the fault that stopped it: models that are not loaded (or a section of
-    /// <c>IdentityVerification</c> that is not valid) are <see cref="IdentityModelsFault.NotReady"/>, the time over <see cref="IdentityModelsFault.TimedOut"/>, an exception
-    /// <see cref="IdentityModelsFault.Failed"/> (its type only is logged). Nothing runs without a usable policy: the engine reviews it as unavailable.
-    /// </summary>
     private async Task<(PresenceEvidence? Evidence, IdentityModelsFault Fault)> CollectEvidenceAsync(
         GuestCheckInSession session,
         FrameSequence sequence,
@@ -251,7 +223,6 @@ public sealed partial class IdentityVerificationFlowService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The type only: a message could carry what was being read.
             logger.LogError("Presence of session {SessionId}: the evidence could not be collected ({ErrorType}); a person decides", session.Id, ex.GetType().Name);
             return (null, IdentityModelsFault.Failed);
         }
@@ -342,7 +313,6 @@ public sealed partial class IdentityVerificationFlowService
         var approved = decision.Final == IdentityFinalDecision.AutoApproved;
         var outcomeCode = decision.OutcomeCode ?? IdentityOutcomeCodes.Review;
 
-        // The challenge is consumed and the perceptual hashes of the sides go: they served the check of a repeated side, which is over.
         session.DocumentCheckJson = JsonSerializer.Serialize(WithoutPerceptualHashes(stored) with { Presence = null }, Json);
         session.BiometricAttempts = attempt;
         session.BiometricOutcome = decision.LogOutcome;
@@ -376,7 +346,6 @@ public sealed partial class IdentityVerificationFlowService
         };
         db.BiometricVerificationLogs.Add(log);
 
-        // An approval is announced on the bus in the same save as its row of the log, as the legacy path does: ids and the method only.
         if (approved)
         {
             domainEvents?.Record(
@@ -425,7 +394,6 @@ public sealed partial class IdentityVerificationFlowService
         var decision = closure.Decision!;
         if (decision.Final == IdentityFinalDecision.AutoApproved)
         {
-            // The success path of today: the kept pictures go, the alerts are resolved, the lock code is released (screen and e-mail).
             await DeleteStoredDocumentAsync(session, ct);
             await db.SaveChangesAsync(ct);
             await alerts.ResolveAsync(session.OrgId, session.BookingId, ct);
@@ -461,8 +429,6 @@ public sealed partial class IdentityVerificationFlowService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // The type only: a message could carry what was being read. The operators are told all the same; the failure is thrown once the lock is released and the hand-off is
-                // committed (a throw inside would roll the hand-off back with the transaction of the row lock).
                 logger.LogError("Presence of session {SessionId}: the kept pictures of the document could not be deleted ({ErrorType}); the request is asked again", session.Id, ex.GetType().Name);
                 failure = ExceptionDispatchInfo.Capture(ex);
             }
@@ -544,15 +510,10 @@ public sealed partial class IdentityVerificationFlowService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The type only: the evidence is optional and the operators must be told all the same.
             logger.LogError("Presence of session {SessionId}: the evidence of the review was not kept ({ErrorType})", session.Id, ex.GetType().Name);
         }
     }
 
-    /// <summary>
-    /// What the request read and must not outlive it: the frames (<see cref="FrameSequence.Dispose"/> zeroes every JPEG and every decoded picture) and the pictures of the document
-    /// (zeroed). Owned by <see cref="SubmitPresenceSequenceAsync"/> for the whole request, the effects after the commit included, and disposed when it ends, whatever happens.
-    /// </summary>
     private sealed class PresenceBuffers : IDisposable
     {
         public FrameSequence? Sequence { get; set; }
@@ -590,7 +551,6 @@ public sealed partial class IdentityVerificationFlowService
         return PresenceClosure.HandedOff;
     }
 
-    /// <summary>The reason of the alert of a review: a fault of the models or a policy that is not usable is a technical error; any other review is a review.</summary>
     private static string AlertReasonOf(string? outcomeCode)
     {
         return outcomeCode is IdentityOutcomeCodes.TechnicalError or IdentityOutcomeCodes.Unavailable
@@ -629,7 +589,6 @@ public sealed partial class IdentityVerificationFlowService
     /// </summary>
     private async Task<PresenceStepResult> AnswerReplayAsync(GuestCheckInSession session, PresenceReplay replay, CancellationToken ct)
     {
-        // The request that decided may have stopped after its save: what it left undone is finished now, with the steps that can be repeated.
         await FinishInterruptedEffectsAsync(session, replay.Result);
 
         string? code = null;
@@ -658,21 +617,15 @@ public sealed partial class IdentityVerificationFlowService
             lockCode,
             lockCodeHeld);
 
-    /// <summary>Keeps the key of the attempt and its public answer, so the same key gets it again.</summary>
     private static void RememberAnswer(GuestCheckInSession session, string key, string result, IReadOnlyList<string> guidance)
     {
         session.IdentityLastAttemptKey = key;
         session.IdentityLastAttemptResult = EncodeAnswer(result, guidance);
     }
 
-    /// <summary>The public answer as it is kept: <c>result</c>, or <c>result:code,code</c> with the guidance codes.</summary>
     internal static string EncodeAnswer(string result, IReadOnlyList<string> guidance) =>
         guidance.Count == 0 ? result : $"{result}:{string.Join(',', guidance)}";
 
-    /// <summary>
-    /// The guidance codes that fit in the kept answer (<see cref="LastAttemptResultMaxLength"/> characters), in their order: the first ones, the most specific of the checks. The answer
-    /// of the attempt is the kept one, so the request and its replay say the same.
-    /// </summary>
     internal static IReadOnlyList<string> FitGuidance(string result, IReadOnlyList<string> guidance)
     {
         var kept = new List<string>(guidance.Count);
@@ -687,7 +640,6 @@ public sealed partial class IdentityVerificationFlowService
         return kept;
     }
 
-    /// <summary>Reads a kept answer: false for anything that is not one (a result the page does not know).</summary>
     internal static bool TryReadAnswer(string? kept, out string result, out IReadOnlyList<string> guidance)
     {
         result = string.Empty;
@@ -705,7 +657,6 @@ public sealed partial class IdentityVerificationFlowService
         return true;
     }
 
-    /// <summary>The thresholds of the policy the decision was taken with, for <see cref="BiometricVerificationLog.ThresholdsJson"/>: <c>{}</c> without a usable policy.</summary>
     private static string ThresholdsOf(IdentityDecisionPolicy? policy)
     {
         if (policy is null)
@@ -724,7 +675,6 @@ public sealed partial class IdentityVerificationFlowService
             Json);
     }
 
-    /// <summary>The checks of the document without the perceptual hashes of its sides.</summary>
     private static StoredDocumentCheck WithoutPerceptualHashes(StoredDocumentCheck stored) => stored with
     {
         Front = stored.Front is null ? null : stored.Front with { DHash = null },
@@ -737,7 +687,6 @@ public sealed partial class IdentityVerificationFlowService
         return text.Length <= maxLength ? text : text[..maxLength];
     }
 
-    /// <summary>An attempt already answered for its key: the result and the guidance.</summary>
     private sealed record PresenceReplay(string Result, IReadOnlyList<string> Guidance);
 
     private enum PresenceClosureKind
@@ -750,7 +699,6 @@ public sealed partial class IdentityVerificationFlowService
         Decided,
     }
 
-    /// <summary>What the work under the lock ended with: for a decision, also the id of its log row (the evidence of a review is linked to it).</summary>
     private sealed record PresenceClosure(
         PresenceClosureKind Kind,
         PresenceStepStatus Status = PresenceStepStatus.Done,

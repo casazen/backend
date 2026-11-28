@@ -25,10 +25,8 @@ public class OwnerPortalOperationsJob(
 {
     public const string RecurringJobId = "owner-portal-operations";
 
-    /// <summary>Every five minutes.</summary>
     public const string Cron = "*/5 * * * *";
 
-    /// <summary>The seconds a run waits for the previous run of the same job.</summary>
     public const int LockTimeoutSeconds = 60;
 
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Fail)]

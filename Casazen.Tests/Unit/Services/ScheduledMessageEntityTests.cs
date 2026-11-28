@@ -19,7 +19,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class ScheduledMessageEntityTests
 {
-    // One provider for the whole class: EF keeps one model per provider, and a provider per test would fill the cache the other tests share.
     private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     private static AppDbContext NewDb(string? name = null, ITenantContext? tenant = null) =>
@@ -42,17 +41,14 @@ public class ScheduledMessageEntityTests
         var column = db.Model.FindEntityType(typeof(ScheduledMessage))!.FindProperty(nameof(ScheduledMessage.TextOverride))!;
         var converter = Assert.IsType<EncryptedStringConverter>(column.GetValueConverter());
 
-        // No length on the column: the payload of a text of the longest size does not fit in a column of that size.
         Assert.Null(column.GetMaxLength());
         var stored = (string)converter.ConvertToProvider(words)!;
 
-        // What the column holds: a payload, and nothing of the words in it.
         Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, stored, StringComparison.Ordinal);
         Assert.DoesNotContain("4921", stored, StringComparison.Ordinal);
         Assert.DoesNotContain("Zefirino", stored, StringComparison.Ordinal);
         Assert.DoesNotContain("password", stored, StringComparison.OrdinalIgnoreCase);
 
-        // Read back only through the decryption of its own purpose: the protector of another purpose cannot read it.
         Assert.Equal(words, converter.ConvertFromProvider(stored));
         Assert.ThrowsAny<CryptographicException>(() => Provider.CreateProtector(EncryptedColumns.AssistantContentPurpose).Unprotect(stored));
         Assert.True(EncryptedColumns.IsConfigured(db));
@@ -70,7 +66,6 @@ public class ScheduledMessageEntityTests
             [nameof(ScheduledMessage.BookingId), nameof(ScheduledMessage.RoutineId), nameof(ScheduledMessage.ActionIndex)],
             plan.Properties.Select(p => p.Name));
 
-        // The sweep reads the open rows by their time: planned (1), blocked (4) and failed (5).
         var open = Assert.Single(entity.GetIndexes(), i => i.GetDatabaseName() == "IX_ScheduledMessages_Open");
         Assert.Equal([nameof(ScheduledMessage.Status), nameof(ScheduledMessage.PlannedAtUtc)], open.Properties.Select(p => p.Name));
         Assert.Equal("\"Status\" IN (1, 4, 5)", open.GetFilter());
@@ -105,9 +100,6 @@ public class ScheduledMessageEntityTests
         Assert.Equal(ValueGenerated.OnAddOrUpdate, version.ValueGenerated);
     }
 
-    /// <summary>
-    /// A row belongs to one organization: the tenant filter shows a caller its own rows only, so a message of another organization is never read by a query that forgot to name the org.
-    /// </summary>
     [Fact]
     public async Task ScheduledMessages_BelongToOneOrganization_AndTheTenantFilterHidesTheOthers()
     {

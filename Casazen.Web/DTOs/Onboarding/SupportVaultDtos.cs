@@ -18,10 +18,6 @@ public sealed class RevealSupportVaultDto
     public string? Reason { get; set; }
 }
 
-/// <summary>
-/// The answer of a controlled opening, sent once with <c>Cache-Control: no-store</c>: the values in clear and <c>visibleUntil</c>, the end of the minute
-/// the client shows them for. Never stored by CasaZen again, never logged.
-/// </summary>
 public sealed class SupportVaultRevealDto
 {
     public SupportVaultCredentialKind Kind { get; set; }
@@ -50,7 +46,6 @@ public sealed class SupportVaultRevealDto
         UnitCode = reveal.UnitCode,
     };
 
-    /// <summary>Hides the values from logs and debugger output.</summary>
     public override string ToString() => nameof(SupportVaultRevealDto) + " { *** }";
 }
 
@@ -63,10 +58,8 @@ public sealed class StoreSupportVaultSecretDto
 {
     public Guid? OrgId { get; set; }
 
-    /// <summary>The structure; left out for a credential of the whole org.</summary>
     public Guid? PropertyId { get; set; }
 
-    /// <summary><c>OctoratePanel</c> or <c>RegionalIstat</c>.</summary>
     public SupportVaultSecretKind? Kind { get; set; }
 
     public string? Username { get; set; }
@@ -75,7 +68,6 @@ public sealed class StoreSupportVaultSecretDto
 
     public string? ExtraCode { get; set; }
 
-    /// <summary>Hides the values from logs and debugger output.</summary>
     public override string ToString() => nameof(StoreSupportVaultSecretDto) + " { *** }";
 }
 
@@ -128,7 +120,6 @@ public sealed class SetIstatCredentialsRequest
 
     public IstatCredentialsInput ToInput() => new(Username, Password, StructureCode);
 
-    /// <summary>Hides the values from logs and debugger output.</summary>
     public override string ToString() => nameof(SetIstatCredentialsRequest) + " { *** }";
 }
 
@@ -137,7 +128,6 @@ public sealed class IstatCredentialsStatusDto
 {
     public bool Configured { get; init; }
 
-    /// <summary>When the credentials were last set (UTC); <c>null</c> when not configured.</summary>
     public DateTime? ConfiguredAt { get; init; }
 
     public static IstatCredentialsStatusDto From(IstatCredentialsStatus status) => new()

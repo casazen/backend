@@ -16,8 +16,6 @@ public class SupplierServiceRequestReaderTests
 {
     private static readonly SupplierInboxQuery Everything = new([], null, null, 1, 100);
 
-    // ─── Privacy before the take (D9) ───
-
     [Fact]
     public async Task ListAsync_BeforeTheTake_ShowsComunePostalCodeTimeAndPriceButNothingThatIdentifiesTheHome()
     {
@@ -36,7 +34,6 @@ public class SupplierServiceRequestReaderTests
         Assert.Equal(ServiceRequestScenario.FridayAt10.AddMinutes(120), view.Schedule.EndUtc);
         Assert.Equal(new DateOnly(2026, 10, 9), view.ScheduledFor);
         Assert.Equal(ServiceRequestScenario.ServicePriceCents, view.Price.AmountCents);
-        // What identifies the home or the host's words waits for the take.
         Assert.Null(view.Location.PropertyName);
         Assert.Null(view.Location.Address);
         Assert.Null(view.Notes);
@@ -103,8 +100,6 @@ public class SupplierServiceRequestReaderTests
         Assert.DoesNotContain("9998887", text);
     }
 
-    // ─── What the console shows ───
-
     [Fact]
     public async Task ListAsync_TheClientIsTheHostOrgWithItsDisplayName_AlsoBeforeTheTake()
     {
@@ -123,7 +118,6 @@ public class SupplierServiceRequestReaderTests
     public async Task ListAsync_TheDayOfARequest_IsTheRomeDayOfItsTimeElseTheCheckOutDayOfTheStay()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        // 23:30 UTC on the 9th is 01:30 on the 10th in Rome.
         var late = await s.SeedAsync(
             ServiceRequestStatus.PresoInCarico,
             r =>
@@ -143,9 +137,9 @@ public class SupplierServiceRequestReaderTests
 
         Assert.Equal(new DateOnly(2026, 10, 10), items.Single(view => view.Id == late.Id).ScheduledFor);
         var turnover = items.Single(view => view.Id == toAgree.Id);
-        Assert.Equal(new DateOnly(2026, 10, 12), turnover.ScheduledFor); // the check-out of the stay
+        Assert.Equal(new DateOnly(2026, 10, 12), turnover.ScheduledFor);
         Assert.Equal(new DateOnly(2026, 10, 12), turnover.Stay!.CheckOut);
-        Assert.Null(items.Single(view => view.Id == longRent.Id).ScheduledFor); // a property, no stay, no day
+        Assert.Null(items.Single(view => view.Id == longRent.Id).ScheduledFor);
     }
 
     [Theory]
@@ -283,8 +277,6 @@ public class SupplierServiceRequestReaderTests
         Assert.Equal("Lavoro non necessario", view.History[^1].Reason);
     }
 
-    // ─── Order and paging ───
-
     [Fact]
     public async Task ListAsync_SortedByUrgency_PutsTheEarliestDeadlineFirstAndTheOnesWithoutLast()
     {
@@ -309,7 +301,6 @@ public class SupplierServiceRequestReaderTests
 
         var (items, _) = await s.Reader.ListAsync(s.SupplierOrgId, Everything with { Sort = SupplierInboxSort.WorkTime });
 
-        // The request without a time of its own is a turnover on the check-out day of its stay (12 October).
         Assert.Equal(new[] { sooner.Id, toAgree.Id, later.Id }, items.Select(view => view.Id));
     }
 

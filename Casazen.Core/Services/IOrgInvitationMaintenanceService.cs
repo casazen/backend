@@ -1,10 +1,5 @@
 namespace Casazen.Core.Services;
 
-/// <summary>What one run of the invitation maintenance did.</summary>
-/// <param name="Skipped">Another run was in progress: this one did nothing.</param>
-/// <param name="Reminded">Reminders sent (third day).</param>
-/// <param name="Expired">Invitations marked expired (and their inviters told).</param>
-/// <param name="Purged">Closed invitations deleted, with the name and email of the invitee, after the retention.</param>
 public sealed record OrgInvitationMaintenanceResult(bool Skipped, int Reminded, int Expired, int Purged)
 {
     public static OrgInvitationMaintenanceResult SkippedRun { get; } = new(true, 0, 0, 0);

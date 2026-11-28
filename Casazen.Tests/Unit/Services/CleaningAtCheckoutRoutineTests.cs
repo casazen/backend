@@ -9,16 +9,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E24/F01/US01/T02 (NF-120, NF-21): how the routine engine runs <c>CreateCleaningRequest</c> (what the automation answers becomes what the log of the routine says), how the consumer
-/// of the changes of a stay hands the events to the automation, and the time and the length of the cleaning (<see cref="CleaningSchedule"/>).
-/// </summary>
 public class CleaningAtCheckoutRoutineTests
 {
     private static readonly Guid OrgA = RoutineRig.OrgA;
     private static readonly string CleaningAction = RoutineRig.Actions(("CreateCleaningRequest", "{}"));
-
-    // ─── The action in the engine ────────────────────────────────────────────────────────────────────────────────────────────────
 
     public static TheoryData<CleaningAutomationOutcome, string?, string, string?> Answers => new()
     {
@@ -67,7 +61,6 @@ public class CleaningAtCheckoutRoutineTests
         Assert.Empty(db.InternalActivities);
     }
 
-    /// <summary>What the automation answers is what the log says: done for a cleaning made or already there, blocked for a property with no cleaner or a stay that does not happen, failed with the code of the rule.</summary>
     [Theory]
     [MemberData(nameof(Answers))]
     public async Task TheAnswerOfTheAutomation_IsTheResultOfTheAction(CleaningAutomationOutcome outcome, string? code, string expectedOutcome, string? expectedCode)
@@ -90,7 +83,6 @@ public class CleaningAtCheckoutRoutineTests
         cleaning.Verify(c => c.CreateForStayAsync(OrgA, booking.Id, It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    /// <summary>The automation is asked for the org of the routine, never another: the booking of another org's event is not its business.</summary>
     [Fact]
     public async Task TheAutomation_IsAskedInTheOrgOfTheRoutine()
     {
@@ -122,7 +114,6 @@ public class CleaningAtCheckoutRoutineTests
         Assert.Equal((RoutineActionOutcomes.Failed, RoutineCodes.CleaningNeedsBooking), (action.Outcome, action.Code));
     }
 
-    /// <summary>A routine in test mode simulates the action (nothing is created), and an engine with no automation never pretends to have made a cleaning.</summary>
     [Fact]
     public async Task TestMode_Simulates_AndAnEngineWithNoAutomation_FailsTheAction()
     {
@@ -145,7 +136,6 @@ public class CleaningAtCheckoutRoutineTests
         Assert.Equal((RoutineActionOutcomes.Failed, RoutineCodes.ActionNotAvailable), (unavailable.Outcome, unavailable.Code));
     }
 
-    /// <summary>The ready routine of the brief (the time of the check-out, no offset, the action) is a routine the API saves, and it can be switched on: its action is available.</summary>
     [Fact]
     public async Task TheReadyRoutine_IsARoutineTheApiSaves_AndItCanBeActivated()
     {
@@ -169,8 +159,6 @@ public class CleaningAtCheckoutRoutineTests
         Assert.Equal(RoutineEventType.AfterCheckout, active.EventType);
         Assert.Equal(0, TimeTrigger.OffsetHours(active.EventConfig));
     }
-
-    // ─── The consumer of the changes of a stay ───────────────────────────────────────────────────────────────────────────────
 
     private static DomainEvent Event(DomainEventType type, Guid orgId, Guid entityId) =>
         new(Guid.NewGuid(), orgId, type, entityId, new DateTime(2026, 10, 9, 10, 0, 0, DateTimeKind.Utc), "{}");
@@ -207,7 +195,6 @@ public class CleaningAtCheckoutRoutineTests
         cleaning.Verify(c => c.FollowStayCancellationAsync(orgId, bookingId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    /// <summary>A stay marked as a no-show does not happen: the automation follows it as it follows a cancellation (it reads the stay and cancels the cleaning if not started).</summary>
     [Fact]
     public async Task TheStayIsMarkedAsANoShow_TheAutomationFollowsItLikeACancellation()
     {
@@ -225,7 +212,6 @@ public class CleaningAtCheckoutRoutineTests
         cleaning.VerifyNoOtherCalls();
     }
 
-    /// <summary>Every other event is not the handler's, and an event that names no booking is ignored.</summary>
     [Fact]
     public async Task EveryOtherEvent_AndAnEventWithNoBooking_IsIgnored()
     {
@@ -242,11 +228,8 @@ public class CleaningAtCheckoutRoutineTests
         strict.VerifyNoOtherCalls();
     }
 
-    // ─── When and for how long ───────────────────────────────────────────────────────────────────────────────────────────────────
-
     private static readonly DateTime CheckOutDay = new(2026, 10, 12, 0, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>The time of the setup wins, then the check-out time of the property, then 10:00; the day is the check-out day on the clock of the property, summer time or not.</summary>
     [Fact]
     public void StartUtc_IsTheCheckOutDayAtTheTimeOfTheSetup_ThenOfTheProperty_ThenTen()
     {
@@ -262,7 +245,6 @@ public class CleaningAtCheckoutRoutineTests
         Assert.All([setup, property, fallback, winter], instant => Assert.Equal(DateTimeKind.Utc, instant.Kind));
     }
 
-    /// <summary>The clock is the one of the property, and Rome's for a property whose zone is missing or unknown.</summary>
     [Fact]
     public void StartUtc_ReadsTheClockOfTheProperty()
     {

@@ -9,11 +9,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public sealed record CinDeadlineAlert(Guid OrgId, IReadOnlyList<Guid> PropertyIds, CinDeadlineStatus Deadline);
 
-/// <summary>Outcome of one run of <see cref="ICinDeadlineAlertService.RunAsync"/>.</summary>
-/// <param name="Skipped">Another run was in progress: nothing done.</param>
-/// <param name="Stage">Stage due today (<see cref="CinAlertStages"/>), null when no alert is due yet.</param>
-/// <param name="PropertiesAlerted">Properties that moved to <paramref name="Stage"/> in this run.</param>
-/// <param name="EmailsQueued">Emails queued, one per org.</param>
 public sealed record CinDeadlineAlertRunResult(bool Skipped, int? Stage, int PropertiesAlerted, int EmailsQueued);
 
 /// <summary>

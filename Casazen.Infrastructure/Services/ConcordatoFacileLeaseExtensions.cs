@@ -6,9 +6,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// The rule that opens everything the ConcordatoFacile endpoints do for a lease (CF-FIX, CF-FIX2): the lease is the caller's org's.
-/// </summary>
 internal static class ConcordatoFacileLeaseExtensions
 {
     /// <summary>
@@ -39,7 +36,6 @@ internal static class ConcordatoFacileLeaseExtensions
         if (lease.IsConcordatoFacileSource && lease.Origin == LeaseOrigin.Imported)
             return false;
 
-        // A draft already reviewed or handed out for the signature in CasaZen is a contract of CasaZen: it stays what it is.
         if (lease.ReviewConfirmedAt is not null || lease.SentForSignatureAt is not null)
             return false;
 

@@ -36,36 +36,16 @@ public interface IGuestMessageService
     /// </summary>
     Task<SentGuestMessage> SendAsGuestAsync(Booking booking, string? text, string? idempotencyKey, CancellationToken cancellationToken = default);
 
-    /// <summary>Sends a portal message with its optional local house-guide answer in a single save.</summary>
     Task<SentGuestMessage> SendFromPortalAsync(Booking booking, string? text, string? idempotencyKey, string? guideAnswer, CancellationToken cancellationToken = default, string? localDraft = null);
 
-    /// <summary>The thread of a booking for its host: messages, how many the host has not read, whether the guest waits for an answer.</summary>
-    /// <exception cref="Exceptions.NotFoundException">The booking is not one of the caller's org.</exception>
     Task<HostThreadView> GetForHostAsync(Guid bookingId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The host's answer (also its first message: the host may write first). The same errors as <see cref="SendAsGuestAsync"/>; the text
-    /// is stored as written. Answering marks the guest's messages as read, and the caller's notifications of them too.
-    /// </summary>
     Task<SentGuestMessage> ReplyAsHostAsync(Guid bookingId, string? text, string? idempotencyKey, string? userId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// A message of the host side that no person wrote: the one a routine planned (E05/F07/US01). The same errors, key and rules as <see cref="ReplyAsHostAsync"/>, but the message is stored with the origin
-    /// <see cref="Entities.Enums.MessageOrigin.Automation"/> and it <b>answers nobody</b>: the guest's messages stay unread and the thread still waits for its answer in «Da rispondere», as the
-    /// automatic messages of the channels do (<c>OtaMessage.Origin</c>). It is still the latest message of the thread.
-    /// </summary>
     Task<SentGuestMessage> ReplyAsAutomationAsync(Guid bookingId, string? text, string? idempotencyKey, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Marks the guest's messages as read by the host, up to the last one written. With the caller's <paramref name="userId"/>, the
-    /// caller's unread «guest-message» in-app notifications of the booking are marked as read too (and the new count is published).
-    /// </summary>
     Task<HostThreadView> MarkReadAsync(Guid bookingId, string? userId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The threads of the properties the scope reaches, the ones with the latest message first. With <paramref name="needsReply"/> true,
-    /// only the open threads whose last message is the guest's (the host owes an answer); false, the others; <c>null</c>, all.
-    /// </summary>
     Task<HostThreadPage> ListForHostAsync(
         HostScope scope,
         bool? needsReply,
@@ -82,25 +62,15 @@ public interface IGuestMessageService
     Task<IReadOnlyList<HostUnreadThread>> ListUnreadForHostAsync(HostScope scope, CancellationToken cancellationToken = default);
 }
 
-/// <summary>A message as the screens show it.</summary>
 public sealed record GuestThreadMessage(Guid Id, GuestMessageSender Sender, string Text, DateTime CreatedAt)
 {
     public MessageOrigin? Origin { get; init; }
 }
 
-/// <summary>The guest's view of its thread: <paramref name="ClosesAt"/> is when it stops taking messages.</summary>
 public sealed record GuestThreadView(GuestThreadState State, DateTime ClosesAt, IReadOnlyList<GuestThreadMessage> Messages);
 
-/// <summary>
-/// A message just sent. <paramref name="Redacted"/> says the text of the guest had a card number or an IBAN that was replaced;
-/// <paramref name="Replayed"/> that the key had been used already and nothing was written.
-/// </summary>
 public sealed record SentGuestMessage(GuestThreadMessage Message, bool Redacted, bool Replayed);
 
-/// <summary>
-/// The host's view of the thread of a booking. <paramref name="UnreadCount"/> counts the guest's messages the host has not read;
-/// <paramref name="NeedsReply"/> is true when the last message is the guest's and the thread is open.
-/// </summary>
 public sealed record HostThreadView(
     GuestThreadState State,
     DateTime? ClosesAt,
@@ -108,7 +78,6 @@ public sealed record HostThreadView(
     bool NeedsReply,
     IReadOnlyList<GuestThreadMessage> Messages);
 
-/// <summary>One row of the host's list of threads. The preview is the start of the guest's last message, for the host only.</summary>
 public sealed record HostThreadSummary(
     Guid BookingId,
     string BookingCode,
@@ -124,7 +93,6 @@ public sealed record HostThreadSummary(
     int UnreadCount,
     bool NeedsReply);
 
-/// <summary>A thread with <paramref name="UnreadCount"/> (at least 1) messages of the guest the host has not read.</summary>
 public sealed record HostUnreadThread(Guid BookingId, int UnreadCount);
 
 public sealed record HostThreadPage(IReadOnlyList<HostThreadSummary> Items, int TotalCount, int Page, int PageSize);

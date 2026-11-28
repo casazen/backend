@@ -30,7 +30,6 @@ public interface IGdprService
     /// </summary>
     Task EraseGuestDataAsync(Guid orgId, Guid guestId, string reason, string? actorUserId, CancellationToken cancellationToken = default);
 
-    /// <summary>Same anonymization as <see cref="EraseGuestDataAsync"/> without marking the record deleted.</summary>
     Task AnonymizeGuestDataAsync(Guid orgId, Guid guestId, string? actorUserId, CancellationToken cancellationToken = default);
 
     /// <summary>

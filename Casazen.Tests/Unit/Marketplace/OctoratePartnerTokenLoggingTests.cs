@@ -34,26 +34,21 @@ public class OctoratePartnerTokenLoggingTests
         await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"partner-token-{Guid.NewGuid()}").Options);
         var tokens = NewService(db, octorate, clock, logs);
 
-        // The first call logs in: the application credentials go to the partner login, and the token comes back.
         octorate.Answer(HttpStatusCode.OK, Login(FirstToken));
         Assert.Equal(FirstToken, await tokens.GetPartnerAccessTokenAsync(CancellationToken.None));
         Assert.Equal(1, octorate.Calls);
         Assert.Equal("https://api.octorate.test/connect/rest/v1/identity/apilogin", octorate.LastAddress);
         Assert.Contains("client_id=casazen-test-client", octorate.LastForm, StringComparison.Ordinal);
 
-        // Reused while valid: up to five minutes before it expires, nothing goes to Octorate.
         clock.Advance(TimeSpan.FromSeconds(ExpiresInSeconds - 300 - 1));
         Assert.Equal(FirstToken, await tokens.GetPartnerAccessTokenAsync(CancellationToken.None));
         Assert.Equal(1, octorate.Calls);
 
-        // Renewed once it expires within five minutes.
         clock.Advance(TimeSpan.FromSeconds(1));
         octorate.Answer(HttpStatusCode.OK, Login(SecondToken));
         Assert.Equal(SecondToken, await tokens.GetPartnerAccessTokenAsync(CancellationToken.None));
         Assert.Equal(2, octorate.Calls);
 
-        // A refusal that repeats what it was sent, a failure of Octorate, an answer that cannot be used and a network error that names the
-        // secret: each is the typed error, none of them puts the secret or a token in its message or in the log.
         var failures = new List<(string Name, Action Script, Type Expected)>
         {
             ("refused", () => octorate.Answer(HttpStatusCode.Forbidden, $$"""{"type":"ApiSecurityException","message":"client_secret {{ClientSecret}} is not valid, token {{SecondToken}}"}"""), typeof(OctorateAuthException)),
@@ -63,7 +58,6 @@ public class OctoratePartnerTokenLoggingTests
         };
         foreach (var (name, script, expected) in failures)
         {
-            // The cached token has expired, so the next call logs in again, and the login fails.
             clock.Advance(TimeSpan.FromHours(37));
             script();
             var calls = octorate.Calls;
@@ -75,12 +69,10 @@ public class OctoratePartnerTokenLoggingTests
             Assert.DoesNotContain(SecondToken, error.Message, StringComparison.Ordinal);
         }
 
-        // Without a client id and secret nothing leaves: the message names the two settings and holds no value.
         var unconfigured = NewService(db, octorate, clock, logs, withCredentials: false);
         var missing = await Assert.ThrowsAsync<InvalidOperationException>(() => unconfigured.GetPartnerAccessTokenAsync(CancellationToken.None));
         Assert.Contains("Octorate:ClientSecret", missing.Message, StringComparison.Ordinal);
 
-        // The proof: the log has the lines of the renewals and of the refusal, and not once the secret or a token.
         Assert.Contains(logs.Entries, entry => entry.Contains("OctoratePartnerTokenRenewed", StringComparison.Ordinal));
         Assert.Contains(logs.Entries, entry => entry.Contains("refused the partner login", StringComparison.Ordinal));
         Assert.All(logs.Entries, entry =>
@@ -111,14 +103,12 @@ public class OctoratePartnerTokenLoggingTests
         var host = new Mock<IHostEnvironment>();
         host.SetupGet(h => h.EnvironmentName).Returns("Staging");
 
-        // One cache for the application, as the container gives it: a service made for another request shares the token.
         return new OctorateTokenService(
             db, NullTenantContext.Instance, new StubHttpClientFactory(octorate), configuration, host.Object, clock, logger, SharedCache);
     }
 
     private static readonly OctoratePartnerTokenCache SharedCache = new();
 
-    /// <summary>The partner login of Octorate: answers what the test says (or fails as it says) and keeps what it was sent.</summary>
     private sealed class LoginEndpoint : HttpMessageHandler
     {
         private Func<HttpResponseMessage> _respond = () => new HttpResponseMessage(HttpStatusCode.OK);
@@ -148,7 +138,6 @@ public class OctoratePartnerTokenLoggingTests
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
     }
 
-    /// <summary>Keeps every line the service writes, as the sink would: the message, the structured values and the exception with its inner ones.</summary>
     private sealed class CapturingLogger<T> : ILogger<T>
     {
         public List<string> Entries { get; } = [];

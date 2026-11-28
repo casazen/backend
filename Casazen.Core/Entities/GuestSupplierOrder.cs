@@ -2,7 +2,6 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>A property's offer and the supplier's consent to its current terms.</summary>
 public sealed class GuestSupplierOffer
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -17,7 +16,6 @@ public sealed class GuestSupplierOffer
     [Timestamp] public uint Version { get; set; }
 }
 
-/// <summary>An order with a fixed price and commission snapshot for the stay.</summary>
 public sealed class GuestSupplierOrder
 {
     public Guid Id { get; set; } = Guid.NewGuid();

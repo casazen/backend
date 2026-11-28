@@ -3,12 +3,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Supplier self-serve registration (section <c>Suppliers</c>, SU-01 / A4-04). The spec allows self-serve signup only
-/// "for pilot comune" (<c>spec-supplier-console-web</c> AC3) and names none, so the pilot comuni are configuration with
-/// no default: while the list is empty self-serve registration is off and suppliers join by admin invite only.
-/// Runbook <c>docs/runbooks/suppliers.md</c>.
-/// </summary>
 public sealed class SupplierRegistrationOptions
 {
     public const string SectionName = "Suppliers";
@@ -31,18 +25,10 @@ public sealed class SupplierRegistrationOptions
     public bool AnyComune { get; set; } = true;
 
     public bool SelfServeEnabled => PilotComuni.Count > 0;
-
-    /// <summary>The pilot comune with this code, or null.</summary>
-    public SupplierPilotComune? FindPilotComune(string? code) =>
-        string.IsNullOrWhiteSpace(code)
-            ? null
-            : PilotComuni.FirstOrDefault(c => string.Equals(c.Code.Trim(), code.Trim(), StringComparison.OrdinalIgnoreCase));
 }
 
-/// <summary>A pilot comune: its code (the format used by admin invites) and the name shown to suppliers.</summary>
 public sealed class SupplierPilotComune
 {
-    /// <summary>Maximum length of a comune code (same as <c>SupplierInviteRecord.ComuneCode</c>).</summary>
     public const int CodeMaxLength = 20;
 
     public const int NameMaxLength = 100;
@@ -52,7 +38,6 @@ public sealed class SupplierPilotComune
     public string Name { get; set; } = string.Empty;
 }
 
-/// <summary>Rejects incomplete or duplicated pilot comuni at startup, so a typo never silently opens or closes a comune.</summary>
 public sealed class SupplierRegistrationOptionsValidator : IValidateOptions<SupplierRegistrationOptions>
 {
     public ValidateOptionsResult Validate(string? name, SupplierRegistrationOptions options)

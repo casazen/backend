@@ -44,10 +44,8 @@ public class HostSupplierCatalogPostgresTests : IClassFixture<PublicShowcaseFact
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var text = await response.Content.ReadAsStringAsync();
         var items = JsonSerializer.Deserialize<JsonElement>(text, JsonOptions).GetProperty("items").EnumerateArray().ToList();
-        // The published ones, in the order of the catalog: no draft.
         Assert.Equal([deep.Id, onQuote.Id, hourly.Id], items.Select(i => i.GetProperty("id").GetGuid()).ToList());
 
-        // What the host needs to choose, and the price a request starts with: only a per-job service with a price has one.
         Assert.Equal(6000, items[0].GetProperty("priceFromCents").GetInt32());
         Assert.Equal(6000, items[0].GetProperty("estimatedAmountCents").GetInt32());
         Assert.Equal(120, items[0].GetProperty("durationMinutes").GetInt32());
@@ -56,13 +54,11 @@ public class HostSupplierCatalogPostgresTests : IClassFixture<PublicShowcaseFact
         Assert.Equal("PerHour", items[2].GetProperty("priceUnit").GetString());
         Assert.Equal(JsonValueKind.Null, items[2].GetProperty("estimatedAmountCents").ValueKind);
 
-        // Nothing of the public page of the service, and nothing private of the supplier.
         Assert.DoesNotContain("Bagni e cucina", text, StringComparison.Ordinal);
         Assert.DoesNotContain("descrizione lunga", text, StringComparison.Ordinal);
         Assert.DoesNotContain(deep.Slug, text, StringComparison.Ordinal);
         Assert.All(supplier.Secrets, secret => Assert.DoesNotContain(secret, text, StringComparison.Ordinal));
 
-        // A category narrows the list; what is not a code is refused as in the supplier picker.
         Assert.Equal(3, (await ItemsAsync(client, $"/api/suppliers/{supplier.OrgId}/services?propertyId={host.PropertyId}&category=cleaning")).Count);
         Assert.Empty(await ItemsAsync(client, $"/api/suppliers/{supplier.OrgId}/services?propertyId={host.PropertyId}&category=plumbing"));
         await AssertProblemAsync(
@@ -83,7 +79,6 @@ public class HostSupplierCatalogPostgresTests : IClassFixture<PublicShowcaseFact
         using var client = _factory.CreateAuthenticatedClient(host.OwnerId, Host);
         var query = $"propertyId={host.PropertyId}";
 
-        // The supplier: unknown, not active, not covering the comune of the property.
         await AssertProblemAsync(await client.GetAsync($"/api/suppliers/{Guid.NewGuid()}/services?{query}"), HttpStatusCode.NotFound, "supplier_not_found");
         await AssertProblemAsync(await client.GetAsync($"/api/suppliers/{pending.OrgId}/services?{query}"), HttpStatusCode.UnprocessableEntity, "service_request_supplier_inactive");
         await AssertProblemAsync(await client.GetAsync($"/api/suppliers/{elsewhere.OrgId}/services?{query}"), HttpStatusCode.UnprocessableEntity, "service_request_supplier_outside_comune");
@@ -92,11 +87,9 @@ public class HostSupplierCatalogPostgresTests : IClassFixture<PublicShowcaseFact
             HttpStatusCode.UnprocessableEntity,
             "service_request_supplier_outside_comune");
 
-        // The service of the slots: not the supplier's, and not published.
         await AssertProblemAsync(await client.GetAsync($"/api/suppliers/{active.OrgId}/services/{Guid.NewGuid()}/slots?{query}"), HttpStatusCode.NotFound, "supplier_service_not_found");
         await AssertProblemAsync(await client.GetAsync($"/api/suppliers/{active.OrgId}/services/{draft.Id}/slots?{query}"), HttpStatusCode.UnprocessableEntity, "service_request_service_unavailable");
 
-        // The property: required, and the other org's is not found (as for every read of the host).
         await AssertProblemAsync(await client.GetAsync($"/api/suppliers/{active.OrgId}/services"), HttpStatusCode.BadRequest, "validation_error");
         var outsider = $"auth0|sr08a-outsider-{Guid.NewGuid():N}";
         await _factory.SeedOrgForOwnerAsync(outsider);
@@ -120,9 +113,7 @@ public class HostSupplierCatalogPostgresTests : IClassFixture<PublicShowcaseFact
         Assert.Equal("2026-10-13", slots.From);
         Assert.Equal("2026-10-26", slots.To);
         Assert.NotEmpty(slots.Starts);
-        // Tuesday 13 October 09:00 in Rome (summer time): the first hour of a working day after the 24 hours of notice.
         Assert.Equal(new DateTime(2026, 10, 13, 7, 0, 0, DateTimeKind.Utc), slots.Starts[0]);
-        // The window of 14 days, from Tuesday: working days only (Monday to Friday), the length of the service.
         Assert.All(slots.Starts, start =>
         {
             Assert.InRange(RomeCalendar.DateInRome(start), new DateOnly(2026, 10, 13), new DateOnly(2026, 10, 26));
@@ -130,7 +121,6 @@ public class HostSupplierCatalogPostgresTests : IClassFixture<PublicShowcaseFact
         });
         Assert.All(slots.Lengths, length => Assert.Equal(TimeSpan.FromMinutes(120), length));
 
-        // The first and the last slot offered are accepted by the creation; the first is then taken, and the same time is a 409.
         var first = slots.Starts[0];
         var last = slots.Starts[^1];
         Assert.Equal(HttpStatusCode.Created, (await CreateAsync(client, host, supplier.OrgId, service.Id, first)).StatusCode);
@@ -145,7 +135,6 @@ public class HostSupplierCatalogPostgresTests : IClassFixture<PublicShowcaseFact
         Assert.DoesNotContain(last, after.Starts);
         Assert.True(after.Starts.Count < slots.Starts.Count);
 
-        // A time the supplier does not offer (half past nine) is refused by the creation as well.
         var notOffered = new DateTime(2026, 10, 14, 7, 30, 0, DateTimeKind.Utc);
         Assert.DoesNotContain(notOffered, slots.Starts);
         await AssertProblemAsync(
@@ -153,14 +142,11 @@ public class HostSupplierCatalogPostgresTests : IClassFixture<PublicShowcaseFact
             HttpStatusCode.Conflict,
             "supplier_slot_unavailable");
 
-        // A first day past the horizon of the supplier is an empty window, not an error.
         var far = await ReadJsonAsync(await client.GetAsync(
             $"/api/suppliers/{supplier.OrgId}/services/{service.Id}/slots?propertyId={host.PropertyId}&date=2027-12-01"));
         Assert.Equal(JsonValueKind.Null, far.GetProperty("from").ValueKind);
         Assert.Equal(0, far.GetProperty("slots").GetArrayLength());
     }
-
-    // ─── helpers ───
 
     private sealed record HostWorld(string OwnerId, Guid PropertyId);
 
@@ -235,7 +221,6 @@ public class HostSupplierCatalogPostgresTests : IClassFixture<PublicShowcaseFact
         return new ServiceRow(id, slug);
     }
 
-    /// <summary>A host org with one property in comune H501 (where the supplier of the showcase tests operates), owned by one user.</summary>
     private async Task<HostWorld> SeedHostAsync()
     {
         var ownerId = $"auth0|sr08a-catalog-{Guid.NewGuid():N}";

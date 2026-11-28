@@ -25,12 +25,6 @@ public class OrgActivityController(
     IOrgContextResolver orgContextResolver,
     TimeProvider timeProvider) : ControllerBase
 {
-    /// <summary>
-    /// One page of the log, newest first, with the lines that match all the filters given: <c>from</c> and <c>to</c> (UTC,
-    /// both included), <c>type</c> (one or more events, repeated or comma separated), <c>area</c>, <c>actor</c> (an account id,
-    /// or <c>system</c> for what no person did). <c>page</c> from 1, <c>pageSize</c> 50 (100 at most). The text of a line is
-    /// composed by the client from its type and its ids. 400 for an unknown event or area or for <c>from</c> after <c>to</c>.
-    /// </summary>
     [HttpGet("activity")]
     [ProducesResponseType(typeof(PagedResultDto<OrgActivityEntryDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -80,7 +74,6 @@ public class OrgActivityController(
             $"activity-{today}.csv");
     }
 
-    /// <summary>The filter the query asks for, or the 400 that says which part of it is wrong.</summary>
     private OrgActivityFilter? ToFilter(OrgActivityListQuery query, out ActionResult? problem)
     {
         problem = null;

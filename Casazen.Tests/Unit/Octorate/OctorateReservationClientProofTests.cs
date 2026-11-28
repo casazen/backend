@@ -71,7 +71,6 @@ public class OctorateReservationClientProofTests
         Assert.Equal("21575084", paid.PaymentId);
         Assert.Equal(2, h.Requests.Count);
 
-        // The create: the configured channel, the booking code, the room and its PMS room, the Rome days as UTC instants, the price to the cent.
         var createRequest = h.Requests[0];
         Assert.Equal(HttpMethod.Post, createRequest.Method);
         Assert.EndsWith("/rest/v1/reservation/585492?availability=true", createRequest.Uri.PathAndQuery);
@@ -89,7 +88,6 @@ public class OctorateReservationClientProofTests
             Assert.Equal(3, body.GetProperty("totalGuest").GetInt32());
             Assert.Equal(1, body.GetProperty("totalChildren").GetInt32());
 
-            // The booker by name only: no e-mail, no phone, no document reaches the channel manager.
             var booker = Assert.Single(body.GetProperty("guests").EnumerateArray());
             Assert.Equal("BOOKER", booker.GetProperty("type").GetString());
             Assert.Equal("FEMALE", booker.GetProperty("sex").GetString());
@@ -97,7 +95,6 @@ public class OctorateReservationClientProofTests
             Assert.False(booker.TryGetProperty("phone", out _));
         }
 
-        // The payment: the transaction, the mode and the amount to the cent, as income.
         var paymentRequest = h.Requests[1];
         Assert.Equal(HttpMethod.Post, paymentRequest.Method);
         Assert.EndsWith("/rest/v1/reservation/585492/130219355/payment", paymentRequest.Uri.PathAndQuery);
@@ -110,7 +107,6 @@ public class OctorateReservationClientProofTests
             Assert.Equal("2026-11-06T09:30:00Z", body.GetProperty("referenceTime").GetString());
         }
 
-        // No member of Octorate's automatic charge, at any depth of either body (D9).
         foreach (var request in h.Requests)
         {
             using var document = JsonDocument.Parse(request.Body);
@@ -169,12 +165,10 @@ public class OctorateReservationClientProofTests
             Assert.Equal(OctorateTargetGap.NotMirrored, lookup.Gap);
         }
 
-        // The control: the confirmed property of the connected org books into its room, with the PMS room of that unit only.
         var target = await targets.LookupAsync(confirmed, CancellationToken.None);
         Assert.Equal(OctorateTargetGap.None, target.Gap);
         Assert.Equal(new OctorateBookingTarget("1004", "956528", "956527"), target.Target);
 
-        // An org whose connection is not connected has no target either, even with a confirmed mapping.
         await using (var seed = NewDb(database, null))
         {
             var connection = await seed.OctorateConnections.SingleAsync(c => c.OrgId == OrgA);
@@ -188,12 +182,10 @@ public class OctorateReservationClientProofTests
             Assert.Equal(OctorateTargetGap.NotMirrored, lookup.Gap);
         }
 
-        // Octorate was asked only for the property that has a target.
         client.Verify(c => c.GetPmsRoomsAsync("1004", It.IsAny<CancellationToken>()), Times.Once);
         client.VerifyNoOtherCalls();
     }
 
-    /// <summary>A confirmed mapping whose accommodation has two rooms gets no room by guess, and Octorate is not asked again for five minutes.</summary>
     [Fact]
     public async Task ConfirmedMappingWithSeveralRooms_IsRoomNotChosen_AndIsNotAskedAgainAtOnce()
     {
@@ -225,10 +217,6 @@ public class OctorateReservationClientProofTests
         Assert.Null((await db.OctorateListingMappings.AsNoTracking().SingleAsync()).OctorateProductId);
     }
 
-    /// <summary>
-    /// The accommodation of a mirrored property is read from CasaZen's database alone: Octorate is not called (a payment of a reservation that
-    /// exists needs no room), and a property that is not mirrored has none.
-    /// </summary>
     [Fact]
     public async Task OctorateBookingTargets_AccommodationOf_AsksNothingToOctorate_Test()
     {
@@ -258,7 +246,6 @@ public class OctorateReservationClientProofTests
         Assert.Null(await targets.AccommodationOfAsync(proposed, CancellationToken.None));
         Assert.Null(await targets.AccommodationOfAsync(Guid.NewGuid(), CancellationToken.None));
 
-        // Neither the rooms nor the PMS rooms were read: the strict client has no call set up.
         client.VerifyNoOtherCalls();
     }
 
@@ -361,7 +348,6 @@ public class OctorateReservationClientProofTests
             CandidatePropertyIdsJson = candidatesJson,
         };
 
-    /// <summary>The client over a handler that answers what the test queued and keeps every request with its body.</summary>
     private sealed class ClientHarness
     {
         public ClientHarness()

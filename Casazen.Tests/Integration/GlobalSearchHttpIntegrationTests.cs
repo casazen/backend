@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Search;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Unit.Search;
@@ -19,10 +18,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// The web host of the global search, in an in-memory store of its own when there is no PostgreSQL (the shared store of the
-/// process is written by other suites).
-/// </summary>
 public class GlobalSearchEnabledFactory : CasazenWebApplicationFactory
 {
     protected override bool SeedComuneSample => false;
@@ -57,7 +52,6 @@ public class GlobalSearchEnabledFactory : CasazenWebApplicationFactory
     }
 }
 
-/// <summary>The same host with a limit of three searches per user and window, to see the limiter answer 429.</summary>
 public sealed class GlobalSearchLimitedFactory : GlobalSearchEnabledFactory
 {
     protected override string SearchPermitLimit => "3";
@@ -83,15 +77,10 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
 
     private HttpClient Owner(World world) => factory.CreateAuthenticatedClient(world.OwnerId, roles: "PropertyOwner");
 
-    /// <summary>A collaborator is a person of the database only: no role in the token, nothing it could widen its reach with.</summary>
     private HttpClient Collaborator(World world) => factory.CreateAuthenticatedClient(world.CollaboratorId);
 
     private HttpClient Supplier(World world) => factory.CreateAuthenticatedClient(world.SupplierUserId, roles: "Supplier");
 
-    /// <summary>
-    /// On PostgreSQL the migrations seed the contexts, roles and permissions. The in-memory fallback of the host has none: write
-    /// the seed data of the model, once, so the same tests run locally.
-    /// </summary>
     private async Task EnsureSeedsAsync()
     {
         if (factory.UsesPostgreSql)
@@ -125,7 +114,6 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
         }
     }
 
-    /// <summary>An org as the onboarding leaves it, its owner and a collaborator limited to the first property, with all the data of the scenario.</summary>
     private async Task<World> NewWorldAsync()
     {
         await EnsureSeedsAsync();
@@ -133,16 +121,13 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
         var collaboratorId = await OrgTeamHttp.AddMemberAsync(factory, orgId, OrgRole.Collaborator, ["short-rent"]);
 
         using var scope = factory.Services.CreateScope();
-        // The owner lets short stays and long-term leases: both areas, as an owner who chose «Entrambi» at the onboarding.
         await scope.ServiceProvider.GetRequiredService<IUserContextMembershipService>().GrantAsync(ownerId, [UserRole.LongTermLandlord]);
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var data = await SearchScenario.SeedDataAsync(db, orgId, ownerId, collaboratorId, computeKeys: !factory.UsesPostgreSql);
 
-        // «Solo alcuni»: the first property only (the grant is in the data; the scope of the person is here).
         var member = await db.OrgMembers.IgnoreQueryFilters().SingleAsync(m => m.UserId == collaboratorId);
         member.PropertyScope = PropertyScope.Selected;
 
-        // A person who works as a supplier: the plumbers (the Supplier role of the token, the link of the account to the supplier org).
         var supplierUserId = $"auth0|fornitore-{Guid.NewGuid():N}";
         db.Users.Add(new User
         {
@@ -162,7 +147,6 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
     {
         var response = await client.GetAsync($"/api/search?{query}");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        // The names of people: never kept by a cache nor the history of the browser.
         Assert.True(response.Headers.CacheControl is { NoStore: true, Private: true }, "Cache-Control: private, no-store");
         return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
@@ -176,8 +160,6 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
 
     private static IReadOnlyList<Guid> Ids(JsonElement answer, string type) =>
         Items(answer, type).Select(i => i.GetProperty("id").GetGuid()).ToList();
-
-    // ─── The owner ──────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Owner_FindsItsDataInEveryGroup_WithTheDestinationOfTheArea()
@@ -199,7 +181,6 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
         Assert.Equal("Alberobello", property.GetProperty("subtitle").GetString());
         Assert.Equal("short-rent.property", property.GetProperty("destination").GetString());
 
-        // The long-term property and its lease: the owner holds the permissions of the long-term area through the roles of its org.
         var loft = await SearchAsync(owner, "q=loft");
         Assert.Equal(world.Data.LoftNavigli.Id, Assert.Single(Items(loft, "property")).GetProperty("id").GetGuid());
     }
@@ -218,7 +199,6 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
         Assert.All(limited.GetProperty("groups").EnumerateArray(), group => Assert.True(group.GetProperty("items").GetArrayLength() <= 1));
         Assert.True(limited.GetProperty("groups").EnumerateArray().Single(g => g.GetProperty("type").GetString() == "guest").GetProperty("hasMore").GetBoolean());
 
-        // An excessive limit is cut to twenty; a missing one is five; nothing to find is an empty list, not an error.
         Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync("/api/search?q=rossi&limit=100000")).StatusCode);
         Assert.Empty((await SearchAsync(owner, "q=zzzzzz")).GetProperty("groups").EnumerateArray());
     }
@@ -234,7 +214,6 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
             var response = await owner.GetAsync($"/api/search?q={Uri.EscapeDataString(term)}");
             var json = await response.Content.ReadAsStringAsync();
 
-            // Not the phone, the document, the whole e-mail, the city or the address of a guest, nor the fiscal code and e-mail of a party.
             foreach (var secret in new[]
                      {
                          "+391234567890", "+390612345678", "+39333111222", "AX1234567", "CA00000AA", "jose.muller@example.com",
@@ -245,7 +224,6 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
                 Assert.DoesNotContain(secret, json);
             }
 
-            // Only the five fields of the contract on a result.
             using var document = JsonDocument.Parse(json);
             foreach (var group in document.RootElement.GetProperty("groups").EnumerateArray())
             {
@@ -268,8 +246,6 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
         Assert.Equal("j***@example.com", guest.GetProperty("subtitle").GetString());
         Assert.Equal("short-rent.guest", guest.GetProperty("destination").GetString());
     }
-
-    // ─── The org boundary ───────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Org_AnotherOwnerSeesNothingOfThisOrg_AndTheOtherWayRound()
@@ -303,7 +279,6 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
         using var owner = Owner(world);
         using var other = factory.CreateAuthenticatedClient(otherOwnerId, roles: "PropertyOwner");
 
-        // The same words in both orgs: each owner finds its own and not a row of the other.
         var mine = await SearchAsync(owner, "q=trullo");
         Assert.Equal([world.Data.Trullo.Id], Ids(mine, "property"));
         var theirs = await SearchAsync(other, "q=trullo");
@@ -317,8 +292,6 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
         Assert.Empty(Items(theirGuests, "supplier"));
     }
 
-    // ─── The collaborator limited to one property ───────────────────────────────────────────────────────
-
     [Fact]
     public async Task Collaborator_LimitedToOneProperty_FindsOnlyThatProperty_AndWhatBelongsToIt()
     {
@@ -329,7 +302,6 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
         Assert.Empty((await SearchAsync(collaborator, "q=casa")).GetProperty("groups").EnumerateArray());
         Assert.Empty((await SearchAsync(collaborator, "q=forli")).GetProperty("groups").EnumerateArray());
 
-        // Mario stayed at both properties, Maria only at the one it cannot reach: Maria is not found, nor her stay.
         var rossi = await SearchAsync(collaborator, "q=rossi");
         Assert.Equal([world.Data.MarioRossi.Id], Ids(rossi, "guest"));
         Assert.Equal([world.Data.StayMarioAtTrullo.Id], Ids(rossi, "booking"));
@@ -344,7 +316,6 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
         var world = await NewWorldAsync();
         using var collaborator = Collaborator(world);
 
-        // The lease of the first property exists and is in the scope, but lease.read is a permission of the long-term area.
         var answer = await SearchAsync(collaborator, "q=neri");
         Assert.Empty(answer.GetProperty("groups").EnumerateArray());
     }
@@ -377,8 +348,6 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
             Assert.Empty((await SearchAsync(collaborator, $"q={term}")).GetProperty("groups").EnumerateArray());
     }
 
-    // ─── The supplier ───────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Supplier_FindsItsInbox_NotTheDataOfTheHostsItWorksFor()
     {
@@ -392,15 +361,11 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
         Assert.Equal("Forlì", request.GetProperty("subtitle").GetString());
         Assert.Equal("supplier.request", request.GetProperty("destination").GetString());
 
-        // The host's properties, guests and stays are not its data, whatever the words: it holds no permission on them.
         foreach (var term in new[] { "trullo", "casa", "rossi", "jose", "7k3m9-pq2xv", "verdi" })
             Assert.DoesNotContain(Types(await SearchAsync(supplier, $"q={term}")), type => type is not "supplier-request");
 
-        // The inbox of another supplier is not here.
         Assert.Empty((await SearchAsync(supplier, "q=pulizia")).GetProperty("groups").EnumerateArray());
     }
-
-    // ─── What the endpoint refuses ──────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Anonymous_Is401()
@@ -447,15 +412,12 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
     [Fact]
     public async Task ACallerWithNoPermissionAtAll_GetsAnEmptyAnswer_NotAnError()
     {
-        // A signed-in user who finished no onboarding holds no host context, and is no supplier.
         using var nobody = factory.CreateAuthenticatedClient($"auth0|nessuno-{Guid.NewGuid():N}");
 
         var answer = await SearchAsync(nobody, "q=rossi");
 
         Assert.Empty(answer.GetProperty("groups").EnumerateArray());
     }
-
-    // ─── The last area used ─────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task LastContext_IsStored_AndGivenBackByTheContexts()
@@ -476,7 +438,6 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
         var keys = after.GetProperty("contexts").EnumerateArray().Select(c => c.GetProperty("contextKey").GetString()!).ToList();
         Assert.Contains("short-rent", keys);
 
-        // Another area of the list replaces it; the same one twice is fine.
         var other = keys.First(k => k != "short-rent");
         Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync("/api/me/last-context", new { contextKey = other })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync("/api/me/last-context", new { contextKey = other.ToUpperInvariant() })).StatusCode);
@@ -518,7 +479,6 @@ public class GlobalSearchHttpIntegrationTests(GlobalSearchEnabledFactory factory
     }
 }
 
-/// <summary>UI-13a: the limiter of the search answers 429 after the limit of the user, and does not touch another user.</summary>
 public class GlobalSearchRateLimitIntegrationTests(GlobalSearchLimitedFactory factory) : IClassFixture<GlobalSearchLimitedFactory>
 {
     [Fact]
@@ -535,7 +495,6 @@ public class GlobalSearchRateLimitIntegrationTests(GlobalSearchLimitedFactory fa
         Assert.True(limited.Headers.Contains("Retry-After"));
         Assert.Equal("rate_limited", (await limited.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
 
-        // Two users behind the same address do not share the budget.
         Assert.Equal(HttpStatusCode.OK, (await bruno.GetAsync("/api/search?q=rossi")).StatusCode);
     }
 }

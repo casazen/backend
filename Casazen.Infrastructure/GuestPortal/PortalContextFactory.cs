@@ -34,14 +34,11 @@ public class PortalContextFactory(AppDbContext db)
         if (booking is null)
             return null;
 
-        // The soft-delete filter of the properties stays: a deleted house opens nothing.
         var propertyExists = await db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AnyAsync(p => p.Id == booking.PropertyId && p.OrgId == link.OrgId, cancellationToken);
         if (!propertyExists)
             return null;
 
-        // The check-in sessions of the stay, latest first: whether one is completed (the one definition, GuestCheckInSession.IsCompleted) and the
-        // language the guest chose last.
         var sessions = await db.GuestCheckInSessions.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
             .Where(s => s.BookingId == link.BookingId && s.OrgId == link.OrgId)
@@ -64,8 +61,6 @@ public class PortalContextFactory(AppDbContext db)
             IsDirect = booking.Source == BookingSource.Direct,
             CheckInCompleted = checkInCompleted,
 
-            // Reserved data (the precise address, the access, the door code, the Wi-Fi) only after the check-in (§5.1, AC-NF153-3) and only for a stay
-            // to come or in progress: a cancelled stay, a no-show and one already checked out keep the link but get none, as the lock code (GuestPortalRules).
             CanSeeReserved = checkInCompleted && GuestPortalRules.IsStayOpenToReservedData(booking.Status, booking.NoShowAt),
             CheckInDate = booking.CheckInDate,
             CheckOutDate = booking.CheckOutDate,

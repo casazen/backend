@@ -3,10 +3,6 @@ using System.Text;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Extracts literal PDF strings from uncompressed and FlateDecode content streams.
-/// Enough to recognize an official APE without a third-party PDF library.
-/// </summary>
 internal static class PdfLiteralTextExtractor
 {
     internal const int MaxFlateStreams = 128;

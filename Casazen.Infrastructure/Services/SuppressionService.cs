@@ -25,7 +25,6 @@ public sealed class SuppressionService(
     ICrmContactIndex contactIndex,
     ILogger<SuppressionService> logger) : ISuppressionService
 {
-    /// <summary>Length of an <c>EmailHash</c>: a SHA-256 or an HMAC-SHA256 in lowercase hex.</summary>
     private const int HashLength = 64;
 
     public bool CanIndexAddresses => contactIndex.IsConfigured;
@@ -111,10 +110,6 @@ public sealed class SuppressionService(
             logger.LogInformation("Address already in the suppression list: orgId={OrgId}, source={Source}", orgId, source);
     }
 
-    /// <summary>
-    /// The plain SHA-256 of the normalized address (lowercase hex): the index of the entries made before the index had a key, and of the
-    /// unsubscribe links issued before it. Used only to read; nothing new is written with it.
-    /// </summary>
     internal static string LegacyEmailHash(string email)
     {
         var normalized = ShowcaseBookingRules.NormalizeEmail(email);

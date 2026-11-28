@@ -18,12 +18,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// PM-01: a property in long-term mode is not published. <see cref="PublicListing.IsPublished"/> feeds the public search,
-/// the property page, the availability, the SEO featured properties, the sitemaps and the activation checklist, so each
-/// of them answers as if the property did not exist (404), whatever its other state; the same property in short-rent mode
-/// stays visible. One test for each reader of the rule.
-/// </summary>
 public class PropertyRentalModePublicListingTests : IDisposable
 {
     private readonly AppDbContext _db = new(new DbContextOptionsBuilder<AppDbContext>()
@@ -173,7 +167,6 @@ public class PropertyRentalModePublicListingTests : IDisposable
             new CinDeadlineCalendar(Options.Create(new CinOptions()), TimeProvider.System),
             new Mock<ILogger<PropertyService>>().Object);
 
-    /// <summary>A property that is published whatever its mode says (active, not paused, compliance activated).</summary>
     private Property AddProperty(
         string name,
         RentalMode mode,

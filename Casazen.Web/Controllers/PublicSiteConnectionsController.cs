@@ -21,7 +21,6 @@ namespace Casazen.Web.Controllers;
 [PrivateAnswer]
 public class PublicSiteConnectionsController(ISiteConnectionService connections) : ControllerBase
 {
-    /// <summary>The largest body of an exchange: a code, a verifier of up to 128 characters and an origin.</summary>
     public const int MaxTokenRequestBytes = 4 * 1024;
 
     /// <summary>

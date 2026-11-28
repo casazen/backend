@@ -29,27 +29,19 @@ public interface IOnboardingIntegrationService
     /// <exception cref="ArgumentException"><paramref name="scope"/> is not a scope of <paramref name="orgId"/>.</exception>
     Task<OnboardingIntegrationOverview> GetOverviewAsync(Guid orgId, HostScope scope, CancellationToken ct);
 
-    /// <summary>
-    /// Reopens a part of the plan: clears its deferral, closes its "To do" and answers the wizard to continue in. 422
-    /// <see cref="OnboardingIntegrationCodes.PartNotReopenable"/> for a part nobody provides (there is no wizard to go back to).
-    /// </summary>
     Task<OnboardingPartReopen> ReopenPartAsync(Guid orgId, string userId, OnboardingPartKey key, CancellationToken ct);
 }
 
-/// <summary>The stable codes of the integration settings: errors and the focus of a reopen. Never rename one.</summary>
 public static class OnboardingIntegrationCodes
 {
-    /// <summary>422: the part is not available (nobody provides it), so there is nothing to go back to.</summary>
     public const string PartNotReopenable = "onboarding_part_not_reopenable";
 }
 
-/// <summary>Where inside the wizard of a part a reopen should continue (<see cref="OnboardingPartReopen.Focus"/>): codes the client maps.</summary>
 public static class OnboardingReopenFocus
 {
     /// <summary>The compliance wizard continues on the choice of the sender of the Alloggiati and ISTAT communications.</summary>
     public const string Sender = "sender";
 
-    /// <summary>The focus of a reopen of <paramref name="key"/>; <c>null</c> when the launch target alone says where to continue.</summary>
     public static string? Of(OnboardingPartKey key) => key == OnboardingPartKey.Compliance ? Sender : null;
 }
 
@@ -80,9 +72,6 @@ public sealed record OnboardingConnectionHealth(
     DateTime? LastSyncedAt,
     bool ReconnectRequired);
 
-/// <summary>A part of the plan as the settings show it.</summary>
-/// <param name="Plan">The part with its state, as the plan derived it for the caller's reach.</param>
-/// <param name="Reopenable">False for a part nobody provides (<see cref="OnboardingPartStates.NotAvailable"/>): there is no wizard to go back to.</param>
 public sealed record OnboardingIntegrationPart(OnboardingPlanPart Plan, bool Reopenable);
 
 /// <summary>
@@ -96,14 +85,6 @@ public sealed record OnboardingIntegrationPart(OnboardingPlanPart Plan, bool Reo
 /// <param name="NotSet">No stored choice.</param>
 public sealed record OnboardingSenderCounts(int ChannelManager, int CasaZen, int Manual, int NotSet);
 
-/// <summary>How many channel states of the properties the caller reaches are in one publication status.</summary>
-/// <param name="Status">The publication status.</param>
-/// <param name="Count">How many <c>ListingChannelState</c> rows are in it.</param>
 public sealed record OnboardingChannelStatusCount(ChannelPublishStatus Status, int Count);
 
-/// <summary>Where a reopen continues: the wizard of the part and, when the wizard has several places, the one to open.</summary>
-/// <param name="Key">The part.</param>
-/// <param name="Code">Its stable code.</param>
-/// <param name="LaunchTarget">One of <see cref="OnboardingLaunchTargets"/>: the wizard that does the part.</param>
-/// <param name="Focus">One of <see cref="OnboardingReopenFocus"/>; <c>null</c> when the launch target alone says where to continue.</param>
 public sealed record OnboardingPartReopen(OnboardingPartKey Key, string Code, string LaunchTarget, string? Focus);

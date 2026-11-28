@@ -45,7 +45,6 @@ public partial class AiSupplierDiscoveryService(
             return [];
         }
 
-        // Allowlist: a free-text category never reaches the prompt or multiplies the cache keys (A8-01).
         if (!CategoryQueries.TryGetValue(category, out var queryTerm) || string.IsNullOrWhiteSpace(city))
             return [];
 
@@ -117,7 +116,6 @@ public partial class AiSupplierDiscoveryService(
                 if (string.IsNullOrWhiteSpace(name))
                     continue;
 
-                // No rating or review count: an LLM extraction is not a verifiable source (A8-14).
                 results.Add(new ExternalSupplierSuggestion(
                     name,
                     ReadString(item, "address") ?? string.Empty,

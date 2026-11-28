@@ -23,21 +23,17 @@ namespace Casazen.Core.Entities;
 [Table("OctorateConnections")]
 public class OctorateConnection : ITenantOwned
 {
-    /// <summary>Name of the unique index on (<see cref="OrgId"/>, <see cref="Environment"/>).</summary>
     public const string OrgEnvironmentIndexName = "UIX_OctorateConnections_OrgId_Environment";
 
-    /// <summary>Longest <see cref="OctorateAccountId"/>.</summary>
     public const int AccountIdMaxLength = 64;
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant: the organization the consent was given for.</summary>
     public Guid OrgId { get; set; }
 
     public bool UsesMasterAccount { get; set; }
 
-    /// <summary>The Octorate environment of the tokens: verified against <c>GET /rest/v1/api/configuration</c> at every connection.</summary>
     public OctorateEnvironment Environment { get; set; }
 
     /// <summary>
@@ -47,7 +43,6 @@ public class OctorateConnection : ITenantOwned
     [MaxLength(AccountIdMaxLength)]
     public string? OctorateAccountId { get; set; }
 
-    /// <summary>The access token, in clear in memory and encrypted in the column (no length: the payload is longer than the text).</summary>
     public string? EncryptedAccessToken { get; set; }
 
     /// <summary>
@@ -56,10 +51,8 @@ public class OctorateConnection : ITenantOwned
     /// </summary>
     public string? EncryptedRefreshToken { get; set; }
 
-    /// <summary>When the access token expires (UTC), as Octorate said with the token; <c>null</c> when not known (refreshed before use).</summary>
     public DateTime? TokenExpiresAt { get; set; }
 
-    /// <summary>When CasaZen last read the account of the org through this connection (UTC).</summary>
     public DateTime? LastSyncedAt { get; set; }
 
     public OctorateConnectionStatus Status { get; set; } = OctorateConnectionStatus.Disconnected;

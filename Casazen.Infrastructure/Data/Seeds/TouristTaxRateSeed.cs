@@ -31,10 +31,8 @@ namespace Casazen.Infrastructure.Data.Seeds;
 /// </remarks>
 public static class TouristTaxRateSeed
 {
-    /// <summary>Date the sources were consulted (RS-7), used as creation date of the seeded rows.</summary>
     public static readonly DateTime RetrievedAt = new(2026, 9, 23, 0, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>New instances of the seeded rates on every call (entities are mutable).</summary>
     public static IReadOnlyList<TouristTaxRate> BuildRates() =>
     [
         Rate(
@@ -79,11 +77,6 @@ public static class TouristTaxRateSeed
             sourceUrl: "https://www.comune.napoli.it/novita/napoli-aggiornate-le-tariffe-dellimposta-di-soggiorno-per-il-2026/"),
     ];
 
-    /// <summary>
-    /// Rates of the migration <c>UnifyTouristTaxOnTouristTaxRates</c> (BK-03): Roma by accommodation category, Venezia by
-    /// cadastral group and season, with the reduced amount "per i minori da 10 a 16 anni" (10 to 16 included) as the
-    /// CSV notes publish it ("tariffa ridotta 50% = 1.70"). New instances on every call.
-    /// </summary>
     public static IReadOnlyList<TouristTaxRate> BuildCategoryAndSeasonRates() =>
     [
         CategoryRate(
@@ -202,14 +195,12 @@ public static class TouristTaxRateSeed
         ["Napoli"] = "063049",
     };
 
-    /// <summary>Stable id of a seeded rate: same comune and start date, same id in every environment.</summary>
     public static Guid IdFor(string istatCode, DateTime effectiveFrom)
     {
         var hash = MD5.HashData(Encoding.UTF8.GetBytes($"casazen-tourist-tax-seed:{istatCode}:{effectiveFrom:yyyy-MM-dd}"));
         return new Guid(hash);
     }
 
-    /// <summary>Inserts the rates of <see cref="BuildRates"/>. Called by the migration; parameterized by EF, no SQL text.</summary>
     public static void Insert(MigrationBuilder migrationBuilder)
     {
         foreach (var rate in BuildRates())
@@ -230,17 +221,12 @@ public static class TouristTaxRateSeed
         }
     }
 
-    /// <summary>Removes the seeded rows (migration Down).</summary>
     public static void Delete(MigrationBuilder migrationBuilder)
     {
         foreach (var rate in BuildRates())
             migrationBuilder.DeleteData(table: "TouristTaxRates", keyColumn: "Id", keyValue: rate.Id);
     }
 
-    /// <summary>
-    /// Stable id of a rate of <see cref="BuildCategoryAndSeasonRates"/>: several rows share comune and start date, so
-    /// the category and the season are part of the key.
-    /// </summary>
     public static Guid IdFor(string istatCode, DateTime effectiveFrom, string? category, string? seasonStart)
     {
         var key = $"casazen-tourist-tax-seed:{istatCode}:{effectiveFrom:yyyy-MM-dd}:{category}:{seasonStart}";
@@ -285,7 +271,6 @@ public static class TouristTaxRateSeed
         }
     }
 
-    /// <summary>Removes the rows of <see cref="BuildCategoryAndSeasonRates"/> (migration Down).</summary>
     public static void DeleteCategoryAndSeasonRates(MigrationBuilder migrationBuilder)
     {
         foreach (var rate in BuildCategoryAndSeasonRates())

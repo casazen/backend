@@ -13,8 +13,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IGuestBookingLookupService
 {
-    /// <summary>The booking of <paramref name="credentials"/>, as its guest sees it.</summary>
-    /// <exception cref="Exceptions.NotFoundException"><see cref="GuestBookingLookupErrorCodes.NotFound"/>.</exception>
     Task<GuestBookingView> FindAsync(GuestBookingCredentials credentials, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -27,38 +25,21 @@ public interface IGuestBookingLookupService
     Task SendCheckInLinkAsync(GuestBookingCredentials credentials, CancellationToken cancellationToken = default);
 }
 
-/// <summary>What the guest types: the site (org slug), the booking code as written in the email, the email address.</summary>
 public sealed record GuestBookingCredentials(string OrgSlug, string BookingCode, string Email);
 
-/// <summary>
-/// What the guest types to open the guest session without the e-mail (NF-143, flag <c>WhiteLabelHost</c>): the site (org slug), the booking code as
-/// written in the e-mail, and the last four digits of the phone the guest gave when booking (<see cref="GuestPhoneDigits"/>).
-/// </summary>
 public sealed record GuestBookingPhoneCredentials(string OrgSlug, string BookingCode, string PhoneLast4)
 {
-    /// <summary>The name of the type only: neither the code nor the digits, should the record ever reach a log.</summary>
     public override string ToString() => nameof(GuestBookingPhoneCredentials);
 }
 
-/// <summary>
-/// The last four digits of the guest's phone, the proof of the guest session that takes the place of the e-mail (NF-143): what the guest may type
-/// and how it is compared with the phone of the booking. The one rule of the body of the request and of the lookup.
-/// </summary>
 public static class GuestPhoneDigits
 {
-    /// <summary>How many digits the guest types: the last four of the phone.</summary>
     public const int Count = 4;
 
-    // Stands in for a phone the booking does not have, so the comparison does the same work; a match against it never counts.
     private const string Placeholder = "0000";
 
-    /// <summary>True when <paramref name="typed"/> is what the guest may type: exactly four ASCII digits, nothing else (no space, no sign).</summary>
     public static bool IsValidTyped(string? typed) => typed is { Length: Count } && typed.All(char.IsAsciiDigit);
 
-    /// <summary>
-    /// The last four ASCII digits of <paramref name="phone"/> as stored (spaces, <c>+</c>, dashes and brackets ignored), or <c>null</c> when it has
-    /// fewer than four: a booking without a phone has nothing to compare.
-    /// </summary>
     public static string? LastFourOf(string? phone)
     {
         if (string.IsNullOrEmpty(phone))
@@ -89,7 +70,6 @@ public static class GuestPhoneDigits
         CopyAscii(stored ?? Placeholder, expected);
         CopyAscii(typedIsValid ? typed! : Placeholder, actual);
 
-        // Non-short-circuit: every operand is evaluated whatever the outcome.
         return CryptographicOperations.FixedTimeEquals(expected, actual) & stored is not null & typedIsValid;
     }
 
@@ -137,39 +117,22 @@ public sealed record GuestBookingView(
     GuestBookingHostContact Host,
     GuestCheckInAccess CheckIn);
 
-/// <summary>
-/// The host's contact of the booking site (the name and email of the site footer and of the confirmation email, BK-10).
-/// Either may be empty.
-/// </summary>
 public sealed record GuestBookingHostContact(string? Name, string? Email);
 
-/// <summary>Where the online check-in of the booking stands for its guest.</summary>
-/// <param name="OpensOn">
-/// <see cref="GuestCheckInAccessStatus.NotYetOpen"/>: the day the link is emailed (check-in minus <c>CheckIn:SendWindowDays</c>).
-/// </param>
-/// <param name="LinkSentAt">When the email of the link that still works was handed to the email provider, if any (CO-09).</param>
 public sealed record GuestCheckInAccess(GuestCheckInAccessStatus Status, DateOnly? OpensOn, DateTime? LinkSentAt);
 
-/// <summary>Online check-in of a booking as its guest sees it. Serialized by name.</summary>
 public enum GuestCheckInAccessStatus
 {
-    /// <summary>No online check-in: the booking is not confirmed, or the stay is over.</summary>
     NotApplicable,
 
-    /// <summary>Confirmed, arrival still far: the link is emailed on <see cref="GuestCheckInAccess.OpensOn"/>.</summary>
     NotYetOpen,
 
-    /// <summary>The guest can fill in the online check-in: the link is (or can be sent again) in their mailbox.</summary>
     Open,
 
     /// <summary>The guests' data were sent, or the host already sent the Alloggiati Web communication.</summary>
     Completed,
 }
 
-/// <summary>
-/// State of a booking for its guest (<see cref="GuestBookings.StatusOf"/>): the states of the checkout outcome page
-/// (BK-07), plus the stay in progress and over. Serialized by name.
-/// </summary>
 public enum GuestBookingStatus
 {
     Confirmed,
@@ -183,24 +146,18 @@ public enum GuestBookingStatus
     DatesUnavailable,
     Cancelled,
 
-    /// <summary>The host recorded the arrival.</summary>
     StayInProgress,
 
-    /// <summary>The host recorded the departure.</summary>
     StayCompleted,
 }
 
-/// <summary>Stable error codes of "Le mie prenotazioni" (frontend <c>apiErrors.codes.*</c>).</summary>
 public static class GuestBookingLookupErrorCodes
 {
-    /// <summary>404: no booking of this site matches code and email (the same answer whatever does not match).</summary>
     public const string NotFound = "guest_booking_not_found";
 
-    /// <summary>409: the online check-in link cannot be sent now (not open yet, completed, booking not confirmed).</summary>
     public const string CheckInLinkUnavailable = "guest_check_in_link_unavailable";
 }
 
-/// <summary>The state of a booking for its guest, from the same rules as the checkout outcome page.</summary>
 public static class GuestBookings
 {
     /// <summary>
@@ -217,7 +174,6 @@ public static class GuestBookings
         return (collected.Sum(p => p.Amount), collected.Sum(p => p.RefundedAmount));
     }
 
-    /// <summary>Where <paramref name="booking"/> stands at <paramref name="cutoff"/>. Needs its payments.</summary>
     public static GuestBookingStatus StatusOf(Booking booking, HoldExpiryCutoff cutoff)
     {
         ArgumentNullException.ThrowIfNull(booking);

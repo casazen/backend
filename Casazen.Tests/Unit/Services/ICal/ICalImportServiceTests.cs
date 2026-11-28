@@ -4,10 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services.ICal;
 
-/// <summary>
-/// PC-10 (A2-12, A2-23): blocks that always fit the CalendarBlocks columns and unique index, and the recurrence
-/// window around today in Europe/Rome.
-/// </summary>
 public class ICalImportServiceTests
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 24, 10, 0, 0, TimeSpan.Zero);
@@ -32,8 +28,6 @@ public class ICalImportServiceTests
         Assert.Equal("Reserved", block.Summary);
     }
 
-    // A2-23: the old service swallowed every exception (catch {}) and returned "no events", which the sync then
-    // applied as an empty calendar. An unreadable document is now an error the caller stores and logs.
     [Fact]
     public void Parse_InvalidContent_ThrowsFormatExceptionInsteadOfReturningNoEvents()
     {
@@ -90,7 +84,7 @@ public class ICalImportServiceTests
         Assert.Equal(result.Blocks.Count, result.Blocks.Select(b => b.ExternalUid).Distinct(StringComparer.Ordinal).Count());
         var dup = result.Blocks.Where(b => b.ExternalUid.StartsWith("dup", StringComparison.Ordinal)).OrderBy(b => b.StartUtc).ToList();
         Assert.Equal(["dup#20261010", "dup#20261020"], dup.Select(b => b.ExternalUid));
-        Assert.Equal(new DateTime(2026, 10, 25, 0, 0, 0, DateTimeKind.Utc), dup[1].EndUtc); // longest of the same start
+        Assert.Equal(new DateTime(2026, 10, 25, 0, 0, 0, DateTimeKind.Utc), dup[1].EndUtc);
         Assert.Equal("same", Assert.Single(result.Blocks, b => b.ExternalUid.StartsWith("same", StringComparison.Ordinal)).ExternalUid);
         Assert.Equal(3, result.MergedDuplicates);
     }

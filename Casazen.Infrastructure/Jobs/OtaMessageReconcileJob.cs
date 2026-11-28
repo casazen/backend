@@ -46,13 +46,10 @@ public class OtaMessageReconcileJob(
 {
     public const string RecurringJobId = "ota-message-reconcile";
 
-    /// <summary>Every 10 minutes (UTC).</summary>
     public const string Cron = "*/10 * * * *";
 
-    /// <summary>The seconds a run waits for the previous one: <c>JobLockTimeouts.FrequentSeconds</c>.</summary>
     public const int LockTimeoutSeconds = 60;
 
-    /// <summary>The time the initial imports of a whole run may take.</summary>
     public static readonly TimeSpan ImportBudget = TimeSpan.FromMinutes(4);
 
     /// <summary>The time one listing may take of the budget, so that the others are reached in the same run.</summary>
@@ -88,7 +85,6 @@ public class OtaMessageReconcileJob(
             }
             catch (OctorateRateLimitException)
             {
-                // The org used its calls: what is left is continued by the next run.
                 stopped.Add(orgId);
                 totals.RateLimited++;
                 logger.LogWarning("Octorate message reconciliation of org {OrgId} stopped: its calls to Octorate are used up, the next run continues", orgId);
@@ -168,10 +164,6 @@ public class OtaMessageReconcileJob(
         }
     }
 
-    /// <summary>
-    /// The confirmed listings of the org whose import of the history did not finish, except the ones whose chat is not in the license and were asked
-    /// less than <see cref="MessageSyncService.LicenseProbeInterval"/> ago.
-    /// </summary>
     private async Task<IReadOnlyList<PendingImport>> PendingImportsAsync(Guid orgId, CancellationToken ct)
     {
         var rows = await mappings.ListAsync(orgId, ct);
@@ -204,13 +196,10 @@ public class OtaMessageReconcileJob(
         return pending;
     }
 
-    /// <summary>The kind of an error for a log line: the code of an Octorate error, else the type of the exception.</summary>
     private static string ErrorOf(Exception ex) => ex is OctorateException octorate ? octorate.Code : ex.GetType().Name;
 
-    /// <summary>A listing to import: its org, itself, its property, and when it was last worked on (<c>null</c>: never).</summary>
     private sealed record PendingImport(Guid OrgId, string AccommodationId, Guid PropertyId, DateTime? WorkedOnAt);
 
-    /// <summary>The counts of a whole run, for its log line.</summary>
     private sealed class RunTotals
     {
         public int Threads { get; private set; }

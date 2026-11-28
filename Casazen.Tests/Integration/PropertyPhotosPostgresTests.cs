@@ -46,7 +46,6 @@ public class PropertyPhotosPostgresTests : IClassFixture<CasazenWebApplicationFa
         Assert.EndsWith(".png", first[0]);
         Assert.EndsWith(".jpg", first[1]);
 
-        // Public readers (search card, property page, org site) show photoUrls[0] first: the cover.
         Assert.Equal(first, await PublicPhotosAsync(property.Id));
 
         var reordered = await ReadPhotosAsync(await owner.PutAsJsonAsync($"/api/properties/{property.Id}/images/order", new[] { first[1], first[0] }));
@@ -176,7 +175,6 @@ public class PropertyPhotosPostgresTests : IClassFixture<CasazenWebApplicationFa
         using var owner = Host(ownerId);
         var gallery = await UploadAsync(owner, property.Id, ("a.png", "image/png", PngBytes), ("b.png", "image/png", PngBytes));
 
-        // A page that still shows one photo only (the second was uploaded from another tab).
         var response = await owner.PutAsJsonAsync($"/api/properties/{property.Id}/images/order", new[] { gallery[0] });
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
@@ -196,7 +194,6 @@ public class PropertyPhotosPostgresTests : IClassFixture<CasazenWebApplicationFa
         using var attacker = Host(attackerId);
         var photos = $"/api/properties/{property.Id}/images";
 
-        // The tenant filter hides the other org's property: the caller cannot learn that it exists.
         Assert.Equal(HttpStatusCode.NotFound, (await attacker.GetAsync(photos)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await attacker.PostAsync(photos, Form(("x.png", "image/png", PngBytes)))).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await attacker.DeleteAsync($"{photos}?url={Uri.EscapeDataString(gallery[0])}")).StatusCode);
@@ -294,17 +291,14 @@ public class PropertyPhotosPostgresTests : IClassFixture<CasazenWebApplicationFa
         var property = await _factory.SeedPropertyAsync(ownerId);
         using var owner = Host(ownerId);
 
-        // The edit form loads the row (tracked) ...
         using var editScope = _factory.Services.CreateScope();
         var repository = editScope.ServiceProvider.GetRequiredService<IPropertyRepository>();
         var staleCopy = await repository.GetRecordAsync(property.Id);
         Assert.NotNull(staleCopy);
         Assert.Empty(staleCopy!.PhotoUrls);
 
-        // ... a photo is uploaded meanwhile ...
         var gallery = await UploadAsync(owner, property.Id, ("a.png", "image/png", PngBytes));
 
-        // ... and the form saves the other fields from the older copy.
         staleCopy.Name = "Nome nuovo";
         await repository.UpdateAsync(staleCopy);
 
@@ -327,8 +321,6 @@ public class PropertyPhotosPostgresTests : IClassFixture<CasazenWebApplicationFa
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.Equal(gallery, await PhotoUrlsInDbAsync(property.Id));
     }
-
-    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private HttpClient Host(string userId) => _factory.CreateAuthenticatedClient(userId, "PropertyOwner");
 
@@ -378,7 +370,6 @@ public class PropertyPhotosPostgresTests : IClassFixture<CasazenWebApplicationFa
         return body.RootElement.TryGetProperty("code", out var code) ? code.GetString() : null;
     }
 
-    /// <summary>The photos the anonymous property page lists, in the order the public pages show them.</summary>
     private async Task<IReadOnlyList<string>> PublicPhotosAsync(Guid propertyId)
     {
         using var anonymous = _factory.CreateClient();
@@ -425,7 +416,6 @@ public class PropertyPhotosPostgresTests : IClassFixture<CasazenWebApplicationFa
             IsActive = true,
         };
         db.Users.Add(user);
-        // Onboarded for the org (PL-02): the 403 of these tests is about ownership, not about the onboarding gate.
         await HostOnboardingSeed.MarkOnboardedAsync(db, user, orgId!.Value, scope.ServiceProvider.GetRequiredService<ILegalDocumentService>());
         await db.SaveChangesAsync();
         return colleagueId;

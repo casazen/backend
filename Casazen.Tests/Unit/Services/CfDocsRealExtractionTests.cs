@@ -2,7 +2,6 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Leases.Reading;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -14,15 +13,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// CF-DOCS-REAL, the rules of the reading of the document the guided service delivers, on the EF InMemory database:
-/// <list type="bullet">
-/// <item>a contract that comes with its attestation and its calculation sheet is <b>read on its own pages</b> and the draft is filled from them, while
-/// what is kept with the document is the sections and the codes: <b>no value</b> of a person, no amount, no town;</item>
-/// <item>the receipt of the registration is read as a <b>digital</b> PDF, with no OCR; a request the Agenzia discarded is <b>not a registration</b>;
-/// what is kept holds no value, and the values go to the person only when they ask, from the PDF, <b>from a document of this lease and no other</b>.</item>
-/// </list>
-/// </summary>
 public sealed class CfDocsRealExtractionTests
 {
     [Fact]
@@ -30,7 +20,6 @@ public sealed class CfDocsRealExtractionTests
     {
         using var harness = await new LeaseDraftHarness().SeedAsync();
 
-        // The house of the draft is the one the contract names: a contract about another address would be a conflict to look at, not the case here.
         var property = await harness.Db.Properties.SingleAsync(p => p.Id == harness.PropertyId);
         property.Address = "Via Verdi 12";
         property.City = "Bollate";
@@ -48,7 +37,6 @@ public sealed class CfDocsRealExtractionTests
         await new LeaseDocumentExtractionService(harness.Db, harness.Storage.Object, reader.Object, harness.Service, NullLogger<LeaseDocumentExtractionService>.Instance)
             .ExtractAsync(document.Id);
 
-        // The draft has what the CONTRACT says: the rent and the deposit of its articles, not the rents and the amounts of the attestation and the sheet.
         var read = await harness.Service.GetAsync(draft.Id);
         Assert.Equal(595m, read.Values.MonthlyRent);
         Assert.Equal(1785m, read.Values.SecurityDeposit);
@@ -63,8 +51,6 @@ public sealed class CfDocsRealExtractionTests
         Assert.Contains("\"containsCalculationSheet\":true", stored.ExtractionResult);
         Assert.Contains("\"kind\":\"attestation\",\"firstPage\":7,\"lastPage\":10", stored.ExtractionResult);
 
-        // DATA RULE PROOF (privacy): the attestation and the sheet name the people, the town, the organizations and the rent: none of it is kept.
-        // Remove only complete UUID values: a valid person-link id can coincidentally contain the digits of an amount.
         var extractionWithoutIds = Regex.Replace(stored.ExtractionResult!, "\"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\"", "\"id\"");
         foreach (var personal in new[]
                  {
@@ -75,7 +61,6 @@ public sealed class CfDocsRealExtractionTests
             Assert.DoesNotContain(personal, extractionWithoutIds);
         }
 
-        // The screen of the documents is told the sections, in words of its own, from the list of the documents and from the reading of the draft.
         var documents = new LeaseDocumentService(harness.Db, harness.Storage.Object, NullLogger<LeaseDocumentService>.Instance);
         var listed = Assert.Single(await documents.ListAsync(draft.Id));
         Assert.True(listed.ContainsAttestation);
@@ -107,16 +92,13 @@ public sealed class CfDocsRealExtractionTests
         Assert.Equal(LeaseDocumentExtractionStatus.Completed, first.ExtractionStatus);
         Assert.Contains("\"outcome\":\"Registered\"", first.ExtractionResult);
 
-        // DATA RULE PROOF (privacy): the code, the number, the date, the rent and the town of the receipt are not kept with the document.
         foreach (var value in new[] { "TKM26T012345000AB", "012345", "7140", "7.140", "BOLLATE", "MILANO", "2026-09-21", "21/09/2026" })
             Assert.DoesNotContain(value, first.ExtractionResult);
 
-        // DATA RULE PROOF: what the Agenzia discarded is said as such and needs the person's eyes; it is never read as a registration.
         var second = await db.LeaseDocuments.AsNoTracking().SingleAsync(d => d.Id == discarded.Id);
         Assert.Equal(LeaseDocumentExtractionStatus.NeedsReview, second.ExtractionStatus);
         Assert.Contains("\"outcome\":\"Rejected\"", second.ExtractionResult);
 
-        // A scan or a photo of the receipt is not read: the person types the number and the date as before.
         var third = await db.LeaseDocuments.AsNoTracking().SingleAsync(d => d.Id == scan.Id);
         Assert.Equal(LeaseDocumentExtractionStatus.Failed, third.ExtractionStatus);
         Assert.Equal("no_text", third.ExtractionError);
@@ -143,7 +125,6 @@ public sealed class CfDocsRealExtractionTests
         Assert.Equal(7140m, reading.Receipt.AnnualRent);
         Assert.Empty(reading.Receipt.Warnings);
 
-        // DATA RULE PROOF (tenancy): the document of another lease, of another kind or that does not exist is the same nothing, and the file is not opened.
         var storage = StorageOf();
         var guarded = new LeaseDocumentReadingService(db, storage.Object, reader.Object);
         Assert.Null(await guarded.ReadAsync(Guid.NewGuid(), receipt.Id));
@@ -151,8 +132,6 @@ public sealed class CfDocsRealExtractionTests
         Assert.Null(await guarded.ReadAsync(lease.Id, Guid.NewGuid()));
         storage.Verify(s => s.OpenReadAsync(It.IsAny<StorageBucket>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
-
-    // ---- helpers ---------------------------------------------------------------------------------------------------------
 
     private static Mock<IFileStorage> StorageOf()
     {
@@ -182,7 +161,6 @@ public sealed class CfDocsRealExtractionTests
         return document;
     }
 
-    /// <summary>A lease signed and ready to be registered, with the figures of <see cref="RealFormatDocument"/>.</summary>
     private static async Task<(AppDbContext Db, LeaseContract Lease)> SeedSignedLeaseAsync()
     {
         var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"CfDocsReal_{Guid.NewGuid()}").Options);

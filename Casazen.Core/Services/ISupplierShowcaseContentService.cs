@@ -66,22 +66,10 @@ public sealed record ShowcasePublication(bool Exists, bool Published, bool Pause
 /// </remarks>
 public interface ISupplierShowcaseContentService
 {
-    /// <summary>The content of the supplier; an empty draft (version <c>0</c>) while it never saved one. Read-only: a read creates no row.</summary>
     Task<ShowcaseContentView> GetAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Saves a change of the draft (<paramref name="patch"/> is a JSON merge patch of the contract) when <paramref name="version"/> is the
-    /// current one; the first save (version <c>0</c>) creates the row.
-    /// </summary>
-    /// <exception cref="Exceptions.DomainRuleException"><see cref="ShowcaseContentErrors.Invalid"/>, with the fields at fault.</exception>
-    /// <exception cref="Exceptions.DomainConflictException"><see cref="ShowcaseContentErrors.VersionConflict"/>.</exception>
     Task<ShowcaseContentView> SaveDraftAsync(Guid supplierOrgId, uint version, JsonObject patch, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Throws the changes of the draft away: it goes back to what is published (an empty draft while nothing is). When
-    /// <paramref name="version"/> is given it must be the current one.
-    /// </summary>
-    /// <exception cref="Exceptions.DomainConflictException"><see cref="ShowcaseContentErrors.VersionConflict"/>.</exception>
     Task<ShowcaseContentView> DiscardAsync(Guid supplierOrgId, uint? version, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -98,11 +86,6 @@ public interface ISupplierShowcaseContentService
     /// <exception cref="Exceptions.DomainConflictException"><see cref="ShowcaseContentErrors.VersionConflict"/>.</exception>
     Task<ShowcaseContentView> PublishAsync(Guid supplierOrgId, uint? version, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Takes the last publication back: what was published before (or nothing, for the first publication) is published again. The draft
-    /// stays as it is. Possible only until <see cref="ShowcaseContentView.UndoUntil"/> and until something else is changed.
-    /// </summary>
-    /// <exception cref="Exceptions.DomainConflictException"><see cref="ShowcaseContentErrors.UndoUnavailable"/>.</exception>
     Task<ShowcaseContentView> UndoPublishAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -111,11 +94,6 @@ public interface ISupplierShowcaseContentService
     /// <exception cref="Exceptions.DomainRuleException"><see cref="ShowcaseContentErrors.NothingPublished"/>.</exception>
     Task<ShowcaseContentView> PauseAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Reopens a paused showcase and, on a showcase that is not paused, judges the bookings again (the account became ready after the
-    /// publication). Turns the bookings on when everything they need is ready.
-    /// </summary>
-    /// <exception cref="Exceptions.DomainRuleException"><see cref="ShowcaseContentErrors.NotActive"/>, <see cref="ShowcaseContentErrors.NothingPublished"/>.</exception>
     Task<ShowcaseContentView> ResumeAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -125,13 +103,8 @@ public interface ISupplierShowcaseContentService
     /// </summary>
     Task ReconcileBookingsAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// What the public page reads: the <b>published</b> content (never the draft) and whether the showcase is paused; <c>null</c> while nothing is
-    /// published. Read-only, one statement scoped by the supplier org.
-    /// </summary>
     Task<PublishedShowcase?> GetPublishedAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
-    /// <summary>The state of the publication from the row alone (the checklist of the console). Read-only.</summary>
     Task<ShowcasePublication> GetPublicationAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
     /// <summary>

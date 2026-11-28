@@ -20,7 +20,6 @@ public sealed class StorageConfigurationHealthCheck(IOptions<StorageOptions> opt
         }
         catch (OptionsValidationException ex)
         {
-            // Failures name the Storage:* keys, never their values.
             return Task.FromResult(HealthCheckResult.Unhealthy(
                 "Object storage is not configured: " + string.Join(" ", ex.Failures)));
         }

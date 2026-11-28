@@ -51,10 +51,6 @@ public class GuestPortalLinkServiceTests : IAsyncLifetime
             await _database.DisposeAsync();
     }
 
-    /// <summary>
-    /// Data rule (one link for each stay, any source): asked twice, a confirmed, checked-in or checked-out booking of the booking site, of a portal or
-    /// entered by the host gets the same link; the token has 192 random bits and the address carries nothing but it.
-    /// </summary>
     [PostgresFact]
     public async Task GetOrCreate_ConfirmedAnySource_ReturnsSameLinkTwice()
     {
@@ -90,7 +86,6 @@ public class GuestPortalLinkServiceTests : IAsyncLifetime
             Assert.Equal(first.Link.Id, second.Link.Id);
             Assert.Equal(first.Link.Token, second.Link.Token);
 
-            // 192 random bits in base64url: 32 characters that decode to 24 bytes.
             Assert.Equal(32, first.Link.Token.Length);
             Assert.Equal(GuestPortalLink.TokenBytes, Base64Url.DecodeFromChars(first.Link.Token).Length);
             Assert.Equal($"https://app.casazen.example/s/{first.Link.Token}", url);
@@ -100,7 +95,6 @@ public class GuestPortalLinkServiceTests : IAsyncLifetime
         }
     }
 
-    /// <summary>Data rule: a request, a cancelled booking and a no-show get no link, and nothing is written for them.</summary>
     [PostgresFact]
     public async Task GetOrCreate_PendingOrCancelled_ReturnsNull()
     {
@@ -119,9 +113,6 @@ public class GuestPortalLinkServiceTests : IAsyncLifetime
         Assert.False(await verify.GuestPortalLinks.AnyAsync(l => l.BookingId == pending || l.BookingId == cancelled || l.BookingId == noShow, Ct));
     }
 
-    /// <summary>
-    /// Data rule (one active link): eight requests that all find no link at the same moment end with one active link, and every caller gets that one.
-    /// </summary>
     [PostgresFact]
     public async Task Create_Concurrent_LeavesOneActiveLink()
     {
@@ -166,12 +157,10 @@ public class GuestPortalLinkServiceTests : IAsyncLifetime
             Assert.Equal(newToken, (await Service(db).ResolveAsync(newToken, Ct))?.Token);
         }
 
-        // 13 October + 31 days: on 13 November the link no longer opens.
         var afterTheEnd = new FixedTimeProvider(new DateTimeOffset(2026, 11, 13, 0, 0, 0, TimeSpan.Zero));
         await using (var db = _database.CreateContext())
             Assert.Null(await Service(db, afterTheEnd).ResolveAsync(newToken, Ct));
 
-        // The departure moves to 20 October: the link opens again until the end of 19 November, and the new expiry is stored.
         await using (var db = _database.CreateContext())
         {
             var booking = await db.Bookings.SingleAsync(b => b.Id == bookingId, Ct);

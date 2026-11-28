@@ -28,10 +28,8 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public static class SwissQrBill
 {
-    /// <summary>The version of the Swiss Implementation Guidelines for the QR-bill the payload follows.</summary>
     public const string GuidelinesVersion = "2.3";
 
-    /// <summary>Where SIX publishes the guidelines.</summary>
     public const string GuidelinesUrl = "https://www.six-group.com/en/products-services/banking-services/payment-standardization/standards/qr-bill.html";
 
     public const string QrType = "SPC";
@@ -39,18 +37,15 @@ public static class SwissQrBill
     public const string CodingType = "1";
     public const string Trailer = "EPD";
 
-    /// <summary>The reference types: QR reference, creditor reference (ISO 11649), none.</summary>
     public const string ReferenceQrr = "QRR";
     public const string ReferenceScor = "SCOR";
     public const string ReferenceNone = "NON";
 
-    /// <summary>The only address type the payload carries: structured.</summary>
     public const string StructuredAddress = "S";
 
     public const decimal MinAmount = 0.01m;
     public const decimal MaxAmount = 999_999_999.99m;
 
-    /// <summary>The longest payload (the QR code of the guidelines holds at most 997 characters).</summary>
     public const int MaxPayloadLength = 997;
 
     public const int NameMaxLength = 70;
@@ -63,19 +58,12 @@ public static class SwissQrBill
     /// <summary>The word the unstructured message of the QR-bill of an invoice starts with: the brief names the message «Fattura &lt;numero&gt;», in Italian in every language.</summary>
     public const string MessageWord = "Fattura";
 
-    /// <summary>The longest body of a creditor reference (ISO 11649: 25 characters with <c>RF</c> and the two check digits).</summary>
     public const int ScorBodyMaxLength = 21;
 
-    /// <summary>The table of the recursive modulo-10 check digit of a QR reference.</summary>
     private static readonly int[] QrrTable = [0, 9, 4, 6, 8, 2, 7, 1, 3, 5];
 
-    /// <summary>The currencies a QR-bill is paid in.</summary>
     public static IReadOnlyList<string> Currencies { get; } = ["CHF", "EUR"];
 
-    /// <summary>
-    /// The account a QR-bill of the issuer is paid on: its QR-IBAN when it has a valid one, else its IBAN when it is of Switzerland or Liechtenstein (a QR-bill
-    /// takes no other); <c>null</c> without such an account.
-    /// </summary>
     public static string? AccountOf(string? qrIban, string? iban)
     {
         if (BankValues.NormalizeIban(qrIban) is { } qr && IsSwissAccount(qr) && IssuerBankAccounts.IsQrIban(qr))
@@ -94,14 +82,9 @@ public static class SwissQrBill
         return MessageWord + " " + invoiceNumber.Trim();
     }
 
-    /// <summary>True for an IBAN of Switzerland or Liechtenstein (21 characters).</summary>
     public static bool IsSwissAccount(string normalizedIban) =>
         normalizedIban.Length == 21 && (normalizedIban.StartsWith("CH", StringComparison.Ordinal) || normalizedIban.StartsWith("LI", StringComparison.Ordinal));
 
-    /// <summary>
-    /// What makes <paramref name="data"/> not a QR-bill, as a short code (<c>account</c>, <c>reference</c>, <c>currency</c>, <c>amount</c>, <c>creditor</c>,
-    /// <c>debtor</c>), or <c>null</c> when it is one.
-    /// </summary>
     public static string? Problem(SwissQrBillData data)
     {
         ArgumentNullException.ThrowIfNull(data);
@@ -129,7 +112,6 @@ public static class SwissQrBill
         return null;
     }
 
-    /// <summary>The payload of the Swiss QR Code (see the remarks). <see cref="ArgumentException"/> when <see cref="Problem"/> names a problem.</summary>
     public static string Build(SwissQrBillData data)
     {
         if (Problem(data) is { } problem)
@@ -155,10 +137,6 @@ public static class SwissQrBill
         return payload;
     }
 
-    /// <summary>
-    /// What the payment part of <paramref name="data"/> prints, with the payload of its QR code and the labels of the language of the document; <c>null</c> when
-    /// the data are not a QR-bill (<see cref="Problem"/>).
-    /// </summary>
     public static PdfSwissQrBill? Part(SwissQrBillData data, PdfSwissQrBillLabels labels)
     {
         ArgumentNullException.ThrowIfNull(labels);
@@ -177,9 +155,6 @@ public static class SwissQrBill
             labels);
     }
 
-    // ---------------------------------------------------------------- references
-
-    /// <summary>The check digit of the 26 digits of a QR reference: the recursive modulo 10 of the guidelines.</summary>
     public static int QrrCheckDigit(string digits)
     {
         ArgumentNullException.ThrowIfNull(digits);
@@ -192,27 +167,17 @@ public static class SwissQrBill
         return (10 - carry) % 10;
     }
 
-    /// <summary>The QR reference of 26 digits: the digits and their check digit.</summary>
     public static string QrrReference(string digits) => digits + QrrCheckDigit(digits).ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>
-    /// The QR reference of a document: 26 digits taken from its id (the same for every reading of the document, a different one for each document), and the
-    /// check digit.
-    /// </summary>
     public static string QrrReferenceOf(Guid documentId)
     {
         var number = new BigInteger(documentId.ToByteArray(), isUnsigned: true) % BigInteger.Pow(10, 26);
         return QrrReference(number.ToString("D26", CultureInfo.InvariantCulture));
     }
 
-    /// <summary>True for a QR reference: 27 digits, the last its check digit.</summary>
     public static bool IsValidQrr(string? reference) =>
         reference is { Length: 27 } && reference.All(char.IsAsciiDigit) && QrrCheckDigit(reference[..26]) == reference[26] - '0';
 
-    /// <summary>
-    /// The creditor reference (ISO 11649) of <paramref name="body"/>: <c>RF</c>, the two check digits and the body (its letters and digits only, upper case, at most
-    /// 21). <see cref="ArgumentException"/> for a body without a letter or a digit.
-    /// </summary>
     public static string ScorReference(string body)
     {
         ArgumentNullException.ThrowIfNull(body);
@@ -226,7 +191,6 @@ public static class SwissQrBill
         return "RF" + check.ToString("00", CultureInfo.InvariantCulture) + clean;
     }
 
-    /// <summary>True for a creditor reference: <c>RF</c>, two check digits and 1 to 21 letters or digits, with the right check digits.</summary>
     public static bool IsValidScor(string? reference) =>
         reference is { Length: >= 5 and <= ScorBodyMaxLength + 4 }
         && reference.StartsWith("RF", StringComparison.Ordinal)
@@ -234,16 +198,11 @@ public static class SwissQrBill
         && reference[4..].All(c => char.IsAsciiDigit(c) || char.IsAsciiLetterUpper(c))
         && Mod97(reference[4..] + reference[..4]) == 1;
 
-    // ---------------------------------------------------------------- what the payment part prints
-
-    /// <summary>An IBAN in groups of four (<c>CH44 3199 9123 0008 8901 2</c>).</summary>
     public static string FormatIban(string iban) => Groups(iban, 4, 0);
 
-    /// <summary>A QR reference in groups of five from the right (<c>21 00000 00003 13947 14300 09017</c>); a creditor reference in groups of four.</summary>
     public static string FormatReference(string type, string reference) =>
         type == ReferenceQrr ? Groups(reference, 5, reference.Length % 5) : Groups(reference, 4, 0);
 
-    /// <summary>An amount with two decimals and a space between the thousands (<c>1 949.75</c>).</summary>
     public static string FormatAmount(decimal amount)
     {
         var numbers = (NumberFormatInfo)CultureInfo.InvariantCulture.NumberFormat.Clone();
@@ -252,10 +211,6 @@ public static class SwissQrBill
         return amount.ToString("N2", numbers);
     }
 
-    /// <summary>
-    /// <paramref name="text"/> as a field of the payload: trimmed, a line break a space, a character outside the Latin set of the guidelines a dot, at most
-    /// <paramref name="max"/> characters; empty for none.
-    /// </summary>
     public static string Clean(string? text, int max)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -268,7 +223,6 @@ public static class SwissQrBill
         return clean.Length <= max ? clean : clean[..max].TrimEnd();
     }
 
-    /// <summary>The characters of the guidelines: Basic Latin, Latin-1 Supplement, Latin Extended-A, Ș ș Ț ț and the euro sign.</summary>
     private static bool IsAllowed(char c) =>
         c is (>= (char)0x20 and <= (char)0x7E) or (>= (char)0xA0 and <= (char)0x17F) or (>= (char)0x218 and <= (char)0x21B) or (char)0x20AC;
 
@@ -289,10 +243,6 @@ public static class SwissQrBill
         lines.Add(address.Country.ToUpperInvariant());
     }
 
-    /// <summary>
-    /// The lines of an address on the payment part: the name, the street and number, the postal code and the town (with the country code before the postal code
-    /// for an address outside Switzerland and Liechtenstein).
-    /// </summary>
     private static IReadOnlyList<string> AddressLines(SwissQrBillAddress address)
     {
         var lines = new List<string> { Clean(address.Name, NameMaxLength) };
@@ -305,7 +255,6 @@ public static class SwissQrBill
         return lines;
     }
 
-    /// <summary>The text in groups of <paramref name="size"/>, the first group of <paramref name="first"/> characters when it is not 0.</summary>
     private static string Groups(string text, int size, int first)
     {
         var groups = new List<string>();
@@ -321,7 +270,6 @@ public static class SwissQrBill
         return string.Join(' ', groups);
     }
 
-    /// <summary>The remainder of the division by 97 of the number made of <paramref name="text"/>, its letters written as 10 to 35 (ISO 7064).</summary>
     private static int Mod97(string text)
     {
         var remainder = 0;
@@ -335,7 +283,6 @@ public static class SwissQrBill
     }
 }
 
-/// <summary>A structured address of the QR-bill (type <c>S</c>): the name, the street and building number (optional), the postal code, the town and the country.</summary>
 public sealed record SwissQrBillAddress(string Name, string? Street, string? BuildingNumber, string PostalCode, string Town, string Country);
 
 /// <summary>The data of a QR-bill.</summary>

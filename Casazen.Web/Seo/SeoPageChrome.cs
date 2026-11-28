@@ -2,10 +2,8 @@ using System.Text;
 
 namespace Casazen.Web.Seo;
 
-/// <summary>A link of the chrome of a page: the words and where it goes (an absolute URL on the public site).</summary>
 public sealed record SeoLink(string Label, string Url);
 
-/// <summary>A list of links under an optional heading (the groups of «Vedi anche»).</summary>
 public sealed record SeoLinkGroup(string? Heading, IReadOnlyList<SeoLink> Links);
 
 /// <summary>
@@ -17,7 +15,6 @@ public sealed record SeoLinkGroup(string? Heading, IReadOnlyList<SeoLink> Links)
 /// </summary>
 public static class SeoPageChrome
 {
-    /// <summary>The header of the site: the brand, which leads home, and its navigation.</summary>
     public static string Header(string brand, string homeUrl, string navigationLabel, IReadOnlyList<SeoLink> links)
     {
         var html = new StringBuilder();
@@ -27,10 +24,6 @@ public static class SeoPageChrome
         return html.ToString();
     }
 
-    /// <summary>
-    /// The breadcrumb as an ordered list of links; the last step is the page itself and is not a link. A step with no URL
-    /// (the public site not configured) is text, never a link to nowhere.
-    /// </summary>
     public static string Breadcrumb(string label, IReadOnlyList<(string Label, string? Url)> trail)
     {
         if (trail.Count == 0)
@@ -55,7 +48,6 @@ public static class SeoPageChrome
         return html.ToString();
     }
 
-    /// <summary>«Vedi anche»: the groups of related pages. Nothing at all when no group has a link.</summary>
     public static string SeeAlso(string heading, IReadOnlyList<SeoLinkGroup> groups)
     {
         var filled = groups.Where(group => group.Links.Count > 0).ToList();
@@ -82,7 +74,6 @@ public static class SeoPageChrome
         return html.ToString();
     }
 
-    /// <summary>The footer of the site: the same links as the header, and one line about what CasaZen is.</summary>
     public static string Footer(string tagline, string navigationLabel, IReadOnlyList<SeoLink> links)
     {
         var html = new StringBuilder();

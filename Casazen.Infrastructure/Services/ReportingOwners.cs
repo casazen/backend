@@ -23,7 +23,6 @@ internal sealed class ReportingOwners
         _mandates = mandates;
     }
 
-    /// <summary>The ownerships of the properties and the mandates of their owners, of the org (every query names it).</summary>
     public static async Task<ReportingOwners> ReadAsync(AppDbContext db, Guid orgId, IReadOnlyCollection<Guid> propertyIds, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(db);

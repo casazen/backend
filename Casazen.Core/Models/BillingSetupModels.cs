@@ -10,40 +10,29 @@ namespace Casazen.Core.Models;
 /// </summary>
 public static class BillingSetupSections
 {
-    /// <summary>«Chi emette»: the country, the legal name, the structured address and the tax ids (the Italian ones are those of the organization, the UID is the Swiss one).</summary>
     public const string Issuer = "issuer";
 
     /// <summary>«IVA»: the regime (and with it the VAT registration), the FatturaPA regime code, the VAT of the stay and of the cleaning.</summary>
     public const string Vat = "vat";
 
-    /// <summary>«Numerazione»: the series of the documents to the guests and of the invoices to the owners.</summary>
     public const string Numbering = "numbering";
 
     /// <summary>«Tassa di soggiorno»: for a Swiss issuer, which portals collect the tourist tax themselves.</summary>
     public const string TouristTax = "touristTax";
 
-    /// <summary>«Commissioni dei canali»: the commissions of the portals (agencies; added by the epic of the owner ledger, E13/E14).</summary>
     public const string Channels = "channels";
 
-    /// <summary>«Mandato standard»: the mandate of the owners (agencies; added by the epic of the owner ledger, E13).</summary>
     public const string Mandates = "mandates";
 
-    /// <summary>«Emissione»: automatic issue and e-mail to the guest.</summary>
     public const string Automation = "automation";
 
     /// <summary>«Italia»: for an Italian issuer, the reminders of the electronic conservation and of the stamp duty (and, with E17, the owner issuers and the SDI).</summary>
     public const string Italy = "italy";
 
-    /// <summary>The eight sections in the order of the wizard: the first section that has a missing item is where the guide reopens it.</summary>
     public static IReadOnlyList<string> All { get; } = [Issuer, Vat, Numbering, TouristTax, Channels, Mandates, Automation, Italy];
 
-    /// <summary>
-    /// The sections <c>PUT api/billing-setup/{section}</c> saves: the ones kept on the profile of the issuer. <see cref="Channels"/> and
-    /// <see cref="Mandates"/> are saved by the endpoints of the epic that owns them.
-    /// </summary>
     public static IReadOnlyList<string> Writable { get; } = [Issuer, Vat, Numbering, TouristTax, Automation, Italy];
 
-    /// <summary>The section named by <paramref name="name"/> (once trimmed, without regard to case), as the constant spells it; <c>null</c> for anything else.</summary>
     public static string? Of(string? name) =>
         All.FirstOrDefault(section => string.Equals(section, name?.Trim(), StringComparison.OrdinalIgnoreCase));
 
@@ -90,27 +79,19 @@ public static class BillingSetupSections
 /// </summary>
 public static class BillingSetupItemKeys
 {
-    // ── issuer ────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The organization has saved nothing yet: the issuer has not said which country it issues from (reason <see cref="BillingSetupReasons.Required"/>).</summary>
     public const string CountryMissing = "country_missing";
 
-    /// <summary>The legal name of the issuer is missing.</summary>
     public const string LegalNameMissing = "legal_name_missing";
 
-    /// <summary>The structured address is incomplete: the street, the postal code, the city and, in Italy, the province.</summary>
     public const string AddressMissing = "address_missing";
 
     /// <summary>Italy, a regime with a VAT number: the organization has none on its tax profile (the tax profile is where it is saved).</summary>
     public const string VatNumberMissing = "vat_number_missing";
 
-    /// <summary>Italy, a private person: the organization has no fiscal code on its tax profile.</summary>
     public const string FiscalCodeMissing = "fiscal_code_missing";
 
     /// <summary>Switzerland, registered for the VAT: the UID number of the issuer is missing.</summary>
     public const string SwissUidMissing = "swiss_uid_missing";
-
-    // ── vat ───────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The regime of the issuer is not chosen, and with it neither the VAT registration nor the rule of the documents.</summary>
     public const string RegimeMissing = "regime_missing";
@@ -118,45 +99,20 @@ public static class BillingSetupItemKeys
     /// <summary>Italy, a regime with a VAT number: no FatturaPA regime code (the rule of the regime has none and the issuer gave none).</summary>
     public const string RegimeCodeMissing = "regime_code_missing";
 
-    /// <summary>
-    /// The regime is chosen and no tax rule of the catalog (<c>FiscalDocuments:TaxRules</c>) is in force today for it: nothing is issued with a rate nobody
-    /// approved (reason <see cref="BillingSetupReasons.Unavailable"/>: the administrator of the installation adds the rule).
-    /// </summary>
     public const string TaxRuleMissing = "tax_rule_missing";
 
-    // ── numbering ─────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The series of the documents to the guests was never saved: the default is shown, and saved with the step.</summary>
     public const string GuestSeriesUnconfirmed = "guest_series_unconfirmed";
 
-    /// <summary>The series of the invoices to the owners was never saved.</summary>
     public const string OwnerSeriesUnconfirmed = "owner_series_unconfirmed";
 
-    // ── touristTax ────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>Switzerland: the portals that collect the tourist tax themselves were never confirmed, not even to say that none does.</summary>
     public const string TouristTaxChannelsUnconfirmed = "tourist_tax_channels_unconfirmed";
 
-    // ── automation ────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The choice of the automatic issue (yes or no, and the e-mail to the guest) was never confirmed. It is confirmed by saving the step while the profile of
-    /// the issuer is complete; a profile that stops being complete asks for the confirmation again.
-    /// </summary>
     public const string AutoIssueUnconfirmed = "auto_issue_unconfirmed";
 
-    // ── italy ─────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>Italy: the free agreement for the electronic conservation of the documents was not confirmed.</summary>
     public const string ConservationAgreementUnconfirmed = "conservation_agreement_unconfirmed";
 
-    /// <summary>Italy: neither the reference of the stamp duty (the authorization of the virtual stamp or the number of the physical one) nor the confirmation of the virtual stamp was given.</summary>
     public const string StampDutyUnconfirmed = "stamp_duty_unconfirmed";
 
-    /// <summary>
-    /// Italian properties (E17/F01/US01/T01): some owners with an ownership of an Italian property that has not ended have no issuer profile that can issue (none,
-    /// or one that misses a field), so the documents of their stays are not made (reason <see cref="BillingSetupReasons.Required"/>, with the count of the owners).
-    /// </summary>
     public const string OwnerIssuerMissing = "owner_issuer_missing";
 
     /// <summary>
@@ -167,27 +123,18 @@ public static class BillingSetupItemKeys
     public const string SdiIssuerRegistrationPending = "sdi_issuer_registration_pending";
 }
 
-/// <summary>Why a billing setup item is missing (<see cref="BillingSetupItem.Reason"/>): a small set of stable codes the client translates, never renamed.</summary>
 public static class BillingSetupReasons
 {
-    /// <summary>A value the issuer has to give is absent.</summary>
     public const string Required = "required";
 
-    /// <summary>The issuer has not confirmed a choice yet (a default is shown, but nobody said it was right).</summary>
     public const string Unconfirmed = "unconfirmed";
 
-    /// <summary>The user cannot fix it: something of the installation is missing (a tax rule of the catalog).</summary>
     public const string Unavailable = "unavailable";
 
     /// <summary>Somebody else has to do something and the user waits (the enabling of a VAT number at the SDI channel, E17/F01/US02/T02).</summary>
     public const string Pending = "pending";
 }
 
-/// <summary>
-/// The names of the fields of a section as the API says them (camel case), in the answer of <c>GET api/billing-setup</c> (the <c>values</c> of a section) and
-/// in the body of <c>PUT api/billing-setup/{section}</c>, and in the field codes of a refusal. The names of the issuer are those of
-/// <see cref="IssuerFields"/>.
-/// </summary>
 public static class BillingSetupFields
 {
     public const string CountryCode = IssuerFields.CountryCode;
@@ -236,18 +183,13 @@ public sealed record BillingSetupSection(
     IReadOnlyDictionary<string, object?> Values,
     IReadOnlyList<BillingSetupItem> Missing)
 {
-    /// <summary>True when nothing is missing in the section.</summary>
     public bool IsComplete => Missing.Count == 0;
 }
 
-/// <summary>The billing setup of an organization (<c>GET api/billing-setup</c>): every section with its values and its missing items.</summary>
-/// <param name="Sections">The sections in the order of <see cref="BillingSetupSections.All"/> (the ones of an epic that added its own after them).</param>
 public sealed record BillingSetup(IReadOnlyList<BillingSetupSection> Sections)
 {
-    /// <summary>Every missing item, in the order of the sections and of the wizard.</summary>
     public IReadOnlyList<BillingSetupItem> Missing => [.. Sections.SelectMany(section => section.Missing)];
 
-    /// <summary>True when some section applies and no item is missing in any section (a setup nobody provides is never complete).</summary>
     public bool IsComplete => Sections.Any(section => section.Applies) && Sections.All(section => section.IsComplete);
 }
 
@@ -260,7 +202,6 @@ public sealed record BillingSetup(IReadOnlyList<BillingSetupSection> Sections)
 /// <param name="Missing">The missing items of the sections that were asked, in the order of the wizard.</param>
 public sealed record BillingSetupProgress(int Done, int Total, IReadOnlyList<BillingSetupItem> Missing)
 {
-    /// <summary>The first missing item (where the guide reopens the wizard); <c>null</c> when nothing is missing.</summary>
     public BillingSetupItem? FirstMissing => Missing.Count > 0 ? Missing[0] : null;
 
     /// <summary>True when at least one section applies and no item is missing: the only way the part «Fatturazione» is done (nothing provided is never done).</summary>
@@ -304,7 +245,6 @@ public sealed record BillingSetupPayload
 
     public string? OwnerInvoiceSeries { get; init; }
 
-    /// <summary>The names of the <see cref="BookingSource"/> whose portal collects the tourist tax; an empty list confirms that none does.</summary>
     public IReadOnlyList<string>? PlatformCollectedTouristTaxChannels { get; init; }
 
     public bool? AutoIssueGuestDocuments { get; init; }
@@ -317,7 +257,6 @@ public sealed record BillingSetupPayload
 
     public bool? VirtualStampConfirmed { get; init; }
 
-    /// <summary>The names (<see cref="BillingSetupFields"/>) of the fields this payload carries, in the order of the fields.</summary>
     public IReadOnlyList<string> ProvidedFields()
     {
         var provided = new List<string>();

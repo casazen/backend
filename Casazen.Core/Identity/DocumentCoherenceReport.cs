@@ -2,9 +2,6 @@ using System.Text.Json.Serialization;
 
 namespace Casazen.Core.Identity;
 
-// E71/F01/US02/T02 (NF-190, NF-191, decision D11): what the coherence of a document says. Check names, results and field NAMES only: no value read on the document
-// is ever in a report (the check of NF-190 is made on values, the report keeps what it found, never what it read), so a report can be kept, logged and sent.
-
 /// <summary>
 /// The coherence of the fields read on a document (D11: the reliability of a document is coherence only, a coherent photo can still show an altered document):
 /// whether the MRZ and the visual zone agree on the fields that identify the holder, whether the dates are possible, whether the document is still valid on the
@@ -51,17 +48,14 @@ public sealed record DocumentCoherenceReport(
     bool MrzValid,
     IReadOnlyList<string> Codes)
 {
-    /// <summary>The checks of <see cref="DocumentFormatChecks"/> this report carries, in this order; the others (<c>layout</c>, <c>portrait</c>) are the geometry's.</summary>
     public static IReadOnlyList<string> CarriedChecks { get; } =
     [
         DocumentFormatChecks.MrzCheckDigits, DocumentFormatChecks.Expiry, DocumentFormatChecks.SideConsistency, DocumentFormatChecks.FieldCoherence,
         DocumentFormatChecks.BookingConsistency,
     ];
 
-    /// <summary>The fields of <c>field_coherence</c> that are dates: the ones <see cref="DatesValid"/> summarizes.</summary>
     private static readonly string[] DateFields = [ZonedFieldNames.BirthDate, ZonedFieldNames.IssueDate, ZonedFieldNames.ExpiryDate];
 
-    /// <summary>How many entries of the report are <c>unknown</c>: what could not be checked, never counted as a pass.</summary>
     [JsonIgnore]
     public int UnknownCount => Checks.Count(entry => entry.Result == DocumentCoherenceResults.Unknown);
 
@@ -88,10 +82,6 @@ public sealed record DocumentCoherenceReport(
         return judged.Count > 0 && judged.All(check => Summary(check) == DocumentCoherenceResults.Passed);
     }
 
-    /// <summary>
-    /// The report of a list of entries: the flags and the codes are derived from the entries and from nothing else, so no flag can say «ok» for a check whose entries
-    /// are unknown, and the checker and a test double of a dependent slice speak the same contract.
-    /// </summary>
     public static DocumentCoherenceReport FromChecks(IReadOnlyList<DocumentCoherenceCheck> checks)
     {
         ArgumentNullException.ThrowIfNull(checks);
@@ -122,7 +112,6 @@ public sealed record DocumentCoherenceReport(
             if (entry.Result == DocumentCoherenceResults.Failed)
                 return DocumentCoherenceResults.Failed;
 
-            // Anything but «passed» that is not «failed» is not a pass either: an unknown, or a result nobody knows.
             if (entry.Result != DocumentCoherenceResults.Passed)
                 notTold = true;
         }
@@ -130,7 +119,6 @@ public sealed record DocumentCoherenceReport(
         return seen && !notTold ? DocumentCoherenceResults.Passed : DocumentCoherenceResults.Unknown;
     }
 
-    /// <summary>A finding: true when the check failed, false when it passed, null when it could not be told.</summary>
     private static bool? Found(string summary) => summary switch
     {
         DocumentCoherenceResults.Failed => true,
@@ -138,7 +126,6 @@ public sealed record DocumentCoherenceReport(
         _ => null,
     };
 
-    /// <summary>A property that holds: true when the check passed, false when it failed, null when it could not be told.</summary>
     private static bool? Holds(string summary) => summary switch
     {
         DocumentCoherenceResults.Passed => true,
@@ -147,41 +134,22 @@ public sealed record DocumentCoherenceReport(
     };
 }
 
-/// <summary>One check of the report: which check, its result and the field it concerns.</summary>
-/// <param name="Check">A code of <see cref="DocumentFormatChecks"/>.</param>
-/// <param name="Result">A code of <see cref="DocumentCoherenceResults"/>.</param>
-/// <param name="Field">
-/// The NAME of the field the check concerns (a code of <see cref="ZonedFieldNames"/>, or one of <see cref="DocumentCoherenceFields"/> for the booking data), or
-/// null when it concerns the document as a whole (<c>mrz_check_digits</c>).
-/// </param>
 public sealed record DocumentCoherenceCheck(string Check, string Result, string? Field = null);
 
-/// <summary>The results of a check (<see cref="DocumentCoherenceCheck.Result"/>).</summary>
 public static class DocumentCoherenceResults
 {
-    /// <summary>The check was made and holds.</summary>
     public const string Passed = "passed";
 
-    /// <summary>The check was made and does not hold.</summary>
     public const string Failed = "failed";
 
-    /// <summary>The check could not be made: a value is missing (it was not read, or its own check digit failed), or it cannot be compared. Never a pass.</summary>
     public const string Unknown = "unknown";
 
-    /// <summary>Every code, in this order.</summary>
     public static IReadOnlyList<string> All { get; } = [Passed, Failed, Unknown];
 }
 
-/// <summary>
-/// The names of the fields of the <c>booking_consistency</c> check that are not a field of the document: <c>names</c> is the surname and the given names compared
-/// as one, as <c>MrzCheckInConsistency</c> compares them with what the guest typed. The other three flags of that comparison are named as the field they compare
-/// (<see cref="ZonedFieldNames.BirthDate"/>, <see cref="ZonedFieldNames.DocumentNumber"/>, <see cref="ZonedFieldNames.Nationality"/>).
-/// </summary>
 public static class DocumentCoherenceFields
 {
-    /// <summary>The surname and the given names, compared together.</summary>
     public const string Names = "names";
 
-    /// <summary>Every code, in this order.</summary>
     public static IReadOnlyList<string> All { get; } = [Names];
 }

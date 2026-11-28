@@ -15,10 +15,6 @@ using PlanTierEnum = Casazen.Core.Entities.Enums.PlanTier;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// E07/F04/US01/T04 (NF-90, CRM-03, AC-NF90-2): the marketing choices of the guest page over the real pipeline on PostgreSQL, with the guest
-/// session of a booking of the site. What the body of the change has to say, and what the guest page does with the address.
-/// </summary>
 public class GuestMarketingPreferencesHttpTests(ConsentCollectionFactory factory) : IClassFixture<ConsentCollectionFactory>
 {
     private sealed record Site(Guid OrgId, string Slug, Guid PropertyId);
@@ -70,8 +66,6 @@ public class GuestMarketingPreferencesHttpTests(ConsentCollectionFactory factory
         Assert.Equal(HttpStatusCode.OK, turnedOn.StatusCode);
         Assert.Equal("pending", (await ReadAsync(turnedOn)).GetProperty("email").GetProperty("state").GetString());
     }
-
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────
 
     private async Task<HttpResponseMessage> PutAsync(string code, string bearerToken, object body)
     {
@@ -132,7 +126,6 @@ public class GuestMarketingPreferencesHttpTests(ConsentCollectionFactory factory
         return new Site(org.Id, org.Slug, property.Id);
     }
 
-    /// <summary>A confirmed booking of the public checkout whose guest has this address and a phone number.</summary>
     private async Task<Stay> SeedStayAsync(Site site, string email)
     {
         var checkIn = TimeProvider.System.TodayInRome().AddDays(20);

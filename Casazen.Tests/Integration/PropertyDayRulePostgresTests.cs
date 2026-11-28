@@ -1,6 +1,5 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -17,18 +16,12 @@ public class PropertyDayRulePostgresTests
 {
     private static readonly DateOnly Night = new(2026, 12, 24);
 
-    /// <summary>
-    /// PROOF TEST: data rule. The check constraint refuses a price of 0 and a price above 100000, a maximum stay below the minimum, a stay outside 1
-    /// to 365 nights, an advance outside 0 to 730 days and a maximum advance below the minimum; the unique index refuses a second row for the same
-    /// property and date. A whole row is accepted, so the refusals are those of the rules and not of the setup.
-    /// </summary>
     [PostgresFact]
     public async Task PropertyDayRule_InvalidValues_AreRejectedByTheDatabase_Test()
     {
         await using var database = PostgresTestDatabase.CreateMigrated("dayrules");
         var (orgId, propertyId) = await SeedPropertyAsync(database);
 
-        // A whole row first: every value inside its bounds, at the edges.
         await SaveAsync(database, Rule(orgId, propertyId, Night, r =>
         {
             r.Price = 0.01m;
@@ -69,7 +62,6 @@ public class PropertyDayRulePostgresTests
             day = day.AddDays(1);
         }
 
-        // A second row for a night that has one: the unique index says no, the first row is untouched.
         var duplicate = await SaveFailingAsync(database, Rule(orgId, propertyId, Night, r => r.Price = 99m));
         var unique = Assert.IsType<PostgresException>(duplicate.InnerException);
         Assert.Equal(PostgresErrorCodes.UniqueViolation, unique.SqlState);

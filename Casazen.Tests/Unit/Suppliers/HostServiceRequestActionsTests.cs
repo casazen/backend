@@ -4,11 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>
-/// SR-08a: what the host can do about a request is worked out in one place and the page of the interventions shows it as it is.
-/// The table below is the whole rule (status x proposal x amount to confirm x how it is paid x time of the last reminder), and the
-/// last test ties it to the state machine so the two cannot drift apart.
-/// </summary>
 public class HostServiceRequestActionsTests
 {
     private static readonly DateTime Now = new(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc);
@@ -100,11 +95,9 @@ public class HostServiceRequestActionsTests
                 var pays = action.Available.Contains("pay") || action.Available.Contains("markPaid");
                 Assert.Equal(ServiceRequestStateMachine.CanTransition(status, ServiceRequestStatus.Pagato), pays);
 
-                // A job is paid inside CasaZen with "pay" and outside with "markPaid", never both.
                 if (pays)
                     Assert.Equal(mode == ServiceRequestPaymentMode.Online, action.Available.Contains("pay"));
 
-                // The one action of the row is the first of the list, or there is none.
                 Assert.True(action.Kind == "none" || action.Available[0] == action.Kind, $"{status}/{mode}: {action.Kind}");
             }
         }

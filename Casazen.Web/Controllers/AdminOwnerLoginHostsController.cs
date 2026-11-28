@@ -22,14 +22,8 @@ namespace Casazen.Web.Controllers;
 [FeatureGate(FeatureFlags.WhiteLabelHost)]
 public class AdminOwnerLoginHostsController(IOrgDomainService orgDomainService) : ControllerBase
 {
-    /// <summary>400: the <c>state</c> of the query is not a state of the owner sign-in.</summary>
     public const string StateInvalidCode = "owner_login_state_invalid";
 
-    /// <summary>
-    /// The queue: the active orgs with a custom domain whose owner sign-in is in <paramref name="state"/> (<c>Pending</c> when absent; <c>NotRequested</c>,
-    /// <c>Pending</c>, <c>Ready</c> or <c>Failed</c>), by name, at most 500: the org id, its display name, the domain, the state and whether the domain is
-    /// verified. 400 <c>owner_login_state_invalid</c> for anything else.
-    /// </summary>
     [HttpGet("owner-login-hosts")]
     [ProducesResponseType(typeof(IReadOnlyList<OwnerLoginHostDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -55,11 +49,6 @@ public class AdminOwnerLoginHostsController(IOrgDomainService orgDomainService) 
             .ToList());
     }
 
-    /// <summary>
-    /// Records by hand the state of the owner sign-in of an org, after its three URLs were added to (or removed from) the SPA application of the environment.
-    /// 404 for an unknown org, 422 <c>org_domain_not_verified</c> for <c>Ready</c> without a verified custom domain the org pays for. The cached
-    /// <c>resolve-host</c> answer of the domain is dropped, and the administrators of the org are told of <c>Ready</c> or <c>Failed</c>. The answer is the state only.
-    /// </summary>
     [HttpPut("orgs/{orgId:guid}/owner-login-state")]
     [ProducesResponseType(typeof(OwnerLoginStateDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]

@@ -30,7 +30,6 @@ public class InternalActivityService(
         ArgumentNullException.ThrowIfNull(staffUserId);
         ArgumentNullException.ThrowIfNull(activityType);
 
-        // Get the property to inherit the OrgId
         var property = await context.Properties
             .AsNoTracking()
             .FirstOrDefaultAsync(p => p.Id == propertyId);
@@ -68,15 +67,12 @@ public class InternalActivityService(
     {
         ArgumentNullException.ThrowIfNull(status);
 
-        // The staff work only: a "To do" is closed by CloseAsync, which records who closed it.
         var activity = await context.InternalActivities
             .FirstOrDefaultAsync(a => a.Id == activityId && a.Action == null);
 
         if (activity == null)
             throw new NotFoundException("Activity not found.");
 
-        // A cleaning cancelled with its stay (E24/F01/US01/T02) is final: it is never completed, so no cost of it is ever read as a cost to recharge to the owner. Saying «cancelled» again
-        // is not a change.
         if (string.Equals(activity.Status, InternalActivity.StatusCancelled, StringComparison.Ordinal)
             && !string.Equals(status, InternalActivity.StatusCancelled, StringComparison.Ordinal))
         {
@@ -146,8 +142,6 @@ public class InternalActivityService(
             .Include(a => a.Booking)
             .FirstOrDefaultAsync(a => a.Id == activityId, cancellationToken);
     }
-
-    // ─── The "To do" list (ADR-026) ─────────────────────────────────────────────
 
     public async Task<IReadOnlyList<InternalActivity>> GetPendingAsync(
         HostScope scope,
@@ -234,7 +228,6 @@ public class InternalActivityService(
         }
         catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex, InternalActivity.OpenTodoIndexName))
         {
-            // A parallel call raised the same item first (UIX_InternalActivities_OpenTodo): that item is the one.
             context.Entry(activity).State = EntityState.Detached;
             if (await OpenTodoIdAsync(orgId, type, entityType, request.EntityId, ct) is { } winner)
                 return winner;
@@ -260,7 +253,6 @@ public class InternalActivityService(
         if (activity is null)
             return false;
 
-        // Never lowered, never later: a less urgent thing that happens afterwards leaves the item as it is.
         var raised = (activity.Urgency ?? ActivityUrgency.Low) < urgency;
         var sooner = deadline is { } due && (activity.Deadline is null || due < activity.Deadline);
         if (!raised && !sooner)
@@ -304,7 +296,6 @@ public class InternalActivityService(
             .FirstOrDefaultAsync(a => a.Id == activityId, ct)
             ?? throw new NotFoundException("To do not found.");
 
-        // Host reminders describe persisted business state. A generic dismissal must never hide an unfinished process.
         if (activity.CompletedAt is null)
             throw new DomainConflictException(InternalActivityErrors.ManagedAutomatically, InternalActivityErrors.ManagedAutomaticallyMessageKey);
     }
@@ -370,7 +361,6 @@ public class InternalActivityService(
             .ToListAsync(ct);
     }
 
-    /// <summary>The member of <see cref="ActivityAction"/> named <paramref name="action"/> (exactly, not a number); anything else is a programming error.</summary>
     private static ActivityAction ParseAction(string action)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(action);
@@ -381,17 +371,9 @@ public class InternalActivityService(
             : throw new ArgumentException($"'{action}' is not an action of the To do list.", nameof(action));
     }
 
-    /// <summary>
-    /// The rows of the staff work, as the staff screens always read them: no <see cref="InternalActivity.Action"/>, on a live
-    /// property (while the property was a required navigation the join dropped the activities of a soft-deleted property, PC-05).
-    /// </summary>
     private IQueryable<InternalActivity> StaffWork() =>
         context.InternalActivities.Where(a => a.Action == null && a.Property != null);
 
-    /// <summary>
-    /// The "To do" rows the scope reaches, open or closed: those of its org, on a property it reaches (an org-level item only for
-    /// an org-wide scope, <c>InScope</c>), and never the items of a soft-deleted property.
-    /// </summary>
     private IQueryable<InternalActivity> Todos(HostScope scope)
     {
         var orgId = scope.OrgId;
@@ -401,7 +383,6 @@ public class InternalActivityService(
             .InScope(scope);
     }
 
-    /// <summary>The open "To do" rows the scope reaches (ADR-026-R4: a closed row is kept, never listed).</summary>
     private IQueryable<InternalActivity> OpenTodos(HostScope scope, bool excludeRoutineTasks = false, IReadOnlyCollection<ActivityType>? excludeTypes = null)
     {
         var awaitingPhoto = VerificationHandOff.AwaitingReplacementPhoto(context, scope.OrgId);
@@ -410,7 +391,6 @@ public class InternalActivityService(
         if (excludeRoutineTasks)
             open = open.Where(a => a.ActivityType != nameof(ActivityType.RoutineTask));
 
-        // The kinds of item the web layer keeps from the caller (it holds no permission to act on them): an empty list leaves out nothing, never «everything».
         if (excludeTypes is { Count: > 0 })
         {
             var hidden = excludeTypes.Select(type => type.ToString()).ToList();
@@ -432,7 +412,6 @@ public class InternalActivityService(
             .Select(a => (Guid?)a.Id)
             .FirstOrDefaultAsync(ct);
 
-    /// <summary>The org of the item: the property's, or the request's for an organization-level item. Never a client value.</summary>
     private async Task<Guid> OrgOfAsync(CreateTodoRequest request, CancellationToken ct)
     {
         if (request.PropertyId is { } propertyId)
@@ -457,7 +436,6 @@ public class InternalActivityService(
 
     private async Task MarkClosedAsync(InternalActivity activity, string closedBy, CancellationToken ct)
     {
-        // Closed once: a second close (a redelivered event, a double click) keeps the first time and the first closer.
         if (activity.CompletedAt is not null)
             return;
 
@@ -477,7 +455,6 @@ public class InternalActivityService(
         return Bounded(closedBy, TodoLimits.UserIdMaxLength, nameof(closedBy))!;
     }
 
-    /// <summary>The value trimmed, <c>null</c> when blank; longer than <paramref name="maxLength"/> is a programming error.</summary>
     private static string? Bounded(string? value, int maxLength, string name)
     {
         var trimmed = value?.Trim();
@@ -489,7 +466,6 @@ public class InternalActivityService(
             : throw new ArgumentException($"{name} is longer than {maxLength} characters.", name);
     }
 
-    /// <summary>The reason on one line: the line breaks and runs of spaces become one space.</summary>
     private static string? OneLine(string? value) =>
         value is null ? null : string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 }

@@ -1,14 +1,12 @@
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Octorate;
 using Casazen.Tests.Unit.Services;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -50,7 +48,6 @@ public class OctorateDocumentImportProofTests
         Assert.DoesNotContain(rows, r => r.BookingId == bookingB);
         client.Verify(c => c.GetDocumentsAsync("ACC-B", It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // The org B's caller reads no document of org A through the tenant filter.
         await using var asB = NewDb(db, OrgB);
         Assert.Empty(await asB.FiscalDocuments.AsNoTracking().ToListAsync());
     }
@@ -76,7 +73,6 @@ public class OctorateDocumentImportProofTests
         activities.Verify(a => a.CreateAsync(It.Is<CreateTodoRequest>(r => r.Reason == OctorateDocumentImport.SdiRejectedReason && r.EntityId == row.Id), It.IsAny<CancellationToken>()), Times.Once);
         activities.Verify(a => a.CreateAsync(It.Is<CreateTodoRequest>(r => r.Reason == OctorateDocumentImport.ToCollectReason && r.EntityId == row.Id), It.IsAny<CancellationToken>()), Times.Once);
 
-        // A later import: delivered and paid. The two items are closed by the system.
         var openSdi = new InternalActivity { Id = Guid.NewGuid(), OrgId = OrgA };
         var openPayment = new InternalActivity { Id = Guid.NewGuid(), OrgId = OrgA };
         activities.Setup(a => a.FindOpenAsync(OrgA, nameof(ActivityAction.ReviewFiscalDocument), OctorateDocumentImport.SdiEntityType, row.Id, It.IsAny<CancellationToken>())).ReturnsAsync(openSdi);
@@ -137,14 +133,12 @@ public class OctorateDocumentImportProofTests
         Assert.Empty(await off.OrgsToImportAsync());
         Assert.Equal(0, (await off.ImportAsync(OrgA, since: null)).Created);
 
-        // The two flags on and the option FiscalDocuments:ImportOctorateDocuments false (the default): the job selects nobody and reads nothing.
         var optionOff = Service(db, client.Object, importOctorateDocuments: false);
         Assert.Empty(await optionOff.OrgsToImportAsync());
         Assert.Equal(0, (await optionOff.ImportAsync(OrgA, since: null)).Created);
         client.Verify(c => c.GetDocumentsAsync(It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
         Assert.False(new Casazen.Core.Options.FiscalDocumentRulesOptions().ImportOctorateDocuments);
 
-        // With the option: the connected orgs, whatever their profile says.
         Assert.Equal(new[] { OrgA }, await Service(db, client.Object).OrgsToImportAsync());
 
         var failing = new Mock<IOctorateApiClient>();
@@ -155,10 +149,6 @@ public class OctorateDocumentImportProofTests
         Assert.Empty(await db.FiscalDocuments.IgnoreQueryFilters().ToListAsync());
     }
 
-    /// <summary>
-    /// Each structure is read from its own last import: one that fails keeps its date, so the others succeeding never move it, and the documents it changed
-    /// meanwhile are not left out (the window is not the date of the whole org).
-    /// </summary>
     [Fact]
     public async Task Import_EachStructureIsReadFromItsOwnLastImport_AFailingOneKeepsItsDate_Test()
     {
@@ -167,21 +157,18 @@ public class OctorateDocumentImportProofTests
         await AddStructureAsync(db, OrgA, "ACC-B", "R-200");
         var clock = new FakeTimeProvider(Now);
 
-        // The first read of both structures; each document stores the accommodation it was read from.
         var first = Client(("ACC-A", [Document("D-A", "R-100")]), ("ACC-B", [Document("D-B", "R-200")]));
         await Service(db, first.Object, clock: clock).ImportAsync(OrgA, since: null);
         var stored = await db.FiscalDocuments.IgnoreQueryFilters().AsNoTracking().ToListAsync();
         Assert.Equal("ACC-A", stored.Single(d => d.OctorateDocumentId == "D-A").OctorateAccommodationId);
         Assert.Equal("ACC-B", stored.Single(d => d.OctorateDocumentId == "D-B").OctorateAccommodationId);
 
-        // Ten days later B fails while A answers: A moves on, B keeps its date.
         clock.Advance(TimeSpan.FromDays(10));
         var second = new Mock<IOctorateApiClient>();
         second.Setup(c => c.GetDocumentsAsync("ACC-A", It.IsAny<DateTime>(), It.IsAny<CancellationToken>())).ReturnsAsync([Document("D-A", "R-100")]);
         second.Setup(c => c.GetDocumentsAsync("ACC-B", It.IsAny<DateTime>(), It.IsAny<CancellationToken>())).ThrowsAsync(new OctorateServerException(500));
         Assert.Equal(1, (await Service(db, second.Object, clock: clock).ImportAsync(OrgA, since: null)).FailedReads);
 
-        // The next run asks B from its own last import (less the overlap), not from the date A moved to.
         clock.Advance(TimeSpan.FromDays(1));
         var third = Client(("ACC-A", [Document("D-A", "R-100")]), ("ACC-B", [Document("D-B", "R-200")]));
         await Service(db, third.Object, clock: clock).ImportAsync(OrgA, since: null);
@@ -287,7 +274,6 @@ public class OctorateDocumentImportProofTests
             NullLogger<OctorateDocumentImportService>.Instance);
     }
 
-    /// <summary>One more booking of a reservation, on the first property of the org.</summary>
     private static async Task<Guid> AddBookingAsync(AppDbContext db, Guid orgId, string reservation)
     {
         var first = await db.Bookings.IgnoreQueryFilters().FirstAsync(b => b.OrgId == orgId);
@@ -308,7 +294,6 @@ public class OctorateDocumentImportProofTests
         return booking.Id;
     }
 
-    /// <summary>A second structure of an org that is already connected: its mapping, its property and a booking of one reservation.</summary>
     private static async Task AddStructureAsync(AppDbContext db, Guid orgId, string accommodation, string reservation)
     {
         var connection = await db.OctorateConnections.IgnoreQueryFilters().FirstAsync(c => c.OrgId == orgId);

@@ -16,9 +16,6 @@ public class AlloggiatiSendJob(
     AlloggiatiWebClient client,
     ILogger<AlloggiatiSendJob> logger)
 {
-    /// <summary>
-    /// Process reports ready to send for a booking. Called by arrival-day scheduler.
-    /// </summary>
     public async Task ProcessBookingAsync(Guid bookingId, CancellationToken ct = default)
     {
         var reports = await db.AlloggiatiWebReports
@@ -58,10 +55,8 @@ public class AlloggiatiSendJob(
 
         try
         {
-            // Build rows from reports (168-char format for Single Structure, 174-char for GA)
             var rows = BuildAlloggiatiRows(reports);
 
-            // Step 1: Test all rows (ADR-015-R6)
             var testResult = await client.TestAsync(credential.Id, rows, ct);
 
             if (!testResult.Success)
@@ -83,7 +78,6 @@ public class AlloggiatiSendJob(
                 return;
             }
 
-            // Step 2: Send only if all rows valid
             var sendResult = await client.SendAsync(credential.Id, rows, ct);
 
             if (sendResult.Success)
@@ -124,21 +118,15 @@ public class AlloggiatiSendJob(
         }
     }
 
-    /// <summary>
-    /// Build 168-char rows for Single Structure profile (GA profile would be 174 chars with IdAppartamento).
-    /// Real implementation would use <see cref="Core.Regulatory.AlloggiatiRecordFile"/> for proper formatting.
-    /// </summary>
     private List<string> BuildAlloggiatiRows(List<AlloggiatiWebReport> reports)
     {
         var rows = new List<string>();
 
         foreach (var report in reports)
         {
-            // Placeholder: real implementation uses AlloggiatiRecordFile.BuildRow
-            // 168-char format: tipo(1) + cognome(50) + nome(30) + sesso(1) + data_nascita(10) + ...
             var row = $"1{report.Guest.LastName?.PadRight(50)[..50] ?? new string(' ', 50)}" +
                      $"{report.Guest.FirstName?.PadRight(30)[..30] ?? new string(' ', 30)}" +
-                     new string(' ', 87); // Fill to 168 chars
+                     new string(' ', 87);
 
             rows.Add(row);
         }
@@ -146,16 +134,12 @@ public class AlloggiatiSendJob(
         return rows;
     }
 
-    /// <summary>
-    /// Build stable error message from Test errors (no guest PII per privacy rule).
-    /// </summary>
     private string BuildErrorMessage(List<AlloggiatiRowError> errors)
     {
         var firstError = errors.FirstOrDefault();
         if (firstError == null)
             return "alloggiati_test_failed";
 
-        // Include only error codes, never guest names or document numbers
         return $"alloggiati_test_error_row_{firstError.RowNumber}_code_{firstError.ErrorCode}";
     }
 }

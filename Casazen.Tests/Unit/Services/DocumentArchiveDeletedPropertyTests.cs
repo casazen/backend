@@ -39,7 +39,6 @@ public class DocumentArchiveDeletedPropertyTests
         var service = world.Service();
         var wholeOrg = world.Hosts.OrgWide;
 
-        // Before: everything of the org in the one statement of the five sources (two property documents, two lease files, one tourist tax receipt, four proofs).
         Assert.Equal(9, (await service.ListAsync(wholeOrg, DocumentArchiveWorld.EveryType, All)).TotalCount);
 
         await world.SoftDeleteAsync(world.Hosts.Hidden);
@@ -67,7 +66,6 @@ public class DocumentArchiveDeletedPropertyTests
         var exported = await service.ExportAsync(wholeOrg, DocumentArchiveWorld.EveryType, All, destination);
         Assert.Equal((5, 5), (exported.Documents, exported.Files));
 
-        // What the list does not show cannot be opened, and what it shows can.
         foreach (var (type, id) in new[]
                  {
                      (ArchiveDocumentType.PropertyDocument, world.HiddenPropertyDocument),
@@ -85,7 +83,6 @@ public class DocumentArchiveDeletedPropertyTests
             Assert.Equal("application/pdf", file.ContentType);
         }
 
-        // The history of the proofs of the deleted flat: the dedicated archive keeps it (its own statement lifts the filter, shared with no other source).
         var history = await DedicatedArchive(world).ListAsync(wholeOrg, new ComplianceArchiveQuery(), CancellationToken.None);
         Assert.Contains(history.Items, i => i.Id == hiddenReceipt);
         Assert.Contains(history.Items, i => i.Id == hiddenIstat);
@@ -109,7 +106,6 @@ public class DocumentArchiveDeletedPropertyTests
         var collaborator = world.Hosts.Restricted;
         var wholeOrg = world.Hosts.OrgWide;
 
-        // Before the deletion the flat that is not the collaborator's is out of its reach: the receipts that cover it are not read.
         var before = await service.ListAsync(collaborator, DocumentArchiveWorld.EveryType, All);
         Assert.Equal(
             new[] { world.GrantedPropertyDocument, world.GrantedLeaseDocument, alone }.Order(),
@@ -117,7 +113,6 @@ public class DocumentArchiveDeletedPropertyTests
 
         await world.SoftDeleteAsync(world.Hosts.Hidden);
 
-        // After it the answer is the same, whatever the flat that is gone: in the list, the count, the ZIP and the download.
         var list = await service.ListAsync(collaborator, DocumentArchiveWorld.EveryType, All);
         Assert.Equal(
             new[] { world.GrantedPropertyDocument, world.GrantedLeaseDocument, alone }.Order(),
@@ -146,7 +141,6 @@ public class DocumentArchiveDeletedPropertyTests
             Assert.Equal("application/pdf", own.ContentType);
         }
 
-        // The dedicated archive gives the same answer for the collaborator; whoever has the whole reach reads the receipts of both flats in either archive.
         var dedicated = DedicatedArchive(world);
         var dedicatedOfTheCollaborator = await dedicated.ListAsync(collaborator, new ComplianceArchiveQuery(), CancellationToken.None);
         Assert.Equal([alone], dedicatedOfTheCollaborator.Items.Select(i => i.Id));
@@ -163,7 +157,6 @@ public class DocumentArchiveDeletedPropertyTests
         Assert.Equal(new[] { shared, sharedIstat, alone }.Order(), dedicatedOfTheOrg.Items.Select(i => i.Id).Order());
     }
 
-    /// <summary>The dedicated archive of the proofs (<c>api/compliance/archive</c>): its own statement, which lifts the soft-delete filter to keep the history.</summary>
     private static ComplianceArchiveService DedicatedArchive(DocumentArchiveWorld world) =>
         new(
             world.Db,

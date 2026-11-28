@@ -66,7 +66,6 @@ public class PlatformInvoiceAdminDto
     };
 }
 
-/// <summary>Body of <c>POST /api/admin/platform-invoices/{id}/sdi-manual-issued</c>.</summary>
 public class MarkSdiIssuedManuallyRequest
 {
     /// <summary>Reference of the e-invoice issued by hand (SDI file name, invoice number): required, at most 255 characters.</summary>

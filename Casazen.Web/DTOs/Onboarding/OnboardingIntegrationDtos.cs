@@ -11,12 +11,10 @@ public sealed class OnboardingIntegrationDto
 {
     public OnboardingConnectionHealthDto Connection { get; set; } = new();
 
-    /// <summary>The twelve parts of the plan in order, each as <c>GET api/onboarding/plan</c> gives it, plus <c>reopenable</c>.</summary>
     public List<OnboardingIntegrationPartDto> Parts { get; set; } = [];
 
     public OnboardingSenderCountsDto Senders { get; set; } = new();
 
-    /// <summary>Every publication status, in order, with how many channel states are in it (zero when none).</summary>
     public List<OnboardingChannelStatusCountDto> Channels { get; set; } = [];
 }
 
@@ -36,10 +34,6 @@ public sealed class OnboardingConnectionHealthDto
     public bool ReconnectRequired { get; set; }
 }
 
-/// <summary>
-/// A part of the plan as <see cref="OnboardingPlanPartDto"/> gives it, plus <c>reopenable</c>: false for a part nobody provides
-/// (<c>state</c> <c>notAvailable</c>), which has no wizard to go back to.
-/// </summary>
 public sealed class OnboardingIntegrationPartDto
 {
     public string Code { get; set; } = string.Empty;
@@ -60,10 +54,8 @@ public sealed class OnboardingIntegrationPartDto
 
     public List<string> Needs { get; set; } = [];
 
-    /// <summary>When the "To do" of a deferral or an exit is due (UTC); <c>null</c> when there is none.</summary>
     public DateTime? RemindAt { get; set; }
 
-    /// <summary>The open «Do it for me» request of the part, if any.</summary>
     public OnboardingAssistDto? Assist { get; set; }
 
     public string LaunchTarget { get; set; } = string.Empty;
@@ -86,7 +78,6 @@ public sealed class OnboardingSenderCountsDto
     public int NotSet { get; set; }
 }
 
-/// <summary>How many channel states are in one publication status: <c>Draft</c>, <c>Sending</c>, <c>Accepted</c>, <c>Published</c>, <c>ToFix</c>, <c>ManagedOnChannel</c>.</summary>
 public sealed class OnboardingChannelStatusCountDto
 {
     public ChannelPublishStatus Status { get; set; }
@@ -94,12 +85,6 @@ public sealed class OnboardingChannelStatusCountDto
     public int Count { get; set; }
 }
 
-/// <summary>
-/// Where a reopen continues (<c>POST api/onboarding/parts/{key}/reopen</c>): <c>launchTarget</c>, the wizard that does the part
-/// (<c>connect</c>, <c>mapping</c>, <c>channels</c>, <c>listings</c>, <c>prices</c>, <c>compliance</c>, <c>identification</c>, <c>messages</c>,
-/// <c>fiscal</c>, <c>marketplace</c>, <c>summary</c>), and <c>focus</c>: <c>sender</c> for the compliance wizard, which opens on the choice of the
-/// sender; <c>null</c> when the launch target alone says where to continue. Reopening changes no data.
-/// </summary>
 public sealed class OnboardingReopenDto
 {
     public string Code { get; set; } = string.Empty;

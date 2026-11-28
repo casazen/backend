@@ -21,8 +21,6 @@ public class PropertyModeApplyTests : IDisposable
 
     public void Dispose() => _h.Dispose();
 
-    // ─── Applying ───────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task ApplyDue_ChangeToLongOnItsDay_PutsThePropertyInLongModeAndClosesTheCalendar()
     {
@@ -47,7 +45,6 @@ public class PropertyModeApplyTests : IDisposable
                 It.Is<PropertyModeNotice>(x => x.ChangeId == change.Id && x.Kind == PropertyModeNoticeKind.Applied && x.EarliestDate == null),
                 It.IsAny<CancellationToken>()),
             Times.Once);
-        // Back to short stays only: the compliance of the booking site is not looked at for a property that goes long-term.
         _h.Compliance.Verify(c => c.ReevaluateAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -65,7 +62,6 @@ public class PropertyModeApplyTests : IDisposable
         Assert.Equal(RentalMode.Short, (await _h.ReloadPropertyAsync(property.Id)).RentalMode);
         Assert.Equal(PropertyModeChangeStatus.Applied, (await _h.ReloadChangeAsync(change.Id)).Status);
         Assert.Empty(await _h.ModeChangeBlocksAsync(property.Id));
-        // The host's own blocks stay.
         Assert.True(await _h.Db.CalendarBlocks.AnyAsync(b => b.Id == owner.Id));
         _h.Compliance.Verify(c => c.ReevaluateAsync(property.Id, It.IsAny<CancellationToken>()), Times.Once);
         _h.Notifications.Verify(
@@ -78,7 +74,6 @@ public class PropertyModeApplyTests : IDisposable
     [Fact]
     public async Task ApplyDue_TheComplianceIsEvaluatedAfterTheModeIsSaved()
     {
-        // ReevaluateAsync ignores a long-term property (PM-01): it must see the property already back in short mode.
         var property = await _h.SeedPropertyAsync(RentalMode.Long);
         await _h.SeedChangeAsync(property, RentalMode.Short, Today);
         RentalMode? modeSeenByTheEvaluation = null;
@@ -108,7 +103,6 @@ public class PropertyModeApplyTests : IDisposable
 
         Assert.Equal(PropertyModeChangeStatus.Applied, (await _h.ReloadChangeAsync(change.Id)).Status);
         var heldAfter = Assert.Single(await _h.ModeChangeBlocksAsync(property.Id));
-        // The same block, the same event for the portals that already read it.
         Assert.Equal(heldBefore.Id, heldAfter.Id);
         Assert.Equal((Day(10), new DateTime(2028, 10, 11, 0, 0, 0, DateTimeKind.Utc)), (heldAfter.StartUtc, heldAfter.EndUtc));
     }
@@ -125,8 +119,6 @@ public class PropertyModeApplyTests : IDisposable
         var block = Assert.Single(await _h.ModeChangeBlocksAsync(property.Id));
         Assert.Equal(Today.AddDays(-1), block.StartUtc);
     }
-
-    // ─── When ───────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task ApplyDue_ChangeOfALaterDay_IsLeftAlone()
@@ -146,7 +138,6 @@ public class PropertyModeApplyTests : IDisposable
     [Fact]
     public async Task ApplyDue_SummerTime_IsAppliedAtTheFirstRunAfterMidnightOfRome()
     {
-        // Midnight of Rome on 11 October is 22:00 UTC of the 10th (CEST, UTC+2).
         var property = await _h.SeedPropertyAsync();
         await _h.SeedChangeAsync(property, RentalMode.Long, Day(11));
 
@@ -162,7 +153,6 @@ public class PropertyModeApplyTests : IDisposable
     [Fact]
     public async Task ApplyDue_WinterTime_IsAppliedAtTheFirstRunAfterMidnightOfRome()
     {
-        // Midnight of Rome on 2 November is 23:00 UTC of the 1st (CET, UTC+1).
         var property = await _h.SeedPropertyAsync();
         await _h.SeedChangeAsync(property, RentalMode.Long, new DateTime(2026, 11, 2, 0, 0, 0, DateTimeKind.Utc));
 
@@ -183,7 +173,6 @@ public class PropertyModeApplyTests : IDisposable
         var result = await _h.Service.ApplyDueAsync();
 
         Assert.Equal(1, result.Applied);
-        // The block is the one of the change (the night before its day), not of the day of the run.
         Assert.Equal(Day(2), Assert.Single(await _h.ModeChangeBlocksAsync(property.Id)).StartUtc);
     }
 
@@ -209,7 +198,6 @@ public class PropertyModeApplyTests : IDisposable
         Assert.Equal(RentalMode.Short, (await _h.ReloadPropertyAsync(second.Id)).RentalMode);
         Assert.Equal(RentalMode.Short, (await _h.ReloadPropertyAsync(third.Id)).RentalMode);
         Assert.Equal(PropertyModeChangeStatus.Scheduled, (await _h.ReloadChangeAsync(later.Id)).Status);
-        // The oldest day first.
         Assert.Equal(2, order.Count);
         Assert.Equal(second.Id, (await _h.ReloadChangeAsync(order[0])).PropertyId);
     }
@@ -228,8 +216,6 @@ public class PropertyModeApplyTests : IDisposable
         Assert.Equal(0, result.Examined);
         Assert.Equal(RentalMode.Short, (await _h.ReloadPropertyAsync(property.Id)).RentalMode);
     }
-
-    // ─── Idempotence ────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task ApplyDue_TwoRuns_AreOneApplication()
@@ -282,14 +268,11 @@ public class PropertyModeApplyTests : IDisposable
         Assert.Equal(RentalMode.Short, (await _h.ReloadPropertyAsync(property.Id)).RentalMode);
     }
 
-    // ─── The change is checked again on its day ─────────────────────────────────────────────────────
-
     [Fact]
     public async Task ApplyDue_AStayArrivedAfterTheProgramming_FailsTheChangeToLongAndTellsTheHost()
     {
         var property = await _h.SeedPropertyAsync();
         var change = await _h.Service.ScheduleAsync(property.Id, RentalMode.Long, Day(15), UserId);
-        // A reservation of a portal read after the change was programmed (the OTA stays are not refused by the block).
         await _h.SeedStayAsync(property, Day(14), Day(20), source: BookingSource.Airbnb);
         _h.Clock.SetUtcNow(new DateTimeOffset(2026, 10, 14, 22, 0, 0, TimeSpan.Zero));
 
@@ -301,10 +284,8 @@ public class PropertyModeApplyTests : IDisposable
         Assert.Equal(PropertyModeErrorCodes.BlockedByBookings, stored.FailureReason);
         Assert.Equal(new DateTime(2026, 10, 14, 22, 0, 0, DateTimeKind.Utc), stored.FailedAt);
         Assert.Null(stored.AppliedAt);
-        // The property keeps its mode, and the dates the change had closed are open again.
         Assert.Equal(RentalMode.Short, (await _h.ReloadPropertyAsync(property.Id)).RentalMode);
         Assert.Empty(await _h.ModeChangeBlocksAsync(property.Id));
-        // The host is told, with the first day that is free now.
         _h.Notifications.Verify(
             n => n.SendPropertyModeChangeAsync(
                 It.Is<PropertyModeNotice>(x =>
@@ -343,7 +324,6 @@ public class PropertyModeApplyTests : IDisposable
     [Fact]
     public async Task ApplyDue_AStayThatLeavesOnTheDayOfTheChange_StandsInTheWayLikeAtTheProgramming()
     {
-        // "Last departure + 1": the same rule at the programming and on the day.
         var property = await _h.SeedPropertyAsync();
         await _h.SeedChangeAsync(property, RentalMode.Long, Today);
         await _h.SeedStayAsync(property, Day(7), Day(10));
@@ -356,7 +336,6 @@ public class PropertyModeApplyTests : IDisposable
     [Fact]
     public async Task ApplyDue_ALateRun_ChecksTodayAndNotTheDayOfTheChange()
     {
-        // The change was for the 5th; the run is on the 10th. A stay that left on the 7th is over; one still in the house is not.
         var free = await _h.SeedPropertyAsync(name: "Libera");
         var busy = await _h.SeedPropertyAsync(orgId: free.OrgId, name: "Occupata");
         var freeChange = await _h.SeedChangeAsync(free, RentalMode.Long, Day(5));
@@ -413,7 +392,6 @@ public class PropertyModeApplyTests : IDisposable
     {
         var property = await _h.SeedPropertyAsync(RentalMode.Long);
         await _h.SeedChangeAsync(property, RentalMode.Short, Today);
-        // Ended and concluded (a notice or an early termination): a lease whose period is over and that nobody gave notice of renews by itself (LR-14).
         await _h.SeedLeaseAsync(property, Day(-300), Day(9), terminatedOn: Day(9));
         await _h.SeedLeaseAsync(property, Day(-300), Day(100), LeaseStatus.Rejected);
 
@@ -465,8 +443,6 @@ public class PropertyModeApplyTests : IDisposable
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
-
-    // ─── What never undoes a change ─────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task ApplyDue_TheNoticeFails_TheChangeIsApplied()

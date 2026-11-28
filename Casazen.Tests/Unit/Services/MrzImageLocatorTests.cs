@@ -5,10 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E03/F04/US01/T02: the locator of the MRZ band, on pictures built in memory (never a file): it finds the lines of text in the lower part of a
-/// page, groups the ones that look like an MRZ, and says nothing about a page that has none. The geometry only proposes; the check digits decide.
-/// </summary>
 public class MrzImageLocatorTests
 {
     private const int PageWidth = 1200;
@@ -18,7 +14,6 @@ public class MrzImageLocatorTests
 
     private static readonly MrzImageLocator Locator = new(Options.Create(new MrzOcrOptions()));
 
-    /// <summary>A light page with lines of 30 rows made of dark blocks 12 wide every 20 pixels, from x = 100 to 1100 (50 characters), at the given tops.</summary>
     private static GrayBitmap Page(params int[] lineTops)
     {
         var pixels = new byte[PageWidth * PageHeight];

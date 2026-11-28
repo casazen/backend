@@ -1,5 +1,3 @@
-using Casazen.Core.Entities.Enums;
-using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Web.Infrastructure;
 using Casazen.Web.Authorization;
@@ -9,13 +7,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.Middleware;
 
-/// <summary>New commercial signups cannot use host operations before the subscription webhook confirms payment.</summary>
 public sealed class CommercialAccessMiddleware(RequestDelegate next)
 {
     public async Task InvokeAsync(HttpContext context, IRequestTenantContext tenant, AppDbContext db)
     {
         var policies = context.GetEndpoint()?.Metadata.GetOrderedMetadata<IAuthorizeData>();
-        // A dual-role account must keep its independent supplier workflow.
         if (policies?.Any(a => a.Policy == "RequireSupplier") == true)
         {
             await next(context);
@@ -26,17 +22,14 @@ public sealed class CommercialAccessMiddleware(RequestDelegate next)
         var controller = context.GetEndpoint()?.Metadata.GetMetadata<ControllerActionDescriptor>()?.ControllerName;
         var module = policies?.Any(a => a.Policy == CasazenPolicies.Marketing) == true ? "crm" : ModuleForController(controller);
         var action = context.GetEndpoint()?.Metadata.GetMetadata<ControllerActionDescriptor>()?.ActionName;
-        // Passive dashboard summaries remain part of the base experience.
         if (controller == "Compliance" && action == "GetSummary") module = null;
         if (controller == "ServiceRequests" && (action == "GetById" ||
             string.Equals(context.Request.Query["view"], "supplier", StringComparison.OrdinalIgnoreCase))) module = null;
-        // Connected sites (S022): only a new connection needs the module; listing and revoking never do, so a site stays revocable without it.
         if (controller == "SiteConnections" && (action is "List" or "Revoke")) module = null;
         hostOperation |= controller is "OrgInvitations" or "OrgMembers";
         if ((hostOperation || module is not null) && context.User.Identity?.IsAuthenticated == true && tenant.OrgId is Guid orgId)
         {
             var org = await db.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == orgId, context.RequestAborted);
-            // The rule is CommercialAccessRules: the plugin of a connected site (S023) is gated by the same one.
             switch (CommercialAccessRules.Evaluate(org, module))
             {
                 case CommercialAccessDecision.OnboardingRequired:

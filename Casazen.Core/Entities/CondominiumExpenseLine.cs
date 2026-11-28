@@ -5,9 +5,6 @@ using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// One amount on a statement. Ordinary and extraordinary stay on different lines. An uncertain line is not a tenant charge.
-/// </summary>
 [Table("CondominiumExpenseLines")]
 public class CondominiumExpenseLine : ITenantOwned
 {
@@ -49,7 +46,6 @@ public class CondominiumExpenseLine : ITenantOwned
 
     public ExpenseClassificationSource ClassificationSource { get; set; }
 
-    /// <summary>0 to 1. Below 0.85 the line is not charged automatically.</summary>
     [Column(TypeName = "decimal(5,4)")]
     public decimal? Confidence { get; set; }
 

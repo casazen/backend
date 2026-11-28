@@ -10,7 +10,6 @@ using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -97,9 +96,6 @@ public class SupplierCalendarSyncTests
         Assert.Equal(ICalErrorCodes.InvalidFormat, profile.CalendarSyncError);
     }
 
-    // SP-05: the event of this test used to be a timed one (10 July 10:00Z to 11 July 10:00Z), which closed both days it
-    // touched. A timed event is now a window of those hours and closes no day (SupplierCalendarSyncHoursTests), so the flow
-    // under test - busy dates marked, error cleared - uses a whole-day event, which behaves exactly as before.
     [Fact]
     public async Task SyncIcalFeedAsync_ValidFeed_MarksBusyDatesAndClearsError()
     {
@@ -123,7 +119,6 @@ public class SupplierCalendarSyncTests
         var profile = await db.SupplierProfiles.SingleAsync();
         Assert.Null(profile.CalendarSyncError);
         Assert.Equal(SupplierCalendarSyncStatus.Success, profile.CalendarSyncStatus);
-        // 10 and 11 July (DTEND is exclusive): the supplier is busy on both days.
         Assert.Equal(
             [(new DateOnly(2026, 7, 10), false, SupplierAvailabilitySource.ICalFeed),
              (new DateOnly(2026, 7, 11), false, SupplierAvailabilitySource.ICalFeed)],
@@ -131,7 +126,6 @@ public class SupplierCalendarSyncTests
         Assert.Empty(await db.SupplierBusyWindows.ToListAsync());
     }
 
-    // PC-10 (A9-13): a valid calendar without events is a successful sync, not "invalid feed".
     [Fact]
     public async Task SyncIcalFeedAsync_ValidFeedWithoutEvents_ClearsErrorAndSetsLastSync()
     {
@@ -153,7 +147,6 @@ public class SupplierCalendarSyncTests
         Assert.Empty(await db.SupplierAvailability.ToListAsync());
     }
 
-    // PC-10 (A2-23): an all-day event blocks its days only (DTEND is exclusive), a cancelled one blocks nothing.
     [Fact]
     public async Task SyncIcalFeedAsync_AllDayAndCancelledEvents_MarksOnlyTheActiveDays()
     {
@@ -183,7 +176,6 @@ public class SupplierCalendarSyncTests
         Assert.Equal([new DateOnly(2026, 10, 10), new DateOnly(2026, 10, 11)], busy);
     }
 
-    // SU-15: a day the supplier left open but busy in the feed becomes a feed day; a manual closure stays manual.
     [Fact]
     public async Task SyncIcalFeedAsync_ManualDaysOnBusyDates_OpenDayBecomesFeedDayClosedDayStaysManual()
     {
@@ -201,7 +193,6 @@ public class SupplierCalendarSyncTests
             await DaysAsync(db));
     }
 
-    // An unreadable event is not proof that the commitment is gone: no feed day is freed at that run.
     [Fact]
     public async Task SyncIcalFeedAsync_FeedWithUnreadableEvent_KeepsTheFeedDays()
     {
@@ -225,7 +216,6 @@ public class SupplierCalendarSyncTests
         Assert.Equal(SupplierCalendarSyncStatus.Success, (await db.SupplierProfiles.SingleAsync()).CalendarSyncStatus);
     }
 
-    // The URL was replaced while the old one was downloading: the old result is discarded (the new URL has its own run).
     [Fact]
     public async Task SyncIcalFeedAsync_UrlChangedDuringDownload_WritesNothing()
     {
@@ -276,8 +266,6 @@ public class SupplierCalendarSyncTests
         Assert.Equal(SupplierCalendarSyncStatus.None, (await db.SupplierProfiles.SingleAsync()).CalendarSyncStatus);
     }
 
-    // The availability page saves every visible day: a feed day saved with its value stays a feed day, a changed day
-    // becomes manual.
     [Fact]
     public async Task UpdateAvailabilityAsync_FeedDaySavedUnchangedOrChanged_KeepsOrTakesOverTheSource()
     {
@@ -361,7 +349,6 @@ public class SupplierCalendarSyncTests
 
     private sealed class FakeExternalHttpClient(string? content, ExternalFetchFailure? failure = null) : ISafeExternalHttpClient
     {
-        /// <summary>Runs while the feed is "downloading" (e.g. the supplier replaces the URL meanwhile).</summary>
         public Action? OnDownload { get; init; }
 
         public bool TryValidateUrl(string? url, [NotNullWhen(true)] out Uri? uri) =>

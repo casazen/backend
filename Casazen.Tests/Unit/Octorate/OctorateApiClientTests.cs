@@ -31,18 +31,15 @@ public class OctorateApiClientTests
         using (h.Scope.Use(OrgB))
             await h.Client.GetPropertyAsync("4711", CancellationToken.None);
 
-        // Each call asked the token of its own org and sent it, and took a call from its own org's bucket only.
         Assert.Equal(new[] { OrgA, OrgB }, h.Tokens.RequestedOrgs);
         Assert.Equal(new[] { "Bearer " + FakeTokens.TokenOf(OrgA), "Bearer " + FakeTokens.TokenOf(OrgB) }, h.Handler.Authorizations);
         Assert.Equal(OctorateRateLimiter.RequestsPerMinute - 1, h.Limiter.AvailableCalls(OrgA));
         Assert.Equal(OctorateRateLimiter.RequestsPerMinute - 1, h.Limiter.AvailableCalls(OrgB));
 
-        // No org (a job that forgot Use): refused before any token is read and before anything leaves.
         await Assert.ThrowsAsync<InvalidOperationException>(() => h.Client.GetConfigurationAsync(CancellationToken.None));
         Assert.Equal(2, h.Tokens.RequestedOrgs.Count);
         Assert.Equal(2, h.Handler.Authorizations.Count);
 
-        // Inside an authenticated request of org A the scope is org A, and it cannot be switched to org B.
         var requestScope = new OctorateOrgScope(new RequestTenant(OrgA));
         Assert.Equal(OrgA, requestScope.OrgId);
         Assert.Throws<InvalidOperationException>(() => requestScope.Use(OrgB));
@@ -69,7 +66,6 @@ public class OctorateApiClientTests
 
         Assert.Equal(OctorateRateLimiter.RequestsPerMinute, h.Handler.Authorizations.Count);
 
-        // Org B, in the same minute, has its own bucket: unaffected.
         using (h.Scope.Use(OrgB))
             await h.Client.GetConfigurationAsync(CancellationToken.None);
 
@@ -81,7 +77,6 @@ public class OctorateApiClientTests
     [Fact]
     public async Task OctorateCheckIn_PayloadHasNoDocumentImage_Test()
     {
-        // AC-NF41-4 at compile time: the guest sent to Octorate is made of data fields only, no member can hold an image, a stream or bytes.
         var dataTypes = new[] { typeof(string), typeof(int), typeof(bool), typeof(bool?), typeof(decimal?), typeof(DateOnly?) };
         Assert.All(typeof(OctorateCheckInGuestUpsert).GetProperties(), property =>
         {
@@ -89,7 +84,6 @@ public class OctorateApiClientTests
             Assert.DoesNotMatch("(?i)image|photo|picture|scan|file|stream|byte|base64", property.Name);
         });
 
-        // A guest whose document photos are on file: what leaves carries the document data and none of the photos.
         var photos = new DocumentImage
         {
             FrontImageUrl = "https://storage.test/documents/front-0001.jpg",
@@ -124,7 +118,6 @@ public class OctorateApiClientTests
         Assert.Contains("\"documentCode\":\"YA0000001\"", body, StringComparison.Ordinal);
         Assert.Contains("\"documentType\":\"PASOR\"", body, StringComparison.Ordinal);
 
-        // The dates travel in the forms of the Octorate schema: a day as yyyy-MM-dd, the expiry of the document (a date-time there) at midnight.
         Assert.Contains("\"birthDate\":\"1980-07-01\"", body, StringComparison.Ordinal);
         Assert.Contains("\"documentExpire\":\"2031-03-01T00:00:00\"", body, StringComparison.Ordinal);
 
@@ -146,7 +139,6 @@ public class OctorateApiClientTests
             await h.Client.GetPropertyAsync("4711", CancellationToken.None);
         }
 
-        // The police account is asked for by name (Q-002), so it does arrive; the card read for the import is read as before, without fields.
         Assert.Equal(
             new[]
             {
@@ -193,7 +185,6 @@ public class OctorateApiClientTests
             Assert.Null(account.LastCron);
         }
 
-        // The same read as the police account of the sender: asked for by name, nothing else of the accommodation.
         Assert.Equal(
             "https://api.octorate.test/connect/rest/v1/accommodation/4711?fields=policeAccount",
             Assert.Single(h.Handler.Addresses).AbsoluteUri);
@@ -210,13 +201,11 @@ public class OctorateApiClientTests
             var readable = await h.Client.GetPoliceAccountStatusAsync("4711", CancellationToken.None);
             Assert.Equal(new OctoratePoliceAccountStatus(true, true, false, new DateTime(2026, 11, 5, 22, 0, 0, DateTimeKind.Utc)), readable);
 
-            // A failure of Octorate is not «cannot tell»: the typed error reaches the caller, which decides nothing.
             h.Handler.StatusCode = HttpStatusCode.InternalServerError;
             h.Handler.Body = """{"message":"boom"}""";
             await Assert.ThrowsAsync<OctorateServerException>(() => h.Client.GetPoliceAccountStatusAsync("4711", CancellationToken.None));
         }
 
-        // No org, no call: not an answer of «cannot tell» either.
         await Assert.ThrowsAsync<InvalidOperationException>(() => h.Client.GetPoliceAccountStatusAsync("4711", CancellationToken.None));
     }
 
@@ -251,7 +240,6 @@ public class OctorateApiClientTests
         public OctorateApiClient Client { get; }
     }
 
-    /// <summary>A token per org, and the orgs whose token was asked.</summary>
     private sealed class FakeTokens : IOctorateTokenService
     {
         public List<Guid> RequestedOrgs { get; } = [];
@@ -278,21 +266,16 @@ public class OctorateApiClientTests
             throw new InvalidOperationException("No partner-level call is made in these tests.");
     }
 
-    /// <summary>Answers every call with one JSON object (configuration and accommodation both read what they need), and keeps the tokens sent and the addresses called.</summary>
     private sealed class RecordingHandler : HttpMessageHandler
     {
         public List<string> Authorizations { get; } = [];
 
-        /// <summary>The body of every call that had one.</summary>
         public List<string> Bodies { get; } = [];
 
-        /// <summary>The addresses called, in order.</summary>
         public List<Uri> Addresses { get; } = [];
 
-        /// <summary>What every call is answered with.</summary>
         public string Body { get; set; } = """{"id":"4711","name":"Casa Prova","environment":"SANDBOX","quotaLimit":180,"quotaStatus":57}""";
 
-        /// <summary>The status of the answer of every call.</summary>
         public HttpStatusCode StatusCode { get; set; } = HttpStatusCode.OK;
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -308,7 +291,6 @@ public class OctorateApiClientTests
         }
     }
 
-    /// <summary>The tenant of an authenticated request of one org.</summary>
     private sealed class RequestTenant(Guid orgId) : ITenantContext
     {
         public Guid? OrgId { get; } = orgId;

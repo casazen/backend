@@ -18,7 +18,6 @@ namespace Casazen.Core.Entities;
 [Table("StayCleanings")]
 public class StayCleaning : ITenantOwned
 {
-    /// <summary>The unique index that keeps one automatic cleaning for each stay.</summary>
     public const string BookingIndexName = "UIX_StayCleanings_OrgId_BookingId";
 
     [Key]
@@ -26,25 +25,16 @@ public class StayCleaning : ITenantOwned
 
     public Guid OrgId { get; set; }
 
-    /// <summary>The stay (cascade).</summary>
     public Guid BookingId { get; set; }
 
-    /// <summary>The property of the stay (cascade).</summary>
     public Guid PropertyId { get; set; }
 
-    /// <summary>Whether the cleaning is a service request or a staff activity.</summary>
     public PropertyCleanerKind CleanerKind { get; set; }
 
-    /// <summary>The service request of a <see cref="PropertyCleanerKind.Supplier"/> cleaning.</summary>
     public Guid? ServiceRequestId { get; set; }
 
-    /// <summary>The staff activity of a <see cref="PropertyCleanerKind.Staff"/> cleaning.</summary>
     public Guid? InternalActivityId { get; set; }
 
-    /// <summary>
-    /// The start of the cleaning (UTC) the automation planned it for: the check-out day of the stay at the time of the setup. What a change of the dates of
-    /// the stay is compared with; moved together with the request or the activity.
-    /// </summary>
     public DateTime ScheduledStartUtc { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

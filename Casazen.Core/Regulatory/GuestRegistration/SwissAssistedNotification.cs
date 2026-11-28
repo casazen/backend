@@ -2,7 +2,6 @@ using Casazen.Core.Utilities;
 
 namespace Casazen.Core.Regulatory.GuestRegistration;
 
-/// <summary>The kinds of document the assisted notification names (the codes the clients translate); written as they are in the JSON.</summary>
 public static class SwissDocumentTypes
 {
     public const string Passport = "passport";
@@ -53,14 +52,6 @@ public sealed record SwissNotificationGuest(
     string? ResidenceCountryCode,
     string? Plate);
 
-/// <summary>
-/// What a guest (or a whole stay, <see cref="Position"/> <c>null</c>) still lacks to be copied onto the portal: the codes of <see cref="TicinoMissing"/>, the same the Ticino day
-/// and the alerts use, so the clients translate one list. The guest stays in the list: the host can type what the check-in has and complete the rest.
-/// </summary>
-/// <param name="BookingId">The stay.</param>
-/// <param name="Position">The guest, or <c>null</c> for the stay as a whole.</param>
-/// <param name="GuestName">The name of the guest, or of the booker for a stay with no guest recorded.</param>
-/// <param name="Missing">The codes of what is missing: <c>firstName</c>, <c>lastName</c>, <c>birthDate</c>, <c>nationality</c>, <c>documentType</c>, <c>guests</c>.</param>
 public sealed record SwissNotificationIssue(Guid BookingId, int? Position, string GuestName, IReadOnlyList<string> Missing);
 
 /// <summary>
@@ -82,16 +73,10 @@ public sealed record SwissNotificationIssue(Guid BookingId, int? Position, strin
 /// </remarks>
 public static class SwissAssistedNotification
 {
-    /// <summary>How many days back the days still to notify are looked for (the window of the Ticino days).</summary>
     public const int PendingLookbackDays = 14;
 
-    /// <summary>The time of the Sunday at which the weekly deadline of a canton falls (Nidwalden): the last minute of the week.</summary>
     private static readonly TimeOnly LastMinuteOfTheWeek = new(23, 59);
 
-    /// <summary>
-    /// The regime is covered by the assisted notification: Swiss, not Ticino, an obligation to report to an authority, and CasaZen's support is the assisted notification.
-    /// <c>false</c> for <c>null</c> (a country the catalog does not know).
-    /// </summary>
     public static bool Covers(GuestRegistrationRegime? regime) =>
         regime is { IsSwiss: true, Obligation: GuestRegistrationObligation.ReportToAuthority, CasaZenSupport: GuestRegistrationSupport.AssistedNotification }
         && !string.Equals(regime.Code, GuestRegistrationRegimeCatalog.TicinoCode, StringComparison.Ordinal);
@@ -116,7 +101,6 @@ public static class SwissAssistedNotification
         };
     }
 
-    /// <summary>The Sunday of the week of <paramref name="day"/> (weeks run Monday to Sunday); a Sunday is its own.</summary>
     public static DateOnly SundayOf(DateOnly day) => day.AddDays((7 - (int)day.DayOfWeek) % 7);
 
     /// <summary>
@@ -186,7 +170,6 @@ public static class SwissAssistedNotification
         if (TextOf(guest.CitizenshipName) is null && TicinoCountryCodes.FromCheckIn(guest.CitizenshipCode, guest.CitizenshipName) is null)
             missing.Add(TicinoMissing.Nationality);
 
-        // A minor does not need a document; an adult, or a guest whose age is not known (the date of birth is asked first), does.
         var minor = validBirthDate && TicinoPoliceFile.AgeAt(guest.BirthDate!.Value, stay.Arrival) < TicinoPoliceFile.AdultAge;
         if (!minor && DocumentTypeOf(guest) is null)
             missing.Add(TicinoMissing.DocumentType);
@@ -208,7 +191,6 @@ public static class SwissAssistedNotification
         return name.Length > 0 ? name : bookerName;
     }
 
-    /// <summary>Trimmed, inner runs of white space as one space; <c>null</c> when there is nothing.</summary>
     private static string? TextOf(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 

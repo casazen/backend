@@ -8,11 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Authorization;
 
-/// <summary>
-/// E50/F01/US01/T01 (NF-152, AC-NF152-5, guest portal plan decision A7): who may set up the guest portal («Portale ospiti»). The permission
-/// <c>guestportal.manage</c> is read from the roles the model seeds (what the migrations leave in the database) for every org role, so a grant moved
-/// to the wrong role shows up here.
-/// </summary>
 public class GuestPortalManagePermissionTests
 {
     /// <summary>
@@ -39,7 +34,6 @@ public class GuestPortalManagePermissionTests
         Assert.False(Holds(OrgRole.Collaborator));
         Assert.False(Holds(OrgRole.Accountant));
 
-        // Nowhere in the long-rent context, whatever the role.
         Assert.DoesNotContain(
             db.RolePermissions.Include(rp => rp.Role).AsEnumerable(),
             rp => rp.Role.ContextKey == OrgRoleCatalog.LongRent && rp.PermissionKey == HostPermissions.GuestPortalManage);

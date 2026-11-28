@@ -30,7 +30,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public static class FiscalDocumentPdfs
 {
-    /// <summary>The PDF of <paramref name="document"/> with the issuer as <paramref name="issuer"/> and <paramref name="org"/> say now (a draft).</summary>
     public static PdfDocumentContent Pdf(
         FiscalDocument document,
         OrgFiscalIssuerProfile? issuer,
@@ -40,11 +39,6 @@ public static class FiscalDocumentPdfs
         FiscalDocument? credited = null) =>
         Pdf(document, FiscalIssuerSnapshot.From(issuer, org), texts, language, credited);
 
-    /// <summary>
-    /// The PDF of <paramref name="document"/> issued by <paramref name="issuer"/> (the snapshot of the document, or the profile of today for a draft);
-    /// <paramref name="propertyName"/> is the name of the property of the stay, when there is one; <paramref name="settlement"/> how an issued owner invoice is
-    /// paid (E14/F01/US01/T02: offset in the statement, or to pay, with the QR-bill of a Swiss one).
-    /// </summary>
     public static PdfDocumentContent Pdf(
         FiscalDocument document,
         FiscalIssuerSnapshot issuer,
@@ -95,7 +89,6 @@ public static class FiscalDocumentPdfs
         if (SelfBillingPeriodLabel(document) is { } selfBillingPeriod)
             blocks.Add(new PdfParagraph(texts.Get("FiscalDocPdfSelfBillingPeriod", language, selfBillingPeriod)));
 
-        // The tourist tax a portal left to the host is not declared paid (FIX/BE-PORTAL-TAXLINE): its line says so, and so does the payment below.
         var split = FiscalDocumentPortalCollection.SplitOf(document);
         var lines = document.Lines.OrderBy(l => l.LineNumber).ToList();
         blocks.Add(new PdfHeading(texts.Get("FiscalDocPdfLinesHeading", language)));
@@ -152,7 +145,6 @@ public static class FiscalDocumentPdfs
             ],
             totals));
 
-        // ⚖ I4: a document with a stamp duty says how it is paid (see StampDutyLine).
         if (document.StampDuty > 0m && StampDutyLine(issuer, texts, language) is { } stamp)
             blocks.Add(new PdfParagraph(stamp));
 
@@ -160,7 +152,6 @@ public static class FiscalDocumentPdfs
             blocks.AddRange(PaymentBlocks(document, split, texts, language));
         else if (document.Purpose == FiscalDocumentPurpose.OwnerInvoice && document.Kind != DocumentKind.CreditNote && settlement is not null)
         {
-            // An Italian owner invoice has no QR-bill: offset in the statement, or to pay as the property manager says.
             blocks.AddRange(OwnerInvoicePaymentLines(document, settlement, texts, language, DocumentLanguages.Money(settlement.AmountDue, language), qrBill: false));
         }
 
@@ -194,11 +185,6 @@ public static class FiscalDocumentPdfs
             yield return line;
     }
 
-    /// <summary>
-    /// How the stamp duty of a document is paid (⚖ I4): the authorization of the virtual stamp or the number of the physical one of its issuer, the virtual stamp
-    /// the issuer confirmed, else that it is still to be paid; <c>null</c> (nothing printed) for a snapshot written before the issuer said it, so a document issued
-    /// before stays as it was.
-    /// </summary>
     internal static string? StampDutyLine(FiscalIssuerSnapshot issuer, IDocumentTexts texts, string language)
     {
         ArgumentNullException.ThrowIfNull(issuer);
@@ -215,10 +201,6 @@ public static class FiscalDocumentPdfs
         };
     }
 
-    /// <summary>
-    /// What the document of an owner adds below its issuer (E17/F01/US01/T02): the co-owners with their shares (⚖ I6) and «Emessa tramite <agenzia> per conto del
-    /// proprietario». Nothing for a document the organization issues in its own name.
-    /// </summary>
     internal static IEnumerable<string> OwnerIssuerLines(FiscalIssuerSnapshot issuer, IDocumentTexts texts, string language)
     {
         if (issuer.CoOwners is { Count: > 1 } coOwners)
@@ -256,10 +238,6 @@ public static class FiscalDocumentPdfs
             yield return texts.Get("FiscalDocPdfFiscalCode", language, document.RecipientFiscalCode);
     }
 
-    /// <summary>
-    /// What an issued owner invoice says of its payment (E14/F01/US01/T02): «Compensata nel rendiconto del MM/yyyy» when the statement offsets it, the credit
-    /// when it was credited, else the amount to pay and, without a QR-bill (<paramref name="qrBill"/> false), «Pagamento su indicazione del gestore».
-    /// </summary>
     internal static IEnumerable<PdfBlock> OwnerInvoicePaymentLines(
         FiscalDocument document,
         OwnerInvoiceSettlement settlement,
@@ -284,7 +262,6 @@ public static class FiscalDocumentPdfs
         }
     }
 
-    /// <summary>The month of the services of an owner invoice (or of its credit note), <c>MM/yyyy</c>; <c>null</c> for any other document.</summary>
     internal static string? OwnerInvoicePeriodLabel(FiscalDocument document) =>
         document.Purpose == FiscalDocumentPurpose.OwnerInvoice && document.PeriodYear is { } year && document.PeriodMonth is { } month
             ? PeriodLabel(year, month)
@@ -296,11 +273,9 @@ public static class FiscalDocumentPdfs
             ? PeriodLabel(year, month)
             : null;
 
-    /// <summary>A month as <c>MM/yyyy</c>.</summary>
     internal static string PeriodLabel(int year, int month) =>
         string.Create(CultureInfo.InvariantCulture, $"{month:00}/{year:0000}");
 
-    /// <summary>The word of the kind of a document (invoice, receipt, credit note, proforma): also the one of the list exported to CSV and Excel.</summary>
     internal static string KindLabel(DocumentKind kind, IDocumentTexts texts, string language) => kind switch
     {
         DocumentKind.Receipt => texts.Get("FiscalDocPdfKindReceipt", language),
@@ -354,10 +329,6 @@ public static class FiscalDocumentPdfs
             : line.Description;
     }
 
-    /// <summary>
-    /// The description of a line of the Swiss layout, with the note that its tax is to be collected at the property when it is the line of tourist tax the portal left to the host
-    /// (<paramref name="split"/>, FIX/BE-PORTAL-TAXLINE); the description as it is for every other line. The Swiss layout calls the tax «tassa» (<paramref name="noteKey"/>).
-    /// </summary>
     internal static string WithToCollectNote(PortalCollectionSplit? split, FiscalDocumentLine line, string description, IDocumentTexts texts, string language, string noteKey) =>
         split?.IsToCollect(line) == true ? texts.Get(noteKey, language, description) : description;
 

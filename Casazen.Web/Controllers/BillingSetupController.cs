@@ -32,11 +32,9 @@ public class BillingSetupController(
     IPortalAccountSettingsService? portalAccounts = null,
     IItalianTouristTaxSetup? italianTouristTax = null) : ControllerBase
 {
-    /// <summary>The settings of the portal accounts (E14/F01/US01/T01), registered with the fiscal documents.</summary>
     private IPortalAccountSettingsService PortalAccounts =>
         portalAccounts ?? throw new InvalidOperationException("The settings of the portal accounts are not registered.");
 
-    /// <summary>The proposals and the confirmation of the tourist tax of the Italian portals (FIX/BE-IT-TOURISTTAX-DEFAULTS), registered with the fiscal documents.</summary>
     private IItalianTouristTaxSetup ItalianTouristTax =>
         italianTouristTax ?? throw new InvalidOperationException("The setup of the tourist tax of the Italian portals is not registered.");
 
@@ -55,7 +53,6 @@ public class BillingSetupController(
         if (orgId is null)
             return Unauthorized();
 
-        // The caller may read the setup of its organization whatever its reach, but what sums up all of the properties is for the caller that reaches them all.
         var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
         var setup = await billingSetup.GetAsync(orgId.Value, cancellationToken);
         return Ok(BillingSetupDto.From(setup, orgWide: scope is { IsOrgWide: true }));
@@ -83,7 +80,6 @@ public class BillingSetupController(
         if (orgId is null)
             return Unauthorized();
 
-        // The setup is the organization's: a caller who reaches only some of its properties cannot decide how all of them are invoiced.
         var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
         if (scope is not { IsOrgWide: true })
         {
@@ -95,7 +91,6 @@ public class BillingSetupController(
         }
 
         var saved = await billingSetup.PutSectionAsync(orgId.Value, section, request.ToPayload(), User.GetUserId(), cancellationToken);
-        // The guard above says the caller reaches the whole organization.
         return Ok(BillingSetupSectionDto.From(saved, orgWide: true));
     }
 
@@ -120,18 +115,9 @@ public class BillingSetupController(
         await ItalianTouristTax.ConfirmComuniAsync(orgId, request.ToComuni(), User.GetUserId(), cancellationToken);
         var setup = await billingSetup.GetAsync(orgId, cancellationToken);
 
-        // WholeOrgAsync above says the caller reaches the whole organization.
         return Ok(BillingSetupSectionDto.From(setup.Sections.Single(s => s.Section == BillingSetupSections.TouristTax), orgWide: true));
     }
 
-    /// <summary>
-    /// The endpoint of the section <c>channels</c> (E14/F01/US01/T01, ⚖ I10, I11): who holds the accounts of the portals by default (<c>portalAccountHolder</c>,
-    /// <c>Owner</c> or <c>Agency</c>) and whether their commissions are recharged to the owners (<c>rechargePortalCommissions</c>); a member left out keeps its
-    /// value. Answers the section as saved. 422 <c>billing_channels_invalid</c>; 422 <c>recharge_waiver_not_acknowledged</c> for a save that turns the waiver of the recharge
-    /// on (the recharge off with an account of the agency) without <c>acknowledgeRechargeWaiver: true</c> (FIX/BE-V2-NO-RECHARGE: the agency then bears those commissions;
-    /// who acknowledged it and when go to the activity log); 403 <c>fiscal_settings_need_whole_org</c>. Behind <c>Features:OwnerInvoicing</c> too, like the invoices that
-    /// use it: 404 while it is off.
-    /// </summary>
     [HttpPut(BillingSetupSections.Channels)]
     [FeatureGate(FeatureFlags.OwnerInvoicing)]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
@@ -145,15 +131,9 @@ public class BillingSetupController(
 
         await PortalAccounts.SaveAsync(orgId, command, User.GetUserId(), cancellationToken);
         var setup = await billingSetup.GetAsync(orgId, cancellationToken);
-        // WholeOrgAsync above says the caller reaches the whole organization.
         return Ok(BillingSetupSectionDto.From(setup.Sections.Single(s => s.Section == BillingSetupSections.Channels), orgWide: true));
     }
 
-    /// <summary>
-    /// The holders of the portal accounts of the listings where they differ from the default (E14/F01/US01/T01): <c>[{ propertyId, propertyName, channel, holder,
-    /// updatedAt }]</c>, by property then portal. The whole org only (403 <c>fiscal_settings_need_whole_org</c>): the list names properties a caller restricted to
-    /// some of them does not reach. Behind <c>Features:OwnerInvoicing</c> too: 404 while it is off.
-    /// </summary>
     [HttpGet("channel-account-holders")]
     [FeatureGate(FeatureFlags.OwnerInvoicing)]
     [ProducesResponseType(typeof(List<ChannelAccountHolderDto>), StatusCodes.Status200OK)]
@@ -195,7 +175,6 @@ public class BillingSetupController(
         return Ok(saved.Select(ChannelAccountHolderDto.From).ToList());
     }
 
-    /// <summary>The caller's org, only when its reach is the whole org.</summary>
     private async Task<Guid?> WholeOrgAsync(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);

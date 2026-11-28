@@ -20,13 +20,8 @@ namespace Casazen.Core.OrgTeam;
 /// </remarks>
 public static class OrgTeamRules
 {
-    /// <summary>True for the roles that invite people and manage them.</summary>
     public static bool CanManageTeam(OrgRole role) => role is OrgRole.Owner or OrgRole.Admin;
 
-    /// <summary>
-    /// True when <paramref name="actor"/> may give <paramref name="role"/> to a person (invite, change of role). Nobody
-    /// gives the owner role; only the owner gives the administrator role; an administrator gives every other role.
-    /// </summary>
     public static bool CanAssign(OrgRole actor, OrgRole role) => role switch
     {
         OrgRole.Owner => false,
@@ -34,11 +29,6 @@ public static class OrgTeamRules
         _ => CanManageTeam(actor),
     };
 
-    /// <summary>
-    /// True when <paramref name="actor"/> may change, deactivate, reactivate or remove a member whose role is
-    /// <paramref name="target"/>. The owner is out of reach for everybody (the services answer <c>org_last_owner</c> before
-    /// asking this); an administrator is in the hands of the owner only.
-    /// </summary>
     public static bool CanActOn(OrgRole actor, OrgRole target) => target switch
     {
         OrgRole.Owner => false,

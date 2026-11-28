@@ -11,26 +11,21 @@ namespace Casazen.Infrastructure.Octorate;
 /// </summary>
 public static class OctorateEnvironments
 {
-    /// <summary>What <c>GET /rest/v1/api/configuration</c> reports for the sandbox.</summary>
     public const string SandboxName = "SANDBOX";
 
-    /// <summary>What <c>GET /rest/v1/api/configuration</c> reports for production.</summary>
     public const string ProductionName = "PRODUCTION";
 
-    /// <summary>The Octorate environment of this CasaZen: <see cref="OctorateEnvironment.Production"/> only in Production.</summary>
     public static OctorateEnvironment Of(IHostEnvironment hostEnvironment)
     {
         ArgumentNullException.ThrowIfNull(hostEnvironment);
         return hostEnvironment.IsProduction() ? OctorateEnvironment.Production : OctorateEnvironment.Test;
     }
 
-    /// <summary>Expected upstream environment; the connection remains stored in its CasaZen environment.</summary>
     public static OctorateEnvironment ExpectedApiEnvironment(OctorateEnvironment connectionEnvironment, bool allowProductionApiInTest) =>
         connectionEnvironment == OctorateEnvironment.Test && allowProductionApiInTest
             ? OctorateEnvironment.Production
             : connectionEnvironment;
 
-    /// <summary>The name Octorate gives <paramref name="environment"/> in its configuration.</summary>
     public static string ReportedNameOf(OctorateEnvironment environment) => environment switch
     {
         OctorateEnvironment.Test => SandboxName,

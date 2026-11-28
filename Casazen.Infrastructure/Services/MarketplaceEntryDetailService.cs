@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Casazen.Core.Authorization;
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
@@ -27,7 +26,6 @@ public sealed class MarketplaceEntryDetailService(
     IMarketplaceTexts texts,
     IHostEnvironment hostEnvironment) : IMarketplaceEntryDetailService
 {
-    /// <summary>The questions of the FAQ of a channel, a tool or a function of the license: <c>Faq1</c> to <c>Faq3</c> in the resource files.</summary>
     private const int ResourceFaqCount = 3;
 
     public async Task<MarketplaceEntryDetail> GetAsync(
@@ -45,7 +43,6 @@ public sealed class MarketplaceEntryDetailService(
         if (string.IsNullOrEmpty(wanted) || !Enum.IsDefined(kind))
             throw MarketplaceReads.EntryNotFound();
 
-        // What goes through Octorate does not exist for anybody while the connector is off; only the partners are not behind the flag.
         if (kind != MarketplaceActivationKind.Partner && !featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
             throw MarketplaceReads.EntryNotFound();
 
@@ -65,7 +62,6 @@ public sealed class MarketplaceEntryDetailService(
     private async Task<MarketplaceEntryDetail> PartnerAsync(
         string code, MarketplaceReads.OrgFacts org, string lang, MarketplaceCardStates states, CancellationToken ct)
     {
-        // Hidden, or not for this plan or country: the answer is the one of a code nobody has.
         var partner = await db.MarketplacePartners.AsNoTracking().FirstOrDefaultAsync(p => p.Code == code, ct);
         if (partner is null || !MarketplaceVisibility.IsVisible(partner, org.PlanTier, org.BillingCountry))
             throw MarketplaceReads.EntryNotFound();
@@ -74,7 +70,6 @@ public sealed class MarketplaceEntryDetailService(
         var text = MarketplaceReads.TextOf(partnerTexts, lang);
         var state = states.Of(MarketplaceActivationKind.Partner, partner.Code);
 
-        // The activation guide belongs to the hand-off wizard, not to the card. The host activates on the partner's site and deactivates there too.
         return new MarketplaceEntryDetail(
             MarketplaceActivationKind.Partner,
             partner.Code,
@@ -109,8 +104,6 @@ public sealed class MarketplaceEntryDetailService(
         if (portal is null || portal.Category != category)
             throw MarketplaceReads.EntryNotFound();
 
-        // What the connection needs, from the flags of the portal: the identifier on the channel, its username and password, the consent
-        // given on the channel manager's own panel.
         var requirements = new List<MarketplaceRequirement>();
         if (portal.RequiresHotelId)
             requirements.Add(Requirement("hotelId", lang));
@@ -149,7 +142,6 @@ public sealed class MarketplaceEntryDetailService(
         var state = states.Of(MarketplaceActivationKind.LicensedFunction, code);
         const string Segment = nameof(MarketplaceActivationKind.LicensedFunction);
 
-        // The cost is never invented: it depends on the license the host has with its channel manager, and the page says it is not specified.
         return new MarketplaceEntryDetail(
             MarketplaceActivationKind.LicensedFunction,
             code,
@@ -170,7 +162,6 @@ public sealed class MarketplaceEntryDetailService(
     private MarketplaceRequirement Requirement(string code, string lang) =>
         new(code, texts.Get($"Marketplace.Detail.Requirement.{code}", lang));
 
-    /// <summary>The questions and answers of a kind from the resource files, <c>Faq1.Q</c> and <c>Faq1.A</c> to <c>Faq3</c>, with the portal name put in when there is one.</summary>
     private List<MarketplaceFaq> ResourceFaq(string segment, string lang, params object[] args)
     {
         var faq = new List<MarketplaceFaq>();
@@ -184,7 +175,6 @@ public sealed class MarketplaceEntryDetailService(
         return faq;
     }
 
-    /// <summary>The lines of a text, trimmed, without the empty ones: how a list of plain sentences is stored in one resource or column.</summary>
     private static List<string> Lines(string? text) =>
         string.IsNullOrWhiteSpace(text)
             ? []

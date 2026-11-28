@@ -6,28 +6,20 @@ namespace Casazen.Web.BackgroundJobs;
 
 public static partial class RecurringJobsRegistration
 {
-    /// <summary>
-    /// The event machinery: the time triggers of the routines, the outbox dispatcher and cleanup, the CRM profile sync and the popup alerts that fell
-    /// due.
-    /// </summary>
     private static void RegisterEventJobs(IRecurringJobManager recurringJobManager, RoutineOptions? routineOptions)
     {
-        // ADR-022-R8: the time triggers of the stays ("2 days before check-in") are written to the outbox every
-        // Routine:EvaluationIntervalMinutes (default 5), whatever the flags say; an org without a time routine gets nothing.
         recurringJobManager.AddOrUpdate<TimeEventEmitterJob>(
             TimeEventEmitterJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             (routineOptions ?? new RoutineOptions()).EmitterCron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-        // ADR-022-R4: the outbox dispatcher publishes the recorded domain events on the bus every minute, whatever the flags say.
         recurringJobManager.AddOrUpdate<OutboxDispatcherJob>(
             OutboxDispatcherJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             OutboxDispatcherJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-        // ADR-022-R15: the dispatched events older than EventBus:RetentionDays are deleted and the old dead letters anonymized, nightly.
         recurringJobManager.AddOrUpdate<OutboxCleanupJob>(
             OutboxCleanupJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),

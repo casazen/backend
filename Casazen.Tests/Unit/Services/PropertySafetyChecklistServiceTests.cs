@@ -12,10 +12,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>CO-07 (A5-21): saving the D.L. 145/2023 safety checklist of a property.</summary>
 public class PropertySafetyChecklistServiceTests
 {
-    // 2026-09-24 00:30 in Rome is still 2026-09-23 in UTC: "today" for the check dates is the Rome date.
     private static readonly TimeProvider RomeJustAfterMidnight =
         new FixedTimeProvider(new DateTimeOffset(2026, 9, 23, 22, 30, 0, TimeSpan.Zero));
 
@@ -42,7 +40,6 @@ public class PropertySafetyChecklistServiceTests
         Assert.Equal(property.OrgId, stored.OrgId);
         Assert.Equal(SafetyChecklistRules.Items.Count, stored.Items.Count);
         Assert.All(stored.Items, i => Assert.Equal(property.OrgId, i.OrgId));
-        // "Not applicable" is never stored: it follows from the facts.
         Assert.Null(stored.Items.Single(i => i.Code == SafetyItemCode.GasDetector).Answer);
         Assert.Equal((false, false), (stored.Entrepreneurial, stored.HasGasSupply));
         Assert.Equal(new DateTime(2026, 9, 23, 22, 30, 0, DateTimeKind.Utc), stored.ConfirmedAt);
@@ -128,7 +125,6 @@ public class PropertySafetyChecklistServiceTests
             Items = [SafetyChecklistTestData.Item(SafetyItemCode.FireExtinguishers, SafetyItemAnswer.Present, 1, checkedOn: day)],
         };
 
-        // Today in Rome is 2026-09-24 although UTC is still on the 23rd.
         var view = await service.SaveAsync(property.Id, "auth0|host", WithCheck(new DateOnly(2026, 9, 24)));
         var error = await Assert.ThrowsAsync<DomainRuleException>(
             () => service.SaveAsync(property.Id, "auth0|host", WithCheck(new DateOnly(2026, 9, 25))));

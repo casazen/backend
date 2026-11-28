@@ -9,11 +9,6 @@ namespace Casazen.Core.Models;
 /// </summary>
 public static class RoutinePayload
 {
-    /// <summary>
-    /// The members of <paramref name="payload"/> as a dictionary with case-insensitive names: a dictionary is copied, a JSON object is read member by
-    /// member, any other object (an anonymous type of a test, a record of a producer) goes through its JSON. Anything that is not an object, and
-    /// <c>null</c>, is an empty payload.
-    /// </summary>
     public static IReadOnlyDictionary<string, object?> Normalize(object? payload)
     {
         var members = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
@@ -36,7 +31,6 @@ public static class RoutinePayload
         return members;
     }
 
-    /// <summary>The payload kept as JSON in a waiting execution (<c>RoutineExecutionResult.PayloadJson</c>).</summary>
     public static string ToJson(IReadOnlyDictionary<string, object?> payload)
     {
         ArgumentNullException.ThrowIfNull(payload);
@@ -44,7 +38,6 @@ public static class RoutinePayload
         return JsonSerializer.Serialize(payload);
     }
 
-    /// <summary>The payload kept in <paramref name="json"/>; an empty one when there is none or it is not a JSON object.</summary>
     public static IReadOnlyDictionary<string, object?> FromJson(string? json)
     {
         var members = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
@@ -64,10 +57,6 @@ public static class RoutinePayload
         return members;
     }
 
-    /// <summary>
-    /// The id a member of the payload names (<c>bookingId</c>…): a <see cref="Guid"/>, or a text or a JSON string that is one. False when the member is
-    /// missing, is not an id or is the empty one.
-    /// </summary>
     public static bool TryGetId(IReadOnlyDictionary<string, object?> payload, string name, out Guid id)
     {
         ArgumentNullException.ThrowIfNull(payload);

@@ -1,7 +1,6 @@
 using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Hangfire;
-using Microsoft.Extensions.Logging;
 
 namespace Casazen.Web.BackgroundJobs;
 
@@ -30,10 +29,8 @@ public class CheckInLinkDeliveryRetryJob(
 {
     public const string RecurringJobId = "checkin-link-delivery-retry";
 
-    /// <summary>At minute 30 of every hour (UTC).</summary>
     public const string Cron = "30 * * * *";
 
-    /// <summary>The module is open: the connector and at least one of the two ways to the guest.</summary>
     public static bool IsEnabled(IFeatureFlags flags)
     {
         ArgumentNullException.ThrowIfNull(flags);

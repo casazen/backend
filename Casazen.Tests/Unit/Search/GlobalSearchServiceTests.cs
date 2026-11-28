@@ -45,8 +45,6 @@ public class GlobalSearchServiceTests : IAsyncLifetime
 
     private static IReadOnlyList<Guid> Ids(GlobalSearchResult result, string type) => Hits(result, type).Select(h => h.Id).ToList();
 
-    // ─── The words ──────────────────────────────────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData("trullo")]
     [InlineData("TRULLO")]
@@ -57,7 +55,6 @@ public class GlobalSearchServiceTests : IAsyncLifetime
     {
         var result = await AsOwnerAsync(term);
 
-        // Only the property of this org: the other org has a "Trullo Altrove" too.
         Assert.Equal(["property"], Types(result));
         var hit = Assert.Single(Hits(result, "property"));
         Assert.Equal(_world.Trullo.Id, hit.Id);
@@ -82,7 +79,6 @@ public class GlobalSearchServiceTests : IAsyncLifetime
     [Fact]
     public async Task Properties_AWordInTheMiddleOfAWord_IsNotFound()
     {
-        // "ullo" is inside "trullo", not at the beginning of a word.
         Assert.Empty((await AsOwnerAsync("ullo")).Groups);
     }
 
@@ -109,7 +105,6 @@ public class GlobalSearchServiceTests : IAsyncLifetime
         var hit = Assert.Single(Hits(withBoth, "property"));
         Assert.Equal((_world.LoftNavigli.Id, SearchDestinations.LongRentProperty), (hit.Id, hit.Destination));
 
-        // Property.read of the short-rent context says nothing about the properties of the long-term area (and the reverse).
         var shortOnly = await SearchAsync("loft", new HostSearchAccess(_world.OrgWide, true, false, true, true, true));
         Assert.Empty(Hits(shortOnly, "property"));
         var longOnly = await SearchAsync("trullo", new HostSearchAccess(_world.OrgWide, false, true, true, true, true));
@@ -132,8 +127,6 @@ public class GlobalSearchServiceTests : IAsyncLifetime
     {
         Assert.Empty((await AsOwnerAsync(term)).Groups);
     }
-
-    // ─── Guests ─────────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("jose")]
@@ -173,7 +166,6 @@ public class GlobalSearchServiceTests : IAsyncLifetime
     {
         var result = await AsOwnerAsync("rossi");
 
-        // The Maria Rossi of the other org is not here, and the order is the folded one (Maria before Mario).
         Assert.Equal([_world.MariaRossi.Id, _world.MarioRossi.Id], Ids(result, "guest"));
         Assert.DoesNotContain(_world.ForeignMaria.Id, result.Groups.SelectMany(g => g.Items).Select(h => h.Id));
         Assert.Equal(["booking", "guest", "supplier"], Types(result));
@@ -203,8 +195,6 @@ public class GlobalSearchServiceTests : IAsyncLifetime
         Assert.Empty(Hits(await SearchAsync("carla", _world.Everything(_world.OwnedByOwner)), "guest"));
     }
 
-    // ─── Bookings ───────────────────────────────────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData("7K3M9-PQ2XV")]
     [InlineData("7k3m9pq2xv")]
@@ -226,7 +216,6 @@ public class GlobalSearchServiceTests : IAsyncLifetime
     [Fact]
     public async Task Bookings_ACodeWithNoDigit_IsLookedUpOnlyWhole()
     {
-        // "ZXCV12345K" has digits; a name made of the letters of the alphabet is not taken for the beginning of a code.
         Assert.Equal(_world.StayMarioAtTrullo.Id, Assert.Single(Hits(await AsOwnerAsync("ZXCV12"), "booking")).Id);
         Assert.Empty(Hits(await AsOwnerAsync("zxcv"), "booking"));
     }
@@ -265,7 +254,6 @@ public class GlobalSearchServiceTests : IAsyncLifetime
     [Fact]
     public async Task Bookings_FoundByTheGuestAndByTheCodeAtOnce_AreToldOnce()
     {
-        // A guest whose first name is a beginning of a booking code, with a stay that has that code: both ways find the stay.
         var guest = new Casazen.Core.Entities.Guest { OrgId = _world.OrgId, FirstName = "B2C3D4", LastName = "Prova", Email = "prova@example.com" };
         _db.Guests.Add(guest);
         await _db.SaveChangesAsync();
@@ -285,11 +273,8 @@ public class GlobalSearchServiceTests : IAsyncLifetime
 
         var result = await AsOwnerAsync("b2c3d4");
 
-        // The stay is found through its guest and through its code (B2C3D4...): once. The stay of Maria has the code A1B2C3D4E5, no.
         Assert.Equal([stay.Id], Ids(result, "booking"));
     }
-
-    // ─── Leases ─────────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("verdi")]
@@ -301,7 +286,6 @@ public class GlobalSearchServiceTests : IAsyncLifetime
 
         var hit = Assert.Single(Hits(result, "lease"));
         Assert.Equal(_world.LeaseVerdi.Id, hit.Id);
-        // The third tenant was anonymized: it is neither found nor shown. The other org's lease with the same name is not here.
         Assert.Equal("Giulia Verdi, Paolo Verdi", hit.Title);
         Assert.Equal("Loft Navigli", hit.Subtitle);
         Assert.Equal(SearchDestinations.LongRentLease, hit.Destination);
@@ -325,8 +309,6 @@ public class GlobalSearchServiceTests : IAsyncLifetime
         Assert.DoesNotContain("RSSMRA80A01H501Z", json);
         Assert.DoesNotContain("giulia.verdi@example.com", json);
     }
-
-    // ─── Requests and suppliers ─────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task ServiceRequests_ByTheNameOfTheService_ShowThePropertyAndOpenInTheirArea()
@@ -378,7 +360,6 @@ public class GlobalSearchServiceTests : IAsyncLifetime
         Assert.Equal(EmailTemplates.ServiceCategoryLabel(Italian, "plumbing"), plumbers.Subtitle);
         Assert.Equal(SearchDestinations.ShortRentSupplier, plumbers.Destination);
 
-        // Suspended (it was asked something) and idle (it never was): neither is found.
         Assert.DoesNotContain(_world.SuspendedOrgId, Ids(await AsOwnerAsync("idraulica"), "supplier"));
         Assert.Empty(Hits(await AsOwnerAsync("giardini"), "supplier"));
         Assert.Equal(_world.CleanersOrgId, Assert.Single(Hits(await AsOwnerAsync("splendore"), "supplier")).Id);
@@ -392,8 +373,6 @@ public class GlobalSearchServiceTests : IAsyncLifetime
         Assert.Empty(Hits(longOnly, "supplier"));
     }
 
-    // ─── The supplier's inbox ───────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task SupplierRequests_TheInboxOfTheSupplier_ShowsTheComuneOfTheWork()
     {
@@ -403,7 +382,6 @@ public class GlobalSearchServiceTests : IAsyncLifetime
         var hit = Assert.Single(result.Groups[0].Items);
         Assert.Equal(_world.Plumbing.Id, hit.Id);
         Assert.Equal(EmailTemplates.ServiceCategoryLabel(Italian, "plumbing"), hit.Title);
-        // The comune of the property, which is what the supplier sees before it takes the request, not the property's name.
         Assert.Equal("Forlì", hit.Subtitle);
         Assert.Equal(SearchDestinations.SupplierRequest, hit.Destination);
 
@@ -414,11 +392,9 @@ public class GlobalSearchServiceTests : IAsyncLifetime
     [Fact]
     public async Task SupplierRequests_NeverTheRequestsOfAnotherSupplier_NorHostGroupsWithoutAHostAccess()
     {
-        // The cleaners got "Pulizia finale" (twice, from two orgs); the plumbers did not.
         Assert.Empty((await SearchAsync("pulizia", null, _world.PlumbersOrgId)).Groups);
         Assert.Equal(2, Hits(await SearchAsync("pulizia", null, _world.CleanersOrgId), "supplier-request").Count);
 
-        // A supplier-only caller has no host access: the properties and guests of the org the requests come from are not searched.
         Assert.Empty((await SearchAsync("trullo", null, _world.CleanersOrgId)).Groups);
         Assert.Empty((await SearchAsync("rossi", null, _world.CleanersOrgId)).Groups);
     }
@@ -430,8 +406,6 @@ public class GlobalSearchServiceTests : IAsyncLifetime
 
         Assert.Equal(["service-request", "supplier-request"], Types(result));
     }
-
-    // ─── The org boundary and the collaborator ──────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Org_TheOtherOrgFindsItsOwnDataOnly()
@@ -460,7 +434,6 @@ public class GlobalSearchServiceTests : IAsyncLifetime
         var access = _world.Everything(_world.Collaborator);
         var rossi = await SearchAsync("rossi", access);
 
-        // Maria Rossi stayed only at the property it cannot reach: she is not found, nor her stay; Mario stayed at both: only the stay at Trullo.
         Assert.Equal([_world.MarioRossi.Id], Ids(rossi, "guest"));
         Assert.Equal([_world.StayMarioAtTrullo.Id], Ids(rossi, "booking"));
         Assert.Empty(Hits(rossi, "supplier"));
@@ -501,13 +474,10 @@ public class GlobalSearchServiceTests : IAsyncLifetime
         Assert.Equal([_world.Trullo.Id], Ids(await SearchAsync("trullo", access), "property"));
         Assert.Equal([_world.MariaRossi.Id, _world.MarioRossi.Id], Ids(await SearchAsync("rossi", access), "guest"));
 
-        // Created by somebody else: not its property, so not its guests either.
         var other = new HostScope(_world.OrgId, OwnerId: "auth0|un-altro");
         Assert.Empty((await SearchAsync("trullo", _world.Everything(other))).Groups);
         Assert.Empty(Hits(await SearchAsync("rossi", _world.Everything(other)), "guest"));
     }
-
-    // ─── Permissions ────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Permissions_AGroupThatTheCallerMayNotReadIsNotThere_EvenWhenRowsMatch()
@@ -530,8 +500,6 @@ public class GlobalSearchServiceTests : IAsyncLifetime
     {
         Assert.Empty((await SearchAsync("trullo", host: null)).Groups);
     }
-
-    // ─── Limits ─────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Limit_IsPerGroup_AndHasMoreSaysThereIsMore()

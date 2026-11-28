@@ -101,14 +101,11 @@ public sealed partial class ComplianceAlertService(
         return new ComplianceAlertRunResult(Skipped: false, Sent: sent);
     }
 
-    // ─── Periods ───
-
     private async Task<int> SendPeriodAlertsAsync(DateTime now, CancellationToken ct)
     {
         var today = _clock.TodayInRomeAsDateOnly();
         var window = new ComplianceStatusWindow(new DateOnly(today.Year, today.Month, 1).AddMonths(-PeriodLookbackMonths), today);
 
-        // Background run: no tenant context, every org's properties.
         var orgIds = await db.Properties
             .AsNoTracking()
             .Where(PropertyRentalModeRules.IsShortRent)
@@ -143,7 +140,6 @@ public sealed partial class ComplianceAlertService(
         var settings = options.Value;
         var evaluation = await complianceStatus.EvaluateAsync(new HostScope(orgId), window, ct);
 
-        // The periods that still owe a proof: the engine's verdict is not green. Green, or no item at all, is a period settled or owing nothing.
         var open = evaluation.Items
             .Where(i => i.Kind is ComplianceItemKind.Istat or ComplianceItemKind.TouristTax
                         && i.Period is not null
@@ -177,10 +173,6 @@ public sealed partial class ComplianceAlertService(
         return sent;
     }
 
-    /// <summary>
-    /// The "To do" of a period that is settled or owes nothing any more: for every month the engine looked at, the properties it looked at that have no
-    /// open item for it. The "To do" of an item that still needs a person (yellow, red) is never touched here.
-    /// </summary>
     private async Task CloseClearedPeriodTodosAsync(ComplianceStatusResult evaluation, IReadOnlyList<ComplianceStatusItem> open, CancellationToken ct)
     {
         foreach (var period in evaluation.Evaluated.Periods)
@@ -230,16 +222,11 @@ public sealed partial class ComplianceAlertService(
         return rows.ToDictionary(s => (s.PropertyId, s.Type, s.ReferenceKey));
     }
 
-    /// <summary>The first day of the month <c>yyyy-MM</c> of a period alert.</summary>
     private static DateOnly StartOfPeriod(string period) =>
         DateOnly.ParseExact(period + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-    // ─── Connection ───
-
     private async Task<int> SendConnectionAlertsAsync(DateTime now, CancellationToken ct)
     {
-        // The channel manager is a sender only while the connector is on (the rule of the status engine): off, nobody is entrusted and there is
-        // nothing to alert or to clear.
         if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
             return 0;
 
@@ -247,7 +234,6 @@ public sealed partial class ComplianceAlertService(
         var today = _clock.TodayInRome();
         var lastArrival = today.AddDays(Math.Max(0, settings.ConnectionAlertDays));
 
-        // The properties that have an active stay arriving soon (the one definition of «active»: an active status and no no-show mark)...
         var arriving = await db.Bookings
             .AsNoTracking()
             .Where(b => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status)
@@ -258,7 +244,6 @@ public sealed partial class ComplianceAlertService(
             .Distinct()
             .ToListAsync(ct);
 
-        // ...and the ones whose alert is running: they are read too, to see when the connection is active again.
         var running = await db.ComplianceAlertStates
             .AsNoTracking()
             .Where(s => s.Type == ComplianceAlertType.ConnectionInactive && s.Stage > 0)
@@ -278,7 +263,6 @@ public sealed partial class ComplianceAlertService(
             .Where(id => senderOf.TryGetValue(id, out var info) && info.Applies && info.AlloggiatiSender == ComplianceSenderType.ChannelManager)
             .ToList();
 
-        // Nobody sends automatically (any more): there is no incident to follow, whatever was running.
         var cleared = orgOf.Keys.Where(id => senderOf.ContainsKey(id) && !viaChannelManager.Contains(id)).ToList();
 
         var health = viaChannelManager.Count == 0
@@ -291,7 +275,6 @@ public sealed partial class ComplianceAlertService(
         {
             ct.ThrowIfCancellationRequested();
 
-            // Not read this time (over the limit of live reads): a placeholder is no reading, so the property is neither alerted nor cleared.
             if (!health.TryGetValue(propertyId, out var reading)
                 || reading.Alloggiati.Reason == ComplianceConnectionHealthRules.NotCheckedYetReason)
             {
@@ -331,10 +314,6 @@ public sealed partial class ComplianceAlertService(
         return sent;
     }
 
-    /// <summary>
-    /// The connection of these properties is active again (or nobody sends automatically any more): the alerts that were running start again from the
-    /// first stage for the next incident, and the "To do" about the connection is closed.
-    /// </summary>
     private async Task ClearConnectionsAsync(IReadOnlyCollection<Guid> propertyIds, DateTime now, CancellationToken ct)
     {
         if (propertyIds.Count == 0)
@@ -351,7 +330,6 @@ public sealed partial class ComplianceAlertService(
         }
         else
         {
-            // Test providers (EF InMemory) have no conditional UPDATE.
             foreach (var state in await running.ToListAsync(ct))
             {
                 state.Stage = 0;
@@ -370,8 +348,6 @@ public sealed partial class ComplianceAlertService(
             logger.LogError(ex, "The To do about the connection of {Count} properties could not be closed", ids.Count);
         }
     }
-
-    // ─── Delivery ───
 
     private async Task<int> DeliverAsync(Guid orgId, ComplianceAlertStep step, DateTime now, CancellationToken ct)
     {
@@ -402,8 +378,6 @@ public sealed partial class ComplianceAlertService(
         if (!await ClaimAsync(orgId, step, now, ct))
             return 0;
 
-        // Nobody who reaches the property holds the permission: the stage goes on exactly as it does with an audience (it is claimed, the e-mail goes to the address of the organization, the
-        // cockpit lists the day), only nobody is told in the app. Said once, with ids only, so a host who is not alerted can be explained.
         if (required is not null && audience.UserIds.Count == 0)
         {
             logger.LogInformation(
@@ -425,7 +399,6 @@ public sealed partial class ComplianceAlertService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // At most once: the stage stays claimed, the next run does not send it again.
             delivered = false;
             logger.LogError(
                 ex,
@@ -449,14 +422,8 @@ public sealed partial class ComplianceAlertService(
         return delivered ? 1 : 0;
     }
 
-    /// <summary>
-    /// The "To do" of the stage and, for a legal deadline within 24 hours, its popup for the people of <paramref name="audience"/> (read once, before the
-    /// claim). A failure is logged and does not undo the stage.
-    /// </summary>
     private async Task FollowUpAsync(Guid orgId, ComplianceAlertStep step, DateTime now, ComplianceAlertRecipients audience, CancellationToken ct)
     {
-        // A Ticino arrival day has no "To do" and no popup of the router: it is told by the bell, its live update and the e-mail, and listed by the cockpit
-        // in the section of the days to notify (outside the feed of the "To do" on purpose: ComplianceActivityFeeder.NotFedActions).
         if (step.Type is ComplianceAlertType.TicinoNotification or ComplianceAlertType.SwissNotification)
             return;
 
@@ -526,7 +493,6 @@ public sealed partial class ComplianceAlertService(
             .Where(s => s.PropertyId == propertyId && s.Type == step.Type && s.ReferenceKey == step.ReferenceKey && s.Stage < step.Stage);
         if (!db.Database.IsRelational())
         {
-            // Test providers (EF InMemory) have no conditional UPDATE: the same compare-and-set, one request at a time.
             var row = await behind.FirstOrDefaultAsync(ct);
             if (row is null)
                 return false;

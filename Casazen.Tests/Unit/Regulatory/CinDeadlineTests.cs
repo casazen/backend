@@ -115,7 +115,6 @@ public class CinDeadlineTests
     [Fact]
     public void Today_UsesTheRomeCalendarOfTheInjectedClock()
     {
-        // 23:30 UTC of 28 February is 00:30 of 1 March in Rome: the deadline day.
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 2, 28, 23, 30, 0, TimeSpan.Zero));
         var calendar = new CinDeadlineCalendar(Options.Create(new CinOptions { ExposureDeadline = "2026-03-01" }), clock);
 

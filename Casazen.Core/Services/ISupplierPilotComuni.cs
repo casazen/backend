@@ -8,7 +8,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface ISupplierPilotComuni
 {
-    /// <summary>The pilot comuni offered to a supplier registering without an invite.</summary>
     Task<IReadOnlyList<SupplierPilot>> GetAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -17,7 +16,6 @@ public interface ISupplierPilotComuni
     /// </summary>
     Task<SupplierPilot?> FindAsync(string? code, CancellationToken cancellationToken = default);
 
-    /// <summary>True when at least one pilot comune is offered: without one the registration is by invite only.</summary>
     Task<bool> IsSelfServeEnabledAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Configured pilot comuni that cannot be used because they are not in the official list (for the health check).</summary>

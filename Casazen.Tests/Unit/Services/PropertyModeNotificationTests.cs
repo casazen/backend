@@ -28,8 +28,6 @@ public class PropertyModeNotificationTests : IDisposable
 
     public void Dispose() => _h.Dispose();
 
-    // ─── NotificationService ────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Scheduled_ToLong_IsQueuedToTheContactAddressWithTheDateAndALinkToTheShortRentProperty()
     {
@@ -204,8 +202,6 @@ public class PropertyModeNotificationTests : IDisposable
             new PropertyModeNotice(change.Id, (PropertyModeNoticeKind)9)));
     }
 
-    // ─── Templates: Italian and English ─────────────────────────────────────────────────────────────
-
     public static TheoryData<string> Cultures => new() { "it-IT", "en" };
 
     [Theory]
@@ -236,7 +232,6 @@ public class PropertyModeNotificationTests : IDisposable
             Assert.DoesNotMatch(new Regex(@"\{\d+\}"), content.Subject + content.HtmlBody);
         }
 
-        // Five different subjects for the five situations (programmed to either mode, applied to either, failed), not one text.
         Assert.Equal(5, documents.Select(d => d.Subject).Distinct().Count());
     }
 
@@ -280,8 +275,6 @@ public class PropertyModeNotificationTests : IDisposable
         Assert.Equal($"{BaseUrl}/app/short-rent/properties/{id:D}", links.HostProperty(id, RentalMode.Short));
         Assert.Equal($"{BaseUrl}/app/long-rent/properties/{id:D}", links.HostProperty(id, RentalMode.Long));
     }
-
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────
 
     private NotificationService NewNotifier(IEmailQueue? queue = null, PublicSiteLinks? links = null) =>
         new(

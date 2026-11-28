@@ -1,7 +1,4 @@
-using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
-using Casazen.Core.OrgTeam;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Web.Authorization;
@@ -13,7 +10,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>Admin endpoints for ConcordatoFacile gift management.</summary>
 [ApiController]
 [Route("api/admin/orgs/{orgId}/concordatofacile")]
 [Authorize(Policy = CasazenPolicies.AdminOnly)]
@@ -36,7 +32,6 @@ public class AdminConcordatoFacileController(
         if (userId is null)
             return Unauthorized();
 
-        // Check if org exists
         if (!await db.Orgs.AnyAsync(o => o.Id == orgId))
             return NotFound();
 

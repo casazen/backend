@@ -25,9 +25,6 @@ public sealed record HostSupplierService(
     bool RequiresQuote,
     int? EstimatedAmountCents);
 
-/// <summary>The free slots of a service of a supplier, for the days from <see cref="From"/> to <see cref="To"/> (Europe/Rome, both included).</summary>
-/// <param name="From">First day of the window; <c>null</c> when the first day asked for is past the supplier's horizon (no day at all).</param>
-/// <param name="To">Last day of the window.</param>
 public sealed record HostSupplierSlots(
     Guid ServiceId,
     int? DurationMinutes,
@@ -35,10 +32,8 @@ public sealed record HostSupplierSlots(
     DateOnly? To,
     IReadOnlyList<SupplierSlot> Slots);
 
-/// <summary>Limits of the host's read of a supplier's slots.</summary>
 public static class HostSupplierSlotLimits
 {
-    /// <summary>The days a read covers (the window is cut at the supplier's horizon, as the public page's is).</summary>
     public const int Days = 14;
 }
 
@@ -57,10 +52,6 @@ public static class HostSupplierSlotLimits
 /// </remarks>
 public interface IHostSupplierCatalogService
 {
-    /// <summary>
-    /// The <c>Active</c> services of the supplier in the catalog order, narrowed to <paramref name="category"/> (a category code) when
-    /// given.
-    /// </summary>
     Task<IReadOnlyList<HostSupplierService>> ListServicesAsync(
         Guid hostOrgId,
         Guid propertyId,
@@ -68,10 +59,6 @@ public interface IHostSupplierCatalogService
         string? category,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The free slots of one service from <paramref name="date"/> (never before today; today when missing) for
-    /// <see cref="HostSupplierSlotLimits.Days"/> days at most, cut at the supplier's horizon.
-    /// </summary>
     Task<HostSupplierSlots> GetSlotsAsync(
         Guid hostOrgId,
         Guid propertyId,

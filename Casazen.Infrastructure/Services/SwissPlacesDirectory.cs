@@ -6,7 +6,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc cref="ISwissPlacesDirectory" />
 public class SwissPlacesDirectory(AppDbContext db) : ISwissPlacesDirectory
 {
     public async Task<IReadOnlyList<SwissLocalityMatch>> SearchLocalitiesAsync(string? query, int limit, CancellationToken cancellationToken = default)
@@ -20,7 +19,6 @@ public class SwissPlacesDirectory(AppDbContext db) : ISwissPlacesDirectory
                      join municipality in db.SwissMunicipalities.AsNoTracking() on locality.MunicipalityCode equals municipality.MunicipalityCode
                      select new { locality, municipality };
 
-        // A postal code, or its first digits: «69» lists the postal codes of the Lugano area, «6900» Lugano, Massagno and Paradiso.
         var digits = PostalCodePrefix(text);
         if (digits is not null)
         {
@@ -40,7 +38,6 @@ public class SwissPlacesDirectory(AppDbContext db) : ISwissPlacesDirectory
         if (text.All(char.IsAsciiDigit))
             return [];
 
-        // A name: the exact name first, then the names that start with the query, then the ones that contain it.
         var name = SwissLocality.NormalizeName(text);
         if (name.Length < ISwissPlacesDirectory.MinNameLength)
             return [];
@@ -68,7 +65,6 @@ public class SwissPlacesDirectory(AppDbContext db) : ISwissPlacesDirectory
             .Select(m => new SwissMunicipalityInfo(m.MunicipalityCode, m.OfficialName, m.CantonCode))
             .FirstOrDefaultAsync(cancellationToken);
 
-        // A number «unknown» to a directory that is not loaded is not unknown: the directory cannot answer.
         if (municipality is null && !await db.SwissMunicipalities.AsNoTracking().AnyAsync(cancellationToken))
             throw Unavailable();
 
@@ -93,7 +89,6 @@ public class SwissPlacesDirectory(AppDbContext db) : ISwissPlacesDirectory
 
     private static DomainRuleException Unavailable() => new(SwissPlaceErrorCodes.Unavailable, SwissPlaceErrorCodes.UnavailableMessageKey);
 
-    /// <summary>One to four digits, after an optional <c>CH-</c> prefix and spaces: the start of a postal code; <c>null</c> for anything else.</summary>
     private static string? PostalCodePrefix(string text)
     {
         var compact = string.Concat(text.Where(c => !char.IsWhiteSpace(c))).ToUpperInvariant();

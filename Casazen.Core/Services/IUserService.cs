@@ -1,12 +1,10 @@
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
 public interface IUserService
 {
     Task<User?> GetUserAsync(string id);
-    Task<User?> GetUserByEmailAsync(string email);
     Task<User> UpdateUserAsync(User user);
 
     /// <summary>
@@ -61,18 +59,11 @@ public interface IUserService
     Task<Auth0SyncResult> DeleteOwnGuestAccountAsync(string userId, CancellationToken cancellationToken = default);
     Task<bool> ValidateCredentialsAsync(string email, string password);
 
-    /// <summary>
-    /// Upsert: returns existing User by sub, or creates a new one from JWT claims.
-    /// </summary>
     Task<User> GetCurrentUserAsync(string sub, string email, string firstName, string lastName);
 
     Task<(IEnumerable<User> Users, int TotalCount)> GetPagedAsync(
         string? search, string? role, bool? isActive, int page, int pageSize);
 
-    /// <summary>
-    /// Backfills missing email/name from Auth0 Management API for admin user listings. The Auth0 profiles of the
-    /// page are fetched with bounded parallelism (not one call after the other, A1-26); the DB writes stay sequential.
-    /// </summary>
     Task EnrichUsersFromAuth0Async(IList<User> users);
 
     /// <summary>
@@ -128,12 +119,6 @@ public interface IUserService
         string firstName,
         string lastName);
 
-    /// <summary>
-    /// Remembers the context the user entered last (<see cref="User.LastUsedContextKey"/>, UI-13a): <c>GET /api/me/contexts</c>
-    /// gives it back so the client opens the same area on any device. Only that column and <see cref="User.UpdatedAt"/> are written.
-    /// The caller has already checked that the user may enter <paramref name="contextKey"/>; it is stored as given.
-    /// </summary>
-    /// <exception cref="Casazen.Core.Exceptions.NotFoundException">The user does not exist.</exception>
     Task<User> SetLastUsedContextAsync(string userId, string contextKey, CancellationToken cancellationToken = default);
 }
 
@@ -148,51 +133,30 @@ public sealed record UserActivationResult(
     Auth0SyncResult Auth0Sync,
     IReadOnlyList<UserRole> RestoredRoles);
 
-/// <summary>Stable codes (HTTP 422) of the refused deactivations and role changes (PL-03).</summary>
 public static class UserActivationErrors
 {
-    /// <summary>An admin cannot deactivate the account they are using.</summary>
     public const string CannotDeactivateSelf = "cannot_deactivate_self";
 
-    /// <summary>The user is the last active platform admin (<see cref="UserRole.Admin"/> in the DB).</summary>
     public const string LastActiveAdmin = "last_active_admin";
 
-    /// <summary>The user is deactivated: its roles are suspended until the reactivation.</summary>
     public const string UserInactive = "user_inactive";
 
-    /// <summary>An admin cannot delete the account they are using.</summary>
     public const string CannotDeleteSelf = "cannot_delete_self";
 
-    /// <summary>Deleting this account would leave no active platform administrator.</summary>
     public const string CannotDeleteLastAdmin = "cannot_delete_last_admin";
 
-    /// <summary>Related rows refuse the delete (the account stays).</summary>
     public const string DeleteBlocked = "user_delete_blocked";
 }
 
-/// <summary>Stable code (HTTP 422) of the refused <c>PUT /api/me/last-context</c> (UI-13a), with the key of its message in the resources.</summary>
 public static class LastContextErrors
 {
-    /// <summary>The context does not exist, or the caller cannot enter it right now (<c>GET /api/me/contexts</c> does not list it).</summary>
     public const string ContextNotAccessible = "context_not_accessible";
 
-    /// <summary>SharedResources key of the message of <see cref="ContextNotAccessible"/>.</summary>
     public const string ContextNotAccessibleMessageKey = "ContextNotAccessible";
 }
 
-/// <summary>
-/// Roles an admin can grant or revoke individually with <see cref="IUserService.UpdateRolesAsync"/> (A1-17): only
-/// the roles mapped to a real app context (<c>ContextAccessBootstrap</c>). <see cref="UserRole.Guest"/>,
-/// <see cref="UserRole.Staff"/> and <see cref="UserRole.PropertyManager"/> have none and are left out — assigning
-/// them made no sense in the old single-role dialog either.
-/// </summary>
 public static class AdminManageableRoles
 {
-    /// <summary>
-    /// In priority order: after an update, the primary <see cref="User.Role"/> is the first of these still present
-    /// in the new role set, or <see cref="UserRole.None"/> when none is (mirrors the onboarding's own
-    /// <c>roles[0]</c> convention, generalized to admin-managed roles).
-    /// </summary>
     public static readonly IReadOnlyList<UserRole> All =
     [
         UserRole.Admin,

@@ -7,7 +7,6 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum InvoiceStatus
 {
-    /// <summary>Invoice draft, not yet ready for issuance.</summary>
     Draft,
 
     /// <summary>
@@ -16,6 +15,5 @@ public enum InvoiceStatus
     /// </summary>
     ToBeIssuedManually,
 
-    /// <summary>Invoice has been issued and transmitted to SDI (future: automatic transmission).</summary>
     Issued
 }

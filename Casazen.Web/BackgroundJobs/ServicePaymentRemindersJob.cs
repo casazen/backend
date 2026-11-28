@@ -19,7 +19,6 @@ public class ServicePaymentRemindersJob(ISupplierPaymentJobService payments, ILo
 {
     public const string RecurringJobId = "service-payment-reminders";
 
-    /// <summary>Every day at 07:30 UTC.</summary>
     public const string Cron = "30 7 * * *";
 
     [AutomaticRetry(Attempts = 3)]

@@ -20,17 +20,10 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IGuestRegistrationRegimeResolver
 {
-    /// <summary>The regime of the property <paramref name="propertyId"/> of the caller's org.</summary>
-    /// <exception cref="Exceptions.NotFoundException"><c>property_not_found</c>: no such property in the org.</exception>
     Task<GuestRegistrationResolution> ResolveAsync(Guid propertyId, CancellationToken cancellationToken = default);
 
-    /// <summary>The regime of a property already read (the property must come from the caller's org).</summary>
     Task<GuestRegistrationResolution> ResolveAsync(Property property, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The regimes of many properties already read, with at most two queries whatever their number (a list, a job: E31/F02/US01/T01): the answer has one entry for each property, keyed by
-    /// its id, and each entry is exactly what <see cref="ResolveAsync(Property, CancellationToken)"/> says of the property alone. An empty list is an empty answer.
-    /// </summary>
     Task<IReadOnlyDictionary<Guid, GuestRegistrationResolution>> ResolveManyAsync(
         IReadOnlyCollection<Property> properties,
         CancellationToken cancellationToken = default);
@@ -51,22 +44,11 @@ public sealed record GuestRegistrationResolution(
     GuestRegistrationEffectiveDuty EffectiveDuty,
     IReadOnlyList<string> IdentifierMissing);
 
-/// <summary>
-/// The host's setting about notifying the guests of a Swiss property (E29/F02/US01/T01): the one writer of <c>Properties.GuestNotificationOverride</c>.
-/// </summary>
 public interface IGuestNotificationOverrideService
 {
-    /// <summary>
-    /// Saves the setting of a property of the caller's org; <c>null</c> follows the regime again. Saving the value the property already has changes nothing.
-    /// </summary>
-    /// <exception cref="Exceptions.NotFoundException"><c>property_not_found</c>.</exception>
-    /// <exception cref="Exceptions.DomainRuleException">
-    /// 422 <see cref="GuestRegistrationErrorCodes.OverrideNotApplicable"/>: the property is not in Switzerland (the Italian duty is not the host's to waive).
-    /// </exception>
     Task SetAsync(Guid propertyId, GuestNotificationOverride? value, string userId, CancellationToken cancellationToken = default);
 }
 
-/// <summary>The codes and message keys of the registration of the guests of a property.</summary>
 public static class GuestRegistrationErrorCodes
 {
     /// <summary>422: the setting is for a property in Switzerland; an Italian one follows Alloggiati Web and nothing the host says changes that.</summary>
@@ -74,11 +56,9 @@ public static class GuestRegistrationErrorCodes
 
     public const string OverrideNotApplicableMessageKey = "GuestRegistrationOverrideNotApplicable";
 
-    /// <summary>422: the catalog has no regime for the country of the property (neither Italy nor Switzerland).</summary>
     public const string CountryNotSupported = "guest_registration_country_not_supported";
 
     public const string CountryNotSupportedMessageKey = "GuestRegistrationCountryNotSupported";
 
-    /// <summary>400: the body of the setting does not carry <c>override</c> (a missing member is never read as «follow the regime»; say <c>null</c>).</summary>
     public const string OverrideRequiredMessageKey = "GuestRegistrationOverrideRequired";
 }

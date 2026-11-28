@@ -18,10 +18,6 @@ public sealed record FiscalDocumentDto
     public string Source { get; init; } = string.Empty;
     public string Kind { get; init; } = string.Empty;
 
-    /// <summary>
-    /// What the document is for: <c>GuestStay</c>, <c>OwnerInvoice</c> or <c>SelfBilling</c>. A self-billed invoice (TD17) keeps the foreign supplier in the recipient fields and the
-    /// holder that issues it is the issuer (see <c>api/fiscal/self-billing</c>), so a reader that takes the recipient for a customer has to tell it by this field.
-    /// </summary>
     public string Purpose { get; init; } = string.Empty;
     public string Status { get; init; } = string.Empty;
     public string? Series { get; init; }
@@ -49,10 +45,6 @@ public sealed record FiscalDocumentDto
     public string? VatNatureCode { get; init; }
     public string PaymentState { get; init; } = string.Empty;
 
-    /// <summary>
-    /// Who collected the money of the document (<c>FiscalPaymentChannel</c>, by name): <c>Unknown</c> until it is known, <c>CasaZen</c> (the guest paid in CasaZen), <c>Portal</c> (the
-    /// portal collected the stay and pays it out) or <c>Outside</c> (the agency collected it outside CasaZen).
-    /// </summary>
     public string PaymentChannel { get; init; } = string.Empty;
 
     /// <summary>
@@ -63,10 +55,6 @@ public sealed record FiscalDocumentDto
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public decimal? AmountPaidViaPortal { get; init; }
 
-    /// <summary>
-    /// The tourist tax the portal did not collect and the collection of the stay (E25) does not record as collected, to collect at the property (<c>12.00</c> in the example of <see cref="AmountPaidViaPortal"/>; <c>7.00</c> when 5.00 were paid online): the line of the tourist tax of the document
-    /// (<see cref="FiscalDocumentLineDto.ToCollectAtProperty"/>). <c>null</c>, and left out of the answer, when <see cref="AmountPaidViaPortal"/> is.
-    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public decimal? AmountToCollectAtProperty { get; init; }
 
@@ -81,19 +69,10 @@ public sealed record FiscalDocumentDto
     public DateTime UpdatedAt { get; init; }
     public IReadOnlyList<FiscalDocumentLineDto> Lines { get; init; } = [];
 
-    /// <summary>
-    /// The issuer as the document keeps it (the snapshot written at the issue), in the answer for one document only. <c>null</c> for a draft, for a document issued before the snapshot existed (its PDF
-    /// names the issuer from the profile of today) and in the rows of the list.
-    /// </summary>
     public FiscalDocumentIssuerDto? Issuer { get; init; }
 
-    /// <summary>The document as the answer for one document gives it: its lines and the issuer of its snapshot.</summary>
     public static FiscalDocumentDto From(FiscalDocument document) => Build(document, withIssuer: true);
 
-    /// <summary>
-    /// A document as a row of the list: the same members without the issuer (the list does not show it, and an issuer's address and tax ids leave the API one document at a time, to a caller who
-    /// reaches that document).
-    /// </summary>
     public static FiscalDocumentDto ForList(FiscalDocument document) => Build(document, withIssuer: false);
 
     private static FiscalDocumentDto Build(FiscalDocument document, bool withIssuer) =>
@@ -188,7 +167,6 @@ public sealed record FiscalDocumentIssuerDto(
     string? FiscalCode,
     string? SwissVatNumber)
 {
-    /// <summary>The issuer of a stored snapshot; <c>null</c> when there is none or it cannot be read: nothing is looked up and nothing is made up.</summary>
     public static FiscalDocumentIssuerDto? From(string? snapshotJson)
     {
         var snapshot = FiscalIssuerSnapshot.FromJson(snapshotJson);
@@ -210,16 +188,13 @@ public sealed record FiscalDocumentIssuerDto(
     }
 }
 
-/// <summary>A page of the list of the documents.</summary>
 public sealed record FiscalDocumentPageDto(IReadOnlyList<FiscalDocumentDto> Items, int TotalCount, int Page, int PageSize);
 
-/// <summary><c>POST api/fiscal/documents</c>: the draft of a booking.</summary>
 public sealed record CreateFiscalDocumentRequest
 {
     public Guid BookingId { get; init; }
 }
 
-/// <summary><c>POST api/fiscal/documents/{id}/issue</c>: the host confirms the issue.</summary>
 public sealed record IssueFiscalDocumentRequest
 {
     public bool Confirm { get; init; }
@@ -241,13 +216,8 @@ public sealed record IssueFiscalDocumentsBatchRequest
     public IReadOnlyList<Guid>? PropertyIds { get; init; }
 }
 
-/// <summary>One document of a bulk issue: issued with its number, or not with the stable code of why (<c>errorCode</c>).</summary>
 public sealed record FiscalDocumentBatchRowDto(Guid Id, bool Issued, string? Number, string? ErrorCode);
 
-/// <summary>
-/// The answer of a bulk issue: one row per document, how many were issued and how many were not (never «all issued» while one failed), and how many more drafts the selection
-/// matched beyond the 200 of the request.
-/// </summary>
 public sealed record FiscalDocumentBatchResultDto(IReadOnlyList<FiscalDocumentBatchRowDto> Rows, int Issued, int Failed, int Remaining)
 {
     public static FiscalDocumentBatchResultDto From(Casazen.Core.Services.FiscalDocumentBatchResult result)
@@ -261,10 +231,6 @@ public sealed record FiscalDocumentBatchResultDto(IReadOnlyList<FiscalDocumentBa
     }
 }
 
-/// <summary>
-/// One document of a booking as its card shows it (<c>GET api/bookings/{id}/fiscal-documents</c>, E12/F01/US01/T02): number, kind, status, total, currency and payment state
-/// (the current one), with the day of the issue and, for a credit note, the document it credits. No recipient and no line.
-/// </summary>
 public sealed record BookingFiscalDocumentDto(
     Guid Id,
     string Kind,
@@ -292,7 +258,6 @@ public sealed record BookingFiscalDocumentDto(
     }
 }
 
-/// <summary><c>POST api/fiscal/documents/{id}/credit-note</c>: the amount (the whole document when left out), the reason and the confirmation.</summary>
 public sealed record CreateCreditNoteRequest
 {
     public decimal? Amount { get; init; }

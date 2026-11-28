@@ -6,17 +6,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Regulatory;
 
-/// <summary>
-/// E29/F02/US01/T01 (NF-125, decisions D3, D5, D6, D12): the catalog of the regimes of the registration of the guests, Italy and the 26 cantons. It is
-/// data copied from the research of 20 November 2026, so the tests are about its shape and its promises: every canton of the municipality data is there
-/// with an obligation, a channel, a certainty, a date and a source; Ticino is the one regime verified as a duty to report; Appenzell Innerrhoden is a
-/// faculty; Italy is the existing flows; no entry is more certain than its facts; no sentence is missing in a language or names a supplier.
-/// </summary>
 public class GuestRegistrationRegimeCatalogTests
 {
     private static readonly DateOnly ResearchDay = new(2026, 11, 20);
 
-    /// <summary>Names of software suppliers and of the systems they run for the cantons: none may reach a user (the authorities and their portals may).</summary>
     private static readonly Regex[] SupplierNames =
     [
         new(@"hoko", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),
@@ -50,10 +43,6 @@ public class GuestRegistrationRegimeCatalogTests
         }
     }
 
-    /// <summary>
-    /// Acceptance criterion 1 of the catalog: the 26 cantons of the municipality data are the 26 of the catalog, none missing and none more (a canton
-    /// the data has and the catalog has not would be the unknown Swiss place for every property in it).
-    /// </summary>
     [Fact]
     public void Catalog_EveryCantonOfTheMunicipalityData_IsInTheCatalog_Test()
     {
@@ -98,7 +87,6 @@ public class GuestRegistrationRegimeCatalogTests
     {
         var all = GuestRegistrationRegimeCatalog.All;
 
-        // Italy, the 26 cantons by code, the unknown Swiss place: 28 entries.
         Assert.Equal(28, all.Count);
         Assert.Equal(all.Count, all.Select(r => r.Code).Distinct(StringComparer.OrdinalIgnoreCase).Count());
         Assert.Equal(GuestRegistrationRegimeCatalog.ItalyCode, all[0].Code);
@@ -115,7 +103,6 @@ public class GuestRegistrationRegimeCatalogTests
         Assert.Equal(("CH", (string?)null), (all[^1].CountryCode, all[^1].CantonCode));
     }
 
-    /// <summary>Proof (data): Ticino is the one regime that raises a legal deadline by default, with the data the research verified.</summary>
     [Fact]
     public void Catalog_Ticino_IsReportToAuthorityVerified_Test()
     {
@@ -160,10 +147,6 @@ public class GuestRegistrationRegimeCatalogTests
         Assert.Same(italy, GuestRegistrationRegimeCatalog.Find("it"));
     }
 
-    /// <summary>
-    /// «Uncertain entries say so»: a regime is verified only when the research gives none of its facts as partial, which for a regime means that it
-    /// says outright whether it covers private rentals; the Swiss place nobody knows is the one entry that is not verified at all.
-    /// </summary>
     [Fact]
     public void Catalog_NoEntryIsMoreCertainThanItsFacts_Test()
     {
@@ -185,13 +168,11 @@ public class GuestRegistrationRegimeCatalogTests
             [GuestRegistrationRegimeCatalog.UnknownSwissCode],
             GuestRegistrationRegimeCatalog.All.Where(r => r.Certainty == GuestRegistrationCertainty.Unverified).Select(r => r.Code));
 
-        // The verified ones are the ones the research read on the authority's own source: Italy, Ticino, Schaffhausen, Zug, Vaud, Appenzell Innerrhoden.
         Assert.Equal(
             ["CH-AI", "CH-SH", "CH-TI", "CH-VD", "CH-ZG", "IT"],
             GuestRegistrationRegimeCatalog.All.Where(r => r.Certainty == GuestRegistrationCertainty.Verified).Select(r => r.Code).Order(StringComparer.Ordinal));
     }
 
-    /// <summary>What CasaZen does follows what the law asks: assisted notification only where the canton wants a transmission, the register where it wants a register.</summary>
     [Fact]
     public void Catalog_Support_FollowsTheObligation()
     {
@@ -208,7 +189,6 @@ public class GuestRegistrationRegimeCatalogTests
         Assert.Equal(GuestRegistrationSupport.InformationOnly, GuestRegistrationRegimeCatalog.UnknownSwissPlace.CasaZenSupport);
         Assert.Equal(GuestRegistrationObligation.Unknown, GuestRegistrationRegimeCatalog.UnknownSwissPlace.Obligation);
 
-        // The cantons the research gives with a vendor interface, a portal or an e-mail file (SH, ZH, BS, SG, TG, FR, NE, GE) say which, as the research says it.
         Assert.Equal(
             (GuestRegistrationChannel.PortalForm, GuestRegistrationChannel.VendorInterface, GuestRegistrationChannel.PortalForm, GuestRegistrationChannel.EmailFile),
             (
@@ -218,7 +198,6 @@ public class GuestRegistrationRegimeCatalogTests
                 GuestRegistrationRegimeCatalog.ForCanton("TG").Channel));
     }
 
-    /// <summary>Decision D6: no image of an identity document is kept for a Swiss regime, whatever the canton asks of the host.</summary>
     [Fact]
     public void Catalog_EverySwissRegime_KeepsNoDocumentImage_Test()
     {
@@ -237,7 +216,6 @@ public class GuestRegistrationRegimeCatalogTests
         Assert.Null(GuestRegistrationRegimeCatalog.Find(null));
     }
 
-    /// <summary>Every sentence a regime points at exists in Italian and in English, and the two differ (a key that falls back to its own name, or to the other language, is a hole).</summary>
     [Fact]
     public void EverySentence_ExistsInItalianAndEnglish_AndTheTwoDiffer()
     {
@@ -257,7 +235,6 @@ public class GuestRegistrationRegimeCatalogTests
             Assert.NotEqual(it, en);
         }
 
-        // The notes of the deadline that a regime has of its own are the ones its code names, and no other note stands unused.
         var own = GuestRegistrationRegimeCatalog.All.Where(r => r.DeadlineNoteKey is not null).Select(r => r.DeadlineNoteKey!).ToHashSet();
         var shared = new[] { GuestRegistrationRegimeCatalog.DeadlineNotVerifiedKey, GuestRegistrationRegimeCatalog.DeadlineNoSubmissionKey };
         foreach (var key in italian.Keys.Where(k => k.StartsWith("GuestRegime_", StringComparison.Ordinal) && k.EndsWith("_Deadline", StringComparison.Ordinal)))
@@ -267,12 +244,6 @@ public class GuestRegistrationRegimeCatalogTests
             Assert.Equal(GuestRegistrationRegimeCatalog.DeadlineKeyOf(regime.Code), regime.DeadlineNoteKey);
     }
 
-    /// <summary>
-    /// «Uncertain says so» (D5), as the review of the slice asked: what the research leaves open is written as open. The register of Vaud is for the authority (the page names no
-    /// police) and the recipient of the one of Aargau is not verified, so each has a note of its own; St. Gallen does not say whether it covers private rentals; the years the
-    /// research gives for Thurgau and Zurich (and the maximum of Uri) are how long a police system keeps the data, not the host's retention; Obwalden and Jura claim no more than
-    /// the sources do.
-    /// </summary>
     [Fact]
     public void Catalog_WhatTheResearchLeavesOpen_IsWrittenAsOpen_Test()
     {
@@ -295,7 +266,6 @@ public class GuestRegistrationRegimeCatalogTests
         Assert.Contains("who receives it", english["GuestRegime_CH_JU_Summary"], StringComparison.Ordinal);
     }
 
-    /// <summary>The authorities and their portals may be named; the suppliers of software and the systems they run for the cantons may not (no supplier name in a user-facing text).</summary>
     [Fact]
     public void NoTextOfTheUser_NamesASupplier_Test()
     {

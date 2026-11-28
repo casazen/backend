@@ -21,10 +21,6 @@ public class BiometricVerificationService(
     IFaceEmbedder? faceEmbedder = null,
     IOptions<BiometricModelOptions>? options = null) : IBiometricVerificationService
 {
-    /// <summary>
-    /// Verifies a selfie against the document photo with in-memory processing only (ADR-013-R2): the pictures are decoded, the faces found and
-    /// compared, and every picture, crop and vector is zeroed in the finally block, on success, failure and timeout.
-    /// </summary>
     public async Task<BiometricVerificationResult> VerifyAsync(
         Stream selfieStream,
         Stream documentPhotoStream,
@@ -62,7 +58,6 @@ public class BiometricVerificationService(
             timeout.CancelAfter(settings.VerificationTimeoutMs);
             var token = timeout.Token;
 
-            // Step 1: the two pictures into memory (they are zeroed in the finally block).
             selfieBytes = await ImageBytes.ReadAllAsync(selfieStream, settings.MaxImageBytes, token);
             documentBytes = await ImageBytes.ReadAllAsync(documentPhotoStream, settings.MaxImageBytes, token);
             try
@@ -77,7 +72,6 @@ public class BiometricVerificationService(
 
             ImageBytes.Zero(documentBytes);
 
-            // Step 2: YuNet on both pictures. No face in either one is a Reject; the selfie must hold one face, large enough.
             var selfieFaces = faceDetector.Detect(selfie, settings.DetectionScoreThreshold, token);
             var portrait = DocumentPortrait.Find(faceDetector, document, settings, token, out rotatedDocument);
             result.FaceInSelfie = selfieFaces.Count > 0;
@@ -92,7 +86,6 @@ public class BiometricVerificationService(
             if (selfieFaces[0].AreaRatio < settings.MinFaceAreaRatio)
                 return Finish(result, BiometricOutcome.Reject, BiometricReasonCodes.FaceTooSmall, started);
 
-            // Step 3: anti-spoofing on the selfie (AC-NF11-6): the model runs, a score under the threshold is not live.
             LivenessResult liveness;
             using (var selfieCopy = new MemoryStream(selfieBytes, writable: false))
                 liveness = await antiSpoofingService.ScoreLivenessAsync(selfieCopy, token);
@@ -103,12 +96,10 @@ public class BiometricVerificationService(
             if (!liveness.IsLive)
                 return Finish(result, BiometricOutcome.Reject, BiometricReasonCodes.NotLive, started);
 
-            // Step 4: crop, align, normalise, embed both faces and compare them. The document photo is the largest face of its picture.
             selfieVector = faceEmbedder.Embed(selfie, selfieFaces[0], token);
             documentVector = faceEmbedder.Embed(rotatedDocument ?? document, portrait, token);
             result.Similarity = Math.Clamp(EmbeddingMath.CosineSimilarity(selfieVector, documentVector), 0.0, 1.0);
 
-            // Step 5: the outcome of the thresholds (ADR-013-R4).
             return Finish(result, MapOutcome(result.Similarity, acceptThreshold, escalateThreshold), null, started);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -127,14 +118,11 @@ public class BiometricVerificationService(
         }
         catch (Exception ex)
         {
-            // On error, escalate to operator (safe default). The type only: a message could carry what was being read.
             logger.LogError("Biometric verification failed ({ErrorType}); it goes to the operator", ex.GetType().Name);
             return Finish(result, BiometricOutcome.Escalate, BiometricReasonCodes.Error, started);
         }
         finally
         {
-            // ADR-013-R2: Immediate deletion guarantee
-            // Delete all image data (selfie, document photo, crops, embeddings) before returning, on success, failure and timeout.
             ImageBytes.Zero(selfieBytes);
             ImageBytes.Zero(documentBytes);
             ImageBytes.Zero(selfieVector);
@@ -145,9 +133,6 @@ public class BiometricVerificationService(
         }
     }
 
-    /// <summary>
-    /// ADR-013-R4: Accept at or above the accept threshold, Reject at or under the escalate threshold, Escalate between the two.
-    /// </summary>
     internal static BiometricOutcome MapOutcome(double similarity, double acceptThreshold, double escalateThreshold) =>
         similarity >= acceptThreshold
             ? BiometricOutcome.Accept

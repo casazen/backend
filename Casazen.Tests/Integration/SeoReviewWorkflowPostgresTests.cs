@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -40,7 +39,6 @@ public class SeoReviewWorkflowPostgresTests : IClassFixture<SeoReviewWorkflowFac
     {
         _factory.Ai.Respond = _ => ValidText("Bellagio e Menaggio");
 
-        // The bootstrap job, and a job queued before SE-01 that still asks for the automatic approval.
         await RunJobAsync(job => job.ExecuteAsync(["013145"]));
         await RunJobAsync(job => job.ExecuteAsync(["013250"], autoApproveCounsel: true));
 
@@ -78,7 +76,6 @@ public class SeoReviewWorkflowPostgresTests : IClassFixture<SeoReviewWorkflowFac
         var (pageId, firstRevision) = await PageAndLatestRevisionAsync(admin, "097084");
         await ApproveAsync(admin, pageId, firstRevision, HttpStatusCode.OK);
 
-        // Monthly refresh or "Genera" with force: a new text nobody has read yet.
         _factory.Ai.Respond = _ => ValidText("Varenna seconda versione");
         await RunJobAsync(job => job.ExecuteAsync(["097084"], [SeoPageType.ComplianceGuide], true));
 
@@ -102,7 +99,6 @@ public class SeoReviewWorkflowPostgresTests : IClassFixture<SeoReviewWorkflowFac
             Assert.Contains("Varenna seconda versione", detail.RootElement.GetProperty("pendingRevision").GetProperty("bodyHtml").GetString());
         }
 
-        // The admin who opened the old text cannot approve it over the new one.
         var outdated = await ApproveAsync(admin, pageId, firstRevision, HttpStatusCode.Conflict);
         Assert.Equal(SeoReviewErrorCodes.RevisionOutdated, outdated.GetProperty("code").GetString());
 
@@ -119,7 +115,6 @@ public class SeoReviewWorkflowPostgresTests : IClassFixture<SeoReviewWorkflowFac
         var admin = AdminClient();
         var (pageId, revisionId) = await PageAndLatestRevisionAsync(admin, "048017");
 
-        // One of the first 100 pages: no approval without the explicit legal review confirmation.
         var counsel = await ApproveAsync(admin, pageId, revisionId, HttpStatusCode.UnprocessableEntity, counselApproved: false);
         Assert.Equal(SeoReviewErrorCodes.CounselRequired, counsel.GetProperty("code").GetString());
         await ApproveAsync(admin, pageId, Guid.NewGuid(), HttpStatusCode.NotFound);
@@ -292,7 +287,6 @@ public class SeoReviewWorkflowPostgresTests : IClassFixture<SeoReviewWorkflowFac
         return XDocument.Parse(xml).Descendants(ns + "loc").Select(loc => loc.Value).ToList();
     }
 
-    /// <summary>An answer that passes the output checks: sections, paragraphs, enough text.</summary>
     private static AiGenerationResult ValidText(string marker)
     {
         var body = new StringBuilder();
@@ -304,7 +298,6 @@ public class SeoReviewWorkflowPostgresTests : IClassFixture<SeoReviewWorkflowFac
     }
 }
 
-/// <summary>The integration factory with a controllable AI provider (SE-01 tests).</summary>
 public sealed class SeoReviewWorkflowFactory : CasazenWebApplicationFactory
 {
     public ControllableAiProvider Ai { get; } = new();
@@ -323,7 +316,6 @@ public sealed class SeoReviewWorkflowFactory : CasazenWebApplicationFactory
     }
 }
 
-/// <summary>AI provider whose answer each test sets (the tests of a class run one after the other).</summary>
 public sealed class ControllableAiProvider : IAiProvider
 {
     public Func<string, AiGenerationResult> Respond

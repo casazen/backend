@@ -36,7 +36,6 @@ public class OwnerPortalNpgsqlTranslationTests
 
     private const RegexOptions Compiled = RegexOptions.Compiled | RegexOptions.CultureInvariant;
 
-    // The statements that need a row to let the code go on (the first of a call, whose answer the next statements are built from).
     private static readonly Regex DelegationSelect =
         new(@"^SELECT\s+\w+\.""Id"",\s*\w+\.""OrgId"",\s*\w+\.""PropertyOwnerId"",\s*\w+\.""Permissions""\s+FROM ""OwnerPortalContacts""", Compiled);
 
@@ -46,7 +45,6 @@ public class OwnerPortalNpgsqlTranslationTests
 
     private static readonly Regex LapsingVersionSelect = new(@"^SELECT\s+\w+\.""Id"",\s*\w+\.""OwnerDocumentId"",\s*\w+\.""ExpiresOn""\s+FROM ""OwnerDocumentVersions""", Compiled);
 
-    /// <summary>What the caller of the portal reaches: its own property, every permission.</summary>
     private static OwnerPortalAccess Access() =>
         new(OwnerUserId, [new OwnerPortalGrant(OrgId, OwnerId, PropertyId, Clock.GetUtcNow().UtcDateTime.AddYears(-1), null, OwnerPortalPermissions.Everything, null)]);
 
@@ -81,7 +79,6 @@ public class OwnerPortalNpgsqlTranslationTests
     private static OwnerAccountingService Accounting(AppDbContext db) =>
         new(db, Mock.Of<IOwnerFiscalProfileService>(), Clock, NullLogger<OwnerAccountingService>.Instance);
 
-    /// <summary>A table of one row: the columns are read by their position, in the order of the SELECT of the statement.</summary>
     private static DataTable Table(params (string Name, Type Type, object Value)[] columns)
     {
         var table = new DataTable();
@@ -92,7 +89,6 @@ public class OwnerPortalNpgsqlTranslationTests
         return table;
     }
 
-    /// <summary>The delegation the account holds: the read of the ownerships of the owner that gave it is sent too.</summary>
     private static DataTable? DelegationOf(string sql) =>
         DelegationSelect.IsMatch(sql.TrimStart())
             ? Table(
@@ -102,17 +98,14 @@ public class OwnerPortalNpgsqlTranslationTests
                 ("Permissions", typeof(int), (int)OwnerPortalPermission.DocumentsRead))
             : null;
 
-    /// <summary>The property the owner holds: the read of its properties with their bookings is sent too.</summary>
     private static DataTable? OwnedPropertyOf(string sql) =>
         OwnedPropertySelect.IsMatch(sql.TrimStart()) ? Table(("PropertyId", typeof(Guid), PropertyId)) : null;
 
-    /// <summary>The owner profile of the account: the read of the references of the published statements is sent with it.</summary>
     private static DataTable? OwnerProfileOf(string sql) =>
         OwnerProfileSelect.IsMatch(sql.TrimStart())
             ? Table(("OrgId", typeof(Guid), OrgId), ("PropertyOwnerId", typeof(Guid), OwnerId))
             : null;
 
-    /// <summary>One lapsing version on the first page, none on the next: the reads that follow a page (documents, properties, items raised) are sent too.</summary>
     private static Func<string, DataTable?> FirstPageOfTheLapsingVersions()
     {
         var served = false;
@@ -129,12 +122,10 @@ public class OwnerPortalNpgsqlTranslationTests
         };
     }
 
-    /// <summary>What a call runs, how many statements it sends at least (all of them are reached when nothing was swallowed early) and the rows that let it go on.</summary>
     private sealed record Call(Func<AppDbContext, Task> Run, int MinimumStatements, Func<string, DataTable?>? Rows = null);
 
     private static readonly string[] CallNames =
     [
-        // The calendar, the stays and the rules of the owner stays, and the background work on them (E07/F07/US01/T01).
         "owner-calendar",
         "owner-stays",
         "owner-stay-rule",
@@ -142,7 +133,6 @@ public class OwnerPortalNpgsqlTranslationTests
         "agency-stay-rules",
         "stay-reconciliation",
 
-        // The access resolved at every request, the documents, the contacts and the inbox (E07/F07/US01/T02).
         "access-resolver",
         "owner-documents",
         "owner-document-file",
@@ -157,7 +147,6 @@ public class OwnerPortalNpgsqlTranslationTests
         "inbox-preferences",
         "expiry-alerts",
 
-        // The reads that existed before and were corrected to name the owner and the org: no tenant of the caller.
         "owner-properties",
         "owner-property-access",
         "owner-statement-documents",
@@ -165,11 +154,9 @@ public class OwnerPortalNpgsqlTranslationTests
 
     private static Call CallOf(string name) => name switch
     {
-        // The bookings, the blocks and the stays of the property.
         "owner-calendar" => new(db => Stays(db).GetCalendarAsync(Access(), PropertyId, null, null), 3),
         "owner-stays" => new(db => Stays(db).ListForOwnerAsync(Access()), 1),
 
-        // The rules of the property, then the nights held.
         "owner-stay-rule" => new(db => Stays(db).GetRuleForOwnerAsync(Access(), PropertyId), 2),
         "agency-stays" => new(db => Stays(db).ListForAgencyAsync(OrgId, OwnerStayStatus.Requested, PropertyId), 1),
         "agency-stay-rules" => new(db => Stays(db).ListRulesAsync(OrgId, PropertyId), 1),
@@ -177,10 +164,8 @@ public class OwnerPortalNpgsqlTranslationTests
         // The five groups of stays of a run: the requests, the approved, the withdrawn, the failed with no «To do» since, and the «To do» still open.
         "stay-reconciliation" => new(db => Stays(db).ReconcileAsync(), 5),
 
-        // The ownerships of the account, its delegations, and the ownerships of the owners that gave them.
         "access-resolver" => new(db => new OwnerPortalAccessResolver(db, Clock).ResolveAsync(OwnerUserId), 3, DelegationOf),
 
-        // The documents and the statements; one document that does not exist; the lists of the agency; the downloads of a document that does not exist.
         "owner-documents" => new(db => Collaboration(db).ListDocumentsForOwnerAsync(Access()), 2),
         "owner-document-file" => new(db => Collaboration(db).OpenDocumentForOwnerAsync(Access(), Guid.NewGuid(), null), 1),
         "agency-documents" => new(db => Collaboration(db).ListDocumentsForAgencyAsync(OrgId, OwnerId), 1),
@@ -193,15 +178,11 @@ public class OwnerPortalNpgsqlTranslationTests
         "agency-messages" => new(db => Collaboration(db).ListMessagesForAgencyAsync(OrgId, Guid.NewGuid()), 1),
         "inbox-preferences" => new(db => Collaboration(db).GetInboxPreferencesAsync(OwnerUserId), 1),
 
-        // The To do still open; the versions that lapse, a page at a time, with a «not exists» on the later versions in force; then, for the page, the documents, the
-        // properties and the items already raised (the property is read only for a document that has one); then the next page, which ends the loop.
         "expiry-alerts" => new(db => Collaboration(db).RaiseExpiryAlertsAsync(), 5, FirstPageOfTheLapsingVersions()),
 
-        // The ownerships of the owner, then its properties with the count, the sum and the ten latest bookings of each (the sub-queries built outside the projection).
         "owner-properties" => new(db => Portal(db).GetOwnerPropertiesAsync(OwnerUserId), 2, OwnedPropertyOf),
         "owner-property-access" => new(db => Portal(db).OwnerHasAccessToPropertyAsync(OwnerUserId, PropertyId), 1),
 
-        // The owner profiles of the account, then the references of the published statements of those profiles (a «contains» on a sub-query).
         "owner-statement-documents" => new(db => Accounting(db).ListPublishedExternalDocumentsForOwnerUserAsync(OwnerUserId), 2, OwnerProfileOf),
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, "A call of the list that has no definition."),
     };
@@ -225,7 +206,6 @@ public class OwnerPortalNpgsqlTranslationTests
 
         await NpgsqlTranslationProbe.AssertTranslatesAsync(() => call.Run(db));
 
-        // The probe must have got as far as the last query of the call, or it proved nothing about the ones after the first.
         Assert.True(
             statements.Count >= call.MinimumStatements,
             $"{name}: only {statements.Count} of the expected {call.MinimumStatements} statements were reached:{Environment.NewLine}{string.Join(Environment.NewLine + "--" + Environment.NewLine, statements)}");

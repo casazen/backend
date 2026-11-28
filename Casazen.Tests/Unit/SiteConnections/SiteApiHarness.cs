@@ -24,13 +24,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.SiteConnections;
 
-/// <summary>
-/// The real domain service, account builder and controllers of S023 (PLG-BE-SITEAPI) on the in-memory database, with the entitlements, the verification of the domain
-/// and the flags as the test sets them: the plugin's controller and the console's one built on the same services, so a test can ask both the same thing and compare.
-/// </summary>
 internal sealed class SiteApiHarness : IDisposable
 {
-    /// <summary>The address of CasaZen of the harness (<c>App:PublicSiteBaseUrl</c>).</summary>
     public const string CasazenAddress = EmailTestHelpers.PublicSiteBaseUrl;
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
@@ -93,7 +88,6 @@ internal sealed class SiteApiHarness : IDisposable
         _services.Dispose();
     }
 
-    /// <summary>An active org; <paramref name="paid"/> says whether its plan has the custom domain (Pro).</summary>
     public OrgEntity SeedOrg(string slug, string name, bool paid = true, Action<OrgEntity>? configure = null)
     {
         var org = new OrgEntity { Name = name, DisplayName = name, Slug = slug, ContactEmail = $"info@{slug}.example", IsActive = true };
@@ -104,7 +98,6 @@ internal sealed class SiteApiHarness : IDisposable
         return org;
     }
 
-    /// <summary>An org with its own custom domain, <paramref name="status"/> as given (verified by default).</summary>
     public OrgEntity SeedOrgWithDomain(
         string slug,
         string name,
@@ -133,17 +126,13 @@ internal sealed class SiteApiHarness : IDisposable
 
     public async Task<OrgEntity> ReadAsync(Guid orgId) => await Db.Orgs.AsNoTracking().SingleAsync(o => o.Id == orgId);
 
-    /// <summary>The credential of a site connected to <paramref name="orgId"/>, as the scheme makes it from a valid <c>czs_</c> value.</summary>
     public static SiteConnectionPrincipal Site(Guid orgId) => new(Guid.NewGuid(), orgId);
 
-    /// <summary>The plugin's controller, called by the connection <paramref name="site"/>.</summary>
     public SiteApiController Plugin(SiteConnectionPrincipal site) => PluginAs(SitePrincipal(site));
 
-    /// <summary>The plugin's controller called by any principal: a person is no site (the policy refuses it first, and the actions refuse it too).</summary>
     public SiteApiController PluginAs(ClaimsPrincipal user) =>
         new(Mock.Of<ISiteConnectionService>(), Accounts, OrgDomain, Localizer) { ControllerContext = Context(user) };
 
-    /// <summary>The console's controller, called by the billing administrator of <paramref name="orgId"/>.</summary>
     public OrgDomainController Console(Guid orgId)
     {
         var resolver = new Mock<IOrgContextResolver>();
@@ -166,12 +155,10 @@ internal sealed class SiteApiHarness : IDisposable
         HttpContext = new DefaultHttpContext { User = user, RequestServices = _services },
     };
 
-    /// <summary>The body as the API sends it (camelCase, enums by name).</summary>
     public static string Serialize(object? value) => JsonSerializer.Serialize(value, Json);
 
     public static JsonElement ToJson(object? value) => JsonSerializer.SerializeToElement(value, Json);
 
-    /// <summary>The status and the <c>code</c> of an answer that is a refusal: an <c>ApiProblem</c> or the <c>{ code, … }</c> object of the 403 of the plan.</summary>
     public static (int Status, string? Code) Refusal(IActionResult? result)
     {
         var objectResult = Assert.IsType<ObjectResult>(result);

@@ -283,8 +283,6 @@ public sealed class TenantCondominiumSettlementService(
                 continue;
             }
 
-            // A consumption or explicit amount that cannot be matched onto the new lines must stay posted.
-            // Dropping it would post a credit of every advance.
             if (!TryReplayExplicitLines(row.CalculationSnapshotJson, final.Lines, out var explicitLines))
             {
                 logger.LogWarning(
@@ -650,10 +648,6 @@ public sealed class TenantCondominiumSettlementService(
         return new TenantSettlementMath.Occupancy(start, end);
     }
 
-    /// <summary>
-    /// Consumption and explicit amounts are matched onto the new consuntivo by description.
-    /// False when a charged line has no match: the caller must not post a credit of every advance.
-    /// </summary>
     private static bool TryReplayExplicitLines(
         string snapshotJson,
         IReadOnlyList<TenantFinalLineView> lines,

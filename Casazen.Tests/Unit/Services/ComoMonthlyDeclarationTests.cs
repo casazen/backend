@@ -18,7 +18,7 @@ public sealed class ComoMonthlyDeclarationTests
     {
         var org = Guid.NewGuid();
         var property = Guid.NewGuid();
-        var end = new DateTime(2026, 12, 31, 23, 0, 0, DateTimeKind.Utc); // local midnight, 1 January
+        var end = new DateTime(2026, 12, 31, 23, 0, 0, DateTimeKind.Utc);
         Booking Departure(Guid tenant, Guid place, DateTime checkout) => new()
         {
             OrgId = tenant,

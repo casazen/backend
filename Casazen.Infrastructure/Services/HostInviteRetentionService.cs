@@ -22,7 +22,6 @@ public sealed class HostInviteRetentionService(
 {
     internal const string RunLockKey = "host-invite-retention";
 
-    /// <summary>Invites handled per step and per run: the next run takes the rest.</summary>
     private const int BatchSize = 500;
 
     public async Task<HostInviteRetentionResult> RunAsync(CancellationToken cancellationToken = default)
@@ -37,7 +36,6 @@ public sealed class HostInviteRetentionService(
 
         var cutoff = timeProvider.GetUtcNow().UtcDateTime.AddDays(-Math.Max(1, options.Value.RetentionDays));
 
-        // Closed and never used: nothing to attribute, the row goes.
         var unused = await db.HostInviteRecords
             .Where(i => !i.IsUsed && ((i.RevokedAt != null && i.RevokedAt < cutoff) || (i.RevokedAt == null && i.ExpiresAt < cutoff)))
             .OrderBy(i => i.CreatedAt)
@@ -45,7 +43,6 @@ public sealed class HostInviteRetentionService(
             .ToListAsync(cancellationToken);
         db.HostInviteRecords.RemoveRange(unused);
 
-        // Used: the attribution stays, the invitee's address and the inviter's note do not.
         var used = await db.HostInviteRecords
             .Where(i => i.IsUsed && i.PersonalDataErasedAt == null && i.UsedAt != null && i.UsedAt < cutoff)
             .OrderBy(i => i.CreatedAt)

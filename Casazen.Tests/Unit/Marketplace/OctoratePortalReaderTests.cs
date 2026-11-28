@@ -4,10 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Marketplace;
 
-/// <summary>
-/// <see cref="OctorateApiClient.ReadPortal"/> on the shape <c>meta/portals</c> really sends (sandbox answer of 13/11/2026): the public name is
-/// <c>externalName</c>, so the portal cache, the Marketplace and the connect wizard show «Booking», never the portal's code.
-/// </summary>
 public class OctoratePortalReaderTests
 {
     [Fact]

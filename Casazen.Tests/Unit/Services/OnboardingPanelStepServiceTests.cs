@@ -64,8 +64,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         Assert.Equal(count, await _db.InternalActivities.CountAsync());
     }
 
-    // ─── Start ───────────────────────────────────────────────────────────────────────────────────────────────
-
     /// <summary>
     /// Proof (data, privacy): the step, the single hand-over (the hash of a nonce, its expiry, the mode) and the point to resume are stored before the
     /// address is returned, then ONE "To do" is raised (codes and ids only, due tomorrow at 09:00 in Rome); the address is the configured panel as it
@@ -107,11 +105,9 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         Assert.Equal(now.AddMinutes(PanelStepLimits.StateLifetimeMinutes), row.HandoffExpiresAt);
         Assert.Null(row.CallbackConsumedAt);
 
-        // The point to resume: the wizard, what it edits and the step, a reference and no copy.
         Assert.Equal((WizardType.OnboardingActivation, (Guid?)propertyId, "compliance.police"), (row.ResumeWizardType, row.ResumeDraftEntityId, row.ResumeStepCode));
         Assert.Equal(("compliance.police", (Guid?)propertyId), (started.Step.Resume.StepCode, started.Step.Resume.DraftEntityId));
 
-        // The "To do": created after the step, found on it, with codes and ids only.
         var todo = await _db.InternalActivities.AsNoTracking().SingleAsync();
         Assert.Equal(todo.Id, row.ActivityId);
         Assert.Equal(todo.Id, started.Step.ActivityId);
@@ -134,10 +130,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         Assert.NotEqual(row.HandoffNonceHash, (await _db.OnboardingPanelSteps.AsNoTracking().SingleAsync()).HandoffNonceHash);
     }
 
-    /// <summary>
-    /// The access to a channel whose code is a number opens the page of that portal's connection on the panel (verified for Booking.com, 142, on
-    /// 14/11/2026): the configured base and the portal code, joined with one slash, and nothing of the org, the property or the person.
-    /// </summary>
     [Fact]
     public async Task Start_TheAccessToAChannelWhoseCodeIsANumber_OpensThePageOfThatPortal()
     {
@@ -196,10 +188,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         Assert.Empty(await _db.OnboardingPanelSteps.ToListAsync());
     }
 
-    /// <summary>
-    /// Proof (permission): a collaborator «Solo alcuni» starts, lists, reads, verifies and confirms only the steps of the properties it was given, never
-    /// a step of the whole org, and the step of a property it does not reach is the 404 of a step that does not exist.
-    /// </summary>
     [Fact]
     public async Task Steps_ReachOnlyWhatTheScopeReaches()
     {
@@ -211,7 +199,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         var restricted = _world.Restricted;
         var collaborator = _world.CollaboratorId;
 
-        // Start: the property it was given only, never the whole org.
         var mine = (await service.StartAsync(restricted, collaborator, new PanelStepStartRequest(PanelStepKind.IstatConnection, _world.Granted.Id), Ct)).Step;
         var notMine = await Assert.ThrowsAsync<NotFoundException>(() =>
             service.StartAsync(restricted, collaborator, new PanelStepStartRequest(PanelStepKind.PoliceConnection, _world.Hidden.Id), Ct));
@@ -223,7 +210,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         Assert.Equal(OnboardingActivationCodes.PropertyNotFound, foreign.Code);
         Assert.Equal(OnboardingPanelStepCodes.NeedsWholeOrg, org.Code);
 
-        // List: the owner reads all four; the collaborator its own two; the account that reaches what it created, the two of its houses.
         Assert.Equal(4, (await service.ListAsync(_world.OrgWide, Ct)).Count);
         Assert.Equal(
             new[] { granted.Id, mine.Id }.Order(),
@@ -233,7 +219,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
             (await service.ListAsync(_world.OwnedByOwner, Ct)).Select(s => s.Id).Order());
         Assert.Empty(await service.ListAsync(new HostScope(_world.OtherOrgId), Ct));
 
-        // By id: a step it does not reach is a step that does not exist, for every operation.
         foreach (var hiddenId in new[] { hidden.Id, wholeOrg.Id, Guid.NewGuid() })
         {
             var status = await Assert.ThrowsAsync<NotFoundException>(() => service.GetStatusAsync(restricted, hiddenId, Ct));
@@ -247,12 +232,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         Assert.Equal(granted.Id, (await service.GetStatusAsync(restricted, granted.Id, Ct)).Id);
     }
 
-    // ─── Verification ────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Proof (money-like quota rule): the verifier runs only when the stored schedule says so. Any number of polls between two checks calls it
-    /// once; the wait after each check doubles from 30 seconds up to 600 and stays there.
-    /// </summary>
     [Fact]
     public async Task Status_RunsTheVerifierOnlyWhenDue_AndTheWaitDoublesUpToTheMaximum()
     {
@@ -260,7 +239,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         var service = Service(police);
         var step = (await service.StartAsync(_world.OrgWide, _world.OwnerUserId, new PanelStepStartRequest(PanelStepKind.PoliceConnection, _world.Granted.Id), Ct)).Step;
 
-        // A page that polls every few seconds before the first check calls nothing.
         for (var i = 0; i < 6; i++)
         {
             _clock.Advance(TimeSpan.FromSeconds(4));
@@ -306,7 +284,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         Assert.Equal((PanelStepStatus.Verified, PanelVerificationOutcomes.Verified, false), (done.Status, done.LastVerificationOutcome, done.CanConfirm));
         Assert.Null(done.NextCheckAt);
 
-        // The "To do" is closed: the page is given no link to it (the row keeps the reference, the "To do" keeps its own).
         Assert.NotNull(step.ActivityId);
         Assert.Null(done.ActivityId);
         Assert.Equal(_clock.GetUtcNow().UtcDateTime, done.CompletedAt);
@@ -318,7 +295,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         Assert.Equal((InternalActivity.StatusCompleted, InternalActivity.ClosedBySystem), (todo.Status, todo.ClosedBy));
         Assert.Equal(todo.Id, row.ActivityId);
 
-        // Nothing is asked again, a start of a step already done restarts nothing, and the host cannot be made to confirm it twice.
         _clock.Advance(TimeSpan.FromHours(2));
         await service.GetStatusAsync(_world.OrgWide, step.Id, Ct);
         await service.VerifyAsync(_world.OrgWide, step.Id, Ct);
@@ -329,10 +305,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         Assert.Equal(PanelStepStatus.Verified, (await service.ConfirmAsync(_world.OrgWide, _world.OwnerUserId, step.Id, Ct)).Status);
     }
 
-    /// <summary>
-    /// Proof (trust): the confirmation is the technical fallback. It is 409 before any real check, 409 after a check found the step not valid, 409 while
-    /// support has the step, and allowed only after a check stored «could not tell»; it then completes the step with the host as who confirmed it.
-    /// </summary>
     [Fact]
     public async Task Confirm_IsAllowedOnlyAfterACheckCouldNotTell()
     {
@@ -343,17 +315,14 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         var owner = _world.OwnerUserId;
         var step = (await service.StartAsync(_world.OrgWide, owner, new PanelStepStartRequest(PanelStepKind.PoliceConnection, _world.Granted.Id), Ct)).Step;
 
-        // Before any check, also after the explicit asking of a page that has not been checked yet: refused.
         var before = await Assert.ThrowsAsync<DomainConflictException>(() => service.ConfirmAsync(_world.OrgWide, owner, step.Id, Ct));
         Assert.Equal(OnboardingPanelStepCodes.VerificationRequired, before.Code);
 
-        // A check found it not valid: refused, with the other code.
         _clock.Advance(TimeSpan.FromSeconds(31));
         Assert.Equal(PanelStepStatus.NotValid, (await service.GetStatusAsync(_world.OrgWide, step.Id, Ct)).Status);
         var invalid = await Assert.ThrowsAsync<DomainConflictException>(() => service.ConfirmAsync(_world.OrgWide, owner, step.Id, Ct));
         Assert.Equal(OnboardingPanelStepCodes.NotValid, invalid.Code);
 
-        // The next check could not tell: the step is open again and may be confirmed.
         _clock.Advance(TimeSpan.FromSeconds(61));
         var open = await service.GetStatusAsync(_world.OrgWide, step.Id, Ct);
         Assert.Equal((PanelStepStatus.Started, PanelVerificationOutcomes.Unverifiable, true), (open.Status, open.LastVerificationOutcome, open.CanConfirm));
@@ -370,7 +339,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         var todo = await _db.InternalActivities.AsNoTracking().SingleAsync();
         Assert.Equal((InternalActivity.StatusCompleted, owner), (todo.Status, todo.ClosedBy));
 
-        // Again: the same answer, nothing changes.
         Assert.Equal(PanelStepStatus.Confirmed, (await service.ConfirmAsync(_world.OrgWide, owner, step.Id, Ct)).Status);
     }
 
@@ -387,7 +355,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         var conflict = await Assert.ThrowsAsync<DomainConflictException>(() => service.ConfirmAsync(_world.OrgWide, _world.OwnerUserId, step.Id, Ct));
 
         Assert.Equal(OnboardingPanelStepCodes.AssistOpen, conflict.Code);
-        // A step support has is answered as it is by a new start, and is not checked.
         var again = await service.StartAsync(_world.OrgWide, _world.OwnerUserId, new PanelStepStartRequest(PanelStepKind.IstatConnection), Ct);
         Assert.Equal(PanelStepStatus.AssistRequested, again.Step.Status);
         Assert.Null(again.Step.NextCheckAt);
@@ -418,7 +385,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         var refused = await Assert.ThrowsAsync<DomainConflictException>(() => service.ConfirmAsync(_world.OrgWide, _world.OwnerUserId, step.Id, Ct));
         Assert.Equal(OnboardingPanelStepCodes.VerificationRequired, refused.Code);
 
-        // The next one, due later, fails with an unexpected error: same, and the page still answers.
         _clock.Advance(TimeSpan.FromSeconds(31));
         Assert.Equal(1, police.Calls);
         _clock.Advance(TimeSpan.FromSeconds(31));
@@ -459,7 +425,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         Assert.Contains("octorate_unavailable", answer.Message, StringComparison.Ordinal);
         Assert.DoesNotContain(logger.Entries, entry => entry.Level == LogLevel.Error);
 
-        // A fault of the verifier: an error with the exception itself.
         _clock.Advance(TimeSpan.FromSeconds(61));
         var failed = await service.GetStatusAsync(_world.OrgWide, step.Id, Ct);
         var fault = Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Error);
@@ -470,7 +435,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         Assert.Equal(2, (await _db.OnboardingPanelSteps.AsNoTracking().SingleAsync()).VerificationAttempts);
     }
 
-    /// <summary>The explicit trigger (the panel window closed, the tab focused again) runs a check at once, but not twice within ten seconds.</summary>
     [Fact]
     public async Task Verify_TheExplicitTrigger_IsHeldToAMinimumGapFromThePreviousCheck()
     {
@@ -478,11 +442,9 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         var service = Service(istat);
         var step = (await service.StartAsync(_world.OrgWide, _world.OwnerUserId, new PanelStepStartRequest(PanelStepKind.IstatConnection), Ct)).Step;
 
-        // A first check before the schedule: nothing was checked yet.
         await service.VerifyAsync(_world.OrgWide, step.Id, Ct);
         Assert.Equal(1, istat.Calls);
 
-        // A click-happy page: the next ones within ten seconds are the stored state.
         _clock.Advance(TimeSpan.FromSeconds(3));
         await service.VerifyAsync(_world.OrgWide, step.Id, Ct);
         _clock.Advance(TimeSpan.FromSeconds(6));
@@ -509,7 +471,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         var request = new PanelStepStartRequest(PanelStepKind.PoliceConnection, _world.Granted.Id);
         var step = (await service.StartAsync(_world.OrgWide, _world.OwnerUserId, request, Ct)).Step;
 
-        // The first check, at once: nothing was checked yet. It found the step not valid.
         await service.VerifyAsync(_world.OrgWide, step.Id, Ct);
         Assert.Equal(1, police.Calls);
         var checkedRow = await _db.OnboardingPanelSteps.AsNoTracking().SingleAsync();
@@ -532,14 +493,12 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         Assert.NotEqual(nonce, stillRunning.HandoffNonceHash);
         Assert.Single(await _db.InternalActivities.ToListAsync());
 
-        // Ten seconds after the check the explicit trigger asks again, and the wait doubles as it would have.
         _clock.Advance(TimeSpan.FromSeconds(3));
         var later = await service.VerifyAsync(_world.OrgWide, step.Id, Ct);
         Assert.Equal(2, police.Calls);
         Assert.Equal(TimeSpan.FromSeconds(60), later.NextCheckAt - _clock.GetUtcNow().UtcDateTime);
     }
 
-    /// <summary>The verifier with the highest order of the kind is the only one that runs; the default of order 0 stays out of it.</summary>
     [Fact]
     public async Task TheVerifierWithTheHighestOrderOfTheKind_IsTheOneThatRuns()
     {
@@ -557,12 +516,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         Assert.Equal("booking_xml", Assert.Single(marketplace.Contexts).ChannelCode);
     }
 
-    // ─── The callback ────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Proof (privacy, trust): a panel that sends the person back gets a callback address with the step and a state; only the hash of the state is
-    /// stored. The state is valid once and before its expiry, the same refusal tells nothing about why, and a step with no callback refuses it.
-    /// </summary>
     [Fact]
     public async Task Callback_TheStateIsUsedOnce_ExpiresAndIsNeverStoredInClear()
     {
@@ -578,14 +531,12 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         var state = query["state"].ToString();
         Assert.True(state.Length >= 40);
 
-        // The row holds the hash and not the state; nothing else of it holds the state or the org or the person.
         var row = await _db.OnboardingPanelSteps.AsNoTracking().SingleAsync();
         Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(state))), row.HandoffNonceHash);
         Assert.DoesNotContain(state, string.Join('|', row.HandoffNonceHash, row.ResumeStepCode, row.ChannelCode, row.LastVerificationOutcome), StringComparison.Ordinal);
         foreach (var personal in new[] { _world.OrgId.ToString("N"), _world.OwnerUserId })
             Assert.DoesNotContain(personal, callback.ToString(), StringComparison.OrdinalIgnoreCase);
 
-        // A state that is not the one: the same refusal for unknown, empty and foreign states, and the real one is still good.
         foreach (var wrong in new[] { "", "  ", "x", new string('a', PanelStepLimits.StateMaxLength + 1), state[..^1] + (state[^1] == 'A' ? "B" : "A") })
         {
             var refused = await Assert.ThrowsAsync<DomainRuleException>(() => service.CompleteCallbackAsync(_world.OrgWide, started.Step.Id, wrong, Ct));
@@ -595,13 +546,11 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         Assert.Null((await _db.OnboardingPanelSteps.AsNoTracking().SingleAsync()).CallbackConsumedAt);
         Assert.Equal(0, police.Calls);
 
-        // The real state: consumed, the step verified at once (the person just came back).
         var done = await service.CompleteCallbackAsync(_world.OrgWide, started.Step.Id, state, Ct);
         Assert.Equal(PanelStepStatus.Verified, done.Status);
         Assert.Equal(1, police.Calls);
         Assert.Equal(_clock.GetUtcNow().UtcDateTime, (await _db.OnboardingPanelSteps.AsNoTracking().SingleAsync()).CallbackConsumedAt);
 
-        // Used once: the second presentation of the same state is the same refusal.
         var replay = await Assert.ThrowsAsync<DomainRuleException>(() => service.CompleteCallbackAsync(_world.OrgWide, started.Step.Id, state, Ct));
         Assert.Equal(OnboardingPanelStepCodes.StateInvalid, replay.Code);
         Assert.Equal(1, police.Calls);
@@ -617,11 +566,9 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         var firstState = StateOf(first);
         var secondState = StateOf(second);
 
-        // The state of the other step does not open this one.
         var foreign = await Assert.ThrowsAsync<DomainRuleException>(() => service.CompleteCallbackAsync(_world.OrgWide, first.Step.Id, secondState, Ct));
         Assert.Equal(OnboardingPanelStepCodes.StateInvalid, foreign.Code);
 
-        // After the expiry (30 minutes) the right state is refused too.
         _clock.Advance(TimeSpan.FromMinutes(PanelStepLimits.StateLifetimeMinutes) + TimeSpan.FromSeconds(1));
         var expired = await Assert.ThrowsAsync<DomainRuleException>(() => service.CompleteCallbackAsync(_world.OrgWide, first.Step.Id, firstState, Ct));
         Assert.Equal(OnboardingPanelStepCodes.StateInvalid, expired.Code);
@@ -632,7 +579,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
     [Fact]
     public async Task Callback_AStepWithNoCallback_IsRefused_AndAPanelThatCannotSendBackIsAManagedWindow()
     {
-        // No callback address configured: even a verifier that supports it starts a managed window and no address leaves.
         _octorate.RedirectUri = null;
         var police = new ScriptedVerifier(PanelStepKind.PoliceConnection, order: 10) { SupportsCallback = true };
         var service = Service(police);
@@ -643,14 +589,11 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         var unsupported = await Assert.ThrowsAsync<DomainConflictException>(() => service.CompleteCallbackAsync(_world.OrgWide, started.Step.Id, "anything", Ct));
         Assert.Equal(OnboardingPanelStepCodes.CallbackUnsupported, unsupported.Code);
 
-        // An address that is not https (and not this machine) is no callback either.
         _octorate.RedirectUri = "http://app.casazen.test/octorate/callback";
         var insecure = await service.StartAsync(_world.OrgWide, _world.OwnerUserId, new PanelStepStartRequest(PanelStepKind.PoliceConnection, _world.Hidden.Id), Ct);
         Assert.Equal(PanelHandoffMode.ManagedWindow, insecure.Step.HandoffMode);
         Assert.Equal(0, police.Calls);
     }
-
-    // ─── The default verifiers ───────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Proof (data): the police verifier reads <c>policeAccount.valid</c> of the accommodation the property is CONFIRMED to, for the org of the step and no
@@ -724,9 +667,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         Assert.False(((IPanelStepVerifier)new ChannelAccessDefaultPanelVerifier()).SupportsCallback);
     }
 
-    // ─── Registration and names ──────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The exact list of the default verifiers and of the services of this task: one verifier of order 0 for each of the three kinds.</summary>
     [Fact]
     public void Registration_OneDefaultVerifierForEachKind_AndTheTwoServices()
     {
@@ -769,8 +709,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
             Enumerable.Range(1, 7).Select(attempt => (int)PanelStepLimits.BackoffAfter(attempt).TotalSeconds));
     }
 
-    // ─── Helpers ─────────────────────────────────────────────────────────────────────────────────────────────
-
     private OnboardingPanelStepService Service(params IPanelStepVerifier[] verifiers) =>
         new(
             _db,
@@ -783,7 +721,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
     private static string StateOf(PanelStepStart started) =>
         QueryHelpers.ParseQuery(new Uri(Assert.IsType<string>(started.CallbackUrl)).Query)["state"].ToString();
 
-    /// <summary>A verifier that answers what the test scripted: the queue first, then the default (could not tell, or the one set by <see cref="Always"/>).</summary>
     private sealed class ScriptedVerifier(PanelStepKind kind, int order = 0) : IPanelStepVerifier
     {
         private readonly Queue<Func<PanelVerificationOutcome>> _script = new();
@@ -825,7 +762,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         }
     }
 
-    /// <summary>A logger that keeps what it was asked to write: the level, the exception and the formatted message.</summary>
     private sealed class CapturingLogger<T> : ILogger<T>
     {
         public List<(LogLevel Level, Exception? Error, string Message)> Entries { get; } = [];
@@ -839,7 +775,6 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
             Entries.Add((logLevel, exception, formatter(state, exception)));
     }
 
-    /// <summary>The mapping of the properties to the accommodations, as the verifier asks for it; it records who asked.</summary>
     private sealed class Mapping(bool provided, Dictionary<Guid, string> confirmed) : IPropertyMappingReader
     {
         public List<Guid> AskedOrgs { get; } = [];

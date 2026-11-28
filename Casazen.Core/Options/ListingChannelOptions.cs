@@ -16,26 +16,15 @@ public sealed class ListingChannelOptions
 {
     public const string SectionName = "ListingChannels";
 
-    /// <summary>The channels that receive content, by the code of the portal, compared without regard to case.</summary>
     public Dictionary<string, ListingChannelRule> Channels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// Whether the amenities are sent (<c>POST .../amenities</c>). Off: the codes of <c>AmenityCatalogMapper</c> were not compared with the answer of
-    /// the sandbox yet (<c>AmenityCatalogMapper.ConfirmedOnSandbox</c>), so nothing is sent for them. Turn it on only after that comparison.
-    /// </summary>
     public bool SendAmenities { get; set; }
 
-    /// <summary>
-    /// Whether the cancellation policy is sent (<c>POST .../cancellation</c>). Off: the members of that part of the API were not proven on the
-    /// sandbox (S25), so nothing is invented for them. Turn it on only after a run on a licensed structure.
-    /// </summary>
     public bool SendCancellationPolicy { get; set; }
 
-    /// <summary>The rule of a channel, or <c>null</c> when the code is not a content channel.</summary>
     public ListingChannelRule? RuleOf(string? channelCode) =>
         !string.IsNullOrWhiteSpace(channelCode) && Channels.TryGetValue(channelCode.Trim(), out var rule) ? rule : null;
 
-    /// <summary>The portal code that goes with the numeric channel id of a connection (<c>142</c> is <c>booking_xml</c>); <c>null</c> when no content channel has it.</summary>
     public string? PortalCodeOfChannelId(string? channelId)
     {
         if (string.IsNullOrWhiteSpace(channelId))
@@ -51,13 +40,10 @@ public sealed class ListingChannelOptions
     }
 }
 
-/// <summary>What a listing must meet to be sent to one content channel.</summary>
 public sealed class ListingChannelRule
 {
-    /// <summary>The id of the channel in the connections of the channel manager (<c>142</c> for Booking.com), to find the connection of a property.</summary>
     public string? ChannelId { get; set; }
 
-    /// <summary>The fewest photos the channel takes; a listing with fewer is left <c>ToFix</c> for this channel.</summary>
     public int MinPhotos { get; set; }
 
     /// <summary>The channel asks for the CIN of the property: a listing without a valid one is left <c>ToFix</c> for this channel.</summary>

@@ -17,16 +17,13 @@ public interface ISeoComuneCatalog
         IEnumerable<string> istatCodes,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The pilot comune with this slug (<c>como</c>), or <c>null</c>.</summary>
     Task<ComuneInfo?> GetPilotBySlugAsync(string? comuneSlug, CancellationToken cancellationToken = default);
 
-    /// <summary>The pilot comune with these region and comune slugs, or <c>null</c>.</summary>
     Task<ComuneInfo?> GetPilotByRegionAndComuneSlugAsync(
         string? regionSlug,
         string? comuneSlug,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The pilot comuni found in the list (a pilot that is not in it is left out).</summary>
     Task<IReadOnlyList<ComuneInfo>> GetPilotsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>

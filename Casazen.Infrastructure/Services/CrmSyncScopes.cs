@@ -12,7 +12,6 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 internal static class CrmSyncScopes
 {
-    /// <summary>Syncs the booker of a booking of the org (<see cref="ICrmProfileSyncService.SyncBookingAsync"/>) in a scope under the org.</summary>
     public static async Task<CrmSyncOutcome> SyncBookingAsync(
         IServiceScopeFactory scopeFactory,
         Guid orgId,
@@ -26,7 +25,6 @@ internal static class CrmSyncScopes
         return await scope.ServiceProvider.GetRequiredService<ICrmProfileSyncService>().SyncBookingAsync(orgId, bookingId, cancellationToken);
     }
 
-    /// <summary>Syncs a guest of the org (<see cref="ICrmProfileSyncService.SyncGuestAsync"/>) in a scope under the org.</summary>
     public static async Task<CrmSyncOutcome> SyncGuestAsync(
         IServiceScopeFactory scopeFactory,
         Guid orgId,

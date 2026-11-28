@@ -3,58 +3,38 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
-/// <summary>The limits and the stable codes of the cleaner of a property (E24/F01/US01/T01, NF-120).</summary>
 public static class PropertyCleaningSetupRules
 {
-    /// <summary>The most properties one bulk request names (the next one is 422 <see cref="BulkTooMany"/>).</summary>
     public const int MaxBulkProperties = 200;
 
-    /// <summary>422: the body names no kind of cleaner.</summary>
     public const string CleanerRequired = "cleaning_setup_cleaner_required";
 
-    /// <summary>422: the supplier and the staff member are both given, or the one the kind needs is missing.</summary>
     public const string CleanerMismatch = "cleaning_setup_cleaner_mismatch";
 
-    /// <summary>422: a supplier needs a price from 1 cent, and a price must be within the bound of a service request.</summary>
     public const string PriceInvalid = "cleaning_setup_price_invalid";
 
-    /// <summary>422: a price comes with its currency, never alone.</summary>
     public const string CurrencyRequired = "cleaning_setup_currency_required";
 
-    /// <summary>422: the currency of the price is not the currency of the property.</summary>
     public const string CurrencyMismatch = "cleaning_setup_currency_mismatch";
 
-    /// <summary>422: the start time is not a whole minute.</summary>
     public const string StartTimeInvalid = "cleaning_setup_start_time_invalid";
 
-    /// <summary>422: the duration is out of range (5 to 1,440 minutes).</summary>
     public const string DurationInvalid = "cleaning_setup_duration_invalid";
 
-    /// <summary>
-    /// 422: the cleaner is a supplier and the property is not in euro. The requests to the suppliers of the marketplace, their prices and their payments are in euro and nothing is converted,
-    /// so a property in another currency takes no supplier, only a member of the staff (a setup kept switched off is only kept, and is not refused for it).
-    /// </summary>
     public const string SupplierCurrencyUnsupported = "cleaning_setup_supplier_currency_unsupported";
 
-    /// <summary>422: the supplier has no supplier profile.</summary>
     public const string SupplierNotFound = "cleaning_setup_supplier_not_found";
 
-    /// <summary>422: the supplier is not active (pending or suspended).</summary>
     public const string SupplierInactive = "cleaning_setup_supplier_inactive";
 
-    /// <summary>422: the supplier does not operate in the comune of the property.</summary>
     public const string SupplierOutsideComune = "cleaning_setup_supplier_outside_comune";
 
-    /// <summary>422: the staff member is not an active member of the org who reaches the property.</summary>
     public const string StaffInvalid = "cleaning_setup_staff_invalid";
 
-    /// <summary>422: a bulk request names no property (never «all of them»).</summary>
     public const string BulkEmpty = "cleaning_setup_bulk_empty";
 
-    /// <summary>422: a bulk request names more than <see cref="MaxBulkProperties"/> properties.</summary>
     public const string BulkTooMany = "cleaning_setup_bulk_too_many";
 
-    /// <summary>SharedResources keys of the messages of the codes above (a test checks that each one exists in Italian and English).</summary>
     public static IReadOnlyList<string> MessageKeys { get; } =
     [
         "CleaningSetupCleanerRequired",
@@ -132,7 +112,6 @@ public sealed record PropertyCleaningSetupView(
     bool Active,
     DateTime? UpdatedAt);
 
-/// <summary>The result of a bulk save for one property: saved, or the code and the message of the rule that stopped it (the other properties are not affected).</summary>
 public sealed record CleaningSetupBulkItem(
     Guid PropertyId,
     bool Saved,
@@ -140,17 +119,8 @@ public sealed record CleaningSetupBulkItem(
     string? MessageKey,
     IReadOnlyList<object> MessageArgs);
 
-/// <summary>
-/// The cleaner of the properties of an org: read, save, and save for many properties at once (E24/F01/US01/T01, NF-120). Who may call each operation is
-/// decided by the web layer (the policy and the host resource of the property, TN-3); this service only enforces the org boundary it is given and the rules of
-/// the setup, with a <see cref="Exceptions.DomainRuleException"/> (422) and a stable code of <see cref="PropertyCleaningSetupRules"/>, in Italian and English.
-/// </summary>
 public interface IPropertyCleaningSetupService
 {
-    /// <summary>
-    /// The setup of a property of <paramref name="orgId"/>, or the defaults of a property that has none (<see cref="PropertyCleaningSetupView.Configured"/> false).
-    /// </summary>
-    /// <exception cref="Exceptions.NotFoundException"><c>property_not_found</c>: no such property in the org (a property of another org is the same).</exception>
     Task<PropertyCleaningSetupView> GetAsync(Guid orgId, Guid propertyId, CancellationToken cancellationToken = default);
 
     /// <summary>

@@ -49,12 +49,10 @@ public sealed class TouristTaxCollectionService(
     TimeProvider? timeProvider = null,
     PortalCheckInSessions? portalSessions = null) : ITouristTaxCollectionService
 {
-    /// <summary>The reasons of the host's «To do» (<see cref="ActivityType.TouristTaxRefundDue"/>): keys of <c>SharedResources</c>, in the language of the org.</summary>
     internal const string RefundDifferenceReason = "TouristTaxTodoRefundDifference";
     internal const string PartialStayReason = "TouristTaxTodoPartialStay";
     internal const string RefundFailedReason = "TouristTaxTodoRefundFailed";
 
-    /// <summary>PaymentIntent statuses the guest can still pay.</summary>
     private static readonly HashSet<string> PayableIntentStatuses = new(StringComparer.Ordinal)
     {
         "requires_payment_method",
@@ -62,7 +60,6 @@ public sealed class TouristTaxCollectionService(
         "requires_action",
     };
 
-    /// <summary>PaymentIntent statuses of money on its way or received: nothing else is done until the webhook records it.</summary>
     private static readonly HashSet<string> MovingIntentStatuses = new(StringComparer.Ordinal)
     {
         "processing",
@@ -184,8 +181,6 @@ public sealed class TouristTaxCollectionService(
 
         if (!AlloggiatiStatusRules.IsDue(booking) || figures.Collector == TouristTaxCollector.Channel)
             throw new DomainRuleException(TouristTaxCharges.NotApplicableCode, "TouristTaxCollectionNotApplicable");
-        // What the guest paid online and was not given back: a payment refunded in full (the host from the provider's dashboard, say) is no payment any more,
-        // and the tax is collected at the property (the guest never pays online a second time).
         if (record is not null && record.CollectedAmount - record.RefundedAmount > 0m)
             throw new DomainConflictException(TouristTaxCharges.PaidOnlineCode, "TouristTaxAlreadyPaidOnline");
 
@@ -240,7 +235,6 @@ public sealed class TouristTaxCollectionService(
 
         org.TouristTaxOnlinePaymentEnabled = enabled;
 
-        // Asked before the lock code only where the payment is offered: off, the code is never held back by the tax.
         org.TouristTaxRequiredBeforeAccessCode = enabled && requiredBeforeAccessCode;
         org.UpdatedAt = UtcNow();
         await db.SaveChangesAsync(ct);
@@ -266,7 +260,6 @@ public sealed class TouristTaxCollectionService(
             return null;
         }
 
-        // The payment lock of the booking, joined to the transaction of the event: a host recording the payment at the property waits for it.
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db, ct, (PostgresAdvisoryLocks.Scope.BookingPayment, bookingId.ToString("N")));
 
@@ -285,7 +278,6 @@ public sealed class TouristTaxCollectionService(
 
         await db.Entry(record).ReloadAsync(ct);
 
-        // Only the intent the stay asked for, on the account it was created on: an intent of another account carrying the same markers is not its payment.
         if (!string.Equals(record.StripePaymentIntentId, intentEvent.PaymentIntentId, StringComparison.Ordinal)
             || string.IsNullOrWhiteSpace(intentEvent.AccountId)
             || !string.Equals(record.StripeAccountId, intentEvent.AccountId, StringComparison.Ordinal))
@@ -298,7 +290,6 @@ public sealed class TouristTaxCollectionService(
             return null;
         }
 
-        // Once: the same payment delivered again (or by the other endpoint) changes nothing.
         if (record.CollectedAmount > 0m)
             return null;
 
@@ -348,7 +339,6 @@ public sealed class TouristTaxCollectionService(
             db, ct, (PostgresAdvisoryLocks.Scope.BookingPayment, record.BookingId.ToString("N")));
         await db.Entry(record).ReloadAsync(ct);
 
-        // A refund of a payment not recorded yet: the success arrives later (events are not in order), the refund is delivered again after it.
         if (record.CollectedAmount <= 0m)
             throw new TouristTaxCollectionPendingException(record.BookingId);
 
@@ -383,7 +373,6 @@ public sealed class TouristTaxCollectionService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The payment is recorded: the difference owed back is evaluated again at the check-in, at the check-out and at a change of the booking.
             logger.LogError(
                 "Tourist tax of booking {BookingId}: the collection could not be reconciled after the payment ({Error})", notice.BookingId, ex.GetType().Name);
         }
@@ -420,7 +409,6 @@ public sealed class TouristTaxCollectionService(
     {
         var booking = await LoadBookingAsync(bookingId, ct);
 
-        // Gone, or active again (the event is older than the booking): nothing to give back.
         if (booking is null || AlloggiatiStatusRules.IsDue(booking))
             return;
 
@@ -434,7 +422,6 @@ public sealed class TouristTaxCollectionService(
 
             await db.Entry(record).ReloadAsync(ct);
 
-            // An intent nobody paid is cancelled: the guest of a stay that will not happen can no longer pay it. One being paid is waited for.
             if (record.StripePaymentIntentId is { } openIntentId && record.CollectedAmount <= 0m)
             {
                 var intent = await stripe.GetPaymentIntentAsync(openIntentId, record.StripeAccountId, ct);
@@ -447,7 +434,6 @@ public sealed class TouristTaxCollectionService(
             var held = record.CollectedAmount - record.RefundedAmount;
             if (TouristTaxCollectionRules.EndedBeforeAnyNight(booking, endedAtUtc))
             {
-                // No night spent: the tax is not due, and what was paid online goes back in full on the account it was paid on.
                 if (held > 0m)
                     todoReason = await RefundAsync(record, held, ct);
 
@@ -456,7 +442,6 @@ public sealed class TouristTaxCollectionService(
             }
             else if (held > 0m)
             {
-                // Cancelled after the arrival: the nights spent are due, the rest is the host's decision.
                 todoReason = PartialStayReason;
             }
 
@@ -475,7 +460,6 @@ public sealed class TouristTaxCollectionService(
         if (booking is null)
             return;
 
-        // Under the payment lock of the booking, from what is committed: a payment recorded meanwhile is never overwritten by an older state.
         TouristTaxCollectionDue due;
         await using (var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
                          db, ct, (PostgresAdvisoryLocks.Scope.BookingPayment, booking.Id.ToString("N"))))
@@ -496,7 +480,6 @@ public sealed class TouristTaxCollectionService(
                 await transaction.CommitAsync(ct);
         }
 
-        // A stay that is no longer active is the business of ApplyStayEndedAsync (the automatic refund, or the «To do» of a partial stay).
         if (due.RefundDue > 0m && AlloggiatiStatusRules.IsDue(booking))
             await RaiseRefundTodoAsync(booking, RefundDifferenceReason, ct);
     }
@@ -512,7 +495,6 @@ public sealed class TouristTaxCollectionService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The host's change is saved: the difference owed back is evaluated again at the next event of the stay and shown at once in the host's block.
             logger.LogError(
                 "Tourist tax of booking {BookingId}: the collection could not be reconciled after a change of the tax ({Error})", bookingId, ex.GetType().Name);
         }
@@ -523,12 +505,10 @@ public sealed class TouristTaxCollectionService(
         if (!featureFlags.IsEnabled(FeatureFlags.TouristTaxOnlinePayment))
             return false;
 
-        // Through the tenant filter of the caller (the guest of a link and a job have none, the operator's org is the booking's).
         var booking = await LoadBookingAsync(bookingId, ct);
         if (booking is null || !booking.Org.TouristTaxRequiredBeforeAccessCode || !CanPayOnline(booking.Org))
             return false;
 
-        // What the guest can pay online now: due, and neither paid online, nor exempt (nothing due), nor marked «Pagata in struttura», nor collected by the channel.
         var record = await RecordAsync(booking, tracked: false, ct);
         var (due, _) = await EvaluateAsync(booking, record, null, ct);
         return due.OnlinePayable > 0m;
@@ -567,7 +547,6 @@ public sealed class TouristTaxCollectionService(
             : null;
     }
 
-    /// <summary>The booking with its property and its org, through the tenant filter of the caller (the host's org, the org of an event, none for a job).</summary>
     private Task<Booking?> LoadBookingAsync(Guid bookingId, CancellationToken ct) =>
         db.Bookings
             .AsNoTracking()
@@ -575,7 +554,6 @@ public sealed class TouristTaxCollectionService(
             .Include(b => b.Org)
             .FirstOrDefaultAsync(b => b.Id == bookingId, ct);
 
-    /// <summary>The record of the stay, with the org of the booking as an explicit predicate.</summary>
     private async Task<StayTouristTax?> RecordAsync(Booking booking, bool tracked, CancellationToken ct)
     {
         var query = db.StayTouristTaxes
@@ -584,7 +562,6 @@ public sealed class TouristTaxCollectionService(
         return tracked ? await query.FirstOrDefaultAsync(ct) : await query.AsNoTracking().FirstOrDefaultAsync(ct);
     }
 
-    /// <summary>What is due of the stay now and the figures it was decided from.</summary>
     private async Task<(TouristTaxCollectionDue Due, TaxFigures Figures)> EvaluateAsync(
         Booking booking,
         StayTouristTax? record,
@@ -609,13 +586,6 @@ public sealed class TouristTaxCollectionService(
         return (due, figures);
     }
 
-    /// <summary>
-    /// The tax CasaZen already collected with the price of the booking (decision O12: «per le dirette già pagate»): <c>Booking.TouristTaxAmount</c> of a
-    /// <see cref="BookingSource.Direct"/> booking that has a payment through CasaZen that went through (completed, or completed and partly refunded); 0 for any
-    /// other booking. The amount is written on every booking, so it proves nothing by itself: the quote of a host's manual booking, the figure of an OTA
-    /// reservation, a direct booking paid at the property or at the deadline are no tax collected by CasaZen. For a channel stay the double charge is the
-    /// business of <see cref="TouristTaxChannelRule"/> and of the host's declaration (<see cref="CollectorAsync"/>), decided before this amount counts.
-    /// </summary>
     private async Task<decimal> IncludedInBookingAsync(Booking booking, CancellationToken ct)
     {
         var amount = Math.Max(0m, booking.TouristTaxAmount);
@@ -634,10 +604,6 @@ public sealed class TouristTaxCollectionService(
         return paidThroughCasaZen ? amount : 0m;
     }
 
-    /// <summary>
-    /// Italy: who collects (<see cref="TouristTaxCollectorRules.Decide"/>: the active rule of the channel in the comune, then the host's declaration) and the
-    /// calculation guest by guest of the stay as it is now; the confirmed amount only from a confirmed record that is not stale.
-    /// </summary>
     private async Task<TaxFigures> ItalianFiguresAsync(Booking booking, StayTouristTax? record, StayTouristTaxView? tax, CancellationToken ct)
     {
         var currency = StayCurrency.ForProperty(booking.Property);
@@ -653,15 +619,9 @@ public sealed class TouristTaxCollectionService(
         return new TaxFigures(collector, amountDue, confirmed, currency, lines, view.Status);
     }
 
-    /// <summary>
-    /// Switzerland: the channels the issuer's profile says collect the tax themselves (the shipped default while it confirmed none), else the host; the
-    /// amount is the rule of the canton of the property for the guests and the nights of the stay (guests × nights × rate), a fixed rule the host does not
-    /// confirm. No rule for the canton: not calculated.
-    /// </summary>
     private async Task<TaxFigures> SwissFiguresAsync(Booking booking, CancellationToken ct)
     {
         var currency = StayCurrency.ForProperty(booking.Property);
-        // The choice of the organization itself, never the profile of one of its owners (E17/F01/US01/T01: they live in the same table).
         var profile = await db.OrgFiscalIssuerProfiles
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -691,7 +651,6 @@ public sealed class TouristTaxCollectionService(
         return new TaxFigures(TouristTaxCollector.Host, total, total, currency, lines, TouristTaxQuoteStatus.Calculated);
     }
 
-    /// <summary>Who collects the tax of an Italian stay: the one decision of <see cref="TouristTaxCollectorRules.Decide"/>.</summary>
     private async Task<TouristTaxCollector?> CollectorAsync(Booking booking, StayTouristTax? record, CancellationToken ct)
     {
         TouristTaxChannelRule? rule = null;
@@ -706,7 +665,6 @@ public sealed class TouristTaxCollectionService(
         return TouristTaxCollectorRules.Decide(booking.Source, rule, record?.DeclaredCollector).Collector;
     }
 
-    /// <summary>The calculation of the stay; <c>null</c> when it cannot be made (no guest registered yet, a stay of no night).</summary>
     private async Task<StayTouristTaxView?> CalculationAsync(Guid bookingId, CancellationToken ct)
     {
         try
@@ -817,10 +775,6 @@ public sealed class TouristTaxCollectionService(
         }
     }
 
-    /// <summary>
-    /// The host's «To do» that asks to give money back to the guest: once per booking, open or closed (a host who closed it after giving the money back does
-    /// not get it again), with a fixed sentence in the language of the org and no data of the guest.
-    /// </summary>
     private async Task RaiseRefundTodoAsync(Booking booking, string reasonKey, CancellationToken ct)
     {
         if (await BookingTodoItems.WasRaisedAsync(db, booking.OrgId, ActivityType.TouristTaxRefundDue, booking.Id, ct))
@@ -847,10 +801,8 @@ public sealed class TouristTaxCollectionService(
             throw NotAvailable();
     }
 
-    /// <summary>The org offers the payment and its account takes payments (<see cref="Org.CanTakeDirectPayments"/>).</summary>
     private static bool IsOffered(Org org) => org.TouristTaxOnlinePaymentEnabled && org.CanTakeDirectPayments;
 
-    /// <summary>A guest can pay now: the org offers the payment and the platform's publishable key of the Payment Element is there.</summary>
     private bool CanPayOnline(Org org) => IsOffered(org) && !string.IsNullOrWhiteSpace(configuration["Stripe:PublishableKey"]);
 
     private TouristTaxCollectionView ViewOf(Booking booking, StayTouristTax? record, TouristTaxCollectionDue due, TaxFigures figures) => new(
@@ -870,10 +822,6 @@ public sealed class TouristTaxCollectionService(
     private static TouristTaxSettingsView SettingsOf(Org org) =>
         new(org.TouristTaxOnlinePaymentEnabled, org.TouristTaxRequiredBeforeAccessCode, org.CanTakeDirectPayments);
 
-    /// <summary>
-    /// A record created by the collection: unconfirmed, like the host's declaration of the collector (no line and no amount until the host confirms the
-    /// calculation), kept as long as a confirmed one.
-    /// </summary>
     private static StayTouristTax NewRecord(Booking booking, TaxFigures figures, DateTime now)
     {
         var checkIn = RomeCalendar.DateInRome(booking.CheckInDate);
@@ -909,11 +857,9 @@ public sealed class TouristTaxCollectionService(
         return metadata.TryGetValue(key, out var raw) && Guid.TryParse(raw, out id) && id != Guid.Empty;
     }
 
-    /// <summary>A refund the provider made (<c>succeeded</c>) or is making (<c>pending</c>: the amount follows its <c>charge.refunded</c>); any other state is no refund.</summary>
     private static bool IsRefundMade(string? status) =>
         string.Equals(status, "succeeded", StringComparison.Ordinal) || string.Equals(status, "pending", StringComparison.Ordinal);
 
-    /// <summary>No answer, too many requests or a failure of the provider: it may pass, so the event is delivered again.</summary>
     private static bool IsTransient(StripeException ex) => (int)ex.HttpStatusCode is 0 or 429 or >= 500;
 
     private DateTime UtcNow() => _clock.GetUtcNow().UtcDateTime;
@@ -927,7 +873,6 @@ public sealed class TouristTaxCollectionService(
     private static NotFoundException BookingNotFound() =>
         new("Booking not found") { Code = "booking_not_found", MessageKey = "BookingNotFound" };
 
-    /// <summary>The figures the collection of a stay is decided from (<see cref="IncludedInBooking"/> is set by <see cref="EvaluateAsync"/>).</summary>
     private sealed record TaxFigures(
         TouristTaxCollector? Collector,
         decimal? AmountDue,

@@ -14,36 +14,27 @@ namespace Casazen.Core.Entities;
 [Table("PropertyChannelAccountHolders")]
 public class PropertyChannelAccountHolder : ITenantOwned
 {
-    /// <summary>Unique (<see cref="PropertyId"/>, <see cref="Channel"/>): one holder for each listing and portal.</summary>
     public const string PropertyChannelIndexName = "UIX_PropertyChannelAccountHolders_PropertyId_Channel";
 
-    /// <summary>The longest <see cref="Channel"/>: the name of a <see cref="BookingSource"/>.</summary>
     public const int ChannelMaxLength = 32;
 
-    /// <summary>The longest <see cref="UpdatedByUserId"/>.</summary>
     public const int UserIdMaxLength = 255;
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant key: the org of the property; never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The listing (the property of the org).</summary>
     public Guid PropertyId { get; set; }
 
-    /// <summary>The portal, as the name of its <see cref="BookingSource"/> (<c>BookingCom</c>, <c>Airbnb</c>...): only the portals have a holder.</summary>
     [Required]
     [MaxLength(ChannelMaxLength)]
     public string Channel { get; set; } = string.Empty;
 
-    /// <summary>Who holds the account of the listing on the portal.</summary>
     public PortalAccountHolder Holder { get; set; } = PortalAccountHolder.Owner;
 
-    /// <summary>When the row was written last (UTC).</summary>
     public DateTime UpdatedAt { get; set; }
 
-    /// <summary>Who wrote it last.</summary>
     [MaxLength(UserIdMaxLength)]
     public string? UpdatedByUserId { get; set; }
 }

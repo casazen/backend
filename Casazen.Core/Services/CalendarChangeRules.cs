@@ -25,7 +25,6 @@ public sealed record CalendarChangeEvaluation(
 /// </summary>
 public static class CalendarChangeRules
 {
-    /// <summary>How many changed nights the preview of a property shows with their values before and after.</summary>
     public const int SampleCount = 5;
 
     /// <summary>
@@ -113,18 +112,12 @@ public static class CalendarChangeRules
                 samples.Add(new CalendarChangeSample(night, EffectiveOf(night, before, seasonalPrices, property), EffectiveOf(night, after, seasonalPrices, property)));
         }
 
-        // Every night the change selects is already over and none is left to change or to leave as it is: said, not «0 changed».
         if (changed == 0 && unchanged == 0 && skippedPast > 0)
             throw DayRuleRules.ProblemOf(DayRuleErrorCodes.InPast);
 
         return new CalendarChangeEvaluation(days, changed, unchanged, taken, skippedPast, samples);
     }
 
-    /// <summary>
-    /// What the night holds with <paramref name="rule"/> on it: the price a guest is quoted (<see cref="StayPricing.NightPrice"/>: the price of the rule, else
-    /// the seasonal price the host confirmed, else the weekend surcharge or the nightly rate), the minimum stay of the rule, else of the property, else 1, and the
-    /// rest of the rule.
-    /// </summary>
     public static CalendarChangeValues EffectiveOf(
         DateOnly night,
         DayRuleValues rule,
@@ -135,7 +128,6 @@ public static class CalendarChangeRules
         ArgumentNullException.ThrowIfNull(seasonalPrices);
         ArgumentNullException.ThrowIfNull(property);
 
-        // The price the host gave the night by its rule outranks the seasonal one, as DayRulePricing.HostPrices has it.
         IReadOnlyDictionary<DateOnly, decimal> hostPrices = rule.Price is { } own
             ? new Dictionary<DateOnly, decimal> { [night] = own }
             : seasonalPrices;
@@ -151,21 +143,12 @@ public static class CalendarChangeRules
             rule.MaxAdvanceDays);
     }
 
-    /// <summary>
-    /// The days of a change that reach the channel manager for a property whose «today» is <paramref name="today"/>: the range cut to start today; <c>null</c> when
-    /// it is over. The days before today are never sent.
-    /// </summary>
     public static (DateOnly From, DateOnly To)? PushWindow(DateOnly today, DateOnly from, DateOnly to)
     {
         var start = from < today ? today : from;
         return to < start ? null : (start, to);
     }
 
-    /// <summary>
-    /// The units of quota of the channel manager a change of <paramref name="from"/> to <paramref name="to"/> would use for one mirrored property (an estimate:
-    /// <c>ceil(room-days / RoomDaysPerQuotaUnit)</c> for each call of at most <c>MaxDaysPerCall</c> days; the unit is 15 by decision D7 and comes from the
-    /// configuration), counting only the days from today on. 0 when the range is over.
-    /// </summary>
     public static int EstimateQuotaUnits(DateOnly today, DateOnly from, DateOnly to, OctorateCalendarOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);

@@ -3,25 +3,13 @@ using Casazen.Core.Leases;
 
 namespace Casazen.Infrastructure.Services.LeaseContracts;
 
-/// <summary>A section of a template file: its id, optional heading and the clause text of the product owner.</summary>
 public sealed record LeaseContractTemplateSection(string Id, string? Heading, string Text, IReadOnlyList<string> Placeholders);
 
-/// <summary>Result of parsing a template file; <see cref="Errors"/> make the template incomplete.</summary>
 public sealed record ParsedLeaseContractTemplate(
     string? Title,
     IReadOnlyList<LeaseContractTemplateSection> Sections,
     IReadOnlyList<string> Errors);
 
-/// <summary>
-/// Parser of the template files (format in <c>docs/runbooks/lease-contract-templates.md</c>):
-/// <code>
-/// # Contract title
-/// ## section_id | Heading (optional)
-/// Clause text with {{placeholder}}...
-/// </code>
-/// Whole-line <c>&lt;!-- ... --&gt;</c> comments are ignored. Nothing is invented: a section without text stays empty. The heading of a
-/// section can carry placeholders like its text (the title cannot).
-/// </summary>
 public static partial class LeaseContractTemplateParser
 {
     [GeneratedRegex(@"\{\{\s*([a-z0-9_]+)\s*\}\}", RegexOptions.CultureInvariant)]
@@ -32,10 +20,6 @@ public static partial class LeaseContractTemplateParser
 
     public static ParsedLeaseContractTemplate Parse(string content) => Parse(content, LeaseContractPlaceholders.IsKnown);
 
-    /// <summary>
-    /// The same grammar for another family of files (the letters of the operations of a lease, LR-OPS-1): <paramref name="isKnownPlaceholder"/>
-    /// says which <c>{{names}}</c> the family uses.
-    /// </summary>
     public static ParsedLeaseContractTemplate Parse(string content, Func<string, bool> isKnownPlaceholder)
     {
         ArgumentNullException.ThrowIfNull(isKnownPlaceholder);

@@ -4,7 +4,6 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Migrations;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using Xunit;
 
 namespace Casazen.Tests.Integration;

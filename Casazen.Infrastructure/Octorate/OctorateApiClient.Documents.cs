@@ -16,13 +16,10 @@ namespace Casazen.Infrastructure.Octorate;
 /// </remarks>
 public sealed partial class OctorateApiClient
 {
-    /// <summary>The largest PDF CasaZen proxies (20 MB): a larger answer is an error, never a cut file.</summary>
     internal const int MaxPdfBytes = 20 * 1024 * 1024;
 
-    /// <summary>The documents of an accommodation per page of the list.</summary>
     internal const int DocumentPageSize = 100;
 
-    /// <summary>The pages of documents read at most in one call; more is an answer that is not understood.</summary>
     internal const int MaxDocumentPages = 100;
 
     public async Task<OctorateFiscalDocument[]> GetDocumentsAsync(string accommodationId, DateTime modifiedAfter, CancellationToken ct)
@@ -70,7 +67,6 @@ public sealed partial class OctorateApiClient
         return new MemoryStream(bytes, writable: false);
     }
 
-    /// <summary>The documents of an answer: the <c>data</c> of a v2 answer, or a bare array.</summary>
     private static List<JsonElement> ItemsOf(JsonElement root)
     {
         var list = root.ValueKind == JsonValueKind.Array ? root : OctorateJson.Find(root, "data") ?? default;
@@ -101,7 +97,6 @@ public sealed partial class OctorateApiClient
             OctorateJson.Text(item, "holderName", "customerName", "name"));
     }
 
-    /// <summary>The type of a document by the name the OpenAPI gives it; an unknown name is <see cref="OctorateFiscalDocumentType.Unknown"/>.</summary>
     internal static OctorateFiscalDocumentType TypeOf(string? type) => type?.ToUpperInvariant() switch
     {
         "INVOICE" => OctorateFiscalDocumentType.Invoice,

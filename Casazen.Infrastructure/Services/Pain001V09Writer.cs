@@ -13,7 +13,6 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 internal sealed record Pain001Party(string? Name, string? Street, string? BuildingNumber, string? PostalCode, string? Town, string? Country);
 
-/// <summary>One transfer of a wire file: its end-to-end id, the amount, who is paid and on which IBAN, the remittance text and the date the bank is asked to execute it.</summary>
 internal sealed record Pain001Transfer(
     string EndToEndId,
     decimal Amount,
@@ -22,10 +21,6 @@ internal sealed record Pain001Transfer(
     string Remittance,
     DateOnly ExecutionDate);
 
-/// <summary>
-/// What a wire file says, before it is written in a message: the message id, when it is made (the clock of Europe/Rome, without an offset), the currency (which
-/// tells the message: <see cref="Pain001Flavor"/>), the debtor and the account that is debited, and the transfers.
-/// </summary>
 internal sealed record Pain001Message(
     string MessageId,
     DateTime CreatedAt,
@@ -34,20 +29,10 @@ internal sealed record Pain001Message(
     string DebtorIban,
     IReadOnlyList<Pain001Transfer> Transfers);
 
-/// <summary>
-/// The two messages <see cref="Pain001V09Writer"/> writes (E16/F01/US01/T01, E16/F01/US02/T01). Both are the ISO 20022 <c>pain.001.001.09</c> customer credit
-/// transfer, with structured addresses, written in the same namespace; each one is the rules of its payment scheme on top of the ISO message, and is validated
-/// against its own official schema.
-/// </summary>
 internal enum Pain001Flavor
 {
-    /// <summary>The Swiss credit transfer of the Swiss Payment Standards, <c>pain.001.001.09.ch.03</c> (CHF): the characters of the Swiss messages (Latin-1 letters).</summary>
     Swiss,
 
-    /// <summary>
-    /// The SEPA credit transfer of the EPC on the ISO message, <c>pain.001.001.09</c> (EUR): service level <c>SEPA</c> and charge bearer <c>SLEV</c> in every payment, no
-    /// BIC (the IBAN alone), and the Latin characters of the SEPA messages (no accent, no ampersand).
-    /// </summary>
     Sepa,
 }
 
@@ -74,39 +59,28 @@ internal enum Pain001Flavor
 /// </remarks>
 internal static class Pain001V09Writer
 {
-    /// <summary>The target namespace of the message (<c>pain.001.001.09</c>), the same for both flavors.</summary>
     public const string Namespace = Pain001SchemaProvider.IsoNamespace;
 
-    /// <summary>The name of the Swiss schema file the CHF message is written for (the <c>xsi:schemaLocation</c> of its root).</summary>
     public const string SwissSchemaFile = "pain.001.001.09.ch.03.xsd";
 
-    /// <summary>The name of the ISO schema file the EUR message is written for (the <c>xsi:schemaLocation</c> of its root).</summary>
     public const string IsoSchemaFile = "pain.001.001.09.xsd";
 
-    /// <summary>The service level of the SEPA credit transfer (<c>PmtTpInf/SvcLvl/Cd</c>), the only one of the EUR file.</summary>
     public const string SepaServiceLevel = "SEPA";
 
-    /// <summary>The charge bearer of the SEPA credit transfer (<c>ChrgBr</c>): «following service level», the charges are those the SEPA service level says, the only one the EUR file has.</summary>
     public const string SepaChargeBearer = "SLEV";
 
-    /// <summary>The code of the Swiss bank clearing (<c>ClrSysId/Cd</c>), whose members are identified by the institution identifier of the IBAN of their accounts.</summary>
     public const string SwissClearingSystem = "CHBCC";
 
-    /// <summary>The longest <c>Nm</c> and <c>StrtNm</c> (<c>Max70Text</c>).</summary>
     public const int Max70 = 70;
 
-    /// <summary>The longest <c>BldgNb</c> and <c>PstCd</c> (<c>Max16Text</c>).</summary>
     public const int Max16 = 16;
 
-    /// <summary>The longest <c>TwnNm</c> (<c>Max35Text</c>) and <c>MsgId</c>, <c>PmtInfId</c>, <c>EndToEndId</c>.</summary>
     public const int Max35 = 35;
 
-    /// <summary>The longest <c>Ustrd</c> (<c>Max140Text</c>).</summary>
     public const int Max140 = 140;
 
     private static readonly XNamespace Xsi = XNamespace.Get("http://www.w3.org/2001/XMLSchema-instance");
 
-    /// <summary>The flavor of the file of <paramref name="currency"/> (in capitals): CHF is the Swiss message, EUR the SEPA one; any other currency has no wire file.</summary>
     public static Pain001Flavor FlavorOf(string currency)
     {
         return currency switch
@@ -117,11 +91,6 @@ internal static class Pain001V09Writer
         };
     }
 
-    /// <summary>
-    /// True when <paramref name="party"/> can be written as a creditor or a debtor of the message: a name, a street, a postal code, a town and a country of two
-    /// letters, each of the texts with a letter or a digit left after the characters and the lengths of the message are applied (<see cref="Pain001Text.HasContent"/>:
-    /// a name in an alphabet the message does not have would be written as points and say nothing). The building number is optional.
-    /// </summary>
     public static bool IsComplete(Pain001Party party, Pain001Flavor flavor = Pain001Flavor.Swiss)
     {
         ArgumentNullException.ThrowIfNull(party);
@@ -132,10 +101,6 @@ internal static class Pain001V09Writer
                && Pain001Text.Country(party.Country) is not null;
     }
 
-    /// <summary>
-    /// The file of <paramref name="message"/>, one payment for each execution date in date order, the transfers in the order they have in the message. Every
-    /// party must be complete (<see cref="IsComplete"/>): the service refuses a batch before it gets here.
-    /// </summary>
     public static string Write(Pain001Message message)
     {
         ArgumentNullException.ThrowIfNull(message);
@@ -183,7 +148,6 @@ internal static class Pain001V09Writer
         return amount.ToString("F2", CultureInfo.InvariantCulture);
     }
 
-    /// <summary>A document as indented UTF-8 text, with no byte order mark and <c>\n</c> line ends.</summary>
     public static string Format(XDocument document)
     {
         var settings = new XmlWriterSettings
@@ -204,7 +168,6 @@ internal static class Pain001V09Writer
         return Encoding.UTF8.GetString(stream.ToArray());
     }
 
-    /// <summary>The id of the <paramref name="number"/>th payment of a message: the start of the message id and the number, never longer than <see cref="Max35"/>.</summary>
     public static string PaymentId(string messageId, int number)
     {
         var start = messageId.Length > 30 ? messageId[..30] : messageId;
@@ -221,7 +184,6 @@ internal static class Pain001V09Writer
             new XElement(ns + "NbOfTxs", transfers.Count.ToString(CultureInfo.InvariantCulture)),
             new XElement(ns + "CtrlSum", Amount(transfers.Sum(t => t.Amount))));
 
-        // The sequence of the ISO message: the payment type information comes after the control sum and before the requested execution date.
         if (flavor == Pain001Flavor.Sepa)
             payment.Add(new XElement(ns + "PmtTpInf", new XElement(ns + "SvcLvl", new XElement(ns + "Cd", SepaServiceLevel))));
 
@@ -231,7 +193,6 @@ internal static class Pain001V09Writer
             new XElement(ns + "DbtrAcct", new XElement(ns + "Id", new XElement(ns + "IBAN", message.DebtorIban))),
             DebtorAgent(ns, flavor, message.DebtorIban));
 
-        // The charge bearer comes after the debtor agent and before the transfers.
         if (flavor == Pain001Flavor.Sepa)
             payment.Add(new XElement(ns + "ChrgBr", SepaChargeBearer));
 
@@ -280,11 +241,6 @@ internal static class Pain001V09Writer
         return new XElement(ns + "DbtrAgt", bank);
     }
 
-    /// <summary>
-    /// The institution identifier of a Swiss or Liechtenstein IBAN (characters 5 to 9, five digits); <c>null</c> for any other IBAN and for a QR-IBAN. A QR-IBAN
-    /// (30000 to 31999) is the account of a QR-bill, a credit-side account, and its identifier is no member of the Swiss bank clearing: naming it as one would
-    /// name a bank that does not exist. Legacy data can still hold one as the debit account, so the bank is left unnamed (the bank reads the account from the IBAN).
-    /// </summary>
     private static string? SwissInstitutionId(string iban)
     {
         if (!WireIban.IsSwiss(iban) || WireIban.IsQrIban(iban))
@@ -294,7 +250,6 @@ internal static class Pain001V09Writer
         return institution.All(char.IsAsciiDigit) ? institution : null;
     }
 
-    /// <summary>A party with its structured address: <c>Nm</c>, then <c>StrtNm</c>, <c>BldgNb</c> (when there is one), <c>PstCd</c>, <c>TwnNm</c>, <c>Ctry</c>.</summary>
     private static XElement Party(XNamespace ns, string element, Pain001Party party, Pain001Flavor flavor)
     {
         var address = new XElement(ns + "PstlAdr");
@@ -323,7 +278,6 @@ internal static class Pain001Text
 {
     private const string AllowedPunctuation = "/-?:().,'+";
 
-    // The letters that have no base letter to lose their accent to. The Swiss message keeps the ones of Latin-1 as they are, so only the SEPA message gets them here.
     private static readonly Dictionary<int, string> Transcriptions = new()
     {
         ['Æ'] = "AE",
@@ -344,10 +298,6 @@ internal static class Pain001Text
         ['ı'] = "i",
     };
 
-    /// <summary>
-    /// <paramref name="value"/> as the file writes it: only the characters of the message of <paramref name="flavor"/>, spaces collapsed, trimmed and at most
-    /// <paramref name="maxLength"/> characters long; an empty text when there is nothing left.
-    /// </summary>
     public static string Clean(string? value, int maxLength, Pain001Flavor flavor = Pain001Flavor.Swiss)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -361,16 +311,11 @@ internal static class Pain001Text
         return collapsed.Length <= maxLength ? collapsed : collapsed[..maxLength].TrimEnd();
     }
 
-    /// <summary>
-    /// True when what <paramref name="value"/> becomes in the file (<see cref="Clean"/>) holds a letter or a digit: a text that is nothing but points and signs
-    /// (the replacement of a name or a street in Cyrillic, Greek or Chinese, which the message cannot write) says nothing and is not a name or an address.
-    /// </summary>
     public static bool HasContent(string? value, int maxLength, Pain001Flavor flavor = Pain001Flavor.Swiss)
     {
         return Clean(value, maxLength, flavor).Any(char.IsLetterOrDigit);
     }
 
-    /// <summary>The two letters of a country in upper case, or <c>null</c> when it is not two letters (a country code of ISO 3166-1 alpha-2).</summary>
     public static string? Country(string? value)
     {
         var country = value?.Trim() ?? string.Empty;
@@ -386,15 +331,12 @@ internal static class Pain001Text
             if (char.IsAsciiLetterOrDigit(c) || AllowedPunctuation.Contains(c))
                 return c.ToString();
 
-            // The ampersand is a character of the Swiss messages; the SEPA message has the plus sign for it.
             if (c == '&')
                 return flavor == Pain001Flavor.Swiss ? "&" : "+";
 
-            // A space, a tab, a line break or any other control or sign: one space (the spaces are collapsed afterwards).
             return " ";
         }
 
-        // The letters of Latin-1 (À to ÿ, without the multiplication and the division signs) are accepted as they are by the Swiss messages, not by the SEPA one.
         if (flavor == Pain001Flavor.Swiss && value is >= 0xC0 and <= 0xFF and not 0xD7 and not 0xF7)
             return rune.ToString();
 
@@ -404,7 +346,6 @@ internal static class Pain001Text
         if (Transcriptions.TryGetValue(value, out var transcribed))
             return transcribed;
 
-        // The base letter of an accented one (ś is s, ż is z, é is e): its decomposition starts with it.
         var decomposed = rune.ToString().Normalize(NormalizationForm.FormD);
         return decomposed.Length > 0 && char.IsAsciiLetter(decomposed[0]) ? decomposed[0].ToString() : ".";
     }

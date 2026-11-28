@@ -17,10 +17,6 @@ internal static class JpegMetadata
     private const byte FirstApplicationSegment = 0xE0;
     private const byte LastApplicationSegment = 0xEF;
 
-    /// <summary>
-    /// The JPEG <paramref name="jpeg"/> without its application segments and comments, in <paramref name="stripped"/>; false (and an empty array) for bytes that are not a
-    /// complete JPEG: no start of image, a segment that runs past the end, no end of image.
-    /// </summary>
     public static bool TryStrip(ReadOnlySpan<byte> jpeg, out byte[] stripped)
     {
         stripped = [];
@@ -40,7 +36,6 @@ internal static class JpegMetadata
                 if (jpeg[position] != Marker)
                     return false;
 
-                // Fill bytes (a run of 0xFF before a marker) carry nothing.
                 while (position < jpeg.Length && jpeg[position] == Marker)
                     position++;
 
@@ -56,7 +51,6 @@ internal static class JpegMetadata
                     break;
                 }
 
-                // Markers without a length: a second start of image, the restart markers and the temporary one.
                 if (marker == StartOfImage || marker == 0x01 || marker is >= 0xD0 and <= 0xD7)
                 {
                     output[written++] = Marker;
@@ -83,7 +77,6 @@ internal static class JpegMetadata
 
                 if (marker == StartOfScan)
                 {
-                    // The entropy-coded data of the scan, up to the next marker: a 0xFF followed by 0x00 is a byte of the data, a restart marker belongs to the scan.
                     var start = position;
                     while (position < jpeg.Length)
                     {
@@ -117,7 +110,6 @@ internal static class JpegMetadata
         }
     }
 
-    /// <summary>The markers of the segments of <paramref name="jpeg"/> before its first scan and between its scans (no entropy-coded data): what a test reads to say what is in a file.</summary>
     public static IReadOnlyList<byte> SegmentMarkers(ReadOnlySpan<byte> jpeg)
     {
         var markers = new List<byte>();

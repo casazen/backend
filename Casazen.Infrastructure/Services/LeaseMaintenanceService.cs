@@ -27,7 +27,6 @@ public sealed class LeaseMaintenanceService(
 {
     private const long MaxAmountCents = 100_000_000;
 
-    /// <summary>Same-process gate for one request. PostgreSQL also takes <see cref="PostgresAdvisoryLocks.Scope.MaintenancePayment"/>.</summary>
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> PayGates = new();
 
     private static readonly JsonSerializerOptions PhotosJson = new(JsonSerializerDefaults.Web);
@@ -351,10 +350,6 @@ public sealed class LeaseMaintenanceService(
         }
     }
 
-    /// <summary>
-    /// Stable for one attempt of a request: <c>maint-{requestId}</c>, then <c>maint-{requestId}-{n}</c> after
-    /// <paramref name="failedAttempts"/> failed or canceled rows are already stored. Not a fresh id per call.
-    /// </summary>
     private static string DebitKey(Guid requestId, int failedAttempts) =>
         failedAttempts == 0 ? $"maint-{requestId:N}" : $"maint-{requestId:N}-{failedAttempts}";
 

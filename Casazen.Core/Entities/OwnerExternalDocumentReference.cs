@@ -29,31 +29,25 @@ public class OwnerExternalDocumentReference : ITenantOwned
 
     public Guid OwnerStatementVersionId { get; set; }
 
-    /// <summary>The owner of the version, kept for the owner's reading.</summary>
     public Guid PropertyOwnerId { get; set; }
 
-    /// <summary>The external system that issued the document (its name as the agency calls it).</summary>
     [Required]
     [MaxLength(ProviderMaxLength)]
     public string Provider { get; set; } = string.Empty;
 
-    /// <summary>The immutable id of the document in the external system.</summary>
     [Required]
     [MaxLength(ExternalIdMaxLength)]
     public string ExternalId { get; set; } = string.Empty;
 
-    /// <summary>The number the external system gave the document (CasaZen assigns none).</summary>
     [Required]
     [MaxLength(NumberMaxLength)]
     public string ExternalNumber { get; set; } = string.Empty;
 
     public DateOnly ExternalDate { get; set; }
 
-    /// <summary>Where the document issued by the external system is (an https address), when the agency links it.</summary>
     [MaxLength(UrlMaxLength)]
     public string? DocumentUrl { get; set; }
 
-    /// <summary>The SHA-256 of the document, as the agency computed it on the issued file.</summary>
     [MaxLength(HashLength)]
     public string? DocumentSha256 { get; set; }
 
@@ -64,7 +58,6 @@ public class OwnerExternalDocumentReference : ITenantOwned
     [MaxLength(UserIdMaxLength)]
     public string? VerifiedByUserId { get; set; }
 
-    /// <summary>When the link was removed as mistaken; the row stays.</summary>
     public DateTime? RemovedAt { get; set; }
 
     [MaxLength(UserIdMaxLength)]

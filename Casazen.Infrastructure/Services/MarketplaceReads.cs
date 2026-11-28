@@ -18,7 +18,6 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 internal static class MarketplaceReads
 {
-    /// <summary>The facts about the org that decide what its marketplace shows.</summary>
     public sealed record OrgFacts(PlanTier PlanTier, string? BillingCountry);
 
     /// <summary>
@@ -50,7 +49,6 @@ internal static class MarketplaceReads
             throw PropertyNotFound();
     }
 
-    /// <summary>The plan and the billing country of the org (a country is <c>null</c> until the org gives one).</summary>
     public static async Task<OrgFacts> LoadOrgAsync(AppDbContext db, Guid orgId, CancellationToken ct)
     {
         var facts = await db.Orgs.AsNoTracking()
@@ -60,10 +58,6 @@ internal static class MarketplaceReads
         return facts ?? throw EntryNotFound();
     }
 
-    /// <summary>
-    /// Whether the Octorate connector is on and the org has a connected account in the environment of this CasaZen. With the flag off nothing
-    /// is read: the connector does not exist for anybody.
-    /// </summary>
     public static async Task<MarketplaceOctorateState> OctorateStateAsync(
         AppDbContext db, IFeatureFlags featureFlags, IHostEnvironment hostEnvironment, Guid orgId, CancellationToken ct)
     {
@@ -78,7 +72,6 @@ internal static class MarketplaceReads
         return new MarketplaceOctorateState(true, connected);
     }
 
-    /// <summary>The id of the org's connected account in this environment; <c>null</c> while the connector is off or the org is not connected.</summary>
     public static async Task<Guid?> ConnectedAccountAsync(
         AppDbContext db, IFeatureFlags featureFlags, IHostEnvironment hostEnvironment, Guid orgId, CancellationToken ct)
     {
@@ -128,13 +121,11 @@ internal static class MarketplaceReads
                ?? rows.FirstOrDefault(t => t.Language == MarketplacePartnerText.Italian);
     }
 
-    /// <summary>The public address of the logo of a partner (a key of the public bucket), or <c>null</c> without one or with a key that is not valid.</summary>
     public static string? PartnerLogoUrl(IFileStorage storage, MarketplacePartner partner)
     {
         return partner.LogoKey is { Length: > 0 } key && StorageKeys.IsValid(key) ? storage.GetPublicUrl(key) : null;
     }
 
-    /// <summary>404 for a property that is not one of the org inside the caller's scope.</summary>
     public static NotFoundException PropertyNotFound() =>
         new("The property is not one of the organization inside the scope of the caller.")
         {
@@ -142,7 +133,6 @@ internal static class MarketplaceReads
             MessageKey = "MarketplacePropertyNotFound",
         };
 
-    /// <summary>404 for an entry that does not exist, is hidden, or that the plan or the country of the org does not allow: one answer for all.</summary>
     public static NotFoundException EntryNotFound() =>
         new("The marketplace entry does not exist for this organization.")
         {

@@ -1,11 +1,9 @@
 using Casazen.Core.Services;
-using Casazen.Core.Validation;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc />
 public sealed class SeoFeaturedPropertiesService(AppDbContext db, ISeoComuneCatalog comuneCatalog) : ISeoFeaturedPropertiesService
 {
     public async Task<SeoFeaturedPropertiesDto?> GetAsync(string comune, CancellationToken cancellationToken = default)

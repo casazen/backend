@@ -3,7 +3,6 @@ using Stripe;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>Tax figures of a paid SaaS invoice, all copied from Stripe (PL-13).</summary>
 public sealed record PlatformInvoiceTaxSnapshot(
     decimal AmountExVat,
     decimal VatAmount,
@@ -29,23 +28,19 @@ public static class PlatformInvoiceTaxClassifier
     /// <summary>CasaZen is established in Italy (its <c>Billing:VatNumber</c> is Italian): its domestic VAT is Italian.</summary>
     public const string SupplierCountry = "IT";
 
-    /// <summary>Stripe taxability reasons (Stripe.net docs of <c>InvoiceTotalTax.TaxabilityReason</c>).</summary>
     private const string ReverseChargeReason = "reverse_charge";
     private const string NotCollectingReason = "not_collecting";
 
-    /// <summary>Stripe statuses (Stripe.net docs of <c>InvoiceAutomaticTax.Status</c>, <c>TaxIdVerification.Status</c>).</summary>
     private const string AutomaticTaxComplete = "complete";
     private const string EuVatTaxIdType = "eu_vat";
     private const string VerifiedStatus = "verified";
 
-    /// <summary>The 27 EU member states (ISO 3166-1), to tell OSS (EU) from another foreign registration.</summary>
     private static readonly HashSet<string> EuMemberStates = new(StringComparer.Ordinal)
     {
         "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE",
         "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE",
     };
 
-    /// <summary>Ids of the tax rates Stripe applied on the invoice.</summary>
     public static IReadOnlyCollection<string> TaxRateIdsOf(Invoice invoice) =>
         (invoice.TotalTaxes ?? [])
             .Select(t => t.TaxRateDetails?.TaxRate)
@@ -54,7 +49,6 @@ public static class PlatformInvoiceTaxClassifier
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
-    /// <summary>True when Stripe applied the reverse charge to at least one tax of the invoice.</summary>
     public static bool HasReverseCharge(Invoice invoice) =>
         (invoice.TotalTaxes ?? []).Any(t => string.Equals(t.TaxabilityReason, ReverseChargeReason, StringComparison.Ordinal));
 

@@ -41,12 +41,10 @@ public class TenantProvisioningConcurrencyPostgresTests : IClassFixture<CasazenW
 
         try
         {
-            // What TenantResolutionMiddleware does first: the brand-new user has no org yet.
             var tenant = requestScope.ServiceProvider.GetRequiredService<IRequestTenantContext>();
             await tenant.ResolveAsync();
             Assert.Null(tenant.OrgId);
 
-            // Meanwhile a parallel request (the onboarding with its consents) creates and links the org.
             var linkedOrg = await _factory.SeedOrgForOwnerAsync(sub);
 
             var orgId = await requestScope.ServiceProvider.GetRequiredService<IOrgContextResolver>()
@@ -58,7 +56,6 @@ public class TenantProvisioningConcurrencyPostgresTests : IClassFixture<CasazenW
             await db.SaveChangesAsync();
             db.ChangeTracker.Clear();
 
-            // Same request, tenant-filtered read: it must see the row of the org linked in the meantime (A1-20).
             var visible = await db.Properties.Where(p => p.OwnerId == sub).ToListAsync();
 
             Assert.Equal(linkedOrg.Id, tenant.OrgId);
@@ -74,7 +71,6 @@ public class TenantProvisioningConcurrencyPostgresTests : IClassFixture<CasazenW
     [PostgresFact]
     public async Task GetOrProvisionOrgIdAsync_UserWithoutOrg_ReturnsNullAndCreatesNoOrg()
     {
-        // PL-02 (A1-05): the first org of a user is created only by the onboarding, with the legal consents.
         var sub = NewSub();
         await using var requestScope = _factory.Services.CreateAsyncScope();
         var accessor = requestScope.ServiceProvider.GetRequiredService<IHttpContextAccessor>();
@@ -127,7 +123,6 @@ public class TenantProvisioningConcurrencyPostgresTests : IClassFixture<CasazenW
                 continue;
             }
 
-            // A JWT role alone is not a completed onboarding (PL-02): no org is provisioned behind the user's back.
             Assert.True(responses[i].StatusCode == HttpStatusCode.Forbidden, $"{paths[i]}: {(int)responses[i].StatusCode} {body}");
             using var doc = JsonDocument.Parse(body);
             Assert.Equal("onboarding_required", doc.RootElement.GetProperty("code").GetString());
@@ -146,7 +141,6 @@ public class TenantProvisioningConcurrencyPostgresTests : IClassFixture<CasazenW
     public async Task CreateProperty_TwoParallelRequestsWithOneSlotLeft_OneCreatedAndOne403PlanLimitReached()
     {
         var owner = NewSub();
-        // Starter allows 3 properties: 2 seeded, one slot left.
         var seeded = await _factory.SeedPropertyAsync(ownerId: owner);
         await _factory.SeedPropertyAsync(ownerId: owner);
         var client = _factory.CreateAuthenticatedClient(userId: owner, roles: "PropertyOwner");

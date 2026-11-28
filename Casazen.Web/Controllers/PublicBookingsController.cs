@@ -98,13 +98,6 @@ public class PublicBookingsController(
         return Ok(CheckoutPaymentSessionResponse.From(session));
     }
 
-    /// <summary>
-    /// "Le mie prenotazioni" (BK-11, A3-10, R-06): the booking of this site with the booking code of the confirmation email
-    /// and the email the booking was made with; state, stay, amounts, online check-in and the host's contact, no personal
-    /// data. A code that does not exist, a code of another site and a wrong email all get the same 404
-    /// <c>guest_booking_not_found</c>. Rate limited per client IP (<see cref="RateLimitPolicies.PublicGuestBookingLookup"/>)
-    /// and per email (<see cref="GuestBookingEmailRateLimiter"/>): 429 <c>rate_limited</c>.
-    /// </summary>
     [HttpPost("lookup")]
     [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
     [GuestBookingEmailRateLimit]

@@ -15,19 +15,14 @@ namespace Casazen.Tests.Qualification;
 /// </summary>
 public static class QualificationEnvironment
 {
-    /// <summary>The path of the manifest of the dataset (<c>QualificationDatasetManifest</c>): required by every run.</summary>
     public const string ManifestVariable = "CASAZEN_QUALIFICATION_MANIFEST";
 
-    /// <summary>The split to run, a code of <see cref="QualificationSplits"/>: the development or calibration runs and the final test each take their own.</summary>
     public const string SplitVariable = "CASAZEN_QUALIFICATION_SPLIT";
 
-    /// <summary>The folder the results (<c>results.json</c>, the proposed policy, the lock, the report) are written to: required by every run.</summary>
     public const string OutVariable = "CASAZEN_QUALIFICATION_OUT";
 
-    /// <summary>The path of the lock the final test checks (<c>lock.json</c> in the output folder when it is not set).</summary>
     public const string LockVariable = "CASAZEN_QUALIFICATION_LOCK";
 
-    /// <summary><c>1</c> or <c>true</c> turns the final test into the act that freezes the configuration into the lock (and keeps the final test from running).</summary>
     public const string FreezeVariable = "CASAZEN_QUALIFICATION_FREEZE";
 
     /// <summary>
@@ -67,26 +62,20 @@ public static class QualificationEnvironment
             : $"{SplitVariable} names a split this run does not serve: it takes {string.Join(", ", splits)} (the split of the final test belongs to the final test, and the others to the runner).";
     }
 
-    /// <summary>True when <paramref name="value"/> asks for the freeze: <c>1</c> or <c>true</c>, whatever the letter case.</summary>
     public static bool IsFreeze(string? value)
     {
         var text = value?.Trim();
         return string.Equals(text, "1", StringComparison.Ordinal) || string.Equals(text, "true", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>The manifest of the run (the variable must be set: the attribute skips the run when it is not).</summary>
     public static string ManifestPath => Required(ManifestVariable);
 
-    /// <summary>The split of the run (the variable must be set).</summary>
     public static string Split => Required(SplitVariable);
 
-    /// <summary>The folder the results are written to (the variable must be set).</summary>
     public static string OutDirectory => Required(OutVariable);
 
-    /// <summary>The lock the final test checks: the variable when it is set, else <c>lock.json</c> in the output folder.</summary>
     public static string LockPath => Read(LockVariable) is { } path && !IsBlank(path) ? path.Trim() : Path.Combine(OutDirectory, "lock.json");
 
-    /// <summary>The value of a variable of the process; null when it is not set.</summary>
     internal static string? Read(string variable) => Environment.GetEnvironmentVariable(variable);
 
     private static string Required(string variable)
@@ -106,7 +95,6 @@ public static class QualificationEnvironment
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class QualificationFactAttribute : FactAttribute
 {
-    /// <summary>A run that serves the <paramref name="splits"/> (codes of <see cref="QualificationSplits"/>); none for a run that takes no split.</summary>
     public QualificationFactAttribute(params string[] splits)
     {
         Splits = splits;
@@ -114,7 +102,6 @@ public sealed class QualificationFactAttribute : FactAttribute
             Skip = reason;
     }
 
-    /// <summary>The splits the run serves.</summary>
     public IReadOnlyList<string> Splits { get; }
 }
 

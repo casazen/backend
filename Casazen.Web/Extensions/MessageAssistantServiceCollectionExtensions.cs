@@ -19,17 +19,11 @@ public static class MessageAssistantServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        // E05/F05/US01/T02 (NF-66): the rules of the organization with the exceptions of a property (and the version of the instructions every change grows), and the knowledge base
-        // of a property: the facts of its listing, the entries of the property and of the organization. Scoped: they hold the database of the request.
         services.AddScoped<IAssistantRulesService, AssistantRulesService>();
         services.AddScoped<IAssistantKnowledgeService, AssistantKnowledgeService>();
 
-        // E05/F05/US01/T03 (NF-66, NF-67): what the assistant does in each situation (mode, template, source, the start of the trust period) for the organization and as the
-        // exceptions of a property; it grows the version of the instructions through IAssistantRulesService.
         services.AddScoped<IAssistantSituationService, AssistantSituationService>();
 
-        // E05/F05/US02/T01 (NF-67): the pipeline of the drafts (section Assistant), the gate that never sends by itself until E05/F05/US03 registers the real one, the observer that
-        // closes the «To do» of an escalated message when a person answers its conversation, the handler of the messages of the guests and its job (both behind the flag).
         services.AddOptions<AssistantOptions>().BindConfiguration(AssistantOptions.SectionName);
         services.AddScoped<IAssistantDraftService, AssistantDraftService>();
         services.AddScoped<IAutoSendGate, NeverAutoSendGate>();

@@ -28,8 +28,6 @@ public sealed class GuestBookingLookupService(
     TimeProvider? timeProvider = null,
     IBookingFlowSettingsService? flowSettings = null) : IGuestBookingLookupService
 {
-    // What the phone proof looks up when the guest typed something that is not a code: a stored code has only the characters of
-    // BookingCodes.Alphabet, so no booking has this one.
     private const string UnmatchableCode = "-";
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -42,10 +40,6 @@ public sealed class GuestBookingLookupService(
         return await ViewOfAsync(booking, cancellationToken);
     }
 
-    /// <summary>
-    /// <paramref name="booking"/> as its guest sees it. The caller has already proved that the guest is the one of the booking
-    /// (code + email, or a guest session): nothing is checked here.
-    /// </summary>
     internal async Task<GuestBookingView> ViewOfAsync(Booking booking, CancellationToken cancellationToken)
     {
         var ttlMinutes = CheckoutHolds.GetTtlMinutes(configuration);
@@ -94,11 +88,8 @@ public sealed class GuestBookingLookupService(
                 "GuestCheckInLinkUnavailable");
         }
 
-        // A missing App:PublicSiteBaseUrl is a configuration error (500) before any session is created.
         links.EnsureConfigured();
 
-        // A new session, its link only in the email, the older links expired once the email is queued. The email goes
-        // through the check-in link email job, which records its real outcome for the host (CO-09).
         var token = await checkInService.CreateSessionAsync(booking.Id, booking.OrgId);
         var tokenHash = GuestCheckInService.HashToken(token);
         var sessionId = await db.GuestCheckInSessions
@@ -118,7 +109,6 @@ public sealed class GuestBookingLookupService(
         logger.LogInformation("Check-in link sent again at the request of the guest of booking {BookingId}", booking.Id);
     }
 
-    /// <summary>The booking of the site that matches <paramref name="credentials"/>; the same <see cref="NotFoundException"/> whatever does not match.</summary>
     internal async Task<Booking> LoadAsync(GuestBookingCredentials credentials, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(credentials);
@@ -127,10 +117,8 @@ public sealed class GuestBookingLookupService(
         if (!BookingCodes.TryNormalize(credentials.BookingCode, out var code) || slug.Length == 0 || email.Length == 0)
             throw NotFound();
 
-        // The slug of the link may be a previous slug of the org (PL-04): links in older emails keep working.
         var orgId = await OrgService.ResolveOrgIdBySlugAsync(db, slug, cancellationToken) ?? throw NotFound();
 
-        // Anonymous request: the tenant filter is off, the org comes from the site and code + email are the access check.
         var booking = await db.Bookings
             .AsNoTracking()
             .AsSplitQuery()
@@ -165,14 +153,10 @@ public sealed class GuestBookingLookupService(
         ArgumentNullException.ThrowIfNull(credentials);
         var slug = credentials.OrgSlug?.Trim() ?? string.Empty;
 
-        // The slug of the link may be a previous slug of the org (PL-04). A slug of no org and a string that is not a code still run the query below,
-        // with values no booking has.
         var orgId = slug.Length == 0 ? null : await OrgService.ResolveOrgIdBySlugAsync(db, slug, cancellationToken);
         var site = orgId ?? Guid.Empty;
         var code = BookingCodes.TryNormalize(credentials.BookingCode, out var normalized) ? normalized : UnmatchableCode;
 
-        // Anonymous request: the tenant filter is off, the org comes from the site and code + digits are the access check. (OrgId, BookingCode) is
-        // unique, so the query finds at most one booking.
         var candidate = await db.Bookings
             .AsNoTracking()
             .Where(b =>
@@ -197,7 +181,6 @@ public sealed class GuestBookingLookupService(
             .Where(b => b.Id == candidate.Id)
             .SingleOrDefaultAsync(cancellationToken);
 
-        // Gone between the two reads: the answer of any other refusal.
         return booking ?? throw NotFound();
     }
 
@@ -213,7 +196,6 @@ public sealed class GuestBookingLookupService(
         if (!BookingCodes.TryNormalize(bookingCode, out var code))
             throw NotFound();
 
-        // (OrgId, BookingCode) is unique, so the query finds at most one booking; the email decides whether it is this guest's.
         var booking = await db.Bookings
             .AsNoTracking()
             .AsSplitQuery()
@@ -252,7 +234,6 @@ public sealed class GuestBookingLookupService(
             booking.CheckOutDate,
             _clock.TodayInRomeAsDateOnly(),
             _clock.GetUtcNow().UtcDateTime,
-            // casazen/backend#978: the window of the org's booking flow, the one its links go out with.
             flowSettings is null
                 ? configuration.GetValue("CheckIn:SendWindowDays", 3)
                 : (await flowSettings.GetAsync(booking.OrgId, cancellationToken)).CheckInLinkDaysBefore,

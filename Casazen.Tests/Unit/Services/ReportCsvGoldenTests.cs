@@ -3,16 +3,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E07/F03/US05/T01 (NF-101, brief AC3): the CSV of every list report is, byte for byte, the one the host reports wrote before the refactor into <c>ReportTable</c>.
-/// The expected files were not written by the code under test: they were written by the documents of <c>origin/develop</c> at <c>08f955e9</c> (the code before the
-/// refactor), run on the fixed inputs of <see cref="ReportCsvGoldenInputs"/>, and pasted here as the rows of each file. A file is the BOM, <c>;</c> between the cells,
-/// a decimal comma, a percentage as the percentage, a day as <c>dd/MM/yyyy</c>, a text a spreadsheet would run with a leading apostrophe, and a <c>CRLF</c> after every
-/// row, the last included.
-/// </summary>
 public class ReportCsvGoldenTests
 {
-    // One entry for each list report, one string for each row of its file, as origin/develop (08f955e9) wrote them.
     private static readonly Dictionary<string, string[]> Expected = new()
     {
         ["revenue-by-property"] =

@@ -24,17 +24,9 @@ public static class OtaForwardAddress
     public static bool IsOtaSource(BookingSource? source) =>
         source is { } known && FiscalCopy.IsOtaBookingSource(known);
 
-    /// <summary>
-    /// True when <paramref name="bookingSource"/> is an online travel agency or the host of <paramref name="email"/> is one of
-    /// <paramref name="relayDomains"/>. A booking with no known source (<c>null</c>) is judged by the domain alone.
-    /// </summary>
     public static bool IsForward(string? email, BookingSource? bookingSource, IReadOnlyCollection<string>? relayDomains) =>
         IsOtaSource(bookingSource) || IsOnRelayDomain(email, relayDomains);
 
-    /// <summary>
-    /// True when the host of <paramref name="email"/> is one of <paramref name="relayDomains"/> or a subdomain of one (<c>reply.guest.example.com</c>
-    /// is on <c>guest.example.com</c>). Case and a trailing dot do not matter; an empty list, an address with no host and a blank entry match nothing.
-    /// </summary>
     public static bool IsOnRelayDomain(string? email, IReadOnlyCollection<string>? relayDomains)
     {
         if (relayDomains is null || relayDomains.Count == 0 || string.IsNullOrWhiteSpace(email))

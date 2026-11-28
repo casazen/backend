@@ -5,8 +5,6 @@ using Casazen.Core.Options;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.External;
-using Casazen.Infrastructure.OTA;
-using Casazen.Infrastructure.OTA.Resilience;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Casazen.Infrastructure.Data;
@@ -19,7 +17,6 @@ using Casazen.Web.Infrastructure;
 using Casazen.Web.Middleware;
 using Casazen.Web.Resources;
 using Hangfire;
-using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.EntityFrameworkCore;
@@ -37,11 +34,8 @@ if (args is ["--ensure-agency-test-meter", .. var modules])
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Data Protection keys persisted in the database (not the ephemeral container disk): FD-07 / A9-04. Outside
-// Development/Testing the key-encryption certificate is required, the startup fails without it (CO-14).
 builder.Services.AddCasazenDataProtection(builder.Configuration, builder.Environment);
 
-// Database
 builder.Services.AddCasazenDatabase(builder.Configuration);
 var connectionString = NpgsqlConnectionStringNormalizer.Normalize(
     builder.Configuration.GetConnectionString("DefaultConnection"));
@@ -58,7 +52,6 @@ if (!string.IsNullOrEmpty(connectionString) && RequiredConfiguration.IsEnforced(
 // test and production share the database, never the queue (FD-11, docs/runbooks/hangfire.md).
 var hangfireStorage = builder.Services.AddCasazenHangfire(builder.Configuration, builder.Environment, connectionString);
 
-// Repositories
 builder.Services.AddCasazenRepositories();
 builder.Services.AddScoped<IGuestRepository, GuestRepository>();
 builder.Services.AddScoped<IPropertyRepository, PropertyRepository>();
@@ -67,29 +60,23 @@ builder.Services.AddScoped<IBookingRepository, BookingRepository>();
 builder.Services.AddScoped<ITouristTaxRateRepository, TouristTaxRateRepository>();
 builder.Services.AddScoped<IPricingAdapterConfigRepository, PricingAdapterConfigRepository>();
 builder.Services.AddScoped<IPricingHistoryRepository, PricingHistoryRepository>();
-// Lease repositories
 builder.Services.AddScoped<ILeaseContractRepository, LeaseContractRepository>();
 builder.Services.AddScoped<ILeaseEventRepository, LeaseEventRepository>();
 
 builder.Services.AddMemoryCache();
 
-// Dates: UTC normalization of JSON/query/route DateTime values + clock for "today" in Europe/Rome (FD-06)
 builder.Services.AddCasazenUtcDateTimeHandling();
 
-// Stripe configuration — set API key globally for all Stripe services
 var stripeSecretKey = builder.Configuration["Stripe:SecretKey"];
 if (!string.IsNullOrEmpty(stripeSecretKey))
 {
     StripeConfiguration.ApiKey = stripeSecretKey;
 }
 
-// Stripe mode of this environment (live keys only in Production) and plan prices, validated at startup (PL-11).
 builder.Services.AddCasazenBillingConfiguration(builder.Configuration, builder.Environment);
 
-// "Accesso aperto" (BL-01): Entitlement:OpenAccess:{Enabled,Tier}, off by default, validated at startup (docs/runbooks/open-access.md).
 builder.Services.AddCasazenOpenAccessConfiguration(builder.Configuration);
 
-// Services
 builder.Services.AddCasazenServices();
 builder.Services.AddDirectAlloggiati(builder.Environment.IsProduction() && builder.Configuration.GetValue<bool>("Alloggiati:DirectEnabled"));
 builder.Services.AddRoss1000Direct();
@@ -103,20 +90,15 @@ builder.Services.AddScoped<IWireTransferService, WireTransferService>();
 builder.Services.AddScoped<IWithholdingService, WithholdingService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
 builder.Services.AddCasazenEmail(builder.Configuration, builder.Environment);
-// Fiscal documents of epic E06 (NF-81, NF-82): the invoice data of a booking and the issuer of the documents; every task of the epic registers in AddCasazenFiscalDocuments.
 builder.Services.AddCasazenFiscalDocuments(builder.Configuration);
-// The owner portal operations of feature E07/F07 (NF-111): calendar, owner stays and their background work; every task of the feature registers there.
 builder.Services.AddCasazenOwnerPortalOperations();
-// Push notifications queued on Hangfire, sent to Expo in batches, receipts read later: MO-04.
 builder.Services.AddCasazenPush(builder.Configuration);
-// Object storage (Supabase Storage via S3; filesystem only in Development/Testing): FD-07.
 builder.Services.AddCasazenFileStorage(builder.Configuration);
 builder.Services.AddScoped<IStripeService, StripeService>();
 builder.Services.AddScoped<StripeWebhookHandler>();
 builder.Services.AddScoped<ConcordatoFacilePaymentHandler>();
 builder.Services.AddScoped<IStripeConnectGateway, StripeConnectGateway>();
 builder.Services.AddScoped<IConnectOnboardingService, ConnectOnboardingService>();
-// The supplier's Connect account on top of the same onboarding (SP-14): status, links and "Verificato"; no payment yet (SP-15).
 builder.Services.AddScoped<ISupplierPaymentsAccountService, SupplierPaymentsAccountService>();
 builder.Services.AddCasazenAuth0Management();
 builder.Services.AddScoped<IAdminService, AdminService>();
@@ -124,86 +106,50 @@ builder.Services.AddScoped<ITouristTaxQuoteService, TouristTaxQuoteService>();
 builder.Services.AddScoped<IGdprService, GdprService>();
 builder.Services.AddScoped<IAlloggiatiWebService, AlloggiatiWebService>();
 builder.Services.AddScoped<IPricingAdapterService, PricingAdapterService>();
-// «Calcola con l'AI» of the step «Prezzi» of the property wizard: the AI proposes the nightly rate (WIZ-AI-PRICE)
 builder.Services.AddScoped<IListingPriceSuggestionService, ListingPriceSuggestionService>();
 builder.Services.AddCasazenAiProvider(builder.Configuration);
-// Agency tier B2B services
 builder.Services.AddScoped<ITrustedSupplierService, TrustedSupplierService>();
-// Lease services
 builder.Services.AddScoped<ILeaseWorkflowService, LeaseWorkflowService>();
 builder.Services.AddScoped<ILeaseDocumentService, LeaseDocumentService>();
 builder.Services.AddScoped<ILeaseDocumentExtractionService, LeaseDocumentExtractionService>();
-// The values of the receipt of a registration, read from the PDF when the person asks (CF-DOCS-REAL)
 builder.Services.AddScoped<ILeaseDocumentReadingService, LeaseDocumentReadingService>();
-// The text of a contract document, read on the server: the text the PDF carries, OCR for a scan or a photo (NL-DOCS)
 builder.Services.AddSingleton<IContractTextReader, ContractTextReader>();
-// Contract templates: final PDF only from a complete, lawyer-approved template (LT-03, A7-03)
 builder.Services.AddCasazenLeaseContractTemplates(builder.Configuration);
-// Signature: offline by default, provider only with Features:ESignProvider on and a configured provider (LT-02)
 builder.Services.AddCasazenLeaseSigning(builder.Configuration);
-// The guided draft of a lease and the retention of the abandoned drafts (LR-12)
 builder.Services.AddCasazenLongRentLeaseDrafts();
-// The end of a lease in force: the tacit renewal job, the notice of non-renewal, the early termination (LR-14)
 builder.Services.AddCasazenLongRentLeaseTerm();
-// What the landlord can do about the end of a lease: the letters CasaZen prepares, drafts until the product owner approves them (LR-OPS-1)
 builder.Services.AddCasazenLongRentLeaseOperations(builder.Configuration);
 
-// OTA partner adapters with resilience patterns: registered only with Features:OtaPartnerApi on (D10, FD-20)
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
 
-// What the booking events start by themselves: the cleaning and special-request "To do", the alert of a booking from a channel (E08/F06)
 builder.Services.AddCasazenBookingOperations();
 
-// The tourist tax paid online in the guest check-in (epic E25, NF-119): the collection and the consumer of the booking events, behind Features:TouristTaxOnlinePayment.
 builder.Services.AddCasazenTouristTaxCollection();
 
-// Octorate connector (epic E02, ADR-023): its services, clients, handlers and jobs, all registered in AddCasazenOctorate.
 builder.Services.AddCasazenOctorate(builder.Configuration);
 
-// The guests of a stay written to the channel manager on their own, for the orgs that asked (epic E20, decision O1): the setting, the service and its consumer.
 builder.Services.AddCasazenOctorateGuestAutoSend();
 
-// The copy of the OTA conversations read from the channel manager (epic E05, feature F01, NF-62, NF-64): the sync service, its webhook handler,
-// the reconciliation jobs and the retention of the copy, all registered in AddMessageSync.
 builder.Services.AddMessageSync();
 
-// The hub of messages (epic E05, feature F02, NF-61, NF-64): one list and one thread model over the conversations of the channels and the direct
-// ones, and the proxy of the attachments, all registered in AddMessagesHub (the next tasks of the feature add theirs there).
 builder.Services.AddMessagesHub();
 
-// The check-in link of a stay with no e-mail address (epic E23, feature F01, NF-122): the portal chat, the contact of the guest and the host's To do, behind the flags
-// PortalChatCheckInLink and GuestContactInfo, all registered in AddCheckInLinkDelivery.
 builder.Services.AddCheckInLinkDelivery();
 
-// E05/F07/US01 (NF-71): the scheduled messages of the routines: the plan, the timeline, the dispatcher that sends, the handler of the booking events, the alerts and the jobs, all registered in AddScheduledMessages and
-// all behind Features:ScheduledMessages (off by default).
 builder.Services.AddScheduledMessages();
 
-// Who is told what and how (epic E05, feature F03, NF-65): the notification preferences of the host users with their single decision point, and the alerts
-// of the new messages of the guests that already use it, all registered in AddNotificationPreferences.
 builder.Services.AddNotificationPreferences();
 
-// The approval queue that executes (epic E05, feature F04, NF-68): the registry of the actions an approval runs, the actions of the queue itself (the draft of a message, the
-// campaign) and the alert of a new item, all registered in AddApprovalQueueActions. The assistant, the replies to reviews and epic E07 register the actions of their own item types.
 builder.Services.AddApprovalQueueActions();
 
-// The AI assistant that answers the guests' messages (epic E05, feature F05, NF-66, NF-67): the knowledge base of a property, the rules of the organization with the exceptions of a
-// property and, with the next tasks of the feature, the situations, the drafts and the gate, all registered in AddMessageAssistant and behind Features:MessageAssistant where they are used.
 builder.Services.AddMessageAssistant();
 
-// The reviews of the channels (epic E05, feature F06, NF-69, OCT-12): the read of the reviews of the bookings of Airbnb through the channel manager, the reply of the host and the
-// host's own review, the job that reads the bookings every six hours, and the reply drafts that wait in the approval queue; all registered in AddOtaReviews.
 builder.Services.AddOtaReviews();
 
-// Marketplace (epic E09, NF-54 to NF-59): the catalog of channels, tools, license functions and partners; every task of the epic registers in AddCasazenMarketplace.
 builder.Services.AddCasazenMarketplace(builder.Configuration);
 
-// Marketing module (epic E07, flag CrmMarketing): the Crm options and the keyed index of the contacts and of the suppression list, all
-// registered in AddCrmMarketing. The controllers are behind the flag; the index and the suppression list serve the always-on paths too.
 builder.Services.AddCrmMarketing(builder.Configuration);
 
-// Activation of CasaZen with Octorate (epic E10, NF-104..NF-107): the flow status and, with the next tasks, the plan and the panel steps, all
-// registered in AddCasazenOnboarding and behind Features:OctorateOnboarding where they are used.
 builder.Services.AddCasazenOnboarding(builder.Configuration);
 
 // The guest portal (epics E50-E60, casazen/backend#987): the stay link of a booking and the portal behind it, all registered in AddGuestPortal and
@@ -215,11 +161,6 @@ builder.Services.AddGuestPortalRegistries(
     typeof(Casazen.Infrastructure.GuestPortal.PortalContextFactory).Assembly,
     typeof(Program).Assembly);
 
-// Localization — Italian (default) and English.
-// No ResourcesPath: resource names follow the marker type's namespace, so IStringLocalizer<SharedResources>
-// (Casazen.Web.Resources.SharedResources) reads Resources/SharedResources.resx and SharedResources.en.resx.
-// With ResourcesPath = "Resources" it looked for Casazen.Web.Resources.Resources.SharedResources and every
-// lookup returned its raw key.
 builder.Services.AddLocalization();
 
 builder.Services.AddRequestLocalization(options =>
@@ -232,26 +173,20 @@ builder.Services.AddRequestLocalization(options =>
     options.ApplyCurrentCultureToResponseHeaders = true;
 });
 
-// Single error contract: every ProblemDetails (framework-generated too) gets code, traceId and localized texts.
 builder.Services.AddProblemDetails(options =>
     options.CustomizeProblemDetails = context =>
         ApiProblemDetails.Complete(context.ProblemDetails, context.HttpContext));
 
-// Authentication & Authorization
 builder.Services.AddCasazenAuthentication(builder.Configuration, builder.Environment);
 builder.Services.AddCasazenAuthorization();
 
-// Health checks: /api/health/live, /api/health/ready (database, Hangfire, configuration), /api/health (FD-12)
 builder.Services.AddCasazenHealthChecks();
 
-// CORS: configured origins only, no credentials (FD-17, docs/runbooks/cors-security-headers.md)
 builder.Services.AddCasazenCors();
 
-// Client IP behind the Railway proxy (UseForwardedHeaders, first middleware) and per-IP rate limiting (FD-10, #273).
 builder.Services.AddCasazenForwardedHeaders();
 builder.Services.AddCasazenRateLimiting();
 
-// Background Jobs
 builder.Services.AddScoped<OtaSyncJob>();
 builder.Services.AddScoped<BookingPullJob>();
 builder.Services.AddScoped<DynamicPricingJob>();
@@ -261,7 +196,6 @@ builder.Services.AddScoped<StayAlertsJob>();
 builder.Services.AddScoped<CinDeadlineAlertJob>();
 builder.Services.AddScoped<PropertyModeChangeJob>();
 builder.Services.AddScoped<GdprDataRetentionJob>();
-// Lease background jobs
 builder.Services.AddScoped<ESignWebhookJob>();
 builder.Services.AddScoped<LeaseSignStatusPollingJob>();
 builder.Services.AddScoped<LeaseRegistrationStatusPollingJob>();
@@ -270,18 +204,12 @@ builder.Services.AddScoped<SeoPageGenerationJob>();
 builder.Services.AddScoped<SeoContentRefreshJob>();
 builder.Services.AddScoped<SeoEventRetentionJob>();
 builder.Services.AddScoped<GuestCheckInSendJob>();
-// casazen/backend#978: the arrivals and departures the booking flow registers in the host's place.
 builder.Services.AddScoped<BookingFlowAutomationJob>();
 builder.Services.AddScoped<CheckoutHoldExpiryJob>();
-// SP-04: cancels the service requests nobody answered in time (scheduled only with Features:SupplierRequestAutoCancel on).
 builder.Services.AddScoped<ServiceRequestAutoCancelJob>();
-// SP-BKP: follows the windows of the groups of backup suppliers (always scheduled: the flag only gates the creation of groups).
 builder.Services.AddScoped<ServiceRequestGroupJob>();
-// SP-10: upkeep of the bookings from the suppliers' public showcases (holds, unanswered requests) and the reminders of the day
-// before; both are scheduled whatever the feature flags say.
 builder.Services.AddScoped<ServiceRequestExpiryJob>();
 builder.Services.AddScoped<ServiceRequestReminderJob>();
-// SP-15b: the supplier service payments in flight, their reminders and the requests that waited for a supplier (always scheduled).
 builder.Services.AddScoped<ServicePaymentSyncJob>();
 builder.Services.AddScoped<ServicePaymentRemindersJob>();
 builder.Services.AddScoped<SendPendingPaymentRequestsJob>();
@@ -298,24 +226,20 @@ builder.Services.Configure<Casazen.Web.Controllers.IndexNowOptions>(
     builder.Configuration.GetSection("IndexNow"));
 builder.Services.Configure<Casazen.Core.Options.PublicHostOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.PublicHostOptions.SectionName));
-// Vercel Domains API (BK-17): the token and the project of the web app, set by the product owner (D9).
 builder.Services.Configure<Casazen.Core.Options.VercelDomainsOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.VercelDomainsOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.ComplianceOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.ComplianceOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.StayAlertOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.StayAlertOptions.SectionName));
-// ADR-022-R8: how often the time triggers of the routines are written to the outbox (Routine:EvaluationIntervalMinutes).
 builder.Services.Configure<Casazen.Core.Options.RoutineOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.RoutineOptions.SectionName));
-// ADR-022-R15: how long the dispatched domain events stay in the outbox (EventBus:RetentionDays, never below 30).
 builder.Services.Configure<Casazen.Core.Options.EventBusOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.EventBusOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.GuestCheckInOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.GuestCheckInOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.RliOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.RliOptions.SectionName));
-// Short-term rental fiscal rules (CO-18): threshold, rates and their sources, from fiscale.md.
 builder.Services.AddOptions<Casazen.Core.Options.ShortStayFiscalOptions>()
     .Bind(builder.Configuration.GetSection(Casazen.Core.Options.ShortStayFiscalOptions.SectionName))
     .Validate(o => o.IsValid(), "ShortStayFiscal: threshold, nights and rates must be positive (rates below 1) and every source set.")
@@ -324,32 +248,25 @@ builder.Services.AddOptions<Casazen.Core.Options.ShortStayFiscalOptions>()
 builder.Services.Configure<ComuniOptions>(builder.Configuration.GetSection(ComuniOptions.SectionName));
 builder.Services.AddHostedService<ComuneSeedHostedService>();
 builder.Services.AddHostedService<AlloggiatiCodeTableSeedHostedService>();
-// The official Swiss localities and municipalities of swisstopo (E29/F01/US01/T01): the seed file of the deploy, loaded when the database does not have it yet.
 builder.Services.AddHostedService<SwissPlacesSeedHostedService>();
 builder.Services.AddHostedService<SeoBootstrapHostedService>();
-// Which legal documents are not published and what to configure (decision D9, docs/runbooks/legal-documents.md).
 builder.Services.AddHostedService<LegalDocumentsStartupCheck>();
-// The Italian short-let withholding rule of OwnerAccounting:ItalianShortLetRule as a draft (not approved) of every agency with owners (E18/F01/US01/T01).
 builder.Services.AddHostedService<OwnerWithholdingDraftSeedHostedService>();
-// The provider an admin saved, so the first request does not still see only the server configuration.
 builder.Services.AddHostedService<AiSettingsWarmupHostedService>();
 // E09/F01/US01/T02: with the connector on and the cache of the portal catalog still empty (a new environment), one run of the daily refresh is queued
 // at start, so the portal list does not wait for 03:30 UTC. Only where Hangfire is (it queues a job), and it never holds or stops the start.
 if (hangfireStorage is not null)
     builder.Services.AddHostedService<MarketplacePortalBootstrapHostedService>();
 
-// API
 builder.Services.AddControllers(options => options.Filters.Add<ProblemDetailsResultFilter>())
     .AddJsonOptions(o =>
     {
         o.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
     })
-    // Validation attributes may use a SharedResources key as ErrorMessage (a literal message is kept as is).
     .AddDataAnnotationsLocalization(options =>
         options.DataAnnotationLocalizerProvider = (_, factory) => factory.Create(typeof(SharedResources)))
     .ConfigureApiBehaviorOptions(options =>
     {
-        // Model binding/validation errors: 400 ValidationProblemDetails (code "validation_error", field errors).
         options.InvalidModelStateResponseFactory = context =>
         {
             var problemDetailsFactory = context.HttpContext.RequestServices.GetRequiredService<ProblemDetailsFactory>();
@@ -364,7 +281,6 @@ builder.Services.AddControllers(options => options.Filters.Add<ProblemDetailsRes
             };
         };
     });
-// Enums as member names; a value no member declares (e.g. 7 or "7") is a 400 validation_error, not a 500 (PL-07).
 builder.Services.AddOptions<JsonOptions>()
     .Configure<IStringLocalizerFactory>((o, localizerFactory) =>
         o.JsonSerializerOptions.Converters.Add(
@@ -416,11 +332,8 @@ builder.Services.AddSwaggerGen(options =>
 var app = builder.Build();
 app.LogDatabaseConnectionPlan();
 
-// First middleware: resolves the client IP and scheme from the trusted proxy's X-Forwarded-For / X-Forwarded-Proto.
-// Everything after it (rate limiting, consent evidence) reads HttpContext.Connection.RemoteIpAddress, never the header.
 app.UseForwardedHeaders();
 
-// Apply pending EF migrations on startup (Railway deploy). Skipped in Testing (in-memory DB).
 if (!string.IsNullOrEmpty(connectionString) && !app.Environment.IsEnvironment("Testing"))
 {
     using var migrateScope = app.Services.CreateScope();
@@ -434,14 +347,12 @@ if (!string.IsNullOrEmpty(connectionString) && !app.Environment.IsEnvironment("T
         db, migrateScope.ServiceProvider.GetRequiredService<ILogger<Program>>());
 }
 
-// One-off command: `dotnet Casazen.Web.dll storage:migrate-legacy [--dry-run]` (docs/runbooks/storage.md).
 if (StorageExtensions.IsLegacyFileMigrationCommand(args))
 {
     Environment.ExitCode = await app.RunLegacyFileMigrationAsync(args);
     return;
 }
 
-// One-off command: `dotnet Casazen.Web.dll compliance:recalculate [--dry-run]` (docs/runbooks/compliance.md).
 if (PropertyComplianceCheckJob.IsRecalculateCommand(args))
 {
     Environment.ExitCode = await PropertyComplianceCheckJob.RunRecalculateCommandAsync(app, args);
@@ -457,13 +368,11 @@ if (args.Contains(DemoOtaInboxCommand.Command, StringComparer.Ordinal))
 
 app.LogOpenAccess();
 
-// Swagger (must be before Authentication to allow anonymous access to swagger.json)
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 
-    // Log Swagger URLs
     var logger = app.Services.GetRequiredService<ILogger<Program>>();
     logger.LogInformation("====================================================");
     logger.LogInformation("🔵 Swagger UI available at:");
@@ -472,35 +381,25 @@ if (app.Environment.IsDevelopment())
     logger.LogInformation("====================================================");
 }
 
-// Security headers on every response, static files included (FD-17): before anything that can short-circuit.
 app.UseSecurityHeaders();
 
-// Static files (wwwroot test feeds; never the legacy /uploads folder). Uploads live in object storage.
 app.UseCasazenStaticFiles();
 
-// CORS (must be before Authentication)
 app.UseCors(CasazenCorsPolicyProvider.PolicyName);
 
-// Localization middleware — reads Accept-Language header, sets culture for downstream components
 app.UseRequestLocalization();
 
-// Global error handling — must be early in pipeline to catch all exceptions
 app.UseErrorHandling();
 
-// Endpoints behind a disabled feature flag answer 404 before authentication, like a missing route (FD-20)
 app.UseFeatureGates();
 
-// Authentication & Authorization (must be in this order)
 app.UseAuthentication();
-// Loads the caller's OrgId asynchronously once per request, before policies and the EF tenant filter read it (A1-20).
 app.UseTenantResolution();
-// A deactivated account gets 403 account_inactive on every authenticated request, before any policy (PL-03, A1-04).
 app.UseInactiveAccountBlock();
 app.UseMiddleware<Casazen.Web.Middleware.CommercialAccessMiddleware>();
 app.UseAuthorization();
 app.UseRateLimiter();
 
-// Hangfire Dashboard and recurring jobs (only when Hangfire is configured)
 if (hangfireStorage is not null)
 {
     var hangfireDashboardEnabled = builder.Configuration.GetValue(
@@ -532,12 +431,9 @@ if (hangfireStorage is not null)
 }
 
 app.MapControllers();
-// Real-time notifications (UI-12a): WebSockets, with server-sent events and long polling as fallbacks. Not behind response caching,
-// compression or a rate limiter (the app has none for it); the token arrives as ?access_token= (see AddCasazenAuthentication).
 app.MapHub<Casazen.Web.Hubs.NotificationsHub>(Casazen.Web.Hubs.NotificationsHub.Path);
 app.MapCasazenHealthChecks();
 
-// Log application URLs on startup
 app.Lifetime.ApplicationStarted.Register(() =>
 {
     var logger = app.Services.GetRequiredService<ILogger<Program>>();

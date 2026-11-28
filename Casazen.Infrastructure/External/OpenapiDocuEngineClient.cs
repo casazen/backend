@@ -11,11 +11,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.External;
 
-/// <summary>
-/// DocuEngine lease-contract registration (openapi.com). The public specification has one registration product;
-/// the request id comes back as <c>data.id</c>, states are <c>NEW</c>/<c>SEARCH</c>/<c>WAIT</c>/<c>DONE</c>/<c>CANCELLED</c>,
-/// and a 402 is a failure, never a filed contract.
-/// </summary>
 public sealed class OpenapiDocuEngineClient(
     HttpClient http,
     IOptions<OpenapiOptions> options,
@@ -153,7 +148,6 @@ public sealed class OpenapiDocuEngineClient(
 
         using var response = await http.SendAsync(request, cancellationToken);
         var token = await ReadTokenAsync(response, cancellationToken);
-        // POST /tokens uses the same data envelope as DocuEngine. A root "token", or an empty one, is not a credential.
         if (!response.IsSuccessStatusCode || string.IsNullOrWhiteSpace(token))
             throw Failed(RliRegistrationFailureCodes.ProviderError, "Openapi did not issue a token.");
 

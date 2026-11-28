@@ -38,7 +38,6 @@ public class MessageSyncRulesTests
         await using (var db = h.NewDb())
             first = await h.Service(db).ReconcileDeepAsync(MessageSyncHarness.OrgA, TimeSpan.FromDays(2), CancellationToken.None);
 
-        // Only the thread with activity in the two days before the pass is read; the others are older, and the list is newest first, so it ends there.
         Assert.Equal(new SyncResult(1, 1, 0, 0), first);
         Assert.Equal(["1"], (await h.ReadAsync(db => db.OtaMessageThreads.ToListAsync())).Select(t => t.OctorateThreadId));
         h.Client.Verify(c => c.GetChatMessagesAsync(acc, "1", null, It.IsAny<CancellationToken>()), Times.Once);
@@ -46,8 +45,6 @@ public class MessageSyncRulesTests
         Assert.Equal(now, state.LastDeepPassAt);
         Assert.Null(state.LastError);
 
-        // The next pass looks back over the window from the last one: the messages of the thread are read from two days before it, not from the newest
-        // message that is stored, so a message older than that one that nobody delivered is found.
         h.Client.Setup(c => c.GetChatThreadsAsync(acc, 0, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OctorateChatThreadPage([MessageSyncHarness.Thread("1") with { LastActivityAt = now.AddHours(-1) }], 1));
         h.Client.Setup(c => c.GetChatThreadsAsync(acc, 1, It.IsAny<CancellationToken>()))
@@ -70,7 +67,6 @@ public class MessageSyncRulesTests
         h.Client.Setup(c => c.GetConnectionsAsync(acc, It.IsAny<CancellationToken>()))
             .ReturnsAsync([new OctorateChannelConnection("55", "142", "Booking.com", "123", "CONNECTED")]);
 
-        // An inquiry: no reservation yet, the channel comes from the connection it comes through.
         h.Client.Setup(c => c.GetChatThreadAsync(acc, "9200", It.IsAny<CancellationToken>()))
             .ReturnsAsync(MessageSyncHarness.Thread("9200", reservationId: null) with { ConnectionIds = ["55"] });
         await using (var db = h.NewDb())
@@ -82,7 +78,6 @@ public class MessageSyncRulesTests
         Assert.Null(inquiry.BookingId);
         Assert.Null(inquiry.OctorateReservationId);
 
-        // The guest books: the thread carries the reservation, which CasaZen does not hold as a booking yet.
         h.Client.Setup(c => c.GetChatThreadAsync(acc, "9200", It.IsAny<CancellationToken>()))
             .ReturnsAsync(MessageSyncHarness.Thread("9200", reservationId: "R-9200", channelId: "142"));
         await using (var db = h.NewDb())
@@ -93,7 +88,6 @@ public class MessageSyncRulesTests
         Assert.Equal("R-9200", booked.OctorateReservationId);
         Assert.Null(booked.BookingId);
 
-        // The booking arrives from the channel manager. The thread is quiet: the next pass links it without reading it again.
         var guest = new Guest { OrgId = MessageSyncHarness.OrgA, FirstName = "Giulietta", LastName = "Verdi", Email = "giulietta@example.com" };
         var booking = new Booking
         {
@@ -147,8 +141,6 @@ public class MessageSyncRulesTests
             await seed.SaveChangesAsync();
         }
 
-        // Octorate has both: the first was sent a minute after CasaZen wrote it, the second thirty-eight minutes after. The same text within ten
-        // minutes is the same message; the same text much later is not.
         h.Client.Setup(c => c.GetChatMessagesAsync(acc, ThreadId, It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(
             [
@@ -162,14 +154,12 @@ public class MessageSyncRulesTests
         var rows = await h.ReadAsync(db => db.OtaMessages.OrderBy(m => m.SentAt).ToListAsync());
         Assert.Equal(4, rows.Count);
 
-        // The first outbound row got the id and the state Octorate reports, and kept what CasaZen knew of it: its key, its author, its provenance.
         var completed = Assert.Single(rows, m => m.IdempotencyKey == "k-1");
         Assert.Equal("80001", completed.OctorateMessageId);
         Assert.Equal(OtaMessageDeliveryState.Sent, completed.DeliveryState);
         Assert.Equal("auth0|host", completed.SentByUserId);
         Assert.Equal(MessageOrigin.Person, completed.Origin);
 
-        // The second is still waiting for a person (40 minutes before its message), and the message of Octorate is a row of its own.
         var waiting = Assert.Single(rows, m => m.IdempotencyKey == "k-2");
         Assert.Null(waiting.OctorateMessageId);
         Assert.Equal(OtaMessageDeliveryState.ManualVerify, waiting.DeliveryState);
@@ -216,13 +206,11 @@ public class MessageSyncRulesTests
         var rows = await h.ReadAsync(db => db.OtaMessages.OrderBy(m => m.SentAt).ToListAsync());
         Assert.Equal(4, rows.Count);
 
-        // The old row got the id and the state Octorate reports, and kept what CasaZen knew of it.
         var completed = Assert.Single(rows, m => m.IdempotencyKey == "k-1");
         Assert.Equal("80001", completed.OctorateMessageId);
         Assert.Equal(OtaMessageDeliveryState.Sent, completed.DeliveryState);
         Assert.Equal("auth0|host", completed.SentByUserId);
 
-        // The row of a send that may still be running is not touched; the message of Octorate is a row of its own, which the save of that send takes away.
         var running = Assert.Single(rows, m => m.IdempotencyKey == "k-2");
         Assert.Null(running.OctorateMessageId);
         Assert.Equal(OtaMessageDeliveryState.Created, running.DeliveryState);

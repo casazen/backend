@@ -24,8 +24,6 @@ public class PerEmailRateLimiterTests
     private static IConfiguration Config(params (string Key, string Value)[] settings) =>
         new ConfigurationBuilder().AddInMemoryCollection(settings.ToDictionary(s => s.Key, s => (string?)s.Value)).Build();
 
-    // ─── The limiters ────────────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public void Guests_FivePerFifteenMinutes_ByDefault_TheSixthWaitsTheTimeThatIsLeft()
     {
@@ -39,7 +37,6 @@ public class PerEmailRateLimiterTests
         Assert.InRange(retryAfter, TimeSpan.FromMinutes(14), TimeSpan.FromMinutes(15));
         Assert.Equal("GuestBookingLookupPerEmail", limiter.PolicyName);
         Assert.Equal(TimeSpan.FromMinutes(15), limiter.Window);
-        // The guests' limit never changed what its 429 names: the time that is left.
         Assert.False(limiter.NamesTheWholeWindow);
     }
 
@@ -79,7 +76,6 @@ public class PerEmailRateLimiterTests
         Assert.True(limiter.TryAcquire("  VETRINA-test ", "MARIO@example.com", out _));
         Assert.False(limiter.TryAcquire("vetrina-test", "mario@example.com", out _));
 
-        // Another supplier, another address, and the guests' limit of the same address: three other budgets.
         Assert.True(limiter.TryAcquire("altra-vetrina", "mario@example.com", out _));
         Assert.True(limiter.TryAcquire("vetrina-test", "anna@example.com", out _));
         using var guests = new GuestBookingEmailRateLimiter(Config());
@@ -120,8 +116,6 @@ public class PerEmailRateLimiterTests
 
         Assert.Throws<ArgumentNullException>(() => limiter.TryAcquire("vetrina-test", null!, out _));
     }
-
-    // ─── The filter ──────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Filter_OverTheLimit_AnswersThe429OfTheProduct_WithTheWholeWindow_AndTheActionDoesNotRun()
@@ -204,7 +198,6 @@ public class PerEmailRateLimiterTests
     private static async Task<FilterRun> RunAsync<TLimiter>(PerEmailRateLimitFilter<TLimiter> filter, object body)
         where TLimiter : PerEmailRateLimiter
     {
-        // The answer is localized from the resources of the product, so the context needs the localizer.
         var http = new DefaultHttpContext { RequestServices = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider() };
         var context = new ActionExecutingContext(
             new ActionContext(http, new RouteData(), new ActionDescriptor()),

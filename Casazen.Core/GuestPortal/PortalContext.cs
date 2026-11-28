@@ -14,7 +14,6 @@ namespace Casazen.Core.GuestPortal;
 /// </remarks>
 public sealed record PortalContext
 {
-    /// <summary>The stay link the token opened: the id the logs carry, never the token.</summary>
     public required Guid LinkId { get; init; }
 
     public required Guid OrgId { get; init; }
@@ -23,24 +22,16 @@ public sealed record PortalContext
 
     public required Guid PropertyId { get; init; }
 
-    /// <summary>
-    /// The language of the guest, one of <c>GuestLanguages.Supported</c> (it, en, de, fr, es): the one the guest chose on the latest check-in session
-    /// that has one, then the default language of the org, then Italian (<c>GuestLanguages.Resolve</c>).
-    /// </summary>
     public required string Language { get; init; }
 
-    /// <summary>The status of the booking: confirmed, checked in, checked out or cancelled (a request never opens the portal).</summary>
     public required BookingStatus Status { get; init; }
 
     public required BookingSource Source { get; init; }
 
-    /// <summary>A booking of a portal (Airbnb, Booking.com, another channel): the one definition of the code, <c>FiscalCopy.IsOtaBookingSource</c>.</summary>
     public required bool IsOta { get; init; }
 
-    /// <summary>A booking of the booking site of the host (<see cref="BookingSource.Direct"/>): the only one the guest may change or cancel (D4).</summary>
     public required bool IsDirect { get; init; }
 
-    /// <summary>A check-in session of the booking is completed (<c>GuestCheckInSession.IsCompleted</c>).</summary>
     public required bool CheckInCompleted { get; init; }
 
     /// <summary>
@@ -51,17 +42,11 @@ public sealed record PortalContext
     /// </summary>
     public required bool CanSeeReserved { get; init; }
 
-    /// <summary>The arrival day (UTC midnight, as stored on the booking).</summary>
     public required DateTime CheckInDate { get; init; }
 
-    /// <summary>The departure day (UTC midnight, as stored on the booking).</summary>
     public required DateTime CheckOutDate { get; init; }
 }
 
-/// <summary>
-/// The portal context of the current request (<see cref="PortalContext"/>), set by the token filter of the portal before the action runs; <c>null</c>
-/// outside a request of the portal. Scoped to the request.
-/// </summary>
 public interface IGuestPortalContextAccessor
 {
     PortalContext? Current { get; }

@@ -21,10 +21,8 @@ public sealed record MarketplaceCatalogResponse(MarketplaceOctorateDto Octorate,
     }
 }
 
-/// <summary>Whether Octorate is usable for the org: the connector is on (<c>enabled</c>) and the org has a connected account (<c>connected</c>).</summary>
 public sealed record MarketplaceOctorateDto(bool Enabled, bool Connected);
 
-/// <summary>A group of the catalog. <c>unchangedFlow</c> is true for the home services, which have no entries here: the page keeps its own flow.</summary>
 public sealed record MarketplaceGroupDto(string Id, bool UnchangedFlow, IReadOnlyList<MarketplaceCatalogEntryDto> Entries)
 {
     public static MarketplaceGroupDto From(MarketplaceGroup group)
@@ -34,7 +32,6 @@ public sealed record MarketplaceGroupDto(string Id, bool UnchangedFlow, IReadOnl
     }
 }
 
-/// <summary>What a card costs: the words, <c>null</c> when nobody knows (never invented), and who invoices.</summary>
 public sealed record MarketplaceCostDto(string? Text, MarketplaceCostInvoicer InvoicedBy);
 
 /// <summary>
@@ -88,14 +85,8 @@ public sealed record MarketplaceCatalogEntryDto(
     }
 }
 
-/// <summary>
-/// <c>GET api/marketplace/active</c> (E09/F01/US01/T03, NF-54): the Active tab. <c>integrations</c> are what the org has activated (active, pending,
-/// to fix or requested) inside the caller's scope; <c>providers</c> are the CasaZen suppliers the host already asked for a job. Together they are
-/// the tab.
-/// </summary>
 public sealed record MarketplaceActiveResponse(IReadOnlyList<MarketplaceIntegrationDto> Integrations, IReadOnlyList<UsedSupplierDto> Providers)
 {
-    /// <summary>The answer, with the names of the licensed functions written in <paramref name="language"/>.</summary>
     public static MarketplaceActiveResponse From(MarketplaceActive active, IMarketplaceTexts texts, string language)
     {
         ArgumentNullException.ThrowIfNull(active);
@@ -129,7 +120,6 @@ public sealed record MarketplaceIntegrationDto(
         ArgumentNullException.ThrowIfNull(integration);
         ArgumentNullException.ThrowIfNull(texts);
 
-        // A licensed function has no name of its own on a row: its words are in the resource files, in the language asked.
         var name = integration.Kind == MarketplaceActivationKind.LicensedFunction && MarketplaceLicensedFunctions.IsKnown(integration.Code)
             ? texts.Get($"Marketplace.Licensed.{integration.Code}.Name", language)
             : integration.Name;
@@ -146,5 +136,4 @@ public sealed record MarketplaceIntegrationDto(
     }
 }
 
-/// <summary>The property an integration is about.</summary>
 public sealed record MarketplaceIntegrationPropertyDto(Guid Id, string Name);

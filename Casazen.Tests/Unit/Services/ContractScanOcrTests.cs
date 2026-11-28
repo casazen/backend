@@ -40,7 +40,6 @@ public sealed class OcrToolsFactAttribute : FactAttribute
             }
             catch (ArgumentException)
             {
-                // A folder of the PATH that is not a path: it holds nothing.
             }
         }
 
@@ -48,12 +47,6 @@ public sealed class OcrToolsFactAttribute : FactAttribute
     }
 }
 
-/// <summary>
-/// NL-DOCS-FU7: the way of a <b>scanned</b> contract, with the real tools. CF-SIM proved the reading of a PDF that carries its own text; nothing had
-/// run the other road, a page that is only a picture: rendered in gray by <c>pdftoppm</c> and read by <c>tesseract</c> (Italian and English). Here the
-/// sample contract of the simulated module is rendered by the PDF renderer of the application, turned into a picture with <c>pdftoppm</c> and put in a
-/// PDF that has no text (a page with one image, as a scanner or the photos of a contract make it), and the real reader has to read it by OCR.
-/// </summary>
 public sealed class ContractScanOcrTests
 {
     [OcrToolsFact]
@@ -65,8 +58,6 @@ public sealed class ContractScanOcrTests
 
         var text = await new ContractTextReader().ReadAsync(scan);
 
-        // The page was read by OCR (it carries no text), and what came out is the contract: the title, the rent and the deposit. Letters and digits only,
-        // in capitals: the punctuation and the spaces are where an OCR may differ.
         Assert.Equal(1, text.Pages);
         Assert.Equal(1, text.PagesOcr);
         var read = new string(text.Text.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
@@ -76,7 +67,6 @@ public sealed class ContractScanOcrTests
         Assert.Contains("130000", read, StringComparison.Ordinal);
     }
 
-    /// <summary>The page of <paramref name="digitalPdf"/> as a picture in gray, in a PDF that holds nothing else: what a scan is.</summary>
     private static async Task<byte[]> ScanOfAsync(byte[] digitalPdf)
     {
         var directory = Path.Combine(Path.GetTempPath(), $"casazen-scan-test-{Guid.NewGuid():N}");
@@ -105,7 +95,6 @@ public sealed class ContractScanOcrTests
         }
     }
 
-    /// <summary>A PDF of one A4-wide page whose only content is the image, 8-bit gray, deflated: no text, no font.</summary>
     private static byte[] ImageOnlyPdf(GrayImage image)
     {
         byte[] pixels;

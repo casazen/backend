@@ -84,7 +84,6 @@ public sealed class ReviewReplyApprovalAction(
         {
             var result = await channelReviews.ReplyAsync(key.Id, finalText, ApprovalQueueRules.SendKeyOf(item.Id, finalText, attempt), userId, ct);
 
-            // The same key found an attempt of this item that the channel refused: it did not go out, and the next key sends it again.
             if (result is { Replayed: true, State: OtaReviewActionState.Error })
                 continue;
 
@@ -111,6 +110,5 @@ public sealed class ReviewReplyApprovalAction(
         return ApprovalActionResult.Executed(OtaReviewActionState.Sent.ToString());
     }
 
-    /// <summary>A reply needs no undoing when its draft is rejected: nothing was sent.</summary>
     public Task OnRejectedAsync(ApprovalQueueItem item, string reason, string userId, CancellationToken ct) => Task.CompletedTask;
 }

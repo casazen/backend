@@ -6,7 +6,6 @@ public static partial class EmailTemplates
 {
     public static partial class Names
     {
-        /// <summary>«Prepara il tuo arrivo»: the e-mail that carries the stay link of the guest portal, before the arrival (E50/F01/US03/T03, NF-152).</summary>
         public const string GuestPrepareArrival = "guest-prepare-arrival";
     }
 

@@ -37,20 +37,10 @@ public sealed record PriceSuggestionFacts(
     string Country = "IT",
     string Currency = "EUR");
 
-/// <summary>
-/// The prompt of the nightly price (WIZ-AI-PRICE), in Italian, with the figures of the similar homes when there are enough of them. It
-/// asks for one JSON object (<see cref="PriceSuggestionAnswerParser"/>) and says what the AI may not do: invent data, name other homes.
-/// A new wording is a new <see cref="PromptVersion"/>, so no answer written for the old one is reused.
-/// </summary>
 public static class ListingPriceSuggestionPrompt
 {
-    /// <summary>Version of the wording; part of the key of the cached answers.</summary>
     public const string PromptVersion = "price-v2";
 
-    /// <summary>
-    /// Amenities that say nothing about the price (the safety devices the law asks for, the rules of the house, how luggage is kept):
-    /// they are left out of the prompt.
-    /// </summary>
     private static readonly HashSet<PropertyAmenity> NotPriced =
     [
         PropertyAmenity.SmokeDetector,
@@ -90,7 +80,6 @@ public static class ListingPriceSuggestionPrompt
             property.Currency);
     }
 
-    /// <summary>The codes (<see cref="PriceSuggestionFields"/>) of the facts the prompt really carries: what the host did not say is not listed.</summary>
     public static IReadOnlyList<string> UsedFields(PriceSuggestionFacts facts)
     {
         ArgumentNullException.ThrowIfNull(facts);
@@ -114,7 +103,6 @@ public static class ListingPriceSuggestionPrompt
         return used;
     }
 
-    /// <summary>The whole prompt; <paramref name="language"/> (<c>it</c> or <c>en</c>) is the language of the explanation.</summary>
     public static string Build(PriceSuggestionFacts facts, MarketPriceStats? market, PricePositioning positioning, string language)
     {
         ArgumentNullException.ThrowIfNull(facts);
@@ -241,7 +229,6 @@ public static class ListingPriceSuggestionPrompt
         _ => kind.ToString(),
     };
 
-    /// <summary>An amenity in Italian words; the ones that weigh most on a price are named, the others by their English name.</summary>
     public static string AmenityLabel(PropertyAmenity amenity) => amenity switch
     {
         PropertyAmenity.WiFi => "WiFi",

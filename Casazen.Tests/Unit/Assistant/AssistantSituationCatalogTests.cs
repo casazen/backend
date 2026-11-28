@@ -5,10 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Assistant;
 
-/// <summary>
-/// E05/F05/US01/T03 (NF-66, NF-67, AC-NF66-3): the one table of the situations. The 14 situations and the one that matches none, each once, with their stable codes, the sensitive
-/// categories they carry by nature, the modes they allow, their default, the topic that answers them and the topics their answer needs.
-/// </summary>
 public partial class AssistantSituationCatalogTests
 {
     private static AssistantSituationInfo Info(AssistantSituation situation) => AssistantSituationCatalog.Of(situation);
@@ -16,7 +12,6 @@ public partial class AssistantSituationCatalogTests
     [Fact]
     public void All_EveryMemberOfTheEnum_HasExactlyOneEntry_WithAStableUniqueSnakeCaseCode()
     {
-        // Adding a situation without an entry fails here: a hole in the table would be a situation the gate does not know.
         Assert.Equal(
             Enum.GetValues<AssistantSituation>().Order(),
             AssistantSituationCatalog.All.Select(info => info.Situation).Order());
@@ -95,7 +90,6 @@ public partial class AssistantSituationCatalogTests
             Assert.Empty(Info(none).RequiredTopics);
         }
 
-        // A situation that is answered from a topic needs data on that topic; an early arrival also needs the check-out.
         Assert.Equal([KnowledgeTopic.CheckIn, KnowledgeTopic.CheckOut], Info(AssistantSituation.EarlyArrivalOrLateCheckout).RequiredTopics);
         Assert.All(
             AssistantSituationCatalog.All.Where(info => info.SourceTopic is not null),

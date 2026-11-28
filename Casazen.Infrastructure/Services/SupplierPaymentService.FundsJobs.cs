@@ -1,4 +1,3 @@
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
@@ -29,7 +28,6 @@ public sealed partial class SupplierPaymentService
 
         int released = 0, releaseFailed = 0, settled = 0, lapsed = 0, warnings = 0, errors = 0;
 
-        // 1. The money whose time has come, and the transfers that failed and are due for another try.
         var now = Now();
         var due = await db.ServiceRequestPayments
             .AsNoTracking()
@@ -66,7 +64,6 @@ public sealed partial class SupplierPaymentService
             }
         }
 
-        // 2. The money of the requests that closed: the block released, the charge given back.
         var closed = await (
                 from p in db.ServiceRequestPayments
                     .AsNoTracking()
@@ -74,7 +71,6 @@ public sealed partial class SupplierPaymentService
                                 && (p.Status == ServicePaymentStatus.Authorized
                                     || p.Status == ServicePaymentStatus.Held
                                     || p.Status == ServicePaymentStatus.TransferFailed
-                                    // SP-10b-b: the card of an offer that never came, on a request that closed.
                                     || ((p.Status == ServicePaymentStatus.Requested || p.Status == ServicePaymentStatus.Failed)
                                         && p.PayerKind == ServicePayerKind.Private)))
                 join r in db.ServiceRequests.IgnoreQueryFilters().AsNoTracking() on p.ServiceRequestId equals r.Id
@@ -101,7 +97,6 @@ public sealed partial class SupplierPaymentService
             }
         }
 
-        // 3. The blocks that outlived their usable time: released, so no booking is left waiting on a card that may not be there.
         var expired = await db.ServiceRequestPayments
             .AsNoTracking()
             .Where(p => p.FundsModel == ServiceFundsModel.PlatformHeld
@@ -129,7 +124,6 @@ public sealed partial class SupplierPaymentService
             }
         }
 
-        // 4. Money held for nearly the longest CasaZen means to hold it: the admins are warned once, nothing moves.
         var warnBefore = now.AddDays(-(options.Value.MaxHoldDays - options.Value.HoldWarningDays));
         var old = await db.ServiceRequestPayments
             .AsNoTracking()
@@ -190,7 +184,6 @@ public sealed partial class SupplierPaymentService
         return outcome == AuthorizationOutcome.Canceled;
     }
 
-    /// <summary>Records, once, that money has been held for nearly the maximum (<c>MaxHoldDays</c>), and tells the admins. The money does not move.</summary>
     private async Task<bool> WarnAboutHoldAgeAsync(PaymentRef candidate, CancellationToken cancellationToken)
     {
         db.ChangeTracker.Clear();

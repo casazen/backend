@@ -4,10 +4,6 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Infrastructure.Email.Templates;
 
-/// <summary>
-/// Host alert about an OTA stay created from an iCal block that became "da verificare" (CO-21): its block left the feed,
-/// or has other dates on the channel. The text says CasaZen changed nothing and what the host does.
-/// </summary>
 public static partial class EmailTemplates
 {
     public static partial class Names
@@ -15,10 +11,6 @@ public static partial class EmailTemplates
         public const string HostOtaStayReview = "host-ota-stay-review";
     }
 
-    /// <summary>
-    /// The stay (guest, property, channel, dates in CasaZen) to check on the channel. With
-    /// <see cref="OtaStayReviewReason.BlockDatesChanged"/> and the channel's dates, both date ranges are shown.
-    /// </summary>
     public static EmailContent HostOtaStayReview(
         CultureInfo culture,
         OtaStayReviewReason reason,
@@ -46,7 +38,6 @@ public static partial class EmailTemplates
         return builder.Build("OtaStayReview_Subject", channelName, propertyName, checkInDate);
     }
 
-    /// <summary>Push text of <see cref="HostOtaStayReview"/>: property, channel and check-in date.</summary>
     public static PushText OtaStayReviewPush(
         CultureInfo culture,
         OtaStayReviewReason reason,
@@ -63,10 +54,6 @@ public static partial class EmailTemplates
             string.Format(culture, EmailTexts.Get(body, culture), propertyName, channelName, date));
     }
 
-    /// <summary>
-    /// Name of the channel of an OTA stay as the host knows it ("Booking.com"), with the label of its feed when it has one:
-    /// "Booking.com (camera 2)". Brand names, the same in every language.
-    /// </summary>
     public static string OtaChannelName(BookingSource source, string? feedLabel)
     {
         var name = source switch

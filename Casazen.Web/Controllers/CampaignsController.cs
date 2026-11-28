@@ -15,11 +15,6 @@ using System.Text.Json;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Marketing campaigns and guest segments (NF-24, ADR-014).
-/// Supports segment creation, campaign drafting with AI option, approval workflow, scheduling, and sending.
-/// Behind <c>Features:CrmMarketing</c> (E07/F06/US01/T01): 404 while it is off, before authentication.
-/// </summary>
 [ApiController]
 [Route("api/campaigns")]
 [FeatureGate(FeatureFlags.CrmMarketing)]
@@ -45,9 +40,6 @@ public class CampaignsController(
 
     #region Segments
 
-    /// <summary>
-    /// Creates a guest segment (AC-NF24-1).
-    /// </summary>
     [HttpPost("segments")]
     [ProducesResponseType(typeof(GuestSegmentDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -57,13 +49,9 @@ public class CampaignsController(
         if (orgId is null)
             return Unauthorized();
 
-        var evaluator = HttpContext.RequestServices.GetRequiredService<IConditionEvaluator>();
-        var errors = evaluator.ValidateCondition(request.Condition);
-        if (errors.Count > 0 || request.Condition.Groups.SelectMany(g => g.Rules).Any(r =>
-            !MarketingSegmentRules.Fields.Any(f => f.FieldId == r.FieldId && f.Operators.Contains(r.Operator))))
-            return this.ApiProblem(StatusCodes.Status400BadRequest, "invalid_segment_rules", "marketing_invalid_condition");
+        if (RejectInvalidCondition(request.Condition) is { } invalid)
+            return invalid;
 
-        // Serialize condition to JSON (ADR-014-R1)
         var conditionJson = JsonSerializer.Serialize(request.Condition);
 
         var segment = new GuestSegment
@@ -86,9 +74,6 @@ public class CampaignsController(
         });
     }
 
-    /// <summary>
-    /// Gets all segments for the org.
-    /// </summary>
     [HttpGet("segments")]
     [ProducesResponseType(typeof(List<GuestSegmentDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<List<GuestSegmentDto>>> GetSegments()
@@ -113,9 +98,6 @@ public class CampaignsController(
         return Ok(dtos);
     }
 
-    /// <summary>
-    /// Previews recipient count for a segment (AC-NF24-3).
-    /// </summary>
     [HttpGet("segments/{id}/preview")]
     [ProducesResponseType(typeof(SegmentPreviewDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -134,13 +116,36 @@ public class CampaignsController(
         return Ok(new SegmentPreviewDto { Count = count });
     }
 
+    [HttpPost("segments/preview")]
+    [ProducesResponseType(typeof(SegmentPreviewDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<SegmentPreviewDto>> PreviewCondition([FromBody] SegmentPreviewRequest request)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
+        if (orgId is null)
+            return Unauthorized();
+
+        if (RejectInvalidCondition(request.Condition) is { } invalid)
+            return invalid;
+
+        var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted);
+        if (scope is null)
+            return Unauthorized();
+
+        var count = await campaignService.PreviewConditionCountAsync(request.Condition, orgId.Value, scope, HttpContext.RequestAborted, request.PropertyId);
+
+        return Ok(new SegmentPreviewDto { Count = count });
+    }
+
+    private ObjectResult? RejectInvalidCondition(Condition condition) =>
+        MarketingSegmentRules.IsValid(condition, HttpContext.RequestServices.GetRequiredService<IConditionEvaluator>())
+            ? null
+            : this.ApiProblem(StatusCodes.Status400BadRequest, "invalid_segment_rules", "marketing_invalid_condition");
+
     #endregion
 
     #region Campaigns
 
-    /// <summary>
-    /// Creates a draft campaign (AC-NF24-4).
-    /// </summary>
     [HttpPost]
     [ProducesResponseType(typeof(CampaignDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -161,9 +166,6 @@ public class CampaignsController(
         return Ok(MapToCampaignDto(campaign));
     }
 
-    /// <summary>
-    /// Gets all campaigns for the org.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(List<CampaignDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<List<CampaignDto>>> GetCampaigns()
@@ -183,9 +185,6 @@ public class CampaignsController(
         return Ok(dtos);
     }
 
-    /// <summary>
-    /// Gets a single campaign.
-    /// </summary>
     [HttpGet("{id}")]
     [ProducesResponseType(typeof(CampaignDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -206,9 +205,6 @@ public class CampaignsController(
         return Ok(MapToCampaignDto(campaign));
     }
 
-    /// <summary>
-    /// Submits a campaign for approval (AC-NF24-5).
-    /// </summary>
     [HttpPost("{id}/submit")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -225,9 +221,6 @@ public class CampaignsController(
         return NoContent();
     }
 
-    /// <summary>
-    /// Schedules an approved campaign (AC-NF24-6).
-    /// </summary>
     [HttpPost("{id}/schedule")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -311,6 +304,12 @@ public record GuestSegmentDto
     public required string Name { get; init; }
     public Condition? Condition { get; init; }
     public DateTime CreatedAt { get; init; }
+}
+
+public record SegmentPreviewRequest
+{
+    public required Condition Condition { get; init; }
+    public Guid? PropertyId { get; init; }
 }
 
 public record SegmentPreviewDto

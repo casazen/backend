@@ -12,7 +12,6 @@ using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -22,16 +21,11 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E13/F01/US01/T01 (NF-110, NF-115): the versioned mandate of an owner, the standard mandate applied in one call, the encrypted billing address and the
-/// commission rules of the channels with their defaults (⚖ R2), with the reach of the caller.
-/// </summary>
 public class OwnerMandateServiceTests
 {
     private static readonly Guid OrgId = Guid.NewGuid();
     private static readonly HostScope OrgWide = new(OrgId);
 
-    /// <summary>Money/data: a new version ends the one in force the day before it starts; versions never overlap and the ledger picks the one of the day.</summary>
     [Fact]
     public async Task Mandate_NewVersionClosesPrevious_NoOverlap_Test()
     {
@@ -55,12 +49,10 @@ public class OwnerMandateServiceTests
         Assert.Null(OwnerMandateRules.InForce(versions, owner, null, new DateOnly(2025, 12, 31)));
         Assert.Null(OwnerMandateRules.InForce(versions, Guid.NewGuid(), null, new DateOnly(2026, 7, 1)));
 
-        // A version that would start on or before the last one is refused: it would overlap.
         var overlap = await Assert.ThrowsAsync<DomainConflictException>(
             () => world.Service.CreateVersionAsync(OrgWide, owner, Command(new DateOnly(2026, 6, 1), 20m), null));
         Assert.Equal(OwnerMandateErrors.MandateOverlap, overlap.Code);
 
-        // A percent outside 0-100 or with three decimals, and a negative flat fee, are refused with their field; nothing is written.
         foreach (var (command, field) in new[]
                  {
                      (Command(new DateOnly(2026, 9, 1), 100.01m), "commissionPercent"),
@@ -76,11 +68,9 @@ public class OwnerMandateServiceTests
 
         Assert.Equal(2, await world.Db.OwnerMandates.CountAsync());
 
-        // An owner of another org is the 404 of an owner that does not exist.
         await Assert.ThrowsAsync<NotFoundException>(() => world.Service.ListAsync(new HostScope(Guid.NewGuid()), owner));
     }
 
-    /// <summary>Data: the standard mandate goes only to the owners with an ownership not ended and no mandate; the others keep theirs and are counted skipped.</summary>
     [Fact]
     public async Task MandateTemplate_OnlyOwnersWithoutActiveMandate_Test()
     {
@@ -100,16 +90,13 @@ public class OwnerMandateServiceTests
         var created = Assert.Single(await world.Db.OwnerMandates.AsNoTracking().Where(m => m.PropertyOwnerId == without).ToListAsync());
         Assert.Equal((15m, 40m, true, new DateOnly(2026, 1, 1), (DateOnly?)null), (created.CommissionPercent, created.CleaningFlatRate!.Value, created.PassthroughPaymentFees, created.ValidFrom, created.ValidTo));
 
-        // The owner that had one keeps it as it was: the template never overlaps or changes an existing mandate.
         var kept = Assert.Single(await world.Db.OwnerMandates.AsNoTracking().Where(m => m.PropertyOwnerId == withMandate).ToListAsync());
         Assert.Equal((existing.Id, 22m, (DateOnly?)null), (kept.Id, kept.CommissionPercent, kept.ValidTo));
 
-        // A second call finds every owner with a mandate: nothing more is created.
         var again = await world.Service.ApplyTemplateAsync(OrgWide, new OwnerMandateTemplateCommand { Template = template }, null);
         Assert.Equal((0, 4), (again.Created, again.Skipped));
         Assert.Equal(2, await world.Db.OwnerMandates.CountAsync());
 
-        // A list restricts the owners, an empty list is never «everyone», an owner that is not of the org is a 404; nothing is written by a refusal.
         var other = await world.OwnerAsync(start: new DateOnly(2025, 1, 1));
         var empty = await Assert.ThrowsAsync<DomainRuleException>(
             () => world.Service.ApplyTemplateAsync(OrgWide, new OwnerMandateTemplateCommand { Template = template, OwnerIds = [] }, null));
@@ -123,7 +110,6 @@ public class OwnerMandateServiceTests
         Assert.Equal(0, listed.Skipped);
     }
 
-    /// <summary>Permission: the channel rules are of the whole org; a caller restricted to some properties can neither save nor read them, even with the permission.</summary>
     [Fact]
     public async Task ChannelRules_PartialScopeCannotSave_Test()
     {
@@ -140,17 +126,12 @@ public class OwnerMandateServiceTests
             mandates.VerifyNoOtherCalls();
         }
 
-        // The whole org is served.
         var served = new Mock<IOwnerMandateService>();
         served.Setup(m => m.GetChannelRulesAsync(OrgId, It.IsAny<CancellationToken>())).ReturnsAsync(new ChannelCommissionRuleSet([], []));
         var allowed = new ChannelCommissionRulesController(served.Object, Org(), Scope(OrgWide)) { ControllerContext = Context() };
         Assert.IsType<OkObjectResult>((await allowed.Get()).Result);
     }
 
-    /// <summary>
-    /// Money: without a rule the configured default applies and is marked; a rule in force replaces it; the rules of a channel never overlap; a rule saved
-    /// again as it was keeps its id (the posted lines name it).
-    /// </summary>
     [Fact]
     public async Task ChannelRules_DefaultsMarked_RuleReplacesIt_SameRuleKeepsItsId_Test()
     {
@@ -181,13 +162,11 @@ public class OwnerMandateServiceTests
         Assert.Equal((16m, false, rule.Id), (inForce.Percent!.Value, inForce.IsDefault, inForce.RuleId!.Value));
         Assert.Equal(17.5m, saved.Channels.Single(c => c.Channel == BookingSource.Agoda).Percent);
 
-        // Saved again as it is, the Booking rule keeps its row; the Agoda one, left out, is removed (the default of nobody: nothing applies).
         var again = await world.Service.SaveChannelRulesAsync(
             OrgId, [new ChannelCommissionRuleCommand { Channel = BookingSource.BookingCom, Percent = 16m, ValidFrom = new DateOnly(2026, 1, 1) }], null);
         Assert.Equal(rule.Id, Assert.Single(again.Rules).Id);
         Assert.Null(again.Channels.Single(c => c.Channel == BookingSource.Agoda).Percent);
 
-        // Two rules of one channel that overlap, a channel that is not a portal, a percent out of range: 422 with the row and the field, nothing written.
         foreach (var (rules, index, field) in new (ChannelCommissionRuleCommand[] Rules, int Index, string Field)[]
                  {
                      ([
@@ -207,10 +186,6 @@ public class OwnerMandateServiceTests
         Assert.Equal(rule.Id, (await world.Db.OrgChannelCommissionRules.AsNoTracking().SingleAsync()).Id);
     }
 
-    /// <summary>
-    /// Permission/privacy: the address of an owner is saved only within the reach of the caller (an owner with a property outside it is a 404), Italy needs
-    /// the province, and the address is stored encrypted.
-    /// </summary>
     [Fact]
     public async Task OwnerAddress_OnlyAnOwnerWithinReach_IsSavedEncrypted_Test()
     {
@@ -224,13 +199,11 @@ public class OwnerMandateServiceTests
         var saved = await world.Service.SaveAddressAsync(partial, inside, address, "auth0|solo-alcuni");
         Assert.Equal(("Via Nassa", "5", "6900", "Lugano", "CH"), (saved.BillingStreet, saved.BillingCivic, saved.BillingPostalCode, saved.BillingCity, saved.BillingCountry));
 
-        // The owner also holds a property the caller does not reach: the same 404 as an owner that does not exist, nothing written.
         await Assert.ThrowsAsync<NotFoundException>(() => world.Service.SaveAddressAsync(partial, shared, address, null));
         await Assert.ThrowsAsync<NotFoundException>(() => world.Service.GetAddressAsync(partial, shared));
         Assert.Null((await world.Db.PropertyOwners.AsNoTracking().SingleAsync(o => o.Id == shared)).BillingStreet);
         Assert.Equal("Via Nassa", (await world.Service.GetAddressAsync(OrgWide, inside)).BillingStreet);
 
-        // Italy needs the province (as the readiness of the owner does); a country is two letters.
         var italian = await Assert.ThrowsAsync<DomainRuleException>(
             () => world.Service.SaveAddressAsync(OrgWide, shared, address with { Country = "IT", PostalCode = "20121", Town = "Milano" }, null));
         Assert.Equal(OwnerMandateErrors.AddressInvalid, italian.Code);
@@ -238,17 +211,12 @@ public class OwnerMandateServiceTests
         var country = await Assert.ThrowsAsync<DomainRuleException>(() => world.Service.SaveAddressAsync(OrgWide, shared, address with { Country = "Svizzera" }, null));
         Assert.Equal("country", country.Extensions["field"]);
 
-        // At rest the columns hold a Data Protection payload, never the street.
         Assert.True(Casazen.Infrastructure.Data.Encryption.EncryptedColumns.IsConfigured(world.Db));
         var column = world.Db.Model.FindEntityType(typeof(PropertyOwner))!.FindProperty(nameof(PropertyOwner.BillingStreet))!;
         var stored = (string)column.GetValueConverter()!.ConvertToProvider("Via Nassa")!;
         Assert.StartsWith(Casazen.Infrastructure.Data.Encryption.EncryptedColumns.ProtectedPayloadPrefix, stored);
     }
 
-    /// <summary>
-    /// Permission: the mandates are read, written and applied only within the reach of the caller: an owner with a property outside it, or with none, is the 404 of
-    /// an owner that does not exist, and the standard mandate without a list reaches only the owners inside (the others are neither created nor counted).
-    /// </summary>
     [Fact]
     public async Task Mandates_PartialScope_ListCreateAndTemplateStayWithinReach_Test()
     {
@@ -261,7 +229,6 @@ public class OwnerMandateServiceTests
         var noProperty = await world.OwnerAsync(start: null);
         var partial = new HostScope(OrgId, OwnerId: "auth0|solo-alcuni");
 
-        // One owner, read and written: inside it works, outside it is a 404 and nothing is written.
         var created = await world.Service.CreateVersionAsync(partial, inside, Command(new DateOnly(2026, 1, 1), 15m), "auth0|solo-alcuni");
         Assert.Equal([created.Id], (await world.Service.ListAsync(partial, inside)).Select(v => v.Id));
         foreach (var hidden in new[] { shared, outside, noProperty })
@@ -272,25 +239,18 @@ public class OwnerMandateServiceTests
 
         Assert.Equal(1, await world.Db.OwnerMandates.CountAsync());
 
-        // The standard mandate without a list: the owner inside that has none gets one, the one that has a mandate is skipped, those outside are not touched.
         var template = new OwnerMandateTemplateCommand { Template = Command(new DateOnly(2026, 1, 1), 12m) };
         var result = await world.Service.ApplyTemplateAsync(partial, template, null);
         Assert.Equal([alsoInside], result.CreatedOwnerIds);
         Assert.Equal([inside], result.SkippedOwnerIds);
         Assert.False(await world.Db.OwnerMandates.AnyAsync(m => m.PropertyOwnerId == shared || m.PropertyOwnerId == outside || m.PropertyOwnerId == noProperty));
 
-        // A list names owners inside only: one outside is the 404 of the whole call and nothing is written.
         var before = await world.Db.OwnerMandates.CountAsync();
         var listed = new OwnerMandateTemplateCommand { Template = Command(new DateOnly(2026, 6, 1), 9m), OwnerIds = [alsoInside, shared] };
         await Assert.ThrowsAsync<NotFoundException>(() => world.Service.ApplyTemplateAsync(partial, listed, null));
         Assert.Equal(before, await world.Db.OwnerMandates.CountAsync());
     }
 
-    /// <summary>
-    /// Permission/privacy: the address is read with the finance read permission and written with the manage one (the owner view alone is not enough); the
-    /// mandates are read with the owner view and written, applied and the channel rules replaced with the manage permission; the channel rules are read with the
-    /// statement view.
-    /// </summary>
     [Fact]
     public void Mandates_AddressAndChannelRules_NeedTheirOwnPermission_Test()
     {
@@ -314,10 +274,6 @@ public class OwnerMandateServiceTests
         Assert.Equal(CasazenPolicies.AgencyOwnerFinancialManage, PolicyOf(typeof(ChannelCommissionRulesController), nameof(ChannelCommissionRulesController.Put)));
     }
 
-    /// <summary>
-    /// Money: the percent of a mandate and of a channel rule is required: a request without it (or with the field misspelt) is 422 and writes nothing, never a
-    /// commission of 0% by omission; the 0% a request writes is a choice and is kept.
-    /// </summary>
     [Fact]
     public async Task CommissionPercent_Omitted_IsRefused_NeverZero_Test()
     {
@@ -370,7 +326,6 @@ public class OwnerMandateServiceTests
         return new ControllerContext { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) } };
     }
 
-    /// <summary>An agency over one in-memory database, with encryption, the committed channel defaults and a clock on 14 November 2026.</summary>
     private sealed class World
     {
         private World(AppDbContext db)
@@ -395,7 +350,6 @@ public class OwnerMandateServiceTests
             new MandateTenant(),
             TestDataProtection.Shared));
 
-        /// <summary>An owner of the org and, from <paramref name="start"/>, the whole of a property of its own (none without a start).</summary>
         public async Task<Guid> OwnerAsync(DateOnly? start, DateOnly? end = null, string propertyOwner = "auth0|agency")
         {
             var owner = new PropertyOwner { OrgId = OrgId, FirstName = "TEST", LastName = "Proprietario", Email = $"{Guid.NewGuid():N}@example.com" };
@@ -406,7 +360,6 @@ public class OwnerMandateServiceTests
             return owner.Id;
         }
 
-        /// <summary>A property of <paramref name="propertyOwner"/> held in full by the owner from <paramref name="start"/>.</summary>
         public async Task PeriodAsync(Guid owner, DateOnly start, DateOnly? end = null, string propertyOwner = "auth0|agency")
         {
             var property = new Property { OrgId = OrgId, OwnerId = propertyOwner, Name = "TEST Casa", Address = "Via 1", City = "Lugano", Currency = "CHF" };

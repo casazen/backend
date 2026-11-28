@@ -2,15 +2,6 @@ using Casazen.Core.Suppliers;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// What is wrong with the supplier's jobs to come for a range of days (SP-03b, <c>GET api/supplier/calendar/conflicts</c>).
-/// </summary>
-/// <param name="From">First Europe/Rome day looked at.</param>
-/// <param name="To">Last Europe/Rome day looked at (included).</param>
-/// <param name="Items">The jobs that have a conflict, by start (a job with no conflict is not listed).</param>
-/// <param name="Truncated">
-/// True when the range held more than <see cref="SupplierAgendaLimits.MaxConflictRequests"/> jobs to check: only the nearest were looked at.
-/// </param>
 public sealed record SupplierConflictReport(
     DateOnly From,
     DateOnly To,

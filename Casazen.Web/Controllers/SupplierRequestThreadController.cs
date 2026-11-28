@@ -3,7 +3,6 @@ using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Supplier;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
@@ -22,10 +21,6 @@ public class SupplierRequestThreadController(
     IServiceRequestThreadActions thread,
     ISupplierOrgContextResolver supplierOrgContextResolver) : ControllerBase
 {
-    /// <summary>
-    /// The thread: the messages in the order they were written, whether the supplier can add one, and the time it has to answer by while it did
-    /// not. Reading marks the customer's messages as read. 404 <c>not_found</c>.
-    /// </summary>
     [HttpGet("{id:guid}/thread")]
     [ProducesResponseType(typeof(SupplierRequestThreadDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -54,7 +49,6 @@ public class SupplierRequestThreadController(
         [FromBody] PostSupplierRequestMessageRequest request,
         CancellationToken cancellationToken)
     {
-        // A write: the org comes only from the caller's own supplier link, like take and reject.
         var orgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
         if (orgId is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");

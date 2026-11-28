@@ -37,8 +37,6 @@ public partial class FiscalService
 
         var payments = await SettledIn(ScopedPayments(scope), range).ToListAsync(cancellationToken);
 
-        // Every property shown in the fiscal area for the year (the ones the caller reaches), plus any other one with income
-        // in the period (the payments are already the caller's).
         var reportProperties = view.Candidates
             .Where(p => p.InScope)
             .ToDictionary(p => p.Id, p => p.Name);
@@ -81,7 +79,6 @@ public partial class FiscalService
         return new AnnualIncomeReport(
             taxYear,
             FiscalCopy.PackLabel,
-            // CO-18 (PO 2026-10-08): disclaimer from configuration (ShortStayFiscal:Disclaimer); default is the PO-approved text.
             _rules.Disclaimer,
             lines,
             totals,
@@ -140,7 +137,6 @@ public partial class FiscalService
             byOta,
             lines,
             range,
-            // CO-18 (PO 2026-10-08): disclaimer from configuration (ShortStayFiscal:Disclaimer).
             _rules.Disclaimer,
             org.Name,
             _clock.TodayInRomeAsDateOnly(),
@@ -159,7 +155,6 @@ public partial class FiscalService
             throw new FiscalValidationException("fiscal_report_period_invalid", "FiscalReportPeriodInvalid");
         var org = await LoadReportOrgAsync(scope.OrgId, cancellationToken);
 
-        // Stay dates are stored as midnight UTC of the calendar date (FD-06).
         var from = period.From.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var toExclusive = period.To.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         // IgnoreQueryFilters([SoftDeleteQueryFilter]) (PC-05): b.Property may since have been soft-deleted — the
@@ -167,8 +162,6 @@ public partial class FiscalService
         var stays = await db.Bookings.AsNoTracking()
             .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .InScope(scope)
-            // E18/F01/US02/T03: the stays that happened, by the one definition of an active stay (AlloggiatiStatusRules): confirmed, checked in or checked out, and never a no-show, whose guests never came
-            // (a no-show owes no tourist tax in any reader). The declaration to the comune and the account of the agent are made of this report.
             .Where(b => b.OrgId == scope.OrgId
                 && b.CheckInDate >= from
                 && b.CheckInDate < toExclusive
@@ -190,7 +183,6 @@ public partial class FiscalService
             })
             .ToListAsync(cancellationToken);
 
-        // One comune per normalized name (BK-03 lookup rule), shown with its most frequent spelling.
         var comuneNames = stays
             .GroupBy(s => TouristTaxComune.NormalizeName(s.City))
             .ToDictionary(
@@ -428,10 +420,6 @@ public partial class FiscalService
             .Where(p => p.OrgId == scope.OrgId)
             .InScope(scope);
 
-    /// <summary>
-    /// Payments completed (or partially refunded) in <paramref name="period"/>: payment date (processing, else creation) in
-    /// Europe/Rome, the calendar of the host.
-    /// </summary>
     private static IQueryable<Payment> SettledIn(IQueryable<Payment> payments, FiscalReportPeriod period)
     {
         var start = RomeCalendar.StartOfDayUtc(period.From.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
@@ -450,10 +438,6 @@ public partial class FiscalService
     private static decimal ReportableNet(Payment payment) =>
         ReportableGross(payment) - ReportableWithholding(payment);
 
-    /// <summary>
-    /// Tourist tax included in the payment: the amount recorded on the stay (BK-03) in proportion to the part of the stay's
-    /// total this payment covers, net of refunds. Never more than the payment itself or the stay's tax.
-    /// </summary>
     private static decimal TouristTaxShare(Payment payment)
     {
         var booking = payment.Booking;
@@ -465,7 +449,6 @@ public partial class FiscalService
         return Math.Min(share, Math.Min(booking.TouristTaxAmount, gross));
     }
 
-    /// <summary><paramref name="amount"/> of the payment reduced in proportion to the refunds, rounded to the cent.</summary>
     private static decimal Share(Payment payment, decimal amount)
     {
         var gross = ReportableGross(payment);

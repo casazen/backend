@@ -5,7 +5,6 @@ using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 
@@ -33,12 +32,6 @@ public class GuestAccountController(
     IUserService users,
     IAccountEmailResolver accountEmails) : ControllerBase
 {
-    /// <summary>
-    /// The account's direct bookings of every booking site. <c>scope</c> is <c>upcoming</c> (check-out today or later in Europe/Rome, by
-    /// check-in ascending; the default) or <c>past</c> (by check-in descending); <c>page</c> from 1, <c>pageSize</c> up to 50 (20 by
-    /// default). 200 <c>{ items, total, page, pageSize }</c>; 400 <c>validation_error</c> for another scope; 401; 403
-    /// <c>guest_email_not_verified</c>; 429. The lapsed holds and the payments that came when the dates were gone are not listed.
-    /// </summary>
     [HttpGet("bookings")]
     [EnableRateLimiting(RateLimitPolicies.GuestAccountRead)]
     [ProducesResponseType(typeof(GuestAccountBookingPageResponse), StatusCodes.Status200OK)]
@@ -62,11 +55,6 @@ public class GuestAccountController(
         return Ok(GuestAccountBookingPageResponse.From(result));
     }
 
-    /// <summary>
-    /// One booking of the account, as «Le mie prenotazioni» shows it (the body of <c>GET api/public/guest/bookings/{code}</c>) plus
-    /// <c>id</c> and <c>orgSlug</c>. 401; 403 <c>guest_email_not_verified</c>; <b>404 <c>guest_booking_not_found</c></b> for a booking that is
-    /// not the account's, whatever the reason; 429.
-    /// </summary>
     [HttpGet("bookings/{id}")]
     [EnableRateLimiting(RateLimitPolicies.GuestAccountRead)]
     [ProducesResponseType(typeof(GuestAccountBookingDetailResponse), StatusCodes.Status200OK)]
@@ -82,12 +70,6 @@ public class GuestAccountController(
         return Ok(GuestAccountBookingDetailResponse.From(await bookings.GetAsync(email, bookingId, cancellationToken)));
     }
 
-    /// <summary>
-    /// Opens the guest-area session of the booking's site for the account's email: <c>{ accessToken, expiresAt, bookingCode, orgSlug }</c>.
-    /// The token is the one a booking code and an email open (<c>gs1.</c>, 2 hours by default, 24 at most, no refresh): the app sends it as
-    /// <c>Authorization: Bearer</c> to <c>api/public/guest/bookings/{bookingCode}/…</c> (the cancellation with its preview, the messages with
-    /// the host) and asks for a new one when it ends. 401; 403 <c>guest_email_not_verified</c>; 404 <c>guest_booking_not_found</c>; 429.
-    /// </summary>
     [HttpPost("bookings/{id}/session")]
     [EnableRateLimiting(RateLimitPolicies.GuestAccountSession)]
     [ProducesResponseType(typeof(GuestAccountSessionResponse), StatusCodes.Status200OK)]
@@ -124,7 +106,6 @@ public class GuestAccountController(
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized();
 
-        // The token of an account that was already deleted still verifies until it expires (it is a signed JWT), but the account is gone.
         if (await users.GetUserAsync(userId) is null)
             return Unauthorized();
 
@@ -146,7 +127,6 @@ public class GuestAccountController(
     /// </summary>
     private async Task<string> VerifiedEmailAsync(CancellationToken cancellationToken)
     {
-        // The policy asks for a subject, so there is one.
         var (email, verified) = await accountEmails.ResolveAsync(User, User.GetUserId()!, cancellationToken);
         if (!verified || string.IsNullOrWhiteSpace(email))
             throw new DomainForbiddenException(GuestAccountErrorCodes.EmailNotVerified, "GuestEmailNotVerified");

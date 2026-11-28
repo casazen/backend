@@ -27,40 +27,27 @@ public class OrgInvitation : ITenantOwned
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The org the person is invited to.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The invited email, normalized (trimmed, lowercase): the accepting account must have this very address.</summary>
     [Required, MaxLength(255)]
     public string Email { get; set; } = string.Empty;
 
-    /// <summary>The invitee's name as the inviter wrote it (shown in the team page and in the email).</summary>
     [Required, MaxLength(200)]
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>The org role the person gets. Never <see cref="OrgRole.Owner"/> (D15).</summary>
     public OrgRole Role { get; set; }
 
-    /// <summary>The areas (rental contexts: <c>short-rent</c>, <c>long-rent</c>) the person will work in.</summary>
     public List<string> Areas { get; set; } = [];
 
-    /// <summary>
-    /// Which properties the person will reach. It is recorded and copied to the member on acceptance; <see cref="PropertyScope.Selected"/>
-    /// is for a collaborator only (refused at the creation for another role, AM-03), and the properties themselves are given to the
-    /// member afterwards (<c>PUT /api/orgs/me/members/{id}/properties</c>): until then it reaches none.
-    /// </summary>
     public PropertyScope PropertyScope { get; set; } = PropertyScope.All;
 
-    /// <summary>SHA-256 (lowercase hex) of the link token; unique. The token itself is never stored.</summary>
     [Required, MaxLength(64)]
     public string TokenHash { get; set; } = string.Empty;
 
     public OrgInvitationStatus Status { get; set; } = OrgInvitationStatus.Pending;
 
-    /// <summary>UTC. From the moment the invitation is sent (or sent again) <see cref="Casazen.Core.OrgTeam.OrgInvitationRules.Validity"/> later.</summary>
     public DateTime ExpiresAt { get; set; }
 
-    /// <summary>UTC when the reminder of the third day was sent; <c>null</c> until then (and again after the invitation is sent again).</summary>
     public DateTime? ReminderSentAt { get; set; }
 
     /// <summary>
@@ -78,24 +65,17 @@ public class OrgInvitation : ITenantOwned
     /// </summary>
     public List<DateTime> SendLog { get; set; } = [];
 
-    /// <summary>Who invited (<c>User.Id</c>). No foreign key: the history outlives the account.</summary>
     [Required, MaxLength(255)]
     public string InvitedByUserId { get; set; } = string.Empty;
 
-    /// <summary>Language of the emails of this invitation: <c>it</c> or <c>en</c>.</summary>
     [Required, MaxLength(8)]
     public string Language { get; set; } = "it";
 
     public DateTime? AcceptedAt { get; set; }
 
-    /// <summary>The account that accepted (<c>User.Id</c>).</summary>
     [MaxLength(255)]
     public string? AcceptedByUserId { get; set; }
 
-    /// <summary>
-    /// UTC when the invitation left <see cref="OrgInvitationStatus.Pending"/> (accepted, revoked, or its expiry): the retention
-    /// of the personal data counts from here. <c>null</c> while pending.
-    /// </summary>
     public DateTime? ClosedAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

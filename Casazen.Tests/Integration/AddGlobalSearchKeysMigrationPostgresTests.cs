@@ -42,11 +42,9 @@ public class AddGlobalSearchKeysMigrationPostgresTests : IAsyncLifetime
     {
         await using var db = _database!.CreateContext();
 
-        // One generated column in each of the five tables, and nowhere else.
         var columns = await ColumnTablesAsync(db);
         Assert.Equal(SearchableTables.Order(), columns.Order());
 
-        // The indexes: the full-text ones over the expression the queries repeat, the booking prefix one with the pattern operator class.
         var definitions = await IndexDefinitionsAsync(db);
         foreach (var name in FullTextIndexes)
         {
@@ -75,7 +73,6 @@ public class AddGlobalSearchKeysMigrationPostgresTests : IAsyncLifetime
         return definition!;
     }
 
-    /// <summary>Name and definition of the indexes of the search that exist, as PostgreSQL prints them.</summary>
     private static async Task<Dictionary<string, string>> IndexDefinitionsAsync(AppDbContext db)
     {
         var rows = await db.Database

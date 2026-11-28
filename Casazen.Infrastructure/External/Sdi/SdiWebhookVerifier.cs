@@ -15,16 +15,10 @@ namespace Casazen.Infrastructure.External.Sdi;
 /// </remarks>
 public sealed class SdiWebhookVerifier(IOptions<SdiProviderOptions> options)
 {
-    /// <summary>A longer secret in the address is refused without being compared.</summary>
     private const int MaxPresentedLength = 512;
 
-    /// <summary>True when a secret of at least <see cref="SdiProviderOptions.MinWebhookSecretLength"/> characters is configured.</summary>
     public bool HasUsableSecret => options.Value.HasUsableWebhookSecret;
 
-    /// <summary>
-    /// True when <paramref name="presented"/>, the secret of the address of the call, is the configured one. Compared in constant time on the SHA-256 of both, so neither the content nor
-    /// the length of the configured secret leaks through the time of the answer.
-    /// </summary>
     public bool IsValid(string? presented)
     {
         if (!HasUsableSecret || string.IsNullOrEmpty(presented) || presented.Length > MaxPresentedLength)

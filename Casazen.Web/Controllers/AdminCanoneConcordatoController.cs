@@ -34,7 +34,6 @@ public class AdminCanoneConcordatoController(IRegulatoryReferenceDataAdminServic
             : Ok(agreement);
     }
 
-    /// <summary>Status, source, expiry and every rule of the rent calculation. The verification date is never edited here.</summary>
     [HttpPut("agreements/{id:guid}")]
     public async Task<IActionResult> UpdateAgreement(
         Guid id, [FromBody] UpdateAgreementInput input, CancellationToken cancellationToken)
@@ -57,7 +56,6 @@ public class AdminCanoneConcordatoController(IRegulatoryReferenceDataAdminServic
             : Ok(updated);
     }
 
-    /// <summary>Records the date the agreement's data were checked against an official source, and the source.</summary>
     [HttpPost("agreements/{id:guid}/verify")]
     public async Task<IActionResult> VerifyAgreement(
         Guid id, [FromBody] MarkVerifiedRequest request, CancellationToken cancellationToken)
@@ -95,7 +93,6 @@ public class AdminCanoneConcordatoController(IRegulatoryReferenceDataAdminServic
             : Ok(updated);
     }
 
-    /// <summary>Audit trail of one row (agreement or IMU channel), newest first.</summary>
     [HttpGet("audit")]
     public async Task<IActionResult> GetAudit([FromQuery, Required] Guid entityId, CancellationToken cancellationToken) =>
         Ok(await admin.GetAuditAsync(entityId, cancellationToken));
@@ -103,7 +100,6 @@ public class AdminCanoneConcordatoController(IRegulatoryReferenceDataAdminServic
     private string? GetUserId() => User.GetUserId();
 }
 
-/// <summary>Body of a "mark verified" request: <c>YYYY-MM-DD</c>, not in the future, and the source it was checked against.</summary>
 public sealed class MarkVerifiedRequest
 {
     [Required]

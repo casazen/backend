@@ -15,10 +15,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// FD-21 (A8-26) on the real Hangfire PostgreSQL storage: two starts of the application (a redeploy) and two replicas
-/// starting together queue the SEO bootstrap generation only once, even while no page exists yet.
-/// </summary>
 public class SeoBootstrapPostgresTests : IAsyncLifetime
 {
     private PostgresTestDatabase? _database;
@@ -42,7 +38,6 @@ public class SeoBootstrapPostgresTests : IAsyncLifetime
         await Task.WhenAll(
             Task.Run(() => CreateService(storage).StartAsync(CancellationToken.None)),
             Task.Run(() => CreateService(storage).StartAsync(CancellationToken.None)));
-        // Redeploy: the generation produced no page (e.g. it failed), the page count is still zero.
         await CreateService(storage).StartAsync(CancellationToken.None);
 
         Assert.Equal(1, storage.GetMonitoringApi().EnqueuedCount("default"));

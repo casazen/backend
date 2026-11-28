@@ -27,8 +27,6 @@ public class SupplierAgendaPostgresTests(CasazenWebApplicationFactory factory) :
 
     private static DateOnly Today => TimeProvider.System.TodayInRomeAsDateOnly();
 
-    // ─── Isolation between suppliers ─────────────────────────────────────────────
-
     [PostgresFact]
     public async Task TwoSuppliers_NeverSeeOrChangeEachOthersAgenda_AndEachRowBelongsToItsOwnOrg()
     {
@@ -45,7 +43,6 @@ public class SupplierAgendaPostgresTests(CasazenWebApplicationFactory factory) :
         await b.PutAsJsonAsync($"{Base}/hours", new { days = new[] { Day("Sunday", (600, 720)) } });
         await b.PostAsJsonAsync($"{Base}/time-off", new { fromDate = Today.AddDays(8), toDate = Today.AddDays(9) });
 
-        // Each reads only its own.
         var bHours = await ReadAsync(await b.GetAsync($"{Base}/hours"));
         Assert.Equal(0, bHours.GetProperty("days")[0].GetProperty("bands").GetArrayLength());
         Assert.Equal(1, bHours.GetProperty("days")[6].GetProperty("bands").GetArrayLength());
@@ -53,13 +50,11 @@ public class SupplierAgendaPostgresTests(CasazenWebApplicationFactory factory) :
         Assert.Equal(1, (await ReadAsync(await b.GetAsync($"{Base}/time-off"))).GetProperty("total").GetInt32());
         Assert.Equal(0, (await ReadAsync(await b.GetAsync($"{Base}/blocks"))).GetProperty("total").GetInt32());
 
-        // B cannot reach A's time off or block on any endpoint: 404, never 403 (it does not exist for B), and nothing changes.
         Assert.Equal(HttpStatusCode.NotFound, (await b.DeleteAsync($"{Base}/time-off/{aTimeOff.GetProperty("id").GetGuid()}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await b.DeleteAsync($"{Base}/blocks/{aBlock.GetProperty("id").GetGuid()}")).StatusCode);
         Assert.Equal(1, (await ReadAsync(await a.GetAsync($"{Base}/time-off"))).GetProperty("total").GetInt32());
         Assert.Equal(1, (await ReadAsync(await a.GetAsync($"{Base}/blocks"))).GetProperty("total").GetInt32());
 
-        // The rows are tied to the right org.
         Assert.Equal((11, 1, 1, 1), await CountsAsync(aOrg));
         Assert.Equal((1, 1, 0, 1), await CountsAsync(bOrg));
         await using var scope = factory.Services.CreateAsyncScope();
@@ -72,8 +67,6 @@ public class SupplierAgendaPostgresTests(CasazenWebApplicationFactory factory) :
     [PostgresFact]
     public async Task ADualRoleAccount_UsesItsSupplierOrgForTheAgenda_NotItsHostOrg()
     {
-        // A host that is also a supplier: User.OrgId is the host org, User.SupplierOrgId the supplier org. The tenant filter
-        // follows the first, the agenda the second.
         var ownerId = $"auth0|sp03-dual-{Guid.NewGuid():N}";
         var hostOrg = await factory.SeedOrgForOwnerAsync(ownerId);
         Guid supplierOrgId;
@@ -106,8 +99,6 @@ public class SupplierAgendaPostgresTests(CasazenWebApplicationFactory factory) :
         Assert.Equal((0, 0, 0, 1), await CountsAsync(supplierOrgId));
         Assert.Equal((0, 0, 0, 0), await CountsAsync(hostOrg.Id));
     }
-
-    // ─── The checks, the unique index and the cascade ────────────────────────────
 
     [PostgresFact]
     public async Task Checks_TheDatabaseRefusesRowsTheRulesNeverWrite()
@@ -153,7 +144,6 @@ public class SupplierAgendaPostgresTests(CasazenWebApplicationFactory factory) :
                 $"{name}: expected a check violation, got {ex.InnerException?.Message}");
         }
 
-        // The accepted bounds are accepted.
         await using var okScope = factory.Services.CreateAsyncScope();
         var ok = okScope.ServiceProvider.GetRequiredService<AppDbContext>();
         ok.SupplierWorkingHours.Add(Hours(orgId, start: 0, end: 1440));
@@ -181,13 +171,11 @@ public class SupplierAgendaPostgresTests(CasazenWebApplicationFactory factory) :
         var (_, orgB) = await SupplierCatalogTestData.SeedSupplierAsync(factory);
         await SaveAsync(db => db.SupplierWorkingHours.Add(Hours(orgA)));
 
-        // The same band twice for one supplier: the unique index refuses it.
         var duplicate = await Assert.ThrowsAsync<DbUpdateException>(() => SaveAsync(db => db.SupplierWorkingHours.Add(Hours(orgA, end: 700))));
         var postgres = Assert.IsType<PostgresException>(duplicate.InnerException);
         Assert.Equal(PostgresErrorCodes.UniqueViolation, postgres.SqlState);
         Assert.Equal("UIX_SupplierWorkingHours_OrgId_Weekday_StartMinute", postgres.ConstraintName);
 
-        // Another supplier, another weekday and another start are all free.
         await SaveAsync(db => db.SupplierWorkingHours.Add(Hours(orgB)));
         await SaveAsync(db => db.SupplierWorkingHours.Add(Hours(orgA, weekday: DayOfWeek.Tuesday)));
         await SaveAsync(db => db.SupplierWorkingHours.Add(Hours(orgA, start: 840, end: 1080)));
@@ -229,7 +217,6 @@ public class SupplierAgendaPostgresTests(CasazenWebApplicationFactory factory) :
         Assert.Contains("IX_SupplierBusyWindows_OrgId_StartUtc", indexes);
         Assert.Contains("PK_SupplierSettings", indexes);
 
-        // Deleting the supplier profile takes the whole agenda with it.
         await db.SupplierProfiles.Where(sp => sp.OrgId == orgId).ExecuteDeleteAsync();
         Assert.Equal((0, 0, 0, 0), await CountsAsync(orgId));
     }
@@ -245,8 +232,6 @@ public class SupplierAgendaPostgresTests(CasazenWebApplicationFactory factory) :
 
         Assert.Equal((0, 0, 0, 0), await CountsAsync(orgId));
     }
-
-    // ─── Every write waits for the SupplierCalendarSync lock ─────────────────────
 
     [PostgresTheory]
     [InlineData("hours")]
@@ -275,7 +260,6 @@ public class SupplierAgendaPostgresTests(CasazenWebApplicationFactory factory) :
             _ => client.PutAsJsonAsync("/api/supplier/availability", new { dates = new[] { new { date = Today.AddDays(6).ToString("yyyy-MM-dd"), available = false } } }),
         };
 
-        // Another connection holds the lock of this supplier, as an iCal sync that is writing its days would.
         await using var holder = new NpgsqlConnection(await ConnectionStringAsync());
         await holder.OpenAsync();
         await using var holderTransaction = await holder.BeginTransactionAsync();
@@ -319,8 +303,6 @@ public class SupplierAgendaPostgresTests(CasazenWebApplicationFactory factory) :
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    // ─── Parallel writes ─────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task ParallelPutHours_OneWeekWins_TheStoredBandsAreNeverAMixOfTwo()
     {
@@ -330,7 +312,6 @@ public class SupplierAgendaPostgresTests(CasazenWebApplicationFactory factory) :
         var responses = await Task.WhenAll(Enumerable.Range(0, attempts).Select(async i =>
         {
             using var client = SupplierClient(userId);
-            // Week i: Monday 08:00+i*10 minutes to 13:00, and Friday with i+1 bands... only the Monday band differs by start.
             return await client.PutAsJsonAsync($"{Base}/hours", new { days = new[] { Day("Monday", (480 + (i * 10), 780)), Day("Tuesday", (480 + (i * 10), 780)) } });
         }));
 
@@ -338,7 +319,6 @@ public class SupplierAgendaPostgresTests(CasazenWebApplicationFactory factory) :
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var rows = await db.SupplierWorkingHours.AsNoTracking().Where(h => h.OrgId == orgId).ToListAsync();
-        // Exactly the bands of one request: one Monday and one Tuesday band, starting at the same minute (the same week).
         Assert.Equal(2, rows.Count);
         Assert.Single(rows, row => row.Weekday == DayOfWeek.Monday);
         Assert.Single(rows, row => row.Weekday == DayOfWeek.Tuesday);
@@ -380,7 +360,6 @@ public class SupplierAgendaPostgresTests(CasazenWebApplicationFactory factory) :
         var counts = await CountsAsync(orgId);
         Assert.Equal(1, counts.Settings);
         Assert.Equal(11, counts.Hours);
-        // Both writes kept what the other wrote: the hours are marked as configured and a rule from the requests is saved.
         await using var scope = factory.Services.CreateAsyncScope();
         var settings = await scope.ServiceProvider.GetRequiredService<AppDbContext>()
             .SupplierSettings.AsNoTracking().Where(s => s.OrgId == orgId).SingleAsync();
@@ -454,8 +433,6 @@ public class SupplierAgendaPostgresTests(CasazenWebApplicationFactory factory) :
         Assert.Equal(SupplierAgendaLimits.MaxManualWindows, (await CountsAsync(orgId)).Windows);
     }
 
-    // ─── helpers ─────────────────────────────────────────────────────────────────
-
     private HttpClient SupplierClient(string userId) => factory.CreateAuthenticatedClient(userId, roles: "Supplier");
 
     private async Task SaveAsync(Action<AppDbContext> change)
@@ -509,7 +486,6 @@ public class SupplierAgendaPostgresTests(CasazenWebApplicationFactory factory) :
     private static object Day(string weekday, params (int Start, int End)[] bands) =>
         new { weekday, bands = bands.Select(b => new { startMinute = b.Start, endMinute = b.End }).ToArray() };
 
-    /// <summary>Monday to Friday 08:00-13:00 and 14:00-18:00, Saturday 08:00-14:00 (11 bands).</summary>
     private static object DemoWeek() => new
     {
         days = new[]

@@ -102,8 +102,6 @@ public class SupplierServiceCatalogService(
         if (supplierOrgIds.Count == 0)
             return new Dictionary<Guid, IReadOnlyList<SupplierPickerService>>();
 
-        // One statement for every supplier asked about (a supplier has at most MaxServicesPerSupplier services); the rows are
-        // grouped here, in the order of the catalog.
         var rows = await PublicListingsOfMany(db, supplierOrgIds.ToList())
             .AsNoTracking()
             .OrderBy(l => l.SortOrder)
@@ -148,7 +146,6 @@ public class SupplierServiceCatalogService(
         string serviceSlug,
         CancellationToken cancellationToken = default)
     {
-        // The same statement as FindPublicAsync: the booking may use only what the public may see, with the id it needs to keep.
         var listing = await PublicListingsOf(db, supplierOrgId)
             .AsNoTracking()
             .FirstOrDefaultAsync(l => l.Slug == serviceSlug, cancellationToken);
@@ -162,7 +159,6 @@ public class SupplierServiceCatalogService(
     {
         var content = SupplierServiceListingRules.Normalize(input);
 
-        // A new service has no photos: they are uploaded afterwards, so the URLs of the input cannot be the service's own.
         if (content.PhotoUrls is { Count: > 0 })
             throw SupplierServiceCatalogErrors.InvalidFields([SupplierServiceFields.PhotoUrls]);
 
@@ -213,8 +209,6 @@ public class SupplierServiceCatalogService(
         var removedPhotos = new List<string>();
         if (content.PhotoUrls is not null)
         {
-            // Only photos the service already has, in the order sent: this is how a photo is removed or moved, never how a
-            // URL that was not uploaded here gets into a public page.
             var current = SupplierServiceListingJson.ReadStrings(listing.PhotoUrlsJson);
             if (content.PhotoUrls.Any(url => !current.Contains(url, StringComparer.Ordinal)))
                 throw SupplierServiceCatalogErrors.InvalidFields([SupplierServiceFields.PhotoUrls]);
@@ -227,14 +221,12 @@ public class SupplierServiceCatalogService(
         if (content.SortOrder is { } sortOrder)
             listing.SortOrder = sortOrder;
 
-        // A draft was never public, so its slug may follow its name; the slug of a published or paused service never changes.
         if (listing.Status == SupplierServiceListingStatus.Draft
             && !SupplierServiceListingRules.SlugFollowsName(listing.Slug, SupplierServiceListingRules.SlugFromName(listing.Name)))
         {
             listing.Slug = await NextSlugAsync(supplierOrgId, listing.Name, listing.Id, cancellationToken);
         }
 
-        // A published service shown to customers stays complete: an edit cannot take that away.
         if (listing.Status == SupplierServiceListingStatus.Active)
             SupplierServiceListingRules.EnsurePublishable(listing);
 
@@ -338,7 +330,6 @@ public class SupplierServiceCatalogService(
             SupplementsJson = source.SupplementsJson,
             IncludedJson = source.IncludedJson,
             ExcludedJson = source.ExcludedJson,
-            // The copy shares the photo objects with the original (a photo is deleted from the bucket only when no service uses it).
             PhotoUrlsJson = source.PhotoUrlsJson,
             Status = SupplierServiceListingStatus.Draft,
             SortOrder = await NextSortOrderAsync(supplierOrgId, cancellationToken),
@@ -369,7 +360,6 @@ public class SupplierServiceCatalogService(
         foreach (var file in files)
             await ValidatePhotoAsync(file, cancellationToken);
 
-        // The early answer, before uploading anything: the service exists and has room (checked again under the lock).
         var existing = await Listings(supplierOrgId).AsNoTracking().FirstOrDefaultAsync(l => l.Id == id, cancellationToken)
             ?? throw SupplierServiceCatalogErrors.ServiceNotFound(id);
         EnsurePhotoRoom(SupplierServiceListingJson.ReadStrings(existing.PhotoUrlsJson).Count, files.Count);
@@ -417,7 +407,6 @@ public class SupplierServiceCatalogService(
             .Select(o => o.SupplierOrgId));
     }
 
-    /// <summary>Suppliers that this host can request for the authorised property.</summary>
     internal static IQueryable<SupplierProfile> SuppliersForProperty(AppDbContext db, Guid hostOrgId, Guid propertyId)
     {
         var trusted = db.TrustedSuppliers.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -444,14 +433,8 @@ public class SupplierServiceCatalogService(
                 && listing.SupplierProfile.Status == SupplierStatus.Active);
     }
 
-    /// <summary>
-    /// The services of <paramref name="orgId"/> that are not deleted. <b>The only way</b> this service reads or changes a
-    /// row: the table is not tenant-filtered, so the supplier org is always an explicit predicate.
-    /// </summary>
     private IQueryable<SupplierServiceListing> Listings(Guid orgId) => ListingsOf(db, orgId);
 
-    /// <inheritdoc cref="Listings"/>
-    /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
     internal static IQueryable<SupplierServiceListing> ListingsOf(AppDbContext db, Guid orgId) =>
         db.SupplierServiceListings.Where(l => l.OrgId == orgId && l.DeletedAt == null);
 
@@ -465,11 +448,6 @@ public class SupplierServiceCatalogService(
         ListingsOf(db, orgId).Where(l =>
             l.Status == SupplierServiceListingStatus.Active && l.SupplierProfile.Status == SupplierStatus.Active);
 
-    /// <summary>
-    /// <see cref="PublicListingsOf"/> for several suppliers in one statement (the supplier picker of the marketplace, SR-09a):
-    /// the services of the orgs in <paramref name="orgIds"/>, not deleted, <c>Active</c>, of a supplier whose profile is itself
-    /// <c>Active</c>. The org predicate is explicit here too: nothing is read for an org that was not asked about.
-    /// </summary>
     internal static IQueryable<SupplierServiceListing> PublicListingsOfMany(AppDbContext db, IReadOnlyCollection<Guid> orgIds) =>
         db.SupplierServiceListings.Where(l =>
             orgIds.Contains(l.OrgId)
@@ -477,7 +455,6 @@ public class SupplierServiceCatalogService(
             && l.Status == SupplierServiceListingStatus.Active
             && l.SupplierProfile.Status == SupplierStatus.Active);
 
-    /// <summary>The public form of a service: the only type that leaves the catalog toward an anonymous read.</summary>
     internal static SupplierPublicService ToPublic(SupplierServiceListing listing) =>
         new(
             listing.Slug,
@@ -499,11 +476,9 @@ public class SupplierServiceCatalogService(
             listing.UrgentEnabled,
             listing.UrgentSurchargeCents);
 
-    /// <summary>The slugs, among <paramref name="listings"/> other than <paramref name="except"/>, that start with <paramref name="baseSlug"/>.</summary>
     internal static IQueryable<string> SlugsStartingWith(IQueryable<SupplierServiceListing> listings, string baseSlug, Guid except) =>
         listings.Where(l => l.Id != except && l.Slug.StartsWith(baseSlug)).Select(l => l.Slug);
 
-    /// <summary>The service tracked for change, read after the catalog lock was taken (this context has not read it before).</summary>
     private async Task<SupplierServiceListing> FindAsync(Guid orgId, Guid id, CancellationToken cancellationToken) =>
         await Listings(orgId).FirstOrDefaultAsync(l => l.Id == id, cancellationToken)
         ?? throw SupplierServiceCatalogErrors.ServiceNotFound(id);
@@ -558,10 +533,6 @@ public class SupplierServiceCatalogService(
         return Math.Min((last ?? -1) + 1, SupplierServiceCatalogLimits.MaxSortOrder);
     }
 
-    /// <summary>
-    /// The slug of <paramref name="name"/> that no other service of the supplier uses (<paramref name="exceptId"/> is the
-    /// service being renamed, which does not collide with itself). Decided under the catalog lock.
-    /// </summary>
     private async Task<string> NextSlugAsync(Guid orgId, string name, Guid? exceptId, CancellationToken cancellationToken)
     {
         var baseSlug = SupplierServiceListingRules.SlugFromName(name);
@@ -579,10 +550,6 @@ public class SupplierServiceCatalogService(
                 current);
     }
 
-    /// <summary>
-    /// 422 for a file that is empty, too large, not JPEG/PNG/WebP by extension or declared type, or whose content is not
-    /// the image it claims to be (the declared type and the extension are the client's word: the content decides).
-    /// </summary>
     private async Task ValidatePhotoAsync(IFormFile file, CancellationToken cancellationToken)
     {
         var name = DisplayName(file);
@@ -636,7 +603,6 @@ public class SupplierServiceCatalogService(
 
         try
         {
-            // Every service of the supplier, the deleted ones too (still on file): the objects they list stay.
             var otherPhotos = await db.SupplierServiceListings
                 .AsNoTracking()
                 .Where(l => l.OrgId == orgId && l.Id != listingId)
@@ -655,7 +621,6 @@ public class SupplierServiceCatalogService(
         }
     }
 
-    /// <summary>Best effort removal of objects whose upload did not end in a service; never hides the original error.</summary>
     private async Task RemoveObjectsAsync(Guid orgId, IReadOnlyList<string> urls)
     {
         foreach (var url in urls)
@@ -671,10 +636,6 @@ public class SupplierServiceCatalogService(
         }
     }
 
-    /// <summary>
-    /// Deletes the object of <paramref name="url"/> from the public bucket if it is in the supplier's own photo folder: a
-    /// catalog can never delete what belongs to somebody else (a legacy relative path, an external URL).
-    /// </summary>
     private async Task DeleteObjectAsync(Guid orgId, string url)
     {
         var key = storage.TryGetPublicKey(url);

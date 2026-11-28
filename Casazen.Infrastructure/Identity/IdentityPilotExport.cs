@@ -36,19 +36,14 @@ namespace Casazen.Infrastructure.Identity;
 /// </remarks>
 public sealed class IdentityPilotExport(AppDbContext db, TimeProvider clock, IOptions<IdentityVerificationOptions> options)
 {
-    /// <summary>The content type of the file.</summary>
     public const string ContentType = "text/csv; charset=utf-8";
 
-    /// <summary>The end of a line of the file (RFC 4180).</summary>
     public const string NewLine = "\r\n";
 
-    /// <summary>How many characters of the SHA-256 of the session and the org <c>attempt_ref</c> keeps.</summary>
     public const int AttemptRefLength = 16;
 
-    /// <summary>How many characters of the policy hash <c>policy_hash_prefix</c> keeps.</summary>
     public const int PolicyHashPrefixLength = 12;
 
-    /// <summary>The longest code of a reason that is written (the longest column of a code of the identity tables): anything longer is not a code.</summary>
     private const int MaxCodeLength = 40;
 
     private const string InstantFormat = "yyyy-MM-dd'T'HH:mm:ss.fff'Z'";
@@ -59,24 +54,17 @@ public sealed class IdentityPilotExport(AppDbContext db, TimeProvider clock, IOp
     private const string Review = "review";
     private const string Reject = "reject";
 
-    /// <summary>The columns, in order. The header never changes with the data.</summary>
     public static IReadOnlyList<string> Columns { get; } =
     [
         "attempt_ref", "property_id", "opened_at", "closed_at", "format_id", "channel", "outcome_code", "decision_mode", "shadow_outcome", "reason_codes", "guided_retries",
         "human_outcome", "human_decided_at", "review_seconds", "duration_ms", "policy_version", "policy_hash_prefix",
     ];
 
-    /// <summary>The header line, without its end of line.</summary>
     public static string Header => string.Join(',', Columns);
 
-    /// <summary>The name of the file: <c>identity-verifications-2026-11-01-2026-11-27.csv</c>, the first and the last day of the period (Europe/Rome), the way the metrics name them.</summary>
     public static string FileName(DateOnly first, DateOnly last) =>
         $"identity-verifications-{first.ToString(DayFormat, CultureInfo.InvariantCulture)}-{last.ToString(DayFormat, CultureInfo.InvariantCulture)}.csv";
 
-    /// <summary>
-    /// Reads the steps opened in <c>[fromUtc, toUtc)</c> in the scope (the org and the properties the caller reaches) and pairs them with the decisions: the one place the
-    /// database is touched. The lines come from the file it returns.
-    /// </summary>
     public async Task<IdentityPilotFile> OpenAsync(HostScope scope, DateTime fromUtc, DateTime toUtc, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
@@ -93,17 +81,12 @@ public sealed class IdentityPilotExport(AppDbContext db, TimeProvider clock, IOp
         return new IdentityPilotFile(records);
     }
 
-    /// <summary>
-    /// The pseudonym of an attempt: the first <see cref="AttemptRefLength"/> hexadecimal characters (lower case) of the SHA-256 of <c>"{session id}:{org id}"</c> (both as 36
-    /// characters in lower case), so the same step always has the same reference, two steps never share one in practice, and the id of the session cannot be read from it.
-    /// </summary>
     public static string AttemptRef(Guid sessionId, Guid orgId)
     {
         var input = Encoding.UTF8.GetBytes(string.Concat(sessionId.ToString("D"), ":", orgId.ToString("D")));
         return Convert.ToHexStringLower(SHA256.HashData(input).AsSpan(0, AttemptRefLength / 2));
     }
 
-    /// <summary>The line of a record, without its end of line: the cells in the order of <see cref="Columns"/>, each escaped by <see cref="Cell"/>.</summary>
     internal static string Line(IdentityVerificationRecord record)
     {
         ArgumentNullException.ThrowIfNull(record);
@@ -133,12 +116,6 @@ public sealed class IdentityPilotExport(AppDbContext db, TimeProvider clock, IOp
         return string.Join(',', cells.Select(Cell));
     }
 
-    /// <summary>
-    /// One cell, escaped. <c>null</c> is an empty cell. A cell that a spreadsheet would evaluate as a formula (<see cref="CsvWriter.StartsLikeAFormula"/>, the one rule of every file
-    /// the host downloads: it starts with <c>=</c>, <c>+</c>, <c>-</c>, <c>@</c>, a tab or a carriage return) gets a leading apostrophe; a cell with a comma, a quote or a line break
-    /// is put in quotes with the quotes doubled (RFC 4180: the separator of this file is the comma, not the semicolon of <see cref="CsvWriter"/>, so the quoting is done here and only the
-    /// rule of the formulas is shared).
-    /// </summary>
     public static string Cell(string? value)
     {
         if (string.IsNullOrEmpty(value))
@@ -160,10 +137,6 @@ public sealed class IdentityPilotExport(AppDbContext db, TimeProvider clock, IOp
         };
     }
 
-    /// <summary>
-    /// The checks that did not pass, as <c>check:result</c> joined by <c>|</c>, in the order the decision recorded them. Only the codes are taken from the stored reasons, never the
-    /// number a check was compared with (a score of a person) and never a text that is not a code.
-    /// </summary>
     private static string ReasonCodes(string? reasonsJson)
     {
         var codes = new List<string>();
@@ -178,7 +151,6 @@ public sealed class IdentityPilotExport(AppDbContext db, TimeProvider clock, IOp
         return string.Join('|', codes);
     }
 
-    /// <summary>A code: 1 to <see cref="MaxCodeLength"/> lower case letters, digits or underscores.</summary>
     private static bool IsCode(string value)
     {
         return value.Length is > 0 and <= MaxCodeLength && value.All(character => character is >= 'a' and <= 'z' or >= '0' and <= '9' or '_');
@@ -192,7 +164,6 @@ public sealed class IdentityPilotExport(AppDbContext db, TimeProvider clock, IOp
         return hash.Length <= PolicyHashPrefixLength ? hash : hash[..PolicyHashPrefixLength];
     }
 
-    /// <summary>A time in UTC, ISO 8601, to the millisecond, whatever the culture of the process (a value read from the database has no kind: it is UTC).</summary>
     private static string Instant(DateTime value)
     {
         var utc = value.Kind == DateTimeKind.Local ? value.ToUniversalTime() : DateTime.SpecifyKind(value, DateTimeKind.Utc);
@@ -200,10 +171,6 @@ public sealed class IdentityPilotExport(AppDbContext db, TimeProvider clock, IOp
     }
 }
 
-/// <summary>
-/// The file of the pilot, read and paired (<see cref="IdentityPilotExport.OpenAsync"/>) and not written yet: the header and the lines come one at a time, so the answer streams and
-/// nothing is built as one text.
-/// </summary>
 public sealed class IdentityPilotFile
 {
     private readonly IReadOnlyList<IdentityVerificationRecord> _records;
@@ -213,10 +180,8 @@ public sealed class IdentityPilotFile
         _records = records;
     }
 
-    /// <summary>The rows of the file, the header not counted.</summary>
     public int RowCount => _records.Count;
 
-    /// <summary>The header and then the lines of the rows, each ended by <see cref="IdentityPilotExport.NewLine"/>.</summary>
     public IEnumerable<string> Lines()
     {
         yield return IdentityPilotExport.Header + IdentityPilotExport.NewLine;

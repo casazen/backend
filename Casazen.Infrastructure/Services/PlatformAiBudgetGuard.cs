@@ -55,13 +55,11 @@ public sealed class PlatformAiBudgetGuard(
             .Where(b => b.Id == reservation.BudgetId)
             .ExecuteUpdateAsync(
                 set => set
-                    // Never below zero: a month reset between reservation and settlement already cleared the counter.
                     .SetProperty(b => b.TokensUsedThisMonth, b => Math.Max(0L, b.TokensUsedThisMonth + delta))
                     .SetProperty(b => b.UpdatedAt, now),
                 cancellationToken);
     }
 
-    /// <summary>The budget row (created on first use), reset to zero once the first time it is used in a new UTC month.</summary>
     private async Task<Guid> GetCurrentMonthBudgetIdAsync(CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -82,7 +80,6 @@ public sealed class PlatformAiBudgetGuard(
             return budget.Id;
         }
 
-        // Only the first call of the month matches the WHERE: the reset happens once, even across replicas.
         await db.PlatformAiBudgets
             .Where(b => b.Id == budgetId && b.LastResetAt < monthStart)
             .ExecuteUpdateAsync(

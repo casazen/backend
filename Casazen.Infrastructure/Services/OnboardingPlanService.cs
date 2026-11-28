@@ -78,7 +78,6 @@ public sealed class OnboardingPlanService(
                 assist,
                 definition.LaunchTarget)
             {
-                // What the part lacks, property by property, only while it is not done (a part that does not say lists nothing).
                 Missing = facts.Provided && !facts.IsComplete ? facts.Missing : [],
             });
         }
@@ -159,10 +158,6 @@ public sealed class OnboardingPlanService(
         return new OnboardingPartChange(key, definition.Code, OnboardingPartStates.Open, null, null);
     }
 
-    /// <summary>
-    /// The state and the reason of a part, in the precedence of <see cref="OnboardingPartStates"/>: not available, done, deferred, blocked (a part
-    /// it requires is not done, <paramref name="earlier"/> holds the states of the parts before it), open.
-    /// </summary>
     internal static (string State, string? Reason) StateOf(
         OnboardingPartDefinition definition,
         PartFacts facts,
@@ -181,11 +176,6 @@ public sealed class OnboardingPlanService(
         return (OnboardingPartStates.Open, facts.Reason);
     }
 
-    /// <summary>
-    /// The path of UX-10 from the states of the parts: a step is done when all its parts are, not available when all its parts are, and visible
-    /// only while there is something to do in it; the next step is the first visible one that the host did not put off (a step set aside with
-    /// «Later» stays visible, with its state <see cref="OnboardingPartStates.Deferred"/>, but is not proposed again at once: its "To do" reminds).
-    /// </summary>
     internal static OnboardingPath PathOf(IReadOnlyDictionary<OnboardingPartKey, string> states)
     {
         var steps = new List<OnboardingPathStep>(OnboardingPartCatalog.StartWithCasazenSteps.Count);
@@ -221,7 +211,6 @@ public sealed class OnboardingPlanService(
         return firstToDo ?? OnboardingPartStates.Done;
     }
 
-    /// <summary>What the evaluator of the part with the highest order counts; with none, the part is not provided (never presumed done).</summary>
     private async Task<PartFacts> FactsOfAsync(OnboardingPartKey key, OnboardingPartContext context, CancellationToken ct)
     {
         var evaluator = evaluators
@@ -233,7 +222,6 @@ public sealed class OnboardingPlanService(
             : await evaluator.EvaluateAsync(context, ct);
     }
 
-    /// <summary>The open «Do it for me» request of each part the caller may see: the most recent one.</summary>
     private async Task<IReadOnlyDictionary<OnboardingPartKey, OnboardingAssistInfo>> OpenAssistsAsync(
         Guid orgId,
         HostScope scope,
@@ -259,12 +247,6 @@ public sealed class OnboardingPlanService(
                 });
     }
 
-    /// <summary>
-    /// A part that is done, or that nobody provides, has nothing to put off and nothing that remains: a deferral or an exit of it would raise a
-    /// "To do" for work that does not exist, and nothing would ever close it. The decision is the org's, so the state is the one over the whole
-    /// org (every property), not the reach of the caller.
-    /// </summary>
-    /// <exception cref="DomainRuleException"><see cref="OnboardingPlanCodes.PartNotOpen"/>: the part is done or not available.</exception>
     private async Task EnsureOpenAsync(Guid orgId, OnboardingPartKey key, CancellationToken ct)
     {
         var plan = await GetPlanAsync(orgId, new HostScope(orgId), ct);
@@ -303,7 +285,6 @@ public sealed class OnboardingPlanService(
 
             try
             {
-                // Saved before the "To do" names it.
                 await db.SaveChangesAsync(ct);
                 return row;
             }
@@ -371,13 +352,11 @@ public sealed class OnboardingPlanService(
             throw new ArgumentException("The scope is not one of the org of the plan.", nameof(scope));
     }
 
-    /// <summary>Tomorrow at 09:00 in Rome, as UTC: the default reminder of a deferral and of an exit.</summary>
     private DateTime DefaultRemindAt() =>
         RomeCalendar.ToUtc(timeProvider.TodayInRomeAsDateOnly().AddDays(1), new TimeOnly(OnboardingPlanLimits.DefaultRemindHour, 0));
 
     private DateTime Now() => timeProvider.GetUtcNow().UtcDateTime;
 
-    /// <summary>A reminder of the client as UTC: an instant with an offset is converted, one without is taken as UTC.</summary>
     private static DateTime AsUtc(DateTime value) => value.Kind switch
     {
         DateTimeKind.Utc => value,

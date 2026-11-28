@@ -5,11 +5,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// An exchange rate the agency entered for the owner accounting (E06/F05/US02/T02): one unit of <see cref="BaseCurrency"/> is <see cref="Rate"/> units of
-/// <see cref="QuoteCurrency"/> on <see cref="RateDate"/>, with where it comes from (a reference rate). CasaZen fetches no rate: a source in another
-/// currency without a rate of its day (or of the 7 days before) is a readiness issue and is not posted.
-/// </summary>
 [Table("OwnerFxRates")]
 public class OwnerFxRate : ITenantOwned
 {

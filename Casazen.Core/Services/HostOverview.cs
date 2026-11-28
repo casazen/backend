@@ -24,27 +24,10 @@ public sealed record HostOverviewQuery(
     Guid? PropertyId = null,
     bool IncludeMoney = false);
 
-/// <summary>A confirmed stay of the revenue of a period: the rows the revenue and its series are made of.</summary>
-/// <param name="BasePrice">Lodging plus cleaning, tourist tax excluded (<see cref="Booking.BasePrice"/>).</param>
-/// <param name="CheckIn">Check-in date, midnight UTC of the stay date.</param>
-/// <param name="CheckOut">Check-out date, midnight UTC of the stay date.</param>
 public sealed record HostRevenueStay(decimal BasePrice, DateTime CheckIn, DateTime CheckOut, BookingSource Source);
 
-/// <summary>Revenue of a period, by accrual (the nights of the confirmed stays), and how it compares with the period before.</summary>
-/// <param name="Amount">Euros, rounded to the cent.</param>
-/// <param name="StayCount">Confirmed stays with at least one night in the period.</param>
-/// <param name="DeltaPercent">
-/// How much more (or less) than the period before, in percent to one decimal; null for the period before itself and when that had
-/// no revenue to compare with.
-/// </param>
 public sealed record HostOverviewRevenue(decimal Amount, int StayCount, decimal? DeltaPercent);
 
-/// <summary>Occupancy of a period and how it compares with the period before.</summary>
-/// <param name="Occupancy">The nights.</param>
-/// <param name="DeltaPoints">
-/// The occupancy rate minus the one of the period before, in percentage points to one decimal; null for the period before itself
-/// and when either period has nothing available.
-/// </param>
 public sealed record HostOverviewOccupancy(HostDashboardOccupancy Occupancy, decimal? DeltaPoints);
 
 /// <summary>
@@ -57,9 +40,6 @@ public sealed record HostOverviewOccupancy(HostDashboardOccupancy Occupancy, dec
 /// <param name="PendingApproval">Of <paramref name="Count"/>, the requests waiting for the host's answer.</param>
 public sealed record HostOverviewUpcoming(int Count, int PreviousCount, int PendingApproval);
 
-/// <summary>The figures of the period before (SR-03b): the same definitions, other days, nothing compared again.</summary>
-/// <param name="Revenue">Null for a caller who may not read money.</param>
-/// <param name="Collected">Null for a caller who may not read money.</param>
 public sealed record HostOverviewPrevious(
     HostDashboardPeriod Period,
     HostOverviewOccupancy Occupancy,
@@ -67,11 +47,6 @@ public sealed record HostOverviewPrevious(
     HostDashboardCollected? Collected,
     HostDashboardDirectShare DirectShare);
 
-/// <summary>What is not known to the caller, absent: the money is null for a caller who may not read payments (SR-D7).</summary>
-/// <param name="Revenue">Revenue of the period, by accrual; null without money.</param>
-/// <param name="Collected">Money collected in the period, by cash; null without money.</param>
-/// <param name="NextArrivals">The next three arrivals from today, whatever the period, soonest first (a request waiting for the host included).</param>
-/// <param name="Series">Revenue by week or month, adding up to <paramref name="Revenue"/>; null without money.</param>
 public sealed record HostOverview(
     HostDashboardPeriod Period,
     DateTime TodayInRome,
@@ -85,13 +60,10 @@ public sealed record HostOverview(
     HostOverviewPrevious Previous,
     HostOverviewSeries? Series);
 
-/// <summary>The unit of the bars of the chart.</summary>
 public enum HostOverviewSeriesUnit
 {
-    /// <summary>ISO weeks, from Monday.</summary>
     Week,
 
-    /// <summary>Calendar months.</summary>
     Month,
 }
 
@@ -104,62 +76,30 @@ public enum HostOverviewSeriesUnit
 /// <param name="IsFuture">The bar starts after today in Europe/Rome: what is there is a forecast of confirmed stays.</param>
 public sealed record HostOverviewBucket(string Label, DateTime From, DateTime To, decimal Amount, decimal PreviousAmount, bool IsFuture);
 
-/// <summary>Revenue by week or month of a period, next to the same days of the period before.</summary>
 public sealed record HostOverviewSeries(HostOverviewSeriesUnit Unit, IReadOnlyList<HostOverviewBucket> Buckets);
 
-/// <summary>A stretch of the period a bar of the chart covers, before it has an amount.</summary>
 public sealed record HostOverviewBucketSpan(string Label, DateTime From, DateTime To);
 
-/// <summary>
-/// The differences the Home shows, worked out once on the server (SR-03b): a client never recomputes them from rounded numbers.
-/// </summary>
 public static class HostOverviewRules
 {
-    /// <summary>
-    /// The occupancy rate of <paramref name="current"/> minus the one of <paramref name="previous"/>, in percentage points to one
-    /// decimal; null when either has nothing available (no rate).
-    /// </summary>
     public static decimal? OccupancyDeltaPoints(HostDashboardOccupancy current, HostDashboardOccupancy previous) =>
         current.Rate is { } now && previous.Rate is { } before
             ? Math.Round((now - before) * 100m, 1, MidpointRounding.AwayFromZero)
             : null;
 
-    /// <summary>
-    /// How much more (positive) or less (negative) <paramref name="current"/> is than <paramref name="previous"/>, in percent to
-    /// one decimal; null when <paramref name="previous"/> is zero (a percentage of nothing says nothing).
-    /// </summary>
     public static decimal? RevenueDeltaPercent(decimal current, decimal previous) =>
         previous == 0m ? null : Math.Round((current - previous) / previous * 100m, 1, MidpointRounding.AwayFromZero);
 }
 
-/// <summary>
-/// Revenue by week or month (SR-03b): the same revenue as the KPI, cut into the bars of the chart. By accrual, like the KPI: a stay
-/// pays each night of the bar it falls in with <c>BasePrice</c> / nights of the stay, so the bars add up to the revenue of the
-/// period to the cent. Days are calendar dates (midnight UTC of the date): the daylight saving change of the last weekend of
-/// October moves no night. Only "is the bar in the future" asks the Europe/Rome clock.
-/// </summary>
 public static class HostOverviewSeriesRules
 {
-    /// <summary>
-    /// A period of up to this many days is cut by week, a longer one by month: nine bars is a chart one reads, three months of
-    /// weeks (13) or a year of weeks (53) is not.
-    /// </summary>
     public const int MaxWeeklyDays = 62;
 
-    /// <summary>The unit of the bars for the period: weeks up to <see cref="MaxWeeklyDays"/> days, months beyond.</summary>
     public static HostOverviewSeriesUnit UnitFor(HostDashboardPeriod period) => UnitFor(period, MaxWeeklyDays);
 
-    /// <summary>
-    /// The unit of the bars for the period: weeks up to <paramref name="maxWeeklyDays"/> days, months beyond. The trend of the reports
-    /// (NF-96) cuts by the same rule with a longer limit (<see cref="HostReportRules.MaxWeeklyTrendDays"/>).
-    /// </summary>
     public static HostOverviewSeriesUnit UnitFor(HostDashboardPeriod period, int maxWeeklyDays) =>
         period.Nights <= maxWeeklyDays ? HostOverviewSeriesUnit.Week : HostOverviewSeriesUnit.Month;
 
-    /// <summary>
-    /// The bars of the period, in order, each from its first night to the day after its last. They cover the period exactly: the
-    /// first and the last bar are cut at the edges of the period, the others are whole ISO weeks (from Monday) or whole months.
-    /// </summary>
     public static IReadOnlyList<HostOverviewBucketSpan> BucketsOf(HostDashboardPeriod period, HostOverviewSeriesUnit unit)
     {
         ArgumentNullException.ThrowIfNull(period);

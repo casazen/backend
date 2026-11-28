@@ -32,8 +32,6 @@ public class ReportExportsProofTests
 
     private sealed record XCell(string Kind, string Text);
 
-    // ---------------------------------------------------------------- the reports, with numbers that stress the files
-
     private static HostPerformanceFigures Figures(int occupied, int available, int closed, decimal revenue, int stays, int nights, bool hasNights = true) =>
         new(occupied, available, closed, revenue, stays, nights) { HasNights = hasNights };
 
@@ -126,7 +124,6 @@ public class ReportExportsProofTests
         [new HostCollectionsChannelRow(BookingSource.Direct, 1500.5m, 4, 1m)],
         new HostCredits(new HostStripeCredits(false, [], 0, 0), new HostChannelCredits(false, [], 0)));
 
-    // Two currencies on purpose: the totals are one for each, and nothing adds them.
     private static HostBalancesToCollect Balances() => new(
         new DateOnly(2026, 10, 9),
         [
@@ -186,9 +183,6 @@ public class ReportExportsProofTests
         _ => throw new ArgumentOutOfRangeException(nameof(report), report, null),
     };
 
-    // ---------------------------------------------------------------- reading the two files back
-
-    /// <summary>The sheets of a workbook as typed cells: the kind of a number cell is the one its format says (a count, an amount, a percentage, a day).</summary>
     private static List<(string Name, List<List<XCell?>> Rows)> ReadSheets(byte[] workbook)
     {
         Assert.True(XlsxTableReader.LooksLikeWorkbook(workbook));
@@ -247,7 +241,6 @@ public class ReportExportsProofTests
         return sheets;
     }
 
-    /// <summary>The tables of a CSV: the rows of each, split into cells; an empty line separates two tables.</summary>
     private static List<List<string[]>> CsvTables(byte[] csv)
     {
         var lines = Encoding.UTF8.GetString(csv).TrimStart('﻿').Split("\r\n");
@@ -263,13 +256,6 @@ public class ReportExportsProofTests
         return tables;
     }
 
-    // ---------------------------------------------------------------- the proof
-
-    /// <summary>
-    /// The money rule of the exports: for every report, the Excel file has the same sheets as the CSV has tables, the same title row, the same header and the
-    /// same cells; an amount is the same decimal to the cent (two places in both files), a percentage the same number (a fraction in the Excel file, the
-    /// percentage in the CSV), a day the same day, a count the same count, a text the same text; and a CSV cell that is a number is a number cell in Excel.
-    /// </summary>
     [Theory]
     [InlineData("revenue-by-property")]
     [InlineData("occupancy-by-property")]
@@ -301,7 +287,6 @@ public class ReportExportsProofTests
             Assert.True(csvRows.Count >= 2, where);
             Assert.Equal(csvRows.Count, xlsxRows.Count);
 
-            // The title row and the header are the same text.
             Assert.Equal(csvRows[0][0], Assert.Single(xlsxRows[0])!.Text);
             Assert.Equal(csvRows[1], xlsxRows[1].Select(cell => cell!.Text));
 
@@ -359,13 +344,9 @@ public class ReportExportsProofTests
         }
     }
 
-    // ---------------------------------------------------------------- what the proof leans on
-
-    // Every cell of every sheet as «kind:text», one line for each row.
     private static List<string> Flatten(byte[] workbook) =>
         ReadSheets(workbook).SelectMany(sheet => sheet.Rows).Select(row => string.Join('|', row.Select(cell => cell is null ? string.Empty : cell.Kind + ":" + cell.Text))).ToList();
 
-    /// <summary>The numbers of a file are never text, whatever the culture of the server that wrote it.</summary>
     [Fact]
     public void ReportExports_AreTheSame_WhateverTheCultureOfTheServer()
     {
@@ -385,10 +366,6 @@ public class ReportExportsProofTests
         }
     }
 
-    /// <summary>
-    /// Euro and Swiss francs stay in their own rows, each with its own total: no cell of either file is the sum of the two currencies (299.50 + 120.00), and the
-    /// total rows carry the currency they are in.
-    /// </summary>
     [Fact]
     public void Balances_AmountsOfDifferentCurrenciesAreNeverAddedTogether_InTheCsvOrTheExcelFile()
     {
@@ -407,10 +384,6 @@ public class ReportExportsProofTests
         Assert.Contains("Totale;;;;;CHF;;;120,00;;", Encoding.UTF8.GetString(csv), StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// A payment of the tourist tax belongs to the org and to no property: for a caller who reaches only some of the properties there is no payment, no paid
-    /// amount, no balance and no status in the CSV or in the Excel file, and the title says the payments are not shown.
-    /// </summary>
     [Fact]
     public void TouristTax_ACallerWhoReachesSomeOfThePropertiesGetsNoPayment_InTheCsvOrTheExcelFile()
     {
@@ -427,14 +400,12 @@ public class ReportExportsProofTests
         Assert.DoesNotContain("Imposta versata", text, StringComparison.Ordinal);
         Assert.DoesNotContain(ReadSheets(xlsx).SelectMany(s => s.Rows).SelectMany(row => row), cell => cell?.Text.Contains("Bonifico 123", StringComparison.Ordinal) == true);
 
-        // The same summary with its payments has the second sheet, with the payment of Roma.
         var shown = ReadSheets(TouristTaxSummaryDocuments.Xlsx(TouristTax(false), Texts));
         Assert.Equal([TouristTaxSummaryDocuments.ComuniSheet, TouristTaxSummaryDocuments.RemittancesSheet], shown.Select(s => s.Name));
         Assert.Equal("Bonifico 123", shown[1].Rows[2][5]!.Text);
         Assert.Equal("100.00", shown[1].Rows[2][3]!.Text);
     }
 
-    /// <summary>The names of the guests, the owners and the payment notes are typed by people: a text that starts like a formula is written as text in both files.</summary>
     [Fact]
     public void ReportExports_ATextThatStartsLikeAFormula_IsNeverAFormula_InTheCsvOrTheExcelFile()
     {

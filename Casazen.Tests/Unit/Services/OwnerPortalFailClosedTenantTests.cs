@@ -47,7 +47,6 @@ public class OwnerPortalFailClosedTenantTests
     private Guid _stayA;
     private Guid _conversationA;
 
-    /// <summary>What the request of an owner of the portal has: a filter that is on and an org that is none.</summary>
     private sealed class FailClosedTenant : ITenantContext
     {
         public Guid? OrgId => null;
@@ -91,7 +90,6 @@ public class OwnerPortalFailClosedTenantTests
             });
         }
 
-        // A guest stay on each property.
         var guest = new Guest { OrgId = org.Id, FirstName = "Mario", LastName = "Rossi", Email = "mario.rossi@example.com", PhoneNumber = "+39 333 1234567" };
         db.Guests.Add(guest);
         foreach (var property in new[] { propertyA, propertyB })
@@ -110,7 +108,6 @@ public class OwnerPortalFailClosedTenantTests
             });
         }
 
-        // A published statement of each owner profile, with the link of the invoice an external system issued for it.
         var statementIds = new List<Guid>();
         foreach (var owner in owners)
         {
@@ -143,7 +140,6 @@ public class OwnerPortalFailClosedTenantTests
                 CreatedAt = Now.UtcDateTime,
             });
 
-            // A document shared with the owner profile, a conversation with one message of the agency, and a stay asked on its property.
             var document = new OwnerDocument
             {
                 OrgId = org.Id,
@@ -208,7 +204,6 @@ public class OwnerPortalFailClosedTenantTests
             }
         }
 
-        // A contact the first owner lets into its portal with the inbox and the documents, with the account of a third person.
         db.OwnerPortalContacts.Add(new OwnerPortalContact
         {
             OrgId = org.Id,
@@ -284,7 +279,6 @@ public class OwnerPortalFailClosedTenantTests
         Assert.Equal([(_orgId, _ownerA, _propertyA, (Guid?)null)], owner.Grants.Select(g => (g.OrgId, g.PropertyOwnerId, g.PropertyId, g.ContactId)));
         Assert.Equal(OwnerPortalPermissions.Everything, Assert.Single(owner.Grants).Permissions);
 
-        // The contact holds what the owner gave it, on the properties of that owner profile: nothing of the other owner.
         var contact = await AccessAsync(_userC);
         var grant = Assert.Single(contact.Grants);
         Assert.Equal((_orgId, _ownerA, _propertyA), (grant.OrgId, grant.PropertyOwnerId, grant.PropertyId));
@@ -299,14 +293,12 @@ public class OwnerPortalFailClosedTenantTests
         await using var db = Portal();
         var service = Stays(db);
 
-        // The calendar sees the guest stay as a night taken, never who; the stays and the rule are the owner's own.
         var calendar = await service.GetCalendarAsync(access, _propertyA, Today, Today.AddDays(30));
         Assert.Contains(calendar.Ranges, r => r.Kind == OwnerCalendarKinds.Occupied && r.Start == Today.AddDays(5) && r.End == Today.AddDays(8));
         Assert.Contains(calendar.Ranges, r => r.Kind == OwnerCalendarKinds.OwnerStay && r.StayId == _stayA);
         Assert.Equal([_stayA], (await service.ListForOwnerAsync(access)).Select(s => s.Id));
         Assert.Equal(_propertyA, (await service.GetRuleForOwnerAsync(access, _propertyA)).Rule.PropertyId);
 
-        // Another owner's property is a 404 here as everywhere else.
         await Assert.ThrowsAsync<Casazen.Core.Exceptions.NotFoundException>(() => service.GetCalendarAsync(access, _propertyB, Today, Today.AddDays(30)));
     }
 
@@ -319,7 +311,6 @@ public class OwnerPortalFailClosedTenantTests
         await using var db = Portal();
         var service = Collaboration(db);
 
-        // The owner: its document, its published statement, its conversation and the contact it let in.
         var documents = await service.ListDocumentsForOwnerAsync(owner);
         Assert.Equal(_ownerA, Assert.Single(documents.Documents).PropertyOwnerId);
         Assert.Equal(_statementA, Assert.Single(documents.Statements).StatementVersionId);
@@ -327,7 +318,6 @@ public class OwnerPortalFailClosedTenantTests
         Assert.Equal("Buongiorno", Assert.Single(await service.ListMessagesForOwnerAsync(owner, _conversationA)).Body);
         Assert.Equal("carla@example.com", Assert.Single(await service.ListContactsForOwnerAsync(owner)).Email);
 
-        // The contact: the documents and the inbox the owner gave it, not the statements (no accounting.read), not the management of contacts.
         var forContact = await service.ListDocumentsForOwnerAsync(contact);
         Assert.Single(forContact.Documents);
         Assert.Empty(forContact.Statements);
@@ -342,7 +332,6 @@ public class OwnerPortalFailClosedTenantTests
         await using var db = Portal();
         var portal = new OwnerPortalService(db, _clock);
 
-        // The properties of the owner with their bookings, and nobody else's.
         var properties = await portal.GetOwnerPropertiesAsync(_userA);
         var property = Assert.Single(properties);
         Assert.Equal((_propertyA, 1, 300m), (property.PropertyId, property.TotalBookings, property.TotalRevenue));
@@ -350,7 +339,6 @@ public class OwnerPortalFailClosedTenantTests
         Assert.True(await portal.OwnerHasAccessToPropertyAsync(_userA, _propertyA));
         Assert.False(await portal.OwnerHasAccessToPropertyAsync(_userA, _propertyB));
 
-        // The links of the invoices an external system issued for the published statements of the owner: its own, not the other owner's.
         var accounting = new OwnerAccountingService(db, Mock.Of<IOwnerFiscalProfileService>(), _clock, NullLogger<OwnerAccountingService>.Instance);
         var documents = await accounting.ListPublishedExternalDocumentsForOwnerUserAsync(_userA);
         Assert.Equal(_statementA, Assert.Single(documents).OwnerStatementVersionId);

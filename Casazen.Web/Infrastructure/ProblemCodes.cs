@@ -20,34 +20,15 @@ public static class ProblemCodes
     public const string BusinessRuleViolation = "business_rule_violation";
     public const string TooManyRequests = "too_many_requests";
 
-    /// <summary>
-    /// 403: the host features wait for the onboarding and the current legal consents (PL-02, A1-05). The web app opens the
-    /// onboarding (consents step), the mobile app its activation screen. See <see cref="Casazen.Core.Authorization.HostOnboarding"/>.
-    /// </summary>
     public const string OnboardingRequired = Casazen.Core.Authorization.HostOnboarding.RequiredCode;
 
-    /// <summary>
-    /// 403: the caller's account was deactivated by an admin (PL-03, A1-04). Every authenticated request is refused with
-    /// it, whatever the endpoint and the roles in the token (<see cref="Casazen.Web.Middleware.InactiveAccountMiddleware"/>); it takes precedence
-    /// over every authorization outcome. The web app shows the "account disabled" page.
-    /// </summary>
     public const string AccountInactive = "account_inactive";
 
-    /// <summary>
-    /// 403: the caller's access to its org was deactivated by the org (AM-01, <c>OrgMember.Status</c>), while its CasaZen
-    /// account is fine. Every authenticated request is refused with it from the very next one
-    /// (<see cref="Casazen.Web.Middleware.InactiveAccountMiddleware"/>); <see cref="AccountInactive"/> wins when both apply.
-    /// The web app shows the "access deactivated" page (AM-04).
-    /// </summary>
     public const string MemberInactive = "member_inactive";
 
     /// <summary>429 from a rate limiting policy (with <c>Retry-After</c>), see <c>RateLimitingServiceCollectionExtensions</c>.</summary>
     public const string RateLimited = "rate_limited";
 
-    /// <summary>
-    /// 422: the monthly platform AI budget cannot cover the call, the provider was not called
-    /// (<see cref="Casazen.Core.Exceptions.AiBudgetExceededException"/>, docs/runbooks/ai.md).
-    /// </summary>
     public const string AiBudgetExhausted = Casazen.Core.Exceptions.AiBudgetExceededException.ErrorCode;
 
     public const string ClientError = "client_error";
@@ -56,7 +37,6 @@ public static class ProblemCodes
     public const string ServiceUnavailable = "service_unavailable";
     public const string ServerError = "server_error";
 
-    /// <summary>Default code for a status code when the error has no more specific one.</summary>
     public static string ForStatus(int statusCode) => statusCode switch
     {
         StatusCodes.Status400BadRequest => BadRequest,

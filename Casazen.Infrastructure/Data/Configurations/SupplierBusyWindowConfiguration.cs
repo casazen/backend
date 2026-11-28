@@ -1,6 +1,4 @@
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
-using Casazen.Core.Suppliers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -15,7 +13,6 @@ internal sealed class SupplierBusyWindowConfiguration : IEntityTypeConfiguration
             .HasForeignKey(w => w.OrgId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // The planner and the calendar read the windows of one supplier by time.
         entity.HasIndex(w => new { w.OrgId, w.StartUtc })
             .HasDatabaseName("IX_SupplierBusyWindows_OrgId_StartUtc");
 

@@ -39,13 +39,10 @@ public sealed class PropertySenderService(
     IOrgGuestAutoSendSetting? autoSendSetting = null,
     IDirectAlloggiatiAccount? directAccount = null) : IPropertySenderService
 {
-    /// <summary>How long the read of a sender, and its connection test, wait for Octorate before they answer without the police fields.</summary>
     internal static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(8);
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    // The org-wide setting of the guests written to the channel manager on their own (E20/F01/US01/T01): the container gives the service;
-    // built by hand without it, one on the same context reads the same column.
     private readonly IOrgGuestAutoSendSetting _autoSend = autoSendSetting
         ?? new OrgGuestAutoSendSetting(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<OrgGuestAutoSendSetting>.Instance, timeProvider);
 
@@ -87,19 +84,15 @@ public sealed class PropertySenderService(
         if (istatSender is { } istat && istat != newSender)
             throw new DomainRuleException(SenderErrorCodes.IstatMismatch, "SenderIstatMismatch");
 
-        // The consent is the proof of what the person read: it names the version of the delegation text it was shown, and that has to be
-        // the text in force. The front end and the back end are released apart, so a screen can show a text that is no longer the current one.
         if (delegationConsent)
             RequireDelegationTextInForce(delegationTextVersion);
 
         var current = await store.GetAsync(propertyId, ct);
         var grantDelegation = await RequireSwitchAllowedAsync(current, newSender, confirmed, delegationConsent, ct);
 
-        // The version recorded is the one the person read: it was checked to be the text in force when the consent came in.
         if (grantDelegation)
             await delegation.GrantAsync(current.OrgId, userId, AlloggiatiDelegationTexts.CurrentVersion, ct);
 
-        // The sender as stored, with no view: the read of the police account on Octorate that builds it belongs to SwitchAsync alone.
         return await store.SetAsync(propertyId, newSender, userId, ct);
     }
 
@@ -115,16 +108,11 @@ public sealed class PropertySenderService(
         if (istatSender is { } istat && istat != newSender)
             throw new DomainRuleException(SenderErrorCodes.IstatMismatch, "SenderIstatMismatch");
 
-        // Reads only: the store, the mapping and the delegation. Nothing is written and Octorate is not called.
         var current = await store.GetAsync(propertyId, ct);
         await RequireSwitchAllowedAsync(current, newSender, confirmed: true, delegationConsent: false, ct);
         return new SenderSwitchCheck(current.AlloggiatiSender, newSender);
     }
 
-    /// <summary>
-    /// The checks of a switch to <paramref name="newSender"/>, in order, shared by the switch and by its read-only check so the two can never
-    /// disagree. Reads only. Returns whether the consent to the delegation has to be recorded before the sender is set.
-    /// </summary>
     private async Task<bool> RequireSwitchAllowedAsync(
         PropertySenderInfo current,
         ComplianceSenderType newSender,
@@ -144,7 +132,6 @@ public sealed class PropertySenderService(
         if (newSender == ComplianceSenderType.ChannelManager && !await ChannelManagerAvailableAsync(current, ct))
             throw new DomainRuleException(SenderErrorCodes.ChannelManagerNotAvailable, "SenderChannelManagerNotAvailable");
 
-        // The sender in effect goes off when another one is chosen (ADR-029-R3): the host confirms it knows.
         if (newSender != current.AlloggiatiSender && !confirmed)
         {
             throw new DomainConflictException(SenderErrorCodes.SwitchConfirmationRequired, "SenderSwitchConfirmationRequired")
@@ -157,7 +144,6 @@ public sealed class PropertySenderService(
             };
         }
 
-        // An automatic sender transmits for the org: the delegation is accepted before it is set (ADR-015-R10), never assumed.
         var grantDelegation = false;
         if (IsAutomatic(newSender))
         {
@@ -188,7 +174,6 @@ public sealed class PropertySenderService(
         if (info.AlloggiatiSender == ComplianceSenderType.CasaZen)
             return Result(info, SenderConnectionTestOutcome.NotAvailable, SenderReasonCodes.CasaZenNotAvailable, null, checkedAt);
 
-        // The channel manager: only Octorate can prove it, so without a connection to read it from nothing is verified.
         var accommodationId = await ConfirmedAccommodationIdAsync(info.PropertyId, info.OrgId, ct);
         var available = accommodationId is not null && featureFlags.IsEnabled(FeatureFlags.OctorateConnector);
         var police = available ? await ReadPoliceAsync(info, accommodationId!, ct) : null;
@@ -218,8 +203,6 @@ public sealed class PropertySenderService(
         if (!await DelegationAcceptedAsync(current.OrgId, ct))
             throw new DomainForbiddenException(SenderErrorCodes.DelegationRequired, "AlloggiatiDelegationRequired");
 
-        // A default sender has no row yet: the store creates it (the sender does not change, so no line in the activity log) and the
-        // declaration goes on it. The row is read after the store wrote it, so the declaration is never older than the choice.
         await store.SetAsync(propertyId, ComplianceSenderType.ChannelManager, userId, ct);
         var row = await db.PropertyComplianceSenders.FirstOrDefaultAsync(s => s.PropertyId == propertyId, ct)
                   ?? throw new DomainConflictException(PropertySenderStore.ChangedConcurrentlyCode, "SenderChangedConcurrently");
@@ -231,14 +214,12 @@ public sealed class PropertySenderService(
         }
         catch (DbUpdateConcurrencyException)
         {
-            // The sender was changed by someone else between the read and the save: the declaration was about the one that is gone.
             throw new DomainConflictException(PropertySenderStore.ChangedConcurrentlyCode, "SenderChangedConcurrently");
         }
 
         return await BuildAsync(await store.GetAsync(propertyId, ct), ct);
     }
 
-    /// <summary>The view of a sender: its state from what Octorate says now, the declaration, the credentials and the delegation.</summary>
     private async Task<PropertySenderView> BuildAsync(PropertySenderInfo info, CancellationToken ct)
     {
         var accommodationId = info.Applies ? await ConfirmedAccommodationIdAsync(info.PropertyId, info.OrgId, ct) : null;
@@ -254,7 +235,6 @@ public sealed class PropertySenderService(
         var accepted = await DelegationAcceptedAsync(info.OrgId, ct);
 
         var (state, verification, reason) = Evaluate(info, police, channelManagerAvailable, declaredAt is not null);
-        // What the host can choose now: nothing outside Italy; manual always; the channel manager when the property can use it.
         var available = new List<ComplianceSenderType>(2);
         if (info.Applies && !direct)
         {
@@ -307,7 +287,6 @@ public sealed class PropertySenderService(
             case ComplianceSenderType.CasaZen:
                 if (info.DirectCutover)
                     return (SenderState.Unverified, SenderVerification.Unverifiable, null);
-                // A legacy row alone does not activate a direct route.
                 return (SenderState.Inactive, SenderVerification.NotApplicable, SenderReasonCodes.CasaZenNotAvailable);
         }
 
@@ -382,10 +361,6 @@ public sealed class PropertySenderService(
         }
     }
 
-    /// <summary>
-    /// The accommodation id of the confirmed listing of the property, on a connection of this environment that is connected (the rule of
-    /// the default of PO-02); <c>null</c> when there is none.
-    /// </summary>
     private async Task<string?> ConfirmedAccommodationIdAsync(Guid propertyId, Guid orgId, CancellationToken ct)
     {
         var environment = OctorateEnvironments.Of(hostEnvironment);
@@ -419,14 +394,12 @@ public sealed class PropertySenderService(
         return row?.ActivationDeclaredAt is { } declaredAt && declaredAt >= row.LastChangedAt ? declaredAt : null;
     }
 
-    /// <summary>True when the org accepted the delegation text in force: granted, not revoked, and of the current version.</summary>
     private async Task<bool> DelegationAcceptedAsync(Guid orgId, CancellationToken ct)
     {
         var info = await delegation.GetAsync(orgId, ct);
         return info.Valid && string.Equals(info.TextVersion, AlloggiatiDelegationTexts.CurrentVersion, StringComparison.Ordinal);
     }
 
-    /// <summary>The channel manager and CasaZen send on their own; manual is the host's hand.</summary>
     private static bool IsAutomatic(ComplianceSenderType sender) =>
         sender is ComplianceSenderType.ChannelManager or ComplianceSenderType.CasaZen;
 
@@ -460,19 +433,14 @@ public sealed class PropertySenderService(
             info.AlloggiatiSender, outcome, reason, police?.Valid, police?.Autorun, police?.LastCron, checkedAt);
     }
 
-    /// <summary>Now, cut to the microsecond PostgreSQL keeps, so what is written and what is read back compare equal.</summary>
     private DateTime Now() => UtcDateTime.TruncateToMicroseconds(_clock.GetUtcNow().UtcDateTime);
 
-    /// <summary>What a reading of the police account proves.</summary>
     internal enum PoliceVerdict
     {
-        /// <summary>Octorate says the account is valid and its automatic send is on.</summary>
         Active,
 
-        /// <summary>Octorate says the account is not valid, or its automatic send is off.</summary>
         Inactive,
 
-        /// <summary>Octorate did not say (not exposed, not read, unreachable).</summary>
         Unknown,
     }
 

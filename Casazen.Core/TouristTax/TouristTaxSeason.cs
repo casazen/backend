@@ -2,19 +2,10 @@ using System.Globalization;
 
 namespace Casazen.Core.TouristTax;
 
-/// <summary>
-/// Yearly season of a tourist tax rate: first and last day as <c>MM-dd</c>, both included, repeated every year
-/// (<see cref="Entities.TouristTaxRate.SeasonStart"/>, <see cref="Entities.TouristTaxRate.SeasonEnd"/>).
-/// A season may wrap over the new year (<c>11-01</c>..<c>02-28</c>). No season means the whole year.
-/// </summary>
 public static class TouristTaxSeason
 {
-    /// <summary>True for a valid <c>MM-dd</c> day (29 February included).</summary>
     public static bool IsValid(string? value) => TryParse(value, out _);
 
-    /// <summary>
-    /// True when both bounds are missing, or both are valid. A season with a single bound is not valid.
-    /// </summary>
     public static bool IsValidPair(string? start, string? end)
     {
         var hasStart = !string.IsNullOrWhiteSpace(start);
@@ -43,7 +34,6 @@ public static class TouristTaxSeason
             : day >= from || day <= to;
     }
 
-    /// <summary>Parses <c>MM-dd</c> into <c>month * 100 + day</c>.</summary>
     private static bool TryParse(string? value, out int monthDay)
     {
         monthDay = 0;

@@ -51,7 +51,6 @@ public sealed class DirectPortalRoutes(AppDbContext db, TimeProvider clock, IAct
             db.PropertyComplianceSenders.Add(row);
         }
 
-        // A single Octorate guest payload can trigger both declarations. The other service stays manual until its own cutover.
         row.AlloggiatiSender = row.IstatSender = ComplianceSenderType.Manual;
         if (police) row.DirectAlloggiatiFrom = clock.TodayInRomeAsDateOnly();
         else row.DirectIstatFrom = clock.TodayInRomeAsDateOnly();

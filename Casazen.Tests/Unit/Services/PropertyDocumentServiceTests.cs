@@ -38,7 +38,6 @@ public class PropertyDocumentServiceTests
     [Fact]
     public async Task UploadDocumentAsync_WithValidPropertyAndFile_ReturnsDocument()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         var storageUrl = "/uploads/properties/test-doc.pdf";
         var mockFile = CreateMockFile("test-doc.pdf");
@@ -59,28 +58,23 @@ public class PropertyDocumentServiceTests
         _mockStorageService.Setup(x => x.UploadDocumentAsync(mockFile.Object, propertyId)).ReturnsAsync(storageUrl);
         _mockDocumentRepository.Setup(x => x.AddAsync(It.IsAny<PropertyDocument>())).ReturnsAsync(expectedDocument);
 
-        // Act
         var result = await _service.UploadDocumentAsync(propertyId, mockFile.Object, DocumentType.CinCertificate, "user@example.com");
 
-        // Assert
         Assert.NotNull(result);
         Assert.Equal(expectedDocument.Id, result.Document.Id);
         Assert.Equal(propertyId, result.Document.PropertyId);
         Assert.Null(result.ApeCheck);
-        // TN-2: the stored row carries the property's org (tenant filter + FK).
         _mockDocumentRepository.Verify(x => x.AddAsync(It.Is<PropertyDocument>(d => d.OrgId == orgId && d.PropertyId == propertyId)), Times.Once);
     }
 
     [Fact]
     public async Task UploadDocumentAsync_WithNonExistentProperty_ThrowsNotFoundException()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         var mockFile = CreateMockFile("test-doc.pdf");
 
         _mockPropertyRepository.Setup(x => x.GetOrgIdAsync(propertyId)).ReturnsAsync((Guid?)null);
 
-        // Act & Assert
         await Assert.ThrowsAsync<NotFoundException>(() =>
             _service.UploadDocumentAsync(propertyId, mockFile.Object, DocumentType.CinCertificate, "user@example.com"));
 
@@ -130,7 +124,6 @@ public class PropertyDocumentServiceTests
     [Fact]
     public async Task GetByPropertyIdAsync_WithDocuments_ReturnsDocuments()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         var documents = new List<PropertyDocument>
         {
@@ -140,10 +133,8 @@ public class PropertyDocumentServiceTests
 
         _mockDocumentRepository.Setup(x => x.GetByPropertyIdAsync(propertyId)).ReturnsAsync(documents);
 
-        // Act
         var result = await _service.GetByPropertyIdAsync(propertyId);
 
-        // Assert
         Assert.NotNull(result);
         Assert.Equal(2, result.Count());
         _mockDocumentRepository.Verify(x => x.GetByPropertyIdAsync(propertyId), Times.Once);
@@ -152,15 +143,12 @@ public class PropertyDocumentServiceTests
     [Fact]
     public async Task GetByPropertyIdAsync_WithNoDocuments_ReturnsEmptyList()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
 
         _mockDocumentRepository.Setup(x => x.GetByPropertyIdAsync(propertyId)).ReturnsAsync(new List<PropertyDocument>());
 
-        // Act
         var result = await _service.GetByPropertyIdAsync(propertyId);
 
-        // Assert
         Assert.NotNull(result);
         Assert.Empty(result);
         _mockDocumentRepository.Verify(x => x.GetByPropertyIdAsync(propertyId), Times.Once);
@@ -169,7 +157,6 @@ public class PropertyDocumentServiceTests
     [Fact]
     public async Task DeleteDocumentAsync_WithExistingDocument_DeletesFromRepositoryAndStorage()
     {
-        // Arrange
         var documentId = Guid.NewGuid();
         var document = new PropertyDocument
         {
@@ -183,25 +170,20 @@ public class PropertyDocumentServiceTests
         _mockStorageService.Setup(x => x.DeleteDocumentAsync(document.StorageUrl)).Returns(Task.CompletedTask);
         _mockDocumentRepository.Setup(x => x.DeleteAsync(documentId)).Returns(Task.CompletedTask);
 
-        // Act
         await _service.DeleteDocumentAsync(documentId);
 
-        // Assert
         _mockStorageService.Verify(x => x.DeleteDocumentAsync(document.StorageUrl), Times.Once);
         _mockDocumentRepository.Verify(x => x.DeleteAsync(documentId), Times.Once);
-        // CO-06 (A5-20): an active property that loses a required document is suspended.
         _complianceStatus.Verify(x => x.ReevaluateAsync(document.PropertyId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task DeleteDocumentAsync_WithNonExistentDocument_ThrowsInvalidOperationException()
     {
-        // Arrange
         var documentId = Guid.NewGuid();
 
         _mockDocumentRepository.Setup(x => x.GetByIdAsync(documentId)).ReturnsAsync((PropertyDocument?)null);
 
-        // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() => _service.DeleteDocumentAsync(documentId));
 
         _mockStorageService.Verify(x => x.DeleteDocumentAsync(It.IsAny<string>()), Times.Never);
@@ -230,7 +212,6 @@ public class PropertyDocumentServiceTests
     [Fact]
     public async Task UploadDocumentAsync_WithApeNotReadWhole_StoresItAndSaysWhatWasNotRead()
     {
-        // A real certificate photographed from a photocopy: the dark header with the code and the expiry date cannot be read.
         var propertyId = Guid.NewGuid();
         var mockFile = CreateMockFile("ape.pdf");
         _mockPropertyRepository.Setup(x => x.GetOrgIdAsync(propertyId)).ReturnsAsync(Guid.NewGuid());
@@ -250,7 +231,6 @@ public class PropertyDocumentServiceTests
     [Fact]
     public async Task UploadDocumentAsync_ApeWithCodeAndClassRead_StoresThemForTheContract()
     {
-        // LT-10: nobody types them; the comune and the region of the property go with the file, for the register of Lombardy.
         var propertyId = Guid.NewGuid();
         var mockFile = CreateMockFile("ape.pdf");
         _mockPropertyRepository.Setup(x => x.GetOrgIdAsync(propertyId)).ReturnsAsync(Guid.NewGuid());

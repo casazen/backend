@@ -29,11 +29,6 @@ public class OrgScopedPanelVerificationTests
     private readonly List<(bool FilterEnabled, Guid? OrgId)> _tenantsOfTheMappingReads = [];
     private readonly List<Guid> _orgsOfTheCallsToTheChannelManager = [];
 
-    /// <summary>
-    /// The verifier reads the mapping and asks the channel manager for the org of the request, from the request of a staff user of another org. The
-    /// control: the same verifier in the scope of the staff user's own request reads under the staff org and is refused by the guard of the channel
-    /// manager's scope, before any call is made. The staff user's own context is untouched by the verification.
-    /// </summary>
     [Fact]
     public async Task VerifyAsync_FromTheRequestOfAStaffUserOfAnotherOrg_ReadsAndCallsTheChannelManagerForTheOrgOfTheRequest()
     {
@@ -43,27 +38,22 @@ public class OrgScopedPanelVerificationTests
         staffTenant.SetOrgId(StaffOrgId);
         var context = new PanelStepContext(RequestOrgId, PropertyId, PanelStepKind.PoliceConnection, null);
 
-        // The control: in the scope of the staff user's own request a call for the org of the request is refused, and nothing was asked of the channel manager.
         var inTheRequestOwnScope = staffRequest.ServiceProvider.GetServices<IPanelStepVerifier>().Single();
         await Assert.ThrowsAsync<InvalidOperationException>(() => inTheRequestOwnScope.VerifyAsync(context, Ct));
         Assert.Empty(_orgsOfTheCallsToTheChannelManager);
 
-        // The verification of «Fatto»: a scope of its own, put under the org of the request.
         var verification = new OrgScopedPanelVerification(staffRequest.ServiceProvider.GetRequiredService<IServiceScopeFactory>());
         var outcome = await verification.VerifyAsync(context, Ct);
 
         Assert.Equal(PanelVerificationOutcome.Verified, outcome);
         Assert.Equal(new[] { RequestOrgId }, _orgsOfTheCallsToTheChannelManager.ToArray());
 
-        // The reads of the mapping: the first (the control) ran under the staff org, the one of the verification under the org of the request, with the
-        // tenant filter on in both.
         Assert.Equal(2, _tenantsOfTheMappingReads.Count);
         Assert.Equal((true, (Guid?)StaffOrgId), _tenantsOfTheMappingReads[0]);
         Assert.Equal((true, (Guid?)RequestOrgId), _tenantsOfTheMappingReads[1]);
         Assert.Equal(StaffOrgId, staffTenant.OrgId);
     }
 
-    /// <summary>Each verification gets a scope of its own: two requests of two orgs, one after the other, never share the tenant (a scope is put under one org once).</summary>
     [Fact]
     public async Task VerifyAsync_TwoOrgsOneAfterTheOther_EachRunsUnderItsOwnOrg()
     {
@@ -113,7 +103,6 @@ public class OrgScopedPanelVerificationTests
         return services.BuildServiceProvider();
     }
 
-    /// <summary>Every property is confirmed on an accommodation of its own; it keeps the tenant it was asked under.</summary>
     private sealed class TenantRecordingMappings(ITenantContext tenant, List<(bool FilterEnabled, Guid? OrgId)> seen) : IPropertyMappingReader
     {
         public bool IsProvided => true;

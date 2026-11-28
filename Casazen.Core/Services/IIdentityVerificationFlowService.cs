@@ -15,16 +15,8 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IIdentityVerificationFlowService
 {
-    /// <summary>Where the verification of the session stands (the page asks it with the session).</summary>
     Task<IdentityVerificationState> GetStateAsync(GuestCheckInSession session, CancellationToken ct);
 
-    /// <summary>
-    /// Records the guest's answer to the biometric consent: <paramref name="consentGiven"/> true records the time and the
-    /// <paramref name="consentVersion"/> (required, at most <see cref="BiometricConsentRules.VersionMaxLength"/> characters, and the one the registry of the legal texts
-    /// serves now, <see cref="ICheckInLegalTexts"/>: any other string is <see cref="BiometricConsentStatus.VersionUnknown"/>, E22/F01/US02/T02) together with the hash of that text;
-    /// false records the refusal and hands the verification to an operator, who is alerted at once. When the biometric verification is not offered (switched off
-    /// for the organization, the guest is a minor, or the registry serves no text of the consent: <c>legal_text_not_approved</c>) nothing is recorded and the operator takes over.
-    /// </summary>
     Task<BiometricConsentResult> RecordConsentAsync(GuestCheckInSession session, bool consentGiven, string? consentVersion, CancellationToken ct);
 
     /// <summary>
@@ -99,62 +91,41 @@ public interface IIdentityVerificationFlowService
     Task<IdentityVerificationState> RequestOperatorAsync(GuestCheckInSession session, CancellationToken ct);
 }
 
-/// <summary>The limits of the biometric consent.</summary>
 public static class BiometricConsentRules
 {
-    /// <summary>The longest version of the consent text (<c>GuestCheckInSession.BiometricConsentVersion</c>).</summary>
     public const int VersionMaxLength = 50;
 }
 
-/// <summary>The steps of the verification, as the page shows them.</summary>
 public static class IdentityVerificationSteps
 {
-    /// <summary>The biometric consent is to be asked.</summary>
     public const string Consent = "consent";
 
-    /// <summary>The document is to be photographed.</summary>
     public const string Document = "document";
 
-    /// <summary>The selfie is to be taken.</summary>
     public const string Selfie = "selfie";
 
-    /// <summary>
-    /// The presence is to be proven (the self-hosted flow, <c>Features:CheckInIdentitySelfHosted</c>, E70-E74): a challenge and a sequence of frames take the
-    /// place of the selfie.
-    /// </summary>
     public const string Presence = "presence";
 
-    /// <summary>The verification passed.</summary>
     public const string Done = "done";
 
-    /// <summary>A person verifies the identity: the guest waits for the operator.</summary>
     public const string Operator = "operator";
 }
 
-/// <summary>
-/// Which side of the identity document one picture is (E22/F01/US01/T02). A passport has the face and the MRZ on one page; the Italian electronic
-/// identity card and the other TD1 cards have the face on the front and the MRZ on the back.
-/// </summary>
 public enum DocumentSide
 {
-    /// <summary>One picture holds the face and the MRZ, the behaviour before the two-sided document: a passport. The default of the endpoint.</summary>
     Single = 0,
 
-    /// <summary>The front: the photo of the face, from which the selfie is compared (and the MRZ, when the document has it there).</summary>
     Front = 1,
 
-    /// <summary>The back: the MRZ. No face is looked for on it.</summary>
     Back = 2,
 }
 
-/// <summary>The codes of <see cref="DocumentSide"/> the endpoint speaks (<c>side</c> of <c>POST api/public/checkin/{token}/document</c>).</summary>
 public static class DocumentSides
 {
     public const string Single = "single";
     public const string Front = "front";
     public const string Back = "back";
 
-    /// <summary>The side a client named: nothing (or a blank value) is <see cref="DocumentSide.Single"/>; anything but <c>front</c>, <c>back</c> and <c>single</c> is not a side.</summary>
     public static bool TryParse(string? value, out DocumentSide side)
     {
         side = DocumentSide.Single;
@@ -176,7 +147,6 @@ public static class DocumentSides
         }
     }
 
-    /// <summary>The code of a side, as the endpoint answers it.</summary>
     public static string CodeOf(DocumentSide side) => side switch
     {
         DocumentSide.Front => Front,
@@ -224,52 +194,36 @@ public sealed record IdentityVerificationState(
     bool Closed = false,
     string? Outcome = null)
 {
-    /// <summary>The way to a person is always open.</summary>
     public bool OperatorPathOpen => true;
 }
 
-/// <summary>What the answer to the consent did.</summary>
 public enum BiometricConsentStatus
 {
-    /// <summary>The consent is recorded with its version and time.</summary>
     Recorded = 1,
 
-    /// <summary>The refusal is recorded; the operator takes over.</summary>
     Refused = 2,
 
-    /// <summary>The biometric verification is not offered (switched off, a minor) or the verification is already with the operator.</summary>
     Operator = 3,
 
-    /// <summary>A consent without its version: nothing recorded.</summary>
     VersionRequired = 4,
 
-    /// <summary>
-    /// A consent for a version that the registry of the legal texts does not serve now (a free string, a version of the past, a draft in production): nothing recorded
-    /// (E22/F01/US02/T02, 422 <c>biometric_consent_version_unknown</c>). Never returned while the flow has no registry.
-    /// </summary>
     VersionUnknown = 5,
 }
 
-/// <summary>The answer to the consent and the state after it.</summary>
 public sealed record BiometricConsentResult(BiometricConsentStatus Status, IdentityVerificationState State);
 
-/// <summary>What the opening of the identity step did (<see cref="IIdentityVerificationFlowService.OpenIdentityAsync"/>).</summary>
 public enum IdentityOpenStatus
 {
     /// <summary>The state answers: the step was opened now, or before (nothing changed), or not at all because the verification is over (see <see cref="IdentityVerificationState.Opened"/>).</summary>
     Answered = 1,
 
-    /// <summary>The notice named is not the version of the biometric consent the registry serves now: nothing recorded (422 <c>notice_version_unknown</c>).</summary>
     NoticeVersionUnknown = 2,
 
-    /// <summary>The verification of the session is closed: no new step (409 <c>identity_already_closed</c>, with the state).</summary>
     Closed = 3,
 
-    /// <summary>The session expired or got a new link while the request waited for it: nothing recorded (404).</summary>
     SessionUnavailable = 4,
 }
 
-/// <summary>The opening of the identity step: what it did and the state after it (null only for <see cref="IdentityOpenStatus.SessionUnavailable"/>).</summary>
 public sealed record IdentityOpenResult(IdentityOpenStatus Status, IdentityVerificationState? State);
 
 /// <summary>
@@ -287,22 +241,16 @@ public sealed record DocumentStepResult(
     DocumentSide Side = DocumentSide.Single,
     IReadOnlyList<string>? SidesReceived = null);
 
-/// <summary>Why a selfie was not run.</summary>
 public enum SelfieStepStatus
 {
-    /// <summary>The step answered: see <see cref="SelfieStepResult.Result"/>.</summary>
     Done = 1,
 
-    /// <summary>No biometric consent recorded (409 <c>biometric_consent_required</c>).</summary>
     ConsentRequired = 2,
 
-    /// <summary>No document checked yet, or its photo is no longer kept (409 <c>document_check_required</c>).</summary>
     DocumentRequired = 3,
 
-    /// <summary>A property in Ticino keeps no document: its photo must come with the selfie (400).</summary>
     DocumentPhotoRequired = 4,
 
-    /// <summary>The photo of the document sent with the selfie is not the one that was read (409).</summary>
     DocumentPhotoMismatch = 5,
     ChallengeRequired = 6,
 }
@@ -320,9 +268,7 @@ public sealed record SelfieStepResult(
     string? LockCode,
     string? LockCodeHeld = null)
 {
-    /// <summary>The way to a person is always open.</summary>
     public bool OperatorPathOpen => true;
 }
 
-/// <summary>The direction refers to the unmirrored image sent to the server.</summary>
 public sealed record SelfieChallenge(string ChallengeToken, bool NoseToRight, DateTimeOffset ExpiresAt);

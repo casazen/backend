@@ -37,13 +37,6 @@ public interface IInternalActivityService
         string? notes = null,
         string? createdByUserId = null);
 
-    /// <summary>
-    /// Updates the status of an activity of the staff work and optionally records completion.
-    /// </summary>
-    /// <param name="activityId">The activity to update.</param>
-    /// <param name="status">The new status (Pending, InProgress, Completed). A cancelled activity (the automatic cleaning of a stay that was cancelled) is final: any other status is a 422 <see cref="InternalActivityErrors.Cancelled"/>.</param>
-    /// <param name="notes">Optional notes to append or update.</param>
-    /// <returns>The updated activity.</returns>
     Task<InternalActivity> UpdateStatusAsync(Guid activityId, string status, string? notes = null);
 
     /// <summary>
@@ -61,24 +54,11 @@ public interface IInternalActivityService
         string? staffUserId = null,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Gets activities of the staff work assigned to the calling staff user.
-    /// </summary>
-    /// <param name="scope">The caller's property scope.</param>
-    /// <param name="staffUserId">The staff user ID.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The activities assigned to this staff user within their perimeter.</returns>
     Task<IReadOnlyList<InternalActivity>> GetMyActivitiesAsync(
         HostScope scope,
         string staffUserId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Gets a single activity of the staff work by ID.
-    /// </summary>
-    /// <param name="activityId">The activity ID.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The activity, or null if not found.</returns>
     Task<InternalActivity?> GetActivityAsync(Guid activityId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -96,20 +76,12 @@ public interface IInternalActivityService
         bool excludeRoutineTasks = false,
         IReadOnlyCollection<ActivityType>? excludeTypes = null);
 
-    /// <summary>
-    /// How many of the open items <see cref="GetPendingAsync"/> reaches are <see cref="ActivityUrgency.High"/>: the nav badge. <paramref name="excludeTypes"/> is the one of
-    /// the list, so the badge never counts an item the list does not show.
-    /// </summary>
     Task<int> CountUrgentAsync(
         HostScope scope,
         CancellationToken ct,
         bool excludeRoutineTasks = false,
         IReadOnlyCollection<ActivityType>? excludeTypes = null);
 
-    /// <summary>
-    /// Whether the org has an open "To do" of one of <paramref name="types"/> (every scope: the caller names the org, the web layer decides who may ask): how the web layer knows it has
-    /// something to keep from a caller before it looks a permission up. No type is <c>false</c>, never "any".
-    /// </summary>
     Task<bool> AnyOpenAsync(Guid orgId, IReadOnlyCollection<ActivityType> types, CancellationToken ct = default);
 
     /// <summary>
@@ -161,10 +133,6 @@ public interface IInternalActivityService
     /// </summary>
     Task<InternalActivity?> FindOpenAsync(Guid orgId, string action, string entityType, Guid entityId, CancellationToken ct = default);
 
-    /// <summary>
-    /// <see cref="FindOpenAsync(Guid, string, string, Guid, CancellationToken)"/> for several entities of one type in one read: the open items
-    /// keyed by the entity id (the oldest, should the list ever hold two). An empty list of entities is an empty answer, never "all of them".
-    /// </summary>
     Task<IReadOnlyDictionary<Guid, InternalActivity>> FindOpenAsync(
         Guid orgId,
         string action,
@@ -172,13 +140,6 @@ public interface IInternalActivityService
         IReadOnlyCollection<Guid> entityIds,
         CancellationToken ct = default);
 
-    /// <summary>
-    /// The open "To do" with this <paramref name="action"/> on an entity of this <paramref name="entityType"/> that the <paramref name="scope"/> reaches
-    /// (the same reach as the list: its org, the properties it reaches), except those about <paramref name="exceptEntityIds"/>: how the compliance
-    /// cockpit finds the items of stays it no longer evaluates (cancelled, no-show, past the lookback) to close them. At most
-    /// <see cref="TodoLimits.MaxPendingItems"/> times ten, the oldest first, so a backlog is closed over several runs. An action that is not a member of
-    /// <see cref="ActivityAction"/> is an <see cref="ArgumentException"/>.
-    /// </summary>
     Task<IReadOnlyList<InternalActivity>> FindOpenInScopeAsync(
         HostScope scope,
         string action,
@@ -187,77 +148,49 @@ public interface IInternalActivityService
         CancellationToken ct = default);
 }
 
-/// <summary>
-/// A "To do" item to raise (<see cref="IInternalActivityService.CreateAsync"/>, ADR-026). No personal data: the item names
-/// the entity it is about by type and id, and the frontend reads the detail from the entity's own API (ADR-026-R3).
-/// </summary>
 public sealed record CreateTodoRequest
 {
-    /// <summary>What the item is.</summary>
     public required ActivityType Type { get; init; }
 
-    /// <summary>Where its "Do now" button leads.</summary>
     public required ActivityAction Action { get; init; }
 
-    /// <summary>The kind of entity it is about (<see cref="InternalActivity.BookingEntityType"/>, ...), at most 50 characters.</summary>
     public required string EntityType { get; init; }
 
     /// <summary>The id of that entity: with the type and the entity type, the key of the idempotence.</summary>
     public required Guid EntityId { get; init; }
 
-    /// <summary>How urgent it is.</summary>
     public required ActivityUrgency Urgency { get; init; }
 
-    /// <summary>The property it is about; the org of the item is the property's. <c>null</c> for an organization-level item.</summary>
     public Guid? PropertyId { get; init; }
 
-    /// <summary>
-    /// The org of an organization-level item (no <see cref="PropertyId"/>). With a property it may be left out; when given it
-    /// must be the property's org.
-    /// </summary>
     public Guid? OrgId { get; init; }
 
-    /// <summary>When it is due (UTC), if it has a deadline.</summary>
     public DateTime? Deadline { get; init; }
 
     /// <summary>Why it was raised, one line (a code such as <c>octorate_checkin_failed</c>): never personal data. At most 500 characters.</summary>
     public string? Reason { get; init; }
 
-    /// <summary>The user it is for, when it is for one person (kept in <see cref="InternalActivity.StaffUserId"/>, never in the list's answer).</summary>
     public string? ForUserId { get; init; }
 }
 
-/// <summary>The stable codes and the message keys (<c>SharedResources</c>, Italian and English) of the refusals of <see cref="IInternalActivityService"/> (422).</summary>
 public static class InternalActivityErrors
 {
-    /// <summary>409: the source process is still open and cannot be dismissed by hand.</summary>
     public const string ManagedAutomatically = "internal_activity_managed_automatically";
 
-    /// <summary>The message key of the automatic-completion refusal.</summary>
     public const string ManagedAutomaticallyMessageKey = "InternalActivityManagedAutomatically";
 
-    /// <summary>
-    /// 422: the staff activity was cancelled (the automatic cleaning of a stay that was cancelled before the work started) and its status cannot change any more: it is never completed, so
-    /// it never comes back as a cost to recharge to the owner.
-    /// </summary>
     public const string Cancelled = "internal_activity_cancelled";
 
-    /// <summary>The message key of <see cref="Cancelled"/>.</summary>
     public const string CancelledMessageKey = "InternalActivityCancelled";
 }
 
-/// <summary>The limits of the "To do" list (ADR-026).</summary>
 public static class TodoLimits
 {
-    /// <summary>The most items <see cref="IInternalActivityService.GetPendingAsync"/> returns (ADR-026: paginated, max 50 items).</summary>
     public const int MaxPendingItems = 50;
 
-    /// <summary>The longest <see cref="InternalActivity.EntityType"/>.</summary>
     public const int EntityTypeMaxLength = 50;
 
-    /// <summary>The longest <see cref="InternalActivity.Reason"/>.</summary>
     public const int ReasonMaxLength = 500;
 
-    /// <summary>The longest <see cref="InternalActivity.ClosedBy"/> and <see cref="InternalActivity.StaffUserId"/>.</summary>
     public const int UserIdMaxLength = 255;
 }

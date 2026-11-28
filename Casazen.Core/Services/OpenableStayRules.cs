@@ -17,10 +17,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public static class OpenableStayRules
 {
-    /// <summary>
-    /// The property is still there (the soft-delete filter hides one that is not) and the guest record
-    /// is still there and was not deleted.
-    /// </summary>
     public static Expression<Func<Booking, bool>> CanOpen { get; } =
         booking => booking.Property != null && booking.Guest != null && !booking.Guest.IsDeleted;
 
@@ -45,11 +41,4 @@ public static class OpenableStayRules
         && !string.IsNullOrWhiteSpace(guestFirstName)
         && !string.IsNullOrWhiteSpace(guestLastName)
         && (guestDataComplete || checkOutDate.Date >= today.Date);
-
-    /// <summary>The activation screen can present the house, including its CIN.</summary>
-    public static bool CanListProperty(string? name, string? address, string? city, string? cinCode) =>
-        !string.IsNullOrWhiteSpace(name)
-        && !string.IsNullOrWhiteSpace(address)
-        && !string.IsNullOrWhiteSpace(city)
-        && !string.IsNullOrWhiteSpace(cinCode);
 }

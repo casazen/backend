@@ -54,7 +54,6 @@ public class BillingCheckoutPostgresTests(CasazenWebApplicationFactory factory) 
         var customerId = FakeStripeBillingService.CustomerIdFor(org.Id);
 
         Assert.Equal(HttpStatusCode.OK, (await StartCheckoutAsync(client, "Pro")).StatusCode);
-        // Paid on Stripe; the customer.subscription.created webhook has not been processed yet.
         StripeFake.CompleteSession(Assert.Single(StripeFake.SessionsOf(customerId)).Id);
 
         var repeated = await StartCheckoutAsync(client, "Pro");
@@ -97,7 +96,6 @@ public class BillingCheckoutPostgresTests(CasazenWebApplicationFactory factory) 
         Assert.Equal(scaleUrl, scaleAgainUrl);
         var sessions = StripeFake.SessionsOf(customerId);
         Assert.Equal(2, sessions.Count);
-        // Only one session can still be paid.
         Assert.Equal("expired", Assert.Single(sessions, s => s.PlanTier == PlanTier.Pro).Status);
         Assert.Equal("open", Assert.Single(sessions, s => s.PlanTier == PlanTier.Scale).Status);
     }
@@ -121,7 +119,6 @@ public class BillingCheckoutPostgresTests(CasazenWebApplicationFactory factory) 
         Assert.Equal("Starter", entitlement.GetProperty("planTier").GetString());
         Assert.False(entitlement.GetProperty("canUseCustomDomain").GetBoolean());
 
-        // The pending first payment is completed from the portal, never with a second subscription.
         await AssertProblemAsync(await StartCheckoutAsync(client, "Scale"), HttpStatusCode.Conflict, AlreadySubscribed);
         Assert.Single(StripeFake.SessionsOf(customerId));
     }

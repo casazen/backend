@@ -3,15 +3,8 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.Infrastructure;
 
-/// <summary>
-/// The email of the signed-in account and whether Auth0 verified it: what an invitation to an org is bound to (AM-02).
-/// </summary>
 public interface IAccountEmailResolver
 {
-    /// <summary>
-    /// The email of the account and its <c>email_verified</c>. <c>Email</c> is null when neither the token nor Auth0 tell it;
-    /// <c>EmailVerified</c> is true only when something authoritative says so.
-    /// </summary>
     Task<(string? Email, bool EmailVerified)> ResolveAsync(ClaimsPrincipal user, string userId, CancellationToken cancellationToken = default);
 }
 
@@ -46,14 +39,12 @@ public sealed class AccountEmailResolver(IAuth0ManagementService auth0Management
         return (email, verified == true);
     }
 
-    /// <summary>The email claim of the access token: the Auth0 Action claim, else the standard ones.</summary>
     public static string? GetEmail(ClaimsPrincipal user) =>
         new[] { AccountEmailClaim, "email", ClaimTypes.Email }
             .Select(user.FindFirstValue)
             .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
             ?.Trim();
 
-    /// <summary>The verified flag of the access token; null when the token carries none (or an unreadable value).</summary>
     public static bool? GetEmailVerified(ClaimsPrincipal user)
     {
         var value = new[] { AccountEmailVerifiedClaim, "email_verified" }

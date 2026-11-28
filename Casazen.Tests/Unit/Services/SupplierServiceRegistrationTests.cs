@@ -10,7 +10,6 @@ using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -76,7 +75,6 @@ public class SupplierServiceRegistrationTests
     [Fact]
     public async Task GetActiveByComune_ActiveSupplierWithEmptyCategories_DoesNotMatchRequestedCategory()
     {
-        // A4-05: "no categories" used to pass every category filter. A supplier is found only for what it declared.
         await using var db = CreateDbContext();
         await ComuneTestData.ImportSampleAsync(db);
         var service = CreateService(db);

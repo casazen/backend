@@ -16,21 +16,12 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services.LeaseContracts;
 
-/// <summary>
-/// LG-02 (decision D27): the draft contract templates committed in <c>Casazen.Web/LeaseTemplates</c> are complete, use
-/// only the placeholders the product knows, are not approved and are not switched on by any committed configuration
-/// (that is an act of the product owner after the lawyer's review: runbook section "Bozze 2026-11"). The preview of a
-/// lease shows them whole, marked BOZZA. The same for the transitory model (TR), the Allegato B of the D.M. 16/01/2017. The two AI drafts of
-/// the transitorio and the studenti (docs/legal-drafts) are only reference files.
-/// </summary>
 public sealed partial class LeaseTemplateDraftsTests
 {
     private const string DraftVersion = "2026-11-bozza-v1";
 
-    /// <summary>Sections of the drafts that have no article number (the others are "Art. N · Title").</summary>
     private static readonly string[] UnnumberedSections = ["parti", "premesse", "allegati", "clausole_approvate", "firme"];
 
-    /// <summary>The clauses the drafts ask the parties to approve in writing (arts. 1341-1342 c.c.), as in the 2026-10-08 drafts.</summary>
     private static readonly string[] ApprovedInWriting =
     [
         LeaseContractTemplateStructure.Term,
@@ -203,8 +194,6 @@ public sealed partial class LeaseTemplateDraftsTests
     [InlineData(FiscalRegime.CanoneConcordato)]
     public void Draft_ArticleNumbersInternalReferencesAndApprovedList_AreConsistent(FiscalRegime regime)
     {
-        // The format has no automatic numbering: articles, "articolo N" references and the list of the clauses to
-        // approve in writing are written by hand and must agree.
         var state = LoadDraft(regime);
 
         var articles = new List<(int Number, string Heading, string SectionId)>();
@@ -268,14 +257,12 @@ public sealed partial class LeaseTemplateDraftsTests
         var state = LoadDraft(regime);
         var all = string.Join('\n', state.Sections.Select(s => s.Text));
 
-        // No example datum slipped in: no email, IBAN or currency sign, and no fixed "4+4" / "3+2" outside the title.
         Assert.DoesNotContain("@", all, StringComparison.Ordinal);
         Assert.DoesNotContain("€", all, StringComparison.Ordinal);
         Assert.DoesNotMatch(IbanPattern(), all);
         Assert.DoesNotContain("4+4", all, StringComparison.Ordinal);
         Assert.DoesNotContain("3+2", all, StringComparison.Ordinal);
 
-        // The data of the 2026-10-08 drafts that the product has no placeholder for stay as blanks in the printed contract.
         foreach (var (sectionId, minimumBlanks) in ExpectedBlanks(regime))
         {
             var section = state.Sections.Single(s => s.Id == sectionId);
@@ -284,8 +271,6 @@ public sealed partial class LeaseTemplateDraftsTests
                 $"{regime}: section '{sectionId}' should have at least {minimumBlanks} blank field(s) to fill in by hand");
         }
     }
-
-    // ---- the transitory model (TR): the Allegato B of the D.M. 16/01/2017 ------------------------------------------
 
     [Fact]
     public void Load_TransitorioDraft_IsCompleteAndNotApproved_AndIsTheSeventeenArticlesOfTheAllegatoB()
@@ -312,8 +297,6 @@ public sealed partial class LeaseTemplateDraftsTests
             .ToList();
         Assert.Equal(Enumerable.Range(1, 17), articles);
 
-        // No blank of the form is left: its dots are resolved or the sentence that asked for them is out, and the notes (1)-(12) are
-        // instructions, not text.
         Assert.DoesNotContain(state.Sections, s => (s.Heading ?? string.Empty).Contains('…', StringComparison.Ordinal) || s.Text.Contains('…', StringComparison.Ordinal));
         Assert.DoesNotContain(state.Sections, s => s.Text.Contains("...", StringComparison.Ordinal) || NoteMarker().IsMatch(s.Text));
     }
@@ -341,14 +324,12 @@ public sealed partial class LeaseTemplateDraftsTests
         Assert.DoesNotContain("{{", text, StringComparison.Ordinal);
         Assert.DoesNotContain("<!--", text, StringComparison.Ordinal);
 
-        // The body alone (no footer, no watermark between the words), so a sentence that runs over a page is still one.
         var body = string.Join(' ', PdfTestReader.BodyWords(pdf));
         Assert.DoesNotContain("…", body, StringComparison.Ordinal);
         Assert.Contains(LoadDraft(LeaseTemplateVariant.Transitorio).Title!, body, StringComparison.Ordinal);
         foreach (var expected in TransitoryLeaseDataPrinted)
             Assert.Contains(expected, body, StringComparison.Ordinal);
 
-        // Without the approval of the product owner the final contract is refused, as for the other three.
         var blocked = await Assert.ThrowsAsync<DomainRuleException>(() => sut.GeneratePdfAsync(lease));
         Assert.Equal(LeaseContractTemplateService.TemplateNotApprovedCode, blocked.Code);
         Assert.Equal(LeaseContractTemplateService.TemplateNotApprovedCode, sut.GetFinalContractBlocker(lease));
@@ -359,11 +340,9 @@ public sealed partial class LeaseTemplateDraftsTests
     {
         var lease = BuildTransitoryLease();
 
-        // 30 days: the model asks for the documents only "in caso di durata superiore a 30 giorni", so the blank is told as none.
         lease.EndDate = new DateTime(2026, 11, 30, 0, 0, 0, DateTimeKind.Utc);
         Assert.Equal(LeaseContractDocument.NoDocumentationNeeded, LeaseContractDocument.ResolveData(lease)[LeaseContractPlaceholders.TransitoryDocumentation]);
 
-        // 31 days: what the landlord wrote, on one line and without the full stop that would meet the comma of the sentence.
         lease.EndDate = new DateTime(2026, 12, 1, 0, 0, 0, DateTimeKind.Utc);
         var data = LeaseContractDocument.ResolveData(lease);
         Assert.Equal("Lettera di assunzione", data[LeaseContractPlaceholders.TransitoryDocumentation]);
@@ -377,7 +356,6 @@ public sealed partial class LeaseTemplateDraftsTests
         var none = LeaseContractDocument.ResolveData(lease);
         Assert.Equal(("non versa", "0"), (none[LeaseContractPlaceholders.DepositPayment], none[LeaseContractPlaceholders.DepositMonths]));
 
-        // A term that needs the documentation and has none leaves the datum missing: the final contract would answer 422.
         lease.TransitoryDocumentation = null;
         Assert.Null(LeaseContractDocument.ResolveData(lease)[LeaseContractPlaceholders.TransitoryDocumentation]);
     }
@@ -395,7 +373,6 @@ public sealed partial class LeaseTemplateDraftsTests
     [GeneratedRegex(@"^Articolo (\d+) \(", RegexOptions.CultureInvariant)]
     private static partial Regex ArticleOfTheAllegatoB();
 
-    /// <summary>A reference to one of the notes of the decree, "(4)": instructions for filling the form in, never text of the contract.</summary>
     [GeneratedRegex(@"\(\d{1,2}\)", RegexOptions.CultureInvariant)]
     private static partial Regex NoteMarker();
 
@@ -405,7 +382,6 @@ public sealed partial class LeaseTemplateDraftsTests
     [GeneratedRegex("_{5,}", RegexOptions.CultureInvariant)]
     private static partial Regex BlankPattern();
 
-    /// <summary>The "articolo N" references of the drafts: section that refers → sections it refers to.</summary>
     private static Dictionary<string, string[]> ExpectedReferences(FiscalRegime regime) => regime switch
     {
         FiscalRegime.RegimeOrdinario => new()
@@ -429,7 +405,6 @@ public sealed partial class LeaseTemplateDraftsTests
         _ => throw new ArgumentOutOfRangeException(nameof(regime), regime, null),
     };
 
-    /// <summary>Sections with data the product does not have and the minimum number of blank fields in each.</summary>
     private static Dictionary<string, int> ExpectedBlanks(FiscalRegime regime)
     {
         var blanks = new Dictionary<string, int>
@@ -458,7 +433,6 @@ public sealed partial class LeaseTemplateDraftsTests
         return blanks;
     }
 
-    /// <summary>What the preview must print of the test lease: parties, address, cadastral and APE data, amounts, dates, term.</summary>
     private static string[] LeaseDataPrinted(FiscalRegime regime) =>
     [
         "Mario Rossi (C.F. RSSMRA80A01H501U)",
@@ -491,7 +465,6 @@ public sealed partial class LeaseTemplateDraftsTests
 
     private static LeaseTemplateOptions OptionsFor(FiscalRegime regime, string versionId) => OptionsFor(LeaseTemplateVariants.Of(regime), versionId);
 
-    /// <summary>The committed folder with the version named, never approved (as the committed appsettings).</summary>
     private static LeaseTemplateOptions OptionsFor(LeaseTemplateVariant variant, string versionId) => new()
     {
         TemplatesDirectory = TemplatesDirectory(),
@@ -501,7 +474,6 @@ public sealed partial class LeaseTemplateDraftsTests
         },
     };
 
-    /// <summary>Names of the placeholders written in the clause texts (comment lines are not text).</summary>
     private static IEnumerable<string> PlaceholdersOf(string content)
     {
         var clauseLines = content.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n')
@@ -523,7 +495,6 @@ public sealed partial class LeaseTemplateDraftsTests
         throw new DirectoryNotFoundException("Casazen.Web project not found above the test output folder.");
     }
 
-    /// <summary>What the preview of <see cref="BuildTransitoryLease"/> must print: parties, unit, cadastral and APE data, term, the need, the rent and the deposit.</summary>
     private static readonly string[] TransitoryLeaseDataPrinted =
     [
         "Mario Rossi (C.F. RSSMRA80A01H501U)",
@@ -540,7 +511,6 @@ public sealed partial class LeaseTemplateDraftsTests
         "2 (Esigenza del conduttore), 3 (Cessazione delle condizioni di transitorietà)",
     ];
 
-    /// <summary>A transitory lease of six months made in CasaZen, with its need and the documentation of it, and every datum the model uses.</summary>
     private static LeaseContract BuildTransitoryLease()
     {
         var lease = BuildLease(FiscalRegime.CedolareSecca);
@@ -553,7 +523,6 @@ public sealed partial class LeaseTemplateDraftsTests
         return lease;
     }
 
-    /// <summary>A lease with every datum the drafts use: two landlords, two tenants, cadastral data, APE, deposit.</summary>
     private static LeaseContract BuildLease(FiscalRegime regime)
     {
         var (contractType, taxRegime) = LeaseContractTerms.FromLegacy(regime);

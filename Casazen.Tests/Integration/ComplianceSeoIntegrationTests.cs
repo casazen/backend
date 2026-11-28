@@ -4,12 +4,10 @@ using System.Text.Json;
 using System.Xml.Linq;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Web.BackgroundJobs;
-using Hangfire;
 using Hangfire.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,16 +17,12 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// US-020 (#258) programmatic compliance SEO — public pages, tourist tax calc, admin generate, sitemap.
-/// </summary>
 public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private readonly CasazenWebApplicationFactory _factory;
 
     public ComplianceSeoIntegrationTests(CasazenWebApplicationFactory factory) => _factory = factory;
 
-    // SE-01 (A8-04): a draft is never public, in any environment (it used to be served in Testing/Development/Staging).
     [Fact]
     public async Task AC2_ComplianceGuide_DraftPage_Returns404()
     {
@@ -66,7 +60,6 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
         Assert.Equal("PerPersonPerNight", rate.GetProperty("calculationMethod").GetString());
     }
 
-    // "yyyy-MM-dd" dates in the body: on PostgreSQL this returned 500 before FD-06 (R-01 / A9-12).
     [Fact]
     public async Task AC12_CalculateTouristTax_UsesTouristTaxRateEntity_NotHardcoded()
     {
@@ -119,7 +112,6 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("application/xml", response.Content.Headers.ContentType?.MediaType);
         var locations = SitemapLocations(await response.Content.ReadAsStringAsync());
-        // SE-02 (A8-02): the host is App:PublicSiteBaseUrl, the domain of the web app that serves /p/* (decision D3).
         Assert.Contains($"{PublicSiteBaseUrl()}/p/affitti-brevi/lombardia/como", locations);
         Assert.Contains($"{PublicSiteBaseUrl()}/p/affitti-brevi", locations);
         Assert.All(locations, loc => Assert.StartsWith(PublicSiteBaseUrl() + "/", loc));
@@ -138,7 +130,6 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
     [Fact]
     public async Task SitemapAndHub_PagesWithoutContentDraftOrWithoutRate_AreLeftOut()
     {
-        // Guide marked reviewed without any revision (nothing to show), a draft with content, a published calculator without a rate.
         await SeedPageAsync("013145", "affitti-brevi/lombardia/menaggio", SeoPageType.ComplianceGuide, LegalReviewStatus.Reviewed, bodyHtml: null);
         await SeedPageAsync("015146", "affitti-brevi/lombardia/milano", SeoPageType.ComplianceGuide, LegalReviewStatus.Draft, "<p>Bozza</p>");
         await SeedPageAsync("082053", "tassa-soggiorno/palermo", SeoPageType.TouristTaxCalc, LegalReviewStatus.Reviewed, "<p>Palermo</p>");
@@ -203,8 +194,6 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        // SE-05 (A8-19, A8-27): the disclaimers are texts of the client, in the visitor's language; the API says whether
-        // the text was AI-generated (to show the AI Act notice) and in which language it is written.
         Assert.False(doc.RootElement.TryGetProperty("disclaimers", out _));
         Assert.True(doc.RootElement.GetProperty("aiGenerated").GetBoolean());
         Assert.Equal("it", doc.RootElement.GetProperty("contentLanguage").GetString());
@@ -223,7 +212,6 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
         Assert.Equal("<p>Guida compliance Como</p>", doc.RootElement.GetProperty("bodyHtml").GetString());
     }
 
-    // A8-08: a revision stored before the allowlist (or by any other path) is sanitized again when served.
     [Fact]
     public async Task PublicComplianceGuide_StoredRevisionWithXssPayload_ReturnsSanitizedBody()
     {
@@ -279,7 +267,6 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
         return XDocument.Parse(xml).Descendants(ns + "loc").Select(loc => loc.Value).ToList();
     }
 
-    /// <summary>CasaZen region code of a comune of the official sample (looked up in the list, never typed).</summary>
     private string SeoPilotRegionCode(string comuneCode)
     {
         using var scope = _factory.Services.CreateScope();
@@ -287,7 +274,6 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
         return comune.RegionCode!;
     }
 
-    /// <summary>A page of <paramref name="pageType"/> with an optional revision (<c>null</c>: no revision at all).</summary>
     private async Task SeedPageAsync(
         string comuneCode, string slug, SeoPageType pageType, LegalReviewStatus status, string? bodyHtml)
     {
@@ -330,10 +316,6 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
         }
     }
 
-    /// <summary>
-    /// Creates a published compliance guide page with a revision written straight to the database,
-    /// bypassing the repository (simulates content stored before the allowlist).
-    /// </summary>
     private async Task<Guid> SeedPageWithRawRevisionAsync(string comuneCode, string slug, string bodyHtml)
     {
         using var scope = _factory.Services.CreateScope();
@@ -370,11 +352,6 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
         return page.Id;
     }
 
-    /// <summary>
-    /// Ensures the Como page of <paramref name="pageType"/> exists with <paramref name="status"/> (Reviewed: published).
-    /// Tests of this class share one database (class fixture) and (ComuneCode, PageType) is a unique
-    /// index, so the page is updated when a previous test already created it.
-    /// </summary>
     private async Task SeedSeoPageAsync(LegalReviewStatus status, SeoPageType pageType)
     {
         using var scope = _factory.Services.CreateScope();
@@ -421,7 +398,6 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
             await context.SaveChangesAsync();
         }
 
-        // SE-01: public = an approved revision; a draft has none.
         page.PublishedRevisionId = status == LegalReviewStatus.Reviewed ? revision.Id : null;
         page.PublishedAt = status == LegalReviewStatus.Reviewed ? DateTime.UtcNow : null;
         await context.SaveChangesAsync();
@@ -432,7 +408,6 @@ public class ComplianceSeoIntegrationTests : IClassFixture<CasazenWebApplication
         using var scope = _factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        // Shared class database: reuse the active rate a previous test created for this city.
         var existing = await context.TouristTaxRates.FirstOrDefaultAsync(t => t.City == city && t.IsActive);
         if (existing is not null)
         {

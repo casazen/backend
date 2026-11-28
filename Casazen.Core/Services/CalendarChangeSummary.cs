@@ -12,10 +12,6 @@ public static class CalendarChangeSummary
 {
     private static readonly JsonWriterOptions WriterOptions = new() { Indented = false };
 
-    /// <summary>
-    /// The summary of the windows <paramref name="windows"/> with the <paramref name="detailJson"/> the caller gave (a JSON object, or <c>null</c>).
-    /// </summary>
-    /// <exception cref="ArgumentException"><paramref name="detailJson"/> is not a JSON object.</exception>
     public static string Build(IReadOnlyCollection<CalendarWindow> windows, string? detailJson)
     {
         ArgumentNullException.ThrowIfNull(windows);
@@ -58,10 +54,6 @@ public static class CalendarChangeSummary
         return System.Text.Encoding.UTF8.GetString(stream.ToArray());
     }
 
-    /// <summary>
-    /// The ids of the properties a summary names: empty for a summary that cannot be read (a process of before this rule, a hand-written row), which no
-    /// restricted reach then sees.
-    /// </summary>
     public static IReadOnlyList<Guid> PropertyIdsOf(string? summaryJson)
     {
         if (string.IsNullOrWhiteSpace(summaryJson))
@@ -89,7 +81,6 @@ public static class CalendarChangeSummary
         }
     }
 
-    /// <summary>The first and the last day a summary names; <c>null</c> for a summary that has none.</summary>
     public static (DateOnly From, DateOnly To)? DatesOf(string? summaryJson)
     {
         if (string.IsNullOrWhiteSpace(summaryJson))
@@ -112,7 +103,6 @@ public static class CalendarChangeSummary
         }
         catch (JsonException)
         {
-            // A summary that cannot be read names no dates.
         }
 
         return null;

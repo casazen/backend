@@ -17,7 +17,6 @@ internal sealed class SupplierReliabilityEventConfiguration : IEntityTypeConfigu
         entity.HasIndex(e => new { e.SupplierOrgId, e.OccurredAt })
             .HasDatabaseName("IX_SupplierReliabilityEvents_Supplier_OccurredAt");
 
-        // One event of a kind for each supplier and request: the writers are jobs and webhooks that may run twice.
         entity.HasIndex(e => new { e.SupplierOrgId, e.RequestId, e.Kind })
             .IsUnique()
             .HasFilter("\"RequestId\" IS NOT NULL")

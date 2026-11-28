@@ -51,7 +51,6 @@ public class ApeComplianceServiceTests
     [Fact]
     public async Task EnsurePropertyHasValidApeAsync_WithCodeAndClassTyped_SucceedsWithoutReadingTheFile()
     {
-        // The landlord confirmed a certificate the reader could not read whole: the typed data stand for it, nothing is read again.
         var ape = ApeDoc("/photocopy.pdf");
         ape.ApeCode = "1610800012345/17";
         ape.ApeEnergyClass = "F";
@@ -141,7 +140,6 @@ public class ApeComplianceServiceTests
         if (valid) Assert.Equal(ApeUploadCheck.Verified, check.Outcome);
         else
         {
-            // Only the first page: kept, with what could not be read, for the landlord to confirm.
             Assert.Equal(ApeUploadCheck.Incomplete, check.Outcome);
             Assert.Contains("Certifier", check.UnreadFields);
             Assert.Contains("ExpiryDate", check.UnreadFields);

@@ -66,24 +66,18 @@ public static class LeaseDraftPatch
         };
     }
 
-    // ---- step 1 --------------------------------------------------------------------------------------------------
-
     private static LeaseDraftValues ApplyProperty(LeaseDraftValues current, Dictionary<string, JsonElement> properties)
     {
         if (!properties.TryGetValue("propertyId", out var value))
             return current;
 
-        // The property is chosen, never un-chosen: a contract has one from the moment it is created.
         if (value.ValueKind != JsonValueKind.String || !Guid.TryParse(value.GetString(), out var id) || id == Guid.Empty)
             throw new LeaseDraftValuesException("propertyId", "not an id");
         return current with { PropertyId = id };
     }
 
-    // ---- step 2 --------------------------------------------------------------------------------------------------
-
     private static LeaseDraftValues ApplyParties(LeaseDraftValues current, Dictionary<string, JsonElement> properties, Func<Guid> newId)
     {
-        // Every id the draft has, of either role: a new entry never takes one of them.
         var reserved = current.Landlords.Concat(current.Tenants).Select(p => p.Id).ToHashSet();
         var used = new HashSet<Guid>();
 
@@ -96,8 +90,6 @@ public static class LeaseDraftPatch
             if (list.ValueKind != JsonValueKind.Array)
                 throw new LeaseDraftValuesException(key, "not a list");
 
-            // An entry takes again the id of an entry of the SAME role: the id of one of the other role is a new entry, so no id
-            // is ever in two entries of the draft (two rows of Parties with one key, a list nobody can save again).
             var known = new Dictionary<Guid, LeaseDraftParty>();
             foreach (var entry in existing)
                 known.TryAdd(entry.Id, entry);
@@ -116,7 +108,6 @@ public static class LeaseDraftPatch
             return entries;
         }
 
-        // The entries of the two roles are read one after the other, so an id is used once in the whole request.
         var landlords = Entries("landlords", current.Landlords);
         var tenants = Entries("tenants", current.Tenants);
         return current with { Landlords = landlords, Tenants = tenants };
@@ -153,12 +144,9 @@ public static class LeaseDraftPatch
             ContactPhone = Optional(fields, "contactPhone", path),
         };
 
-        // A row of the form nobody typed in is not an entry of the draft.
         if (LeaseDraftRules.IsBlank(party))
             return null;
 
-        // The id the server gave the entry stays with it (and so does what step 5 recorded for it); an id it does not know, one of
-        // the other role, or one already used in this request, is a new entry.
         if (sentId is { } existingId && known.TryGetValue(existingId, out var previous) && used.Add(existingId))
             return party with { Id = existingId, DocumentsVerifiedOn = previous.DocumentsVerifiedOn };
 
@@ -167,8 +155,6 @@ public static class LeaseDraftPatch
             fresh = newId();
         return party with { Id = fresh };
     }
-
-    // ---- step 3 --------------------------------------------------------------------------------------------------
 
     private static LeaseDraftValues ApplyEconomics(LeaseDraftValues current, Dictionary<string, JsonElement> properties)
     {
@@ -222,13 +208,6 @@ public static class LeaseDraftPatch
         };
     }
 
-    // ---- step 4 --------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// The start date and, for an imported contract or a transitory one, the last day of its first period, and for a transitory one the
-    /// documentation of its need. All are kept as typed: the end is read only for those two (<see cref="LeaseDraftRules.Read"/>), so a client
-    /// that sends it for a libero or a concordato made in CasaZen changes nothing.
-    /// </summary>
     private static LeaseDraftValues ApplyTerm(LeaseDraftValues current, Dictionary<string, JsonElement> properties)
     {
         var result = current;
@@ -240,8 +219,6 @@ public static class LeaseDraftPatch
             result = result with { TransitoryDocumentation = Text(documentation, "transitoryDocumentation") };
         return result;
     }
-
-    // ---- step 5 --------------------------------------------------------------------------------------------------
 
     private static LeaseDraftValues ApplyDocuments(LeaseDraftValues current, Dictionary<string, JsonElement> properties)
     {
@@ -278,9 +255,6 @@ public static class LeaseDraftPatch
         };
     }
 
-    // ---- reading JSON --------------------------------------------------------------------------------------------
-
-    /// <summary>The properties of an object by their canonical name (the name is read without regard to case); a key outside <paramref name="allowed"/> is refused.</summary>
     private static Dictionary<string, JsonElement> Properties(JsonElement element, string[] allowed, string path)
     {
         var result = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
@@ -318,8 +292,6 @@ public static class LeaseDraftPatch
         if (value.ValueKind != JsonValueKind.Number)
             throw new LeaseDraftValuesException(path, "not a number");
 
-        // A number the type cannot hold (1e30) is a value that is wrong, not a request that is badly made: it is kept as the largest
-        // (or the smallest) amount, which no rule accepts, so the flow reports it like any other wrong value and the autosave goes on.
         return value.TryGetDecimal(out var number) ? number : IsNegative(value) ? decimal.MinValue : decimal.MaxValue;
     }
 
@@ -333,8 +305,6 @@ public static class LeaseDraftPatch
         if (value.TryGetInt32(out var number))
             return number;
 
-        // A fraction is not a whole number at all: the request is badly made. A whole number too big for a count (3000000000) is a
-        // value that is wrong, kept as an extreme no rule accepts (see Number).
         if (value.TryGetDecimal(out var other) && other != decimal.Truncate(other))
             throw new LeaseDraftValuesException(path, "not a whole number");
 

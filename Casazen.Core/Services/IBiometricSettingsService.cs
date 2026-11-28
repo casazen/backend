@@ -15,7 +15,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IBiometricSettingsService
 {
-    /// <summary>The settings in force for <paramref name="orgId"/>: its row, or today's defaults when it has none. Never another organization's.</summary>
     Task<BiometricSettingsView> GetAsync(Guid orgId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -32,18 +31,9 @@ public interface IBiometricSettingsService
         string? actorUserId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Marks the thresholds of <paramref name="orgId"/> as calibrated now (<c>CalibratedAt</c>): written only for a platform administrator, after a
-    /// calibration on real data. An organization without a row gets one with today's defaults (enabled as its plan says), calibrated. Null when the
-    /// organization does not exist. Writes one line in the activity log of the org (the staff user as the actor).
-    /// </summary>
     Task<BiometricSettingsView?> MarkCalibratedAsync(Guid orgId, string actorUserId, CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// The settings of an organization as they are in force: <paramref name="IsDefault"/> when it has no row (today's defaults),
-/// <paramref name="Provisional"/> while <paramref name="CalibratedAt"/> is null.
-/// </summary>
 public sealed record BiometricSettingsView(
     bool Enabled,
     decimal AcceptThreshold,
@@ -53,41 +43,31 @@ public sealed record BiometricSettingsView(
     DateTime? CalibratedAt,
     bool IsDefault);
 
-/// <summary>What an organization administrator may change: a member that is null keeps its value. The calibration is not among them.</summary>
 public sealed record BiometricSettingsUpdate(bool? Enabled, decimal? AcceptThreshold, decimal? EscalateThreshold, int? MaxAttempts);
 
-/// <summary>The bounds of the settings and today's defaults (ADR-013-R4, R5, R13): one definition for the service, the tests and the page.</summary>
 public static class BiometricSettingsRules
 {
-    /// <summary>The lowest escalate threshold: below it the operator would be asked about faces that look nothing alike.</summary>
     public const decimal MinEscalateThreshold = 0.50m;
 
-    /// <summary>The highest accept threshold: above it genuine pairs would hardly ever pass.</summary>
     public const decimal MaxAcceptThreshold = 0.95m;
 
     public const int MinAttempts = 1;
     public const int MaxAttempts = 5;
 
-    /// <summary>The decimals the column keeps (<c>decimal(5,4)</c>): a value is rounded to them before it is checked.</summary>
     public const int Decimals = 4;
 
     public const decimal DefaultAcceptThreshold = 0.85m;
     public const decimal DefaultEscalateThreshold = 0.70m;
     public const int DefaultMaxAttempts = 3;
 
-    /// <summary>The face check is on by default only on the Agency plan (ADR-013-R13); B2C defaults to off.</summary>
     public static bool EnabledByDefault(PlanTier? tier) => tier == PlanTier.Agency;
 }
 
-/// <summary>The codes of the refusals of <see cref="IBiometricSettingsService.UpdateAsync"/> (422).</summary>
 public static class BiometricSettingsErrors
 {
-    /// <summary>The escalate threshold is under 0.50 or the accept threshold over 0.95.</summary>
     public const string ThresholdsOutOfRange = "biometric_thresholds_out_of_range";
 
-    /// <summary>The escalate threshold is not lower than the accept threshold.</summary>
     public const string ThresholdsOrderInvalid = "biometric_thresholds_order_invalid";
 
-    /// <summary>The attempts are not from 1 to 5.</summary>
     public const string AttemptsOutOfRange = "biometric_attempts_out_of_range";
 }

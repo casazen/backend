@@ -38,7 +38,6 @@ public sealed partial class SelfBillingService
 {
     public async Task<IReadOnlyList<Guid>> OrgsWithCommissionsAsync(int year, int month, CancellationToken ct = default)
     {
-        // The organizations that have commissions in the ledger of the month, of every tenant (the caller is a job: no tenant is entered while it lists).
         var withFees = await db.OwnerLedgerEntries
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -49,7 +48,6 @@ public sealed partial class SelfBillingService
         if (withFees.Count == 0)
             return [];
 
-        // Only the ones that have the feature: the agency plan (the policy of the endpoints), not downgraded to reads only, and active.
         return await db.Orgs
             .AsNoTracking()
             .Where(o => withFees.Contains(o.Id) && o.IsActive && o.PlanTier == PlanTier.Agency && !o.IsAgencyTierDowngraded)
@@ -60,21 +58,18 @@ public sealed partial class SelfBillingService
 
     public async Task<SelfBillingMonthlyRun> RunMonthlyDraftsAsync(Guid orgId, int year, int month, CancellationToken ct = default)
     {
-        // A month that has a TD17 in any state was made at least in part (by an earlier run, by a person's click, or all of it discarded): said in the answer, and the holders that have one are left alone.
         var alreadyMade = await db.FiscalDocuments
             .AsNoTracking()
             .AnyAsync(
                 d => d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.SelfBilling && d.PeriodYear == year && d.PeriodMonth == month && d.Kind != DocumentKind.CreditNote,
                 ct);
 
-        // Only what is missing is made: a holder that has a TD17 of the month in any state gets no second draft (a discarded one stays discarded), a holder that was refused by an earlier run is tried again.
         var generation = await GenerateDraftsAsync(orgId, year, month, null, onlyMissing: true, ct);
         var refused = generation.Failed.Count;
         var refusedCodes = generation.Failed.Select(f => f.Code).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
 
         var open = await SyncDraftsTodoAsync(orgId, year, month, await ShouldRaiseDraftsTodoAsync(orgId, year, month, generation.Created, ct), refused, ct);
 
-        // The items of the other months that have no draft left open are closed too: the close that follows a change is best effort (TrySyncDraftsTodoAsync), this is what puts it right.
         await CloseStaleDraftsTodosAsync(orgId, year, month, ct);
 
         // A month in which somebody was refused is not a month done: the codes and the count (never a name, a VAT number or a field) are in the log and in the answer, and the next run tries them again.
@@ -157,11 +152,6 @@ public sealed partial class SelfBillingService
         return open;
     }
 
-    /// <summary>
-    /// The item of the month raised: about the month (the kind of entity names it, the id is the organization's), organization-level, medium urgency, due the day the TD17 are issued by
-    /// (<see cref="SelfBillingOptions.IssueByDay"/>, the end of that day in Europe/Rome), with the words of the organization's language (the ones that tell of the holders refused when there
-    /// are some) and no data of the TD17.
-    /// </summary>
     private async Task RaiseDraftsTodoAsync(IInternalActivityService todos, Guid orgId, int year, int month, string entityType, bool refused, CancellationToken ct)
     {
         var due = SelfBillingRules.DueDate(year, month, options.Value.EffectiveIssueByDay);
@@ -180,13 +170,8 @@ public sealed partial class SelfBillingService
             ct);
     }
 
-    /// <summary>The key of the words of the item of the drafts: the ones that tell of the holders refused when there are some.</summary>
     private static string WordsOf(bool refused) => refused ? SelfBillingTodos.DraftsRefusedReasonKey : SelfBillingTodos.DraftsReasonKey;
 
-    /// <summary>
-    /// The words of the open item of the month follow the holders refused, in place: the same item (never closed, never raised again) says that somebody was refused while somebody is, and goes back
-    /// to its plain words when every holder has its draft. Nothing for a month that has no open item; the lock of the generation is held by the caller.
-    /// </summary>
     private async Task SetDraftsTodoWordsAsync(Guid orgId, string entityType, bool refused, CancellationToken ct)
     {
         var item = await db.InternalActivities.FirstOrDefaultAsync(
@@ -203,11 +188,6 @@ public sealed partial class SelfBillingService
         await db.SaveChangesAsync(ct);
     }
 
-    /// <summary>
-    /// Closes the items <see cref="ActivityType.SelfBillingDraftsToReview"/> of the organization that have no draft left open, <b>of any month but</b> the one the run just did (that one was kept in step
-    /// already): the close that follows an issue, a discard or a generation is best effort and may have failed, and nothing else looks at a month once all its drafts are gone. A month that still has an
-    /// open draft keeps its item, and no other organization is read: every read names the organization.
-    /// </summary>
     private async Task CloseStaleDraftsTodosAsync(Guid orgId, int exceptYear, int exceptMonth, CancellationToken ct)
     {
         if (activities is null)

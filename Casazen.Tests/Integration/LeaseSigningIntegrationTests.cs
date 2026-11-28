@@ -51,7 +51,6 @@ public class LeaseSigningIntegrationTests(LeaseFlowWebApplicationFactory factory
         var detail = await ReadJson(upload);
         Assert.Equal("Signed", detail.GetProperty("status").GetString());
         Assert.Equal(new DateTime(2026, 8, 20), detail.GetProperty("stipulaDate").GetDateTime().Date);
-        // min(stipula 20/8, start 1/9) + 30 days (LT-04).
         Assert.Equal(new DateTime(2026, 9, 19), detail.GetProperty("registrationDeadline").GetDateTime().Date);
         Assert.True(detail.GetProperty("hasSignedPdf").GetBoolean());
         Assert.Contains(EventTypes(detail), e => e == "AllPartiesSigned");
@@ -81,7 +80,6 @@ public class LeaseSigningIntegrationTests(LeaseFlowWebApplicationFactory factory
         Assert.Equal(LeaseSigningTestClient.SignedContractPdf, await download.Content.ReadAsByteArrayAsync());
         Assert.Contains("no-store", download.Headers.CacheControl?.ToString() ?? string.Empty);
 
-        // The RLI flow starts after the signature (LT-01): the checklist ticks the signature, the manual path is open.
         var checklist = await ReadJson(await client.GetAsync($"/api/leases/{leaseId}/rli/checklist"));
         Assert.True(checklist.GetProperty("items").EnumerateArray()
             .Single(i => i.GetProperty("key").GetString() == "contract_signed").GetProperty("done").GetBoolean());
@@ -91,7 +89,6 @@ public class LeaseSigningIntegrationTests(LeaseFlowWebApplicationFactory factory
     [PostgresFact]
     public async Task UploadSignedContract_TemplateNotApproved_Returns422NoFileAndLeaseStaysDraft()
     {
-        // LT-03: RegimeOrdinario has no approved template in this factory: no final contract, so no signature either.
         var (client, leaseId) = await DraftLeaseAsync("offline-template", "RegimeOrdinario");
 
         var upload = await LeaseSigningTestClient.UploadSignedContractAsync(client, leaseId);
@@ -148,14 +145,12 @@ public class LeaseSigningIntegrationTests(LeaseFlowWebApplicationFactory factory
         var lease = await GetLeaseAsync(client, leaseId);
         Assert.Equal(new DateTime(2026, 8, 20), lease.GetProperty("stipulaDate").GetDateTime().Date);
         Assert.Single(StoredSignedContractsOf(leaseId));
-        // After the signature the contract to sign is no longer generated.
         Assert.Equal(HttpStatusCode.Conflict, (await client.GetAsync($"/api/leases/{leaseId}/contract.pdf")).StatusCode);
     }
 
     [PostgresFact]
     public async Task GetSignedDocument_OnlyForTheOwnerOrTheOrg_OthersDoNotGetIt()
     {
-        // FD-07 / TN-3: the signed contract lives in the private bucket and is served only to a caller who may read the lease.
         var owner = UniqueUser("signed-auth");
         var colleague = UniqueUser("signed-colleague");
         var manager = UniqueUser("signed-manager");
@@ -207,7 +202,6 @@ public class LeaseSigningIntegrationTests(LeaseFlowWebApplicationFactory factory
     [PostgresFact]
     public async Task DeclareStipula_LegacySignedLeaseWithoutStipula_SetsStipulaAndDeadlineOnce()
     {
-        // A lease signed before CasaZen recorded signatures: Signed, no stipula, deadline "to be determined" (LT-04).
         var (client, leaseId) = await DraftLeaseAsync("legacy");
         await using (var scope = factory.Services.CreateAsyncScope())
         {
@@ -252,7 +246,6 @@ public class LeaseSigningIntegrationTests(LeaseFlowWebApplicationFactory factory
         var (client, leaseId) = await DraftLeaseAsync("signers");
 
         var before = await ReadJson(await client.GetAsync($"/api/leases/{leaseId}/signers"));
-        // Flag off: no provider path; the approved CedolareSecca template gives a final contract to sign.
         Assert.False(before.GetProperty("providerSigningAvailable").GetBoolean());
         Assert.True(before.GetProperty("contractAvailable").GetBoolean());
         Assert.Equal(JsonValueKind.Null, before.GetProperty("contractUnavailableCode").ValueKind);
@@ -322,12 +315,10 @@ public class LeaseSigningIntegrationTests(LeaseFlowWebApplicationFactory factory
             IsActive = true,
         };
         db.Users.Add(user);
-        // A colleague who completed the onboarding for the org (PL-02): the checks are about the lease permissions.
         await HostOnboardingSeed.MarkOnboardedAsync(db, user, org.Id, scope.ServiceProvider.GetRequiredService<ILegalDocumentService>());
         await db.SaveChangesAsync();
     }
 
-    /// <summary>Signed contracts of the lease in the private bucket of the test storage.</summary>
     private string[] StoredSignedContractsOf(Guid leaseId)
     {
         var folder = Directory.EnumerateDirectories(factory.StorageRoot, "signed-contract", SearchOption.AllDirectories)

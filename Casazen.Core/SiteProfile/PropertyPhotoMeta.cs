@@ -62,7 +62,6 @@ public static class PropertyPhotoMeta
         }
     }
 
-    /// <summary>The text to store: <c>null</c> when nothing is known of any photo, so the column stays empty.</summary>
     public static string? Serialize(IReadOnlyDictionary<string, PhotoMeta> map)
     {
         ArgumentNullException.ThrowIfNull(map);
@@ -95,7 +94,6 @@ public static class PropertyPhotoMeta
         ];
     }
 
-    /// <summary>The stored map with the size of the photos just uploaded (their texts untouched).</summary>
     public static string? WithSizes(string? json, IReadOnlyDictionary<string, (int Width, int Height)> sizes)
     {
         ArgumentNullException.ThrowIfNull(sizes);
@@ -107,7 +105,6 @@ public static class PropertyPhotoMeta
         return Serialize(map);
     }
 
-    /// <summary>The stored map without a photo that left the gallery.</summary>
     public static string? Without(string? json, string url)
     {
         var map = new Dictionary<string, PhotoMeta>(Parse(json), StringComparer.Ordinal);
@@ -115,10 +112,6 @@ public static class PropertyPhotoMeta
         return Serialize(map);
     }
 
-    /// <summary>
-    /// The stored map with the photos of the rooms in <paramref name="roomIds"/> no longer assigned to a room (NF-32, NF-34): the room went, the
-    /// assignment goes with it. Their texts and sizes stay; a photo that had nothing else leaves the map.
-    /// </summary>
     public static string? WithoutRooms(string? json, IReadOnlyCollection<Guid> roomIds)
     {
         ArgumentNullException.ThrowIfNull(roomIds);

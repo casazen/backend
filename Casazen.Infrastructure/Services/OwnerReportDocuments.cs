@@ -12,25 +12,16 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public static class OwnerReportDocuments
 {
-    /// <summary>Title of the report by owner: by accrual, the nights of the confirmed stays, each owner for the share it holds.</summary>
     public const string Title = "Prestazioni per proprietario, per competenza";
 
-    /// <summary>Name of the sheet of the Excel file.</summary>
     public const string SheetName = "Per proprietario";
 
-    /// <summary>What the file shows for an owner whose personal data was anonymized (the API says the same in <c>OwnerAnonymizedLabel</c>).</summary>
     public const string AnonymizedOwnerLabel = "Proprietario anonimizzato";
 
-    /// <summary>What the file shows for the properties nobody owns in the period.</summary>
     public const string UnassignedLabel = "Senza proprietario";
 
     private const string Total = "Totale";
 
-    /// <summary>
-    /// The report as a table: the title with its base and the days on the first row, the header, a row for each owner, the row of the
-    /// properties nobody owns (when there is one) and the total. Nights and stays can be fractions: a house shared by two owners is half
-    /// of each.
-    /// </summary>
     public static ReportTable Table(OwnerPerformanceReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
@@ -63,7 +54,6 @@ public static class OwnerReportDocuments
 
     public static byte[] Xlsx(OwnerPerformanceReport report) => XlsxWriter.Write([new ReportSheet(SheetName, Table(report))]);
 
-    /// <summary>The file name of the report: <c>casazen-prestazioni-per-proprietario-competenza-20261001-20261031.csv</c>; <paramref name="extension"/> is <c>csv</c> or <c>xlsx</c>.</summary>
     public static string FileName(HostDashboardPeriod period, string extension = "csv")
     {
         ArgumentNullException.ThrowIfNull(period);
@@ -72,7 +62,6 @@ public static class OwnerReportDocuments
         return $"casazen-prestazioni-per-proprietario-competenza-{Compact(period.From)}-{Compact(period.To.AddDays(-1))}.{extension}";
     }
 
-    // Nights and stays can be fractions when a house is shared; two places are enough to read them (the number cell rounds to them).
     private static IReadOnlyList<ReportCell> OwnerRow(string label, int? propertyCount, OwnerPerformanceFigures figures) =>
         [
             label,

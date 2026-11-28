@@ -18,12 +18,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// E70/F02/US01/T02 (NF-194, NF-191, ADR-013-R19, D4): the segments of the automation. Observation is the behaviour everywhere; the automatic approval is allowed only in a
-/// segment in automatic mode, qualified for the policy version, the policy hash and the weights hash in force, under a calibrated policy, with the format giving the assurance
-/// required on the channel and the platform permission on, and each failing condition has its own reason; a new policy or new weights take the segment back to observation
-/// without a write; automatic needs a qualification, a suspension needs a reason; every change leaves an <c>OrgSettingsChanged</c> line; another org sees nothing.
-/// </summary>
 public sealed class IdentitySegmentServiceTests : IAsyncLifetime
 {
     private const string Cie = "it-cie-3.0";
@@ -77,9 +71,6 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
             Directory.Delete(_directory, recursive: true);
     }
 
-    // ─── The resolution ──────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>AC1: with no segment row the resolution is observation, never automatic, whatever the flags say.</summary>
     [Fact]
     public async Task IdentitySegment_NoRow_IsObservation()
     {
@@ -92,12 +83,10 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
         Assert.Equal(IdentityAssuranceLevels.Consistency, resolution.RequiredAssurance);
         Assert.Equal(IdentitySegmentReasonCodes.SegmentObservation, resolution.ReasonCode);
 
-        // A format or a channel the request does not name resolves to nothing either.
         Assert.False((await Service().ResolveAsync(_org, _flat, null, IdentityChannels.IosSafari, Ct)).AutoApprovalAllowed);
         Assert.False((await Service().ResolveAsync(_org, _flat, Cie, " ", Ct)).AutoApprovalAllowed);
     }
 
-    /// <summary>AC2, the positive control: every condition holds, so the automatic approval is allowed and no reason is given.</summary>
     [Fact]
     public async Task IdentitySegment_QualifiedAutomaticSegment_AllowsAutoApproval_WhenEveryConditionHolds()
     {
@@ -113,10 +102,6 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
         Assert.Null(resolution.ReasonCode);
     }
 
-    /// <summary>
-    /// Proof (security): never automatic with the global permission off. The same qualified automatic segment allows nothing as soon as
-    /// <c>CheckInIdentityAutoApproval</c>, or the self-hosted flow it works with, is off; the row is not touched, and the permission back on allows it again.
-    /// </summary>
     [Fact]
     public async Task IdentitySegment_GlobalFlagOff_NeverAllowsAutoApproval()
     {
@@ -137,7 +122,6 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
         Assert.True((await Service().ResolveAsync(_org, _flat, Cie, IdentityChannels.AndroidChrome, Ct)).AutoApprovalAllowed);
     }
 
-    /// <summary>AC2: each condition that fails yields its own reason, in the order of the checks.</summary>
     [Theory]
     [InlineData(IdentitySegmentReasonCodes.SegmentObservation)]
     [InlineData(IdentitySegmentReasonCodes.SegmentSuspended)]
@@ -167,7 +151,6 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
                 resolver = Service(Policy(Calibrated("identity-policy-2026.12-2"), "recalibrated.json"));
                 break;
             case IdentitySegmentReasonCodes.PolicyProvisional:
-                // A row qualified for the provisional policy (the service never writes one: it is planted) still approves nothing.
                 var provisional = Policy(IdentityPolicyTestFiles.ShippedText(), "provisional.json");
                 await AddRowAsync(IdentitySegmentMode.Automatic, qualifiedFor: new IdentityConfigurationFingerprint(provisional, _models).Current());
                 resolver = Service(provisional);
@@ -188,11 +171,6 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
         Assert.NotNull(resolution.SegmentId);
     }
 
-    /// <summary>
-    /// Proof (security, AC3): the qualification is bound to the fingerprint. A qualified automatic segment allows nothing once a weight of any of the three models, the
-    /// policy hash or the loading of the models changes (<c>qualification_mismatch</c>), without any write to its row; with the qualified configuration back, it allows
-    /// again: the fallback to observation is by construction.
-    /// </summary>
     [Fact]
     public async Task IdentitySegment_WeightsChanged_FallsBackToObservation()
     {
@@ -240,9 +218,6 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
         Assert.False(otherChannel.AutoApprovalAllowed);
     }
 
-    // ─── The changes ─────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>AC4: automatic on an unqualified segment is refused with identity_segment_not_qualified; a suspension always works and needs a reason, kept as given.</summary>
     [Fact]
     public async Task IdentitySegment_AutomaticOnAnUnqualifiedSegment_IsRefused_AndSuspensionAlwaysWorks()
     {
@@ -252,13 +227,11 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
         Assert.Equal(IdentityApiErrors.IdentitySegmentNotQualified, refused.Code);
         Assert.Equal(IdentitySegmentMode.Observation, (await RowAsync(segment)).Mode);
 
-        // Qualified for another policy: still not qualified for the one in force.
         await QualifyAsync(Service(Policy(Calibrated("identity-policy-2026.12-2"), "recalibrated.json")), segment);
         Assert.Equal(
             IdentityApiErrors.IdentitySegmentNotQualified,
             (await Assert.ThrowsAsync<DomainRuleException>(() => Service().SetModeAsync(_org, segment, IdentitySegmentMode.Automatic, null, "auth0|admin", Ct))).Code);
 
-        // A suspension needs a reason of 1 to 200 characters, and works from observation and from automatic.
         foreach (var reason in new[] { null, "", "   ", new string('x', IdentitySegmentRules.SuspendedReasonMaxLength + 1) })
         {
             var invalid = await Assert.ThrowsAsync<DomainRuleException>(() => Service().SetModeAsync(_org, segment, IdentitySegmentMode.Suspended, reason, "auth0|admin", Ct));
@@ -274,7 +247,6 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
         Assert.Equal(IdentitySegmentMode.Suspended, fromAutomatic!.Mode);
         Assert.False((await Service().ResolveAsync(_org, _flat, Cie, IdentityChannels.IosSafari, Ct)).AutoApprovalAllowed);
 
-        // Back to observation: the reason goes with the suspension.
         var observed = await Service().SetModeAsync(_org, automatic, IdentitySegmentMode.Observation, "ignored", "auth0|admin", Ct);
         Assert.Null(observed!.SuspendedReason);
     }
@@ -316,7 +288,6 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
         Assert.Single(await _db.OrgActivityEntries.ToListAsync(Ct));
     }
 
-    /// <summary>Only the fingerprint in force is qualified: another version or hash, a provisional or unusable policy, a malformed report or assurance are refused.</summary>
     [Fact]
     public async Task IdentitySegment_Qualify_RecordsOnlyTheFingerprintInForce()
     {
@@ -341,7 +312,6 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
             Assert.Equal((IdentityApiErrors.IdentitySegmentInvalid, messageKey), (refused.Code, refused.MessageKey));
         }
 
-        // The provisional policy in force: never qualified, even with its own fingerprint.
         var provisional = Policy(IdentityPolicyTestFiles.ShippedText(), "provisional.json");
         var ofTheProvisional = new IdentityConfigurationFingerprint(provisional, _models).Current()!;
         var notCalibrated = await Assert.ThrowsAsync<DomainRuleException>(() => Service(provisional).QualifyAsync(
@@ -349,7 +319,6 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
         Assert.Equal("IdentitySegmentPolicyProvisional", notCalibrated.MessageKey);
         Assert.Null((await RowAsync(segment)).QualifiedAt);
 
-        // The fingerprint in force (the hashes in any case): recorded as the platform computes it, the mode unchanged.
         var qualified = await Service().QualifyAsync(
             _org, segment, current.PolicyVersion, current.PolicyHash.ToUpperInvariant(), current.WeightsHash, ReportHash, IdentityAssuranceLevels.Consistency, "auth0|staff", Ct);
         var row = await RowAsync(segment);
@@ -379,7 +348,6 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
         Assert.False((await Service().ResolveAsync(_org, _flat, Cie, IdentityChannels.AndroidChrome, Ct)).AutoApprovalAllowed);
     }
 
-    /// <summary>AC6: every change records OrgSettingsChanged in the activity log (the fact and who, never a value); a change that changes nothing records nothing.</summary>
     [Fact]
     public async Task IdentitySegment_EveryChange_RecordsOrgSettingsChanged()
     {
@@ -407,7 +375,6 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
         Assert.Equal(["auth0|admin", "auth0|staff", "auth0|admin", "auth0|staff"], lines.Select(line => line.ActorUserId));
     }
 
-    /// <summary>Another org sees and changes nothing of a segment: not found for every change, absent from its list and from its resolution.</summary>
     [Fact]
     public async Task IdentitySegment_AnotherOrg_SeesAndChangesNothing()
     {
@@ -445,7 +412,6 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
         Assert.All(unavailable.Segments, segment => Assert.False(segment.AutoApprovalAllowed));
     }
 
-    /// <summary>Privacy: the reason of a suspension is the staff's text: it is stored, never logged.</summary>
     [Fact]
     public async Task IdentitySegment_TheReasonOfASuspension_IsNeverLogged()
     {
@@ -478,8 +444,6 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
         Assert.False(IdentitySegmentModeCodes.TryParse(null, out _));
     }
 
-    // ─── Fixtures ────────────────────────────────────────────────────────────────────────────────────────
-
     private IdentitySegmentService Service(IdentityPolicyProvider? policy = null, IBiometricModelStore? models = null)
     {
         var provider = policy ?? _calibrated;
@@ -496,7 +460,6 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
 
     private IdentityFingerprint Fingerprint() => new IdentityConfigurationFingerprint(_calibrated, _models).Current()!;
 
-    /// <summary>An org-wide CIE segment of <paramref name="channel"/>, qualified for the configuration in force and set to automatic; its id.</summary>
     private async Task<Guid> QualifiedAutomaticAsync(
         IdentitySegmentService service,
         string channel = IdentityChannels.AndroidChrome,
@@ -509,7 +472,6 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
         return segment.Id;
     }
 
-    /// <summary>Qualifies a segment for the fingerprint the <paramref name="service"/> sees.</summary>
     private async Task QualifyAsync(IdentitySegmentService service, Guid segment, string requiredAssurance = IdentityAssuranceLevels.Consistency)
     {
         var overview = await service.ListAsync(_org, Ct);
@@ -519,14 +481,12 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
         await service.QualifyAsync(_org, segment, version.PolicyVersion, version.PolicyHash, version.WeightsHash, ReportHash, requiredAssurance, "auth0|staff", Ct);
     }
 
-    /// <summary>The fingerprint of a calibrated policy file this class wrote, by its version.</summary>
     private IdentityFingerprint FingerprintOf(string version)
     {
         var file = version == "identity-policy-2026.12-2" ? "recalibrated.json" : "calibrated.json";
         return new IdentityConfigurationFingerprint(Policy(Calibrated(version), file), _models).Current()!;
     }
 
-    /// <summary>A row written as is, for the states the service never writes (automatic without a qualification, a qualification for a provisional policy).</summary>
     private async Task AddRowAsync(IdentitySegmentMode mode, IdentityFingerprint? qualifiedFor)
     {
         _db.IdentitySegmentSettings.Add(new IdentitySegmentSetting
@@ -548,11 +508,9 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
         return await _db.IdentitySegmentSettings.AsNoTracking().SingleAsync(row => row.Id == segment, Ct);
     }
 
-    /// <summary>The committed policy made a calibration of <paramref name="version"/> (provisional false), the shape a new calibration file has.</summary>
     private static string Calibrated(string version) =>
         IdentityPolicyTestFiles.Edited(("version", $"\"{version}\""), ("provisional", "false"));
 
-    /// <summary>A policy provider over <paramref name="text"/> written to the temporary folder, pinned by its canonical hash.</summary>
     private IdentityPolicyProvider Policy(string text, string fileName)
     {
         File.WriteAllText(Path.Combine(_directory, fileName), text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
@@ -591,7 +549,6 @@ public sealed class IdentitySegmentServiceTests : IAsyncLifetime
         public LoadedBiometricModel? FaceRecognition => null;
     }
 
-    /// <summary>A logger that keeps every formatted line, to prove what is not written.</summary>
     private sealed class ListLogger<T>(List<string> lines) : ILogger<T>
     {
         public IDisposable? BeginScope<TState>(TState state)

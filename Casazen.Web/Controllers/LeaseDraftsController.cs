@@ -6,7 +6,6 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Leases;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
-using Casazen.Core.Validation;
 using Casazen.Web.Authorization;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
@@ -38,11 +37,6 @@ public class LeaseDraftsController(
     private const string LeaseNotFoundCode = "lease_not_found";
     private const string PropertyNotFoundCode = "property_not_found";
 
-    /// <summary>
-    /// The condominium expense the wizard proposes for this lease. A year already on the property uses the confirmed
-    /// budget, or the fixed advance when the contract says that. With nothing loaded, send the previous consuntivo and
-    /// the new preventivo, or a manual amount that is settled at the consuntivo. This does not take a payment.
-    /// </summary>
     [HttpGet("{id:guid}/draft/condominium-expense")]
     public async Task<IActionResult> SavedExpense(Guid id, CancellationToken cancellationToken)
     {
@@ -75,17 +69,10 @@ public class LeaseDraftsController(
         return Ok(proposal);
     }
 
-    /// <summary>The values of one save: a few kilobytes at most (ten landlords and ten tenants of a few hundred characters each).</summary>
     private const long SaveRequestLimit = 256 * 1024;
 
-    /// <summary>The signed contract (at most <see cref="LeaseSigningLimits.MaxSignedContractBytes"/>) plus the other form fields.</summary>
     private const long ImportRequestLimit = LeaseSigningLimits.MaxSignedContractBytes + 64 * 1024;
 
-    /// <summary>
-    /// Creates a draft with only the property: 201 with the id, the version (1) and the flow (every step to do). No APE, no
-    /// parties, no dates are asked yet. <c>origin</c> is <c>Created</c> (the default) or <c>Imported</c> (a contract already signed
-    /// elsewhere, LR-13). 404 <c>property_not_found</c> for a property of another org, 403 for one the caller may not handle.
-    /// </summary>
     [HttpPost("drafts")]
     [ProducesResponseType(typeof(LeaseDraftCreated), StatusCodes.Status201Created)]
     public async Task<IActionResult> Create([FromBody] CreateLeaseDraftDto dto, CancellationToken cancellationToken)
@@ -98,11 +85,6 @@ public class LeaseDraftsController(
         return CreatedAtAction(nameof(Get), new { id = created.Id }, created);
     }
 
-    /// <summary>
-    /// Every value of the draft, not masked, with its <c>version</c>, <c>origin</c>, <c>wizardMaxStep</c>, <c>reviewConfirmedAt</c>,
-    /// <c>sentForSignatureAt</c> and the <c>flow</c> (what is missing in each of the eight steps). Only a lease that is a draft: 404
-    /// <c>lease_not_draft</c> for any other (its masked detail is <c>GET api/leases/{id}</c>).
-    /// </summary>
     [HttpGet("{id:guid}/draft")]
     [ProducesResponseType(typeof(LeaseDraftView), StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(Guid id, CancellationToken cancellationToken)
@@ -132,7 +114,6 @@ public class LeaseDraftsController(
         if (await AuthorizeLeaseAsync(id, cancellationToken) is { } denied)
             return denied;
 
-        // A property chosen at step 1 is authorized as the lease's own was: the caller must be allowed to put a contract on it.
         if (dto.Step == 1 && TryReadPropertyId(dto.Values!.Value, out var propertyId)
             && await AuthorizePropertyAsync(propertyId, cancellationToken) is { } propertyDenied)
         {
@@ -147,7 +128,6 @@ public class LeaseDraftsController(
         }
         catch (LeaseDraftValuesException)
         {
-            // The message names the field and never what was sent.
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "LeaseDraftValuesInvalid");
         }
     }
@@ -169,12 +149,6 @@ public class LeaseDraftsController(
         return Ok(await drafts.GetReviewAsync(id, cancellationToken));
     }
 
-    /// <summary>
-    /// Confirms the review: saves the moment and the impression of the values of the first five steps. 422 <c>lease_review_blocked</c>
-    /// while a check blocks; 409 <c>lease_period_overlaps</c> (with <c>conflictingLeaseId</c>, <c>conflictingFrom</c>, <c>conflictingTo</c>)
-    /// when another lease of the property covers some of the same days (LR-OVERLAP). The body may be omitted; with <c>version</c> it is
-    /// refused (409) if the draft moved on.
-    /// </summary>
     [HttpPost("{id:guid}/review/confirm")]
     [ProducesResponseType(typeof(LeaseDraftReviewResult), StatusCodes.Status200OK)]
     public async Task<IActionResult> ConfirmReview(Guid id, [FromBody] LeaseDraftActionDto? body, CancellationToken cancellationToken)
@@ -185,7 +159,6 @@ public class LeaseDraftsController(
         return Ok(await drafts.ConfirmReviewAsync(id, body?.Version, cancellationToken));
     }
 
-    /// <summary>Withdraws the confirmation of the review (and "downloaded for signature", which rested on it).</summary>
     [HttpDelete("{id:guid}/review/confirm")]
     [ProducesResponseType(typeof(LeaseDraftReviewResult), StatusCodes.Status200OK)]
     public async Task<IActionResult> ReopenReview(Guid id, [FromBody] LeaseDraftActionDto? body, CancellationToken cancellationToken)
@@ -213,7 +186,6 @@ public class LeaseDraftsController(
         return Ok(await drafts.MarkSentAsync(id, body?.Version, cancellationToken));
     }
 
-    /// <summary>Takes back "downloaded for signature".</summary>
     [HttpDelete("{id:guid}/sent")]
     [ProducesResponseType(typeof(LeaseDraftSentResult), StatusCodes.Status200OK)]
     public async Task<IActionResult> RevokeSent(Guid id, [FromBody] LeaseDraftActionDto? body, CancellationToken cancellationToken)
@@ -224,11 +196,6 @@ public class LeaseDraftsController(
         return Ok(await drafts.RevokeSentAsync(id, body?.Version, cancellationToken));
     }
 
-    /// <summary>
-    /// Deletes a draft with its parties, signers, events and every file tied to it: 204. 409 <c>lease_not_deletable</c> for a lease
-    /// that is not a draft, has a signed copy or a rent plan. With the only draft of a property gone, the property can change mode
-    /// again (<c>property_mode_blocked_by_draft_lease</c>, BE-PM02-1).
-    /// </summary>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
@@ -294,7 +261,6 @@ public class LeaseDraftsController(
         if (await AuthorizeLeaseToSignAsync(id, cancellationToken) is { } denied)
             return denied;
 
-        // The signed PDF comes once: sent now, or already uploaded to this draft (the contract the owner gave to be read).
         if ((form.SignedContract is null) == (form.ContractDocumentId is null))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "LeaseImportSourceInvalid");
 
@@ -315,8 +281,6 @@ public class LeaseDraftsController(
 
         return Ok(LeaseDtoMapper.ToDetail((await leases.GetLeaseDetailAsync(id))!, clock.TodayInRome()));
     }
-
-    // ---- authorization -------------------------------------------------------------------------------------------
 
     /// <summary>
     /// Authorizes <c>lease.create</c> <b>and</b> <c>lease.sign</c> on the property of the lease as a row of that property (the import
@@ -363,7 +327,6 @@ public class LeaseDraftsController(
         return await authorizationService.IsAuthorizedAsync(User, resource, LeaseOperations.Create) ? null : Forbid();
     }
 
-    /// <summary>The <c>propertyId</c> of the values of step 1, when it is an id (anything else is refused by the service).</summary>
     private static bool TryReadPropertyId(JsonElement values, out Guid propertyId)
     {
         propertyId = Guid.Empty;
@@ -386,10 +349,6 @@ public class LeaseDraftsController(
     private void NoStore() => Response.Headers.CacheControl = "private, no-store";
 }
 
-/// <summary>
-/// The import of a contract signed elsewhere: the day it was signed and its PDF — the file sent now, or the id of the contract document
-/// already uploaded to the draft (NL-DOCS), one of the two.
-/// </summary>
 public sealed class ImportContractForm
 {
     [Required]
@@ -400,13 +359,8 @@ public sealed class ImportContractForm
     public Guid? ContractDocumentId { get; set; }
 }
 
-/// <summary>A new draft: the property and, optionally, how the lease came to be (<c>Created</c> by default).</summary>
 public sealed record CreateLeaseDraftDto([param: Required] Guid PropertyId, LeaseOrigin? Origin = null);
 
-/// <summary>
-/// The expense the wizard asks for. A payment does not belong here: the tenant pays on the rent APIs, and the landlord
-/// pays the condominium from <c>POST /api/orgs/me/bank-links/payments</c>.
-/// </summary>
 public sealed class ProposeTenantExpenseDto
 {
     public bool? SettlementRequired { get; set; }
@@ -435,5 +389,4 @@ public sealed record SaveLeaseDraftDto(
     [param: Required, Range(1, 5)] int? Step,
     [param: Required] JsonElement? Values);
 
-/// <summary>Optional body of the actions on a draft: the version the caller saw. If it is not the current one the action is refused (409), not applied.</summary>
 public sealed record LeaseDraftActionDto(int? Version = null);

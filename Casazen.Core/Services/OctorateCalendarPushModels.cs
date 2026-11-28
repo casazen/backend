@@ -3,13 +3,8 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
-/// <summary>One range of dates of one property, both ends included (E08/F05/US02/T01): what a change of the calendar sends to the channel manager.</summary>
-/// <param name="PropertyId">The property.</param>
-/// <param name="From">First calendar day of the range, included.</param>
-/// <param name="To">Last calendar day of the range, included.</param>
 public sealed record CalendarWindow(Guid PropertyId, DateOnly From, DateOnly To)
 {
-    /// <summary>How many days the window covers.</summary>
     public int Days => To.DayNumber - From.DayNumber + 1;
 }
 
@@ -35,7 +30,6 @@ public sealed record OctorateCalendarValues(
     bool? CloseToDeparture = null,
     int? CutOffDays = null)
 {
-    /// <summary>No member is set: there is nothing to write.</summary>
     public bool IsEmpty =>
         Availability is null
         && Price is null
@@ -54,7 +48,6 @@ public sealed record OctorateCalendarValues(
 /// <param name="Values">What is written to each night.</param>
 public sealed record OctorateCalendarUpdate(string RoomId, DateOnly From, DateOnly To, OctorateCalendarValues Values)
 {
-    /// <summary>How many nights the interval covers.</summary>
     public int Days => To.DayNumber - From.DayNumber + 1;
 }
 
@@ -80,17 +73,9 @@ public sealed record OctorateCalendarProcessDate(DateOnly? Date, string? Status)
 /// <param name="Dates">The dates the process has sent.</param>
 public sealed record OctorateCalendarProcess(string Id, string? Status, IReadOnlyList<OctorateCalendarProcessDate> Dates);
 
-/// <summary>
-/// What <see cref="ICalendarChangeRecorder.RecordAsync"/> added to the unit of work: the process and its chunks, not saved. The caller saves them with its
-/// own changes, runs <see cref="NeedsRun"/> processes once the save is committed, and detaches them when it gives the change up.
-/// </summary>
-/// <param name="Process">The process of the change.</param>
-/// <param name="Chunks">Its chunks, in the order of the windows and of the dates.</param>
 public sealed record CalendarChangeRecord(CalendarChangeProcess Process, IReadOnlyList<CalendarChangeChunk> Chunks)
 {
-    /// <summary>The id of the process.</summary>
     public Guid ProcessId => Process.Id;
 
-    /// <summary>The process is <c>Queued</c>: there is something to send, so a run is enqueued once the save is committed.</summary>
     public bool NeedsRun => Process.State == CalendarChangeState.Queued;
 }

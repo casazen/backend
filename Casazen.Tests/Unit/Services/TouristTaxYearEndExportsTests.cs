@@ -54,7 +54,6 @@ public sealed class TouristTaxYearEndExportsTests
         var roma = SeedProperty(db, orgId, "Casa Roma", "Roma");
         var lugano = SeedProperty(db, orgId, "Casa Lugano", "Lugano", country: "CH");
 
-        // Milano: 57.35 (one guest is a minor) and 9.55 recorded; a stay whose guests are all exempt, one the channel collects (declared), one never calculated. Roma: 72.10.
         var taxed = SeedStay(db, loft, Day(2026, 3, 2), nights: 3, touristTax: 57.35m);
         SeedRecord(db, orgId, taxed, confirmed: true, collector: TouristTaxCollector.Host, guests: [(TouristTaxExemptionKind.None, null), (TouristTaxExemptionKind.Age, TouristTaxExemptionReason.MinorAgeCode)]);
         SeedStay(db, bilocale, Day(2026, 3, 20), nights: 2, touristTax: 9.55m);
@@ -66,16 +65,13 @@ public sealed class TouristTaxYearEndExportsTests
         SeedStay(db, roma, Day(2026, 2, 10), nights: 4, touristTax: 72.10m);
         SeedStay(db, lugano, Day(2026, 3, 3), nights: 2, touristTax: 8m);
 
-        // A no-show owes nothing (its guests never came): not a stay, not a night, not a tax, in the declaration as in every reader of the stays.
         SeedStay(db, loft, Day(2026, 7, 7), nights: 2, touristTax: 99m, noShow: true);
 
-        // Payments: Milano in two instalments, each of a quarter (40.00 + 20.00), and one for March and April together (3.00): inside the year, inside no quarter. Roma 0.10 too much; Como, with no stays, 5.
         SeedPayment(db, orgId, "Milano", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 31), 40m, new DateOnly(2026, 4, 10));
         SeedPayment(db, orgId, "Milano", new DateOnly(2026, 4, 1), new DateOnly(2026, 6, 30), 20m, new DateOnly(2026, 7, 10));
         SeedPayment(db, orgId, "Milano", new DateOnly(2026, 3, 1), new DateOnly(2026, 4, 30), 3m, new DateOnly(2026, 5, 10));
         SeedPayment(db, orgId, "Roma", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 31), 72.20m, new DateOnly(2026, 4, 12));
         SeedPayment(db, orgId, "Como", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 31), 5m, new DateOnly(2026, 4, 12));
-        // A payment of 2025 is not of this year; another org's payment is nobody's here.
         SeedPayment(db, orgId, "Milano", new DateOnly(2025, 10, 1), new DateOnly(2025, 12, 31), 99m, new DateOnly(2026, 1, 10));
         SeedPayment(db, Guid.NewGuid(), "Milano", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 31), 77m, new DateOnly(2026, 4, 10));
         await db.SaveChangesAsync();
@@ -104,7 +100,6 @@ public sealed class TouristTaxYearEndExportsTests
         Assert.Equal((1, 0), (romaRow.TaxedStays, romaRow.StaysWithoutAmount.Count));
         Assert.Equal(new TouristTaxSummaryTotals(6, 13, 12, 139.00m, 3, 140.20m, -1.20m), declaration.Total);
 
-        // The account of the agent by quarter: what each comune is owed in a quarter and what was remitted for it, and the line of the year; the quarters add up to the year for what is owed.
         var account = await sut.GetAgentAccountAsync(new HostScope(orgId), 2026, TouristTaxAccountPeriod.Quarter);
         var milanoRows = account.Rows.Where(r => r.Comune == "Milano").ToList();
         Assert.Equal(["2026-Q1", "2026-Q2", "2026-Q3", "2026"], milanoRows.Select(r => r.Period));
@@ -116,7 +111,6 @@ public sealed class TouristTaxYearEndExportsTests
         var months = await sut.GetAgentAccountAsync(new HostScope(orgId), 2026, TouristTaxAccountPeriod.Month);
         Assert.Equal(["2026-03", "2026-05", "2026-06", "2026-09", "2026"], months.Rows.Where(r => string.Equals(r.Comune, "Milano", StringComparison.OrdinalIgnoreCase) && r.Stays > 0).Select(r => r.Period));
 
-        // The files: the same figures in the CSV and in the Excel file, in the language of the request.
         var texts = new ResxDocumentTexts();
         var csv = Encoding.UTF8.GetString(TouristTaxYearEndExports.DeclarationCsv(declaration, texts, DocumentLanguages.Italian));
         Assert.Contains("Milano;5;9;10;2;3;1;1;1;0;66,90;63,00;3,90;Da versare;Importo incompleto", csv, StringComparison.Ordinal);
@@ -184,7 +178,6 @@ public sealed class TouristTaxYearEndExportsTests
         var empty = count.Properties[1];
         Assert.Equal((0, 0, 0m), (empty.Stays, empty.Nights, empty.TouristTax));
 
-        // A property in Switzerland whose canton is not known may be in Ticino: it is in the count with its stays and flagged, never dropped in silence; a property of Ticino is not flagged.
         var unknown = count.Properties[2];
         Assert.Equal((true, 1, 2, 1, 2), (unknown.CantonUnknown, unknown.Stays, unknown.Nights, unknown.StaysWithoutDocument, unknown.NightsWithoutDocument));
         Assert.All(count.Properties.Take(2), p => Assert.False(p.CantonUnknown));
@@ -200,12 +193,6 @@ public sealed class TouristTaxYearEndExportsTests
         Assert.Empty((await sut.GetTicinoYearlyCountAsync(new HostScope(Guid.NewGuid()), 2026)).Properties);
     }
 
-    /// <summary>
-    /// Data (E29/F01/US01/T02): the count of Ticino reads the canton from the one resolver of the place of a Swiss property. A property with no stored
-    /// municipality at 6900 «Lugano» is in Ticino (not «canton unknown»), with the municipality its postal code gives and the note that it is to be
-    /// confirmed, and nothing is stored on it; a postal code that leaves several municipalities open keeps the canton unknown; a property the postal
-    /// code places outside Ticino is not counted.
-    /// </summary>
     [Fact]
     public async Task TouristTaxYear_TicinoCount_ReadsTheCantonFromTheOneResolver_Test()
     {
@@ -254,10 +241,6 @@ public sealed class TouristTaxYearEndExportsTests
         CantonCode = canton,
     };
 
-    /// <summary>
-    /// Permission and data: the year-end data of the whole org (a declaration of some of the properties would be false, the payments belong to the org) is refused to a caller that reaches only some of
-    /// them, before anything is read; a year the reports do not support is refused; and the rules that say why a stay has no amount and what an exempt guest is counted under hold.
-    /// </summary>
     [Fact]
     public async Task TouristTaxYearEnd_NeedsTheWholeOrgAndTheRulesHold_Test()
     {
@@ -290,7 +273,6 @@ public sealed class TouristTaxYearEndExportsTests
             Assert.Equal("fiscal_report_period_invalid", (await Assert.ThrowsAsync<FiscalValidationException>(ask)).Code);
         }
 
-        // Why a stay has no amount: no record at all, a tax never confirmed or never calculated, the channel that collects, every guest exempt, a tax that is nothing.
         var paying = new TouristTaxGuestFact(TouristTaxExemptionKind.None, null);
         var exempt = new TouristTaxGuestFact(TouristTaxExemptionKind.Host, TouristTaxExemptionReason.HealthCareCode);
         Assert.Equal(TouristTaxStayReasons.NotCalculated, TouristTaxYearEndRules.NoAmountReasonOf(null));
@@ -301,13 +283,11 @@ public sealed class TouristTaxYearEndExportsTests
         Assert.Equal(TouristTaxStayReasons.Exempt, TouristTaxYearEndRules.NoAmountReasonOf(new TouristTaxStayFacts(true, TouristTaxQuoteStatus.Calculated, TouristTaxCollector.Host, null, [exempt, exempt])));
         Assert.Equal(TouristTaxStayReasons.NoTaxDue, TouristTaxYearEndRules.NoAmountReasonOf(new TouristTaxStayFacts(true, TouristTaxQuoteStatus.Calculated, TouristTaxCollector.Host, null, [paying, exempt])));
 
-        // What an exempt guest is counted under: nothing for a paying guest, the age, the code the host chose, and «erased» once the reason went with the guest's data.
         Assert.Null(TouristTaxYearEndRules.ExemptionReasonOf(paying));
         Assert.Equal(TouristTaxExemptionReason.MinorAgeCode, TouristTaxYearEndRules.ExemptionReasonOf(new TouristTaxGuestFact(TouristTaxExemptionKind.Age, null)));
         Assert.Equal(TouristTaxExemptionReason.HealthCareCode, TouristTaxYearEndRules.ExemptionReasonOf(exempt));
         Assert.Equal(TouristTaxExemptionKinds.Erased, TouristTaxYearEndRules.ExemptionReasonOf(new TouristTaxGuestFact(TouristTaxExemptionKind.Host, null)));
 
-        // The periods of the account of the agent, and the day Ticino wants its count.
         Assert.Equal(
             [("2026-Q1", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 31)), ("2026-Q2", new DateOnly(2026, 4, 1), new DateOnly(2026, 6, 30)), ("2026-Q3", new DateOnly(2026, 7, 1), new DateOnly(2026, 9, 30)), ("2026-Q4", new DateOnly(2026, 10, 1), new DateOnly(2026, 12, 31))],
             TouristTaxYearEndRules.PeriodsOf(2026, TouristTaxAccountPeriod.Quarter));
@@ -332,7 +312,6 @@ public sealed class TouristTaxYearEndExportsTests
         SeedOrg(db, orgId);
         var loft = SeedProperty(db, orgId, "Loft Milano", "Milano");
 
-        // A minor and a guest exempt for a health reason, two residents, and a guest whose reason was erased with the data.
         var health = SeedStay(db, loft, Day(2026, 3, 2), nights: 3, touristTax: 20m);
         SeedRecord(db, orgId, health, confirmed: true, collector: TouristTaxCollector.Host, guests: [(TouristTaxExemptionKind.Age, TouristTaxExemptionReason.MinorAgeCode), (TouristTaxExemptionKind.Host, TouristTaxExemptionReason.HealthCareCode)]);
         var residents = SeedStay(db, loft, Day(2026, 5, 10), nights: 1, touristTax: 0m);
@@ -341,7 +320,6 @@ public sealed class TouristTaxYearEndExportsTests
         SeedRecord(db, orgId, erased, confirmed: true, collector: TouristTaxCollector.Host, guests: [(TouristTaxExemptionKind.Host, null)]);
         await db.SaveChangesAsync();
 
-        // The data: with guest.read every reason, without it the age and «restricted», with the counts of the reasons it folds (3 stays, 4 guests, 7 nights of guests).
         var data = await CreateService(db).GetDeclarationAsync(new HostScope(orgId), 2026, holdsGuestRead);
         var counts = Assert.Single(data.Comuni).Exemptions.Select(r => (r.Reason, r.Stays, r.Guests, r.GuestNights)).ToList();
         List<(string Reason, int Stays, int Guests, int GuestNights)> expected = holdsGuestRead
@@ -349,7 +327,6 @@ public sealed class TouristTaxYearEndExportsTests
             : [(TouristTaxExemptionReason.MinorAgeCode, 1, 1, 3), (TouristTaxExemptionKinds.Restricted, 3, 4, 7)];
         Assert.Equal(expected, counts);
 
-        // The file the controller answers: the reasons in words only for who holds guest.read, the permission asked as the policy of the area (never the one of the payments).
         var authorization = new Mock<IAuthorizationService>();
         authorization
             .Setup(a => a.AuthorizeAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), CasazenPolicies.GuestRead))
@@ -468,7 +445,6 @@ public sealed class TouristTaxYearEndExportsTests
         return booking;
     }
 
-    /// <summary>What a stay stores of its tourist tax: a record, confirmed or only declared, and the guests with the kind of their exemption and its reason.</summary>
     private static void SeedRecord(
         AppDbContext db,
         Guid orgId,
@@ -509,7 +485,6 @@ public sealed class TouristTaxYearEndExportsTests
             RecordedByUserId = "auth0|host",
         });
 
-    /// <summary>An issued document of a stay (a guest document) with a tourist tax line of <paramref name="tax"/> when it is above zero, and a line of the stay.</summary>
     private static void SeedDocument(AppDbContext db, Guid orgId, Property property, Booking booking, FiscalDocumentKind kind, string currency, decimal tax)
     {
         var lines = new List<FiscalDocumentLine> { new() { OrgId = orgId, LineNumber = 1, LineType = FiscalLineType.Accommodation, Description = "TEST soggiorno", Quantity = 1m, UnitPrice = 100m, TotalPrice = 100m } };

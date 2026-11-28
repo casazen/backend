@@ -33,28 +33,18 @@ public class AlloggiatiWebService(
     IAlloggiatiCodeTableService? codeTableService = null,
     IComplianceSendLog? complianceSendLog = null, IDirectAlloggiatiRoute? directRoute = null) : IAlloggiatiWebService
 {
-    /// <summary>Error code of a sent date before the check-in date.</summary>
     public const string ManualDateBeforeArrivalCode = "alloggiati_manual_date_before_arrival";
 
-    /// <summary>Error code of a sent date after today (Europe/Rome).</summary>
     public const string ManualDateInFutureCode = "alloggiati_manual_date_in_future";
 
-    /// <summary>Error code of a communication already sent or declared sent.</summary>
     public const string AlreadySentCode = "alloggiati_already_sent";
 
-    /// <summary>Error code of a record file requested while the data is incomplete or an official code is to complete (422).</summary>
     public const string RecordFileNotReadyCode = "alloggiati_file_not_ready";
 
-    /// <summary>Error code of a record file for a stay of less than 1 or more than 30 days (422).</summary>
     public const string RecordFileStayDaysCode = "alloggiati_file_stay_days_invalid";
 
-    /// <summary>Error code of a record file with a name that cannot be written with the letters the portal accepts (422).</summary>
     public const string RecordFileNameCode = "alloggiati_file_name_not_representable";
 
-    /// <summary>
-    /// A report still waiting for its job this long after the scheduled time is considered lost (e.g. Hangfire
-    /// storage reset) and can be scheduled again.
-    /// </summary>
     public static readonly TimeSpan LostJobGrace = TimeSpan.FromHours(1);
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -65,7 +55,6 @@ public class AlloggiatiWebService(
     private readonly IStayGuestService _stayGuests = stayGuestService
         ?? new StayGuestService(context, codeTableService ?? new AlloggiatiCodeTableService(context, NullLogger<AlloggiatiCodeTableService>.Instance), timeProvider);
 
-    // The log of what was sent (NF-47): the one the container gives, or, built by hand without it, one on the same context.
     private readonly IComplianceSendLog _sendLog = complianceSendLog ?? new ComplianceSendLog(context, NullLogger<ComplianceSendLog>.Instance);
 
     public async Task<bool> IsStayDataCompleteAsync(Guid bookingId)
@@ -89,7 +78,6 @@ public class AlloggiatiWebService(
             .AsNoTracking()
             .Include(b => b.Guest)
             .Include(b => b.Property)
-            // A no-show (NF-45) has nothing to send: it leaves the list of the communications.
             .Where(b => b.OrgId == scope.OrgId && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
             .Where(AlloggiatiStatusRules.ItalianProperties)
             .Where(OpenableStayRules.CanShow)
@@ -147,7 +135,6 @@ public class AlloggiatiWebService(
         var status = StatusOf(booking, report);
         var stayDays = AlloggiatiTerms.StayDays(booking.CheckInDate, booking.CheckOutDate);
 
-        // One line per guest of the stay, in record order: a head of family or group before its members (CO-12).
         var guests = await _stayGuests.GetForBookingAsync(booking);
         var codeBook = await _codeTables.LoadCodeBookAsync(guests);
         var compositionIssues = AlloggiatiRecordRules.CompositionErrors(guests.Select(g => g.Type).ToList())
@@ -194,7 +181,6 @@ public class AlloggiatiWebService(
             $"alloggiati-{summary.ArrivalDate:yyyy-MM-dd}-{bookingId.ToString("N")[..8]}.txt");
     }
 
-    /// <summary>The most useful reason first: data and codes, then the length of the stay, then a name.</summary>
     private static DomainRuleException RecordFileException(
         AlloggiatiGuestSummaryInfo summary,
         IReadOnlyList<AlloggiatiRecordFileIssue> issues)
@@ -280,7 +266,7 @@ public class AlloggiatiWebService(
             {
                 BookingId = bookingId,
                 GuestId = booking.GuestId,
-                OrgId = booking.OrgId, // the report belongs to its booking's org (TN-2)
+                OrgId = booking.OrgId,
                 Status = AlloggiatiWebStatus.DaInviare,
                 CreatedAt = now,
                 UpdatedAt = now,
@@ -335,8 +321,6 @@ public class AlloggiatiWebService(
         if (report.Status is not (AlloggiatiWebStatus.DaInviare or AlloggiatiWebStatus.Errore))
             return AlloggiatiProcessOutcome.AlreadyHandled;
 
-        // A no-show (NF-45) has nobody to communicate: the job leaves its report alone, and every reader derives "not due" from the no-show mark
-        // (AlloggiatiStatusRules.Effective), so it is never "to send manually" nor overdue.
         if (!AlloggiatiStatusRules.IsDue(booking) || !TouristTaxComune.IsItalianCountry(booking.Property.Country))
             return AlloggiatiProcessOutcome.BookingInactive;
 
@@ -428,7 +412,6 @@ public class AlloggiatiWebService(
         DateTime runAt,
         DateTime now)
     {
-        // Sent (or declared sent) with the data of the earlier guest record: the booking's communication is done.
         if (AlloggiatiStatusRules.IsSent(previous.Status))
             return null;
 
@@ -440,7 +423,6 @@ public class AlloggiatiWebService(
             "Alloggiati report {ReportId} of booking {BookingId} moved to the booking's current guest record",
             previous.Id, booking.Id);
 
-        // A job still to run carries the old guest and would stop as superseded: schedule one for the new guest.
         return previous.Status == AlloggiatiWebStatus.DaInviare
             ? new AlloggiatiReportReservation(previous.Id, booking.Id, booking.GuestId, runAt, previous.ScheduledJobId)
             : null;
@@ -449,9 +431,9 @@ public class AlloggiatiWebService(
     private static bool NeedsScheduling(AlloggiatiWebReport report, DateTime arrivalDayStart, DateTime runAt, DateTime now) =>
         string.IsNullOrEmpty(report.ScheduledJobId)
         || report.ScheduledFor is not { } scheduledFor
-        || scheduledFor > runAt // the check-in date moved earlier
-        || scheduledFor < arrivalDayStart // the check-in date moved later: the job would run too early
-        || scheduledFor < now - LostJobGrace; // the job never ran
+        || scheduledFor > runAt
+        || scheduledFor < arrivalDayStart
+        || scheduledFor < now - LostJobGrace;
 
     private async Task<bool> IsDataCompleteAsync(Booking booking) =>
         AlloggiatiRecordRules.IsDataComplete(await _stayGuests.GetForBookingAsync(booking));
@@ -474,7 +456,6 @@ public class AlloggiatiWebService(
         return await query.ToListAsync();
     }
 
-    /// <summary>The report of the booking's guest, or else the latest report of the booking (same guest slot).</summary>
     private static AlloggiatiWebReport? SlotReport(IReadOnlyCollection<AlloggiatiWebReport> reports, Guid guestId) =>
         AlloggiatiStatusRules.SlotReport(reports, guestId);
 

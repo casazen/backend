@@ -18,17 +18,8 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IAccountantPackageSettingsService
 {
-    /// <summary>The settings of <paramref name="orgId"/>, or the defaults of an organization that has saved none: no address, the send off, the day <see cref="Entities.AccountantPackageSettings.DefaultSendDay"/>, every folder.</summary>
     Task<AccountantPackageSettingsView> GetAsync(Guid orgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Saves the settings of <paramref name="orgId"/> as a whole (the row is created on the first save) and answers them as they are. <paramref name="userId"/> is recorded as who saved them.
-    /// </summary>
-    /// <exception cref="Exceptions.DomainRuleException">
-    /// 422 <c>accountant_package_settings_invalid</c> (a field is missing), <c>accountant_package_recipient_invalid</c> (not a plain address), <c>accountant_package_recipient_missing</c> (the send on with no address),
-    /// <c>accountant_package_send_day_invalid</c> (not 1 to 28), <c>accountant_package_contents_invalid</c> (an empty list, an unknown or a repeated folder), <c>accountant_package_owner_accounting_required</c> (a folder that
-    /// carries the owner accounting, on an agency's organization, from a caller that does not hold <c>agency.statement.view</c>).
-    /// </exception>
     Task<AccountantPackageSettingsView> SaveAsync(
         Guid orgId,
         AccountantPackageSettingsChange change,
@@ -46,11 +37,6 @@ public interface IAccountantPackageSettingsService
 /// <param name="OwnerAccounting">The caller holds <c>agency.statement.view</c> (decided by the web layer, as for the package). <c>false</c> unless said: without it a folder that carries the owner accounting is refused to the caller of an agency's organization.</param>
 public sealed record AccountantPackageSettingsChange(bool? Enabled, string? Email, int? SendDay, IReadOnlyList<string>? Contents, bool OwnerAccounting = false);
 
-/// <summary>What the last attempt to send the package ended in.</summary>
-/// <param name="Period">The month the package was of (<c>yyyy-MM</c>).</param>
-/// <param name="At">When the attempt ended (UTC).</param>
-/// <param name="Result">Sent or failed.</param>
-/// <param name="Error">The stable code of why it failed; <c>null</c> for a send.</param>
 public sealed record AccountantPackageLastSend(string Period, DateTime At, AccountantPackageSendResult Result, string? Error);
 
 /// <summary>The settings of an organization.</summary>
@@ -68,13 +54,8 @@ public sealed record AccountantPackageSettingsView(
     AccountantPackageLastSend? LastSend,
     DateTime? UpdatedAt);
 
-/// <summary>
-/// The folders of the package as the settings name them (E15/F01/US02/T01): the one place that says which bit is which folder and which key of the API stands for it, so the settings, the builder
-/// and the screen never drift.
-/// </summary>
 public static class AccountantPackageFolderRules
 {
-    /// <summary>The folders one by one, in the order of the package (the order of <c>indice.csv</c>).</summary>
     public static IReadOnlyList<AccountantPackageFolders> Singles { get; } =
     [
         AccountantPackageFolders.GuestDocuments,
@@ -101,7 +82,6 @@ public static class AccountantPackageFolderRules
         _ => throw new ArgumentOutOfRangeException(nameof(folder), folder, "Not a single folder of the package."),
     };
 
-    /// <summary>The name of the folder in the ZIP (<see cref="AccountantPackageStructure"/>).</summary>
     public static string FolderOf(AccountantPackageFolders folder) => folder switch
     {
         AccountantPackageFolders.GuestDocuments => AccountantPackageStructure.GuestDocumentsFolder,
@@ -115,7 +95,6 @@ public static class AccountantPackageFolderRules
         _ => throw new ArgumentOutOfRangeException(nameof(folder), folder, "Not a single folder of the package."),
     };
 
-    /// <summary>True for a folder that holds the owner accounting (the invoices to the owners, the statements, the withholding).</summary>
     public static bool IsOwnerAccounting(AccountantPackageFolders folder) =>
         folder is AccountantPackageFolders.OwnerInvoices or AccountantPackageFolders.Statements or AccountantPackageFolders.Withholding;
 
@@ -125,20 +104,11 @@ public static class AccountantPackageFolderRules
     /// </summary>
     public const AccountantPackageFolders OwnerAccountingCarriers = AccountantPackageFolders.OwnerInvoices | AccountantPackageFolders.Statements | AccountantPackageFolders.Withholding | AccountantPackageFolders.AgencySummary | AccountantPackageFolders.Vat;
 
-    /// <summary>
-    /// True when an organization on <paramref name="tier"/> sends the owner accounting in its package: the agency plan, and not in the read-only mode of a downgrade (the plan the <c>agency.*</c> policies ask for, ADR-010). The
-    /// package of any other organization holds no owner accounting, whatever folders it chose.
-    /// </summary>
     public static bool PlanHoldsOwnerAccounting(PlanTier tier, bool agencyTierDowngraded) => tier == PlanTier.Agency && !agencyTierDowngraded;
 
-    /// <summary>The keys of the folders of <paramref name="set"/>, in the order of the package.</summary>
     public static IReadOnlyList<string> KeysOf(AccountantPackageFolders set) =>
         [.. Singles.Where(folder => (set & folder) == folder).Select(KeyOf)];
 
-    /// <summary>
-    /// The set the keys of a request name: exactly the keys of <see cref="KeyOf"/>. <c>false</c> (and <see cref="AccountantPackageFolders.None"/>) for a list that is missing or empty (an empty list never means
-    /// «every folder»), for a key that is not one of them and for a key that is repeated.
-    /// </summary>
     public static bool TryFromKeys(IReadOnlyCollection<string>? keys, out AccountantPackageFolders set)
     {
         set = AccountantPackageFolders.None;

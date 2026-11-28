@@ -147,12 +147,6 @@ public class CrmProfileSyncProofTests
         Assert.All(coGuests, value => Assert.DoesNotContain(value, everything, StringComparison.Ordinal));
     }
 
-    /// <summary>
-    /// Privacy rule: the CRM sync belongs to the marketing module and follows its flag. With the key of the index set but
-    /// <c>Features:CrmMarketing</c> off, the sync is not available and writes nothing, for the booking and for the guest alike: no profile, no
-    /// contact, no proposal and no link on the guest, so no contact data enters tables that the erasure of the guests does not reach yet. The
-    /// same booking is synced as soon as the flag is on.
-    /// </summary>
     [Fact]
     public async Task CrmProfileSync_FlagOff_WritesNothing_Test()
     {
@@ -186,7 +180,6 @@ public class CrmProfileSyncProofTests
             Assert.Null((await db.Guests.AsNoTracking().SingleAsync(Ct)).GuestCrmProfileId);
         }
 
-        // The module is switched on: the same booking is synced.
         flags.Set(FeatureFlags.CrmMarketing, true);
         await using (var db = CrmTestWorld.Open(store))
         {
@@ -203,10 +196,6 @@ public class CrmProfileSyncProofTests
         }
     }
 
-    /// <summary>
-    /// The sync opens with the flag and with the key, neither alone: the key serves the always-on paths too (the suppression list of a
-    /// withdrawal), so only the flag keeps the sync closed with the rest of the module.
-    /// </summary>
     [Theory]
     [InlineData(true, true, true)]
     [InlineData(true, false, false)]
@@ -221,7 +210,6 @@ public class CrmProfileSyncProofTests
         Assert.Equal(expected, CrmProfileSyncGate.IsOpen(flags, index));
     }
 
-    /// <summary>Syncs the bookings in order, each on a context of its own, as the job does (a booking that fails does not leave its tracker to the next).</summary>
     private static async Task RunAsync(DbContextOptions<AppDbContext> store, TimeProvider clock, Guid orgId, params Guid[] bookingIds)
     {
         foreach (var bookingId in bookingIds)
@@ -232,7 +220,6 @@ public class CrmProfileSyncProofTests
         }
     }
 
-    /// <summary>Every row of the CRM and the link of every guest, as text: two equal snapshots are two runs that changed nothing, update times included.</summary>
     private static async Task<string> SnapshotAsync(DbContextOptions<AppDbContext> store)
     {
         await using var db = CrmTestWorld.Open(store);

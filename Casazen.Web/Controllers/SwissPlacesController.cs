@@ -18,7 +18,6 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.SharedPropertyRead)]
 public class SwissPlacesController(ISwissPlacesDirectory directory) : ControllerBase
 {
-    /// <summary>Code of a BFS number the directory does not have (404); the same code as the 422 of a property save.</summary>
     public const string MunicipalityUnknownCode = SwissPlaceErrorCodes.Unknown;
 
     /// <summary>
@@ -42,11 +41,6 @@ public class SwissPlacesController(ISwissPlacesDirectory directory) : Controller
         return Ok(matches.Select(SwissLocalityDto.From).ToList());
     }
 
-    /// <summary>
-    /// One municipality by its BFS number (<c>5192</c> is Lugano): <c>{ municipalityCode, name, cantonCode }</c>. 404
-    /// <c>swiss_municipality_unknown</c> when the directory has no such number (or it is not a number); 422 <c>swiss_places_unavailable</c> when the
-    /// directory is not loaded.
-    /// </summary>
     [HttpGet("municipalities/{bfs}")]
     [ProducesResponseType(typeof(SwissMunicipalityDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -60,22 +54,16 @@ public class SwissPlacesController(ISwissPlacesDirectory directory) : Controller
     }
 }
 
-/// <summary>One locality of <c>GET /api/swiss/localities</c>: its postal code and name, and the municipality (BFS number, name, canton) it lies in.</summary>
 public sealed class SwissLocalityDto
 {
-    /// <summary>The four digits of the postal code.</summary>
     public string PostalCode { get; init; } = string.Empty;
 
-    /// <summary>The name of the locality as the official directory writes it.</summary>
     public string Name { get; init; } = string.Empty;
 
-    /// <summary>The BFS number of the municipality, as a text of digits (<c>"5192"</c>): the value of <c>swissMunicipalityCode</c> on a property.</summary>
     public string MunicipalityCode { get; init; } = string.Empty;
 
-    /// <summary>The official name of the municipality.</summary>
     public string MunicipalityName { get; init; } = string.Empty;
 
-    /// <summary>The two letters of the canton (<c>TI</c>).</summary>
     public string CantonCode { get; init; } = string.Empty;
 
     public static SwissLocalityDto From(SwissLocalityMatch match)
@@ -92,16 +80,12 @@ public sealed class SwissLocalityDto
     }
 }
 
-/// <summary>One municipality of <c>GET /api/swiss/municipalities/{bfs}</c>.</summary>
 public sealed class SwissMunicipalityDto
 {
-    /// <summary>The BFS number, as a text of digits (<c>"5192"</c>).</summary>
     public string MunicipalityCode { get; init; } = string.Empty;
 
-    /// <summary>The official name.</summary>
     public string Name { get; init; } = string.Empty;
 
-    /// <summary>The two letters of the canton (<c>TI</c>).</summary>
     public string CantonCode { get; init; } = string.Empty;
 
     public static SwissMunicipalityDto From(SwissMunicipalityInfo municipality)

@@ -33,14 +33,12 @@ public class TaxReportingNpgsqlTranslationTests
 
     private const RegexOptions Compiled = RegexOptions.Compiled | RegexOptions.CultureInvariant;
 
-    // The statements that need a row to let the code go on: the first of a call, whose answer the next statements are built from.
     private static readonly Regex OwnershipSelect =
         new(@"^SELECT\s+\w+\.""OrgId"",\s*\w+\.""PropertyOwnerId"",\s*\w+\.""PropertyId"",\s*\w+\.""OwnershipStart"",\s*\w+\.""OwnershipEnd""\s+FROM ""PropertyOwnerships""", Compiled);
 
     private static readonly Regex SwissPropertySelect =
         new(@"^SELECT\s+\w+\.""Id"",\s*\w+\.""Name"",\s*\w+\.""Address"",\s*\w+\.""City"",\s*\w+\.""PostalCode"",\s*\w+\.""SwissMunicipalityCode"",\s*\w+\.""Currency"",\s*\w+\.""IsDeleted""\s+FROM ""Properties""", Compiled);
 
-    // The localities of the postal code of a property with the municipality each lies in: the read of the one resolver of the place (E29/F01/US01/T02).
     private static readonly Regex LocalitySelect =
         new(@"^SELECT\s+\w+\.""PostalCode"",\s*\w+\.""NormalizedName"",\s*\w+\.""MunicipalityCode"",\s*\w+\.""OfficialName"",\s*\w+\.""CantonCode""\s+FROM ""SwissLocalities""", Compiled);
 
@@ -50,7 +48,6 @@ public class TaxReportingNpgsqlTranslationTests
     private static readonly Regex StayTaxSelect =
         new(@"^SELECT\s+\w+\.""Id"",\s*\w+\.""BookingId"",\s*\w+\.""ConfirmedAt"" IS NOT NULL AS ""Confirmed"",\s*\w+\.""Status"",\s*\w+\.""Collector"",\s*\w+\.""DeclaredCollector""\s+FROM ""StayTouristTaxes""", Compiled);
 
-    /// <summary>A table of one row: the columns are read by their position, in the order of the SELECT of the statement.</summary>
     private static DataTable Table(params (string Name, Type Type, object Value)[] columns)
     {
         var table = new DataTable();
@@ -61,7 +58,6 @@ public class TaxReportingNpgsqlTranslationTests
         return table;
     }
 
-    /// <summary>The ownership of the caller of the portal: its access is resolved, so the reads of its withholding are sent too.</summary>
     private static DataTable? OwnershipOf(string sql) =>
         OwnershipSelect.IsMatch(sql.TrimStart())
             ? Table(
@@ -72,10 +68,6 @@ public class TaxReportingNpgsqlTranslationTests
                 ("OwnershipEnd", typeof(DateTime), DBNull.Value))
             : null;
 
-    /// <summary>
-    /// A property in Switzerland at 6900 Lugano whose stored municipality number the registry does not have, and a stay of it: the reads of the stored
-    /// municipality (no row), of the localities of its postal code (the place is derived: Ticino), of the stays and of their documents are sent too.
-    /// </summary>
     private static DataTable? TicinoRowsOf(string sql)
     {
         var text = sql.TrimStart();
@@ -111,7 +103,6 @@ public class TaxReportingNpgsqlTranslationTests
             : null;
     }
 
-    /// <summary>The tax of a stay, confirmed: the read of its guests is sent too.</summary>
     private static DataTable? StayTaxOf(string sql) =>
         StayTaxSelect.IsMatch(sql.TrimStart())
             ? Table(
@@ -134,32 +125,26 @@ public class TaxReportingNpgsqlTranslationTests
     private static OwnerPortalService Portal(AppDbContext db) =>
         new(db, Clock, null, new TestFeatureFlags(FeatureFlags.AgencyTier, FeatureFlags.TaxReportingExports), new OwnerPortalAccessResolver(db, Clock));
 
-    /// <summary>The reads of the tourist tax of a stay (its record, then its guests): a method of the service that only the year-end declaration calls.</summary>
     private static Task StayFacts(AppDbContext db)
     {
         var method = typeof(TouristTaxSummaryService).GetMethod("StayFactsAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
         return (Task)method.Invoke(TouristTax(db), [OrgId, new List<Guid> { BookingId }, CancellationToken.None])!;
     }
 
-    /// <summary>What a call runs, how many statements it sends at least (all of them are reached when nothing was swallowed early) and the rows that let it go on.</summary>
     private sealed record Call(Func<AppDbContext, Task> Run, int MinimumStatements, Func<string, DataTable?>? Rows = null);
 
     private static readonly string[] CallNames =
     [
-        // The annual Certificazione Unica data (E18/F01/US02/T01): the evidence of the year, the ownerships and the mandates of the properties, the owners, their profiles and the properties.
         "cu-evidence",
         "cu-reporting-owners",
         "cu-people",
         "cu-stored",
 
-        // The 770 and the communication of the short-let contracts (E18/F01/US02/T02): the evidence of the year as an Italian rule, and the decisions with their reversals.
         "tax-770",
         "contracts-communication",
 
-        // The owner portal: the access, then the evidence of the owner profiles, the agencies and the annual data of each.
         "owner-withholding",
 
-        // The tourist tax at year end (E18/F01/US02/T03): the properties of Ticino, their place (E29/F01/US01/T02), their stays and the documents; the record of a stay and its guests.
         "ticino-count",
         "stay-facts",
     ];
@@ -173,10 +158,8 @@ public class TaxReportingNpgsqlTranslationTests
         "tax-770" => new(db => Withholding(db).Get770DataAsync(OrgId, 2026), 1),
         "contracts-communication" => new(db => Withholding(db).GetContractsCommunicationAsync(OrgId, 2026), 1),
 
-        // The ownership of the caller, its delegations, the evidence of its owner profile, the agencies and the annual data.
         "owner-withholding" => new(db => Portal(db).GetOwnerWithholdingAsync(OwnerUserId, 2026), 4, OwnershipOf),
 
-        // The properties in Switzerland, their stored municipalities, the localities of their postal codes, the stays of the year and the documents issued for them.
         "ticino-count" => new(db => TouristTax(db).GetTicinoYearlyCountAsync(new HostScope(OrgId), 2026), 5, TicinoRowsOf),
         "stay-facts" => new(StayFacts, 2, StayTaxOf),
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, "A call of the list that has no definition."),
@@ -201,7 +184,6 @@ public class TaxReportingNpgsqlTranslationTests
 
         await NpgsqlTranslationProbe.AssertTranslatesAsync(() => call.Run(db));
 
-        // The probe must have got as far as the last query of the call, or it proved nothing about the ones after the first.
         Assert.True(
             statements.Count >= call.MinimumStatements,
             $"{name}: only {statements.Count} of the expected {call.MinimumStatements} statements were reached:{Environment.NewLine}{string.Join(Environment.NewLine + "--" + Environment.NewLine, statements)}");

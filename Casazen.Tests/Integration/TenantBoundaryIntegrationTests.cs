@@ -80,7 +80,6 @@ public class TenantBoundaryIntegrationTests : IClassFixture<CasazenWebApplicatio
     public async Task AC8_CreateProperty_OverStarterLimit_Returns403PlanLimitReached()
     {
         var owner = NewOwner();
-        // Starter limit is 3 — seed the org to exactly the limit.
         await _factory.SeedPropertyAsync(ownerId: owner);
         await _factory.SeedPropertyAsync(ownerId: owner);
         await _factory.SeedPropertyAsync(ownerId: owner);
@@ -99,15 +98,13 @@ public class TenantBoundaryIntegrationTests : IClassFixture<CasazenWebApplicatio
         var ownerA = NewOwner();
         var ownerB = NewOwner();
         var propertyA = await _factory.SeedPropertyAsync(ownerId: ownerA);
-        await _factory.SeedOrgForOwnerAsync(ownerId: ownerB); // B has its own org, no properties
+        await _factory.SeedOrgForOwnerAsync(ownerId: ownerB);
 
         var clientB = _factory.CreateAuthenticatedClient(userId: ownerB, roles: "PropertyOwner");
 
-        // Direct cross-org read is filtered out at the data layer → 404 (never another org's row).
         var byId = await clientB.GetAsync($"/api/properties/{propertyA.Id}");
         Assert.Equal(HttpStatusCode.NotFound, byId.StatusCode);
 
-        // B's collection never contains A's property.
         var list = await clientB.GetAsync("/api/properties");
         Assert.Equal(HttpStatusCode.OK, list.StatusCode);
         using var doc = JsonDocument.Parse(await list.Content.ReadAsStringAsync());
@@ -268,7 +265,6 @@ public class TenantBoundaryIntegrationTests : IClassFixture<CasazenWebApplicatio
     [Fact]
     public async Task UpdateMyPlan_UpgradeWithoutSubscription_Returns403SubscriptionRequired()
     {
-        // #274: the self-serve PUT used to hand out Pro/Scale for free (A1-03, A3-07, A9-02).
         var owner = NewOwner();
         var property = await _factory.SeedPropertyAsync(ownerId: owner);
         var client = _factory.CreateAuthenticatedClient(userId: owner, roles: "PropertyOwner");
@@ -307,7 +303,6 @@ public class TenantBoundaryIntegrationTests : IClassFixture<CasazenWebApplicatio
     [Fact]
     public async Task UpdateMyPlan_BackToStarterWithoutSubscription_Returns200()
     {
-        // A Pro tier nobody pays for (e.g. granted by the old free upgrade) can always go back to Starter.
         var owner = NewOwner();
         var property = await _factory.SeedPropertyAsync(ownerId: owner);
         var orgId = property.OrgId;
@@ -342,7 +337,6 @@ public class TenantBoundaryIntegrationTests : IClassFixture<CasazenWebApplicatio
     [Fact]
     public async Task UpdateMyPlan_AsStaff_Returns403()
     {
-        // Only the org's billing admin may change the plan.
         var staff = NewOwner();
         await _factory.SeedOrgForOwnerAsync(ownerId: staff);
         var client = _factory.CreateAuthenticatedClient(userId: staff, roles: "Staff");
@@ -357,7 +351,6 @@ public class TenantBoundaryIntegrationTests : IClassFixture<CasazenWebApplicatio
     [Fact]
     public async Task AdminUpdateOrgPlan_WithActiveSubscription_Returns409ManagedByStripe()
     {
-        // A1-41: the next Stripe webhook would silently overwrite an admin change.
         var owner = NewOwner();
         var property = await _factory.SeedPropertyAsync(ownerId: owner);
         var orgId = property.OrgId;

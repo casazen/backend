@@ -2,14 +2,12 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
-using Casazen.Core.Models;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Resources;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -70,10 +68,6 @@ public class DocumentPlanServiceTests
         world.Xml.Verify(x => x.Build(It.IsAny<FatturaPaInput>()), Times.Never);
     }
 
-    /// <summary>
-    /// ⚖ I4: a document with a stamp duty says how it is paid: the reference of its issuer, the virtual stamp the issuer confirmed (kept in the snapshot), else
-    /// «da assolvere»; a snapshot written before the issuer said it (a document issued before E17) prints nothing new.
-    /// </summary>
     [Fact]
     public async Task StampDuty_SaysHowItIsPaid_AndADocumentIssuedBeforeStaysAsItWas()
     {
@@ -111,13 +105,11 @@ public class DocumentPlanServiceTests
         Assert.Equal(new FatturaPaId("IT", "01234567897"), input.Issuer.VatId);
         Assert.Equal("TEST Immobiliare Lago Srl", input.Issuer.Denomination);
 
-        // E17/F01/US01/T03: the agency is the third-party issuer (TZ) and the transmitter of the owner's invoice.
         Assert.Equal(FatturaPaIssuedBy.ThirdParty, input.IssuedBy);
         Assert.Equal(("TEST Agenzia Lago Srl", new FatturaPaId("IT", "09876543217")), (input.ThirdPartyIssuer!.Denomination, input.ThirdPartyIssuer.VatId));
         Assert.Equal(new FatturaPaId("IT", "09876543217"), input.Transmitter);
         Assert.Equal(1, (await world.Db.FiscalNumberSequences.SingleAsync(s => s.IssuerProfileId == world.ProfileOf(company))).LastNumber);
 
-        // A booking of a property without owners is the agency's, in the agency's own series: its number 1 too.
         var own = await world.BookingAsync(withOwners: false);
         var agencyDocument = await world.Service.IssueAsync((await world.Service.CreateDraftAsync(own, null)).Id, confirm: true);
         Assert.Equal((world.OrganizationProfile, "2026/1"), (agencyDocument.IssuerProfileId!.Value, agencyDocument.Number));
@@ -230,10 +222,6 @@ public class DocumentPlanServiceTests
         Assert.Equal("SRL2026/1", (await other.Service.IssueAsync(old.Id, confirm: true)).Number);
     }
 
-    /// <summary>
-    /// An owner without an issuer profile that can issue: no draft at all (never a document in the agency's name in its place), 422 <c>owner_issuer_missing</c> for
-    /// the draft and for the check-out path, and the «Da fare» of the owner.
-    /// </summary>
     [Fact]
     public async Task DocumentPlan_OwnerWithoutIssuerProfile_NoDocumentAndATodo()
     {
@@ -274,7 +262,6 @@ public class DocumentPlanServiceTests
         await world.Db.SaveChangesAsync();
         Assert.Equal(profile.Id, Assert.Single((await world.Plans.PlanAsync(booking)).Documents).IssuerProfileId);
 
-        // The same owner's stay in Italy is issued with the Italian rules: its Swiss profile does not issue it, the owner needs an Italian one («Da fare»).
         var italian = await world.Plans.PlanAsync(await world.BookingAsync());
         Assert.Empty(italian.Documents);
         Assert.Equal([owner], italian.OwnersWithoutIssuer);
@@ -283,7 +270,6 @@ public class DocumentPlanServiceTests
         Assert.Equal(world.OrganizationProfile, Assert.Single((await world.Plans.PlanAsync(withoutOwners)).Documents).IssuerProfileId);
     }
 
-    /// <summary>Every text of a PDF content: headings, paragraphs and the cells of the tables, one per line.</summary>
     private static string TextOf(Casazen.Core.Documents.PdfDocumentContent content) =>
         string.Join('\n', new[] { content.Title }.Concat(content.Blocks.SelectMany(TextsOf)));
 
@@ -303,7 +289,6 @@ public class DocumentPlanServiceTests
         Swiss,
     }
 
-    /// <summary>An agency with its complete profile and two properties (Como, Lugano), over one in-memory database with encryption, the shipped tax rules and the issuance on.</summary>
     private sealed class World
     {
         private readonly Dictionary<Guid, Guid> _profiles = [];
@@ -400,7 +385,6 @@ public class DocumentPlanServiceTests
 
         public Guid ProfileOf(Guid owner) => _profiles[owner];
 
-        /// <summary>An owner with a share of both properties from 2025 and, when asked, a mandate and an issuer profile.</summary>
         public async Task<Guid> OwnerAsync(string name, decimal share, bool mandate, OwnerProfile profile)
         {
             var owner = new PropertyOwner { OrgId = OrgId, FirstName = "TEST", LastName = "Proprietario", LegalName = name, Email = $"{Guid.NewGuid():N}@example.com" };
@@ -437,7 +421,6 @@ public class DocumentPlanServiceTests
             return owner.Id;
         }
 
-        /// <summary>A stay that ended in November 2026: 350 with 50 of cleaning and 12 of tourist tax collected by the host.</summary>
         public async Task<Guid> BookingAsync(string country = "IT", bool withOwners = true)
         {
             var propertyId = withOwners ? (country == "CH" ? _propertyCh : _propertyIt) : Guid.NewGuid();

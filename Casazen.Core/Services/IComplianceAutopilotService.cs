@@ -21,9 +21,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IComplianceAutopilotService
 {
-    /// <summary>
-    /// What the assistant would do now, item by item, and what stays with the host: it changes nothing and contacts nobody.
-    /// </summary>
     Task<AutopilotPlan> PlanAsync(HostScope scope, AutopilotCaller caller, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -54,90 +51,69 @@ public sealed record AutopilotCaller(
     Func<Guid, CancellationToken, Task<bool>> CanWriteProperty,
     Func<bool>? AcquireAiPermit = null);
 
-/// <summary>What an item of the cockpit is about.</summary>
 public enum AutopilotTopic
 {
     /// <summary>The data of the guests that Alloggiati Web needs (<see cref="Enums.ComplianceCockpitAction.CompleteGuestCheckIn"/>).</summary>
     GuestData,
 
-    /// <summary>A departure to close (<see cref="Enums.ComplianceCockpitAction.CheckOut"/>).</summary>
     Departure,
 
     /// <summary>An Alloggiati Web communication to send or to fix: the assistant checks it, only the host can send it.</summary>
     Alloggiati,
 }
 
-/// <summary>Who does an item: the assistant now, the assistant later, or only the host.</summary>
 public enum AutopilotItemStatus
 {
-    /// <summary>The assistant does it in the next run.</summary>
     Ready,
 
-    /// <summary>The assistant has done its part, or does it when something else happens (the data of the guests arrive).</summary>
     Waiting,
 
-    /// <summary>Only the host can: <see cref="AutopilotItem.Reason"/> says why.</summary>
     Host,
 }
 
-/// <summary>How an item ended in a run.</summary>
 public enum AutopilotOutcomeStatus
 {
     Done,
     Failed,
 
-    /// <summary>It was no longer to be done when the run came to it (someone else did it, the state changed).</summary>
     Skipped,
 }
 
-/// <summary>How a guest can be reached, as <see cref="AutopilotItem.Channels"/> says.</summary>
 public static class AutopilotChannels
 {
-    /// <summary>The check-in link goes by e-mail from CasaZen.</summary>
     public const string Email = "email";
 
-    /// <summary>A message with the link is ready for the host to send by WhatsApp or SMS from the phone.</summary>
     public const string Chat = "chat";
 }
 
-/// <summary>
-/// Why an item is what it is: stable snake_case codes the web app translates, never a text (the same convention as the cockpit).
-/// </summary>
 public static class AutopilotReasons
 {
-    /// <summary>The caller has no <c>booking.write</c> on the property of the stay.</summary>
     public const string NoPermission = "no_permission";
 
-    // GuestData
     public const string AskGuests = "ask_guests";
     public const string AskedRecently = "asked_recently";
     public const string AskedEnough = "asked_enough";
     public const string AlreadySubmitted = "already_submitted";
     public const string NoContact = "no_contact";
 
-    // Departure
     public const string CloseDeparture = "close_departure";
     public const string AwaitingGuestData = "awaiting_guest_data";
     public const string DepartureToday = "departure_today";
     public const string ArrivalNotRegistered = "arrival_not_registered";
 
-    // Alloggiati
     public const string ReadyToUpload = "ready_to_upload";
     public const string DataMissing = "data_missing";
     public const string CodesToComplete = "codes_to_complete";
 
-    /// <summary>A stay of less than 1 or more than 30 days: the portal takes no file for it.</summary>
     public const string StayDaysInvalid = "stay_days_invalid";
 
     public const string Failed = "failed";
 }
 
-/// <summary>How an item ended: stable codes the web app translates.</summary>
 public static class AutopilotOutcomeCodes
 {
     public const string EmailQueued = "email_queued";
 
-    /// <summary>No e-mail left (or none could): the host sends the message he is given.</summary>
     public const string ChatReady = "chat_ready";
 
     public const string EmailFailed = "email_failed";
@@ -179,10 +155,6 @@ public sealed record AutopilotPlan(IReadOnlyList<AutopilotItem> Items, bool AiAv
 /// <param name="AiWritten">The wording is the AI's (otherwise a plain text of CasaZen).</param>
 public sealed record AutopilotChatDraft(string Language, string Text, string? WhatsAppUrl, string? SmsUrl, bool AiWritten);
 
-/// <summary>How an item ended.</summary>
-/// <param name="Code"><see cref="AutopilotOutcomeCodes"/>; for a failure the code of the rule that refused is in <paramref name="ErrorCode"/>.</param>
-/// <param name="EmailStatus"><c>Queued</c> or <c>Failed</c> for the e-mail of the link; null when none was asked for.</param>
-/// <param name="EmailError">Why the e-mail did not leave (<see cref="Entities.GuestCheckInLinkEmailErrors"/>).</param>
 public sealed record AutopilotOutcome(
     string Key,
     AutopilotTopic Topic,
@@ -196,7 +168,4 @@ public sealed record AutopilotOutcome(
     AutopilotChatDraft? Chat = null,
     string? ErrorCode = null);
 
-/// <param name="AiUsed">The wording of at least one chat message is the AI's.</param>
-/// <param name="AiReason">Why the AI did not write them (<see cref="AiSuggestionFallbackReasons"/>), when it was asked and did not.</param>
-/// <param name="BeyondLimit">What this run did not reach: run again.</param>
 public sealed record AutopilotRunResult(IReadOnlyList<AutopilotOutcome> Outcomes, bool AiUsed, string? AiReason, int BeyondLimit);

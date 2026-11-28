@@ -11,32 +11,26 @@ namespace Casazen.Tests.Qualification;
 // EXISTS and never opens one: the ground-truth files are read by the runner alone and never printed.
 // Codes are never renamed or reused: a new one goes at the end of its list.
 
-/// <summary>The codes of the errors of <see cref="QualificationManifestValidator"/>.</summary>
 public static class QualificationManifestErrorCodes
 {
-    /// <summary>The folder the paths are relative to does not exist.</summary>
     public const string FolderMissing = "manifest_folder_missing";
 
     public const string DatasetIdInvalid = "dataset_id_invalid";
     public const string VersionInvalid = "version_invalid";
 
-    /// <summary>There are no <c>rights</c>: no dataset without the rights it was collected under.</summary>
     public const string RightsMissing = "rights_missing";
 
     public const string RightsPurposeMissing = "rights_purpose_missing";
     public const string RightsConsentReferenceMissing = "rights_consent_reference_missing";
     public const string RightsCollectedByMissing = "rights_collected_by_missing";
 
-    /// <summary><c>trainingUse</c> is true or not declared: the data must be declared apart from any training.</summary>
     public const string RightsTrainingUseNotFalse = "rights_training_use_not_false";
 
     public const string PersonsEmpty = "persons_empty";
     public const string PersonIdInvalid = "person_id_invalid";
 
-    /// <summary>The same person id is listed twice in the same split.</summary>
     public const string PersonIdDuplicate = "person_id_duplicate";
 
-    /// <summary>The same person id is listed in more than one split.</summary>
     public const string PersonInTwoSplits = "person_in_two_splits";
 
     public const string PersonSplitUnknown = "person_split_unknown";
@@ -44,7 +38,6 @@ public static class QualificationManifestErrorCodes
     public const string CaptureIdInvalid = "capture_id_invalid";
     public const string CaptureIdDuplicate = "capture_id_duplicate";
 
-    /// <summary>The capture names a person that is not in <c>persons</c>.</summary>
     public const string CapturePersonUnknown = "capture_person_unknown";
 
     public const string CaptureSessionInvalid = "capture_session_invalid";
@@ -52,43 +45,32 @@ public static class QualificationManifestErrorCodes
     public const string CaptureChannelUnknown = "capture_channel_unknown";
     public const string CaptureKindUnknown = "capture_kind_unknown";
 
-    /// <summary>A capture with neither a document nor a frame sequence.</summary>
     public const string CaptureEmpty = "capture_empty";
 
-    /// <summary>An attack without a class.</summary>
     public const string AttackClassMissing = "attack_class_missing";
 
     public const string AttackClassUnknown = "attack_class_unknown";
 
-    /// <summary>A genuine capture that carries an attack class.</summary>
     public const string AttackClassOnGenuine = "attack_class_on_genuine";
 
     public const string DocumentFormatInvalid = "document_format_invalid";
 
-    /// <summary>The owner of the document is not a person of the dataset, so no impostor pair can be derived from it.</summary>
     public const string DocumentOwnerUnknown = "document_owner_unknown";
 
-    /// <summary>The owner of the document is in another split than the person of the capture: the impostor pair would cross the separation by person.</summary>
     public const string DocumentOwnerSplitMismatch = "document_owner_split_mismatch";
 
     public const string SequenceChallengeInvalid = "sequence_challenge_invalid";
 
-    /// <summary>A path that must be there is not.</summary>
     public const string PathMissing = "path_missing";
 
-    /// <summary>A path that is absolute, goes up (<c>..</c>), or is not a plain relative path.</summary>
     public const string PathInvalid = "path_invalid";
 
-    /// <summary>A relative path inside the folder that points at no file (or, for <c>sequence.dir</c>, no folder).</summary>
     public const string FileMissing = "file_missing";
 
-    /// <summary>With <c>generalization</c>, a collection session is used by captures of persons of different splits.</summary>
     public const string SessionSharedAcrossSplits = "session_shared_across_splits";
 
-    /// <summary>With <c>generalization</c>, a capture device is used by captures of persons of different splits.</summary>
     public const string DeviceSharedAcrossSplits = "device_shared_across_splits";
 
-    /// <summary>Every code, in this order.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
         FolderMissing, DatasetIdInvalid, VersionInvalid, RightsMissing, RightsPurposeMissing, RightsConsentReferenceMissing, RightsCollectedByMissing,
@@ -129,29 +111,17 @@ public sealed record QualificationManifestError(string Code, string? PersonId = 
 /// </summary>
 public static class QualificationCriticalKinds
 {
-    /// <summary>A presentation attack that is a whole check-in.</summary>
     public const string Attack = QualificationCaseKinds.Attack;
 
-    /// <summary>A real person present with the document of another person of the split.</summary>
     public const string ImpostorPair = QualificationCaseKinds.ImpostorPair;
 
-    /// <summary>A document that was altered.</summary>
     public const string Altered = "altered";
 
-    /// <summary>An image that is not a document of the format.</summary>
     public const string Foreign = "foreign";
 
-    /// <summary>Every kind, in this order.</summary>
     public static IReadOnlyList<string> All { get; } = [Attack, ImpostorPair, Altered, Foreign];
 }
 
-/// <summary>
-/// What a split holds (counts only): its persons, its captures (those of its persons), the genuine ones, the impostor pairs (a genuine capture whose document
-/// belongs to another person) and how many distinct couples of persons they make (the evidence of identity separation does not grow by repeating one couple),
-/// the altered and foreign documents, and the attacks per class (every class is listed, 0 when there is none). <see cref="CriticalCheckIns"/> are the whole check-ins (a document and
-/// a sequence together) of each kind of <see cref="QualificationCriticalKinds"/>: the cases of the split the policy takes a decision on and the criterion on critical false approvals
-/// is measured on (null for counts that were not made by the validator).
-/// </summary>
 public sealed record QualificationSplitCounts(
     string Split,
     int Persons,
@@ -164,10 +134,6 @@ public sealed record QualificationSplitCounts(
     IReadOnlyDictionary<string, int> AttacksByClass,
     IReadOnlyDictionary<string, int>? CriticalCheckIns = null)
 {
-    /// <summary>
-    /// The kinds of critical case this split cannot measure: none of its captures is a whole check-in of the kind. A split with no capture is not asked for them (it is not used), and
-    /// counts that do not say are asked for all of them.
-    /// </summary>
     public IReadOnlyList<string> CriticalKindsMissing()
     {
         if (Captures == 0)
@@ -176,7 +142,6 @@ public sealed record QualificationSplitCounts(
         return [.. QualificationCriticalKinds.All.Where(kind => CriticalCheckIns is null || CriticalCheckIns.GetValueOrDefault(kind) == 0)];
     }
 
-    /// <summary>One line, numbers and codes only.</summary>
     public string Describe()
     {
         var attacks = string.Join(", ", AttacksByClass.Select(pair => string.Create(CultureInfo.InvariantCulture, $"{pair.Key}={pair.Value}")));
@@ -190,10 +155,8 @@ public sealed record QualificationSplitCounts(
     }
 }
 
-/// <summary>The codes of the warnings of a manifest: what it is valid without and a qualification cannot do without (never renamed or reused: a new one goes at the end).</summary>
 public static class QualificationManifestWarningCodes
 {
-    /// <summary>A split that has captures has no whole check-in of a kind of critical case: the criterion on critical false approvals cannot be measured on it.</summary>
     public const string CriticalKindMissing = "critical_kind_missing";
 }
 
@@ -206,21 +169,13 @@ public sealed record QualificationManifestWarning(string Code, string Split, str
     }
 }
 
-/// <summary>
-/// The outcome of a validation: the errors (none when the manifest is valid), the counts per split, which are reported also when there are errors, and the warnings: a split that has
-/// captures and no whole check-in of a kind of critical case cannot show that nothing of that kind is approved (a manifest can be valid without them: the development split may do without;
-/// the test split may not, and the final test is not started on it).
-/// </summary>
 public sealed record QualificationManifestReport(IReadOnlyList<QualificationManifestError> Errors, IReadOnlyList<QualificationSplitCounts> Splits)
 {
-    /// <summary>No error: the dataset may be used.</summary>
     public bool IsValid => Errors.Count == 0;
 
-    /// <summary>For each split with captures, each kind of critical case it has no whole check-in of: codes and names only.</summary>
     public IReadOnlyList<QualificationManifestWarning> Warnings =>
         [.. Splits.SelectMany(split => split.CriticalKindsMissing().Select(kind => new QualificationManifestWarning(QualificationManifestWarningCodes.CriticalKindMissing, split.Split, kind)))];
 
-    /// <summary>The errors, the counts and the warnings as text: codes, ids and numbers only, safe to print.</summary>
     public override string ToString()
     {
         var text = new StringBuilder(IsValid ? "valid" : string.Create(CultureInfo.InvariantCulture, $"{Errors.Count} error(s)"));
@@ -237,19 +192,12 @@ public sealed record QualificationManifestReport(IReadOnlyList<QualificationMani
     }
 }
 
-/// <summary>
-/// Validates a <see cref="QualificationDatasetManifest"/> against the folder it lives in: unique ids; each person in exactly one split; captures that name known
-/// persons; the rights, with <c>trainingUse</c> false; when <c>generalization</c> is evaluated, sessions and devices disjoint across the splits; known channels,
-/// kinds and attack classes; every file there, under the folder, by a plain relative path (no absolute path, no <c>..</c>); impostor pairs that can be derived
-/// without crossing the split of the person; and the counts per split and class.
-/// </summary>
 public static class QualificationManifestValidator
 {
     private const int MaxIdLength = 64;
     private const int MaxPathLength = 512;
     private const string ForbiddenPathCharacters = "<>:\"|?*";
 
-    /// <summary>Validates <paramref name="manifest"/>; <paramref name="folder"/> is the folder of the manifest file, the start of every relative path.</summary>
     public static QualificationManifestReport Validate(QualificationDatasetManifest manifest, string folder)
     {
         ArgumentNullException.ThrowIfNull(manifest);
@@ -258,7 +206,6 @@ public static class QualificationManifestValidator
         return new Run(folder).Validate(manifest);
     }
 
-    /// <summary>An id is 1 to 64 ASCII letters, digits, dots, underscores or hyphens, starting with a letter or a digit: nothing a log line could be forged with.</summary>
     private static bool IsSafeId([NotNullWhen(true)] string? value)
     {
         if (value is null || value.Length == 0 || value.Length > MaxIdLength || !char.IsAsciiLetterOrDigit(value[0]))
@@ -278,8 +225,6 @@ public static class QualificationManifestValidator
         return string.Create(CultureInfo.InvariantCulture, $"{list}[{index}]");
     }
 
-    // What the checks of the whole dataset (generalization, counts) need to know about a capture: only values that passed their own check, else null. At is the
-    // position prefix of its errors when the capture has no usable id.
     private sealed record SeenCapture(
         string? Id,
         string At,
@@ -359,7 +304,6 @@ public static class QualificationManifestValidator
                 return;
             }
 
-            // Per valid id: how many times it is listed and in which valid splits, in the order the ids first appear.
             var listed = new Dictionary<string, int>(StringComparer.Ordinal);
             var splitsOf = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
             for (var index = 0; index < persons.Count; index++)
@@ -393,7 +337,6 @@ public static class QualificationManifestValidator
                 else if (times > 1)
                     Add(QualificationManifestErrorCodes.PersonIdDuplicate, personId: id);
 
-                // A person with one split only is placed; one in two splits is refused above and takes no part in the checks that follow.
                 if (splits.Count == 1)
                     _splitOfPerson[id] = splits.Single();
             }
@@ -424,7 +367,6 @@ public static class QualificationManifestValidator
 
         private void CheckCapture(QualificationCapture capture, int index)
         {
-            // Without a usable id the capture is named by its position, which goes in front of the member that failed.
             var id = IsSafeId(capture.Id) ? capture.Id : null;
             var at = id is null ? Position("captures", index) + "." : string.Empty;
 
@@ -494,7 +436,6 @@ public static class QualificationManifestValidator
             return given ? capture.AttackClass : null;
         }
 
-        // Returns the owner of the document when it is a person of the dataset.
         private string? CheckDocument(QualificationDocument document, string? personId, string? id, string at)
         {
             if (!IsSafeId(document.Format))
@@ -532,7 +473,6 @@ public static class QualificationManifestValidator
                 Add(QualificationManifestErrorCodes.SequenceChallengeInvalid, captureId: id, field: at + "sequence.challenge");
         }
 
-        // Existence only: a file is never opened here.
         private void CheckFile(string? relative, bool directory, bool required, string? id, string field)
         {
             if (string.IsNullOrWhiteSpace(relative))
@@ -549,13 +489,10 @@ public static class QualificationManifestValidator
                 return;
             }
 
-            // A folder that is not there was reported once, not once per file.
             if (_folderExists && !(directory ? Directory.Exists(full) : File.Exists(full)))
                 Add(QualificationManifestErrorCodes.FileMissing, captureId: id, field: field);
         }
 
-        // A plain relative path: no control or reserved character, no absolute form (rooted, drive, UNC), no empty segment, no segment that is or ends with a dot (so no
-        // ".." and nothing a file system trims into one), and the resolved path must still start with the folder.
         private bool TryResolve(string relative, out string full)
         {
             full = string.Empty;
@@ -592,8 +529,6 @@ public static class QualificationManifestValidator
             CheckDisjoint(capture => capture.Device, QualificationManifestErrorCodes.DeviceSharedAcrossSplits, "device");
         }
 
-        // One error for every capture whose session (or device) is also used by a capture of another split. The captures are in the order of the manifest, and
-        // the ones that name no known person or no unique split take no part (they are refused already).
         private void CheckDisjoint(Func<SeenCapture, string?> key, string code, string field)
         {
             var splitsOf = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
@@ -631,7 +566,6 @@ public static class QualificationManifestValidator
                 foreach (var attackClass in QualificationAttackClasses.All)
                     attacks[attackClass] = captures.Count(capture => capture.Kind == QualificationCaptureKinds.Attack && capture.AttackClass == attackClass);
 
-                // The whole check-ins (a document and a sequence) of each kind of critical case: the ones the policy takes a decision on.
                 var wholes = captures.Where(capture => capture.WholeCheckIn).ToList();
                 var critical = new Dictionary<string, int>(StringComparer.Ordinal)
                 {

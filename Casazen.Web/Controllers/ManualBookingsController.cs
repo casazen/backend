@@ -67,7 +67,6 @@ public class ManualBookingsController(
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "PropertyNotFound");
         }
 
-        // A payment link starts a payment on the host's Stripe account: it also needs payment.write on the property (NF-74).
         var arrangement = request.PaymentArrangement ?? HostPaymentArrangement.None;
         if (arrangement == HostPaymentArrangement.PaymentLink
             && !await authorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), PaymentOperations.Write))
@@ -97,7 +96,6 @@ public class ManualBookingsController(
                 arrangement),
             cancellationToken);
 
-        // The booking as every other answer shows it: with its property and its guest.
         var booking = await bookingService.GetBookingAsync(result.Booking.Id) ?? result.Booking;
         var response = BookingMapper.Fill(new ManualBookingResponse(), booking, DateTime.UtcNow);
         response.BelowMinimum = result.BelowMinimum;

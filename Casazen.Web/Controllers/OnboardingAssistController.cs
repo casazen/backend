@@ -30,11 +30,6 @@ public sealed class OnboardingAssistController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
-    /// <summary>Asks CasaZen support to do a part, or a panel step, for the host.</summary>
-    /// <response code="200">The request, <c>Requested</c>, with its "To do".</response>
-    /// <response code="404"><c>onboarding_property_not_found</c>.</response>
-    /// <response code="409"><c>assist_request_already_open</c> (a request of the same part and property is open), <c>assist_step_already_done</c>.</response>
-    /// <response code="422"><c>onboarding_part_unknown</c>, <c>assist_context_invalid</c>, <c>panel_step_channel_invalid</c>.</response>
     [HttpPost]
     [PrivateAnswer]
     [ProducesResponseType(typeof(AssistRequestDto), StatusCodes.Status200OK)]
@@ -57,8 +52,6 @@ public sealed class OnboardingAssistController(
         return Ok((await assist.RequestAsync(scope, userId, input, cancellationToken)).ToDto());
     }
 
-    /// <summary>The requests of the org the caller reaches, the most recent first, with their status and the note of support.</summary>
-    /// <response code="200">The requests.</response>
     [HttpGet]
     [PrivateAnswer]
     [ProducesResponseType(typeof(List<AssistRequestDto>), StatusCodes.Status200OK)]

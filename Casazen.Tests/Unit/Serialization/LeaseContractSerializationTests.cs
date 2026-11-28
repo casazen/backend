@@ -2,7 +2,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Enums;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Serialization;

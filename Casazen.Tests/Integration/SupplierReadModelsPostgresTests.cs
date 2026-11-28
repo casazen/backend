@@ -33,8 +33,6 @@ public class SupplierReadModelsPostgresTests : IClassFixture<CasazenWebApplicati
 
     public SupplierReadModelsPostgresTests(CasazenWebApplicationFactory factory) => _factory = factory;
 
-    // ─── The overview, counted by the database ───
-
     [PostgresFact]
     public async Task Overview_CountsOnRealRows_LikeAnIndependentComputationOnTheCalendarOfRome()
     {
@@ -47,10 +45,9 @@ public class SupplierReadModelsPostgresTests : IClassFixture<CasazenWebApplicati
         var body = await client.GetFromJsonAsync<JsonElement>("/api/supplier/dashboard/overview?period=current-month");
 
         var currentDays = (From: new DateOnly(2026, 10, 1), To: new DateOnly(2026, 10, 28));
-        var previousDays = (From: new DateOnly(2026, 9, 3), To: new DateOnly(2026, 9, 30)); // 28 days, adjacent
+        var previousDays = (From: new DateOnly(2026, 9, 3), To: new DateOnly(2026, 9, 30));
         AssertPeriod(body.GetProperty("current"), rows, currentDays);
         AssertPeriod(body.GetProperty("previous"), rows, previousDays);
-        // The test has real edges in it: at least one row falls on each side of both periods.
         Assert.True(rows.Count(r => InDays(r.Created, currentDays)) > 0 && rows.Count(r => InDays(r.Created, previousDays)) > 0);
     }
 
@@ -82,13 +79,13 @@ public class SupplierReadModelsPostgresTests : IClassFixture<CasazenWebApplicati
         var rows = new List<(DateTime PaidAt, int Amount, decimal Percent, ServicePaymentStatus Status)>
         {
             (Utc("2026-10-02T09:00:00Z"), 6000, 10m, ServicePaymentStatus.Paid),
-            (Utc("2026-10-27T10:00:00Z"), 12345, 10m, ServicePaymentStatus.Paid), // 1234.5 -> 1235 away from zero
-            (Utc("2026-09-30T21:59:59Z"), 7000, 3.5m, ServicePaymentStatus.Paid), // 23:59:59 on 30 September in Rome: the period before
-            (Utc("2026-09-30T22:00:00Z"), 8000, 0m, ServicePaymentStatus.Paid), // 00:00 on 1 October: the current one
-            (Utc("2026-10-28T22:59:59Z"), 5000, 10m, ServicePaymentStatus.Paid), // the last second of today (winter time)
-            (Utc("2026-10-28T23:00:00Z"), 9999, 10m, ServicePaymentStatus.Paid), // tomorrow: in neither
-            (Utc("2026-10-10T09:00:00Z"), 4000, 10m, ServicePaymentStatus.Refunded), // not counted
-            (Utc("2026-10-11T09:00:00Z"), 4000, 10m, ServicePaymentStatus.Requested), // not paid
+            (Utc("2026-10-27T10:00:00Z"), 12345, 10m, ServicePaymentStatus.Paid),
+            (Utc("2026-09-30T21:59:59Z"), 7000, 3.5m, ServicePaymentStatus.Paid),
+            (Utc("2026-09-30T22:00:00Z"), 8000, 0m, ServicePaymentStatus.Paid),
+            (Utc("2026-10-28T22:59:59Z"), 5000, 10m, ServicePaymentStatus.Paid),
+            (Utc("2026-10-28T23:00:00Z"), 9999, 10m, ServicePaymentStatus.Paid),
+            (Utc("2026-10-10T09:00:00Z"), 4000, 10m, ServicePaymentStatus.Refunded),
+            (Utc("2026-10-11T09:00:00Z"), 4000, 10m, ServicePaymentStatus.Requested),
         };
         await AddPaymentsAsync(world, rows);
         await using var on = WithClock(Today, paymentsFlag: true);
@@ -108,13 +105,10 @@ public class SupplierReadModelsPostgresTests : IClassFixture<CasazenWebApplicati
         AssertMoney(withFlag.GetProperty("previous"), previous.Sum(r => (long)r.Amount), previous.Sum(r => (long)Fee(r.Amount, r.Percent)));
         Assert.Equal(4, current.Count);
         Assert.Single(previous);
-        // The flag off: the same rows, and no money.
         Assert.False(withoutFlag.GetProperty("onlinePayments").GetBoolean());
         AssertMoney(withoutFlag.GetProperty("current"), 0, 0);
         AssertMoney(withoutFlag.GetProperty("previous"), 0, 0);
     }
-
-    // ─── The counters ───
 
     [PostgresFact]
     public async Task Counts_AreTheNumbersOfTheTabsOnRealRows_AndEqualTheTotalsOfTheLists()
@@ -181,8 +175,6 @@ public class SupplierReadModelsPostgresTests : IClassFixture<CasazenWebApplicati
         Assert.Equal(5, foundByB.GetProperty("total").GetInt32());
     }
 
-    // ─── The search, on PostgreSQL ───
-
     [PostgresFact]
     public async Task Search_APercentOrAnUnderscore_IsTheCharacterItIsInTheLikeOfPostgreSql_AndTheCaseDoesNotMatter()
     {
@@ -205,8 +197,6 @@ public class SupplierReadModelsPostgresTests : IClassFixture<CasazenWebApplicati
         Assert.Equal(new[] { "Pulizia di fine soggiorno" }, await NamesAsync(supplier, "q=PULIZIA"));
         Assert.Equal(new[] { "Pulizia di fine soggiorno" }, await NamesAsync(supplier, "q=fine%20sogg"));
     }
-
-    // ─── helpers ───
 
     private sealed record RowSeed(
         ServiceRequestStatus Status,
@@ -242,10 +232,6 @@ public class SupplierReadModelsPostgresTests : IClassFixture<CasazenWebApplicati
 
     private static bool InDays(DateTime utc, (DateOnly From, DateOnly To) days) => RomeDay(utc) >= days.From && RomeDay(utc) <= days.To;
 
-    /// <summary>
-    /// Requests across September and October: every status, with the dates that go with it, and the instants at the edges of the Rome
-    /// days (a minute before and at midnight in Rome, summer and winter time) that decide which period a request falls in.
-    /// </summary>
     private static List<RowSeed> Rows()
     {
         var rows = new List<RowSeed>();
@@ -261,15 +247,13 @@ public class SupplierReadModelsPostgresTests : IClassFixture<CasazenWebApplicati
             var status = statuses[random.Next(statuses.Length)];
             var tookIt = status is ServiceRequestStatus.PresoInCarico or ServiceRequestStatus.InCorso or ServiceRequestStatus.Completato
                              or ServiceRequestStatus.Pagato
-                         || (status == ServiceRequestStatus.Annullato && random.Next(2) == 0); // cancelled after the take
+                         || (status == ServiceRequestStatus.Annullato && random.Next(2) == 0);
             DateTime? taken = tookIt ? created.AddMinutes(random.Next(1, 3 * 24 * 60)) : null;
             DateTime? completed = status is ServiceRequestStatus.Completato or ServiceRequestStatus.Pagato ? taken!.Value.AddMinutes(random.Next(60, 2000)) : null;
             DateTime? updated = status is ServiceRequestStatus.Rifiutato or ServiceRequestStatus.Annullato ? created.AddMinutes(random.Next(1, 4000)) : null;
             rows.Add(new RowSeed(status, created, taken, completed, updated, null, null));
         }
 
-        // The edges: created a second before and at the first instant of the current month in Rome (summer time: 22:00 UTC the day
-        // before), and a second before and at the first instant of tomorrow in Rome (winter time: 23:00 UTC).
         foreach (var edge in new[] { "2026-09-30T21:59:59Z", "2026-09-30T22:00:00Z", "2026-10-28T22:59:59Z", "2026-10-28T23:00:00Z", "2026-09-02T21:59:59Z", "2026-09-02T22:00:00Z" })
             rows.Add(Row(ServiceRequestStatus.Richiesto, edge));
         foreach (var edge in new[] { "2026-09-30T21:59:59Z", "2026-09-30T22:00:00Z", "2026-10-28T22:59:59Z", "2026-10-28T23:00:00Z" })
@@ -313,7 +297,6 @@ public class SupplierReadModelsPostgresTests : IClassFixture<CasazenWebApplicati
         else
         {
             var mean = takenInPeriod.Average(r => (r.Taken!.Value - r.Created).TotalMinutes);
-            // The database keeps microseconds and .NET 100 ns: a whole-minute average cannot differ by more than one minute at a .5 edge.
             Assert.InRange(period.GetProperty("averageResponseMinutes").GetInt32(), (int)Math.Floor(mean), (int)Math.Ceiling(mean));
         }
     }

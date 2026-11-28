@@ -61,7 +61,6 @@ public class PropertyICalSyncServiceTests
         var blocks = await db.CalendarBlocks.Where(b => b.PropertyId == propertyId).ToListAsync();
         Assert.Single(blocks);
         Assert.Equal("block-1", blocks[0].ExternalUid);
-        // 10:00Z is noon in Rome: nights of 10 and 11 July, stored as midnight UTC of the dates.
         Assert.Equal(new DateTime(2026, 7, 10, 0, 0, 0, DateTimeKind.Utc), blocks[0].StartUtc);
         Assert.Equal(new DateTime(2026, 7, 12, 0, 0, 0, DateTimeKind.Utc), blocks[0].EndUtc);
         Assert.Equal(PropertyICalImportStatus.Success, (await db.PropertyICalFeeds.FirstAsync()).LastImportStatus);
@@ -175,7 +174,6 @@ public class PropertyICalSyncServiceTests
         Assert.DoesNotContain(FakeExternalHttpClient.ExceptionMessage, feed.LastError);
     }
 
-    // PC-11: a feed is added without downloading it (FD-16: the first sync is a background job).
     [Fact]
     public async Task AddFeedAsync_ValidUrl_SavesTrimmedFeedMarkedSyncingWithoutDownloading()
     {
@@ -195,7 +193,6 @@ public class PropertyICalSyncServiceTests
         Assert.Equal(feed.Id, (await db.PropertyICalFeeds.SingleAsync()).Id);
     }
 
-    // PC-11 (A2-11): the host links Airbnb and Booking.com to the same property.
     [Fact]
     public async Task AddFeedAsync_SecondChannelOnTheSameProperty_KeepsBothFeeds()
     {
@@ -232,7 +229,6 @@ public class PropertyICalSyncServiceTests
         Assert.Empty(db.PropertyICalFeeds);
     }
 
-    // Longer URLs would not fit the encrypted column (varchar 4096).
     [Fact]
     public async Task AddFeedAsync_UrlLongerThanTheLimit_ThrowsInvalidUrl()
     {
@@ -306,7 +302,6 @@ public class PropertyICalSyncServiceTests
     public void InferChannel_KnownOtaHosts_MapToTheirChannel(string url, ICalFeedChannel expected) =>
         Assert.Equal(expected, PropertyICalSyncService.InferChannel(new Uri(url)));
 
-    // PC-11: removing a feed deletes its blocks and only those: the other feed and the manual block stay.
     [Fact]
     public async Task RemoveFeedAsync_TwoFeeds_DeletesOnlyTheBlocksOfTheRemovedFeed()
     {
@@ -338,7 +333,6 @@ public class PropertyICalSyncServiceTests
         Assert.Single(db.PropertyICalFeeds);
     }
 
-    // "Sync now" twice: the second click queues nothing while the first sync is pending.
     [Fact]
     public async Task RequestSyncAsync_FeedAlreadySyncing_DoesNotQueueAgain()
     {
@@ -381,7 +375,6 @@ public class PropertyICalSyncServiceTests
         Assert.Null((await db.PropertyICalFeeds.SingleAsync(f => f.Id == airbnb)).LastImportStatus);
     }
 
-    // A job queued before PC-11 carries a property id: it finds no feed and does nothing.
     [Fact]
     public async Task SyncFeedAsync_UnknownId_DoesNothing()
     {
@@ -396,8 +389,6 @@ public class PropertyICalSyncServiceTests
         Assert.Null((await db.PropertyICalFeeds.SingleAsync()).LastImportStatus);
     }
 
-    // PC-10 (A2-10, A9-13): the OTA cancels the only reservation and the feed comes back empty. It is a valid feed:
-    // the imported blocks are removed and the status is Success (the old test expected Failure and kept them).
     [Fact]
     public async Task SyncFeedAsync_ValidFeedWithoutEvents_RemovesImportedBlocksAndSetsSuccess()
     {
@@ -453,7 +444,6 @@ public class PropertyICalSyncServiceTests
         Assert.Equal(PropertyICalImportStatus.Success, (await db.PropertyICalFeeds.FirstAsync()).LastImportStatus);
     }
 
-    // Only a document that is not a readable iCalendar is an error: the blocks are kept, the code is stable.
     [Theory]
     [InlineData("<!DOCTYPE html><html><body>Accedi per continuare</body></html>")]
     [InlineData("")]
@@ -474,7 +464,6 @@ public class PropertyICalSyncServiceTests
         Assert.Equal("existing-block", Assert.Single(await db.CalendarBlocks.ToListAsync()).ExternalUid);
     }
 
-    // An event that cannot be read (end before start) is skipped: it does not fail the feed or the other events.
     [Fact]
     public async Task SyncFeedAsync_UnreadableEvent_IsSkippedAndTheOthersAreImported()
     {
@@ -506,8 +495,6 @@ public class PropertyICalSyncServiceTests
         Assert.Equal("valid-block", Assert.Single(await db.CalendarBlocks.ToListAsync()).ExternalUid);
     }
 
-    // An event still in the feed but unreadable is not proof that its reservation is gone: its block stays, while the
-    // blocks of events that left the feed are removed.
     [Fact]
     public async Task SyncFeedAsync_UnreadableEventOfAnImportedBlock_KeepsThatBlock()
     {
@@ -535,7 +522,6 @@ public class PropertyICalSyncServiceTests
         Assert.Equal("existing-block", Assert.Single(await db.CalendarBlocks.ToListAsync()).ExternalUid);
     }
 
-    // A2-12: a 2000-character SUMMARY and a UID repeated in the feed no longer break the save.
     [Fact]
     public async Task SyncFeedAsync_LongSummaryAndRepeatedUid_StoresFittingUniqueBlocks()
     {
@@ -574,7 +560,6 @@ public class PropertyICalSyncServiceTests
         Assert.Equal(PropertyICalImportStatus.Success, (await db.PropertyICalFeeds.FirstAsync()).LastImportStatus);
     }
 
-    // The feed is removed while it downloads: its result is dropped, no block comes back.
     [Fact]
     public async Task SyncFeedAsync_FeedRemovedDuringTheDownload_WritesNothing()
     {
@@ -608,8 +593,6 @@ public class PropertyICalSyncServiceTests
         Assert.Empty(await db.PropertyICalFeeds.ToListAsync());
     }
 
-    // A2-12: every feed has its own scope, try/catch and error state; an unexpected failure is stored on that feed and
-    // the batch goes on.
     [Fact]
     public async Task SyncAllFeedsAsync_OneFeedThrowsUnexpectedly_StoresItsFailureAndSyncsTheOthers()
     {
@@ -638,7 +621,6 @@ public class PropertyICalSyncServiceTests
         await using (var seedScope = provider.CreateAsyncScope())
         {
             var db = seedScope.ServiceProvider.GetRequiredService<AppDbContext>();
-            // Never synced first: the broken feed runs before the others.
             SeedFeed(db, broken, Guid.NewGuid(), "https://broken.example.com/cal.ics");
             SeedFeed(db, ok1, Guid.NewGuid(), "https://ok-1.example.com/cal.ics", lastImportAt: DateTime.UtcNow.AddHours(-1));
             SeedFeed(db, ok2, Guid.NewGuid(), "https://ok-2.example.com/cal.ics", lastImportAt: DateTime.UtcNow.AddMinutes(-30));
@@ -663,7 +645,6 @@ public class PropertyICalSyncServiceTests
     [Fact]
     public async Task SyncAllFeedsAsync_FeedOfASoftDeletedProperty_IsNotDownloaded()
     {
-        // PC-05: a soft-deleted property keeps its rows, but its calendar is no longer imported.
         const string ics = """
             BEGIN:VCALENDAR
             VERSION:2.0
@@ -695,8 +676,6 @@ public class PropertyICalSyncServiceTests
         Assert.Equal(["https://live.example.com/cal.ics"], client.Requests);
     }
 
-    // ADR-002-R14, E02/F02/US01/T03: once the Octorate calendar of the channel replaced the import, the batch no longer downloads the feed;
-    // the feed and the blocks it imported are kept as they were.
     [Fact]
     public async Task SyncAllFeedsAsync_DeprecatedFeed_IsNotDownloaded_AndTheFeedAndItsBlocksAreKept()
     {
@@ -740,8 +719,6 @@ public class PropertyICalSyncServiceTests
     [Fact]
     public async Task HasOverlappingBlockAsync_AnOctorateBlock_TakesItsNightsLikeAnyOtherBlock()
     {
-        // The nights the Octorate calendar holds closed are blocks without a feed: the booking checks and the public availability read them
-        // through the same occupancy rule (ADR-002-R4).
         await using var db = CreateDb();
         var propertyId = Guid.NewGuid();
         db.CalendarBlocks.Add(new CalendarBlock
@@ -821,7 +798,6 @@ public class PropertyICalSyncServiceTests
         return feed.Id;
     }
 
-    // An imported block belongs to a feed: feedId, or the first feed of the property.
     private static void SeedBlock(
         AppDbContext db,
         Guid propertyId,
@@ -845,7 +821,6 @@ public class PropertyICalSyncServiceTests
         db.SaveChanges();
     }
 
-    // The job's wiring: each feed resolves its own PropertyICalSyncService (and AppDbContext) from a new scope.
     private static ServiceProvider BuildProvider(string databaseName, ISafeExternalHttpClient externalHttpClient)
     {
         var services = new ServiceCollection();
@@ -858,7 +833,6 @@ public class PropertyICalSyncServiceTests
         services.AddScoped<ICalImportService>();
         services.AddScoped<ICalExportService>();
         services.AddScoped<PropertyICalSyncService>();
-        // CO-21: alerts about OTA stays created from blocks; none in these feeds.
         services.AddSingleton(Mock.Of<INotificationService>());
         return services.BuildServiceProvider(validateScopes: true);
     }

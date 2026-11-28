@@ -5,18 +5,11 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs;
 
-/// <summary>
-/// <c>POST /api/properties/{id}/mode/change</c> (PM-02): program the change of the property to <see cref="To"/> on
-/// <see cref="EffectiveDate"/>, a calendar day (<c>2026-12-01</c>) of Europe/Rome, tomorrow at the earliest. The mode is
-/// exclusive: <see cref="To"/> is the other mode than the property has.
-/// </summary>
 public class ScheduleModeChangeRequest
 {
-    /// <summary><c>Short</c> or <c>Long</c>.</summary>
     [Required(ErrorMessage = "PropertyModeTargetRequired")]
     public RentalMode? To { get; set; }
 
-    /// <summary>First day in the new mode (a date, no time).</summary>
     [Required(ErrorMessage = "PropertyModeDateRequired")]
     public DateOnly? EffectiveDate { get; set; }
 }
@@ -113,10 +106,6 @@ public sealed record PropertyModePreviewResponse(
         preview.ScheduledChange is { } scheduled ? PropertyModeChangeDto.From(scheduled) : null);
 }
 
-/// <summary>
-/// <c>GET /api/properties/{id}/mode</c> (PM-02): the mode of the property, the change waiting for its day and the last one
-/// that is over (applied, cancelled or failed).
-/// </summary>
 public sealed record PropertyModeStateResponse(
     Guid PropertyId,
     RentalMode RentalMode,

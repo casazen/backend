@@ -5,10 +5,6 @@ using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// One rate the owner owes the condominium. Ordinary, prior-year balance and extraordinary stay in their own columns
-/// (CondoLedger <c>split_amounts</c>). Once issued, ordinary and extraordinary are not redistributed.
-/// </summary>
 [Table("CondominiumInstallments")]
 public class CondominiumInstallment : ITenantOwned
 {
@@ -29,7 +25,6 @@ public class CondominiumInstallment : ITenantOwned
 
     public DateOnly PeriodStart { get; set; }
 
-    /// <summary>Last day of the slot (CondoLedger scadenza).</summary>
     public DateOnly DueDate { get; set; }
 
     [Column(TypeName = "decimal(18,2)")]

@@ -21,16 +21,11 @@ public interface IAutopilotMessageWriter
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>A text to write: the language of the guest and which message it is (1 first, 2 and 3 reminders).</summary>
 public sealed record AutopilotChatVariant(string Language, int Reminder)
 {
     public string Key => AutopilotChatText.VariantKey(Language, Reminder);
 }
 
-/// <summary>A template with the placeholders of <see cref="AutopilotChatText"/>, and who wrote it.</summary>
 public sealed record AutopilotWrittenText(string Template, bool AiWritten);
 
-/// <param name="Texts">One text per <see cref="AutopilotChatVariant.Key"/> asked.</param>
-/// <param name="AiUsed">At least one text is the AI's.</param>
-/// <param name="AiReason">Why the AI was asked for and not used (<see cref="AiSuggestionFallbackReasons"/>); null when it was used or not asked.</param>
 public sealed record AutopilotWording(IReadOnlyDictionary<string, AutopilotWrittenText> Texts, bool AiUsed, string? AiReason);

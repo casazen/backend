@@ -70,10 +70,6 @@ public sealed class CrmProfileSyncService(
         return CrmSyncOutcome.Synced;
     }
 
-    /// <summary>
-    /// The guest of the org: the one the context already tracks, else a record with the columns the CRM uses and nothing else (it is attached
-    /// by the matching, which only changes the link to the profile).
-    /// </summary>
     private async Task<Guest?> LoadGuestAsync(Guid orgId, Guid guestId, CancellationToken cancellationToken)
     {
         var tracked = db.Guests.Local.FirstOrDefault(g => g.Id == guestId && g.OrgId == orgId);
@@ -101,7 +97,6 @@ public sealed class CrmProfileSyncService(
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    /// <summary>The language of the profile is the language of the contact that was written to last in a page the person was on.</summary>
     private async Task RefreshLanguageAsync(GuestCrmProfile profile, CancellationToken cancellationToken)
     {
         var language = await db.GuestContacts

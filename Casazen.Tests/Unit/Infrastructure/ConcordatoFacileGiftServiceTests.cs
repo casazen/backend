@@ -10,9 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// Tests for ConcordatoFacile gift service (ADR-006).
-/// </summary>
 public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
 {
     private PostgresTestDatabase? _database;
@@ -28,7 +25,6 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
     [PostgresFact]
     public async Task GrantGiftAsync_NewGift_CreatesGiftWithAvailableStatus()
     {
-        // Arrange
         Guid orgId;
         await using (var db = _database!.CreateContext())
         {
@@ -45,14 +41,12 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
 
         var subscriptionId = "sub_test_biennial";
 
-        // Act
         await using (var db = _database.CreateContext())
         {
             var service = new ConcordatoFacileGiftService(db, NullLogger<ConcordatoFacileGiftService>.Instance);
             await service.GrantGiftAsync(orgId, subscriptionId);
         }
 
-        // Assert
         await using (var db = _database.CreateContext())
         {
             var gift = await db.ConcordatoFacileGifts
@@ -70,7 +64,6 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
     [PostgresFact]
     public async Task GrantGiftAsync_GiftAlreadyExists_IsIdempotent()
     {
-        // Arrange
         Guid orgId;
         await using (var db = _database!.CreateContext())
         {
@@ -89,14 +82,12 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
             await service.GrantGiftAsync(orgId, firstSubscriptionId);
         }
 
-        // Act
         await using (var db = _database.CreateContext())
         {
             var service = new ConcordatoFacileGiftService(db, NullLogger<ConcordatoFacileGiftService>.Instance);
             await service.GrantGiftAsync(orgId, secondSubscriptionId);
         }
 
-        // Assert
         await using (var db = _database.CreateContext())
         {
             var gifts = await db.ConcordatoFacileGifts
@@ -115,7 +106,6 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
     [PostgresFact]
     public async Task ConsumeGift_ConcurrentRequests_OnlyOneSucceeds()
     {
-        // Arrange
         Guid orgId;
         var leaseIds = new List<Guid>();
 
@@ -126,7 +116,6 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
             await db.SaveChangesAsync();
             orgId = org.Id;
 
-            // Create a property for the leases
             var property = new Property
             {
                 OrgId = orgId,
@@ -138,7 +127,6 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
             db.Properties.Add(property);
             await db.SaveChangesAsync();
 
-            // Create 5 lease contracts to satisfy the FK constraint
             for (int i = 0; i < 5; i++)
             {
                 var lease = new LeaseContract
@@ -170,14 +158,12 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
 
         var results = await Task.WhenAll(tasks);
 
-        // Assert - exactly one Success, the rest AlreadyConsumedForOtherLease
         var successCount = results.Count(r => r == CfGiftConsumeResult.Success);
         var failureCount = results.Count(r => r == CfGiftConsumeResult.AlreadyConsumedForOtherLease);
 
         Assert.Equal(1, successCount);
         Assert.Equal(4, failureCount);
 
-        // Verify the gift is consumed for exactly one lease
         await using (var db = _database.CreateContext())
         {
             var gift = await db.ConcordatoFacileGifts.FirstAsync(g => g.OrgId == orgId);
@@ -196,7 +182,6 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
     [PostgresFact]
     public async Task ConsumeGift_LeaseOfAnotherOrgOrMissing_Is404_AndTheGiftIsUntouched()
     {
-        // Arrange: org1 has a gift and a lease, org2 has a lease
         Guid org1Id, org2Id, leaseOfOrg1Id, leaseOfOrg2Id;
 
         await using (var db = _database!.CreateContext())
@@ -246,7 +231,6 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
             await service.GrantGiftAsync(org1Id, "sub_org1");
         }
 
-        // Act: org1 tries to spend its gift on org2's lease and on a lease that does not exist
         await using (var db = _database.CreateContext())
         {
             var service = new ConcordatoFacileGiftService(db, NullLogger<ConcordatoFacileGiftService>.Instance);
@@ -258,7 +242,6 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
             Assert.Equal("lease_not_found", missing.Code);
         }
 
-        // Assert: the gift is still available and nothing was recorded on org2's lease
         await using (var db = _database.CreateContext())
         {
             var gift = await db.ConcordatoFacileGifts.FirstAsync(g => g.OrgId == org1Id);
@@ -268,7 +251,6 @@ public sealed class ConcordatoFacileGiftServiceTests : IAsyncLifetime
             Assert.False(await db.LeaseEvents.AnyAsync(e => e.LeaseContractId == leaseOfOrg2Id));
         }
 
-        // On org1's own lease the same gift is consumed
         await using (var db = _database.CreateContext())
         {
             var service = new ConcordatoFacileGiftService(db, NullLogger<ConcordatoFacileGiftService>.Instance);

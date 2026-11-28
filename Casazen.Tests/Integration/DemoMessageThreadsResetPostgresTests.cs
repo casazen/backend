@@ -9,7 +9,6 @@ using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit;
 using Casazen.Tests.Unit.Services;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -45,7 +44,6 @@ public class DemoMessageThreadsResetPostgresTests : IAsyncLifetime
     {
         var world = await SeedAsync();
 
-        // The reset of the conversations, twice: the second one finds nothing and changes nothing.
         await using (var db = NewDb())
         {
             var service = Service(db);
@@ -55,22 +53,18 @@ public class DemoMessageThreadsResetPostgresTests : IAsyncLifetime
 
         await using (var db = NewDb())
         {
-            // Only the conversation a person made is left, with its message; the conversations of the showcase and their messages are gone.
             Assert.Equal(["REAL-1"], await db.OtaMessageThreads.IgnoreQueryFilters().Where(t => t.OrgId == world.OrgId).Select(t => t.OctorateThreadId).ToListAsync());
             Assert.Equal(["REAL-M1"], await db.OtaMessages.IgnoreQueryFilters().Where(m => m.OrgId == world.OrgId).Select(m => m.OctorateMessageId!).ToListAsync());
 
-            // Their markers are gone, the others are not touched (the reset of the houses drops them).
             var markers = await db.TestDataMarkers.IgnoreQueryFilters().Where(m => m.OrgId == world.OrgId).Select(m => m.EntityType).ToListAsync();
             Assert.DoesNotContain(TestDataEntities.OtaMessageThread, markers);
             Assert.Equal(1, markers.Count(type => type == TestDataEntities.GuestThread));
             Assert.Equal(2, markers.Count(type => type == TestDataEntities.Property));
             Assert.Equal(2, markers.Count(type => type == TestDataEntities.Booking));
 
-            // The conversation with the guest of the direct stay is still there: it goes with its booking.
             Assert.Equal(1, await db.GuestThreads.IgnoreQueryFilters().CountAsync(t => t.OrgId == world.OrgId));
         }
 
-        // The houses go as the reset removes them: no showcase conversation is left behind as an unassigned one, and the direct one went with its stay.
         await using (var db = NewDb())
         {
             await db.Bookings.IgnoreQueryFilters().Where(b => b.OrgId == world.OrgId).ExecuteDeleteAsync();
@@ -102,10 +96,6 @@ public class DemoMessageThreadsResetPostgresTests : IAsyncLifetime
         Mock.Of<IFeatureFlags>(),
         Mock.Of<IHostEnvironment>(e => e.EnvironmentName == Environments.Development));
 
-    /// <summary>
-    /// An org with two showcase houses and a stay at each (the markers the reset leaves), the three conversations of the showcase written by the real seed
-    /// code, and one conversation of a channel that a person's sync made, on the first house, with no marker.
-    /// </summary>
     private async Task<World> SeedAsync()
     {
         var kit = new OrgInvitationTestKit(() => _database!.CreateContext());
@@ -169,7 +159,6 @@ public class DemoMessageThreadsResetPostgresTests : IAsyncLifetime
 
         await using (var db = NewDb())
         {
-            // The seed wrote what it should: the two conversations of channels of the showcase next to the real one, and the direct one with its marker.
             Assert.Equal(3, await db.OtaMessageThreads.IgnoreQueryFilters().CountAsync(t => t.OrgId == orgId));
             Assert.Equal(2, await db.TestDataMarkers.IgnoreQueryFilters().CountAsync(m => m.OrgId == orgId && m.EntityType == TestDataEntities.OtaMessageThread));
             Assert.Equal(1, await db.TestDataMarkers.IgnoreQueryFilters().CountAsync(m => m.OrgId == orgId && m.EntityType == TestDataEntities.GuestThread));

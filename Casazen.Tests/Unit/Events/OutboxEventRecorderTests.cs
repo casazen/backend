@@ -76,16 +76,11 @@ public class OutboxEventRecorderTests
         Assert.Empty(db.ChangeTracker.Entries<OutboxEvent>());
     }
 
-    /// <summary>
-    /// Proof of ADR-022-R1 on PostgreSQL: the domain change and its event commit together. A change rolled back takes its event with
-    /// it, a change the database refuses leaves no event behind, and a committed change has its event.
-    /// </summary>
     [PostgresFact]
     public async Task OutboxEventRecorder_TransactionSafety_Test()
     {
         await using var database = await PostgresTestDatabase.CreateMigratedAsync("outbox");
 
-        // 1. The use case's transaction is rolled back after SaveChanges: neither the change nor its event stays.
         var rolledBack = NewRoutine("rolled back");
         await using (var db = database.CreateContext())
         {
@@ -96,7 +91,6 @@ public class OutboxEventRecorderTests
             await transaction.RollbackAsync();
         }
 
-        // 2. The database refuses the change (a foreign key): the event saved by the same SaveChanges is refused with it.
         var refusedEntity = Guid.NewGuid();
         await using (var db = database.CreateContext())
         {
@@ -105,7 +99,6 @@ public class OutboxEventRecorderTests
             await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
         }
 
-        // 3. Committed: the change and its event are both there.
         var committed = NewRoutine("committed");
         await using (var db = database.CreateContext())
         {
@@ -139,7 +132,6 @@ public class OutboxEventRecorderTests
         Active = false,
     };
 
-    /// <summary>The tenant of an authenticated request of <paramref name="orgId"/>.</summary>
     private sealed class RequestTenant(Guid orgId) : ITenantContext
     {
         public Guid? OrgId { get; } = orgId;

@@ -27,11 +27,6 @@ public class EmailTextsGuestParityTests
         "EmailTexts.es.resx",
     ];
 
-    /// <summary>
-    /// The prefixes of the keys of the guest e-mails: the layout of a guest e-mail, the keys the guest templates share (<c>Guest_</c>, <c>Booking_</c>) and the ones of the confirmation, the check-in link and its reminder,
-    /// the check-in message of the chat, the video call of the verification, the payment link, the cancellation link, the review invitation, the answer of the host, the document of
-    /// the stay, «Prepara il tuo arrivo» (the e-mail with the stay link) and the one that lets a guest find its link. A new guest template adds its prefix here, and its texts to the five files.
-    /// </summary>
     public static readonly string[] GuestKeyPrefixes =
     [
         "Layout_PoweredBy",
@@ -51,10 +46,6 @@ public class EmailTextsGuestParityTests
         "GuestPortalLinkRequested_",
     ];
 
-    /// <summary>
-    /// PROOF TEST (what a guest reads in its own language): for every prefix of a guest e-mail the set of keys is the same in the five files, and a key that is missing fails the test
-    /// with its name and the file it is missing from.
-    /// </summary>
     [Fact]
     public void GuestTemplates_HaveSameKeysInAllFiveLanguages()
     {
@@ -72,13 +63,11 @@ public class EmailTextsGuestParityTests
 
         Assert.True(missing.Count == 0, string.Join("; ", missing));
 
-        // The guest e-mails are there at all (a prefix that matches nothing would pass for ever).
         Assert.True(GuestKeys("EmailTexts.resx", "GuestBookingConfirmed_").Count >= 10);
         Assert.True(GuestKeys("EmailTexts.resx", "Booking_").Count >= 10);
         Assert.Contains("FiscalDocumentDelivery_Kind_CreditNote", GuestKeys("EmailTexts.resx", "FiscalDocumentDelivery_"));
     }
 
-    /// <summary>A translation is a translation: no German, French or Spanish guest text is the Italian one (a text pasted in the wrong file).</summary>
     [Theory]
     [InlineData("EmailTexts.de.resx")]
     [InlineData("EmailTexts.fr.resx")]
@@ -144,27 +133,20 @@ public class EmailTextsGuestParityTests
         {
             var culture = language == "it" ? CultureInfo.GetCultureInfo("it-IT") : CultureInfo.GetCultureInfo(language);
 
-            // The portal on: the brand of the host, the sentence without a name, in every language.
             var branded = Render(culture, branding);
             Assert.Contains(Sentence(EmailTexts.Get("BookingPaymentLink_Secure", culture)), branded, StringComparison.Ordinal);
             Assert.All(BannedSuppliers, name => Assert.DoesNotContain(name, branded, StringComparison.OrdinalIgnoreCase));
 
-            // A language the portal added never names it, brand or not (an e-mail whose brand could not be read).
             if (language is not ("it" or "en"))
                 Assert.All(BannedSuppliers, name => Assert.DoesNotContain(name, Render(culture, null), StringComparison.OrdinalIgnoreCase));
         }
 
-        // The portal off (no brand): the sentence of today, to the byte, in the two languages there were.
         Assert.Contains(Sentence(todayItalian), Render(CultureInfo.GetCultureInfo("it-IT"), null), StringComparison.Ordinal);
         Assert.Contains(Sentence(todayEnglish), Render(CultureInfo.GetCultureInfo("en"), null), StringComparison.Ordinal);
         Assert.DoesNotContain("Stripe", Render(CultureInfo.GetCultureInfo("it-IT"), branding), StringComparison.Ordinal);
         Assert.DoesNotContain("Stripe", Render(CultureInfo.GetCultureInfo("en"), branding), StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// PROOF TEST (AC1: no missing key, no unfilled placeholder): every template of a guest renders, subject and body, in each of the five languages with every one of its branches, and
-    /// leaves no <c>{0}</c>, no empty text and no key name behind.
-    /// </summary>
     [Theory]
     [InlineData("it")]
     [InlineData("en")]
@@ -240,7 +222,6 @@ public class EmailTextsGuestParityTests
         Assert.True(problems.Count == 0, string.Join("; ", problems.Distinct()));
     }
 
-    /// <summary>The message of the chat with the check-in link exists in the five languages too.</summary>
     [Theory]
     [InlineData("it", "Buongiorno")]
     [InlineData("en", "Hello")]
@@ -265,11 +246,6 @@ public class EmailTextsGuestParityTests
         Assert.DoesNotMatch(@"\{\d+\}", withStay);
     }
 
-    /// <summary>
-    /// PROOF TEST (money: exact to the cent, in the currency of the house, no conversion): an amount of a booking is written the way the language of the e-mail writes it. English puts the euro
-    /// in front of the number; Italian, German, French and Spanish put it after it, with the separators of their language; the franc is <c>CHF</c> in front of the number in every language. The
-    /// space of a French number (thousands) is a non-breaking one: it is compared as a plain space, whatever the version of the locale data says.
-    /// </summary>
     [Theory]
     [InlineData("it", "EUR", "1.262,50 €", "9,90 €")]
     [InlineData("en", "EUR", "€1,262.50", "€9.90")]
@@ -289,10 +265,6 @@ public class EmailTextsGuestParityTests
         Assert.Equal(small, PlainSpaces(EmailTemplates.Money(9.90m, currency, culture)));
     }
 
-    /// <summary>
-    /// What the confirmation of a booking prints is the amount of the booking, to the cent, written in the language of the guest: the total line of the e-mail in each of the five languages (euro)
-    /// and in German and French for the franc.
-    /// </summary>
     [Theory]
     [InlineData("it", "EUR", "Totale: <strong>1.262,50 €</strong>")]
     [InlineData("en", "EUR", "Total: <strong>€1,262.50</strong>")]
@@ -313,7 +285,6 @@ public class EmailTextsGuestParityTests
         Assert.Contains(expectedLine, PlainSpaces(System.Net.WebUtility.HtmlDecode(content.HtmlBody)), StringComparison.Ordinal);
     }
 
-    /// <summary>A number written with a non-breaking space (the thousands of a French amount) compared as the plain space a person types.</summary>
     private static string PlainSpaces(string text) => text.Replace('\u00A0', ' ').Replace('\u202F', ' ');
 
     private static bool IsGuestKey(string key) => GuestKeyPrefixes.Any(prefix => key.StartsWith(prefix, StringComparison.Ordinal));

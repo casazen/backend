@@ -12,10 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>
-/// NF-99, E07/F03/US03: what <c>AddDocumentArchive</c> registers (the exact list of the sources, so a new one is added here on purpose, and the
-/// container can build the service), who may read each source, the keys of the types and the caps of the export.
-/// </summary>
 public class DocumentArchiveRegistrationTests
 {
     [Fact]
@@ -68,7 +64,6 @@ public class DocumentArchiveRegistrationTests
         Assert.Equal(DocumentArchiveOptions.DefaultMaxExportFiles, provider.GetRequiredService<IOptions<DocumentArchiveOptions>>().Value.MaxExportFiles);
     }
 
-    /// <summary>Who may read each source: the permission of the area its documents belong to, in the context that grants it.</summary>
     [Fact]
     public void EachSource_SaysWhichPermissionReadsIt()
     {
@@ -134,8 +129,6 @@ public class DocumentArchiveRegistrationTests
             [ArchiveDocumentType.AlloggiatiReceipt, ArchiveDocumentType.IstatProof],
             Enum.GetValues<ArchiveDocumentType>().Where(ArchiveDocumentTypes.IsComplianceProof));
     }
-
-    // ---------------------------------------------------------------- the caps
 
     [Fact]
     public void TheDefaultCaps_AreThreeHundredDocumentsAndTwoHundredMegabytes_AndAreValid()

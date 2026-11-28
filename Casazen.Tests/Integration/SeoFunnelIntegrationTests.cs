@@ -13,10 +13,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// SE-04 (A8-10, A8-11, A8-18; #300 AC2, AC3, AC9) through the whole pipeline: the featured properties of a comune, the
-/// anonymous funnel events with no personal data, the admin report and the retention.
-/// </summary>
 public class SeoFunnelIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private readonly CasazenWebApplicationFactory _factory;
@@ -25,14 +21,11 @@ public class SeoFunnelIntegrationTests : IClassFixture<CasazenWebApplicationFact
 
     private static StringContent Json(object body) => new(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
 
-    // ─── AC3: events ─────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task RecordEvent_AnonymousCtaClick_Returns204AndStoresOnlyTheNonPersonalFields()
     {
         var before = await CountEventsAsync("013075");
         using var client = _factory.CreateClient();
-        // Headers a tracker would be tempted to store: none of them may reach the row.
         client.DefaultRequestHeaders.Add("X-Forwarded-For", "203.0.113.77");
         client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (test)");
         client.DefaultRequestHeaders.Add("Cookie", "visitor=abc123");
@@ -112,13 +105,10 @@ public class SeoFunnelIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    // ─── AC9: admin report ───────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task TopComuni_AsAdmin_ReturnsClicksAndStartsOfTheComuneWithTheRetention()
     {
         using var anonymous = _factory.CreateClient();
-        // A comune of its own for this test: the class shares one database.
         for (var i = 0; i < 3; i++)
             Assert.Equal(HttpStatusCode.NoContent, (await anonymous.PostAsync("/api/public/seo/events", Json(new { @event = "cta_click", comuneSlug = "palermo" }))).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await anonymous.PostAsync("/api/public/seo/events", Json(new { @event = "signup_start", comuneSlug = "palermo" }))).StatusCode);
@@ -155,8 +145,6 @@ public class SeoFunnelIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.Equal(HttpStatusCode.Forbidden, (await host.GetAsync("/api/admin/seo/top-comuni")).StatusCode);
     }
 
-    // ─── Retention ───────────────────────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task PurgeExpired_DeletesOnlyTheEventsOlderThanTheRetention()
     {
@@ -178,8 +166,6 @@ public class SeoFunnelIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.Contains(edge.Id, left);
         Assert.Contains(recent.Id, left);
     }
-
-    // ─── AC2: featured properties ────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task FeaturedProperties_Comune_ListsOnlyThePublishedPropertiesOfThatComuneWithTheirBookingKeys()
@@ -209,7 +195,6 @@ public class SeoFunnelIntegrationTests : IClassFixture<CasazenWebApplicationFact
         Assert.Equal(org.Slug, only.GetProperty("orgSlug").GetString());
         Assert.Equal("Como", only.GetProperty("city").GetString());
         Assert.Equal("https://cdn.example.test/foto-1.jpg", only.GetProperty("photoUrl").GetString());
-        // The anonymous card carries no owner, no address and no tax data.
         Assert.False(only.TryGetProperty("ownerId", out _));
         Assert.False(only.TryGetProperty("address", out _));
         Assert.False(only.TryGetProperty("cinCode", out _));
@@ -278,11 +263,8 @@ public class SeoFunnelIntegrationTests : IClassFixture<CasazenWebApplicationFact
         var tag = Guid.NewGuid().ToString("N")[..8];
         // Chosen from the official list: found by the code even if the free-text city is spelled differently.
         await SeedPropertyAsync(org, $"Con codice {tag}", "Lago di Como", p => p.ComuneIstatCode = "013075");
-        // Code of another comune wins over a city text that says Como: not listed under Como.
         await SeedPropertyAsync(org, $"Codice altrove {tag}", "Como", p => p.ComuneIstatCode = "058091");
-        // No code yet: the city name is the documented fallback.
         await SeedPropertyAsync(org, $"Solo citta {tag}", "como");
-        // No code and another city: not listed.
         await SeedPropertyAsync(org, $"Altra citta {tag}", "Roma");
         using var client = _factory.CreateClient();
 

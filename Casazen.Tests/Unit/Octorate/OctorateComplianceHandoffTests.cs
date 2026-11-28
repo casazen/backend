@@ -46,19 +46,16 @@ public class OctorateComplianceHandoffTests
         await using var db = new AppDbContext(options);
         var started = 0;
 
-        // The destination is the configuration's, never the caller's. The request has no member that could carry an address.
         var members = new[] { "BookingId", "Period", "PropertyId", "ReturnPath", "Topic" };
         Assert.Equal(members, typeof(OctorateHandoffRequest).GetProperties().Select(p => p.Name).Order(StringComparer.Ordinal));
         Assert.Equal(members, typeof(OctorateComplianceHandoffRequest).GetProperties().Select(p => p.Name).Order(StringComparer.Ordinal));
 
-        // Nothing configured but the panel: the host is sent to its authenticated home.
         var home = await NewService(db, new OctorateComplianceHandoffOptions())
             .StartAsync(world.OrgWide, world.OwnerUserId, Request(world.Granted.Id, bookings.Granted, "2026-10"));
         started++;
         Assert.Equal(PanelUrl, home.Destination.Url);
         Assert.Equal(OctorateHandoffDestinationKind.Home, home.Destination.Kind);
 
-        // A deep link counts only when a person verified it, and only as configured, on the allowlist.
         const string deepLink = "https://admin.octorate.test/octobook/pms/alloggiati";
         var verified = await NewService(db, WithAlloggiatiLink(deepLink, verified: true))
             .StartAsync(world.OrgWide, world.OwnerUserId, Request(world.Granted.Id, bookings.Granted));
@@ -71,7 +68,6 @@ public class OctorateComplianceHandoffTests
         started++;
         Assert.Equal(PanelUrl, unverified.Destination.Url);
 
-        // A link of another host can be allowlisted by configuration only.
         const string otherHostLink = "https://static.octorate.test/help/alloggiati";
         var notListed = await NewService(db, WithAlloggiatiLink(otherHostLink, verified: true))
             .StartAsync(world.OrgWide, world.OwnerUserId, Request(world.Granted.Id, bookings.Granted));
@@ -83,7 +79,6 @@ public class OctorateComplianceHandoffTests
         started++;
         Assert.Equal(otherHostLink, listed.Destination.Url);
 
-        // A verified link that is not a trusted https address of an allowlisted host is never used: the home is.
         string[] untrusted =
         [
             "https://evil.example/octobook/pms/alloggiati",
@@ -107,7 +102,6 @@ public class OctorateComplianceHandoffTests
             Assert.Equal(OctorateHandoffDestinationKind.Home, result.Destination.Kind);
         }
 
-        // No panel and no valid link: no destination, and the host stays in CasaZen.
         var unavailable = await Assert.ThrowsAsync<DomainConflictException>(
             () => NewService(db, WithAlloggiatiLink("https://evil.example/", verified: true), panelBaseUrl: null)
                 .StartAsync(world.OrgWide, world.OwnerUserId, Request(world.Granted.Id, bookings.Granted)));
@@ -116,8 +110,6 @@ public class OctorateComplianceHandoffTests
             OctorateHandoffGuides.AlloggiatiDaily,
             Assert.IsType<string>(unavailable.Extensions[OctorateComplianceHandoffService.GuideCodeExtension]));
 
-        // The route to come back to is a relative route of CasaZen: whatever a browser could read as another site is refused, and the
-        // route that passes is only echoed, never the destination.
         var service = NewService(db, new OctorateComplianceHandoffOptions());
         string[] notRoutes =
         [
@@ -150,15 +142,12 @@ public class OctorateComplianceHandoffTests
         Assert.Equal(ReturnPath, echoed.ReturnPath);
         Assert.NotEqual(echoed.ReturnPath, echoed.Destination.Url);
 
-        // The org-wide scope reaches the properties of its org, the collaborator «Solo alcuni» only the one it was given.
         var hiddenForOwner = await service.StartAsync(world.OrgWide, world.OwnerUserId, Request(world.Hidden.Id, bookings.Hidden));
         started++;
         Assert.Equal(world.Hidden.Name, hiddenForOwner.PropertyName);
         await service.StartAsync(world.Restricted, world.CollaboratorId, Request(world.Granted.Id, bookings.Granted));
         started++;
 
-        // Everything that is not the caller's answers the same 404: a property out of the reach, another org's property or booking,
-        // a booking that is not the property's, an id nobody has.
         await AssertNotFoundAsync(() => service.StartAsync(world.Restricted, world.CollaboratorId, Request(world.Hidden.Id, null)));
         await AssertNotFoundAsync(() => service.StartAsync(world.Restricted, world.CollaboratorId, Request(world.Hidden.Id, bookings.Hidden)));
         await AssertNotFoundAsync(() => service.StartAsync(world.OrgWide, world.OwnerUserId, Request(world.OtherOrgProperty.Id, null)));
@@ -170,12 +159,10 @@ public class OctorateComplianceHandoffTests
         await AssertNotFoundAsync(() => service.StartAsync(world.OrgWide, world.OwnerUserId, Request(Guid.NewGuid(), null)));
         await AssertNotFoundAsync(() => service.StartAsync(world.OrgWide, world.OwnerUserId, Request(world.Granted.Id, Guid.NewGuid())));
 
-        // A property CasaZen has not connected to Octorate has nothing to check there.
         var notMapped = await Assert.ThrowsAsync<DomainConflictException>(
             () => service.StartAsync(world.OrgWide, world.OwnerUserId, Request(unmapped, null)));
         Assert.Equal(OctorateComplianceHandoffService.PropertyNotMappedCode, notMapped.Code);
 
-        // Only the handoffs that were prepared left a line; every refusal wrote nothing.
         await using var verify = new AppDbContext(options);
         Assert.Equal(started, await verify.OrgActivityEntries.CountAsync());
     }
@@ -213,7 +200,6 @@ public class OctorateComplianceHandoffTests
 
         var after = await SnapshotAsync(options);
 
-        // The handoff wrote the line of the activity log and nothing else: not a status, a receipt, a proof or any other row of any table.
         var log = typeof(OrgActivityEntry).Name;
         Assert.Equal(before.Keys, after.Keys);
         foreach (var (table, rows) in before.Where(entry => entry.Key != log))
@@ -222,7 +208,6 @@ public class OctorateComplianceHandoffTests
         Assert.Empty(before[log]);
         Assert.Single(after[log]);
 
-        // The line holds the transition and ids only: who, where, what and when, no guest, no credential, no outcome.
         await using var verify = new AppDbContext(options);
         var line = await verify.OrgActivityEntries.AsNoTracking().SingleAsync();
         Assert.Equal(world.Scope.OrgId, line.OrgId);
@@ -248,7 +233,6 @@ public class OctorateComplianceHandoffTests
         Assert.DoesNotContain(world.PropertyName, text, StringComparison.Ordinal);
         Assert.DoesNotContain(handoff.Destination.Url, text, StringComparison.Ordinal);
 
-        // What the host is given: an opaque short-lived id, the address from the configuration, a guide, the property and the stay by name and code.
         Assert.Matches("^[0-9a-f]{32}$", handoff.HandoffId);
         Assert.Equal(Now.UtcDateTime, handoff.StartedAt);
         Assert.Equal(Now.UtcDateTime.AddMinutes(OctorateComplianceHandoffOptions.DefaultLifetimeMinutes), handoff.ExpiresAt);
@@ -258,7 +242,6 @@ public class OctorateComplianceHandoffTests
         Assert.Equal("Trullo su Octorate", handoff.OctorateListingName);
         Assert.NotNull(handoff.BookingCode);
 
-        // There is no way to complete the handoff or to report an outcome: one operation in the service, one action in the API.
         Assert.Single(typeof(IOctorateComplianceHandoffService).GetMethods());
         var actions = typeof(OctorateComplianceHandoffController)
             .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
@@ -267,8 +250,6 @@ public class OctorateComplianceHandoffTests
         var action = Assert.Single(actions);
         Assert.Equal(new[] { "POST" }, Assert.Single(action.GetCustomAttributes<HttpMethodAttribute>()).HttpMethods);
     }
-
-    // ─── Shared set-up ──────────────────────────────────────────────────────────────────────────────────
 
     private OctorateComplianceHandoffService NewService(
         AppDbContext db,
@@ -306,10 +287,6 @@ public class OctorateComplianceHandoffTests
 
     private sealed record HandoffWorld(HostScope Scope, string OwnerUserId, Guid PropertyId, string PropertyName, Guid BookingId);
 
-    /// <summary>
-    /// The connection and the confirmed mapping of every property of the scenario (two of the org, one of another org) and the
-    /// first stay of each of them.
-    /// </summary>
     private static async Task<Bookings> SeedMappingsAsync(AppDbContext db, HostScopeWorld world)
     {
         var connection = new OctorateConnection { OrgId = world.OrgId, Environment = OctorateEnvironment.Test, Status = OctorateConnectionStatus.Connected };
@@ -327,7 +304,6 @@ public class OctorateComplianceHandoffTests
             await FirstBookingOfAsync(db, world.OtherOrgProperty.Id));
     }
 
-    /// <summary>A property of the org whose listing was only proposed: not confirmed, so not connected.</summary>
     private static async Task<Guid> SeedUnmappedPropertyAsync(AppDbContext db, HostScopeWorld world)
     {
         var property = HostScopeScenario.NewProperty(world.OrgId, world.OwnerUserId, "Casa Senza Annuncio");
@@ -358,7 +334,6 @@ public class OctorateComplianceHandoffTests
             PropertyId = propertyId,
         };
 
-    /// <summary>The owner, the first property of its org and its first stay, as the database holds them after the set-up.</summary>
     private static async Task<HandoffWorld> ReadWorldAsync(AppDbContext db)
     {
         var mapping = await db.OctorateListingMappings.AsNoTracking().OrderBy(m => m.OctorateAccommodationId).FirstAsync();
@@ -367,9 +342,6 @@ public class OctorateComplianceHandoffTests
         return new HandoffWorld(new HostScope(property.OrgId), property.OwnerId, property.Id, property.Name, bookingId);
     }
 
-    /// <summary>
-    /// Every row of every table of the model, one string per row: the same text before and after means the call changed nothing there.
-    /// </summary>
     private static async Task<SortedDictionary<string, string[]>> SnapshotAsync(DbContextOptions<AppDbContext> options)
     {
         await using var db = new AppDbContext(options);

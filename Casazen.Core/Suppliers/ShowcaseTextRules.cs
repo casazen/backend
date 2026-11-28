@@ -55,11 +55,6 @@ public static class ShowcaseTextRules
         ("contact", Rx(@"https?:|www\.|@|\[(?:tel|email|cf)\]|\d{6,}"), false),
     ];
 
-    /// <summary>
-    /// Keeps of the answer of the model (<paramref name="aiContent"/>, a JSON object) the members of <paramref name="fields"/> that fit their
-    /// limits, are plain text and make no claim the supplier did not make. <paramref name="supplierWritten"/> is everything the supplier wrote:
-    /// the only place a claim of the forbidden kinds may come from.
-    /// </summary>
     public static ShowcaseTextOutcome Check(string? aiContent, IReadOnlyCollection<string> fields, IEnumerable<string?> supplierWritten)
     {
         ArgumentNullException.ThrowIfNull(fields);
@@ -106,11 +101,6 @@ public static class ShowcaseTextRules
         return new ShowcaseTextOutcome(tagline, intro, bio, prep, rejected);
     }
 
-    /// <summary>
-    /// The first kind of claim <paramref name="text"/> makes that the supplier did not make (<c>guarantee</c>, <c>certification</c>,
-    /// <c>insurance</c>, <c>rating</c>, <c>time</c>, <c>experience</c>, <c>price</c>, <c>quality</c>, <c>platform</c>, <c>contact</c>, or
-    /// <c>number</c> for a figure nobody gave), or <c>null</c> when it makes none.
-    /// </summary>
     public static string? FindUnsupportedClaim(string? text, IEnumerable<string?> supplierWritten) =>
         FindUnsupportedClaim(text, NormalizeSources(supplierWritten));
 
@@ -131,15 +121,10 @@ public static class ShowcaseTextRules
             }
         }
 
-        // A figure nobody gave: a year, a count, an hour.
         var allowed = Numbers.Matches(normalizedWritten).Select(match => match.Value).ToHashSet(StringComparer.Ordinal);
         return Numbers.Matches(normalized).Any(match => !allowed.Contains(match.Value)) ? "number" : null;
     }
 
-    /// <summary>
-    /// What to look for in the text of the supplier to know it wrote the same thing: the whole match for an expression of several words, the
-    /// first five letters for a single word (so «certificati» covers «certificazione»).
-    /// </summary>
     private static string Needle(string match)
     {
         var trimmed = match.Trim();
@@ -158,7 +143,6 @@ public static class ShowcaseTextRules
 
         if (text.Length > max)
         {
-            // A long "chi siamo" is cut at the end of a sentence; a sentence or an introduction over its limit is asked again.
             text = paragraphs ? CutAtSentence(text, max) ?? string.Empty : string.Empty;
             if (text.Length == 0)
                 return null;
@@ -195,7 +179,6 @@ public static class ShowcaseTextRules
         return kept;
     }
 
-    /// <summary>The small corrections that make a text fit the page: no exclamation marks, no quotes around it, no full stop after the sentence in large type.</summary>
     private static string Tidy(string text, bool isTagline)
     {
         var tidy = text.Replace('!', '.');
@@ -204,7 +187,6 @@ public static class ShowcaseTextRules
         return isTagline ? tidy.TrimEnd('.').Trim() : tidy;
     }
 
-    /// <summary>The text up to its last sentence that ends within <paramref name="max"/> characters, or <c>null</c> when that leaves less than half.</summary>
     private static string? CutAtSentence(string text, int max)
     {
         var window = text[..max];
@@ -228,7 +210,6 @@ public static class ShowcaseTextRules
         if (string.IsNullOrWhiteSpace(content))
             return null;
 
-        // The model is asked for a bare JSON object, and some answer with a sentence or a code fence around it.
         var start = content.IndexOf('{', StringComparison.Ordinal);
         var end = content.LastIndexOf('}');
         if (start < 0 || end <= start)
@@ -255,7 +236,6 @@ public static class ShowcaseTextRules
     private static string NormalizeSources(IEnumerable<string?> supplierWritten) =>
         Normalize(string.Join('\n', supplierWritten.Where(text => !string.IsNullOrWhiteSpace(text))));
 
-    /// <summary>Lower case, no accents, straight apostrophes: the form the words of <see cref="Claims"/> are matched in.</summary>
     private static string Normalize(string text)
     {
         var decomposed = text.Normalize(NormalizationForm.FormD);

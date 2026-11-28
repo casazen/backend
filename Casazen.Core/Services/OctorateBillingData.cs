@@ -22,32 +22,25 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public sealed record OctorateBillingData
 {
-    /// <summary>True when <see cref="Name"/> is the denomination of a company; false for a person (or when Octorate does not say).</summary>
     public bool IsCompany { get; init; }
 
-    /// <summary>The denomination of the company, or the name of the person.</summary>
     public string? Name { get; init; }
 
-    /// <summary>Codice fiscale of the recipient.</summary>
     public string? FiscalCode { get; init; }
 
     /// <summary>VAT number of the recipient, with the country prefix when Octorate has it.</summary>
     public string? VatNumber { get; init; }
 
-    /// <summary>The address on one line: street and house number.</summary>
     public string? Address { get; init; }
 
     public string? PostalCode { get; init; }
 
     public string? City { get; init; }
 
-    /// <summary>The province: two letters for an Italian one.</summary>
     public string? Province { get; init; }
 
-    /// <summary>The country of the recipient, ISO 3166-1 alpha-2.</summary>
     public string? CountryCode { get; init; }
 
-    /// <summary>The code of the recipient on the SDI (7 letters or digits).</summary>
     public string? SdiRecipientCode { get; init; }
 
     /// <summary>
@@ -56,7 +49,6 @@ public sealed record OctorateBillingData
     /// </summary>
     public string? Pec { get; init; }
 
-    /// <summary>True when at least one member holds a text (a company flag alone is nothing to read or to write).</summary>
     public bool HasContent =>
         new[] { Name, FiscalCode, VatNumber, Address, PostalCode, City, Province, CountryCode, SdiRecipientCode, Pec }
             .Any(text => !string.IsNullOrWhiteSpace(text));
@@ -90,10 +82,6 @@ public sealed record OctorateBillingData
         };
     }
 
-    /// <summary>
-    /// What this data sends to the invoice data of a booking: the same members, the address as the street (Octorate keeps no separate house number).
-    /// A member that is <c>null</c> is not sent, so it keeps what is stored.
-    /// </summary>
     public SaveInvoiceDataCommand ToInvoiceData() => new()
     {
         RecipientKind = IsCompany ? InvoiceRecipientKind.Company : InvoiceRecipientKind.Guest,

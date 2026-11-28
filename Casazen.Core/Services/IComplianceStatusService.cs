@@ -24,10 +24,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IComplianceStatusService
 {
-    /// <summary>
-    /// The items of the compliance status of the caller's reach, each with its light, a stable reason and the evidence behind it, and the
-    /// stays, properties and months that were looked at (the universe the To do list is reconciled against).
-    /// </summary>
     Task<ComplianceStatusResult> EvaluateAsync(HostScope scope, CancellationToken ct);
 
     /// <summary>
@@ -84,68 +80,41 @@ public sealed record ComplianceStayStatus(
     ComplianceStayVerdict? Verdict,
     IReadOnlyList<string> Actions);
 
-/// <summary>
-/// The part of the past a coverage report looks at: the stays that arrive from <paramref name="From"/> to <paramref name="To"/> (Europe/Rome
-/// days, both included; a stay that has not arrived yet owes nothing yet and is not there) and the months that lie wholly inside those days and
-/// are over.
-/// </summary>
-/// <param name="From">First day.</param>
-/// <param name="To">Last day.</param>
-/// <param name="PropertyId">Only this property; <c>null</c> = every property of the caller's reach.</param>
 public sealed record ComplianceStatusWindow(DateOnly From, DateOnly To, Guid? PropertyId = null);
 
-/// <summary>What an item of the compliance status is about.</summary>
 public enum ComplianceItemKind
 {
-    /// <summary>The Alloggiati Web communication of a stay.</summary>
     Alloggiati = 1,
 
-    /// <summary>The identity of the guest who leaves the document, for a stay.</summary>
     Identity = 2,
 
-    /// <summary>The police send of the channel manager, for a property.</summary>
     Connection = 3,
 
-    /// <summary>The police credentials kept in CasaZen, for a property.</summary>
     Credentials = 4,
 
-    /// <summary>The ISTAT communication of a month, for a property.</summary>
     Istat = 5,
 
-    /// <summary>The tourist tax declaration and payment of a month, for a property.</summary>
     TouristTax = 6,
 
-    /// <summary>The tourist tax rate of the comune of a property.</summary>
     MunicipalityRate = 7,
 
-    /// <summary>The CIN of a property.</summary>
     Cin = 8,
 }
 
-/// <summary>What backs the light of an item (the states of the compliance report of CHK-08).</summary>
 public enum ComplianceEvidenceClass
 {
     /// <summary>An archived proof CasaZen holds (a receipt, a declaration, a valid CIN, a passed verification): the only thing that makes an item green.</summary>
     OfficialProof = 1,
 
-    /// <summary>The outcome is held only in the connected area of Octorate and CasaZen has no proof: the host checks it there (CHK-15).</summary>
     ExternalVerificationRequired = 2,
 
-    /// <summary>There is no proof yet.</summary>
     Missing = 3,
 
-    /// <summary>Nothing is owed.</summary>
     NotApplicable = 4,
 }
 
-/// <summary>
-/// An archived proof: the reference of the row that holds it (a receipt, a manual upload, a verification log) and where it comes from. The
-/// only input that turns a verdict green; both members are required.
-/// </summary>
 public sealed record ComplianceProof
 {
-    /// <summary>The proof <paramref name="reference"/> (a stable key of the row, never a name) from <paramref name="source"/> (a stable code).</summary>
-    /// <exception cref="ArgumentException">The reference or the source is blank: there is no proof without them.</exception>
     public ComplianceProof(string reference, string source, DateTime? verifiedAt = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(reference);
@@ -155,43 +124,29 @@ public sealed record ComplianceProof
         VerifiedAt = verifiedAt;
     }
 
-    /// <summary>The reference of the archived proof, e.g. <c>receipt:{id}</c> or <c>manual-proof:{id}</c>.</summary>
     public string Reference { get; }
 
-    /// <summary>Where it comes from: <see cref="ComplianceEvidenceSources"/>.</summary>
     public string Source { get; }
 
-    /// <summary>When the proof was archived or the verification passed (UTC); <c>null</c> when it has no date.</summary>
     public DateTime? VerifiedAt { get; }
 }
 
-/// <summary>The stable codes of <see cref="ComplianceProof.Source"/> and of the evidence source of an item.</summary>
 public static class ComplianceEvidenceSources
 {
-    /// <summary>A receipt CasaZen downloaded itself (<see cref="AlloggiatiReceipt"/>, live mode).</summary>
     public const string CasazenReceipt = "casazen_receipt";
 
-    /// <summary>A proof the host uploaded (<see cref="ManualComplianceProof"/>).</summary>
     public const string ManualUpload = "manual_upload";
 
     /// <summary>The CIN, checked against the official format (<c>CinFormat</c>, computed on read and never stored).</summary>
     public const string CinFormatCheck = "cin_format";
 
-    /// <summary>A passed face comparison, from the audit log of the verification.</summary>
     public const string BiometricLog = "biometric_log";
 
-    /// <summary>A decision of an operator on the verification.</summary>
     public const string OperatorDecision = "operator_decision";
 
-    /// <summary>The outcome is held by Octorate (the connected area of the channel manager).</summary>
     public const string Octorate = "octorate";
 }
 
-/// <summary>
-/// The verdict of a rule on one item: the light, a stable reason, what backs it. It cannot be built outside <see cref="ComplianceLightRules"/>
-/// and a green one cannot be built without a <see cref="ComplianceProof"/>: <see cref="ProofReference"/> is set exactly when
-/// <see cref="Light"/> is <see cref="ComplianceLight.Green"/>.
-/// </summary>
 public sealed record ComplianceVerdict
 {
     private ComplianceVerdict(
@@ -213,28 +168,20 @@ public sealed record ComplianceVerdict
         HandoffTopic = handoffTopic;
     }
 
-    /// <summary>Green only with a proof, yellow while in progress, red when the host has to act.</summary>
     public ComplianceLight Light { get; }
 
-    /// <summary>A stable snake_case code the clients translate (<see cref="ComplianceReasonCodes"/>).</summary>
     public string Reason { get; }
 
-    /// <summary>What backs the light.</summary>
     public ComplianceEvidenceClass EvidenceClass { get; }
 
-    /// <summary>The source of the evidence (<see cref="ComplianceEvidenceSources"/>); <c>null</c> when there is none.</summary>
     public string? EvidenceSource { get; }
 
-    /// <summary>The reference of the archived proof; set only on a green verdict.</summary>
     public string? ProofReference { get; }
 
-    /// <summary>When the proof was archived or the verification passed (UTC); <c>null</c> when there is none.</summary>
     public DateTime? LastVerifiedAt { get; }
 
-    /// <summary>The Octorate handoff the host can use to check an outcome CasaZen cannot see; <c>null</c> when none applies.</summary>
     public OctorateHandoffTopic? HandoffTopic { get; }
 
-    /// <summary>Whether the host has an outstanding task. A requested replacement photo is pending with the guest.</summary>
     public bool NeedsAttention { get; private init; }
 
     internal static ComplianceVerdict Proven(ComplianceProof proof, string reason)
@@ -327,125 +274,78 @@ public sealed record ComplianceEvaluatedUniverse(
     DateTime? BookingWindowStartUtc = null,
     IReadOnlySet<Guid>? ConnectionNotReadPropertyIds = null)
 {
-    /// <summary>Nothing was looked at.</summary>
     public static ComplianceEvaluatedUniverse None { get; } =
         new(new HashSet<Guid>(), new HashSet<Guid>(), new HashSet<Guid>(), new HashSet<string>(StringComparer.Ordinal));
 }
 
-/// <summary>The compliance status of a caller's reach.</summary>
-/// <param name="Items">Every item evaluated, of every light.</param>
-/// <param name="Evaluated">What was looked at.</param>
 public sealed record ComplianceStatusResult(IReadOnlyList<ComplianceStatusItem> Items, ComplianceEvaluatedUniverse Evaluated)
 {
-    /// <summary>No item and nothing evaluated.</summary>
     public static ComplianceStatusResult Empty { get; } = new([], ComplianceEvaluatedUniverse.None);
 }
 
-/// <summary>
-/// The stable reason codes of the compliance lights (snake_case): the clients translate them, and a code they do not know is shown with a
-/// generic text, never raw. A code is never renamed.
-/// </summary>
 public static class ComplianceReasonCodes
 {
-    // Green.
-
     /// <summary>An archived proof exists (an Alloggiati receipt, an ISTAT proof, the tax receipts).</summary>
     public const string ReceiptArchived = "receipt_archived";
 
-    /// <summary>The verification of the guest's identity passed (a face comparison or an operator).</summary>
     public const string IdentityVerified = "identity_verified";
 
-    /// <summary>The CIN is in the official format.</summary>
     public const string CinValid = "cin_valid";
 
-    // Yellow.
-
-    /// <summary>The communication was sent or declared sent, and its receipt is awaited.</summary>
     public const string AwaitingReceipt = "awaiting_receipt";
 
-    /// <summary>The guests were entrusted to the channel manager, which sends them, within the deadline: the receipt is awaited.</summary>
     public const string EntrustedToChannelManager = "entrusted_to_channel_manager";
 
-    /// <summary>The outcome is held only by Octorate and CasaZen has no proof: the host checks it in the connected area.</summary>
     public const string ExternalVerificationRequired = "external_verification_required";
 
-    /// <summary>The transmission is in progress.</summary>
     public const string AlloggiatiSending = "alloggiati_sending";
 
-    /// <summary>The selfie of the guest is awaited before the arrival.</summary>
     public const string SelfieAwaited = "selfie_awaited";
 
-    /// <summary>The period is open: its deadline has not passed.</summary>
     public const string PeriodOpen = "period_open";
 
-    /// <summary>CasaZen cannot tell whether the send of the channel manager is active: the host confirms.</summary>
     public const string ConnectionUnverified = "connection_unverified";
 
-    // Red.
-
-    /// <summary>No proof is archived (a closed period without its declaration and payment).</summary>
     public const string EvidenceMissing = "evidence_missing";
 
-    /// <summary>The deadline passed and nothing proves the communication.</summary>
     public const string DeadlineOverdue = "deadline_overdue";
 
-    /// <summary>The communication was sent, entrusted or declared and no receipt is archived the day after.</summary>
     public const string ReceiptMissing = "receipt_missing";
 
-    /// <summary>The communication is due and not sent.</summary>
     public const string AlloggiatiNotSent = "alloggiati_not_sent";
 
-    /// <summary>The communication failed or was rejected.</summary>
     public const string AlloggiatiFailed = "alloggiati_failed";
 
-    /// <summary>The service acquired some of the guests only: the stay is not complete.</summary>
     public const string AlloggiatiIncomplete = "alloggiati_incomplete";
 
-    /// <summary>A stay over 30 nights, which the channel manager does not send by itself, is not sent.</summary>
     public const string OverThirtyNightsNotSent = "over_thirty_nights_not_sent";
 
-    /// <summary>A short stay (6-hour term) whose guests were not entrusted to the channel manager.</summary>
     public const string ShortStayAtRisk = "short_stay_at_risk";
 
-    /// <summary>The send of the channel manager is not active (Octorate says so).</summary>
     public const string ConnectionInactive = "connection_inactive";
 
-    /// <summary>The arrival is close and the identity is not verified.</summary>
     public const string IdentityMissing = "identity_missing";
 
-    /// <summary>An operator has to decide on the verification.</summary>
     public const string OperatorDecisionRequired = "operator_decision_required";
 
-    /// <summary>The tourist tax rate of the comune is not known (never taken as zero).</summary>
     public const string MunicipalityRateMissing = "municipality_rate_missing";
 
-    /// <summary>The police credentials kept in CasaZen were refused by the service.</summary>
     public const string CredentialsRefused = "credentials_refused";
 
-    /// <summary>The property has no CIN.</summary>
     public const string CinMissing = "cin_missing";
 
-    /// <summary>The CIN is not in the official format.</summary>
     public const string CinInvalid = "cin_invalid";
 
-    // The items of the cockpit that exist today and are not computed from a proof: the host has something to do.
-
-    /// <summary>The property is not active: the activation is incomplete.</summary>
     public const string ActivationIncomplete = "activation_incomplete";
 
-    /// <summary>The data of the guests of the stay are incomplete.</summary>
     public const string GuestDataMissing = "guest_data_missing";
 
-    /// <summary>The stay ends and the check-out is not closed.</summary>
     public const string CheckoutDue = "checkout_due";
 
-    /// <summary>The property was not declared ready after the check-out.</summary>
     public const string PropertyReadyNotConfirmed = "property_ready_not_confirmed";
 
-    /// <summary>The host has something to do and there is nothing more specific to say.</summary>
     public const string ActionRequired = "action_required";
 
-    /// <summary>Every code, in the order of the lights.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
         ReceiptArchived, IdentityVerified, CinValid,
@@ -465,74 +365,52 @@ public sealed record AlloggiatiFacts
     /// </summary>
     public required ComplianceSenderType Sender { get; init; }
 
-    /// <summary>The status shown for the stay (<see cref="AlloggiatiStatusRules.Effective"/>).</summary>
     public required AlloggiatiWebStatus Status { get; init; }
 
-    /// <summary>Nights of the stay (<see cref="AlloggiatiTerms.StayDays"/>).</summary>
     public required int StayNights { get; init; }
 
-    /// <summary>The legal deadline of the communication (UTC, <see cref="AlloggiatiTerms.DeadlineUtc(DateTime?, DateTime, DateTime)"/>).</summary>
     public required DateTime DeadlineUtc { get; init; }
 
-    /// <summary>Now (UTC).</summary>
     public required DateTime NowUtc { get; init; }
 
-    /// <summary>Today in Europe/Rome.</summary>
     public required DateOnly TodayRome { get; init; }
 
-    /// <summary>Every registered guest of the stay is on Octorate, sent for good (not as a draft): the stay is entrusted to the channel manager.</summary>
     public bool GuestsEntrusted { get; init; }
 
-    /// <summary>When the communication was sent or declared sent (UTC); <c>null</c> when not known.</summary>
     public DateTime? CommunicatedAt { get; init; }
 
-    /// <summary>The state of the send of the channel manager of the property, when it is the sender and it was read.</summary>
     public ConnectionHealthState? Connection { get; init; }
 
-    /// <summary>The archived proof of the day of arrival: a receipt CasaZen downloaded, or one the host uploaded.</summary>
     public ComplianceProof? Proof { get; init; }
 }
 
-/// <summary>The facts of the identity verification of the guest who leaves the document, for a stay with a check-in session.</summary>
 public sealed record IdentityFacts
 {
-    /// <summary>The start of the arrival day (UTC).</summary>
     public required DateTime ArrivalStartUtc { get; init; }
 
-    /// <summary>Now (UTC).</summary>
     public required DateTime NowUtc { get; init; }
 
-    /// <summary>The hours before the arrival from which a missing verification is red (<c>Compliance:IdentityRedHoursBeforeArrival</c>).</summary>
     public required int RedHoursBeforeArrival { get; init; }
 
-    /// <summary>The proof that the verification passed (a face comparison that was accepted, or an operator's decision).</summary>
     public ComplianceProof? Proof { get; init; }
 
-    /// <summary>An operator has to decide: the comparison asked for a review or the attempts are used, and nobody decided yet.</summary>
     public bool OperatorDecisionNeeded { get; init; }
 
-    /// <summary>The operator asked the guest to send a replacement photo.</summary>
     public bool ReplacementPhotoRequested { get; init; }
 }
 
-/// <summary>The facts of the police send of the channel manager of a property.</summary>
 public sealed record ConnectionFacts
 {
-    /// <summary>What CasaZen can tell (<see cref="IComplianceConnectionHealthService"/>).</summary>
     public required ConnectionHealthState State { get; init; }
 
-    /// <summary>The host said it saw «Activated» in the Octorate panel: its word, not a verification, but the host did what it could.</summary>
     public bool DeclaredByHost { get; init; }
 }
 
-/// <summary>The facts of the police credentials kept in CasaZen.</summary>
 public sealed record CredentialsFacts
 {
-    /// <summary>The outcome of the last verification with the service; <c>null</c> before the first (and always in this release).</summary>
     public bool? LastVerificationOk { get; init; }
 }
 
-/// <summary>The facts of the ISTAT communication of one month of a property.</summary>
 public sealed record IstatFacts
 {
     /// <summary>
@@ -541,38 +419,26 @@ public sealed record IstatFacts
     /// </summary>
     public required ComplianceSenderType Sender { get; init; }
 
-    /// <summary>Today in Europe/Rome.</summary>
     public required DateOnly Today { get; init; }
 
-    /// <summary>The first day of the month.</summary>
     public required DateOnly PeriodStart { get; init; }
 
-    /// <summary>The day of the following month by which the region wants it; <c>null</c> = the region is «to define»: no item, never a guess.</summary>
     public int? DeadlineDay { get; init; }
 
-    /// <summary>The archived proof of the communication of the period (an upload of the host).</summary>
     public ComplianceProof? Proof { get; init; }
 }
 
-/// <summary>The facts of the tourist tax of one month of a property.</summary>
 public sealed record TaxPeriodFacts
 {
-    /// <summary>Today in Europe/Rome.</summary>
     public required DateOnly Today { get; init; }
 
-    /// <summary>The first day of the month.</summary>
     public required DateOnly PeriodStart { get; init; }
 
-    /// <summary>The archived receipt of the declaration of the period.</summary>
     public ComplianceProof? Declaration { get; init; }
 
-    /// <summary>The archived receipt of the payment of the period.</summary>
     public ComplianceProof? Payment { get; init; }
 }
 
-/// <summary>A verdict on a stay together with the cockpit action that fixes it.</summary>
-/// <param name="Action">The action of the item: the host sends, resolves a failure, sends by hand or uploads the receipt.</param>
-/// <param name="Verdict">The light and the reason.</param>
 public sealed record ComplianceStayVerdict(ComplianceCockpitAction Action, ComplianceVerdict Verdict);
 
 /// <summary>
@@ -584,7 +450,6 @@ public sealed record ComplianceStayVerdict(ComplianceCockpitAction Action, Compl
 /// </summary>
 public static class ComplianceLightRules
 {
-    /// <summary>How many days ahead the identity of the arriving guests is looked at.</summary>
     public const int IdentityLookaheadDays = 7;
 
     /// <summary>
@@ -621,13 +486,11 @@ public static class ComplianceLightRules
                 return new(ComplianceCockpitAction.UploadAlloggiatiReceipt, ComplianceVerdict.InProgress(ComplianceReasonCodes.AlloggiatiSending));
 
             case AlloggiatiWebStatus.ToVerify:
-                // The outcome is unknown (timeout, connection lost): the agency checks it on the portal, nothing is inferred.
                 return new(
                     ComplianceCockpitAction.UploadAlloggiatiReceipt,
                     ComplianceVerdict.InProgress(ComplianceReasonCodes.ExternalVerificationRequired, ComplianceEvidenceClass.ExternalVerificationRequired, OctorateHandoffTopic.Alloggiati));
 
             case AlloggiatiWebStatus.Inviato or AlloggiatiWebStatus.InviatoManualmente or AlloggiatiWebStatus.SentReceiptPending:
-                // Sent, or declared sent, and no receipt is archived: yellow the day of the send, red from the day after.
                 var sentOn = RomeCalendar.DateInRome(facts.CommunicatedAt ?? facts.NowUtc);
                 return new(
                     ComplianceCockpitAction.UploadAlloggiatiReceipt,
@@ -638,7 +501,6 @@ public static class ComplianceLightRules
 
         if (channelManager)
         {
-            // What the channel manager does not send by itself: the host sends it by hand.
             if (facts.StayNights > AlloggiatiTerms.MaxStayDaysPerSchedina)
                 return new(ComplianceCockpitAction.SendAlloggiatiManually, ComplianceVerdict.ActionNeeded(ComplianceReasonCodes.OverThirtyNightsNotSent));
 
@@ -647,7 +509,6 @@ public static class ComplianceLightRules
 
             if (facts.GuestsEntrusted)
             {
-                // Entrusted: the channel manager sends them. Yellow within the legal term, red when it passed without a receipt.
                 return new(
                     ComplianceCockpitAction.UploadAlloggiatiReceipt,
                     facts.NowUtc > facts.DeadlineUtc
@@ -660,17 +521,11 @@ public static class ComplianceLightRules
                 return new(ComplianceCockpitAction.SendAlloggiatiManually, ComplianceVerdict.ActionNeeded(ComplianceReasonCodes.ShortStayAtRisk));
         }
 
-        // Due and not sent: the host sends it on the portal.
         return new(
             ComplianceCockpitAction.SendAlloggiati,
             ComplianceVerdict.ActionNeeded(facts.NowUtc > facts.DeadlineUtc ? ComplianceReasonCodes.DeadlineOverdue : ComplianceReasonCodes.AlloggiatiNotSent));
     }
 
-    /// <summary>
-    /// The identity of the guest who leaves the document (NF-50, AC-NF50-8): green on a passed verification (a face comparison that was
-    /// accepted, or an operator's decision), red when an operator has to decide or the arrival is within
-    /// <see cref="IdentityFacts.RedHoursBeforeArrival"/> hours, yellow while the selfie is awaited.
-    /// </summary>
     public static ComplianceVerdict Identity(IdentityFacts facts)
     {
         ArgumentNullException.ThrowIfNull(facts);
@@ -744,10 +599,6 @@ public static class ComplianceLightRules
         return new DateOnly(next.Year, next.Month, Math.Min(Math.Max(day, 1), DateTime.DaysInMonth(next.Year, next.Month)));
     }
 
-    /// <summary>
-    /// The tourist tax of a month. Nothing while the month is open. Closed: green with the declaration and the payment receipts both archived,
-    /// yellow with one of them, red with none (never a presumed payment).
-    /// </summary>
     public static ComplianceVerdict? TouristTaxPeriod(TaxPeriodFacts facts)
     {
         ArgumentNullException.ThrowIfNull(facts);
@@ -769,7 +620,6 @@ public static class ComplianceLightRules
             : ComplianceVerdict.ActionNeeded(ComplianceReasonCodes.EvidenceMissing);
     }
 
-    /// <summary>The tourist tax rate of the comune: red when it is not known (never a presumed zero); nothing when it is.</summary>
     public static ComplianceVerdict? MunicipalityRate(bool rateKnown) =>
         rateKnown ? null : ComplianceVerdict.ActionNeeded(ComplianceReasonCodes.MunicipalityRateMissing);
 
@@ -800,7 +650,6 @@ public static class ComplianceLightRules
             _ => ComplianceReasonCodes.ActionRequired,
         });
 
-    /// <summary>The month of a date as the periods name it: <c>yyyy-MM</c>.</summary>
     public static string PeriodKey(DateOnly date) =>
         date.ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture);
 }

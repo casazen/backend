@@ -28,7 +28,6 @@ public class ShowcaseInquiry
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The supplier org (<see cref="SupplierProfile.OrgId"/>).</summary>
     [Required]
     public Guid OrgId { get; set; }
 
@@ -38,14 +37,9 @@ public class ShowcaseInquiry
     /// </summary>
     public Guid ClientRequestId { get; set; }
 
-    /// <summary>SHA-256 (lowercase hex) of the token of the e-mail link; the token itself is only in the e-mail.</summary>
     [Required, MaxLength(64)]
     public string TokenHash { get; set; } = string.Empty;
 
-    /// <summary>
-    /// HMAC-SHA256 of the customer's normalized e-mail address (<see cref="ServiceCustomer.EmailHash"/>): it counts the requests
-    /// of one address that wait. Deleted with the row.
-    /// </summary>
     [Required, MaxLength(64)]
     public string EmailHash { get; set; } = string.Empty;
 
@@ -56,13 +50,10 @@ public class ShowcaseInquiry
     /// </summary>
     public string? Payload { get; set; }
 
-    /// <summary>When the row lapses (UTC): the link no longer works.</summary>
     public DateTime ExpiresAt { get; set; }
 
-    /// <summary>When the e-mail was checked and the request created; <c>null</c> while the row waits.</summary>
     public DateTime? ConsumedAt { get; set; }
 
-    /// <summary>The request born from the row when the e-mail was checked.</summary>
     public Guid? ServiceRequestId { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

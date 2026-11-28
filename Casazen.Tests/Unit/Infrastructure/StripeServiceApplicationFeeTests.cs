@@ -39,7 +39,6 @@ public class StripeServiceApplicationFeeTests
 
         var request = Assert.Single(_requests);
         var options = Assert.IsType<PaymentIntentCreateOptions>(request.Options);
-        // Null, not 0: the parameter is omitted from the request (A3-40).
         Assert.Null(options.ApplicationFeeAmount);
     }
 

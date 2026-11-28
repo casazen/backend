@@ -38,11 +38,6 @@ public class BillingSetupServiceTests
     private static readonly Guid OrgA = Guid.Parse("6d5c4b3a-2918-4f7e-8d6c-5b4a39281711");
     private static readonly Guid OrgB = Guid.Parse("7e6d5c4b-3a29-4f8e-9d7c-6c5b4a392812");
 
-    /// <summary>
-    /// PROOF TEST: permission rule. A caller who reaches only some of the properties (a collaborator «Solo alcuni», an account that owns a few) reads the setup
-    /// of the organization but cannot change any section of it: 403 <c>fiscal_settings_need_whole_org</c> for every section, nothing is saved, and what is
-    /// stored (of this org and of another) stays as it was. The manager of the whole organization changes its own setup, and only its own.
-    /// </summary>
     [Fact]
     public async Task BillingSetup_PartialScopeCannotChangeOrgSetup_Test()
     {
@@ -53,12 +48,10 @@ public class BillingSetupServiceTests
         var resolver = new Mock<IOrgContextResolver>();
         resolver.Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(OrgA);
 
-        // The collaborator reads the setup of its organization: and of no other.
         var staff = Controller(service, resolver, HostAuthorizationTestHarness.User("auth0|staff-a", "Staff"));
         var read = Assert.IsType<BillingSetupDto>(Assert.IsType<OkObjectResult>((await staff.Get(Ct)).Result).Value);
         Assert.Equal("TEST Quokka Sagl", read.Sections.Single(s => s.Section == BillingSetupSections.Issuer).Values[BillingSetupFields.LegalName]);
 
-        // It cannot change any section: every one is refused with the same code, before anything is read or written.
         foreach (var section in BillingSetupSections.Writable)
         {
             var refused = await staff.PutSection(section, new SaveBillingSetupSectionRequest { LegalName = "Cambiato Sagl" }, Ct);
@@ -73,7 +66,6 @@ public class BillingSetupServiceTests
             Assert.Equal("TEST Altro Sagl", (await check.OrgFiscalIssuerProfiles.AsNoTracking().SingleAsync(p => p.OrgId == OrgB)).LegalName);
         }
 
-        // The manager of the whole organization changes it.
         var manager = Controller(service, resolver, HostAuthorizationTestHarness.User("auth0|manager-a", "PropertyManager"));
         var saved = Assert.IsType<BillingSetupSectionDto>(
             Assert.IsType<OkObjectResult>((await manager.PutSection("issuer", new SaveBillingSetupSectionRequest { LegalName = "TEST Quokka Due Sagl" }, Ct)).Result).Value);
@@ -84,10 +76,6 @@ public class BillingSetupServiceTests
         Assert.Equal("TEST Altro Sagl", (await after.OrgFiscalIssuerProfiles.AsNoTracking().SingleAsync(p => p.OrgId == OrgB)).LegalName);
     }
 
-    /// <summary>
-    /// The endpoint is the one of the brief: <c>api/billing-setup</c>, read with <c>payment.read</c>, saved with <c>property.write</c>, and the whole controller
-    /// is behind <c>Features:FiscalDocumentIssuance</c> (404 while it is off).
-    /// </summary>
     [Fact]
     public void BillingSetupController_IsBehindThePaymentAndPropertyPolicies_AndTheIssuanceFlag()
     {
@@ -147,10 +135,6 @@ public class BillingSetupServiceTests
         Assert.False(progress.IsComplete);
     }
 
-    /// <summary>
-    /// A save may carry only some fields: what it does not carry stays, the same answers saved twice leave the same setting, a text sent empty clears it, and a
-    /// refusal (an unknown section, a section another endpoint saves, a field of another section) saves nothing.
-    /// </summary>
     [Fact]
     public async Task PutSectionAsync_PartialPayload_KeepsTheRest_IsIdempotent_AndRefusesWhatIsNotOfTheSection()
     {
@@ -159,12 +143,10 @@ public class BillingSetupServiceTests
         await using var db = NewDb(databaseName, new FixedTenantContext(OrgA));
         var service = BillingSetupTestServices.Create(Issuers(db));
 
-        // A draft: only the country and the name.
         var first = await service.PutSectionAsync(OrgA, "issuer", new BillingSetupPayload { CountryCode = "ch", LegalName = "TEST Quokka Sagl" }, "auth0|manager-a", Ct);
         Assert.Equal("CH", first.Values[BillingSetupFields.CountryCode]);
         Assert.Equal([BillingSetupItemKeys.AddressMissing], first.Missing.Select(i => i.Key));
 
-        // The next step carries the address only: the name stays. Saved twice, the answer is the same.
         var address = new BillingSetupPayload { AddressStreet = "Via Nassa", AddressCivic = "5", PostalCode = "6900", City = "Lugano" };
         var second = await service.PutSectionAsync(OrgA, "ISSUER", address, "auth0|manager-a", Ct);
         var again = await service.PutSectionAsync(OrgA, " issuer ", address, "auth0|manager-a", Ct);
@@ -172,13 +154,11 @@ public class BillingSetupServiceTests
         Assert.Equal(second.Values.OrderBy(v => v.Key), again.Values.OrderBy(v => v.Key));
         Assert.Empty(again.Missing);
 
-        // A text sent empty clears it; a payload with no field saves nothing and answers the section as it is.
         var cleared = await service.PutSectionAsync(OrgA, "issuer", new BillingSetupPayload { AddressCivic = "" }, null, Ct);
         Assert.Null(cleared.Values[BillingSetupFields.AddressCivic]);
         var nothing = await service.PutSectionAsync(OrgA, "issuer", new BillingSetupPayload(), null, Ct);
         Assert.Equal("TEST Quokka Sagl", nothing.Values[BillingSetupFields.LegalName]);
 
-        // The refusals: each names its code (and the field), and the stored setting stays.
         var stray = await Assert.ThrowsAsync<DomainRuleException>(() => service.PutSectionAsync(OrgA, "numbering", new BillingSetupPayload { LegalName = "Altro Sagl" }, null, Ct));
         Assert.Equal(BillingSetupErrorCodes.FieldNotInSection, stray.Code);
         Assert.Equal(BillingSetupFields.LegalName, stray.Extensions["field"]);
@@ -190,10 +170,6 @@ public class BillingSetupServiceTests
         Assert.Equal("TEST Quokka Sagl", (await check.OrgFiscalIssuerProfiles.AsNoTracking().SingleAsync(p => p.OrgId == OrgA)).LegalName);
     }
 
-    /// <summary>
-    /// A value that is not valid comes back with the code and the field of the issuer setting (every field of the failure in <c>errors</c>) and nothing is
-    /// saved; a regime of the other country is refused; a name that is not a member of an enum is a failure on its field.
-    /// </summary>
     [Fact]
     public async Task PutSectionAsync_InvalidData_ComesBackWithFieldCodes_AndSavesNothing()
     {
@@ -274,7 +250,6 @@ public class BillingSetupServiceTests
         Assert.Null(vat.Values[BillingSetupFields.Regime]);
         Assert.Equal([BillingSetupItemKeys.RegimeMissing], vat.Missing.Select(i => i.Key));
 
-        // The same save may carry the new address: nothing is dropped then.
         await service.PutSectionAsync(OrgA, "issuer", new BillingSetupPayload { CountryCode = "CH" }, null, Ct);
         var swissAgain = await service.PutSectionAsync(OrgA, "issuer", new BillingSetupPayload { CountryCode = "IT", PostalCode = "00100", Province = "rm" }, null, Ct);
         Assert.Equal(("00100", "RM"), ((string?)swissAgain.Values[BillingSetupFields.PostalCode], (string?)swissAgain.Values[BillingSetupFields.Province]));
@@ -295,14 +270,12 @@ public class BillingSetupServiceTests
 
         Assert.Equal([BillingSetupItemKeys.TouristTaxChannelsUnconfirmed], (await Section(service, BillingSetupSections.TouristTax)).Missing.Select(i => i.Key));
 
-        // Saving other sections (the whole setting is written back) does not confirm what was never chosen.
         await service.PutSectionAsync(OrgA, "numbering", new BillingSetupPayload { GuestDocumentSeries = "{year}" }, null, Ct);
         var untouched = await Section(service, BillingSetupSections.TouristTax);
         Assert.Equal(false, untouched.Values["confirmed"]);
         Assert.Single(untouched.Missing);
         Assert.Null((await StoredAsync(databaseName)).PlatformCollectedTouristTaxChannelsJson);
 
-        // None collects it: confirmed with an empty list, and kept by the next saves.
         var none = await service.PutSectionAsync(OrgA, "touristTax", new BillingSetupPayload { PlatformCollectedTouristTaxChannels = [] }, null, Ct);
         Assert.Empty(none.Missing);
         Assert.Equal(true, none.Values["confirmed"]);
@@ -310,14 +283,12 @@ public class BillingSetupServiceTests
         Assert.Equal("[]", (await StoredAsync(databaseName)).PlatformCollectedTouristTaxChannelsJson);
         Assert.Empty((await Section(service, BillingSetupSections.TouristTax)).Missing);
 
-        // A portal does: the names are checked, and the saves of the other sections keep the list.
         await Assert.ThrowsAsync<DomainRuleException>(
             () => service.PutSectionAsync(OrgA, "touristTax", new BillingSetupPayload { PlatformCollectedTouristTaxChannels = ["Quokka"] }, null, Ct));
         await service.PutSectionAsync(OrgA, "touristTax", new BillingSetupPayload { PlatformCollectedTouristTaxChannels = ["Airbnb", "airbnb"] }, null, Ct);
         await service.PutSectionAsync(OrgA, "automation", new BillingSetupPayload { AutoIssueGuestDocuments = false }, null, Ct);
         Assert.Equal("""["Airbnb"]""", (await StoredAsync(databaseName)).PlatformCollectedTouristTaxChannelsJson);
 
-        // An Italian issuer has no such section: it does not apply and has no item.
         await service.PutSectionAsync(OrgA, "issuer", new BillingSetupPayload { CountryCode = "IT" }, null, Ct);
         var italian = await Section(service, BillingSetupSections.TouristTax);
         Assert.False(italian.Applies);
@@ -347,7 +318,6 @@ public class BillingSetupServiceTests
         static IReadOnlyList<string> Defaults(BillingSetupSection section) =>
             Assert.IsAssignableFrom<IReadOnlyList<string>>(section.Values[BillingSetupService.DefaultPlatformCollectedTouristTaxChannels]);
 
-        // Nothing confirmed: the portals of the platform are listed, and they are exactly what the documents of this issuer would say, not an answer of the issuer.
         var unconfirmed = await Section(service, BillingSetupSections.TouristTax);
         Assert.Equal(["Airbnb", "BookingCom"], Defaults(unconfirmed));
         Assert.Equal(
@@ -358,17 +328,14 @@ public class BillingSetupServiceTests
         Assert.Equal([BillingSetupItemKeys.TouristTaxChannelsUnconfirmed], unconfirmed.Missing.Select(i => i.Key));
         Assert.Null((await StoredAsync(databaseName)).PlatformCollectedTouristTaxChannelsJson);
 
-        // Reading it again, or saving another section, never confirms it: the profile still holds nothing.
         await service.PutSectionAsync(OrgA, "numbering", new BillingSetupPayload { GuestDocumentSeries = "{year}" }, null, Ct);
         Assert.Null((await StoredAsync(databaseName)).PlatformCollectedTouristTaxChannelsJson);
 
-        // The issuer confirms only Airbnb: its own list is saved apart, and the defaults of the platform are still the platform's.
         var confirmed = await service.PutSectionAsync(OrgA, "touristTax", new BillingSetupPayload { PlatformCollectedTouristTaxChannels = ["Airbnb"] }, null, Ct);
         Assert.Equal(["Airbnb"], Assert.IsAssignableFrom<IReadOnlyList<string>>(confirmed.Values[BillingSetupFields.PlatformCollectedTouristTaxChannels]));
         Assert.Equal(["Airbnb", "BookingCom"], Defaults(confirmed));
         Assert.Equal("""["Airbnb"]""", (await StoredAsync(databaseName)).PlatformCollectedTouristTaxChannelsJson);
 
-        // An Italian issuer has no default: its channel rules are the ones of the comune.
         await service.PutSectionAsync(OrgA, "issuer", new BillingSetupPayload { CountryCode = "IT" }, null, Ct);
         Assert.Empty(Defaults(await Section(service, BillingSetupSections.TouristTax)));
 
@@ -377,10 +344,6 @@ public class BillingSetupServiceTests
         Assert.Empty(Defaults(await Section(bare, BillingSetupSections.TouristTax)));
     }
 
-    /// <summary>
-    /// The step «Emissione»: the choice counts as made when the step was saved while the profile could issue; saved before, it is a draft, and a profile that
-    /// stops being complete asks for the confirmation again.
-    /// </summary>
     [Fact]
     public async Task Automation_IsConfirmedOnlyByASaveWhileTheProfileCanIssue()
     {
@@ -390,7 +353,6 @@ public class BillingSetupServiceTests
         var time = new Casazen.Tests.Unit.FakeTimeProvider(HostScopeScenario.Now);
         var service = BillingSetupTestServices.Create(Issuers(db, time: time));
 
-        // Nothing to issue with yet: the answers are kept as a draft, the choice is not confirmed.
         var draft = await service.PutSectionAsync(OrgA, "automation", new BillingSetupPayload { AutoIssueGuestDocuments = true, EmailGuestDocuments = false }, null, Ct);
         Assert.Equal(true, draft.Values[BillingSetupFields.AutoIssueGuestDocuments]);
         Assert.Equal([BillingSetupItemKeys.AutoIssueUnconfirmed], draft.Missing.Select(i => i.Key));
@@ -404,19 +366,16 @@ public class BillingSetupServiceTests
         await service.PutSectionAsync(OrgA, "vat", new BillingSetupPayload { Regime = DocumentRegime.SwissNotRegistered }, null, Ct);
         Assert.Equal([BillingSetupItemKeys.AutoIssueUnconfirmed], (await Section(service, BillingSetupSections.Automation)).Missing.Select(i => i.Key));
 
-        // Saved again with a profile that can issue: confirmed, with the answers it had.
         var confirmed = await service.PutSectionAsync(OrgA, "automation", new BillingSetupPayload { AutoIssueGuestDocuments = true, EmailGuestDocuments = false }, null, Ct);
         Assert.Empty(confirmed.Missing);
         Assert.NotNull(confirmed.Values["confirmedAt"]);
         Assert.Equal(true, confirmed.Values[BillingSetupFields.AutoIssueGuestDocuments]);
 
-        // The same answers saved again change nothing: the time of the confirmation stays.
         time.Advance(TimeSpan.FromHours(1));
         var again = await service.PutSectionAsync(OrgA, "automation", new BillingSetupPayload { AutoIssueGuestDocuments = true, EmailGuestDocuments = false }, null, Ct);
         Assert.Equal(confirmed.Values["confirmedAt"], again.Values["confirmedAt"]);
         Assert.Empty(again.Missing);
 
-        // The profile stops being complete: the confirmation goes, and comes back only with the step.
         await service.PutSectionAsync(OrgA, "issuer", new BillingSetupPayload { LegalName = "" }, null, Ct);
         Assert.Equal([BillingSetupItemKeys.AutoIssueUnconfirmed], (await Section(service, BillingSetupSections.Automation)).Missing.Select(i => i.Key));
         await service.PutSectionAsync(OrgA, "issuer", new BillingSetupPayload { LegalName = "TEST Quokka Sagl" }, null, Ct);
@@ -460,7 +419,6 @@ public class BillingSetupServiceTests
         Assert.Empty(issuer.Missing);
         Assert.Equal("01234567897", issuer.Values["vatNumber"]);
 
-        // The series: shown with their defaults, asked until saved.
         var numbering = await Section(service, BillingSetupSections.Numbering);
         Assert.Equal(["guest_series_unconfirmed", "owner_series_unconfirmed"], numbering.Missing.Select(i => i.Key));
         Assert.Equal("{year}", numbering.Values["defaultGuestDocumentSeries"]);
@@ -468,7 +426,6 @@ public class BillingSetupServiceTests
         Assert.Empty(saved.Missing);
         Assert.Equal("Q{year}", saved.Values[BillingSetupFields.GuestDocumentSeries]);
 
-        // Italy: the agreement, and the stamp by its reference or by the confirmation of the virtual stamp.
         var italy = await Section(service, BillingSetupSections.Italy);
         Assert.True(italy.Applies);
         Assert.Equal([BillingSetupItemKeys.ConservationAgreementUnconfirmed, BillingSetupItemKeys.StampDutyUnconfirmed], italy.Missing.Select(i => i.Key));
@@ -482,11 +439,6 @@ public class BillingSetupServiceTests
         Assert.Equal([BillingSetupItemKeys.StampDutyUnconfirmed], withoutStamp.Missing.Select(i => i.Key));
     }
 
-    /// <summary>
-    /// Another epic adds its items through <see cref="IBillingSetupContributor"/> without changing the service: its section applies and is counted, its items
-    /// come after the ones of the sections before it (and after ours in the same section), an item is attributed to the section of its contributor, the
-    /// first missing item is the first of the first section that has one, and a progress asked for some sections runs only their contributors.
-    /// </summary>
     [Fact]
     public async Task Contributors_OtherEpicsAddTheirItems_WithoutTouchingTheService()
     {
@@ -506,7 +458,6 @@ public class BillingSetupServiceTests
         Assert.Equal(BillingSetupSections.Channels, sections[BillingSetupSections.Channels].Missing[0].Section);
         Assert.Equal(3, Assert.Single(sections[BillingSetupSections.Mandates].Missing).Count);
 
-        // The Italian section of a Swiss issuer applies through the contributor of the Italian owners, and their item follows ours (there is none for a Swiss issuer).
         Assert.True(sections[BillingSetupSections.Italy].Applies);
         Assert.Equal(["owner_issuer_missing"], sections[BillingSetupSections.Italy].Missing.Select(i => i.Key));
 
@@ -525,10 +476,6 @@ public class BillingSetupServiceTests
         Assert.Equal(0, channels.Calls + mandates.Calls + owners.Calls);
     }
 
-    /// <summary>
-    /// E17/F01/US01/T01: the owner issuers make the section «Italia» of a Swiss issuer apply only when it has owners of Italian properties; a Swiss agency without
-    /// any keeps the section out of its wizard and of its count.
-    /// </summary>
     [Fact]
     public async Task ItalianSection_OfASwissIssuer_AppliesOnlyWithOwnersOfItalianProperties()
     {
@@ -646,7 +593,6 @@ public class BillingSetupServiceTests
         public bool FilterEnabled => true;
     }
 
-    /// <summary>The contributor of another epic: the items it says, and how many times it was asked.</summary>
     private sealed class FakeContributor(string section, params BillingSetupItem[] items) : IBillingSetupContributor
     {
         public string Section { get; } = section;
@@ -661,7 +607,6 @@ public class BillingSetupServiceTests
     }
 }
 
-/// <summary>The real billing setup over a real issuer service: the six contributors of the setup and the ones another epic adds.</summary>
 internal static class BillingSetupTestServices
 {
     public static BillingSetupService Create(IDocumentIssuerService issuers, params IBillingSetupContributor[] more) =>

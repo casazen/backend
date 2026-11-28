@@ -4,7 +4,6 @@ using System.Text.RegularExpressions;
 
 namespace Casazen.Core.BankStatements;
 
-/// <summary>One cell of a table: its text, and whether the file stored it as a number (Excel does, a CSV never does).</summary>
 internal readonly record struct Cell(string Text, bool IsNumber)
 {
     public static readonly Cell Empty = new(string.Empty, false);
@@ -12,20 +11,14 @@ internal readonly record struct Cell(string Text, bool IsNumber)
     public bool IsBlank => string.IsNullOrWhiteSpace(Text);
 }
 
-/// <summary>Which character an amount uses for the decimals: the Italian banks write <c>1.234,56</c>, others <c>1,234.56</c>.</summary>
 internal enum DecimalMark
 {
     Comma = 0,
     Point = 1,
 }
 
-/// <summary>A month a payment reason names; the year is null when the text does not give one.</summary>
 internal readonly record struct MonthReference(int Month, int? Year);
 
-/// <summary>
-/// Reading of the values of a bank file: amounts, dates, IBANs, currencies and the months a reason names. Each bank writes them its own way,
-/// so the readers are tolerant in what they accept and strict in what they produce (cents, a real date, an IBAN that checks).
-/// </summary>
 internal static partial class BankValues
 {
     private const int RegexTimeoutMs = 1000;
@@ -43,15 +36,10 @@ internal static partial class BankValues
     private const int MinYear = 2000;
     private const int MaxYear = 2100;
 
-    /// <summary>The months by their full name, in Italian and in English (the lists are the twelve months in order).</summary>
     private static readonly Dictionary<string, int> FullMonths = MonthTable(
         "gennaio febbraio marzo aprile maggio giugno luglio agosto settembre ottobre novembre dicembre",
         "january february march april may june july august september october november december");
 
-    /// <summary>
-    /// Abbreviations count only next to a year or a word that says «month of» (<c>set</c> and <c>ago</c> are also plain words). A month may
-    /// have more than one, told apart by a bar.
-    /// </summary>
     private static readonly Dictionary<string, int> ShortMonths = MonthTable(
         "gen feb mar apr mag giu lug ago set|sett ott nov dic",
         "jan feb mar apr may jun jul aug sep oct nov dec");
@@ -60,7 +48,6 @@ internal static partial class BankValues
         ["mese", "mensilita", "di", "del", "per", "canone", "affitto", "locazione", "rata", "pigione", "month"],
         StringComparer.Ordinal);
 
-    /// <summary>Lengths of the IBANs of the countries a rent may come from (country code and length); any other country is judged by its check digits alone.</summary>
     private static readonly Dictionary<string, int> IbanLengths = CountryLengths(
         "IT27 SM27 VA22 CH21 LI21 DE22 FR27 ES24 GB22 NL18 BE16 AT20 LU20 PT25 IE22 MC27 MT31 RO24");
 
@@ -92,8 +79,6 @@ internal static partial class BankValues
 
     [GeneratedRegex(@"(?<![A-Z0-9])[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?(?![A-Z0-9])", RegexOptions.CultureInvariant, RegexTimeoutMs)]
     private static partial Regex IbanCandidate();
-
-    // ---------------------------------------------------------------- text
 
     /// <summary>
     /// Lower case, no accents, every run of anything that is not a letter or a digit one space: how two writings of the same name or address
@@ -128,7 +113,6 @@ internal static partial class BankValues
         return builder.ToString();
     }
 
-    /// <summary>Text cut to the longest the importer keeps, without breaking a surrogate pair.</summary>
     public static string Clip(string? value, int max = BankStatementLimits.MaxTextLength)
     {
         if (string.IsNullOrEmpty(value))
@@ -142,7 +126,6 @@ internal static partial class BankValues
         return text[..cut];
     }
 
-    /// <summary>Joins the non-empty parts with a space, once each (a description repeated in two columns is not written twice).</summary>
     public static string JoinDistinct(IEnumerable<string?> parts)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -160,12 +143,6 @@ internal static partial class BankValues
         return Clip(builder.ToString());
     }
 
-    // ---------------------------------------------------------------- amounts
-
-    /// <summary>
-    /// Which decimal mark the amounts of a column use, from the cells that tell (<c>12,50</c> or <c>12.50</c>); the Italian one when none does
-    /// (whole euros, or thousands only).
-    /// </summary>
     public static DecimalMark DetectDecimalMark(IEnumerable<Cell> cells)
     {
         int comma = 0, point = 0;
@@ -183,10 +160,6 @@ internal static partial class BankValues
         return point > comma ? DecimalMark.Point : DecimalMark.Comma;
     }
 
-    /// <summary>
-    /// An amount in cents with its sign. Accepts <c>1.234,56</c>, <c>1,234.56</c>, <c>-12,50</c>, <c>12,50-</c>, <c>(12,50)</c>, <c>€ 12,50</c>,
-    /// <c>12,50 EUR</c>, <c>12,50 DR</c> (debit) and <c>12,50 CR</c> (credit); a number stored as such by Excel is taken as it is.
-    /// </summary>
     public static bool TryParseAmount(Cell cell, DecimalMark mark, out decimal amount)
     {
         amount = 0m;
@@ -214,7 +187,6 @@ internal static partial class BankValues
             }
             else if (ch is '-' or '−' or '–')
             {
-                // A minus before the figures or after them: both mean a debit.
                 negative = true;
             }
             else if (ch == '(' || ch == ')')
@@ -227,7 +199,6 @@ internal static partial class BankValues
             }
             else if (ch is '+' or '€' or '$' or '£' || char.IsWhiteSpace(ch))
             {
-                // Symbols and spaces carry no value.
             }
             else
             {
@@ -270,7 +241,6 @@ internal static partial class BankValues
         string normalized;
         if (lastComma >= 0 && lastPoint >= 0)
         {
-            // Both marks: the one on the right is the decimal mark, the other groups the thousands.
             var decimalAt = Math.Max(lastComma, lastPoint);
             var whole = raw[..decimalAt].Replace(".", string.Empty, StringComparison.Ordinal).Replace(",", string.Empty, StringComparison.Ordinal);
             normalized = $"{whole}.{raw[(decimalAt + 1)..]}";
@@ -284,7 +254,6 @@ internal static partial class BankValues
             var isDecimal = count == 1 && (separator == ',' ? mark == DecimalMark.Comma : mark == DecimalMark.Point);
             if (count == 1 && !isDecimal)
             {
-                // The other bank's decimal mark: three digits after it are a group of thousands, anything else a decimal part.
                 isDecimal = after != 3;
             }
 
@@ -304,9 +273,6 @@ internal static partial class BankValues
         return decimal.TryParse(normalized, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out value);
     }
 
-    // ---------------------------------------------------------------- dates
-
-    /// <summary>A date written the way Italian, ISO and Excel files write it; a number is an Excel serial. Years before 2000 and after 2100 are not dates of a rent.</summary>
     public static bool TryParseDate(Cell cell, out DateOnly date)
     {
         date = default;
@@ -322,7 +288,6 @@ internal static partial class BankValues
             return true;
         }
 
-        // A date with a time zone keeps the day it was written in (its own offset), it is never moved to UTC.
         if (DateTimeOffset.TryParseExact(text, DateFormats, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeUniversal, out var parsed))
         {
             if (parsed.Year < MinYear || parsed.Year > MaxYear)
@@ -334,7 +299,6 @@ internal static partial class BankValues
         return TryParseTextualDate(text, out date);
     }
 
-    /// <summary>«3 ott 2026», «03 ottobre 2026», «3-ott-26»: the month by its name in Italian or English, read from our own table and not from the machine's culture data.</summary>
     private static bool TryParseTextualDate(string text, out DateOnly date)
     {
         date = default;
@@ -362,9 +326,6 @@ internal static partial class BankValues
     private static bool IsSerialLike(string text) =>
         text.Length is 5 && text.All(char.IsAsciiDigit);
 
-    // ---------------------------------------------------------------- IBAN and currency
-
-    /// <summary>The IBAN of a field of its own: upper case, no spaces, only if the check digits are right.</summary>
     public static string? NormalizeIban(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -373,7 +334,6 @@ internal static partial class BankValues
         return IsValidIban(compact) ? compact : null;
     }
 
-    /// <summary>The first valid IBAN written in a text, with or without the spaces banks put between its groups.</summary>
     public static string? FindIban(string? text)
     {
         if (string.IsNullOrEmpty(text))
@@ -382,7 +342,6 @@ internal static partial class BankValues
         foreach (Match match in IbanCandidate().Matches(text.ToUpperInvariant()))
         {
             var compact = match.Value.Replace(" ", string.Empty, StringComparison.Ordinal);
-            // The pattern may have swallowed the first letters of the next word: try the shorter ones too.
             for (var length = Math.Min(34, compact.Length); length >= 15; length--)
             {
                 var candidate = compact[..length];
@@ -424,19 +383,12 @@ internal static partial class BankValues
         return remainder == 1;
     }
 
-    /// <summary>ISO code in upper case; nothing, <c>€</c> and <c>Euro</c> are <c>EUR</c>.</summary>
     public static string NormalizeCurrency(string? value)
     {
         var text = value?.Trim().ToUpperInvariant();
         return string.IsNullOrEmpty(text) || text is "€" or "EURO" or "EUROS" ? "EUR" : Clip(text, 8);
     }
 
-    // ---------------------------------------------------------------- months
-
-    /// <summary>
-    /// The months a payment reason names («canone ottobre 2026», «affitto 10/2026», «mese di set»). A month that is only part of a full date
-    /// («del 3 ottobre 2026», «03/10/2026») is the day of the payment and not what the payment is for, so it is not a reference.
-    /// </summary>
     public static IReadOnlyList<MonthReference> ExtractMonths(string normalizedText)
     {
         if (string.IsNullOrEmpty(normalizedText))
@@ -477,7 +429,6 @@ internal static partial class BankValues
                 continue;
             }
 
-            // «10/2026» and «10-2026» arrive here as «10 2026»; «2026-10» as «2026 10».
             if (token.Length is 1 or 2 && int.TryParse(token, NumberStyles.None, CultureInfo.InvariantCulture, out var month) && month is >= 1 and <= 12)
             {
                 var year = YearAt(i + 1);
@@ -498,7 +449,6 @@ internal static partial class BankValues
         return found.Distinct().ToList();
     }
 
-    /// <summary>True when one of the references falls in the months <paramref name="start"/> to <paramref name="end"/> (both ends included).</summary>
     public static bool ReferencesPeriod(IReadOnlyList<MonthReference> references, DateOnly start, DateOnly end)
     {
         if (references.Count == 0)

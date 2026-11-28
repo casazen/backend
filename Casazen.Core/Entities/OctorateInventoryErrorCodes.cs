@@ -21,24 +21,17 @@ public static class OctorateInventoryErrorCodes
     /// </summary>
     public const string D6ResultUnknown = "d6_result_unknown";
 
-    /// <summary>Octorate answered that the channel itself failed (its «partner failure», HTTP 550).</summary>
     public const string D6ChannelFailed = "d6_channel_failed";
 
-    /// <summary>The access is given but Octorate shows no connection of this channel: nothing can be imported, and nothing is created to fix it.</summary>
     public const string ChannelConnectionNotFound = "channel_connection_not_found";
 
-    /// <summary>The check of the access found it refused or not valid.</summary>
     public const string ChannelAccessNotValid = "channel_access_not_valid";
 
-    /// <summary>Another read of the listings of the org was running: the mapping is read again at the next command.</summary>
     public const string MappingRefreshConflict = "mapping_refresh_conflict";
 
-    /// <summary>The reservations were not all read into CasaZen (the run stopped before the end): the next command reads again.</summary>
     public const string ReservationImportIncomplete = "reservation_import_incomplete";
 
-    /// <summary>The listing is confirmed but its room is not chosen: the reservations cannot be assigned.</summary>
     public const string RoomNotChosen = "octorate_room_not_chosen";
 
-    /// <summary>The listing is no longer confirmed to a property of CasaZen.</summary>
     public const string MappingNotConfirmed = "octorate_mapping_not_confirmed";
 }

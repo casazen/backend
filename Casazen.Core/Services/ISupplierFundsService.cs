@@ -48,10 +48,8 @@ public sealed record AuthorizedPaymentInput(
 /// <param name="Errors">Payments the run could not handle (logged; the next run retries them).</param>
 public sealed record ServiceFundsRun(int Released, int ReleaseFailed, int ClosedSettled, int AuthorizationsLapsed, int HoldWarnings, int Errors)
 {
-    /// <summary>A run that found nothing to do.</summary>
     public static ServiceFundsRun Empty { get; } = new(0, 0, 0, 0, 0, 0);
 
-    /// <summary>The run did something or failed on something worth a log line.</summary>
     public bool HadWork => Released + ReleaseFailed + ClosedSettled + AuthorizationsLapsed + HoldWarnings + Errors > 0;
 }
 
@@ -71,8 +69,6 @@ public sealed record ServiceFundsRun(int Released, int ReleaseFailed, int Closed
 /// </remarks>
 public interface ISupplierFundsService
 {
-    // ─── The card of a booking, before the request exists ────────────────────────────────────────────────────────────
-
     /// <summary>
     /// A booking of <paramref name="amountCents"/> from <paramref name="supplierOrgId"/>'s showcase is paid inside CasaZen: the flag is on, the
     /// supplier's Stripe account takes charges and payouts, and the amount is at least <c>SupplierPayments:MinAmountCents</c>. False means the
@@ -118,8 +114,6 @@ public interface ISupplierFundsService
     /// </summary>
     DateTime LatestResponseAt(DateTime authorizedAt);
 
-    // ─── The offer of a request on measure (SP-10b-b) ────────────────────────────────────────────────────────────────
-
     /// <summary>
     /// The customer of a request on measure accepts the offer and the offer is paid inside CasaZen (<see cref="CanAuthorizeAsync"/> for its total):
     /// creates the payment of the request (<see cref="ServicePaymentStatus.Requested"/>, platform funds, private payer, the commission snapshotted) and
@@ -139,9 +133,6 @@ public interface ISupplierFundsService
     /// </summary>
     Task CancelOfferPaymentAsync(Guid requestId, CancellationToken cancellationToken = default);
 
-    // ─── The life of the request ─────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The request has a payment held by CasaZen that is not canceled: its mode is <see cref="ServiceRequestPaymentMode.Online"/> and its amount is locked.</summary>
     Task<bool> HasHeldPaymentAsync(Guid requestId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -170,10 +161,6 @@ public interface ISupplierFundsService
     /// </summary>
     Task<ServiceRequestPayment> ConfirmOkAsync(Guid requestId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The most recent payment held by CasaZen of a request — a block that was released (<see cref="ServicePaymentStatus.Canceled"/>) included, so
-    /// a refused or cancelled booking can still say that nothing was charged — read without tracking; null when the request has none.
-    /// </summary>
     Task<ServiceRequestPayment?> FindHeldPaymentAsync(Guid requestId, CancellationToken cancellationToken = default);
 }
 
@@ -184,6 +171,5 @@ public interface ISupplierFundsService
 /// </summary>
 public interface ISupplierFundsJobService
 {
-    /// <summary>Runs the five steps. Each payment is handled on its own, under its lock; an error on one is logged and counted, and the others go on.</summary>
     Task<ServiceFundsRun> RunFundsAsync(CancellationToken cancellationToken = default);
 }

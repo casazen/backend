@@ -84,7 +84,6 @@ public class WizardDraftsControllerTests
         Assert.Equal("Casa due", serverDraft.Data.GetProperty("name").GetString());
         Assert.Equal("private, no-store", controller.Response.Headers.CacheControl.ToString());
 
-        // The person is the token's subject and the org the caller's own; the wizard is the one of the address.
         _drafts.Verify(
             d => d.SaveDraftAsync(
                 OrgId,
@@ -162,7 +161,6 @@ public class WizardDraftsControllerTests
     [Fact]
     public async Task Get_NoDraftOfTheCaller_Is404_AndTheDraftLookedForIsThatOfTheTokensSubject()
     {
-        // The draft of another person is the same case for the service: it answers none, and the caller is told what it is told for no draft.
         _drafts
             .Setup(d => d.GetDraftAsync(OrgId, UserId, WizardType.CheckIn, BookingId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((WizardDraftDto?)null);
@@ -191,7 +189,7 @@ public class WizardDraftsControllerTests
     [Theory]
     [InlineData("nonsense")]
     [InlineData("99")]
-    [InlineData("3")] // the number of a member is not its name
+    [InlineData("3")]
     public async Task EveryAction_AnUnknownWizardType_Is400_AndNothingIsTouched(string type)
     {
         var controller = NewController();
@@ -217,7 +215,6 @@ public class WizardDraftsControllerTests
         Assert.IsType<UnauthorizedResult>((await anonymous.Save("CheckIn", new SaveWizardDraftRequest { Data = data }, CancellationToken.None)).Result);
         Assert.IsType<UnauthorizedResult>(await anonymous.Delete("CheckIn", null, CancellationToken.None));
 
-        // A caller with no host org (a supplier-only account) has no drafts.
         var noOrg = NewController(hasOrg: false);
         Assert.Equal(
             "not_found",

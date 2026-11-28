@@ -5,17 +5,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// Test data of the org team (AM-01) on the EF InMemory provider: a context with the seeded contexts, roles and
-/// permissions (<c>EnsureCreated</c> applies the model seed, so the role ids are the migration's), host orgs, users,
-/// org members and the memberships that project them.
-/// </summary>
 internal static class OrgTeamTestData
 {
-    /// <summary>
-    /// A context on the InMemory database <paramref name="databaseName"/> (a new one when omitted). Opening a second
-    /// context with the same name reads what the first one saved and nothing it only tracks.
-    /// </summary>
     public static AppDbContext NewDb(string? databaseName = null)
     {
         var db = new AppDbContext(
@@ -76,7 +67,6 @@ internal static class OrgTeamTestData
         return member;
     }
 
-    /// <summary>The user's memberships as <c>context/roleKey</c>, sorted.</summary>
     public static async Task<List<string>> MembershipsOfAsync(AppDbContext db, string userId) =>
         await db.UserContextMemberships.AsNoTracking()
             .Where(m => m.UserId == userId)

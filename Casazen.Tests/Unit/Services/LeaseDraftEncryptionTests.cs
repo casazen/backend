@@ -16,7 +16,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class LeaseDraftEncryptionTests
 {
-    // One provider for the whole class: EF keeps one model per provider, and a provider per test would fill the cache the other tests share.
     private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     [Fact]
@@ -80,8 +79,6 @@ public class LeaseDraftEncryptionTests
 
         Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, storedDraft, StringComparison.Ordinal);
         Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, storedResidence, StringComparison.Ordinal);
-        // The payload is random text, so a short word turns up in it by chance ("Via" about once in 200 runs): only values too long to
-        // be met by chance are searched for, with the whole typed values.
         foreach (var secret in new[] { "Bianchi", "Nascosta", "Via Nascosta 3, Lecce", typed })
             Assert.DoesNotContain(secret, storedDraft, StringComparison.OrdinalIgnoreCase);
         foreach (var secret in new[] { "Segretissima", "Via Segretissima 7, Bari" })

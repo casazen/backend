@@ -12,11 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// <c>/api/orgs/me/site-documents</c> and <c>/api/public/orgs/{slug}/documents/{kind}</c> (BK-14, A3-21): the org's
-/// administrator publishes the operator's privacy notice and terms as versions, and the anonymous public endpoint serves
-/// what is published, or says plainly that nothing is.
-/// </summary>
 public class OrgSiteDocumentsIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private const string Url = "/api/orgs/me/site-documents";
@@ -103,7 +98,6 @@ public class OrgSiteDocumentsIntegrationTests : IClassFixture<CasazenWebApplicat
         Assert.Contains("<li>nome</li>", html);
         Assert.Contains("href=\"mailto:privacy@villaparco.test\"", html);
         Assert.Equal(JsonValueKind.Null, publicDocument.GetProperty("externalUrl").ValueKind);
-        // The public read never carries the source text, the author or the internal ids.
         Assert.False(publicDocument.TryGetProperty("content", out _));
         Assert.False(publicDocument.TryGetProperty("publishedByUserId", out _));
         Assert.False(publicDocument.TryGetProperty("orgId", out _));
@@ -249,7 +243,6 @@ public class OrgSiteDocumentsIntegrationTests : IClassFixture<CasazenWebApplicat
         Assert.Equal(2, state.GetProperty("current").GetProperty("version").GetInt32());
         var history = state.GetProperty("history").EnumerateArray().ToList();
         Assert.Equal([2, 1], history.Select(h => h.GetProperty("version").GetInt32()));
-        // The history list never carries the text.
         Assert.All(history, h => Assert.Equal(JsonValueKind.Null, h.GetProperty("content").ValueKind));
 
         var first = await client.GetFromJsonAsync<JsonElement>($"{Url}/privacy/versions/1");
@@ -282,7 +275,6 @@ public class OrgSiteDocumentsIntegrationTests : IClassFixture<CasazenWebApplicat
         var publicDocument = await anonymous.GetFromJsonAsync<JsonElement>($"/api/public/orgs/{slug}/documents/terms");
         Assert.False(publicDocument.GetProperty("published").GetBoolean());
 
-        // Withdrawing again is harmless; publishing again adds a new version.
         Assert.Equal(HttpStatusCode.OK, (await client.DeleteAsync($"{Url}/terms")).StatusCode);
         var again = await client.PutAsJsonAsync($"{Url}/terms", new { source = "Text", content = "Termini" });
         var againState = await again.Content.ReadFromJsonAsync<JsonElement>();
@@ -360,7 +352,6 @@ public class OrgSiteDocumentsIntegrationTests : IClassFixture<CasazenWebApplicat
         Assert.All(stateB.EnumerateArray(), d => Assert.False(d.GetProperty("published").GetBoolean()));
         Assert.Equal(HttpStatusCode.NotFound, (await clientB.GetAsync($"{Url}/privacy/versions/1")).StatusCode);
 
-        // B withdrawing "their" privacy does not touch A's.
         var withdraw = await clientB.DeleteAsync($"{Url}/privacy");
         Assert.Equal(HttpStatusCode.OK, withdraw.StatusCode);
         var publicA = await clientB.GetFromJsonAsync<JsonElement>($"/api/public/orgs/{slugA}/documents/privacy");
@@ -378,7 +369,6 @@ public class OrgSiteDocumentsIntegrationTests : IClassFixture<CasazenWebApplicat
         using (var clientA = _factory.CreateAuthenticatedClient(ownerA, "PropertyOwner"))
             await clientA.PutAsJsonAsync($"{Url}/terms", new { source = "Text", content = "Termini di A" });
 
-        // The tenant filter of the signed-in caller (org B) must not hide the public document of org A.
         using var clientB = _factory.CreateAuthenticatedClient(ownerB, "PropertyOwner");
         var json = await clientB.GetFromJsonAsync<JsonElement>($"/api/public/orgs/{slugA}/documents/terms");
 
@@ -408,7 +398,6 @@ public class OrgSiteDocumentsIntegrationTests : IClassFixture<CasazenWebApplicat
 
     private static string NewOwnerId(string label) => $"auth0|site-docs-{label}-{Guid.NewGuid():N}";
 
-    /// <summary>An org of the owner with a unique readable slug (the public endpoint resolves orgs by slug).</summary>
     private async Task<string> SeedOrgWithSlugAsync(string ownerId)
     {
         var org = await _factory.SeedOrgForOwnerAsync(ownerId);

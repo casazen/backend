@@ -56,7 +56,6 @@ public class MessageSyncProofTests
         Assert.Equal(1, thread.UnreadCount);
         Assert.Equal(OtaMessageDirection.Inbound, thread.LastMessageDirection);
 
-        // The third delivery: the same message, now read by the host side on the channel manager. Still one row, now read, and no new event.
         var read = MessageSyncHarness.Inbound("70001", ThreadId) with { ReadAt = MessageSyncHarness.Now.UtcDateTime.AddMinutes(-30) };
         h.Client.Setup(c => c.GetChatMessagesAsync(MessageSyncHarness.Accommodation, ThreadId, It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([read]);
@@ -71,7 +70,6 @@ public class MessageSyncProofTests
         Assert.Equal((1, 1, 0), (rows, events, unread));
         Assert.Equal(read.ReadAt, row.ReadAt);
 
-        // The event says where the message came from by ids only: the thread key, the property, the booking is not there yet, the channel.
         var payload = await h.ReadAsync(async db =>
             (await db.OutboxEvents.SingleAsync(e => e.EventType == DomainEventType.GuestMessageReceived)).PayloadJson);
         using var document = JsonDocument.Parse(payload);
@@ -83,10 +81,6 @@ public class MessageSyncProofTests
         Assert.DoesNotContain("check-in", payload, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// PROOF TEST: privacy rule (ADR-032, ADR-022-R21). A run of the sync, a run of the reconciliation and a run that fails log ids, codes and counts:
-    /// not the words of the message, not the name of the guest, not the address of the attachment, not the e-mail the guest wrote in it.
-    /// </summary>
     [Fact]
     public async Task OtaMessageSync_Logs_NeverContainMessageText_Test()
     {
@@ -113,7 +107,6 @@ public class MessageSyncProofTests
         await using (var db = h.NewDb())
             await h.Service(db).ReconcileRecentAsync(MessageSyncHarness.OrgA, CancellationToken.None);
 
-        // A run that fails: Octorate does not answer for the thread, and the exception reaches the caller.
         h.Client.Setup(c => c.GetChatThreadAsync(MessageSyncHarness.Accommodation, "9002", It.IsAny<CancellationToken>()))
             .ThrowsAsync(new OctorateServerException(500));
         await using (var db = h.NewDb())
@@ -122,7 +115,6 @@ public class MessageSyncProofTests
                 () => h.Service(db).SyncThreadAsync(MessageSyncHarness.OrgA, MessageSyncHarness.Accommodation, "9002", null, CancellationToken.None));
         }
 
-        // The words are in the table (that is the copy) and in no line of the log: not as a message, not as a structured value, not in an exception.
         Assert.Equal(Words, (await h.ReadAsync(db => db.OtaMessages.SingleAsync())).Text);
         Assert.NotEmpty(h.Log.Entries);
         var output = h.Log.AllOutput;
@@ -162,7 +154,6 @@ public class MessageSyncProofTests
         using (var document = JsonDocument.Parse(payload))
             Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("propertyId").ValueKind);
 
-        // Not a listing of the organization, rejected, or another organization: nothing is read (no call is set up, a call would throw).
         await using (var db = h.NewDb())
         {
             var service = h.Service(db);
@@ -171,7 +162,6 @@ public class MessageSyncProofTests
             Assert.Equal(SyncResult.Empty, await service.SyncThreadAsync(MessageSyncHarness.OrgB, Proposed, "9100", null, CancellationToken.None));
         }
 
-        // A person confirms the mapping to a property of the organization: the next pass gives the thread that property, and counts it assigned.
         var propertyId = Guid.NewGuid();
         h.Confirm(Proposed, propertyId);
         SyncResult assigned;
@@ -182,7 +172,6 @@ public class MessageSyncProofTests
         Assert.Equal(propertyId, (await h.ReadAsync(db => db.OtaMessageThreads.SingleAsync(t => t.OctorateThreadId == "9100"))).PropertyId);
         Assert.Equal(1, await h.ReadAsync(db => db.OtaMessages.CountAsync()));
 
-        // A mapping that stops being confirmed takes the property away again: the thread is unassigned, not left under a property that lost its listing.
         h.Mappings.Setup(m => m.ListAsync(MessageSyncHarness.OrgA, It.IsAny<CancellationToken>()))
             .ReturnsAsync([MessageSyncHarness.Row(Proposed, OctorateMappingStatus.Proposed, null)]);
         await using (var db = h.NewDb())
@@ -190,11 +179,6 @@ public class MessageSyncProofTests
         Assert.Null((await h.ReadAsync(db => db.OtaMessageThreads.SingleAsync(t => t.OctorateThreadId == "9100"))).PropertyId);
     }
 
-    /// <summary>
-    /// PROOF TEST: trust rule (ADR-023-R6, AC1 of T02). A listing whose license has no chat module is kept as the state <c>chat_not_licensed</c>
-    /// on its checkpoints, the other listings of the organization are read all the same and the pass does not fail, and the listing is not asked
-    /// again for an hour. Nothing is stored for it, and it is not an empty inbox: its state says why.
-    /// </summary>
     [Fact]
     public async Task OtaMessageSync_ChatNotLicensed_IsKeptAsTheStateOfTheListing_Test()
     {
@@ -225,18 +209,12 @@ public class MessageSyncProofTests
         Assert.Equal(h.ConnectionId, working.ConnectionId);
         Assert.Empty(await h.ReadAsync(db => db.OtaMessageThreads.Where(t => t.OctorateAccommodationId == Unlicensed).ToListAsync()));
 
-        // The next pass, a few minutes later: the listing rests, the other one is read again.
         await using (var db = h.NewDb())
             await h.Service(db).ReconcileRecentAsync(MessageSyncHarness.OrgA, CancellationToken.None);
         h.Client.Verify(c => c.GetRecentChatMessagesAsync(Unlicensed, It.IsAny<CancellationToken>()), Times.Once);
         h.Client.Verify(c => c.GetRecentChatMessagesAsync(MessageSyncHarness.Accommodation, It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
-    /// <summary>
-    /// The import of a property (AC-NF62-1): it reads the pages of the threads of the confirmed listing, ends with a page that has nothing, keeps
-    /// the end on the checkpoints of the listing, and running it again adds nothing. A thread with a reservation is a Reservation, one without is a
-    /// Request whose channel comes from the connection it comes through.
-    /// </summary>
     [Fact]
     public async Task OtaMessageSync_ImportProperty_ReadsEveryPageAndNeverDuplicates()
     {
@@ -281,12 +259,10 @@ public class MessageSyncProofTests
         Assert.Null(state.ImportCursor);
         Assert.Null(state.LastError);
 
-        // A property that is not in the organization's mapping reads nothing (the strict client would fail the test if it did).
         await using var other = h.NewDb();
         Assert.Equal(SyncResult.Empty, await h.Service(other).ImportPropertyAsync(Guid.NewGuid(), CancellationToken.None));
     }
 
-    /// <summary>An import that was interrupted resumes at the position it saved: the pages before it are not read again, and the end is recorded.</summary>
     [Fact]
     public async Task OtaMessageSync_ImportProperty_ResumesAtTheSavedPosition()
     {
@@ -306,7 +282,6 @@ public class MessageSyncProofTests
             await seed.SaveChangesAsync();
         }
 
-        // Only the page at 2 and the end are set up: a read of the page at 0 would fail the test.
         h.Client.Setup(c => c.GetChatThreadsAsync(acc, 2, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OctorateChatThreadPage([MessageSyncHarness.Thread("3")], 1));
         h.Client.Setup(c => c.GetChatThreadsAsync(acc, 3, It.IsAny<CancellationToken>()))
@@ -325,10 +300,6 @@ public class MessageSyncProofTests
         Assert.Null(state.ImportCursor);
     }
 
-    /// <summary>
-    /// A run that is out of budget stops before it reads anything more and reports itself not complete; the next run, with time, goes to the end and
-    /// records it.
-    /// </summary>
     [Fact]
     public async Task OtaMessageSync_ImportProperty_OutOfBudget_StopsAndSaysItIsNotComplete()
     {
@@ -342,7 +313,6 @@ public class MessageSyncProofTests
         h.Client.Setup(c => c.GetChatMessagesAsync(acc, "1", It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([MessageSyncHarness.Inbound("71", "1")]);
 
-        // No time at all: the run starts, finds its budget spent and reads nothing.
         SyncResult stopped;
         await using (var db = h.NewDb())
             stopped = await h.Service(db).ImportPropertyAsync(h.PropertyId, CancellationToken.None, TimeSpan.Zero);
@@ -350,7 +320,6 @@ public class MessageSyncProofTests
         Assert.Equal(0, await h.ReadAsync(db => db.OtaMessageThreads.CountAsync()));
         Assert.Empty(await h.ReadAsync(db => db.OtaMessageSyncStates.ToListAsync()));
 
-        // The next run, with time, goes to the end.
         SyncResult done;
         await using (var db = h.NewDb())
             done = await h.Service(db).ImportPropertyAsync(h.PropertyId, CancellationToken.None, TimeSpan.FromMinutes(4));
@@ -359,11 +328,6 @@ public class MessageSyncProofTests
         Assert.NotNull((await h.ReadAsync(db => db.OtaMessageSyncStates.SingleAsync())).InitialImportCompletedAt);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (E23/F01/US01/T01, the review of S010, fix 5). An automatic message of CasaZen (the check-in link) answers nobody: when it is the newest message of the thread, the
-    /// copy takes the direction of the thread from the newest message that is not automatic, so the question of the guest still waits for its answer; the row stays automatic, and a person
-    /// who writes on the channel manager after the link does answer.
-    /// </summary>
     [Fact]
     public async Task OtaMessageSync_AnAutomaticMessageNewerThanTheQuestion_LeavesTheThreadWaitingForItsAnswer_Test()
     {
@@ -377,7 +341,6 @@ public class MessageSyncProofTests
             await h.Service(db).SyncThreadAsync(MessageSyncHarness.OrgA, MessageSyncHarness.Accommodation, ThreadId, null, CancellationToken.None);
         Assert.Equal(OtaMessageDirection.Inbound, (await h.ReadAsync(db => db.OtaMessageThreads.SingleAsync())).LastMessageDirection);
 
-        // CasaZen wrote the link in the thread (the reply service stored the row with the id the channel manager gave it); the copy reads the thread again and finds the message.
         var sentAt = MessageSyncHarness.Now.UtcDateTime.AddMinutes(-30);
         await using (var db = h.NewDb())
         {
@@ -417,7 +380,6 @@ public class MessageSyncProofTests
         Assert.Equal(1, afterLink.UnreadCount);
         Assert.Equal(MessageOrigin.Automation, linkRow.Origin);
 
-        // A person answers on the channel manager after the link: that is an answer.
         var answer = MessageSyncHarness.Inbound("70003", ThreadId, "Il check-in e dalle 15.") with
         {
             Direction = OtaMessageDirection.Outbound,

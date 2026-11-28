@@ -67,11 +67,9 @@ public class PropertyResponsibleSaveTests
     {
         var id = await SeedAsync(responsible: "auth0|anna");
 
-        // The host opens the record of the property: this copy still names Anna.
         await using var staleCopy = NewDb();
         var property = await staleCopy.Properties.SingleAsync(p => p.Id == id);
 
-        // Meanwhile the owner takes the property away from Anna and her name goes back to nobody.
         await using (var release = NewDb())
         {
             var current = await release.Properties.SingleAsync(p => p.Id == id);

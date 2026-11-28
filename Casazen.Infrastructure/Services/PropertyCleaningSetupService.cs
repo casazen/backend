@@ -75,18 +75,14 @@ public sealed class PropertyCleaningSetupService(
         if (scope.OrgId != orgId)
             throw new ArgumentException("The scope of a bulk save is the scope of the org it saves for.", nameof(scope));
 
-        // None is none: an empty list never means every property of the org.
         var ids = propertyIds.Distinct().ToList();
         if (ids.Count == 0)
             throw new DomainRuleException(PropertyCleaningSetupRules.BulkEmpty, "CleaningSetupBulkEmpty");
         if (ids.Count > PropertyCleaningSetupRules.MaxBulkProperties)
             throw new DomainRuleException(PropertyCleaningSetupRules.BulkTooMany, "CleaningSetupBulkTooMany", PropertyCleaningSetupRules.MaxBulkProperties);
 
-        // What is wrong with the setup itself is wrong for every property: nothing is saved.
         ValidateShape(input);
 
-        // Only the properties of the org inside the reach of the caller (a collaborator «Solo alcuni» reaches the ones it was given): the others are
-        // the same "not found" as a property that does not exist.
         var reachable = (await db.Properties
                 .AsNoTracking()
                 .Where(p => p.OrgId == orgId && ids.Contains(p.Id))
@@ -125,7 +121,6 @@ public sealed class PropertyCleaningSetupService(
         return results;
     }
 
-    /// <summary>The property of the org (not deleted), as it is read to validate and to answer; the same 404 for another org's property and a missing one.</summary>
     private async Task<Property> FindPropertyAsync(Guid orgId, Guid propertyId, CancellationToken cancellationToken) =>
         await db.Properties
             .AsNoTracking()
@@ -136,10 +131,6 @@ public sealed class PropertyCleaningSetupService(
             MessageKey = PropertyNotFoundMessageKey,
         };
 
-    /// <summary>
-    /// What is wrong with the setup whatever the property: the kind of cleaner and the columns it needs, the price, the time. 422 with the codes of
-    /// <see cref="PropertyCleaningSetupRules"/>; nothing is read from the database.
-    /// </summary>
     private static void ValidateShape(CleaningSetupInput input)
     {
         if (input.CleanerKind is not { } kind || !Enum.IsDefined(kind))
@@ -151,7 +142,6 @@ public sealed class PropertyCleaningSetupService(
             if (input.SupplierOrgId is not { } supplier || supplier == Guid.Empty || !string.IsNullOrEmpty(staffUserId))
                 throw new DomainRuleException(PropertyCleaningSetupRules.CleanerMismatch, "CleaningSetupCleanerMismatch");
 
-            // A supplier is paid: no price, no cleaning request.
             if (input.PriceCents is null)
                 throw new DomainRuleException(PropertyCleaningSetupRules.PriceInvalid, "CleaningSetupPriceInvalid");
         }
@@ -165,7 +155,6 @@ public sealed class PropertyCleaningSetupService(
             if (!ServiceRequestPricing.IsValidAmount(price))
                 throw new DomainRuleException(PropertyCleaningSetupRules.PriceInvalid, "CleaningSetupPriceInvalid");
 
-            // A number is never applied to a currency nobody stated.
             if (string.IsNullOrWhiteSpace(input.Currency))
                 throw new DomainRuleException(PropertyCleaningSetupRules.CurrencyRequired, "CleaningSetupCurrencyRequired");
         }
@@ -184,13 +173,8 @@ public sealed class PropertyCleaningSetupService(
         }
     }
 
-    /// <summary>
-    /// What is wrong with the setup for this property: a property that takes no stays, a price in another currency than the property's, and for an active setup a cleaner
-    /// that cannot work now. 422 with the codes of <see cref="PropertyCleaningSetupRules"/>.
-    /// </summary>
     private async Task ValidateForPropertyAsync(Property property, CleaningSetupInput input, CancellationToken cancellationToken)
     {
-        // The cleaning is the one of a stay at check-out: a long-rent property has none.
         if (property.RentalMode == RentalMode.Long)
             throw new DomainRuleException(LongModeCode, LongModeMessageKey);
 
@@ -198,8 +182,6 @@ public sealed class PropertyCleaningSetupService(
         if (input.PriceCents is not null && !string.Equals(StayCurrency.Normalize(input.Currency), currency, StringComparison.Ordinal))
             throw new DomainRuleException(PropertyCleaningSetupRules.CurrencyMismatch, "CleaningSetupCurrencyMismatch", currency);
 
-        // The requests to the suppliers of the marketplace, their prices and their payments are in euro (ServiceCharges.Currency) and nothing is converted: a price in francs would be charged
-        // as euro. A property in another currency takes no supplier, only a member of the staff. An inactive setup is only kept, like for every other check of the cleaner.
         if (input.CleanerKind == PropertyCleanerKind.Supplier && input.Active && !string.Equals(currency, StayCurrency.Euro, StringComparison.Ordinal))
             throw new DomainRuleException(PropertyCleaningSetupRules.SupplierCurrencyUnsupported, "CleaningSetupSupplierCurrencyUnsupported", currency);
 
@@ -207,7 +189,6 @@ public sealed class PropertyCleaningSetupService(
         {
             var supplierOrgId = input.SupplierOrgId!.Value;
 
-            // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the supplier org id.
             var supplier = await SupplierServiceCatalogService.SuppliersForProperty(db, property.OrgId, property.Id)
                                .AsNoTracking()
                                .FirstOrDefaultAsync(sp => sp.OrgId == supplierOrgId, cancellationToken)
@@ -235,10 +216,6 @@ public sealed class PropertyCleaningSetupService(
         }
     }
 
-    /// <summary>
-    /// Validates the setup for the property and replaces what the property had (or creates the row). Two parallel first saves lose to each other on the unique index of the
-    /// property: the loser starts again and finds the row of the winner.
-    /// </summary>
     private async Task<PropertyCleaningSetup> UpsertAsync(
         Property property,
         CleaningSetupInput input,
@@ -313,14 +290,12 @@ public sealed class PropertyCleaningSetupService(
         var trusted = false;
         if (setup.SupplierOrgId is { } supplierOrgId)
         {
-            // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the supplier org id.
             supplierName = await db.SupplierProfiles
                 .AsNoTracking()
                 .Where(sp => sp.OrgId == supplierOrgId)
                 .Select(sp => sp.LegalName)
                 .FirstOrDefaultAsync(cancellationToken);
 
-            // A trusted supplier of the org, for this property: the ones it was assigned (none listed = every property of the org).
             var links = await db.TrustedSuppliers
                 .AsNoTracking()
                 .Where(t => t.OrgId == setup.OrgId && t.SupplierOrgId == supplierOrgId)

@@ -7,16 +7,12 @@ namespace Casazen.Core.Regulatory;
 /// <summary>Where a calendar day stands with respect to the configured CIN deadline (<c>Cin:ExposureDeadline</c>, CO-20).</summary>
 public enum CinDeadlinePhase
 {
-    /// <summary>No deadline configured: only the obligation is shown, without a date.</summary>
     NotConfigured,
 
-    /// <summary>The deadline is after today.</summary>
     Upcoming,
 
-    /// <summary>The deadline is today.</summary>
     DueToday,
 
-    /// <summary>The deadline is before today: "deadline passed", never "today" again.</summary>
     Passed,
 }
 
@@ -26,7 +22,6 @@ public enum CinDeadlinePhase
 /// </summary>
 public sealed record CinDeadlineStatus(DateOnly? Deadline, CinDeadlinePhase Phase, int? DaysUntilDeadline)
 {
-    /// <summary>The status of <paramref name="deadline"/> on <paramref name="today"/> (Europe/Rome calendar date).</summary>
     public static CinDeadlineStatus On(DateOnly? deadline, DateOnly today)
     {
         if (deadline is not { } date)
@@ -42,7 +37,6 @@ public sealed record CinDeadlineStatus(DateOnly? Deadline, CinDeadlinePhase Phas
         return new CinDeadlineStatus(date, phase, days);
     }
 
-    /// <summary>Lowercase API value of <see cref="Phase"/>: <c>none</c>, <c>upcoming</c>, <c>today</c> or <c>passed</c>.</summary>
     public string PhaseApiValue => Phase switch
     {
         CinDeadlinePhase.Upcoming => "upcoming",
@@ -61,17 +55,10 @@ public sealed record CinDeadlineStatus(DateOnly? Deadline, CinDeadlinePhase Phas
 /// </summary>
 public static class CinAlertStages
 {
-    /// <summary>The deadline day.</summary>
     public const int DueToday = 0;
 
-    /// <summary>After the deadline, or the one reminder of the obligation when no deadline is configured.</summary>
     public const int Final = -1;
 
-    /// <summary>
-    /// The stage due on the day of <paramref name="status"/>: the nearest threshold of <paramref name="alertDaysBefore"/>
-    /// already reached before the deadline, <see cref="DueToday"/>, <see cref="Final"/>; null while the deadline is
-    /// farther than every threshold.
-    /// </summary>
     public static int? Due(CinDeadlineStatus status, IReadOnlyCollection<int> alertDaysBefore)
     {
         ArgumentNullException.ThrowIfNull(status);
@@ -88,10 +75,6 @@ public static class CinAlertStages
     }
 }
 
-/// <summary>
-/// Today's <see cref="CinDeadlineStatus"/>: the configured deadline (<see cref="CinOptions.ExposureDeadline"/>) against the
-/// calendar date in Europe/Rome of the injected clock (FD-06).
-/// </summary>
 public sealed class CinDeadlineCalendar(IOptions<CinOptions> options, TimeProvider timeProvider)
 {
     public CinOptions Options => options.Value;

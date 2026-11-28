@@ -1,4 +1,3 @@
-using Casazen.Core.Entities;
 using Casazen.Core.Multitenancy;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -25,16 +24,13 @@ public class CallerTenantQueryTests
 
         Assert.Contains("\"OrgMembers\"", sql);
         Assert.Contains("\"Status\"", sql);
-        // No tenant predicate on OrgMembers: the filter reads the request's OrgId, which is being resolved.
         Assert.DoesNotMatch("\"OrgId\" = @", sql);
-        // One read: the subquery is part of the statement over Users, no second round trip.
         Assert.Equal(1, CountOccurrences(sql, "FROM \"Users\""));
     }
 
     [Fact]
     public void For_StillCountsOnlyAHostOrgAsTheTenantOfTheCaller()
     {
-        // PL-05 (A1-40): a user whose OrgId points at its supplier org has no tenant.
         using var db = NewNpgsqlContext(new FixedTenantContext(CallerOrgId, filterEnabled: true));
 
         var sql = CallerTenantQuery.For(db, "auth0|caller").ToQueryString();
@@ -46,7 +42,6 @@ public class CallerTenantQueryTests
     [Fact]
     public void OrgMembers_ReadWithoutIgnoringTheFilter_AreScopedToTheCallersOrg()
     {
-        // The negative control of the test above: the filter is there for every other read of the table.
         using var db = NewNpgsqlContext(new FixedTenantContext(CallerOrgId, filterEnabled: true));
 
         var sql = db.OrgMembers.ToQueryString();

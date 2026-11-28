@@ -23,19 +23,14 @@ namespace Casazen.Core.Options;
 /// </remarks>
 public sealed class SwissTouristTaxOptions
 {
-    /// <summary>The section the options are read from.</summary>
     public const string SectionName = "SwissTouristTax";
 
-    /// <summary>The highest amount per person and night a rule may have: more is a typing mistake, never a tax.</summary>
     public const decimal MaxRatePerPersonPerNight = 50m;
 
-    /// <summary>The nights of a stay that are taxed at most: the longest stay a document is made for (a year).</summary>
     public const int MaxNights = 366;
 
-    /// <summary>The cantonal rules.</summary>
     public List<SwissTouristTaxRuleOptions> Rules { get; set; } = [];
 
-    /// <summary>The channels whose portal collects the tourist tax itself, by default (⚖ C5); the names of <see cref="BookingSource"/>.</summary>
     public List<BookingSource> PlatformCollected { get; set; } = [];
 
     /// <summary>
@@ -64,26 +59,19 @@ public sealed class SwissTouristTaxOptions
     }
 }
 
-/// <summary>The tourist tax of one canton from a day on: the amount of a night for each person.</summary>
 public sealed class SwissTouristTaxRuleOptions
 {
-    /// <summary>The two letters of the canton (<c>TI</c>), as <c>SwissMunicipalities</c> gives them.</summary>
     public string Canton { get; set; } = string.Empty;
 
-    /// <summary>The amount for each person and each night, in francs.</summary>
     public decimal RatePerPersonPerNight { get; set; }
 
-    /// <summary>The first night the rule is in force.</summary>
     public DateOnly ValidFrom { get; set; }
 
-    /// <summary>The last night the rule is in force; <c>null</c> = open.</summary>
     public DateOnly? ValidTo { get; set; }
 
-    /// <summary>The page of the canton the amount was read from: a rule never exists without its source.</summary>
     public string? SourceUrl { get; set; }
 }
 
-/// <summary>The checks of the Swiss tourist tax options at startup (<see cref="SwissTouristTaxOptions"/>): every problem is named with the position of its rule.</summary>
 public sealed class SwissTouristTaxOptionsValidator : IValidateOptions<SwissTouristTaxOptions>
 {
     public ValidateOptionsResult Validate(string? name, SwissTouristTaxOptions options)
@@ -93,7 +81,6 @@ public sealed class SwissTouristTaxOptionsValidator : IValidateOptions<SwissTour
         return problems.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(problems);
     }
 
-    /// <summary>What is wrong with the options; empty when they can be used.</summary>
     public static IReadOnlyList<string> Problems(SwissTouristTaxOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -123,7 +110,6 @@ public sealed class SwissTouristTaxOptionsValidator : IValidateOptions<SwissTour
                 problems.Add($"{where}: the source is required, an https address of the page the amount was read from.");
         }
 
-        // A canton has one rule on a night: two ranges of one canton never overlap.
         foreach (var group in rules
                      .Select((rule, index) => (Rule: rule, Index: index))
                      .GroupBy(x => x.Rule.Canton?.Trim().ToUpperInvariant()))

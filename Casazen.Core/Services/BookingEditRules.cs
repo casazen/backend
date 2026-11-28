@@ -2,33 +2,19 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Core.Services;
 
-/// <summary>Why the dates and guests of a booking cannot be changed (<see cref="BookingEditRules.Of(BookingStatus, BookingSource)"/>).</summary>
 public enum BookingEditLock
 {
-    /// <summary>The booking is cancelled (<see cref="BookingErrorCodes.NotEditable"/>).</summary>
     Cancelled,
 
-    /// <summary>The guest has arrived or the stay is over: checked in or checked out (<see cref="BookingErrorCodes.StayLocked"/>).</summary>
     Started,
 
-    /// <summary>
-    /// The booking comes from a channel, or from the booking site and is still a request waiting (a checkout hold being paid, a "pay at the
-    /// property" request the host has not accepted): its price, payment and check-in link are agreed there and are not edited
-    /// (<see cref="BookingErrorCodes.SourceLocked"/>). A confirmed booking of the booking site is edited, with its money settled
-    /// (E08/F02/US01/T01, NF-75), and replaces SR-D5 for it.
-    /// </summary>
     SourceLocked,
 }
 
-/// <summary>Whether the dates and guests of a booking may be changed, and why not.</summary>
-/// <param name="Allowed">True when the host may change the dates and the guests.</param>
-/// <param name="Reason">Why not; <c>null</c> when <paramref name="Allowed"/>.</param>
 public readonly record struct BookingEditability(bool Allowed, BookingEditLock? Reason)
 {
-    /// <summary>The dates and guests may be changed.</summary>
     public static BookingEditability Open { get; } = new(true, null);
 
-    /// <summary>The dates and guests cannot be changed, for <paramref name="reason"/>.</summary>
     public static BookingEditability LockedBy(BookingEditLock reason) => new(false, reason);
 }
 
@@ -42,7 +28,6 @@ public readonly record struct BookingEditability(bool Allowed, BookingEditLock? 
 /// </summary>
 public static class BookingEditRules
 {
-    /// <summary>The rule for a booking of <paramref name="status"/> and <paramref name="source"/>.</summary>
     public static BookingEditability Of(BookingStatus status, BookingSource source)
     {
         if (status == BookingStatus.Cancelled)
@@ -60,17 +45,12 @@ public static class BookingEditRules
             : BookingEditability.LockedBy(BookingEditLock.SourceLocked);
     }
 
-    /// <summary>The rule for <paramref name="booking"/>.</summary>
     public static BookingEditability Of(Booking booking)
     {
         ArgumentNullException.ThrowIfNull(booking);
         return Of(booking.Status, booking.Source);
     }
 
-    /// <summary>
-    /// Whether a booking in <paramref name="status"/> can still be cancelled: waiting, confirmed or in the house. The one definition of the
-    /// cancellation of the host and of the guest (<c>BookingCancellationService</c>) and of the change options of a booking.
-    /// </summary>
     public static bool IsCancellable(BookingStatus status) =>
         status is BookingStatus.Pending or BookingStatus.Confirmed or BookingStatus.CheckedIn;
 
@@ -94,7 +74,6 @@ public static class BookingEditRules
         var editability = Of(booking);
         var rule = OtaChannelActionPolicy.IsChannelBooking(booking) ? (policy ?? OtaChannelActionPolicy.Closed).For(booking.Source) : null;
 
-        // The change: the status and the source decide it; a channel booking that is locked by its source says how to ask on the channel.
         string? editReason = null;
         string? editGuidance = null;
         if (!editability.Allowed)
@@ -113,7 +92,6 @@ public static class BookingEditRules
             }
         }
 
-        // The cancellation: the status decides it, then the channel.
         var canCancel = IsCancellable(booking.Status);
         string? cancelReason = null;
         string? cancelGuidance = null;

@@ -11,7 +11,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>UI-13a: the last context a user entered is stored on its own row, and only that column (and the update time) is written.</summary>
 public class UserServiceLastContextTests
 {
     private readonly DbContextOptions<AppDbContext> _options =
@@ -84,7 +83,6 @@ public class UserServiceLastContextTests
         var result = await NewService(db).SetLastUsedContextAsync(user.Id, "long-rent");
 
         Assert.Equal("long-rent", result.LastUsedContextKey);
-        // The client tells it at every change of area: an unchanged key is not a write (the update time stays).
         Assert.Equal(user.UpdatedAt, (await ReadAsync(user.Id)).UpdatedAt);
         Assert.DoesNotContain(db.ChangeTracker.Entries(), entry => entry.State != EntityState.Unchanged);
     }

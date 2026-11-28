@@ -48,7 +48,6 @@ public sealed class SupplierSlotPreviewService(
         var offered = !urgent
             || (service.UrgentEnabled && (await agenda.GetUrgentAsync(supplierOrgId, cancellationToken)).IsOn);
 
-        // A draft without a duration has no slot to compute: no day, not an error (the console says the service is incomplete).
         IReadOnlyList<PublicSlotDay> window = [];
         if (offered
             && service.ToSlotQuery(urgent) is { } query

@@ -8,7 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>SP-10b: the codes and the texts (Italian and English) of the conversation of a request on measure, and its pure rules.</summary>
 public class ServiceRequestThreadSupportTests
 {
     [Fact]

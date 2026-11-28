@@ -30,13 +30,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Reviews;
 
-/// <summary>
-/// The endpoints of the reviews that a host reaches (E05/F06/US01, NF-69), proved where their permission rules live: the shape of each controller (route, policy, flag, rate limit,
-/// private answer), and what it does before it asks the service. The reply and the host's own review are authorized by the controller, as a row of the property of the review: the real
-/// handler of the resource decides (the org of the caller, the permission, the reach of a collaborator «Solo alcuni»), over the real services and a database, so a review that is out of
-/// the reach, of another org or not there is the same 404, and nothing reaches the channel manager. The siblings of these endpoints are pinned the same way
-/// (<c>MessageHubProofTests</c>, <c>MessageReplyEndpointsTests</c>, <c>AssistantDraftsControllerTests</c>).
-/// </summary>
 public class ReviewEndpointsTests
 {
     private const string Anna = "auth0|anna";
@@ -44,8 +37,6 @@ public class ReviewEndpointsTests
     private const string ReplyText = "Grazie di cuore, speriamo di rivedervi presto!";
     private static readonly Guid OrgId = Guid.NewGuid();
     private static readonly MessageThreadKey DraftKey = MessageThreadKey.ForOtaReview(Guid.NewGuid());
-
-    // ─── The shape ───
 
     [Fact]
     public void OtaReviewsController_IsForWhoMayRead_TheTwoSendsForWhoMayWrite_RateLimited_WithTheKeyInAHeader_AndPrivate()
@@ -120,7 +111,6 @@ public class ReviewEndpointsTests
         Assert.Empty(detail.GetCustomAttributes<AllowAnonymousAttribute>());
     }
 
-    /// <summary>The endpoint of the drafts answers like a route that does not exist, before authentication, while the assistant is off: the flag of the controller is the one the middleware reads.</summary>
     [Fact]
     public async Task TheDraftEndpoint_AnswersLikeARouteThatDoesNotExist_WhileTheAssistantIsOff_AndRunsWhenItIsOn()
     {
@@ -150,8 +140,6 @@ public class ReviewEndpointsTests
         Assert.Equal(StatusCodes.Status200OK, on.Response.StatusCode);
     }
 
-    // ─── What a controller does before it asks the service ───
-
     [Fact]
     public async Task TheReviewEndpoints_ACallerWithNoScopeIs403_AMalformedKeyIs400_AndNoServiceIsAsked()
     {
@@ -175,7 +163,6 @@ public class ReviewEndpointsTests
         Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>((await detail.GetReview(DraftKey.ToString(), CancellationToken.None)).Result).StatusCode);
         Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>((await drafts.Draft(DraftKey.ToString(), CancellationToken.None)).Result).StatusCode);
 
-        // A key that is not one is a 400 with its code, and the hub and the drafter never hear of it.
         foreach (var key in new[] { string.Empty, "nope", "review:", "otareview:not-a-guid", "otareview:00000000-0000-0000-0000-000000000000" })
         {
             var malformedDetail = Assert.IsType<ObjectResult>((await detailWithScope.GetReview(key, CancellationToken.None)).Result);
@@ -191,12 +178,6 @@ public class ReviewEndpointsTests
         drafter.VerifyNoOtherCalls();
     }
 
-    // ─── The reach of a collaborator «Solo alcuni», with the real handler of the resource ───
-
-    /// <summary>
-    /// PROOF TEST: permission rule (NF-69, T02). A collaborator «Solo alcuni» reads, answers and reviews the reviews of the house it was given, and for any other review (a house it was not
-    /// given, another org, one that is not there) the answer is the same 404 as for a missing one, for the read and for the two sends alike, with nothing asked of the channel manager.
-    /// </summary>
     [Fact]
     public async Task OtaReviewsController_ACollaboratorSoloAlcuni_ReadsAndAnswersTheReviewsOfItsHouseOnly_TheOthersAreA404_AndNothingLeaves()
     {
@@ -220,7 +201,6 @@ public class ReviewEndpointsTests
         Assert.Equal(OtaReviewActionState.None, untouched.HostReviewState);
         Assert.Null(untouched.HostReplyText);
 
-        // The house it was given: the review is read, answered once and the host's own review is written once.
         var read = Assert.IsType<OkObjectResult>((await controller.Get(s.Granted.Id, CancellationToken.None)).Result);
         Assert.Equal(s.Granted.Id, Assert.IsType<OtaReviewDto>(read.Value).Id);
         var replied = Assert.IsType<OkObjectResult>((await controller.Reply(s.Granted.Id, new ReplyOtaReviewRequest { Text = ReplyText }, KeyOne, CancellationToken.None)).Result);
@@ -230,12 +210,10 @@ public class ReviewEndpointsTests
         s.H.Client.Verify(c => c.SendHostReplyAsync(OtaReviewHarness.GrantedAccommodation, OtaReviewHarness.GrantedRefer, ReplyText, It.IsAny<CancellationToken>()), Times.Once);
         s.H.Client.Verify(c => c.SendHostReviewAsync(OtaReviewHarness.GrantedAccommodation, OtaReviewHarness.GrantedRefer, It.IsAny<OctorateHostReviewCommand>(), It.IsAny<CancellationToken>()), Times.Once);
 
-        // The owner of the org reaches the review of the other house: the setup is sound.
         await using var owner = Owner(s.H);
         Assert.IsType<OkObjectResult>((await owner.Reviews().Get(s.Hidden.Id, CancellationToken.None)).Result);
     }
 
-    /// <summary>Permission rule: the two sends need <c>booking.write</c> on the row, and a caller who may only read reads and sends nothing (the 404 of a row it may not write).</summary>
     [Fact]
     public async Task OtaReviewsController_ACallerWhoMayReadButNotWrite_ReadsTheReview_AndTheTwoSendsAreRefused_WithNothingSent()
     {
@@ -252,7 +230,6 @@ public class ReviewEndpointsTests
         Assert.Equal(OtaReviewActionState.None, (await s.H.ReviewOfAsync(s.H.Granted)).HostReplyState);
     }
 
-    /// <summary>The answer of a send: 200 with its state, 202 when the outcome is not known (checked on the channel, never sent again by the call), the code of a refusal in the body.</summary>
     [Theory]
     [InlineData(OtaReviewActionState.Sent, StatusCodes.Status200OK)]
     [InlineData(OtaReviewActionState.Error, StatusCodes.Status200OK)]
@@ -288,10 +265,6 @@ public class ReviewEndpointsTests
         Assert.Equal(state == OtaReviewActionState.Error ? OtaReviewErrorCodes.ReviewNotAvailable : null, dto.ErrorCode);
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule (NF-69, T02). The reviews of a booking and the read of the channel manager asked now follow the reach of the caller: a collaborator «Solo alcuni» gets the 404 of a
-    /// booking that does not exist for a house it was not given, for another org and for a missing one, and nothing is read; its own house is listed and read (once every ten minutes).
-    /// </summary>
     [Fact]
     public async Task BookingReviewsController_ACollaboratorSoloAlcuni_ListsAndRefreshesTheBookingsOfItsHouseOnly_TheOthersAreA404_AndNothingIsRead()
     {
@@ -318,10 +291,6 @@ public class ReviewEndpointsTests
         s.H.Client.Verify(c => c.GetReviewAsync(OtaReviewHarness.HiddenAccommodation, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    /// <summary>
-    /// The answer of the refresh through the real error middleware: a read the channel manager refused is a 409 with its code, a channel manager that does not answer a 502, a stay that did not happen a
-    /// 422 with its own code, a house whose listing nobody confirmed a 409 <c>mapping_not_confirmed</c>, and a failed read counts for the ten minutes (429); only a read that worked is a 200.
-    /// </summary>
     [Fact]
     public async Task BookingReviewsController_Refresh_AReadThatDidNotWorkIsAnErrorWithItsCode_AndOnlyAReadThatWorkedIsA200()
     {
@@ -367,10 +336,6 @@ public class ReviewEndpointsTests
         Assert.Null(worked.Code);
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule (NF-69, T03). The detail of a review of the hub is read in the reach of the caller: a collaborator «Solo alcuni» opens the reviews of its house (of a channel and of the
-    /// booking site) and gets the 404 <c>review_not_found</c> for the others, for a review of another org and for a missing one.
-    /// </summary>
     [Fact]
     public async Task MessageThreadsController_GetReview_ACollaboratorSoloAlcuni_OpensTheReviewsOfItsHouseOnly_TheOthersAreA404()
     {
@@ -395,14 +360,9 @@ public class ReviewEndpointsTests
             Assert.Equal(key.ToString(), Assert.IsType<ReviewThreadDto>(opened.Value).ThreadKey);
         }
 
-        // The key of a conversation is not the key of a review.
         await Assert.ThrowsAsync<NotFoundException>(() => controller.GetReview(MessageThreadKey.ForOta(s.Granted.Id).ToString(), CancellationToken.None));
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule (NF-69, T03). A draft is asked for in the reach of the caller: the controller hands the real scope of a collaborator «Solo alcuni» to the drafter, which answers the review of
-    /// a house it was not given, of another org or a missing one as «not found» (the 404 <c>review_not_found</c>) without asking the model or the queue (every other service is strict).
-    /// </summary>
     [Fact]
     public async Task ReviewDraftsController_ACollaboratorSoloAlcuni_AsksForADraftOfItsHouseOnly_TheOthersAreA404_AndTheModelIsNeverAsked()
     {
@@ -420,7 +380,6 @@ public class ReviewEndpointsTests
             Assert.Equal("review_not_found", CodeOf(problem));
         }
 
-        // The key of a conversation is no review either.
         var conversation = Assert.IsType<ObjectResult>((await controller.Draft(MessageThreadKey.ForOta(s.Granted.Id).ToString(), CancellationToken.None)).Result);
         Assert.Equal(StatusCodes.Status404NotFound, conversation.StatusCode);
     }
@@ -450,8 +409,6 @@ public class ReviewEndpointsTests
         Assert.Equal(ReviewDraftReasons.AssistantDisabled, second.Reason);
     }
 
-    // ─── The rig ───
-
     private static IEnumerable<MethodInfo> ActionsOf(Type controller) =>
         controller.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly).Where(m => !m.IsSpecialName);
 
@@ -464,7 +421,6 @@ public class ReviewEndpointsTests
         return code is JsonElement json ? json.GetString() : code?.ToString();
     }
 
-    /// <summary>What a call becomes through the real error middleware: the status of the answer and the <c>code</c> of its problem (<c>null</c> for an answer that is not a problem).</summary>
     private static async Task<(int Status, string? Code)> AnswerOfAsync(Func<Task> call)
     {
         var services = new ServiceCollection();
@@ -504,7 +460,6 @@ public class ReviewEndpointsTests
 
     private sealed record Seeded(OtaReviewHarness H, OtaReview Granted, OtaReview Hidden);
 
-    /// <summary>The world of the reviews with the Airbnb review of the house the collaborator was given and of the one it was not, both published.</summary>
     private static async Task<Seeded> SeedAsync()
     {
         var h = await OtaReviewHarness.CreateAsync();
@@ -546,10 +501,6 @@ public class ReviewEndpointsTests
             Times.Never);
     }
 
-    /// <summary>
-    /// The controllers of the reviews as a request of one caller builds them: the services are the real ones over the database of the world (the tenant filter on), the authorization is the real
-    /// handler of the resource over the membership of the caller, and the reach of the caller is resolved from the same membership.
-    /// </summary>
     private sealed class Rig : IAsyncDisposable
     {
         private readonly OtaReviewHarness _h;
@@ -587,7 +538,6 @@ public class ReviewEndpointsTests
                 _scopes,
                 _authorization).WithCaller(_user);
 
-        /// <summary>The real drafter: what it needs to write a draft (the rules, the model, the queue) is strict, so a draft that is asked for a review the caller does not reach fails the test if it goes further.</summary>
         public ReviewDraftsController Drafts() =>
             new ReviewDraftsController(
                 new ReviewReplyDrafter(
@@ -614,7 +564,6 @@ public class ReviewEndpointsTests
 
 internal static class ReviewControllerTestExtensions
 {
-    /// <summary>Gives a controller the signed-in caller and the services the error answers need (the localizer of the messages).</summary>
     public static T WithCaller<T>(this T controller, ClaimsPrincipal user)
         where T : ControllerBase
     {

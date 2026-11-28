@@ -3,18 +3,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>
-/// AM-03 guard: the reach of a caller on the properties of its org is decided in one place. A list query narrows by
-/// <c>InScope(scope)</c>, which asks the database (an <c>EXISTS</c> on the grants of the person); nobody builds the filter by
-/// hand from <c>HostScope.OwnerId</c> as the thirteen filters of TN-3 did, and nobody reads the reach from the token again
-/// (<c>GetHostScope</c> and <c>HasOrgWideHostAccess</c> are gone: the reach comes from <c>IHostScopeResolver</c>, async, from the
-/// membership in the database). A new list that forgets the rule is a review comment; one that re-introduces the old way fails here.
-/// </summary>
 public class HostScopeArchitectureTests
 {
     private static readonly string[] Projects = ["Casazen.Core", "Casazen.Infrastructure", "Casazen.Web"];
 
-    /// <summary>The files that define the rule and so spell it out.</summary>
     private static readonly string[] Definitions =
     [
         "Casazen.Core/Authorization/HostScope.cs",
@@ -47,7 +39,6 @@ public class HostScopeArchitectureTests
     [Fact]
     public void InScope_IsUsedByTheListsOfTheHost()
     {
-        // The guard above would pass on an empty tree: say where the rule is applied, so a rename cannot hollow it out.
         var users = Scan(new Regex(@"\.InScope\("), includeDefinitions: false)
             .Select(hit => hit.Split(':')[0])
             .Distinct()

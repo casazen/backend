@@ -10,11 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// CO-08 (A5-08): arrival and check-out rules of <see cref="StayLifecycleService"/>, with "today" in Europe/Rome and the
-/// jobs scheduled around the transitions. The HTTP contract, the locks and TN-3 are covered by
-/// <c>StayLifecyclePostgresTests</c>.
-/// </summary>
 public class StayLifecycleServiceTests
 {
     private static readonly DateTime October1 = new(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -32,7 +27,6 @@ public class StayLifecycleServiceTests
     [Fact]
     public async Task RegisterArrivalAsync_AfterMidnightInRomeOnTheCheckInDay_ChecksInWithTheArrivalTimeAndSchedulesAlloggiati()
     {
-        // 22:30 UTC on 30/09 is 00:30 on 01/10 in Rome: the check-in day has started.
         var now = new DateTimeOffset(2026, 9, 30, 22, 30, 0, TimeSpan.Zero);
         await using var db = CreateDb();
         var booking = await SeedAsync(db, BookingStatus.Confirmed, October1, October3);
@@ -49,7 +43,6 @@ public class StayLifecycleServiceTests
     [Fact]
     public async Task RegisterArrivalAsync_LateEveningInRomeBeforeTheCheckInDay_Throws422AndSchedulesNothing()
     {
-        // 21:30 UTC on 30/09 is 23:30 on 30/09 in Rome: the check-in day (01/10) has not started.
         await using var db = CreateDb();
         var booking = await SeedAsync(db, BookingStatus.Confirmed, October1, October3);
 
@@ -65,7 +58,6 @@ public class StayLifecycleServiceTests
     [Fact]
     public async Task RegisterArrivalAsync_OnTheCheckOutDay_ChecksInWithoutAnArrivalTime()
     {
-        // 21:00 in Rome on the check-out day.
         var now = new DateTimeOffset(2026, 10, 3, 19, 0, 0, TimeSpan.Zero);
         await using var db = CreateDb();
         var booking = await SeedAsync(db, BookingStatus.Confirmed, October1, October3);
@@ -73,7 +65,6 @@ public class StayLifecycleServiceTests
         var result = await CreateService(db, now).RegisterArrivalAsync(booking.Id);
 
         Assert.Equal(BookingStatus.CheckedIn, result.Booking.Status);
-        // Registered late: the real arrival time is unknown, so none is invented.
         Assert.Null(result.Booking.ArrivedAt);
         _alloggiatiScheduler.Verify(s => s.EnsureScheduledAsync(booking.Id), Times.Once);
     }

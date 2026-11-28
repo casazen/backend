@@ -34,8 +34,6 @@ public sealed class AssistantSituationsController(
     IOrgContextResolver orgContextResolver,
     IAuthorizationService authorizationService) : ControllerBase
 {
-    /// <summary>The situations with the value the organization has: its own row, else the default of the situation.</summary>
-    /// <response code="200">The 15 situations.</response>
     [HttpGet("situations")]
     [Authorize(Policy = CasazenPolicies.BookingRead)]
     [ProducesResponseType(typeof(IReadOnlyList<EffectiveSituationDto>), StatusCodes.Status200OK)]
@@ -50,11 +48,6 @@ public sealed class AssistantSituationsController(
         return Ok(items.Select(item => EffectiveSituationDto.From(item, canEdit)).ToList());
     }
 
-    /// <summary>Saves a situation for the whole organization.</summary>
-    /// <response code="200">The situation as saved.</response>
-    /// <response code="404"><c>assistant_situation_not_found</c>.</response>
-    /// <response code="409"><c>assistant_concurrent_change</c>: someone changed the instructions at the same moment; read them again.</response>
-    /// <response code="422"><c>assistant_mode_not_allowed</c>, <c>assistant_template_invalid</c> or <c>assistant_situation_invalid</c>.</response>
     [HttpPut("situations/{situation}")]
     [Authorize(Policy = CasazenPolicies.BookingRead)]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
@@ -80,9 +73,6 @@ public sealed class AssistantSituationsController(
         return Ok(EffectiveSituationDto.From(saved, includeTemplate: true));
     }
 
-    /// <summary>The situations as a property has them: its own exception, else the organization's row, else the default.</summary>
-    /// <response code="200">The 15 situations.</response>
-    /// <response code="404"><c>property_not_found</c>: not in the caller's organization, or not within the caller's reach.</response>
     [HttpGet("properties/{propertyId:guid}/situations")]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
     [ProducesResponseType(typeof(IReadOnlyList<EffectiveSituationDto>), StatusCodes.Status200OK)]
@@ -96,19 +86,12 @@ public sealed class AssistantSituationsController(
         if (!await AssistantAccess.CanUsePropertyAsync(propertyService, authorizationService, User, caller.OrgId, propertyId, PropertyOperations.Read))
             return PropertyNotFound();
 
-        // The text of the property's own exception is for whoever may write the property; the text of a row of the organization is for the organization's administrators only, as on the
-        // organization's own list: a caller who has just property.write here reads that such a row has a template (hasTemplate), not what it says.
         var canEdit = await AssistantAccess.CanUsePropertyAsync(propertyService, authorizationService, User, caller.OrgId, propertyId, PropertyOperations.Write);
         var canReadOrganizationTemplates = canEdit && (await authorizationService.AuthorizeAsync(User, CasazenPolicies.OrgBillingAdmin)).Succeeded;
         var items = await situations.ListEffectiveAsync(caller.OrgId, propertyId, cancellationToken);
         return Ok(items.Select(item => EffectiveSituationDto.From(item, item.Origin == AssistantSettingOrigin.Organization ? canReadOrganizationTemplates : canEdit)).ToList());
     }
 
-    /// <summary>Saves the exception of a property for a situation: a whole row, which replaces the organization's value for this property.</summary>
-    /// <response code="200">The situation as saved.</response>
-    /// <response code="404"><c>property_not_found</c> or <c>assistant_situation_not_found</c>.</response>
-    /// <response code="409"><c>assistant_concurrent_change</c>.</response>
-    /// <response code="422"><c>assistant_mode_not_allowed</c>, <c>assistant_template_invalid</c> or <c>assistant_situation_invalid</c>.</response>
     [HttpPut("properties/{propertyId:guid}/situations/{situation}")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [RequestSizeLimit(16384)]
@@ -137,9 +120,6 @@ public sealed class AssistantSituationsController(
         return Ok(EffectiveSituationDto.From(saved, includeTemplate: true));
     }
 
-    /// <summary>Removes the exception of a property for a situation: it goes back to the organization's value.</summary>
-    /// <response code="204">Removed (or there was none).</response>
-    /// <response code="404"><c>property_not_found</c> or <c>assistant_situation_not_found</c>.</response>
     [HttpDelete("properties/{propertyId:guid}/situations/{situation}")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -161,7 +141,6 @@ public sealed class AssistantSituationsController(
         return NoContent();
     }
 
-    /// <summary>The caller's id and organization; <c>null</c> when it has no organization.</summary>
     private async Task<Caller?> CallerAsync(CancellationToken cancellationToken)
     {
         if (User.GetUserId() is not { Length: > 0 } userId

@@ -2,7 +2,6 @@ using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
-using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -29,11 +28,6 @@ public class MeNotificationsController(
     IInAppNotificationService notifications,
     IInAppNotificationPublisher publisher) : ControllerBase
 {
-    /// <summary>
-    /// The caller's notifications, the most recent first. <paramref name="unread"/> lists only the unread ones;
-    /// <paramref name="pageSize"/> is held between 1 and 50 (default 20), <paramref name="page"/> at 1 or more.
-    /// </summary>
-    /// <response code="200">A page (<c>items</c>, <c>totalCount</c>, <c>page</c>, <c>pageSize</c>).</response>
     [HttpGet]
     [ProducesResponseType(typeof(PagedResultDto<InAppNotificationDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -57,8 +51,6 @@ public class MeNotificationsController(
         });
     }
 
-    /// <summary>How many of the caller's notifications are unread: the number on the bell.</summary>
-    /// <response code="200"><c>{ count }</c>.</response>
     [HttpGet("unread-count")]
     [ProducesResponseType(typeof(UnreadNotificationCountDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

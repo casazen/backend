@@ -31,16 +31,10 @@ public sealed partial class OwnerOnboardingService(
 
     private DateTime Now() => UtcDateTime.TruncateToMicroseconds(timeProvider.GetUtcNow().UtcDateTime);
 
-    /// <summary>The first instant of a day, in Rome: what <see cref="PropertyOwnership.OwnershipStart"/> holds for a day (its Rome date is that day).</summary>
     internal static DateTime StartInstant(DateOnly day) => UtcDateTime.TruncateToMicroseconds(RomeCalendar.StartOfDayUtc(day));
 
-    /// <summary>The last instant of a day, in Rome: what <see cref="PropertyOwnership.OwnershipEnd"/> holds for a last day, so the period is in force through all of it.</summary>
     internal static DateTime EndInstant(DateOnly day) => UtcDateTime.TruncateToMicroseconds(RomeCalendar.StartOfDayUtc(day.AddDays(1))).AddTicks(-10);
 
-    /// <summary>
-    /// The ownership periods inside the reach, read once: only those on a property the scope reaches (and that still exists). With an org-wide
-    /// scope the query adds no join to the property, so a period on a deleted property is dropped here.
-    /// </summary>
     private async Task<List<PeriodRow>> LoadPeriodsAsync(HostScope scope, ISet<Guid> reachablePropertyIds, CancellationToken ct)
     {
         var rows = await db.PropertyOwnerships
@@ -69,11 +63,6 @@ public sealed partial class OwnerOnboardingService(
         return await query.ToListAsync(ct);
     }
 
-    /// <summary>
-    /// For a caller with a partial reach: the owners among <paramref name="ownerIds"/> that also hold a period on a property it does not reach (the
-    /// import does not complete them, the invitations do not offer them). Empty for an org-wide scope. Shared by the import and the invitations so
-    /// that both draw the line in the same place.
-    /// </summary>
     internal static async Task<HashSet<Guid>> OwnersWithPeriodsOutsideReachAsync(
         AppDbContext db,
         HostScope scope,
@@ -94,12 +83,10 @@ public sealed partial class OwnerOnboardingService(
         return [.. outside];
     }
 
-    /// <summary>True when the period is not over on <paramref name="today"/>: it has no end, or its last day is today or later.</summary>
     private static bool IsLive(PeriodRow row, DateOnly today) => row.End is not { } end || RomeCalendar.DateInRome(end) >= today;
 
     private static OwnershipPeriod ToPeriod(PeriodRow row) =>
         new(row.OwnerId, row.SharePercent, RomeCalendar.DateInRome(row.Start), row.End is { } end ? RomeCalendar.DateInRome(end) : null);
 
-    /// <summary>One stored ownership period, as the readiness and the import read it.</summary>
     private sealed record PeriodRow(Guid Id, Guid PropertyId, Guid OwnerId, decimal SharePercent, DateTime Start, DateTime? End);
 }

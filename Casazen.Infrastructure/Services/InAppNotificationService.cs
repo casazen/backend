@@ -98,7 +98,6 @@ public sealed class InAppNotificationService(
     {
         var cutoff = Now().AddDays(-InAppNotificationLimits.RetentionDays);
 
-        // IgnoreQueryFilters([Tenant]): the retention is a platform job without a tenant and deletes by age, whatever the org.
         var deleted = await db.InAppNotifications
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(n => n.CreatedAt < cutoff)
@@ -115,11 +114,6 @@ public sealed class InAppNotificationService(
         return deleted;
     }
 
-    /// <summary>
-    /// The rows of <paramref name="userId"/> in an org the user belongs to: its host org (<c>User.OrgId</c>) or its supplier org
-    /// (<c>User.SupplierOrgId</c>). The tenant filter is bypassed on purpose and replaced by this predicate (see the remarks of the
-    /// class); the user id is the caller's own, never an input of the request.
-    /// </summary>
     internal IQueryable<InAppNotification> OwnNotifications(string userId) =>
         db.InAppNotifications
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])

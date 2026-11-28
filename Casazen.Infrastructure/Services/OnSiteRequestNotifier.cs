@@ -19,7 +19,6 @@ public sealed class OnSiteRequestNotifier(
     PublicSiteLinks links,
     ILogger<OnSiteRequestNotifier> logger)
 {
-    /// <summary>To the guest: request received, confirm the email with <paramref name="token"/> by <c>RequestExpiresAt</c>.</summary>
     public Task RequestReceivedAsync(Guid bookingId, string token, CancellationToken cancellationToken = default) =>
         SendAsync(bookingId, EmailTemplates.Names.OnSiteRequestReceived, cancellationToken, data =>
         {
@@ -39,7 +38,6 @@ public sealed class OnSiteRequestNotifier(
             return (data.GuestEmail, content);
         });
 
-    /// <summary>To the host: a request whose guest confirmed the email, to answer by <c>RequestExpiresAt</c>.</summary>
     public Task HostNewRequestAsync(Guid bookingId, CancellationToken cancellationToken = default) =>
         SendAsync(bookingId, EmailTemplates.Names.OnSiteRequestToHost, cancellationToken, data =>
         {
@@ -60,7 +58,6 @@ public sealed class OnSiteRequestNotifier(
             return (data.HostEmail, content);
         });
 
-    /// <summary>To the guest: the host declined, with the host's optional message.</summary>
     public Task DeclinedAsync(Guid bookingId, string? hostMessage, CancellationToken cancellationToken = default) =>
         SendAsync(bookingId, EmailTemplates.Names.OnSiteRequestDeclined, cancellationToken, data =>
             (data.GuestEmail, EmailTemplates.OnSiteRequestDeclined(
@@ -71,7 +68,6 @@ public sealed class OnSiteRequestNotifier(
                 data.CheckOutDate,
                 hostMessage)));
 
-    /// <summary>To the guest: the host did not answer in time.</summary>
     public Task ExpiredAsync(Guid bookingId, CancellationToken cancellationToken = default) =>
         SendAsync(bookingId, EmailTemplates.Names.OnSiteRequestExpired, cancellationToken, data =>
             (data.GuestEmail, EmailTemplates.OnSiteRequestExpired(
@@ -89,8 +85,6 @@ public sealed class OnSiteRequestNotifier(
     {
         try
         {
-            // The anonymous confirmation, the host's console and the jobs all reach the booking by id: the tenant filter
-            // of a host request already limits it to the host's org.
             var data = await db.Bookings
                 .AsNoTracking()
                 .Where(b => b.Id == bookingId)
@@ -145,7 +139,6 @@ public sealed class OnSiteRequestNotifier(
         DateTime? RequestExpiresAt,
         string PropertyCurrency)
     {
-        /// <summary>The amount to pay at the property is in the currency of the property (CHF-MONEY).</summary>
         public string Currency => Casazen.Core.Services.StayCurrency.Normalize(PropertyCurrency);
     }
 }

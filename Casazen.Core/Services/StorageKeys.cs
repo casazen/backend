@@ -23,31 +23,24 @@ namespace Casazen.Core.Services;
 /// </summary>
 public static partial class StorageKeys
 {
-    /// <summary>A signed management mandate in private storage; generated names never expose the uploaded filename.</summary>
     public static string OwnerMandate(Guid orgId, Guid ownerId, string fileName) =>
         $"orgs/{orgId}/owners/{ownerId}/mandates/{fileName}";
 
     public static string LeaseAttachment(Guid orgId, Guid leaseId, string fileName) =>
         $"orgs/{orgId}/leases/{leaseId}/documents/{fileName}";
 
-    /// <summary>A photo the tenant attached to a maintenance request (private bucket).</summary>
     public static string MaintenancePhoto(Guid orgId, Guid leaseId, Guid requestId, string fileName) =>
         EnsureValid($"orgs/{orgId}/leases/{leaseId}/maintenance/{requestId}/{fileName}");
 
     public static string PropertyPhoto(Guid propertyId, string fileName) =>
         $"properties/{propertyId}/photos/{fileName}";
 
-    /// <summary>A floor plan image of a property (public bucket, DB-11a): shown on the property page of the booking site.</summary>
     public static string PropertyFloorPlan(Guid propertyId, string fileName) =>
         $"properties/{propertyId}/floorplans/{fileName}";
 
     public static string SupplierPhoto(Guid supplierOrgId, string fileName) =>
         $"suppliers/{supplierOrgId}/photos/{fileName}";
 
-    /// <summary>
-    /// The folder of a supplier in the public bucket (<c>suppliers/{supplierOrgId}/</c>): its profile and service photos and, later, the
-    /// media of its showcase. What the content of a showcase may point to (SP-13a); an object elsewhere is not the supplier's.
-    /// </summary>
     public static string SupplierFolder(Guid supplierOrgId) =>
         $"suppliers/{supplierOrgId}/";
 
@@ -59,39 +52,29 @@ public static partial class StorageKeys
     public static string SupplierShowcaseFolder(Guid supplierOrgId) =>
         $"suppliers/{supplierOrgId}/showcase/";
 
-    /// <summary>An image of a supplier's showcase (public bucket, SP-13b); <paramref name="fileName"/> is random: nobody can guess the address of another one.</summary>
     public static string SupplierShowcaseImage(Guid supplierOrgId, string fileName) =>
         $"suppliers/{supplierOrgId}/showcase/{fileName}";
 
     public static string PropertyDocument(Guid propertyId, string fileName) =>
         $"properties/{propertyId}/documents/{fileName}";
 
-    /// <summary>An encrypted Swiss receipt; private bucket, never a public URL or an uploaded filename.</summary>
     public static string SwissComplianceReceipt(Guid orgId, Guid propertyId, Guid receiptId) =>
         $"orgs/{orgId}/properties/{propertyId}/swiss-receipts/{receiptId}.bin";
 
-    /// <summary>The start of the key of every guest's document (<see cref="GuestDocument"/>): the photos of identity documents a verification kept and the legacy scans.</summary>
     public const string GuestDocumentPrefix = "guest-documents/";
 
     public static string GuestDocument(Guid orgId, Guid guestId, string fileName) =>
         $"{GuestDocumentPrefix}{orgId}/{guestId}/{fileName}";
 
-    /// <summary>
-    /// True for the key of a guest's document. Such a key names the org and the guest, so what deletes the object never writes it in a log line (E20/F02/US01/T02, NF-121):
-    /// the storage says that an object of the guests' documents was deleted, and nothing else.
-    /// </summary>
     public static bool IsGuestDocument(string? key) =>
         key is not null && key.StartsWith(GuestDocumentPrefix, StringComparison.Ordinal);
 
-    /// <summary>Logo or hero image of the org's public booking site (public bucket, BK-12).</summary>
     public static string OrgBrandingImage(Guid orgId, BrandingImageKind kind, string fileName) =>
         $"orgs/{orgId}/branding/{kind.ToString().ToLowerInvariant()}/{fileName}";
 
-    /// <summary>RLI registration receipt of a lease (private bucket, LT-01).</summary>
     public static string LeaseRegistrationReceipt(Guid orgId, Guid leaseId, string fileName) =>
         $"leases/{orgId}/{leaseId}/registration/{fileName}";
 
-    /// <summary>Contract signed by every party of a lease (private bucket, LT-02).</summary>
     public static string LeaseSignedContract(Guid orgId, Guid leaseId, string fileName) =>
         $"leases/{orgId}/{leaseId}/signed-contract/{fileName}";
 
@@ -99,17 +82,9 @@ public static partial class StorageKeys
     public static string LeaseQuesturaReceipt(Guid orgId, Guid leaseId, string fileName) =>
         $"leases/{orgId}/{leaseId}/questura/{fileName}";
 
-    /// <summary>
-    /// Photo of the work a supplier did for a service request (private bucket, SP-04): shown to the host and to the supplier
-    /// through an authenticated endpoint, never by a public URL.
-    /// </summary>
     public static string ServiceRequestPhoto(Guid serviceRequestId, string fileName) =>
         $"service-requests/{serviceRequestId}/photos/{fileName}";
 
-    /// <summary>
-    /// The receipt of a tourist tax payment (private bucket, NF-100): shown to the people of the org that made the payment through an
-    /// authenticated endpoint, never by a public URL. <paramref name="fileName"/> is made by the server, never the one the host sent.
-    /// </summary>
     public static string TouristTaxReceipt(Guid orgId, Guid remittanceId, string fileName) =>
         $"tourist-tax/{orgId}/{remittanceId}/{fileName}";
 
@@ -128,7 +103,6 @@ public static partial class StorageKeys
     public static string OwnerDocumentFile(Guid orgId, Guid documentId, string fileName) =>
         $"owner-documents/{orgId}/{documentId}/{fileName}";
 
-    /// <summary>The file attached to a message of the owner inbox (private bucket, E07/F07/US01/T02); the name is made by the server.</summary>
     public static string OwnerMessageAttachment(Guid orgId, Guid conversationId, string fileName) =>
         $"owner-messages/{orgId}/{conversationId}/{fileName}";
 
@@ -140,14 +114,9 @@ public static partial class StorageKeys
     public static string AccountantPackage(Guid orgId, string period) =>
         EnsureValid($"accountant-packages/{orgId:D}/{period}.zip");
 
-    /// <summary>A new random file name that keeps only the (lower-cased) extension of the upload.</summary>
     public static string NewFileName(string? originalFileName) =>
         $"{Guid.NewGuid()}{Path.GetExtension(originalFileName ?? string.Empty).ToLowerInvariant()}";
 
-    /// <summary>
-    /// True for a relative key made only of safe segments: no leading slash, no <c>.</c>/<c>..</c>
-    /// segments, no backslashes, only letters, digits, <c>-</c>, <c>_</c> and <c>.</c>.
-    /// </summary>
     public static bool IsValid(string? key)
     {
         if (string.IsNullOrWhiteSpace(key) || key.Length > 1024 || !SafeKey().IsMatch(key))
@@ -156,11 +125,9 @@ public static partial class StorageKeys
         return key.Split('/').All(segment => segment.Length > 0 && segment != "." && segment != "..");
     }
 
-    /// <summary>Throws <see cref="ArgumentException"/> when <paramref name="key"/> is not <see cref="IsValid"/>.</summary>
     public static string EnsureValid(string? key) =>
         IsValid(key) ? key! : throw new ArgumentException("Invalid storage key.", nameof(key));
 
-    /// <summary>MIME type for the extension of a stored file (download responses).</summary>
     public static string ContentTypeFor(string? fileName) =>
         Path.GetExtension(fileName ?? string.Empty).ToLowerInvariant() switch
         {

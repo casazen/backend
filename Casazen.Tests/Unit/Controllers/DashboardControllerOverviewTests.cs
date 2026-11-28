@@ -6,7 +6,6 @@ using Casazen.Tests.Unit.Authorization;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
 using Casazen.Web.Infrastructure;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,11 +14,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// SR-03b on <c>GET /api/dashboard/overview</c>: the words of the period (a free period needs both its days, in order, at most 366
-/// of them), what the endpoint asks the service, and above all the money: for a caller without <c>payment.read</c> the answer has
-/// no revenue, cash or chart at all (SR-D7), and <c>kpis</c> still does not know a free period.
-/// </summary>
 public class DashboardControllerOverviewTests
 {
     private static readonly Guid OrgId = Guid.NewGuid();
@@ -86,8 +80,6 @@ public class DashboardControllerOverviewTests
 
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
-    // --- The words of the period ---------------------------------------------------------------------------
-
     [Theory]
     [InlineData(null, null, null, null, true, HostDashboardPeriodKind.Month)]
     [InlineData("Month", "2026-10", null, null, true, HostDashboardPeriodKind.Month)]
@@ -96,21 +88,21 @@ public class DashboardControllerOverviewTests
     [InlineData("Custom", null, "2026-10-01", "2026-10-31", true, HostDashboardPeriodKind.Custom)]
     [InlineData("custom", null, "2026-10-09", "2026-10-09", true, HostDashboardPeriodKind.Custom)]
     [InlineData("Custom", null, "2026-01-01", "2027-01-01", true, HostDashboardPeriodKind.Custom)]
-    [InlineData("Custom", null, null, null, false, HostDashboardPeriodKind.Custom)] // no days
-    [InlineData("Custom", null, "2026-10-01", null, false, HostDashboardPeriodKind.Custom)] // one day only
+    [InlineData("Custom", null, null, null, false, HostDashboardPeriodKind.Custom)]
+    [InlineData("Custom", null, "2026-10-01", null, false, HostDashboardPeriodKind.Custom)]
     [InlineData("Custom", null, null, "2026-10-31", false, HostDashboardPeriodKind.Custom)]
-    [InlineData("Custom", null, "2026-10-31", "2026-10-01", false, HostDashboardPeriodKind.Custom)] // out of order
-    [InlineData("Custom", null, "2026-01-01", "2027-01-02", false, HostDashboardPeriodKind.Custom)] // 367 days
-    [InlineData("Custom", null, "1999-12-01", "2000-01-31", false, HostDashboardPeriodKind.Custom)] // before the supported years
-    [InlineData("Custom", "2026-10", "2026-10-01", "2026-10-31", false, HostDashboardPeriodKind.Custom)] // a month and days
-    [InlineData("Month", null, "2026-10-01", "2026-10-31", false, HostDashboardPeriodKind.Month)] // days with a period that has none
+    [InlineData("Custom", null, "2026-10-31", "2026-10-01", false, HostDashboardPeriodKind.Custom)]
+    [InlineData("Custom", null, "2026-01-01", "2027-01-02", false, HostDashboardPeriodKind.Custom)]
+    [InlineData("Custom", null, "1999-12-01", "2000-01-31", false, HostDashboardPeriodKind.Custom)]
+    [InlineData("Custom", "2026-10", "2026-10-01", "2026-10-31", false, HostDashboardPeriodKind.Custom)]
+    [InlineData("Month", null, "2026-10-01", "2026-10-31", false, HostDashboardPeriodKind.Month)]
     [InlineData("Next30Days", null, "2026-10-01", null, false, HostDashboardPeriodKind.Next30Days)]
-    [InlineData("Last30Days", "2026-10", null, null, false, HostDashboardPeriodKind.Last30Days)] // a month with another period
+    [InlineData("Last30Days", "2026-10", null, null, false, HostDashboardPeriodKind.Last30Days)]
     [InlineData("Month", "2026-13", null, null, false, HostDashboardPeriodKind.Month)]
     [InlineData("Next60Days", null, null, null, false, HostDashboardPeriodKind.Month)]
-    [InlineData("3", null, null, null, false, HostDashboardPeriodKind.Month)] // a number is no name
-    [InlineData("Last30Days,Next30Days", null, "2026-10-01", "2026-10-31", false, HostDashboardPeriodKind.Custom)] // 1 | 2 is 3: a list is no name
-    [InlineData("Month,Last30Days", null, null, null, false, HostDashboardPeriodKind.Month)] // 0 | 1 is 1: a list is no name
+    [InlineData("3", null, null, null, false, HostDashboardPeriodKind.Month)]
+    [InlineData("Last30Days,Next30Days", null, "2026-10-01", "2026-10-31", false, HostDashboardPeriodKind.Custom)]
+    [InlineData("Month,Last30Days", null, null, null, false, HostDashboardPeriodKind.Month)]
     public void TryParseOverviewPeriod_TheKindsOfKpisAndAFreePeriodWithItsDays(
         string? period, string? month, string? from, string? to, bool accepted, HostDashboardPeriodKind kind)
     {
@@ -156,8 +148,6 @@ public class DashboardControllerOverviewTests
         Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(result.Result).StatusCode);
         _dashboard.Verify(d => d.GetOverviewAsync(It.IsAny<HostScope>(), It.IsAny<HostOverviewQuery>(), It.IsAny<CancellationToken>()), Times.Never);
     }
-
-    // --- What the service is asked, and the money -------------------------------------------------------------------
 
     [Theory]
     [InlineData(true)]
@@ -211,7 +201,6 @@ public class DashboardControllerOverviewTests
             root.GetProperty("upcoming").GetProperty("pendingApproval").GetInt32()));
         var arrival = root.GetProperty("nextArrivals")[0];
         Assert.Equal(("ABCDE-FGHJK", true), (arrival.GetProperty("bookingCode").GetString(), arrival.GetProperty("awaitingApproval").GetBoolean()));
-        // No money on an arrival: who comes, not what they pay.
         Assert.False(arrival.TryGetProperty("totalPrice", out _));
     }
 
@@ -234,7 +223,6 @@ public class DashboardControllerOverviewTests
         Assert.False(previous.TryGetProperty("revenue", out _));
         Assert.False(previous.TryGetProperty("collected", out _));
         Assert.DoesNotContain("amount", text, StringComparison.OrdinalIgnoreCase);
-        // What is not money is there.
         Assert.Equal(9.7m, root.GetProperty("occupancy").GetProperty("deltaPoints").GetDecimal());
         Assert.Equal(JsonValueKind.Null, previous.GetProperty("occupancy").GetProperty("deltaPoints").ValueKind);
         Assert.Equal(3, root.GetProperty("upcoming").GetProperty("count").GetInt32());

@@ -171,7 +171,6 @@ public class QuesturaCommunicationService(
         return new QuesturaReceiptFile(content, $"ricevuta-questura-{lease.Id}.pdf");
     }
 
-    /// <summary>Only for a lease with an extra-EU tenant (not rejected), and only once.</summary>
     private static void EnsureCanMarkDone(LeaseContract lease)
     {
         if (!QuesturaCommunicationDeadline.IsRequired(lease))

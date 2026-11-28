@@ -44,12 +44,6 @@ public class MessageTemplateProofTests : IAsyncLifetime
 
     private static MessageThreadKey Ota(OtaMessageThread thread) => MessageThreadKey.ForOta(thread.Id);
 
-    // ---- Tenant data ---------------------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// PROOF TEST: data rule (tenant). A template of organization A is never listed, changed, deleted or rendered for organization B: it is a 404
-    /// <c>message_template_not_found</c>, the same as one that does not exist, and the template is left as it was.
-    /// </summary>
     [Fact]
     public async Task MessageTemplate_OtherOrg_NotVisible_Test()
     {
@@ -62,7 +56,6 @@ public class MessageTemplateProofTests : IAsyncLifetime
         Assert.Equal([mine.Id], (await service.ListAsync(_world.Scope.OrgWide, activeOnly: false)).Select(t => t.Id));
         Assert.Equal([theirs.Id], (await service.ListAsync(Other, activeOnly: false)).Select(t => t.Id));
 
-        // Org B reaches for the template of org A by its id: every door answers as if it were not there.
         var update = await Assert.ThrowsAsync<NotFoundException>(() => service.UpdateAsync(Other, mine.Id, "Rubato", "it", "Testo", true));
         var delete = await Assert.ThrowsAsync<NotFoundException>(() => service.DeleteAsync(Other, mine.Id));
         var render = await Assert.ThrowsAsync<NotFoundException>(() => service.RenderAsync(Other, mine.Id, Ota(_world.OtherOrg)));
@@ -73,12 +66,9 @@ public class MessageTemplateProofTests : IAsyncLifetime
         Assert.Equal("Ciao {{guest_name}}", untouched.Body);
         Assert.Equal(_world.Scope.OrgId, untouched.OrgId);
 
-        // And the conversation of another org is not rendered for, even with a template of one's own.
         var foreign = await Assert.ThrowsAsync<NotFoundException>(() => service.RenderAsync(_world.Scope.OrgWide, mine.Id, Ota(_world.OtherOrg)));
         Assert.Equal("thread_not_found", foreign.Code);
     }
-
-    // ---- Writing a template ---------------------------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task Create_ATemplate_IsCheckedWhenItIsSaved()
@@ -108,7 +98,6 @@ public class MessageTemplateProofTests : IAsyncLifetime
             Assert.Equal("message_template_invalid", invalid.Code);
         }
 
-        // A variable that is none of the eight is found now, not in front of a guest.
         var unknown = await Assert.ThrowsAsync<DomainRuleException>(() => service.CreateAsync(_world.Scope.OrgWide, "Nome", "it", "Ciao {{nome_ospite}}", true));
         Assert.Equal("template_variable_unknown", unknown.Code);
         Assert.Single(await _db.MessageTemplates.AsNoTracking().Where(t => t.OrgId == _world.Scope.OrgId).ToListAsync());
@@ -127,7 +116,6 @@ public class MessageTemplateProofTests : IAsyncLifetime
         Assert.Equal("message_template_exists", duplicate.Code);
         Assert.Equal("message_template_exists", clash.Code);
 
-        // A template may be saved again as itself.
         var same = await service.UpdateAsync(_world.Scope.OrgWide, first.Id, "Benvenuto", "it", "Ciao, benvenuto!", false);
         Assert.Equal("Ciao, benvenuto!", same.Body);
         Assert.False(same.IsActive);
@@ -156,8 +144,6 @@ public class MessageTemplateProofTests : IAsyncLifetime
         await Assert.ThrowsAsync<NotFoundException>(() => service.DeleteAsync(_world.Scope.OrgWide, template.Id));
     }
 
-    // ---- Rendering for a conversation ------------------------------------------------------------------------------------------------------
-
     [Fact]
     public async Task Render_FillsTheVariablesFromTheBookingAndTheProperty_OfTheConversation()
     {
@@ -185,7 +171,6 @@ public class MessageTemplateProofTests : IAsyncLifetime
         Assert.DoesNotContain("{{", text, StringComparison.Ordinal);
     }
 
-    /// <summary>A request with no booking has no dates: the text is refused with the name of the variable, not sent with a literal brace in it.</summary>
     [Fact]
     public async Task Render_AConversationWithNoValueForAVariable_Is422NamingIt()
     {
@@ -212,7 +197,6 @@ public class MessageTemplateProofTests : IAsyncLifetime
         Assert.Contains("2026", text, StringComparison.Ordinal);
     }
 
-    /// <summary>A collaborator limited to some houses renders for the conversations of its houses and for no other, and nothing is read of the others.</summary>
     [Fact]
     public async Task Render_Collaborator_ReachesOnlyTheConversationsOfItsHouses()
     {
@@ -227,8 +211,6 @@ public class MessageTemplateProofTests : IAsyncLifetime
             Assert.Equal("thread_not_found", error.Code);
         }
     }
-
-    // ---- The templates of the channel manager ---------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task ChannelTemplates_OfAChannelConversation_AreTheOnesOfTheChannelManager_ReadOnly()

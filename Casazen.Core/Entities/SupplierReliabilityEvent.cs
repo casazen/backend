@@ -24,22 +24,15 @@ public class SupplierReliabilityEvent
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The supplier org the event is about (<see cref="SupplierProfile.OrgId"/>).</summary>
     [Required]
     public Guid SupplierOrgId { get; set; }
 
     public SupplierReliabilityEventKind Kind { get; set; }
 
-    /// <summary>The service request the event is about; <c>null</c> for an event that is not about one. Not a foreign key: the history outlives the request.</summary>
     public Guid? RequestId { get; set; }
 
-    /// <summary>
-    /// The supplier was one of the backups of the request (SP-BKP) and not the supplier the host chose: a missed reply weighs a small share of
-    /// what it weighs for the supplier chosen (<c>SupplierRanking:BackupPenaltyShare</c>).
-    /// </summary>
     public bool AsBackup { get; set; }
 
-    /// <summary>When it happened (UTC): the instant the supplier answered, the deadline it missed, the completion, the dispute.</summary>
     public DateTime OccurredAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

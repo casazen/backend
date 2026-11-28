@@ -4,13 +4,8 @@ using Casazen.Core.Suppliers;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// The weekly working hours of a supplier: every band, Monday first then by start, and when the supplier last saved
-/// hours with at least one band (<c>null</c> while it has none).
-/// </summary>
 public sealed record SupplierHours(IReadOnlyList<SupplierWeeklyBand> Bands, DateTime? ConfiguredAt);
 
-/// <summary>A day closed by hand or by the calendar feed (<c>SupplierAvailability</c> with <c>Available = false</c>).</summary>
 public sealed record SupplierClosedDay(DateOnly Date, SupplierAvailabilitySource Source);
 
 /// <summary>
@@ -63,10 +58,8 @@ public sealed record SupplierAgendaRequest(
     bool HasPendingProposal = false,
     bool HasPendingQuote = false)
 {
-    /// <summary>True when the request has hours of its own (<see cref="StartUtc"/> and <see cref="EndUtc"/>).</summary>
     public bool HasHours => StartUtc is not null && EndUtc is not null;
 
-    /// <summary>The phase of the request (<see cref="SupplierRequestPhases"/>): derived in one place, never stored.</summary>
     public string Phase => SupplierRequestPhases.Of(Status, HasPendingProposal, HasPendingQuote);
 }
 
@@ -78,7 +71,6 @@ public sealed record SupplierAgendaRequest(
 /// </summary>
 public sealed record SupplierBookingSettings(bool OnlineBookingEnabled, int RespondWithinMinutes)
 {
-    /// <summary>What a supplier that never saved a setting has.</summary>
     public static SupplierBookingSettings Default { get; } = new(false, SupplierAgendaDefaults.RespondWithinMinutes);
 }
 
@@ -102,15 +94,9 @@ public sealed record SupplierSettingsView(
     bool NotifyPayments,
     int RespondWithinMinutes)
 {
-    /// <summary>What a supplier that never saved a setting has: the defaults of the <c>SupplierSettings</c> row.</summary>
     public static SupplierSettingsView Default { get; } = new(false, false, true, true, true, SupplierAgendaDefaults.RespondWithinMinutes);
 }
 
-/// <summary>
-/// What the supplier's calendar shows for a range of days (<c>GET api/supplier/calendar</c>): the working hours, the days
-/// closed, the time off, the blocks, extra openings and engagements that touch the range, and the requests as items of a
-/// whole day.
-/// </summary>
 public sealed record SupplierCalendar(
     DateOnly From,
     DateOnly To,
@@ -145,66 +131,28 @@ public sealed record SupplierGuestOrderAppointment(Guid Id, DateTime RequestedFo
 /// </remarks>
 public interface ISupplierAgendaService
 {
-    /// <summary>The weekly working hours. A supplier that never saved any has no band and no <c>ConfiguredAt</c>. Read-only.</summary>
     Task<SupplierHours> GetHoursAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Replaces the weekly working hours with <paramref name="input"/> (a weekday that is not in it becomes a rest day) and
-    /// sets <c>ConfiguredAt</c> to now, or to <c>null</c> when no band is left.
-    /// </summary>
-    /// <exception cref="Exceptions.DomainRuleException"><see cref="SupplierAgendaErrors.HoursInvalid"/> (with the fields).</exception>
     Task<SupplierHours> ReplaceHoursAsync(Guid supplierOrgId, SupplierHoursInput input, CancellationToken cancellationToken = default);
 
-    /// <summary>The time off that has not ended yet (last day today or later), by first day. Read-only.</summary>
     Task<IReadOnlyList<SupplierTimeOff>> ListTimeOffAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
-    /// <summary>Adds a time off.</summary>
-    /// <exception cref="Exceptions.DomainRuleException">
-    /// <see cref="SupplierAgendaErrors.TimeOffInvalid"/> (with the fields) or <see cref="SupplierAgendaErrors.TimeOffLimitReached"/>.
-    /// </exception>
     Task<SupplierTimeOff> AddTimeOffAsync(Guid supplierOrgId, SupplierTimeOffInput input, CancellationToken cancellationToken = default);
 
-    /// <summary>Deletes a time off (the days it closed are open again).</summary>
-    /// <exception cref="Exceptions.NotFoundException"><see cref="SupplierAgendaErrors.TimeOffNotFound"/>.</exception>
     Task DeleteTimeOffAsync(Guid supplierOrgId, Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>The blocks and extra openings the supplier set by hand that have not ended yet, by start. Read-only.</summary>
     Task<IReadOnlyList<SupplierBusyWindow>> ListBlocksAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
-    /// <summary>Adds a manual block or extra opening.</summary>
-    /// <exception cref="Exceptions.DomainRuleException">
-    /// <see cref="SupplierAgendaErrors.BlockInvalid"/> (with the fields) or <see cref="SupplierAgendaErrors.BlockLimitReached"/>.
-    /// </exception>
     Task<SupplierBusyWindow> AddBlockAsync(Guid supplierOrgId, SupplierBlockInput input, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Deletes a manual block or extra opening. The windows of the supplier's calendar feed (SP-05) cannot be deleted from
-    /// here: they answer like a window that is not there.
-    /// </summary>
-    /// <exception cref="Exceptions.NotFoundException"><see cref="SupplierAgendaErrors.BlockNotFound"/>.</exception>
     Task DeleteBlockAsync(Guid supplierOrgId, Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The rules of the supplier's agenda; the defaults (<see cref="SupplierAgendaDefaults"/>) while it never saved one. A
-    /// read never creates the settings row. Read-only.
-    /// </summary>
     Task<SupplierPlanningRules> GetRulesAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
-    /// <summary>Replaces the five rules the console edits (the other settings of the supplier stay as they are).</summary>
-    /// <exception cref="Exceptions.DomainRuleException"><see cref="SupplierAgendaErrors.RulesInvalid"/> (with the fields).</exception>
     Task<SupplierPlanningRules> ReplaceRulesAsync(Guid supplierOrgId, SupplierRulesInput input, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The settings the booking from the public showcase reads (SP-10): <c>OnlineBookingEnabled</c> and
-    /// <c>RespondWithinMinutes</c>. The defaults while the supplier never saved a setting; a read never creates the settings row.
-    /// Read-only.
-    /// </summary>
     Task<SupplierBookingSettings> GetBookingSettingsAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The supplier's settings for the console (SP-16a): the switches, the time to answer and, read-only, whether the showcase takes
-    /// bookings. The defaults while the supplier never saved a setting; a read never creates the settings row. Read-only.
-    /// </summary>
     Task<SupplierSettingsView> GetSettingsAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -238,28 +186,12 @@ public interface ISupplierAgendaService
     /// <exception cref="Exceptions.DomainRuleException"><see cref="SupplierAgendaErrors.UrgentInvalid"/> (with the fields).</exception>
     Task<SupplierUrgentSettings> ReplaceUrgentAsync(Guid supplierOrgId, SupplierUrgentInput input, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// What the supplier's calendar shows from <paramref name="from"/> to <paramref name="to"/> (Europe/Rome days, both
-    /// included, at most <see cref="SupplierAgendaLimits.MaxCalendarDays"/>): hours, closed days, time off, windows and the
-    /// requests that have a day. Read-only.
-    /// </summary>
-    /// <exception cref="ArgumentOutOfRangeException">
-    /// The range is reversed, too long or too close to an end of the calendar (<see cref="SupplierAgendaRange"/>; the controller
-    /// answers 400 before).
-    /// </exception>
     Task<SupplierCalendar> GetCalendarAsync(
         Guid supplierOrgId,
         DateOnly from,
         DateOnly to,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The input of the slot planner for the days from <paramref name="from"/> to <paramref name="to"/>: the rules, the
-    /// weekly hours, the time off, the closed days, the extra openings, and everything that takes the supplier's time today
-    /// (manual blocks, engagements of the calendar feed, requests with hours as <see cref="SupplierOccupancy.TimedRequest"/>,
-    /// requests that only have a day as <see cref="SupplierOccupancy.DatedRequest"/>). The tasks that add a source of occupied
-    /// time (holds) add their <see cref="SupplierOccupancy"/> here.
-    /// </summary>
     Task<SupplierPlanningInput> BuildPlanningInputAsync(
         Guid supplierOrgId,
         DateOnly from,
@@ -278,7 +210,6 @@ public interface ISupplierAgendaService
         Guid? exceptRequestId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The plan of every day from <paramref name="from"/> to <paramref name="to"/> for <paramref name="query"/>.</summary>
     Task<IReadOnlyList<SupplierDayPlan>> PlanAsync(
         Guid supplierOrgId,
         DateOnly from,
@@ -286,10 +217,6 @@ public interface ISupplierAgendaService
         SupplierSlotQuery query,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Like <see cref="PlanAsync(Guid, DateOnly, DateOnly, SupplierSlotQuery, CancellationToken)"/> to move the request
-    /// <paramref name="exceptRequestId"/> (see <see cref="BuildPlanningInputAsync(Guid, DateOnly, DateOnly, Guid?, CancellationToken)"/>).
-    /// </summary>
     Task<IReadOnlyList<SupplierDayPlan>> PlanAsync(
         Guid supplierOrgId,
         DateOnly from,

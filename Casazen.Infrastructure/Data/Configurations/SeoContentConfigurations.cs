@@ -17,7 +17,6 @@ internal sealed class SeoContentPageConfiguration : IEntityTypeConfiguration<Seo
 
     internal static void ConfigurePublishedRevisionIdForeignKey(EntityTypeBuilder<SeoContentPage> entity)
     {
-        // SE-01: the public sees only the approved revision; deleting it makes the page non-public.
         entity.HasOne(p => p.PublishedRevision)
             .WithMany()
             .HasForeignKey(p => p.PublishedRevisionId)

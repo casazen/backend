@@ -18,14 +18,12 @@ namespace Casazen.Core.Entities;
 [Table("PropertyFloorPlans")]
 public class PropertyFloorPlan : ITenantOwned
 {
-    /// <summary>At most this many levels a property can have: a house over six floors is not drawn level by level.</summary>
     public const int MaxPerProperty = 6;
 
     public const int NameMaxLength = 60;
 
     public const int ImageUrlMaxLength = 2000;
 
-    /// <summary>The living area of one level, in square metres, <see cref="MinAreaSqm"/> to <see cref="MaxAreaSqm"/>.</summary>
     public const int MinAreaSqm = 1;
 
     public const int MaxAreaSqm = 9999;
@@ -39,34 +37,25 @@ public class PropertyFloorPlan : ITenantOwned
 
     public virtual Property Property { get; set; } = null!;
 
-    /// <summary>Tenant of the row, copied from <see cref="Property"/> when it is created (TN-2).</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The floor this plan draws, <c>SitePropertyProfileLimits.MinFloorLevel</c> to <c>MaxFloorLevel</c>, 0 = ground floor. The page lists the levels lowest floor first.</summary>
     public int Level { get; set; }
 
-    /// <summary>Order of the rows of one floor (the order they were uploaded in), 0 first.</summary>
     public int Position { get; set; }
 
-    /// <summary>What the guest reads: «Piano terra», «Primo piano», «Mansarda».</summary>
     [Required, MaxLength(NameMaxLength)]
     public string NameIt { get; set; } = string.Empty;
 
-    /// <summary>The same in English; null = the host wrote none and the page shows <see cref="NameIt"/>.</summary>
     [MaxLength(NameMaxLength)]
     public string? NameEn { get; set; }
 
-    /// <summary>Absolute public URL of the image in the property's own folder of the public bucket.</summary>
     [Required, MaxLength(ImageUrlMaxLength)]
     public string ImageUrl { get; set; } = string.Empty;
 
-    /// <summary>Width of the image in pixels, read from the file when it was uploaded; null = not known.</summary>
     public int? ImageWidth { get; set; }
 
-    /// <summary>Height of the image in pixels, read from the file when it was uploaded; null = not known.</summary>
     public int? ImageHeight { get; set; }
 
-    /// <summary>The living area of this level in square metres; null = the host did not say.</summary>
     public int? AreaSqm { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

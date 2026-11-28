@@ -18,7 +18,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed class OwnerContactIndex : IOwnerContactIndex
 {
-    /// <summary>The key of Development and Testing when none is configured: public on purpose, it protects nothing.</summary>
     internal const string DevelopmentKey = "casazen-development-owner-contact-index-key-not-secret";
 
     private readonly byte[] _key;
@@ -30,7 +29,6 @@ public sealed class OwnerContactIndex : IOwnerContactIndex
         {
             if (OwnerPortalOptionsValidator.RequiresKey(environment))
             {
-                // The owner portal is off (the validator refuses the startup when it is on): nothing may index an address with this key.
                 logger.LogWarning("OwnerPortal:ContactIndexKey is not configured: the keyed index of the contacts of the owners cannot be computed");
                 _key = [];
                 return;

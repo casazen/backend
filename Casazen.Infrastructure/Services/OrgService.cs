@@ -11,30 +11,11 @@ using Npgsql;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Org tenant access and MVP plan management (US-004 extension).
-/// </summary>
 public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLog = null) : IOrgService
 {
     public Task<Org?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
         dbContext.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
 
-    public async Task<Org?> GetByUserIdAsync(string userId, CancellationToken cancellationToken = default)
-    {
-        var orgId = await dbContext.Users.AsNoTracking()
-            .Where(u => u.Id == userId)
-            .Select(u => u.OrgId)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        return orgId is null
-            ? null
-            : await dbContext.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
-    }
-
-    /// <remarks>
-    /// Also resolves a previous slug of the org (<see cref="OrgSlugAlias"/>, PL-04): links shared before a slug change
-    /// keep working. The returned org carries its current slug, so the site can redirect to the canonical address.
-    /// </remarks>
     public async Task<Org?> GetPublicBySlugAsync(string slug, CancellationToken cancellationToken = default)
     {
         var orgId = await ResolveOrgIdBySlugAsync(dbContext, slug, cancellationToken);
@@ -43,10 +24,6 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
             : await dbContext.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == orgId && o.IsActive, cancellationToken);
     }
 
-    /// <summary>
-    /// The org whose current or previous public slug is <paramref name="slug"/>, or <c>null</c> (PL-04, A1-23). Shared by
-    /// every anonymous lookup that receives an org slug from a public link.
-    /// </summary>
     internal static async Task<Guid?> ResolveOrgIdBySlugAsync(
         AppDbContext dbContext,
         string slug,
@@ -59,8 +36,6 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
         if (current is not null)
             return current;
 
-        // IgnoreQueryFilters: the slug comes from a public link, the org is not known yet (anonymous or another
-        // tenant's visitor); the alias only maps the link to its org, the caller then applies its own checks.
         return await dbContext.OrgSlugAliases.IgnoreQueryFilters().AsNoTracking()
             .Where(a => a.Slug == slug)
             .Select(a => (Guid?)a.OrgId)
@@ -99,7 +74,6 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
         string displayName,
         CancellationToken cancellationToken = default)
     {
-        // Fast path without locks: the user is already linked (every call after the first access).
         var linked = await GetLinkedOrgAsync(userId, cancellationToken);
         if (linked is not null)
             return linked;
@@ -109,7 +83,6 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
             cancellationToken,
             (PostgresAdvisoryLocks.Scope.OrgProvisioningUser, userId));
 
-        // Re-read under the lock: a parallel request may have linked an org while this one waited.
         linked = await GetLinkedOrgAsync(userId, cancellationToken);
         if (linked is not null)
         {
@@ -140,8 +113,6 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
             DisplayName = orgName,
             Slug = slug,
             PlanTier = PlanTier.Starter,
-            // Only an accepted invitation issued by platform staff creates an agency.
-            // Ordinary self-service signup creates a private organization.
             IsAgency = await dbContext.HostInviteRecords.AnyAsync(i => i.IsUsed && i.UsedByUserId == userId
                 && i.InvitedByOrgId == null, cancellationToken),
             ContactEmail = email,
@@ -207,7 +178,6 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
         if (org is null)
             return null;
 
-        // The line of the activity log goes in the same save as the tier: it is there only if the tier changed.
         if (org.PlanTier != planTier)
         {
             activityLog?.Record(OrgActivity.Of(
@@ -225,10 +195,6 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
         await dbContext.SaveChangesAsync(cancellationToken);
         return org;
     }
-
-    public Task<Org?> GetByStripeCustomerIdAsync(string stripeCustomerId, CancellationToken cancellationToken = default) =>
-        dbContext.Orgs.AsNoTracking()
-            .FirstOrDefaultAsync(o => o.StripeCustomerId == stripeCustomerId, cancellationToken);
 
     public async Task<Org?> UpdateBillingProfileAsync(
         Guid orgId,
@@ -248,7 +214,6 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
         org.VatId = normalizedVatId;
         if (eInvoice is not null)
         {
-            // Per field: null = unchanged (a client that does not know the field never wipes it), "" = cleared.
             if (eInvoice.SdiRecipientCode is not null)
                 org.BillingSdiRecipientCode = NullIfEmpty(eInvoice.SdiRecipientCode);
             if (eInvoice.PecEmail is not null)
@@ -282,8 +247,6 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
         FieldUpdate<string> contactPhone = default,
         FieldUpdate<string> defaultLanguage = default)
     {
-        // DB-03b-a: the operator data is validated only when the caller sends it, before anything is loaded or written: an
-        // invalid value changes nothing. The phone and the language of the account (AM-08b-b) follow the same rule.
         var normalizedLegalName = legalName.IsSent ? OrgOperatorRules.NormalizeLegalName(legalName.Value) : null;
         var normalizedRegisteredOffice = registeredOffice.IsSent ? OrgOperatorRules.NormalizeRegisteredOffice(registeredOffice.Value) : null;
         var normalizedContactPhone = contactPhone.IsSent ? OrgSettingsRules.NormalizeContactPhone(contactPhone.Value) : null;
@@ -314,13 +277,10 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
             if (await IsSlugTakenByAnotherOrgAsync(orgId, newSlug, cancellationToken))
                 throw new DomainConflictException(OrgSlugHelper.TakenCode, "OrgSlugTaken");
 
-            // IgnoreQueryFilters: the org is identified explicitly (aliases of this org only); the caller's tenant
-            // filter would hide nothing here, but the update must not depend on the request's tenant context.
             var ownAliases = await dbContext.OrgSlugAliases.IgnoreQueryFilters()
                 .Where(a => a.OrgId == orgId && (a.Slug == newSlug || a.Slug == previousSlug))
                 .ToListAsync(cancellationToken);
 
-            // Back to a previous slug: it is the current one again, no longer an alias.
             dbContext.OrgSlugAliases.RemoveRange(ownAliases.Where(a => a.Slug == newSlug));
             if (!string.IsNullOrEmpty(previousSlug) && ownAliases.All(a => a.Slug != previousSlug))
             {
@@ -335,15 +295,11 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
             org.Slug = newSlug;
         }
 
-        // The activity log (AM-02b) says that the name or the slug changed, never what they became: one line each, in the
-        // save that writes the change.
         if (!string.Equals(org.Name, trimmedName, StringComparison.Ordinal))
             activityLog?.Record(OrgActivity.Of(org.Id, OrgActivityType.OrgNameChanged, actorUserId, org.Id.ToString()));
         if (slugChanged)
             activityLog?.Record(OrgActivity.Of(org.Id, OrgActivityType.OrgSlugChanged, actorUserId, org.Id.ToString()));
 
-        // The data of the company (AM-08b-b): one line when the operator data, the phone or the language of the account really
-        // change, never what they became. The contact email stays out of it, as it always was (the log would carry an address).
         var companyDataChanged =
             (legalName.IsSent && !string.Equals(org.LegalName, normalizedLegalName, StringComparison.Ordinal))
             || (registeredOffice.IsSent && !string.Equals(org.RegisteredOffice, normalizedRegisteredOffice, StringComparison.Ordinal))
@@ -393,7 +349,6 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
 
         if (org.SupplierBackupsEnabled != enabled)
         {
-            // One line in the activity log (AM-02b): that the settings changed, never what they became.
             activityLog?.Record(OrgActivity.Of(org.Id, OrgActivityType.OrgSettingsChanged, actorUserId, org.Id.ToString()));
             org.SupplierBackupsEnabled = enabled;
             org.UpdatedAt = DateTime.UtcNow;
@@ -433,21 +388,15 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
             : new OrgSlugAvailability(normalized, true, null);
     }
 
-    /// <summary>The value submitted is the org's current slug as is (also a legacy slug the rules would now refuse).</summary>
     private static bool IsCurrentSlug(Org org, string? slug) =>
         string.Equals(slug?.Trim(), org.Slug, StringComparison.Ordinal);
 
-    /// <summary>
-    /// Another org uses <paramref name="slug"/>: as its current slug, as a previous slug (alias) or as its subdomain,
-    /// which would shadow this org's slug-as-subdomain fallback (<see cref="GetBySubdomainOrSlugAsync"/>).
-    /// </summary>
     private async Task<bool> IsSlugTakenByAnotherOrgAsync(Guid orgId, string slug, CancellationToken cancellationToken)
     {
         if (await dbContext.Orgs.AsNoTracking()
                 .AnyAsync(o => o.Id != orgId && (o.Slug == slug || o.Subdomain == slug), cancellationToken))
             return true;
 
-        // IgnoreQueryFilters: the aliases of every org reserve their value, not only the caller's.
         return await dbContext.OrgSlugAliases.IgnoreQueryFilters().AsNoTracking()
             .AnyAsync(a => a.OrgId != orgId && a.Slug == slug, cancellationToken);
     }
@@ -467,10 +416,6 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
         return orgs.ToDictionary(o => o.Id);
     }
 
-    /// <summary>
-    /// A neutral slug not used by any org, now or as a previous slug. A collision of the random part is practically
-    /// impossible; the unique index on <c>Orgs.Slug</c> still refuses a duplicate.
-    /// </summary>
     private async Task<string> AllocateNeutralSlugAsync(CancellationToken cancellationToken)
     {
         while (true)

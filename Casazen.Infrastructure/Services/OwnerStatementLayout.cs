@@ -28,15 +28,12 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public static class OwnerStatementLayout
 {
-    /// <summary>The figures of a Swiss statement: the it-CH culture with the apostrophe as the thousands separator and the point as the decimal one, pinned so every platform writes the same.</summary>
     private static readonly NumberFormatInfo SwissNumbers = CreateSwissNumbers();
 
     private static readonly NumberFormatInfo ItalianNumbers = CultureInfo.GetCultureInfo("it-IT").NumberFormat;
 
-    /// <summary>The parts of the statement in the order of the file.</summary>
     public static IReadOnlyList<OwnerStatementSection> Sections { get; } = Enum.GetValues<OwnerStatementSection>();
 
-    /// <summary>Every key of <c>SharedResources</c> the layout reads, so a test can check each exists in both languages.</summary>
     public static IReadOnlyList<string> TextKeys { get; } =
     [
         "StatementFileTitle", "StatementFileDocumentTitle", "StatementFileAgency", "StatementFileOwner", "StatementFilePeriod", "StatementFileVersion",
@@ -55,7 +52,6 @@ public static class OwnerStatementLayout
         "StatementFileLedgerEvidence", "StatementFileLedgerEvidenceNote",
     ];
 
-    /// <summary>The part a ledger line is in. A type nobody mapped is an error (a test lists every type), never a line shown under another part.</summary>
     public static OwnerStatementSection SectionOf(OwnerLedgerEntryType type)
     {
         return type switch
@@ -71,10 +67,6 @@ public static class OwnerStatementLayout
         };
     }
 
-    /// <summary>
-    /// The totals of the lines of a version: each part, the total of the period, the payments, and the balances (the opening one given, the closing one worked out). A line for
-    /// information only (<see cref="OwnerStatementLine.Informational"/>: the commission of a portal the agency bears) is in none of them.
-    /// </summary>
     public static OwnerStatementTotals TotalsOf(decimal openingBalance, IReadOnlyList<OwnerStatementLine> lines)
     {
         ArgumentNullException.ThrowIfNull(lines);
@@ -100,7 +92,6 @@ public static class OwnerStatementLayout
         return amount.ToString("N2", numbers);
     }
 
-    /// <summary>The PDF of the statement: the blocks <see cref="IPdfDocumentRenderer"/> lays out. A version that is not published carries the watermark of a draft.</summary>
     public static PdfDocumentContent Pdf(OwnerStatementContent content, IDocumentTexts texts)
     {
         ArgumentNullException.ThrowIfNull(content);
@@ -140,10 +131,6 @@ public static class OwnerStatementLayout
         };
     }
 
-    /// <summary>
-    /// The CSV of the statement: the header, one row for every line of every part, the totals of each part, the net, the commissions of the portals the agency bears and the
-    /// tourist tax box (both for information, outside the net).
-    /// </summary>
     public static byte[] Csv(OwnerStatementContent content, IDocumentTexts texts)
     {
         ArgumentNullException.ThrowIfNull(content);
@@ -181,7 +168,6 @@ public static class OwnerStatementLayout
                      OwnerStatementSection.Recharges, OwnerStatementSection.Corrections, OwnerStatementSection.Payments,
                  })
         {
-            // A line for information only (the commission of a portal the agency bears) is not a row of its part: it follows the net, in a part of its own.
             var lines = content.Of(section).Where(line => !line.Informational).ToList();
             if (lines.Count == 0 && section is OwnerStatementSection.Withholding or OwnerStatementSection.Corrections or OwnerStatementSection.Payments)
                 continue;
@@ -209,8 +195,6 @@ public static class OwnerStatementLayout
         rows.Add(Cells(texts.Get("StatementFileNetPayments", language), null, null, null, null, null, null, totals.Payments, currency));
         rows.Add(Cells(texts.Get("StatementFileNetClosing", language), null, null, null, null, null, null, totals.ClosingBalance, currency));
 
-        // The commissions of the portals the agency bears (V2 without the recharge, FIX/BE-V2-NO-RECHARGE): for information only, the commission as a positive amount, in a part of
-        // its own, never in a total above.
         var borne = texts.Get("StatementFileChannelFeesAgencyNotRecharged", language);
         foreach (var line in content.Lines.Where(line => line.Informational))
         {
@@ -226,7 +210,6 @@ public static class OwnerStatementLayout
                 currency));
         }
 
-        // The tourist tax: for information only, in a part of its own with its own currency, never in a total above.
         var box = texts.Get("StatementFileTouristTaxHeading", language);
         foreach (var tax in content.TouristTax)
         {
@@ -247,7 +230,6 @@ public static class OwnerStatementLayout
         {
             rows.Add(Cells(texts.Get("StatementFileLedgerEvidence", language)));
             rows.Add(Cells(texts.Get("StatementFileLedgerEvidenceNote", language)));
-            // Stable technical column names allow reconciliation without changing the original nine-column statement table.
             rows.Add(Cells("ledger_entry_id", "source_type", "source_id", "source_reference", "service_date", "recognition_date", "payment_date",
                 "original_amount", "original_currency", "statement_amount", "statement_currency", "fx_rate", "fx_source", "fx_date"));
             foreach (var line in evidenceLines)
@@ -256,7 +238,6 @@ public static class OwnerStatementLayout
                 rows.Add(Cells(line.EntryId, evidence.SourceType.ToString(), evidence.SourceId, evidence.SourceReference,
                     evidence.ServiceDate, evidence.RecognitionDate, evidence.PaymentDate, evidence.OriginalAmount, evidence.OriginalCurrency,
                     line.Amount, evidence.StatementCurrency,
-                    // CsvWriter treats decimals as money (two places): an FX rate must retain every stored significant digit.
                     evidence.FxRate.ToString("G29", ItalianNumbers), evidence.FxSource, evidence.FxDate));
             }
         }
@@ -264,8 +245,6 @@ public static class OwnerStatementLayout
         rows.Add(Cells(texts.Get("StatementFileLinesHash", language, content.EntriesSha256)));
         return CsvWriter.Write(rows, CsvWriter.NoLimit);
     }
-
-    // ---------------------------------------------------------------- the parts of the PDF
 
     private static void AddStays(List<PdfBlock> blocks, OwnerStatementContent content, IDocumentTexts texts)
     {
@@ -310,17 +289,12 @@ public static class OwnerStatementLayout
             return;
         }
 
-        // The label follows who holds the portal account of the listing and what the agency does with the commission: the portal bills the owner (V1), or the agency, which
-        // recharges it on its invoice (V2) or does not (V2 without the recharge: the portal invoice is not the owner's and no invoice of the property manager carries it). Without
-        // the recharge the agency bears the commission (FIX/BE-V2-NO-RECHARGE): its group comes last and is for information only, the commission as a positive amount and
-        // nothing taken from the net; a commission the owner was charged on such an account before that rule keeps its amount and a label of its own.
         foreach (var kind in new[] { PortalFeeKind.OwnerAccount, PortalFeeKind.AgencyRecharged, PortalFeeKind.AgencyCharged, PortalFeeKind.AgencyNotRecharged })
         {
             var group = lines.Where(line => PortalFeeKindOf(line) == kind).ToList();
             if (group.Count == 0)
                 continue;
 
-            // The amount of a line: the signed one of the ledger, or, for the commission the agency bears, the commission it bears (what the portal kept).
             var shown = kind == PortalFeeKind.AgencyNotRecharged ? -1m : 1m;
             blocks.Add(new PdfParagraph(PortalFeeLabel(kind, content, texts), Bold: true));
             var rows = group
@@ -436,7 +410,6 @@ public static class OwnerStatementLayout
             rows));
     }
 
-    /// <summary>«Netto»: the payments, then the opening balance, the total of the period, the payments and the closing balance, the ones the version stores.</summary>
     private static void AddNet(List<PdfBlock> blocks, OwnerStatementContent content, IDocumentTexts texts)
     {
         var language = content.Language;
@@ -501,9 +474,6 @@ public static class OwnerStatementLayout
             rows));
     }
 
-    // ---------------------------------------------------------------- labels
-
-    /// <summary>The days of a stay (<c>dd/MM/yyyy - dd/MM/yyyy</c>) with the code of its booking; the day of the line for a line that is not of a stay, and nothing for a line with no day.</summary>
     private static string StayLabel(OwnerStatementLine line, IDocumentTexts texts, string language)
     {
         var days = line.CheckIn is { } checkIn && line.CheckOut is { } checkOut
@@ -520,7 +490,6 @@ public static class OwnerStatementLayout
         return bookingCode is { Length: > 0 } ? $"{days} ({bookingCode})" : days;
     }
 
-    /// <summary>The words of a line: the agency's own for a charge, an expense or a correction; the kind of a flat fee; a label for what has none.</summary>
     private static string DescriptionOf(OwnerStatementLine line, OwnerStatementContent content, IDocumentTexts texts)
     {
         var language = content.Language;
@@ -558,29 +527,17 @@ public static class OwnerStatementLayout
         };
     }
 
-    /// <summary>How the commission a portal kept is told to the owner: who holds the portal account of the listing and what the agency does with the commission.</summary>
     private enum PortalFeeKind
     {
-        /// <summary>V1, the account of the owner: the portal bills the owner.</summary>
         OwnerAccount,
 
-        /// <summary>V2 with the recharge: the portal bills the agency, which recharges the commission on its invoice.</summary>
         AgencyRecharged,
 
-        /// <summary>
-        /// V2 without the recharge, a commission the owner was charged all the same (a line posted before FIX/BE-V2-NO-RECHARGE): the portal bills the agency and no invoice of
-        /// the property manager carries the commission. In the totals as it was posted.
-        /// </summary>
         AgencyCharged,
 
-        /// <summary>V2 without the recharge: the portal bills the agency, which bears the commission; the owner is not charged it. For information only.</summary>
         AgencyNotRecharged,
     }
 
-    /// <summary>
-    /// The kind of a commission of a channel: the recharge of the invoice first (the test of the invoice), then the commission the agency bears (the type of the line), then a
-    /// commission the owner was charged on an account of the agency without the recharge, else the owner's account.
-    /// </summary>
     private static PortalFeeKind PortalFeeKindOf(OwnerStatementLine line)
     {
         if (line.AgencyHoldsPortalAccount)
@@ -611,7 +568,6 @@ public static class OwnerStatementLayout
         };
     }
 
-    /// <summary>The channel of a stay as the file writes it: a portal by its name, the generic ones by a label in the language of the file.</summary>
     private static string ChannelLabel(string? channel, IDocumentTexts texts, string language)
     {
         return channel switch
@@ -640,7 +596,6 @@ public static class OwnerStatementLayout
         };
     }
 
-    /// <summary>The language of the PDF catalog: English, or Italian as written in the country of the currency (Switzerland for the franc).</summary>
     private static string LanguageTag(string language, string currency)
     {
         if (DocumentLanguages.Normalize(language) == DocumentLanguages.English)

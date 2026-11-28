@@ -12,38 +12,22 @@ public class GuestCheckInSession : ITenantOwned
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The booking this session belongs to.</summary>
     public Guid BookingId { get; set; }
     public virtual Booking Booking { get; set; } = null!;
 
-    /// <summary>Tenant key — copied from booking at creation time.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>SHA-256 hex hash of the raw token sent to the guest.</summary>
     [Required, MaxLength(64)]
     public string TokenHash { get; set; } = string.Empty;
 
-    /// <summary>
-    /// End of validity of the link (creation + <c>CheckIn:SessionLifetimeDays</c>). An open session past it is expired even
-    /// before the send job marks it <see cref="GuestCheckInSessionStatus.Scaduto"/> (<see cref="EffectiveStatus"/>, A5-27).
-    /// </summary>
     public DateTime ExpiresAt { get; set; }
 
     public GuestCheckInSessionStatus Status { get; set; } = GuestCheckInSessionStatus.Inviato;
 
-    /// <summary>
-    /// When the email with the link was handed to the email provider (CO-09); null while it is not (link generated to
-    /// copy, email queued or failed). Sessions created before CO-09 hold their creation time.
-    /// </summary>
     public DateTime? SentAt { get; set; }
 
-    /// <summary>
-    /// Delivery of the link by email (CO-09, A5-26): never requested (link to copy), queued, handed to the provider or
-    /// failed. Null for the sessions created before CO-09 (unknown).
-    /// </summary>
     public GuestCheckInLinkEmailStatus? LinkEmailStatus { get; set; }
 
-    /// <summary>Stable reason of a <see cref="GuestCheckInLinkEmailStatus.Failed"/> email (<see cref="GuestCheckInLinkEmailErrors"/>).</summary>
     [MaxLength(50)]
     public string? LinkEmailError { get; set; }
 
@@ -52,25 +36,12 @@ public class GuestCheckInSession : ITenantOwned
     [MaxLength(64)]
     public string? AcceptedHouseRulesVersion { get; set; }
 
-    /// <summary>
-    /// Number of biometric (face comparison) attempts in this session (NF-11, ADR-013-R5).
-    /// Max 3 attempts per session; after max, escalates to operator verification.
-    /// </summary>
     public int BiometricAttempts { get; set; } = 0;
 
-    /// <summary>
-    /// Outcome of the face comparison (NF-11, ADR-013-R5): Accept, Escalate, or Reject.
-    /// Null before any attempt or when biometric consent was declined.
-    /// </summary>
     public BiometricOutcome? BiometricOutcome { get; set; }
 
-    /// <summary>
-    /// When the guest gave the biometric consent (ADR-013-R9: separate from the privacy notice, never mandatory, refusable); null while it was
-    /// not given or after it was refused. No selfie is processed without it (E03/F04/US02/T01, AC-NF50-7).
-    /// </summary>
     public DateTime? BiometricConsentAt { get; set; }
 
-    /// <summary>The version of the consent text the guest accepted (<see cref="BiometricConsentAt"/>); at most 50 characters.</summary>
     public string? BiometricConsentVersion { get; set; }
 
     /// <summary>
@@ -81,7 +52,6 @@ public class GuestCheckInSession : ITenantOwned
     [MaxLength(64)]
     public string? BiometricConsentTextHash { get; set; }
 
-    /// <summary>When the guest refused the biometric consent: the identity is then verified by an operator (ADR-013-R9).</summary>
     public DateTime? BiometricConsentRefusedAt { get; set; }
 
     /// <summary>
@@ -99,48 +69,32 @@ public class GuestCheckInSession : ITenantOwned
     /// </summary>
     public string? DocumentCheckJson { get; set; }
 
-    /// <summary>
-    /// The language the guest chose on the check-in page (two letters, one of <c>GuestLanguages.Supported</c>); null until the guest
-    /// chooses. The emails of the session use it (NF-40).
-    /// </summary>
     public string? Language { get; set; }
 
-    /// <summary>When the reminder for the data still missing before arrival was queued with this session's link (UTC); null when none.</summary>
     public DateTime? ReminderSentAt { get; set; }
 
     // E70/F01/US01/T02 (NF-188, NF-194, NF-196): the self-hosted identity verification of the session (Features:CheckInIdentitySelfHosted). Null, and 0 for the
     // retries, on the legacy path and on every row written before the columns. Ids, codes, hashes and times only: never a value read on a document, a frame or a
     // face datum.
 
-    /// <summary>
-    /// The one guest the verification is bound to when the identity step opens (NF-188); null before it. An opaque id with no foreign key: the bound person may be
-    /// the booker or a guest of the stay not registered yet.
-    /// </summary>
     public Guid? IdentityGuestId { get; set; }
 
-    /// <summary>When the identity step was opened (UTC); null before it.</summary>
     public DateTime? IdentityOpenedAt { get; set; }
 
-    /// <summary>The version of the notice shown at the opening; at most 50 characters.</summary>
     [MaxLength(50)]
     public string? IdentityNoticeVersion { get; set; }
 
-    /// <summary>The SHA-256 (hex) of the text of that notice.</summary>
     [MaxLength(64)]
     public string? IdentityNoticeTextHash { get; set; }
 
-    /// <summary>What the guest chose: a code of <c>IdentityChoices</c> (<c>automatic</c>, <c>assisted</c>).</summary>
     [MaxLength(20)]
     public string? IdentityChoice { get; set; }
 
-    /// <summary>When the guest chose (UTC).</summary>
     public DateTime? IdentityChoiceAt { get; set; }
 
-    /// <summary>The coarse family of the browser, a code of <c>IdentityChannels</c>: never the User-Agent.</summary>
     [MaxLength(40)]
     public string? IdentityChannel { get; set; }
 
-    /// <summary>The id of the format of the registry the document was read as.</summary>
     [MaxLength(40)]
     public string? IdentityFormatId { get; set; }
 
@@ -151,16 +105,11 @@ public class GuestCheckInSession : ITenantOwned
     [MaxLength(64)]
     public string? IdentityLastAttemptKey { get; set; }
 
-    /// <summary>
-    /// The public answer of that attempt, codes only (at most 80 characters): a request that comes again with the same key gets it again, without a second attempt.
-    /// </summary>
     [MaxLength(80)]
     public string? IdentityLastAttemptResult { get; set; }
 
-    /// <summary>When the verification was closed (UTC): from then on no document or presence step is accepted on the session.</summary>
     public DateTime? IdentityClosedAt { get; set; }
 
-    /// <summary>The terminal outcome of the verification, a code of <c>IdentityOutcomeCodes</c>.</summary>
     [MaxLength(40)]
     public string? IdentityOutcomeCode { get; set; }
 
@@ -171,19 +120,15 @@ public class GuestCheckInSession : ITenantOwned
     /// <summary>The link can still be opened by the guest, unless <see cref="ExpiresAt"/> has passed.</summary>
     public bool IsOpen => Status is GuestCheckInSessionStatus.Inviato or GuestCheckInSessionStatus.InCompilazione;
 
-    /// <summary>The guest has submitted the data.</summary>
     public bool IsCompleted => Status is GuestCheckInSessionStatus.Completo or GuestCheckInSessionStatus.AlloggiatiInviato;
 
-    /// <summary>The status at <paramref name="nowUtc"/>: an open session past <see cref="ExpiresAt"/> is expired.</summary>
     public GuestCheckInSessionStatus EffectiveStatus(DateTime nowUtc) =>
         IsOpen && ExpiresAt < nowUtc ? GuestCheckInSessionStatus.Scaduto : Status;
 }
 
 public enum GuestCheckInSessionStatus
 {
-    /// <summary>Link issued (by email or to copy), not yet opened by the guest.</summary>
     Inviato,
-    /// <summary>Guest opened the link; form in progress.</summary>
     InCompilazione,
     /// <summary>Guest submitted all data. The session stays here until Alloggiati Web returns a real receipt.</summary>
     Completo,
@@ -192,47 +137,33 @@ public enum GuestCheckInSessionStatus
     /// moved the sessions set that way back to <see cref="Completo"/>.
     /// </summary>
     AlloggiatiInviato,
-    /// <summary>Token expired (<see cref="GuestCheckInSession.ExpiresAt"/> passed) or replaced by a new link.</summary>
     Scaduto,
 }
 
-/// <summary>Delivery of the check-in link by email (CO-09). Stored as an integer: never renumber.</summary>
 public enum GuestCheckInLinkEmailStatus
 {
-    /// <summary>The host generated the link to copy it: no email requested.</summary>
     NotRequested = 0,
 
-    /// <summary>Queued for delivery (Hangfire), not handed to the provider yet.</summary>
     Queued = 1,
 
-    /// <summary>Handed to the email provider (<see cref="GuestCheckInSession.SentAt"/>).</summary>
     Sent = 2,
 
-    /// <summary>Not sent: see <see cref="GuestCheckInSession.LinkEmailError"/>. The link itself stays valid.</summary>
     Failed = 3,
 }
 
-/// <summary>Stable reasons of a failed check-in link email (<see cref="GuestCheckInSession.LinkEmailError"/>), shown to the host.</summary>
 public static class GuestCheckInLinkEmailErrors
 {
-    /// <summary>The guest of the booking has no email address.</summary>
     public const string NoRecipient = "no_recipient";
 
-    /// <summary>The email provider is not configured (<c>Email__ApiKey</c>, <c>Email__FromAddress</c>).</summary>
     public const string ProviderNotConfigured = "provider_not_configured";
 
-    /// <summary>The email could not be queued (Hangfire storage error).</summary>
     public const string QueueFailed = "queue_failed";
 
-    /// <summary>The provider refused the email (e.g. invalid address): not retried.</summary>
     public const string Rejected = "rejected";
 
-    /// <summary>Temporary provider errors on every attempt.</summary>
     public const string NotDelivered = "not_delivered";
 
-    /// <summary>The public site URL (<c>App:PublicSiteBaseUrl</c>) is missing: no link can be built.</summary>
     public const string LinkUnavailable = "link_unavailable";
 
-    /// <summary>The link expired or was replaced before the email left: nothing was sent.</summary>
     public const string LinkNotUsable = "link_not_usable";
 }

@@ -31,7 +31,6 @@ public class Auth0HostRegistrationPostgresTests
         await using var database = PostgresTestDatabase.CreateMigrated("auth0lock");
         var auth0 = new SlowAuth0(PlatformOrigin, TimeSpan.FromMilliseconds(250));
 
-        // Each registration has its own context, connection and gate (the gate is the turn inside ONE process): only the lock of the database is between them.
         async Task<Auth0HostRegistrationResult> RegisterAsync(string host)
         {
             await using var db = database.CreateContext();
@@ -66,7 +65,6 @@ public class Auth0HostRegistrationPostgresTests
         return factory.Object;
     }
 
-    /// <summary>The Management API of the SPA application: a read answers the three lists as they are on arrival, a write replaces each list it carries; every call takes its time.</summary>
     private sealed class SlowAuth0(string platformOrigin, TimeSpan delay) : HttpMessageHandler
     {
         private readonly object _gate = new();

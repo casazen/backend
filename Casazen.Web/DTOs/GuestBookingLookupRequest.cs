@@ -23,6 +23,5 @@ public class GuestBookingLookupRequest : IPerEmailRateLimitedRequest, IGuestBook
     [MaxLength(255, ErrorMessage = "GuestBookingEmailInvalid")]
     public string Email { get; set; } = string.Empty;
 
-    /// <summary>The guests' limit per email counts the address over the whole site: no scope.</summary>
     string? IPerEmailRateLimitedRequest.RateLimitScope => null;
 }

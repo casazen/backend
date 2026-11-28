@@ -1,4 +1,3 @@
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
@@ -26,7 +25,6 @@ public sealed partial class SupplierPaymentService
         int reached = 0, overdue = 0, refundAlerts = 0, noShows = 0, errors = 0;
         var now = Now();
 
-        // 1. The supplier did not reply in time: the dispute goes to the admins without its reply (a late reply is still taken).
         var waiting = await db.ServicePaymentDisputes
             .AsNoTracking()
             .Where(d => d.Status == ServiceDisputeStatus.AwaitingSupplier && d.SupplierReplyDueAt <= now)
@@ -50,7 +48,6 @@ public sealed partial class SupplierPaymentService
             }
         }
 
-        // 2. The admins' target to decide has passed: they are told, once.
         var late = await db.ServicePaymentDisputes
             .AsNoTracking()
             .Where(d => d.Status == ServiceDisputeStatus.AwaitingDecision
@@ -77,7 +74,6 @@ public sealed partial class SupplierPaymentService
             }
         }
 
-        // 3. A decision for the customer whose refund did not go through: the admins are told, once. The payment stays disputed (nothing is paid out).
         var alertBefore = now - TimeSpan.FromMinutes(options.Value.DisputeRefundAlertMinutes);
         var undone = await db.ServicePaymentDisputes
             .AsNoTracking()
@@ -106,7 +102,6 @@ public sealed partial class SupplierPaymentService
             }
         }
 
-        // 4. A job nobody marked completed, whose time ended long enough ago: CasaZen opens the complaint for the payer.
         var cutoff = now - options.Value.DisputeNoShow;
         var missed = await (
                 from p in db.ServiceRequestPayments
@@ -150,7 +145,6 @@ public sealed partial class SupplierPaymentService
         return new ServiceDisputesRun(reached, overdue, refundAlerts, noShows, errors);
     }
 
-    /// <summary>The supplier's time to reply passed: the dispute reaches the admins, who are told. Under the lock, read again.</summary>
     private async Task<bool> ReachAdminsAsync(DisputeRef candidate, CancellationToken cancellationToken)
     {
         db.ChangeTracker.Clear();
@@ -180,7 +174,6 @@ public sealed partial class SupplierPaymentService
         return done;
     }
 
-    /// <summary>The admins' target to decide passed: records it and tells them, once. Under the lock, read again.</summary>
     private async Task<bool> AlertOverdueAsync(DisputeRef candidate, CancellationToken cancellationToken)
     {
         db.ChangeTracker.Clear();

@@ -3,11 +3,6 @@ using Casazen.Web.Infrastructure;
 
 namespace Casazen.Web.Middleware;
 
-/// <summary>
-/// Answers 404 for an endpoint marked <see cref="FeatureGateAttribute"/> whose flag is off. It runs after routing and
-/// before authentication, so a disabled endpoint is indistinguishable from a missing route (anonymous callers included);
-/// the empty 404 gets the standard problem body from <see cref="ErrorHandlingMiddleware"/>.
-/// </summary>
 public sealed class FeatureGateMiddleware(RequestDelegate next, IFeatureFlags featureFlags, ILogger<FeatureGateMiddleware> logger)
 {
     public Task InvokeAsync(HttpContext context)
@@ -29,7 +24,6 @@ public sealed class FeatureGateMiddleware(RequestDelegate next, IFeatureFlags fe
 
 public static class FeatureGateMiddlewareExtensions
 {
-    /// <summary>After <c>UseErrorHandling</c> (standard 404 body) and before <c>UseAuthentication</c>.</summary>
     public static IApplicationBuilder UseFeatureGates(this IApplicationBuilder app) =>
         app.UseMiddleware<FeatureGateMiddleware>();
 }

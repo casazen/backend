@@ -37,7 +37,6 @@ internal sealed record IdentityDecidedRow(
     string? ReasonsJson,
     DateTime CreatedAtUtc)
 {
-    /// <summary>The policy would have approved the guest.</summary>
     public bool ShadowApproved => Shadow == BiometricOutcome.Accept;
 }
 
@@ -47,10 +46,6 @@ internal sealed record IdentityDecidedRow(
 /// <param name="ReviewSeconds">Seconds from the row of the review the policy handed over to this decision; null when the policy decided no review (an approval of the policy).</param>
 internal sealed record IdentityHumanDecision(bool Approved, DateTime DecidedAtUtc, double? ReviewSeconds);
 
-/// <summary>
-/// An identity step opened in the period: the session, its category (<see cref="IdentityOutcomeCategory"/>), the format and the channel (never null: <c>unknown</c> and
-/// <c>web:other</c> stand in), the decision of the policy that closed it and the decision of a person after it, each when there is one.
-/// </summary>
 internal sealed record IdentityVerificationRecord(
     Guid SessionId,
     Guid OrgId,
@@ -65,7 +60,6 @@ internal sealed record IdentityVerificationRecord(
     IdentityDecidedRow? Decided,
     IdentityHumanDecision? Human);
 
-/// <summary>The columns of a session the records are made of (what the first query selects).</summary>
 internal sealed record IdentitySessionFacts(
     Guid Id,
     Guid OrgId,
@@ -78,7 +72,6 @@ internal sealed record IdentitySessionFacts(
     string? Channel,
     int GuidedRetries);
 
-/// <summary>The columns of a row of the log the pairing is made of (what the second query selects).</summary>
 internal sealed record IdentityLogFacts(
     Guid Id,
     Guid BookingId,
@@ -112,7 +105,6 @@ internal sealed record IdentityLogFacts(
 /// </summary>
 internal static class IdentityVerificationLedger
 {
-    /// <summary>How long a verification may stay open before it is abandoned: the setting of the retention, or the default of the section when it is not a positive number of hours.</summary>
     public static TimeSpan AbandonedAfterOf(IdentityVerificationOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -121,7 +113,6 @@ internal static class IdentityVerificationLedger
         return TimeSpan.FromHours(hours > 0 ? hours : new IdentityRetentionOptions().AbandonedAfterHours);
     }
 
-    /// <summary>The records of the steps opened in <c>[fromUtc, toUtc)</c> in the scope, oldest opening first (the id of the session breaks a tie).</summary>
     public static async Task<IReadOnlyList<IdentityVerificationRecord>> ReadAsync(
         AppDbContext db,
         HostScope scope,
@@ -162,10 +153,6 @@ internal static class IdentityVerificationLedger
         return records.OrderBy(record => record.OpenedAtUtc).ThenBy(record => record.SessionId).ToList();
     }
 
-    /// <summary>
-    /// The first query: the steps opened in <c>[fromUtc, toUtc)</c> by the org of the scope on a booking the scope reaches (one join, in SQL: a collaborator «Solo alcuni» never counts
-    /// the stay of another property), the org named for the session and for the booking.
-    /// </summary>
     internal static IQueryable<IdentitySessionFacts> SessionsQuery(AppDbContext db, HostScope scope, DateTime fromUtc, DateTime toUtc)
     {
         var orgId = scope.OrgId;
@@ -221,10 +208,6 @@ internal static class IdentityVerificationLedger
         return outcomeCode is IdentityOutcomeCodes.AutoApproved or IdentityOutcomeCodes.Review or IdentityOutcomeCodes.TechnicalError or IdentityOutcomeCodes.Unavailable;
     }
 
-    /// <summary>
-    /// The decision row a closed session wrote: the first one of its booking inside the time of the session that no other session of the booking took, and only for a session that
-    /// closed with a code that writes one (<see cref="WritesADecisionRow"/>); nothing for any other.
-    /// </summary>
     private static IdentityLogFacts? DecisionOf(IdentitySessionFacts session, List<IdentityLogFacts> decisions, HashSet<Guid> taken)
     {
         if (session.ClosedAt is not { } closedAt || !WritesADecisionRow(session.OutcomeCode))
@@ -251,7 +234,6 @@ internal static class IdentityVerificationLedger
         if (person is null)
             return null;
 
-        // The time of a review is the time from the escalation to the person; an approval of the policy has no review.
         double? seconds = decided.Outcome == BiometricOutcome.Escalate ? (person.CreatedAt - decided.CreatedAt).TotalSeconds : null;
         return new IdentityHumanDecision(person.Outcome == BiometricOutcome.Accept, person.CreatedAt, seconds);
     }

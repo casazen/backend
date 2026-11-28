@@ -50,7 +50,6 @@ public sealed class OctorateConnectionPartEvaluator(AppDbContext db, FlowPrerequ
         var connected = connection.Met;
         var lost = !connected && connection.Reason == OnboardingFlowReasons.ConnectionLost;
 
-        // The intents of the org (one for each property, plus the groups that have no property yet): few rows, filtered here by the reach.
         var intents = await db.OctorateInventoryIntents
             .AsNoTracking()
             .Where(i => i.OrgId == orgId)
@@ -61,7 +60,6 @@ public sealed class OctorateConnectionPartEvaluator(AppDbContext db, FlowPrerequ
         var items = new List<IntentRow?>(context.PropertyIds.Count);
         items.AddRange(context.PropertyIds.Select(id => byProperty.TryGetValue(id, out var intent) ? intent : null));
 
-        // A group with no property is an org-level decision: only a caller who reaches the whole org counts it.
         if (context.Scope.IsOrgWide)
             items.AddRange(intents.Where(i => i.PropertyId is null));
 
@@ -86,11 +84,8 @@ public sealed class OctorateConnectionPartEvaluator(AppDbContext db, FlowPrerequ
         return PartFacts.Counted(done, items.Count, ReasonPrecedence.FirstOrDefault(reasons.Contains));
     }
 
-    /// <summary>Why one assignment is not done; <c>null</c> when it is.</summary>
     private static string? ReasonOf(IntentRow? intent, bool connected, bool lost, ImportFacts imports)
     {
-        // A connection that exists and no longer works stops every scenario, also for a property that has declared none yet: the reason is the
-        // reconnection (AC-NF108-4), never a declaration the host could not make useful until it connects again.
         if (lost)
             return OnboardingPartReasons.ConnectionLost;
         if (intent is null)
@@ -126,7 +121,6 @@ public sealed class OctorateConnectionPartEvaluator(AppDbContext db, FlowPrerequ
                 b.ScopeKind,
                 b.ScopeGroup,
                 PropertyIdsOf(b.ScopePropertyIdsJson),
-                // A batch with no channel has nothing imported: it never counts as reached.
                 channels[b.Id].Any() && channels[b.Id].All(reached => reached))),
         ]);
     }
@@ -142,7 +136,6 @@ public sealed class OctorateConnectionPartEvaluator(AppDbContext db, FlowPrerequ
         }
         catch (JsonException)
         {
-            // A scope that cannot be read covers no property: the import is never presumed reached.
             return new HashSet<Guid>();
         }
     }
@@ -155,7 +148,6 @@ public sealed class OctorateConnectionPartEvaluator(AppDbContext db, FlowPrerequ
     {
         public static ImportFacts None { get; } = new([]);
 
-        /// <summary>True when at least one batch covers the assignment and every batch that covers it reached the mapping.</summary>
         public bool ReachedMapping(IntentRow intent)
         {
             var covering = Batches.Where(batch => Covers(batch, intent)).ToList();
@@ -172,10 +164,6 @@ public sealed class OctorateConnectionPartEvaluator(AppDbContext db, FlowPrerequ
     }
 }
 
-/// <summary>
-/// The part «Properties» (E10/F01/US01/T03, NF-104): the properties counted by the plan whose listing is confirmed on the channel manager, read
-/// through <see cref="IPropertyMappingReader"/> (T02), never from the mapping tables. Not available when nothing provides the mapping.
-/// </summary>
 public sealed class PropertiesPartEvaluator(IPropertyMappingReader mappingReader, FlowPrerequisiteReader prerequisites) : IOnboardingPartEvaluator
 {
     public OnboardingPartKey Part => OnboardingPartKey.Properties;
@@ -199,7 +187,6 @@ public sealed class PropertiesPartEvaluator(IPropertyMappingReader mappingReader
     }
 }
 
-/// <summary>The part «Channels» (E10/F01/US01/T03, NF-104): the properties counted by the plan that are on at least one channel (a <see cref="ListingChannelState"/> row).</summary>
 public sealed class ChannelsPartEvaluator(AppDbContext db) : IOnboardingPartEvaluator
 {
     public OnboardingPartKey Part => OnboardingPartKey.Channels;
@@ -223,10 +210,6 @@ public sealed class ChannelsPartEvaluator(AppDbContext db) : IOnboardingPartEval
     }
 }
 
-/// <summary>
-/// The part «Listings» (E10/F01/US01/T03, NF-104): the properties counted by the plan that are on at least one channel and that no channel refused
-/// (no row in <see cref="ChannelPublishStatus.ToFix"/>).
-/// </summary>
 public sealed class ListingsPartEvaluator(AppDbContext db) : IOnboardingPartEvaluator
 {
     public OnboardingPartKey Part => OnboardingPartKey.Listings;
@@ -255,10 +238,6 @@ public sealed class ListingsPartEvaluator(AppDbContext db) : IOnboardingPartEval
     }
 }
 
-/// <summary>
-/// The part «Prices and rules» (E10/F01/US01/T03, NF-104): the properties counted by the plan that have a base nightly price, the base of the one
-/// pricing rule of the stays (<see cref="StayPricing"/>). ADR-028 as amended has no <c>RatePlan</c> table: the price lives on the property.
-/// </summary>
 public sealed class PricesRulesPartEvaluator(AppDbContext db) : IOnboardingPartEvaluator
 {
     public OnboardingPartKey Part => OnboardingPartKey.PricesRules;
@@ -289,7 +268,6 @@ public sealed class PricesRulesPartEvaluator(AppDbContext db) : IOnboardingPartE
 /// </summary>
 public sealed class CompliancePartEvaluator(IEnumerable<IFlowReadinessProvider> providers) : IOnboardingPartEvaluator
 {
-    /// <summary>The prerequisites of the flow the part is made of, in the order their reasons are shown.</summary>
     private static readonly string[] Keys =
     [
         OnboardingPrerequisiteKeys.SingleSender,
@@ -317,7 +295,6 @@ public sealed class CompliancePartEvaluator(IEnumerable<IFlowReadinessProvider> 
         int counted = 0, done = 0, firstMissing = int.MaxValue;
         foreach (var id in context.PropertyIds)
         {
-            // Left out of the answer, outside Italy or not applicable: no compliance to complete there.
             if (!readiness.TryGetValue(id, out var property) || !property.Provided || property.NotAvailableReason is not null)
                 continue;
 
@@ -334,10 +311,6 @@ public sealed class CompliancePartEvaluator(IEnumerable<IFlowReadinessProvider> 
     }
 }
 
-/// <summary>
-/// The part «Identification» (E10/F01/US01/T03, NF-104): provided only while the identification of the guests is on
-/// (<see cref="FeatureFlags.CheckInIdentityVerification"/>); done for the properties counted by the plan that have an access code.
-/// </summary>
 public sealed class IdentificationPartEvaluator(AppDbContext db, IFeatureFlags featureFlags) : IOnboardingPartEvaluator
 {
     public OnboardingPartKey Part => OnboardingPartKey.Identification;
@@ -364,10 +337,6 @@ public sealed class IdentificationPartEvaluator(AppDbContext db, IFeatureFlags f
     }
 }
 
-/// <summary>
-/// The part «Activation» (E10/F01/US01/T03, NF-104): the properties counted by the plan on which every flow that applies is active, read through the
-/// flow status of T02 (a flow is active only while its activation stands and every prerequisite still holds).
-/// </summary>
 public sealed class ActivationPartEvaluator(IOnboardingFlowStatusService flowStatus) : IOnboardingPartEvaluator
 {
     private static readonly OnboardingFlow[] AllFlows = [.. Enum.GetValues<OnboardingFlow>().OrderBy(flow => (int)flow)];

@@ -22,7 +22,6 @@ public sealed partial class GuestSupplierCheckout
     private static List<BankCase> ReadCases(GuestSupplierOrder order) =>
         order.BankDisputesJson is null ? [] : JsonSerializer.Deserialize<List<BankCase>>(order.BankDisputesJson)!;
 
-    // The signed event only identifies the object; Stripe's current state decides the outcome, including after redelivery.
     public async Task<bool> ReconcileBankCaseAsync(GuestSupplierOrder order, string disputeId, CancellationToken ct)
     {
         if (!Enabled(configuration) || !order.StripeSandbox || order.StripePaymentIntentId is null) return false;
@@ -51,7 +50,6 @@ public sealed partial class GuestSupplierCheckout
                 var lostBeforePayout = cases.Where(c => c.Status == "lost" && !c.AfterPayoutClaim).Sum(c => (long)c.Cents);
                 var available = Math.Max(0L, intent.AmountReceived - order.RefundCents - lostBeforePayout);
                 var totalPostClaimLoss = cases.Where(c => c.Status == "lost" && c.AfterPayoutClaim).Sum(c => (long)c.Cents);
-                // Round the cumulative target and subtract prior recoveries so partial chargebacks never over-recover.
                 int Increment(int paid, Func<BankCase, int> previous) =>
                     Math.Max(0, ProportionalRecovery(paid, totalPostClaimLoss, available) - cases.Where(c => c != item).Sum(previous));
                 item.SupplierRecoveryCents = Increment(order.StripeSupplierTransferCents, c => c.SupplierRecoveryCents);
@@ -83,7 +81,6 @@ public sealed partial class GuestSupplierCheckout
     public async Task RecoverTransfersAsync(GuestSupplierOrder order, CancellationToken ct)
     {
         if (!Enabled(configuration) || !order.StripeSandbox) return;
-        // Commit each leg separately. A later failure on the host transfer cannot lose the supplier receipt.
         foreach (var supplier in new[] { true, false })
         {
             await using var tx = await db.Database.BeginTransactionAsync(ct);

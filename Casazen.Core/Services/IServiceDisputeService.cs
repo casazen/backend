@@ -3,8 +3,6 @@ using Casazen.Core.Suppliers;
 
 namespace Casazen.Core.Services;
 
-// ─── What goes in ────────────────────────────────────────────────────────────────────────────────────────────────────
-
 /// <summary>A payer's complaint about a job paid through CasaZen ("Segnala un problema"), or the no-show CasaZen opens itself.</summary>
 /// <param name="ServiceRequestId">The request. The caller proved who it is: the showcase customer by code and e-mail, the host by owning the request.</param>
 /// <param name="OpenedBy">The customer of a showcase, the host, or CasaZen (the job).</param>
@@ -26,13 +24,7 @@ public sealed record OpenServiceDisputeRequest(
 /// <param name="Note">The admin's internal note; never shown to the parties.</param>
 public sealed record ResolveServiceDisputeRequest(string? Outcome, int? RefundCents, string? Note);
 
-/// <summary>The filters of the admin's list of disputes.</summary>
-/// <param name="Status">One status, or null for all.</param>
-/// <param name="SupplierOrgId">One supplier, or null for all.</param>
-/// <param name="OpenOnly">Only the disputes that are not decided yet.</param>
 public sealed record AdminServiceDisputeQuery(ServiceDisputeStatus? Status, Guid? SupplierOrgId, bool OpenOnly, int Page, int PageSize);
-
-// ─── What comes out: one view per audience, so a view cannot carry what its audience must not read ───────────────────
 
 /// <summary>What the payer (the showcase customer, the host) reads of its complaint: its own words, the state, the decision. Never the supplier's words nor the admin's note.</summary>
 /// <param name="Id">The dispute.</param>
@@ -92,7 +84,6 @@ public sealed record ServiceDisputeSupplierView(
     DateTime? ResolvedAt,
     int? RefundCents);
 
-/// <summary>One line of the admin's list of disputes: the facts the work queue needs, no words of the parties.</summary>
 public sealed record AdminServiceDisputeSummary(
     Guid Id,
     Guid ServiceRequestId,
@@ -147,14 +138,10 @@ public sealed record AdminServiceDisputeDetail(
 /// <param name="Errors">Disputes the run could not handle (logged; the next run retries them).</param>
 public sealed record ServiceDisputesRun(int ReachedAdmins, int Overdue, int RefundAlerts, int NoShowsOpened, int Errors)
 {
-    /// <summary>A run that found nothing to do.</summary>
     public static ServiceDisputesRun Empty { get; } = new(0, 0, 0, 0, 0);
 
-    /// <summary>The run did something or failed on something worth a log line.</summary>
     public bool HadWork => ReachedAdmins + Overdue + RefundAlerts + NoShowsOpened + Errors > 0;
 }
-
-// ─── The service ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /// <summary>
 /// The complaint and the dispute about a job paid through CasaZen (SP-15c-c, decisions VT-D1 and VT-D16): the payer reports a problem within the
@@ -174,54 +161,29 @@ public sealed record ServiceDisputesRun(int ReachedAdmins, int Overdue, int Refu
 /// </remarks>
 public interface IServiceDisputeService
 {
-    // ─── The payer ───────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Opens the complaint and stops the money (<see cref="ServicePaymentStatus.Held"/> → <see cref="ServicePaymentStatus.Disputed"/>). A complaint
-    /// already open on the payment answers the same dispute and writes nothing. 422 <see cref="ServiceDisputeErrors.NotReportable"/> (no money held by
-    /// CasaZen, or a request that was not done), <see cref="ServiceDisputeErrors.WindowClosed"/> (the money is due, released, or the payer said "all fine"),
-    /// <see cref="ServiceDisputeErrors.TooEarly"/> (the work is not completed and its time has not ended), <see cref="ServiceDisputeErrors.Invalid"/>
-    /// (<c>fields</c>); 404 when the request is not the caller's payment.
-    /// </summary>
     Task<ServiceDisputePayerView> OpenDisputeAsync(OpenServiceDisputeRequest request, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The payer takes its complaint back: the money is no longer stopped and the supplier is paid at the next run of the funds job. Withdrawing a
-    /// complaint that was withdrawn already answers the same; 409 <see cref="ServiceDisputeErrors.NotOpen"/> for one that was decided.
-    /// </summary>
     Task<ServiceDisputePayerView> WithdrawDisputeAsync(
         Guid serviceRequestId,
         ServiceDisputeOpener party,
         Guid? hostOrgId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The latest dispute of the request as the payer reads it; null when there is none.</summary>
     Task<ServiceDisputePayerView?> FindDisputeForPayerAsync(Guid serviceRequestId, CancellationToken cancellationToken = default);
 
-    // ─── The supplier ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The latest dispute of the supplier's request as the supplier reads it; null when there is none (or the request is another supplier's).</summary>
     Task<ServiceDisputeSupplierView?> FindDisputeForSupplierAsync(Guid serviceRequestId, Guid supplierOrgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The supplier's one reply: the dispute goes to the admins (<see cref="ServiceDisputeStatus.AwaitingDecision"/>). A reply after the supplier's
-    /// time is taken while the dispute is open. 404 for a request that is not the supplier's or has no dispute; 409
-    /// <see cref="ServiceDisputeErrors.NotOpen"/>, <see cref="ServiceDisputeErrors.AlreadyReplied"/>; 422 <see cref="ServiceDisputeErrors.Invalid"/>.
-    /// </summary>
     Task<ServiceDisputeSupplierView> ReplyToDisputeAsync(
         Guid serviceRequestId,
         Guid supplierOrgId,
         string? text,
         CancellationToken cancellationToken = default);
 
-    // ─── The admins ──────────────────────────────────────────────────────────────────────────────────────────────────
-
     /// <summary>The disputes, paginated in SQL: with <c>OpenOnly</c> the work queue, the oldest first; otherwise the newest first.</summary>
     Task<(IReadOnlyList<AdminServiceDisputeSummary> Items, int TotalCount)> ListDisputesAsync(
         AdminServiceDisputeQuery query,
         CancellationToken cancellationToken = default);
 
-    /// <summary>One dispute with the words of both parties and what an admin needs to decide. 404 <see cref="ServiceDisputeErrors.NotFound"/>.</summary>
     Task<AdminServiceDisputeDetail> GetDisputeAsync(Guid disputeId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -245,28 +207,16 @@ public interface IServiceDisputeService
 /// </summary>
 public interface IServiceDisputeJobService
 {
-    /// <summary>Runs the four steps. Always scheduled: it follows money that is already stopped.</summary>
     Task<ServiceDisputesRun> RunDisputesAsync(CancellationToken cancellationToken = default);
 }
 
-// ─── The penalty in the ranking ──────────────────────────────────────────────────────────────────────────────────────
-
-/// <summary>What a supplier is penalized for.</summary>
 public enum SupplierDisputePenaltyKind
 {
-    /// <summary>A dispute was decided for the customer: the supplier was at fault.</summary>
     DisputeLost,
 
-    /// <summary>The supplier never marked the work completed and the dispute about it was decided for the customer.</summary>
     NoShow,
 }
 
-/// <summary>An event that counts against a supplier in the ranking.</summary>
-/// <param name="SupplierOrgId">The supplier.</param>
-/// <param name="DisputeId">The dispute that decided it (the source of truth: the event can be rebuilt from it).</param>
-/// <param name="ServiceRequestId">The request.</param>
-/// <param name="Kind">What it is.</param>
-/// <param name="At">When it was decided.</param>
 public sealed record SupplierDisputePenalty(Guid SupplierOrgId, Guid DisputeId, Guid ServiceRequestId, SupplierDisputePenaltyKind Kind, DateTime At);
 
 /// <summary>

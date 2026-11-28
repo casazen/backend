@@ -59,7 +59,6 @@ public class ComplianceWizardSwissNotificationsTests : IDisposable
 
         var summary = await Service().GetSummaryAsync(new HostScope(org.Id));
 
-        // The oldest day first; the day is the period, the deadline of Schaffhausen is 02:00 of the night after the arrival (CET: 01:00Z).
         Assert.Equal(2, summary.SwissNotifications.Count);
         Assert.Equal(["2026-11-18", "2026-11-19"], summary.SwissNotifications.Items.Select(i => i.Period));
         Assert.Equal([new DateTime(2026, 11, 19, 1, 0, 0, DateTimeKind.Utc), new DateTime(2026, 11, 20, 1, 0, 0, DateTimeKind.Utc)], summary.SwissNotifications.Items.Select(i => i.DueAt!.Value));
@@ -71,15 +70,12 @@ public class ComplianceWizardSwissNotificationsTests : IDisposable
             Assert.Null(item.Light);
         });
 
-        // Ask (Zurich), Ticino (its own section) and an Italian property are not here; the Ticino section of this service is empty (its service is not given here).
         Assert.Empty(summary.TicinoNotifications.Items);
     }
 
     [Fact]
     public async Task Cockpit_ACollaboratorSoloAlcuni_SeesOnlyTheDaysOfThePropertiesItWasGiven_Test()
     {
-        // PROOF TEST (permission): the cockpit of a collaborator limited to some properties lists the days of those properties only; another org's caller sees nothing of this org. A scope that reaches
-        // no property lists nothing, never everything.
         var org = _world.AddOrg();
         var given = _world.AddProperty("SH", org, name: "Casa Data");
         var other = _world.AddProperty("SH", org, name: "Casa Altra");
@@ -142,7 +138,6 @@ public class ComplianceWizardSwissNotificationsTests : IDisposable
     [InlineData("NE")]
     public async Task Cockpit_ADailyRegimeWhoseSourceGivesNoTime_IsListedWithNoDueAt_ADeadlineIsNeverMadeUp(string canton)
     {
-        // Basel-Stadt and Neuchâtel say «every day» and give no cut-off time: the day is an item of the cockpit (the host confirmed the duty), with no due date, not the end of the arrival day.
         var org = _world.AddOrg();
         var property = _world.AddProperty(canton, org, GuestNotificationOverride.Required, name: "Casa Senza Orario");
         _world.AddStay(property);

@@ -7,38 +7,26 @@ namespace Casazen.Core.Options;
 /// </summary>
 public class ModelFileOptions
 {
-    /// <summary>Name of the model as it is logged and stored with a verification (for example <c>YuNet</c>).</summary>
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>Version of the model (release or file date), logged and stored with a verification.</summary>
     public string Version { get; set; } = string.Empty;
 
-    /// <summary>Licence of the weights (ADR-013-R14).</summary>
     public string License { get; set; } = string.Empty;
 
-    /// <summary>Note on the provenance of the training data (ADR-013-R14, the open risk of the DPIA).</summary>
     public string Provenance { get; set; } = string.Empty;
 
-    /// <summary>Expected SHA-256 of the file, 64 hexadecimal characters. Empty means "not pinned yet": the file is not used.</summary>
     public string Sha256 { get; set; } = string.Empty;
 
-    /// <summary>Location of the file: relative to the application folder (the small models shipped with the application) or absolute.</summary>
     public string Path { get; set; } = string.Empty;
 
-    /// <summary>
-    /// <c>https</c> address the file is downloaded from when it is not on disk (the large models, ADR-013-R8). The download is kept only when
-    /// its SHA-256 equals <see cref="Sha256"/>; without a pinned hash nothing is downloaded.
-    /// </summary>
     public string DownloadUrl { get; set; } = string.Empty;
 
-    /// <summary>True when <see cref="Sha256"/> is a well-formed SHA-256 (64 hexadecimal characters).</summary>
     public bool HasWellFormedSha256()
     {
         var hash = Sha256.Trim();
         return hash.Length == 64 && hash.All(Uri.IsHexDigit);
     }
 
-    /// <summary>Configuration errors of this entry, empty when it is usable. Names the setting, never a value.</summary>
     public IReadOnlyList<string> Validate(string setting)
     {
         var failures = new List<string>();

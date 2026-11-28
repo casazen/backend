@@ -20,13 +20,10 @@ namespace Casazen.Core.Entities;
 [Table("AssistantSituationSettings")]
 public class AssistantSituationSetting : ITenantOwned
 {
-    /// <summary>Name of the unique index on (<see cref="OrgId"/>, <see cref="Situation"/>) of the rows of the organization (no property).</summary>
     public const string OrgSituationIndexName = "UIX_AssistantSituationSettings_OrgId_Situation";
 
-    /// <summary>Name of the unique index on (<see cref="OrgId"/>, <see cref="PropertyId"/>, <see cref="Situation"/>) of the exceptions of the properties.</summary>
     public const string PropertySituationIndexName = "UIX_AssistantSituationSettings_OrgId_PropertyId_Situation";
 
-    /// <summary>Longest <see cref="ResponseTemplate"/>, in characters of the clear text.</summary>
     public const int TemplateMaxLength = 1000;
 
     public const int UpdatedByUserIdMaxLength = 255;
@@ -34,31 +31,22 @@ public class AssistantSituationSetting : ITenantOwned
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row. Never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The property of an exception; <c>null</c> = the organization's default for the situation.</summary>
     public Guid? PropertyId { get; set; }
 
     public AssistantSituation Situation { get; set; }
 
     public AssistantMode Mode { get; set; } = AssistantMode.Draft;
 
-    /// <summary>The text of the answer, with <c>{{variables}}</c>; <c>null</c> = none (the answer is written from the knowledge base). <b>Encrypted at rest.</b></summary>
     public string? ResponseTemplate { get; set; }
 
-    /// <summary>The topic of the knowledge base the answer comes from when there is no template; <c>null</c> = the one the catalog gives the situation.</summary>
     public KnowledgeTopic? ResponseSource { get; set; }
 
-    /// <summary>
-    /// The start of the current trust period (UTC): the creation of the row or the last change of the mode (PO-08: two weeks of draft only, measured from
-    /// here). A change of the template or of the source does not move it.
-    /// </summary>
     public DateTime ModeSince { get; set; } = DateTime.UtcNow;
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>The user who last saved the row (<c>User.Id</c>), an opaque id with no foreign key.</summary>
     [MaxLength(UpdatedByUserIdMaxLength)]
     public string? UpdatedByUserId { get; set; }
 }

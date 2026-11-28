@@ -72,7 +72,7 @@ public class TenantContextTests
 
         var provisioned = Guid.NewGuid();
         tenant.SetOrgId(provisioned);
-        await tenant.ResolveAsync(); // already resolved: the provisioned org is kept
+        await tenant.ResolveAsync();
 
         Assert.Equal(provisioned, tenant.OrgId);
     }
@@ -86,7 +86,7 @@ public class TenantContextTests
         var tenant = NewTenantContext(services, authenticated: true);
         await tenant.ResolveAsync();
 
-        tenant.SetOrgId(orgId); // same org: no-op
+        tenant.SetOrgId(orgId);
         Assert.Throws<InvalidOperationException>(() => tenant.SetOrgId(Guid.NewGuid()));
         Assert.Equal(orgId, tenant.OrgId);
     }
@@ -155,8 +155,6 @@ public class TenantContextTests
         Assert.Null(tenant.OrgId);
     }
 
-    // ─── AM-01: the status of the org membership, from the same read ────────────────────────────────────
-
     [Theory]
     [InlineData(OrgMemberStatus.Active, false)]
     [InlineData(OrgMemberStatus.Deactivated, true)]
@@ -172,7 +170,6 @@ public class TenantContextTests
 
         Assert.Equal(expectedDeactivated, tenant.IsCallerOrgMemberDeactivated);
         Assert.False(tenant.IsCallerInactive);
-        // The org of the request is still the user's org: a deactivated member is refused by the middleware, not unscoped.
         Assert.Equal(orgId, tenant.OrgId);
     }
 
@@ -220,7 +217,6 @@ public class TenantContextTests
     [Fact]
     public async Task ResolveAsync_DeactivationAfterTheFirstRequest_IsSeenByTheNextRequestWithoutAnyCache()
     {
-        // One tenant context per request, and no cache between requests: the next request reads the new status.
         var orgId = Guid.NewGuid();
         var services = BuildServices();
         await SeedUserAsync(services, orgId);
@@ -267,7 +263,6 @@ public class TenantContextTests
         return services.BuildServiceProvider();
     }
 
-    /// <summary>Seeds the user with a matching Host-type org (the normal shape of a real row) when <paramref name="orgId"/> is set.</summary>
     private static async Task SeedUserAsync(ServiceProvider services, Guid? orgId, bool isActive = true)
     {
         await using var scope = services.CreateAsyncScope();
@@ -286,7 +281,6 @@ public class TenantContextTests
         await db.SaveChangesAsync();
     }
 
-    /// <summary>Seeds the user with OrgId (and, for a supplier, SupplierOrgId) pointing at an org of the given type.</summary>
     private static async Task SeedUserWithOrgAsync(ServiceProvider services, Guid orgId, OrgType orgType)
     {
         await using var scope = services.CreateAsyncScope();

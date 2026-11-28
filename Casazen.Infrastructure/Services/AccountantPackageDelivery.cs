@@ -55,7 +55,6 @@ public sealed class AccountantPackageDelivery(
         var period = PreviousMonth(today).Key;
         var sent = AccountantPackageSendResult.Sent;
 
-        // The address is asked for with IS NOT NULL only: an encrypted column is never compared with a text.
         return await db.AccountantPackageSettings
             .AsNoTracking()
             .Where(s => s.MonthlySendEnabled
@@ -146,7 +145,6 @@ public sealed class AccountantPackageDelivery(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // An object that cannot be deleted stays, named by its row, and is tried again at the next run; it never stops the others, and the run says it failed once all were tried.
                 logger.LogError(ex, "The expired accountant package of org {OrgId} could not be deleted", orgId);
                 failures.Add(ex);
             }
@@ -164,7 +162,6 @@ public sealed class AccountantPackageDelivery(
 
     public async Task<AccountantPackageFile?> OpenAsync(Guid orgId, string? period, string? expiresAt, string? signature, CancellationToken cancellationToken = default)
     {
-        // The signature is checked first and costs no query: a link that was not made for this org and this month stops here, whatever else is true.
         if (!links.Verify(orgId, period, expiresAt, signature))
         {
             logger.LogInformation("A link to the accountant package of org {OrgId} did not open: it is not valid or has expired", orgId);
@@ -185,18 +182,10 @@ public sealed class AccountantPackageDelivery(
         return new AccountantPackageFile(stream, parsed.FileName);
     }
 
-    // ---------------------------------------------------------------- one send
-
-    /// <summary>
-    /// Makes the package of <paramref name="period"/>, keeps it and queues the e-mail with its link, as the remarks say. <paramref name="monthly"/> is the run of the job: its failures are answers
-    /// (<see cref="DeliveryState.Failed"/>) that the caller records, and it stops when the month is already sent; a test of a person lets the exceptions of the package that are the person's to read (the caps) through,
-    /// and sends again whatever was sent.
-    /// </summary>
     private async Task<Delivery> DeliverAsync(Guid orgId, AccountantPackagePeriod period, AccountantPackageAccess access, bool monthly, CancellationToken cancellationToken)
     {
         var key = period.Key;
 
-        // What this environment cannot send is known before anything is made.
         if (!links.IsConfigured)
         {
             logger.LogWarning("The accountant package {Period} of org {OrgId} was not sent: the secret of the signed links or the public address of this API is not configured", key, orgId);
@@ -217,17 +206,13 @@ public sealed class AccountantPackageDelivery(
         if (org is null)
             return Delivery.NotConfigured();
 
-        // The owner accounting follows the plan, never the job: the package of an organization that is not on the agency plan holds none, whatever it chose and whoever asks (the agency.* policies ask for the same plan).
         var ownerAccountingPlan = AccountantPackageFolderRules.PlanHoldsOwnerAccounting(org.PlanTier, org.AgencyTierDowngraded);
 
-        // A test sends what the monthly send sends and counts as the send of its month, so on an agency's organization it needs the permission to read the owner accounting: without it the package would be a partial one that the monthly
-        // run would never complete (the month is recorded as sent) and that would replace, under the same key, a complete package the accountant already has. Nothing is made, stored, queued or recorded.
         if (!monthly && ownerAccountingPlan && !access.OwnerAccounting)
             throw new DomainRuleException(AccountantPackageErrors.OwnerAccountingRequired, "AccountantPackageOwnerAccountingRequired");
 
         access = access with { OwnerAccounting = access.OwnerAccounting && ownerAccountingPlan };
 
-        // The package, made outside the lock.
         await using var buffer = new MemoryStream();
         AccountantPackageResult built;
         try
@@ -245,7 +230,6 @@ public sealed class AccountantPackageDelivery(
             return Delivery.Failure(AccountantPackageSendErrors.PackageFailed);
         }
 
-        // Everything else is one step under the lock of the org.
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db, cancellationToken, (PostgresAdvisoryLocks.Scope.AccountantPackage, orgId.ToString("N")));
 
@@ -267,8 +251,6 @@ public sealed class AccountantPackageDelivery(
         var now = _clock.GetUtcNow().UtcDateTime;
         try
         {
-            // One package at a time for an org: the one of an older month is no longer named by any link worth keeping, and it is deleted FIRST, while the row still names it. An object that cannot be deleted is then a failure that is
-            // recorded and tried again (the row keeps naming it, so the nightly run deletes it too), never one that stays in the bucket with no row that names it.
             if (row.StoredPackagePeriod is { } older && older != key)
                 await storage.DeleteAsync(StorageBucket.Private, StorageKeys.AccountantPackage(orgId, older), cancellationToken);
 
@@ -375,11 +357,9 @@ public sealed class AccountantPackageDelivery(
         return true;
     }
 
-    /// <summary>True when the row says the accountant already has the package of <paramref name="period"/>.</summary>
     private static bool IsSent(AccountantPackageSettings row, string period) =>
         row.LastSendPeriod == period && row.LastSendResult == AccountantPackageSendResult.Sent;
 
-    /// <summary>The month before the day <paramref name="today"/> (Europe/Rome): the month a package sent today is of.</summary>
     internal static AccountantPackagePeriod PreviousMonth(DateOnly today)
     {
         var first = new DateOnly(today.Year, today.Month, 1).AddMonths(-1);
@@ -397,7 +377,6 @@ public sealed class AccountantPackageDelivery(
         Failed,
     }
 
-    /// <summary>What <see cref="DeliverAsync"/> did: a state, for a failure its code and whether it is already written in the settings, for a send the last instant its link opens.</summary>
     private readonly record struct Delivery(DeliveryState State, string? Error = null, bool Recorded = false, DateTime? LinkExpiresAt = null)
     {
         public static Delivery Sent(DateTime linkExpiresAt) => new(DeliveryState.Sent, LinkExpiresAt: linkExpiresAt);

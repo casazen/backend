@@ -235,7 +235,6 @@ public sealed class OctoratePreparationService(
                         }
                         catch (OctorateNetworkUnknownException)
                         {
-                            // Octorate returned HTTP 412 even with the shared contact explicitly allowed.
                             await UpdateAsync(row, OctoratePreparationStatus.ReconcileCreation, CreationPreconditionFailed, CancellationToken.None);
                         }
                     }

@@ -2,7 +2,6 @@ using System.Text.Json;
 
 namespace Casazen.Core.Services;
 
-/// <summary>Commercial choices are a draft until the subscription webhook confirms payment.</summary>
 public sealed record CommercialSignup
 {
     public string Profile { get; init; } = "owner";
@@ -11,7 +10,6 @@ public sealed record CommercialSignup
     public string? AgencyName { get; init; }
     public string[] Addons { get; init; } = [];
 
-    // Preserve the serialized form (and Stripe fingerprint) of checkouts started before rental areas were selectable.
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? RentalArea { get; init; }
 

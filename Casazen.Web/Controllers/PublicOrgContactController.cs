@@ -4,7 +4,6 @@ using Casazen.Core.Services;
 using Casazen.Web.DTOs;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 
@@ -58,7 +57,6 @@ public class PublicOrgContactController(
                 "HostContactConsentRequired");
         }
 
-        // A plain address, nothing around it: no display name, no angle brackets, no spaces.
         var email = request.Email.Trim();
         if (!MailAddress.TryCreate(email, out var address) || !string.Equals(address.Address, email, StringComparison.Ordinal))
             return this.ApiProblem(StatusCodes.Status400BadRequest, HostContactRules.EmailInvalidCode, "HostContactEmailInvalid");
@@ -67,7 +65,6 @@ public class PublicOrgContactController(
         if (text is null)
             return this.ApiProblem(StatusCodes.Status400BadRequest, HostContactRules.MessageInvalidCode, "HostContactMessageInvalid");
 
-        // The honeypot: a form field no person sees. A call that fills it gets the answer of a real one, and nothing is sent.
         if (!string.IsNullOrWhiteSpace(request.Website))
         {
             logger.LogInformation("Contact message to a site dropped: the honeypot was filled");
@@ -78,7 +75,6 @@ public class PublicOrgContactController(
         if (org is null)
             return NotFound();
 
-        // Counted by the org, not by the slug it was reached with: the former slugs of an org are one budget with the current one.
         if (!emailLimiter.TryAcquire(org.Id.ToString("N"), email, out _))
         {
             logger.LogWarning("Contact message to org {OrgId} refused: the address wrote too often", org.Id);

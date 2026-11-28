@@ -1,13 +1,9 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Models;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// Service for marketing campaigns and guest segmentation (NF-24, ADR-014).
-/// Handles campaign lifecycle, recipient selection with consent/suppression filtering,
-/// and scheduled sends.
-/// </summary>
 public interface ICampaignService
 {
     /// <summary>
@@ -78,15 +74,6 @@ public interface ICampaignService
     /// <param name="cancellationToken">Cancellation token.</param>
     Task ScheduleAsync(Guid campaignId, DateTime scheduledAt, Guid orgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Gets recipients for a segment with consent and suppression filtering (AC-NF24-2, AC-NF24-3, AC-NF24-11).
-    /// Re-evaluated at send time to respect current consent status.
-    /// </summary>
-    /// <param name="segmentId">Segment ID.</param>
-    /// <param name="orgId">Organization ID.</param>
-    /// <param name="scope">Host scope for perimeter enforcement (ADR-014-R4).</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>List of eligible guest email addresses.</returns>
     Task<List<string>> GetRecipientsAsync(
         Guid segmentId,
         Guid orgId,
@@ -104,17 +91,24 @@ public interface ICampaignService
     /// <param name="cancellationToken">Cancellation token.</param>
     Task SendCampaignAsync(Guid campaignId, CancellationToken cancellationToken = default);
 
+    Task<int> PreviewCountAsync(
+        Guid segmentId,
+        Guid orgId,
+        HostScope scope,
+        CancellationToken cancellationToken = default, Guid? propertyId = null);
+
     /// <summary>
-    /// Previews recipient count for a segment (AC-NF24-3).
-    /// Filters by consent and suppression at preview time.
+    /// Previews the recipient count of a condition that is not saved yet: the count <see cref="PreviewCountAsync"/> gives for a segment
+    /// holding that condition, with the same consent, suppression and monthly limit rules. A condition that is not valid counts nobody.
     /// </summary>
-    /// <param name="segmentId">Segment ID.</param>
+    /// <param name="condition">The condition tree to evaluate.</param>
     /// <param name="orgId">Organization ID.</param>
     /// <param name="scope">Host scope for perimeter enforcement.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="propertyId">Optional property whose audience is counted.</param>
     /// <returns>Count of eligible recipients.</returns>
-    Task<int> PreviewCountAsync(
-        Guid segmentId,
+    Task<int> PreviewConditionCountAsync(
+        Condition condition,
         Guid orgId,
         HostScope scope,
         CancellationToken cancellationToken = default, Guid? propertyId = null);

@@ -113,11 +113,6 @@ public sealed class AdminBiometricsController(
             : Ok(IdentitySegmentDto.From(view));
     }
 
-    /// <summary>
-    /// Revokes the qualification of a segment of an organization: an automatic segment returns to observation at once (E70/F02/US01/T02). 404 <c>not_found</c> for a segment
-    /// that is not of the organization. Behind the same flags as the qualification.
-    /// </summary>
-    /// <response code="200">The segment, no longer qualified.</response>
     [HttpDelete("{orgId:guid}/segments/{segmentId:guid}/qualification")]
     [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
     [FeatureGate(FeatureFlags.CheckInIdentitySelfHosted)]

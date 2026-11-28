@@ -61,16 +61,13 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
         Assert.Null(stored.GuestEmailVerifiedAt);
         Assert.Equal(PaymentMethod.CashOnArrival, Assert.Single(stored.Payments).Method);
 
-        // The dates are held on the booking site (no second request for them)...
         Assert.Contains(NextYear(3, 2).ToString("yyyy-MM-dd"), await BookedDatesAsync(property.Id, NextYear(3, 1)));
         var second = await guest.PostAsJsonAsync("/api/public/bookings", OnSitePayload(property.Id, NextYear(3, 2), NextYear(3, 3)));
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
         Assert.Equal("booking_dates_unavailable", (await second.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
 
-        // PO 2026-10-08: pending OnSite requests are exported so Airbnb/Booking close the dates immediately.
         Assert.Contains($"UID:booking-{bookingId}", await IcsAsync(exportToken));
 
-        // The guest is emailed the confirmation link; the host is told nothing before the email is confirmed.
         var email = Assert.Single(Emails(bookingId, "onsite-request-received"));
         Assert.Equal(stored.Guest.Email, email.To);
         Assert.Empty(Emails(bookingId, "onsite-request-to-host"));
@@ -106,12 +103,10 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
         Assert.Equal(BookingStatus.Confirmed, stored.Status);
         Assert.Null(stored.RequestExpiresAt);
         Assert.Contains($"UID:booking-{bookingId}", await IcsAsync(exportToken));
-        // BK-10: the standard confirmation, "pay at the property"; the host who accepted gets no "new booking" email.
         var confirmation = Assert.Single(Emails(bookingId, "guest-booking-confirmed"));
         Assert.Equal(stored.Guest.Email, confirmation.To);
         Assert.Contains("l'host ha accettato la tua richiesta", confirmation.Content.HtmlBody);
         Assert.Contains("direttamente in struttura", confirmation.Content.HtmlBody);
-        // BK-11: the readable booking code of "Le mie prenotazioni", not the booking id.
         Assert.Contains(
             $"Codice prenotazione: <strong>{BookingCodes.Format(stored.BookingCode)}</strong>",
             confirmation.Content.HtmlBody);
@@ -138,7 +133,6 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
         var email = Assert.Single(Emails(bookingId, "onsite-request-declined"));
         Assert.Contains("Casa in manutenzione", email.Content.HtmlBody);
 
-        // The dates can be requested again at once.
         using var guest = _factory.CreateClient();
         var again = await guest.PostAsJsonAsync("/api/public/bookings", OnSitePayload(property.Id, NextYear(5, 1), NextYear(5, 4)));
         Assert.Equal(HttpStatusCode.OK, again.StatusCode);
@@ -151,7 +145,6 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
         var bookingId = await CreateConfirmedRequestAsync(property, NextYear(6, 1), NextYear(6, 4));
         await UpdateBookingAsync(bookingId, b => b.RequestExpiresAt = DateTime.UtcNow.AddMinutes(-1));
 
-        // Reads free the dates as soon as the deadline has passed, before the job runs.
         Assert.DoesNotContain(NextYear(6, 2).ToString("yyyy-MM-dd"), await BookedDatesAsync(property.Id, NextYear(6, 1)));
 
         await RunExpiryJobAsync();
@@ -228,7 +221,6 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.False(await db.Bookings.AnyAsync(b => b.PropertyId == property.Id));
 
-        // Exactly the limit is accepted.
         var atLimit = await guest.PostAsJsonAsync(
             "/api/public/bookings", OnSitePayload(property.Id, NextYear(8, 1), NextYear(8, 1).AddDays(MaxNights)));
         Assert.Equal(HttpStatusCode.OK, atLimit.StatusCode);
@@ -258,7 +250,6 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
     [PostgresFact]
     public async Task ApproveOnSiteRequest_OtaBlockImportedMeanwhile_Returns409AndRequestStaysPending()
     {
-        // The request was not exported to the OTAs: an OTA booking imported meanwhile wins, the host can only decline.
         var (hostId, property) = await SeedCheckoutReadyPropertyAsync();
         var bookingId = await CreateConfirmedRequestAsync(property, NextYear(10, 1), NextYear(10, 4));
         using (var scope = _factory.Services.CreateScope())
@@ -366,7 +357,6 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
         Assert.Contains("non accetta ancora prenotazioni online", problem.GetProperty("detail").GetString());
     }
 
-    /// <summary>Checkout "pay at the property" + the guest's confirmation of the email: a request waiting for the host.</summary>
     private async Task<Guid> CreateConfirmedRequestAsync(Property property, DateTime checkIn, DateTime checkOut)
     {
         var (bookingId, token) = await CreateRequestAsync(property, checkIn, checkOut);
@@ -376,7 +366,6 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
         return bookingId;
     }
 
-    /// <summary>Checkout "pay at the property"; returns the booking and the token of the confirmation link emailed to the guest.</summary>
     private async Task<(Guid BookingId, string Token)> CreateRequestAsync(Property property, DateTime checkIn, DateTime checkOut)
     {
         using var guest = _factory.CreateClient();
@@ -390,10 +379,6 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
         return (bookingId, match.Groups[1].Value);
     }
 
-    /// <summary>
-    /// Emails of <paramref name="template"/> about one booking: every test uses its own guest address and host address,
-    /// so the recipient identifies the booking.
-    /// </summary>
     private List<(string? To, EmailContent Content, string Template)> Emails(Guid bookingId, string template)
     {
         using var scope = _factory.Services.CreateScope();
@@ -450,7 +435,6 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
         return await anonymous.GetStringAsync($"/api/public/ical/{exportToken}");
     }
 
-    /// <summary>A host whose org has a connected account (Connect ready) and an active, bookable property.</summary>
     private async Task<(string HostId, Property Property)> SeedCheckoutReadyPropertyAsync()
     {
         var hostId = $"auth0|bk06-host-{Guid.NewGuid():N}";
@@ -526,7 +510,6 @@ public class OnSiteRequestApprovalPostgresTests : IClassFixture<OnSiteRequestApp
             .SingleAsync(b => b.Id == bookingId);
     }
 
-    /// <summary>The integration host with a recording email queue and fixed "pay at the property" limits.</summary>
     public sealed class OnSiteFactory : CasazenWebApplicationFactory
     {
         internal RecordingEmailQueue Emails { get; } = new();

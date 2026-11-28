@@ -34,8 +34,6 @@ public class OctorateMessagesClientTests
 
     private const string ServerPage = "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\"><html><head><title>Application server - Error report</title></head><body>403</body></html>";
 
-    // ---- The message to a channel -------------------------------------------------------------------------------------------------------
-
     [Fact]
     public async Task SendChatMessage_ReadsTheThreadFirst_ThenPostsTheMessageToTheChannel()
     {
@@ -72,10 +70,6 @@ public class OctorateMessagesClientTests
         Assert.Equal(2, attributes.Count);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (OCT-13). A write is never repeated by the client: a 5xx and a timeout are the typed error after ONE post, whatever the answer, and
-    /// an answer without an id is not a success either (the message may exist).
-    /// </summary>
     [Theory]
     [InlineData("500")]
     [InlineData("timeout")]
@@ -102,10 +96,6 @@ public class OctorateMessagesClientTests
         Assert.Single(h.Handler.Calls, call => call.Method == HttpMethod.Post);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. A failure of the READ of the thread, which comes before the post (a 5xx, a timeout, an answer that cannot be read), is not the
-    /// outcome nobody knows: nothing was posted, and the error says so (<see cref="OctorateChatNotReadException"/>), so the caller can send the message again.
-    /// </summary>
     [Theory]
     [InlineData("500")]
     [InlineData("timeout")]
@@ -189,7 +179,6 @@ public class OctorateMessagesClientTests
         }
     }
 
-    /// <summary>PROOF TEST: privacy rule. The words of a message are in the request and in nothing the client logs, on success and on every failure.</summary>
     [Fact]
     public async Task SendChatMessage_TheWordsAreNeverLogged_Test()
     {
@@ -241,8 +230,6 @@ public class OctorateMessagesClientTests
         Assert.Equal("ext-thread-abc", thread.ExternalThreadId);
     }
 
-    // ---- The contact of the booker of one reservation ---------------------------------------------------------------------------------------
-
     [Fact]
     public async Task ReservationContactInfo_PostsToTheReservationOfTheAccommodation_WithNoBody_AndReadsTheContact()
     {
@@ -263,7 +250,6 @@ public class OctorateMessagesClientTests
         Assert.DoesNotContain("guest-mail", info.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>PROOF TEST: permission rule (S7, D24). A 401 or a 403 of the contact is never an empty contact; a 5xx stays a failure, not a refusal.</summary>
     [Theory]
     [InlineData(HttpStatusCode.Forbidden)]
     [InlineData(HttpStatusCode.Unauthorized)]
@@ -312,8 +298,6 @@ public class OctorateMessagesClientTests
 
         Assert.Empty(h.Handler.Calls);
     }
-
-    // ---- The templates and the translation --------------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task ChatTemplates_AreReadFromTheThread_AsAListOrAWrapper_AndAnItemWithNoBodyIsLeftOut()
@@ -418,7 +402,6 @@ public class OctorateMessagesClientTests
         public OctorateApiClient Client { get; }
     }
 
-    /// <summary>Answers each call as <see cref="Respond"/> says (or throws what it throws), and keeps what was called.</summary>
     private sealed class StubHandler : HttpMessageHandler
     {
         public Func<HttpRequestMessage, (HttpStatusCode Status, string Body)> Respond { get; set; } = _ => (HttpStatusCode.OK, "{}");

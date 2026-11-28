@@ -3,38 +3,25 @@ using Casazen.Core.Regulatory;
 
 namespace Casazen.Core.Leases;
 
-/// <summary>
-/// The eight stages a long-term lease goes through (LR-01b), in the order of the path. Serialized by name. <see cref="DataPending"/> exists
-/// in the type for the day the tenant is invited to fill in their own data (phase 2, decision D1); the first release never produces it.
-/// </summary>
 public enum LeaseStage
 {
-    /// <summary>The landlord is still preparing the contract: something is missing from the first steps.</summary>
     Draft,
 
-    /// <summary>Waiting for the tenant's own data (phase 2). Never produced.</summary>
     DataPending,
 
-    /// <summary>All the data are there: the landlord checks the preview and confirms the review.</summary>
     InReview,
 
-    /// <summary>The contract was handed out for the signature on paper: waiting for the signed copy.</summary>
     SentForSignature,
 
-    /// <summary>Signed by everyone, the registration is still to be declared.</summary>
     Signed,
 
-    /// <summary>Registered and running.</summary>
     Active,
 
-    /// <summary>Registered and about to end: six months from the end of its period, or a notice or an early termination is recorded.</summary>
     Expiring,
 
-    /// <summary>Over: the period ended with a notice or without renewal, the lease was ended early, or the contract was rejected.</summary>
     Concluded,
 }
 
-/// <summary>Who has to do the next step. Serialized by name. <see cref="Tenant"/> is for phase 2; the first release never produces it.</summary>
 public enum LeaseNextStepActor
 {
     Landlord,
@@ -42,69 +29,43 @@ public enum LeaseNextStepActor
     System,
 }
 
-/// <summary>
-/// What the next step of a lease is, as a stable code (LR-01b): the interface turns it into a sentence and a button, the server alone decides
-/// which one it is. A code is never renamed: add a new one. Serialized by name.
-/// </summary>
 public enum LeaseNextStepCode
 {
-    /// <summary>Draft: the property of the draft cannot be found any more (deleted or out of reach): choose one.</summary>
     ChooseProperty,
 
-    /// <summary>Draft: a data step is incomplete. Params: <c>step</c> (1 to 5) and <c>needs</c> (the codes of what is missing, <see cref="LeaseNeedCodes"/>).</summary>
     CompleteStep,
 
-    /// <summary>Imported draft with all its data: upload the signed contract and the day it was signed (<c>POST api/leases/{id}/import</c>).</summary>
     ImportSignedContract,
 
-    /// <summary>
-    /// Draft prepared by a partner (ConcordatoFacile): no data to type, nothing for the landlord in the general path; the practice is followed
-    /// on the sheet of the lease. See <see cref="LeaseFlowInput.AwaitsPartnerContract"/>.
-    /// </summary>
     AwaitPartnerContract,
 
-    /// <summary>In review, not confirmed yet: read the preview and confirm.</summary>
     ConfirmReview,
 
-    /// <summary>In review, confirmed: download the contract to have it signed on paper.</summary>
     DownloadForSignature,
 
-    /// <summary>Handed out for signature: upload the signed copy.</summary>
     UploadSignedCopy,
 
-    /// <summary>Signed: declare the registration. Due on the registration deadline. Param <c>imported</c> (true) for a contract brought in already signed.</summary>
     RegisterLease,
 
     /// <summary>In force, extra-EU tenant, Questura communication not declared, no delivery day recorded: record when the keys were handed over.</summary>
     RecordKeyHandover,
 
-    /// <summary>In force, extra-EU tenant, communication not declared: declare it. Due 48 hours after the delivery.</summary>
     QuesturaCommunication,
 
     /// <summary>Registered, rent past due: remind the tenant. Params: <c>count</c>, <c>amount</c> (what is overdue), <c>days</c> (since the oldest).</summary>
     SendRentReminder,
 
-    /// <summary>Active and no active rent plan: activate one.</summary>
     ActivateRentPlan,
 
-    /// <summary>Expiring, nothing recorded: decide whether to give notice. Due on the last day to give it.</summary>
     DecideNotice,
 
-    /// <summary>Expiring with a notice or an early termination (or a lease that does not renew): organize the end. Due on the last day.</summary>
     OrganizeEnd,
 
-    /// <summary>Nothing for anybody to do. Due on the next rent installment, if any.</summary>
     AllGood,
 
-    /// <summary>Concluded: nothing left to do, the lease can be archived.</summary>
     Archive,
 }
 
-/// <summary>
-/// The one step a lease is waiting for. <see cref="Priority"/> goes from 0 (the most urgent) to 10; <see cref="DueOn"/> is the Europe/Rome day
-/// it is due, when it has one; <see cref="Params"/> carry what a sentence needs (counts, amounts, codes, days: never a name or a datum of a
-/// person).
-/// </summary>
 public sealed record LeaseNextStep(
     LeaseNextStepCode Code,
     LeaseNextStepActor Actor,
@@ -112,49 +73,30 @@ public sealed record LeaseNextStep(
     DateOnly? DueOn = null,
     IReadOnlyDictionary<string, object?>? Params = null);
 
-/// <summary>What <see cref="LeaseProgress"/> measures. Serialized by name.</summary>
 public enum LeaseProgressKind
 {
-    /// <summary>A contract not signed by everyone yet: the steps of the path done out of <see cref="LeaseFlow.SetupSteps"/>.</summary>
     Setup,
 
-    /// <summary>A contract in force: how far into the period it is in now (the year, or the month of a period shorter than a year).</summary>
     Term,
 
-    /// <summary>A concluded contract: the whole path is behind it.</summary>
     End,
 }
 
-/// <summary>The unit a <see cref="LeaseProgressKind.Term"/> progress counts in. Serialized by name.</summary>
 public enum LeaseProgressUnit
 {
-    /// <summary>The steps of the path (<see cref="LeaseProgressKind.Setup"/> and <see cref="LeaseProgressKind.End"/>).</summary>
     Steps,
 
-    /// <summary>The months of a period shorter than twelve.</summary>
     Months,
 
-    /// <summary>The years of a period of twelve months or more.</summary>
     Years,
 }
 
-/// <summary>
-/// How far along a lease is (LR-02b), for the bar and the words of the list: <c>Done</c> of <c>Total</c> in <c>Unit</c>, and <c>Percent</c>
-/// (0 to 100) for the bar. The words say what the bar measures ("3 di 8 passi", "Anno 3 di 8"); the server decides the numbers, the interface
-/// works none out.
-/// </summary>
 public sealed record LeaseProgress(LeaseProgressKind Kind, LeaseProgressUnit Unit, int Done, int Total, int Percent);
 
-/// <summary>The stage of a lease, the one step it is waiting for and how far along it is.</summary>
 public sealed record LeaseFlowResult(LeaseStage Stage, LeaseNextStep NextStep, LeaseProgress Progress);
 
-/// <summary>
-/// Everything <see cref="LeaseFlow.Derive"/> needs to know about a lease, as plain values: no entity, no database. Every date is a Europe/Rome
-/// calendar day. The caller gathers it (<c>LeaseFlowReader</c>); the rules are not copied anywhere else.
-/// </summary>
 public sealed record LeaseFlowInput
 {
-    /// <summary>Today in Europe/Rome.</summary>
     public required DateOnly Today { get; init; }
 
     public required LeaseStatus Status { get; init; }
@@ -165,37 +107,26 @@ public sealed record LeaseFlowInput
 
     public DateOnly StartDate { get; init; }
 
-    /// <summary>Last day of the period the lease is in now (<see cref="Entities.LeaseContract.CurrentTermEndDate"/>, LR-14).</summary>
     public DateOnly CurrentTermEndDate { get; init; }
 
-    /// <summary>The day a notice of non-renewal was given; <c>null</c> without one.</summary>
     public DateOnly? NoticeOn { get; init; }
 
     /// <summary>The last day of a lease ended early, or recorded as concluded when it was brought in already over (LR-14); <c>null</c> otherwise.</summary>
     public DateOnly? TerminatedOn { get; init; }
 
-    /// <summary>The registration deadline as far as it is known (<see cref="RliRegistrationDeadline.Resolve(LeaseStatus, DateTime?, DateTime, DateTime)"/>); <c>null</c> while to be determined.</summary>
     public DateOnly? RegistrationDeadline { get; init; }
 
-    /// <summary>The day the property was delivered, as the landlord declared it; <c>null</c> when not declared.</summary>
     public DateOnly? PropertyDeliveryDate { get; init; }
 
-    /// <summary>The day the landlord declared the Questura communication; <c>null</c> until then.</summary>
     public DateOnly? QuesturaCommunicationDate { get; init; }
 
     /// <summary>A tenant is extra-EU: the Questura communication applies.</summary>
     public bool HasExtraEuTenant { get; init; }
 
-    /// <summary>The day the contract was handed out for signature; <c>null</c> when it was not.</summary>
     public DateOnly? SentForSignatureOn { get; init; }
 
-    /// <summary>The review of the draft is confirmed.</summary>
     public bool ReviewConfirmed { get; init; }
 
-    /// <summary>
-    /// The steps of the draft (<see cref="LeaseDraftProgress.Compute"/>), for a lease that is a draft. Without it a draft is taken to have
-    /// something missing in its first step.
-    /// </summary>
     public LeaseDraftFlow? Draft { get; init; }
 
     /// <summary>
@@ -205,18 +136,14 @@ public sealed record LeaseFlowInput
     /// </summary>
     public bool AwaitsPartnerContract { get; init; }
 
-    /// <summary>The lease has a rent plan that is active.</summary>
     public bool HasActiveRentPlan { get; init; }
 
-    /// <summary>Installments past due and not paid (<see cref="RentInstallmentRules"/>).</summary>
     public int OverdueRentCount { get; init; }
 
     public decimal OverdueRentAmount { get; init; }
 
-    /// <summary>The due date of the oldest installment past due.</summary>
     public DateOnly? OldestOverdueRentDueDate { get; init; }
 
-    /// <summary>The due date of the first installment still to be collected.</summary>
     public DateOnly? NextRentDueDate { get; init; }
 }
 
@@ -240,56 +167,39 @@ public sealed record LeaseFlowInput
 /// </remarks>
 public static class LeaseFlow
 {
-    /// <summary>The priorities of the steps: the lower the number, the more urgent.</summary>
     public static class Priority
     {
         /// <summary>Registration past its deadline; Questura communication past its deadline; rent past due.</summary>
         public const int Overdue = 0;
 
-        /// <summary>Registration due within <see cref="RegistrationSoonDays"/>; delivery of the keys late.</summary>
         public const int Soon = 1;
 
-        /// <summary>Registration due later or with no deadline known.</summary>
         public const int RegistrationLater = 2;
 
         /// <summary>Signed copy not back after <see cref="ChaseSignedCopyAfterDays"/> days; Questura or keys not late yet.</summary>
         public const int Chase = 3;
 
-        /// <summary>Review to confirm or download for signature; import of the signed contract; rent plan to activate; notice or end to decide.</summary>
         public const int Review = 4;
 
-        /// <summary>A step of the draft to complete.</summary>
         public const int Draft = 5;
 
-        /// <summary>Signed copy handed out recently.</summary>
         public const int Waiting = 7;
 
-        /// <summary>Notice far from its last day.</summary>
         public const int NoticeFar = 8;
 
-        /// <summary>Nothing to do: every step of the landlord is done or neutral.</summary>
         public const int AllGood = 9;
 
-        /// <summary>A concluded lease.</summary>
         public const int Archive = 10;
     }
 
-    /// <summary>A registration due within this many days is more urgent than one due later.</summary>
     public const int RegistrationSoonDays = 7;
 
-    /// <summary>A copy handed out for signature and not back after this many days is chased.</summary>
     public const int ChaseSignedCopyAfterDays = 3;
 
-    /// <summary>A last day to give notice within this many days is urgent.</summary>
     public const int NoticeUrgentWithinDays = 60;
 
-    /// <summary>
-    /// The steps of the path before the contract runs: the five data steps of the guided draft, the review, the signature and the
-    /// registration. A contract not signed by everyone is measured in them; a running one in the time it has run.
-    /// </summary>
     public const int SetupSteps = 8;
 
-    /// <summary>The stage of the lease, the one step it is waiting for and how far along it is.</summary>
     public static LeaseFlowResult Derive(LeaseFlowInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -336,7 +246,6 @@ public static class LeaseFlow
         var gone = Math.Clamp(i.Today.DayNumber - start.DayNumber + 1, 0, days);
         var percent = gone * 100 / days;
 
-        // Whole months of the period (its last day included) and whole months run by today, a month not being whole before its day comes.
         var after = end.AddDays(1);
         var months = Math.Max(1, (after.Year - start.Year) * 12 + after.Month - start.Month);
         var run = Math.Max(0, (i.Today.Year - start.Year) * 12 + i.Today.Month - start.Month - (i.Today.Day < start.Day ? 1 : 0));
@@ -350,7 +259,6 @@ public static class LeaseFlow
         return new LeaseProgress(LeaseProgressKind.Term, LeaseProgressUnit.Months, Math.Min(months, run + 1), months, percent);
     }
 
-    /// <summary>The stage of the lease.</summary>
     public static LeaseStage StageOf(LeaseFlowInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -370,27 +278,20 @@ public static class LeaseFlow
         if (input.SentForSignatureOn is not null || input.Status is LeaseStatus.AwaitingSignature or LeaseStatus.PartiallySigned)
             return LeaseStage.SentForSignature;
 
-        // An imported contract is already signed: it has no review to wait in, it is a draft until the signed copy is brought in.
         return input.Origin != LeaseOrigin.Imported && input.Draft is { } draft && OpenStep(draft) is null
             ? LeaseStage.InReview
             : LeaseStage.Draft;
     }
 
-    /// <summary>
-    /// A lease signed by everyone is over from the day after its last day: when it was ended early, or when its period is over and nothing
-    /// renews it (a notice, or a type without renewal). A lease whose period is over and that renews by itself is not over.
-    /// </summary>
     private static bool HasEnded(LeaseFlowInput i) =>
         (i.TerminatedOn is { } terminated && terminated < i.Today)
         || (i.CurrentTermEndDate < i.Today && (i.NoticeOn is not null || !LeaseRenewal.Renews(i.ContractType)));
 
-    /// <summary>The same rule as the "Expiring" view of the lease list (<see cref="LeaseListViews"/>).</summary>
     private static bool IsExpiring(LeaseFlowInput i) =>
         i.NoticeOn is not null
         || i.TerminatedOn is not null
         || i.CurrentTermEndDate <= i.Today.AddMonths(LeaseListViews.ExpiringWithinMonths);
 
-    /// <summary>The first of the data steps that has something missing, <c>null</c> when they are all complete.</summary>
     private static LeaseFlowStep? OpenStep(LeaseDraftFlow draft) =>
         draft.Steps.Take(LeaseDraftDefaults.LastDataStep).FirstOrDefault(s => s.Needs.Count > 0);
 
@@ -406,12 +307,8 @@ public static class LeaseFlow
         _ => RunningStep(i, stage),
     };
 
-    // ---- a contract not signed yet -------------------------------------------------------------------------------
-
     private static LeaseNextStep DraftStep(LeaseFlowInput i)
     {
-        // A draft of the guided service is never "complete the draft": the service writes the contract and the practice is followed on the
-        // sheet of the lease (CF-DONE), so the general path has nothing to ask of the landlord.
         if (i.AwaitsPartnerContract)
             return new LeaseNextStep(LeaseNextStepCode.AwaitPartnerContract, LeaseNextStepActor.System, Priority.AllGood);
 
@@ -426,8 +323,6 @@ public static class LeaseFlow
                 : CompleteStep(open.Step, needs);
         }
 
-        // All the data are there. An imported contract goes on with the signed copy it already has; one made in CasaZen with its review
-        // (the stage is then InReview and this is not reached; the answer is the same, so the two never disagree).
         return new LeaseNextStep(
             i.Origin == LeaseOrigin.Imported
                 ? LeaseNextStepCode.ImportSignedContract
@@ -446,8 +341,6 @@ public static class LeaseFlow
         LeaseNextStepCode.UploadSignedCopy,
         LeaseNextStepActor.Landlord,
         i.SentForSignatureOn is { } sent && i.Today.DayNumber - sent.DayNumber >= ChaseSignedCopyAfterDays ? Priority.Chase : Priority.Waiting);
-
-    // ---- a contract signed by everyone, not over -----------------------------------------------------------------
 
     private static LeaseNextStep RunningStep(LeaseFlowInput i, LeaseStage stage)
     {

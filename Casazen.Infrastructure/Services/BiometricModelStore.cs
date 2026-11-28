@@ -7,26 +7,19 @@ using Microsoft.ML.OnnxRuntime;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>Where the models stand: nothing is loaded before the first start, and only <see cref="Ready"/> lets the endpoints use them.</summary>
 public enum BiometricModelsState
 {
-    /// <summary>Not started yet.</summary>
     NotLoaded,
 
-    /// <summary>The feature is off in this environment: nothing is loaded or downloaded.</summary>
     Disabled,
 
-    /// <summary>The files are being verified, downloaded or loaded.</summary>
     Loading,
 
-    /// <summary>The three models are verified and loaded.</summary>
     Ready,
 
-    /// <summary>At least one model cannot be used: the verification endpoints answer with the operator path.</summary>
     Unavailable,
 }
 
-/// <summary>What is known of one model: its provenance (ADR-013-R14) and whether it is loaded, or why not (a code).</summary>
 public sealed record BiometricModelInfo(
     string Role,
     string Name,
@@ -37,7 +30,6 @@ public sealed record BiometricModelInfo(
     bool Loaded,
     string? FailureCode);
 
-/// <summary>A reading of the state of the store, for the log, the health of the service and the tests. Codes only.</summary>
 public sealed record BiometricModelsSnapshot(BiometricModelsState State, string? ReasonCode, IReadOnlyList<BiometricModelInfo> Models)
 {
     /// <summary>
@@ -47,11 +39,9 @@ public sealed record BiometricModelsSnapshot(BiometricModelsState State, string?
     /// </summary>
     public IReadOnlyList<BiometricModelInfo> Candidates { get; init; } = [];
 
-    /// <summary>True only when the three models are verified and loaded. A candidate never takes part.</summary>
     public bool IsReady => State == BiometricModelsState.Ready;
 }
 
-/// <summary>A model file whose SHA-256 was proved, loaded in an ONNX Runtime session that is shared by every request.</summary>
 public sealed class LoadedBiometricModel : IDisposable
 {
     internal LoadedBiometricModel(InferenceSession session, ModelFileOptions spec, string weightHash)
@@ -76,28 +66,23 @@ public sealed class LoadedBiometricModel : IDisposable
 
     public string Provenance { get; }
 
-    /// <summary>SHA-256 of the weights (uppercase hexadecimal), the one that was proved.</summary>
     public string WeightHash { get; }
 
     internal InferenceSession Session { get; }
 
     internal string InputName { get; }
 
-    /// <summary>Height the model wants, 0 when it accepts any.</summary>
     internal int InputHeight { get; }
 
-    /// <summary>Width the model wants, 0 when it accepts any.</summary>
     internal int InputWidth { get; }
 
     public void Dispose() => Session.Dispose();
 }
 
-/// <summary>The models of the face check, once, for the whole process (ADR-013-R8, R14).</summary>
 public interface IBiometricModelStore
 {
     BiometricModelsSnapshot Snapshot { get; }
 
-    /// <summary>True only when the three models are verified and loaded.</summary>
     bool IsAvailable { get; }
 
     /// <summary>YuNet: faces and landmarks. Null unless <see cref="IsAvailable"/>.</summary>
@@ -116,11 +101,9 @@ public interface IBiometricModelStore
     /// </summary>
     LoadedBiometricModel? AntiSpoofingCandidate => null;
 
-    /// <summary>The optional second candidate for the recognition model (E72/F01/US02/T03): same rules as <see cref="AntiSpoofingCandidate"/>.</summary>
     LoadedBiometricModel? FaceRecognitionCandidate => null;
 }
 
-/// <summary>Thrown by the model wrappers when they are asked to run while the store is not ready: the caller answers with the operator path.</summary>
 public sealed class BiometricUnavailableException() : InvalidOperationException("The biometric models are not available.");
 
 /// <summary>
@@ -137,7 +120,6 @@ public sealed class BiometricModelStore(
     ILogger<BiometricModelStore> logger,
     IHttpClientFactory? httpClientFactory = null) : BackgroundService, IBiometricModelStore
 {
-    /// <summary>Name of the HTTP client the large model is downloaded with.</summary>
     public const string HttpClientName = "biometric-models";
 
     private static readonly string[] YuNetOutputs =
@@ -166,7 +148,6 @@ public sealed class BiometricModelStore(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // The first synchronous part of ExecuteAsync runs inside StartAsync: yield, so hashing and loading never delay the start of the host.
         await Task.Yield();
 
         if (!featureFlags.IsEnabled(FeatureFlags.CheckInIdentityVerification))
@@ -182,7 +163,6 @@ public sealed class BiometricModelStore(
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
-            // The host is stopping.
         }
         catch (Exception ex)
         {
@@ -191,7 +171,6 @@ public sealed class BiometricModelStore(
         }
     }
 
-    /// <summary>Verifies and loads the three models. Public to the tests: the host calls it once from <see cref="ExecuteAsync"/>.</summary>
     internal async Task LoadAsync(CancellationToken cancellationToken)
     {
         var settings = options.Value;
@@ -227,7 +206,6 @@ public sealed class BiometricModelStore(
         Publish(BiometricModelsState.Ready, null, infos, detector, antiSpoofing, recognition);
         logger.LogInformation("Biometric models are ready");
 
-        // The optional candidates are looked at only now, with the three models already published: whatever they are, the store stays ready and the decisions do not wait for them.
         await LoadCandidatesAsync(settings, http, cancellationToken);
     }
 
@@ -263,14 +241,12 @@ public sealed class BiometricModelStore(
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // The host is stopping: nothing of a candidate is kept.
             antiSpoofingCandidate?.Dispose();
             recognitionCandidate?.Dispose();
             throw;
         }
         catch (Exception ex)
         {
-            // The type only. The three models are published and stay so; what was loaded before the failure is kept, the rest is reported as failed.
             logger.LogWarning("The optional biometric candidates could not all be loaded ({ErrorType}); the models of the decisions are not affected", ex.GetType().Name);
             foreach (var role in new[] { BiometricModelRoles.AntiSpoofingCandidate, BiometricModelRoles.FaceRecognitionCandidate })
             {
@@ -312,7 +288,6 @@ public sealed class BiometricModelStore(
             return null;
         }
 
-        // The same proof, the same session and the same checks as the three models (one image input, an output to read).
         return await LoadOneAsync(role, spec, settings, http, infos, ValidateSingleOutput, cancellationToken);
     }
 
@@ -358,7 +333,6 @@ public sealed class BiometricModelStore(
                 {
                     var model = new LoadedBiometricModel(session, spec, check.Sha256!);
                     infos.Add(new BiometricModelInfo(role, spec.Name, spec.Version, spec.License, spec.Provenance, check.Sha256, true, null));
-                    // ADR-013-R14: the provenance of every model that is used, in the log of every start.
                     logger.LogInformation(
                         "Biometric model loaded: role={Role} name={Name} version={Version} license={License} provenance={Provenance} weightSha256={WeightHash}",
                         role, spec.Name, spec.Version, spec.License, spec.Provenance, check.Sha256);
@@ -380,13 +354,11 @@ public sealed class BiometricModelStore(
         return null;
     }
 
-    /// <summary>YuNet: one image input and the twelve outputs the decoder reads by name.</summary>
     private static bool ValidateDetector(InferenceSession session) =>
         session.InputNames.Count == 1
         && session.InputMetadata[session.InputNames[0]].Dimensions.Length == 4
         && YuNetOutputs.All(name => session.OutputMetadata.ContainsKey(name));
 
-    /// <summary>MiniFASNet and the recognition models: one image input and at least one output (the first is the one that is read).</summary>
     private static bool ValidateSingleOutput(InferenceSession session) =>
         session.InputNames.Count == 1
         && session.InputMetadata[session.InputNames[0]].Dimensions.Length == 4
@@ -401,7 +373,6 @@ public sealed class BiometricModelStore(
         LoadedBiometricModel? recognition) =>
         _published = new Published(new BiometricModelsSnapshot(state, reason, models), detector, antiSpoofing, recognition);
 
-    /// <summary>The state and the sessions, swapped in one assignment so a request never sees half of them. The candidates are null until they are loaded, after the three models.</summary>
     private sealed record Published(
         BiometricModelsSnapshot Snapshot,
         LoadedBiometricModel? Detector,
@@ -413,63 +384,38 @@ public sealed class BiometricModelStore(
     internal static IReadOnlyList<string> RequiredDetectorOutputs => YuNetOutputs;
 }
 
-/// <summary>
-/// The roles of the models the identity verification needs: the three the store loads, the OCR-B file of the MRZ (E22/F01/US01/T01) and the two optional candidates of the second-candidate
-/// slot (E72/F01/US02/T03), which are loaded after the three and never take part in a decision.
-/// </summary>
 public static class BiometricModelRoles
 {
-    /// <summary>YuNet: faces and landmarks.</summary>
     public const string FaceDetector = "face_detector";
 
-    /// <summary>MiniFASNet: photo-of-photo and screen attacks.</summary>
     public const string AntiSpoofing = "anti_spoofing";
 
-    /// <summary>AuraFace-v1 (or SFace): the vector of a face.</summary>
     public const string FaceRecognition = "face_recognition";
 
-    /// <summary>OCR-B language data of Tesseract for the lines of the MRZ, loaded by the document readers and not by the store.</summary>
     public const string MrzOcr = "mrz_ocr";
 
-    /// <summary>The optional second candidate for the anti-spoofing model (<c>Biometrics:AntiSpoofingCandidate</c>): a plug-in point for the offline comparison, never part of a decision.</summary>
     public const string AntiSpoofingCandidate = "anti_spoofing_candidate";
 
-    /// <summary>The optional second candidate for the recognition model (<c>Biometrics:FaceRecognitionCandidate</c>): a plug-in point for the offline comparison, never part of a decision.</summary>
     public const string FaceRecognitionCandidate = "face_recognition_candidate";
 }
 
-/// <summary>The states of a model, and of the set of them, in <see cref="BiometricModelsStatus"/>: codes the admin console and the health check speak.</summary>
 public static class BiometricModelStatusStates
 {
-    /// <summary><c>Features:CheckInIdentityVerification</c> is off: nothing is loaded and nothing is checked.</summary>
     public const string Disabled = "disabled";
 
-    /// <summary>The models are being verified, downloaded or loaded (the start of the API).</summary>
     public const string Loading = "loading";
 
-    /// <summary>Verified by its SHA-256 and loaded.</summary>
     public const string Ready = "ready";
 
-    /// <summary>
-    /// Pinned and on disk but not loaded by the store: the OCR-B file, whose hash the document readers verify the first time a document is read (the
-    /// status never hashes a file: it runs on every health probe).
-    /// </summary>
     public const string Present = "present";
 
-    /// <summary>Cannot be used: <see cref="BiometricModelStatus.Code"/> says why (a code of <see cref="ModelFileProvisioner"/>).</summary>
     public const string Failed = "failed";
 
-    /// <summary>Of the set only: at least one model cannot be used, so every verification goes to the operator.</summary>
     public const string Unavailable = "unavailable";
 
-    /// <summary>Of an optional candidate only (E72/F01/US02/T03): it has no path, no hash and no address, so there is nothing to load and nothing is wrong.</summary>
     public const string NotConfigured = "not_configured";
 }
 
-/// <summary>
-/// One model as the status shows it: what it is (name, version, licence), whether its SHA-256 is pinned, and where it stands, with the failure
-/// code when it cannot be used. Never a path, a hash or an address.
-/// </summary>
 public sealed record BiometricModelStatus(
     string Role,
     string Name,
@@ -479,28 +425,18 @@ public sealed record BiometricModelStatus(
     string? Code,
     bool Pinned)
 {
-    /// <summary>The model can be used: loaded, or present and to be verified at its first use.</summary>
     public bool IsUsable => State is BiometricModelStatusStates.Ready or BiometricModelStatusStates.Present;
 }
 
-/// <summary>The status of the models of the identity verification: whether the feature is on, the state of the set, and one entry per model.</summary>
 public sealed record BiometricModelsStatus(
     bool FeatureEnabled,
     string State,
     string? ReasonCode,
     IReadOnlyList<BiometricModelStatus> Models)
 {
-    /// <summary>
-    /// The two optional candidates (E72/F01/US02/T03), listed apart from <see cref="Models"/>: <b>they never change <see cref="State"/>, <see cref="ReasonCode"/> or the health entry</b>, which
-    /// are the ones of the three models and the OCR-B file. A candidate that is not configured is <see cref="BiometricModelStatusStates.NotConfigured"/>.
-    /// </summary>
     public IReadOnlyList<BiometricModelStatus> Candidates { get; init; } = [];
 }
 
-/// <summary>
-/// What is known of the models without touching their files: no hashing, no download, no network (it runs on every health probe). The state of
-/// the three models of the store comes from its snapshot, the state of the OCR-B file from the configuration and the disk (pinned and found).
-/// </summary>
 public static class BiometricModelStatuses
 {
     private const string Unknown = "unknown";
@@ -540,7 +476,6 @@ public static class BiometricModelStatuses
             state == BiometricModelStatusStates.Unavailable ? snapshot.ReasonCode : null,
             models)
         {
-            // Apart from the models above: they take no part in the state, the reason or the health.
             Candidates =
             [
                 OfCandidate(BiometricModelRoles.AntiSpoofingCandidate, biometrics.AntiSpoofingCandidate, featureEnabled, snapshot),
@@ -594,13 +529,10 @@ public static class BiometricModelStatuses
         {
             BiometricModelsState.NotLoaded or BiometricModelsState.Loading => Of(role, spec, BiometricModelStatusStates.Loading, null),
 
-            // The configuration is invalid or the loading failed as a whole: no model was tried one by one.
             BiometricModelsState.Unavailable => Of(role, spec, BiometricModelStatusStates.Failed, snapshot.ReasonCode ?? Unknown),
 
-            // The flag is on now and was off when the process started: the models are loaded at start, a restart loads them.
             BiometricModelsState.Disabled => Of(role, spec, BiometricModelStatusStates.Failed, "not_loaded"),
 
-            // Ready with no entry for this model cannot happen (the store publishes the three): never claim more than is known.
             _ => Of(role, spec, BiometricModelStatusStates.Failed, Unknown),
         };
     }
@@ -637,13 +569,11 @@ public static class BiometricModelStatuses
         new(role, spec.Name, spec.Version, spec.License, state, code, spec.HasWellFormedSha256());
 }
 
-/// <summary>The status of the models as it is now: one reading for the health check and the admin console, so they cannot disagree.</summary>
 public interface IBiometricModelStatusReader
 {
     BiometricModelsStatus Read();
 }
 
-/// <inheritdoc cref="IBiometricModelStatusReader" />
 public sealed class BiometricModelStatusReader(
     IBiometricModelStore store,
     IOptions<BiometricModelOptions> biometrics,

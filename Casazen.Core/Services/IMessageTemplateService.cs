@@ -17,13 +17,8 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IMessageTemplateService
 {
-    /// <summary>The templates of the organization, by name and language; with <paramref name="activeOnly"/> only the ones the composer offers.</summary>
     Task<IReadOnlyList<MessageTemplateItem>> ListAsync(HostScope scope, bool activeOnly, CancellationToken ct = default);
 
-    /// <summary>
-    /// Creates a template. 422 <c>message_template_invalid</c> (name, language or body missing or too long) or <c>template_variable_unknown</c> (a
-    /// variable that is not one of the thirteen of <see cref="MessageTemplateRenderer.Variables"/>); 409 <c>message_template_exists</c> for a second template with the same name and language.
-    /// </summary>
     Task<MessageTemplateItem> CreateAsync(
         HostScope scope,
         string? name,
@@ -32,7 +27,6 @@ public interface IMessageTemplateService
         bool isActive,
         CancellationToken ct = default);
 
-    /// <summary>Changes a template of the organization; the same refusals as <see cref="CreateAsync"/>, and 404 <c>message_template_not_found</c>.</summary>
     Task<MessageTemplateItem> UpdateAsync(
         HostScope scope,
         Guid id,
@@ -42,7 +36,6 @@ public interface IMessageTemplateService
         bool isActive,
         CancellationToken ct = default);
 
-    /// <summary>Deletes a template of the organization. 404 <c>message_template_not_found</c>.</summary>
     Task DeleteAsync(HostScope scope, Guid id, CancellationToken ct = default);
 
     /// <summary>
@@ -62,10 +55,8 @@ public interface IMessageTemplateService
     Task<IReadOnlyList<ChannelTemplateItem>> ChannelTemplatesAsync(HostScope scope, MessageThreadKey threadKey, CancellationToken ct = default);
 }
 
-/// <summary>A template of the channel manager, to be copied: its name, the language it is written in (when the channel manager says), and its body.</summary>
 public sealed record ChannelTemplateItem(string Name, string? Language, string Text);
 
-/// <summary>A template as the screens list it. <paramref name="Variables"/> are the variables its body uses.</summary>
 public sealed record MessageTemplateItem(
     Guid Id,
     string Name,

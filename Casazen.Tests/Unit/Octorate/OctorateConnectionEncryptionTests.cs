@@ -16,7 +16,6 @@ namespace Casazen.Tests.Unit.Octorate;
 /// </summary>
 public class OctorateConnectionEncryptionTests
 {
-    // One provider for the whole class: EF keeps one model per provider, and a provider per test would fill the cache the other tests share.
     private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     private const string AccessToken = "oct-access-7c1f0e2a9b4d4f6e8a1b3c5d7e9f0a2b6c8d";
@@ -48,12 +47,10 @@ public class OctorateConnectionEncryptionTests
 
             var stored = (string)converter.ConvertToProvider(token)!;
 
-            // What the column holds: a payload, and nothing of the token in it.
             Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, stored, StringComparison.Ordinal);
             Assert.DoesNotContain(token, stored, StringComparison.Ordinal);
             Assert.DoesNotContain(token[^16..], stored, StringComparison.Ordinal);
 
-            // Read back only through the decryption of the Octorate purpose: the protector of another column cannot read it.
             Assert.Equal(token, converter.ConvertFromProvider(stored));
             Assert.ThrowsAny<CryptographicException>(() => otherPurpose.Unprotect(stored));
         }

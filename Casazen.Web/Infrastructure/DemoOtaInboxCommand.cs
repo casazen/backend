@@ -25,7 +25,6 @@ public static class DemoOtaInboxCommand
 
     public static async Task<int> RunAsync(WebApplication app)
     {
-        // Both the deployment identity and actual database schema are checked. No HTTP entry point exists.
         if (!string.Equals(Environment.GetEnvironmentVariable("RAILWAY_ENVIRONMENT_NAME"), "test", StringComparison.Ordinal))
             throw new InvalidOperationException("Demo inbox imports require the Railway test environment.");
 
@@ -39,7 +38,6 @@ public static class DemoOtaInboxCommand
             ?? throw new InvalidOperationException("A demo inbox payload is required.");
         var payload = JsonSerializer.Deserialize<Payload>(json)
             ?? throw new InvalidOperationException("Invalid demo inbox payload.");
-        // Enable the native builders' tenant filter in this background scope, as the event handlers do.
         scope.ServiceProvider.GetRequiredService<IBackgroundTenantScope>().EnterOrg(payload.OrgId);
         await using var transaction = await db.Database.BeginTransactionAsync();
         var result = await ImportAsync(db, payload, DateTime.UtcNow);
@@ -158,7 +156,6 @@ public static class DemoOtaInboxCommand
             addedThreads++;
         }
         await db.SaveChangesAsync();
-        // Read through the same converter as the portal; a wrong key ring aborts the transaction.
         db.ChangeTracker.Clear();
         var externalIds = messageIds.ToArray();
         var stored = await db.OtaMessages.IgnoreQueryFilters().AsNoTracking()
@@ -239,7 +236,6 @@ public static class DemoOtaInboxCommand
             document.VatNatureCode = rates.Count == 0 ? amounts.Summary.Select(s => s.NatureCode).FirstOrDefault(n => n is not null) : null;
         }
         await db.SaveChangesAsync();
-        // The PDF is rendered from these stored lines, not from a stale fixture attachment.
         var reviews = await db.InternalActivities.IgnoreQueryFilters().Where(a => a.OrgId == orgId
             && a.Action == ActivityAction.ReviewFiscalDocument && a.EntityId.HasValue && ids.Contains(a.EntityId.Value)
             && a.Status == InternalActivity.StatusPending).ToListAsync();

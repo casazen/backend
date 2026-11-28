@@ -22,12 +22,9 @@ public static class EmailServiceCollectionExtensions
             .Bind(configuration.GetSection(EmailOptions.SectionName))
             .PostConfigure(options =>
             {
-                // Railway may still carry the old variable name (Email__ResendApiKey).
                 if (string.IsNullOrWhiteSpace(options.ApiKey))
                     options.ApiKey = configuration[EmailOptions.LegacyResendApiKeyKey];
             });
-        // The public URL of the web app (App__PublicSiteBaseUrl, alias Seo__PublicBaseUrl) is shared with the SEO pages,
-        // the sitemap and CORS: one domain, no default in code (decision D3, runbook docs/runbooks/seo-domain.md).
         var publicSiteOptions = services.AddOptions<PublicSiteOptions>()
             .Bind(configuration.GetSection(PublicSiteOptions.SectionName))
             .PostConfigure(options => options.ApplySeoAlias(configuration));
@@ -45,7 +42,6 @@ public static class EmailServiceCollectionExtensions
             {
                 resend.ApiToken = email.Value.ApiKey?.Trim() ?? string.Empty;
                 resend.ThrowExceptions = false;
-                // Test-only mail catcher of the ephemeral E2E stack (refused by the validator in Production/Staging).
                 if (!string.IsNullOrWhiteSpace(email.Value.ApiUrl))
                     resend.ApiUrl = email.Value.ApiUrl.Trim().TrimEnd('/');
             });
@@ -53,9 +49,7 @@ public static class EmailServiceCollectionExtensions
 
         services.AddScoped<IEmailService, ResendEmailService>();
         services.AddSingleton<PublicSiteLinks>();
-        // DEB-01: the signed unsubscribe link of the marketing campaigns, built and checked in one place (ADR-007-R18).
         services.AddSingleton<MarketingUnsubscribeLinks>();
-        // E15/F01/US02/T02: the signed link of the package sent to the accountant, built and checked in one place (the secret of the signed links, 30 days).
         services.AddSingleton<AccountantPackageLinks>();
         services.AddScoped<IEmailQueue, HangfireEmailQueue>();
         services.AddOptions<Auth0InvitationOptions>()
@@ -64,14 +58,10 @@ public static class EmailServiceCollectionExtensions
             .ValidateOnStart();
         services.AddScoped<Auth0InvitationLinks>();
         services.AddScoped<EmailDeliveryJob>();
-        // Check-in link email with its outcome recorded on the session (CO-09).
         services.AddScoped<IGuestCheckInLinkEmailQueue, GuestCheckInLinkEmailQueue>();
         services.AddScoped<GuestCheckInLinkEmailJob>();
-        // The confirmation e-mail of a direct booking that carries a check-in link, with the outcome of the link recorded on its session (E23/F02/US01/T01).
         services.AddScoped<BookingConfirmationEmailJob>();
-        // E50/F01/US03/T01 (NF-155): the brand of a host (logo, color, name, reply-to) in the e-mails to its guests; null while Features:GuestPortal is off.
         services.AddScoped<IGuestEmailBrandingProvider, GuestEmailBrandingProvider>();
-        // E50/F01/US03/T02 (NF-155): the language of an e-mail to a guest (the check-in page, the country, the account of the host, Italian); today's culture while Features:GuestPortal is off.
         services.AddScoped<IGuestEmailLanguageProvider, GuestEmailLanguageProvider>();
 
         return services;

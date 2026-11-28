@@ -47,7 +47,6 @@ public sealed class IdentityVerificationAgent(
         }
         catch (InvalidDataException)
         {
-            // Larger than the limit: it cannot be read.
             return new CaptureAssessment(false, [CaptureGuidanceCodes.RetakePicture], [], true);
         }
         finally
@@ -73,7 +72,6 @@ public sealed class IdentityVerificationAgent(
         var lastAttempt = request.Attempt >= policy.MaxAttempts;
         var model = ModelOf(settings);
 
-        // ADR-013-R9: a minor is never processed; the request should not even have come here.
         if (request.Document.HolderIsMinor)
         {
             return new IdentityVerificationOutcome(
@@ -90,7 +88,6 @@ public sealed class IdentityVerificationAgent(
         byte[]? selfieBytes = null;
         try
         {
-            // 1. The quality of the selfie, before any comparison (AC-NF51-2).
             CaptureAssessment quality;
             try
             {
@@ -127,7 +124,6 @@ public sealed class IdentityVerificationAgent(
                     started);
             }
 
-            // 2. The ADR-013 pipeline against the photo of the document: liveness and similarity, in memory, zeroed by the service.
             BiometricVerificationResult face;
             using (var copy = new MemoryStream(selfieBytes, writable: false))
             {
@@ -156,7 +152,6 @@ public sealed class IdentityVerificationAgent(
         var guidance = new List<string>();
         var code = face.ReasonCode;
 
-        // The models could not run: the safe default is a person (as the pipeline itself does).
         if (code is BiometricReasonCodes.Unavailable or BiometricReasonCodes.Timeout or BiometricReasonCodes.Error
             or BiometricReasonCodes.ThresholdsInvalid)
         {
@@ -170,7 +165,6 @@ public sealed class IdentityVerificationAgent(
             return Outcome(IdentityVerificationResult.Review, reasons, [], lastAttempt, model, thresholds, started);
         }
 
-        // A face the pipeline did not find, or a picture it could not read: nothing was compared, the capture is taken again.
         if (code is BiometricReasonCodes.NoFace or BiometricReasonCodes.MultipleFaces or BiometricReasonCodes.FaceTooSmall
             or BiometricReasonCodes.ImageUnreadable)
         {
@@ -189,7 +183,6 @@ public sealed class IdentityVerificationAgent(
         var notOk = false;
         var review = false;
 
-        // Liveness (AC-NF51-4): the score of the real-face class against Biometrics:LivenessThreshold.
         var live = face.IsLive && code != BiometricReasonCodes.NotLive;
         reasons.Add(new VerificationReason(
             VerificationReasons.Checks.Liveness,
@@ -202,7 +195,6 @@ public sealed class IdentityVerificationAgent(
             guidance.Add(CaptureGuidanceCodes.UseLiveCamera);
         }
 
-        // The document: read, valid and not expired.
         var documentResult = DocumentValidity(document);
         reasons.Add(new VerificationReason(VerificationReasons.Checks.DocumentValidity, documentResult));
         if (documentResult == VerificationReasons.Results.Expired)
@@ -212,7 +204,6 @@ public sealed class IdentityVerificationAgent(
         }
         else if (documentResult != VerificationReasons.Results.Passed)
         {
-            // Unreadable or wrong check digits: a new photo of the document can fix it, until the last attempt.
             if (lastAttempt)
             {
                 review = true;
@@ -224,7 +215,6 @@ public sealed class IdentityVerificationAgent(
             }
         }
 
-        // The MRZ against the check-in data: a disagreement is for a person, a new selfie would not change it.
         var mismatches = Mismatches(document);
         if (!document.MrzRead)
             reasons.Add(new VerificationReason(VerificationReasons.Checks.MrzConsistency, VerificationReasons.Results.NotRun));
@@ -236,7 +226,6 @@ public sealed class IdentityVerificationAgent(
             reasons.AddRange(mismatches.Select(result => new VerificationReason(VerificationReasons.Checks.MrzConsistency, result)));
         }
 
-        // The similarity against the thresholds of the organization (ADR-013-R4).
         if (!live)
         {
             reasons.Add(new VerificationReason(VerificationReasons.Checks.Similarity, VerificationReasons.Results.NotRun, Threshold: policy.AcceptThreshold));
@@ -266,7 +255,6 @@ public sealed class IdentityVerificationAgent(
             ? IdentityVerificationResult.Review
             : notOk ? IdentityVerificationResult.NotOk : IdentityVerificationResult.Ok;
 
-        // Ok only with every check passed: a defence against a future check that forgets to set a flag.
         if (result == IdentityVerificationResult.Ok && reasons.Any(r => r.Result != VerificationReasons.Results.Passed))
             result = IdentityVerificationResult.Review;
 
@@ -284,7 +272,6 @@ public sealed class IdentityVerificationAgent(
             true => VerificationReasons.Results.Expired,
             false => VerificationReasons.Results.Passed,
 
-            // An expiry the MRZ did not give reliably: the document is not proved valid.
             null => VerificationReasons.Results.Unreadable,
         };
     }

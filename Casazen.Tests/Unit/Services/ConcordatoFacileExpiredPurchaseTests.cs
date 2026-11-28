@@ -16,13 +16,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// CF-BE, the PROOF of the money rule of the purchases that are over (closes CF-IMPORT-FU1): a purchase still <c>Pending</c> after the
-/// Checkout Session expired (two hours, set at its creation) and a margin of ten minutes is closed. It does not block a new checkout and
-/// does not keep the draft from being deleted, which takes the closed purchase with it; a purchase paid (or refunded), or pending within its
-/// time, stays protected from both, whatever its age. The rule is <see cref="LeaseDraftDeleter.IsDeletableAsync"/>, the only one for the
-/// deletion the landlord asks for and for the retention job.
-/// </summary>
 public class ConcordatoFacileExpiredPurchaseTests
 {
     private const string OldSessionId = "cs_test_expired_session";
@@ -77,7 +70,6 @@ public class ConcordatoFacileExpiredPurchaseTests
         await SeedPurchaseAsync(deletableLease, ConcordatoFacilePurchaseStatus.Pending, "cs_test_other_expired", threeHoursAgo);
         _stripeSessions[OldSessionId] = new Session { Id = OldSessionId, Status = "expired" };
 
-        // A new checkout is not refused: the old purchase is closed and a Session with an explicit expiry of two hours opens.
         var checkout = await Checkout().CreateCheckoutSessionAsync(checkoutLease, OrgId, UserId);
 
         Assert.False(checkout.Reused);
@@ -88,7 +80,6 @@ public class ConcordatoFacileExpiredPurchaseTests
         Assert.Equal(ConcordatoFacilePurchaseStatus.Failed, Assert.Single(purchases, p => p.StripeCheckoutSessionId == OldSessionId).Status);
         Assert.Equal(ConcordatoFacilePurchaseStatus.Pending, Assert.Single(purchases, p => p.StripeCheckoutSessionId == NewSessionId).Status);
 
-        // The deletion is not refused either: the draft goes, with its closed purchase (on PostgreSQL the key to the lease is Restrict).
         await using (var db = Db())
         {
             var deleter = Deleter(db);
@@ -101,15 +92,14 @@ public class ConcordatoFacileExpiredPurchaseTests
         Assert.False(await Db().LeaseContracts.AnyAsync(l => l.Id == deletableLease));
         Assert.False(await Db().ConcordatoFacilePurchases.AnyAsync(p => p.LeaseContractId == deletableLease));
 
-        // And the draft that has just opened a new checkout is, with that purchase pending within its time, protected again.
         await using var after = Db();
         Assert.False(await Deleter(after).IsDeletableAsync(await after.LeaseContracts.SingleAsync(l => l.Id == checkoutLease)));
     }
 
     [Theory]
-    [InlineData(ConcordatoFacilePurchaseStatus.Completed, 24 * 40)] // paid, long ago
-    [InlineData(ConcordatoFacilePurchaseStatus.Refunded, 24 * 90)] // refunded, long ago
-    [InlineData(ConcordatoFacilePurchaseStatus.Pending, 0)] // pending within its time: the customer may be paying right now
+    [InlineData(ConcordatoFacilePurchaseStatus.Completed, 24 * 40)]
+    [InlineData(ConcordatoFacilePurchaseStatus.Refunded, 24 * 90)]
+    [InlineData(ConcordatoFacilePurchaseStatus.Pending, 0)]
     public async Task PaidRefundedOrPendingInItsTime_StaysProtected_FromTheDeletionOfTheDraft(ConcordatoFacilePurchaseStatus status, int ageHours)
     {
         var lease = await SeedDraftAsync();
@@ -153,7 +143,6 @@ public class ConcordatoFacileExpiredPurchaseTests
     private LeaseDraftDeleter Deleter(AppDbContext db) =>
         new(db, new Mock<IFileStorage>().Object, NullLogger<LeaseDraftDeleter>.Instance, _clock);
 
-    /// <summary>A context over the store of this test: the service, the seeds and the assertions each use their own.</summary>
     private AppDbContext Db() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_databaseName).Options);
 

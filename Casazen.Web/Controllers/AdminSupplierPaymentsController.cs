@@ -4,7 +4,6 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
-using Casazen.Core.Utilities;
 using Casazen.Core.Validation;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
@@ -32,11 +31,6 @@ public class AdminSupplierPaymentsController(
     ISupplierPaymentAdminService adminPayments,
     ISupplierPaymentRefundService refunds) : ControllerBase
 {
-    /// <summary>
-    /// The payments, newest first, paginated in SQL. <c>status</c> is a payment state (anything else leaves the filter off),
-    /// <c>supplierOrgId</c> one supplier, <c>late</c> the late ones (true) or the ones on time (false), <c>from</c>/<c>to</c> the
-    /// creation time.
-    /// </summary>
     [HttpGet("supplier-payments")]
     [ProducesResponseType(typeof(PagedResultDto<AdminServicePaymentDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResultDto<AdminServicePaymentDto>>> List(
@@ -49,11 +43,9 @@ public class AdminSupplierPaymentsController(
         [FromQuery] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
-        // Out-of-range values would become a negative OFFSET/LIMIT in SQL, i.e. a 500: clamp them.
         page = Math.Max(page, 1);
         pageSize = Math.Clamp(pageSize, 1, ServicePaymentLimits.AdminMaxPageSize);
 
-        // Enum.TryParse alone also accepts a numeric string with no declared member: it would filter by nothing.
         ServicePaymentStatus? statusFilter = EnumNames.TryParseDefined<ServicePaymentStatus>(status, out var parsed) ? parsed : null;
 
         var (items, total) = await adminPayments.ListAsync(
@@ -69,7 +61,6 @@ public class AdminSupplierPaymentsController(
         });
     }
 
-    /// <summary>One payment with its refunds. 404 <c>service_payment_not_found</c>.</summary>
     [HttpGet("service-payments/{paymentId:guid}")]
     [ProducesResponseType(typeof(AdminServicePaymentDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -112,10 +103,6 @@ public class AdminSupplierPaymentsController(
         return Ok(AdminServicePaymentRefundDto.From(refund));
     }
 
-    /// <summary>
-    /// The commission applied to a supplier: the platform's percentage, its own override (and when it ends) and what a payment
-    /// created now is charged. 404 <c>supplier_not_found</c>.
-    /// </summary>
     [HttpGet("suppliers/{orgId:guid}/commission")]
     [ProducesResponseType(typeof(SupplierCommissionDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -125,12 +112,6 @@ public class AdminSupplierPaymentsController(
         return Ok(SupplierCommissionDto.From(await adminPayments.GetCommissionAsync(orgId, cancellationToken)));
     }
 
-    /// <summary>
-    /// Sets the supplier's own commission (0 to the highest the configuration allows, two decimals at most; 0 is a free period),
-    /// optionally until a date, or removes it (<c>percent</c> null). It applies to the payments created afterwards: a payment keeps
-    /// the percentage it was created with. The reason is required; the change is recorded in the audit trail with the admin, the old
-    /// and the new value. 404 <c>supplier_not_found</c>; 422 <c>supplier_commission_invalid</c>, <c>supplier_commission_until_invalid</c>.
-    /// </summary>
     [HttpPut("suppliers/{orgId:guid}/commission")]
     [ProducesResponseType(typeof(SupplierCommissionDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
@@ -168,7 +149,6 @@ public class AdminSupplierPaymentsController(
 
         var export = await adminPayments.ExportCommissionsAsync(year, monthNumber, cancellationToken);
 
-        // UTF-8 with a byte order mark: a spreadsheet opens the accents of a supplier's name right.
         var csv = Encoding.UTF8.GetBytes(CommissionExportCsv.Write(export));
         var body = new byte[Encoding.UTF8.Preamble.Length + csv.Length];
         Encoding.UTF8.Preamble.CopyTo(body);
@@ -178,7 +158,6 @@ public class AdminSupplierPaymentsController(
         return File(body, CommissionExportCsv.ContentType + "; charset=utf-8", CommissionExportCsv.FileName(year, monthNumber));
     }
 
-    /// <summary><c>yyyy-MM</c> and nothing else.</summary>
     internal static bool TryParseMonth(string? value, out int year, out int month)
     {
         year = 0;
@@ -196,6 +175,5 @@ public class AdminSupplierPaymentsController(
     private string ActorUserId() =>
         User.GetUserId() ?? throw new UnauthorizedAccessException("Admin without subject claim");
 
-    /// <summary>The answers describe money and name suppliers: nothing is cached by the browser or a proxy.</summary>
     private void SetNoStore() => Response.Headers.CacheControl = "private, no-store";
 }

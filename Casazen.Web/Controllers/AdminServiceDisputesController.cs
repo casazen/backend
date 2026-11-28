@@ -39,11 +39,9 @@ public sealed class AdminServiceDisputesController(IServiceDisputeService disput
         [FromQuery] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
-        // Out-of-range values would become a negative OFFSET/LIMIT in SQL, i.e. a 500: clamp them.
         page = Math.Max(page, 1);
         pageSize = Math.Clamp(pageSize, 1, ServicePaymentLimits.AdminMaxPageSize);
 
-        // Enum.TryParse alone also accepts a numeric string with no declared member: it would filter by nothing.
         ServiceDisputeStatus? statusFilter = EnumNames.TryParseDefined<ServiceDisputeStatus>(status, out var parsed) ? parsed : null;
 
         var (items, total) = await disputes.ListDisputesAsync(
@@ -59,7 +57,6 @@ public sealed class AdminServiceDisputesController(IServiceDisputeService disput
         });
     }
 
-    /// <summary>One dispute with the words of both parties and the state of the money. 404 <c>service_dispute_not_found</c>.</summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(AdminServiceDisputeDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -97,6 +94,5 @@ public sealed class AdminServiceDisputesController(IServiceDisputeService disput
     private string ActorUserId() =>
         User.GetUserId() ?? throw new UnauthorizedAccessException("Admin without subject claim");
 
-    /// <summary>The answers describe money and carry the words of two parties: nothing is cached by the browser or a proxy.</summary>
     private void SetNoStore() => Response.Headers.CacheControl = "private, no-store";
 }

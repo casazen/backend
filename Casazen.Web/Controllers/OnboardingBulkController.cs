@@ -35,9 +35,6 @@ public sealed class OnboardingBulkController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
-    /// <summary>The total of a selection and a sample of 20 of its properties. Writes nothing.</summary>
-    /// <response code="200">The total, the sample and the ids asked that are not properties of the selection.</response>
-    /// <response code="422"><c>onboarding_selection_invalid</c>, <c>onboarding_property_ids_empty</c>, <c>onboarding_property_ids_too_many</c>.</response>
     [HttpPost("preview")]
     [ProducesResponseType(typeof(BulkPreviewDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -82,8 +79,6 @@ public sealed class OnboardingBulkController(
         return Ok(result.ToDto());
     }
 
-    /// <summary>«142 of 250 ready»: the ready properties, the four counts of each flow and the pilot group. Writes nothing.</summary>
-    /// <response code="200">The progress.</response>
     [HttpGet("progress")]
     [ProducesResponseType(typeof(BulkProgressDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -97,8 +92,6 @@ public sealed class OnboardingBulkController(
         return Ok((await bulk.GetProgressAsync(scope, cancellationToken)).ToDto());
     }
 
-    /// <summary>The pilot group the caller reaches, with how far each flow has got on it.</summary>
-    /// <response code="200">The pilot group.</response>
     [HttpGet("pilot")]
     [ProducesResponseType(typeof(BulkPilotDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -112,13 +105,6 @@ public sealed class OnboardingBulkController(
         return Ok((await bulk.GetPilotAsync(scope, cancellationToken)).ToDto());
     }
 
-    /// <summary>
-    /// Replaces the pilot group: 1 to <c>Onboarding:PilotGroupMaxSize</c> (10) distinct properties of the caller; fewer than 5 is accepted and
-    /// reported as <c>belowRecommended</c>.
-    /// </summary>
-    /// <response code="200">The pilot group after the change.</response>
-    /// <response code="404"><c>onboarding_property_not_found</c>: an id is not a property of the caller that the flows apply to; nothing is written.</response>
-    /// <response code="422"><c>onboarding_property_ids_empty</c>, <c>pilot_group_too_large</c>.</response>
     [HttpPut("pilot")]
     [ProducesResponseType(typeof(BulkPilotDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

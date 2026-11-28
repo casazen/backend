@@ -32,15 +32,12 @@ public sealed partial class LegalVariables
     {
     }
 
-    /// <summary>Every token the templates may use, resolved or not.</summary>
     public IReadOnlyCollection<string> Tokens => _entries.Keys;
 
     public bool IsKnown(string token) => _entries.ContainsKey(token);
 
-    /// <summary>True when the token is known and has a usable value in this environment.</summary>
     public bool Has(string token) => _entries.TryGetValue(token, out var entry) && entry.Value is not null;
 
-    /// <summary>The HTML-encoded value, or null when the token is unknown or not configured.</summary>
     public string? Get(string token) => _entries.TryGetValue(token, out var entry) ? entry.Value : null;
 
     /// <summary>
@@ -50,10 +47,6 @@ public sealed partial class LegalVariables
     public string ConfigurationName(string token) =>
         _entries.TryGetValue(token, out var entry) ? entry.Variable : token;
 
-    /// <summary>
-    /// The variables of the environment in <paramref name="language"/> (<c>it</c> or <c>en</c>): the language only
-    /// changes the words and number formats of the computed values (plans, retention periods).
-    /// </summary>
     public static LegalVariables Create(IConfiguration configuration, string language)
     {
         var variables = new LegalVariables();
@@ -93,8 +86,6 @@ public sealed partial class LegalVariables
                 : plan.MaxProperties.ToString(CultureInfo.InvariantCulture);
             Add($"{prefix}.MaxProperties", $"Billing__Display__{plan.Tier}__MaxProperties", allowance);
 
-            // No price (0, or not a number) is not an error: the text then sends the reader to the price shown at the
-            // purchase, exactly like the plans page does.
             var price = configuration.GetValue<decimal>($"Billing:Display:{plan.Tier}:PriceMonthly", 0m);
             Add($"{prefix}.PriceMonthly", $"Billing__Display__{plan.Tier}__PriceMonthly", price > 0 ? FormatPrice(price, english) : null);
         }
@@ -109,7 +100,6 @@ public sealed partial class LegalVariables
         }
         catch (InvalidOperationException)
         {
-            // A value that is not a number: the retention job cannot apply that category either, so no period is claimed.
             retention = new GdprRetentionOptions();
         }
 
@@ -151,7 +141,6 @@ public sealed partial class LegalVariables
         parts.Add($"{amount.Value.ToString(CultureInfo.InvariantCulture)} {(amount == 1 ? singular : plural)}");
     }
 
-    /// <summary>Trimmed value, or null when empty, a placeholder, too long or with characters that cannot be in a text.</summary>
     internal static string? Clean(string? value, int maxLength)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -189,7 +178,6 @@ public sealed partial class LegalVariables
             ? number.ToString(CultureInfo.InvariantCulture)
             : null;
 
-    /// <summary>Token, the Railway variable that sets it, and how its configuration is read and checked.</summary>
     private sealed record Spec(string Token, string Variable, Func<IConfiguration, string?> Read);
 
     private sealed record Entry(string? Value, string Variable);
@@ -204,10 +192,6 @@ public sealed partial class LegalVariables
 
     private static string Variable(string key) => key.Replace(":", "__", StringComparison.Ordinal);
 
-    /// <summary>
-    /// The configured tokens. <c>Billing.PastDueGraceDays</c> keeps the default of
-    /// <c>EntitlementService</c> (7 days when not configured): the text states what the code does.
-    /// </summary>
     private static readonly Spec[] ConfiguredSpecs =
     [
         Text("Controller.Name", "Legal:Controller:Name", 200),

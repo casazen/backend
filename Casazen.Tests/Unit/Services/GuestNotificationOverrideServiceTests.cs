@@ -75,7 +75,6 @@ public class GuestNotificationOverrideServiceTests
         Assert.Null((await StoredAsync(property.Id)).GuestNotificationOverride);
     }
 
-    /// <summary>Proof (permission): another organization's property is not found and keeps the setting it had.</summary>
     [Fact]
     public async Task SetAsync_APropertyOfAnotherOrganization_IsNotFound_AndKeepsItsSetting_Test()
     {

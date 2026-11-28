@@ -30,29 +30,19 @@ public sealed class StayLinkEmailTests : IDisposable
 
     public void Dispose() => _world.Dispose();
 
-    /// <summary>The e-mail address of the guest of the test world's stay.</summary>
     private string GuestEmail => _world.Db.Guests.AsNoTracking().Single().Email;
 
-    // ---- The confirmation ---------------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// PROOF TEST (data: what the guest is given): with the portal on, the confirmation of a booking carries the stay link of the booking, made by the link service, as its first button with
-    /// its fallback link, and the rest of the e-mail is still there; with it off the confirmation is identical to the one a notifier with none of the portal's services writes, no link is
-    /// made, and nothing of the portal is in it.
-    /// </summary>
     [Fact]
     public async Task Confirmation_FlagOn_CarriesStayLink_FlagOff_Identical()
     {
         await MakeDirectBookingAsync();
 
-        // The confirmation of today: a notifier built with none of the services of the portal.
         var baseline = new RecordingEmailQueue();
         await new BookingNotifier(_world.Db, baseline, _world.SiteLinks, new RecordingPushQueue(), NullLogger<BookingNotifier>.Instance)
             .BookingConfirmedAsync(_world.Booking.Id, BookingConfirmationKind.PaidOnline);
         var today = ConfirmationOf(baseline);
         Assert.DoesNotContain("/s/", today.HtmlBody, StringComparison.Ordinal);
 
-        // Portal off, every service of the portal wired: the same e-mail, no sender name, no reply-to, and no link made.
         var flags = new TestFeatureFlags();
         var off = new RecordingEmailQueue();
         await Notifier(off, flags).BookingConfirmedAsync(_world.Booking.Id, BookingConfirmationKind.PaidOnline);
@@ -63,7 +53,6 @@ public sealed class StayLinkEmailTests : IDisposable
         Assert.Null(disabled.ReplyTo);
         Assert.Null(await _world.LinkService().GetActiveAsync(_world.Org.Id, _world.Booking.Id));
 
-        // Portal on: the stay link, the first button, with its fallback; the notice of the check-in and the button of «Le mie prenotazioni» stay.
         flags.Set(FeatureFlags.GuestPortal, true);
         var on = new RecordingEmailQueue();
         await Notifier(on, flags).BookingConfirmedAsync(_world.Booking.Id, BookingConfirmationKind.PaidOnline);
@@ -80,12 +69,10 @@ public sealed class StayLinkEmailTests : IDisposable
         Assert.True(html.IndexOf(url, StringComparison.Ordinal) < html.IndexOf("Le mie prenotazioni</a>", StringComparison.Ordinal), "the stay link is the first button");
         Assert.Single(on.Snapshot(), e => e.To == GuestEmail);
 
-        // Asked again, the same link: the link is made once.
         await Notifier(new RecordingEmailQueue(), flags).BookingConfirmedAsync(_world.Booking.Id, BookingConfirmationKind.PaidOnline);
         Assert.Equal(1, await _world.Db.GuestPortalLinks.AsNoTracking().CountAsync(l => l.BookingId == _world.Booking.Id));
     }
 
-    /// <summary>A booking that may not have a stay link (a guest who did not show up) gets the confirmation it always got, with the portal on.</summary>
     [Fact]
     public async Task Confirmation_FlagOn_BookingThatMayNotHaveALink_GetsTheEmailOfToday()
     {
@@ -99,7 +86,6 @@ public sealed class StayLinkEmailTests : IDisposable
         Assert.Null(await _world.LinkService().GetActiveAsync(_world.Org.Id, _world.Booking.Id));
     }
 
-    /// <summary>With the host's account in German, the confirmation with the stay link is written in German and sent in the host's name.</summary>
     [Fact]
     public async Task Confirmation_FlagOn_IsWrittenInTheLanguageOfTheHostAccountAndSentInItsName()
     {
@@ -116,8 +102,6 @@ public sealed class StayLinkEmailTests : IDisposable
         Assert.Equal("Casa Vacanze Aurora", content.FromName);
         Assert.Equal(_world.Org.ContactEmail, content.ReplyTo);
     }
-
-    // ---- «Prepara il tuo arrivo» ---------------------------------------------------------------------------------------------------------
 
     /// <summary>
     /// PROOF TEST (data: the guest still reaches the check-in, and the host still sees whether it left): with the portal on the e-mail the daily job sends takes the place of the check-in e-mail
@@ -149,17 +133,14 @@ public sealed class StayLinkEmailTests : IDisposable
         Assert.True(html.IndexOf(stayUrl, StringComparison.Ordinal) < html.IndexOf(checkInUrl, StringComparison.Ordinal), "the stay link is the main button, the check-in link the second");
         Assert.Contains("Il link è valido fino al", html, StringComparison.Ordinal);
 
-        // The delivery tracking is the one of the e-mail of the link.
         var session = await _world.Db.GuestCheckInSessions.AsNoTracking().SingleAsync(s => s.Id == issued.SessionId);
         Assert.Equal(GuestCheckInLinkEmailStatus.Sent, session.LinkEmailStatus);
         Assert.Null(session.LinkEmailError);
         Assert.Equal(GuestPortalTestWorld.Now.UtcDateTime, session.SentAt);
         Assert.Equal(GuestCheckInSessionStatus.Inviato, session.Status);
 
-        // The token opens the check-in as before: the link of the e-mail is the one of the session.
         Assert.Equal(GuestCheckInService.HashToken(issued.Token), session.TokenHash);
 
-        // A provider that refuses is retried by the job as it always was: the e-mail carried the links, the tracking says so.
         var failing = new CapturingEmailService(EmailSendResult.NotConfigured());
         var second = await IssueCheckInLinkAsync();
         await Job(failing, flags).SendAsync(second.SessionId, second.Token, 1);
@@ -174,7 +155,6 @@ public sealed class StayLinkEmailTests : IDisposable
         var off = new CapturingEmailService();
         await Job(off, new TestFeatureFlags()).SendAsync(issued.SessionId, issued.Token, 1);
 
-        // The job built with none of the services of the portal is the baseline.
         var second = await IssueCheckInLinkAsync();
         var baseline = new CapturingEmailService();
         await PlainJob(baseline).SendAsync(second.SessionId, second.Token, 1);
@@ -188,7 +168,6 @@ public sealed class StayLinkEmailTests : IDisposable
         Assert.Empty(await _world.Db.GuestPortalLinks.AsNoTracking().ToListAsync());
     }
 
-    /// <summary>The reminder of the missing data keeps its own e-mail, and a booking that may not have a stay link gets the check-in e-mail, with the portal on.</summary>
     [Fact]
     public async Task PrepareArrival_FlagOn_ReminderIsNotReplaced_AndABookingWithoutALinkGetsTheCheckInEmail()
     {
@@ -213,7 +192,6 @@ public sealed class StayLinkEmailTests : IDisposable
         Assert.DoesNotContain("/s/", sent.Html, StringComparison.Ordinal);
     }
 
-    /// <summary>The e-mail goes in the name of the host, with its brand, in the language of the host's account, and still carries both links.</summary>
     [Fact]
     public async Task PrepareArrival_FlagOn_InTheHostsNameAndLanguage()
     {
@@ -233,8 +211,6 @@ public sealed class StayLinkEmailTests : IDisposable
         Assert.Contains("background:#336699", sent.Html, StringComparison.Ordinal);
         Assert.Contains("Powered by CasaZen", sent.Html, StringComparison.Ordinal);
     }
-
-    // ---- The stay link provider ---------------------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task StayLinkProvider_FlagOff_GivesNoAddress_AndMakesNoLink()
@@ -260,13 +236,10 @@ public sealed class StayLinkEmailTests : IDisposable
         Assert.Equal(first, again);
         Assert.Equal(first, _world.LinkService().BuildUrl((await _world.LinkService().GetActiveAsync(_world.Org.Id, _world.Booking.Id))!));
 
-        // A booking that is not the org's gives no link, and none is made.
         var foreign = await provider.UrlAsync(Guid.NewGuid(), _world.Booking.Id);
         Assert.Null(foreign);
         Assert.Equal(1, await _world.Db.GuestPortalLinks.AsNoTracking().CountAsync());
     }
-
-    // ---- The data every test runs on ---------------------------------------------------------------------------------------------------
 
     private BookingNotifier Notifier(RecordingEmailQueue queue, TestFeatureFlags flags, bool withBrandAndLanguage = false) =>
         new(
@@ -291,14 +264,12 @@ public sealed class StayLinkEmailTests : IDisposable
             emailLanguage: withBrandAndLanguage ? new GuestEmailLanguageProvider(_world.Db, flags, NullLogger<GuestEmailLanguageProvider>.Instance) : null,
             stayLinks: Provider(flags));
 
-    /// <summary>The job built with none of the services of the portal: the e-mail of the check-in link of today.</summary>
     private GuestCheckInLinkEmailJob PlainJob(CapturingEmailService email) =>
         new(_world.Db, email, _world.SiteLinks, Mock.Of<IBackgroundJobClient>(), NullLogger<GuestCheckInLinkEmailJob>.Instance, _world.Clock);
 
     private GuestStayLinkProvider Provider(TestFeatureFlags flags) =>
         new(flags, _world.LinkService(), _world.SiteLinks, NullLogger<GuestStayLinkProvider>.Instance);
 
-    /// <summary>The check-in link of the stay, issued the way the daily job issues it (one session, the lifetime of the job).</summary>
     private async Task<IssuedCheckInLink> IssueCheckInLinkAsync(bool reminder = false)
     {
         var checkIn = new GuestCheckInService(
@@ -317,7 +288,6 @@ public sealed class StayLinkEmailTests : IDisposable
         return issued;
     }
 
-    /// <summary>The stay of the test world is an Airbnb one: the confirmation of a direct booking needs a direct one.</summary>
     private async Task MakeDirectBookingAsync(bool noShow = false)
     {
         var booking = await _world.Db.Bookings.SingleAsync(b => b.Id == _world.Booking.Id);
@@ -331,7 +301,6 @@ public sealed class StayLinkEmailTests : IDisposable
     private EmailContent ConfirmationOf(RecordingEmailQueue queue) =>
         Assert.Single(queue.Snapshot(), e => e.To == GuestEmail && e.Template == EmailTemplates.Names.GuestBookingConfirmed).Content;
 
-    /// <summary>The e-mail service of the job: keeps what it was asked to send, whichever of the two ways it is asked.</summary>
     private sealed class CapturingEmailService(EmailSendResult? result = null) : IEmailService
     {
         public List<(string To, string Subject, string Html, string? ReplyTo, string? FromName)> Sent { get; } = [];

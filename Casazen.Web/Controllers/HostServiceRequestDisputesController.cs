@@ -29,10 +29,8 @@ public abstract class HostServiceRequestDisputesControllerBase(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
-    /// <summary>The rental context whose requests this door reaches.</summary>
     protected abstract ServiceRequestRentalContext Context { get; }
 
-    /// <summary>The permission the host needs on the request's property.</summary>
     protected abstract HostOperationRequirement WriteOperation { get; }
 
     [NonAction]
@@ -95,11 +93,9 @@ public abstract class HostServiceRequestDisputesControllerBase(
         return await authorizationService.IsAuthorizedAsync(User, resource, WriteOperation) ? (scope, null) : (null, Forbid());
     }
 
-    /// <summary>The answers carry the words of the host: nothing is cached by the browser or a proxy.</summary>
     private void SetNoStore() => Response.Headers.CacheControl = "private, no-store";
 }
 
-/// <summary>The complaint about a job of a short-rent stay: <c>api/service-requests/{id}/…</c>.</summary>
 [ApiController]
 [Route("api/service-requests")]
 [Authorize(Policy = CasazenPolicies.ServiceRequestWrite)]
@@ -115,7 +111,6 @@ public sealed class ServiceRequestDisputesController(
 
     protected override HostOperationRequirement WriteOperation => ServiceRequestOperations.Write;
 
-    /// <summary>The complaint about the job as the host reads it. 404 <c>service_dispute_not_found</c> when there is none.</summary>
     [HttpGet("{id:guid}/problem")]
     [ProducesResponseType(typeof(ServiceDisputePayerDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -136,7 +131,6 @@ public sealed class ServiceRequestDisputesController(
         [FromBody] ReportServiceProblemRequest request,
         CancellationToken cancellationToken) => ReportAsync(id, request, cancellationToken);
 
-    /// <summary>The host takes its complaint back: the money is no longer stopped and the supplier is paid. Asking again answers the same dispute.</summary>
     [HttpPost("{id:guid}/withdraw-problem")]
     [ProducesResponseType(typeof(ServiceDisputePayerDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -144,7 +138,6 @@ public sealed class ServiceRequestDisputesController(
     public Task<ActionResult<ServiceDisputePayerDto>> Withdraw(Guid id, CancellationToken cancellationToken) => WithdrawAsync(id, cancellationToken);
 }
 
-/// <summary>The complaint about a job of a long-rent property: <c>api/long-rent/service-requests/{id}/…</c>, the same as the short-rent door.</summary>
 [ApiController]
 [Route("api/long-rent/service-requests")]
 [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
@@ -160,13 +153,11 @@ public sealed class LongRentServiceRequestDisputesController(
 
     protected override HostOperationRequirement WriteOperation => LongRentPropertyOperations.Write;
 
-    /// <summary>The complaint about the job as the landlord reads it. 404 <c>service_dispute_not_found</c> when there is none.</summary>
     [HttpGet("{id:guid}/problem")]
     [ProducesResponseType(typeof(ServiceDisputePayerDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public Task<ActionResult<ServiceDisputePayerDto>> Get(Guid id, CancellationToken cancellationToken) => ReadAsync(id, cancellationToken);
 
-    /// <summary>"Segnala un problema" for a long-rent request: the same rules and errors as <c>POST api/service-requests/{id}/report-problem</c>.</summary>
     [HttpPost("{id:guid}/report-problem")]
     [ProducesResponseType(typeof(ServiceDisputePayerDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
@@ -177,7 +168,6 @@ public sealed class LongRentServiceRequestDisputesController(
         [FromBody] ReportServiceProblemRequest request,
         CancellationToken cancellationToken) => ReportAsync(id, request, cancellationToken);
 
-    /// <summary>The landlord takes its complaint back: the same as <c>POST api/service-requests/{id}/withdraw-problem</c>.</summary>
     [HttpPost("{id:guid}/withdraw-problem")]
     [ProducesResponseType(typeof(ServiceDisputePayerDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]

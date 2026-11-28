@@ -26,7 +26,6 @@ public static class PropertyMatcher
     private const double CityWeight = 10;
     private const double CapacityWeight = 10;
 
-    /// <summary>The most candidates an ambiguous row lists.</summary>
     public const int MaxCandidates = 5;
 
     private static readonly Dictionary<string, string> Abbreviations = new(StringComparer.Ordinal)
@@ -59,10 +58,8 @@ public static class PropertyMatcher
         ["ave"] = "avenue",
     };
 
-    /// <summary>Words that only mark the house number (<c>n. 12</c>, <c>nr 12</c>, <c>civico 12</c>) and are dropped.</summary>
     private static readonly HashSet<string> NumberMarkers = new(StringComparer.Ordinal) { "n", "n.", "nr", "nr.", "n°", "no", "no.", "num", "civico" };
 
-    /// <summary>The proposal for one listing: its status, the proposed property, the candidates and the best score.</summary>
     public static MatchProposal Propose(MatchListing listing, IReadOnlyList<MatchProperty> properties, OctorateMappingOptions thresholds)
     {
         ArgumentNullException.ThrowIfNull(listing);
@@ -92,11 +89,9 @@ public static class PropertyMatcher
             return new MatchProposal(OctorateMappingStatus.Ambiguous, null, candidates, best.Score);
         }
 
-        // No candidate: the listing is offered for import.
         return new MatchProposal(OctorateMappingStatus.Proposed, null, [], best.Score);
     }
 
-    /// <summary>The score of <paramref name="property"/> for <paramref name="listing"/>, 0 to 100.</summary>
     public static int Score(MatchListing listing, MatchProperty property)
     {
         ArgumentNullException.ThrowIfNull(listing);
@@ -124,10 +119,6 @@ public static class PropertyMatcher
         return available <= 0 ? 0 : (int)Math.Round(earned / available * 100, MidpointRounding.AwayFromZero);
     }
 
-    /// <summary>
-    /// Lowercase, without accents and punctuation, the street abbreviations written out and the house-number markers dropped, the words
-    /// separated by one space.
-    /// </summary>
     public static string Normalize(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -185,7 +176,6 @@ public static class PropertyMatcher
         return Math.Max(Dice(a, b), contained ? 0.9 : 0);
     }
 
-    /// <summary>Dice coefficient of the word sets: 2 |A ∩ B| / (|A| + |B|).</summary>
     private static double Dice(string a, string b)
     {
         var wordsA = a.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal);
@@ -216,7 +206,6 @@ public static class PropertyMatcher
         };
     }
 
-    /// <summary>Within 50 m: the same place; 200 m: very likely; 1 km: maybe; farther: another place.</summary>
     private static double? DistanceSimilarity(decimal? latitudeA, decimal? longitudeA, decimal? latitudeB, decimal? longitudeB)
     {
         if (!IsKnown(latitudeA, longitudeA) || !IsKnown(latitudeB, longitudeB))
@@ -247,7 +236,6 @@ public static class PropertyMatcher
     }
 }
 
-/// <summary>What the matcher knows of a listing of the channel manager.</summary>
 public sealed record MatchListing(
     string? Name,
     string? Address,
@@ -257,7 +245,6 @@ public sealed record MatchListing(
     decimal? Longitude,
     int? MaxGuests);
 
-/// <summary>What the matcher knows of a CasaZen property.</summary>
 public sealed record MatchProperty(
     Guid Id,
     string? Name,
@@ -268,9 +255,4 @@ public sealed record MatchProperty(
     decimal? Longitude,
     int? MaxGuests);
 
-/// <summary>The proposal for a listing.</summary>
-/// <param name="Status">Proposed (with <paramref name="PropertyId"/>, or without: offered for import) or Ambiguous.</param>
-/// <param name="PropertyId">The single clear winner, when there is one.</param>
-/// <param name="CandidateIds">The candidates of an ambiguous listing, best first.</param>
-/// <param name="BestScore">The score of the best property, 0 when the org has none.</param>
 public sealed record MatchProposal(OctorateMappingStatus Status, Guid? PropertyId, IReadOnlyList<Guid> CandidateIds, int BestScore);

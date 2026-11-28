@@ -30,22 +30,12 @@ namespace Casazen.Core.Entities;
 [Table("FiscalDocuments")]
 public class FiscalDocument : ITenantOwned
 {
-    /// <summary>
-    /// Unique (<see cref="OrgId"/>, <see cref="IssuerProfileId"/>, <see cref="Series"/>, <see cref="SequenceNumber"/>) where the number is set: no number twice
-    /// for one issuer and series (two issuers of one org may both have <c>2026/1</c>).
-    /// </summary>
     public const string SeriesNumberIndexName = "UIX_FiscalDocuments_OrgId_IssuerProfileId_Series_SequenceNumber";
 
-    /// <summary>Unique (<see cref="OrgId"/>, <see cref="OctorateDocumentId"/>) where set: an Octorate document is imported once.</summary>
     public const string OctorateDocumentIndexName = "UIX_FiscalDocuments_OrgId_OctorateDocumentId";
 
-    /// <summary>
-    /// Unique (<see cref="OrgId"/>, <see cref="RecipientOwnerId"/>, <see cref="PeriodYear"/>, <see cref="PeriodMonth"/>) for the owner invoices that are
-    /// neither discarded, nor credit notes, nor credited in full (<see cref="CreditedInFull"/>): one live invoice per owner and period (E14).
-    /// </summary>
     public const string OwnerPeriodIndexName = "UIX_FiscalDocuments_OrgId_RecipientOwnerId_Period";
 
-    /// <summary>The longest <see cref="RuleVersion"/>.</summary>
     public const int RuleVersionMaxLength = 64;
 
     public const int SeriesMaxLength = 20;
@@ -72,10 +62,8 @@ public class FiscalDocument : ITenantOwned
     public const int OctorateReservationIdMaxLength = 50;
     public const int CreatedByUserIdMaxLength = 255;
 
-    /// <summary>The longest <see cref="ClosedNotDueReason"/> (the codes of <see cref="SelfBillingCloseReasons"/> are shorter).</summary>
     public const int ClosedNotDueReasonMaxLength = 32;
 
-    /// <summary>The longest note of a closing, in characters of the clear text (the column is encrypted and has no length: the check is on input).</summary>
     public const int ClosedNotDueNoteMaxLength = 500;
 
     [Key]
@@ -84,19 +72,12 @@ public class FiscalDocument : ITenantOwned
     /// <summary>Tenant key: the org of the booking (or of the Octorate connection the document was imported with).</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>
-    /// The booking the document is of; <c>null</c> for an imported document no booking matches and for a document that is not of a stay (an owner
-    /// invoice). Never removed with the booking (restrict).
-    /// </summary>
     public Guid? BookingId { get; set; }
 
-    /// <summary>The property the document is about (the property of the booking); <c>null</c> when it is about none. Restrict.</summary>
     public Guid? PropertyId { get; set; }
 
-    /// <summary>What the document is for: the stay of a guest (the default), an invoice to an owner, a self-billed invoice.</summary>
     public FiscalDocumentPurpose Purpose { get; set; } = FiscalDocumentPurpose.GuestStay;
 
-    /// <summary>The paid extra billed by this supplementary guest document.</summary>
     public Guid? SupplementForExtraOrderId { get; set; }
 
     /// <summary>
@@ -107,11 +88,6 @@ public class FiscalDocument : ITenantOwned
     /// </summary>
     public Guid? IssuerProfileId { get; set; }
 
-    /// <summary>
-    /// The document of the services the agency charges the guest (E17/F01/US01/T02): the cleaning when it is a service of the agency and the extras, issued by
-    /// the organization beside the document of the stay its owner issues. False for every other document (the document of a stay bills what its issuer bills;
-    /// an owner invoice, a self-billed invoice). It says which lines the document bills when the booking is made again or corrected.
-    /// </summary>
     public bool ForAgencyServices { get; set; }
 
     /// <summary>The owner an owner invoice is made out to (E14); <c>null</c> otherwise. Restrict.</summary>
@@ -120,10 +96,8 @@ public class FiscalDocument : ITenantOwned
     /// <summary>The version of the owner statement an owner invoice was made from (E14); <c>null</c> otherwise. Restrict.</summary>
     public Guid? OwnerStatementVersionId { get; set; }
 
-    /// <summary>The year of the period an owner invoice is about (with <see cref="PeriodMonth"/>, the key of <see cref="OwnerPeriodIndexName"/>).</summary>
     public int? PeriodYear { get; set; }
 
-    /// <summary>The month (1 to 12) of the period an owner invoice is about.</summary>
     public int? PeriodMonth { get; set; }
 
     /// <summary>
@@ -132,13 +106,8 @@ public class FiscalDocument : ITenantOwned
     /// </summary>
     public DateOnly? ServicePeriodFrom { get; set; }
 
-    /// <summary>The last day of the service: the check-out of the stay (a calendar day). See <see cref="ServicePeriodFrom"/>.</summary>
     public DateOnly? ServicePeriodTo { get; set; }
 
-    /// <summary>
-    /// The version of the tax rule the document was made with (<c>FiscalDocuments:TaxRules</c>, chosen by the date of the stay); written for every
-    /// document CasaZen issues. <c>null</c> for an imported document and for the documents issued before the rules had versions.
-    /// </summary>
     [MaxLength(RuleVersionMaxLength)]
     public string? RuleVersion { get; set; }
 
@@ -148,13 +117,8 @@ public class FiscalDocument : ITenantOwned
     /// </summary>
     public string? IssuerSnapshot { get; set; }
 
-    /// <summary>Who collected the money of the document (E12); <see cref="FiscalPaymentChannel.Unknown"/> until it is known.</summary>
     public FiscalPaymentChannel PaymentChannel { get; set; } = FiscalPaymentChannel.Unknown;
 
-    /// <summary>
-    /// True once credit notes credited the whole total of the document (set in the transaction of the credit note that completes it): an owner invoice
-    /// credited in full no longer holds its owner and period (<see cref="OwnerPeriodIndexName"/>).
-    /// </summary>
     public bool CreditedInFull { get; set; }
 
     public FiscalDocumentSource Source { get; set; } = FiscalDocumentSource.CasaZen;
@@ -163,27 +127,19 @@ public class FiscalDocument : ITenantOwned
 
     public FiscalDocumentStatus Status { get; set; } = FiscalDocumentStatus.Draft;
 
-    /// <summary>The series the document is numbered in (empty for an imported document that has none).</summary>
     [Required, MaxLength(SeriesMaxLength)]
     public string Series { get; set; } = string.Empty;
 
-    /// <summary>The number within the series, set at the issue; <c>null</c> for a draft and for an imported document.</summary>
     public int? SequenceNumber { get; set; }
 
-    /// <summary>The display number (<c>{series}/{number}</c>), or the number Octorate gave.</summary>
     [MaxLength(NumberMaxLength)]
     public string? Number { get; set; }
 
-    /// <summary>The day of the issue, a Europe/Rome calendar day; <c>null</c> for a draft.</summary>
     public DateOnly? IssueDate { get; set; }
 
-    /// <summary>ISO 4217 code of every amount of the document: the currency of the property (<see cref="StayCurrency"/>).</summary>
     [Required, MaxLength(CurrencyMaxLength)]
     public string Currency { get; set; } = StayCurrency.Default;
 
-    // ---------------------------------------------------------------- recipient snapshot (encrypted at rest)
-
-    /// <summary>A private person or a company; <c>null</c> when an imported document does not say.</summary>
     public InvoiceRecipientKind? RecipientKind { get; set; }
 
     public string? RecipientName { get; set; }
@@ -208,8 +164,6 @@ public class FiscalDocument : ITenantOwned
 
     public string? RecipientPec { get; set; }
 
-    // ---------------------------------------------------------------- amounts (as computed by FiscalDocumentTotals, or as Octorate gave them)
-
     [Precision(18, 2)]
     public decimal TaxableBase { get; set; }
 
@@ -230,8 +184,6 @@ public class FiscalDocument : ITenantOwned
     [MaxLength(VatNatureCodeMaxLength)]
     public string? VatNatureCode { get; set; }
 
-    // ---------------------------------------------------------------- states
-
     public FiscalDocumentPaymentState PaymentState { get; set; } = FiscalDocumentPaymentState.Unknown;
 
     /// <summary>
@@ -242,7 +194,6 @@ public class FiscalDocument : ITenantOwned
     [NotMapped]
     public decimal TouristTaxCollected { get; set; }
 
-    /// <summary>One of <see cref="FiscalDocumentSdiStatuses"/>.</summary>
     [Required, MaxLength(SdiStatusMaxLength)]
     public string SdiStatus { get; set; } = FiscalDocumentSdiStatuses.NotApplicable;
 
@@ -257,8 +208,6 @@ public class FiscalDocument : ITenantOwned
 
     public DateTime? SdiStatusUpdatedAt { get; set; }
 
-    // ---------------------------------------------------------------- content and links
-
     /// <summary>The FatturaPA XML of a CasaZen document, validated before it was stored. <b>Encrypted at rest.</b></summary>
     public string? FatturaPaXml { get; set; }
 
@@ -271,24 +220,18 @@ public class FiscalDocument : ITenantOwned
     [MaxLength(OctorateAccommodationIdMaxLength)]
     public string? OctorateAccommodationId { get; set; }
 
-    /// <summary>The id of an imported document on Octorate (unique within the org: <see cref="OctorateDocumentIndexName"/>).</summary>
     [MaxLength(OctorateDocumentIdMaxLength)]
     public string? OctorateDocumentId { get; set; }
 
-    /// <summary>The reservation of Octorate an imported document names.</summary>
     [MaxLength(OctorateReservationIdMaxLength)]
     public string? OctorateReservationId { get; set; }
 
     /// <summary>Octorate said it holds a PDF of the imported document (served through CasaZen, never as an Octorate address).</summary>
     public bool OctoratePdfAvailable { get; set; }
 
-    /// <summary>The document a credit note credits (restrict: an issued document is never removed).</summary>
     public Guid? CreditedDocumentId { get; set; }
 
-    /// <summary>The rejected document a correction replaces (restrict).</summary>
     public Guid? ReplacesDocumentId { get; set; }
-
-    // ---------------------------------------------------------------- «non più dovuta»: the exit of a replacement of a rejected TD17 (FIX/BE-TD17-JOB-EXIT)
 
     /// <summary>
     /// Why the replacement draft of a rejected self-billed invoice (TD17) was closed as «non più dovuta» (one of <see cref="SelfBillingCloseReasons"/>); <c>null</c> for every other document. A closed
@@ -299,13 +242,10 @@ public class FiscalDocument : ITenantOwned
     [MaxLength(ClosedNotDueReasonMaxLength)]
     public string? ClosedNotDueReason { get; set; }
 
-    /// <summary>The note the person wrote when closing it (free text: it can name a person or a portal document); <c>null</c> when there is none. <b>Encrypted at rest.</b></summary>
     public string? ClosedNotDueNote { get; set; }
 
-    /// <summary>When it was closed (UTC); <c>null</c> for a document that was not.</summary>
     public DateTime? ClosedNotDueAt { get; set; }
 
-    /// <summary>The user who closed it; <c>null</c> for a document that was not (and when the call carried no user).</summary>
     [MaxLength(CreatedByUserIdMaxLength)]
     public string? ClosedNotDueByUserId { get; set; }
 
@@ -313,13 +253,10 @@ public class FiscalDocument : ITenantOwned
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>The person who created the document; <c>null</c> for an imported one.</summary>
     [MaxLength(CreatedByUserIdMaxLength)]
     public string? CreatedByUserId { get; set; }
 
-    /// <summary>The lines of a CasaZen document, in order (an imported document has none).</summary>
     public virtual ICollection<FiscalDocumentLine> Lines { get; set; } = new List<FiscalDocumentLine>();
 
-    /// <summary>The PostgreSQL <c>xmin</c> of the row: two writers that read the same draft cannot both change it.</summary>
     public uint RowVersion { get; set; }
 }

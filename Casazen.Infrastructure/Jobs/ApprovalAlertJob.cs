@@ -13,19 +13,14 @@ public sealed record QueuedApprovalAlert
 {
     public Guid OrgId { get; set; }
 
-    /// <summary>The item of the approval queue.</summary>
     public Guid ItemId { get; set; }
 
-    /// <summary>When the alert was raised: the same instant the first delivery judged the quiet hours at, and part of the keys of the push and of the bell.</summary>
     public DateTime OccurredAtUtc { get; set; }
 
-    /// <summary>The person who is told (<c>User.Id</c>).</summary>
     public string UserId { get; set; } = string.Empty;
 
-    /// <summary>The channels held back: <see cref="NotificationChannels.MobilePush"/> and/or <see cref="NotificationChannels.Email"/>.</summary>
     public NotificationChannels Channels { get; set; }
 
-    /// <summary>When they are due: the end of the quiet hours, and the instant the slot of the email was claimed for.</summary>
     public DateTime DueAtUtc { get; set; }
 
     public ApprovalAlert ToAlert() => new(OrgId, ItemId, OccurredAtUtc);
@@ -40,12 +35,10 @@ public sealed class ApprovalAlertJob(ApprovalAlertDelivery delivery)
 {
     public const int MaxAttempts = 5;
 
-    /// <summary>Delivers the channels that waited for the end of the quiet hours of one person; it asks the preferences again before it sends.</summary>
     [AutomaticRetry(Attempts = MaxAttempts, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
     public Task DeliverAsync(QueuedApprovalAlert queued, CancellationToken cancellationToken) =>
         delivery.DeliverDeferredAsync(queued, cancellationToken);
 
-    /// <summary>Raises again the whole alert of an item (its "To do" and every person): ids and an instant only.</summary>
     [AutomaticRetry(Attempts = MaxAttempts, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
     public Task RaiseAsync(ApprovalAlert alert, CancellationToken cancellationToken) =>
         delivery.RaiseAsync(alert, cancellationToken);

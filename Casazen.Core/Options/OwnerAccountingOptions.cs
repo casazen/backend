@@ -32,10 +32,6 @@ public class OwnerAccountingOptions
     /// </summary>
     public Dictionary<string, decimal> ChannelCommissionDefaults { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// The default of <paramref name="channel"/>: a key that names a portal (case-insensitive) with a percent from 0 to 100; <c>false</c> without one, or
-    /// for a channel that is not a portal.
-    /// </summary>
     public bool TryGetChannelDefault(BookingSource channel, out decimal percent)
     {
         percent = 0m;
@@ -61,49 +57,30 @@ public class OwnerAccountingOptions
 /// </summary>
 public class OwnerWithholdingRuleTemplate
 {
-    /// <summary>The jurisdiction of the rule (<c>IT</c>).</summary>
     public string? Jurisdiction { get; set; }
 
-    /// <summary>The code of the rule set (<c>IT-STR-WITHHOLDING</c>).</summary>
     public string? RuleCode { get; set; }
 
-    /// <summary>The version of the rule set: an org that has it (approved or not) is not seeded again.</summary>
     public string? Version { get; set; }
 
-    /// <summary>The first day the rule applies.</summary>
     public DateOnly? ValidFrom { get; set; }
 
-    /// <summary>The page of the tax agency the rule is taken from (https).</summary>
     public string? SourceUrl { get; set; }
 
-    /// <summary>
-    /// The SHA-256 of the source document, when the operator pinned it; empty: the draft is seeded unpinned and the accountant pins the document checked when
-    /// approving it (<c>sourceSha256</c> of the approval).
-    /// </summary>
     public string? SourceSha256 { get; set; }
 
-    /// <summary>The rate of the withholding, in percent (21).</summary>
     public decimal? WithholdingRatePercent { get; set; }
 
-    /// <summary>The tax code of the F24 (1919).</summary>
     public string? WithholdingTaxCode { get; set; }
 
-    /// <summary>The components of the base (<c>stay_gross</c>: the gross of the stays without the tourist tax).</summary>
     public List<string> GrossBaseComponents { get; set; } = [];
 
-    /// <summary>The rounding to the cent (<c>half_up</c> or <c>half_even</c>).</summary>
     public string? Rounding { get; set; }
 
-    /// <summary>The years the evidence is kept.</summary>
     public int? RetentionYears { get; set; }
 
-    /// <summary>
-    /// The portals that withhold for an Italian private host themselves (⚖ R5: <c>Airbnb</c>), by <see cref="BookingSource"/> name: written into the draft, and
-    /// taken by a rule set that does not say (<see cref="OwnerAccountingRuleParameters.PortalsWithholding"/> <c>null</c>).
-    /// </summary>
     public List<string> PortalsWithholding { get; set; } = [];
 
-    /// <summary>The parameters of the rule set: a withholding at the payment, on a qualifying short let the agency collected or handled.</summary>
     public OwnerAccountingRuleParameters ToParameters() => new()
     {
         WithholdingApplies = true,

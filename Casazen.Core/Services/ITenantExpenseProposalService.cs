@@ -3,10 +3,6 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// The condominium expense the contract wizard proposes. It does not start a payment: the tenant pays on the rent
-/// APIs, and the landlord records external payments in the condominium book.
-/// </summary>
 public interface ITenantExpenseProposalService
 {
     Task<TenantExpenseProposalView?> GetSavedAsync(Guid leaseId, CancellationToken cancellationToken = default);

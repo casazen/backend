@@ -15,16 +15,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E25/F01/US01/T01, acceptance criterion 2: the tax step of the host check-in wizard confirms the tax of the stay, and the confirmation records no event, so the
-/// collection is evaluated right after it (a confirmed amount lower than what the price included or the guest paid raises the host's «To do»). A tax that is not
-/// confirmed evaluates nothing.
-/// </summary>
 public class CheckInWizardTouristTaxTests
 {
     private static readonly Guid OrgId = Guid.Parse("4d1e0a3b-6c2f-4b7a-9e8d-2f3a4b5c6d71");
 
-    /// <summary>The check-in day of the stay below, at 19:00 in Rome.</summary>
     private static readonly FixedTimeProvider Clock = new(new DateTimeOffset(2026, 11, 20, 18, 0, 0, TimeSpan.Zero));
 
     private static readonly DateTime CheckIn = new(2026, 11, 20, 0, 0, 0, DateTimeKind.Utc);
@@ -46,7 +40,6 @@ public class CheckInWizardTouristTaxTests
 
         var confirmation = await Wizard(db, booking, tax.Object, collection.Object).ConfirmAsync(booking.Id, "auth0|host", CancellationToken.None);
 
-        // The tax is confirmed, then the collection is evaluated (never before, once).
         Assert.True(confirmation.Tax.Saved);
         Assert.Equal(["confirm", "reconcile"], order);
     }
@@ -69,7 +62,6 @@ public class CheckInWizardTouristTaxTests
         collection.VerifyNoOtherCalls();
     }
 
-    /// <summary>The tax of a stay of one guest, calculable: 15.00 to collect.</summary>
     private static StayTouristTaxView Calculated(Guid bookingId) => new(
         bookingId,
         TouristTaxQuoteStatus.Calculated,
@@ -91,7 +83,6 @@ public class CheckInWizardTouristTaxTests
 
     private static AppDbContext NewDb() => new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"checkin-wizard-tax-{Guid.NewGuid():N}").Options);
 
-    /// <summary>A confirmed stay of one guest whose check-in day is today in Rome.</summary>
     private static async Task<Booking> SeedStayAsync(AppDbContext db)
     {
         var property = new Property
@@ -148,7 +139,6 @@ public class CheckInWizardTouristTaxTests
         DocumentExpiresOn = new DateOnly(2031, 1, 1),
     };
 
-    /// <summary>The wizard over <paramref name="db"/> for a stay with one complete guest, never sent to the channel manager.</summary>
     private static CheckInWizardService Wizard(AppDbContext db, Booking booking, IStayTouristTaxService tax, ITouristTaxCollectionService collection)
     {
         var stayGuests = new Mock<IStayGuestService>();

@@ -3,19 +3,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>
-/// SP-16d: the three switches of «Notifiche» of the supplier cannot be forgotten by a path written later. Every place of the product that queues
-/// one of the informative notices to a supplier — a new request, the reminder of the day before, a payment received — has to ask
-/// <c>SupplierNotificationPreferences.AllowsAsync</c> with the kind of that notice <b>in the same method</b>; a file that uses one of these notices and
-/// is not in the list below fails the test, so a new path has to be added here on purpose, with its reason. The operational notices (a cancellation, the
-/// answer to a proposed time or to a quote, an expiry, a refund, the reminder of the host) are not in the list: no switch hides them.
-/// </summary>
 public class SupplierNotifyingPathsArchitectureTests
 {
-    /// <summary>
-    /// How a notice is named at the place that queues it: the type of its push and the name of its e-mail template. Declarations
-    /// (<c>public const string X = ...</c>) do not carry the prefix, only the uses do.
-    /// </summary>
     private static readonly IReadOnlyDictionary<string, string[]> NoticesOfEachKind = new Dictionary<string, string[]>
     {
         ["NewRequest"] =
@@ -40,7 +29,6 @@ public class SupplierNotifyingPathsArchitectureTests
         ],
     };
 
-    /// <summary>The files that may queue the notices of a kind, each with the reason. A new file has to be added here by a person who read this.</summary>
     private static readonly IReadOnlyDictionary<string, string[]> MayQueue = new Dictionary<string, string[]>
     {
         ["NewRequest"] =
@@ -59,7 +47,6 @@ public class SupplierNotifyingPathsArchitectureTests
         ],
     };
 
-    /// <summary>The start of a method, a property or a constructor of a class (members are at four spaces in the formatted code).</summary>
     private static readonly Regex MemberStart = new(@"^    (?:public|private|internal|protected)\b[^\n]*$", RegexOptions.Compiled | RegexOptions.Multiline);
 
     [Theory]
@@ -86,7 +73,6 @@ public class SupplierNotifyingPathsArchitectureTests
                 continue;
             }
 
-            // Each use is inside a member that also asks the switch of its kind.
             var starts = MemberStart.Matches(code).Select(m => m.Index).ToList();
             foreach (var index in inThisFile)
             {
@@ -116,8 +102,6 @@ public class SupplierNotifyingPathsArchitectureTests
             Assert.True(File.Exists(Path.Combine(root, file.Replace('/', Path.DirectorySeparatorChar))), $"{file} is in the list but does not exist.");
     }
 
-    // ─── helpers ───
-
     private static IEnumerable<int> IndexesOf(string code, string needle)
     {
         var index = code.IndexOf(needle, StringComparison.Ordinal);
@@ -128,7 +112,6 @@ public class SupplierNotifyingPathsArchitectureTests
         }
     }
 
-    /// <summary>The source without the lines that are only a comment (documentation names things without using them).</summary>
     private static string CodeWithoutComments(string text) =>
         string.Join('\n', text.Replace("\r\n", "\n").Split('\n').Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal)));
 

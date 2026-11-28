@@ -5,18 +5,11 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.BankStatements;
 
-/// <summary>
-/// The statement of the bank in each of the formats the importer reads, from the text a bank really writes: CSV with a preamble and
-/// decimal commas, CSV in Windows-1252, «Dare/Avere», CAMT.053 (two versions), MT940 (three ways to write the information), and the files it
-/// refuses. The parser is a pure function: bytes in, credits out.
-/// </summary>
 public class BankStatementParserTests
 {
     private const string PayerIban = "DE89370400440532013000";
 
     private static byte[] Utf8(string text) => new UTF8Encoding(false).GetBytes(text);
-
-    // ---------------------------------------------------------------- CSV
 
     [Fact]
     public void Csv_AnItalianExportWithAPreambleAndDecimalCommas_ReadsTheCreditsOnly()
@@ -100,7 +93,6 @@ public class BankStatementParserTests
     [Fact]
     public void Csv_ASignColumnOfJustPlusAndMinus_DecidesWhichAreCredits()
     {
-        // The amount carries no sign of its own: an unread «-» would make the refund of a deposit look like a rent that came in.
         const string csv =
             "Data;Descrizione;Importo;Segno\n"
             + "01/10/2026;Canone ottobre;900,00;+\n"
@@ -308,8 +300,6 @@ public class BankStatementParserTests
         Assert.Equal(2, statement.MovementCount);
     }
 
-    // ---------------------------------------------------------------- what is not a statement
-
     [Fact]
     public void APdf_IsNotAStatementTheImporterReads()
     {
@@ -350,8 +340,6 @@ public class BankStatementParserTests
         Assert.Equal(BankStatementErrorCodes.TooLarge, ex.Code);
         Assert.Equal(new object[] { 8 }, ex.MessageArgs);
     }
-
-    // ---------------------------------------------------------------- CAMT.053
 
     private const string CamtV2 = """
         <?xml version="1.0" encoding="UTF-8"?>
@@ -405,7 +393,7 @@ public class BankStatementParserTests
         var statement = BankStatementParser.Parse(Utf8(CamtV2));
 
         Assert.Equal(BankStatementFormat.Camt053, statement.Format);
-        Assert.Equal(2, statement.MovementCount); // the pending entry is not money in the account yet
+        Assert.Equal(2, statement.MovementCount);
         var credit = Assert.Single(statement.Credits);
         Assert.Equal(new DateOnly(2026, 10, 3), credit.BookingDate);
         Assert.Equal(new DateOnly(2026, 10, 4), credit.ValueDate);
@@ -481,8 +469,8 @@ public class BankStatementParserTests
     }
 
     [Theory]
-    [InlineData("DBIT")] // the bank takes back a credit it had booked (a returned transfer): money out
-    [InlineData("CRDT")] // the bank gives back a debit (an outgoing payment that comes back): money in, but not a tenant paying
+    [InlineData("DBIT")]
+    [InlineData("CRDT")]
     public void Camt053_AReversal_IsNeverOfferedAsACredit(string indicator)
     {
         var xml = $"""
@@ -588,8 +576,6 @@ public class BankStatementParserTests
         Assert.Equal(BankStatementErrorCodes.Unreadable, ex.Code);
     }
 
-    // ---------------------------------------------------------------- MT940
-
     private const string Mt940 = """
         :20:STATEMENT1
         :25:IT60X0542811101000000123456
@@ -630,7 +616,6 @@ public class BankStatementParserTests
         Assert.Equal("ROSSI MARIO", tagged.CounterpartyName);
         Assert.Equal("AFFITTO SETTEMBRE", tagged.Description);
 
-        // A statement line without the entry date and with the funds code «R» after the mark, and information in free text.
         var plain = statement.Credits[2];
         Assert.Equal(12.00m, plain.Amount);
         Assert.Equal(new DateOnly(2026, 10, 8), plain.ValueDate);
@@ -639,8 +624,8 @@ public class BankStatementParserTests
     }
 
     [Theory]
-    [InlineData("RD")] // the reversal of a debit: money back in the account, but a bank taking back its own entry and not a tenant paying
-    [InlineData("RC")] // the reversal of a credit: money out
+    [InlineData("RD")]
+    [InlineData("RC")]
     public void Mt940_AReversal_IsCountedAndNeverOfferedAsACredit(string mark)
     {
         var text = $":20:X\n:61:2610031003{mark}50,00NTRFNONREF\n:86:Storno\n";

@@ -43,7 +43,6 @@ public class OtaIntegrationSecretsEncryptionTests(CasazenWebApplicationFactory f
             var rawKey = await RawColumnAsync(db, "ApiKey", integration.Id);
             var rawSecret = await RawColumnAsync(db, "ApiSecret", integration.Id);
 
-            // Data Protection payloads (base64url of the 0x09F0C9F0 magic header), never the plain value.
             Assert.StartsWith(DataProtectionPayloadPrefix, rawKey);
             Assert.StartsWith(DataProtectionPayloadPrefix, rawSecret);
             Assert.DoesNotContain("sk_live_fd20", rawKey);
@@ -59,7 +58,6 @@ public class OtaIntegrationSecretsEncryptionTests(CasazenWebApplicationFactory f
         }
     }
 
-    // Raw SQL scalar query: no value converter, i.e. what is really in the column.
     private static Task<string> RawColumnAsync(AppDbContext db, string column, Guid id) =>
         column switch
         {

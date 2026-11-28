@@ -11,22 +11,15 @@ namespace Casazen.Web.DTOs;
 /// </summary>
 public sealed class CreateExistingInventoryBatchRequest
 {
-    /// <summary>The portal codes of the OTA channels, as the catalog of the channel manager gives them.</summary>
     [Required(ErrorMessage = "ExistingInventoryChannelsRequired")]
     public List<string>? Channels { get; set; }
 
-    /// <summary>
-    /// The CasaZen properties the import is about, each of the org and within the caller's reach. Leave it out for the whole inventory: an empty
-    /// list is a selection of nothing and is refused (422), never taken for all of them.
-    /// </summary>
     public List<Guid>? PropertyIds { get; set; }
 
-    /// <summary>The named group of the mixed portfolio.</summary>
     [MaxLength(100, ErrorMessage = "ExistingInventoryScopeInvalid")]
     public string? Group { get; set; }
 }
 
-/// <summary>Imports the rooms (<c>POST .../{id}/run</c>); the body is optional.</summary>
 public sealed class RunExistingInventoryRequest
 {
     /// <summary>
@@ -36,10 +29,8 @@ public sealed class RunExistingInventoryRequest
     public List<string>? RetryUnknown { get; set; }
 }
 
-/// <summary>Goes on with the confirmed listings (<c>POST .../{id}/continue</c>); the accommodation ids named are left for later.</summary>
 public sealed class ContinueExistingInventoryRequest
 {
-    /// <summary>The Octorate accommodation ids of the listings the person leaves for later: they stay write-blocked and are not marked connected.</summary>
     public List<string>? LeaveForLater { get; set; }
 
     /// <summary>
@@ -56,42 +47,30 @@ public sealed class ContinueExistingInventoryRequest
 /// </summary>
 public sealed class ConnectExistingInventoryChannelRequest
 {
-    /// <summary>The accommodations to connect.</summary>
     public List<ConnectExistingInventoryAccommodationRequest?>? Accommodations { get; set; }
 }
 
-/// <summary>One accommodation of a «Collega»: the Octorate accommodation and the id of the property on the portal.</summary>
 public sealed class ConnectExistingInventoryAccommodationRequest
 {
-    /// <summary>The Octorate accommodation id (for example <c>520897</c>): one of the org's that CasaZen knows, and of the batch.</summary>
     public string? AccommodationId { get; set; }
 
-    /// <summary>
-    /// The id of the property on the portal (for example the «ID struttura» of Booking.com): not a secret, the portal shows it to the host. It goes to
-    /// Octorate in the create of the connection and is not kept.
-    /// </summary>
     public string? HotelId { get; set; }
 }
 
-/// <summary>The scenarios of a mixed portfolio (<c>PUT api/octorate/inventory-intents</c>, E02/F01/US03).</summary>
 public sealed class InventoryIntentsRequest
 {
     [Required(ErrorMessage = "InventoryIntentAssignmentsInvalid")]
     public List<InventoryIntentAssignmentRequest>? Assignments { get; set; }
 }
 
-/// <summary>One assignment: a property (or, with none, a named group with no property yet) and the scenario the person declared.</summary>
 public sealed class InventoryIntentAssignmentRequest
 {
-    /// <summary>The CasaZen property; <c>null</c> for a group that has no property yet.</summary>
     public Guid? PropertyId { get; set; }
 
-    /// <summary><c>onOctorate</c>, <c>onOtas</c> or <c>newInventory</c>.</summary>
     [Required(ErrorMessage = "InventoryScenarioInvalid")]
     [MaxLength(30, ErrorMessage = "InventoryScenarioInvalid")]
     public string? Scenario { get; set; }
 
-    /// <summary>The named group of the mixed portfolio; required when there is no property.</summary>
     [MaxLength(100, ErrorMessage = "InventoryGroupRequired")]
     public string? Group { get; set; }
 }
@@ -142,10 +121,8 @@ public sealed record ExistingInventoryBatchDto(
 /// <param name="PanelUrl">The address of the panel: https, with no organization, property or person data; <c>null</c> when already complete.</param>
 public sealed record ChannelAccessStartDto(string ChannelCode, bool AlreadyComplete, string? HandoffMode, string? PanelUrl)
 {
-    /// <summary>The code of <see cref="PanelHandoffMode.RedirectCallback"/> in the API.</summary>
     public const string RedirectCallbackCode = "redirectCallback";
 
-    /// <summary>The code of <see cref="PanelHandoffMode.ManagedWindow"/> in the API.</summary>
     public const string ManagedWindowCode = "managedWindow";
 
     public static ChannelAccessStartDto From(ChannelAccessStartResult result)

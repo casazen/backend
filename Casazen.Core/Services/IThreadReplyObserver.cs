@@ -12,6 +12,5 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IThreadReplyObserver
 {
-    /// <summary>A person answered the conversation <paramref name="threadKey"/> of <paramref name="orgId"/>.</summary>
     Task OnHostReplyAsync(Guid orgId, MessageThreadKey threadKey, CancellationToken ct);
 }

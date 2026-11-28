@@ -9,7 +9,6 @@ public class AgencyIdentityModelTests
     [Fact]
     public void AgencyIdentity_MigrationIsDiscoverableAndMatchesTheModel()
     {
-        // Metadata checks only: no database connection is opened.
         using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql("Host=localhost;Database=model_check;Username=postgres;Password=unused")
             .Options);

@@ -7,13 +7,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.External;
 
-/// <inheritdoc cref="IApeRegistryLookup"/>
-/// <remarks>
-/// The CENED+2 dataset of dati.lombardia.it (Socrata SODA API, public, no key: <c>GET resource/{dataset}.json</c> with
-/// <c>$select</c>, <c>$where</c>, <c>$limit</c>). Its rows carry <c>cod_ape</c>, <c>classe_energetica</c>, <c>data_ins</c>
-/// (dd/MM/yyyy), <c>comune</c> and <c>ep_gl_nren</c>. The query holds only the comune, the index and, to narrow it, the issue
-/// date: no document, no person. A certificate is taken only when exactly one code matches. No value is logged: only the outcome.
-/// </remarks>
 public sealed class CenedApeRegistry(
     HttpClient httpClient,
     IOptions<ApeRegistryOptions> options,
@@ -48,7 +41,6 @@ public sealed class CenedApeRegistry(
             await using var body = await response.Content.ReadAsStreamAsync(timeout.Token);
             using var json = await JsonDocument.ParseAsync(body, cancellationToken: timeout.Token);
             var entries = Entries(json.RootElement).ToList();
-            // Two certificates of the comune with the same index: the issue date read on the file tells them apart.
             if (entries.Select(e => e.Code).Distinct(StringComparer.Ordinal).Count() > 1 && query.IssueDate is { } issued)
                 entries = entries.Where(e => e.IssueDate == issued).ToList();
             var codes = entries.Select(e => e.Code).Distinct(StringComparer.Ordinal).ToList();

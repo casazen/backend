@@ -53,7 +53,6 @@ public class GuestTenantIsolationIntegrationTests : IClassFixture<CasazenWebAppl
         for (var i = 0; i < 3; i++)
         {
             var guestId = await AddGuestAsync(property.OrgId, $"page{i}.{Guid.NewGuid():N}@example.com", createdAt: DateTime.UtcNow.AddMinutes(i));
-            // PO 2026-10-08: the host guest list is bookers only (Guests with at least one Booking).
             await AddBookingAsync(property, guestId, BookingStatus.Confirmed, daysFromToday: 10 + i);
         }
 
@@ -83,7 +82,6 @@ public class GuestTenantIsolationIntegrationTests : IClassFixture<CasazenWebAppl
         using var clientA = _factory.CreateAuthenticatedClient(s.OwnerA, OwnerRole);
         using var own = await ReadJsonAsync(await clientA.GetAsync($"/api/guests/{s.GuestA}"));
         var root = own.RootElement;
-        // CO-14: the document number is masked; the full one only from the audited document-number action.
         Assert.Equal("*****111", root.GetProperty("documentNumberMasked").GetString());
         Assert.DoesNotContain("AA1111111", root.GetRawText());
         Assert.True(root.GetProperty("hasDocumentScan").GetBoolean());
@@ -258,7 +256,6 @@ public class GuestTenantIsolationIntegrationTests : IClassFixture<CasazenWebAppl
         using var anonymous = _factory.CreateClient();
         using var doc = await ReadJsonAsync(await anonymous.GetAsync($"/api/public/checkin/{token}"));
 
-        // CO-12: the prefill is the list of the stay's guests; before any registration, the booking's own booker.
         var prefill = Assert.Single(doc.RootElement.GetProperty("guests").EnumerateArray());
         Assert.Equal("Mario", prefill.GetProperty("firstName").GetString());
         Assert.Equal("Bianchi", prefill.GetProperty("lastName").GetString());
@@ -288,8 +285,6 @@ public class GuestTenantIsolationIntegrationTests : IClassFixture<CasazenWebAppl
         var owner = NewOwner();
         var property = await _factory.SeedPropertyAsync(owner);
         var guestId = await AddGuestAsync(property.OrgId, $"lonely.{Guid.NewGuid():N}@example.com");
-        // SR-04b: a guest with no stay belongs to no property, so only who reaches the whole org reaches it. The account of this
-        // factory is in no org team (it reaches the properties it created), hence the org-wide role of the token.
         using var client = _factory.CreateAuthenticatedClient(owner, $"{OwnerRole},PropertyManager");
 
         var response = await client.DeleteAsync($"/api/guests/{guestId}");
@@ -348,10 +343,6 @@ public class GuestTenantIsolationIntegrationTests : IClassFixture<CasazenWebAppl
         Guid BookingB,
         string Email);
 
-    /// <summary>
-    /// Org A registers Mario (document, date of birth, notes) with a booking; org B then creates a host booking
-    /// for the same e-mail through the API, which must produce B's own guest record.
-    /// </summary>
     private async Task<TwoOrgs> SeedTwoOrgsWithSameGuestEmailAsync()
     {
         var ownerA = NewOwner();
@@ -461,7 +452,6 @@ public class GuestTenantIsolationIntegrationTests : IClassFixture<CasazenWebAppl
         "export" => client.GetAsync($"/api/gdpr/guests/{guestId}/export"),
         "delete" => client.DeleteAsync($"/api/gdpr/guests/{guestId}?reason=test"),
         "anonymize" => client.PostAsync($"/api/gdpr/guests/{guestId}/anonymize", null),
-        // A5-14: the host can only withdraw the marketing consent, never grant it; a withdrawal note is required.
         _ => client.PutAsJsonAsync($"/api/gdpr/guests/{guestId}/consent", new { marketingConsent = false, note = "test" }),
     };
 

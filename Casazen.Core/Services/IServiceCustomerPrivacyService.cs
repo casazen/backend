@@ -19,7 +19,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IServiceCustomerPrivacyService
 {
-    /// <summary>One nightly run over every supplier.</summary>
     Task<ServiceCustomerRetentionRun> ApplyRetentionAsync(CancellationToken cancellationToken = default);
 }
 

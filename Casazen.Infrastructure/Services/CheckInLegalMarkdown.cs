@@ -86,7 +86,6 @@ internal static partial class CheckInLegalMarkdown
         return html.ToString();
     }
 
-    /// <summary>The lines of the text that apply to the property, trimmed, without the marker lines and the comments.</summary>
     private static IEnumerable<string> Lines(string markdown, bool documentNotArchived)
     {
         var skipping = false;

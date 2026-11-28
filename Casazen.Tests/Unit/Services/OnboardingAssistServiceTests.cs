@@ -63,14 +63,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         await _db.DisposeAsync();
     }
 
-    // ─── The proofs of the brief ─────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Proof (permission): the staff queue and its update are for the platform administrators only. Both routes sit under the policy
-    /// <see cref="CasazenPolicies.AdminOnly"/> and nothing else opens them (no <c>[AllowAnonymous]</c>, no host policy, and the host controller of
-    /// the requests has no verb that lists the queue or changes a request); the real registered policy refuses the owner of the org (who passes the
-    /// host policy of the requests) and every caller that is not an administrator, while the administrator passes (the positive control).
-    /// </summary>
     [Fact]
     public async Task OnboardingAssist_StaffEndpoints_RequireAdmin_Test()
     {
@@ -78,7 +70,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Equal([CasazenPolicies.AdminOnly], controller.GetCustomAttributes<AuthorizeAttribute>(inherit: true).Select(a => a.Policy));
         Assert.Empty(controller.GetCustomAttributes<AllowAnonymousAttribute>(inherit: true));
 
-        // The queue, one request with its checklist (E20/F03/US01/T02), its update and the controlled opening of the support vault (E20/F03/US01/T01).
         var routed = RoutedActions(controller);
         Assert.Equal(["Get", "List", "Reveal", "Update"], routed.Select(a => a.Method.Name).Order());
         Assert.Equal(["GET", "GET", "POST", "PUT"], routed.Select(a => a.Verb.HttpMethods.Single()).Order());
@@ -88,8 +79,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
             Assert.DoesNotContain(action.Method.GetCustomAttributes<AuthorizeAttribute>(inherit: true), a => a.Policy != CasazenPolicies.AdminOnly);
         });
 
-        // The host controller of the requests can create and list them and reopen one support marked done («Non funziona», E20/F03/US01/T02): it has no
-        // verb to take, complete or close one, and its policy is the org's.
         var hostController = typeof(OnboardingAssistController);
         Assert.Equal(["Create", "List", "Reopen"], RoutedActions(hostController).Select(a => a.Method.Name).Order());
         Assert.Equal(["GET", "POST", "POST"], RoutedActions(hostController).Select(a => a.Verb.HttpMethods.Single()).Order());
@@ -143,7 +132,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         var requested = await HostService().RequestAsync(
             _world.OrgWide, _world.OwnerUserId, Input(OnboardingPartKey.Compliance, OnboardingAssistContexts.PanelPolice, _world.Granted.Id), Ct);
 
-        // The request holds the reference (the wizard and what it edits) and no copy: no text column of it holds anything of the draft.
         var stored = await _db.OnboardingAssistRequests.AsNoTracking().SingleAsync(r => r.Id == requested.Id);
         Assert.Equal((WizardType.OnboardingActivation, (Guid?)_world.Granted.Id), (stored.DraftWizardType, stored.DraftEntityId));
         var storedJson = JsonSerializer.Serialize(new { stored.Context, stored.StaffNote, stored.RequestedByUserId, stored.DraftEntityId });
@@ -164,13 +152,9 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
             Assert.DoesNotContain(forbidden, json, StringComparison.Ordinal);
         }
 
-        // What staff does see: ids, context codes, the property and its comune, the status.
         Assert.Equal(("compliance", OnboardingAssistContexts.PanelPolice, _world.Granted.Name, _world.Granted.City), (item.PartCode, item.Context, item.PropertyName, item.Comune));
         Assert.Equal((_world.OrgId, (Guid?)_world.Granted.Id), (item.OrgId, item.PropertyId));
 
-        // The shape is closed: the view of staff, as a record and as the DTO of the API, has exactly these members (ChannelCode, 14/11/2026: the
-        // portal of a channel access request, so support knows which one to connect; Outcome, HostNote and ReopenedAt, E20/F03/US01/T02: what «Fatto»
-        // recorded and the host's «Non funziona», codes, an instant and the host's own short note, no e-mail address in it).
         string[] members =
         [
             "Id", "OrgId", "PartCode", "PropertyId", "PropertyName", "Comune", "Context", "ChannelCode", "Status", "RequestedAt", "UpdatedAt",
@@ -185,20 +169,12 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
             property => Assert.DoesNotMatch("(?i)json|password|secret|credential|token|email|phone|iban|address|encrypted|nonce|hash|content|body|requestedby", property.Name));
     }
 
-    // ─── The request ─────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Proof (data): a request stores the REFERENCE to the draft of the host's wizard (only when it has one), marks the panel step as asked for,
-    /// raises the host's "To do" (entity <c>OnboardingAssistRequest</c>, codes and ids only) and writes <c>OnboardingAssistRequested</c> in the org
-    /// of the host with the host as the actor and three codes as details. A second open request for the same part and property is 409.
-    /// </summary>
     [Fact]
     public async Task Request_StoresTheReference_MarksTheStep_RaisesTheTodo_AndWritesTheLine()
     {
         var service = HostService();
         var step = await StartStepAsync(PanelStepKind.PoliceConnection, _world.Granted.Id);
 
-        // The host has no draft yet: no reference is stored.
         var first = await service.RequestAsync(_world.OrgWide, _world.OwnerUserId, Input(OnboardingPartKey.Compliance, OnboardingAssistContexts.PanelPolice, _world.Granted.Id), Ct);
         var stored = await _db.OnboardingAssistRequests.AsNoTracking().SingleAsync();
         Assert.Equal(first.Id, stored.Id);
@@ -207,12 +183,10 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Equal(OnboardingAssistStatus.Requested, stored.Status);
         Assert.Equal(_world.OwnerUserId, stored.RequestedByUserId);
 
-        // The step is marked, and its schedule of checks stops (support is handling it).
         var marked = await _db.OnboardingPanelSteps.AsNoTracking().SingleAsync(s => s.Id == step.Id);
         Assert.Equal(PanelStepStatus.AssistRequested, marked.Status);
         Assert.Null(marked.NextVerificationAt);
 
-        // The host's "To do": the request, by type and id, with a reason code and nothing of the host.
         var todo = await _db.InternalActivities.AsNoTracking().SingleAsync(a => a.Id == first.ActivityId);
         Assert.Equal(nameof(ActivityType.WizardResume), todo.ActivityType);
         Assert.Equal(ActivityAction.ResumeWizard, todo.Action);
@@ -224,7 +198,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Null(todo.StaffUserId);
         Assert.Null(todo.CreatedByUserId);
 
-        // The line of the log of the org of the host.
         var line = Assert.Single(await _db.OrgActivityEntries.AsNoTracking().ToListAsync());
         Assert.Equal((_world.OrgId, OrgActivityType.OnboardingAssistRequested, _world.OwnerUserId), (line.OrgId, line.Type, line.ActorUserId));
         Assert.Equal((OrgActivityArea.Account, OrgActivitySubjectType.Org, _world.OrgId.ToString()), (line.Area, line.SubjectType, line.SubjectId));
@@ -232,14 +205,12 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
             new Dictionary<string, string> { ["part"] = "compliance", ["context"] = "panelPolice", ["status"] = "requested" },
             OrgActivityDetails.Parse(line.DetailsJson));
 
-        // A second open request of the same part and property is refused.
         var again = await Assert.ThrowsAsync<DomainConflictException>(() =>
             service.RequestAsync(_world.OrgWide, _world.OwnerUserId, Input(OnboardingPartKey.Compliance, OnboardingAssistContexts.Part, _world.Granted.Id), Ct));
         Assert.Equal(OnboardingAssistCodes.AlreadyOpen, again.Code);
         Assert.Single(await _db.OnboardingAssistRequests.ToListAsync());
         Assert.Single(await _db.OrgActivityEntries.ToListAsync());
 
-        // Another part of the same property, and the same part of another property, are free.
         await service.RequestAsync(_world.OrgWide, _world.OwnerUserId, Input(OnboardingPartKey.Channels, OnboardingAssistContexts.Part, _world.Granted.Id), Ct);
         await service.RequestAsync(_world.OrgWide, _world.OwnerUserId, Input(OnboardingPartKey.Compliance, OnboardingAssistContexts.Part, _world.Hidden.Id), Ct);
         Assert.Equal(3, await _db.OnboardingAssistRequests.CountAsync());
@@ -257,7 +228,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         var input = Input(OnboardingPartKey.Channels, OnboardingAssistContexts.Part, _world.Granted.Id);
         var first = await service.RequestAsync(_world.OrgWide, _world.OwnerUserId, input, Ct);
 
-        // The call failed after the first save: the request is there, its "To do" is not.
         _db.InternalActivities.Remove(await _db.InternalActivities.SingleAsync(a => a.Id == first.ActivityId));
         (await _db.OnboardingAssistRequests.SingleAsync()).ActivityId = null;
         await _db.SaveChangesAsync();
@@ -273,20 +243,17 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Equal(OnboardingAssistCodes.ReasonRequested, todo.Reason);
         Assert.Null(todo.CompletedAt);
 
-        // The link lost and the "To do" there: it is linked again, not duplicated.
         (await _db.OnboardingAssistRequests.SingleAsync()).ActivityId = null;
         await _db.SaveChangesAsync();
         await Assert.ThrowsAsync<DomainConflictException>(() => service.RequestAsync(_world.OrgWide, _world.OwnerUserId, input, Ct));
         Assert.Equal(todo.Id, (await _db.OnboardingAssistRequests.AsNoTracking().SingleAsync()).ActivityId);
         Assert.Single(await _db.InternalActivities.ToListAsync());
 
-        // A request that has its "To do" is refused as before and changes nothing.
         await Assert.ThrowsAsync<DomainConflictException>(() => service.RequestAsync(_world.OrgWide, _world.OwnerUserId, input, Ct));
         Assert.Equal(todo.Id, (await _db.OnboardingAssistRequests.AsNoTracking().SingleAsync()).ActivityId);
         Assert.Single(await _db.InternalActivities.ToListAsync());
     }
 
-    /// <summary>The draft of the host is referenced when it exists, by the wizard and the entity it edits, and never when it is another person's, expired or about another entity.</summary>
     [Fact]
     public async Task Request_ReferencesOnlyTheDraftOfTheHostThatExists()
     {
@@ -308,7 +275,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Null(rows[other.Id].DraftWizardType);
     }
 
-    /// <summary>Proof (permission): a collaborator «Solo alcuni» asks and reads only for the properties it was given, and never for the whole org.</summary>
     [Fact]
     public async Task Request_AndList_ReachOnlyWhatTheScopeReaches()
     {
@@ -328,8 +294,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
 
         var granted = await service.RequestAsync(_world.Restricted, _world.CollaboratorId, Input(OnboardingPartKey.Compliance, OnboardingAssistContexts.Part, _world.Granted.Id), Ct);
 
-        // The owner reads the three; the collaborator only the one of the property it was given; an account that reaches what it created, the two
-        // houses it created but no request about the whole org.
         Assert.Equal(3, (await service.ListAsync(_world.OrgWide, Ct)).Count);
         Assert.Equal(granted.Id, Assert.Single(await service.ListAsync(_world.Restricted, Ct)).Id);
         var owned = await service.ListAsync(_world.OwnedByOwner, Ct);
@@ -371,11 +335,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Equal(OnboardingAssistContexts.PanelChannelAccess, ok.Context);
     }
 
-    /// <summary>
-    /// Proof (data): «Fallo per me» on the access to a channel is per portal. Two portals of the same part and property each get their own open
-    /// request (before, one request stood for every portal and the second was a 409), the same portal again is 409, the host reads the channel of
-    /// each, and support closing the request of one portal settles the step of that portal only.
-    /// </summary>
     [Fact]
     public async Task Request_ForAChannelAccess_IsOnePerPortal_AndDoneSettlesTheStepOfItsPortalOnly()
     {
@@ -391,7 +350,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Equal(OnboardingAssistCodes.AlreadyOpen, again.Code);
         Assert.Equal(["142", "274"], (await service.ListAsync(_world.OrgWide, Ct)).Select(r => r.ToDto().ChannelCode).Order());
 
-        // Support connects the first portal: its step is confirmed, the step of the other one stays with support.
         await StaffService().UpdateAsync(Staff, booking.Id, OnboardingAssistStatus.Done, null, Ct);
 
         var steps = await _db.OnboardingPanelSteps.AsNoTracking().ToDictionaryAsync(s => s.ChannelCode!);
@@ -423,7 +381,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
             Assert.DoesNotContain(personal, json, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Proof (data): the staff cannot be told (the queue fails): the host's request is stored, with its "To do" and its line, and answered all the same.</summary>
     [Fact]
     public async Task Request_WhenTheStaffCannotBeTold_TheRequestIsStoredAndAnsweredAllTheSame()
     {
@@ -492,7 +449,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         var marked = await _db.OnboardingPanelSteps.AsNoTracking().SingleAsync(s => s.Id == step.Id);
         Assert.Equal((PanelStepStatus.AssistRequested, (string?)null, 0), (marked.Status, marked.LastVerificationOutcome, marked.VerificationAttempts));
 
-        // The handoff of the import reads and confirms the very same row: with support on it, it answers as before any check.
         var handoff = new OnboardingChannelAccessHandoff(
             _db,
             new Mock<IOctorateApiClient>(MockBehavior.Strict).Object,
@@ -507,8 +463,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Equal((PanelStepStatus.AssistRequested, (string?)null), (stillWithSupport.Status, stillWithSupport.CompletedByUserId));
     }
 
-    // ─── The staff queue ─────────────────────────────────────────────────────────────────────────────────────
-
     /// <summary>
     /// Proof (permission, data): <c>done</c> on a panel context confirms the matching step with the staff user as who completed it, closes the host's
     /// "To do" of the request and the one of the step (both of the org of the request, as the staff user), and writes <c>OnboardingAssistUpdated</c> in
@@ -522,7 +476,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         var request = await HostService().RequestAsync(_world.OrgWide, _world.OwnerUserId, Input(OnboardingPartKey.Compliance, OnboardingAssistContexts.PanelPolice, _world.Granted.Id), Ct);
         Assert.NotNull(step.ActivityId);
 
-        // The tenant filter of the staff user's own context hides the host's request: the update must lift it by name.
         Assert.Empty(await _staffDb.OnboardingAssistRequests.ToListAsync());
 
         _clock.Advance(TimeSpan.FromMinutes(20));
@@ -540,13 +493,11 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Equal(_clock.GetUtcNow().UtcDateTime, stored.CompletedAt);
         Assert.Null(stored.NextVerificationAt);
 
-        // Both "To do" are closed, by the staff user, and are the host's (the org of the request).
         var todos = await _db.InternalActivities.AsNoTracking().Where(a => a.OrgId == _world.OrgId).ToListAsync();
         Assert.Equal(2, todos.Count);
         Assert.All(todos, todo => Assert.Equal((InternalActivity.StatusCompleted, Staff), (todo.Status, todo.ClosedBy)));
         Assert.All(todos, todo => Assert.NotNull(todo.CompletedAt));
 
-        // The log: the request by the host, the update by the staff user, both in the org of the request.
         var lines = (await _db.OrgActivityEntries.AsNoTracking().ToListAsync()).OrderBy(l => l.Type).ToList();
         Assert.Equal([OrgActivityType.OnboardingAssistRequested, OrgActivityType.OnboardingAssistUpdated], lines.Select(l => l.Type));
         Assert.All(lines, l => Assert.Equal(_world.OrgId, l.OrgId));
@@ -558,7 +509,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.DoesNotContain("assistenza", update.DetailsJson, StringComparison.OrdinalIgnoreCase);
         Assert.Empty(await _db.OrgActivityEntries.AsNoTracking().Where(l => l.OrgId == _world.OtherOrgId).ToListAsync());
 
-        // A closed request is not updated again.
         var closed = await Assert.ThrowsAsync<DomainConflictException>(() => StaffService().UpdateAsync(Staff, request.Id, OnboardingAssistStatus.InProgress, null, Ct));
         Assert.Equal(OnboardingAssistCodes.Closed, closed.Code);
         Assert.Equal(2, await _db.OrgActivityEntries.CountAsync());
@@ -578,7 +528,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Equal(PanelStepStatus.AssistRequested, (await _db.OnboardingPanelSteps.AsNoTracking().SingleAsync(s => s.Id == step.Id)).Status);
         Assert.Equal(2, await _db.InternalActivities.CountAsync(a => a.CompletedAt == null));
 
-        // The host reads the status behind its "To do", and the request is still the one open request of the part (a second one is refused).
         var read = Assert.Single(await HostService().ListAsync(_world.OrgWide, Ct));
         Assert.Equal(OnboardingAssistStatus.InProgress, read.Status);
         await Assert.ThrowsAsync<DomainConflictException>(() =>
@@ -600,16 +549,13 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Equal(_clock.GetUtcNow().UtcDateTime + PanelStepLimits.BackoffAfter(1), stored.NextVerificationAt);
         Assert.Null(stored.CompletedByUserId);
 
-        // The request's "To do" is closed; the "To do" of the step, still to do, is not.
         Assert.NotNull((await _db.InternalActivities.AsNoTracking().SingleAsync(a => a.Id == request.ActivityId)).CompletedAt);
         Assert.Null((await _db.InternalActivities.AsNoTracking().SingleAsync(a => a.Id == step.ActivityId)).CompletedAt);
 
-        // A new request is possible now.
         var again = await HostService().RequestAsync(_world.OrgWide, _world.OwnerUserId, Input(OnboardingPartKey.Compliance, OnboardingAssistContexts.PanelPolice, _world.Granted.Id), Ct);
         Assert.NotEqual(request.Id, again.Id);
     }
 
-    /// <summary>Proof (privacy): the note holds no e-mail address; a refused note leaves the request, the step, the "To do" and the log untouched.</summary>
     [Theory]
     [InlineData("scrivere a mario.rossi@example.com per le credenziali")]
     [InlineData("a@b")]
@@ -644,7 +590,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Equal(longest, (await staff.UpdateAsync(Staff, request.Id, OnboardingAssistStatus.InProgress, null, Ct)).StaffNote);
         Assert.Null((await staff.UpdateAsync(Staff, request.Id, OnboardingAssistStatus.InProgress, "   ", Ct)).StaffNote);
 
-        // Every accepted update wrote its line, and never the note.
         var lines = await _db.OrgActivityEntries.AsNoTracking().Where(l => l.Type == OrgActivityType.OnboardingAssistUpdated).ToListAsync();
         Assert.Equal(3, lines.Count);
         Assert.All(lines, l => Assert.DoesNotContain("xxx", l.DetailsJson, StringComparison.Ordinal));
@@ -666,7 +611,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Equal(OnboardingAssistCodes.NotFound, missing.Code);
     }
 
-    /// <summary>The queue is paged in SQL and capped at 100 a page, shows the requests of every org, open ones first and the oldest first, and narrows by status.</summary>
     [Fact]
     public async Task ListQueue_IsPaged_OrdersOpenFirst_CrossesOrgs_AndFiltersByStatus()
     {
@@ -679,7 +623,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         var staff = StaffService();
         await staff.UpdateAsync(Staff, first.Id, OnboardingAssistStatus.Done, null, Ct);
 
-        // A request of another org, written straight in the table.
         var foreign = new OnboardingAssistRequest
         {
             OrgId = _world.OtherOrgId,
@@ -707,7 +650,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Equal([first.Id], (await staff.ListQueueAsync(OnboardingAssistStatus.Done, 1, 25, Ct)).Items.Select(i => i.Id));
         Assert.Equal(3, (await staff.ListQueueAsync(OnboardingAssistStatus.Requested, 1, 25, Ct)).TotalCount);
 
-        // The bounds: 100 at most, 25 without a size, page 1 for nonsense.
         Assert.Equal(OnboardingAssistLimits.MaxPageSize, (await staff.ListQueueAsync(null, 1, 5000, Ct)).PageSize);
         Assert.Equal(OnboardingAssistLimits.DefaultPageSize, (await staff.ListQueueAsync(null, 1, 0, Ct)).PageSize);
         Assert.Equal(1, (await staff.ListQueueAsync(null, -3, 10, Ct)).Page);
@@ -738,12 +680,8 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
             Enum.GetValues<OnboardingAssistStatus>().Select(OnboardingAssistRules.StatusCode));
     }
 
-    // ─── Helpers ─────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The service as the host's request reaches it: a context with no tenant filter, like the other onboarding tests.</summary>
     private OnboardingAssistService HostService() => ServiceOn(_db);
 
-    /// <summary>The service as a platform administrator reaches it: the context of the request is under the tenant of ANOTHER org.</summary>
     private OnboardingAssistService StaffService() => ServiceOn(_staffDb);
 
     private OnboardingAssistService ServiceOn(AppDbContext db, IPushNotificationService? push = null) =>
@@ -755,7 +693,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
             _clock,
             NullLogger<OnboardingAssistService>.Instance);
 
-    /// <summary>Starts a panel step as the owner does, with the default verifiers (nothing is called in these tests).</summary>
     private async Task<PanelStepView> StartStepAsync(PanelStepKind kind, Guid? propertyId)
     {
         var steps = new OnboardingPanelStepService(
@@ -806,7 +743,6 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         public bool FilterEnabled => true;
     }
 
-    /// <summary>The push queue as the request sees it: what was asked is kept; <see cref="Failure"/>, when set, is thrown instead.</summary>
     private sealed class RecordingPush : IPushNotificationService
     {
         public List<(string Key, PushAudience Audience, PushNotificationPayload Payload)> Queued { get; } = [];

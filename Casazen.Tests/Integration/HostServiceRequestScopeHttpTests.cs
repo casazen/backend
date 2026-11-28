@@ -34,7 +34,6 @@ public class HostServiceRequestScopeHttpTests(OrgInvitationsFactory factory) : I
             memberId = await db.OrgMembers.IgnoreQueryFilters().Where(m => m.UserId == collaboratorId).Select(m => m.Id).SingleAsync();
         }
 
-        // The scenario has one new request on each property.
         using var owner = factory.CreateAuthenticatedClient(ownerId, roles: "PropertyOwner");
         using var collaborator = factory.CreateAuthenticatedClient(collaboratorId);
         Assert.Equal(2, await TotalAsync(owner));
@@ -45,7 +44,6 @@ public class HostServiceRequestScopeHttpTests(OrgInvitationsFactory factory) : I
             new { propertyScope = "Selected", propertyIds = new[] { granted.Id } });
         Assert.Equal(HttpStatusCode.OK, limited.StatusCode);
 
-        // The owner still sees both; the collaborator the one it was given, in the list and in the counters of every chip.
         Assert.Equal(2, await TotalAsync(owner));
         var list = await ReadJsonAsync(await collaborator.GetAsync("/api/service-requests?view=pending"));
         Assert.Equal(1, list.GetProperty("total").GetInt32());
@@ -56,7 +54,6 @@ public class HostServiceRequestScopeHttpTests(OrgInvitationsFactory factory) : I
         Assert.Equal(1, counts.GetProperty("pending").GetInt32());
         Assert.Equal(2, (await ReadJsonAsync(await owner.GetAsync("/api/service-requests/counts"))).GetProperty("all").GetInt32());
 
-        // The property it was not given is refused, whichever way it is asked for.
         foreach (var url in new[] { $"/api/service-requests?propertyId={hidden.Id}", $"/api/service-requests/counts?propertyId={hidden.Id}" })
         {
             var refused = await collaborator.GetAsync(url);

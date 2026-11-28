@@ -4,7 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>SU-11 (A4-15): calendar dates of the supplier KPI periods, for a Europe/Rome "today".</summary>
 public class SupplierKpiPeriodsTests
 {
     [Theory]
@@ -30,16 +29,14 @@ public class SupplierKpiPeriodsTests
             () => SupplierKpiPeriods.Resolve((SupplierKpiPeriod)99, new DateOnly(2026, 9, 25)));
     }
 
-    // ─── SP-04e: the last three months, the period before, the periods of the overview ───
-
     [Theory]
     [InlineData("2026-10-16", "2026-07-17", "2026-10-16")]
     [InlineData("2026-10-01", "2026-07-02", "2026-10-01")]
-    [InlineData("2026-05-31", "2026-03-01", "2026-05-31")] // 31 May - 3 months = 28 February, the day after is 1 March
+    [InlineData("2026-05-31", "2026-03-01", "2026-05-31")]
     [InlineData("2026-03-31", "2026-01-01", "2026-03-31")]
     [InlineData("2026-02-28", "2025-11-29", "2026-02-28")]
-    [InlineData("2024-02-29", "2023-11-30", "2024-02-29")] // leap day
-    [InlineData("2026-01-15", "2025-10-16", "2026-01-15")] // across the year
+    [InlineData("2024-02-29", "2023-11-30", "2024-02-29")]
+    [InlineData("2026-01-15", "2025-10-16", "2026-01-15")]
     public void Resolve_Last3Months_IsTheLastThreeCalendarMonthsTodayIncluded(string today, string from, string to)
     {
         var (actualFrom, actualTo) = SupplierKpiPeriods.Resolve(SupplierKpiPeriod.Last3Months, Date(today));
@@ -49,12 +46,12 @@ public class SupplierKpiPeriodsTests
     }
 
     [Theory]
-    [InlineData("2026-10-01", "2026-10-16", "2026-09-15", "2026-09-30")] // this month on the 16th: 16 days, the 16 before
-    [InlineData("2026-10-01", "2026-10-01", "2026-09-30", "2026-09-30")] // the first day of the month: one day, the one before
-    [InlineData("2026-09-17", "2026-10-16", "2026-08-18", "2026-09-16")] // 30 days
-    [InlineData("2026-07-17", "2026-10-16", "2026-04-16", "2026-07-16")] // 92 days across three months
-    [InlineData("2026-03-01", "2026-03-31", "2026-01-29", "2026-02-28")] // across February
-    [InlineData("2026-01-01", "2026-01-10", "2025-12-22", "2025-12-31")] // across the year
+    [InlineData("2026-10-01", "2026-10-16", "2026-09-15", "2026-09-30")]
+    [InlineData("2026-10-01", "2026-10-01", "2026-09-30", "2026-09-30")]
+    [InlineData("2026-09-17", "2026-10-16", "2026-08-18", "2026-09-16")]
+    [InlineData("2026-07-17", "2026-10-16", "2026-04-16", "2026-07-16")]
+    [InlineData("2026-03-01", "2026-03-31", "2026-01-29", "2026-02-28")]
+    [InlineData("2026-01-01", "2026-01-10", "2025-12-22", "2025-12-31")]
     public void Previous_IsTheSameNumberOfDaysEndingTheDayBefore(string from, string to, string expectedFrom, string expectedTo)
     {
         var (previousFrom, previousTo) = SupplierKpiPeriods.Previous(Date(from), Date(to));

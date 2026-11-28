@@ -18,37 +18,28 @@ namespace Casazen.Core.Entities;
 [Table("PropertyIstatCredentials")]
 public class PropertyIstatCredentials : ITenantOwned
 {
-    /// <summary>Longest user name accepted (plain text).</summary>
     public const int MaxUsernameLength = 100;
 
-    /// <summary>Longest password accepted (plain text).</summary>
     public const int MaxPasswordLength = 200;
 
-    /// <summary>Longest code of the structure accepted (plain text).</summary>
     public const int MaxStructureCodeLength = 50;
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The property (FK, CASCADE, unique).</summary>
     public Guid PropertyId { get; set; }
 
-    /// <summary>Tenant of the row, copied from the property when it is created (TN-2).</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>User name of the regional portal, encrypted at rest.</summary>
     [Required]
     public string Username { get; set; } = string.Empty;
 
-    /// <summary>Password of the regional portal, encrypted at rest.</summary>
     [Required]
     public string Password { get; set; } = string.Empty;
 
-    /// <summary>The code of the structure in the regional system (CIR, CUSR...), encrypted at rest; <c>null</c> when the portal asks for none.</summary>
     public string? StructureCode { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>Last time the credentials were set or replaced: the "configured on" date shown to the host.</summary>
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

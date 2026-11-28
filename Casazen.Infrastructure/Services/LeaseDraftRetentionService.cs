@@ -31,13 +31,10 @@ public sealed class LeaseDraftRetentionService(
     ILogger<LeaseDraftRetentionService> logger,
     TimeProvider? timeProvider = null) : ILeaseDraftRetentionService
 {
-    /// <summary>The key of the session lock of a run (<see cref="PostgresAdvisoryLocks.Scope.LeaseDraftRetentionRun"/>).</summary>
     internal const string RunLockKey = "lease-draft-retention";
 
-    /// <summary>Drafts read per batch.</summary>
     internal const int BatchSize = 100;
 
-    /// <summary>Batches per run: 5,000 drafts a night; the next run takes the rest.</summary>
     internal const int MaxBatchesPerRun = 50;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -55,8 +52,6 @@ public sealed class LeaseDraftRetentionService(
         var cutoff = _clock.GetUtcNow().UtcDateTime.AddDays(-options.Value.DraftRetentionDays);
 
         var deleted = 0;
-        // The drafts this run could not delete (busy, saved in the meantime, refused): not read again, so one that refuses to go at the
-        // head of the list cannot stop the ones behind it, night after night.
         var left = new HashSet<Guid>();
         for (var batch = 0; batch < MaxBatchesPerRun; batch++)
         {
@@ -85,7 +80,6 @@ public sealed class LeaseDraftRetentionService(
             }
 
             deleted += deletedInBatch;
-            // Fewer than a full batch: nothing is left to read. A batch that deleted nothing is not read again either (its drafts are in `left`).
             if (ids.Count < BatchSize)
                 break;
         }
@@ -100,7 +94,6 @@ public sealed class LeaseDraftRetentionService(
         return new LeaseDraftRetentionResult(false, deleted, cutoff);
     }
 
-    /// <summary>Deletes one draft if it is still abandoned once the row is locked; false when it was left (changed, signed) or could not be deleted.</summary>
     internal async Task<bool> TryDeleteAsync(Guid leaseId, DateTime cutoff, CancellationToken cancellationToken)
     {
         IReadOnlyList<string> files;
@@ -124,12 +117,10 @@ public sealed class LeaseDraftRetentionService(
         }
         catch (DomainConflictException)
         {
-            // Not deletable after all (a record that refers to it): left for the owner, who will see it in the list.
             return false;
         }
         catch (Exception ex) when (LeaseDraftLocking.IsContention(ex))
         {
-            // Somebody is working on it right now: it is not abandoned. The next run looks again.
             return false;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

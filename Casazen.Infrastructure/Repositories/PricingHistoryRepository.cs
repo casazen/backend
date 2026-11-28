@@ -20,19 +20,6 @@ public class PricingHistoryRepository(AppDbContext context) : IPricingHistoryRep
             .ToListAsync();
     }
 
-    public async Task<IEnumerable<PricingHistory>> GetByPropertyIdAndDateRangeAsync(
-        Guid propertyId,
-        DateTime startDate,
-        DateTime endDate)
-    {
-        return await context.PricingHistories
-            .Where(h => h.PropertyId == propertyId &&
-                       h.AdaptationDate >= startDate &&
-                       h.AdaptationDate <= endDate)
-            .OrderByDescending(h => h.AdaptationDate)
-            .ToListAsync();
-    }
-
     public async Task<PricingHistory> AddAsync(PricingHistory history)
     {
         context.PricingHistories.Add(history);

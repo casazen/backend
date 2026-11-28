@@ -46,22 +46,16 @@ public sealed class CleaningAutomationService(
     TimeProvider timeProvider,
     ILogger<CleaningAutomationService> logger) : ICleaningAutomationService
 {
-    /// <summary>Key of the note of the request for the supplier in <c>EmailTexts</c> (Italian and English): «prezzo concordato».</summary>
     internal const string RequestNoteKey = "CleaningAutomation_RequestNote";
 
-    /// <summary>Key of the note of the staff activity in <c>EmailTexts</c> (Italian and English).</summary>
     internal const string StaffNoteKey = "CleaningAutomation_StaffNote";
 
-    /// <summary>Key of the reason of the cancellation in <c>EmailTexts</c> (Italian and English): «prenotazione annullata».</summary>
     internal const string CancelReasonKey = "CleaningAutomation_CancelReason";
 
-    /// <summary>Key of the reason of the «To do» about a cleaning the host has to decide on, in <c>EmailTexts</c> (Italian and English).</summary>
     internal const string DateChangedReasonKey = "TodoReason_CleaningDateChanged";
 
-    /// <summary>The user the log of a request made by the automation names: nobody signed in.</summary>
     internal const string SystemUserId = "system:cleaning-automation";
 
-    /// <summary>The stay and the property facts the automation reads, never the guest or the prices.</summary>
     private sealed record StayFacts(
         Guid BookingId,
         Guid PropertyId,
@@ -88,8 +82,6 @@ public sealed class CleaningAutomationService(
         CleaningAutomationResult? done = null;
         string? failureCode = null;
 
-        // The lock of the stay comes first and everything is read under it: whoever held it before (another trigger of the stay, a change of its dates, its cancellation) has
-        // committed, so the stay, the setup and the key are judged on what is there now, not on what they were when the event was handled.
         await using (var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, cancellationToken, StayLock(bookingId)))
         {
             var readStay = await ReadStayAsync(orgId, bookingId, cancellationToken);
@@ -163,7 +155,6 @@ public sealed class CleaningAutomationService(
             return new CleaningAutomationResult(CleaningAutomationOutcome.Failed, failureCode);
         }
 
-        // The "To do" of a stay that ended without a cleaning (raised by the departure the host registered before the check-out time) has its cleaning now.
         await CloseCleaningDueAsync(orgId, bookingId, cancellationToken);
 
         logger.LogInformation(
@@ -177,15 +168,12 @@ public sealed class CleaningAutomationService(
         if (!featureFlags.IsEnabled(FeatureFlags.Routines))
             return new CleaningAutomationResult(CleaningAutomationOutcome.ModuleOff);
 
-        // Under the lock of the stay, like the creation: a change that comes while the cleaning is being made waits for it and finds its key. The key, the stay and the setup are read
-        // after the lock, so the change is judged on what is there now. The services the change calls join the transaction; it is committed here.
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, cancellationToken, StayLock(bookingId));
 
         var cleaning = await db.StayCleanings.FirstOrDefaultAsync(c => c.OrgId == orgId && c.BookingId == bookingId, cancellationToken);
         if (cleaning is null)
             return new CleaningAutomationResult(CleaningAutomationOutcome.Unchanged);
 
-        // A stay that does not happen is the business of its cancellation, not of a change of its dates.
         var stay = await ReadStayAsync(orgId, bookingId, cancellationToken);
         if (stay is null || !IsDue(stay))
             return new CleaningAutomationResult(CleaningAutomationOutcome.Unchanged);
@@ -211,7 +199,6 @@ public sealed class CleaningAutomationService(
         if (!featureFlags.IsEnabled(FeatureFlags.Routines))
             return new CleaningAutomationResult(CleaningAutomationOutcome.ModuleOff);
 
-        // Under the lock of the stay, and everything read after it (see FollowStayDatesAsync).
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, cancellationToken, StayLock(bookingId));
 
         var cleaning = await db.StayCleanings.FirstOrDefaultAsync(c => c.OrgId == orgId && c.BookingId == bookingId, cancellationToken);
@@ -233,12 +220,6 @@ public sealed class CleaningAutomationService(
         return result;
     }
 
-    // ─── Creation ────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The request of the host to the supplier of the setup, through the service of the host's own requests (every check it makes), then the row that keys the stay. Called
-    /// with the lock of the stay held and the transaction open: the request joins it, and both are committed by the caller.
-    /// </summary>
     private async Task<CleaningAutomationResult> CreateRequestAsync(Guid orgId, StayFacts stay, PropertyCleaningSetup setup, CancellationToken cancellationToken)
     {
         if (setup is not { SupplierOrgId: { } supplierOrgId, PriceCents: { } price })
@@ -275,7 +256,6 @@ public sealed class CleaningAutomationService(
         return new CleaningAutomationResult(CleaningAutomationOutcome.Created, null, ServiceRequestId: request.Id);
     }
 
-    /// <summary>The staff activity of the member of the setup, then the row that keys the stay. Called with the lock held and the transaction open.</summary>
     private async Task<CleaningAutomationResult> CreateActivityAsync(Guid orgId, StayFacts stay, PropertyCleaningSetup setup, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(setup.StaffUserId))
@@ -325,10 +305,6 @@ public sealed class CleaningAutomationService(
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// The stay has a cleaning someone asked for: a request of category cleaning that is not cancelled or refused (what <c>BookingCleaningActivityHandler</c> reads as
-    /// «requested») or a staff activity of type Cleaning that is not cancelled.
-    /// </summary>
     private async Task<bool> IsAlreadyPlannedAsync(Guid orgId, Guid bookingId, CancellationToken cancellationToken)
     {
         var requested = await db.ServiceRequests
@@ -353,8 +329,6 @@ public sealed class CleaningAutomationService(
                        cancellationToken);
     }
 
-    // ─── Changes of the stay ─────────────────────────────────────────────────────────────────────────────────────────
-
     private async Task<CleaningAutomationResult> MoveRequestAsync(
         Guid orgId,
         StayFacts stay,
@@ -365,11 +339,9 @@ public sealed class CleaningAutomationService(
     {
         var request = await ReadRequestAsync(orgId, cleaning, cancellationToken);
 
-        // Started, done, refused or cancelled: nothing to move.
         if (request is not { Status: ServiceRequestStatus.Richiesto or ServiceRequestStatus.PresoInCarico })
             return new CleaningAutomationResult(CleaningAutomationOutcome.Unchanged);
 
-        // Nobody answered, and nothing hangs on the old time (no backup that holds it, no time proposed, no quote waiting): the request moves.
         if (request is { Status: ServiceRequestStatus.Richiesto, GroupId: null, ProposedStartUtc: null, QuoteSentAt: null })
         {
             var length = request is { ScheduledStartUtc: { } begins, ScheduledEndUtc: { } ends } && ends > begins
@@ -381,8 +353,6 @@ public sealed class CleaningAutomationService(
             }
             catch (DomainException ex)
             {
-                // The supplier is busy then, or the request changed meanwhile: the host decides. The change the service refused may still be tracked: it is forgotten, so the save of the
-                // "To do" below is not a second try of it.
                 DiscardPendingChanges();
                 logger.LogInformation(
                     "Cleaning request {RequestId} of stay {BookingId} was not moved: {Code}",
@@ -396,7 +366,6 @@ public sealed class CleaningAutomationService(
             return new CleaningAutomationResult(CleaningAutomationOutcome.Moved, null, ServiceRequestId: request.Id);
         }
 
-        // Taken by the supplier, or with an offer waiting: the host decides what happens to a job somebody agreed to.
         return await LeaveToTheHostAsync(orgId, stay, cleaning, request.Id, code: null, cancellationToken);
     }
 
@@ -404,11 +373,9 @@ public sealed class CleaningAutomationService(
     {
         var activity = await ReadActivityAsync(orgId, cleaning, tracked: true, cancellationToken);
 
-        // Started, done or cancelled: nothing to move.
         if (activity is not { Status: InternalActivity.StatusPending })
             return new CleaningAutomationResult(CleaningAutomationOutcome.Unchanged);
 
-        // One save: the activity and the key move together.
         activity.ScheduledAt = start;
         cleaning.ScheduledStartUtc = start;
         cleaning.UpdatedAt = timeProvider.GetUtcNow().UtcDateTime;
@@ -420,7 +387,6 @@ public sealed class CleaningAutomationService(
     {
         var request = await ReadRequestAsync(orgId, cleaning, cancellationToken);
 
-        // Not started: the host's cancellation, with its reason; the supplier is told by the existing notice. Started, done or over: left alone.
         if (request is not { Status: ServiceRequestStatus.Richiesto or ServiceRequestStatus.PresoInCarico })
             return new CleaningAutomationResult(CleaningAutomationOutcome.Unchanged);
 
@@ -434,7 +400,6 @@ public sealed class CleaningAutomationService(
         }
         catch (DomainException ex)
         {
-            // The supplier started the work, or the request changed, between the read and the cancellation: nothing to cancel any more.
             logger.LogInformation("Cleaning request {RequestId} of stay {BookingId} was not cancelled: {Code}", request.Id, cleaning.BookingId, ex.Code);
             return new CleaningAutomationResult(CleaningAutomationOutcome.Unchanged, ex.Code, ServiceRequestId: request.Id);
         }
@@ -452,7 +417,6 @@ public sealed class CleaningAutomationService(
         if (activity is not { Status: InternalActivity.StatusPending })
             return new CleaningAutomationResult(CleaningAutomationOutcome.Unchanged);
 
-        // Kept for the audit, never completed: no cost is read from it.
         activity.Status = InternalActivity.StatusCancelled;
         activity.Notes = await BookingTodoItems.ReasonAsync(db, orgId, CancelReasonKey, cancellationToken);
         cleaning.UpdatedAt = timeProvider.GetUtcNow().UtcDateTime;
@@ -460,10 +424,6 @@ public sealed class CleaningAutomationService(
         return new CleaningAutomationResult(CleaningAutomationOutcome.Cancelled, null, InternalActivityId: activity.Id);
     }
 
-    /// <summary>
-    /// The cleaning stays on the old day and the host decides: a "To do" about the stay (one while it is open) due when the cleaning is, and an alert to the people of the
-    /// property. The cleaning keeps the start it was planned for, so the next change of the stay is judged against it.
-    /// </summary>
     private async Task<CleaningAutomationResult> LeaveToTheHostAsync(
         Guid orgId,
         StayFacts stay,
@@ -490,19 +450,12 @@ public sealed class CleaningAutomationService(
         return new CleaningAutomationResult(CleaningAutomationOutcome.HostToDecide, code, requestId ?? cleaning.ServiceRequestId, cleaning.InternalActivityId);
     }
 
-    // ─── Reads and helpers ───────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Forgets the rows a failed attempt added to, changed in or removed from the unit of work and never saved, or saved in the transaction that was rolled back: they are detached, so
-    /// the next save writes only what the caller adds after it. What the routine engine tracks for its own execution is saved before the action runs, so it is never among them.
-    /// </summary>
     private void DiscardPendingChanges()
     {
         foreach (var entry in db.ChangeTracker.Entries().Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted).ToList())
             entry.State = EntityState.Detached;
     }
 
-    /// <summary>The stay and its property, in the org: <c>null</c> when the booking is not the org's, or its property is gone.</summary>
     private Task<StayFacts?> ReadStayAsync(Guid orgId, Guid bookingId, CancellationToken cancellationToken) =>
         (from booking in db.Bookings.AsNoTracking()
          join property in db.Properties.AsNoTracking() on booking.PropertyId equals property.Id
@@ -521,7 +474,6 @@ public sealed class CleaningAutomationService(
              property.Currency))
         .FirstOrDefaultAsync(cancellationToken);
 
-    /// <summary>The stay happens: the one definition of a stay that is due (<see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/>, no no-show).</summary>
     private static bool IsDue(StayFacts stay) => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(stay.Status) && stay.NoShowAt is null;
 
     /// <summary>
@@ -551,7 +503,6 @@ public sealed class CleaningAutomationService(
                ?? request;
     }
 
-    /// <summary>The staff activity of the cleaning, as the org owns it; the row is changed by the caller, which asks for it tracked.</summary>
     private async Task<InternalActivity?> ReadActivityAsync(Guid orgId, StayCleaning cleaning, bool tracked, CancellationToken cancellationToken)
     {
         if (cleaning.InternalActivityId is not { } id)
@@ -561,7 +512,6 @@ public sealed class CleaningAutomationService(
         return await (tracked ? query : query.AsNoTracking()).FirstOrDefaultAsync(cancellationToken);
     }
 
-    /// <summary>Closes the open "To do" of a stay that ended without a cleaning: the stay has its cleaning now. Closed by the system, once.</summary>
     private async Task CloseCleaningDueAsync(Guid orgId, Guid bookingId, CancellationToken cancellationToken)
     {
         var typeName = nameof(ActivityType.CleaningDue);
@@ -580,7 +530,6 @@ public sealed class CleaningAutomationService(
             await activities.CloseAsync(id, InternalActivity.ClosedBySystem, cancellationToken);
     }
 
-    /// <summary>The alert of the stay to the people the notifications of the property go to (the person in charge while they reach it, the administrators), once for each while it is open.</summary>
     private async Task AlertAsync(Guid orgId, StayFacts stay, DateTime? deadline, CancellationToken cancellationToken)
     {
         var users = await HostNotificationAudience

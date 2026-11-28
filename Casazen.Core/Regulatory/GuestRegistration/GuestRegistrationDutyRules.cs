@@ -17,7 +17,6 @@ namespace Casazen.Core.Regulatory.GuestRegistration;
 /// </remarks>
 public static class GuestRegistrationDutyRules
 {
-    /// <summary>What the regime says when the host has not decided.</summary>
     public static GuestRegistrationEffectiveDuty DefaultDuty(GuestRegistrationRegime regime)
     {
         ArgumentNullException.ThrowIfNull(regime);
@@ -34,7 +33,6 @@ public static class GuestRegistrationDutyRules
         return reportsAndCoversPrivateRentals ? GuestRegistrationEffectiveDuty.Required : GuestRegistrationEffectiveDuty.Ask;
     }
 
-    /// <summary>The duty in effect: the host's setting when there is one, else <see cref="DefaultDuty"/>.</summary>
     public static GuestRegistrationEffectiveDuty EffectiveDuty(GuestRegistrationRegime regime, GuestNotificationOverride? hostChoice) => hostChoice switch
     {
         GuestNotificationOverride.Required => GuestRegistrationEffectiveDuty.Required,

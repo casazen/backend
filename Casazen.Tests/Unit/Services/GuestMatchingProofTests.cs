@@ -45,7 +45,6 @@ public class GuestMatchingProofTests
         var someoneElse = CrmTestWorld.AddGuest(
             db, orgId, "Luca", "Bianchi", "luca.bianchi@example.com", dateOfBirth: new DateTime(1990, 1, 1, 0, 0, 0, DateTimeKind.Utc));
         CrmTestWorld.AddBooking(db, someoneElse, propertyId, BookingStatus.Confirmed, BookingSource.Direct, 60, 2, 260m);
-        // The same person with the same address and birth date in another org: a profile never crosses the tenant.
         var otherOrgId = Guid.NewGuid();
         var elsewhere = CrmTestWorld.AddGuest(db, otherOrgId, "Mario", "Rossi", "mario.rossi@example.com", dateOfBirth: birth);
         CrmTestWorld.AddBooking(db, elsewhere, Guid.NewGuid(), BookingStatus.Confirmed, BookingSource.Direct, 80, 2, 280m);
@@ -54,7 +53,6 @@ public class GuestMatchingProofTests
         var matching = CrmTestWorld.Matching(db, clock);
 
         var profile = await matching.FindOrCreateProfileAsync(first, Ct);
-        // The address of the first record becomes a contact: the key the second record is found by.
         await AddEmailContactAsync(db, first, GuestContactOrigin.DirectBooking);
         var byAddress = await matching.FindOrCreateProfileAsync(sameAddress, Ct);
         var byNameAndBirth = await matching.FindOrCreateProfileAsync(sameNameAndBirth, Ct);
@@ -95,7 +93,6 @@ public class GuestMatchingProofTests
         var matching = CrmTestWorld.Matching(db, clock);
         var annaProfile = await matching.FindOrCreateProfileAsync(anna, Ct);
         var lucaProfile = await matching.FindOrCreateProfileAsync(luca, Ct);
-        // The same guest again: it keeps its profile and nothing is proposed twice.
         await matching.FindOrCreateProfileAsync(luca, Ct);
 
         Assert.NotEqual(annaProfile.Id, lucaProfile.Id);
@@ -132,7 +129,6 @@ public class GuestMatchingProofTests
             guestId = booker.Id;
         }
 
-        // Each sync has a context of its own, as in the job and in the event bus, and has read the guest while it had no link.
         await using var firstDb = CrmTestWorld.Open(store);
         await using var secondDb = CrmTestWorld.Open(store);
         var first = await firstDb.Guests.SingleAsync(g => g.Id == guestId, Ct);
@@ -177,7 +173,6 @@ public class GuestMatchingProofTests
             secondId = second.Id;
         }
 
-        // The run that fails: the second guest shares the phone of the first, so its profile comes with a proposal, and the save is refused.
         refuse.Armed = true;
         await using (var db = CrmTestWorld.Open(store))
         {
@@ -193,7 +188,6 @@ public class GuestMatchingProofTests
             Assert.Null((await db.Guests.AsNoTracking().SingleAsync(g => g.Id == secondId, Ct)).GuestCrmProfileId);
         }
 
-        // The next run makes the profile again, with its question.
         await using (var db = CrmTestWorld.Open(store))
         {
             var guest = await db.Guests.SingleAsync(g => g.Id == secondId, Ct);
@@ -206,16 +200,9 @@ public class GuestMatchingProofTests
         }
     }
 
-    /// <summary>
-    /// Privacy rule: a forward address of an online travel agency cannot join two guests. Two different people whose bookings come from two
-    /// channels with the same forward address, a direct booking that brings an address already stored as a forward, two direct bookings with the
-    /// same address on a relay domain of the list, and two bookings of a portal with no value of its own (<c>OtherChannel</c>, an OTA for the code)
-    /// whose address the contact service stored as a forward: seven guests, seven profiles, and no proposal.
-    /// </summary>
     [Fact]
     public async Task GuestMatching_OtaForwardAddress_IsNeverAKey_Test()
     {
-        // One definition of an OTA in the code: the forward rule follows it, OtherChannel included (it once listed six channels and left it out).
         Assert.All(Enum.GetValues<BookingSource>(), source => Assert.Equal(FiscalCopy.IsOtaBookingSource(source), OtaForwardAddress.IsOtaSource(source)));
         Assert.True(OtaForwardAddress.IsOtaSource(BookingSource.OtherChannel));
 
@@ -235,7 +222,6 @@ public class GuestMatchingProofTests
         CrmTestWorld.AddBooking(db, onRelayOne, propertyId, BookingStatus.Confirmed, BookingSource.Direct, 50, 2, 340m);
         var onRelayTwo = CrmTestWorld.AddGuest(db, orgId, "Marta", "Neri", "abc123@relay.example.org");
         CrmTestWorld.AddBooking(db, onRelayTwo, propertyId, BookingStatus.Confirmed, BookingSource.Direct, 70, 2, 360m);
-        // A portal of Octorate with no value of its own (OtherChannel) is an OTA for the code: two people it gives one address are two guests.
         var viaPortal = CrmTestWorld.AddGuest(db, orgId, "Sara", "Blu", "portal-2290@guest.example.com");
         CrmTestWorld.AddBooking(db, viaPortal, propertyId, BookingStatus.Confirmed, BookingSource.OtherChannel, 90, 2, 380m);
         var viaPortalToo = CrmTestWorld.AddGuest(db, orgId, "Nico", "Viola", "portal-2290@guest.example.com");
@@ -249,8 +235,6 @@ public class GuestMatchingProofTests
         {
             profiles.Add((await matching.FindOrCreateProfileAsync(guest, Ct)).Id);
 
-            // The first guest of each address leaves it as a contact, an OTA forward as the contact service stores it: if it were a key, the next
-            // guest would be found by it. The address of the portal is stored by the contact service itself, which must know the portal as a channel.
             if (guest == viaAirbnb || guest == onRelayOne)
                 await AddEmailContactAsync(db, guest, GuestContactOrigin.OtaForward);
             else if (guest == viaPortal)
@@ -309,7 +293,6 @@ public class GuestMatchingProofTests
             guestId = booker.Id;
         }
 
-        // A context of its own, as in a job: the booker is read from the database.
         await using var db = CrmTestWorld.Open(store);
         var matching = CrmTestWorld.Matching(db, CrmTestWorld.Clock());
         var guest = await db.Guests.SingleAsync(g => g.Id == guestId, Ct);
@@ -348,7 +331,6 @@ public class GuestMatchingProofTests
         ];
         Assert.All(neverThere, secret => Assert.DoesNotContain(secret, everything, StringComparison.Ordinal));
 
-        // The model has no place for any of it.
         string[] alloggiatiFields =
         [
             nameof(Guest.DateOfBirth),
@@ -367,7 +349,6 @@ public class GuestMatchingProofTests
         }
     }
 
-    /// <summary>The e-mail contact of a guest as the contact service stores it: the keyed hash of the normalized address, on the profile of the guest.</summary>
     private static async Task AddEmailContactAsync(AppDbContext db, Guest guest, GuestContactOrigin origin)
     {
         var address = CrmNormalizer.NormalizeEmail(guest.Email);
@@ -385,10 +366,6 @@ public class GuestMatchingProofTests
         await db.SaveChangesAsync(Ct);
     }
 
-    /// <summary>
-    /// A database that refuses every save that carries a proposed merge, while it is armed: the exception stands for any error of the save. A
-    /// save without a proposal goes through, so a profile saved first and its proposals after would leave the profile behind.
-    /// </summary>
     private sealed class RefuseProposals : SaveChangesInterceptor
     {
         public bool Armed { get; set; }

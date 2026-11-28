@@ -98,7 +98,6 @@ public class ErrorHandlingMiddlewareTests
     [Fact]
     public async Task InvokeAsync_DomainForbiddenException_Returns403WithItsOwnCodeAndLocalizedMessage()
     {
-        // AM-02: the signed-in account is not the one the invitation was written for.
         var response = await InvokeAsync(new DomainForbiddenException("invitation_email_mismatch", "InvitationEmailMismatch"));
 
         Assert.Equal(StatusCodes.Status403Forbidden, response.Status);
@@ -129,7 +128,6 @@ public class ErrorHandlingMiddlewareTests
     [Fact]
     public async Task InvokeAsync_DomainPayloadTooLargeException_Returns413_AndUnsupportedMediaType_Returns415_WithTheirOwnCodes()
     {
-        // SP-13b: the images of the showcase.
         var large = await InvokeAsync(new DomainPayloadTooLargeException("showcase_media_too_large", "ShowcaseMediaLogoTooLarge"));
         var wrong = await InvokeAsync(new DomainUnsupportedMediaTypeException("showcase_media_unsupported_type", "ShowcaseMediaUnsupportedType"));
 

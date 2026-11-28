@@ -7,8 +7,6 @@ using Casazen.Core.Suppliers;
 
 namespace Casazen.Web.DTOs.Supplier;
 
-// ─── Requests ────────────────────────────────────────────────────────────────
-
 public class SupplierRegisterRequest
 {
     [Required, EmailAddress, MaxLength(255)]
@@ -23,22 +21,16 @@ public class SupplierRegisterRequest
     [Required, MaxLength(20)]
     public string ComuneCode { get; set; } = string.Empty;
 
-    /// <summary>Token of the invite link (SU-01). A malformed or truncated value answers <c>supplier_invite_invalid</c>.</summary>
     [MaxLength(256)]
     public string? InviteToken { get; set; }
 }
 
-/// <summary>Body of <c>POST /api/suppliers/invites/lookup</c>: the token stays out of URLs and request logs.</summary>
 public class SupplierInviteLookupRequest
 {
     [Required, MaxLength(256)]
     public string Token { get; set; } = string.Empty;
 }
 
-/// <summary>
-/// Body of <c>POST /api/suppliers/claim</c> (SU-02). <see cref="ClaimToken"/> is the token of an anonymous
-/// self-serve registration; without it the claim relies on the verified account email.
-/// </summary>
 public class SupplierClaimRequest
 {
     [MaxLength(256)]
@@ -58,7 +50,6 @@ public class UpdateSupplierProfileRequest
 
     public IEnumerable<string>? Categories { get; set; }
 
-    /// <summary>Comuni written as text (kept as written; the web app sends only the ones it could not match to the list).</summary>
     public IEnumerable<string>? Comuni { get; set; }
 
     /// <summary>
@@ -79,19 +70,16 @@ public class CompleteActivationRequest
     [Required]
     public bool TosAccepted { get; set; }
 
-    /// <summary>The Terms of Service version the supplier saw (<c>tos.currentVersion</c> of the activation status); 409 when it is not the current one.</summary>
     [Required, MaxLength(100)]
     public string TosVersion { get; set; } = string.Empty;
 }
 
-/// <summary>Re-acceptance of the current Terms of Service by an active supplier.</summary>
 public class AcceptSupplierTosRequest
 {
     [Required, MaxLength(100)]
     public string TosVersion { get; set; } = string.Empty;
 }
 
-/// <summary>The wizard step (1-5) the supplier reached.</summary>
 public class SetActivationStepRequest
 {
     [Range(1, 5)]
@@ -126,8 +114,6 @@ public class AdminInviteSupplierRequest
     public string? Message { get; set; }
 }
 
-// ─── Responses ───────────────────────────────────────────────────────────────
-
 public class SupplierRegisterResponse
 {
     public Guid OrgId { get; set; }
@@ -140,7 +126,6 @@ public class SupplierRegisterResponse
     /// </summary>
     public bool RolesSynced { get; set; }
 
-    /// <summary>Stable error code of the failed Auth0 sync, null when synced or not attempted.</summary>
     public string? RolesSyncError { get; set; }
 
     /// <summary>
@@ -149,16 +134,13 @@ public class SupplierRegisterResponse
     /// </summary>
     public string? ClaimToken { get; set; }
 
-    /// <summary>UTC expiry of <see cref="ClaimToken"/>.</summary>
     public DateTime? ClaimExpiresAt { get; set; }
 }
 
-/// <summary>Outcome of <c>POST /api/suppliers/claim</c>: the caller is linked to <see cref="OrgId"/>.</summary>
 public class SupplierClaimResponse
 {
     public Guid OrgId { get; set; }
 
-    /// <summary>Where the web app continues: the activation wizard of the supplier console.</summary>
     public string RedirectUrl { get; set; } = string.Empty;
 
     /// <summary>
@@ -167,11 +149,9 @@ public class SupplierClaimResponse
     /// </summary>
     public bool RolesSynced { get; set; }
 
-    /// <summary>Stable error code of the failed Auth0 sync, null when synced.</summary>
     public string? RolesSyncError { get; set; }
 }
 
-/// <summary>What an invite grants, to pre-fill the registration page (email and comune are then locked).</summary>
 public class SupplierInviteLookupResponse
 {
     public string Email { get; set; } = string.Empty;
@@ -184,10 +164,8 @@ public class SupplierInviteLookupResponse
     public DateTime ExpiresAt { get; set; }
 }
 
-/// <summary>Self-serve registration settings for the registration page (SU-01).</summary>
 public class SupplierRegistrationOptionsResponse
 {
-    /// <summary>False while no pilot comune is configured: suppliers join by invite only.</summary>
     public bool SelfServeEnabled { get; set; }
 
     public IEnumerable<SupplierPilotComuneDto> PilotComuni { get; set; } = [];
@@ -209,13 +187,10 @@ public class SupplierProfileDto
     public string Email { get; set; } = string.Empty;
     public IEnumerable<string> Categories { get; set; } = [];
 
-    /// <summary>Comuni written as text before the official list (or while it is not imported): shown as written.</summary>
     public IEnumerable<string> Comuni { get; set; } = [];
 
-    /// <summary>ISTAT codes of the comuni chosen from the official list (SU-04).</summary>
     public IEnumerable<string> ComuneIstatCodes { get; set; } = [];
 
-    /// <summary>The chosen comuni with name, province and region; a stored code that is not in the list is only in <see cref="ComuneIstatCodes"/>.</summary>
     public IEnumerable<ComuneDto> OperatingComuni { get; set; } = [];
     public string? Bio { get; set; }
     public IEnumerable<string> PhotoUrls { get; set; } = [];
@@ -224,10 +199,8 @@ public class SupplierProfileDto
 
 public class ActivationStatusDto
 {
-    /// <summary><c>Pending</c> (never activated), <c>Active</c> or <c>Suspended</c>.</summary>
     public string Status { get; set; } = string.Empty;
 
-    /// <summary>Step number (1-5) to open: saved by the server, so the wizard resumes where the supplier stopped.</summary>
     public int CurrentStep { get; set; }
 
     public IEnumerable<ActivationStepDto> Steps { get; set; } = [];
@@ -236,16 +209,12 @@ public class ActivationStatusDto
 
 public class ActivationStepDto
 {
-    /// <summary><c>identity</c>, <c>services</c>, <c>showcase</c>, <c>profile</c>, <c>terms</c>.</summary>
     public string Id { get; set; } = string.Empty;
 
-    /// <summary><c>completed</c> or <c>pending</c>.</summary>
     public string Status { get; set; } = string.Empty;
 
-    /// <summary>Stable code of the first missing requirement (the client translates it), null when the step is complete.</summary>
     public string? Blocker { get; set; }
 
-    /// <summary>False for a step that never blocks the activation.</summary>
     public bool Required { get; set; }
 }
 
@@ -256,7 +225,6 @@ public class SupplierTosDto
     public DateTime? AcceptedAt { get; set; }
     public bool ReacceptanceRequired { get; set; }
 
-    /// <summary>The supplier cannot take, complete or reject requests until it accepts the current version.</summary>
     public bool BlocksActions { get; set; }
 }
 
@@ -265,7 +233,6 @@ public class CompleteActivationResponse
     public string Status { get; set; } = string.Empty;
 }
 
-/// <summary>A page of <c>GET /api/supplier/inbox</c> (open requests, history, or one status; SU-08).</summary>
 public class SupplierInboxResponse
 {
     public IEnumerable<SupplierServiceRequestDto> Items { get; set; } = [];
@@ -298,18 +265,8 @@ public class GetSuppliersQuery
     public Guid? PropertyId { get; set; }
     public string? Category { get; set; }
 
-    /// <summary>
-    /// Words to look for (SR-09a, MKT): every word must be in the legal name of the supplier, in one of its categories (the code or
-    /// its Italian or English name) or in the name of one of its published services (all of them, not only the three listed);
-    /// the case and the accents do not matter. Blank is no filter.
-    /// </summary>
     public string? Q { get; set; }
 
-    /// <summary>
-    /// The order of the list (SR-09a, SP-REL): <c>recommended</c> (default: the best-ranked supplier first, by load, bio and reliability),
-    /// <c>name</c>, <c>price</c> (the lowest "from" price first, suppliers without a price last) or <c>response</c> (the fastest
-    /// measured response first, suppliers without one last). Anything else is 400 <c>validation_error</c> (<c>SupplierSortInvalid</c>).
-    /// </summary>
     public string? Sort { get; set; }
 }
 
@@ -329,24 +286,12 @@ public class SupplierPickerDto
     public string? Bio { get; set; }
     public IEnumerable<string> PhotoUrls { get; set; } = [];
 
-    // ─── SR-09a: what a host weighs when it chooses a supplier (additive: nothing above changed) ───
-
-    /// <summary>
-    /// The first published services of the supplier in its own order, at most <see cref="SupplierPickerLimits.MaxServices"/>. Empty
-    /// when it has none (and on the long-rent search, which does not read the catalog).
-    /// </summary>
     public IEnumerable<SupplierPickerServiceDto> Services { get; set; } = [];
 
-    /// <summary>The lowest "from" price in euro cents among all its published services; <c>null</c> when none has a price.</summary>
     public int? PriceFromCents { get; set; }
 
-    /// <summary>What <see cref="PriceFromCents"/> is for (<c>PerJob</c>, <c>PerHour</c>, <c>PerSet</c>, <c>PerSquareMeter</c>); <c>null</c> without a price.</summary>
     public SupplierServicePriceUnit? PriceFromUnit { get; set; }
 
-    /// <summary>
-    /// The typical time the supplier takes to answer, in minutes: the median of the requests it took in the last 90 days, the rule of
-    /// its public showcase. <c>null</c> until it is measured (at least five requests): it is never written by hand.
-    /// </summary>
     public int? MedianResponseMinutes { get; set; }
 
     /// <summary>
@@ -355,7 +300,6 @@ public class SupplierPickerDto
     /// </summary>
     public bool Verified { get; set; }
 
-    /// <summary>The address of the public showcase (<c>/fornitori/{slug}</c>); <c>null</c> when the supplier has none published.</summary>
     public string? ShowcaseSlug { get; set; }
 
     /// <summary>
@@ -384,13 +328,6 @@ public class SupplierPickerDto
         ShowcaseSlug = string.IsNullOrWhiteSpace(sp.ShowcaseSlug) ? null : sp.ShowcaseSlug,
     };
 
-    /// <summary>
-    /// The same picker entry with what the marketplace adds (SR-09a):
-    /// <paramref name="services"/> are all the published services of the supplier in its order (the first
-    /// <paramref name="maxServices"/> are listed, the "from" price is the lowest of all of them) and
-    /// <paramref name="medianResponseMinutes"/> its measured response time, <c>null</c> when it has none. The list of the
-    /// marketplace keeps <see cref="SupplierPickerLimits.MaxServices"/>; the page of one supplier lists them all.
-    /// </summary>
     public static SupplierPickerDto From(
         SupplierProfile sp,
         IReadOnlyDictionary<string, Comune>? listed,
@@ -410,7 +347,6 @@ public class SupplierPickerDto
     }
 }
 
-/// <summary>A published service of a supplier in the picker of the marketplace (SR-09a): see <see cref="SupplierPickerService"/>.</summary>
 public class SupplierPickerServiceDto
 {
     public Guid Id { get; set; }
@@ -418,10 +354,8 @@ public class SupplierPickerServiceDto
     public string Category { get; set; } = string.Empty;
     public int? DurationMinutes { get; set; }
 
-    /// <summary>The "from" price in euro cents; <c>null</c> is "on quote".</summary>
     public int? PriceFromCents { get; set; }
 
-    /// <summary><c>PerJob</c>, <c>PerHour</c>, <c>PerSet</c> or <c>PerSquareMeter</c>.</summary>
     public SupplierServicePriceUnit PriceUnit { get; set; }
 
     public bool RequiresQuote { get; set; }
@@ -438,8 +372,6 @@ public class SupplierPickerServiceDto
     };
 }
 
-// ─── Calendar Sync ─────────────────────────────────────────────────────────────
-
 public class SetIcalFeedRequest
 {
     [Required, MaxLength(2048)]
@@ -452,41 +384,27 @@ public class CalendarSyncStatusDto
     public string? IcalFeedUrl { get; set; }
     public DateTime? CalendarLastSyncAt { get; set; }
 
-    /// <summary>
-    /// <c>None</c>, <c>Syncing</c> (a sync is queued or running: poll until it changes), <c>Success</c> or
-    /// <c>Failure</c> (SU-15). The calendar is synced only once it leaves <c>Syncing</c>.
-    /// </summary>
     public string LastSyncStatus { get; set; } = "None";
 
-    /// <summary>Stable code of the last sync error (<c>ical_unreachable</c>, <c>ical_too_large</c>, ...).</summary>
     public string? CalendarSyncErrorCode { get; set; }
 
-    /// <summary>Localized message of <see cref="CalendarSyncErrorCode"/>, never an exception message.</summary>
     public string? CalendarSyncError { get; set; }
 
-    /// <summary>
-    /// Events of the calendar that the calendar marks "Available" and the supplier has not answered about: they keep their
-    /// days or hours occupied until it answers (<c>GET calendar/free-events</c>).
-    /// </summary>
     public int PendingFreeEventsCount { get; set; }
 }
 
-/// <summary>One event of the supplier's calendar marked "Available" that waits for the supplier's answer.</summary>
 public class SupplierFreeEventDto
 {
     public Guid Id { get; set; }
 
-    /// <summary>Title of the event (at most 80 characters), only for the supplier. Null when the event has none.</summary>
     public string? Summary { get; set; }
 
     public bool IsAllDay { get; set; }
 
     public bool Recurring { get; set; }
 
-    /// <summary>Occurrences from today on (1 for a single event). The answer is one for all of them.</summary>
     public int Occurrences { get; set; }
 
-    /// <summary>The nearest occurrence that has not ended (UTC); an all-day event spans whole Europe/Rome days.</summary>
     public DateTime NextStartUtc { get; set; }
 
     public DateTime NextEndUtc { get; set; }
@@ -494,7 +412,6 @@ public class SupplierFreeEventDto
     public DateTime FirstSeenAt { get; set; }
 }
 
-/// <summary>Response of <c>GET api/supplier/calendar/free-events</c>: the unanswered events, the next to happen first.</summary>
 public class SupplierFreeEventsResponse
 {
     public IReadOnlyList<SupplierFreeEventDto> Items { get; set; } = [];
@@ -502,45 +419,32 @@ public class SupplierFreeEventsResponse
     public int PendingCount { get; set; }
 }
 
-/// <summary>Body of <c>POST api/supplier/calendar/free-events/{id}/decision</c>.</summary>
 public class SupplierFreeEventDecisionRequest
 {
-    /// <summary><c>Available</c> (free: nothing is occupied) or <c>Busy</c> (occupied, like a busy event).</summary>
     [Required, MaxLength(20)]
     public string Decision { get; set; } = string.Empty;
 }
 
-/// <summary>
-/// Report of <c>POST /api/admin/suppliers/fix-orphaned</c> (SU-14). Ids and counts only, no personal data. Runbook
-/// <c>docs/runbooks/suppliers.md</c> section 9.
-/// </summary>
 public class FixOrphanedSupplierOrgsResponse
 {
-    /// <summary>True: nothing was saved, the report shows what an applied run would do.</summary>
     public bool DryRun { get; set; }
 
     public int ProfilesScanned { get; set; }
 
-    /// <summary>Emails (trimmed, case-insensitive) used by more than one profile.</summary>
     public int DuplicateGroups { get; set; }
 
-    /// <summary>Duplicate profiles merged into their keeper.</summary>
     public int DuplicatesMerged { get; set; }
 
     public int ServiceRequestsMoved { get; set; }
 
     public IReadOnlyList<SupplierDuplicateMergeDto> Merges { get; set; } = [];
 
-    /// <summary>Accounts unlinked from a supplier org that no longer exists.</summary>
     public IReadOnlyList<string> DanglingLinksCleared { get; set; } = [];
 
-    /// <summary>Accounts whose own org is a supplier org and that got the matching supplier link.</summary>
     public IReadOnlyList<string> SupplierLinksBackfilled { get; set; } = [];
 
-    /// <summary>Profiles held by no account and with no account of their email: left for their registrant's claim.</summary>
     public IReadOnlyList<Guid> OrphanProfiles { get; set; } = [];
 
-    /// <summary>Cases left untouched for a decision (codes in the runbook).</summary>
     public IReadOnlyList<SupplierManualInterventionDto> ManualInterventions { get; set; } = [];
 }
 
@@ -551,54 +455,34 @@ public class SupplierDuplicateMergeDto
     public int ServiceRequestsMoved { get; set; }
     public int AvailabilityDaysMoved { get; set; }
 
-    /// <summary>Days the keeper already had: the keeper's value is kept.</summary>
     public int AvailabilityDaysDropped { get; set; }
 
     public IReadOnlyList<string> CategoriesAdded { get; set; } = [];
     public IReadOnlyList<string> ComuniAdded { get; set; } = [];
 
-    /// <summary>Accounts whose supplier link moved to the keeper.</summary>
     public int SupplierLinksMoved { get; set; }
 
-    /// <summary>Accounts whose <c>orgId</c> moved to the keeper (the duplicate org was deleted).</summary>
     public int OrgMembersMoved { get; set; }
 
     public int DevicesMoved { get; set; }
 
-    /// <summary>
-    /// Services of the duplicate's price catalog (SP-02) that moved to the keeper, the deleted ones too; a slug the keeper
-    /// already uses got the next free suffix.
-    /// </summary>
     public int ServiceListingsMoved { get; set; }
 
-    /// <summary>
-    /// Rows of the duplicate's agenda (SP-03) that moved to the keeper: time off, blocks and extra openings, and the weekly
-    /// hours and settings when the keeper had none (the keeper's own stay as they are).
-    /// </summary>
     public int AgendaRowsMoved { get; set; }
 
-    /// <summary>Showcase requests and private customers of the duplicate that went to the keeper (SP-10); its unverified holds are dropped.</summary>
     public int ShowcaseRowsMoved { get; set; }
 
-    /// <summary>False when the duplicate org also holds host data: only its supplier profile was removed.</summary>
     public bool DuplicateOrgDeleted { get; set; }
 }
 
 public class SupplierManualInterventionDto
 {
-    /// <summary>
-    /// <c>supplier_duplicate_several_accounts</c>, <c>supplier_duplicate_suspended</c>,
-    /// <c>supplier_duplicate_merge_conflict</c> or <c>supplier_link_requires_claim</c>.
-    /// </summary>
     public string Code { get; set; } = string.Empty;
 
     public IReadOnlyList<Guid> OrgIds { get; set; } = [];
     public IReadOnlyList<string> UserIds { get; set; } = [];
 }
 
-// ─── Service categories (SU-03) ───────────────────────────────────────────────
-
-/// <summary>A service category code (<c>cleaning</c>, <c>maintenance</c>, ...). Clients translate the label.</summary>
 public class ServiceCategoryDto
 {
     public string Code { get; set; } = string.Empty;
@@ -609,13 +493,10 @@ public class ServiceCategoriesResponse
     public IReadOnlyList<ServiceCategoryDto> Items { get; set; } = [];
 }
 
-/// <summary>A stored category value that is not a canonical code.</summary>
 public class UnmappedServiceCategoryDto
 {
-    /// <summary><c>supplier_profile</c>, <c>supplier_invite</c> or <c>service_request</c>.</summary>
     public string Source { get; set; } = string.Empty;
 
-    /// <summary>Supplier org id, invite id or service request id, depending on <see cref="Source"/>.</summary>
     public Guid Id { get; set; }
 
     public string Value { get; set; } = string.Empty;
@@ -627,8 +508,6 @@ public class UnmappedServiceCategoriesResponse
     public int Total { get; set; }
 }
 
-// ─── Dashboard ───────────────────────────────────────────────────────────────
-
 public class SupplierDashboardDto
 {
     public int ProfileCompletionPercent { get; set; }
@@ -638,48 +517,31 @@ public class SupplierDashboardDto
     public DateTime LastUpdated { get; set; }
 }
 
-/// <summary>
-/// Work KPIs of the caller's supplier org, from its service requests (SU-11, A4-15). <see cref="Completed"/> and
-/// <see cref="Rejected"/> count the period; <see cref="AwaitingAcceptance"/> and <see cref="Upcoming"/> are the open work
-/// now, whatever the period.
-/// </summary>
 public class SupplierKpisDto
 {
-    /// <summary><c>CurrentMonth</c>, <c>PreviousMonth</c>, <c>Last30Days</c> or <c>CurrentYear</c>.</summary>
     public string Period { get; set; } = string.Empty;
 
-    /// <summary>First calendar date of the period in <see cref="TimeZone"/> (included).</summary>
     public DateOnly From { get; set; }
 
-    /// <summary>Last calendar date of the period in <see cref="TimeZone"/> (included).</summary>
     public DateOnly To { get; set; }
 
     public string TimeZone { get; set; } = string.Empty;
 
-    /// <summary>Requests completed in the period (paid ones included, by completion date).</summary>
     public int Completed { get; set; }
 
-    /// <summary>Requests rejected by the supplier in the period.</summary>
     public int Rejected { get; set; }
 
-    /// <summary>Requests waiting to be taken (<c>Richiesto</c>).</summary>
     public int AwaitingAcceptance { get; set; }
 
-    /// <summary>Requests taken and not completed yet (<c>PresoInCarico</c>, <c>InCorso</c>).</summary>
     public int Upcoming { get; set; }
 
-    /// <summary>Every request ever assigned to the supplier org.</summary>
     public int TotalRequests { get; set; }
 }
-
-// ─── Photo Upload ────────────────────────────────────────────────────────────
 
 public class SupplierPhotoUploadResponse
 {
     public IEnumerable<string> Urls { get; set; } = [];
 }
-
-// ─── Public showcase (SU-13) ──────────────────────────────────────────────────
 
 /// <summary>
 /// What the public page <c>/fornitori/{slug}</c> shows of a supplier (<c>GET /api/public/suppliers/{slug}</c>) and what the
@@ -687,19 +549,16 @@ public class SupplierPhotoUploadResponse
 /// </summary>
 public class SupplierShowcaseDto
 {
-    /// <summary>Null in the preview of a profile that has no public address yet (never activated).</summary>
     public string? Slug { get; set; }
 
     public string LegalName { get; set; } = string.Empty;
     public IReadOnlyList<string> Categories { get; set; } = [];
 
-    /// <summary>The comuni by name: the ones chosen from the official list, then what the supplier wrote.</summary>
     public IReadOnlyList<string> Comuni { get; set; } = [];
 
     public string? Bio { get; set; }
     public IReadOnlyList<string> PhotoUrls { get; set; } = [];
 
-    /// <summary>The next 14 days (Europe/Rome) the supplier saved an availability for.</summary>
     public IReadOnlyList<AvailabilityEntryDto> Availability { get; set; } = [];
 
     /// <summary>
@@ -718,60 +577,41 @@ public class SupplierShowcaseDto
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? MedianResponseMinutes { get; set; }
 
-    // SP-13a: what the supplier published with the editor. Every member is left out until it published something (and the owner's preview
-    // never has them), so the page of a supplier that did not is exactly what it always was.
-
-    /// <summary>The <b>published</b> content of the showcase (never the draft): style, texts, team, FAQ, gallery...</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PublicShowcaseContentDto? Content { get; set; }
 
-    /// <summary>The supplier paused its showcase: the page says it takes no bookings, and the slots and the estimate answer "not available".</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? Paused { get; set; }
 
-    /// <summary>
-    /// The showcase takes bookings now: published, not paused, switched on, the payments on and the supplier's account ready (decision VT-D7).
-    /// False means read-only: the services and prices are there, the booking is not.
-    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? BookingsOpen { get; set; }
 
-    /// <summary>What the platform vouches for: "Verificato" and, from a few, the jobs done. Nothing else.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PublicSupplierTrustDto? Trust { get; set; }
 
-    /// <summary>How long the supplier has to answer a booking, in minutes: its setting, never written on the page by hand.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? RespondWithinMinutes { get; set; }
 
-    /// <summary>The supplier takes the payment inside CasaZen: the payments are on and its account can take charges and payouts.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? AcceptsOnlinePayments { get; set; }
 
-    /// <summary>The version of the privacy notice a booking records (<c>Suppliers:Showcase:PrivacyNoticeVersion</c>); left out when not configured.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? PrivacyNoticeVersion { get; set; }
 }
 
-/// <summary>The owner's preview of the public showcase and where it will be (or is) published.</summary>
 public class SupplierShowcasePreviewDto
 {
     public SupplierShowcaseDto Showcase { get; set; } = new();
 
-    /// <summary><c>Pending</c>, <c>Active</c> or <c>Suspended</c>.</summary>
     public string Status { get; set; } = string.Empty;
 
-    /// <summary>True only for an active supplier with a slug: the public page answers 200.</summary>
     public bool Published { get; set; }
 
     public string? Slug { get; set; }
 
-    /// <summary>Path of the page in the web app (<c>/fornitori/{slug}</c>); null until the profile has a slug.</summary>
     public string? PublicPath { get; set; }
 
-    /// <summary>Absolute URL on <c>App:PublicSiteBaseUrl</c>; null when the slug or the public URL is not configured.</summary>
     public string? PublicUrl { get; set; }
 
-    /// <summary>True when the public page is published and indexed (it has a category or a text).</summary>
     public bool Indexable { get; set; }
 }

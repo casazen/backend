@@ -3,10 +3,6 @@ using System.Text;
 
 namespace Casazen.Tests.Unit.Branding;
 
-/// <summary>
-/// Headers of PNG, JPEG and WebP files with a chosen pixel size, padded to a chosen length: enough for
-/// <c>ImageHeaderReader</c>, which never decodes the pixels.
-/// </summary>
 internal static class TestImageBytes
 {
     public static byte[] Png(int width, int height, int totalLength = 64)
@@ -18,19 +14,17 @@ internal static class TestImageBytes
         Encoding.ASCII.GetBytes("IHDR").CopyTo(data, 12);
         BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(16), (uint)width);
         BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(20), (uint)height);
-        data[24] = 8; // bit depth
-        data[25] = 6; // RGBA
+        data[24] = 8;
+        data[25] = 6;
         return data;
     }
 
     public static byte[] Jpeg(int width, int height, int totalLength = 64)
     {
         var bytes = new List<byte> { 0xFF, 0xD8 };
-        // APP0 (JFIF), 16 bytes including the length.
         bytes.AddRange([0xFF, 0xE0, 0x00, 0x10]);
         bytes.AddRange(Encoding.ASCII.GetBytes("JFIF\0"));
         bytes.AddRange(new byte[9]);
-        // SOF0: length 17, precision 8, height, width, 3 components.
         bytes.AddRange([0xFF, 0xC0, 0x00, 0x11, 0x08]);
         bytes.AddRange([(byte)(height >> 8), (byte)height, (byte)(width >> 8), (byte)width, 0x03]);
         bytes.AddRange(new byte[9]);
@@ -39,11 +33,10 @@ internal static class TestImageBytes
         return [.. bytes];
     }
 
-    /// <summary>Extended WebP (VP8X chunk), the layout of most encoders' output with metadata.</summary>
     public static byte[] WebPExtended(int width, int height) =>
         WebP("VP8X", chunk =>
         {
-            chunk[0] = 0; // flags
+            chunk[0] = 0;
             WriteUInt24(chunk.AsSpan(4), width - 1);
             WriteUInt24(chunk.AsSpan(7), height - 1);
         });

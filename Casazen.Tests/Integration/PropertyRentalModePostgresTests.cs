@@ -82,12 +82,10 @@ public class PropertyRentalModePostgresTests : IClassFixture<CasazenWebApplicati
             host, "Casa Breve", RentalMode.Short, cinCode: null, PropertyComplianceStatus.Active);
         var alerts = NewHarness(Deadline.AddDays(-10));
 
-        // The nightly check, as the job runs it, over the whole database.
         await alerts.RecalculateAllAsync();
 
         Assert.Equal(PropertyComplianceStatus.Active, (await LoadAsync(longTerm)).ComplianceStatus);
         Assert.Equal(PropertyComplianceStatus.Suspended, (await LoadAsync(shortStay)).ComplianceStatus);
-        // One suspension email, for the short-rent property only.
         var email = Assert.Single(alerts.EmailsTo(host.Email));
         Assert.Equal(EmailTemplates.Names.PropertyComplianceSuspended, email.Template);
         Assert.Contains("Casa Breve", email.Content.Subject);
@@ -126,8 +124,6 @@ public class PropertyRentalModePostgresTests : IClassFixture<CasazenWebApplicati
 
         Assert.Contains("IX_Properties_OrgId_RentalMode", indexes);
     }
-
-    // ─── Seed ───────────────────────────────────────────────────────────────────────────────────────
 
     private sealed record SeededHost(string HostId, string Email, Guid OrgId);
 

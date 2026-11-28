@@ -22,12 +22,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 internal static class PropertyResponsibility
 {
-    /// <summary>
-    /// Stages the end of the responsibility of <paramref name="userId"/> for the properties of <paramref name="orgId"/> that are not
-    /// in <paramref name="keep"/> (the ones the person still reaches; empty = none): <c>ResponsibleUserId</c> goes back to
-    /// <c>null</c>. The caller saves. Soft-deleted properties are included, so one that comes back does not bring the old name
-    /// with it. Returns the ids of the properties released, for the log.
-    /// </summary>
     public static async Task<IReadOnlyList<Guid>> ReleaseAsync(
         AppDbContext db,
         Guid orgId,
@@ -36,7 +30,6 @@ internal static class PropertyResponsibility
         DateTime now,
         CancellationToken cancellationToken)
     {
-        // IgnoreQueryFilters: scoped to the org the caller passes, which is its own (never a value of the request).
         var query = db.Properties.IgnoreQueryFilters().Where(p => p.OrgId == orgId && p.ResponsibleUserId == userId);
         if (keep.Count > 0)
         {
@@ -54,13 +47,6 @@ internal static class PropertyResponsibility
         return released.Select(p => p.Id).ToList();
     }
 
-    /// <summary>
-    /// A property that changes mode can stop being reachable for the person in charge of it (AM-02c): a collaborator «Solo alcuni»
-    /// that works in one area only reaches the given properties of the mode of that area. Stages the end of that responsibility on
-    /// <paramref name="property"/> (tracked; the caller saves) and says whether it did. Everybody else keeps the name: a member that
-    /// reaches every property by its role or its scope, one that works in both areas, one with no area known (the rule of
-    /// <see cref="OrgRoleCatalog.SingleModeOf"/>, the same as the lists and the snapshot apply).
-    /// </summary>
     public static async Task<bool> ReleaseIfOutsideItsAreasAsync(
         AppDbContext db,
         Property property,
@@ -70,7 +56,6 @@ internal static class PropertyResponsibility
         if (property.ResponsibleUserId is not { } responsible)
             return false;
 
-        // IgnoreQueryFilters: scoped to the org of the property, which is the one the caller works in (a job, with no tenant).
         var limited = await db.OrgMembers.IgnoreQueryFilters().AsNoTracking()
             .AnyAsync(
                 m => m.UserId == responsible

@@ -31,8 +31,6 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
             await _database.DisposeAsync();
     }
 
-    // ─── The defaults of the new columns ─────────────────────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task ARowWrittenWithoutTheNewColumns_AfterTheMigration_StillSatisfiesTheContextCheck()
     {
@@ -40,7 +38,6 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
         await using var db = _database!.CreateContext();
         var id = Guid.NewGuid();
 
-        // The previous release while the new one is rolling out writes none of the new columns: the defaults make it a host's request.
         await db.Database.ExecuteSqlAsync($"""
             INSERT INTO "ServiceRequests" ("Id", "OrgId", "PropertyId", "SupplierOrgId", "RentalContext", "Category", "Urgency", "Notes", "Status", "ChargeToGuest", "CreatedAt", "UpdatedAt")
             VALUES ({id}, {parents.HostOrg}, {parents.Property}, {parents.SupplierOrg}, 0, 'cleaning', 0, '', 0, false, now(), now());
@@ -50,8 +47,6 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
         Assert.Equal(ServiceRequestSource.Host, stored.Source);
         Assert.Null(stored.CustomerId);
     }
-
-    // ─── The context check ───────────────────────────────────────────────────────────────────────────────────────────
 
     [PostgresTheory]
     [InlineData("property")]
@@ -127,8 +122,6 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
         var parents = await MigratedWithParentsAsync();
         var customer = await SaveCustomerAsync(parents.SupplierOrg, "legale@example.com");
 
-        // A showcase request with everything and with only what it needs; a host's short-rent request without a booking (older
-        // requests have none) and a long-rent one.
         await SaveRequestAsync(Showcase(parents, customer, r =>
         {
             r.LocationComuneIstat = "015146";
@@ -141,8 +134,6 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
         await SaveRequestAsync(Host(parents, r => r.RentalContext = ServiceRequestRentalContext.ShortRent));
         await SaveRequestAsync(Host(parents, _ => { }));
     }
-
-    // ─── The holds ───────────────────────────────────────────────────────────────────────────────────────────────────
 
     [PostgresFact]
     public async Task Holds_TheChecksRefuseAnIntervalThatIsNotOne_AndAnExpiryBeforeTheCreation()
@@ -164,7 +155,6 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
             PostgresErrorCodes.CheckViolation, "CK_ShowcaseBookingHolds_Expiry",
             Hold(parents.SupplierOrg, h => { h.CreatedAt = created; h.ExpiresAt = created.AddSeconds(-1); }));
 
-        // A valid hold is accepted, with and without a payload.
         await SaveAsync(Hold(parents.SupplierOrg, h => h.Payload = "ciphertext"));
         await SaveAsync(Hold(parents.SupplierOrg, h => h.Payload = null));
     }
@@ -186,8 +176,6 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
         await SaveAsync(Hold(other, h => { h.ClientRequestId = clientRequestId; h.PublicCode = "AAAAAAAAAA"; }));
     }
 
-    // ─── The customers and the codes ─────────────────────────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task Customers_OneAddressIsOneCustomerPerSupplier_AndTheCodeOfARequestIsUniqueForItsSupplier()
     {
@@ -207,8 +195,6 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
         var otherCustomer = await SaveCustomerAsync(other, "altro@example.com");
         await SaveRequestAsync(Showcase(parents with { SupplierOrg = other }, otherCustomer, r => r.PublicCode = "BBBBBBBBBB"));
     }
-
-    // ─── The foreign keys ────────────────────────────────────────────────────────────────────────────────────────────
 
     [PostgresFact]
     public async Task ForeignKeys_DeletingTheSupplierProfile_DeletesItsCustomersAndHolds()
@@ -239,14 +225,11 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
             () => db.Database.ExecuteSqlAsync($"DELETE FROM \"ServiceCustomers\" WHERE \"Id\" = {customer}"));
         Assert.Equal(PostgresErrorCodes.ForeignKeyViolation, refused.SqlState);
 
-        // Deleting the request clears the link of its hold and keeps the hold.
         await db.Database.ExecuteSqlAsync($"DELETE FROM \"ServiceRequests\" WHERE \"Id\" = {requestId}");
         var hold = await db.ShowcaseBookingHolds.AsNoTracking().SingleAsync(h => h.OrgId == parents.SupplierOrg);
         Assert.Null(hold.ServiceRequestId);
         await db.Database.ExecuteSqlAsync($"DELETE FROM \"ServiceCustomers\" WHERE \"Id\" = {customer}");
     }
-
-    // ─── The integers ────────────────────────────────────────────────────────────────────────────────────────────────
 
     [PostgresFact]
     public async Task Enums_TheNewValuesAreStoredAsTheExplicitIntegersTheMobileAppAndTheMigrationsRelyOn()
@@ -265,9 +248,9 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
         var source = await db.Database.SqlQuery<int>($"SELECT \"Source\" AS \"Value\" FROM \"ServiceRequests\" WHERE \"Id\" = {requestId}").SingleAsync();
         var cancelledBy = await db.Database.SqlQuery<int>($"SELECT \"CancelledBy\" AS \"Value\" FROM \"ServiceRequests\" WHERE \"Id\" = {requestId}").SingleAsync();
 
-        Assert.Equal(2, context); // ShortRent 0, LongRent 1, Showcase 2
-        Assert.Equal(1, source); // Host 0, Showcase 1
-        Assert.Equal(3, cancelledBy); // Host 0, Supplier 1, System 2, Customer 3
+        Assert.Equal(2, context);
+        Assert.Equal(1, source);
+        Assert.Equal(3, cancelledBy);
     }
 
     [PostgresFact]
@@ -288,12 +271,9 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
         Assert.Contains("(\"CustomerId\")", customer);
         Assert.Contains("UNIQUE", code, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("(\"SupplierOrgId\", \"PublicCode\")", code);
-        // Host requests have no code: the unique index covers only the rows that have one.
         Assert.Contains("WHERE", code, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("(\"ExpiresAt\")", expiry);
     }
-
-    // ─── helpers ───
 
     private sealed record Parents(Guid HostOrg, Guid Property, Guid SupplierOrg);
 
@@ -304,7 +284,6 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
         return new Parents(hostOrg, property, supplierOrg);
     }
 
-    /// <summary>A host org with a property and a supplier org with an active profile.</summary>
     private static async Task<(Guid HostOrg, Guid Property, Guid SupplierOrg)> SeedHostParentsAsync(AppDbContext db)
     {
         var hostOrg = new OrgEntity
@@ -375,7 +354,6 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
     private static ServiceCustomer NewCustomer(Guid supplierOrg, string email) => new()
     {
         OrgId = supplierOrg,
-        // Any 64 hexadecimal characters stand for the HMAC of the address; the same address gives the same text.
         EmailHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(email))).ToLowerInvariant(),
         FullName = "Mario Rossi",
         Email = email,
@@ -448,7 +426,6 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
         return request;
     }
 
-    /// <summary>The row saved on a context of its own: a failure leaves nothing tracked behind.</summary>
     private async Task SaveAsync(object row)
     {
         await using var db = _database!.CreateContext();

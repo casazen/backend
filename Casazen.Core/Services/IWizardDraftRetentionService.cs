@@ -10,10 +10,7 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IWizardDraftRetentionService
 {
-    /// <summary>Anonymizes every draft whose expiry has passed and returns how many it was.</summary>
     Task<WizardDraftRetentionRun> ApplyRetentionAsync(CancellationToken cancellationToken = default);
 }
 
-/// <summary>What one run of <see cref="IWizardDraftRetentionService.ApplyRetentionAsync"/> did.</summary>
-/// <param name="Drafts">The drafts anonymized by the run.</param>
 public sealed record WizardDraftRetentionRun(int Drafts);

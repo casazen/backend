@@ -69,7 +69,6 @@ public sealed class InactiveAccountMiddleware(RequestDelegate next, ILogger<Inac
 
 public static class InactiveAccountMiddlewareExtensions
 {
-    /// <summary>Adds <see cref="InactiveAccountMiddleware"/>: after <c>UseTenantResolution</c>, before <c>UseAuthorization</c>.</summary>
     public static IApplicationBuilder UseInactiveAccountBlock(this IApplicationBuilder app) =>
         app.UseMiddleware<InactiveAccountMiddleware>();
 }

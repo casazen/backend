@@ -36,7 +36,6 @@ public sealed class InvoiceDataService(
     TimeProvider? timeProvider = null,
     ILogger<InvoiceDataService>? logger = null) : IInvoiceDataService
 {
-    /// <summary>Attempts of a save when another writer saved the same row, or made it, at the same moment.</summary>
     private const int MaxAttempts = 3;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -98,12 +97,10 @@ public sealed class InvoiceDataService(
             }
             catch (DbUpdateConcurrencyException) when (attempt < MaxAttempts)
             {
-                // Another writer saved the row after this one read it: read it again and apply the precedence to what was saved first.
                 Release(row, bookingId);
             }
             catch (DbUpdateException ex) when (created && attempt < MaxAttempts && OrgTeamAccess.IsUniqueViolation(ex, BookingInvoiceData.BookingIndexName))
             {
-                // Another writer made the row of this booking first: the same, as an update of the row it made.
                 Release(row, bookingId);
             }
         }
@@ -112,11 +109,6 @@ public sealed class InvoiceDataService(
     public Task EnsureValidAsync(Guid bookingId, SaveInvoiceDataCommand command, InvoiceDataSource source, CancellationToken ct = default) =>
         PlanAsync(bookingId, command, source, ct);
 
-    /// <summary>
-    /// What a save would do, without doing it: the org of the booking, the row to change (<c>null</c> for a new one), the stored data with the
-    /// command applied and checked as a whole, and whether the command leaves the row as it is (a fill-only save that fills nothing). A result that
-    /// is not valid is the 422 of <see cref="InvoiceDataErrorCodes.ToException"/>.
-    /// </summary>
     private async Task<SavePlan> PlanAsync(Guid bookingId, SaveInvoiceDataCommand command, InvoiceDataSource source, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(command);
@@ -129,7 +121,6 @@ public sealed class InvoiceDataService(
         var current = row is null ? EmptyState : StateOf(row);
         var fillOnly = row is not null && InvoiceDataPrecedence.Outranks(row.Source, source);
 
-        // The kind of recipient and the country have a default: a lower source may set them only while there is nothing they describe yet.
         var kindLocked = fillOnly && HasRecipient(current);
         var countryLocked = fillOnly && HasAddress(current);
         var sent = command with
@@ -190,7 +181,6 @@ public sealed class InvoiceDataService(
             }
             else
             {
-                // A «no» makes no row; it only takes back a «yes».
                 if (row is not { InvoiceRequested: true })
                     return;
 
@@ -218,9 +208,6 @@ public sealed class InvoiceDataService(
         }
     }
 
-    /// <summary>
-    /// The org of the booking, through the tenant filter of the caller: a booking of another org is not found (404), exactly like a missing one.
-    /// </summary>
     private async Task<Guid> OrgOfBookingAsync(Guid bookingId, CancellationToken ct)
     {
         var orgId = await db.Bookings
@@ -236,7 +223,6 @@ public sealed class InvoiceDataService(
         };
     }
 
-    /// <summary>The row of the booking to change: the one this unit of work already holds (staged or read), else the one in the database.</summary>
     private async Task<BookingInvoiceData?> FindTrackedAsync(Guid bookingId, CancellationToken ct)
     {
         var local = db.ChangeTracker.Entries<BookingInvoiceData>()
@@ -244,7 +230,6 @@ public sealed class InvoiceDataService(
         return local?.Entity ?? await db.BookingInvoiceData.FirstOrDefaultAsync(d => d.BookingId == bookingId, ct);
     }
 
-    /// <summary>Takes back the row and the event of an attempt that lost to another writer, so the next attempt starts from what is saved.</summary>
     private void Release(BookingInvoiceData row, Guid bookingId)
     {
         db.Entry(row).State = EntityState.Detached;
@@ -341,7 +326,6 @@ public sealed class InvoiceDataService(
             Pec = Pick(current.Pec, incoming.Pec),
         };
 
-        // The country is never empty: sending an empty one is asking for the default.
         if (incoming.CountryCode is { } sentCountry)
         {
             var country = Empty(sentCountry) ?? BookingInvoiceData.DefaultCountryCode;
@@ -355,11 +339,9 @@ public sealed class InvoiceDataService(
         return (state, changed);
     }
 
-    /// <summary>True when the state holds anything that says who the recipient is: the base of the kind of recipient.</summary>
     private static bool HasRecipient(SaveInvoiceDataCommand state) =>
         !string.IsNullOrEmpty(state.Name) || !string.IsNullOrEmpty(state.FiscalCode) || !string.IsNullOrEmpty(state.VatNumber);
 
-    /// <summary>True when the state holds any part of the address: the base of the country.</summary>
     private static bool HasAddress(SaveInvoiceDataCommand state) =>
         !string.IsNullOrEmpty(state.AddressStreet)
         || !string.IsNullOrEmpty(state.AddressCivic)

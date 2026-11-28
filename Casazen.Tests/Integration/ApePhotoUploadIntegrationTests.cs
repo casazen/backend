@@ -18,7 +18,6 @@ public sealed class ApePhotoWebApplicationFactory : CasazenWebApplicationFactory
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
-        // The base test host stubs APE checks for unrelated lease tests: exercise the real implementation here.
         builder.ConfigureTestServices(services => services.Replace(ServiceDescriptor.Scoped<IApeComplianceService, ApeComplianceService>()));
     }
 }
@@ -62,7 +61,6 @@ public class ApePhotoUploadIntegrationTests(ApePhotoWebApplicationFactory factor
         form.Add(file, "file", "incomplete.jpg");
         form.Add(new StringContent("Ape"), "documentType");
         var response = await client.PostAsync($"/api/properties/{property.Id}/documents", form);
-        // A real certificate the reader cannot read whole (only its first page here) is not refused any more: the landlord confirms it.
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal("Incomplete", json.RootElement.GetProperty("apeCheck").GetString());

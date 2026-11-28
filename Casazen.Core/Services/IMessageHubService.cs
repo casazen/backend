@@ -20,11 +20,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IMessageHubService
 {
-    /// <summary>
-    /// The conversations the scope reaches, both sources in one list, the one with the latest message first, paged in SQL (one statement
-    /// concatenates the two projections). <paramref name="page"/> starts at 1 and <paramref name="pageSize"/> is clamped to
-    /// <see cref="GuestMessageRules.MaxPageSize"/>.
-    /// </summary>
     Task<MessageHubPage> ListAsync(
         HostScope scope,
         MessageHubFilter filter,
@@ -32,34 +27,18 @@ public interface IMessageHubService
         int pageSize,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// One conversation: its messages (the latest <see cref="GuestMessageRules.TranscriptMaxMessages"/>, oldest first), the booking card, the
-    /// link to the customer and what the host may do in it. <paramref name="includeAmounts"/> is false for a caller without <c>payment.read</c>
-    /// (SR-D7): the card then carries no money. <see cref="Exceptions.NotFoundException"/> <c>thread_not_found</c> (404) when the conversation does
-    /// not exist, is of another org or is out of the reach of the scope, or when a direct booking has no thread.
-    /// </summary>
     Task<MessageThreadView> GetThreadAsync(
         HostScope scope,
         MessageThreadKey key,
         bool includeAmounts,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Marks the messages of the guest as read by the host: direct through <see cref="IGuestMessageService.MarkReadAsync"/>, a conversation of a
-    /// channel by setting <c>ReadAt</c> on its inbound messages and recounting <c>UnreadCount</c>. Answers how many are still unread. The same 404 as
-    /// <see cref="GetThreadAsync"/>.
-    /// </summary>
     Task<MessageHubReadResult> MarkReadAsync(
         HostScope scope,
         MessageThreadKey key,
         string? userId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The conversations with something the host has not read, with how many, for the badges: counters only, never a name or a text. Direct ones are
-    /// the open threads of <see cref="IGuestMessageService.ListUnreadForHostAsync"/> (at most <see cref="GuestMessageRules.UnreadThreadsMax"/>);
-    /// with <paramref name="includeOta"/> the conversations of the channels follow, at most as many, the latest first.
-    /// </summary>
     Task<IReadOnlyList<MessageHubUnreadThread>> ListUnreadAsync(
         HostScope scope,
         bool includeOta,
@@ -100,19 +79,14 @@ public interface IMessageHubService
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>The codes of <see cref="MessageChannelStatus.Status"/>.</summary>
 public static class MessageChannelStatuses
 {
-    /// <summary>The most recent completed synchronization of the listing succeeded.</summary>
     public const string Available = "available";
 
-    /// <summary>The listing has not completed or failed a synchronization yet.</summary>
     public const string PendingSync = "pending_sync";
 
-    /// <summary>The <c>chat</c> module is not in the license of the listing (<c>chat_not_licensed</c>): its messages cannot be read, and the host cannot answer in it yet.</summary>
     public const string WaitingPermission = "waiting_permission";
 
-    /// <summary>The last pass over the listing failed for another reason (Octorate did not answer, a refusal): the next pass reads it again.</summary>
     public const string Error = "error";
 }
 
@@ -122,7 +96,6 @@ public static class MessageChannelStatuses
 /// </summary>
 public sealed record MessageChannelStatus(Guid PropertyId, string PropertyName, string Status, DateTime? LastCheckedAt);
 
-/// <summary>The channel of a conversation of the hub: the direct one, or one of the four channels with an integrated chat. The numbers of the channels are those of <see cref="OtaChannel"/>.</summary>
 public enum MessageHubChannel
 {
     Direct = 0,
@@ -133,20 +106,14 @@ public enum MessageHubChannel
     Storefront = 5,
 }
 
-/// <summary>
-/// What a row of the hub is about: a reservation, or a request with no booking yet (an inquiry). The numbers 1 and 2 are those of <see cref="OtaThreadKind"/>; a direct conversation is always a
-/// reservation. <see cref="Review"/> is the review a guest left (E05/F06/US01/T03): it is listed only under the filter <c>kind=review</c>, never in the default view, and opened with its own detail.
-/// </summary>
 public enum MessageHubThreadKind
 {
     Reservation = 1,
     Request = 2,
 
-    /// <summary>The review of a stay, of a channel (<see cref="MessageThreadSource.OtaReview"/>) or of the booking site (<see cref="MessageThreadSource.Review"/>): not a conversation.</summary>
     Review = 3,
 }
 
-/// <summary>Whether the conversation is still being worked on: open, closed (a direct thread past the seventh day after the check-out) or archived on the channel manager.</summary>
 public enum MessageHubThreadState
 {
     Open = 0,
@@ -174,14 +141,9 @@ public sealed record MessageHubFilter(
     MessageHubThreadKind? Kind = null,
     string? Query = null)
 {
-    /// <summary>The longest text of <see cref="Query"/> that counts: a name or a code never needs more.</summary>
     public const int QueryMaxLength = 64;
 }
 
-/// <summary>
-/// One row of the list of the hub. The preview is the start of the last message of the conversation (any of its authors), for the host only;
-/// <paramref name="CheckInDate"/> and <paramref name="CheckOutDate"/> are the instants stored on the booking (the API shows them as Rome dates).
-/// </summary>
 public sealed record MessageHubThreadSummary(
     MessageThreadKey Key,
     MessageThreadSource Source,
@@ -203,21 +165,12 @@ public sealed record MessageHubThreadSummary(
     bool NeedsReply,
     decimal? Rating = null);
 
-/// <summary>A page of the list of the hub.</summary>
 public sealed record MessageHubPage(IReadOnlyList<MessageHubThreadSummary> Items, int TotalCount, int Page, int PageSize);
 
-/// <summary>A conversation with <paramref name="UnreadCount"/> (at least 1) messages of the guest the host has not read; <paramref name="BookingId"/> is the booking it is about, when there is one.</summary>
 public sealed record MessageHubUnreadThread(MessageThreadKey Key, Guid? BookingId, int UnreadCount);
 
-/// <summary>What is left unread in a conversation once the host marked it read.</summary>
 public sealed record MessageHubReadResult(MessageThreadKey Key, int UnreadCount);
 
-/// <summary>
-/// A message of a conversation. <paramref name="Origin"/> is the guest, a person of the host side or the assistant; <paramref name="RuleCode"/> is the
-/// situation an assistant message answered (<c>null</c> for the others, and for every direct message until the assistant writes there too);
-/// <paramref name="DeliveryState"/> is where an outbound message of a channel is on its way to the guest (<c>null</c> for the others);
-/// <paramref name="AttachmentContentType"/> is the type of its file when it has one, which the client opens through the proxy and never by an address.
-/// </summary>
 public sealed record MessageHubMessage(
     Guid Id,
     OtaMessageDirection Direction,
@@ -237,10 +190,6 @@ public sealed record MessageHubMessage(
 /// </summary>
 public sealed record MessageBookingAmounts(decimal? Total, decimal? Paid, decimal? Commission, decimal? Net, decimal? Balance);
 
-/// <summary>
-/// The booking beside a conversation (ADR-032-R8, AC-NF61-3): the code, the guest, the stay as instants (the API shows Rome dates), the people, the
-/// state, where it came from and the amounts. <paramref name="Amounts"/> is <c>null</c> for a caller who may not read payments.
-/// </summary>
 public sealed record MessageBookingCard(
     Guid BookingId,
     string BookingCode,
@@ -273,10 +222,8 @@ public sealed record MessageThreadActions(
     bool AutoReplyAllowed,
     string? Reason)
 {
-    /// <summary>The conversation has no confirmed property mapping, so nothing is written to the channel (the same code the reply answers with, 409).</summary>
     public const string MappingNotConfirmedReason = "mapping_not_confirmed";
 
-    /// <summary>The direct thread is past the seventh day after the check-out (the same code the reply answers with, 409).</summary>
     public const string ThreadClosedReason = "thread_closed";
 
     /// <summary>
@@ -314,11 +261,6 @@ public sealed record ReviewThreadView(
     DateTime? LastSyncedAt,
     string? LastSyncError);
 
-/// <summary>
-/// One conversation with everything the screen shows beside it. <paramref name="CustomerGuestId"/> is the guest of the booking, for the link to the
-/// profile (the route is built by the client; <c>null</c> for a request, which has no booking). <paramref name="HasEarlierMessages"/> is true when the
-/// conversation has more messages than the latest ones it carries.
-/// </summary>
 public sealed record MessageThreadView(
     MessageThreadKey Key,
     MessageThreadSource Source,

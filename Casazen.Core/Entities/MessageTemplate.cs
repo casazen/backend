@@ -12,7 +12,6 @@ namespace Casazen.Core.Entities;
 [Table("MessageTemplates")]
 public class MessageTemplate : ITenantOwned
 {
-    /// <summary>Name of the unique index on (<see cref="OrgId"/>, <see cref="Name"/>, <see cref="Language"/>).</summary>
     public const string OrgNameLanguageIndexName = "UIX_MessageTemplates_OrgId_Name_Language";
 
     public const int NameMaxLength = 100;
@@ -30,7 +29,6 @@ public class MessageTemplate : ITenantOwned
     [MaxLength(NameMaxLength)]
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>The language of the body, a code such as <c>it</c> or <c>en</c>.</summary>
     [Required]
     [MaxLength(LanguageMaxLength)]
     public string Language { get; set; } = string.Empty;
@@ -39,7 +37,6 @@ public class MessageTemplate : ITenantOwned
     [MaxLength(BodyMaxLength)]
     public string Body { get; set; } = string.Empty;
 
-    /// <summary>The template can be used; an inactive one is kept and not offered.</summary>
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

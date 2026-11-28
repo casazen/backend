@@ -1,6 +1,5 @@
 namespace Casazen.Core.Services;
 
-/// <summary>What one run of the periodic domain job did (BK-17), for the log and the tests.</summary>
 public sealed record DomainRecheckSummary(int Checked, int NowVerified, int NoLongerVerified, int Removed, int RemovalsFailed);
 
 /// <summary>

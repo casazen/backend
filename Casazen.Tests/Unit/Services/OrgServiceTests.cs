@@ -43,7 +43,6 @@ public class OrgServiceTests
         var org = await new OrgService(db).EnsureOrgForUserAsync(userId, "founder@example.com", "My Agency");
         Assert.Equal(staffInvite && accepted, org.IsAgency);
         Assert.Equal(PlanTier.Starter, org.PlanTier);
-        // Organization owners are never platform super admins.
         Assert.NotEqual(UserRole.Admin, (await db.Users.SingleAsync()).Role);
     }
 
@@ -156,8 +155,6 @@ public class OrgServiceTests
     [Fact]
     public async Task EnsureOrgForUserAsync_UserOrgIdPointsToSupplierOrgWithoutSupplierOrgIdSet_BackfillsSupplierLink()
     {
-        // Legacy data (pre-SU-08): OrgId already points at the Supplier org but SupplierOrgId was never set.
-        // The host onboarding must not lose that supplier link once it stops reusing the Supplier org (A1-40).
         await using var db = CreateDb(
             nameof(EnsureOrgForUserAsync_UserOrgIdPointsToSupplierOrgWithoutSupplierOrgIdSet_BackfillsSupplierLink));
         var userId = "auth0|legacy-supplier";
@@ -217,8 +214,6 @@ public class OrgServiceTests
         Assert.NotNull(updated);
         Assert.Equal(PlanTier.Scale, updated!.PlanTier);
     }
-
-    // ── UpdateSettingsAsync (A1-22, A1-23) ──────────────────────────────────────────
 
     [Fact]
     public async Task UpdateSettingsAsync_ValidInput_UpdatesNameDisplayNameSlugAndContactEmail()
@@ -354,7 +349,6 @@ public class OrgServiceTests
     [Fact]
     public async Task EnsureOrgForUserAsync_NewOrg_NeutralSlugAndContactEmailNotPublic()
     {
-        // A1-23: the slug never carries the identity-provider id; A1-22: the contact email is published only on opt-in.
         await using var db = CreateDb(nameof(EnsureOrgForUserAsync_NewOrg_NeutralSlugAndContactEmailNotPublic));
         var userId = "google-oauth2|109876543210987654321";
         db.Users.Add(new User
@@ -397,7 +391,6 @@ public class OrgServiceTests
     [Fact]
     public async Task UpdateSettingsAsync_SlugIsPreviousSlugOfAnotherOrg_ThrowsConflict()
     {
-        // The guests holding the other org's old links must never land on this org's site.
         await using var db = CreateDb(nameof(UpdateSettingsAsync_SlugIsPreviousSlugOfAnotherOrg_ThrowsConflict));
         var otherId = SeedOrg(db, "villa-nuova");
         var orgId = SeedOrg(db, "org-mine2345");
@@ -445,7 +438,6 @@ public class OrgServiceTests
     [Fact]
     public async Task UpdateSettingsAsync_LegacySlugSentUnchanged_KeepsItWithoutValidation()
     {
-        // Orgs provisioned before A1-23 have slugs longer than a DNS label: saving the name must not force a new slug.
         await using var db = CreateDb(nameof(UpdateSettingsAsync_LegacySlugSentUnchanged_KeepsItWithoutValidation));
         var legacy = "org-google-oauth2-109876543210987654321-and-some-more-characters-to-pass-63";
         var orgId = SeedOrg(db, legacy);
@@ -494,8 +486,6 @@ public class OrgServiceTests
         return org.Id;
     }
 
-    // ── GetPublicBySlugAsync ──────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetPublicBySlugAsync_ReturnsActiveOrg_ForKnownSlug()
     {
@@ -535,7 +525,6 @@ public class OrgServiceTests
     [Fact]
     public async Task GetPublicBySlugAsync_ReturnsNull_WhenOrgIsInactive()
     {
-        // Inactive orgs must not be surfaced on the public booking site.
         await using var db = CreateDb(nameof(GetPublicBySlugAsync_ReturnsNull_WhenOrgIsInactive));
         db.Orgs.Add(new OrgEntity
         {
@@ -557,7 +546,6 @@ public class OrgServiceTests
     [Fact]
     public async Task GetPublicBySlugAsync_IsSlugCaseSensitive()
     {
-        // Slug matching must be exact (lowercase by convention); uppercase variant returns null.
         await using var db = CreateDb(nameof(GetPublicBySlugAsync_IsSlugCaseSensitive));
         db.Orgs.Add(new OrgEntity
         {
@@ -575,8 +563,6 @@ public class OrgServiceTests
         var upper = await service.GetPublicBySlugAsync("MY-ORG");
 
         Assert.NotNull(exact);
-        // In-memory EF uses ordinal comparison; upper should not match
-        // (consistent with production Postgres case-sensitive collation on the slug column).
         Assert.Null(upper);
     }
 }

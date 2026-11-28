@@ -20,7 +20,6 @@ public sealed class QualificationLockTests : IDisposable
         Directory.CreateDirectory(_folder);
     }
 
-    // The lock of the gate tests: next to it the final test writes its marker (the file itself is never written by a gate test).
     private string LockPath => Path.Combine(_folder, "lock", QualificationLock.FileName);
 
     public void Dispose()
@@ -102,10 +101,8 @@ public sealed class QualificationLockTests : IDisposable
         foreach (var (member, current) in changes)
             Assert.Equal([member], frozen.Verify(current).DifferingMembers);
 
-        // The other way round too: a candidate that was frozen and is not loaded now.
         Assert.Equal(["candidates." + BiometricModelRoles.FaceRecognitionCandidate], withCandidate.Verify(frozen).DifferingMembers);
 
-        // Several at once are all named, in the order of the lock.
         Assert.Equal(
             ["policyCanonicalHash", "thresholds.accept", "testPersons"],
             frozen.Verify(frozen with { PolicyCanonicalHash = other, Thresholds = frozen.Thresholds with { Accept = 0.5 }, TestPersons = 3 }).DifferingMembers);
@@ -130,13 +127,11 @@ public sealed class QualificationLockTests : IDisposable
     {
         var provisionalNow = Frozen(provisional: true);
 
-        // Whatever else is equal, a policy that is provisional is a difference: it is never qualified.
         Assert.Equal(["policyProvisional"], Frozen().Verify(provisionalNow).DifferingMembers);
         Assert.Equal(["policyProvisional"], provisionalNow.Verify(provisionalNow).DifferingMembers);
         Assert.Equal(QualificationLock.MismatchCode, provisionalNow.Verify(provisionalNow).Code);
     }
 
-    /// <summary>Proof (security): the thresholds were frozen before the final test, so a threshold changed after the calibration makes the final test refuse to start, before anything of the test split is read.</summary>
     [Fact]
     public async Task QualificationLock_ChangedThreshold_RefusesFinalTest()
     {
@@ -194,7 +189,6 @@ public sealed class QualificationLockTests : IDisposable
         var results = await QualificationFinalGate.RunOnceAsync(frozen, Frozen(), _folder, LockPath, Run);
         Assert.Equal(("results", 1), (results, started));
 
-        // The final test is run once: with the report of one in the folder, nothing starts again, and nothing replaces that report.
         File.WriteAllText(Path.Combine(_folder, CandidateVersionReport.MarkdownFileName), "the report of the final test");
         var again = await Assert.ThrowsAsync<QualificationRunException>(() => QualificationFinalGate.RunOnceAsync(frozen, Frozen(), _folder, LockPath, Run));
 
@@ -203,10 +197,6 @@ public sealed class QualificationLockTests : IDisposable
         Assert.Equal("the report of the final test", File.ReadAllText(Path.Combine(_folder, CandidateVersionReport.MarkdownFileName)));
     }
 
-    /// <summary>
-    /// Proof (security): «once» holds whatever the output folder is and whatever is deleted. The marker is written next to the lock BEFORE the run starts (so before anything of the test split is
-    /// read), is never replaced, and a second final test with the same lock is refused in another folder, with the report deleted, or after a run that broke.
-    /// </summary>
     [Fact]
     public async Task QualificationFinalGate_TheMarkerIsWrittenBeforeTheRun_AndRefusesAnotherRunWhateverTheFolder()
     {
@@ -227,12 +217,10 @@ public sealed class QualificationLockTests : IDisposable
         Assert.Equal(Path.GetFullPath(LockPath) + QualificationFinalGate.MarkerSuffix, marker);
         Assert.Equal(Path.GetDirectoryName(Path.GetFullPath(LockPath)), Path.GetDirectoryName(marker));
 
-        // Another output folder, the report that was never written, the same lock: refused, and nothing starts.
         var elsewhere = await Assert.ThrowsAsync<QualificationRunException>(() => QualificationFinalGate.RunOnceAsync(frozen, Frozen(), Path.Combine(_folder, "out-2"), LockPath, Run));
         Assert.Equal(QualificationRunCodes.FinalAlreadyRun, elsewhere.Code);
         Assert.Equal(1, started);
 
-        // What the marker holds is hashes and the time: nothing of a person.
         using var content = JsonDocument.Parse(File.ReadAllText(marker));
         Assert.Equal(["datasetManifestHash", "policyCanonicalHash", "startedAt", "weightsHash"], content.RootElement.EnumerateObject().Select(member => member.Name).Order(StringComparer.Ordinal));
         Assert.Equal(frozen.PolicyCanonicalHash, content.RootElement.GetProperty("policyCanonicalHash").GetString());
@@ -260,7 +248,6 @@ public sealed class QualificationLockTests : IDisposable
         Assert.Equal(1, started);
     }
 
-    /// <summary>A test split that cannot measure a kind of critical case is refused before the marker is written: the final test is made once, and it must not be used up on a dataset that cannot pass.</summary>
     [Fact]
     public async Task QualificationFinalGate_ASplitWithoutAKindOfCriticalCase_IsRefusedBeforeTheMarker()
     {
@@ -280,7 +267,6 @@ public sealed class QualificationLockTests : IDisposable
         Assert.Equal(0, started);
         Assert.False(File.Exists(QualificationFinalGate.MarkerPathOf(LockPath)));
 
-        // With every kind there, the same lock runs.
         await QualificationFinalGate.RunOnceAsync(frozen, Frozen(), _folder, LockPath, Run, []);
         Assert.Equal(1, started);
     }
@@ -373,7 +359,6 @@ public sealed class QualificationLockTests : IDisposable
 
         var described = QualificationLock.FromResults(results);
 
-        // The run of the committed policy is the lock of the same configuration (the test persons are the ones the results count in the dataset), and a run of anything else is named.
         Assert.True(Frozen(candidate: true).Verify(described).Ok);
         Assert.Equal(results.RunAt, described.CreatedAt);
         Assert.Equal(["candidates." + BiometricModelRoles.FaceRecognitionCandidate], Frozen().Verify(described).DifferingMembers);

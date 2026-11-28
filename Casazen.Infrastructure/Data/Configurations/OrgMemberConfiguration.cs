@@ -1,6 +1,4 @@
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
-using Casazen.Core.Suppliers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -25,7 +23,6 @@ internal sealed class OrgMemberConfiguration : IEntityTypeConfiguration<OrgMembe
             .IsUnique()
             .HasDatabaseName("UIX_OrgMembers_UserId");
 
-        // The tenant filter reads by OrgId; the team page lists an org's people and finds its owner.
         entity.HasIndex(m => new { m.OrgId, m.Role })
             .HasDatabaseName("IX_OrgMembers_OrgId_Role");
     }

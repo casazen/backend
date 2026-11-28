@@ -40,18 +40,10 @@ public interface IGuestSessionService
     /// <exception cref="Exceptions.NotFoundException"><see cref="GuestBookingLookupErrorCodes.NotFound"/>, the same whatever does not match.</exception>
     Task<GuestSessionOpened> OpenAsync(GuestBookingPhoneCredentials credentials, CancellationToken cancellationToken = default);
 
-    /// <summary>The ticket in <paramref name="accessToken"/>, or <c>null</c> when it is not a token of ours, was altered or has expired.</summary>
     GuestSessionTicket? Validate(string? accessToken);
 
-    /// <summary>Booking <paramref name="bookingCode"/> as its guest sees it (the view of "Le mie prenotazioni").</summary>
-    /// <exception cref="Exceptions.NotFoundException"><see cref="GuestBookingLookupErrorCodes.NotFound"/>.</exception>
     Task<GuestBookingView> GetBookingAsync(GuestSessionTicket ticket, string bookingCode, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The direct booking <paramref name="bookingCode"/> of the guest of <paramref name="ticket"/> (read-only, with its property, org,
-    /// guest and payments), for the services that act on it.
-    /// </summary>
-    /// <exception cref="Exceptions.NotFoundException"><see cref="GuestBookingLookupErrorCodes.NotFound"/>.</exception>
     Task<Booking> FindBookingAsync(GuestSessionTicket ticket, string bookingCode, CancellationToken cancellationToken = default);
 }
 
@@ -61,21 +53,15 @@ public interface IGuestSessionService
 /// <param name="ExpiresAt">When the session ends (UTC).</param>
 public sealed record GuestSessionTicket(Guid OrgId, string EmailHash, DateTime ExpiresAt)
 {
-    /// <summary>The hash of an email as the token carries it: SHA-256 of the address trimmed and lowercase, in upper-case hex.</summary>
     public static string HashEmail(string email)
     {
         ArgumentNullException.ThrowIfNull(email);
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(email.Trim().ToLowerInvariant())));
     }
 
-    /// <summary>True when <paramref name="email"/> is the address of the guest of this session (compared in constant time).</summary>
     public bool IsForEmail(string? email) =>
         !string.IsNullOrWhiteSpace(email)
         && CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(EmailHash), Encoding.ASCII.GetBytes(HashEmail(email)));
 }
 
-/// <summary>A session just opened: the token to send, until when it works, and the booking that was proved, formatted.</summary>
-/// <param name="AccessToken">Opaque. Sent as <c>Authorization: Bearer {AccessToken}</c>.</param>
-/// <param name="ExpiresAt">When the token stops working (UTC).</param>
-/// <param name="BookingCode">The code of the booking the guest proved, <c>XXXXX-XXXXX</c>.</param>
 public sealed record GuestSessionOpened(string AccessToken, DateTime ExpiresAt, string BookingCode);

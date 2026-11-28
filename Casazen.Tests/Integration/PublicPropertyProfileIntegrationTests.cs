@@ -33,7 +33,6 @@ public class PublicPropertyProfileIntegrationTests : IClassFixture<CasazenWebApp
         using var anonymous = _factory.CreateClient();
         var bySlug = $"/api/public/orgs/{org.Slug}/properties/{property.Slug}";
 
-        // Nothing said yet: nothing to show.
         var bare = (await anonymous.GetFromJsonAsync<JsonElement>(bySlug)).GetProperty("profile");
         Assert.Equal(JsonValueKind.Null, bare.GetProperty("zone").ValueKind);
         Assert.Equal(JsonValueKind.Null, bare.GetProperty("rules").ValueKind);
@@ -41,7 +40,6 @@ public class PublicPropertyProfileIntegrationTests : IClassFixture<CasazenWebApp
         Assert.Equal(0, bare.GetProperty("tags").GetArrayLength());
         Assert.Equal(0, bare.GetProperty("highlights").GetArrayLength());
 
-        // The wizard's fields (the earliest arrival after the latest one the host gives below) and the site profile.
         await SetAsync(property.Id, p =>
         {
             p.Amenities = [PropertyAmenity.Pool];
@@ -72,7 +70,6 @@ public class PublicPropertyProfileIntegrationTests : IClassFixture<CasazenWebApp
         Assert.Equal("C", profile.GetProperty("energy").GetProperty("class").GetString());
         Assert.Equal("Lecce centre", profile.GetProperty("zone").GetProperty("en").GetString());
         Assert.Equal("Terrazza", profile.GetProperty("highlights")[0].GetProperty("title").GetProperty("it").GetString());
-        // The host's label and the ones the data of the house give (a pool, pets welcome), in the order of the vocabulary.
         Assert.Equal(["piscina", "pet", "vista-mare"], profile.GetProperty("tags").EnumerateArray().Select(t => t.GetString()));
         Assert.Equal("YouTube", profile.GetProperty("video").GetProperty("provider").GetString());
         Assert.Equal("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ", profile.GetProperty("video").GetProperty("url").GetString());
@@ -84,13 +81,11 @@ public class PublicPropertyProfileIntegrationTests : IClassFixture<CasazenWebApp
         Assert.Equal("Yes", rules.GetProperty("pets").GetString());
         Assert.True(rules.GetProperty("childrenWelcome").GetBoolean());
 
-        // The other route gives the same profile; the stored columns of the texts are not part of the page.
         var byId = await anonymous.GetFromJsonAsync<JsonElement>($"/api/properties/{property.Id}/public");
         Assert.Equal(profile.GetRawText(), byId.GetProperty("profile").GetRawText());
         Assert.DoesNotContain("siteProfileJson", page.GetRawText(), StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("photoAltJson", page.GetRawText(), StringComparison.OrdinalIgnoreCase);
 
-        // The wizard moves the earliest arrival after the latest one: the pair is upside down and the page shows the earliest alone.
         await SetAsync(property.Id, p => p.CheckInFrom = new TimeOnly(21, 0));
         var inverted = (await anonymous.GetFromJsonAsync<JsonElement>(bySlug)).GetProperty("profile").GetProperty("rules").GetProperty("checkIn");
         Assert.Equal("21:00:00", inverted.GetProperty("from").GetString());

@@ -24,7 +24,7 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class ServiceDisputeTests
 {
-    private const int Amount = 6_000; // 10 %: commission 600, net 5_400
+    private const int Amount = 6_000;
     private const int Commission = 600;
     private const int Net = 5_400;
     private const string IntentId = "pi_dispute_test";
@@ -32,8 +32,6 @@ public class ServiceDisputeTests
     private const string SupplierWords = "Ho pulito tutto, risposta riservata del fornitore";
     private const string AdminWords = "Nota riservata dell'amministratore";
     private const string Admin = "auth0|admin-1";
-
-    // ─── The worlds ───
 
     private sealed class World(ServiceRequestScenario scenario, Guid requestId, Guid paymentId) : IDisposable
     {
@@ -70,7 +68,6 @@ public class ServiceDisputeTests
             await Service.ResolveDisputeAsync(
                 (await DisputeAsync()).Id, new ResolveServiceDisputeRequest(outcome, refundCents, note), Admin);
 
-        /// <summary>Opens the complaint, the supplier replies: the dispute waits for an admin.</summary>
         public async Task<ServicePaymentDispute> ReadyForTheAdminAsync()
         {
             await OpenAsync();
@@ -81,10 +78,6 @@ public class ServiceDisputeTests
         public void Dispose() => S.Dispose();
     }
 
-    /// <summary>
-    /// A request of a host paid through CasaZen: the card was charged, the money is held. <paramref name="releaseInMinutes"/> is when it is due (the work is
-    /// completed 30 minutes ago); a job that is not completed has no such time.
-    /// </summary>
     private static async Task<World> HeldAsync(
         ServiceRequestStatus status = ServiceRequestStatus.Completato,
         int releaseInMinutes = 30,
@@ -126,8 +119,6 @@ public class ServiceDisputeTests
     private static StripeException Refusal(string code = "insufficient_funds") =>
         new(HttpStatusCode.BadRequest, new StripeError { Type = "invalid_request_error", Code = code }, "refused");
 
-    // ─── The payer complains: the money stops ───
-
     [Fact]
     public async Task Open_ForACompletedJob_InsideTheWindow_StopsTheMoney_AndTheSupplierIsAskedToReply()
     {
@@ -140,7 +131,7 @@ public class ServiceDisputeTests
         Assert.Equal(ServiceDisputeOpener.Host, view.OpenedBy);
         Assert.False(view.NoShow);
         Assert.Equal(CustomerWords, view.Text);
-        Assert.Equal(w.Now.AddHours(48), view.SupplierReplyDueAt); // DisputeSupplierReplyHours
+        Assert.Equal(w.Now.AddHours(48), view.SupplierReplyDueAt);
         Assert.False(view.SupplierReplied);
 
         var payment = await w.PaymentAsync();
@@ -150,13 +141,11 @@ public class ServiceDisputeTests
         Assert.Equal(w.S.SupplierOrgId, dispute.SupplierOrgId);
         Assert.Equal("auth0|host-member", dispute.OpenedByUserId);
 
-        // Nothing is paid out while the dispute stands, however many times the job runs and however long it takes.
         w.S.Clock.Advance(TimeSpan.FromHours(10));
         var run = await w.Service.RunFundsAsync();
         Assert.Equal(0, run.Released);
         Assert.Empty(w.Stripe.TransferRequests);
 
-        // The supplier is asked to reply, the payer is told; the admins have nothing to do yet.
         Assert.Single(w.S.EmailsOf(EmailTemplates.Names.ServiceDisputeOpenedSupplier, "supplier@test.com"));
         Assert.Single(w.S.EmailsOf(EmailTemplates.Names.ServiceDisputeOpenedPayer, "host@test.com"));
         Assert.Empty(w.S.EmailsOf(EmailTemplates.Names.ServiceDisputeAdminAlert));
@@ -237,7 +226,7 @@ public class ServiceDisputeTests
         var second = await w.OpenAsync(ServiceDisputeReason.NotDone, "un altro testo");
 
         Assert.Equal(first.Id, second.Id);
-        Assert.Equal(ServiceDisputeReason.PoorQuality, second.Reason); // the first complaint stands, the second writes nothing
+        Assert.Equal(ServiceDisputeReason.PoorQuality, second.Reason);
         Assert.Equal(CustomerWords, second.Text);
         Assert.Single(w.S.Db.ServicePaymentDisputes);
         Assert.Single(w.S.EmailsOf(EmailTemplates.Names.ServiceDisputeOpenedSupplier));
@@ -256,7 +245,7 @@ public class ServiceDisputeTests
                 new OpenServiceDisputeRequest(w.RequestId, ServiceDisputeOpener.Customer, ServiceDisputeReason.NotDone, null)));
 
         Assert.Equal("service_dispute_not_found", refusal.Code);
-        Assert.Equal("service_dispute_not_found", customer.Code); // a host's payment is not a showcase customer's
+        Assert.Equal("service_dispute_not_found", customer.Code);
         Assert.Equal(ServicePaymentStatus.Held, (await w.PaymentAsync()).Status);
         Assert.Empty(w.S.Db.ServicePaymentDisputes);
     }
@@ -275,9 +264,9 @@ public class ServiceDisputeTests
     }
 
     [Theory]
-    [InlineData("other", null, "text")] // the reason "other" needs the words
+    [InlineData("other", null, "text")]
     [InlineData("other", "   ", "text")]
-    [InlineData("not_done", "x\u0000y", "text")] // a control character
+    [InlineData("not_done", "x\u0000y", "text")]
     [InlineData("nonsense", "ok", "reason")]
     public async Task Open_WithAReasonOrTextThatIsNotValid_IsRefusedBeforeAnythingIsLocked(string reason, string? text, string field)
     {
@@ -308,8 +297,6 @@ public class ServiceDisputeTests
         Assert.Equal(ServicePaymentStatus.Disputed, (await w.PaymentAsync()).Status);
     }
 
-    // ─── A job nobody marked completed ───
-
     [Fact]
     public async Task Open_ForAJobNobodyMarkedCompleted_IsTooEarlyBeforeItsTimeEnded_AndANoShowAfter()
     {
@@ -319,14 +306,12 @@ public class ServiceDisputeTests
         Assert.Equal("service_dispute_too_early", early.Code);
         Assert.Equal(ServicePaymentStatus.Held, (await w.PaymentAsync()).Status);
 
-        w.S.Clock.Advance(TimeSpan.FromHours(2)); // the time agreed for the work ended
+        w.S.Clock.Advance(TimeSpan.FromHours(2));
         var view = await w.OpenAsync(ServiceDisputeReason.NotDone, null);
 
         Assert.True(view.NoShow);
         Assert.Equal(ServicePaymentStatus.Disputed, (await w.PaymentAsync()).Status);
     }
-
-    // ─── The supplier replies ───
 
     [Fact]
     public async Task Reply_SendsTheDisputeToTheAdmins_AndTheAdminsAndThePayerAreTold()
@@ -342,7 +327,7 @@ public class ServiceDisputeTests
         var dispute = await w.DisputeAsync();
         Assert.Equal(ServiceDisputeStatus.AwaitingDecision, dispute.Status);
         Assert.Equal(SupplierWords, dispute.SupplierReply);
-        Assert.Equal(w.Now.AddHours(72), dispute.DecisionDueAt); // DisputeDecisionTargetHours
+        Assert.Equal(w.Now.AddHours(72), dispute.DecisionDueAt);
         Assert.Equal(ServicePaymentStatus.Disputed, (await w.PaymentAsync()).Status);
 
         Assert.Single(w.S.EmailsOf(EmailTemplates.Names.ServiceDisputeRepliedPayer, "host@test.com"));
@@ -357,7 +342,7 @@ public class ServiceDisputeTests
         await w.OpenAsync();
         await w.ReplyAsync();
 
-        var again = await w.ReplyAsync(); // a double click
+        var again = await w.ReplyAsync();
         var second = await Assert.ThrowsAsync<DomainConflictException>(async () => await w.ReplyAsync("altre parole"));
 
         Assert.Equal(SupplierWords, again.Reply);
@@ -406,13 +391,10 @@ public class ServiceDisputeTests
         Assert.Equal(CustomerWords, view.CustomerText);
         Assert.Equal(SupplierWords, view.Reply);
         Assert.Equal(ServiceDisputeStatus.ResolvedForSupplier, view.Status);
-        // The admin's note is in no view of the parties: the types do not even have a member for it.
         Assert.DoesNotContain(typeof(ServiceDisputeSupplierView).GetProperties(), p => p.Name.Contains("Admin", StringComparison.Ordinal));
         Assert.DoesNotContain(typeof(ServiceDisputePayerView).GetProperties(), p => p.Name.Contains("Admin", StringComparison.Ordinal));
         Assert.DoesNotContain(typeof(ServiceDisputePayerView).GetProperties(), p => p.Name.Equals("Reply", StringComparison.Ordinal));
     }
-
-    // ─── Time passes: the job ───
 
     [Fact]
     public async Task Job_WhenTheSupplierDoesNotReplyInTime_TheDisputeGoesToTheAdminsOnce()
@@ -423,7 +405,7 @@ public class ServiceDisputeTests
         w.S.Clock.Advance(TimeSpan.FromHours(47));
         Assert.Equal(0, (await w.Service.RunDisputesAsync()).ReachedAdmins);
 
-        w.S.Clock.Advance(TimeSpan.FromHours(1)); // 48 hours
+        w.S.Clock.Advance(TimeSpan.FromHours(1));
         var run = await w.Service.RunDisputesAsync();
         var again = await w.Service.RunDisputesAsync();
 
@@ -450,7 +432,7 @@ public class ServiceDisputeTests
         Assert.Equal(SupplierWords, view.Reply);
         Assert.Equal(ServiceDisputeStatus.AwaitingDecision, view.Status);
         Assert.NotNull((await w.DisputeAsync()).SupplierRepliedAt);
-        Assert.Single(w.S.EmailsOf(EmailTemplates.Names.ServiceDisputeAdminAlert)); // the admins were told once, when it reached them
+        Assert.Single(w.S.EmailsOf(EmailTemplates.Names.ServiceDisputeAdminAlert));
     }
 
     [Fact]
@@ -462,20 +444,18 @@ public class ServiceDisputeTests
         w.S.Clock.Advance(TimeSpan.FromHours(71));
         Assert.Equal(0, (await w.Service.RunDisputesAsync()).Overdue);
 
-        w.S.Clock.Advance(TimeSpan.FromHours(1)); // 72 hours: the target
+        w.S.Clock.Advance(TimeSpan.FromHours(1));
         var run = await w.Service.RunDisputesAsync();
         var again = await w.Service.RunDisputesAsync();
 
         Assert.Equal(1, run.Overdue);
         Assert.Equal(0, again.Overdue);
-        Assert.Equal(2, w.S.EmailsOf(EmailTemplates.Names.ServiceDisputeAdminAlert, "admin@test.com").Count); // when it reached them, and now
+        Assert.Equal(2, w.S.EmailsOf(EmailTemplates.Names.ServiceDisputeAdminAlert, "admin@test.com").Count);
         Assert.Equal(ServiceDisputeStatus.AwaitingDecision, (await w.DisputeAsync()).Status);
         Assert.Equal(ServicePaymentStatus.Disputed, (await w.PaymentAsync()).Status);
         Assert.Empty(w.Stripe.TransferRequests);
         Assert.Empty(w.Stripe.RefundRequests);
     }
-
-    // ─── The payer takes the complaint back ───
 
     [Fact]
     public async Task Withdraw_FreesTheMoney_TheSupplierIsPaidTheNetOnce_AndToldSo()
@@ -490,14 +470,14 @@ public class ServiceDisputeTests
         Assert.Equal(ServiceDisputeStatus.Withdrawn, again.Status);
         var payment = await w.PaymentAsync();
         Assert.Equal(ServicePaymentStatus.Held, payment.Status);
-        Assert.Equal(w.Now, payment.ReleaseAt); // due now: the payer's complaint was the only thing in the way
+        Assert.Equal(w.Now, payment.ReleaseAt);
 
         var run = await w.Service.RunFundsAsync();
         Assert.Equal(1, run.Released);
         Assert.Equal(Net, Assert.Single(w.Stripe.TransferRequests).AmountCents);
         Assert.Equal(ServicePaymentStatus.Released, (await w.PaymentAsync()).Status);
         Assert.Single(w.S.EmailsOf(EmailTemplates.Names.ServiceDisputeWithdrawnSupplier, "supplier@test.com"));
-        Assert.Empty(w.S.Kit.Penalties.Recorded); // taking a complaint back costs the supplier nothing
+        Assert.Empty(w.S.Kit.Penalties.Recorded);
     }
 
     [Fact]
@@ -524,8 +504,6 @@ public class ServiceDisputeTests
 
         Assert.Equal("service_dispute_not_open", refusal.Code);
     }
-
-    // ─── An admin decides ───
 
     [Fact]
     public async Task Resolve_BeforeTheSupplierHadItsTime_IsRefused_AndTellsUntilWhen()
@@ -555,7 +533,7 @@ public class ServiceDisputeTests
         var payment = await w.PaymentAsync();
         Assert.Equal(ServicePaymentStatus.Held, payment.Status);
         Assert.Equal(w.Now, payment.ReleaseAt);
-        Assert.Empty(w.Stripe.RefundRequests); // nothing goes back to the payer
+        Assert.Empty(w.Stripe.RefundRequests);
 
         await w.Service.RunFundsAsync();
         Assert.Equal(Net, Assert.Single(w.Stripe.TransferRequests).AmountCents);
@@ -567,7 +545,7 @@ public class ServiceDisputeTests
         var audit = Assert.Single(w.S.Db.SupplierAdminAuditEntries, e => e.Action == SupplierAdminAuditAction.ServiceDisputeResolved);
         Assert.Equal(w.S.SupplierOrgId, audit.SupplierOrgId);
         Assert.Equal(Admin, audit.ActorUserId);
-        Assert.DoesNotContain("riservata", audit.Reason, StringComparison.Ordinal); // the words of the parties are not in the trail
+        Assert.DoesNotContain("riservata", audit.Reason, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -590,7 +568,6 @@ public class ServiceDisputeTests
 
         var detail = await w.ResolveAsync("for_customer");
 
-        // The refund was reserved with the decision, for the supplier's whole part: the price minus the commission, never the commission.
         var refundRequest = Assert.Single(w.Stripe.RefundRequests);
         Assert.Equal(Net, refundRequest.AmountCents);
         Assert.Equal(ServiceCharges.RefundIdempotencyKey(w.PaymentId, 1), refundRequest.IdempotencyKey);
@@ -600,7 +577,6 @@ public class ServiceDisputeTests
         Assert.Equal($"dispute:{before.Id:D}", refund.Reason);
         Assert.Equal(Admin, refund.RequestedByUserId);
 
-        // Everything but the commission went back: the cycle is over, CasaZen keeps 600 and the supplier gets nothing.
         var payment = await w.PaymentAsync();
         Assert.Equal(ServicePaymentStatus.PartiallyRefunded, payment.Status);
         Assert.Equal(Net, payment.RefundedCents);
@@ -627,8 +603,8 @@ public class ServiceDisputeTests
 
         Assert.Single(w.S.EmailsOf(EmailTemplates.Names.ServiceDisputeResolvedPayer, "host@test.com"));
         Assert.Single(w.S.EmailsOf(EmailTemplates.Names.ServiceDisputeResolvedSupplier, "supplier@test.com"));
-        Assert.Single(w.S.EmailsOf(EmailTemplates.Names.ServicePaymentRefundedPayer, "host@test.com")); // the refund itself, once it succeeded
-        Assert.Empty(w.S.EmailsOf(EmailTemplates.Names.ServicePaymentRefundedSupplier)); // the supplier is told by the decision, not twice
+        Assert.Single(w.S.EmailsOf(EmailTemplates.Names.ServicePaymentRefundedPayer, "host@test.com"));
+        Assert.Empty(w.S.EmailsOf(EmailTemplates.Names.ServicePaymentRefundedSupplier));
     }
 
     [Fact]
@@ -639,7 +615,6 @@ public class ServiceDisputeTests
 
         await w.ResolveAsync("for_customer", refundCents: 1_000);
 
-        // The payer got 1_000 back; the payment is held again, due now, only for what the supplier is still owed.
         var payment = await w.PaymentAsync();
         Assert.Equal(ServicePaymentStatus.Held, payment.Status);
         Assert.Equal(1_000, payment.RefundedCents);
@@ -651,14 +626,13 @@ public class ServiceDisputeTests
         var transfer = Assert.Single(w.Stripe.TransferRequests);
         Assert.Equal(Net - 1_000, transfer.AmountCents);
         Assert.Equal(ServicePaymentStatus.Released, (await w.PaymentAsync()).Status);
-        // 6_000 paid = 1_000 back to the payer + 4_400 to the supplier + 600 commission: not a cent more or less.
         Assert.Equal(Commission, Amount - Assert.Single(w.Stripe.RefundRequests).AmountCents - transfer.AmountCents);
         Assert.Equal(ServiceRequestStatus.Pagato, (await w.RequestAsync()).Status);
     }
 
     [Theory]
     [InlineData(5_401)]
-    [InlineData(6_000)] // the whole price: the commission is never given back by a dispute
+    [InlineData(6_000)]
     public async Task Resolve_ForTheCustomer_MoreThanTheSuppliersPart_IsRefused_AndNothingMoves(int asked)
     {
         using var w = await HeldAsync();
@@ -708,7 +682,7 @@ public class ServiceDisputeTests
 
         var first = await w.ResolveAsync("for_customer", refundCents: 1_000);
         var again = await w.ResolveAsync("for_customer", refundCents: 1_000);
-        var withoutAmount = await w.ResolveAsync("for_customer"); // asking again without the amount is the same decision
+        var withoutAmount = await w.ResolveAsync("for_customer");
 
         Assert.Equal(first.Summary.Id, again.Summary.Id);
         Assert.Equal(1_000, withoutAmount.Summary.DecidedRefundCents);
@@ -731,7 +705,7 @@ public class ServiceDisputeTests
         using var w = await HeldAsync();
         await w.ReadyForTheAdminAsync();
         var disputeId = (await w.DisputeAsync()).Id;
-        await w.Service.WithdrawDisputeAsync(w.RequestId, ServiceDisputeOpener.Host, w.S.HostOrgId); // the payer was first
+        await w.Service.WithdrawDisputeAsync(w.RequestId, ServiceDisputeOpener.Host, w.S.HostOrgId);
 
         var refusal = await Assert.ThrowsAsync<DomainConflictException>(
             async () => await w.Service.ResolveDisputeAsync(disputeId, new ResolveServiceDisputeRequest("for_customer", null, null), Admin));
@@ -751,7 +725,6 @@ public class ServiceDisputeTests
 
         await w.ResolveAsync("for_customer", refundCents: 1_000);
 
-        // The decision stands, the refund did not go: the payment is not freed and the supplier is not paid.
         var refund = Assert.Single(await w.RefundsAsync());
         Assert.Equal(ServicePaymentRefundStatus.Failed, refund.Status);
         var payment = await w.PaymentAsync();
@@ -763,7 +736,6 @@ public class ServiceDisputeTests
         await w.Service.RunFundsAsync();
         Assert.Empty(w.Stripe.TransferRequests);
 
-        // Not before the time to try (30 minutes), then once.
         Assert.Equal(0, (await w.Service.RunDisputesAsync()).RefundAlerts);
         w.S.Clock.Advance(TimeSpan.FromMinutes(31));
         Assert.Equal(1, (await w.Service.RunDisputesAsync()).RefundAlerts);
@@ -772,7 +744,6 @@ public class ServiceDisputeTests
             w.S.EmailsOf(EmailTemplates.Names.ServiceDisputeAdminAlert, "admin@test.com"),
             e => e.Content.HtmlBody.Contains(DisputeAlertCodes.RefundIncomplete, StringComparison.Ordinal));
 
-        // The admin sends the refund again with the tool that exists (the commission stays with CasaZen): the decision is done.
         await w.Service.RefundAsync(w.PaymentId, 1_000, "retry", Admin, keepCommission: true);
 
         var freed = await w.PaymentAsync();
@@ -794,7 +765,7 @@ public class ServiceDisputeTests
 
         Assert.Equal(ServiceDisputeStatus.ResolvedForCustomer, detail.Summary.Status);
         Assert.Equal(ServicePaymentStatus.PartiallyRefunded, (await w.PaymentAsync()).Status);
-        Assert.Empty(w.S.Kit.Penalties.Recorded); // lost: the dispute row is the record it is rebuilt from
+        Assert.Empty(w.S.Kit.Penalties.Recorded);
     }
 
     [Fact]
@@ -802,12 +773,12 @@ public class ServiceDisputeTests
     {
         using var w = await HeldAsync();
         await w.OpenAsync();
-        await w.Service.RefundAsync(w.PaymentId, 4_000, "goodwill", Admin, keepCommission: true); // the admin's own tool, meanwhile
+        await w.Service.RefundAsync(w.PaymentId, 4_000, "goodwill", Admin, keepCommission: true);
         await w.ReplyAsync();
 
         var detail = await w.ResolveAsync("for_customer");
 
-        Assert.Equal(Net - 4_000, detail.Summary.DecidedRefundCents); // 1_400: the rest of the supplier's part
+        Assert.Equal(Net - 4_000, detail.Summary.DecidedRefundCents);
         Assert.Equal(2, w.Stripe.RefundRequests.Count);
         Assert.Equal(Net, (await w.PaymentAsync()).RefundedCents);
         Assert.Equal(ServicePaymentStatus.PartiallyRefunded, (await w.PaymentAsync()).Status);
@@ -826,11 +797,9 @@ public class ServiceDisputeTests
 
         Assert.Equal(0, detail.Summary.DecidedRefundCents);
         Assert.True(detail.Summary.Settled);
-        Assert.Single(w.Stripe.RefundRequests); // only the admin's own refund
-        Assert.Single(w.S.Kit.Penalties.Recorded); // the supplier lost all the same
+        Assert.Single(w.Stripe.RefundRequests);
+        Assert.Single(w.S.Kit.Penalties.Recorded);
     }
-
-    // ─── The queue of the admins ───
 
     [Fact]
     public async Task TheAdminsQueue_ListsTheOpenOnes_WithTheNumbersOfTheMoney_AndNoWordsOfAnyone()
@@ -883,8 +852,6 @@ public class ServiceDisputeTests
         Assert.Equal("service_dispute_not_found", refusal.Code);
     }
 
-    // ─── The customer of a showcase, through the manager ───
-
     private const string SupplierAccountId = ServiceRequestScenario.SupplierAccountId;
 
     private static async Task<(ServiceRequestScenario S, ServiceRequest Request, ShowcaseBookingCredentials Credentials)> BookedAndTakenAsync(bool recordEvents = false)
@@ -924,26 +891,24 @@ public class ServiceDisputeTests
 
         var reported = await s.Kit.Manager.ReportProblemAsync(credentials, "poor_quality", CustomerWords);
 
-        // The money stopped: the page shows the complaint, the customer can take it back and can no longer say "all fine" or report again.
         var dispute = reported.Payment!.Dispute!;
         Assert.Equal("AwaitingSupplier", dispute.Status);
         Assert.Equal("poor_quality", dispute.Reason);
         Assert.Equal(CustomerWords, dispute.Text);
         Assert.False(dispute.OpenedByCasaZen);
         Assert.False(dispute.SupplierReplied);
-        Assert.Equal("held", reported.Payment.Status); // for the customer the money is held, whatever the reason
-        Assert.Null(reported.Payment.ReleaseAtUtc); // no time is running
+        Assert.Equal("held", reported.Payment.Status);
+        Assert.Null(reported.Payment.ReleaseAtUtc);
         Assert.False(reported.Actions.CanReportProblem);
         Assert.False(reported.Actions.CanConfirmOk);
         Assert.True(reported.Actions.CanWithdrawProblem);
-        var stopped = await s.Kit.Manager.ReportProblemAsync(credentials, "not_done", "again"); // the same complaint
+        var stopped = await s.Kit.Manager.ReportProblemAsync(credentials, "not_done", "again");
         Assert.Equal("poor_quality", stopped.Payment!.Dispute!.Reason);
         var early = await Assert.ThrowsAsync<DomainRuleException>(async () => await s.Kit.Manager.ConfirmOkAsync(credentials));
         Assert.Equal("service_payment_not_confirmable", early.Code);
         await s.Payments.RunFundsAsync();
         Assert.Empty(s.Kit.PlatformGateway.Transfers);
 
-        // The customer is told, and so is the supplier; the supplier's reply is not shown to the customer, only that it replied.
         Assert.Single(s.EmailsOf(EmailTemplates.Names.ServiceDisputeOpenedPayer, ShowcaseScenario.CustomerEmail));
         Assert.Single(s.EmailsOf(EmailTemplates.Names.ServiceDisputeOpenedSupplier, "supplier@test.com"));
         await s.Payments.ReplyToDisputeAsync(request.Id, s.SupplierOrgId, SupplierWords);
@@ -956,7 +921,7 @@ public class ServiceDisputeTests
 
         Assert.Equal("Withdrawn", withdrawn.Payment!.Dispute!.Status);
         Assert.False(withdrawn.Actions.CanWithdrawProblem);
-        Assert.False(withdrawn.Actions.CanReportProblem); // the time is due now: the supplier is paid
+        Assert.False(withdrawn.Actions.CanReportProblem);
         await s.Payments.RunFundsAsync();
         var transfer = Assert.Single(s.Kit.PlatformGateway.Transfers);
         Assert.Equal(Net, transfer.AmountCents);
@@ -1007,8 +972,6 @@ public class ServiceDisputeTests
         Assert.Empty(s.Db.ServicePaymentDisputes);
     }
 
-    // ─── A job nobody marked completed: the no-show ───
-
     [Fact]
     public async Task NoShow_TheCustomerCanReportAfterTheTimeEnded_AndCasaZenOpensItItselfAfter48Hours_Once()
     {
@@ -1016,20 +979,17 @@ public class ServiceDisputeTests
         using var scope = s;
         var end = (await s.ReadAsync(request.Id)).ScheduledEndUtc!.Value;
 
-        // Before the end of the time agreed there is nothing to report and the job does nothing.
         s.Clock.SetUtcNow(new DateTimeOffset(end.AddMinutes(-1), TimeSpan.Zero));
         Assert.False((await s.Kit.Manager.LookupAsync(credentials)).Actions.CanReportProblem);
         var tooEarly = await Assert.ThrowsAsync<DomainRuleException>(async () => await s.Kit.Manager.ReportProblemAsync(credentials, "not_done", null));
         Assert.Equal("service_dispute_too_early", tooEarly.Code);
 
-        // From the end the customer may report without waiting; CasaZen does not open anything yet.
         s.Clock.SetUtcNow(new DateTimeOffset(end.AddMinutes(1), TimeSpan.Zero));
         Assert.True((await s.Kit.Manager.LookupAsync(credentials)).Actions.CanReportProblem);
         Assert.Equal(0, (await s.Payments.RunDisputesAsync()).NoShowsOpened);
         s.Clock.SetUtcNow(new DateTimeOffset(end.AddHours(47), TimeSpan.Zero));
         Assert.Equal(0, (await s.Payments.RunDisputesAsync()).NoShowsOpened);
 
-        // 48 hours after the end CasaZen opens the complaint for the customer, once.
         s.Clock.SetUtcNow(new DateTimeOffset(end.AddHours(48), TimeSpan.Zero));
         var run = await s.Payments.RunDisputesAsync();
         var again = await s.Payments.RunDisputesAsync();
@@ -1077,7 +1037,6 @@ public class ServiceDisputeTests
         var refusal = await Assert.ThrowsAsync<DomainConflictException>(
             async () => await s.Service.CompleteAsync(request.Id, s.SupplierOrgId, new CompleteServiceRequestCommand()));
 
-        // The work is not declared done while the payer says it was not: nothing changed, and the complaint is what the supplier answers.
         Assert.Equal("service_dispute_open", refusal.Code);
         Assert.Equal(ServiceRequestStatus.PresoInCarico, (await s.ReadAsync(request.Id)).Status);
         Assert.Equal(ServicePaymentStatus.Disputed, Assert.Single(await s.PaymentsOfAsync(request.Id)).Status);
@@ -1098,7 +1057,6 @@ public class ServiceDisputeTests
 
         await s.Payments.ResolveDisputeAsync(disputeId, new ResolveServiceDisputeRequest("for_supplier", null, null), Admin);
 
-        // The work was done and only not marked: the request is completed, so the release (which pays a completed request only) can go on.
         var completed = await s.ReadAsync(request.Id);
         Assert.Equal(ServiceRequestStatus.Completato, completed.Status);
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, completed.CompletedAt);
@@ -1109,10 +1067,6 @@ public class ServiceDisputeTests
         Assert.Empty(s.Kit.Penalties.Recorded);
     }
 
-    /// <summary>
-    /// E24/F01/US01/T02: the completion of a job a dispute decides for the supplier is on the event bus like the supplier's own completion: <c>ServiceRequestCompleted</c>, once, with the payload
-    /// of ids and the key of the completion of a request, written with the change; a decision for the customer completes nothing and records nothing.
-    /// </summary>
     [Fact]
     public async Task NoShow_DecidedForTheSupplier_RecordsServiceRequestCompleted_OnceUnderTheKeyOfTheCompletion()
     {

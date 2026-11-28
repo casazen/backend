@@ -36,7 +36,6 @@ public sealed class ReviewReplyDrafter(
     IOtaReviewReader otaReviews,
     ILogger<ReviewReplyDrafter> logger) : IReviewReplyDrafter
 {
-    /// <summary>The reason a draft that was written longer than a reply can be is not queued.</summary>
     public const string DraftTooLongReason = "draft_too_long";
 
     public async Task<ReviewDraftOutcome> DraftAsync(Guid orgId, MessageThreadKey reviewKey, ReviewDraftOptions? options = null, CancellationToken ct = default)
@@ -45,7 +44,6 @@ public sealed class ReviewReplyDrafter(
         if (!reviewKey.IsReview)
             return ReviewDraftOutcome.NotFound;
 
-        // A job has no caller: it reads the whole org. A person reads in its own reach, and a reach of another org is no reach at all.
         var scope = options.RequestedBy ?? new HostScope(orgId);
         if (scope.OrgId != orgId)
             return ReviewDraftOutcome.NotFound;
@@ -59,7 +57,6 @@ public sealed class ReviewReplyDrafter(
         if (facts.Blocked is { } blocked)
             return NoDraft(reviewKey, orgId, blocked);
 
-        // The draft that waits (or was approved a few days ago): the automatic path writes no second one; a person who asks supersedes the one that waits.
         var waiting = await WaitingDraftsAsync(orgId, facts.ReviewId, ct);
         if (!options.Requested && waiting.Count > 0)
             return NoDraft(reviewKey, orgId, ReviewDraftReasons.AlreadyDrafted);
@@ -72,7 +69,6 @@ public sealed class ReviewReplyDrafter(
         if (!aiOptions.IsExternalProviderActive())
             return NoDraft(reviewKey, orgId, ReviewDraftReasons.AiProviderNotConfigured);
 
-        // The review reaches the model without the names of the guest and of the host, the codes of the booking, the contact data and the long numbers (PO-09).
         var minimized = AssistantPromptBuilder.Minimize(facts.Text, facts.Names, PiiScrubber.Scrub);
         var signature = effective.Signature?.Trim();
         var room = Math.Max(200, ReviewRules.ReplyMaxLength - (string.IsNullOrEmpty(signature) ? 0 : signature.Length + 2));
@@ -89,7 +85,6 @@ public sealed class ReviewReplyDrafter(
             return NoDraft(reviewKey, orgId, ReviewDraftReasons.AiInvalidAnswer);
         }
 
-        // What a reply to a review never says (a promise of money, being an AI, a link or a number): checked on the server, whatever the instructions asked.
         if (ReviewReplyPromptBuilder.Violation(reply) is { } violation)
         {
             logger.LogWarning("The reply the AI wrote to review {ReviewId} (org {OrgId}) breaks a rule ({Violation}): it is not queued", facts.ReviewId, orgId, violation);
@@ -125,9 +120,6 @@ public sealed class ReviewReplyDrafter(
         return ReviewDraftOutcome.NotDrafted(reason);
     }
 
-    // ─── What the draft is about ───
-
-    /// <summary>What the draft needs of a review: where it is, how it was rated, what it says, why it cannot be answered (a code, or <c>null</c>) and the names and codes the prompt never carries.</summary>
     private sealed record ReviewFacts(Guid ReviewId, Guid PropertyId, decimal? Rating, string? Text, string? Blocked, AssistantPromptNames Names);
 
     private async Task<ReviewFacts?> OtaFactsAsync(HostScope scope, Guid reviewId, CancellationToken ct)
@@ -181,7 +173,6 @@ public sealed class ReviewReplyDrafter(
             await NamesAsync(scope.OrgId, review.BookingId, ct));
     }
 
-    /// <summary>The names and codes of the stay the prompt must never carry: the guest, the host, the code of the booking and its reference on the channel manager.</summary>
     private async Task<AssistantPromptNames> NamesAsync(Guid orgId, Guid bookingId, CancellationToken ct)
     {
         var facts = await db.Bookings
@@ -207,9 +198,6 @@ public sealed class ReviewReplyDrafter(
             [facts.BookingCode, facts.OctorateReservationId]);
     }
 
-    // ─── The AI ───
-
-    /// <summary>One call to the provider. The budget used up and any failure of the provider are codes, never exceptions; a provider that did not answer is «not configured».</summary>
     private async Task<(string? Content, string? Failure)> CallAsync(AiRequest request, Guid reviewId, CancellationToken ct)
     {
         try
@@ -228,17 +216,13 @@ public sealed class ReviewReplyDrafter(
         }
         catch (Exception ex)
         {
-            // A timeout of the provider is a TaskCanceledException too: it is the provider that did not answer, not the caller who left. The type only: never the prompt.
             logger.LogWarning("The AI provider failed on the reply to review {ReviewId} ({ErrorType})", reviewId, ex.GetType().Name);
             return (null, ReviewDraftReasons.AiProviderError);
         }
     }
 
-    // ─── The queue ───
-
     private sealed record WaitingDraft(Guid Id, ApprovalStatus Status);
 
-    /// <summary>The drafts of the review that wait for a decision, or that were approved in the last days (the window in which the same item delivered again is not a new one).</summary>
     private async Task<List<WaitingDraft>> WaitingDraftsAsync(Guid orgId, Guid reviewId, CancellationToken ct)
     {
         var since = DateTime.UtcNow.AddDays(-ApprovalQueueRules.ResubmitWindowDays);
@@ -252,10 +236,8 @@ public sealed class ReviewReplyDrafter(
             .ToListAsync(ct);
     }
 
-    /// <summary>The drafts of the review that still wait are rejected with <see cref="AssistantDecisionCodes.RegeneratedReason"/>, in the reach of the person who asked for a new one.</summary>
     private async Task SupersedeAsync(ReviewDraftOptions options, Guid orgId, IReadOnlyList<Guid> itemIds, CancellationToken ct)
     {
-        // Only a person supersedes, in its own reach: a request with nobody behind it supersedes nothing.
         if (options.RequestedBy is not { } requestedBy || options.RequestedByUserId is not { Length: > 0 } userId)
             return;
 
@@ -267,7 +249,6 @@ public sealed class ReviewReplyDrafter(
             }
             catch (Exception ex) when (ex is NotFoundException or DomainConflictException)
             {
-                // Decided meanwhile, or out of the reach of the person: it is not this request's to supersede.
                 logger.LogInformation("The waiting draft {ItemId} of org {OrgId} was not superseded ({ErrorType})", itemId, orgId, ex.GetType().Name);
             }
         }

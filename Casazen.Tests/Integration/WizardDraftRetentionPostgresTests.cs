@@ -24,7 +24,6 @@ public class WizardDraftRetentionPostgresTests
 {
     private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
-    // Another key ring: what it protected cannot be read with Provider, as a draft whose Data Protection keys were lost or rotated.
     private static readonly IDataProtectionProvider LostKeys = new EphemeralDataProtectionProvider();
 
     private static readonly Guid Org = Guid.Parse("00000000-0000-0000-0000-0000000000a1");
@@ -62,13 +61,11 @@ public class WizardDraftRetentionPostgresTests
     {
         await using var database = PostgresTestDatabase.CreateMigrated("wzdr");
 
-        // Day 0: two people on the same booking (same org, wizard and entity), one draft of a new entity, and a listing draft.
         await SaveAsync(database, Alice, WizardType.CheckIn, BookingId, 0, "Giulia Verdi");
         await SaveAsync(database, Bob, WizardType.CheckIn, BookingId, 0, "Luca Neri");
         await SaveAsync(database, Alice, WizardType.BookingCreate, null, 0, "Anna Bianchi");
         await SaveAsync(database, Alice, WizardType.ListingCreate, null, 0, "Paolo Gialli");
 
-        // Day 29: Alice goes on with the listing, so its 30 days start again. Day 31: the other three are over, this one is not.
         _clock.Advance(TimeSpan.FromDays(29));
         await SaveAsync(database, Alice, WizardType.ListingCreate, null, 1, "Paolo Gialli");
         _clock.Advance(TimeSpan.FromDays(2));
@@ -77,12 +74,10 @@ public class WizardDraftRetentionPostgresTests
 
         Assert.Equal(3, run.Drafts);
 
-        // The table, as stored (a context without Data Protection): no row was deleted.
         await using var stored = database.CreateContext();
         var rows = await stored.WizardDrafts.AsNoTracking().ToListAsync();
         Assert.Equal(4, rows.Count);
 
-        // The three that were over have no person and no data any more, and keep what the audit trail needs.
         var anonymized = rows.Where(r => r.UserId == string.Empty).ToList();
         Assert.Equal(3, anonymized.Count);
         Assert.All(anonymized, r =>
@@ -92,16 +87,13 @@ public class WizardDraftRetentionPostgresTests
             Assert.Equal(Org, r.OrgId);
             Assert.Equal(1, r.Version);
         });
-        // Two of them are the same org, wizard and entity with the same empty user: the unique indexes leave anonymized rows out.
         Assert.Equal(2, anonymized.Count(r => r.WizardType == WizardType.CheckIn && r.EntityId == BookingId));
 
-        // The one saved again is untouched: its person, its data (the personal half still encrypted).
         var live = Assert.Single(rows, r => r.UserId != string.Empty);
         Assert.Equal((Alice, WizardType.ListingCreate, 2), (live.UserId, live.WizardType, live.Version));
         Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, live.EncryptedFieldsJson, StringComparison.Ordinal);
         Assert.Contains("ospiti", live.DraftJson);
 
-        // Through the service nobody gets the anonymized ones back, and the live one is Alice's.
         await using (var db = new AppDbContext(database.CreateOptions(), tenantContext: null, Provider))
         {
             var service = new WizardDraftService(db, _clock);
@@ -120,13 +112,11 @@ public class WizardDraftRetentionPostgresTests
     {
         await using var database = PostgresTestDatabase.CreateMigrated("wzdr");
 
-        // Alice's first draft was protected with keys that are lost (LostKeys); the other two can be read with the keys of the job.
         await SaveAsync(database, Alice, WizardType.CheckIn, BookingId, 0, "Giulia Verdi", LostKeys);
         await SaveAsync(database, Bob, WizardType.CheckIn, BookingId, 0, "Luca Neri");
         await SaveAsync(database, Alice, WizardType.BookingCreate, null, 0, "Anna Bianchi");
         _clock.Advance(TimeSpan.FromDays(31));
 
-        // The premise: with the keys of the job the draft of Alice cannot be loaded (a retention that read the drafts would fail on it).
         await using (var reader = new AppDbContext(database.CreateOptions(), tenantContext: null, Provider))
         {
             await Assert.ThrowsAnyAsync<Exception>(
@@ -135,7 +125,6 @@ public class WizardDraftRetentionPostgresTests
 
         var run = await RunRetentionAsync(database);
 
-        // All three are anonymized, the unreadable one included, and none is deleted.
         Assert.Equal(3, run.Drafts);
         await using var stored = database.CreateContext();
         var rows = await stored.WizardDrafts.AsNoTracking().ToListAsync();
@@ -147,7 +136,6 @@ public class WizardDraftRetentionPostgresTests
             Assert.Null(r.EncryptedFieldsJson);
         });
 
-        // Nothing is left to read, so the next night finds nothing and does not fail.
         Assert.Equal(0, (await RunRetentionAsync(database)).Drafts);
     }
 }

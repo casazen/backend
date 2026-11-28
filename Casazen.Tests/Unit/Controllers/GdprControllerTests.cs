@@ -49,7 +49,6 @@ public class GdprControllerTests
             .Setup(x => x.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(OrgId);
         Authorize(true);
-        // SR-04b: a guest is looked up inside the caller's scope, so the caller has one (the whole org here).
         TheCallerIsTheHolder();
     }
 
@@ -94,10 +93,6 @@ public class GdprControllerTests
             Times.Once);
     }
 
-    /// <summary>
-    /// Proof test (permission rule): the messages of the export are opened by <c>booking.read</c>, not by <c>guest.read</c> alone. A caller who may read
-    /// the guest but not the bookings gets the export (200) with the service told to leave the messages out, as the message screens would refuse it.
-    /// </summary>
     [Fact]
     public async Task ExportGuestData_WithoutBookingRead_AsksTheServiceToLeaveTheMessagesOut()
     {
@@ -117,10 +112,6 @@ public class GdprControllerTests
             Times.Once);
     }
 
-    /// <summary>
-    /// Proof test (scope rule): a collaborator limited to some properties reaches the guest of a stay at one of them, and the service gets the
-    /// collaborator's own scope (never the org's) to narrow the messages by.
-    /// </summary>
     [Fact]
     public async Task ExportGuestData_CollaboratorWithPartialScope_PassesItsOwnScopeToTheService()
     {
@@ -182,8 +173,6 @@ public class GdprControllerTests
             Times.Once);
     }
 
-    // ─── The org export carries the activity log, for who may read it (AM-02b) ───────────────────────────
-
     private static OrgActivityItem ActivityItem() => new(
         Guid.Parse("11111111-2222-3333-4444-555555555555"),
         new DateTime(2026, 10, 9, 10, 30, 0, DateTimeKind.Utc),
@@ -205,7 +194,6 @@ public class GdprControllerTests
             .Setup(a => a.AuthorizeAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), CasazenPolicies.OrgActivityRead))
             .ReturnsAsync(allowed ? AuthorizationResult.Success() : AuthorizationResult.Failed());
 
-    /// <summary>The caller of the export is the holder (AM-03b): it has a scope, the whole org.</summary>
     private void TheCallerIsTheHolder()
     {
         _controller.ControllerContext.HttpContext.User =

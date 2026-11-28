@@ -47,10 +47,6 @@ public sealed partial class TouristTaxSummaryService(
         return (await BuildSummaryAsync(scope, period, cancellationToken)).Summary;
     }
 
-    /// <summary>
-    /// The summary of the period with the report of the fiscal area it was read from and the reach of the scope (the year-end exports of E18/F01/US02/T03 read the stays of the same report, so what they
-    /// count is what the summary counted, never a second reading).
-    /// </summary>
     private async Task<SummaryBuild> BuildSummaryAsync(HostScope scope, FiscalReportPeriod period, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(scope);
@@ -58,19 +54,12 @@ public sealed partial class TouristTaxSummaryService(
         if (!TouristTaxSummaryRules.IsSummaryPeriod(period))
             throw new FiscalValidationException("fiscal_report_period_invalid", "FiscalReportPeriodInvalid");
 
-        // Owed: the report of the fiscal area, as it is (it limits the stays to the properties of the scope itself).
         var report = await fiscalReporting.GetTouristTaxReportAsync(scope, period, cancellationToken);
         var reach = await ReachAsync(scope, cancellationToken);
 
-        // Paid: the payments belong to the org and to no property, so only a caller who reaches the whole org sees them. One who reaches only
-        // some properties gets what is owed on those and nothing about the payments: they cover properties it does not reach, so a balance
-        // or a status against them would be false.
         var paymentsHidden = !scope.IsOrgWide;
         List<TouristTaxRemittance> payments = paymentsHidden ? [] : await PaymentsInAsync(scope, period, cancellationToken);
 
-        // Owed: the stay lines of the report, the amounts the engine recorded as they are, without those of a property in another country. The
-        // report groups the stays by the name of the comune alone, so a house in Switzerland (CHF-MONEY) would fall in the row of an Italian
-        // comune of the same name, or in a row of its own with an owed amount of zero, and euros could be paid for it.
         var comuni = new Dictionary<string, ComuneBuilder>(StringComparer.Ordinal);
         foreach (var stay in report.Stays.Where(s => !reach.ForeignPropertyIds.Contains(s.PropertyId)))
         {
@@ -83,7 +72,6 @@ public sealed partial class TouristTaxSummaryService(
                 comune.StaysWithoutAmount++;
         }
 
-        // Paid: the payments inside the period. A comune with payments and no stays in the period is a row of its own.
         foreach (var payment in payments)
         {
             var comune = BuilderOf(comuni, payment.ComuneKey, payment.Comune);
@@ -125,7 +113,6 @@ public sealed partial class TouristTaxSummaryService(
         ArgumentException.ThrowIfNullOrWhiteSpace(request.RecordedByUserId);
         RequireWholeOrg(scope);
 
-        // What needs nothing from the database or the file first.
         var comune = TouristTaxSummaryRules.CleanText(request.Comune);
         var comuneKey = TouristTaxSummaryRules.ComuneKeyOf(comune);
         if (comune is null || comune.Length > TouristTaxRemittance.ComuneMaxLength || comuneKey.Length == 0)
@@ -151,12 +138,10 @@ public sealed partial class TouristTaxSummaryService(
                 TouristTaxRemittance.NotesMaxLength);
         }
 
-        // The file is read to the end and judged on its content before anything is stored.
         await using var file = receipt is null ? null : await ReadReceiptAsync(receipt, cancellationToken);
         if (receipt is not null && file is null)
             throw ReceiptInvalid();
 
-        // The comune has to be one of the properties in Italy: a payment for a comune the org has nothing in, or only a house abroad, is a mistake.
         if (!(await ReachAsync(scope, cancellationToken)).ComuneKeys.Contains(comuneKey))
             throw new DomainRuleException(TouristTaxErrorCodes.ComuneUnknown, "TouristTaxComuneUnknown");
 
@@ -179,7 +164,6 @@ public sealed partial class TouristTaxSummaryService(
             UpdatedAt = now,
         };
 
-        // The receipt first, in the private bucket: a failed upload changes nothing, and a failed save removes the file.
         string? key = null;
         if (file is not null)
         {
@@ -219,7 +203,6 @@ public sealed partial class TouristTaxSummaryService(
         var remittance = await LoadAsync(scope, remittanceId, cancellationToken);
         var key = remittance.ReceiptStorageKey;
 
-        // The row first: a file that could not be removed is an orphan nobody can reach, a row pointing to a missing file is a broken payment.
         db.TouristTaxRemittances.Remove(remittance);
         await db.SaveChangesAsync(cancellationToken);
         if (key is not null)
@@ -251,12 +234,6 @@ public sealed partial class TouristTaxSummaryService(
             remittance.ReceiptContentType ?? StorageKeys.ContentTypeFor(key));
     }
 
-    // ---------------------------------------------------------------- reads
-
-    /// <summary>
-    /// The payments of the org whose period lies inside <paramref name="period"/>, oldest first. All of the org's: only for a caller who
-    /// reaches the whole org (a payment belongs to the org, not to a property).
-    /// </summary>
     private async Task<List<TouristTaxRemittance>> PaymentsInAsync(HostScope scope, FiscalReportPeriod period, CancellationToken cancellationToken)
     {
         return await db.TouristTaxRemittances.AsNoTracking()
@@ -296,7 +273,6 @@ public sealed partial class TouristTaxSummaryService(
         return new Reach(comuneKeys, foreignPropertyIds);
     }
 
-    /// <summary>A payment of the caller's org; anything else, another org's payment included, is a 404.</summary>
     private async Task<TouristTaxRemittance> LoadAsync(HostScope scope, Guid remittanceId, CancellationToken cancellationToken)
     {
         var remittance = await db.TouristTaxRemittances
@@ -304,17 +280,11 @@ public sealed partial class TouristTaxSummaryService(
         return remittance ?? throw RemittanceNotFound();
     }
 
-    /// <summary>
-    /// A payment belongs to the org and to no property, so recording one, deleting one and opening its receipt need a scope that reaches the
-    /// whole org: 403 for a caller who reaches only some properties, before anything is read or stored.
-    /// </summary>
     private static void RequireWholeOrg(HostScope scope)
     {
         if (!scope.IsOrgWide)
             throw new DomainForbiddenException(TouristTaxErrorCodes.PaymentsNeedWholeOrg, "TouristTaxPaymentsNeedWholeOrg");
     }
-
-    // ---------------------------------------------------------------- the receipt
 
     /// <summary>
     /// The whole content when it is a PDF, a JPEG or a PNG (by its first bytes) of at most
@@ -362,8 +332,6 @@ public sealed partial class TouristTaxSummaryService(
         }
     }
 
-    // ---------------------------------------------------------------- shapes
-
     private static TouristTaxRemittanceLine ToLine(TouristTaxRemittance remittance) => new(
         remittance.Id,
         remittance.Comune,
@@ -405,13 +373,10 @@ public sealed partial class TouristTaxSummaryService(
 
     private DateTime UtcNow() => _clock.GetUtcNow().UtcDateTime;
 
-    /// <summary>What a scope reaches: the comuni of its properties in Italy (as keys) and the ids of its properties in another country.</summary>
     private sealed record Reach(HashSet<string> ComuneKeys, HashSet<Guid> ForeignPropertyIds);
 
-    /// <summary>A summary with the report it was read from and the reach it was cut with.</summary>
     private sealed record SummaryBuild(TouristTaxSummary Summary, TouristTaxReport Report, Reach Reach);
 
-    /// <summary>A receipt that was read and checked: its bytes, positioned at the start, and what it is.</summary>
     private sealed class ReceiptContent(MemoryStream content, TouristTaxReceiptKind kind) : IAsyncDisposable
     {
         public MemoryStream Content { get; } = content;
@@ -421,7 +386,6 @@ public sealed partial class TouristTaxSummaryService(
         public ValueTask DisposeAsync() => Content.DisposeAsync();
     }
 
-    /// <summary>The cents of a comune while the summary is built.</summary>
     private sealed class ComuneBuilder(string name)
     {
         public string Name { get; } = name;
@@ -434,17 +398,14 @@ public sealed partial class TouristTaxSummaryService(
 
         public int StaysWithoutAmount { get; set; }
 
-        /// <summary>What the stays owe: the sum of the amounts the engine recorded on them.</summary>
         public decimal Owed { get; set; }
 
-        /// <summary><see cref="Owed"/> in whole cents, turned once.</summary>
         public long OwedCents => PaymentCashRules.ToCents(Owed);
 
         public long PaidCents { get; set; }
 
         public List<TouristTaxRemittanceLine> Remittances { get; } = [];
 
-        /// <summary>The comune as the summary shows it; with the payments hidden, only the owed side (nothing about what was paid).</summary>
         public ComuneTaxSummary ToSummary(bool paymentsHidden)
         {
             return new ComuneTaxSummary(

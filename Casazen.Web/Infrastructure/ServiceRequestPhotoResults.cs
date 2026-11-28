@@ -5,10 +5,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Infrastructure;
 
-/// <summary>
-/// The answer of the endpoints that serve a photo of the work of a service request (SP-04), shared by the short-rent and the
-/// long-rent controller: the caller has authorized the request, this opens its photo from the private bucket.
-/// </summary>
 internal static class ServiceRequestPhotoResults
 {
     /// <summary>

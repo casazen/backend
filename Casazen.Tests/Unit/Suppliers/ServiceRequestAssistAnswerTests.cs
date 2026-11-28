@@ -5,16 +5,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>
-/// The answer of the AI to «Descrivi di cosa hai bisogno» (WIZ-AI-REQUEST): how it is read (an object, maybe in a code fence or after a reasoning,
-/// the last one with a category) and what is checked before the host sees it (a category of the platform, an urgency of the enum, plain short texts).
-/// </summary>
 public class ServiceRequestAssistAnswerTests
 {
     private const string Good =
         """{"category":"plumbing","urgency":"High","summary":"Il rubinetto della cucina perde acqua.","reason":"Una perdita è un lavoro da idraulico."}""";
-
-    // ─── Parse ───────────────────────────────────────────────────────────────────
 
     [Fact]
     public void Parse_AnObject_ReadsItsMembers()
@@ -90,8 +84,6 @@ public class ServiceRequestAssistAnswerTests
     {
         Assert.Null(ServiceRequestAssistAnswerParser.Parse(content));
     }
-
-    // ─── Check ───────────────────────────────────────────────────────────────────
 
     [Fact]
     public void Check_AKnownCategory_IsAcceptedWithItsUrgencyAndTexts()
@@ -172,7 +164,6 @@ public class ServiceRequestAssistAnswerTests
         Assert.StartsWith("Riga uno riga due con tab.", answer.Summary);
         Assert.True(answer.Summary!.Length <= ServiceRequestAssistLimits.MaxSummaryLength);
         Assert.True(answer.Explanation!.Length <= ServiceRequestAssistLimits.MaxExplanationLength);
-        // Cut where a sentence ends when one does fit in the second half of the room.
         Assert.EndsWith(".", answer.Summary);
         Assert.EndsWith(".", answer.Explanation);
     }
@@ -186,8 +177,6 @@ public class ServiceRequestAssistAnswerTests
         Assert.Null(answer.Summary);
         Assert.Null(answer.Explanation);
     }
-
-    // ─── OneLine ─────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData(null)]

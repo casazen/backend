@@ -43,11 +43,6 @@ public interface IStayLifecycleService
     /// </summary>
     Task<Booking> CheckOutAsync(Guid bookingId, StayCheckOut checkOut, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Saves the progress of the check-out wizard (CO-17): the step the host is on and the answers given so far. Nothing
-    /// is created or declared here: the check-out does it. 409 <see cref="BookingErrorCodes.CheckoutWizardNotStarted"/>
-    /// before the start, <see cref="BookingErrorCodes.AlreadyCheckedOut"/> once the stay is closed.
-    /// </summary>
     Task<StayCheckout> SaveCheckoutProgressAsync(
         Guid bookingId,
         StayCheckoutProgress progress,
@@ -67,18 +62,8 @@ public interface IStayLifecycleService
     /// </summary>
     Task<StayArrivalResult?> RegisterArrivalAutomaticallyAsync(Guid bookingId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The booking flow registers the departure in the host's place (casazen/backend#978): a check-out that declares nothing (as
-    /// <c>POST /check-out</c>), with the arrival registered first when <paramref name="registerArrival"/>, recorded as CasaZen's, with the hosts told live.
-    /// A stay whose check-out wizard the host opened, a no-show or a stay the rules refuse is left as it is: <c>null</c>.
-    /// </summary>
     Task<Booking?> CheckOutAutomaticallyAsync(Guid bookingId, bool registerArrival, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The cleaning of a checked-out stay is done and the booking flow of the org declares the property ready then (casazen/backend#978): declared as CasaZen's,
-    /// closing the cleaning «To do» of the stay like the host's declaration, with the hosts told live. Nothing (<c>null</c>) for a stay not checked out or a flow
-    /// that does not say so; a property already declared, or one the host said was not ready yet, is left to the host.
-    /// </summary>
     Task<StayCheckout?> DeclarePropertyReadyAutomaticallyAsync(Guid bookingId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -150,5 +135,4 @@ public sealed record StayCheckoutProgress(
     bool? PropertyReady,
     string? PropertyNotes);
 
-/// <summary>Turnover request created with the check-out, on behalf of <paramref name="UserId"/>.</summary>
 public sealed record StayTurnoverRequest(string UserId, Guid SupplierOrgId, string? Category, string? Notes);

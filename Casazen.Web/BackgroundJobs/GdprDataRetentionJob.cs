@@ -39,7 +39,6 @@ public class GdprDataRetentionJob(
             leases.RetentionConfigured,
             leases.Leases);
 
-        // SP-10: the customers of the suppliers' public showcases. Without a period and its source nothing is anonymized.
         var customers = await serviceCustomerPrivacy.ApplyRetentionAsync();
         logger.LogInformation(
             "GDPR supplier customer retention done: period configured {Configured}, {Customers} customers and the place of {Requests} requests anonymized",
@@ -47,12 +46,9 @@ public class GdprDataRetentionJob(
             customers.Customers,
             customers.Requests);
 
-        // ADR-024: the drafts of the wizards past their 30 days lose the data and the person; the row stays for the audit trail.
         var drafts = await wizardDraftRetention.ApplyRetentionAsync();
         logger.LogInformation("GDPR wizard draft retention done: {Drafts} drafts anonymized", drafts.Drafts);
 
-        // ADR-032-R13: the copy of the OTA conversations follows the retention of the guest data of its stay. Without the period and its source
-        // nothing is anonymized (the service says so in the log).
         var conversations = await otaMessageRetention.ApplyRetentionAsync();
         logger.LogInformation(
             "GDPR OTA message retention done: period configured {Configured}, {Threads} conversations and {Messages} messages anonymized",

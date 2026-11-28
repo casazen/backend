@@ -1,6 +1,5 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -124,7 +123,6 @@ public class PaymentListServiceTests
 
         var rows = await new PaymentListService(world.Db).ListAsync(world.OrgWide, new PaymentListCriteria());
 
-        // By creation, newest first: the 20th, the 19th... the payment of the archived property too, never another org's.
         Assert.Equal([world.P2.Id, world.P3.Id, world.OfDeleted.Id, world.P1.Id, world.P4.Id], rows.Select(r => r.Id));
         var first = rows[0];
         Assert.Equal("Casa Bianca", first.PropertyName);
@@ -137,7 +135,6 @@ public class PaymentListServiceTests
         Assert.Equal(PaymentMethod.CreditCard, first.Method);
         Assert.Equal(At(10, 20), first.ProcessedAt);
         Assert.Null(rows.Single(r => r.Id == world.P3.Id).ProcessedAt);
-        // The stay of the booking, to tell the payments of a coming or current stay from the ones of a past stay.
         Assert.All(rows, row => Assert.Equal((At(10, 10, 0), At(10, 13, 0)), (row.BookingCheckIn, row.BookingCheckOut)));
     }
 
@@ -162,7 +159,6 @@ public class PaymentListServiceTests
     }
 
     [Theory]
-    // (from, to) as (month, day); 0 for none. The payment date is the day of settlement in Rome, else the day of creation.
     [InlineData(10, 12, 10, 12, "p1")]
     [InlineData(10, 13, 10, 14, "p3,ofDeleted")]
     [InlineData(10, 9, 10, 9, "p4")]
@@ -197,7 +193,6 @@ public class PaymentListServiceTests
         var world = await SeedAsync();
 
         Assert.Equal(new[] { world.P3.Id, world.P1.Id }, await IdsAsync(world, new PaymentListCriteria(), world.Restricted));
-        // The other property, and a booking of the other property, asked for by id: nothing.
         Assert.Empty(await IdsAsync(world, new PaymentListCriteria(PropertyId: world.CasaBianca.Id), world.Restricted));
         Assert.Empty(await IdsAsync(world, new PaymentListCriteria(BookingId: world.OnCasaBianca.Id), world.Restricted));
         Assert.Equal(
@@ -216,7 +211,6 @@ public class PaymentListServiceTests
         var ids = await IdsAsync(world, new PaymentListCriteria(From: new DateOnly(2026, 10, 12), To: new DateOnly(2026, 10, 12)));
         var allOfTheOrg = await IdsAsync(world, new PaymentListCriteria());
 
-        // The 999 of the other org was settled the same day as p1 and is not here.
         Assert.Equal(new[] { world.P1.Id }, ids);
         Assert.Equal(5, allOfTheOrg.Count);
     }

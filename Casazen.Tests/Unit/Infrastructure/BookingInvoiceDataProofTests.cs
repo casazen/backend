@@ -17,7 +17,6 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// </summary>
 public class BookingInvoiceDataProofTests
 {
-    // One provider for the whole class: EF keeps one model per provider, and a provider per test would fill the cache the other tests share.
     private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     private static readonly string[] PersonalColumns =
@@ -32,10 +31,6 @@ public class BookingInvoiceDataProofTests
         nameof(BookingInvoiceData.Pec),
     ];
 
-    /// <summary>
-    /// PROOF TEST: data rule (tenant isolation). Two orgs each have the invoice data of a booking. The caller of org A reads its own row only: the
-    /// one of org B is neither in the list nor found by its booking (the 404 of the endpoints), and a caller with no org matches nothing.
-    /// </summary>
     [Fact]
     public async Task BookingInvoiceData_OtherOrgRow_Invisible_Test()
     {
@@ -45,7 +40,6 @@ public class BookingInvoiceDataProofTests
         var mine = NewRow(orgA, "Anna Verdi");
         var theirs = NewRow(orgB, "Bruno Neri");
 
-        // The system writes both rows (no caller, so no filter), as a job or the seed would.
         await using (var system = NewDb(databaseName, tenant: null))
         {
             system.BookingInvoiceData.AddRange(mine, theirs);
@@ -60,11 +54,9 @@ public class BookingInvoiceDataProofTests
         Assert.Equal(orgA, row.OrgId);
         Assert.Equal("Anna Verdi", row.Name);
 
-        // By the booking too: the row of the other org is not there.
         Assert.Null(await asOrgA.BookingInvoiceData.AsNoTracking().FirstOrDefaultAsync(d => d.BookingId == theirs.BookingId));
         Assert.False(await asOrgA.BookingInvoiceData.AsNoTracking().AnyAsync(d => d.OrgId == orgB));
 
-        // A caller with no org is fail-closed: it matches nothing.
         await using var nobody = NewDb(databaseName, new FixedTenantContext(null));
         Assert.Empty(await nobody.BookingInvoiceData.AsNoTracking().ToListAsync());
     }

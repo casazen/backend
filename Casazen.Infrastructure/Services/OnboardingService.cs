@@ -77,7 +77,6 @@ public class OnboardingService(
 
         db.ConsentRecords.AddRange(records);
         await db.SaveChangesAsync(cancellationToken);
-        // The host onboarding gate reads the consents from the cached authorization snapshot (PL-02).
         authorizationCache.Invalidate(userId);
         return (true, null, true);
     }
@@ -122,8 +121,6 @@ public class OnboardingService(
             roleChosen, orgProvisioned, consentsAccepted, org, properties, firstBookingTaken,
             onboarding.OnboardingCompleted));
 
-        // Only a site that is really published has a link to share. On App:PublicSiteBaseUrl (D3, no fallback domain):
-        // null also when it is not configured (Development/Testing).
         if (status.SitePublished && org is not null && !string.IsNullOrWhiteSpace(org.Slug))
             return status with { PublicBookingUrl = publicSiteLinks.TryPublicPage($"/book/{Uri.EscapeDataString(org.Slug)}") };
 
@@ -157,7 +154,6 @@ public class OnboardingService(
 
         return new ActivationPropertyFacts(
             rows.Count,
-            // Computed on read, never stored (compliance.md): the same CinFormat as the compliance gate.
             rows.Count(r => CinFormat.IsValid(r.CinCode)),
             published,
             rows.Count(r => r.IsActive && r.IsPaused && r.ComplianceStatus == PropertyComplianceStatus.Active),

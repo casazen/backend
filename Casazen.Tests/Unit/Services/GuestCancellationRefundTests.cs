@@ -23,8 +23,6 @@ public class GuestCancellationRefundTests
 
     private static CancellationPolicy Catalog(string slug) => CatalogPolicies.Get(slug);
 
-    // ── Token helpers ──────────────────────────────────────────────────────────
-
     [Fact]
     public void NewToken_IsUrlSafe()
     {
@@ -59,11 +57,6 @@ public class GuestCancellationRefundTests
         Assert.False(GuestCancellationTokens.TokenMatches(null, "any-token"));
     }
 
-    // ── The five policies of the catalog: percent of BasePrice, and the tourist tax in full when it was paid ──
-    // Base 400, tourist tax 20: the guest paid 420 (or 400 without the tax). The percent applies to the 400; the 20 of tax is not
-    // due on a stay that does not happen, so it goes back whatever the policy says (default of DB-D15 (1a), DB-08a). The last
-    // column is the refund of the stay alone; with the tax paid it is 20 more.
-
     [Theory]
     [InlineData(CatalogPolicies.Ampia, 48, 100, 400)]
     [InlineData(CatalogPolicies.Ampia, 24, 100, 400)]
@@ -81,7 +74,6 @@ public class GuestCancellationRefundTests
     [InlineData(CatalogPolicies.Anticipata, 800, 100, 400)]
     [InlineData(CatalogPolicies.Anticipata, 400, 50, 200)]
     [InlineData(CatalogPolicies.Anticipata, 100, 0, 0)]
-    // DB-D2 (a): "Non rimborsabile" refunds nothing of the stay at any time, however far the check-in is.
     [InlineData(CatalogPolicies.NonRimborsabile, 10, 0, 0)]
     [InlineData(CatalogPolicies.NonRimborsabile, 5000, 0, 0)]
     [InlineData(CatalogPolicies.NonRimborsabile, -1, 0, 0)]
@@ -114,7 +106,6 @@ public class GuestCancellationRefundTests
     [Fact]
     public void EvaluateGuestRefund_BaseIsBasePrice_NotTotalPrice_AndTheTaxComesBackInFull()
     {
-        // 50% policy, BasePrice 400, tourist tax 50, TotalPrice 450: 50% of 400 (not of 450) and the 50 of tax in full.
         var booking = new Booking { CheckInDate = CheckIn, BasePrice = 400m, TouristTax = 50m, TotalPrice = 450m };
 
         var decision = CancellationRefundPolicy.EvaluateGuestRefund(booking, Catalog(CatalogPolicies.Intermedia), NowHoursBeforeCheckIn(50), 450m);
@@ -125,7 +116,6 @@ public class GuestCancellationRefundTests
     [Fact]
     public void EvaluateGuestRefund_DueMoreThanRefundable_IsCappedAtRefundable()
     {
-        // Part of the payment is already refunded: only 300 of the 400 base can still go back.
         var booking = new Booking { CheckInDate = CheckIn, BasePrice = 400m };
 
         var decision = CancellationRefundPolicy.EvaluateGuestRefund(booking, Catalog(CatalogPolicies.Contenuta), NowHoursBeforeCheckIn(500), 300m);
@@ -139,7 +129,6 @@ public class GuestCancellationRefundTests
     [InlineData(-10)]
     public void EvaluateGuestRefund_NothingRefundable_RefundsNothingButStillReportsThePercent(int refundable)
     {
-        // Pay-at-deadline or pay-on-site: no money was collected through Stripe, so there is nothing to give back.
         var booking = new Booking { CheckInDate = CheckIn, BasePrice = 400m };
 
         var decision = CancellationRefundPolicy.EvaluateGuestRefund(booking, Catalog(CatalogPolicies.Ampia), NowHoursBeforeCheckIn(100), refundable);
@@ -160,8 +149,8 @@ public class GuestCancellationRefundTests
     }
 
     [Theory]
-    [InlineData("333.33", "166.67")] // 166.665 rounds away from zero
-    [InlineData("100.01", "50.01")]  // 50.005
+    [InlineData("333.33", "166.67")]
+    [InlineData("100.01", "50.01")]
     [InlineData("0", "0")]
     public void EvaluateGuestRefund_Rounding_ToTwoDecimalsAwayFromZero(string basePrice, string expected)
     {
@@ -175,8 +164,6 @@ public class GuestCancellationRefundTests
     [Fact]
     public void EvaluateGuestRefund_FreeCancellationDeadlineStillOpen_DoesNotRaiseTheRefund()
     {
-        // The guest has "free cancellation until check-in" (FreeRefundDeadline) and a strict policy that already refunds
-        // nothing: for the guest's own cancellation only the policy counts (PO 2026-10-08), unlike the host's floor.
         var booking = new Booking { CheckInDate = CheckIn, FreeRefundDeadline = CheckIn, BasePrice = 400m };
         var now = NowHoursBeforeCheckIn(10);
 
@@ -207,7 +194,6 @@ public class GuestCancellationRefundTests
     [Fact]
     public void EvaluateGuestRefund_HostOverrideOfTheWindow_UsesTheEffectivePolicy()
     {
-        // The host moved the full-refund window of "Ampia" from 24 h to 10 days before check-in.
         var property = new Property
         {
             CancellationPolicy = Catalog(CatalogPolicies.Ampia),
@@ -223,7 +209,6 @@ public class GuestCancellationRefundTests
     [Fact]
     public void EvaluateGuestRefund_Percent_MatchesTheFloorOfTheHostRule()
     {
-        // One reading of the policy: the percent the guest gets is the one the host's floor reports for the same moment.
         var booking = new Booking { CheckInDate = CheckIn, BasePrice = 400m };
         foreach (var hours in new double[] { 800, 400, 200, 100, 10, -5 })
         {
@@ -249,13 +234,12 @@ public class GuestCancellationRefundTests
         var decision = CancellationRefundPolicy.EvaluateGuestRefund(booking, policy, NowHoursBeforeCheckIn(50), 1000m);
 
         Assert.Equal(expectedPercent, decision.Percent);
-        Assert.Equal(expectedPercent * 4m, decision.Amount); // percent of the 400 base price
+        Assert.Equal(expectedPercent * 4m, decision.Amount);
     }
 
     [Fact]
     public void EvaluateGuestRefund_ForTheBooking_ResolvesThePolicyOfTheStayWithTheHostsOverrides()
     {
-        // "Ampia" refunds in full until 24 h before check-in; the host moved that to 10 days.
         var property = new Property { CancellationPolicy = Catalog(CatalogPolicies.Ampia), CancellationFullRefundHours = 240 };
         var booking = new Booking { Property = property, CheckInDate = CheckIn, CheckOutDate = CheckIn.AddDays(3), BasePrice = 400m };
 
@@ -266,7 +250,6 @@ public class GuestCancellationRefundTests
     [Fact]
     public void EvaluateGuestRefund_ForALongStay_KeepsTheCatalogPolicyWhateverTheHostChose()
     {
-        // 28 nights or more: the host's overrides are ignored (PO 2026-10-08), here "non-refundable".
         var property = new Property
         {
             CancellationPolicy = Catalog(CatalogPolicies.Ampia),
@@ -296,7 +279,6 @@ public class GuestCancellationRefundTests
             CancellationRefundPolicy.EvaluateGuestRefund(null!, DateTimeOffset.UtcNow, 100m));
     }
 
-    /// <summary>The instant that is <paramref name="hours"/> before the start of the check-in day in Europe/Rome.</summary>
     private static DateTimeOffset NowHoursBeforeCheckIn(double hours) =>
         new(RomeCalendar.StartOfDayUtc(CheckIn).AddHours(-hours), TimeSpan.Zero);
 }

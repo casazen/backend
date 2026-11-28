@@ -13,111 +13,69 @@ namespace Casazen.Web.DTOs.Supplier;
 // data of another customer, never what the supplier noted for itself, and — before the supplier took the request — never the exact
 // address (ShowcaseBookingView).
 
-/// <summary>
-/// Body of <c>POST api/public/supplier-bookings/lookup</c>, <c>…/proposal/accept</c> and <c>…/proposal/reject</c>, and the start of
-/// every other call of the area: who the customer says it is. The attributes only refuse what is missing or oversized (400
-/// <c>validation_error</c>, which tells nothing about any booking); a slug, a code or an address that does not match is the same 404
-/// as a booking that does not exist.
-/// </summary>
 public class SupplierBookingAccessRequest : IPerEmailRateLimitedRequest
 {
-    /// <summary>The slug of the supplier's showcase (<c>/fornitori/{slug}</c>), as in the link of the e-mail.</summary>
     [Required(ErrorMessage = "SupplierBookingAccessRequired")]
     [MaxLength(PublicShowcaseLimits.SlugMaxLength + 50, ErrorMessage = "SupplierBookingAccessRequired")]
     public string? Slug { get; set; }
 
-    /// <summary>The code of the booking, <c>XXXXX-XXXXX</c>, from the e-mails (separators and case are ignored).</summary>
     [Required(ErrorMessage = "SupplierBookingAccessRequired")]
     [MaxLength(64, ErrorMessage = "SupplierBookingAccessRequired")]
     public string? Code { get; set; }
 
-    /// <summary>The e-mail address the booking was made with.</summary>
     [Required(ErrorMessage = "SupplierBookingAccessRequired")]
     [MaxLength(ShowcaseBookingLimits.EmailMaxLength + 50, ErrorMessage = "SupplierBookingAccessRequired")]
     public string? Email { get; set; }
 
-    /// <summary>The per-address limit counts the address within the supplier (the same address at two suppliers has two budgets).</summary>
     string? IPerEmailRateLimitedRequest.RateLimitScope => Slug;
 
     public ShowcaseBookingCredentials ToCredentials() => new(Slug, Code, Email);
 }
 
-/// <summary>Body of <c>POST api/public/supplier-bookings/cancel</c>: who the customer is, and why (optional).</summary>
 public class SupplierBookingCancelRequest : SupplierBookingAccessRequest
 {
-    /// <summary>Why the customer cancels, at most 500 characters (optional); a longer one is 422 <c>supplier_booking_invalid</c> naming <c>reason</c>.</summary>
     [MaxLength(ServiceRequestLimits.CancellationReasonMaxLength + 100)]
     public string? Reason { get; set; }
 }
 
-/// <summary>
-/// Body of <c>POST api/public/supplier-bookings/report-problem</c> (SP-15c-c): who the customer is, what is wrong and, in its words, why. Text only: no
-/// photos. A reason that is not one of the five, or a text that is too long, is 422 <c>service_dispute_invalid</c> naming the field.
-/// </summary>
 public class SupplierBookingReportProblemRequest : SupplierBookingAccessRequest
 {
-    /// <summary><c>not_done</c>, <c>incomplete</c>, <c>poor_quality</c>, <c>not_as_described</c> or <c>other</c>.</summary>
     [Required(ErrorMessage = ServiceDisputeErrors.FormInvalidMessageKey)]
     [MaxLength(32, ErrorMessage = ServiceDisputeErrors.FormInvalidMessageKey)]
     public string? Reason { get; set; }
 
-    /// <summary>What the customer writes, at most 1000 characters; required when the reason is <c>other</c>.</summary>
     [MaxLength(ServiceDisputeLimits.TextMaxLength + 200, ErrorMessage = ServiceDisputeErrors.FormInvalidMessageKey)]
     public string? Text { get; set; }
 }
 
-/// <summary>Body of <c>POST api/public/supplier-bookings/reschedule</c>: who the customer is, and the slot it wants.</summary>
 public class SupplierBookingRescheduleRequest : SupplierBookingAccessRequest
 {
-    /// <summary>The start of the slot, exactly as <c>GET api/public/suppliers/{slug}/slots</c> gave it (<c>startUtc</c>).</summary>
     [Required(ErrorMessage = "SupplierBookingStartRequired")]
     public DateTime? StartUtc { get; set; }
 }
 
-/// <summary>Body of <c>POST api/public/supplier-bookings/messages</c> (SP-10b): who the customer is, and what it writes.</summary>
 public class SupplierBookingMessageRequest : SupplierBookingAccessRequest
 {
-    /// <summary>The message: 1 to 1000 characters of plain text. The attribute only stops an oversized body; the rule is the service's (422 <c>service_request_message_invalid</c>).</summary>
     [MaxLength(ShowcaseInquiryLimits.MessageMaxLength * 2)]
     public string? Body { get; set; }
 }
 
-/// <summary>
-/// Body of <c>POST api/public/supplier-bookings/quote/accept</c> and <c>…/quote/reject</c> (SP-04b): who the customer is, and the quote it
-/// read, by the instant the supplier sent it (<c>quote.sentAt</c> of the booking, repeated as it was given). If the supplier replaced the
-/// quote meanwhile the answer is 409 <c>service_request_quote_changed</c> and nothing changes.
-/// </summary>
 public class SupplierBookingQuoteAnswerRequest : SupplierBookingAccessRequest
 {
     [Required(ErrorMessage = "ServiceRequestQuoteSentAtRequired")]
     public DateTime? QuoteSentAt { get; set; }
 }
 
-/// <summary>
-/// Body of <c>POST api/public/supplier-bookings/offer/accept</c> and <c>…/offer/decline</c> (SP-10b-b): who the customer is, and the offer it read, by
-/// the instant the supplier sent it (<c>offer.sentAt</c> of the booking, repeated as it was given). If the supplier replaced or withdrew the offer
-/// meanwhile the answer is 409 <c>service_request_offer_changed</c> and nothing changes.
-/// </summary>
 public class SupplierBookingOfferAnswerRequest : SupplierBookingAccessRequest
 {
     [Required(ErrorMessage = "ServiceRequestOfferSentAtRequired")]
     public DateTime? OfferSentAt { get; set; }
 }
 
-/// <summary>
-/// Answer of every call of the customer's own area (200): the booking as it is now and what the customer can do with it. Built from
-/// <see cref="ShowcaseBookingView"/>; times are UTC instants with their Rome offset next to them (the two passes of the hour that
-/// happens twice when the clocks go back are told apart by the offset).
-/// </summary>
 public class PublicSupplierBookingViewResponse
 {
-    /// <summary>The code of the booking as people read it (<c>XXXXX-XXXXX</c>).</summary>
     public string PublicCode { get; set; } = string.Empty;
 
-    /// <summary>
-    /// <c>Richiesto</c> (the supplier has not answered), <c>PresoInCarico</c> (accepted), <c>InCorso</c>, <c>Completato</c>,
-    /// <c>Pagato</c>, <c>Rifiutato</c> or <c>Annullato</c>.
-    /// </summary>
     public string Status { get; set; } = string.Empty;
 
     public PublicSupplierBookingServiceDto Service { get; set; } = new();
@@ -132,49 +90,30 @@ public class PublicSupplierBookingViewResponse
 
     public DateTimeOffset EndLocal { get; set; }
 
-    /// <summary>Where the work is: the comune always, the exact address only once the supplier took the request.</summary>
     public PublicSupplierBookingPlaceDto Place { get; set; } = new();
 
     public PublicSupplierBookingPriceDto Price { get; set; } = new();
 
-    /// <summary>When the supplier has to answer by, while the request is new and has no proposal; after it the request is cancelled.</summary>
     public DateTime? RespondBy { get; set; }
 
-    /// <summary>The other time the supplier proposed and the customer has not answered; <c>null</c> when there is none.</summary>
     public PublicSupplierBookingProposalDto? Proposal { get; set; }
 
-    /// <summary>The quote the supplier sent and the customer has not answered (SP-04b); <c>null</c> when there is none.</summary>
     public PublicSupplierBookingQuoteDto? Quote { get; set; }
 
-    /// <summary>Set when the booking is cancelled (<c>Annullato</c>).</summary>
     public PublicSupplierBookingCancellationDto? Cancellation { get; set; }
 
-    /// <summary>Why the supplier refused the request (<c>Rifiutato</c>), when it said.</summary>
     public string? RejectionReason { get; set; }
 
-    /// <summary>Until when a cancellation is free (decision D6: a later one costs nothing either in v1).</summary>
     public PublicSupplierBookingCancellationTermsDto CancellationTerms { get; set; } = new();
 
-    /// <summary>What the customer may do now: the page shows exactly these, and the endpoints enforce the same rules.</summary>
     public PublicSupplierBookingActionsDto Actions { get; set; } = new();
 
-    /// <summary>
-    /// <c>Custom</c> for a request on measure (SP-10b): it has no time and no price (<c>startUtc</c>, <c>endUtc</c> and the cancellation terms are the
-    /// day it was made, to be ignored) and a conversation (<see cref="Thread"/>). <b>Left out for every other booking, whose answer is what it always was.</b>
-    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Kind { get; set; }
 
-    /// <summary>The conversation with the supplier of a request on measure; left out for any other booking.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PublicSupplierBookingThreadDto? Thread { get; set; }
 
-    /// <summary>
-    /// Where the negotiation of a request on measure is: <c>AwaitingSupplier</c>, <c>InConversation</c>, <c>OfferSent</c> (an offer waits for the
-    /// customer: <see cref="Offer"/>), <c>OfferDeclined</c> (the customer turned the last one down), <c>Agreed</c> (the offer was accepted),
-    /// <c>Declined</c> (the supplier refused), <c>Expired</c> (the customer did not answer the offer in time) or <c>Closed</c>. An open set: treat an
-    /// unknown state as <c>InConversation</c>. Left out for any other booking.
-    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Negotiation { get; set; }
 
@@ -195,7 +134,6 @@ public class PublicSupplierBookingViewResponse
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PublicSupplierBookingPaymentSessionDto? PaymentSession { get; set; }
 
-    /// <summary>SP-15c-a: the money of a booking paid inside CasaZen; left out when the booking is not.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PublicSupplierBookingPaymentDto? Payment { get; set; }
 
@@ -208,65 +146,46 @@ public class PublicSupplierBookingViewResponse
     public List<PublicSupplierAlternativeDto>? Alternatives { get; set; }
 }
 
-/// <summary>The answer of <c>POST api/public/supplier-bookings/alternatives</c> (SP-10c): the other suppliers the customer can turn to.</summary>
 public class PublicSupplierBookingAlternativesResponse
 {
-    /// <summary>At most three, best first; empty when the request is not one that lapsed for want of an answer, or when there is none to suggest.</summary>
     public List<PublicSupplierAlternativeDto> Alternatives { get; set; } = [];
 }
 
-/// <summary>
-/// Another supplier offered to the customer of a request nobody answered (SP-10c): what its public showcase says about it and what is measured, and the
-/// way to its page (<c>/fornitori/{slug}</c>). No contact, no address, no score, no id.
-/// </summary>
 public class PublicSupplierAlternativeDto
 {
-    /// <summary>The name of the supplier, as on its showcase.</summary>
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>The slug of its showcase.</summary>
     public string Slug { get; set; } = string.Empty;
 
-    /// <summary>The cover photo of its showcase; left out when it has none.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? CoverUrl { get; set; }
 
-    /// <summary>The alternative text of the cover; left out when there is none.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? CoverAlt { get; set; }
 
-    /// <summary>«Verificato», as on its showcase.</summary>
     public bool Verified { get; set; }
 
-    /// <summary>The typical time to answer in minutes, measured (the median of the last 90 days, from five requests); left out until it is.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? MedianResponseMinutes { get; set; }
 
-    /// <summary>The service of the supplier that corresponds to the request (same category), with its «da €»; left out when it has none published there.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PublicSupplierAlternativeServiceDto? Service { get; set; }
 }
 
-/// <summary>The service of an alternative that corresponds to the request: where to book it, and its «da €».</summary>
 public class PublicSupplierAlternativeServiceDto
 {
-    /// <summary>The slug of the service on the supplier's showcase (<c>/fornitori/{supplier}/servizi/{slug}</c>).</summary>
     public string Slug { get; set; } = string.Empty;
 
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>The «da» price in euro cents; left out when the service is on quote.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? FromPriceCents { get; set; }
 
-    /// <summary>What the price is for: <c>PerJob</c>, <c>PerHour</c>, <c>PerSet</c> or <c>PerSquareMeter</c>.</summary>
     public SupplierServicePriceUnit PriceUnit { get; set; }
 
-    /// <summary>The customer waits for the supplier's offer: no estimate is given.</summary>
     public bool RequiresQuote { get; set; }
 }
 
-/// <summary>Maps the alternatives of the customer's view to the API DTOs.</summary>
 public static class PublicSupplierAlternativeMapper
 {
     public static List<PublicSupplierAlternativeDto> ToDtos(IEnumerable<ShowcaseAlternative> alternatives) =>
@@ -293,39 +212,26 @@ public static class PublicSupplierAlternativeMapper
             .ToList();
 }
 
-/// <summary>What the customer's browser needs to block the card for the offer it accepted (SP-10b-b).</summary>
 public class PublicSupplierBookingPaymentSessionDto
 {
     /// <summary>The secret of the Stripe PaymentIntent that blocks the card (Stripe.js <c>confirmPayment</c>): a credential, sent once, never stored or logged.</summary>
     public string ClientSecret { get; set; } = string.Empty;
 
-    /// <summary>The platform's publishable key (no connected account: the PaymentIntent is on CasaZen's account).</summary>
     public string PublishableKey { get; set; } = string.Empty;
 
-    /// <summary>The amount that is blocked, in cents: the total of the offer.</summary>
     public int AmountCents { get; set; }
 
     public string Currency { get; set; } = "EUR";
 }
 
-/// <summary>
-/// The money of a booking paid inside CasaZen (SP-15c-a), in cents of euro. The status is what the customer reads, from the rules, not from Stripe;
-/// nothing here identifies a card or a Stripe object.
-/// </summary>
 public class PublicSupplierBookingPaymentDto
 {
-    /// <summary>
-    /// <c>awaiting_card</c> (SP-10b-b: the offer was accepted and its card is not blocked yet), <c>authorized</c> (the card is blocked, nothing
-    /// charged), <c>held</c> (charged, CasaZen holds it until the work is confirmed),
-    /// <c>released</c> (the supplier was paid), <c>refunded</c>, <c>canceled</c> (the block was released, nothing charged) or <c>review</c>.
-    /// </summary>
     public string Status { get; set; } = string.Empty;
 
     public int AmountCents { get; set; }
 
     public string Currency { get; set; } = "EUR";
 
-    /// <summary>What was given back to the customer.</summary>
     public int RefundedCents { get; set; }
 
     /// <summary>
@@ -336,49 +242,32 @@ public class PublicSupplierBookingPaymentDto
 
     public DateTimeOffset? ReleaseAtLocal { get; set; }
 
-    /// <summary>
-    /// SP-15c-c: the customer's complaint about the job — while it is open (the money is stopped) and after it was decided; left out when there is none.
-    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PublicSupplierBookingDisputeDto? Dispute { get; set; }
 }
 
-/// <summary>
-/// The customer's complaint about a job paid inside CasaZen (SP-15c-c), as the customer reads it: its own words, the state, the decision. Never the
-/// supplier's reply (the customer is told that it replied) nor the note of the admin who decided.
-/// </summary>
 public class PublicSupplierBookingDisputeDto
 {
-    /// <summary><c>AwaitingSupplier</c>, <c>AwaitingDecision</c>, <c>ResolvedForSupplier</c>, <c>ResolvedForCustomer</c> or <c>Withdrawn</c>.</summary>
     public string Status { get; set; } = string.Empty;
 
-    /// <summary><c>not_done</c>, <c>incomplete</c>, <c>poor_quality</c>, <c>not_as_described</c> or <c>other</c>.</summary>
     public string Reason { get; set; } = string.Empty;
 
-    /// <summary>The supplier never marked the work completed and the time agreed for it ended.</summary>
     public bool NoShow { get; set; }
 
-    /// <summary>CasaZen itself opened the complaint (the no-show), not the customer.</summary>
     public bool OpenedByCasaZen { get; set; }
 
-    /// <summary>What the customer wrote.</summary>
     public string? Text { get; set; }
 
     public DateTime OpenedAt { get; set; }
 
-    /// <summary>When the supplier's time to reply ends; then the complaint goes to the CasaZen team anyway.</summary>
     public DateTime SupplierReplyDueAt { get; set; }
 
-    /// <summary>The supplier replied; what it wrote is not shown.</summary>
     public bool SupplierReplied { get; set; }
 
-    /// <summary>When it was decided or taken back.</summary>
     public DateTime? ResolvedAt { get; set; }
 
-    /// <summary>What goes back to the customer, in cents, when it was decided for the customer.</summary>
     public int? RefundCents { get; set; }
 
-    /// <summary>The refund that was decided has been made.</summary>
     public bool Settled { get; set; }
 }
 
@@ -386,7 +275,6 @@ public class PublicSupplierBookingServiceDto
 {
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>The slug of the service while it is published (the page asks its free slots to move the booking); <c>null</c> after.</summary>
     public string? Slug { get; set; }
 }
 
@@ -403,7 +291,6 @@ public class PublicSupplierBookingPlaceDto
 
     public string? PostalCode { get; set; }
 
-    /// <summary>Street and number: only once the supplier took the request (and while the retention has not removed it).</summary>
     public string? Address { get; set; }
 
     public string? Floor { get; set; }
@@ -421,10 +308,8 @@ public class PublicSupplierBookingPriceDto
 
     public int? FinalAmountCents { get; set; }
 
-    /// <summary>The amount to show: the final total, else the supplier's quote, else the estimate; <c>null</c> is "to agree with the supplier".</summary>
     public int? AmountCents { get; set; }
 
-    /// <summary><c>final</c>, <c>quote</c> or <c>estimate</c>: which of the three <see cref="AmountCents"/> is.</summary>
     public string? Basis { get; set; }
 
     public List<PublicSupplierBookingPriceLineDto> Lines { get; set; } = [];
@@ -432,7 +317,6 @@ public class PublicSupplierBookingPriceDto
 
 public class PublicSupplierBookingPriceLineDto
 {
-    /// <summary><c>service</c>, <c>option</c>, <c>urgent</c> (the surcharge of an urgent booking) or <c>extra</c>.</summary>
     public string Kind { get; set; } = string.Empty;
 
     public string Label { get; set; } = string.Empty;
@@ -456,28 +340,19 @@ public class PublicSupplierBookingProposalDto
 
     public DateTime ProposedAt { get; set; }
 
-    /// <summary>The instant the customer has to answer by; after it the request is cancelled.</summary>
     public DateTime? AnswerBy { get; set; }
 
-    /// <summary>What the supplier wrote with the proposal.</summary>
     public string? Message { get; set; }
 }
 
-/// <summary>
-/// The quote the supplier sent for the booking (SP-04b). The booking keeps its own time until the customer accepts; <c>startUtc</c> is
-/// another time the quote offers, if it does (it is not held).
-/// </summary>
 public class PublicSupplierBookingQuoteDto
 {
-    /// <summary>When the supplier sent it: the version of the quote, which the answer repeats (<see cref="SupplierBookingQuoteAnswerRequest.QuoteSentAt"/>).</summary>
     public DateTime SentAt { get; set; }
 
     public List<PublicSupplierBookingQuoteLineDto> Lines { get; set; } = [];
 
-    /// <summary>What the lines add up to, in cents of euro: the price agreed if the customer accepts.</summary>
     public int TotalCents { get; set; }
 
-    /// <summary>The note of the supplier for the customer.</summary>
     public string? Note { get; set; }
 
     /// <summary>Another time the quote offers instead of the booking's own; <c>null</c> when it leans on the booking's time.</summary>
@@ -489,7 +364,6 @@ public class PublicSupplierBookingQuoteDto
 
     public DateTimeOffset? EndLocal { get; set; }
 
-    /// <summary>The instant the customer has to answer by; after it the request is cancelled.</summary>
     public DateTime? AnswerBy { get; set; }
 }
 
@@ -504,10 +378,8 @@ public class PublicSupplierBookingCancellationDto
 {
     public DateTime At { get; set; }
 
-    /// <summary><c>customer</c>, <c>supplier</c> or <c>system</c> (nobody answered in time, or the customer let a proposed time lapse).</summary>
     public string By { get; set; } = string.Empty;
 
-    /// <summary>The text a person wrote; <c>null</c> when the cancellation has none.</summary>
     public string? Reason { get; set; }
 }
 
@@ -517,7 +389,6 @@ public class PublicSupplierBookingCancellationTermsDto
 
     public DateTimeOffset FreeUntilLocal { get; set; }
 
-    /// <summary>True while a cancellation is still inside the free notice.</summary>
     public bool IsFree { get; set; }
 }
 
@@ -529,61 +400,37 @@ public class PublicSupplierBookingActionsDto
 
     public bool CanRespondToProposal { get; set; }
 
-    /// <summary>The customer may accept or turn down the quote (SP-04b): <c>quote</c> is there and its deadline has not passed.</summary>
     public bool CanRespondToQuote { get; set; }
 
-    /// <summary>
-    /// SP-15c-a: the work is done and CasaZen holds the money: the customer may say "all fine" (<c>POST api/public/supplier-bookings/confirm-ok</c>)
-    /// and the supplier is paid at once.
-    /// </summary>
     public bool CanConfirmOk { get; set; }
 
-    /// <summary>
-    /// SP-15c-c: the customer may report a problem (<c>POST api/public/supplier-bookings/report-problem</c>) — the work is done and the time to speak up
-    /// has not ended (<c>payment.releaseAtUtc</c>), or the supplier never marked it completed and the time agreed for it has ended.
-    /// </summary>
     public bool CanReportProblem { get; set; }
 
-    /// <summary>SP-15c-c: a complaint is open and the customer may take it back (<c>POST api/public/supplier-bookings/withdraw-problem</c>).</summary>
     public bool CanWithdrawProblem { get; set; }
 
-    /// <summary>
-    /// SP-10b-b: an offer waits on a request on measure, its time to answer has not passed and the supplier is active: the customer may accept it
-    /// (<c>POST api/public/supplier-bookings/offer/accept</c>) or turn it down (<c>…/offer/decline</c>).
-    /// </summary>
     public bool CanRespondToOffer { get; set; }
 }
 
-/// <summary>The conversation of a request on measure, as its customer reads it (SP-10b).</summary>
 public class PublicSupplierBookingThreadDto
 {
-    /// <summary>The request is open and the supplier is active: the customer can write (<c>POST api/public/supplier-bookings/messages</c>).</summary>
     public bool CanWrite { get; set; }
 
-    /// <summary>In the order they were written; at most 200.</summary>
     public List<PublicSupplierBookingMessageDto> Messages { get; set; } = [];
 }
 
-/// <summary>One message of the conversation of a request on measure. Plain text; personal data, shown to the two parties only.</summary>
 public class PublicSupplierBookingMessageDto
 {
     public Guid Id { get; set; }
 
-    /// <summary><c>customer</c>, <c>supplier</c> or <c>system</c>.</summary>
     public string Author { get; set; } = string.Empty;
 
     public string Body { get; set; } = string.Empty;
 
     public DateTime CreatedAt { get; set; }
 
-    /// <summary>
-    /// When the <b>other</b> party first read it; <c>null</c> while it did not. For a message of the supplier, as it was before this reading:
-    /// <c>null</c> marks the ones that are new to the customer.
-    /// </summary>
     public DateTime? ReadAt { get; set; }
 }
 
-/// <summary>Maps the customer's view of a booking to the API DTO.</summary>
 public static class PublicSupplierBookingViewMapper
 {
     public static PublicSupplierBookingViewResponse ToDto(ShowcaseBookingView view) =>
@@ -736,7 +583,6 @@ public static class PublicSupplierBookingViewMapper
                 : null,
         };
 
-    /// <summary>The author of a message, as the page names it.</summary>
     internal static string AuthorOf(ServiceRequestMessageAuthor author) => author switch
     {
         ServiceRequestMessageAuthor.Customer => "customer",
@@ -744,7 +590,6 @@ public static class PublicSupplierBookingViewMapper
         _ => "system",
     };
 
-    /// <summary>The party that cancelled, as the page names it. The host never cancels a showcase request.</summary>
     internal static string PartyOf(ServiceRequestActorParty party) => party switch
     {
         ServiceRequestActorParty.Customer => "customer",

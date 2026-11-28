@@ -27,11 +27,9 @@ namespace Casazen.Core.Regulatory;
 /// </remarks>
 public static partial class CinFormat
 {
-    /// <summary>The Italian CIN is not a registration number for a Swiss property.</summary>
     public static bool IsRequiredForCountry(string? country) =>
         !string.Equals(country, "CH", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Valid normalized CIN (ASCII digits and letters only).</summary>
     public const string Pattern = "^IT[0-9]{6}[A-Z0-9]{2}[A-Z0-9]{1,8}$";
 
     /// <summary>
@@ -77,7 +75,6 @@ public static partial class CinFormat
         return builder.Length == 0 ? null : builder.ToString();
     }
 
-    /// <summary>True when <paramref name="value"/>, once normalized, is a CIN in the official format.</summary>
     public static bool IsValid(string? value)
     {
         var normalized = Normalize(value);

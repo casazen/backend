@@ -43,7 +43,6 @@ public sealed class OrgAccessRequestService(
 
         var requester = await OrgTeamAccess.RequireMemberAsync(db, request.OrgId, request.ActorUserId, cancellationToken);
 
-        // A missing public URL is a configuration error, found before anything is saved (the email links to the people page).
         publicSiteLinks.EnsureConfigured();
 
         var limit = DailyLimit();
@@ -81,11 +80,6 @@ public sealed class OrgAccessRequestService(
         return new OrgAccessRequested(notified);
     }
 
-    /// <summary>
-    /// Queues the email to every active owner and administrator of the org (the holders of <c>org.members.manage</c>, see
-    /// <see cref="OrgTeamRules.CanManageTeam"/>) whose account is active and has an address, but the requester itself.
-    /// Returns how many emails the queue took.
-    /// </summary>
     private async Task<int> NotifyAsync(RequestOrgAccess request, OrgMember requester, string area, CancellationToken cancellationToken)
     {
         var recipients = await (

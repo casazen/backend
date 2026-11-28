@@ -28,45 +28,35 @@ public class HostInviteRecord
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The invited email, normalized (trimmed, lowercase): the accepting account must have this very address.</summary>
     [Required, MaxLength(EmailMaxLength)]
     public string Email { get; set; } = string.Empty;
 
-    /// <summary>SHA-256 (lowercase hex) of the link token; unique. The token itself is never stored.</summary>
     [Required, MaxLength(64)]
     public string TokenHash { get; set; } = string.Empty;
 
-    /// <summary>Language of the invite email (<c>it</c> or <c>en</c>).</summary>
     [Required, MaxLength(5)]
     public string Locale { get; set; } = "it";
 
-    /// <summary>Optional note of the inviter, shown in the email (HTML-encoded).</summary>
     [MaxLength(MessageMaxLength)]
     public string? Message { get; set; }
 
-    /// <summary>The account (<c>Users.Id</c>, Auth0 subject) that created the invite: an admin or a host.</summary>
     [Required, MaxLength(255)]
     public string InvitedByUserId { get; set; } = string.Empty;
 
-    /// <summary>The host org of the inviter; null when a platform admin invited.</summary>
     public Guid? InvitedByOrgId { get; set; }
 
     public bool IsUsed { get; set; }
 
-    /// <summary>UTC moment the invite was accepted.</summary>
     public DateTime? UsedAt { get; set; }
 
-    /// <summary>The account that accepted the invite.</summary>
     [MaxLength(255)]
     public string? UsedByUserId { get; set; }
 
-    /// <summary>UTC moment the invite was revoked: its link no longer works. The row is kept for the lists and the audit.</summary>
     public DateTime? RevokedAt { get; set; }
 
     public DateTime ExpiresAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>UTC moment <see cref="Email"/> and <see cref="Message"/> were erased after the retention (a used invite only).</summary>
     public DateTime? PersonalDataErasedAt { get; set; }
 }

@@ -32,7 +32,6 @@ public sealed partial class ShowcaseTextSuggestionService(
     IAiResponseCache cache,
     ILogger<ShowcaseTextSuggestionService> logger) : IShowcaseTextSuggestionService
 {
-    /// <summary>The most zones and service names the prompt carries: more would not make a better text.</summary>
     private const int MaxListed = 12;
 
     private const int MaxZoneLength = 60;
@@ -70,12 +69,10 @@ public sealed partial class ShowcaseTextSuggestionService(
         var outcome = ShowcaseTextRules.Check(result.Content, fields, SupplierWritten(facts, answers));
         if (outcome.IsEmpty)
         {
-            // Field names only: the texts of a supplier never reach a log.
             logger.LogWarning("Showcase text suggestion dropped by the checks, members: {Fields}", string.Join(",", outcome.Rejected));
             throw ShowcaseContentErrors.UnusableSuggestion();
         }
 
-        // Only an answer that gave something usable is kept for the next identical request.
         cache.Set(supplierOrgId, cacheKey, result);
 
         return new ShowcaseTextSuggestion(
@@ -96,8 +93,6 @@ public sealed partial class ShowcaseTextSuggestionService(
         }
         catch (Exception ex) when (ex is not (OperationCanceledException or DomainException))
         {
-            // A provider that fails is "not available now" for the editor, which keeps the static starter. The budget exception is a
-            // DomainException and goes through: it has its own answer (422 ai_budget_exhausted).
             logger.LogWarning(ex, "The AI provider failed on a showcase text suggestion");
             throw ShowcaseContentErrors.AiNotAvailable();
         }
@@ -108,7 +103,6 @@ public sealed partial class ShowcaseTextSuggestionService(
         return result;
     }
 
-    /// <summary>The true facts of the supplier and the texts of its draft, read from its own org and scrubbed.</summary>
     private async Task<ShowcaseTextFacts> GatherFactsAsync(Guid supplierOrgId, CancellationToken cancellationToken)
     {
         var profile = await suppliers.GetProfileAsync(supplierOrgId, cancellationToken);
@@ -138,7 +132,6 @@ public sealed partial class ShowcaseTextSuggestionService(
         return new ShowcaseTextFacts(categories, await ZonesAsync(profile, cancellationToken), services, current);
     }
 
-    /// <summary>The comuni the supplier covers by name: the ones chosen from the official list, then what it wrote as text (names, not old codes).</summary>
     private async Task<List<string>> ZonesAsync(SupplierProfile? profile, CancellationToken cancellationToken)
     {
         var zones = new List<string>();
@@ -168,7 +161,6 @@ public sealed partial class ShowcaseTextSuggestionService(
         return zones.Take(MaxListed).ToList();
     }
 
-    /// <summary>Everything the supplier wrote itself: the only place where a claim of a forbidden kind may come from (<see cref="ShowcaseTextRules"/>).</summary>
     private static IEnumerable<string?> SupplierWritten(ShowcaseTextFacts facts, ShowcaseTextAnswers answers) =>
         new[] { answers.About, answers.Years, answers.Specialties, answers.Differentiator, facts.Current.Tagline, facts.Current.Intro, facts.Current.Bio }
             .Concat(facts.Services)
@@ -181,14 +173,12 @@ public sealed partial class ShowcaseTextSuggestionService(
             Scrub(answers.Specialties),
             Scrub(answers.Differentiator)).Cleaned();
 
-    /// <summary>A text of the supplier as the prompt carries it: contact data taken out, then cleaned; <c>null</c> when nothing is left.</summary>
     private static string? Clean(string? text, bool paragraphs = false)
     {
         var scrubbed = Scrub(text);
         return paragraphs ? ShowcaseText.Paragraphs(scrubbed) : ShowcaseText.Line(scrubbed);
     }
 
-    /// <summary>The text without e-mail addresses, phone numbers and fiscal codes (<see cref="PiiScrubber"/>), and without the placeholders it leaves.</summary>
     private static string? Scrub(string? text) =>
         string.IsNullOrWhiteSpace(text) ? null : Placeholder().Replace(PiiScrubber.Scrub(text), string.Empty);
 

@@ -6,7 +6,6 @@ public static partial class EmailTemplates
 {
     public static partial class Names
     {
-        /// <summary>The double opt-in e-mail of a marketing consent, to the address that was given (E07/F04/US01/T01).</summary>
         public const string MarketingConfirmation = "marketing-confirmation";
     }
 

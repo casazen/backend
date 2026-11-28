@@ -10,11 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E07/F01/US03/T02 (NF-88, AC-NF88-3): the proofs of the decisions on the merges the matching proposes. A merge moves the guests and the contacts of
-/// a profile to the other one as they are, so it can neither grant a consent nor lift a suppression; a double click decides once; and a collaborator
-/// limited to some properties decides only the pairs it reaches. On EF InMemory, the real services over the real keyed index.
-/// </summary>
 public class CrmMergeProofTests
 {
     private static readonly CancellationToken Ct = CancellationToken.None;
@@ -39,7 +34,6 @@ public class CrmMergeProofTests
         };
     }
 
-    /// <summary>Everything about a contact but the profile it belongs to: what a merge must leave as it is.</summary>
     private static string Fingerprint(GuestContact contact) => string.Join(
         "|",
         contact.OrgId,
@@ -65,7 +59,6 @@ public class CrmMergeProofTests
         contact.CreatedAt.ToString("O"),
         contact.UpdatedAt.ToString("O"));
 
-    /// <summary>Every guest, contact, profile and proposal of the store as text, in a fixed order: two snapshots are equal when nothing changed.</summary>
     private static async Task<string> SnapshotAsync(AppDbContext db)
     {
         var guests = (await db.Guests.AsNoTracking().ToListAsync(Ct))
@@ -120,7 +113,6 @@ public class CrmMergeProofTests
             goneGuest.GuestCrmProfileId = gone.Id;
             seed.GuestCrmProfiles.AddRange(survivor, gone);
 
-            // The survivor has an address that is service only and a suppressed phone; the other profile has a confirmed consent and a withdrawn WhatsApp.
             var serviceOnly = CrmProfileApiWorld.NewContact(
                 orgId, survivor.Id, GuestContactChannel.Email, "mario.rossi@example.com", GuestContactOrigin.DirectBooking, GuestContactLegalBasis.ServiceOnly, guestId: survivorGuest.Id);
             var suppressedPhone = CrmProfileApiWorld.NewContact(
@@ -140,7 +132,6 @@ public class CrmMergeProofTests
             withdrawn.SuppressedSource = "unsubscribe";
             seed.GuestContacts.AddRange(serviceOnly, suppressedPhone, consent, withdrawn);
 
-            // The proposal, and the other proposals of the profile that goes: one moves to the survivor, one repeats a pair the survivor has already.
             var third = CrmProfileApiWorld.AddPerson(seed, orgId, "Luca", "Bianchi", house);
             var fourth = CrmProfileApiWorld.AddPerson(seed, orgId, "Elena", "Neri", house);
             var decided = Proposal(orgId, survivor.Id, gone.Id, 90);
@@ -170,20 +161,17 @@ public class CrmMergeProofTests
 
         await using var verify = CrmTestWorld.Open(store);
 
-        // Every contact is where the merge put it and is what it was: not one field but the link is different, and none was copied.
         var after = await verify.GuestContacts.AsNoTracking().ToListAsync(Ct);
         Assert.Equal(before.Count, after.Count);
         Assert.All(after, contact => Assert.Equal(survivorId, contact.GuestCrmProfileId));
         foreach (var contact in before)
             Assert.Equal(Fingerprint(contact), Fingerprint(after.Single(row => row.Id == contact.Id)));
 
-        // So the rules say what they said: the consent is still a consent, the service-only address still is not marketable, the suppressed stay suppressed.
         Assert.True(CrmContactRules.CanReceiveMarketing(after.Single(contact => contact.Value == "m.rossi@example.org")));
         Assert.False(CrmContactRules.CanReceiveMarketing(after.Single(contact => contact.Value == "mario.rossi@example.com")));
         Assert.Equal(2, after.Count(contact => contact.IsSuppressed));
         Assert.All(after.Where(contact => contact.IsSuppressed), contact => Assert.False(CrmContactRules.CanReceiveMarketing(contact)));
 
-        // The guests came over; the profile that went is a tombstone and the survivor took what it had not got, but not the other's consent flags.
         Assert.Equal(survivorId, (await verify.Guests.AsNoTracking().SingleAsync(guest => guest.Id == goneGuestId, Ct)).GuestCrmProfileId);
         var survivorAfter = await verify.GuestCrmProfiles.AsNoTracking().SingleAsync(profile => profile.Id == survivorId, Ct);
         var goneAfter = await verify.GuestCrmProfiles.AsNoTracking().SingleAsync(profile => profile.Id == goneId, Ct);
@@ -198,7 +186,6 @@ public class CrmMergeProofTests
         Assert.Equal(CrmTestWorld.Day(-90), survivorAfter.FirstStayAt);
         Assert.Equal(CrmTestWorld.Day(-30), survivorAfter.LastStayAt);
 
-        // The proposal records who and when; the others follow the survivor or are dropped.
         var decidedAfter = await verify.GuestMergeCandidates.AsNoTracking().SingleAsync(proposal => proposal.Id == decidedId, Ct);
         Assert.Equal(GuestMergeStatus.Merged, decidedAfter.Status);
         Assert.Equal("auth0|decisore", decidedAfter.DecidedByUserId);
@@ -209,7 +196,6 @@ public class CrmMergeProofTests
         Assert.False(await verify.GuestMergeCandidates.AnyAsync(proposal => proposal.Id == repeatedId, Ct));
         Assert.Equal(GuestMergeStatus.Dismissed, (await verify.GuestMergeCandidates.AsNoTracking().SingleAsync(proposal => proposal.Id == earlierId, Ct)).Status);
 
-        // What the merge answers is the survivor as the list shows it; the lists skip the tombstone.
         Assert.Equal(survivorId, item.Id);
         Assert.Equal(2, item.TotalStays);
         Assert.True(item.EmailReachable);
@@ -219,12 +205,6 @@ public class CrmMergeProofTests
         await Assert.ThrowsAsync<NotFoundException>(() => read.GetAsync(scope, goneId, Ct));
     }
 
-    /// <summary>
-    /// Data rule: a double click decides once. A merge decided, and then the same pair again (with the same survivor, with the other one, or as a
-    /// dismissal), and a dismissal decided and then again or as a merge: every second attempt is 409 <c>crm_merge_not_proposed</c> and the whole
-    /// store is as it was, to the last time written. It holds for a collaborator limited to some properties too, who reaches the survivor only: the
-    /// profile that went is followed to the profile that took its place, so the answer is 409 and not "not found".
-    /// </summary>
     [Fact]
     public async Task CrmMerge_SamePairTwice_Is409AndChangesNothing_Test()
     {
@@ -264,7 +244,6 @@ public class CrmMergeProofTests
         await using var db = CrmTestWorld.Open(store);
         var merge = CrmProfileApiWorld.MergeService(db, clock);
 
-        // The first clicks: a collaborator who reaches the guests of both pairs decides them.
         var merged = await merge.MergeAsync(restricted, mergedId, survivorId, CrmProfileApiWorld.Collaborator, Ct);
         Assert.Equal(survivorId, merged.Id);
         await merge.DismissAsync(restricted, dismissedId, CrmProfileApiWorld.Collaborator, Ct);
@@ -280,7 +259,6 @@ public class CrmMergeProofTests
             Assert.Null((await check.GuestCrmProfiles.AsNoTracking().SingleAsync(profile => profile.Id == keptId, Ct)).MergedIntoProfileId);
         }
 
-        // The second clicks, an hour later: whatever they changed would show in the store.
         clock.Advance(TimeSpan.FromHours(1));
         var again = await Assert.ThrowsAsync<DomainConflictException>(
             () => merge.MergeAsync(restricted, mergedId, survivorId, CrmProfileApiWorld.Collaborator, Ct));
@@ -296,11 +274,6 @@ public class CrmMergeProofTests
         }
     }
 
-    /// <summary>
-    /// Permission rule: a collaborator limited to some properties cannot merge or dismiss a pair with a guest of a property it does not reach. The
-    /// pair, and a pair of another org, are 404 <c>crm_merge_candidate_not_found</c> for the dismissal and the merge, the list does not show them,
-    /// and nothing is changed; the pair it does reach is listed, with the contacts masked, and it can decide it.
-    /// </summary>
     [Fact]
     public async Task CrmMerge_ProfileOutOfScope_Is404_Test()
     {
@@ -346,7 +319,6 @@ public class CrmMergeProofTests
         await using var db = CrmTestWorld.Open(store);
         var merge = CrmProfileApiWorld.MergeService(db, clock);
 
-        // The list: the whole org decides the two pairs of its own; the collaborator the one it reaches, side by side and masked.
         var wholeOrg = await merge.ListProposedAsync(orgWide, 1, 50, Ct);
         Assert.Equal(2, wholeOrg.TotalCount);
         Assert.True(wholeOrg.Items.Select(shown => shown.Id).ToHashSet().SetEquals([reachedId, hiddenPairId]));
@@ -363,7 +335,6 @@ public class CrmMergeProofTests
         Assert.Contains("a***@example.com", json, StringComparison.Ordinal);
         Assert.Contains("567", json, StringComparison.Ordinal);
 
-        // The pair with a guest of the other property, and the pair of another org: not found, and nothing is changed.
         string untouched;
         await using (var check = CrmTestWorld.Open(store))
         {
@@ -386,7 +357,6 @@ public class CrmMergeProofTests
             Assert.Equal(untouched, await SnapshotAsync(check));
         }
 
-        // A survivor that is none of the two profiles is refused (422) before anything is done; the pair it reaches can be decided.
         var invalid = await Assert.ThrowsAsync<DomainRuleException>(
             () => merge.MergeAsync(restricted, reachedId, firstOfHiddenId, CrmProfileApiWorld.Collaborator, Ct));
         Assert.Equal("crm_merge_survivor_invalid", invalid.Code);
@@ -420,7 +390,6 @@ public class CrmMergeProofTests
                 PropertyId = granted.Id,
             });
 
-            // One person with two guest records: one at the house of the collaborator, one at the other.
             var atGranted = CrmTestWorld.AddGuest(seed, orgId, "Anna", "Rossi", "anna.rossi@example.com");
             var atHidden = CrmTestWorld.AddGuest(seed, orgId, "Annamaria", "Segreta", "anna.segreta@example.com");
             CrmTestWorld.AddBooking(seed, atGranted, granted.Id, BookingStatus.CheckedOut, BookingSource.Direct, -30, 2, 200m);
@@ -430,7 +399,6 @@ public class CrmMergeProofTests
             atHidden.GuestCrmProfileId = mixed.Id;
             seed.GuestCrmProfiles.Add(mixed);
 
-            // People the collaborator reaches in full; one of them has an address that a guest of the other house gave (a guest of no profile here).
             var anna = CrmProfileApiWorld.AddPerson(seed, orgId, "Anna", "Verdi", granted);
             var carla = CrmProfileApiWorld.AddPerson(seed, orgId, "Carla", "Neri", granted);
             var dario = CrmProfileApiWorld.AddPerson(seed, orgId, "Dario", "Blu", granted);
@@ -463,7 +431,6 @@ public class CrmMergeProofTests
         var merge = CrmProfileApiWorld.MergeService(db, clock);
         var read = CrmProfileApiWorld.ReadService(db, clock);
 
-        // Listed: the whole org decides the three pairs, the collaborator the one it reaches in full; and only on that pair does it see a proposal.
         Assert.Equal(3, (await merge.ListProposedAsync(orgWide, 1, 50, Ct)).TotalCount);
         var limited = await merge.ListProposedAsync(restricted, 1, 50, Ct);
         Assert.Equal(plainId, Assert.Single(limited.Items).Id);
@@ -473,8 +440,6 @@ public class CrmMergeProofTests
         Assert.True(seen.Single(item => item.Id == ericaId).HasMergeProposal);
         Assert.True((await read.ListAsync(orgWide, new CrmProfileFilter(), 1, 50, Ct)).Items.Single(item => item.Id == annaId).HasMergeProposal);
 
-        // The pair with the profile that stayed at both houses, and the pair with the address a guest of the other house gave: 404 for the merge
-        // (whichever profile is kept) and for the dismissal, the answer of a profile out of scope, and nothing is changed.
         string untouched;
         await using (var check = CrmTestWorld.Open(store))
         {
@@ -500,7 +465,6 @@ public class CrmMergeProofTests
             Assert.Equal(untouched, await SnapshotAsync(check));
         }
 
-        // The pair it reaches in full is decided as ever; the whole org decides the other, and the guest of the other house moves with the rest.
         var decided = await merge.MergeAsync(restricted, plainId, ericaId, CrmProfileApiWorld.Collaborator, Ct);
         Assert.Equal(ericaId, decided.Id);
         var everything = await merge.MergeAsync(orgWide, withMixedId, annaId, "auth0|titolare", Ct);

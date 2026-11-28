@@ -20,12 +20,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// ADR-026 (E04/F01/US01/T01): the "To do" list, an extension of the internal activities. The proofs of its rules on EF
-/// InMemory, on the world of <see cref="HostScopeScenario"/> (an org with a property given to the collaborator «Solo alcuni», one
-/// not given, and another org): who sees which item and what the answer carries (permission, privacy), the org of an item
-/// (data), and the auto-close that keeps the closed row (data).
-/// </summary>
 public class ActivityTodoListTests : IAsyncLifetime
 {
     private static readonly CancellationToken Ct = CancellationToken.None;
@@ -103,7 +97,6 @@ public class ActivityTodoListTests : IAsyncLifetime
             },
             Ct);
 
-        // The staff work on the granted property, with a rate and a note: never an item of the list.
         await service.CreateActivityAsync(
             _world.Granted.Id, _world.CollaboratorId, "Cleaning", HostScopeScenario.Now.UtcDateTime, 40m, notes: "Chiavi dal vicino");
 
@@ -140,7 +133,6 @@ public class ActivityTodoListTests : IAsyncLifetime
         Assert.Equal(InternalActivity.ClosedBySystem, (await _db.InternalActivities.SingleAsync(a => a.Id == onGranted)).ClosedBy);
     }
 
-    /// <summary>Proof (data, tenant): the org of an item is the org of its property, never one the request names.</summary>
     [Fact]
     public async Task CreateAsync_TheOrgOfAnItemIsTheOrgOfItsProperty_NeverTheOneOfTheRequest()
     {
@@ -156,11 +148,6 @@ public class ActivityTodoListTests : IAsyncLifetime
         Assert.Equal(1, await _db.InternalActivities.CountAsync(a => a.Action != null));
     }
 
-    /// <summary>
-    /// Proof (data; ADR-026-R4): the check-in completed closes the check-in item of that booking only, once, by the system; the
-    /// closed row is kept (it leaves the list), a second close changes nothing, and while the item was open raising it again
-    /// gave back the same item.
-    /// </summary>
     [Fact]
     public async Task AutoClose_CheckInCompleted_ClosesTheCheckInItemOfThatBookingOnce_AndKeepsTheClosedRow()
     {
@@ -193,10 +180,6 @@ public class ActivityTodoListTests : IAsyncLifetime
         Assert.NotEqual(item, await service.CreateAsync(CheckIn(_world.Granted.Id, bookingId), Ct));
     }
 
-    /// <summary>
-    /// E05/F05/US02/T01: an open item is raised by something more urgent or sooner (the urgency and the reason of the more urgent cause, the deadline), never lowered nor moved
-    /// later, and a closed or unknown item is left alone; asking twice changes nothing the second time.
-    /// </summary>
     [Fact]
     public async Task RaiseUrgency_RaisesAnOpenItem_NeverLowersItNorMovesItsDeadlineLater_AndLeavesAClosedOrUnknownOneAlone()
     {
@@ -246,7 +229,6 @@ public class ActivityTodoListTests : IAsyncLifetime
         var onboarding = new OnboardingTodoReconciler(_db, Mock.Of<IOnboardingPlanService>(), Mock.Of<IOnboardingFlowStatusService>(), service);
         var controller = Controller(_world.CollaboratorId, _world.Restricted, onboarding, reconciler);
 
-        // Opening the list or saving an unfinished review does not count as completing it.
         Assert.Single(Items(await controller.List(Ct)));
         Assert.Null((await _db.InternalActivities.SingleAsync(a => a.Id == own)).CompletedAt);
 

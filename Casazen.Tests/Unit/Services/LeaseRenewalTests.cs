@@ -10,12 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// LR-OPS-1b: the landlord records the renewal of a lease before the end of its period. The new period is checked against the other leases of
-/// the property (LR-OVERLAP, 409 <c>lease_period_overlaps</c>, nothing written), the end of the period moves forward by the months of the type or
-/// to the day the parties agreed on, the rent plan is extended in the same step, and a lease with a notice, ended, or whose period is over
-/// is refused. "Today" in Rome is 10 October 2026.
-/// </summary>
 public class LeaseRenewalTests : IDisposable
 {
     private readonly PropertyModeHarness _h = new();
@@ -28,7 +22,6 @@ public class LeaseRenewalTests : IDisposable
 
     private static DateTime Day(int year, int month, int day) => new(year, month, day, 0, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>A registered 4+4 lease of a property that began on 1 November 2022 and ends on 31 October 2026, three weeks from today.</summary>
     private async Task<(Property Property, LeaseContract Lease)> LeaseAsync()
     {
         var property = await _h.SeedPropertyAsync(RentalMode.Long);
@@ -55,12 +48,11 @@ public class LeaseRenewalTests : IDisposable
         await RenewAsync(lease.Id);
 
         var renewed = await LoadAsync(lease.Id);
-        Assert.Equal(Day(2030, 10, 31), renewed.CurrentTermEndDate); // 48 months more, the end the contract states does not move
+        Assert.Equal(Day(2030, 10, 31), renewed.CurrentTermEndDate);
         Assert.Equal(Day(2026, 10, 31), renewed.EndDate);
         Assert.Equal("Standard:2026-11-01:2030-10-31", Assert.Single(renewed.Events, e => e.EventType == LeaseEventType.RenewalRecorded).Payload);
         _rent.Verify(r => r.ExtendScheduleToCurrentTermAsync(lease.Id, It.IsAny<CancellationToken>()), Times.Once);
 
-        // The end moved forward, so the last stretch before the next end is years away: a second click cannot add another period.
         Assert.Equal("lease_renewal_not_yet", (await Assert.ThrowsAsync<DomainRuleException>(() => RenewAsync(lease.Id))).Code);
         Assert.Equal(Day(2030, 10, 31), (await LoadAsync(lease.Id)).CurrentTermEndDate);
     }
@@ -69,7 +61,7 @@ public class LeaseRenewalTests : IDisposable
     public async Task ARenewalThatWouldCoverTheDaysOfAnotherLeaseOfTheProperty_IsRefused_AndNothingIsWritten()
     {
         var (property, lease) = await LeaseAsync();
-        var next = await _h.SeedLeaseAsync(property, Day(2027, 6, 1), Day(2031, 5, 31)); // the next tenant, who starts inside the renewed period
+        var next = await _h.SeedLeaseAsync(property, Day(2027, 6, 1), Day(2031, 5, 31));
 
         var refused = await Assert.ThrowsAsync<DomainConflictException>(() => RenewAsync(lease.Id));
 
@@ -86,7 +78,7 @@ public class LeaseRenewalTests : IDisposable
     {
         var (_, lease) = await LeaseAsync();
 
-        var refused = await Assert.ThrowsAsync<DomainRuleException>(() => RenewAsync(lease.Id, new DateOnly(2026, 10, 31))); // not after the end of the period
+        var refused = await Assert.ThrowsAsync<DomainRuleException>(() => RenewAsync(lease.Id, new DateOnly(2026, 10, 31)));
         Assert.Equal("lease_renewal_end_invalid", refused.Code);
         Assert.Null((await LoadAsync(lease.Id)).Events.SingleOrDefault(e => e.EventType == LeaseEventType.RenewalRecorded));
 
@@ -111,7 +103,6 @@ public class LeaseRenewalTests : IDisposable
 
         Assert.Equal("lease_renewal_blocked_by_notice", (await Assert.ThrowsAsync<DomainConflictException>(() => RenewAsync(withNotice.Id))).Code);
 
-        // Not before the last stretch of the period: a lease that ends in 2029 has nothing to formalize in October 2026.
         var early = await _h.SeedLeaseAsync(await _h.SeedPropertyAsync(RentalMode.Long), Day(2025, 11, 1), Day(2029, 10, 31));
         Assert.Equal("lease_renewal_not_yet", (await Assert.ThrowsAsync<DomainRuleException>(() => RenewAsync(early.Id))).Code);
 
@@ -119,7 +110,7 @@ public class LeaseRenewalTests : IDisposable
         var ended = await _h.SeedLeaseAsync(property, Day(2022, 11, 1), Day(2026, 10, 31), terminatedOn: Day(2026, 3, 31));
         Assert.Equal("lease_already_terminated", (await Assert.ThrowsAsync<DomainConflictException>(() => RenewAsync(ended.Id))).Code);
 
-        var over = await _h.SeedLeaseAsync(await _h.SeedPropertyAsync(RentalMode.Long), Day(2022, 7, 1), Day(2026, 6, 30)); // the hourly job renews this one
+        var over = await _h.SeedLeaseAsync(await _h.SeedPropertyAsync(RentalMode.Long), Day(2022, 7, 1), Day(2026, 6, 30));
         Assert.Equal("lease_renewal_period_over", (await Assert.ThrowsAsync<DomainConflictException>(() => RenewAsync(over.Id))).Code);
 
         var transitory = await _h.SeedLeaseAsync(await _h.SeedPropertyAsync(RentalMode.Long), Day(2026, 5, 1), Day(2026, 12, 31));

@@ -1,10 +1,5 @@
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// The nightly retention of the copy of the OTA conversations (E05/F01/US01/T03, ADR-032-R13), run by <c>GdprDataRetentionJob</c> after the
-/// retention of the guest data: the copy follows the retention of the guest data (assumption of the brief, to be confirmed by the product owner:
-/// no period of its own), so the words and the names of a conversation go when the data of its stay does.
-/// </summary>
 public interface IOtaMessageRetentionService
 {
     /// <summary>
@@ -17,8 +12,4 @@ public interface IOtaMessageRetentionService
     Task<OtaMessageRetentionResult> ApplyRetentionAsync(CancellationToken cancellationToken = default);
 }
 
-/// <summary>What one run of <see cref="IOtaMessageRetentionService.ApplyRetentionAsync"/> did.</summary>
-/// <param name="RetentionConfigured">The period (with its source) is configured; false means the retention anonymized nothing.</param>
-/// <param name="Threads">The threads anonymized in this run (the ones emptied again included).</param>
-/// <param name="Messages">The messages that lost their words in this run.</param>
 public sealed record OtaMessageRetentionResult(bool RetentionConfigured, int Threads, int Messages);

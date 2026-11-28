@@ -47,16 +47,12 @@ public sealed class ExistingInventoryImportService(
     TimeProvider timeProvider,
     ILogger<ExistingInventoryImportService> logger) : IExistingInventoryImportService
 {
-    /// <summary>The most channels one batch holds.</summary>
     public const int MaxChannelsPerBatch = 20;
 
-    /// <summary>The most assignments of one request of the intents, and the most properties of one batch.</summary>
     public const int MaxAssignmentsPerRequest = 500;
 
-    /// <summary>The most accommodations one «Collega» connects.</summary>
     public const int MaxConnectionsPerRequest = 50;
 
-    /// <summary>The longest id of a property on a portal (<c>hotelId</c>) that «Collega» takes.</summary>
     public const int HotelIdMaxLength = 64;
 
     private static readonly IReadOnlySet<string> NoTokenRoles = new HashSet<string>(StringComparer.Ordinal);
@@ -68,8 +64,6 @@ public sealed class ExistingInventoryImportService(
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private OctorateExistingInventoryOptions Settings => options.Value.ExistingInventory;
-
-    // ─── Batches ──────────────────────────────────────────────────────────────────────────────────────────────
 
     public async Task<ExistingInventoryBatchView> CreateBatchAsync(
         ExistingInventoryCaller caller,
@@ -109,7 +103,6 @@ public sealed class ExistingInventoryImportService(
 
         db.OctorateInventoryImportBatches.Add(batch);
 
-        // The properties the person named are declared «already on OTAs»: from now on nothing can create them again on Octorate.
         if (scope.Kind == OctorateInventoryScopeKind.Properties)
             await DeclareOnOtasAsync(caller, propertyIds, overwrite: true, now, ct);
 
@@ -132,7 +125,6 @@ public sealed class ExistingInventoryImportService(
         var batch = await LoadBatchAsync(caller.OrgId, batchId, ct);
         await AuthorizeAsync(caller, batch, ct);
 
-        // The result of the access is read here, for the channels that wait for it; a check of the access runs only when its backoff is due.
         var changed = false;
         foreach (var channel in Ordered(batch))
             changed |= await SyncAccessAsync(batch.OrgId, channel, verifyIfDue: true, ct);
@@ -146,8 +138,6 @@ public sealed class ExistingInventoryImportService(
         return await ViewAsync(caller, batch.Id, ct);
     }
 
-    // ─── Access to the channels ───────────────────────────────────────────────────────────────────────────────
-
     public async Task<ChannelAccessStartResult> StartChannelAccessAsync(
         ExistingInventoryCaller caller,
         Guid batchId,
@@ -159,7 +149,6 @@ public sealed class ExistingInventoryImportService(
         await AuthorizeAsync(caller, batch, ct);
         var channel = ChannelOf(batch, channelCode);
 
-        // The access is already given (by this batch or by an earlier one for the same channel): nothing to open.
         if (await AccessAlreadyGivenAsync(batch, channel, ct))
             return new ChannelAccessStartResult(channel.ChannelCode, true, null, null);
 
@@ -181,7 +170,6 @@ public sealed class ExistingInventoryImportService(
         await AuthorizeAsync(caller, batch, ct);
         var channel = ChannelOf(batch, channelCode);
 
-        // The access is already given (by this batch or by an earlier one for the same channel): nothing is connected, the batch is as it is.
         if (await AccessAlreadyGivenAsync(batch, channel, ct))
             return await ViewAsync(caller, batch.Id, ct);
 
@@ -189,17 +177,11 @@ public sealed class ExistingInventoryImportService(
         await EnsureAccommodationsOfTheBatchAsync(batch, targets, ct);
         var created = await ConnectAccommodationsAsync(batch.OrgId, batch.Id, channel, targets, ct);
 
-        // The connections are there: the access step starts as for the panel. It is verified once Octorate shows one of them ENABLED, that is once
-        // the host approved Octorate on the extranet of the OTA.
         await StartAccessStepAsync(batch, channel, ct);
         Audit("channel-connected", batch.OrgId, batch.Id, channel.ChannelCode, created, caller.UserId);
         return await ViewAsync(caller, batch.Id, ct);
     }
 
-    /// <summary>
-    /// Whether the access of the channel is already given, by this batch or by an earlier one for the same channel (the step is the org's, one for
-    /// each channel): a step found complete is taken into the channel and saved first.
-    /// </summary>
     private async Task<bool> AccessAlreadyGivenAsync(OctorateInventoryImportBatch batch, OctorateInventoryImportChannel channel, CancellationToken ct)
     {
         if (channel.AccessCompletedAt is null)
@@ -216,11 +198,6 @@ public sealed class ExistingInventoryImportService(
         return channel.AccessCompletedAt is not null;
     }
 
-    /// <summary>
-    /// Starts (or reuses) the access step of the channel and moves the channel to <see cref="OctorateInventoryImportStatus.AwaitingChannelAccess"/>.
-    /// The step and the resume point are saved BEFORE anything is answered, and the channel's own state right after: a person who closes the tab,
-    /// reloads or changes device finds the exact step.
-    /// </summary>
     private async Task<ChannelAccessHandoffStart> StartAccessStepAsync(
         OctorateInventoryImportBatch batch,
         OctorateInventoryImportChannel channel,
@@ -264,7 +241,6 @@ public sealed class ExistingInventoryImportService(
             ct,
             (PostgresAdvisoryLocks.Scope.OctorateInventoryConnect, $"{orgId:N}:{code}"));
 
-        // What another «Collega» of this batch recorded while this one waited for the lock.
         await db.Entry(channel).ReloadAsync(ct);
         var connected = new SortedSet<string>(ParseAccommodationIds(channel.ConnectedAccommodationIdsJson), StringComparer.Ordinal);
         var created = 0;
@@ -317,7 +293,6 @@ public sealed class ExistingInventoryImportService(
         return created;
     }
 
-    /// <summary>The portal of the channel is one «Collega» connects (<see cref="MarketplaceCardRules.ConnectsByPropertyId"/>), or 422.</summary>
     private async Task EnsureConnectableAsync(string channelCode, CancellationToken ct)
     {
         var portal = await db.MarketplacePortals.AsNoTracking().FirstOrDefaultAsync(p => p.PortalCode == channelCode, ct);
@@ -353,7 +328,6 @@ public sealed class ExistingInventoryImportService(
             throw AccommodationUnknown(unknown);
     }
 
-    /// <summary>The accommodations of Octorate confirmed to one of the properties: the listings a batch of named properties, or of a group, is about.</summary>
     internal static async Task<HashSet<string>> ConfirmedAccommodationsAsync(
         AppDbContext db,
         Guid orgId,
@@ -404,7 +378,6 @@ public sealed class ExistingInventoryImportService(
         return [.. targets.OrderBy(t => t.AccommodationId, StringComparer.Ordinal)];
     }
 
-    /// <summary>An id of a property on a portal: 1 to <see cref="HotelIdMaxLength"/> ASCII letters, digits, dots, underscores or hyphens.</summary>
     private static bool IsHotelId(string value) =>
         value.Length is > 0 and <= HotelIdMaxLength && value.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');
 
@@ -425,7 +398,6 @@ public sealed class ExistingInventoryImportService(
         await AuthorizeAsync(caller, batch, ct);
         var channel = ChannelOf(batch, channelCode);
 
-        // Only after a check stored «could not tell»; refused before it and after a check that found the access not valid.
         await handoff.ConfirmAsync(batch.OrgId, caller.UserId, channel.ChannelCode, ct);
         var snapshot = await handoff.GetAsync(batch.OrgId, channel.ChannelCode, verifyIfDue: false, ct);
         if (snapshot.State == ChannelAccessState.Confirmed)
@@ -439,8 +411,6 @@ public sealed class ExistingInventoryImportService(
         return await ViewAsync(caller, batch.Id, ct);
     }
 
-    // ─── Room import ──────────────────────────────────────────────────────────────────────────────────────────
-
     public async Task<ExistingInventoryBatchView> RunAsync(
         ExistingInventoryCaller caller,
         Guid batchId,
@@ -452,7 +422,6 @@ public sealed class ExistingInventoryImportService(
         await AuthorizeAsync(caller, batch, ct);
         var retry = NormalizeIds(retryUnknown);
 
-        // What the panel said about the access of each channel that waits for it, before anything else.
         foreach (var channel in Ordered(batch))
             await SyncAccessAsync(batch.OrgId, channel, verifyIfDue: true, ct);
 
@@ -480,7 +449,6 @@ public sealed class ExistingInventoryImportService(
         return await ViewAsync(caller, batch.Id, ct);
     }
 
-    /// <summary>A channel whose access is given still has rooms to import: none yet, or a connection that has no stamp (it failed, or it was not authorized).</summary>
     private static bool NeedsRoomImport(OctorateInventoryImportChannel channel) =>
         channel.AccessCompletedAt is not null
         && channel.Status != OctorateInventoryImportStatus.Completed
@@ -499,8 +467,6 @@ public sealed class ExistingInventoryImportService(
         var channel = await LoadChannelAsync(orgId, channelId, ct);
         var batch = await db.OctorateInventoryImportBatches.AsNoTracking().FirstAsync(b => b.OrgId == orgId && b.Id == batchId, ct);
 
-        // The first pass takes the channel to ImportingRooms; a later one, which only asks again for the connections that have no stamp,
-        // does not move it back.
         var firstPass = channel.RoomsImportedAt is null;
         if (firstPass)
         {
@@ -508,7 +474,6 @@ public sealed class ExistingInventoryImportService(
             await db.SaveChangesAsync(ct);
         }
 
-        // The connections of the channel, read every time (a listing connected meanwhile joins the others).
         OctorateConnectionSummary[] connections;
         try
         {
@@ -521,7 +486,6 @@ public sealed class ExistingInventoryImportService(
             return;
         }
 
-        // Only a connection Octorate shows as authorized is asked for its rooms: a listing whose access was not given is not part of the import.
         var authorized = connections
             .Where(c => string.Equals(c.ChannelId, channel.ChannelCode, StringComparison.Ordinal) && c.IsAuthorized)
             .GroupBy(c => c.Id, StringComparer.Ordinal)
@@ -565,18 +529,13 @@ public sealed class ExistingInventoryImportService(
 
         if (channel.Items.All(i => i.RoomsImportedAt is null))
         {
-            // Not one listing got its rooms in: the worst of the failures, or the access is given but Octorate shows no authorized connection of
-            // this channel. Nothing is created to make one.
             var why = failures.Count > 0 ? WorstOf(failures) : new Failure(OctorateInventoryErrorCodes.ChannelConnectionNotFound, OctorateInventoryImportStatus.NeedsAttention, false);
             await StopChannelAsync(channel, why, ct);
             return;
         }
 
-        // A later pass that brought nothing in has nothing to read again.
         if (firstPass || imported > 0)
         {
-            // The rooms of at least one listing are in: the listings of the org are read again and the matcher proposes a property for each.
-            // Then a person decides. A listing that failed is shown with its code and does not wait for the others, nor they for it.
             try
             {
                 await mappings.RefreshAsync(orgId, ct);
@@ -603,8 +562,6 @@ public sealed class ExistingInventoryImportService(
         channel.UpdatedAt = Now();
         await db.SaveChangesAsync(ct);
     }
-
-    // ─── Reservations, calendars, «mark connected» ────────────────────────────────────────────────────────────
 
     public async Task<ExistingInventoryBatchView> ContinueAsync(
         ExistingInventoryCaller caller,
@@ -671,7 +628,6 @@ public sealed class ExistingInventoryImportService(
 
         await db.SaveChangesAsync(ct);
 
-        // A property the import itself made (confirmed from a listing of this batch) has no declaration yet: it is «already on OTAs».
         var undeclared = plan.Values
             .Where(p => p.Decision == ItemDecision.Eligible && p.PropertyId is { } id && !scope.Intents.ContainsKey(id))
             .Select(p => p.PropertyId!.Value)
@@ -696,11 +652,6 @@ public sealed class ExistingInventoryImportService(
         return await ViewAsync(caller, batchId, ct);
     }
 
-    /// <summary>
-    /// The phases of one channel for the listings a person confirmed: the reservations (<c>IMPORT_RESERVATIONS</c>, then the import into
-    /// CasaZen), the calendars, «mark connected». Each phase takes the listings that finished the previous one, so one that fails does not
-    /// hold the others back; a listing left for later, rejected or out of the batch is not touched. Everything is saved item by item.
-    /// </summary>
     private async Task ContinueChannelAsync(
         Guid orgId,
         Guid batchId,
@@ -712,7 +663,6 @@ public sealed class ExistingInventoryImportService(
         var failures = new List<Failure>();
         Failure? stop = null;
 
-        // 1. The reservations asked of Octorate (once for each connection).
         var channel = await LoadChannelAsync(orgId, channelId, ct);
         var eligible = EligibleItems(channel, plan);
         var reservationItems = eligible.Where(i => i.ReservationsImportedAt is null && i.OctorateReservationsImportedAt is null).ToList();
@@ -736,8 +686,6 @@ public sealed class ExistingInventoryImportService(
             }
         }
 
-        // 2. The reservations read into CasaZen, property by property. The import clears the tracker of the shared context: only ids are kept
-        // across it, and the rows are loaded again afterwards.
         if (stop is null)
         {
             var toImport = EligibleItems(channel, plan)
@@ -787,7 +735,6 @@ public sealed class ExistingInventoryImportService(
             }
         }
 
-        // 3. The calendars of the listings whose reservations are in.
         if (stop is null)
         {
             channel = await LoadChannelAsync(orgId, channelId, ct);
@@ -812,7 +759,6 @@ public sealed class ExistingInventoryImportService(
             }
         }
 
-        // 4. «Mark connected», only for a listing a person confirmed whose reservations and calendar are in.
         if (stop is null)
         {
             channel = await LoadChannelAsync(orgId, channelId, ct);
@@ -844,7 +790,6 @@ public sealed class ExistingInventoryImportService(
             return;
         }
 
-        // A listing whose rooms failed to come in is not part of this pass, but the channel does not say it is done while one waits with a code.
         var roomsMissing = channel.Items
             .Where(i => i.ErrorCode is not null && plan.TryGetValue(i.Id, out var p) && p.Decision == ItemDecision.NotImported)
             .ToList();
@@ -857,7 +802,6 @@ public sealed class ExistingInventoryImportService(
             return;
         }
 
-        // Every listing is connected, left for later, rejected or out of the batch: nothing is left for the import to do.
         var done = Now();
         channel.CompletedAt ??= done;
         SetStatus(channel, OctorateInventoryImportStatus.Completed, null);
@@ -865,7 +809,6 @@ public sealed class ExistingInventoryImportService(
         Audit("channel-completed", orgId, batchId, channel.ChannelCode, channel.Items.Count(i => i.ConnectedAt is not null), null);
     }
 
-    /// <summary>The reservations of one property read into CasaZen, outside the tracked state of this class.</summary>
     private async Task<BookingOutcome> ImportBookingsAsync(Guid orgId, Guid propertyId, CancellationToken ct)
     {
         ImportResult result;
@@ -880,7 +823,6 @@ public sealed class ExistingInventoryImportService(
         }
         finally
         {
-            // The import clears the shared tracker itself; doing it here too keeps the behaviour the same whatever the implementation does.
             db.ChangeTracker.Clear();
         }
 
@@ -892,8 +834,6 @@ public sealed class ExistingInventoryImportService(
             _ => new BookingOutcome(new Failure(OctorateInventoryErrorCodes.ReservationImportIncomplete, OctorateInventoryImportStatus.NeedsAttention, false)),
         };
     }
-
-    // ─── One operation of the D6 sequence on one item ─────────────────────────────────────────────────────────
 
     /// <summary>
     /// Asks Octorate for one operation of the D6 sequence on one connection, and writes the stamp: <c>null</c> when it is done (or was done
@@ -922,8 +862,6 @@ public sealed class ExistingInventoryImportService(
             return null;
         }
 
-        // An earlier attempt left a result nobody knows: it is not asked again by itself, whatever the flag says. A person checks the panel and
-        // resumes it by naming the listing.
         if (item.ErrorCode == OctorateInventoryErrorCodes.D6ResultUnknown && !resume)
             return new Failure(OctorateInventoryErrorCodes.D6ResultUnknown, OctorateInventoryImportStatus.NeedsAttention, false);
 
@@ -1045,8 +983,6 @@ public sealed class ExistingInventoryImportService(
         }
     }
 
-    // ─── Items and decisions ──────────────────────────────────────────────────────────────────────────────────
-
     /// <summary>
     /// Creates the items of the connections the channel does not hold yet, except those the person never meant for this import: a listing it
     /// rejected, one confirmed to a property that is declared in another scenario or is outside the scope of the batch, and one the caller
@@ -1080,8 +1016,6 @@ public sealed class ExistingInventoryImportService(
                 UpdatedAt = now,
             };
 
-            // The id is set before the save, so a row met only through the collection of a tracked channel would be taken for an existing
-            // one and saved as an UPDATE of a row that is not there: the item is added to the context itself, then to the collection.
             db.OctorateInventoryImportItems.Add(item);
             if (!channel.Items.Contains(item))
                 channel.Items.Add(item);
@@ -1091,10 +1025,6 @@ public sealed class ExistingInventoryImportService(
         await db.SaveChangesAsync(ct);
     }
 
-    /// <summary>
-    /// A listing the room import takes in: one no mapping row knows yet (its rooms must be in before a property can be proposed for it), or one
-    /// the caller sees that is neither rejected nor outside the scope of the batch.
-    /// </summary>
     private static bool Covers(string accommodationId, IReadOnlyDictionary<string, ChannelMappingRow> rows, BatchScope scope, Audience audience)
     {
         if (!rows.TryGetValue(accommodationId, out var row))
@@ -1104,7 +1034,6 @@ public sealed class ExistingInventoryImportService(
         return audience.Sees(row) && Decide(probe, row, NoIds, scope) is not (ItemDecision.Rejected or ItemDecision.OutOfScope);
     }
 
-    /// <summary>The decision about each listing of a channel that the caller sees; the others are none of its business and are left out.</summary>
     private static List<(OctorateInventoryImportItem Item, ChannelMappingRow? Row, ItemDecision Decision)> Decisions(
         IEnumerable<OctorateInventoryImportItem> items,
         IReadOnlyDictionary<string, ChannelMappingRow> rows,
@@ -1121,8 +1050,6 @@ public sealed class ExistingInventoryImportService(
 
             var decision = Decide(item, row, leaveNow, scope);
 
-            // A listing whose rooms are not in (its import failed, or its access was not given) is neither confirmed nor waiting for a person,
-            // whatever its mapping says: it is held back until its rooms are in, and it holds nobody else back.
             if (item.RoomsImportedAt is null && decision is (ItemDecision.Eligible or ItemDecision.Pending))
                 decision = ItemDecision.NotImported;
 
@@ -1143,7 +1070,6 @@ public sealed class ExistingInventoryImportService(
                 return InScope(property.Id, row, scope) ? ItemDecision.Eligible : ItemDecision.OutOfScope;
         }
 
-        // Neither confirmed nor rejected: proposed, ambiguous, or known by no mapping row at all. The person decides it or leaves it for later.
         return item.LeftForLaterAt is not null || leaveNow.Contains(item.OctorateAccommodationId)
             ? ItemDecision.LeftForLater
             : ItemDecision.Pending;
@@ -1170,8 +1096,6 @@ public sealed class ExistingInventoryImportService(
             .ThenBy(i => i.OctorateConnectionId, StringComparer.Ordinal)
             .ToList();
 
-    // ─── Intents ──────────────────────────────────────────────────────────────────────────────────────────────
-
     public async Task<IReadOnlyList<InventoryIntentView>> SetIntentsAsync(
         ExistingInventoryCaller caller,
         IReadOnlyCollection<InventoryIntentAssignment> assignments,
@@ -1192,7 +1116,6 @@ public sealed class ExistingInventoryImportService(
             var group = Cut(assignment.Group, OctorateInventoryIntent.WizardBatchMaxLength);
             if (assignment.PropertyId is null)
             {
-                // The intent of a group that has no property yet is an org-level decision.
                 if (group is null)
                     throw new DomainRuleException("inventory_group_required", "InventoryGroupRequired");
 
@@ -1209,7 +1132,6 @@ public sealed class ExistingInventoryImportService(
             throw new DomainRuleException("inventory_intent_duplicate", "InventoryIntentDuplicate");
         }
 
-        // Only properties of the org within the reach of the caller: another org's property is the same 404 as an unknown one.
         var ids = shaped.Where(a => a.PropertyId is not null).Select(a => a.PropertyId!.Value).ToList();
         if (ids.Count > 0 && !await CanReachPropertiesAsync(caller, ids, ct))
             throw PropertyNotFound();
@@ -1223,7 +1145,6 @@ public sealed class ExistingInventoryImportService(
                 ? existing.FirstOrDefault(i => i.PropertyId == id)
                 : existing.FirstOrDefault(i => i.PropertyId is null && string.Equals(i.WizardBatch, group, StringComparison.Ordinal));
 
-            // «New» is a choice that cannot be reached from an import: never while a batch or a mapping exists for the property.
             if (scenario == OctorateInventoryScenario.NewInventory
                 && row?.Scenario != OctorateInventoryScenario.NewInventory
                 && propertyId is { } changing
@@ -1296,11 +1217,6 @@ public sealed class ExistingInventoryImportService(
         ];
     }
 
-    /// <summary>
-    /// True when an import already concerns the property: a batch of the org names it (in its properties, or through its group), or a listing
-    /// is proposed or confirmed to it. A batch of the whole inventory names no property, so it does not by itself stop a new, unpublished
-    /// property from being declared as such: that one has no listing and no mapping.
-    /// </summary>
     private async Task<bool> HasImportEvidenceAsync(Guid orgId, Guid propertyId, CancellationToken ct)
     {
         if (await db.OctorateListingMappings.AsNoTracking().AnyAsync(
@@ -1319,7 +1235,6 @@ public sealed class ExistingInventoryImportService(
         return batches.Any(json => ParseIds(json).Contains(propertyId));
     }
 
-    /// <summary>Declares the properties «already on OTAs»; with <paramref name="overwrite"/> a different declaration is replaced, else it is kept.</summary>
     private async Task DeclareOnOtasAsync(
         ExistingInventoryCaller caller,
         IReadOnlyCollection<Guid> propertyIds,
@@ -1359,11 +1274,6 @@ public sealed class ExistingInventoryImportService(
         }
     }
 
-    /// <summary>
-    /// Declares «already on OTAs» the properties the import made from the listings of the batch, but only the ones the caller reaches: nobody
-    /// declares in its own name a property it has no access to. Another command that declared one first wins on the unique index of the
-    /// intents, and its row is the one that stays.
-    /// </summary>
     private async Task DeclareImportedAsync(ExistingInventoryCaller caller, IReadOnlyCollection<Guid> propertyIds, CancellationToken ct)
     {
         var reachable = await ReachableAsync(caller, propertyIds, ct);
@@ -1383,9 +1293,6 @@ public sealed class ExistingInventoryImportService(
         }
     }
 
-    // ─── Reach, loading, views ────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The caller's scope, or 403 when it has none in the org.</summary>
     private async Task<HostScope> ReachAsync(ExistingInventoryCaller caller, CancellationToken ct) =>
         await hostScopeResolver.ResolveAsync(caller.UserId, caller.TokenRoles ?? NoTokenRoles, caller.OrgId, ct)
         ?? throw new DomainForbiddenException("no_org_context", "NoOrganizationContext");
@@ -1405,7 +1312,6 @@ public sealed class ExistingInventoryImportService(
             throw BatchNotFound();
     }
 
-    /// <summary>The properties of a batch scope, each of the org and within the reach of the caller, or 404 / 403.</summary>
     private Task<List<Guid>> ResolveScopeAsync(ExistingInventoryCaller caller, HostScope reach, ExistingInventoryScope scope, CancellationToken ct)
     {
         switch (scope.Kind)
@@ -1440,7 +1346,6 @@ public sealed class ExistingInventoryImportService(
         return ids;
     }
 
-    /// <summary>The properties of a named group of the caller's org, declared «already on OTAs» and within the caller's reach.</summary>
     private async Task<List<Guid>> ResolveGroupScopeAsync(ExistingInventoryCaller caller, HostScope reach, ExistingInventoryScope scope, CancellationToken ct)
     {
         var group = Cut(scope.Group, OctorateInventoryIntent.WizardBatchMaxLength)
@@ -1460,7 +1365,6 @@ public sealed class ExistingInventoryImportService(
         if (members.Any(m => m.Scenario != OctorateInventoryScenario.OnOtas))
             throw new DomainConflictException("existing_inventory_group_scenario_mismatch", "ExistingInventoryGroupScenarioMismatch");
 
-        // A group with a member that has no property yet is an org-level decision.
         if (members.Any(m => m.PropertyId is null) && !reach.IsOrgWide)
             throw new DomainForbiddenException("existing_inventory_needs_whole_org", "ExistingInventoryNeedsWholeOrg");
 
@@ -1471,7 +1375,6 @@ public sealed class ExistingInventoryImportService(
         return ids;
     }
 
-    /// <summary>True when every property is one of the caller's org, not deleted, and within the reach of the caller (a property of another org is none of them).</summary>
     private async Task<bool> CanReachPropertiesAsync(ExistingInventoryCaller caller, IReadOnlyCollection<Guid> propertyIds, CancellationToken ct)
     {
         var ids = propertyIds.Distinct().ToList();
@@ -1492,7 +1395,6 @@ public sealed class ExistingInventoryImportService(
         return true;
     }
 
-    /// <summary>The ones among the properties that are properties of the caller's org, not deleted, within the reach of the caller (the others are left out).</summary>
     private async Task<IReadOnlySet<Guid>> ReachableAsync(ExistingInventoryCaller caller, IReadOnlyCollection<Guid> propertyIds, CancellationToken ct)
     {
         var reachable = new HashSet<Guid>();
@@ -1514,7 +1416,6 @@ public sealed class ExistingInventoryImportService(
         return reachable;
     }
 
-    /// <summary>The channel codes of a request: trimmed, distinct, and each one a listed, enabled OTA of the catalog of the channel manager.</summary>
     private async Task<List<string>> ValidChannelsAsync(IReadOnlyCollection<string> channelCodes, CancellationToken ct)
     {
         var codes = channelCodes
@@ -1561,7 +1462,6 @@ public sealed class ExistingInventoryImportService(
             .Include(c => c.Items)
             .FirstAsync(c => c.OrgId == orgId && c.Id == channelId, ct);
 
-    /// <summary>The listings of the org as the mapping shows them, by accommodation id (the first of an id wins).</summary>
     private async Task<IReadOnlyDictionary<string, ChannelMappingRow>> RowsAsync(Guid orgId, CancellationToken ct)
     {
         var rows = await mappings.ListAsync(orgId, ct);
@@ -1572,7 +1472,6 @@ public sealed class ExistingInventoryImportService(
         return byId;
     }
 
-    /// <summary>The scenario declared for each property of the org that has a declaration.</summary>
     private async Task<IReadOnlyDictionary<Guid, OctorateInventoryScenario>> IntentsAsync(Guid orgId, CancellationToken ct)
     {
         var rows = await db.OctorateInventoryIntents.AsNoTracking()
@@ -1596,7 +1495,6 @@ public sealed class ExistingInventoryImportService(
         return new Audience(false, await ReachableAsync(caller, propertyIds, ct));
     }
 
-    /// <summary>The batch as the API shows it, read from the database as it was saved, and limited to the listings the caller sees.</summary>
     private async Task<ExistingInventoryBatchView> ViewAsync(ExistingInventoryCaller caller, Guid batchId, CancellationToken ct)
     {
         var orgId = caller.OrgId;
@@ -1635,7 +1533,6 @@ public sealed class ExistingInventoryImportService(
         BatchScope scope,
         Audience audience)
     {
-        // Only the listings the caller sees: the id and the progress of another property's listing are none of its business.
         var items = channel.Items
             .OrderBy(i => i.OctorateAccommodationId, StringComparer.Ordinal)
             .ThenBy(i => i.OctorateConnectionId, StringComparer.Ordinal);
@@ -1684,15 +1581,11 @@ public sealed class ExistingInventoryImportService(
             ParseAccommodationIds(channel.ConnectedAccommodationIdsJson));
     }
 
-    // ─── Access state, status of the channel and of the batch ─────────────────────────────────────────────────
-
-    /// <summary>Reads the result of the access of a channel that waits for it; <c>true</c> when the channel row changed.</summary>
     private async Task<bool> SyncAccessAsync(Guid orgId, OctorateInventoryImportChannel channel, bool verifyIfDue, CancellationToken ct)
     {
         if (channel.AccessCompletedAt is not null || channel.Status == OctorateInventoryImportStatus.Completed)
             return false;
 
-        // A channel the person was never sent to the panel for has nothing to read.
         if (channel.PanelStepId is null && channel.Status == OctorateInventoryImportStatus.Draft)
             return false;
 
@@ -1700,10 +1593,6 @@ public sealed class ExistingInventoryImportService(
         return ApplyAccess(channel, snapshot);
     }
 
-    /// <summary>
-    /// Takes the state of the panel step into the channel: a given access (seen or confirmed) moves it on to the room import, one found not
-    /// valid stops it with a stable code, and the state the wizard shows follows the step.
-    /// </summary>
     private bool ApplyAccess(OctorateInventoryImportChannel channel, ChannelAccessSnapshot snapshot)
     {
         var changed = false;
@@ -1755,7 +1644,6 @@ public sealed class ExistingInventoryImportService(
         channel.UpdatedAt = Now();
     }
 
-    /// <summary>Stops the channel at the step that failed, with the stable code, and saves it.</summary>
     private async Task StopChannelAsync(OctorateInventoryImportChannel channel, Failure failure, CancellationToken ct)
     {
         SetStatus(channel, failure.Status, failure.Code);
@@ -1765,16 +1653,11 @@ public sealed class ExistingInventoryImportService(
             channel.OrgId, channel.ChannelCode, failure.Status, failure.Code);
     }
 
-    /// <summary>
-    /// The failure that decides the state of a channel when some listings did not get through: one that needs a person before one that failed,
-    /// and, with none recorded (which a pass that stopped without trying cannot do), an unknown result.
-    /// </summary>
     private static Failure WorstOf(IReadOnlyList<Failure> failures) =>
         failures.FirstOrDefault(f => f.Status == OctorateInventoryImportStatus.NeedsAttention)
         ?? failures.FirstOrDefault()
         ?? new Failure(OctorateInventoryErrorCodes.D6ResultUnknown, OctorateInventoryImportStatus.NeedsAttention, false);
 
-    /// <summary>The error of an operation as a stable code and the state it leaves the channel in (see the remarks of the class).</summary>
     private static Failure Classify(OctorateException exception) => exception switch
     {
         OctorateRateLimitException => new Failure(exception.Code, OctorateInventoryImportStatus.NeedsAttention, true),
@@ -1821,7 +1704,6 @@ public sealed class ExistingInventoryImportService(
         batch.UpdatedAt = now;
     }
 
-    /// <summary>The summary of the batch from its channels as saved (the rows are loaded again: the import may have cleared the tracker).</summary>
     private async Task RefreshBatchStatusAsync(Guid orgId, Guid batchId, CancellationToken ct)
     {
         var batch = await db.OctorateInventoryImportBatches
@@ -1834,9 +1716,6 @@ public sealed class ExistingInventoryImportService(
         await db.SaveChangesAsync(ct);
     }
 
-    // ─── Small things ─────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>Session lock of one channel of one org for the whole step; <c>null</c> when another command holds it.</summary>
     private Task<IAsyncDisposable?> TryLockAsync(Guid orgId, string channelCode, CancellationToken ct) =>
         PostgresAdvisoryLocks.TryAcquireSessionLockAsync(db, PostgresAdvisoryLocks.Scope.OctorateInventoryImport, $"{orgId:N}:{channelCode}", ct);
 
@@ -1854,14 +1733,11 @@ public sealed class ExistingInventoryImportService(
                };
     }
 
-    /// <summary>The properties named by a batch; the whole inventory names none.</summary>
     private static List<Guid> PropertyIdsOf(OctorateInventoryImportBatch batch) => ParseIds(batch.ScopePropertyIdsJson);
 
-    /// <summary>The properties a batch is restricted to, or <c>null</c> for the whole inventory.</summary>
     private static HashSet<Guid>? ScopeIds(OctorateInventoryImportBatch batch) =>
         batch.ScopeKind == OctorateInventoryScopeKind.AllInventory ? null : [.. PropertyIdsOf(batch)];
 
-    /// <summary>The ids of a JSON array of ids (a batch scope); an empty or unreadable one names none.</summary>
     internal static List<Guid> ParseIds(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -1877,10 +1753,6 @@ public sealed class ExistingInventoryImportService(
         }
     }
 
-    /// <summary>
-    /// The Octorate accommodation ids of a JSON array of ids (the accommodations «Collega» connected to a channel of a batch), in order and once
-    /// each; an empty or unreadable one names none.
-    /// </summary>
     internal static List<string> ParseAccommodationIds(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -1904,7 +1776,6 @@ public sealed class ExistingInventoryImportService(
         }
     }
 
-    /// <summary>The accommodation ids of a request, trimmed and distinct; one that cannot be an Octorate id is ignored.</summary>
     private static IReadOnlySet<string> NormalizeIds(IReadOnlyCollection<string>? ids)
     {
         if (ids is null || ids.Count == 0)
@@ -1953,42 +1824,29 @@ public sealed class ExistingInventoryImportService(
 
     private static DomainConflictException IntentConflict() => new("inventory_intent_conflict", "InventoryIntentConflict");
 
-    // ─── Types ────────────────────────────────────────────────────────────────────────────────────────────────
-
     private enum ItemDecision
     {
-        /// <summary>Confirmed to a property of the batch: the import goes on for it.</summary>
         Eligible,
 
-        /// <summary>The person said it is not one of the org's properties.</summary>
         Rejected,
 
-        /// <summary>Confirmed to a property declared in another scenario, or outside the scope of the batch: left alone.</summary>
         OutOfScope,
 
-        /// <summary>The person left it for later: it stays write-blocked and is not marked connected.</summary>
         LeftForLater,
 
-        /// <summary>Nobody decided yet: the import does not go on until somebody does.</summary>
         Pending,
 
-        /// <summary>The rooms of the listing are not in (the import failed, or its access was not given): it waits, and holds nobody else back.</summary>
         NotImported,
     }
 
     private sealed record ItemPlan(ItemDecision Decision, Guid? PropertyId);
 
-    /// <summary>One accommodation of a «Collega» as checked: the Octorate accommodation and the id of the property on the portal, both trimmed.</summary>
     private sealed record ConnectTarget(string AccommodationId, string HotelId);
 
     private sealed record Failure(string Code, OctorateInventoryImportStatus Status, bool StopsChannel);
 
     private sealed record BookingOutcome(Failure? Failure);
 
-    /// <summary>
-    /// What says which listings a batch covers: the scenario declared for each property, the properties the batch is restricted to
-    /// (<c>null</c> for the whole inventory) and the moment the batch began.
-    /// </summary>
     private sealed record BatchScope(IReadOnlyDictionary<Guid, OctorateInventoryScenario> Intents, IReadOnlySet<Guid>? PropertyIds, DateTime BatchCreatedAt);
 
     /// <summary>

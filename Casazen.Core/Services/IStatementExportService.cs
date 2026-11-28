@@ -18,10 +18,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IStatementExportService
 {
-    /// <summary>
-    /// The PDF or the CSV of the statement. Only an Approved or Published statement is exported (422 <c>statement_not_exportable</c> for a draft);
-    /// another org's statement is a 404 (<c>statement_not_found</c>).
-    /// </summary>
     Task<StatementExportFile> ExportStatementAsync(
         Guid statementId,
         Guid orgId,
@@ -42,14 +38,12 @@ public interface IStatementExportService
     Task<StatementExportFile> ExportCuProspectAsync(Guid orgId, int year, Guid ownerId, string language, CancellationToken ct = default);
 }
 
-/// <summary>The two formats of a statement.</summary>
 public enum StatementExportFormat
 {
     Pdf = 1,
     Csv = 2,
 }
 
-/// <summary>A generated file: the bytes, the media type and the name the browser saves it with.</summary>
 public sealed record StatementExportFile(byte[] Content, string ContentType, string FileName);
 
 /// <summary>
@@ -68,11 +62,6 @@ public sealed record StatementExportData(
     IReadOnlyList<StatementWithholdingEvidence> Withholdings,
     StatementVersionTotals? Ledger = null);
 
-/// <summary>
-/// The totals of the owner ledger the current version of the statement was cut from, as stored on it: the opening and closing balance, the totals by type and
-/// the SHA-256 of the lines. They are in the settlement currency of the owner, which can differ from the currency of the statement of one property.
-/// <paramref name="OwnerInvoiceNumber"/> is the number of the owner invoice issued for the owner and month (E14/F01/US01/T01), named in the commission.
-/// </summary>
 public sealed record StatementVersionTotals(
     int VersionNumber,
     string Currency,
@@ -87,11 +76,6 @@ public sealed record StatementVersionTotals(
     string EntriesSha256,
     string? OwnerInvoiceNumber = null);
 
-/// <summary>A payment to the owner as a statement prints it.</summary>
-/// <param name="Reference">The stable reference of the payout.</param>
-/// <param name="PaidOn">The Europe/Rome day of the payment, when it is known.</param>
-/// <param name="Amount">The amount paid, in the currency of the statement.</param>
-/// <param name="Status">The stable code of the state of the payout.</param>
 public sealed record StatementPayoutEvidence(string Reference, DateOnly? PaidOn, decimal Amount, string Status);
 
 /// <summary>A stored withholding decision as a statement prints it.</summary>
@@ -109,15 +93,11 @@ public sealed record StatementWithholdingEvidence(
     decimal GrossBase,
     decimal Amount);
 
-/// <summary>The stable codes of the errors of the exports, with the keys of their messages in <c>SharedResources</c>.</summary>
 public static class StatementExportErrors
 {
-    /// <summary>404: the statement is not one of the caller's org (or does not exist).</summary>
     public const string StatementNotFound = "statement_not_found";
 
-    /// <summary>422: only an approved or published statement is exported.</summary>
     public const string StatementNotExportable = "statement_not_exportable";
 
-    /// <summary>404: the org has no stored F24 data for the month.</summary>
     public const string F24NotFound = "f24_not_found";
 }

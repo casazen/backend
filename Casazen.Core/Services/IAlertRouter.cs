@@ -67,7 +67,6 @@ public interface IPopupAlertPublisher
         CancellationToken ct);
 }
 
-/// <summary>Publisher that does nothing: the default of hosts and tests with no real-time channel.</summary>
 public sealed class NoOpPopupAlertPublisher : IPopupAlertPublisher
 {
     public Task PublishAsync(

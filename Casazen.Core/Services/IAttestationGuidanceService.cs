@@ -10,7 +10,6 @@ public record AttestationGuidanceDto(
 
 public interface IAttestationGuidanceService
 {
-    /// <summary>Signatories of the property's comune agreement, or <c>null</c> when the property is not visible. The caller authorizes the property first (TN-3).</summary>
     Task<AttestationGuidanceDto?> GetSignatoryOrganizationsAsync(
         Guid propertyId,
         CancellationToken cancellationToken = default);

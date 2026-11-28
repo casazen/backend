@@ -6,24 +6,10 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Octorate;
 
-/// <summary>
-/// What the daily import and the reconciliation of the bookings have in common (E02/F02/US01/T01 and T02): which properties they read, how
-/// far back each one reads, and how one property failing leaves the others alone. A system read over every org: each property is then read
-/// for its own org under <see cref="IOctorateOrgScope.Use"/>. The list of the properties (<see cref="ListMappedPropertiesAsync"/>) is also the
-/// one the calendar job of E02/F02/US01/T03 reads.
-/// </summary>
 internal static class OctorateBookingRuns
 {
-    /// <summary>
-    /// How far before the last complete read a run starts again: the webhooks of Octorate are retried for two days (OCT-09), so a change that
-    /// was announced and missed is still in the window. Unchanged reservations cost a line of the list and nothing else.
-    /// </summary>
     internal static readonly TimeSpan Overlap = TimeSpan.FromDays(2);
 
-    /// <summary>
-    /// The properties to read: the confirmed mappings, with the room chosen, of the orgs whose connection to this environment is connected.
-    /// A listing that is proposed, ambiguous or rejected is never read, nor is one of an org that disconnected.
-    /// </summary>
     internal static async Task<IReadOnlyList<RunTarget>> ListTargetsAsync(
         AppDbContext db, OctorateEnvironment environment, CancellationToken ct, Guid? orgId = null, Guid? propertyId = null)
     {
@@ -31,10 +17,6 @@ internal static class OctorateBookingRuns
         return [.. mapped.Select(m => new RunTarget(m.OrgId, m.PropertyId, m.BookingsImportedThrough))];
     }
 
-    /// <summary>
-    /// The single definition of "which properties are read from Octorate" (the bookings and the calendar): each one with the accommodation and
-    /// the room the mapping confirmed, ordered by org so a caller opens one <see cref="IOctorateOrgScope.Use"/> per org.
-    /// </summary>
     internal static async Task<IReadOnlyList<MappedProperty>> ListMappedPropertiesAsync(
         AppDbContext db,
         OctorateEnvironment environment,
@@ -116,13 +98,10 @@ internal static class OctorateBookingRuns
         }
     }
 
-    /// <summary>A property to read: its org, itself and the instant of the last complete read of its listing.</summary>
     internal sealed record RunTarget(Guid OrgId, Guid PropertyId, DateTime? ImportedThrough);
 
-    /// <summary>A property of a confirmed mapping: its org, itself, the accommodation and the room (product) of the listing, and the last complete read of its bookings.</summary>
     internal sealed record MappedProperty(Guid OrgId, Guid PropertyId, string AccommodationId, string ProductId, DateTime? BookingsImportedThrough);
 
-    /// <summary>The counts of a whole run, for its log line.</summary>
     internal sealed class RunTotals
     {
         public int Properties { get; set; }

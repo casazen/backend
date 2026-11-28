@@ -33,7 +33,6 @@ public class PlanChangePolicyTests
     [Fact]
     public void EvaluateManualChange_StoredScaleWithoutSubscriptionToPro_ReturnsSubscriptionRequired()
     {
-        // Lower than the stored tier but above the effective one (Starter): still an upgrade.
         var org = Org(PlanTier.Scale, SubscriptionStatus.None, null);
 
         var outcome = PlanChangePolicy.EvaluateManualChange(org, PlanTier.Starter, PlanTier.Pro);

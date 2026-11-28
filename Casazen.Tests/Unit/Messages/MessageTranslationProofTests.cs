@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -35,7 +34,6 @@ public class MessageTranslationProofTests : IAsyncLifetime
     private readonly AppDbContext _db = HostScopeScenario.NewInMemoryDb();
     private readonly Mock<IAiProvider> _ai = new();
     private readonly Mock<IOctorateApiClient> _client = new();
-    // Both on: the connector of the channel manager and the flag of the AI translation (off by default in the application, see the proofs of the flag below).
     private readonly TestFeatureFlags _flags = new(FeatureFlags.OctorateConnector, FeatureFlags.MessageTranslationAi);
     private readonly AiResponseCache _cache = new(Options.Create(new AiCacheOptions()));
     private readonly CapturingLogger<MessageTranslationService> _log = new();
@@ -47,7 +45,6 @@ public class MessageTranslationProofTests : IAsyncLifetime
     {
         _world = await MessageHubTestKit.SeedAsync(_db);
 
-        // The person who hosts is called by a name, and the guest's message carries a name, an address and a number.
         var org = await _db.Orgs.FirstAsync(o => o.Id == _world.Scope.OrgId);
         org.HostName = "Giulia";
         _guestMessage = new OtaMessage
@@ -82,7 +79,6 @@ public class MessageTranslationProofTests : IAsyncLifetime
 
     private MessageThreadKey Key => Ota(_world.GrantedReservation);
 
-    /// <summary>The AI answers by repeating the text it was given between the markers, behind «EN: », and the requests it got are kept.</summary>
     private void AiRepeatsWhatItGets(bool providerConfigured = true) =>
         _ai.Setup(p => p.GenerateAsync(It.IsAny<AiRequest>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Returns((AiRequest request, AiModelTier _, string _, CancellationToken _) =>
@@ -95,8 +91,6 @@ public class MessageTranslationProofTests : IAsyncLifetime
     private void AiFails(Exception failure) =>
         _ai.Setup(p => p.GenerateAsync(It.IsAny<AiRequest>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(failure);
-
-    // ---- The proof of the brief ----------------------------------------------------------------------------------------------------------
 
     /// <summary>
     /// PROOF TEST: privacy rule (FD-21, AI-06). The names the conversation knows (the guest, the person who hosts), the e-mail addresses and the phone
@@ -120,7 +114,6 @@ public class MessageTranslationProofTests : IAsyncLifetime
         Assert.Contains("[[N1]]", request.Prompt, StringComparison.Ordinal);
         Assert.Equal(AiModelTier.Economy, _ai.Invocations.Select(i => (AiModelTier)i.Arguments[1]).Single());
 
-        // The names are put back for the reader of the translation; the address and the number are not.
         Assert.Equal(MessageTranslationProvider.Ai, translation.Provider);
         Assert.True(translation.MachineTranslated);
         Assert.Equal("en", translation.TargetLanguage);
@@ -128,14 +121,12 @@ public class MessageTranslationProofTests : IAsyncLifetime
         Assert.Contains("[email]", translation.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("jonas.berg@example.com", translation.Text, StringComparison.Ordinal);
 
-        // A text the host is writing is scrubbed the same way.
         _requests.Clear();
         await Service().TranslateAsync(_world.Scope.OrgWide, Key, null, "Sono Giulia, chiamami al +39 340 765 4321 o scrivi a giulia@example.org", "en");
         var written = Assert.Single(_requests).ToTextPrompt();
         foreach (var secret in new[] { "Giulia", "340 765 4321", "giulia@example.org" })
             Assert.DoesNotContain(secret, written, StringComparison.OrdinalIgnoreCase);
 
-        // Nothing of the words or the translation is in the log.
         Assert.DoesNotContain("Jonas", _log.AllOutput, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("jonas.berg", _log.AllOutput, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("EN:", _log.AllOutput, StringComparison.Ordinal);
@@ -161,14 +152,6 @@ public class MessageTranslationProofTests : IAsyncLifetime
         Assert.Equal("EN: Ciao, sono Xu Ma e vi aspetto, ma arrivate tardi?", translation.Text);
     }
 
-    // ---- The AI only behind its own flag ------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// PROOF TEST: privacy rule (FD-21, AI-06). With <c>Features:MessageTranslationAi</c> off, which is the default, nothing a guest wrote reaches the AI provider:
-    /// not the text of a message, not the draft the host is writing, even when a provider is configured and would answer; the memory of its answers is not
-    /// read either (an answer kept for these very words is not served). The channel manager translates the message it holds, by its id; a text only the AI
-    /// could translate, and a message the channel manager cannot translate, are 422 <c>translation_unavailable</c>.
-    /// </summary>
     [Fact]
     public async Task MessageTranslation_AiFlagOff_NeverCallsTheProvider_Test()
     {
@@ -178,7 +161,6 @@ public class MessageTranslationProofTests : IAsyncLifetime
             .Setup(c => c.TranslateChatMessageAsync("ACC-1", _world.GrantedReservation.OctorateThreadId, "70123", "en", It.IsAny<CancellationToken>()))
             .ReturnsAsync("Hello, from the channel manager");
 
-        // The very words were translated before, with the flag on: that answer stays in the memory of the AI and must not be served now.
         _flags.Set(FeatureFlags.MessageTranslationAi, true);
         await Service().TranslateAsync(_world.Scope.OrgWide, Key, _guestMessage.Id, null, "en");
         Assert.Single(_requests);
@@ -190,11 +172,9 @@ public class MessageTranslationProofTests : IAsyncLifetime
         Assert.Equal(MessageTranslationProvider.ChannelManager, byMessage.Provider);
         Assert.Equal("Hello, from the channel manager", byMessage.Text);
 
-        // The text of a draft has no message on the channel manager: only the AI could translate it, and it is off.
         var draft = await Assert.ThrowsAsync<DomainRuleException>(() => Service().TranslateAsync(_world.Scope.OrgWide, Key, null, Secret, "en"));
         Assert.Equal("translation_unavailable", draft.Code);
 
-        // A message the channel manager cannot translate is not translated by the AI instead.
         _client
             .Setup(c => c.TranslateChatMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new OctorateServerException(500));
@@ -224,9 +204,6 @@ public class MessageTranslationProofTests : IAsyncLifetime
         Assert.Contains(FeatureFlags.MessageTranslationAi, FeatureFlags.All);
     }
 
-    // ---- Never stored -----------------------------------------------------------------------------------------------------------------------
-
-    /// <summary>The translation is for the screen: the conversation is exactly as it was after it, the original text included.</summary>
     [Fact]
     public async Task Translate_NeverStoresAnything_TheMessageKeepsItsOriginal()
     {
@@ -247,8 +224,6 @@ public class MessageTranslationProofTests : IAsyncLifetime
         Templates = await _db.MessageTemplates.AsNoTracking().CountAsync(),
         Activity = await _db.OrgActivityEntries.AsNoTracking().CountAsync(),
     });
-
-    // ---- Who translates ----------------------------------------------------------------------------------------------------------------------
 
     [Theory]
     [InlineData("notconfigured")]
@@ -300,7 +275,6 @@ public class MessageTranslationProofTests : IAsyncLifetime
         Assert.Equal("MessageTranslationUnavailable", error.MessageKey);
     }
 
-    /// <summary>A text the host is writing has no message on the channel manager, so only the AI can translate it; and a channel manager that is off is not asked.</summary>
     [Fact]
     public async Task Translate_AWrittenText_NeedsTheAi_AndAChannelManagerThatIsOffIsNotAsked()
     {
@@ -326,8 +300,6 @@ public class MessageTranslationProofTests : IAsyncLifetime
         Assert.Equal(first.Text, second.Text);
         Assert.Single(_requests);
     }
-
-    // ---- What may be asked --------------------------------------------------------------------------------------------------------------------
 
     [Theory]
     [InlineData("klingon")]
@@ -364,10 +336,6 @@ public class MessageTranslationProofTests : IAsyncLifetime
         _ai.VerifyNoOtherCalls();
     }
 
-    /// <summary>
-    /// A collaborator limited to some houses translates the messages of the conversations of its houses; a conversation of another house, one with no house,
-    /// another org's and a message of a conversation other than the one named are a 404, and no provider is asked.
-    /// </summary>
     [Fact]
     public async Task Translate_Collaborator_ReachesOnlyTheConversationsOfItsHouses_AndTheMessagesOfTheConversationNamed()
     {
@@ -380,7 +348,6 @@ public class MessageTranslationProofTests : IAsyncLifetime
             Assert.Equal("thread_not_found", error.Code);
         }
 
-        // A message of another conversation, even one the collaborator reaches, is not found through this one.
         var request = await _db.OtaMessages.AsNoTracking().FirstAsync(m => m.ThreadId == _world.GrantedRequest.Id);
         var foreign = await Assert.ThrowsAsync<NotFoundException>(() => Service().TranslateAsync(collaborator, Key, request.Id, null, "en"));
         Assert.Equal("message_not_found", foreign.Code);

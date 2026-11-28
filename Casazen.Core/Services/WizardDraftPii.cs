@@ -19,17 +19,10 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public static class WizardDraftPii
 {
-    // Not the default encoder: it would write every accented letter of an Italian text as \u00XX, and the stored text is read by people
-    // and counted in bytes. The JSON is never put in a page.
     private static readonly JsonWriterOptions WriterOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
-    /// <summary>True when <paramref name="name"/> names a personal field (<see cref="WizardDraftPiiFields.PII_FIELD_NAMES"/>, any case).</summary>
     public static bool IsPersonalField(string name) => WizardDraftPiiFields.PII_FIELD_NAMES.Contains(name);
 
-    /// <summary>
-    /// True when a property name or a text anywhere in <paramref name="element"/> holds the character U+0000, which a <c>jsonb</c> column
-    /// cannot store (PostgreSQL refuses it): a draft like that is refused with a 4xx before it reaches the database.
-    /// </summary>
     public static bool HasNullCharacter(JsonElement element)
     {
         switch (element.ValueKind)
@@ -57,10 +50,6 @@ public static class WizardDraftPii
         }
     }
 
-    /// <summary>
-    /// The plain half (never holds a personal field) and the personal half (<c>null</c> when the data has none) of the data of a draft.
-    /// </summary>
-    /// <exception cref="ArgumentException"><paramref name="data"/> is not a JSON object.</exception>
     public static WizardDraftSplit Split(JsonElement data)
     {
         if (data.ValueKind != JsonValueKind.Object)
@@ -71,10 +60,6 @@ public static class WizardDraftPii
         return new WizardDraftSplit(plain, personal);
     }
 
-    /// <summary>
-    /// The data of a draft as it was typed: the plain half with the personal half laid over it. The personal half is optional (<c>null</c> or
-    /// empty: the draft has none). The caller disposes the document.
-    /// </summary>
     public static JsonDocument Merge(string plainJson, string? personalJson)
     {
         ArgumentException.ThrowIfNullOrEmpty(plainJson);
@@ -99,7 +84,6 @@ public static class WizardDraftPii
         return Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
 
-    /// <summary>True when a personal field is anywhere in <paramref name="element"/>, at any depth.</summary>
     private static bool ContainsPersonalField(JsonElement element)
     {
         switch (element.ValueKind)
@@ -125,7 +109,6 @@ public static class WizardDraftPii
         }
     }
 
-    /// <summary>Writes <paramref name="element"/> without its personal properties.</summary>
     private static void WritePlain(JsonElement element, Utf8JsonWriter writer)
     {
         switch (element.ValueKind)
@@ -200,7 +183,6 @@ public static class WizardDraftPii
         }
     }
 
-    /// <summary>Writes <paramref name="plain"/> with <paramref name="personal"/> laid over it; with no personal half, <paramref name="plain"/> as it is.</summary>
     private static void WriteMerged(JsonElement plain, JsonElement? personal, Utf8JsonWriter writer)
     {
         if (personal is not { } over || over.ValueKind == JsonValueKind.Null)
@@ -223,7 +205,6 @@ public static class WizardDraftPii
                     property.Value.WriteTo(writer);
             }
 
-            // The properties that are personal themselves are not in the plain half: they come back from the personal one.
             foreach (var property in over.EnumerateObject())
             {
                 if (written.Contains(property.Name))
@@ -252,10 +233,8 @@ public static class WizardDraftPii
             return;
         }
 
-        // The two halves do not have the same shape (they always do when the service wrote them): the plain half is what is shown.
         plain.WriteTo(writer);
     }
 }
 
-/// <summary>The two halves of the data of a draft: what is stored in clear, and what is stored encrypted (<c>null</c> when there is no personal field).</summary>
 public readonly record struct WizardDraftSplit(string PlainJson, string? PersonalJson);

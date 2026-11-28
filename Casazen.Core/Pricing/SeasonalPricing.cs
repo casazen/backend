@@ -3,19 +3,14 @@ using Casazen.Core.Utilities;
 
 namespace Casazen.Core.Pricing;
 
-/// <summary>Which rule of <see cref="SeasonalPricingRules"/> produced a suggestion.</summary>
 public enum SeasonalPriceRule
 {
-    /// <summary>No rule applies: the suggestion is the base price.</summary>
     None,
 
-    /// <summary>The month is one of the host's high-season months.</summary>
     HighSeason,
 
-    /// <summary>The month is one of the host's low-season months.</summary>
     LowSeason,
 
-    /// <summary>The day is an Italian national public holiday (<see cref="ItalianPublicHolidays"/>).</summary>
     Holiday,
 }
 
@@ -37,28 +32,20 @@ public sealed record SeasonalPricingRules(
     bool IncludePublicHolidays,
     decimal HolidayMultiplier)
 {
-    /// <summary>Lowest multiplier a rule may have (a suggestion never goes below a tenth of the base price).</summary>
     public const double MinMultiplier = 0.1;
 
-    /// <summary>Highest multiplier a rule may have.</summary>
     public const double MaxMultiplier = 5.0;
 
-    /// <summary>Example rule: high season June-August.</summary>
     public static readonly IReadOnlyList<int> ExampleHighSeasonMonths = [6, 7, 8];
 
-    /// <summary>Example rule: +30% in high season.</summary>
     public const decimal ExampleHighSeasonMultiplier = 1.30m;
 
-    /// <summary>Example rule: low season November-February.</summary>
     public static readonly IReadOnlyList<int> ExampleLowSeasonMonths = [11, 12, 1, 2];
 
-    /// <summary>Example rule: -20% in low season.</summary>
     public const decimal ExampleLowSeasonMultiplier = 0.80m;
 
-    /// <summary>Example rule: +50% on national holidays.</summary>
     public const decimal ExampleHolidayMultiplier = 1.50m;
 
-    /// <summary>The example rule every new configuration starts from; the host edits it.</summary>
     public static SeasonalPricingRules Example { get; } = new(
         IncludeSeasonality: true,
         ExampleHighSeasonMonths,
@@ -68,7 +55,6 @@ public sealed record SeasonalPricingRules(
         IncludePublicHolidays: true,
         ExampleHolidayMultiplier);
 
-    /// <summary>The rules stored on a property's configuration.</summary>
     public static SeasonalPricingRules From(PricingAdapterConfig config) => new(
         config.IncludeSeasonality,
         config.HighSeasonMonths,
@@ -94,13 +80,10 @@ public sealed record SeasonalPriceSuggestionDay(
     SeasonalPriceRule Rule,
     ItalianHoliday? Holiday);
 
-/// <summary>Seasonal suggestions (PC-15, A2-14): the property's real nightly rate times the rule of the day.</summary>
 public static class SeasonalPriceCalculator
 {
-    /// <summary>Days covered by the suggestions, today (Europe/Rome) included.</summary>
     public const int WindowDays = 90;
 
-    /// <summary>Suggestion for one date.</summary>
     public static SeasonalPriceSuggestionDay Suggest(DateOnly date, decimal basePrice, SeasonalPricingRules rules)
     {
         ArgumentNullException.ThrowIfNull(rules);
@@ -110,7 +93,6 @@ public static class SeasonalPriceCalculator
         return new SeasonalPriceSuggestionDay(date, basePrice, suggested, multiplier, rule, holiday);
     }
 
-    /// <summary>Suggestions for <see cref="WindowDays"/> days starting at <paramref name="firstDay"/>.</summary>
     public static IReadOnlyList<SeasonalPriceSuggestionDay> Window(
         DateOnly firstDay,
         decimal basePrice,
@@ -138,10 +120,6 @@ public static class SeasonalPriceCalculator
     }
 }
 
-/// <summary>
-/// When the suggestions of a property are recomputed (A2-34): by calendar dates in Europe/Rome, never by instants, so a
-/// nightly job that starts a few minutes earlier or later never skips a day nor runs a weekly schedule twice.
-/// </summary>
 public static class SeasonalSuggestionSchedule
 {
     public const string Daily = "daily";
@@ -151,16 +129,11 @@ public static class SeasonalSuggestionSchedule
     public static int IntervalDays(string? frequency) =>
         string.Equals(frequency, Weekly, StringComparison.OrdinalIgnoreCase) ? 7 : 1;
 
-    /// <summary>
-    /// Rome date from which the next computation is due, or <c>null</c> when the suggestions were never computed (due at
-    /// the next run: the first run after the activation is never skipped).
-    /// </summary>
     public static DateOnly? NextRunOn(string? frequency, DateTime? lastComputedAtUtc) =>
         lastComputedAtUtc is { } last
             ? RomeCalendar.DateInRome(last).AddDays(IntervalDays(frequency))
             : null;
 
-    /// <summary>True when a computation is due on <paramref name="todayInRome"/>.</summary>
     public static bool IsDue(string? frequency, DateTime? lastComputedAtUtc, DateOnly todayInRome) =>
         NextRunOn(frequency, lastComputedAtUtc) is not { } next || todayInRome >= next;
 }

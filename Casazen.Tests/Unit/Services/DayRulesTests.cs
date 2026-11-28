@@ -10,14 +10,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E08/F05/US01/T02 (NF-36): the pure rules of the price and the rules of a night: the patch, the bounds, the rounding of the price, the clock
-/// of a property, where the price of a night comes from, and the sentences of the refusals. No database.
-/// </summary>
 public class DayRulesTests
 {
-    // --- The patch ---------------------------------------------------------------------------------------------
-
     [Fact]
     public void FieldPatch_ByDefaultKeepsTheValue_AndSetAndClearSayWhatTheyDo()
     {
@@ -43,7 +37,6 @@ public class DayRulesTests
 
         var after = patch.ApplyTo(current);
 
-        // What the patch names changes; what it does not name stays (the maximum stay and the minimum advance).
         Assert.Equal(new DayRuleValues(null, 3, 6, false, true, 1, 60), after);
         Assert.Equal(current, new DayRulePatch().ApplyTo(current));
         Assert.True(new DayRulePatch().IsEmpty);
@@ -84,8 +77,6 @@ public class DayRulesTests
         Assert.Equal(new DayRuleValues(99.9m, 2, 4, false, true, 3, 9), values);
         Assert.Equal((99.9m, 2, 4, false, true, 3, 9), (other.Price, other.MinNights, other.MaxNights, other.ClosedToArrival, other.ClosedToDeparture, other.MinAdvanceDays, other.MaxAdvanceDays));
     }
-
-    // --- The bounds --------------------------------------------------------------------------------------------
 
     [Theory]
     [InlineData("0.01", null)]
@@ -153,8 +144,6 @@ public class DayRulesTests
             DayRuleLimits.MaxAdvance, DayRuleLimits.MaxRangeDays));
     }
 
-    // --- The range of a change ---------------------------------------------------------------------------------
-
     [Fact]
     public void EnsureRange_AYearAndADayOfALeapYearIsTheLongest_AndTheLastDayIsNotBeforeTheFirst()
     {
@@ -169,8 +158,6 @@ public class DayRulesTests
         Assert.Equal(366, Assert.Single(tooLong.MessageArgs));
         Assert.Equal(("calendar_day_rule_range_invalid", "CalendarDayRuleRangeInvalid"), (backwards.Code, backwards.MessageKey));
     }
-
-    // --- The clock of the property -----------------------------------------------------------------------------
 
     [Theory]
     [InlineData("Europe/Rome", "2026-03-28T22:30:00Z", "2026-03-28")]
@@ -197,8 +184,6 @@ public class DayRulesTests
         Assert.Equal(new DateOnly(2026, 3, 29), DayRuleRules.TodayOf(zone, utcNow));
     }
 
-    // --- Where the price comes from ----------------------------------------------------------------------------
-
     [Fact]
     public void HostPrices_TheDayPriceOverridesTheSeasonalOne_AndANightWithoutADayPriceKeepsTheSeasonalOne()
     {
@@ -217,7 +202,6 @@ public class DayRulesTests
         Assert.Equal(140m, prices[friday.AddDays(1)]);
         Assert.Equal(90m, prices[friday.AddDays(2)]);
         Assert.Equal(3, prices.Count);
-        // The inputs are left as they were, and nothing at all gives nothing.
         Assert.Equal(130m, seasonal[friday]);
         Assert.Empty(DayRulePricing.HostPrices(null, null));
     }
@@ -240,7 +224,6 @@ public class DayRulesTests
     [Fact]
     public void SourceOf_AgreesWithThePriceOfTheQuote_ForEachSource()
     {
-        // The source says which number the quote takes: the day price, the seasonal price, the rate with the surcharge, the rate.
         var friday = new DateOnly(2026, 12, 25);
         var seasonal = new Dictionary<DateOnly, decimal> { [friday.AddDays(3)] = 130m };
         var rules = new Dictionary<DateOnly, DayRuleValues> { [friday] = new(Price: 150m) };
@@ -261,8 +244,6 @@ public class DayRulesTests
         Assert.Equal(2, DayRuleDefaults.MinNightsOf(null, 2));
         Assert.Equal(1, DayRuleDefaults.MinNightsOf(null, null));
     }
-
-    // --- The sentences -----------------------------------------------------------------------------------------
 
     [Theory]
     [InlineData(DayRuleErrorCodes.InvalidPrice, "calendar_day_rule_invalid_price", "CalendarDayRuleInvalidPrice")]
@@ -293,7 +274,6 @@ public class DayRulesTests
         Assert.Equal("some_other_code", DayRuleRules.ProblemOf("some_other_code").MessageKey);
     }
 
-    /// <summary>The text of a resource key in one of the resource files of the API, or <c>null</c> when the file has none.</summary>
     internal static string? ReadResource(string file, string key)
     {
         var directory = new DirectoryInfo(System.AppContext.BaseDirectory);

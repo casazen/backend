@@ -1,7 +1,6 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Condominium;
 using Casazen.Core.Documents;
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;

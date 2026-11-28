@@ -26,11 +26,9 @@ public class OwnerReconciliationNpgsqlTranslationTests
 
         await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.GetAsync(OrgId, 2026, 10));
 
-        // The lines, their reversals, the bookings and the payments they come from, the stays of the month, the revenue posted for them and the published versions.
         Assert.True(statements.Count >= 7, $"only {statements.Count} of the 7 reads were reached:{Environment.NewLine}{string.Join(Environment.NewLine, statements)}");
     }
 
-    /// <summary>One line of the owner ledger and one stay of the month, which let the reads that follow them be sent.</summary>
     private static DataTable? Answer(string sql)
     {
         if (sql.Contains("FROM \"OwnerLedgerEntries\"", StringComparison.Ordinal) && sql.Contains("\"RuleVersion\"", StringComparison.Ordinal))

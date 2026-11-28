@@ -20,11 +20,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// E14/F01/US01/T01 (NF-114, recurring rule of the portata, as <see cref="OwnerAccountingScopeTests"/>): the owner invoices and the portal accounts span the
-/// properties of the owners and of the organization, so a caller whose reach is restricted to some properties (a collaborator «Solo alcuni», an account outside the
-/// org team) is refused on EVERY new action, reads included, before anything is read or written; a caller who reaches the whole org is served.
-/// </summary>
 public class OwnerInvoicesScopeTests
 {
     private static readonly Guid OrgId = Guid.NewGuid();
@@ -39,7 +34,6 @@ public class OwnerInvoicesScopeTests
 
             var actions = await AssertEveryActionForbiddenAsync(new OwnerInvoicesController(invoices.Object, Org(), Scope(restricted)));
 
-            // The list, the read by id, the draft, the issue, the credit note and the discard: each refused before the service was asked anything (a strict mock would have thrown).
             Assert.Equal(6, actions);
             invoices.VerifyNoOtherCalls();
         }
@@ -104,7 +98,6 @@ public class OwnerInvoicesScopeTests
         Assert.IsType<OkObjectResult>(list.Result);
         invoices.Verify(i => i.ListAsync(OrgId, It.IsAny<OwnerInvoiceCriteria>(), It.IsAny<CancellationToken>()), Times.Once);
 
-        // The read by id is served too, for the org of the caller, with the lines of the invoice as the creation answers them.
         var invoiceId = Guid.NewGuid();
         invoices.Setup(i => i.GetAsync(OrgId, invoiceId, It.IsAny<CancellationToken>())).ReturnsAsync(new FiscalDocument { Id = invoiceId, OrgId = OrgId, Purpose = FiscalDocumentPurpose.OwnerInvoice });
 
@@ -129,7 +122,6 @@ public class OwnerInvoicesScopeTests
 
     private static HostScope[] Restricted() => [new HostScope(OrgId, GrantedToUserId: UserId), new HostScope(OrgId, OwnerId: UserId)];
 
-    /// <summary>Calls every HTTP action of the controller with empty arguments (a refusal needs none) and checks the answer is a 403.</summary>
     private static async Task<int> AssertEveryActionForbiddenAsync(ControllerBase controller)
     {
         controller.ControllerContext = Context();
@@ -159,7 +151,6 @@ public class OwnerInvoicesScopeTests
 
     private static int? StatusOf(IActionResult? result) => (result as IStatusCodeActionResult)?.StatusCode;
 
-    /// <summary>A signed-in caller, and the services the problem answer of a refusal needs.</summary>
     private static ControllerContext Context()
     {
         var localizer = new Mock<IStringLocalizer<SharedResources>>();

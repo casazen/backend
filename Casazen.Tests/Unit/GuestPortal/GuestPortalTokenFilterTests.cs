@@ -7,16 +7,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.GuestPortal;
 
-/// <summary>
-/// E50/F01/US01/T02 (NF-152, AC-NF152-2): the door of the guest portal. A token that is unknown, revoked, expired or malformed gets the same answer, to
-/// the byte (status, body, headers), so the portal never tells which; the active token opens the stay it belongs to and nothing else.
-/// </summary>
 public class GuestPortalTokenFilterTests
 {
-    /// <summary>
-    /// Privacy rule (uniform not-found): the four kinds of token that open nothing answer the same 404 <c>guest_portal_link_invalid</c>, private, with
-    /// the same body and the same headers, the token nowhere in it; the action never runs and no context is set.
-    /// </summary>
     [Fact]
     public async Task UnknownRevokedExpiredMalformedToken_SameStatusBodyAndHeaders()
     {
@@ -53,7 +45,6 @@ public class GuestPortalTokenFilterTests
         Assert.Equal("no-store", lastResponse.Headers.CacheControl.ToString());
         Assert.Equal("noindex", lastResponse.Headers["X-Robots-Tag"].ToString());
 
-        // The active token opens its own stay, and the action runs with it.
         var (okFilter, okAccessor) = world.TokenFilter();
         var (okResult, _, okRan) = await GuestPortalTestWorld.RunAsync(okFilter, active);
         Assert.Null(okResult);
@@ -61,7 +52,6 @@ public class GuestPortalTokenFilterTests
         Assert.Equal((world.Org.Id, world.Booking.Id, world.Property.Id), (okAccessor.Current!.OrgId, okAccessor.Current.BookingId, okAccessor.Current.PropertyId));
     }
 
-    /// <summary>Status, content type, body (as the API writes it) and headers of an answer of the filter.</summary>
     private static string Describe(ObjectResult result, HttpResponse response)
     {
         var body = JsonSerializer.Serialize(result.Value, result.Value!.GetType(), new JsonSerializerOptions(JsonSerializerDefaults.Web));
@@ -69,7 +59,6 @@ public class GuestPortalTokenFilterTests
         return $"{result.StatusCode}|{string.Join(",", result.ContentTypes)}|{body}|{headers}";
     }
 
-    /// <summary>A stay that left on 1 September with its link, over at the end of 1 October: on 9 October it no longer opens.</summary>
     private static async Task<string> AddExpiredLinkAsync(GuestPortalTestWorld world)
     {
         var guest = new Guest { OrgId = world.Org.Id, FirstName = "Bruno", LastName = "Passato", Email = $"{Guid.NewGuid():N}@example.com" };

@@ -11,10 +11,6 @@ namespace Casazen.Tests.Unit.Jobs;
 
 public class LeaseSignStatusPollingJobTests
 {
-    /// <summary>
-    /// LT-02: the job (registered only with <c>Features:ESignProvider</c> on) logs the leases waiting for the provider,
-    /// AwaitingSignature and PartiallySigned; it never changes a lease and never calls the provider.
-    /// </summary>
     [Fact]
     public async Task ExecuteAsync_LeasesWaitingForProvider_LogsWithoutChangingOrCallingTheProvider()
     {

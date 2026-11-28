@@ -23,14 +23,11 @@ public static class CrmServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
-        // The Crm options, validated at startup (E07/F06/US01/T01): the key of the index, the relay domains of the OTAs, the limits of the
-        // double opt-in. With the flag on, outside Development and Testing, the key is required or the application does not start.
         services.AddOptions<CrmOptions>()
             .BindConfiguration(CrmOptions.SectionName)
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<CrmOptions>, CrmOptionsValidator>();
 
-        // The keyed index of the contacts and of the suppression list: HMAC-SHA256 keyed by Crm:ContactIndexKey.
         services.AddSingleton<ICrmContactIndex, CrmContactIndex>();
         services.AddScoped<MarketingGuestImport>();
         services.AddScoped<MarketingGuestCategoryService>();
@@ -43,9 +40,6 @@ public static class CrmServiceCollectionExtensions
         services.AddScoped<ICrmContactService, CrmContactService>();
         services.AddScoped<ICrmProfileSyncService, CrmProfileSyncService>();
 
-        // The sync on the event bus (a handler of every event, it filters on the booking ones): it only shortens the delay, and a failure never
-        // fails the event. The recurring job crm-profile-sync (RecurringJobsRegistration) guarantees the result and backfills the guests with no
-        // profile.
         services.AddScoped<IEventHandler<DomainEvent>, CrmBookingEventHandler>();
         services.AddScoped<CrmProfileSyncJob>();
 
@@ -63,21 +57,15 @@ public static class CrmServiceCollectionExtensions
         services.AddSingleton<MarketingConfirmationLinks>();
         services.AddScoped<IMarketingConfirmationService, MarketingConfirmationService>();
 
-        // E07/F04/US01/T03 (NF-90): the welcome link of a property (the QR code in the house) and the public page behind it, where a guest leaves a
-        // contact with a per-channel consent. The host's endpoints are behind the flag; the public ones are not (a printed code keeps working).
         services.AddScoped<IPropertyWelcomeLinkService, PropertyWelcomeLinkService>();
         services.AddScoped<IWelcomeConsentService, WelcomeConsentService>();
 
-        // E07/F04/US01/T04 (NF-90): the marketing choices of the guest of a booking, on the guest page (policy GuestSession, not behind the flag).
         services.AddScoped<GuestMarketingPreferencesService>();
         services.AddScoped<IGuestMarketingPreferencesService>(sp => sp.GetRequiredService<GuestMarketingPreferencesService>());
         services.AddScoped<IPortalMarketingPreferences>(sp => sp.GetRequiredService<GuestMarketingPreferencesService>());
 
-        // E07/F01/US03 (NF-88): the profile API of the host screens. The read model decides the scope of the CRM (the profiles a caller reaches), the
-        // list, the detail and the tags; the controller behind Features:CrmMarketing is a thin layer over it.
         services.AddScoped<ICrmProfileReadService, CrmProfileReadService>();
 
-        // E07/F01/US03/T02 (NF-88): the decisions on the merges the matching proposes (list, dismiss, merge), one lock of the org for each decision.
         services.AddScoped<ICrmProfileMergeService, CrmProfileMergeService>();
 
         return services;

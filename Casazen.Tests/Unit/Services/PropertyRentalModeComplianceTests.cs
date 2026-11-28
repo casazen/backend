@@ -5,7 +5,6 @@ using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
-using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Repositories;
@@ -32,8 +31,6 @@ public class PropertyRentalModeComplianceTests
 
     private readonly RecordingEmailQueue _emails = new();
 
-    // ─── Compliance status (CO-06) ──────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task ReevaluateAsync_LongActivePropertyWithoutCin_ChangesNothingAndEmailsNobody()
     {
@@ -56,7 +53,6 @@ public class PropertyRentalModeComplianceTests
     [Fact]
     public async Task ReevaluateAsync_ShortActivePropertyWithoutCin_IsStillSuspendedAndTheHostEmailed()
     {
-        // The same data in short-rent mode: the behaviour of CO-06 does not change.
         await using var db = CreateDb();
         var property = await SeedAsync(db, RentalMode.Short, PropertyComplianceStatus.Active, cinCode: null);
 
@@ -90,12 +86,10 @@ public class PropertyRentalModeComplianceTests
 
         var report = await StatusService(db).RecalculateAllAsync(dryRun: false);
 
-        // Only the short-rent property is looked at: suspended, and its host told once.
         Assert.Equal((1, 1, 0, 1), (report!.Checked, report.Suspended, report.Reactivated, report.HostsNotified));
         Assert.Single(_emails.Snapshot());
         Assert.Equal(PropertyComplianceStatus.Suspended, (await ReloadAsync(db, shortStay.Id)).ComplianceStatus);
         Assert.Equal(PropertyComplianceStatus.Active, (await ReloadAsync(db, activeLong.Id)).ComplianceStatus);
-        // A long-term property that was suspended is not reactivated by the check either: it is not looked at.
         Assert.Equal(PropertyComplianceStatus.Suspended, (await ReloadAsync(db, suspendedLong.Id)).ComplianceStatus);
     }
 
@@ -111,8 +105,6 @@ public class PropertyRentalModeComplianceTests
         Assert.Equal((1, 1), (report!.Checked, report.Suspended));
         Assert.Empty(_emails.Snapshot());
     }
-
-    // ─── CIN alert (CO-20) ──────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task CandidateProperties_LongProperties_AreNeverAlerted()
@@ -133,7 +125,6 @@ public class PropertyRentalModeComplianceTests
     [Fact]
     public async Task CandidateProperties_ShortProperties_KeepTheRulesOfCo20()
     {
-        // Active and not suspended, pending or active: unchanged by the mode.
         await using var db = CreateDb();
         await SeedAsync(db, RentalMode.Short, PropertyComplianceStatus.Suspended, cinCode: null);
         var inactive = await SeedAsync(db, RentalMode.Short, PropertyComplianceStatus.Pending, cinCode: null);
@@ -143,8 +134,6 @@ public class PropertyRentalModeComplianceTests
 
         Assert.Empty(candidates);
     }
-
-    // ─── CIN summaries (host and staff) ─────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetCinComplianceAsync_HostSummary_IgnoresLongProperties()
@@ -218,8 +207,6 @@ public class PropertyRentalModeComplianceTests
         Assert.Equal(["Casa Breve"], items.Select(i => i.PropertyName));
     }
 
-    // ─── Cockpit (activation wizard summary) ────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetSummaryAsync_Cockpit_DoesNotAskToActivateALongProperty()
     {
@@ -242,7 +229,6 @@ public class PropertyRentalModeComplianceTests
         var property = await SeedAsync(db, RentalMode.Long, PropertyComplianceStatus.Pending, cinCode: "IT058091C27G5FFZDZ");
         var status = new Mock<IPropertyComplianceStatusService>();
 
-        // Terms not accepted either: the reason of the long-term mode comes first.
         var error = await Assert.ThrowsAsync<DomainRuleException>(() =>
             WizardService(db, status.Object).CompleteActivationAsync(property.Id, "auth0|owner", tosAccepted: null));
 
@@ -250,8 +236,6 @@ public class PropertyRentalModeComplianceTests
         status.Verify(s => s.ActivateAsync(It.IsAny<Guid>(), It.IsAny<HostActivation>(), It.IsAny<CancellationToken>()), Times.Never);
         status.Verify(s => s.ActivateAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
-
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────
 
     private PropertyComplianceStatusService StatusService(AppDbContext db) =>
         new(

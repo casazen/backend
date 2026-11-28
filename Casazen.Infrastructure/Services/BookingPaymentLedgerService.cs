@@ -91,8 +91,6 @@ public sealed class BookingPaymentLedgerService(
         return new PaymentLedgerPage(lines.Skip((page - 1) * pageSize).Take(pageSize).ToList(), lines.Count, page, pageSize);
     }
 
-    // ---------------------------------------------------------------- reads (scoped in SQL)
-
     private IQueryable<Booking> Bookings(HostScope scope) =>
         db.Bookings
             .AsNoTracking()
@@ -145,7 +143,6 @@ public sealed class BookingPaymentLedgerService(
             .ToListAsync(ct);
     }
 
-    /// <summary>The bookings of a channel of the period that carry an OTA amount (by their check-in day): the lines Octorate collected.</summary>
     private async Task<List<BookingRow>> OtaBookingsAsync(HostScope scope, PaymentListCriteria criteria, CancellationToken ct)
     {
         var query = Bookings(scope).Where(b => b.OtaPaidAmount != null || b.OtaBalanceAmount != null);
@@ -179,7 +176,6 @@ public sealed class BookingPaymentLedgerService(
         b.OtaNetAmount,
         b.OtaCompanyCollect);
 
-    /// <summary>The latest fiscal document of each booking that is not a credit note (CasaZen or Octorate, issued first).</summary>
     private async Task<Dictionary<Guid, PaymentLedgerDocument>> DocumentsOfAsync(IReadOnlyCollection<Guid> bookingIds, CancellationToken ct)
     {
         if (bookingIds.Count == 0)
@@ -192,8 +188,6 @@ public sealed class BookingPaymentLedgerService(
             .Select(d => new { BookingId = d.BookingId!.Value, d.Id, d.Number, d.Kind, d.Status, d.PaymentState, d.CreatedAt, d.Source, d.Total, d.PaymentChannel })
             .ToListAsync(ct);
 
-        // The state of a document CasaZen issued is the current one (what was collected for the booking, net of the refunds), as the document API gives it: the
-        // state saved with the draft is not shown. A document Octorate issued keeps the state Octorate gave it.
         var collected = await FiscalDocumentService.CollectedByBookingAsync(db, rows.Select(r => r.BookingId).Distinct().ToList(), ct);
         return rows
             .GroupBy(d => d.BookingId)
@@ -211,7 +205,6 @@ public sealed class BookingPaymentLedgerService(
                         .ToString())).First());
     }
 
-    /// <summary>The collections of the reservation from Octorate, under the org's scope; <c>Failed</c> when the read did not answer.</summary>
     private async Task<Collections?> CollectionsAsync(Guid orgId, Guid propertyId, string reservationId, CancellationToken ct)
     {
         var accommodation = await db.OctorateListingMappings
@@ -233,8 +226,6 @@ public sealed class BookingPaymentLedgerService(
             return new Collections([], Failed: true);
         }
     }
-
-    // ---------------------------------------------------------------- lines
 
     private static PaymentLedgerLine LineOf(PaymentRow p, PaymentLedgerDocument? document) => new(
         p.StripePaymentIntentId is not null

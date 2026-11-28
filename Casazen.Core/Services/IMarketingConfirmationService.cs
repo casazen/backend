@@ -40,55 +40,38 @@ public interface IMarketingConfirmationService
     Task<MarketingConfirmationOutcome> ConfirmAsync(Guid contactId, string expiresAt, string signature, CancellationToken cancellationToken = default);
 }
 
-/// <summary>What <see cref="IMarketingConfirmationService.SendConfirmationAsync"/> did. Nothing but <see cref="Queued"/> sent anything.</summary>
 public enum MarketingConfirmationSendOutcome
 {
-    /// <summary>The e-mail was queued; the contact is <c>Pending</c> and the send is counted.</summary>
     Queued = 1,
 
-    /// <summary>The org has no such contact.</summary>
     ContactNotFound = 2,
 
-    /// <summary>The contact asked not to be written to: nothing is sent, and no consent recorded afterwards changes that.</summary>
     Suppressed = 3,
 
-    /// <summary>The contact is not an e-mail address with the person's consent (service only, an OTA forward, a phone number), or it is already confirmed.</summary>
     NotRequired = 4,
 
-    /// <summary><c>Crm:ConfirmationMaxSends</c> messages were already sent to the contact.</summary>
     LimitReached = 5,
 
-    /// <summary>A message was queued less than ten minutes ago.</summary>
     TooSoon = 6,
 
-    /// <summary>The link could not be signed (no <c>SIGNED_LINK_SECRET</c>, no public address of the web app) or the e-mail could not be queued (the provider is not configured): nothing was recorded, so the send is not counted.</summary>
     Unavailable = 7,
 }
 
-/// <summary>What <see cref="IMarketingConfirmationService.ConfirmAsync"/> found, in the order it checks.</summary>
 public enum MarketingConfirmationOutcome
 {
-    /// <summary>The contact is confirmed now.</summary>
     Confirmed = 1,
 
-    /// <summary>The contact was confirmed before: nothing changed.</summary>
     AlreadyConfirmed = 2,
 
-    /// <summary>The expiry is not in the expected format.</summary>
     InvalidTimestamp = 3,
 
-    /// <summary>The link is past its expiry.</summary>
     LinkExpired = 4,
 
-    /// <summary>The signature is not the one of these values.</summary>
     InvalidSignature = 5,
 
-    /// <summary>The secret of the signed links is not configured: the link cannot be checked.</summary>
     NotConfigured = 6,
 
-    /// <summary>The signature is valid but no contact has that id (it was erased).</summary>
     ContactNotFound = 7,
 
-    /// <summary>The contact opted out: the click confirms nothing and does not lift the suppression.</summary>
     ContactSuppressed = 8,
 }

@@ -17,11 +17,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Assistant;
 
-/// <summary>
-/// E05/F05/US01/T03 (NF-66, NF-67): the endpoints of the situations. Behind the flag and private, each action with its policy, a situation named by its code or by the name of its member,
-/// the template shown only to the caller who may edit it, and the reach of a collaborator «Solo alcuni» over the exceptions of the properties (the real scope resolver and the real
-/// resource handler behind the controller).
-/// </summary>
 public class AssistantSituationsControllerTests
 {
     private const string Host = "auth0|host";
@@ -76,7 +71,6 @@ public class AssistantSituationsControllerTests
             Assert.Equal("assistant_situation_not_found", Assert.IsAssignableFrom<ProblemDetails>(problem.Value).Extensions["code"]);
         }
 
-        // The property routes answer the same, and a property that is not the caller's is answered first.
         var property = (await controller.SaveForProperty(world.Granted.Id, "nonsense", new SaveAssistantSituationRequest(), CancellationToken.None)).Result;
         Assert.Equal("assistant_situation_not_found", Assert.IsAssignableFrom<ProblemDetails>(Assert.IsType<ObjectResult>(property).Value).Extensions["code"]);
         var deleted = await controller.DeleteForProperty(world.Granted.Id, "nonsense", CancellationToken.None);
@@ -108,7 +102,6 @@ public class AssistantSituationsControllerTests
         await service.SaveAsync(world.OrgId, null, AssistantSituation.Parking, AssistantMode.Draft, "Il parcheggio è gratuito, codice cancello nel messaggio.", null, Host);
         await service.SaveAsync(world.OrgId, world.Granted.Id, AssistantSituation.WiFi, AssistantMode.Draft, "La password è nel cassetto.", null, Host);
 
-        // The organization's situations: the administrators of the organization edit them, everybody else with booking.read only reads.
         foreach (var (isAdministrator, shown) in new[] { (true, true), (false, false) })
         {
             var authorization = new Mock<IAuthorizationService>();
@@ -128,8 +121,6 @@ public class AssistantSituationsControllerTests
             Assert.False(list.Single(s => s.Situation == AssistantSituation.Pets).HasTemplate);
         }
 
-        // A property's situations. The text of the exception of the property is read by whoever may write the property; the text of a row of the organization (what the property inherits)
-        // only by the administrators of the organization, as on the organization's own list: a caller who has just property.write reads that the row has a template, not what it says.
         var callers = new[]
         {
             (Principal: AssistantTestKit.Collaborator(world), Administrator: false, CanWrite: true, ReadsTheException: true, ReadsTheOrganizationsRow: false),
@@ -147,13 +138,11 @@ public class AssistantSituationsControllerTests
 
             var list = Assert.IsAssignableFrom<IReadOnlyList<EffectiveSituationDto>>(Assert.IsType<OkObjectResult>((await controller.ListForProperty(world.Granted.Id, CancellationToken.None)).Result).Value);
 
-            // The exception of the property.
             var wifi = list.Single(s => s.Situation == AssistantSituation.WiFi);
             Assert.Equal("property", wifi.Origin);
             Assert.True(wifi.HasTemplate);
             Assert.Equal(caller.ReadsTheException ? "La password è nel cassetto." : null, wifi.Template);
 
-            // The row of the organization: the same text that the organization's list hides from everybody but its administrators.
             var parking = list.Single(s => s.Situation == AssistantSituation.Parking);
             Assert.Equal("organization", parking.Origin);
             Assert.True(parking.HasTemplate);
@@ -180,14 +169,12 @@ public class AssistantSituationsControllerTests
             ControllerContext = AssistantTestKit.ContextOf(AssistantTestKit.Collaborator(world)),
         };
 
-        // The property it was given: it reads the situations (with the organization's value under its own), saves an exception and removes it.
         var list = Assert.IsAssignableFrom<IReadOnlyList<EffectiveSituationDto>>(Assert.IsType<OkObjectResult>((await controller.ListForProperty(world.Granted.Id, CancellationToken.None)).Result).Value);
         Assert.Equal("organization", list.Single(s => s.Situation == AssistantSituation.Parking).Origin);
         Assert.Equal("default", list.Single(s => s.Situation == AssistantSituation.Pets).Origin);
         Assert.IsType<OkObjectResult>((await controller.SaveForProperty(world.Granted.Id, "pets", new SaveAssistantSituationRequest { Mode = AssistantMode.Draft }, CancellationToken.None)).Result);
         Assert.IsType<NoContentResult>(await controller.DeleteForProperty(world.Granted.Id, "pets", CancellationToken.None));
 
-        // The property it was not given, and one that does not exist: the same 404, for the read, the save and the delete, and nothing of the hidden one in the answer.
         foreach (var propertyId in new[] { world.Hidden.Id, Guid.NewGuid() })
         {
             AssertPropertyNotFound((await controller.ListForProperty(propertyId, CancellationToken.None)).Result);
@@ -195,7 +182,6 @@ public class AssistantSituationsControllerTests
             AssertPropertyNotFound(await controller.DeleteForProperty(propertyId, "pets", CancellationToken.None));
         }
 
-        // Nothing of the hidden property changed.
         var hidden = (await service.ListEffectiveAsync(world.OrgId, world.Hidden.Id)).Single(s => s.Situation == AssistantSituation.Pets);
         Assert.Equal(AssistantMode.Escalate, hidden.Mode);
         Assert.Equal("Niente animali alla Casa Bianca.", hidden.Template);

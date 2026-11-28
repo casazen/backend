@@ -9,7 +9,6 @@ public enum IstatNextStep
     /// <summary>The region is covered: the host connects the ISTAT communication in the panel of the channel manager (the guided panel step).</summary>
     ConnectInPanel = 1,
 
-    /// <summary>The region is not covered: the host uses the portal of the region, with its guide, and archives the monthly proof.</summary>
     ManualPortal = 2,
 
     /// <summary>The coverage is not verified («da verificare»): the host asks support, with the assist context of the ISTAT panel step.</summary>

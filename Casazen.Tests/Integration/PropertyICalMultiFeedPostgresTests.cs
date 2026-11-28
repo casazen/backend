@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Casazen.Core.Entities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Postgres;
@@ -38,12 +37,10 @@ public class PropertyICalMultiFeedPostgresTests : IClassFixture<PropertyICalSync
         await SyncAsync(airbnb.Id);
         await SyncAsync(booking.Id);
 
-        // Public site (BK-05): the nights of both OTAs are taken.
         Assert.Equal(
             [Day(from, 2), Day(from, 3), Day(from, 7), Day(from, 8)],
             await BookedDatesAsync(property.Id, from, from.AddDays(14)));
 
-        // Booking check (the same PropertyOccupancy rule): both series refuse a stay, the night between is free.
         await using var scope = _factory.Services.CreateAsyncScope();
         var sync = scope.ServiceProvider.GetRequiredService<PropertyICalSyncService>();
         Assert.True(await sync.HasOverlappingBlockAsync(property.Id, from.AddDays(3), from.AddDays(4)));
@@ -102,7 +99,6 @@ public class PropertyICalMultiFeedPostgresTests : IClassFixture<PropertyICalSync
         Assert.StartsWith(DataProtectionPayloadPrefix, stored);
         Assert.DoesNotContain(token, stored);
         Assert.DoesNotContain("airbnb", stored, StringComparison.OrdinalIgnoreCase);
-        // Read through EF, the sync gets the URL back.
         Assert.Equal(url, (await db.PropertyICalFeeds.AsNoTracking().SingleAsync(f => f.Id == feedId)).ImportUrl);
 
         foreach (var path in new[] { "ical/feeds", "ical/status" })
@@ -117,7 +113,6 @@ public class PropertyICalMultiFeedPostgresTests : IClassFixture<PropertyICalSync
         }
     }
 
-    // TN-3: a host of another org sees no feed and changes nothing (404, like a missing property).
     [PostgresFact]
     public async Task FeedEndpoints_HostOfAnotherOrg_Return404AndChangeNothing()
     {
@@ -142,7 +137,6 @@ public class PropertyICalMultiFeedPostgresTests : IClassFixture<PropertyICalSync
         };
         Assert.All(responses, r => Assert.Equal(HttpStatusCode.NotFound, r.StatusCode));
 
-        // Its own property with the other org's feed id: the feed is not one of its feeds.
         var crossFeed = await other.DeleteAsync($"/api/properties/{otherProperty.Id}/ical/feeds/{feed.Id}");
         Assert.Equal(HttpStatusCode.NotFound, crossFeed.StatusCode);
         Assert.Equal(ICalFeedErrorCodes.NotFound, (await crossFeed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
@@ -154,7 +148,6 @@ public class PropertyICalMultiFeedPostgresTests : IClassFixture<PropertyICalSync
         Assert.Equal(1, await db.CalendarBlocks.CountAsync(b => b.FeedId == feed.Id));
     }
 
-    // Adds a feed through the API and scripts its calendar: one event from day startOffset to endOffset of from.
     private async Task<FeedRef> AddFeedAsync(HttpClient owner, Guid propertyId, string url, DateTime from, int startOffset, int endOffset)
     {
         var response = await owner.PostAsJsonAsync($"/api/properties/{propertyId}/ical/feeds", new { importUrl = url });
@@ -169,7 +162,6 @@ public class PropertyICalMultiFeedPostgresTests : IClassFixture<PropertyICalSync
         return new FeedRef(id, url);
     }
 
-    // What the queued Hangfire job does (the test host mocks the job client).
     private async Task SyncAsync(Guid feedId)
     {
         await using var scope = _factory.Services.CreateAsyncScope();

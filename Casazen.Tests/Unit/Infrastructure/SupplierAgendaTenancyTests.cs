@@ -20,7 +20,6 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// </summary>
 public class SupplierAgendaTenancyTests
 {
-    /// <summary>The files that may read or write the tables, each with the reason.</summary>
     private static readonly IReadOnlyDictionary<string, string> AllowedFiles = new Dictionary<string, string>
     {
         ["Casazen.Infrastructure/Data/AppDbContext.cs"] = "Declares the DbSets and the model.",
@@ -33,18 +32,14 @@ public class SupplierAgendaTenancyTests
     private static readonly string[] DbSetNames =
         ["SupplierWorkingHours", "SupplierTimeOff", "SupplierBusyWindows", "SupplierSettings"];
 
-    // Any way to reach a table from code: the DbSet through whatever the context variable is called, or Set<T>(). A DbSet is never called, so
-    // a method of the same name (links.SupplierSettings(), the link to the settings page of the supplier) is not a use of the table.
     private static readonly Regex AnyTableUse = new(
         @"\.(SupplierWorkingHours|SupplierTimeOff|SupplierBusyWindows|SupplierSettings)\b(?!\()|Set<(SupplierWorkingHours|SupplierTimeOff|SupplierBusyWindow|SupplierSettings)>\(",
         RegexOptions.Compiled);
 
-    // The statements of the two files that are allowed to: they call the context "db".
     private static readonly Regex DbSetUse = new(
         @"db\.(?<set>SupplierWorkingHours|SupplierTimeOff|SupplierBusyWindows|SupplierSettings)(?<rest>[\s\S]{0,90})",
         RegexOptions.Compiled);
 
-    // What may follow "db.<DbSet>" (whitespace removed): the org predicate, or an insert.
     private static readonly Regex AllowedContinuation = new(
         @"^(\.AsNoTracking\(\))?\.Where\((?<x>\w+)=>\k<x>\.OrgId==|^\.Add\(",
         RegexOptions.Compiled);
@@ -68,10 +63,8 @@ public class SupplierAgendaTenancyTests
             var entity = db.Model.FindEntityType(entityType);
             Assert.NotNull(entity);
 
-            // Not tenant-filtered: the host-org filter would hide the rows of a supplier-only account.
             Assert.Null(entity.FindDeclaredQueryFilter(AppDbContext.TenantQueryFilter));
 
-            // A child of the supplier profile, deleted with it (the repair moves the rows before it deletes a profile).
             var foreignKey = Assert.Single(entity.GetForeignKeys());
             Assert.Equal(typeof(SupplierProfile), foreignKey.PrincipalEntityType.ClrType);
             Assert.Equal(nameof(SupplierProfile.OrgId), foreignKey.PrincipalKey.Properties.Single().Name);
@@ -110,7 +103,6 @@ public class SupplierAgendaTenancyTests
         Assert.Contains(windows.GetIndexes(), index =>
             index.Properties.Select(p => p.Name).SequenceEqual(new[] { "OrgId", "StartUtc" }));
 
-        // SP-05: the iCal sync finds its rows by supplier, UID and start; the windows set by hand have no UID and are outside.
         var feedKey = Assert.Single(windows.GetIndexes(), index => index.IsUnique);
         Assert.Equal(new[] { "OrgId", "ExternalUid", "StartUtc" }, feedKey.Properties.Select(p => p.Name));
         Assert.Equal("UIX_SupplierBusyWindows_OrgId_ExternalUid_StartUtc", feedKey.GetDatabaseName());
@@ -126,7 +118,6 @@ public class SupplierAgendaTenancyTests
     {
         using var db = NewNpgsqlContext();
 
-        // The check constraints are design-time metadata: not in the read-optimized runtime model.
         string[] ChecksOf(Type type) => db.GetService<IDesignTimeModel>().Model
             .FindEntityType(type)!
             .GetCheckConstraints()
@@ -178,7 +169,6 @@ public class SupplierAgendaTenancyTests
 
         var sql = CalendarSyncService.FeedWindowsOf(db, Guid.NewGuid()).AsNoTracking().ToQueryString();
 
-        // Source = ICalFeed (1) of this supplier: a block or an extra opening (Manual, 0) is out of the sync's reach.
         Assert.Matches("\"Source\" = 1", sql);
         Assert.Matches("\"OrgId\" = @", sql);
         Assert.DoesNotMatch("\"Source\" = 0", sql);
@@ -191,7 +181,6 @@ public class SupplierAgendaTenancyTests
 
         var sql = SupplierService.WindowsThatMove(db, Guid.NewGuid(), Guid.NewGuid()).AsNoTracking().ToQueryString();
 
-        // The duplicate's windows, minus the feed engagements (same UID and start) the keeper already has.
         Assert.Matches("\"OrgId\" = @", sql);
         Assert.Contains("NOT EXISTS", sql, StringComparison.Ordinal);
         Assert.Contains("\"ExternalUid\" IS NULL", sql, StringComparison.Ordinal);
@@ -208,15 +197,12 @@ public class SupplierAgendaTenancyTests
             .AgendaRowsOf(db, Guid.NewGuid(), new DateTime(2026, 10, 11, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 10, 20, 0, 0, 0, DateTimeKind.Utc))
             .ToQueryString();
 
-        // ServiceRequest is not tenant-filtered (two parties): the supplier is an explicit predicate, and the stay is read
-        // through the request only for its check-out date.
         Assert.Matches("\"SupplierOrgId\" = @", sql);
         Assert.Contains("\"CheckOutDate\"", sql);
         Assert.Contains("\"Status\"", sql);
         Assert.DoesNotContain("GuestId", sql, StringComparison.Ordinal);
         Assert.DoesNotContain("\"Address\"", sql, StringComparison.Ordinal);
         Assert.DoesNotContain("\"FirstName\"", sql, StringComparison.Ordinal);
-        // The global filters of the host (tenant, soft delete) are off: the stay belongs to another tenant.
         Assert.DoesNotContain("\"OrgId\" = @", sql.Replace("\"SupplierOrgId\" = @", string.Empty, StringComparison.Ordinal));
     }
 
@@ -227,7 +213,6 @@ public class SupplierAgendaTenancyTests
 
         var sql = SupplierAgendaService.ManualWindowsOf(db, Guid.NewGuid()).AsNoTracking().ToQueryString();
 
-        // Source = Manual (0) and Kind <> External (2): the supplier can delete only what it set by hand.
         Assert.Matches("\"Source\" = 0", sql);
         Assert.Matches("\"Kind\" <> 2", sql);
     }
@@ -303,7 +288,6 @@ public class SupplierAgendaTenancyTests
     [Fact]
     public void TheAgendaService_UsesEveryTableOfTheAgenda()
     {
-        // A guard on the guard: if the regexes stopped matching, the checks above would pass for nothing.
         var text = CodeWithoutComments(File.ReadAllText(
             Path.Combine(FindRepositoryRoot(), "Casazen.Infrastructure", "Services", "SupplierAgendaService.cs")));
         var used = DbSetUse.Matches(text).Select(m => m.Groups["set"].Value).Distinct().Order().ToList();
@@ -319,7 +303,6 @@ public class SupplierAgendaTenancyTests
                     npgsql => npgsql.MigrationsAssembly("Casazen.Infrastructure"))
                 .Options);
 
-    /// <summary>The source without the lines that are only a comment (documentation names the tables without using them).</summary>
     private static string CodeWithoutComments(string text) =>
         string.Join('\n', text.Split('\n').Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal)));
 

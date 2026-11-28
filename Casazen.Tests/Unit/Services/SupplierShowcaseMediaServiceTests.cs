@@ -34,7 +34,6 @@ public class SupplierShowcaseMediaServiceTests : IDisposable
     private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 10, 31, 10, 0, 0, TimeSpan.Zero));
     private readonly FileSystemFileStorage _storage;
 
-    /// <summary>The keys the (mocked) content points to: the draft, the published version or the one before it.</summary>
     private readonly HashSet<string> _inUse = new(StringComparer.Ordinal);
 
     public SupplierShowcaseMediaServiceTests()
@@ -55,8 +54,6 @@ public class SupplierShowcaseMediaServiceTests : IDisposable
 
         GC.SuppressFinalize(this);
     }
-
-    // ─── What is accepted ────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Upload_APhoneJpegWithAGpsPosition_IsStoredWithoutIt_AndKeepsItsOrientation()
@@ -104,14 +101,11 @@ public class SupplierShowcaseMediaServiceTests : IDisposable
     [Fact]
     public async Task Upload_TheTypeIsTheContents_NotTheNameOrTheDeclaredType()
     {
-        // A JPEG that calls itself a PNG with the wrong extension: it is a JPEG, stored as one.
         var item = await Service().UploadAsync(OrgA, "work", Form("foto.png", "image/png", PhoneJpeg(orientation: 1)));
 
         Assert.EndsWith(".jpg", item.Url);
         Assert.Equal("image/jpeg", item.ContentType);
     }
-
-    // ─── What is refused, and nothing is stored ──────────────────────────────────────────────────
 
     [Theory]
     [InlineData("logo.svg", "image/svg+xml")]
@@ -144,7 +138,6 @@ public class SupplierShowcaseMediaServiceTests : IDisposable
     [Fact]
     public async Task Upload_AFileThatOnlyStartsLikeAnImage_IsA422_AndNothingIsStored()
     {
-        // The first bytes of a JPEG and nothing else: no frame, no scan.
         byte[] stub = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00];
 
         var refused = await Assert.ThrowsAsync<DomainRuleException>(() => Service().UploadAsync(OrgA, "work", Form("foto.jpg", "image/jpeg", stub)));
@@ -172,7 +165,6 @@ public class SupplierShowcaseMediaServiceTests : IDisposable
     [Fact]
     public async Task Upload_TheLimitDependsOnTheKind_AFileOver200KbIsATooLargeLogoButAnAcceptablePhoto()
     {
-        // 200 KB + 1 is a logo too large and a photo like any other: the limit depends on the kind.
         var file = Concat(PhonePng(), new byte[(int)ShowcaseMediaLimits.LogoMaxBytes]);
 
         await Assert.ThrowsAsync<DomainPayloadTooLargeException>(() => Service().UploadAsync(OrgA, "logo", Form("logo.png", "image/png", file)));
@@ -233,8 +225,6 @@ public class SupplierShowcaseMediaServiceTests : IDisposable
         Assert.Single(StoredFiles());
     }
 
-    // ─── Removing one ────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Delete_AFileThatTheContentStillPointsTo_IsA409_AndTheFileStays()
     {
@@ -270,8 +260,6 @@ public class SupplierShowcaseMediaServiceTests : IDisposable
         Assert.True(await _storage.ExistsAsync(StorageBucket.Public, KeyOf(item)));
     }
 
-    // ─── The nightly cleanup ─────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Cleanup_RemovesTheOldFilesNobodyUses_AndNeverAFileInUse_OrAYoungOne()
     {
@@ -279,7 +267,6 @@ public class SupplierShowcaseMediaServiceTests : IDisposable
         var unused = await Service().UploadAsync(OrgA, "work", Form("b.jpg", "image/jpeg", PhoneJpeg()));
         var otherSupplier = await Service().UploadAsync(OrgB, "work", Form("c.png", "image/png", PhonePng()));
 
-        // Two days later: the first three are old, a fourth is young and nobody uses it yet.
         _clock.Advance(TimeSpan.FromDays(2));
         var young = await Service().UploadAsync(OrgA, "work", Form("d.jpg", "image/jpeg", PhoneJpeg()));
         _inUse.Add(KeyOf(inUse));
@@ -309,7 +296,6 @@ public class SupplierShowcaseMediaServiceTests : IDisposable
         Assert.Equal(0, (await Service().CleanupAsync()).Removed);
         Assert.True(await _storage.ExistsAsync(StorageBucket.Public, KeyOf(item)));
 
-        // The supplier takes it out of the content (and out of the version before it): the next night it goes.
         _inUse.Clear();
         Assert.Equal(1, (await Service().CleanupAsync()).Removed);
         Assert.Equal(0, (await Service().CleanupAsync()).Removed);
@@ -330,8 +316,6 @@ public class SupplierShowcaseMediaServiceTests : IDisposable
         Assert.Equal(1, (await Service().CleanupAsync()).Removed);
     }
 
-    // ─── helpers ─────────────────────────────────────────────────────────────────────────────────
-
     private static IFormFile Form(string fileName, string contentType, byte[] bytes) =>
         new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", fileName)
         {
@@ -342,7 +326,6 @@ public class SupplierShowcaseMediaServiceTests : IDisposable
     private AppDbContext CreateDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_databaseName).Options);
 
-    /// <summary>A service on its own context, as every request gets its own.</summary>
     private SupplierShowcaseMediaService Service()
     {
         var content = new Mock<ISupplierShowcaseContentService>();

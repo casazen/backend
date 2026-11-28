@@ -7,7 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>The prompt of the nightly price (WIZ-AI-PRICE): what it carries, and what it never does.</summary>
 public class ListingPriceSuggestionPromptTests
 {
     private static readonly MarketPriceStats Market = new(4, 100m, 115m, 130m, 145m, 160m, SimilarSize: true);

@@ -45,7 +45,6 @@ public static class HealthResponseWriter
         _ => "unhealthy",
     };
 
-    // A check that throws (or times out) gets the exception message as description: never forward it.
     private static string? GetSafeDescription(HealthReportEntry entry) =>
         entry.Exception is not null && string.Equals(entry.Description, entry.Exception.Message, StringComparison.Ordinal)
             ? "Check failed: see the application logs."

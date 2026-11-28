@@ -33,7 +33,6 @@ public sealed class PresenceChallengeIssuer
             int index;
             if (rules.NoImmediateRepeat && previous >= 0)
             {
-                // One of the other moves: draw among the n - 1 and step over the one that came before.
                 index = RandomNumberGenerator.GetInt32(actions.Count - 1);
                 if (index >= previous)
                     index++;

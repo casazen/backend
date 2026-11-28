@@ -72,7 +72,6 @@ public sealed record OwnerInvoiceLineDto(
         line.LineNumber, line.LineType.ToString(), line.Description, line.Quantity, line.UnitPrice, line.TotalPrice, line.VatRatePercent, line.VatNatureCode, line.VatAmount);
 }
 
-/// <summary>One owner invoice of the list: number, owner, total, currency, status and, once issued, how it is paid.</summary>
 public sealed record OwnerInvoiceListItemDto(
     Guid Id,
     Guid OwnerId,
@@ -112,16 +111,13 @@ public sealed record OwnerInvoiceListItemDto(
         row.Settlement is { } settlement ? new OwnerInvoiceSettlementDto(settlement.State, settlement.AmountDue) : null);
 }
 
-/// <summary>How an issued owner invoice is paid: <c>offset</c> (in the statement), <c>to_pay</c> (with the amount) or <c>credited</c>.</summary>
 public sealed record OwnerInvoiceSettlementDto(string State, decimal AmountDue);
 
-/// <summary><c>POST api/owner-invoices/drafts</c>: the statement version the invoice is made from.</summary>
 public sealed record CreateOwnerInvoiceDraftRequest
 {
     public Guid VersionId { get; init; }
 }
 
-/// <summary><c>POST api/agency-invoices/generate</c>: the period whose drafts are made.</summary>
 public sealed record GenerateOwnerInvoicesRequest
 {
     public int Year { get; init; }
@@ -129,7 +125,6 @@ public sealed record GenerateOwnerInvoicesRequest
     public int Month { get; init; }
 }
 
-/// <summary>What the drafts of a period did, with the owners whose draft could not be made and the code of the reason.</summary>
 public sealed record OwnerInvoiceGenerationDto(
     int Year,
     int Month,
@@ -151,7 +146,6 @@ public sealed record OwnerInvoiceGenerationDto(
         generation.Failed);
 }
 
-/// <summary>The holder of a listing on a portal, where it differs from the default of the organization.</summary>
 public sealed record ChannelAccountHolderDto(Guid PropertyId, string PropertyName, string Channel, string Holder, DateTime UpdatedAt)
 {
     public static ChannelAccountHolderDto From(ChannelAccountHolderView view) =>

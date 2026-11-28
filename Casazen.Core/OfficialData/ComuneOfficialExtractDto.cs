@@ -3,7 +3,6 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.OfficialData;
 
-/// <summary>JSON object the AI extractor must return. Validated before any <c>TouristTaxRates</c> write.</summary>
 public sealed class ComuneOfficialExtractDto
 {
     [JsonPropertyName("status")]

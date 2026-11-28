@@ -96,32 +96,23 @@ public interface IMarketplaceChangeService
         CancellationToken ct = default);
 }
 
-/// <summary>The stable codes of the change and the deactivation (E09/F03/US01/T02): the answers of the endpoints, each with a message in the resource files, Italian and English.</summary>
 public static class MarketplaceChangeErrorCodes
 {
-    /// <summary>422: a deactivation without <c>confirmed = true</c>. Nothing was deleted and nothing changed.</summary>
     public const string ConfirmationRequired = "marketplace_confirmation_required";
 
-    /// <summary>404: the activation is not one of the org inside the caller's scope.</summary>
     public const string ActivationNotFound = MarketplaceActivationErrorCodes.ActivationNotFound;
 
-    /// <summary>422: this kind of activation cannot be changed that way (a settings change of a partner, a deactivation of a function of the license by CasaZen).</summary>
     public const string ChangeNotSupported = "marketplace_change_not_supported";
 
-    /// <summary>409: a change of the function is already asked for and the license has not answered it yet.</summary>
     public const string ChangeAlreadyRequested = "marketplace_change_already_requested";
 
-    /// <summary>422: nothing that the portal asks for was given to change; an empty change is never «everything».</summary>
     public const string SettingsRequired = "marketplace_settings_required";
 
-    /// <summary>422: the note of a change request is longer than <see cref="MarketplaceChangeLimits.MaxNoteLength"/>.</summary>
     public const string NoteInvalid = "marketplace_change_note_invalid";
 }
 
-/// <summary>The limits of the change request.</summary>
 public static class MarketplaceChangeLimits
 {
-    /// <summary>The longest note of a change request, in characters.</summary>
     public const int MaxNoteLength = 500;
 }
 

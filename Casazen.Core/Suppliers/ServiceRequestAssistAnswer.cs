@@ -5,18 +5,10 @@ using Casazen.Core.Services;
 
 namespace Casazen.Core.Suppliers;
 
-/// <summary>What the model wrote in its answer to the description of a job, before any check: names read without regard to case, unknown ones ignored.</summary>
-/// <param name="Category">The code the model chose; <c>null</c> when it said it could not tell (an explicit <c>null</c> or an empty text).</param>
 public sealed record RawAssistAnswer(string? Category, string? Urgency, string? Summary, string? Reason);
 
-/// <summary>An answer that passed the checks: a known category, an urgency of the enum, short texts on one line.</summary>
 public sealed record AcceptedAssistAnswer(string Category, ServiceRequestUrgency Urgency, string? Summary, string? Explanation);
 
-/// <summary>
-/// Reads the answer of the AI to the description of a job (WIZ-AI-REQUEST): one JSON object with <c>category</c>, <c>urgency</c>, <c>summary</c>
-/// and <c>reason</c>, maybe in a code fence or after a reasoning. Of several objects the last one with a <c>category</c> is the answer; the ones
-/// before it are drafts. Anything that is not that is <c>null</c>: the caller does not guess.
-/// </summary>
 public static class ServiceRequestAssistAnswerParser
 {
     private const string CategoryMember = "category";
@@ -53,7 +45,6 @@ public static class ServiceRequestAssistAnswerParser
             {
                 if (Is(member, CategoryMember))
                 {
-                    // A string, or null for "I cannot tell"; any other kind (a number, a list) is not an answer to the question.
                     if (member.Value.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
                         return null;
 
@@ -86,7 +77,6 @@ public static class ServiceRequestAssistAnswerParser
         string.Equals(member.Name, name, StringComparison.OrdinalIgnoreCase);
 }
 
-/// <summary>The checks of the answer of the AI before the host sees it (WIZ-AI-REQUEST).</summary>
 public static class ServiceRequestAssistRules
 {
     /// <summary>
@@ -123,10 +113,6 @@ public static class ServiceRequestAssistRules
             _ => ServiceRequestUrgency.Normal,
         };
 
-    /// <summary>
-    /// The text on one line (white space runs and control characters become one space), cut at <paramref name="limit"/>: at the end of the last
-    /// sentence that fits, else at the last word, else where the limit is. <c>null</c> when nothing is left.
-    /// </summary>
     public static string? OneLine(string? text, int limit)
     {
         if (string.IsNullOrWhiteSpace(text))

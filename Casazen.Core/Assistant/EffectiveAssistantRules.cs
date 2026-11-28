@@ -34,10 +34,6 @@ public sealed record EffectiveAssistantRules(
     decimal ConfidenceThreshold,
     int InstructionVersion)
 {
-    /// <summary>
-    /// What an organization that never saved its rules has: the assistant off, a neutral tone, Italian and English, no signature, any hour, no list of topics, a
-    /// threshold of 0.85 and the first version of the instructions.
-    /// </summary>
     public static EffectiveAssistantRules Defaults { get; } = new(
         Enabled: false,
         Tone: AssistantTone.Neutral,
@@ -50,7 +46,6 @@ public sealed record EffectiveAssistantRules(
         ConfidenceThreshold: OrgAssistantRules.DefaultConfidenceThreshold,
         InstructionVersion: 1);
 
-    /// <summary>The rules an organization saved (or the defaults for the part it never set), as the row says them.</summary>
     public static EffectiveAssistantRules Of(OrgAssistantRules rules)
     {
         ArgumentNullException.ThrowIfNull(rules);
@@ -68,11 +63,6 @@ public sealed record EffectiveAssistantRules(
             rules.InstructionVersion);
     }
 
-    /// <summary>
-    /// The rules of a property: its own value of each field, else the organization's. <c>Enabled</c> is on only when the organization's switch is on <b>and</b> the
-    /// property does not turn it off (it can only switch it off); the hours are the property's when it gives both ends; a list of forbidden topics of the
-    /// property replaces the organization's, and a property that gives none keeps the organization's.
-    /// </summary>
     public EffectiveAssistantRules WithExceptionsOf(PropertyAssistantSettings? property)
     {
         if (property is null)

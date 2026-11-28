@@ -18,7 +18,6 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
         return await context.Properties
             .Include(p => p.Bookings)
             .Include(p => p.OtaIntegrations)
-            // The checkout derives the free refund deadline and the deferred payment from it (BK-07, A3-16).
             .Include(p => p.CancellationPolicy)
             .FirstOrDefaultAsync(p => p.Id == id);
     }
@@ -54,7 +53,6 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
 
     private IQueryable<Property> VisiblePropertiesInScope(HostScope scope)
     {
-        // Imported drafts need review even though they are not active. Keep unrelated inactive records hidden.
         var query = context.Properties.Where(p => p.OrgId == scope.OrgId && (p.IsActive ||
             context.OctorateListingMappings.Any(m => m.OrgId == p.OrgId && m.PropertyId == p.Id &&
                 m.Status == OctorateMappingStatus.Confirmed))).InScope(scope);
@@ -138,8 +136,6 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
     public async Task<Property> UpdateAsync(Property property)
     {
         context.Properties.Update(property);
-        // The photo gallery is written only by PropertyPhotoService, under the property's photo lock (PC-04): a save of
-        // the other fields, from a copy of the row read earlier, must never put back an older photo list.
         context.Entry(property).Property(p => p.PhotoUrls).IsModified = false;
         // The rental mode is written when the property is created and by the scheduled mode change (PM-01, PM-02), never
         // by a generic save: a copy of the row read earlier must not put back an older mode, and the update of the other
@@ -183,12 +179,10 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
             : null;
         await BookingRepository.LockPropertyDatesAsync(context, id, cancellationToken);
 
-        // The tenant and SoftDelete filters apply: another org's or an already deleted property is not found.
         var property = await context.Properties.FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
         if (property is null)
             return PropertySoftDeleteOutcome.NotFound;
 
-        // Same bound as StayKpiRules.UpcomingCheckOut: a value stored on today's Rome date counts as today.
         var todayStart = RomeCalendar.StartOfDayUtc(todayInRome);
         var hasUpcomingStay = await context.Bookings.AnyAsync(
             b => b.PropertyId == id
@@ -198,7 +192,6 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
         if (hasUpcomingStay)
             return PropertySoftDeleteOutcome.HasUpcomingStays;
 
-        // The same rule as the change of mode to short stays (PM-02), which asks it for the day chosen: LeaseOccupancy.
         var hasActiveLease = await context.LeaseContracts.AnyAsync(
             LeaseOccupancy.RunsOnOrAfter(id, todayStart),
             cancellationToken);

@@ -16,11 +16,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// SP-09 with the flag <c>SupplierShowcaseBooking</c> <b>off</b> (the default of every environment): the four new endpoints
-/// answer 404 like a route that does not exist, whatever the supplier published, and the page of the supplier reads exactly as
-/// it did before SP-09 (same members, no services, no response time).
-/// </summary>
 [Collection(SupplierCatalogHostsCollection.Name)]
 public class PublicSupplierShowcaseFlagOffIntegrationTests(CasazenWebApplicationFactory factory) : IClassFixture<CasazenWebApplicationFactory>
 {
@@ -48,7 +43,6 @@ public class PublicSupplierShowcaseFlagOffIntegrationTests(CasazenWebApplication
             await client.GetAsync($"/api/public/suppliers/{supplier.Slug}/services/{slug}"),
             await client.GetAsync($"/api/public/suppliers/{supplier.Slug}/slots?service={slug}"),
             await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/quote", new { service = slug }),
-            // A request that would be refused (no service, a made-up one) is a 404 too, never a 400 or a 422: nothing is read.
             await client.GetAsync($"/api/public/suppliers/{supplier.Slug}/slots"),
             await client.PostAsync($"/api/public/suppliers/{supplier.Slug}/quote", new StringContent("{ not json", Encoding.UTF8, "application/json")),
         };
@@ -60,7 +54,6 @@ public class PublicSupplierShowcaseFlagOffIntegrationTests(CasazenWebApplication
             Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
             var body = await response.Content.ReadFromJsonAsync<JsonElement>();
             Assert.Equal("not_found", body.GetProperty("code").GetString());
-            // The standard "not found" of the API, the one of a route that does not exist: it says nothing of the service.
             Assert.Equal(missingDetail, body.GetProperty("detail").GetString());
         }
     }
@@ -101,14 +94,8 @@ public class PublicSupplierShowcaseFlagOffIntegrationTests(CasazenWebApplication
     }
 }
 
-/// <summary>
-/// The showcase host with an extra source of occupied time in the planning input of the supplier agenda: the holds that SP-10
-/// added (a booking from the showcase waiting for the customer's e-mail check). It stood in for SP-10 to prove that the
-/// public slots honour a hold the day it exists, without any change of SP-09.
-/// </summary>
 public sealed class PublicShowcaseWithHoldsFactory : PublicShowcaseFactory
 {
-    /// <summary>The holds to put in the planning input of every plan, by supplier org.</summary>
     public Dictionary<Guid, List<SupplierOccupancy>> Holds { get; } = [];
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -122,7 +109,6 @@ public sealed class PublicShowcaseWithHoldsFactory : PublicShowcaseFactory
         });
     }
 
-    /// <summary>The real agenda whose plans also see the holds of <see cref="Holds"/>.</summary>
     private sealed class HoldInjectingAgenda(ISupplierAgendaService inner, Dictionary<Guid, List<SupplierOccupancy>> holds) : ISupplierAgendaService
     {
         public async Task<IReadOnlyList<SupplierDayPlan>> PlanAsync(
@@ -197,10 +183,6 @@ public sealed class PublicShowcaseWithHoldsFactory : PublicShowcaseFactory
     }
 }
 
-/// <summary>
-/// SP-09: the public slots against what the agenda plans (a hold of another customer; a supplier that stops being active while
-/// its plan is cached), on the real pipeline.
-/// </summary>
 [Collection(SupplierCatalogHostsCollection.Name)]
 public class PublicSupplierShowcaseHoldsIntegrationTests(PublicShowcaseWithHoldsFactory factory) : IClassFixture<PublicShowcaseWithHoldsFactory>
 {
@@ -209,7 +191,6 @@ public class PublicSupplierShowcaseHoldsIntegrationTests(PublicShowcaseWithHolds
     {
         var supplier = await PublicShowcaseTestData.SeedSupplierAsync(factory);
         var slug = await PublicShowcaseTestData.SeedServiceAsync(factory, supplier.OrgId);
-        // A booking waiting for its e-mail check on Wednesday 14 October, 10:00-12:00 Rome, for 30 minutes from "now".
         var start = new DateTime(2026, 10, 14, 8, 0, 0, DateTimeKind.Utc);
         factory.Holds[supplier.OrgId] = [SupplierOccupancy.Hold(start, start.AddHours(2), PublicShowcaseFactory.Start.UtcDateTime.AddMinutes(30))];
         using var client = factory.CreateClient();
@@ -217,7 +198,6 @@ public class PublicSupplierShowcaseHoldsIntegrationTests(PublicShowcaseWithHolds
         var body = await client.GetFromJsonAsync<JsonElement>($"/api/public/suppliers/{supplier.Slug}/slots?service={slug}&from=2026-10-14&days=1");
 
         var wednesday = body.GetProperty("days")[0].GetProperty("slots").EnumerateArray().Select(s => s.GetProperty("startUtc").GetString()).ToArray();
-        // The hold plus 30 minutes on each side (09:30-12:30 Rome) takes the whole morning; the afternoon is free.
         Assert.Equal(new[] { "2026-10-14T12:00:00Z", "2026-10-14T13:00:00Z", "2026-10-14T14:00:00Z" }, wednesday);
     }
 
@@ -242,7 +222,7 @@ public class PublicSupplierShowcaseHoldsIntegrationTests(PublicShowcaseWithHolds
         var slug = await PublicShowcaseTestData.SeedServiceAsync(factory, supplier.OrgId);
         using var client = factory.CreateClient();
         var url = $"/api/public/suppliers/{supplier.Slug}/slots?service={slug}";
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync(url)).StatusCode); // the plan is now cached for 30 seconds
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync(url)).StatusCode);
 
         await using (var scope = factory.Services.CreateAsyncScope())
         {
@@ -252,7 +232,6 @@ public class PublicSupplierShowcaseHoldsIntegrationTests(PublicShowcaseWithHolds
             await db.SaveChangesAsync();
         }
 
-        // The cache holds plans, not permissions: the supplier is looked up on every request.
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(url)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/public/suppliers/{supplier.Slug}/services")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/public/suppliers/{supplier.Slug}")).StatusCode);

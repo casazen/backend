@@ -15,20 +15,15 @@ public sealed class OwnerIssuerProfileDto
 {
     public Guid OwnerId { get; init; }
 
-    /// <summary>The profile; absent while the owner has none.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Guid? ProfileId { get; init; }
 
-    /// <summary>The owner has a profile.</summary>
     public bool Exists { get; init; }
 
-    /// <summary>The profile is complete: CasaZen can issue the documents of the owner's stays on it.</summary>
     public bool CanIssue { get; init; }
 
-    /// <summary>The personal data are masked for this caller.</summary>
     public bool Masked { get; init; }
 
-    /// <summary><c>PrivatePerson</c>, <c>VatOrdinary</c>, <c>VatFlatRate</c>, <c>SwissVatRegistered</c> or <c>SwissNotRegistered</c>; absent until it is said.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Regime { get; init; }
 
@@ -50,22 +45,16 @@ public sealed class OwnerIssuerProfileDto
 
     public required string CountryCode { get; init; }
 
-    /// <summary>The regime code of FatturaPA the owner gave; absent = the rule's.</summary>
     public string? FatturaPaRegimeCode { get; init; }
 
-    /// <summary>The regime code that would be used (the profile's own, else the rule's).</summary>
     public string? EffectiveRegimeCode { get; init; }
 
-    /// <summary><c>Standard</c> or <c>ExemptArt10</c> (⚖ I1).</summary>
     public required string StayVatTreatment { get; init; }
 
-    /// <summary>The series pattern of the owner's documents (its sezionale); absent = the default, the year.</summary>
     public string? GuestDocumentSeries { get; init; }
 
-    /// <summary>The default series pattern, shown while the owner has none of its own.</summary>
     public required string DefaultGuestDocumentSeries { get; init; }
 
-    /// <summary>The authorization of the virtual stamp duty or the number of the physical stamp of the owner (⚖ I4).</summary>
     public string? StampDutyReference { get; init; }
 
     public string? IssuerSdiRecipientCode { get; init; }
@@ -74,13 +63,10 @@ public sealed class OwnerIssuerProfileDto
 
     public string? SwissVatNumber { get; init; }
 
-    /// <summary>A Swiss owner issues the documents of its stays (⚖ C1).</summary>
     public bool StayIssuedByOwner { get; init; }
 
-    /// <summary>What is still missing before a document is issued on the profile (the field names of the request).</summary>
     public required IReadOnlyList<string> MissingFields { get; init; }
 
-    /// <summary>The tax rule in force today for the owner; absent while no regime is chosen or no rule covers it.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public TaxRuleDto? Rule { get; init; }
 
@@ -129,13 +115,8 @@ public sealed class OwnerIssuerProfileDto
     private static string? Shown(string? value, bool full) => full ? value : OwnerFiscalMasking.Mask(value);
 }
 
-/// <summary>
-/// The answers of the profile of an owner (<c>PUT api/owners/{ownerId}/issuer-profile</c>): the whole profile, what is left out is cleared. A regime or a
-/// treatment that is not one of its names is 422 <c>issuer_field_invalid</c> on its field.
-/// </summary>
 public sealed class SaveOwnerIssuerProfileRequest
 {
-    /// <summary><c>PrivatePerson</c>, <c>VatOrdinary</c>, <c>VatFlatRate</c> (Italy), <c>SwissVatRegistered</c> or <c>SwissNotRegistered</c> (Switzerland).</summary>
     public string? Regime { get; init; }
 
     public string? LegalName { get; init; }
@@ -158,7 +139,6 @@ public sealed class SaveOwnerIssuerProfileRequest
 
     public string? CountryCode { get; init; }
 
-    /// <summary><c>Standard</c> or <c>ExemptArt10</c>; absent = <c>Standard</c>.</summary>
     public string? StayVatTreatment { get; init; }
 
     public string? GuestDocumentSeries { get; init; }
@@ -173,7 +153,6 @@ public sealed class SaveOwnerIssuerProfileRequest
 
     public bool StayIssuedByOwner { get; init; }
 
-    /// <summary>The command of the service.</summary>
     public SaveOwnerIssuerProfileCommand ToCommand()
     {
         var failures = new List<InvoiceDataFailure>();
@@ -214,7 +193,6 @@ public sealed class SaveOwnerIssuerProfileRequest
         };
     }
 
-    /// <summary>The value named by <paramref name="text"/>, <c>null</c> when absent; a name that is not one (or a number) is a failure on <paramref name="field"/>.</summary>
     private static T? ParseEnum<T>(string? text, string field, List<InvoiceDataFailure> failures)
         where T : struct, Enum
     {

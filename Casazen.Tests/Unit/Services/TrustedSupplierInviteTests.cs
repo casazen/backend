@@ -15,10 +15,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// Bug #977: a host invites one of its trusted suppliers with the supplier invite (hashed token, email, registration page), and
-/// accepting it creates the relation with the host, for a new supplier and for one already registered.
-/// </summary>
 public class TrustedSupplierInviteTests
 {
     private static readonly Guid HostOrgId = Guid.NewGuid();
@@ -45,7 +41,6 @@ public class TrustedSupplierInviteTests
         var (to, content, template) = Assert.Single(queue.Queued);
         Assert.Equal(SupplierEmail, to);
         Assert.Equal(Casazen.Infrastructure.Email.Templates.EmailTemplates.Names.SupplierInvite, template);
-        // The same link as an admin invite; only the hash of its token is stored.
         Assert.Equal(SupplierInviteTokens.Hash(InviteToken(content.HtmlBody)), stored.TokenHash);
     }
 
@@ -298,7 +293,6 @@ public class TrustedSupplierInviteTests
         return property;
     }
 
-    /// <summary>A supplier org with its profile; with <paramref name="linkedUserId"/>, the account linked to it.</summary>
     private static Guid AddRegisteredSupplier(AppDbContext db, string email, string? linkedUserId = null)
     {
         var org = new Casazen.Core.Entities.Org { Name = "Fornitore Test", Slug = $"supplier-{Guid.NewGuid():N}"[..30], OrgType = OrgType.Supplier };

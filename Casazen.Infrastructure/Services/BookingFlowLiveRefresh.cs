@@ -17,7 +17,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 internal static class BookingFlowLiveRefresh
 {
-    /// <summary>Queues the push of a step the booking flow did; nothing without a queue.</summary>
     public static void Tell(IPushNotificationService? push, Guid bookingId, string? propertyName, BookingFlowAutomaticStep step, ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(logger);

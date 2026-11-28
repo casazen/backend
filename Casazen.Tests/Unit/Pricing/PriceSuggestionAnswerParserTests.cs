@@ -3,7 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Pricing;
 
-/// <summary>Reading the answer of the AI to the nightly price prompt (WIZ-AI-PRICE): one JSON object, however it is dressed.</summary>
 public class PriceSuggestionAnswerParserTests
 {
     private const string Json = """
@@ -69,8 +68,6 @@ public class PriceSuggestionAnswerParserTests
         Assert.Null(answer.MinNights);
     }
 
-    // ─── A model that reasons aloud ────────────────────────────────────────────────
-
     [Fact]
     public void Parse_AReasoningBeforeTheAnswer_IsNotTheAnswer()
     {
@@ -94,7 +91,6 @@ public class PriceSuggestionAnswerParserTests
     [Fact]
     public void Parse_AReasoningThatWasNeverClosed_HasNoAnswer()
     {
-        // The model ran out of room while thinking: a draft inside the reasoning is not an answer.
         Assert.Null(PriceSuggestionAnswerParser.Parse("<think>Forse {\"nightlyRate\": 140} ma controllo ancora"));
     }
 

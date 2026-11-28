@@ -44,8 +44,6 @@ public sealed class OtaStayService(
         var lastName = conversion.LastName?.Trim() ?? string.Empty;
         var email = conversion.Email?.Trim() ?? string.Empty;
         var guests = conversion.NumberOfGuests ?? OtaStays.DefaultNumberOfGuests;
-        // The last name is asked by the endpoint of the block; the light creation of SR-06a (the host gives the name and the email
-        // only) may leave it empty, and the guest completes it with the online check-in.
         if (firstName.Length == 0 || email.Length == 0 || guests < 1 || conversion.TotalPrice is < 0)
             throw new DomainRuleException(BookingErrorCodes.CreateInvalid, "BookingCreateInvalid");
 
@@ -64,7 +62,6 @@ public sealed class OtaStayService(
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db, cancellationToken, (PostgresAdvisoryLocks.Scope.PropertyICalSync, target.PropertyId.ToString()));
 
-        // Read again under the lock: a sync that held it has committed, the block may be gone or linked meanwhile.
         var block = await db.CalendarBlocks.FirstOrDefaultAsync(b => b.Id == conversion.BlockId, cancellationToken)
             ?? throw BlockNotFound(conversion.BlockId);
         if (block.Source != CalendarBlockSource.ICalImport || block.FeedId is not { } feedId)
@@ -88,7 +85,6 @@ public sealed class OtaStayService(
         if (checkOut < _clock.TodayInRome() || checkOut <= checkIn)
             throw new DomainRuleException(OtaStayErrorCodes.BlockEnded, OtaStayErrorCodes.BlockEndedMessageKey);
 
-        // Projection: the feed's URL (encrypted) is never read here.
         var feed = await db.PropertyICalFeeds
             .AsNoTracking()
             .Where(f => f.Id == feedId)
@@ -106,7 +102,6 @@ public sealed class OtaStayService(
             throw new DomainRuleException(BookingErrorCodes.TooManyGuests, "BookingTooManyGuests", maxGuests);
 
         var now = _clock.GetUtcNow().UtcDateTime;
-        // One guest per stay, owned by the property's org (TN-1): never a lookup by email.
         var guest = new Guest
         {
             OrgId = block.OrgId,
@@ -136,7 +131,6 @@ public sealed class OtaStayService(
             ExternalId = block.ExternalUid ?? string.Empty,
             ICalFeedId = feedId,
             ChannelLabel = feed!.Label,
-            // The channel's price is not in the feed: the host's amount when given, never one computed here.
             BasePrice = amount,
             TotalPrice = amount,
             CreatedAt = now,
@@ -147,11 +141,8 @@ public sealed class OtaStayService(
 
         try
         {
-            // The host completes the block of a channel: created and confirmed, saved with the stay (a stay the repository refuses
-            // takes its events back, and the context is cleared below).
             BookingEvents.RecordCreated(domainEvents, stay, BookingEventOrigin.Host);
 
-            // Joins the transaction: the property's dates lock and the overlap check against every booking not cancelled.
             await bookingRepository.AddAsync(stay);
         }
         catch (InvalidOperationException ex) when (
@@ -164,7 +155,6 @@ public sealed class OtaStayService(
         if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);
 
-        // Ids only: the guest's name and email are personal data (FD-17).
         logger.LogInformation(
             "iCal block {BlockId} of property {PropertyId} converted into OTA stay {BookingId} ({Source}, feed {FeedId})",
             block.Id, block.PropertyId, stay.Id, stay.Source, feedId);
@@ -206,7 +196,6 @@ public sealed class OtaStayService(
         var datesChanged = false;
         if (applyChannelDates)
         {
-            // The block as committed now, under the feeds' lock.
             var block = await db.CalendarBlocks.AsNoTracking().FirstOrDefaultAsync(b => b.BookingId == bookingId, cancellationToken)
                 ?? throw new DomainRuleException(
                     OtaStayErrorCodes.ChannelDatesUnavailable, OtaStayErrorCodes.ChannelDatesUnavailableMessageKey);
@@ -221,11 +210,9 @@ public sealed class OtaStayService(
 
         if (datesChanged)
         {
-            // The stay takes the dates its block has on the channel: a change of the booking made by the host, saved with it.
             await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingModified, stay, BookingEventOrigin.Host, cancellationToken);
             try
             {
-                // Joins the transaction: the property's dates lock and the overlap check against the other bookings.
                 await bookingRepository.UpdateAsync(stay);
             }
             catch (InvalidOperationException ex) when (
@@ -255,8 +242,6 @@ public sealed class OtaStayService(
     public async Task<CalendarBlock?> GetLinkedBlockAsync(Guid bookingId, CancellationToken cancellationToken = default) =>
         await db.CalendarBlocks.AsNoTracking().FirstOrDefaultAsync(b => b.BookingId == bookingId, cancellationToken);
 
-    // The stay takes the dates its block now has on the channel. Only a confirmed stay whose arrival is not registered
-    // (the same limits as a change by the host, PC-07); the price stays the one the host gave.
     private bool ApplyChannelDates(Booking stay, CalendarBlock block)
     {
         var checkIn = block.StartUtc.Date;
@@ -276,10 +261,6 @@ public sealed class OtaStayService(
         return true;
     }
 
-    /// <summary>
-    /// The booking as committed now, under the lock. The context may already track it (the controller read it for the
-    /// authorization): a query does not refresh a tracked entity, so it is reloaded.
-    /// </summary>
     private async Task<Booking> LoadAsync(Guid bookingId, CancellationToken cancellationToken)
     {
         var booking = await db.Bookings

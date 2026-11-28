@@ -42,7 +42,6 @@ public sealed class OrgContextResolver(
             var linkedOrg = await orgService.GetByIdAsync(linked, cancellationToken);
             if (linkedOrg?.OrgType == OrgType.Host)
             {
-                // Linked after the tenant was resolved (e.g. by a parallel first request): scope this request to it.
                 tenantContext.SetOrgId(linked);
                 return linked;
             }
@@ -56,7 +55,6 @@ public sealed class OrgContextResolver(
                 sub, linked, linkedOrg?.OrgType);
         }
 
-        // PL-02 (A1-05): no org without the onboarding and its consents (POST/PUT /api/users/onboarding).
         logger.LogInformation("User {UserId} has no org yet: the onboarding creates it", sub);
         return null;
     }

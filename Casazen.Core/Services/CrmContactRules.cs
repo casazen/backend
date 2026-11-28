@@ -16,19 +16,14 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public static class CrmContactRules
 {
-    /// <summary>Reachability reason: the person asked not to be written to on this channel.</summary>
     public const string ReasonSuppressed = "suppressed";
 
-    /// <summary>Reachability reason: the address is one an online travel agency forwards the guest's mail through.</summary>
     public const string ReasonOtaForward = "ota_forward";
 
-    /// <summary>Reachability reason: the e-mail address has the person's consent but the double opt-in is not done.</summary>
     public const string ReasonNotConfirmed = "not_confirmed";
 
-    /// <summary>Reachability reason: no basis allows marketing on this channel (service only, or none).</summary>
     public const string ReasonNoBasis = "no_basis";
 
-    /// <summary>Reachability reason: the person can be written to on this channel but nothing sends on it yet (WhatsApp and phone).</summary>
     public const string ReasonChannelNotAvailable = "channel_not_available";
 
     /// <summary>
@@ -73,11 +68,9 @@ public static class CrmContactRules
             : basis;
     }
 
-    /// <summary>The stronger of two bases: <see cref="GuestContactLegalBasis.Consent"/> over soft opt-in over service only over none.</summary>
     public static GuestContactLegalBasis Stronger(GuestContactLegalBasis first, GuestContactLegalBasis second) =>
         first >= second ? first : second;
 
-    /// <summary>True for a booking that is a purchase: confirmed, checked in or checked out. A pending or cancelled one is not.</summary>
     public static bool IsPurchase(BookingStatus status) =>
         status is BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut;
 
@@ -95,11 +88,6 @@ public static class CrmContactRules
         return source == BookingSource.Direct ? GuestContactOrigin.DirectBooking : GuestContactOrigin.Manual;
     }
 
-    /// <summary>
-    /// <see cref="CanReceiveMarketing"/> for an e-mail contact, as a condition a query can run in SQL: the profile list asks it to keep the
-    /// profiles that can (or cannot) be written to by e-mail (E07/F01/US03/T01). The same rule, written over the columns: not suppressed, not an
-    /// OTA forward, and either soft opt-in or a consent that was confirmed.
-    /// </summary>
     public static readonly Expression<Func<GuestContact, bool>> MarketableEmail = contact =>
         contact.Channel == GuestContactChannel.Email
         && !contact.IsSuppressed
@@ -108,11 +96,6 @@ public static class CrmContactRules
         && (contact.LegalBasis == GuestContactLegalBasis.SoftOptIn
             || (contact.LegalBasis == GuestContactLegalBasis.Consent && contact.Confirmation == GuestContactConfirmation.Confirmed));
 
-    /// <summary>
-    /// Whether the contact may receive marketing, by the law and not by what is installed: an e-mail address needs to be not suppressed, not an OTA
-    /// forward and either soft opt-in or a consent that was confirmed (double opt-in); a WhatsApp or phone number needs to be not suppressed and
-    /// have the person's consent.
-    /// </summary>
     public static bool CanReceiveMarketing(GuestContact contact)
     {
         ArgumentNullException.ThrowIfNull(contact);
@@ -131,10 +114,6 @@ public static class CrmContactRules
         };
     }
 
-    /// <summary>
-    /// Whether the contact may receive the messages of a stay (check-in, instructions, invoice): any basis other than none. A marketing opt-out
-    /// does not stop them.
-    /// </summary>
     public static bool CanReceiveService(GuestContact contact)
     {
         ArgumentNullException.ThrowIfNull(contact);
@@ -142,14 +121,8 @@ public static class CrmContactRules
         return contact.LegalBasis != GuestContactLegalBasis.None;
     }
 
-    /// <summary>True when something sends on the channel: only e-mail, while no WhatsApp or phone provider exists.</summary>
     public static bool HasProvider(GuestContactChannel channel) => channel == GuestContactChannel.Email;
 
-    /// <summary>
-    /// Why the contact cannot be written to for marketing, as a code (<see cref="ReasonSuppressed"/>, <see cref="ReasonOtaForward"/>,
-    /// <see cref="ReasonNotConfirmed"/>, <see cref="ReasonNoBasis"/>, <see cref="ReasonChannelNotAvailable"/>), or <c>null</c> when it can. The
-    /// first reason that applies wins, in that order of the person's wishes and of the law before what is installed.
-    /// </summary>
     public static string? ReachabilityReason(GuestContact contact)
     {
         ArgumentNullException.ThrowIfNull(contact);

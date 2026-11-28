@@ -69,7 +69,6 @@ public class HostScopeSqlShapeTests
         _ => throw new ArgumentOutOfRangeException(nameof(entity), entity, null),
     };
 
-    /// <summary>The statement without the header of parameters that <c>ToQueryString</c> prints above it.</summary>
     private static string Body(string sql) => sql[sql.IndexOf("SELECT", StringComparison.Ordinal)..];
 
     private static int Count(string text, string part) => text.Split(part, StringSplitOptions.None).Length - 1;
@@ -99,8 +98,6 @@ public class HostScopeSqlShapeTests
         Assert.Equal(1, Count(body, "EXISTS ("));
         Assert.Contains("FROM \"PropertyMemberAccesses\"", body, StringComparison.Ordinal);
         Assert.Matches("\"UserId\" = @", body);
-        // The person is a parameter of the statement, not text inside it, and there is no list of ids: the grants table is read
-        // once, inside the one statement, so the cost does not grow with the number of properties or of rows.
         Assert.Contains(Collaborator, sql[..sql.IndexOf("SELECT", StringComparison.Ordinal)], StringComparison.Ordinal);
         Assert.DoesNotContain(Collaborator, body, StringComparison.Ordinal);
         Assert.DoesNotContain(" IN (", body, StringComparison.Ordinal);
@@ -129,8 +126,6 @@ public class HostScopeSqlShapeTests
         var sql = Scoped(db, entity, RestrictedToShort).ToQueryString();
         var body = Body(sql);
 
-        // AM-02c: the grants of the other mode stay in the table and the area decides which of them the person reaches, inside the
-        // one query: the same single EXISTS on the grants, and the mode of the property as a parameter next to it.
         Assert.Equal(1, Count(body, "EXISTS ("));
         Assert.Equal(1, Count(body, "\"PropertyMemberAccesses\""));
         Assert.Matches("\"RentalMode\" = @", body);
@@ -143,7 +138,6 @@ public class HostScopeSqlShapeTests
     {
         using var db = NewDb();
 
-        // The mode is the collaborator's rule: it is never applied without the grants (an org-wide scope has none to narrow).
         Assert.Same(db.Properties, db.Properties.InScope(new HostScope(OrgId, GrantedMode: RentalMode.Long)));
     }
 
@@ -154,7 +148,6 @@ public class HostScopeSqlShapeTests
 
         var legacy = Body(db.Properties.InScope(new HostScope(OrgId, OwnerId: Holder, GrantedMode: RentalMode.Short)).ToQueryString());
 
-        // (the column is in the list of the select: it is the comparison that must not be there)
         Assert.DoesNotMatch("\"RentalMode\" = ", legacy);
         Assert.Matches("\"OwnerId\" = @", legacy);
     }
@@ -166,7 +159,6 @@ public class HostScopeSqlShapeTests
 
         var body = Body(db.Bookings.InScope(Restricted).ToQueryString());
 
-        // The org of the caller narrows the bookings and, by the tenant filter of the table, the grants as well.
         Assert.True(Count(body, "\"OrgId\" = @") >= 2, body);
         Assert.Equal(1, Count(body, "EXISTS ("));
     }

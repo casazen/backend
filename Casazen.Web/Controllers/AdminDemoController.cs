@@ -1,6 +1,5 @@
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
-using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 

@@ -187,7 +187,6 @@ public class RentBankMatcherTests
         var september = Installment(VerdiLease, "2026-09");
         var october = Installment(VerdiLease, "2026-10");
 
-        // «del 03/10/2026» is the day of the payment: it must not make October look like the month named.
         var result = Match([Credit("Bonifico del 03/10/2026 Verdi canone settembre", date: "2026-10-03")], [september, october]);
 
         var suggestion = Assert.Single(result.Suggestions);
@@ -279,8 +278,8 @@ public class RentBankMatcherTests
     }
 
     [Theory]
-    [InlineData("2024-10-05", "2026-10-03")] // paid two years after the due date
-    [InlineData("2027-01-05", "2026-10-03")] // due more than 45 days after the payment
+    [InlineData("2024-10-05", "2026-10-03")]
+    [InlineData("2027-01-05", "2026-10-03")]
     public void APaymentFarFromTheDueDate_IsNotForThatInstallment(string due, string paid)
     {
         var result = Match([Credit("Bonifico Verdi", date: paid)], [Installment(VerdiLease, "2026-10", due: due)]);
@@ -290,10 +289,10 @@ public class RentBankMatcherTests
     }
 
     [Theory]
-    [InlineData("2026-10-05", "2026-09-21")] // 14 days early
-    [InlineData("2026-10-05", "2026-08-25")] // 41 days early: the next month paid in advance
+    [InlineData("2026-10-05", "2026-09-21")]
+    [InlineData("2026-10-05", "2026-08-25")]
     [InlineData("2026-10-05", "2026-10-05")]
-    [InlineData("2026-03-05", "2026-10-03")] // arrears of seven months
+    [InlineData("2026-03-05", "2026-10-03")]
     public void APaymentNearOrAfterTheDueDate_CanBeForTheInstallment(string due, string paid)
     {
         var result = Match([Credit("Bonifico Verdi", date: paid)], [Installment(VerdiLease, "2026-10", due: due)]);
@@ -302,9 +301,9 @@ public class RentBankMatcherTests
     }
 
     [Theory]
-    [InlineData("2026-10-05", "2026-09-25", RentBankConfidence.High)] // ten days early: how a rent is paid
-    [InlineData("2026-10-05", "2026-09-24", RentBankConfidence.Medium)] // eleven days early and no month named: it may be for the month before
-    [InlineData("2026-11-05", "2026-10-03", RentBankConfidence.Medium)] // October declared by hand, the credit of October is not November's
+    [InlineData("2026-10-05", "2026-09-25", RentBankConfidence.High)]
+    [InlineData("2026-10-05", "2026-09-24", RentBankConfidence.Medium)]
+    [InlineData("2026-11-05", "2026-10-03", RentBankConfidence.Medium)]
     public void ACreditWellBeforeTheDueDate_IsNotSure_WhenTheReasonDoesNotNameTheMonth(string due, string paid, RentBankConfidence expected)
     {
         var result = Match([Credit("Bonifico Verdi", date: paid)], [Installment(VerdiLease, due[..7], due: due)]);

@@ -27,10 +27,8 @@ public class DashboardController(
     IHostScopeResolver hostScopeResolver,
     IAuthorizationService authorizationService) : ControllerBase
 {
-    /// <summary>Code of a <c>period</c> or <c>month</c> query value that is not accepted.</summary>
     public const string InvalidPeriodCode = "dashboard_invalid_period";
 
-    /// <summary>First and last year a month may be asked for.</summary>
     private const int MinYear = 2000;
     private const int MaxYear = 2100;
 
@@ -123,10 +121,6 @@ public class DashboardController(
         return Ok(HostTodayDto.From(today));
     }
 
-    /// <summary>
-    /// The iCal import feeds of the caller's properties (PC-11): last sync, status and the translated error of each,
-    /// feeds with an error first. Never the import URL.
-    /// </summary>
     [HttpGet("ical-feeds")]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
     [ProducesResponseType(typeof(IReadOnlyList<HostDashboardIcalFeedDto>), StatusCodes.Status200OK)]
@@ -165,28 +159,16 @@ public class DashboardController(
         return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
     }
 
-    // Money (collected, failed payments) is payment data: it needs payment.read, which the collaborator does not hold (AM-03). The
-    // permission of the role, as the policy of PaymentsController asks it; which payments are then counted is the scope's, in SQL.
     private async Task<bool> CanReadPaymentsAsync() =>
         (await authorizationService.AuthorizeAsync(User, CasazenPolicies.PaymentRead)).Succeeded;
 
-    /// <summary>
-    /// <c>period</c>: <c>Month</c> (default), <c>Last30Days</c> or <c>Next30Days</c>, case-insensitive; <c>month</c>:
-    /// <c>yyyy-MM</c>, only with <c>Month</c>.
-    /// </summary>
     public static bool TryParsePeriod(string? period, string? month, out HostDashboardPeriodKind kind, out DateOnly? monthStart)
     {
         monthStart = null;
 
-        // A free period has days to say, which kpis does not take: it is as unknown a name there as before it existed.
         return TryParseKind(period, out kind) && kind != HostDashboardPeriodKind.Custom && TryParseMonth(kind, month, out monthStart);
     }
 
-    /// <summary>
-    /// <c>period</c> of the overview (SR-03b): the periods of <see cref="TryParsePeriod"/> and <c>Custom</c>, which needs <c>from</c>
-    /// and <c>to</c> (both days, in order, at most <see cref="HostDashboardPeriod.MaxCustomDays"/> days, in the supported years) and
-    /// takes no <c>month</c>; the others take no <c>from</c> or <c>to</c>.
-    /// </summary>
     public static bool TryParseOverviewPeriod(
         string? period,
         string? month,
@@ -210,7 +192,6 @@ public class DashboardController(
         return from is null && to is null && TryParseMonth(kind, month, out monthStart);
     }
 
-    // Names only: a number would bind to an undefined enum value.
     private static bool TryParseKind(string? period, out HostDashboardPeriodKind kind)
     {
         kind = HostDashboardPeriodKind.Month;

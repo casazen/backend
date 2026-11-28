@@ -4,10 +4,6 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// Proposes a budget or a final from a free-form administrator PDF. Posting happens only when a person confirms.
-/// The paid and unpaid report PDFs are not produced here.
-/// </summary>
 public interface IAdministratorStatementReaderService
 {
     Task<StatementProposalView> ProposeAsync(

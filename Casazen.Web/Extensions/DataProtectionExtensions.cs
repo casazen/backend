@@ -26,9 +26,6 @@ public static class DataProtectionExtensions
     public const string CertificateVariable = "DataProtection__CertificatePfxBase64";
     public const string CertificatePasswordVariable = "DataProtection__CertificatePassword";
 
-    /// <exception cref="InvalidOperationException">
-    /// No key-encryption certificate outside Development and Testing, or a certificate that cannot be loaded.
-    /// </exception>
     public static IServiceCollection AddCasazenDataProtection(
         this IServiceCollection services,
         IConfiguration configuration,
@@ -59,11 +56,9 @@ public static class DataProtectionExtensions
         return services;
     }
 
-    /// <summary>True when a key-encryption certificate is configured.</summary>
     public static bool HasKeyEncryptionCertificate(IConfiguration configuration) =>
         !string.IsNullOrWhiteSpace(configuration["DataProtection:CertificatePfxBase64"]);
 
-    /// <summary>Logs the at-rest protection of the key ring once at startup.</summary>
     public static WebApplication LogDataProtectionKeyProtection(this WebApplication app)
     {
         if (HasKeyEncryptionCertificate(app.Configuration))
@@ -72,7 +67,6 @@ public static class DataProtectionExtensions
         }
         else
         {
-            // Development/Testing only: elsewhere the startup already failed (AddCasazenDataProtection).
             app.Logger.LogWarning(
                 "Data Protection keys are persisted in the database WITHOUT at-rest encryption (allowed only in " +
                 "Development and Testing). Set " + CertificateVariable + " and " + CertificatePasswordVariable +

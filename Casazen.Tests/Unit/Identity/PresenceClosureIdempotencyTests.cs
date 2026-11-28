@@ -29,8 +29,6 @@ public sealed class PresenceClosureIdempotencyTests
     [Fact]
     public async Task PresenceClosureIdempotency_SameKey_SameAnswerOneRow()
     {
-        // Proof (data, AC2): the network repeats the request; the second one is answered as the first, from the outcome kept, without reading a frame, without a second row, a second
-        // alert or a second attempt, also once the challenge it carries has expired and with frames that are not even a sequence.
         await using var world = await PresenceClosureWorld.CreateAsync();
         var session = await world.ReadyStayAsync();
         var token = await world.IssueChallengeAsync(session);
@@ -50,7 +48,6 @@ public sealed class PresenceClosureIdempotencyTests
         Assert.Single(world.Alerts.Raised);
         Assert.Equal(1, (await world.ReadBackAsync(session.Id)).BiometricAttempts);
 
-        // The same key on a fresh copy of the session (another request of the page, loaded again) is answered from the log row too.
         await using var other = world.NewContext();
         var reloaded = await world.LoadAsync(session.Id, other);
         var third = await world.Flow(other).SubmitPresenceSequenceAsync(reloaded, PresenceClosureKit.Submission(key, null), Ct);
@@ -157,8 +154,6 @@ public sealed class PresenceClosureIdempotencyTests
     [Fact]
     public async Task PresenceClosureIdempotency_TheDecisionAloneIsInTheQueue_AndAReplayTellsTheOperatorsOnce()
     {
-        // Should the process stop between the save and the hand-off, the one save already holds what the queue of the operators reads: the session is not accepted and its outcome is the
-        // review (VerificationOperatorRules.NeedsOperator). The next request with the same key finishes the hand-off, and only once: nobody tells the operators again after it.
         await using var world = await PresenceClosureWorld.CreateAsync();
         var session = await world.ReadyStayAsync();
         var key = PresenceClosureKit.NewKey();
@@ -187,8 +182,6 @@ public sealed class PresenceClosureIdempotencyTests
     [InlineData(true)]
     public async Task PresenceClosureIdempotency_AClientThatDropsAfterTheSave_StillGetsTheEffectsOfTheDecision(bool approval)
     {
-        // The decision is committed, so its effects are not the request's any more: the connection drops the moment the one save is done (the token of the request is cancelled) and the operators
-        // are told (or the lock code released), the encrypted picture of the document is deleted, with no token of the request.
         var drop = new FailingSaveInterceptor();
         await using var world = await PresenceClosureWorld.CreateAsync(true, drop);
         world.Segment = approval ? EvidenceBundles.Allowed : EvidenceBundles.Observation;
@@ -221,8 +214,6 @@ public sealed class PresenceClosureIdempotencyTests
     [Fact]
     public async Task PresenceClosureIdempotency_AFailureOfTheHandOff_IsFinishedByTheNextRequestWithTheSameKey()
     {
-        // The decision is committed (the row, the outcome, the place in the queue) and the hand-off throws: the operators are not told. The page asks again with the same key, on a session
-        // loaded again: the replay tells them, once, and decides nothing again.
         await using var world = await PresenceClosureWorld.CreateAsync();
         var session = await world.ReadyStayAsync();
         var token = await world.IssueChallengeAsync(session);
@@ -257,8 +248,6 @@ public sealed class PresenceClosureIdempotencyTests
     [InlineData(true)]
     public async Task PresenceClosureIdempotency_AFailureOfTheDeletion_IsFinishedByTheNextRequestWithTheSameKey(bool approval)
     {
-        // The storage fails when the kept picture of the document is deleted. A review tells the operators all the same, then throws; an approval throws before the code is released. The page
-        // asks again with the same key: the replay deletes the picture (and the rows are marked), the operators are not told twice, the code is released.
         await using var world = await PresenceClosureWorld.CreateAsync();
         world.Segment = approval ? EvidenceBundles.Allowed : EvidenceBundles.Observation;
         var session = await world.ReadyStayAsync();
@@ -290,7 +279,6 @@ public sealed class PresenceClosureIdempotencyTests
     [Fact]
     public async Task PresenceClosureIdempotency_TheKeyOfAnotherBooking_IsNotAReplayHere()
     {
-        // Isolation: a key is the key of its booking (the unique index is on booking and key). The same key used by another stay is a new attempt here, decided on its own.
         await using var world = await PresenceClosureWorld.CreateAsync();
         var first = await world.ReadyStayAsync();
         var second = await world.ReadyStayAsync();
@@ -311,7 +299,6 @@ public sealed class PresenceClosureIdempotencyTests
     [Fact]
     public async Task PresenceClosureIdempotency_ThePageGetsTheSameBody_ForTheSameKey()
     {
-        // The cross-repository contract: the body of the answer is the same JSON for the request and for its replay, through the real endpoint.
         await using var world = await PresenceClosureWorld.CreateAsync();
         world.Segment = EvidenceBundles.Allowed;
         var session = await world.ReadyStayAsync();
@@ -332,7 +319,6 @@ public sealed class PresenceClosureIdempotencyTests
         Assert.Single(await world.LogRowsAsync(session));
     }
 
-    /// <summary>The row of a twin that closed the same attempt: a review in observation with the key, as the closure writes it.</summary>
     private static BiometricVerificationLog TwinRow(GuestCheckInSession session, string key) => new()
     {
         OrgId = session.OrgId,
@@ -352,7 +338,6 @@ public sealed class PresenceClosureIdempotencyTests
         CreatedAt = PresenceClosureKit.Now.UtcDateTime,
     };
 
-    /// <summary>The state as the page reads it: a record that holds lists compares them by reference, the JSON by their content.</summary>
     private static string Json(IdentityVerificationState? state) =>
         JsonSerializer.Serialize(state is null ? null : PublicIdentityVerificationStateDto.From(state), new JsonSerializerOptions(JsonSerializerDefaults.Web));
 

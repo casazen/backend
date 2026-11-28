@@ -26,32 +26,22 @@ public class SupplierShowcaseMedia
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The supplier org the file belongs to (<see cref="SupplierProfile.OrgId"/>).</summary>
     [Required]
     public Guid OrgId { get; set; }
 
-    /// <summary>What the file is for: one of <see cref="ShowcaseMediaKinds"/>.</summary>
     [Required, MaxLength(ShowcaseMediaLimits.KindMaxLength)]
     public string Kind { get; set; } = string.Empty;
 
-    /// <summary>
-    /// The key of the object in the public bucket (<c>suppliers/{orgId}/showcase/{kind}-{random}.{ext}</c>). The absolute address is
-    /// always derived from it, so a change of the public base URL never leaves a stale copy here.
-    /// </summary>
     [Required, MaxLength(ShowcaseMediaLimits.StorageKeyMaxLength)]
     public string StorageKey { get; set; } = string.Empty;
 
-    /// <summary><c>image/jpeg</c>, <c>image/png</c> or <c>image/webp</c>: what the file is, read from its content.</summary>
     [Required, MaxLength(ShowcaseMediaLimits.ContentTypeMaxLength)]
     public string ContentType { get; set; } = string.Empty;
 
-    /// <summary>The size of the stored file, after its metadata was removed.</summary>
     public int Bytes { get; set; }
 
-    /// <summary>The size of the picture as a browser draws it (a photo taken on its side has them swapped); <c>null</c> when it could not be told.</summary>
     public int? Width { get; set; }
 
-    /// <inheritdoc cref="Width"/>
     public int? Height { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

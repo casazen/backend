@@ -7,7 +7,6 @@ using Casazen.Core.TouristTax;
 
 namespace Casazen.Core.Services;
 
-/// <summary>A published house of the site with what the search needs of it: a projection, nothing private.</summary>
 public sealed record PublicStayHouse(
     Guid Id,
     string? Slug,
@@ -40,23 +39,18 @@ public sealed record PublicStayHouse(
     string Country = PublicStayHouse.DefaultCountry,
     string Timezone = PublicStayHouse.DefaultTimezone)
 {
-    /// <summary>What a house without a currency of its own costs in (the property says <c>EUR</c> until it is in Switzerland).</summary>
     public const string DefaultCurrency = "EUR";
 
     public const string DefaultCountry = "IT";
 
-    /// <summary>The clock of a house without one of its own: the calendar of the market, Europe/Rome (the property says its own IANA zone).</summary>
     public const string DefaultTimezone = Casazen.Core.Utilities.RomeCalendar.TimeZoneId;
 
-    /// <summary>The labels of the house (what the host chose and what its data give), in the order of the vocabulary.</summary>
     public IReadOnlyList<string> Tags => Labels ?? [];
 
-    /// <summary>Pets are welcome, or welcome on request (the host decides then): a stay with a pet is not refused for it. Without the rule, the amenity says.</summary>
     public bool AcceptsPets => Pets is { } rule ? rule != PetsPolicy.No : Amenities.Contains(PropertyAmenity.PetFriendly);
 
     public bool AllowsSmoking => Smoking is { } rule ? rule == SmokingPolicy.Yes : Amenities.Contains(PropertyAmenity.SmokingAllowed);
 
-    /// <summary>The rule has no «yes», only «on request»: a house where parties are possible at all.</summary>
     public bool AllowsParties => Parties == PartiesPolicy.OnRequest;
 
     public bool HasSelfCheckIn => Amenities.Contains(PropertyAmenity.SelfCheckIn);
@@ -96,31 +90,18 @@ public sealed record PublicStayData(
     IReadOnlyDictionary<Guid, IReadOnlyDictionary<DateOnly, DayRuleValues>>? DayRules = null,
     DateTime? NowUtc = null);
 
-/// <summary>
-/// The decisions of the search of the site (DB-07a), as pure functions of the houses and of what was read about them: which house is free
-/// and why not, what the stay costs, the first free date, the nearby dates, the days of the whole site, the places and the houses that look
-/// alike. The price of a night and of a stay is the quote's own (<see cref="StayPricing"/>, <see cref="TouristTaxCalculator"/>); the planner
-/// has no price rule of its own, so the list, the calendar and the quote cannot disagree.
-/// </summary>
 public static class PublicStayPlanner
 {
-    /// <summary>
-    /// The currency a list or a calendar says it is in: the one of its houses when they share it, else euros (the houses of two countries
-    /// in one list each carry their own on their price; amounts of two currencies are not converted).
-    /// </summary>
     public static string CurrencyOf(IEnumerable<PublicStayHouse> houses)
     {
         var currencies = houses.Select(house => house.Currency).Distinct(StringComparer.Ordinal).Take(2).ToList();
         return currencies.Count == 1 ? currencies[0] : PublicStayHouse.DefaultCurrency;
     }
 
-    /// <summary>The age every child is counted at while the list does not know theirs: the oldest minor, a payer wherever a minor pays.</summary>
     private const int EstimatedChildAge = TouristTaxCalculator.AdultAge - 1;
 
-    // The date offsets tried when nothing is free (altDates of the design): the nearest first, a day later before a day earlier.
     private static readonly int[] AlternativeOffsets = [1, -1, 2, -2, 3, -3, 4, 5, 6, 7, 10, 14, 21];
 
-    // The amenities a card shows, in this order, at most six.
     private static readonly PropertyAmenity[] MainAmenities =
     [
         PropertyAmenity.Pool, PropertyAmenity.BeachAccess, PropertyAmenity.Terrace, PropertyAmenity.Garden, PropertyAmenity.Balcony,
@@ -134,10 +115,7 @@ public static class PublicStayPlanner
 
     private static readonly CompareInfo Italian = CultureInfo.GetCultureInfo("it-IT").CompareInfo;
 
-    /// <summary>The id of a comune as a place of the site: its normalized name with hyphens (<c>polignano-a-mare</c>).</summary>
     public static string DestinationId(string? city) => TouristTaxComune.NormalizeName(city).Replace(' ', '-');
-
-    // ─── The list ───────────────────────────────────────────────────────────────────────────────────
 
     public static PublicStaysResult Search(
         IReadOnlyList<PublicStayHouse> houses,
@@ -149,7 +127,6 @@ public static class PublicStayPlanner
         ArgumentNullException.ThrowIfNull(data);
         ArgumentNullException.ThrowIfNull(criteria);
 
-        // What no house can match (an amenity, a rule or a label that does not exist) was left out by the query and is declared here.
         var unsupported = new List<string>(criteria.IgnoredValues);
         var rules = criteria.Rules;
 
@@ -175,8 +152,6 @@ public static class PublicStayPlanner
                 cards.Add(card);
         }
 
-        // The search across all the sites lists what can be booked (a long list would be mostly houses taken or too small for the party),
-        // best rated first, a page at a time; the houses that are not free are counted in TotalCount and not listed.
         var platform = criteria.Scope == PublicStaysScope.Platform;
         var ordered = Order(cards, criteria.Sort, hasDates, platform);
         var availableCount = cards.Count(card => card.Availability.Available);
@@ -188,7 +163,6 @@ public static class PublicStayPlanner
         var listed = platform ? ordered.Where(card => card.Availability.Available) : ordered;
         var items = listed.Skip((page - 1) * pageSize).Take(pageSize).ToList();
 
-        // Another date helps only the houses that pass every filter, the price too.
         var kept = cards.Select(card => card.Id).ToHashSet();
         var alternatives = hasDates && availableCount == 0
             ? Alternatives(pool.Where(house => kept.Contains(house.Id)).ToList(), data, criteria, checkIn, nights)
@@ -213,11 +187,6 @@ public static class PublicStayPlanner
             platform ? Facets(InPlace(houses, criteria.Where, lenient: true)) : null);
     }
 
-    /// <summary>
-    /// The houses in the place asked (all of them for an empty place). On a site the place is the id of a destination, or the name of a
-    /// comune; across all the sites it is what the visitor typed, so the comune or the zone the host wrote only has to contain it, and a
-    /// phrase that contains the name of the comune finds it too («lago di como»).
-    /// </summary>
     public static IReadOnlyList<PublicStayHouse> InPlace(IReadOnlyList<PublicStayHouse> houses, string? place, bool lenient)
     {
         ArgumentNullException.ThrowIfNull(houses);
@@ -225,7 +194,6 @@ public static class PublicStayPlanner
         return string.IsNullOrWhiteSpace(place) ? houses : houses.Where(house => MatchesPlace(house, place, lenient)).ToList();
     }
 
-    /// <summary>What the controls of the search need to know about <paramref name="houses"/>: the reach of the sliders, the guests, the pets, the labels.</summary>
     private static PublicStaysFacets Facets(IReadOnlyList<PublicStayHouse> houses)
     {
         var rates = houses.Select(house => StayPricing.ToCents(house.NightlyRate)).ToList();
@@ -271,16 +239,13 @@ public static class PublicStayPlanner
             "selfCheckin" => house.HasSelfCheckIn,
             "smoking" => house.AllowsSmoking,
             "parties" => house.AllowsParties,
-            // Children are welcome only when the host said so (DB-11a): a house that never said is not offered for «adatta ai bambini».
             "children" => house.ChildrenWelcome == true,
             _ => true,
         });
     }
 
-    // A comune this short is a word of other names («Lu», «Ro»): a phrase that contains it does not find it.
     private const int MinCityLengthForPhrase = 4;
 
-    // The countries CasaZen has houses in (IT and CH, ADR-001-R7), by the ids of what a visitor types for them (see DestinationId).
     private static readonly IReadOnlyDictionary<string, string> CountryNames = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["italia"] = "IT",
@@ -301,7 +266,6 @@ public static class PublicStayPlanner
         if (!lenient || wanted.Length == 0)
             return false;
 
-        // The country, by the names people use for it: «svizzera» or «switzerland» find the houses in Switzerland.
         if (CountryNames.TryGetValue(wanted, out var country))
             return string.Equals(house.Country, country, StringComparison.OrdinalIgnoreCase);
 
@@ -310,7 +274,6 @@ public static class PublicStayPlanner
             || ZoneIds(house).Any(zone => zone.Contains(wanted, StringComparison.Ordinal));
     }
 
-    /// <summary>The zone the host wrote, in both languages, as ids comparable with a typed place.</summary>
     private static IEnumerable<string> ZoneIds(PublicStayHouse house)
     {
         if (house.Zone is not { } zone)
@@ -331,8 +294,6 @@ public static class PublicStayPlanner
             && (criteria.MaxPrice is not { } max || perNight <= StayPricing.ToCents(max));
     }
 
-    // ─── A house for the dates asked ────────────────────────────────────────────────────────────────
-
     private static PublicStayCard CardForStay(
         PublicStayHouse house,
         PublicStayData data,
@@ -347,8 +308,6 @@ public static class PublicStayPlanner
         var rules = RulesOf(data, house.Id);
         var party = criteria.Adults + criteria.Children;
 
-        // The rules of the nights (NF-36) are judged by the check the quote and the checkout use, so what the list offers the checkout accepts.
-        // The advance of a rule counts the days from today on the clock of the house, the one the quote and the checkout read it on.
         var todayOfHouse = TodayOf(data, house);
         var violation = DayRuleStayChecks.FirstViolation(checkIn, checkOut, todayOfHouse, house.MinNights, rules);
         var reason = ReasonNotFree(house, data, criteria, party, checkIn, checkOut, taken, violation);
@@ -369,9 +328,6 @@ public static class PublicStayPlanner
         long? total = null;
         string? includes = null;
 
-        // A total only for a stay the quote of the checkout would price: in the future, not longer than the longest priced, for a party
-        // the house sleeps, respecting the rules of its nights (the minimum stay among them). Busy or not, the price of the stay is still the
-        // price of the stay.
         var quotable = checkIn >= data.Today
             && nights <= TouristTaxCalculator.MaxNights
             && party <= house.MaxGuests
@@ -385,7 +341,6 @@ public static class PublicStayPlanner
                 : criteria.Children > 0 && tax.AgeRulesApply ? PublicStayTaxStates.Estimated : PublicStayTaxStates.Exact;
         }
 
-        // What cancelling costs for this stay, on the policy of the house with what the host changed of it: the dates of the quote.
         var cancellation = house.CatalogPolicy is null
             ? null
             : PublicCancellation.StayOf(
@@ -393,7 +348,6 @@ public static class PublicStayPlanner
                 checkIn.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
                 data.Today);
 
-        // The minimum stay the card shows is the one of the night the stay arrives on: the rule of that night, else the minimum of the house.
         var minNightsOfArrival = rules.TryGetValue(checkIn, out var onArrival) && onArrival.MinNights is { } ruled ? ruled : house.MinNights;
         return Card(
             house,
@@ -403,11 +357,6 @@ public static class PublicStayPlanner
             cancellation);
     }
 
-    /// <summary>
-    /// Why the house is not free for the stay, in the order of the design (<c>stayEval</c>); <c>null</c> when it is. The rules of the nights
-    /// come after the nights taken: <paramref name="violation"/> is what <see cref="DayRuleStayChecks.FirstViolation"/> found, with the
-    /// minimum stay among them (<see cref="PublicStayReasons.MinNights"/>).
-    /// </summary>
     private static string? ReasonNotFree(
         PublicStayHouse house,
         PublicStayData data,
@@ -432,7 +381,6 @@ public static class PublicStayPlanner
         return violation is null ? null : ReasonOf(violation);
     }
 
-    /// <summary>The stable reason of a rule of the nights that a stay breaks.</summary>
     private static string ReasonOf(DayRuleViolation violation) => violation.Kind switch
     {
         DayRuleViolationKind.ArrivalClosed => PublicStayReasons.ArrivalClosed,
@@ -459,8 +407,6 @@ public static class PublicStayPlanner
         if (!rateCache.TryGetValue(key, out var rates))
             rateCache[key] = rates = data.TaxRates.Where(comune.Matches).ToList();
 
-        // The ages of the children are not known to a list: every child is counted at the oldest age a minor has, so a rate that charges
-        // some minors charges them (an upper bound, said so with «estimated»); a rate that does not look at ages gives the exact figure.
         IReadOnlyList<int>? ages = criteria.Children > 0 ? Enumerable.Repeat(EstimatedChildAge, criteria.Children).ToList() : null;
         return TouristTaxCalculator.Calculate(
             rates,
@@ -504,8 +450,6 @@ public static class PublicStayPlanner
         return null;
     }
 
-    // ─── A house without dates ──────────────────────────────────────────────────────────────────────
-
     private static PublicStayCard CardWithoutDates(PublicStayHouse house, PublicStayData data) =>
         Card(
             house,
@@ -513,7 +457,6 @@ public static class PublicStayPlanner
             new PublicStayAvailability(true, null, house.MinNights, null),
             new PublicStayPrice(house.Currency, FromPerNightCents(house, data), null, null));
 
-    /// <summary>The lowest night of the next <see cref="PublicSiteSearch.FromPriceDays"/> days: the «da X € a notte» of a house.</summary>
     private static long FromPerNightCents(PublicStayHouse house, PublicStayData data)
     {
         var hostPrices = HostPricesOf(data, house.Id);
@@ -560,9 +503,6 @@ public static class PublicStayPlanner
     private static IReadOnlyList<string> MainAmenitiesOf(PublicStayHouse house) =>
         MainAmenities.Where(house.Amenities.Contains).Take(MaxCardAmenities).Select(amenity => amenity.ToString()).ToList();
 
-    // ─── Order ──────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The free houses in the sort asked, then the others by name, as the design shows them.</summary>
     private static IReadOnlyList<PublicStayCard> Order(IReadOnlyList<PublicStayCard> cards, string sort, bool hasDates, bool platform = false)
     {
         var free = cards.Where(card => card.Availability.Available);
@@ -581,7 +521,6 @@ public static class PublicStayPlanner
                 .ThenBy(card => card.Name, ByName),
             PublicSiteSearch.Rating => ByRating(),
             PublicSiteSearch.Largest => free.OrderByDescending(card => card.AreaSqm ?? -1).ThenBy(card => card.Name, ByName),
-            // Across all the sites «recommended» is the best rated first (houses of many hosts have no order of their own); on a site, by name.
             _ => platform ? ByRating() : free.OrderBy(card => card.Name, ByName),
         };
 
@@ -591,12 +530,6 @@ public static class PublicStayPlanner
     private static readonly IComparer<string> ByName = Comparer<string>.Create(
         (a, b) => Italian.Compare(a, b, CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace));
 
-    // ─── Nearby dates ───────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// When no house is free: up to three ranges of the same length, a few days from the one asked, in which some house that could host the
-    /// party is (<c>altDates</c> of the design), with how many and the lowest price per night; oldest first.
-    /// </summary>
     private static List<PublicStayAlternative> Alternatives(
         IReadOnlyList<PublicStayHouse> pool,
         PublicStayData data,
@@ -606,7 +539,6 @@ public static class PublicStayPlanner
     {
         var party = criteria.Adults + criteria.Children;
 
-        // A house that cannot sleep the party, or take the pet, or be booked at all, is not helped by another date.
         var candidates = !data.AcceptsBookings
             ? []
             : pool.Where(house => party <= house.MaxGuests && (!criteria.Pets || house.AcceptsPets)).ToList();
@@ -624,8 +556,6 @@ public static class PublicStayPlanner
             var lowest = long.MaxValue;
             foreach (var house in candidates)
             {
-                // Another date helps a house only when its nights are free and the stay breaks no rule of its nights (NF-36), the minimum stay
-                // among them: the dates proposed are dates the checkout accepts.
                 if (AnyTaken(TakenOf(data, house.Id), start, end)
                     || DayRuleStayChecks.FirstViolation(start, end, todays[house.Id], house.MinNights, RulesOf(data, house.Id)) is not null)
                 {
@@ -647,14 +577,6 @@ public static class PublicStayPlanner
         return [.. found.OrderBy(alternative => alternative.CheckIn)];
     }
 
-    // ─── The days of the whole site ─────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// For each day from <paramref name="first"/> to <paramref name="to"/> (excluded): whether some house that sleeps the party is free for
-    /// the night and can start a stay on it, the cheapest night among those houses and the shortest minimum stay of that night (the "more
-    /// houses" mode of the date picker of the home). A house is left out of a night that is closed to arrival or out of the advance limits of
-    /// its rules (<see cref="DayRuleStayChecks.CanArriveOn"/>, NF-36), and its minimum stay is the one of that night.
-    /// </summary>
     public static IReadOnlyList<PublicSiteCalendarDay> SiteDays(
         IReadOnlyList<PublicStayHouse> houses,
         PublicStayData data,
@@ -691,9 +613,6 @@ public static class PublicStayPlanner
         return days;
     }
 
-    // ─── The places and the houses that look alike ──────────────────────────────────────────────────
-
-    /// <summary>The comuni of the houses, the most houses first.</summary>
     public static IReadOnlyList<PublicDestination> Destinations(IReadOnlyList<PublicStayHouse> houses)
     {
         ArgumentNullException.ThrowIfNull(houses);
@@ -701,7 +620,6 @@ public static class PublicStayPlanner
         return DestinationsOfCities(houses.Select(house => house.City));
     }
 
-    /// <summary>The same places from the written comuni of the houses alone (the platform lists them without loading the houses).</summary>
     public static IReadOnlyList<PublicDestination> DestinationsOfCities(IEnumerable<string> cities)
     {
         ArgumentNullException.ThrowIfNull(cities);
@@ -711,7 +629,6 @@ public static class PublicStayPlanner
             .GroupBy(DestinationId)
             .Select(group =>
             {
-                // The way the hosts wrote the comune most often (they may differ by an accent or a capital).
                 var comune = group.GroupBy(city => city.Trim()).OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal).First().Key;
                 return new PublicDestination(group.Key, comune, comune, group.Count());
             })
@@ -720,10 +637,6 @@ public static class PublicStayPlanner
             .ToList();
     }
 
-    /// <summary>
-    /// Up to <paramref name="max"/> other houses that look like <paramref name="target"/> (<c>similarTo</c> of the design): the same kind of
-    /// place (the labels they share: «mare», «con piscina»…), the same comune and a price near. The cards carry the «from» price, no stay.
-    /// </summary>
     public static IReadOnlyList<PublicStayCard> Similar(
         PublicStayHouse target,
         IReadOnlyList<PublicStayHouse> houses,
@@ -746,24 +659,17 @@ public static class PublicStayPlanner
             .ToList();
     }
 
-    // ─── Small helpers ──────────────────────────────────────────────────────────────────────────────
-
     private static IReadOnlySet<DateOnly> TakenOf(PublicStayData data, Guid houseId) =>
         data.Taken.TryGetValue(houseId, out var taken) ? taken : NoNights;
 
     private static IReadOnlyDictionary<DateOnly, decimal>? HostPricesOf(PublicStayData data, Guid houseId) =>
         data.HostPrices.TryGetValue(houseId, out var prices) ? prices : null;
 
-    /// <summary>
-    /// Today on the calendar of a house: the date it is now on its own clock (<see cref="DayRuleRules.TodayOf"/>), the way the quote and the checkout read it, so the
-    /// advance rules of the nights agree with them whatever the zone of the house. Without the instant of the search it is today in Rome.
-    /// </summary>
     private static DateOnly TodayOf(PublicStayData data, PublicStayHouse house) =>
         data.NowUtc is { } now
             ? DayRuleRules.TodayOf(house.Timezone, new DateTimeOffset(DateTime.SpecifyKind(now, DateTimeKind.Utc)))
             : data.Today;
 
-    /// <summary>The rules of the nights of a house; none for a house that has none (or when the search read none).</summary>
     private static IReadOnlyDictionary<DateOnly, DayRuleValues> RulesOf(PublicStayData data, Guid houseId) =>
         data.DayRules is not null && data.DayRules.TryGetValue(houseId, out var rules) ? rules : DayRuleStayChecks.NoRules;
 

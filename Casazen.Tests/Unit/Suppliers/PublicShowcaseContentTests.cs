@@ -23,7 +23,6 @@ public class PublicShowcaseContentTests
 {
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
-    // The words no public member of the content may carry as a field: contact data, ids, the bookkeeping, the status, the draft.
     private static readonly string[] ForbiddenFieldWords =
     [
         "phone", "email", "mail", "whatsapp", "vatnumber", "partitaiva", "address", "indirizzo", "iban", "orgid", "version", "createdat",
@@ -60,7 +59,6 @@ public class PublicShowcaseContentTests
         Assert.Equal(180, json.GetProperty("respondWithinMinutes").GetInt32());
         Assert.Equal("2026-10", json.GetProperty("privacyNoticeVersion").GetString());
 
-        // The order of the services orders `services`; it is not a member of the content.
         AssertNoForbiddenField(json.GetProperty("content"), "content");
         AssertNoForbiddenField(json.GetProperty("trust"), "trust");
     }
@@ -97,8 +95,6 @@ public class PublicShowcaseContentTests
         Assert.Equal(new[] { "bucato", "pulizia", "giardino" }, ShowcaseContentRules.ApplyServiceOrder(services, []).Select(s => s.Slug));
     }
 
-    // ─── Paused ──────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task APausedShowcase_OffersNoSlotAndNoEstimate_AnotherDoes()
     {
@@ -116,7 +112,6 @@ public class PublicShowcaseContentTests
         Assert.Equal(ShowcaseBookingErrors.Offline, slots.Code);
         Assert.Equal(ShowcaseBookingErrors.Offline, quote.Code);
 
-        // Not paused: the slots come as usual.
         showcase.Setup(s => s.IsPausedAsync(supplier, It.IsAny<CancellationToken>())).ReturnsAsync(false);
         showcase
             .Setup(s => s.GetSlotsAsync(supplier, "pulizia", It.IsAny<DateOnly?>(), It.IsAny<int?>(), false, It.IsAny<CancellationToken>()))
@@ -124,8 +119,6 @@ public class PublicShowcaseContentTests
         var result = await controller.GetSlots("fornitore", "pulizia", null, null, null, CancellationToken.None);
         Assert.IsType<OkObjectResult>(result.Result);
     }
-
-    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private static PublicSupplierController Controller(IPublicSupplierShowcaseService showcase) =>
         new(showcase, Mock.Of<IComuneDirectory>(), Mock.Of<ISupplierService>(), Mock.Of<IFeatureFlags>())

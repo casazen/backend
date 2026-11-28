@@ -23,7 +23,6 @@ public class MemberOnboardingIntegrationTests(CasazenWebApplicationFactory facto
     private const string ConsentVersion = "2026-06-v1";
     private const string OnboardingPath = "/api/users/onboarding";
 
-    /// <summary>Role id of the seeded short-rent <c>property_owner</c> (<c>AppDbContext</c> seed).</summary>
     private const int PropertyOwnerRoleId = 1;
 
     [Theory]
@@ -47,7 +46,6 @@ public class MemberOnboardingIntegrationTests(CasazenWebApplicationFactory facto
         Assert.NotEqual("MemberCannotOnboard", detail);
         Assert.Contains("collaboratore", detail, StringComparison.Ordinal);
 
-        // Nothing changed: still the collaborator role in short-rent, no host role, no rental type, same org.
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var memberships = await db.UserContextMemberships.AsNoTracking().Include(m => m.Role)
@@ -81,8 +79,6 @@ public class MemberOnboardingIntegrationTests(CasazenWebApplicationFactory facto
     [PostgresFact]
     public async Task Onboarding_OwnerOfTheOrgSwitchingRentalType_StillWorks()
     {
-        // The legitimate owner is not a member: its own role (property_owner) is the owner's, so it can change what it rents.
-        // PostgreSQL only: the roles it grants and revokes (long_term_landlord, property_owner) come from the migration seed.
         var ownerId = $"auth0|am00-owner-{Guid.NewGuid():N}";
         var org = await factory.SeedOrgForOwnerAsync(ownerId);
         using (var scope = factory.Services.CreateScope())
@@ -104,7 +100,6 @@ public class MemberOnboardingIntegrationTests(CasazenWebApplicationFactory facto
         var check = verify.ServiceProvider.GetRequiredService<AppDbContext>();
         var contexts = await check.UserContextMemberships.AsNoTracking()
             .Where(m => m.UserId == ownerId).Select(m => m.ContextKey).ToListAsync();
-        // AM-01: the onboarding also makes its caller the owner of the org (org member + account membership).
         Assert.Equal(["account", "long-rent"], contexts.Order());
         var member = await check.OrgMembers.IgnoreQueryFilters().AsNoTracking().SingleAsync(m => m.UserId == ownerId);
         Assert.Equal((org.Id, Casazen.Core.Entities.Enums.OrgRole.Owner), (member.OrgId, member.Role));
@@ -146,10 +141,6 @@ public class MemberOnboardingIntegrationTests(CasazenWebApplicationFactory facto
             : client.PostAsJsonAsync(OnboardingPath, body);
     }
 
-    /// <summary>
-    /// A collaborator of the org: onboarded for it (PL-02), no host role of its own (<c>UserRole.None</c>), and a
-    /// short-rent DB membership of a custom, non-owner role with real permissions.
-    /// </summary>
     private async Task<(string UserId, int RoleId, string RoleKey)> SeedCollaboratorAsync(Guid orgId)
     {
         var userId = $"auth0|am00-collaborator-{Guid.NewGuid():N}";

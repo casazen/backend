@@ -232,8 +232,6 @@ public class AutopilotMessageWriterTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => rig.Writer.WriteAsync(Org, Variants, null, cancelled.Token));
     }
 
-    // ─── The prompt and the reading of the answer ────────────────────────────────
-
     [Fact]
     public void Parse_OfSeveralObjects_TheLastOneThatHoldsATextIsTheAnswer()
     {

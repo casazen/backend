@@ -8,11 +8,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Canone concordato helpers of the lease form. The property is authorized as a <see cref="Casazen.Core.Authorization.HostResource"/>
-/// with <see cref="LeaseOperations.Read"/> (TN-3): its owner or an org-wide member of its org with <c>lease.read</c>;
-/// another org's property answers 404, a property of the org the caller may not handle 403.
-/// </summary>
 [ApiController]
 [Route("api/properties/{propertyId:guid}/canone-concordato")]
 [Authorize(Policy = CasazenPolicies.LeaseRead)]
@@ -50,10 +45,6 @@ public class CanoneConcordatoController(
         return result is null ? NotFound() : Ok(result);
     }
 
-    /// <summary>
-    /// Zones of the territorial agreement of the property's comune (A7-24): the calculator offers them as a select,
-    /// never free text, so the value always matches a zone the agreement actually defines.
-    /// </summary>
     [HttpGet("zones")]
     public async Task<IActionResult> GetZones(Guid propertyId, CancellationToken cancellationToken)
     {
@@ -64,7 +55,6 @@ public class CanoneConcordatoController(
         return result is null ? NotFound() : Ok(result);
     }
 
-    /// <summary>List signatory associations that can issue an attestazione di conformità. Contacts only.</summary>
     [HttpGet("attestation-guidance")]
     public async Task<IActionResult> GetAttestationGuidance(Guid propertyId, CancellationToken cancellationToken)
     {
@@ -88,10 +78,6 @@ public class CanoneConcordatoController(
     }
 }
 
-/// <summary>
-/// Query of <c>GET /api/properties/{id}/canone-concordato/eligibility</c> (LT-10): the unit characteristics and the lease
-/// dates. Appurtenances in square metres; element counts as defined by the territorial agreement.
-/// </summary>
 public sealed class CanoneConcordatoRangeQuery
 {
     [Range(0, 10_000)]
@@ -121,7 +107,6 @@ public sealed class CanoneConcordatoRangeQuery
     [Range(0, 100)]
     public int TypeDCount { get; set; }
 
-    /// <summary>D-elements among those the agreement lists for sub-fascia 3.</summary>
     [Range(0, 100)]
     public int QualifyingTypeDCount { get; set; }
 
@@ -134,15 +119,12 @@ public sealed class CanoneConcordatoRangeQuery
     [MaxLength(100)]
     public string? Zone { get; set; }
 
-    /// <summary>Cadastral sheet; when empty the property's own sheet is used.</summary>
     [MaxLength(20)]
     public string? Foglio { get; set; }
 
-    /// <summary>Start of the lease (date).</summary>
     [Required]
     public DateTime? StartDate { get; set; }
 
-    /// <summary>End of the lease (date, inclusive).</summary>
     [Required]
     public DateTime? EndDate { get; set; }
 

@@ -8,11 +8,8 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>The payer's side of the payment: the page of the link and the Stripe session, for the anonymous payer and for the signed-in host.</summary>
 public sealed partial class SupplierPaymentService
 {
-    // ─── The page of the link (anonymous) ────────────────────────────────────────────────────────────────────────────
-
     public async Task<PublicServicePayment> GetPublicAsync(Guid paymentId, string token, CancellationToken cancellationToken = default)
     {
         var payment = await FindByLinkAsync(paymentId, token, cancellationToken);
@@ -24,7 +21,6 @@ public sealed partial class SupplierPaymentService
             ServicePaymentStatus.Paid or ServicePaymentStatus.PartiallyRefunded or ServicePaymentStatus.Refunded => PublicServicePaymentState.Paid,
             ServicePaymentStatus.Processing or ServicePaymentStatus.NeedsReview => PublicServicePaymentState.Processing,
 
-            // The money CasaZen holds (SP-15c-a): the payer has paid (or the block is made), there is nothing left to pay.
             ServicePaymentStatus.Held or ServicePaymentStatus.Released or ServicePaymentStatus.Disputed or ServicePaymentStatus.TransferFailed
                 => PublicServicePaymentState.Paid,
             ServicePaymentStatus.Authorized => PublicServicePaymentState.Processing,
@@ -60,7 +56,6 @@ public sealed partial class SupplierPaymentService
         Guid hostOrgId,
         CancellationToken cancellationToken = default)
     {
-        // The live payment of the request that is this host's: any other (a request of another org, one without a payment) is a 404.
         var found = await db.ServiceRequestPayments
             .AsNoTracking()
             .Where(p => p.ServiceRequestId == requestId && p.PayerOrgId == hostOrgId && p.Status != ServicePaymentStatus.Canceled)
@@ -70,10 +65,8 @@ public sealed partial class SupplierPaymentService
         return await OpenSessionAsync(found.ServiceRequestId, found.Id, token: null, hostOrgId, cancellationToken);
     }
 
-    /// <summary>The payment a link belongs to, read without tracking; a wrong id, a wrong token and an expired link are the same 404.</summary>
     private async Task<ServiceRequestPayment> FindByLinkAsync(Guid paymentId, string token, CancellationToken cancellationToken)
     {
-        // Anonymous: the token is the only access check. The payment is read by its id alone, then the token decides.
         var payment = await db.ServiceRequestPayments
             .AsNoTracking()
             .Where(p => p.Id == paymentId)
@@ -85,12 +78,6 @@ public sealed partial class SupplierPaymentService
         return payment;
     }
 
-    // ─── The session ─────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The PaymentIntent of a payment, created or reused under the payment lock of its request. The payment is read again after the
-    /// lock and the link (or the host) checked again: the webhook, the supplier or another session may have changed it meanwhile.
-    /// </summary>
     private async Task<ServicePaymentSession> OpenSessionAsync(
         Guid requestId,
         Guid paymentId,
@@ -98,8 +85,6 @@ public sealed partial class SupplierPaymentService
         Guid? hostOrgId,
         CancellationToken cancellationToken)
     {
-        // The model of a payment never changes (SP-15c-b): the money CasaZen holds is paid to the platform, with a session of its own; this
-        // method is the direct charge on the supplier's account (SP-15a). The model is read here without the lock and again, with it, below.
         var model = await db.ServiceRequestPayments
             .AsNoTracking()
             .Where(p => p.Id == paymentId && p.ServiceRequestId == requestId)
@@ -123,7 +108,6 @@ public sealed partial class SupplierPaymentService
             if (hostOrgId is { } host && payment.PayerOrgId != host)
                 throw PaymentNotFound();
 
-            // A payment that became a held one between the two reads cannot be paid on the supplier's account.
             if (payment.FundsModel == ServiceFundsModel.PlatformHeld)
                 throw NotPayable();
 
@@ -142,7 +126,6 @@ public sealed partial class SupplierPaymentService
                     throw NotPayable();
             }
 
-            // Requested or Failed: the supplier must still be able to take the payment.
             var supplier = await ReadSupplierAsync(payment.SupplierOrgId, cancellationToken);
             if (!supplier.CanReceivePayments)
                 throw SupplierNotReady();
@@ -174,7 +157,6 @@ public sealed partial class SupplierPaymentService
                 {
                     if (current is null || current.Status == "canceled")
                     {
-                        // Canceled, or gone with its account: nothing to reuse and nothing the payer could still pay.
                         payment.StripePaymentIntentId = null;
                     }
                     else

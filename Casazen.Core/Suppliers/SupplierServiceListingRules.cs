@@ -40,10 +40,6 @@ public sealed record SupplierServiceListingInput(
     bool UrgentEnabled = false,
     int? UrgentSurchargeCents = null);
 
-/// <summary>
-/// The content of a service after <see cref="SupplierServiceListingRules.Normalize"/>: trimmed, checked, and in the form
-/// that is stored (weekdays as a mask, lists without blanks and duplicates).
-/// </summary>
 public sealed record SupplierServiceListingContent(
     string Name,
     string Category,
@@ -64,10 +60,6 @@ public sealed record SupplierServiceListingContent(
     bool UrgentEnabled = false,
     int? UrgentSurchargeCents = null)
 {
-    /// <summary>
-    /// Writes the content into <paramref name="listing"/>. Not the slug, the status, the photos, the position or the
-    /// timestamps: those depend on what the service does with the row.
-    /// </summary>
     public void ApplyTo(SupplierServiceListing listing)
     {
         ArgumentNullException.ThrowIfNull(listing);
@@ -90,22 +82,10 @@ public sealed record SupplierServiceListingContent(
     }
 }
 
-/// <summary>
-/// The rules of a service of the supplier's catalog (SP-02): what is a valid value (the limits are in
-/// <see cref="SupplierServiceCatalogLimits"/>), when a service can be published, and how its slug is chosen. Pure
-/// functions, testable without a database. Errors are 422 <c>DomainRuleException</c>s (FD-05).
-/// </summary>
 public static partial class SupplierServiceListingRules
 {
-    /// <summary>Slug of a name without a usable character (only symbols, or empty).</summary>
     public const string SlugFallback = "servizio";
 
-    /// <summary>
-    /// Checks <paramref name="input"/> and returns it normalized. The category is checked first with
-    /// <see cref="ServiceCategories.Require"/> (422 <c>invalid_service_category</c>, like the profile, the invites and the
-    /// requests); every other value that is not valid is collected and refused together: 422
-    /// <see cref="SupplierServiceCatalogErrors.Invalid"/> naming all the fields.
-    /// </summary>
     public static SupplierServiceListingContent Normalize(SupplierServiceListingInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -149,7 +129,6 @@ public static partial class SupplierServiceListingRules
         if (input.SortOrder is { } sortOrder && sortOrder is < 0 or > SupplierServiceCatalogLimits.MaxSortOrder)
             AddOnce(invalid, SupplierServiceFields.SortOrder);
 
-        // The surcharge of an urgent request (SP-04c): 0 is an urgency for free, null is the supplier's default.
         if (input.UrgentSurchargeCents is { } urgentSurcharge && !SupplierUrgentRules.IsValidSurcharge(urgentSurcharge))
             AddOnce(invalid, SupplierServiceFields.UrgentSurchargeCents);
 
@@ -177,10 +156,6 @@ public static partial class SupplierServiceListingRules
             input.UrgentSurchargeCents);
     }
 
-    /// <summary>
-    /// What <paramref name="listing"/> lacks to be published (JSON field names, in a fixed order): a name, a known category,
-    /// a duration, and a price or the quote flag. Empty when it can be published.
-    /// </summary>
     public static IReadOnlyList<string> MissingForPublication(SupplierServiceListing listing)
     {
         ArgumentNullException.ThrowIfNull(listing);
@@ -197,7 +172,6 @@ public static partial class SupplierServiceListingRules
         return missing;
     }
 
-    /// <summary>422 <see cref="SupplierServiceCatalogErrors.NotPublishable"/> when <see cref="MissingForPublication"/> is not empty.</summary>
     public static void EnsurePublishable(SupplierServiceListing listing)
     {
         var missing = MissingForPublication(listing);
@@ -205,13 +179,8 @@ public static partial class SupplierServiceListingRules
             throw SupplierServiceCatalogErrors.NotPublishableFields(missing);
     }
 
-    /// <summary>The slug of <paramref name="name"/>: the rules of the showcase slug, with <see cref="SlugFallback"/>.</summary>
     public static string SlugFromName(string? name) => SupplierShowcaseSlug.FromName(name, SlugFallback);
 
-    /// <summary>
-    /// The name of a duplicate: <paramref name="name"/> followed by <paramref name="suffix"/> (a localized " (copia)"),
-    /// the name shortened to keep the result within <see cref="SupplierServiceCatalogLimits.NameMaxLength"/>.
-    /// </summary>
     public static string CopyName(string name, string? suffix)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -246,10 +215,6 @@ public static partial class SupplierServiceListingRules
         }
     }
 
-    /// <summary>
-    /// True when <paramref name="slug"/> is <paramref name="baseSlug"/> or <paramref name="baseSlug"/> with the numeric
-    /// suffix of a collision (<c>-2</c>): the slug a draft keeps when its name changes without changing its slug.
-    /// </summary>
     public static bool SlugFollowsName(string slug, string baseSlug)
     {
         if (string.Equals(slug, baseSlug, StringComparison.Ordinal))
@@ -369,7 +334,6 @@ public static partial class SupplierServiceListingRules
         return text;
     }
 
-    /// <summary>Control characters (other than line breaks and tabs where allowed) have no place in a text a customer reads.</summary>
     private static bool HasControlCharacters(string text, bool allowLineBreaks) =>
         text.Any(c => char.IsControl(c) && !(allowLineBreaks && c is '\n' or '\r' or '\t'));
 
@@ -379,7 +343,6 @@ public static partial class SupplierServiceListingRules
             fields.Add(field);
     }
 
-    /// <summary>Lowercase letters and digits in groups separated by one hyphen.</summary>
     [GeneratedRegex("^[a-z0-9]+(-[a-z0-9]+)*$")]
     private static partial Regex SupplementCode();
 }

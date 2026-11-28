@@ -23,7 +23,6 @@ internal sealed class PropertyKnowledgeEntryConfiguration : IEntityTypeConfigura
             .IsRequired(false)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // The entries of a property (or of the organization, PropertyId null) by topic.
         entity.HasIndex(e => new { e.OrgId, e.PropertyId, e.Topic })
             .HasDatabaseName("IX_PropertyKnowledgeEntries_OrgId_PropertyId_Topic");
     }
@@ -50,7 +49,6 @@ internal sealed class OrgAssistantRulesConfiguration : IEntityTypeConfiguration<
     }
 }
 
-/// <summary>The exceptions of a property to the rules of its organization (E05/F05/US01/T01): one row per property (unique index), gone with the property (cascade).</summary>
 internal sealed class PropertyAssistantSettingsConfiguration : IEntityTypeConfiguration<PropertyAssistantSettings>
 {
     public void Configure(EntityTypeBuilder<PropertyAssistantSettings> entity)
@@ -100,7 +98,6 @@ internal sealed class AssistantSituationSettingConfiguration : IEntityTypeConfig
     }
 }
 
-/// <summary>The lessons the assistant proposes (E05/F05/US01/T01, NF-66): the text is encrypted by <c>EncryptedColumns</c>; the proposals waiting for a decision are read by (organization, status).</summary>
 internal sealed class AssistantLessonConfiguration : IEntityTypeConfiguration<AssistantLesson>
 {
     public void Configure(EntityTypeBuilder<AssistantLesson> entity)
@@ -149,13 +146,11 @@ internal sealed class AssistantDecisionLogConfiguration : IEntityTypeConfigurati
             .IsUnique()
             .HasDatabaseName(AssistantDecisionLog.InboundMessageIndexName);
 
-        // The decisions of a property (or of the conversations that have none), newest first.
         entity.HasIndex(l => new { l.OrgId, l.PropertyId, l.CreatedAt })
             .HasDatabaseName("IX_AssistantDecisionLogs_OrgId_PropertyId_CreatedAt");
     }
 }
 
-/// <summary>The changes of trust level CasaZen proposes (E05/F05/US01/T01, NF-67): the proposals waiting for a decision are read by (organization, status); they go with their property (cascade).</summary>
 internal sealed class AssistantTrustProposalConfiguration : IEntityTypeConfiguration<AssistantTrustProposal>
 {
     public void Configure(EntityTypeBuilder<AssistantTrustProposal> entity)

@@ -34,8 +34,6 @@ public sealed class HostContactService(
             return;
         }
 
-        // The property the visitor was looking at, only when it really is a published property of this org: any other id is ignored,
-        // so a made-up one tells nothing and puts nothing in the email.
         string? propertyName = null;
         string? propertyUrl = null;
         if (message.PropertyId is { } propertyId)
@@ -63,7 +61,6 @@ public sealed class HostContactService(
             propertyUrl,
             message.Lang);
 
-        // The host answers by replying to the email: the answer goes to the visitor, the sender stays the configured one.
         var content = rendered with { ReplyTo = message.Email };
 
         var queued = emailQueue.Enqueue(org.ContactEmail, content, EmailTemplates.Names.HostContactMessage);

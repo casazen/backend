@@ -6,7 +6,6 @@ public static partial class EmailTemplates
 {
     public static partial class Names
     {
-        /// <summary>«A scheduled message needs your attention», to the host, when the preferences of the host ask for an email (E05/F07/US01, NF-71).</summary>
         public const string HostScheduledMessageIssue = "host-scheduled-message-issue";
     }
 
@@ -37,11 +36,6 @@ public static partial class EmailTemplates
             .Build("HostScheduledMessageIssue_Subject");
     }
 
-    /// <summary>
-    /// Push text of a scheduled message that needs the host (E05/F07/US01, NF-71): the lock screen says that a scheduled message did not go out (or went out at an unusual hour) and, when there is one,
-    /// for which property. Never the words of the message, the name of a guest, a link, a code or an address.
-    /// </summary>
-    /// <param name="propertyName">The property of the booking; <c>null</c> when it is gone.</param>
     public static PushText ScheduledMessageIssuePush(CultureInfo culture, string? propertyName)
     {
         var body = string.IsNullOrWhiteSpace(propertyName)

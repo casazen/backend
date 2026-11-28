@@ -11,7 +11,6 @@ using Moq;
 
 namespace Casazen.Tests.Unit;
 
-/// <summary>iCal services wired for unit tests (PC-10): default import window, no real network.</summary>
 internal static class ICalTestServices
 {
     public static ICalImportService ImportService(TimeProvider? clock = null, ICalImportOptions? options = null) =>

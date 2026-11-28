@@ -8,10 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Scheduling;
 
-/// <summary>
-/// E05/F07/US01/T02 (NF-71): the planner of the scheduled messages is pure and agrees with the time triggers of the routines (the moment the routine fires is the moment the host sees), it is right across
-/// the two days a year the clock changes, it never plans outside the send window, and it plans nothing for what a person has not activated.
-/// </summary>
 public class ScheduledMessagePlannerTests
 {
     private static readonly string Template = Guid.Parse("6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f").ToString();
@@ -60,7 +56,6 @@ public class ScheduledMessagePlannerTests
     [Fact]
     public void BeforeCheckin_IsTheMomentTheTimeTriggerFiresAt_TheTimeOfTheProperty_MinusTheOffset()
     {
-        // 20 November 2026, check-in from 15:00 Rome (UTC+1): 14:00 UTC, two days before = 18 November 14:00 UTC.
         var planned = Assert.Single(ScheduledMessagePlanner.Plan(
             Routine(RoutineEventType.BeforeCheckin, """{"days":2}"""),
             Stay(new DateOnly(2026, 11, 20), new DateOnly(2026, 11, 23), checkInFrom: new TimeOnly(15, 0)),
@@ -74,7 +69,6 @@ public class ScheduledMessagePlannerTests
     [Fact]
     public void AfterCheckout_AddsTheHoursToTheCheckOutTimeOfTheProperty()
     {
-        // Check-out by 10:00 Rome (UTC+1) on 23 November = 09:00 UTC, three hours after = 12:00 UTC.
         var planned = Assert.Single(ScheduledMessagePlanner.Plan(
             Routine(RoutineEventType.AfterCheckout, """{"hours":3}"""),
             Stay(new DateOnly(2026, 11, 20), new DateOnly(2026, 11, 23), checkOutBy: new TimeOnly(10, 0)),
@@ -105,10 +99,10 @@ public class ScheduledMessagePlannerTests
     /// twice (02:30 on 25 October 2026) has the answer <c>RomeCalendar</c> gives it.
     /// </summary>
     [Theory]
-    [InlineData(2026, 3, 29, 15, 0, 13)] // the day summer time starts: 15:00 is already UTC+2
-    [InlineData(2026, 3, 28, 15, 0, 14)] // the day before: UTC+1
-    [InlineData(2026, 10, 25, 15, 0, 14)] // the day summer time ends: 15:00 is UTC+1 again
-    [InlineData(2026, 10, 24, 15, 0, 13)] // the day before: UTC+2
+    [InlineData(2026, 3, 29, 15, 0, 13)]
+    [InlineData(2026, 3, 28, 15, 0, 14)]
+    [InlineData(2026, 10, 25, 15, 0, 14)]
+    [InlineData(2026, 10, 24, 15, 0, 13)]
     public void BeforeCheckin_AcrossTheDaylightSavingChanges_IsTheWallClockTimeOfTheProperty(int year, int month, int day, int hour, int minute, int expectedUtcHour)
     {
         var date = new DateOnly(year, month, day);
@@ -122,7 +116,6 @@ public class ScheduledMessagePlannerTests
     [Fact]
     public void ThePlanIsOnTheClockOfThePropertyNotOfRome()
     {
-        // A property in Lisbon (UTC+0 in winter): 15:00 there is 15:00 UTC.
         var planned = Assert.Single(ScheduledMessagePlanner.Plan(
             Routine(RoutineEventType.BeforeCheckin, "{}"),
             Stay(new DateOnly(2026, 11, 20), new DateOnly(2026, 11, 23), checkInFrom: new TimeOnly(15, 0), timezone: "Europe/Lisbon"),
@@ -134,14 +127,12 @@ public class ScheduledMessagePlannerTests
     [Fact]
     public void AMomentBeforeTheWindowWaitsForIt_AndOneAfterItWaitsForTheNextMorning()
     {
-        // 03:00 Rome on the day of the check-in (no time on the property, 02:00 after midnight): before the window, so 08:00 the same day (07:00 UTC).
         var early = Assert.Single(ScheduledMessagePlanner.Plan(
             Routine(RoutineEventType.BeforeCheckin, """{}"""),
             Stay(new DateOnly(2026, 11, 20), new DateOnly(2026, 11, 23), checkInFrom: new TimeOnly(3, 0)),
             Options));
         Assert.Equal(new DateTime(2026, 11, 20, 7, 0, 0, DateTimeKind.Utc), early.PlannedAtUtc);
 
-        // 23:00 Rome the evening before (check-in 15:00, 16 hours before): after the window, so 08:00 the next morning, which is the day of the check-in.
         var late = Assert.Single(ScheduledMessagePlanner.Plan(
             Routine(RoutineEventType.BeforeCheckin, """{"hours":16}"""),
             Stay(new DateOnly(2026, 11, 20), new DateOnly(2026, 11, 23), checkInFrom: new TimeOnly(15, 0)),
@@ -157,7 +148,6 @@ public class ScheduledMessagePlannerTests
             Routine(RoutineEventType.BeforeCheckin, "{}"),
             Stay(new DateOnly(2026, 11, 20), new DateOnly(2026, 11, 23), checkInFrom: new TimeOnly(15, 0)),
             tight));
-        // 15:00 Rome is after the window of 10-12: the next morning at 10:00 (09:00 UTC).
         Assert.Equal(new DateTime(2026, 11, 21, 9, 0, 0, DateTimeKind.Utc), planned.PlannedAtUtc);
 
         var upsideDown = new ScheduledMessageOptions { SendWindowFrom = new TimeOnly(22, 0), SendWindowTo = new TimeOnly(6, 0) };
@@ -197,7 +187,6 @@ public class ScheduledMessagePlannerTests
 
         Assert.Equal(confirmed, Assert.Single(ScheduledMessagePlanner.Plan(Routine(RoutineEventType.BookingConfirmed), booking, Options)).PlannedAtUtc);
 
-        // 02:00 UTC is 03:00 Rome: before the window, so 08:00 Rome (07:00 UTC) the same day.
         Assert.Equal(new DateTime(2026, 11, 12, 7, 0, 0, DateTimeKind.Utc), Assert.Single(ScheduledMessagePlanner.Plan(Routine(RoutineEventType.BookingNew), booking, Options)).PlannedAtUtc);
     }
 
@@ -228,10 +217,6 @@ public class ScheduledMessagePlannerTests
         Assert.Single(ScheduledMessagePlanner.Plan(Routine(RoutineEventType.BeforeCheckin), booking with { Status = BookingStatus.CheckedOut }, Options));
     }
 
-    /// <summary>
-    /// A stay that happens is the one definition of an active stay (<c>AlloggiatiStatusRules.ActiveBookingStatuses</c>, no no-show) for every status there is, so a status added later to it
-    /// is planned and one that is not in it never is: the planner keeps no list of its own.
-    /// </summary>
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -267,16 +252,12 @@ public class ScheduledMessagePlannerTests
         var from = new TimeOnly(8, 0);
         var to = new TimeOnly(21, 0);
 
-        Assert.True(ScheduledMessagePlanner.IsInsideWindow(new DateTime(2026, 11, 20, 7, 0, 0, DateTimeKind.Utc), rome, from, to)); // 08:00 Rome
-        Assert.True(ScheduledMessagePlanner.IsInsideWindow(new DateTime(2026, 11, 20, 20, 0, 0, DateTimeKind.Utc), rome, from, to)); // 21:00 Rome
-        Assert.False(ScheduledMessagePlanner.IsInsideWindow(new DateTime(2026, 11, 20, 6, 59, 0, DateTimeKind.Utc), rome, from, to)); // 07:59 Rome
-        Assert.False(ScheduledMessagePlanner.IsInsideWindow(new DateTime(2026, 11, 20, 22, 0, 0, DateTimeKind.Utc), rome, from, to)); // 23:00 Rome
+        Assert.True(ScheduledMessagePlanner.IsInsideWindow(new DateTime(2026, 11, 20, 7, 0, 0, DateTimeKind.Utc), rome, from, to));
+        Assert.True(ScheduledMessagePlanner.IsInsideWindow(new DateTime(2026, 11, 20, 20, 0, 0, DateTimeKind.Utc), rome, from, to));
+        Assert.False(ScheduledMessagePlanner.IsInsideWindow(new DateTime(2026, 11, 20, 6, 59, 0, DateTimeKind.Utc), rome, from, to));
+        Assert.False(ScheduledMessagePlanner.IsInsideWindow(new DateTime(2026, 11, 20, 22, 0, 0, DateTimeKind.Utc), rome, from, to));
     }
 
-    /// <summary>
-    /// What the AI judges when the routine fires is the engine's, not the plan's: an action with an <c>aiCondition</c> is neither foreseen nor evaluated (the other messages of the routine are planned as ever),
-    /// and a routine with an objective for its agent plans nothing.
-    /// </summary>
     [Fact]
     public void AnActionWithAnAiCondition_IsNotPlanned_AndARoutineWithAnAgentObjective_PlansNothing()
     {
@@ -290,10 +271,6 @@ public class ScheduledMessagePlannerTests
         Assert.Single(ScheduledMessagePlanner.Plan(Routine(RoutineEventType.BeforeCheckin, """{"days":1}""", agentObjective: "   "), booking, Options));
     }
 
-    /// <summary>
-    /// The campaign marker is read as the guardrail of the engine reads it (<c>RoutineAction.IsOnUnlessFalse</c>): anything but the JSON <c>false</c> marks a campaign, so a marker that is not spelled as
-    /// a boolean never lets a message through without the consent.
-    /// </summary>
     [Theory]
     [InlineData("""{"templateId":"__T__","isCampaign":true}""", true)]
     [InlineData("""{"templateId":"__T__","isCampaign":"false"}""", true)]
@@ -316,13 +293,11 @@ public class ScheduledMessagePlannerTests
     {
         var withCondition = $$$"""[{"type":"MessageToGuest","config":{"templateId":"{{{Template}}}","aiCondition":"x"}}]""";
 
-        // An event that cannot be foreseen, an agent objective and an aiCondition belong to the engine; a message of a time trigger with none of them is the plan's.
         Assert.True(ScheduledMessagePlanner.IsEngineOwned(Routine(RoutineEventType.PaymentSucceeded), 0));
         Assert.True(ScheduledMessagePlanner.IsEngineOwned(Routine(RoutineEventType.BeforeCheckin, """{"days":1}""", agentObjective: "Only for guests who come from abroad"), 0));
         Assert.True(ScheduledMessagePlanner.IsEngineOwned(Routine(RoutineEventType.BeforeCheckin, """{"days":1}""", withCondition), 0));
         Assert.False(ScheduledMessagePlanner.IsEngineOwned(Routine(RoutineEventType.BeforeCheckin, """{"days":1}"""), 0));
 
-        // A routine that is off or in test mode, an index past the actions and an action that is not a message are not the engine's: the plan closes those rows.
         Assert.False(ScheduledMessagePlanner.IsEngineOwned(Routine(RoutineEventType.PaymentSucceeded, active: false), 0));
         Assert.False(ScheduledMessagePlanner.IsEngineOwned(Routine(RoutineEventType.PaymentSucceeded, testMode: true), 0));
         Assert.False(ScheduledMessagePlanner.IsEngineOwned(Routine(RoutineEventType.PaymentSucceeded), 3));

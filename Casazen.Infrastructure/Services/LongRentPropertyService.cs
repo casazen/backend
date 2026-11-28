@@ -41,7 +41,6 @@ public sealed class LongRentPropertyService(
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(query);
 
-        // Nothing is known of the state of a property whose leases the caller may not read: a view of the let or the free ones holds nothing.
         if (!includeLeases && query.View != LongRentPropertyView.All)
             return [];
 
@@ -132,11 +131,6 @@ public sealed class LongRentPropertyService(
 
     private static bool Contains(string? value, string term) => value is not null && value.Contains(term, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// The certificate as the contract needs it: identified when one document has both its code and its energy class (the rule the lease
-    /// draft and <see cref="ApeComplianceService"/> both accept without reading the file again), the class being the one of the latest such
-    /// document; to be confirmed when there are documents and none is identified; missing without any.
-    /// </summary>
     private static (LongRentApeStatus Status, string? EnergyClass) ApeOf(IEnumerable<(string? Code, string? EnergyClass, DateTime UploadedAt)> documents)
     {
         var all = documents.ToList();
@@ -149,7 +143,6 @@ public sealed class LongRentPropertyService(
         return (all.Count > 0 ? LongRentApeStatus.ToConfirm : LongRentApeStatus.Missing, null);
     }
 
-    /// <summary>The lease that holds the property and, only when none does, the lease on its way that was touched last.</summary>
     private static (LeaseSummaryDto? Current, LeaseSummaryDto? Preparing) LeasesOf(IEnumerable<LeaseSummaryDto> own, DateOnly today)
     {
         var all = own.ToList();
@@ -170,10 +163,6 @@ public sealed class LongRentPropertyService(
         return (null, preparing);
     }
 
-    /// <summary>
-    /// The day the property is free again, when the lease in force does not go on: a notice or an early termination is recorded, or its type
-    /// does not renew. A lease nobody gave notice of renews by itself, so the property stays let and there is no such day.
-    /// </summary>
     private static DateOnly? FreeFrom(LeaseSummaryDto lease)
     {
         var ends = lease.NoticeOn is not null || lease.TerminatedOn is not null || !LeaseRenewal.Renews(lease.ContractType);

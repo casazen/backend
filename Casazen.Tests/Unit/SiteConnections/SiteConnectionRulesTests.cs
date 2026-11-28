@@ -151,7 +151,6 @@ public class SiteConnectionRulesTests
         Assert.False(SiteConnectionTokens.IsCredential("czs_short"));
         Assert.False(SiteConnectionTokens.IsCredential(credential + "\n"));
 
-        // SHA-256 of "abc" (FIPS 180-2), lowercase hex.
         Assert.Equal("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", SiteConnectionTokens.Hash("abc"));
         Assert.True(SiteConnectionTokens.HashMatches(SiteConnectionTokens.Hash(credential), credential));
         Assert.False(SiteConnectionTokens.HashMatches(SiteConnectionTokens.Hash(credential), SiteConnectionTokens.NewCredential()));
@@ -161,7 +160,6 @@ public class SiteConnectionRulesTests
     [Fact]
     public void S256_IsTheExampleOfRfc7636_ComparedWithTheChallenge()
     {
-        // RFC 7636, appendix B.
         const string verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
         const string challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
 

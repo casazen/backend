@@ -2,7 +2,6 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
-/// <summary>The wizard steps a listing can lack data in (<see cref="ListingChannelStatus.Missing"/>): «Fix» opens the step that owns the missing data.</summary>
 public static class ListingStatusSteps
 {
     /// <summary>The data of the property: address and comune, rooms and beds, the CIN where the channel asks for it.</summary>
@@ -10,7 +9,6 @@ public static class ListingStatusSteps
 
     public const string Photos = "photos";
 
-    /// <summary>The Italian and English texts.</summary>
     public const string Descriptions = "descriptions";
 
     public const string Amenities = "amenities";
@@ -55,18 +53,11 @@ public sealed record ListingChannelStatus(
 /// <param name="CinNotSentTo">The content channels the CIN is not sent to: the CIN stays in CasaZen until D2 is answered, so every content channel says it (AC-NF30-2).</param>
 public sealed record ListingStatusView(Guid PropertyId, IReadOnlyList<ListingChannelStatus> Channels, IReadOnlyList<string> CinNotSentTo);
 
-/// <summary>The worst state of a property across its channels, for the property list.</summary>
-/// <param name="PropertyId">The property.</param>
-/// <param name="WorstStatus">The state that needs the most attention: to fix, then sending, accepted, draft, published, managed on the channel.</param>
-/// <param name="SyncAlert">At least one channel was not confirmed for more than 24 hours.</param>
 public sealed record ListingPropertySummary(Guid PropertyId, ChannelPublishStatus WorstStatus, bool SyncAlert);
 
-/// <summary>The person's choice about a change made outside CasaZen (NF-27).</summary>
 public enum OutsideChangeChoice
 {
-    /// <summary>Keep the CasaZen version: it is published again over the change (<c>overwrite</c>).</summary>
     Keep = 0,
 
-    /// <summary>Take the descriptions the channel manager holds: they become the texts of the listing in CasaZen.</summary>
     Take = 1,
 }

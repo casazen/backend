@@ -9,12 +9,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// The host's side of the verified reviews (DB-12a): the reviews of its properties, the one answer it may give to each, and the report
-/// to CasaZen. There is no way to hide or delete a review: only the staff takes one down, after a report. Reading needs
-/// <c>booking.read</c>, answering and reporting <c>booking.write</c>; what a caller sees follows its <see cref="HostScope"/> (in SQL) and
-/// a review of a property it does not reach answers 404, like a missing one.
-/// </summary>
 [ApiController]
 [Route("api/reviews")]
 [Authorize(Policy = CasazenPolicies.BookingRead)]
@@ -25,10 +19,6 @@ public class ReviewsController(
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService) : ControllerBase
 {
-    /// <summary>
-    /// The reviews of the properties the caller reaches, newest first, a page at a time, optionally those of one property. They carry
-    /// their state: <c>Published</c>, <c>Reported</c> (reported by the host, still public) or <c>Removed</c> (taken down by the staff).
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(PagedResultDto<HostReviewDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -53,10 +43,6 @@ public class ReviewsController(
         });
     }
 
-    /// <summary>
-    /// The answer of the host to a review, once, as written (at most 800 characters). 409 <c>review_reply_already_sent</c> when it
-    /// already answered; 422 <c>review_reply_invalid</c> for an empty text.
-    /// </summary>
     [HttpPost("{id:guid}/reply")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [ProducesResponseType(typeof(HostReviewDto), StatusCodes.Status200OK)]
@@ -71,10 +57,6 @@ public class ReviewsController(
         return Ok(HostReviewDto.From(await reviews.ReplyAsync(id, request.Text, cancellationToken)));
     }
 
-    /// <summary>
-    /// The report of a review to CasaZen, with a reason from the list and a note for the staff. The review stays public until the staff
-    /// decides. 409 <c>review_already_reported</c>: one report per review.
-    /// </summary>
     [HttpPost("{id:guid}/report")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [ProducesResponseType(typeof(HostReviewDto), StatusCodes.Status200OK)]
@@ -90,7 +72,6 @@ public class ReviewsController(
         return Ok(HostReviewDto.From(reported));
     }
 
-    // The review is authorized as a row of its property: org, permission and the caller's reach on the property.
     private async Task<bool> CanWriteAsync(Guid reviewId, CancellationToken cancellationToken)
     {
         var propertyId = await reviews.FindPropertyIdAsync(reviewId, cancellationToken);

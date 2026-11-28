@@ -2,7 +2,6 @@ using System.Net;
 using System.Text;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.OfficialData;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -14,7 +13,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
-using Casazen.Tests.Unit;
 
 namespace Casazen.Tests.Unit.OfficialData;
 
@@ -320,7 +318,6 @@ public class ComuneOfficialProfileServiceTests
         return response;
     }
 
-    /// <summary>Not a PDF: the extractor reads UTF-8 when the file is not <c>%PDF</c>, so tests stay off live HTTP.</summary>
     private static byte[] PdfWithText() =>
         Encoding.UTF8.GetBytes("Allegato A — Imposta di soggiorno. Locazioni brevi. Giunta 220 del 19/11/2024.");
 

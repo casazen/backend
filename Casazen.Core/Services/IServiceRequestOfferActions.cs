@@ -16,11 +16,6 @@ public record SendServiceRequestOfferCommand(
     DateTime? EndUtc = null,
     string? Note = null);
 
-/// <summary>
-/// The offer of the supplier on a request on measure (SP-10b-b), implemented by <c>ServiceRequestService</c> with the quote it is (decision
-/// SP-D30: one engine for the quote of a host and the offer of a showcase customer). A request that does not exist, belongs to another supplier
-/// or is not a request on measure is answered with the same 404, whatever the reason.
-/// </summary>
 public interface IServiceRequestOfferActions
 {
     /// <summary>
@@ -42,8 +37,5 @@ public interface IServiceRequestOfferActions
         SendServiceRequestOfferCommand command,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The supplier takes its offer back: the request stays new and the conversation goes on (no clock runs on the supplier).</summary>
-    /// <exception cref="Exceptions.NotFoundException">Not a request on measure of this supplier.</exception>
-    /// <exception cref="Exceptions.DomainRuleException"><see cref="ServiceRequestOfferErrors.NoOfferToWithdraw"/>, or the supplier is not active.</exception>
     Task<ServiceRequest> WithdrawOfferAsync(Guid id, Guid supplierOrgId, CancellationToken cancellationToken = default);
 }

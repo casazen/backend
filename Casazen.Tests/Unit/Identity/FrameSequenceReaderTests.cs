@@ -9,11 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// E72/F01/US01/T02 (NF-192, ADR-013-R2, R17, R22): the frames of a presence sequence are JPEG parts with timestamps that the server decodes in memory and holds only for
-/// the request. Each limit has its code (<c>presence_sequence_invalid</c> or <c>presence_sequence_too_large</c>), the first violation stops the intake and zeroes what was
-/// read, and a sequence that is disposed leaves no frame behind. The pictures are JPEG written by <see cref="TestJpeg"/> and read by the decoder of the application.
-/// </summary>
 public class FrameSequenceReaderTests
 {
     private static readonly DateTimeOffset Received = new(2026, 11, 27, 10, 0, 0, TimeSpan.Zero);
@@ -40,7 +35,6 @@ public class FrameSequenceReaderTests
             Assert.Equal(32 * 24 * 3, frame.Image.Rgb.Length);
         });
 
-        // The picture is the one that was sent: a gray one (red, green and blue agree) close to the pixels the test wrote.
         var rgb = sequence.Frames[0].Image.Rgb;
         double difference = 0;
         for (var pixel = 0; pixel < first.Length; pixel++)
@@ -201,7 +195,6 @@ public class FrameSequenceReaderTests
     [Fact]
     public async Task ReadAsync_AFrameOverThePixelLimitOfTheDecoder_IsTooLarge()
     {
-        // 32 x 24 is 768 pixels: the decoder is given 500, and the header says so before any pixel is decoded.
         var result = await Reader(maxPixels: 500).ReadAsync([Part(TestJpeg.Noise(32, 24, 13))], "[0]", Received, CancellationToken.None);
 
         Assert.Equal(IdentityApiErrors.PresenceSequenceTooLarge, result.ErrorCode);
@@ -271,7 +264,6 @@ public class FrameSequenceReaderTests
     [Fact]
     public async Task FrameSequence_Dispose_ZeroesEveryBuffer()
     {
-        // Privacy (ADR-013-R2, R17): the frames never outlive the request. The test holds the very arrays the application held, to look inside them after Dispose.
         var result = await Reader().ReadAsync([Part(TestJpeg.Noise(32, 24, 21)), Part(TestJpeg.Noise(32, 24, 22))], "[0,100]", Received, CancellationToken.None);
         var sequence = result.Sequence!;
         var jpegs = sequence.Frames.Select(frame => frame.Jpeg).ToList();
@@ -318,7 +310,6 @@ public class FrameSequenceReaderTests
 
     private static FramePart Part(RecordingStream stream) => new(stream, stream.Size, "image/jpeg");
 
-    /// <summary>A stream that counts its reads and keeps the arrays the reader asked it to fill, to look inside them afterwards.</summary>
     private sealed class RecordingStream(byte[] content, Action? onEnd = null) : Stream
     {
         private readonly MemoryStream _inner = new(content);
@@ -329,7 +320,6 @@ public class FrameSequenceReaderTests
 
         private List<byte[]> Buffers { get; } = [];
 
-        /// <summary>The arrays of exactly <paramref name="length"/> bytes that the reader filled (not the one-byte probe).</summary>
         public IReadOnlyList<byte[]> BuffersOf(int length) => [.. Buffers.Where(buffer => buffer.Length == length)];
 
         public override bool CanRead => true;

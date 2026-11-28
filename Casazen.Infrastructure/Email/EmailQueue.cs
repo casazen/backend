@@ -6,11 +6,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Email;
 
-/// <summary>A rendered email: plain-text subject and complete HTML document.</summary>
-/// <param name="ReplyTo">
-/// Where an answer to the email goes, when it is not the sender: the address of a visitor who wrote to the host through the booking
-/// site (DB-03b). <c>null</c> for every other email, which is queued exactly as before.
-/// </param>
 public sealed record EmailContent(string Subject, string HtmlBody, string? ReplyTo = null)
 {
     public AccountInvitationEmail? AccountInvitation { get; init; }
@@ -23,14 +18,9 @@ public sealed record EmailContent(string Subject, string HtmlBody, string? Reply
     /// </summary>
     public string? FromName { get; init; }
 
-    /// <summary>
-    /// The check-in link this e-mail carries (E23/F02/US01/T01: the confirmation of a direct booking whose check-in is open): its delivery is the delivery of the link, so the job that
-    /// sends it (<see cref="BookingConfirmationEmailJob"/>) writes the real outcome on the session and on the delivery row of the booking. <c>null</c> for every other e-mail.
-    /// </summary>
     public CheckInLinkEmail? CheckInLink { get; init; }
 }
 
-/// <summary>The booking and the check-in session of the link an e-mail carries (<see cref="EmailContent.CheckInLink"/>). Ids only: never the token.</summary>
 public sealed record CheckInLinkEmail(Guid BookingId, Guid SessionId);
 
 /// <summary>
@@ -70,13 +60,8 @@ public sealed class HangfireEmailQueue(
 
         try
         {
-            // An email without a reply-to goes through the job it always went through, so the jobs already waiting in the queue during a
-            // deploy still find their method; the reply-to has a job of its own.
             var replyTo = string.IsNullOrWhiteSpace(content.ReplyTo) ? null : content.ReplyTo.Trim();
-            // An e-mail to a guest with the brand of its host is sent in the host's name (E50/F01/US03/T01): the sender's display name is the host's, the address of the sender is
-            // not. Such an e-mail has jobs of its own (new methods: the jobs already waiting in the queue during a deploy keep the signature they were queued with).
             var fromName = GuestEmailBranding.CleanName(content.FromName);
-            // The e-mail that carries a check-in link has a job of its own, which records on the session whether the link really left (E23/F02/US01/T01).
             var jobId = content.CheckInLink is { } checkInLink
                 ? fromName is null && replyTo is null
                     ? backgroundJobClient.Enqueue<BookingConfirmationEmailJob>(job =>
@@ -106,11 +91,6 @@ public sealed class HangfireEmailQueue(
     }
 }
 
-/// <summary>
-/// Hangfire job that hands one queued email to <see cref="IEmailService"/>. Transient provider errors are retried;
-/// after the last attempt, or on a permanent error, the job is removed so the recipient and body do not stay in the
-/// Hangfire tables (each failure is logged).
-/// </summary>
 public sealed class EmailDeliveryJob(
     IEmailService emailService,
     ILogger<EmailDeliveryJob> logger,
@@ -122,7 +102,6 @@ public sealed class EmailDeliveryJob(
     public Task SendAsync(string to, string subject, string htmlBody, string template) =>
         DeliverAsync(to, subject, htmlBody, template, replyTo: null);
 
-    /// <summary>The same with an address to answer to (DB-03b): the job of an email that has a reply-to.</summary>
     [AutomaticRetry(Attempts = MaxAttempts, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
     public Task SendWithReplyToAsync(string to, string subject, string htmlBody, string template, string replyTo) =>
         DeliverAsync(to, subject, htmlBody, template, replyTo);

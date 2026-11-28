@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Suppliers;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
@@ -30,8 +29,6 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         ]
         """;
 
-    // ─── The page ────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Page_WithTheFlagOn_ListsThePublishedServicesOfTheSupplier_AndKeepsEverythingItHad()
     {
@@ -50,7 +47,6 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("noindex", response.Headers.GetValues("X-Robots-Tag").Single());
         var body = await ReadAsync(response);
-        // What the page had before SP-09.
         Assert.Equal(supplier.Slug, body.GetProperty("slug").GetString());
         Assert.Equal("Pulizie professionali per case vacanza.", body.GetProperty("bio").GetString());
         Assert.Equal(new[] { "cleaning" }, Strings(body.GetProperty("categories")));
@@ -67,7 +63,6 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         Assert.Equal(new[] { "Bagni e cucina" }, Strings(deep.GetProperty("included")));
         Assert.Equal(new[] { "Vetri esterni" }, Strings(deep.GetProperty("excluded")));
         Assert.Equal(new[] { "https://storage.test/servizio.jpg" }, Strings(deep.GetProperty("photoUrls")));
-        // The list shows cards: the description and the supplements are the detail's.
         Assert.False(deep.TryGetProperty("description", out _));
         Assert.False(deep.TryGetProperty("supplements", out _));
         AssertNoPrivateText(await response.Content.ReadAsStringAsync(), supplier.Secrets);
@@ -94,7 +89,6 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         using var client = factory.CreateClient();
         foreach (var minutes in new[] { 5, 10, 20, 30 })
             await PublicShowcaseTestData.SeedAnsweredRequestAsync(factory, supplier.OrgId, now, daysAgo: 3, minutes);
-        // Not counted: taken 95 days ago, and the answers of another supplier.
         await PublicShowcaseTestData.SeedAnsweredRequestAsync(factory, supplier.OrgId, now, daysAgo: 95, minutesToTake: 60);
         await PublicShowcaseTestData.SeedAnsweredRequestAsync(factory, other.OrgId, now, daysAgo: 3, minutesToTake: 1);
         Assert.False((await ReadAsync(await client.GetAsync($"/api/public/suppliers/{supplier.Slug}"))).TryGetProperty("medianResponseMinutes", out _));
@@ -102,10 +96,8 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         await PublicShowcaseTestData.SeedAnsweredRequestAsync(factory, supplier.OrgId, now, daysAgo: 1, minutesToTake: 600);
 
         var body = await ReadAsync(await client.GetAsync($"/api/public/suppliers/{supplier.Slug}"));
-        Assert.Equal(20, body.GetProperty("medianResponseMinutes").GetInt32()); // 5 10 20 30 600
+        Assert.Equal(20, body.GetProperty("medianResponseMinutes").GetInt32());
     }
-
-    // ─── One 404 ─────────────────────────────────────────────────────────────────
 
     public static TheoryData<string, string> Endpoints => new()
     {
@@ -154,8 +146,6 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         Assert.DoesNotContain("active", raw, StringComparison.OrdinalIgnoreCase);
     }
 
-    // ─── Services ────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Services_AreThePublishedOnesOfTheSupplier_InItsOrder_WithTheirTermsAndNothingTheConsoleKeeps()
     {
@@ -179,11 +169,9 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         Assert.Equal("PerHour", items[0].GetProperty("priceUnit").GetString());
         Assert.Equal(JsonValueKind.Null, items[1].GetProperty("priceFromCents").ValueKind);
         Assert.True(items[1].GetProperty("requiresQuote").GetBoolean());
-        // Each one in full, like the detail: with the structured supplements the estimate is computed from.
         Assert.Equal(5, items[0].GetProperty("supplements").GetArrayLength());
         Assert.Equal(0, items[1].GetProperty("supplements").GetArrayLength());
         Assert.Equal("Prima: descrizione lunga.", items[0].GetProperty("description").GetString());
-        // Nothing of the console's bookkeeping: no id, no status, no version, no position, no dates.
         var names = items[0].EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal).ToArray();
         Assert.Equal(
             new[]
@@ -211,8 +199,7 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         var supplements = body.GetProperty("supplements");
         Assert.Equal(new[] { "bagno", "ferro", "mq", "lenzuola", "ora" }, supplements.EnumerateArray().Select(s => s.GetProperty("code").GetString()));
         Assert.Equal(("Bagno in più", 1000, "bathroom", 3), (supplements[0].GetProperty("label").GetString(), supplements[0].GetProperty("amountCents").GetInt32(), supplements[0].GetProperty("per").GetString(), supplements[0].GetProperty("max").GetInt32()));
-        Assert.Equal(JsonValueKind.Null, supplements[1].GetProperty("max").ValueKind); // a flat supplement has no maximum
-        // Only the sqm30 supplement says from which surface it counts.
+        Assert.Equal(JsonValueKind.Null, supplements[1].GetProperty("max").ValueKind);
         Assert.Equal(60, supplements[2].GetProperty("includedSqm").GetInt32());
         Assert.All(new[] { 0, 1, 3, 4 }, index => Assert.False(supplements[index].TryGetProperty("includedSqm", out _)));
         AssertNoPrivateText(await response.Content.ReadAsStringAsync(), supplier.Secrets);
@@ -241,8 +228,6 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         Assert.Contains("\"code\":\"supplier_service_not_found\"", shapes[0]);
     }
 
-    // ─── Slots ───────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Slots_OfAFreshAgenda_AreTheOnesOfThePlanner_InUtcAndOnTheClockOfRome()
     {
@@ -258,11 +243,10 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         Assert.Equal(slug, body.GetProperty("service").GetString());
         Assert.Equal(120, body.GetProperty("durationMinutes").GetInt32());
         Assert.Equal("Europe/Rome", body.GetProperty("timeZone").GetString());
-        Assert.Equal("2026-11-16", body.GetProperty("bookableUntil").GetString()); // today plus the 35 days of the horizon
+        Assert.Equal("2026-11-16", body.GetProperty("bookableUntil").GetString());
         var days = body.GetProperty("days").EnumerateArray().ToList();
         Assert.Equal(14, days.Count);
         Assert.Equal("2026-10-12", days[0].GetProperty("date").GetString());
-        // Monday is inside the 24 hours of notice; Saturday and Sunday are rest days; the rest of the week has six slots.
         Assert.Equal(
             new[] { false, true, true, true, true, false, false, true, true, true, true, true, false, false },
             days.Select(d => d.GetProperty("available").GetBoolean()));
@@ -285,7 +269,6 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         var slug = await PublicShowcaseTestData.SeedServiceAsync(factory, supplier.OrgId);
         using var client = factory.CreateClient();
 
-        // 25 October is the Sunday the clocks go back; Monday 26 is on winter time (UTC+1).
         var body = await ReadAsync(await client.GetAsync($"/api/public/suppliers/{supplier.Slug}/slots?service={slug}&from=2026-10-24&days=3"));
 
         var days = body.GetProperty("days").EnumerateArray().ToList();
@@ -300,7 +283,6 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
     {
         var supplier = await PublicShowcaseTestData.SeedSupplierAsync(factory);
         var slug = await PublicShowcaseTestData.SeedServiceAsync(factory, supplier.OrgId);
-        // Tuesday 13: a host's request 10:00-12:00 Rome. Wednesday 14: a block 09:00-11:00 with a private label. Thursday 15: time off.
         var hostTexts = await PublicShowcaseTestData.SeedTimedRequestAsync(
             factory, supplier.OrgId, new DateTime(2026, 10, 13, 8, 0, 0, DateTimeKind.Utc), new DateTime(2026, 10, 13, 10, 0, 0, DateTimeKind.Utc));
         await PublicShowcaseTestData.SeedBlockAsync(
@@ -312,13 +294,10 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
 
         var raw = await response.Content.ReadAsStringAsync();
         var days = JsonDocument.Parse(raw).RootElement.GetProperty("days").EnumerateArray().ToList();
-        // Tuesday: the request plus 30 minutes on each side (09:30-12:30) leaves the afternoon only.
         Assert.Equal(
             new[] { "2026-10-13T12:00:00Z", "2026-10-13T13:00:00Z", "2026-10-13T14:00:00Z" },
             days[0].GetProperty("slots").EnumerateArray().Select(s => s.GetProperty("startUtc").GetString()));
-        // Wednesday: the block (09:00-11:00 plus the buffer, up to 11:30) leaves the afternoon.
         Assert.Equal(3, days[1].GetProperty("slots").GetArrayLength());
-        // Thursday: on leave. Friday: as usual. The day on leave looks like a rest day, with no reason.
         Assert.False(days[2].GetProperty("available").GetBoolean());
         Assert.Equal(0, days[2].GetProperty("slots").GetArrayLength());
         Assert.Equal(6, days[3].GetProperty("slots").GetArrayLength());
@@ -352,10 +331,9 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         var supplier = await PublicShowcaseTestData.SeedSupplierAsync(factory);
         var slug = await PublicShowcaseTestData.SeedServiceAsync(factory, supplier.OrgId);
         using var client = factory.CreateClient();
-        var url = $"/api/public/suppliers/{supplier.Slug}/slots?service={slug}&from=2026-10-16&days=1"; // Friday
+        var url = $"/api/public/suppliers/{supplier.Slug}/slots?service={slug}&from=2026-10-16&days=1";
 
         Assert.Equal(6, await CountSlotsAsync(client, url));
-        // The supplier blocks Friday morning: the page does not know for up to 30 seconds. A slot shown is not a promise.
         await PublicShowcaseTestData.SeedBlockAsync(
             factory, supplier.OrgId, new DateTime(2026, 10, 16, 7, 0, 0, DateTimeKind.Utc), new DateTime(2026, 10, 16, 11, 0, 0, DateTimeKind.Utc));
         factory.Clock.Advance(TimeSpan.FromSeconds(29));
@@ -389,7 +367,6 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
             problems.Add(problem);
         }
 
-        // The answers of the action say "noindex" like every other; a value the framework cannot even bind never reaches it.
         Assert.All(new[] { noService, blankService, zeroDays, tooManyDays }, bad => Assert.Equal("noindex", bad.Headers.GetValues("X-Robots-Tag").Single()));
         Assert.Contains("62", problems[3].GetProperty("detail").GetString());
         var inTheLimits = await client.GetAsync($"{url}?service={slug}&days=62");
@@ -448,14 +425,12 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         Assert.Equal(120, forA.GetProperty("durationMinutes").GetInt32());
         Assert.Contains(forA.GetProperty("days").EnumerateArray(), d => d.GetProperty("available").GetBoolean());
         Assert.Equal(60, forB.GetProperty("durationMinutes").GetInt32());
-        Assert.DoesNotContain(forB.GetProperty("days").EnumerateArray(), d => d.GetProperty("available").GetBoolean()); // B has no hours
+        Assert.DoesNotContain(forB.GetProperty("days").EnumerateArray(), d => d.GetProperty("available").GetBoolean());
     }
 
     [Fact]
     public async Task ASlugWithAControlCharacter_IsA404ForTheServiceOfTheSlotsAndTheEstimate_NeverA500()
     {
-        // A NUL cannot be sent to PostgreSQL (error 22021): on a real database a lookup with it would be a 500. The lookups
-        // of slugs refuse a control character before asking, so the answer is the plain "not found".
         var supplier = await PublicShowcaseTestData.SeedSupplierAsync(factory);
         await PublicShowcaseTestData.SeedServiceAsync(factory, supplier.OrgId);
         using var client = factory.CreateClient();
@@ -464,15 +439,12 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         var slotsInside = await client.GetAsync($"/api/public/suppliers/{supplier.Slug}/slots?service=pulizia%00profonda");
         var quote = await PostAsync(client, supplier.Slug, "quote", new { service = "\u0000" });
 
-        // (A NUL in the path itself never reaches the action: the host refuses the request target.)
         foreach (var response in new[] { slots, slotsInside, quote })
         {
             Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
             Assert.Equal("supplier_service_not_found", (await ReadAsync(response)).GetProperty("code").GetString());
         }
     }
-
-    // ─── The estimate ────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Quote_AServiceWithSupplements_IsAnEstimateOfTheBasePlusEachLine()
@@ -497,7 +469,7 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         Assert.True(body.GetProperty("isEstimate").GetBoolean());
         Assert.False(body.GetProperty("requiresQuote").GetBoolean());
         Assert.Equal(JsonValueKind.Null, body.GetProperty("reason").ValueKind);
-        Assert.Equal(9300, body.GetProperty("totalCents").GetInt32()); // 6000 + 2 x 1000 + 300 + 2 blocks x 500
+        Assert.Equal(9300, body.GetProperty("totalCents").GetInt32());
         Assert.Equal("EUR", body.GetProperty("currency").GetString());
         Assert.True(body.GetProperty("pricesIncludeVat").GetBoolean());
         Assert.Equal("Covered", body.GetProperty("coverage").GetString());
@@ -521,7 +493,7 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         var body = await ReadAsync(await PostAsync(client, supplier.Slug, "quote", new { service = undeclared }));
 
         Assert.False(body.GetProperty("pricesIncludeVat").GetBoolean());
-        Assert.Equal(6000, body.GetProperty("totalCents").GetInt32()); // nothing is added or taken off
+        Assert.Equal(6000, body.GetProperty("totalCents").GetInt32());
     }
 
     [Fact]
@@ -534,7 +506,7 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         var byDuration = await ReadAsync(await PostAsync(client, supplier.Slug, "quote", new { service = slug }));
         var byHours = await ReadAsync(await PostAsync(client, supplier.Slug, "quote", new { service = slug, quantity = 5 }));
 
-        Assert.Equal(7500, byDuration.GetProperty("totalCents").GetInt32()); // 150 minutes -> 3 hours
+        Assert.Equal(7500, byDuration.GetProperty("totalCents").GetInt32());
         Assert.Equal(12500, byHours.GetProperty("totalCents").GetInt32());
     }
 
@@ -590,7 +562,7 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         var payload = new
         {
             service = slug,
-            quantity = 5, // a price per job has no quantity
+            quantity = 5,
             options = new object[] { new { code = "bagno", quantity = 9 }, new { code = "non-esiste" } },
             postalCode = "12",
         };
@@ -642,10 +614,8 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         Assert.Equal(HttpStatusCode.BadRequest, garbage.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, empty.StatusCode);
         Assert.Equal(HttpStatusCode.UnsupportedMediaType, wrongType.StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, oversizedList.StatusCode); // more options than a service can have
+        Assert.Equal(HttpStatusCode.BadRequest, oversizedList.StatusCode);
     }
-
-    // ─── Privacy, cookies, robots ────────────────────────────────────────────────
 
     [Fact]
     public async Task EveryPublicAnswer_HasNoCookie_IsNotIndexable_AndHoldsNoPrivateText()
@@ -667,7 +637,7 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
             await client.GetAsync($"/api/public/suppliers/{supplier.Slug}/services/{slug}"),
             await client.GetAsync($"/api/public/suppliers/{supplier.Slug}/slots?service={slug}&days=30"),
             await PostAsync(client, supplier.Slug, "quote", new { service = slug, surfaceSqm = 90, comune = "H501" }),
-            await PostAsync(client, supplier.Slug, "quote", new { service = slug, quantity = 3 }), // a 422
+            await PostAsync(client, supplier.Slug, "quote", new { service = slug, quantity = 3 }),
             await client.GetAsync($"/api/public/suppliers/{supplier.Slug}/services/non-esiste"),
             await client.GetAsync("/api/public/suppliers/non-esiste/slots?service=x"),
         };
@@ -684,8 +654,6 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
         }
     }
 
-    // ─── Helpers ─────────────────────────────────────────────────────────────────
-
     private static async Task<int> CountSlotsAsync(HttpClient client, string url)
     {
         var body = await ReadAsync(await client.GetAsync(url));
@@ -701,7 +669,6 @@ public class PublicSupplierShowcaseIntegrationTests(PublicShowcaseFactory factor
             Content = method == "POST" ? JsonContent.Create(new { service = "pulizia" }) : null,
         });
 
-    /// <summary>What an answer shows, without what only the request changes (<c>traceId</c>, <c>instance</c>).</summary>
     private static async Task<string> ShapeAsync(HttpResponseMessage response)
     {
         var body = await ReadAsync(response);

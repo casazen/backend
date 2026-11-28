@@ -3,11 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>
-/// SP-15b, decision D2: a succeeded PaymentIntent makes a service payment "Pagato" only if the account, the amount received, the
-/// currency, the commission and the PaymentIntent are the ones the payment snapshotted. Every difference is named, so the admin
-/// who reviews it knows what to look at; nothing else is ever "paid".
-/// </summary>
 public class ServiceChargeVerificationTests
 {
     private static readonly ServiceChargeExpectation Expected = new("acct_supplier", "pi_1", 6_000, "eur", 600);

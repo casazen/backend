@@ -35,7 +35,6 @@ public class AddServiceRequestSchedulePostgresTests : IAsyncLifetime
         var (hostOrg, property, supplierOrg) = await SeedParentsAsync(db);
         var id = Guid.NewGuid();
 
-        // What the release before SP-04 writes: none of the new columns.
         await db.Database.ExecuteSqlAsync($"""
             INSERT INTO "ServiceRequests" ("Id", "OrgId", "PropertyId", "SupplierOrgId", "RentalContext", "Category", "Urgency", "Notes", "Status", "ChargeToGuest", "CreatedAt", "UpdatedAt")
             VALUES ({id}, {hostOrg}, {property}, {supplierOrg}, 0, 'cleaning', 0, '', 0, false, now(), now());
@@ -66,7 +65,6 @@ public class AddServiceRequestSchedulePostgresTests : IAsyncLifetime
         await AssertCheckViolationAsync(parents, "CK_ServiceRequests_ScheduledInterval", r => { r.ScheduledStartUtc = start; r.ScheduledEndUtc = start; });
         await AssertCheckViolationAsync(parents, "CK_ServiceRequests_ScheduledInterval", r => { r.ScheduledStartUtc = start; r.ScheduledEndUtc = start.AddMinutes(-1); });
 
-        // A valid interval, and none, are accepted.
         await SaveRequestAsync(parents, r => { r.ScheduledStartUtc = start; r.ScheduledEndUtc = start.AddMinutes(1); });
         await SaveRequestAsync(parents, _ => { });
     }
@@ -142,7 +140,6 @@ public class AddServiceRequestSchedulePostgresTests : IAsyncLifetime
 
         var stored = await db.ServiceRequests.IgnoreQueryFilters().AsNoTracking().SingleAsync(r => r.Id == requestId);
         Assert.Null(stored.ServiceListingId);
-        // The name the request kept is what the supplier and the host still read.
         Assert.Equal("Pulizia", stored.ServiceNameSnapshot);
     }
 
@@ -171,8 +168,8 @@ public class AddServiceRequestSchedulePostgresTests : IAsyncLifetime
         var status = await db.Database.SqlQuery<int>($"SELECT \"Status\" AS \"Value\" FROM \"ServiceRequests\" WHERE \"Id\" = {requestId}").SingleAsync();
         var cancelledBy = await db.Database.SqlQuery<int>($"SELECT \"CancelledBy\" AS \"Value\" FROM \"ServiceRequests\" WHERE \"Id\" = {requestId}").SingleAsync();
 
-        Assert.Equal(6, status); // Richiesto 0, PresoInCarico 1, InCorso 2, Completato 3, Pagato 4, Rifiutato 5, Annullato 6
-        Assert.Equal(1, cancelledBy); // Host 0, Supplier 1, System 2
+        Assert.Equal(6, status);
+        Assert.Equal(1, cancelledBy);
     }
 
     [PostgresFact]
@@ -187,8 +184,6 @@ public class AddServiceRequestSchedulePostgresTests : IAsyncLifetime
         Assert.Contains("(\"SupplierOrgId\", \"ScheduledStartUtc\")", definition);
         Assert.DoesNotContain("UNIQUE", definition, StringComparison.OrdinalIgnoreCase);
     }
-
-    // ─── helpers ───
 
     private sealed record Parents(Guid HostOrg, Guid Property, Guid SupplierOrg);
 
@@ -238,7 +233,6 @@ public class AddServiceRequestSchedulePostgresTests : IAsyncLifetime
         return (hostOrg.Id, property.Id, supplierOrg.Id);
     }
 
-    /// <summary>A request of the parents with the change applied, saved on a context of its own; returns its id.</summary>
     private async Task<Guid> SaveRequestAsync(Parents parents, Action<ServiceRequest> change)
     {
         await using var db = _database!.CreateContext();

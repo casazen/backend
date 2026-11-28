@@ -3,44 +3,31 @@ using Casazen.Core.Services;
 
 namespace Casazen.Core.Suppliers;
 
-/// <summary>Sizes of the words of a dispute (SP-15c-c).</summary>
 public static class ServiceDisputeLimits
 {
-    /// <summary>Longest text of a complaint, of a reply and of an admin's note, in characters. Plain text: no photos in v1 (VT-D12).</summary>
     public const int TextMaxLength = 1000;
 
-    /// <summary>The field names the API reports in <c>fields</c> for a text at fault.</summary>
     public const string ReasonField = "reason";
 
-    /// <inheritdoc cref="ReasonField"/>
     public const string TextField = "text";
 
-    /// <inheritdoc cref="ReasonField"/>
     public const string NoteField = "note";
 
-    /// <inheritdoc cref="ReasonField"/>
     public const string RefundField = "refundCents";
 }
 
-/// <summary>What <see cref="ServiceDisputeRules.CanReport"/> decides about a payer's complaint.</summary>
 public enum DisputeReportVerdict
 {
-    /// <summary>The work is completed and the time to report a problem has not ended: the money is stopped.</summary>
     Allowed,
 
-    /// <summary>The supplier never marked the work completed and the time agreed for it has ended (the no-show): the money is stopped.</summary>
     AllowedNoShow,
 
-    /// <summary>A complaint is already open on this payment: it is the same one (nothing new is written).</summary>
     AlreadyOpen,
 
-    /// <summary>The time is over: the payer said "all fine", the money is due, or it was paid to the supplier.</summary>
     WindowClosed,
 
-    /// <summary>The work is not completed and the time agreed for it has not ended (or no time was agreed): not yet.</summary>
     TooEarly,
 
-    /// <summary>There is nothing to complain about from here: no money held by CasaZen for this job, or a request that was not done and is not due.</summary>
     NotReportable,
 }
 
@@ -59,25 +46,17 @@ public sealed record DisputeReportFacts(
     DateTime? ScheduledEndUtc,
     bool HasOpenDispute);
 
-/// <summary>The decision of the amount an admin gives back to the payer (<see cref="ServiceDisputeRules.DecideRefund"/>).</summary>
 public enum DisputeRefundKind
 {
-    /// <summary>Give back <see cref="DisputeRefundDecision.AmountCents"/>.</summary>
     Refund,
 
-    /// <summary>Nothing is left of the supplier's part to give back (it was all refunded already): the decision stands with no money.</summary>
     NothingLeft,
 
-    /// <summary>The amount asked for is not a positive whole number of cents.</summary>
     Invalid,
 
-    /// <summary>The amount asked for is more than what is left of the supplier's part.</summary>
     Exceeds,
 }
 
-/// <summary>An amount to give back to the payer, or why it cannot be.</summary>
-/// <param name="Kind">What the amount asked for turned out to be.</param>
-/// <param name="AmountCents">The amount to give back (<see cref="DisputeRefundKind.Refund"/>), or the most that could be (<see cref="DisputeRefundKind.Exceeds"/>).</param>
 public readonly record struct DisputeRefundDecision(DisputeRefundKind Kind, int AmountCents);
 
 /// <summary>
@@ -96,9 +75,6 @@ public readonly record struct DisputeRefundDecision(DisputeRefundKind Kind, int 
 /// </remarks>
 public static class ServiceDisputeRules
 {
-    // ─── Names in the API ────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The names of the reasons in the API (<c>reason</c>).</summary>
     public static IReadOnlyList<string> ReasonNames { get; } = Enum.GetValues<ServiceDisputeReason>().Select(ReasonName).ToArray();
 
     public static string ReasonName(ServiceDisputeReason reason) => reason switch
@@ -110,7 +86,6 @@ public static class ServiceDisputeRules
         _ => "other",
     };
 
-    /// <summary>Reads the name of a reason as the API spells it (exactly, lowercase); anything else is not a reason.</summary>
     public static bool TryParseReason(string? value, out ServiceDisputeReason reason)
     {
         foreach (var candidate in Enum.GetValues<ServiceDisputeReason>())
@@ -126,7 +101,6 @@ public static class ServiceDisputeRules
         return false;
     }
 
-    /// <summary>Who opened the dispute, as the API names it: <c>customer</c>, <c>host</c> or <c>system</c>. The statuses are named as the enum names (<c>AwaitingSupplier</c>, <c>AwaitingDecision</c>, <c>ResolvedForSupplier</c>, <c>ResolvedForCustomer</c>, <c>Withdrawn</c>), like the statuses of the payments.</summary>
     public static string OpenerName(ServiceDisputeOpener opener) => opener switch
     {
         ServiceDisputeOpener.Customer => "customer",
@@ -134,7 +108,6 @@ public static class ServiceDisputeRules
         _ => "system",
     };
 
-    /// <summary>The outcome an admin picks (<c>for_supplier</c> or <c>for_customer</c>); anything else is not one.</summary>
     public static bool TryParseOutcome(string? value, out ServiceDisputeStatus outcome)
     {
         switch (value?.Trim())
@@ -151,47 +124,29 @@ public static class ServiceDisputeRules
         }
     }
 
-    // ─── Which state allows which action ─────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The dispute is not decided or withdrawn: the money it concerns is stopped.</summary>
     public static bool IsOpen(ServiceDisputeStatus status) =>
         status is ServiceDisputeStatus.AwaitingSupplier or ServiceDisputeStatus.AwaitingDecision;
 
-    /// <summary>The dispute ended, one way or another.</summary>
     public static bool IsResolved(ServiceDisputeStatus status) => !IsOpen(status);
 
-    /// <summary>The supplier may reply while the dispute is open and it has not replied (a reply after its time is still taken).</summary>
     public static bool CanReply(ServiceDisputeStatus status, bool alreadyReplied) => IsOpen(status) && !alreadyReplied;
 
-    /// <summary>The payer may take its complaint back while the dispute is open.</summary>
     public static bool CanWithdraw(ServiceDisputeStatus status) => IsOpen(status);
 
-    /// <summary>An admin decides a dispute that reached it; not one whose supplier still has time to reply.</summary>
     public static bool CanResolve(ServiceDisputeStatus status) => status == ServiceDisputeStatus.AwaitingDecision;
 
-    // ─── The time ────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The instant the supplier's time to reply ends.</summary>
     public static DateTime SupplierReplyDueAt(DateTime openedAt, TimeSpan replyTime) => openedAt + replyTime;
 
-    /// <summary>The instant the admins aim to have decided by, counted from the moment the dispute reached them.</summary>
     public static DateTime DecisionDueAt(DateTime reachedAt, TimeSpan target) => reachedAt + target;
 
-    /// <summary>The instant CasaZen opens the no-show complaint itself: <paramref name="noShowTime"/> after the end of the time agreed for the work.</summary>
     public static DateTime NoShowOpensAt(DateTime scheduledEndUtc, TimeSpan noShowTime) => scheduledEndUtc + noShowTime;
 
-    /// <summary>The supplier's time to reply has passed without a reply: the dispute goes to the admins.</summary>
     public static bool ReplyTermPassed(ServiceDisputeStatus status, DateTime supplierReplyDueAt, DateTime now) =>
         status == ServiceDisputeStatus.AwaitingSupplier && now >= supplierReplyDueAt;
 
-    /// <summary>The admins' target has passed and they were not told yet.</summary>
     public static bool DecisionOverdue(ServiceDisputeStatus status, DateTime? decisionDueAt, DateTime? alertedAt, DateTime now) =>
         status == ServiceDisputeStatus.AwaitingDecision && alertedAt is null && decisionDueAt is { } due && now >= due;
 
-    /// <summary>
-    /// The refund of a decision for the customer has not gone through: it was decided more than <paramref name="grace"/> ago, the payment has not
-    /// given back what was decided, no refund is waiting for Stripe, and the admins were not told yet.
-    /// </summary>
     public static bool RefundAlertDue(
         ServiceDisputeStatus status,
         DateTime? resolvedAt,
@@ -210,8 +165,6 @@ public static class ServiceDisputeRules
         && resolvedAt is { } at
         && now >= at + grace;
 
-    // ─── Whether a payer may complain ────────────────────────────────────────────────────────────────────────────────
-
     /// <summary>
     /// Decides whether the payer of a job may report a problem now. The order of the checks is the safety of the money: a dispute already open is the
     /// same one; only money CasaZen holds and has not released can be stopped; a completed job can be disputed until the money is due and never after
@@ -224,11 +177,9 @@ public static class ServiceDisputeRules
         if (facts.HasOpenDispute)
             return DisputeReportVerdict.AlreadyOpen;
 
-        // The money was released (or is being, or the supplier was paid some other way): the time is over.
         if (facts.PaymentStatus is ServicePaymentStatus.Released or ServicePaymentStatus.TransferFailed)
             return DisputeReportVerdict.WindowClosed;
 
-        // Only money CasaZen holds can be stopped; a card block, a payment under review, a refunded one or a decided dispute cannot.
         if (facts.PaymentStatus != ServicePaymentStatus.Held)
             return DisputeReportVerdict.NotReportable;
 
@@ -238,7 +189,6 @@ public static class ServiceDisputeRules
                 if (facts.ReleaseConfirmedAt is not null)
                     return DisputeReportVerdict.WindowClosed;
 
-                // A completed job always has the moment its money is due; one that has none yet (it cannot be released) can be disputed.
                 return facts.ReleaseAt is { } due && now >= due ? DisputeReportVerdict.WindowClosed : DisputeReportVerdict.Allowed;
 
             case ServiceRequestStatus.Pagato:
@@ -263,12 +213,6 @@ public static class ServiceDisputeRules
             ? facts.ReleaseAt
             : null;
 
-    // ─── The money of a decision ─────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// What an admin may give back to the payer of a payment: the supplier's part that is left — the price minus the commission, minus what was
-    /// refunded and what is being refunded. Never negative; the commission is never given back by a dispute.
-    /// </summary>
     public static int RefundableToPayer(int netCents, int refundedCents, int refundsInProgressCents) =>
         HeldPaymentRules.ReleasableCents(netCents, refundedCents, refundsInProgressCents);
 
@@ -293,32 +237,17 @@ public static class ServiceDisputeRules
             : new(DisputeRefundKind.Refund, requestedCents.Value);
     }
 
-    /// <summary>The total a payment must have given back for the decision to be done: what is refunded or being refunded, plus what was decided.</summary>
     public static int RefundTarget(int refundedCents, int refundsInProgressCents, int decidedCents) =>
         (int)Math.Min((long)refundedCents + refundsInProgressCents + decidedCents, int.MaxValue);
 
-    /// <summary>The refund of a decision is done: the payment has given back everything the decision asked for.</summary>
     public static bool RefundDone(int paymentRefundedCents, int refundTargetCents) => paymentRefundedCents >= refundTargetCents;
 
-    // ─── The penalty ─────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// What a decision costs the supplier in the ranking: a dispute lost, or a no-show when the supplier never marked the work completed. Nothing for a
-    /// decision for the supplier or a complaint taken back.
-    /// </summary>
     public static SupplierDisputePenaltyKind? PenaltyFor(ServiceDisputeStatus outcome, bool noShow) => outcome switch
     {
         ServiceDisputeStatus.ResolvedForCustomer => noShow ? SupplierDisputePenaltyKind.NoShow : SupplierDisputePenaltyKind.DisputeLost,
         _ => null,
     };
 
-    // ─── The words ───────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The text of a complaint, of a reply or of an admin's note: lines normalized, trimmed, at most <see cref="ServiceDisputeLimits.TextMaxLength"/>
-    /// characters and no control characters. <c>null</c> when there is none and none is <paramref name="required"/>.
-    /// </summary>
-    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">422 <see cref="ServiceDisputeErrors.Invalid"/> for <paramref name="field"/>.</exception>
     public static string? NormalizeText(string? text, bool required, string field)
     {
         var value = text?.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Trim();

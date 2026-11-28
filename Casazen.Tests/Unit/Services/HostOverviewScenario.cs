@@ -31,7 +31,6 @@ internal static class HostOverviewScenario
 
     private static DateTime At(int month, int day, int hour, int minute = 0) => new(2026, month, day, hour, minute, 0, DateTimeKind.Utc);
 
-    /// <summary>The stays of every property of the world: the two of the org and the one of the other org.</summary>
     public static async Task AddAsync(AppDbContext db, HostScopeWorld world)
     {
         AddTo(db, world.Granted, world.SupplierOrgId, arrivalDay: 9);
@@ -41,7 +40,6 @@ internal static class HostOverviewScenario
         db.ChangeTracker.Clear();
     }
 
-    /// <summary>The stays, payments, links, reports and interventions of one property (not saved).</summary>
     public static void AddTo(AppDbContext db, Property property, Guid supplierOrgId, int arrivalDay = 9)
     {
         var future = At(10, 15, 8);
@@ -105,7 +103,6 @@ internal static class HostOverviewScenario
         decimal total,
         int createdMinute)
     {
-        // The guest is named after the stay and its last name is the property's: a row is told apart by who it is, in both worlds.
         var guest = new Guest { OrgId = property.OrgId, FirstName = key, LastName = property.Name, Email = $"{key}-{Guid.NewGuid():N}@example.com" };
         var booking = new Booking
         {
@@ -187,7 +184,6 @@ internal static class HostOverviewScenario
         };
         if (proposal)
         {
-            // A proposal has its start, end and instant together (CK_ServiceRequests_ProposedInterval).
             request.ProposedStartUtc = At(10, 12, 8);
             request.ProposedEndUtc = At(10, 12, 10);
             request.ProposedAt = At(10, 8, 9);

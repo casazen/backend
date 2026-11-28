@@ -55,7 +55,6 @@ public interface ISelfBillingService
     /// </summary>
     Task<IReadOnlyList<SelfBillingRow>> ListAsync(Guid orgId, SelfBillingCriteria criteria, CancellationToken ct = default);
 
-    /// <summary>One TD17 with its lines, whatever its status (a replaced original too). 404 <c>fiscal_document_not_found</c> (another org, not a TD17).</summary>
     Task<SelfBillingDetail> GetAsync(Guid orgId, Guid documentId, CancellationToken ct = default);
 
     /// <summary>
@@ -67,7 +66,6 @@ public interface ISelfBillingService
     /// </summary>
     Task<SelfBillingDetail> IssueAsync(Guid orgId, Guid documentId, bool confirm, string? userId, CancellationToken ct = default, bool acceptEstimate = false);
 
-    /// <summary>The draft discarded (no number is consumed): its holder, portal and month are free for a new draft. 404 <c>fiscal_document_not_found</c>; 422 <c>document_not_draft</c>.</summary>
     Task DiscardDraftAsync(Guid orgId, Guid documentId, CancellationToken ct = default);
 
     /// <summary>
@@ -83,10 +81,6 @@ public interface ISelfBillingService
     /// </summary>
     Task<SelfBillingDetail> CloseNotDueAsync(Guid orgId, Guid documentId, string? reason, string? note, string? userId, CancellationToken ct = default);
 
-    /// <summary>
-    /// The organizations the monthly run looks at for <paramref name="year"/>-<paramref name="month"/> (FIX/BE-TD17-ALERTS): the active ones on the agency plan (not downgraded to reads only) that
-    /// have channel fee lines (<see cref="OwnerLedgerBalance.IsChannelFee"/>) in the owner ledger of the month, whatever the tenant of the caller; the organization is the key, never a request value.
-    /// </summary>
     Task<IReadOnlyList<Guid>> OrgsWithCommissionsAsync(int year, int month, CancellationToken ct = default);
 
     /// <summary>
@@ -103,17 +97,13 @@ public interface ISelfBillingService
     Task<SelfBillingMonthlyRun> RunMonthlyDraftsAsync(Guid orgId, int year, int month, CancellationToken ct = default);
 }
 
-/// <summary>Who a TD17 is made for.</summary>
 public enum SelfBillingHolderKind
 {
-    /// <summary>The agency holds the account (V2): the TD17 is the agency's.</summary>
     Agency = 1,
 
-    /// <summary>The owner holds the account (V1): the TD17 is an owner company's, issued through the agency.</summary>
     Owner = 2,
 }
 
-/// <summary>The filters of the list: a month (year and month together).</summary>
 public sealed record SelfBillingCriteria(int? Year = null, int? Month = null);
 
 /// <summary>One TD17 of the list: its holder, the portal, the month and its deadline, the amounts, the status and the state towards the SDI.</summary>
@@ -168,11 +158,6 @@ public sealed record SelfBillingRow(
     string? ClosedBy = null,
     string? ClosedNote = null);
 
-/// <summary>A TD17 with its lines (<see cref="Document"/>), its row and the estimate of its amount.</summary>
-/// <param name="EstimatedAmount">
-/// For a draft, the part of the taxable amount that comes from a rule of the agency or the default of the channel, not from the figure of the portal, as the plan gives it now (the same
-/// figure the issue asks to accept); 0 for a draft nothing estimates, for a draft the ledger no longer supports and for a document that is issued.
-/// </param>
 public sealed record SelfBillingDetail(FiscalDocument Document, SelfBillingRow Row, decimal EstimatedAmount);
 
 /// <summary>What the drafts of a month did.</summary>
@@ -209,35 +194,25 @@ public sealed record SelfBillingGeneration(
 /// <param name="Reason">One of <see cref="SelfBillingKeptReasons"/>, or the code of the failure of its holder (<c>owner_issuer_missing</c>, <c>issuer_profile_incomplete</c>).</param>
 public sealed record SelfBillingKept(Guid DocumentId, SelfBillingHolderKind HolderKind, Guid? HolderOwnerId, string PortalName, string? Number, string Reason);
 
-/// <summary>Why a draft that holds the number of a rejected TD17 is kept and cannot be issued (<see cref="SelfBillingKept.Reason"/>, <see cref="SelfBillingRow.KeptReason"/>): stable codes the frontend translates.</summary>
 public static class SelfBillingKeptReasons
 {
     /// <summary>The portal of the draft (its country and VAT number) is not an entry of <c>SelfBilling:Portals</c> any more, and no draft of the same legal name took its place: the entry is to be put right in the settings.</summary>
     public const string PortalNotConfigured = SelfBillingNotDueReasons.PortalNotConfigured;
 
-    /// <summary>The month gives this holder no TD17 for this portal now: its commissions were reversed, its stays are no longer active, or the holder is no longer subject to the TD17.</summary>
     public const string NotInLedger = "ledger_gives_no_td17";
 }
 
-/// <summary>
-/// Why a kept replacement draft is closed as «non più dovuta» (<see cref="ISelfBillingService.CloseNotDueAsync"/>, <see cref="SelfBillingRow.ClosedReason"/>, FIX/BE-TD17-JOB-EXIT): the three answers the
-/// person gives (R3 of the fiscal decisions of 2026-11-20), stable codes the frontend translates and the accountant package writes in words. The reason is mandatory: a number is never closed without one.
-/// </summary>
 public static class SelfBillingCloseReasons
 {
-    /// <summary>The portal issued a credit note of the invoice the TD17 integrated: nothing is left to integrate.</summary>
     public const string PortalCreditNote = "portal_credit_note";
 
     /// <summary>The holder is no longer a taxable person (it closed its VAT position, or the foreign invoice no longer concerns it): the TD17 is no longer due.</summary>
     public const string HolderNoLongerSubject = "holder_no_longer_subject";
 
-    /// <summary>The TD17 was a duplicate of another one, or made by mistake (a commission that was never charged).</summary>
     public const string DuplicateOrError = "duplicate_or_error";
 
-    /// <summary>Every reason, in the order the screen offers them.</summary>
     public static IReadOnlyList<string> All { get; } = [PortalCreditNote, HolderNoLongerSubject, DuplicateOrError];
 
-    /// <summary>The reason as the code it is stored with (trimmed, the case of the code never matters); <c>null</c> when it is blank or not one of <see cref="All"/>.</summary>
     public static string? Normalize(string? reason)
     {
         var trimmed = reason?.Trim();
@@ -254,10 +229,6 @@ public static class SelfBillingCloseReasons
 /// <param name="RefusedCodes">The distinct codes of their reasons, sorted (<c>owner_issuer_missing</c>, <c>issuer_profile_incomplete</c>): never a name, a VAT number or a field.</param>
 public sealed record SelfBillingMonthlyRun(int Year, int Month, bool AlreadyMade, int Created, int Updated, int OpenDrafts, int Refused, IReadOnlyList<string> RefusedCodes);
 
-/// <summary>One TD17 of a generation.</summary>
-/// <param name="Result">One of <see cref="SelfBillingResults"/>.</param>
-/// <param name="EstimatedAmount">The part of the taxable amount that comes from a rule of the agency or the default of the channel, not from the figure of the portal: to be checked against the invoice of the portal before the issue.</param>
-/// <param name="ChangedSinceIssue">The TD17 is issued and the ledger of the month now gives another taxable amount: it is not changed, the host is told.</param>
 public sealed record SelfBillingOutcome(
     Guid DocumentId,
     SelfBillingHolderKind HolderKind,
@@ -268,13 +239,10 @@ public sealed record SelfBillingOutcome(
     decimal EstimatedAmount,
     bool ChangedSinceIssue);
 
-/// <summary>A holder that needs a TD17 and cannot get one: the code of the reason (<c>owner_issuer_missing</c>, <c>issuer_profile_incomplete</c>) and the fields it misses.</summary>
 public sealed record SelfBillingFailure(SelfBillingHolderKind HolderKind, Guid? HolderOwnerId, string PortalName, string Code, IReadOnlyList<string> Fields);
 
-/// <summary>Commissions of the month that are not self-billed: the reason (<see cref="SelfBillingNotDueReasons"/>), the channel, the stays and the amount.</summary>
 public sealed record SelfBillingNotDue(string Reason, string Channel, int Stays, decimal Amount, string Currency);
 
-/// <summary>The results of the drafts of a month (<see cref="SelfBillingOutcome.Result"/>).</summary>
 public static class SelfBillingResults
 {
     public const string Created = "created";
@@ -282,10 +250,8 @@ public static class SelfBillingResults
     public const string AlreadyIssued = "already_issued";
 }
 
-/// <summary>Why the commissions of a month are not self-billed (<see cref="SelfBillingNotDue.Reason"/>): stable codes the frontend translates.</summary>
 public static class SelfBillingNotDueReasons
 {
-    /// <summary>The portal has no legal entity in <c>SelfBilling:Portals</c>: nothing can be invoiced on its behalf by a guess. The only reason that asks the host or the operator to act.</summary>
     public const string PortalNotConfigured = "portal_not_configured";
 
     /// <summary>V1, the owner is a private person: the portal charged the Italian VAT, there is nothing to integrate.</summary>
@@ -294,50 +260,28 @@ public static class SelfBillingNotDueReasons
     /// <summary>The holder is not in Italy (a Swiss agency, ⚖ I10): no TD17; the VAT summary of the package tells the purchase tax.</summary>
     public const string HolderNotItalian = "holder_not_italian";
 
-    /// <summary>The holder has no VAT number: it integrates nothing.</summary>
     public const string HolderNotVatRegistered = "holder_not_vat_registered";
 
-    /// <summary>The commission is not in euro: the TD17 of an Italian holder is in euro and nothing is converted by a guess.</summary>
     public const string CurrencyNotSupported = "currency_not_supported";
 
-    /// <summary>The booking of the commission is not a stay of a portal.</summary>
     public const string NotAPortal = "not_a_portal";
 
-    /// <summary>The booking of the commission is not in the registry any more.</summary>
     public const string StayNotFound = "stay_not_found";
 
-    /// <summary>
-    /// The booking of the commission is not active now (cancelled, a request or a hold, or marked no-show: <c>AlloggiatiStatusRules.ActiveBookingStatuses</c> and no no-show, the one
-    /// definition): the owner ledger is posted by hand, so the line of a stay that changed after the posting is alive until the next one, and it is never integrated meanwhile.
-    /// </summary>
     public const string StayNotActive = "stay_not_active";
 }
 
-/// <summary>The stable codes of the self-billed invoices, with the keys of their messages in <c>SharedResources</c>.</summary>
 public static class SelfBillingErrors
 {
-    /// <summary>422: the month asked for is not a month.</summary>
     public const string PeriodInvalid = "self_billing_period_invalid";
 
-    /// <summary>
-    /// 422: the month is not over (Europe/Rome): a TD17 integrates the commissions of a whole month and an issued one is not completed afterwards, so the drafts are made, and issued,
-    /// once the month has ended (as the close of an owner's month is).
-    /// </summary>
     public const string PeriodNotEnded = "self_billing_period_not_ended";
 
     /// <summary>422: the settings cannot make a TD17: the VAT rate is not above 0 and at most 100, or no portal is configured.</summary>
     public const string NotConfigured = "self_billing_not_configured";
 
-    /// <summary>
-    /// 422: a TD17 is made again, issued and discarded from the self-billed invoices (<c>api/fiscal/self-billing</c>, with <c>agency.invoice.manage</c>), never from the endpoints
-    /// of the documents of the guests.
-    /// </summary>
     public const string UseSelfBilling = "document_self_billing";
 
-    /// <summary>
-    /// 422: part of the taxable amount is an estimate (a rule of the agency or the default of the channel, not the figure of the portal) and the issue did not accept it
-    /// (<c>acceptEstimate</c>): the host checks the amount against the invoice of the portal first. The answer carries <c>estimatedAmount</c>.
-    /// </summary>
     public const string EstimateNotConfirmed = "self_billing_estimate_unconfirmed";
 
     /// <summary>
@@ -360,10 +304,8 @@ public static class SelfBillingErrors
     /// </summary>
     public const string AlreadyClosed = "self_billing_already_closed";
 
-    /// <summary>422 (FIX/BE-TD17-JOB-EXIT): the reason of the closing is missing or is none of <see cref="SelfBillingCloseReasons.All"/>: a number is never closed without one. Nothing is changed.</summary>
     public const string CloseReasonRequired = "close_reason_required";
 
-    /// <summary>422 (FIX/BE-TD17-JOB-EXIT): the note of the closing is longer than <see cref="FiscalDocument.ClosedNotDueNoteMaxLength"/> characters. Nothing is changed.</summary>
     public const string CloseNoteTooLong = "close_note_too_long";
 }
 
@@ -374,32 +316,21 @@ public static class SelfBillingErrors
 /// </summary>
 public static class SelfBillingTodos
 {
-    /// <summary>The kind of entity of the item of a rejected TD17: the document, as for every item of the fiscal documents.</summary>
     public const string RejectedEntityType = FiscalDocumentTodos.EntityType;
 
-    /// <summary>The start of the kind of entity of the item of a month: <c>SelfBillingPeriod:yyyy-MM</c>. The id of that item is the organization's.</summary>
     public const string PeriodEntityTypePrefix = "SelfBillingPeriod:";
 
-    /// <summary>The key, in <c>EmailTexts</c> (Italian and English), of the reason of the item of a rejected TD17.</summary>
     public const string RejectedReasonKey = "TodoReason_SelfBillingRejected";
 
-    /// <summary>The key, in <c>EmailTexts</c> (Italian and English), of the reason of the item of the drafts of a month.</summary>
     public const string DraftsReasonKey = "TodoReason_SelfBillingDraftsToReview";
 
-    /// <summary>
-    /// The key, in <c>EmailTexts</c> (Italian and English), of the reason of the item of the drafts of a month while some holder was refused (it needs a TD17 and has no issuer profile to make
-    /// it with): the same item, other words; the item is never closed or raised again for it.
-    /// </summary>
     public const string DraftsRefusedReasonKey = "TodoReason_SelfBillingDraftsRefused";
 
-    /// <summary>The items that need <c>agency.invoice.manage</c> to be listed: both are about the self-billed invoices, which only a person holding it reads, issues or discards.</summary>
     public static IReadOnlyList<ActivityType> ActivityTypes { get; } = [ActivityType.SelfBillingRejected, ActivityType.SelfBillingDraftsToReview];
 
-    /// <summary>The kind of entity of the item of a month: <c>SelfBillingPeriod:2026-10</c>.</summary>
     public static string PeriodEntityType(int year, int month) =>
         string.Create(CultureInfo.InvariantCulture, $"{PeriodEntityTypePrefix}{year:D4}-{month:D2}");
 
-    /// <summary>The month of the kind of entity <see cref="PeriodEntityType"/> builds (<c>SelfBillingPeriod:2026-10</c>): <c>false</c> for anything else.</summary>
     public static bool TryParsePeriodEntityType(string? entityType, out int year, out int month)
     {
         year = 0;
@@ -416,7 +347,6 @@ public static class SelfBillingTodos
     }
 }
 
-/// <summary>The rules of the TD17 that need no database.</summary>
 public static class SelfBillingRules
 {
     /// <summary>The type of document of FatturaPA of the integration of a service bought abroad (reverse charge, art. 17 c. 2 DPR 633/72).</summary>
@@ -425,7 +355,6 @@ public static class SelfBillingRules
     /// <summary>The regime code of FatturaPA of a cedente that is not in the Italian regimes: «Altro».</summary>
     public const string ForeignSupplierRegimeCode = "RF18";
 
-    /// <summary>The type of document of a credit note of an invoice, in the rule of a TD17 (never made: a TD17 is not credited from here).</summary>
     private const string CreditNoteTypeCode = "TD04";
 
     /// <summary>The shortest and the longest VAT code (the number without its country prefix) of a foreign supplier that FatturaPA takes (<c>IdCodice</c>, at most 28 with the prefix).</summary>
@@ -464,7 +393,6 @@ public static class SelfBillingRules
         return string.Create(CultureInfo.InvariantCulture, $"{country}:{VatCodeOf(vatNumber, country) ?? string.Empty}");
     }
 
-    /// <summary>The day by which a TD17 of the commissions of <paramref name="year"/>-<paramref name="month"/> is issued: <paramref name="issueByDay"/> of the month after.</summary>
     public static DateOnly DueDate(int year, int month, int issueByDay) =>
         new DateOnly(year, month, 1).AddMonths(1).AddDays(Math.Clamp(issueByDay, 1, 28) - 1);
 

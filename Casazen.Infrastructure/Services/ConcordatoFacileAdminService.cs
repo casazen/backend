@@ -1,7 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
-using Casazen.Core.OrgTeam;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -9,7 +8,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc cref="IConcordatoFacileAdminService" />
 public sealed class ConcordatoFacileAdminService(
     AppDbContext db,
     IActivityLog activityLog,
@@ -17,7 +15,6 @@ public sealed class ConcordatoFacileAdminService(
 {
     public async Task<Guid> GrantGiftAsync(Guid orgId, string subscriptionId, string actorUserId, CancellationToken ct = default)
     {
-        // Check if org already has a gift
         var existingGift = await db.ConcordatoFacileGifts
             .FirstOrDefaultAsync(g => g.OrgId == orgId, ct);
 
@@ -31,7 +28,6 @@ public sealed class ConcordatoFacileAdminService(
                 "ConcordatoFacileGiftAlreadyExists");
         }
 
-        // Create the gift
         var gift = new ConcordatoFacileGift
         {
             OrgId = orgId,
@@ -42,7 +38,6 @@ public sealed class ConcordatoFacileAdminService(
 
         db.ConcordatoFacileGifts.Add(gift);
 
-        // Record activity log inside the same transaction
         activityLog.Record(new OrgActivity(
             OrgId: orgId,
             Type: OrgActivityType.AdminGrantedConcordatoFacileGift,

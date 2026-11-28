@@ -40,11 +40,6 @@ public sealed record PlanningBooking(
     TimeOnly? CheckOutBy,
     string? Timezone);
 
-/// <summary>One message a routine will send for a booking: the action, the template it names and when it goes out.</summary>
-/// <param name="ActionIndex">The position of the <c>MessageToGuest</c> action in the routine.</param>
-/// <param name="TemplateRef">The id of the template the action names.</param>
-/// <param name="PlannedAtUtc">When it goes out (UTC), inside the send window of the property.</param>
-/// <param name="IsCampaign">The action is marked as a campaign (<c>isCampaign</c>, read as the engine reads it: any value but <c>false</c>): it goes only to a guest who gave the marketing consent.</param>
 public sealed record PlannedMessage(int ActionIndex, string TemplateRef, DateTime PlannedAtUtc, bool IsCampaign = false);
 
 /// <summary>
@@ -67,10 +62,8 @@ public sealed record PlannedMessage(int ActionIndex, string TemplateRef, DateTim
 /// </remarks>
 public static class ScheduledMessagePlanner
 {
-    /// <summary>The largest offset taken, one year in hours (the one of <c>TimeTrigger</c>): a longer one is a mistake in the routine, not a trigger.</summary>
     public const int MaxOffsetHours = 366 * 24;
 
-    /// <summary>The routine event types that have a moment the plan can foresee.</summary>
     public static bool IsPlannable(RoutineEventType eventType) =>
         eventType is RoutineEventType.BeforeCheckin
             or RoutineEventType.AfterCheckin
@@ -79,10 +72,6 @@ public static class ScheduledMessagePlanner
             or RoutineEventType.BookingNew
             or RoutineEventType.BookingConfirmed;
 
-    /// <summary>
-    /// The messages <paramref name="routine"/> sends for <paramref name="booking"/>, each with its moment, in the order of the actions. Nothing for a routine that is not active, is in test mode,
-    /// is on an event that cannot be foreseen, has actions that cannot be read, or for a stay that does not happen.
-    /// </summary>
     public static IReadOnlyList<PlannedMessage> Plan(PlanningRoutine routine, PlanningBooking booking, ScheduledMessageOptions options)
     {
         ArgumentNullException.ThrowIfNull(routine);
@@ -92,7 +81,6 @@ public static class ScheduledMessagePlanner
         if (!routine.Active || routine.TestMode || !IsPlannable(routine.EventType) || !HappensStay(booking))
             return [];
 
-        // A routine with an objective for its agent is judged by the AI against the stay when it fires: the engine's, not the plan's.
         if (HasAgentObjective(routine))
             return [];
 
@@ -112,7 +100,6 @@ public static class ScheduledMessagePlanner
             var action = actions[index];
             if (action.Type == RoutineActionType.Wait)
             {
-                // A wait the engine would refuse ends the routine: nothing after it is foreseen.
                 if (RoutineActionRules.WaitDelay(action) is not { } delay)
                     break;
 
@@ -123,7 +110,6 @@ public static class ScheduledMessagePlanner
             if (action.Type != RoutineActionType.MessageToGuest || !RoutineActionRules.HasRequiredFields(action))
                 continue;
 
-            // The condition an AI reads (aiCondition) is the engine's: it is neither foreseen nor evaluated here.
             if (HasAiCondition(action))
                 continue;
 
@@ -134,16 +120,12 @@ public static class ScheduledMessagePlanner
         return planned;
     }
 
-    /// <summary>The member of the configuration of an action that marks a campaign, read closed in the doubt as the guardrail of the engine reads it (<c>RoutineService.CheckGuardrailsAsync</c>).</summary>
     public const string CampaignMarker = "isCampaign";
 
-    /// <summary>The member of the configuration of an action that holds a condition the AI judges (<c>RoutineService.EvaluateAiConditionAsync</c>).</summary>
     public const string AiConditionMember = "aiCondition";
 
-    /// <summary>The routine has an objective for its agent: the AI judges the stay against it when the routine fires.</summary>
     private static bool HasAgentObjective(PlanningRoutine routine) => !string.IsNullOrWhiteSpace(routine.AgentObjective);
 
-    /// <summary>The action holds a condition the AI judges: the engine reads it, in the same way (<c>action.Config.ContainsKey("aiCondition")</c>).</summary>
     public static bool HasAiCondition(RoutineAction action)
     {
         ArgumentNullException.ThrowIfNull(action);
@@ -172,10 +154,6 @@ public static class ScheduledMessagePlanner
         return !IsPlannable(routine.EventType) || HasAgentObjective(routine) || HasAiCondition(action);
     }
 
-    /// <summary>
-    /// The offset a routine asks for, in whole hours: <c>days * 24 + hours</c> of its <c>EventConfig</c>, the one reading of it (<c>TimeTrigger.OffsetHours</c> calls this method); <c>null</c> when
-    /// the configuration is not that: not JSON, not an object, a member that is not a whole number of zero or more, or more than <see cref="MaxOffsetHours"/> in all.
-    /// </summary>
     public static int? OffsetHours(string? eventConfig)
     {
         if (string.IsNullOrWhiteSpace(eventConfig))
@@ -206,10 +184,6 @@ public static class ScheduledMessagePlanner
         }
     }
 
-    /// <summary>
-    /// <paramref name="utc"/> if it is inside the send window on the clock of <paramref name="zone"/>, else the start of the next window: the same day when it is before the window, the next day when it
-    /// is after it. The two days of the year the clock changes keep their rule (<see cref="RomeCalendar.ToUtc(DateOnly, TimeOnly, TimeZoneInfo)"/>).
-    /// </summary>
     public static DateTime IntoWindow(DateTime utc, TimeZoneInfo zone, TimeOnly from, TimeOnly to)
     {
         ArgumentNullException.ThrowIfNull(zone);
@@ -223,7 +197,6 @@ public static class ScheduledMessagePlanner
         return RomeCalendar.ToUtc(time < from ? day : day.AddDays(1), from, zone);
     }
 
-    /// <summary>Whether <paramref name="utc"/> is inside the send window on the clock of <paramref name="zone"/>.</summary>
     public static bool IsInsideWindow(DateTime utc, TimeZoneInfo zone, TimeOnly from, TimeOnly to)
     {
         ArgumentNullException.ThrowIfNull(zone);
@@ -240,7 +213,6 @@ public static class ScheduledMessagePlanner
     private static bool HappensStay(PlanningBooking booking) =>
         !booking.NoShow && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(booking.Status);
 
-    /// <summary>The moment the routine starts from: the time trigger of a stay, or the moment of the event; <c>null</c> when the routine says no valid offset.</summary>
     private static DateTime? BaseMomentOf(PlanningRoutine routine, PlanningBooking booking)
     {
         switch (routine.EventType)
@@ -260,7 +232,6 @@ public static class ScheduledMessagePlanner
         var time = (isCheckIn ? booking.CheckInFrom : booking.CheckOutBy) ?? TimeOnly.MinValue;
         var zone = RomeCalendar.ZoneOf(booking.Timezone);
 
-        // Exactly what TimeEventEmitterJob computes: the wall-clock time of the property on that date, in UTC, then the offset in whole hours.
         return RomeCalendar.ToUtc(date, time, zone).AddHours(isBefore ? -offset : offset);
     }
 

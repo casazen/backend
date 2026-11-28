@@ -41,22 +41,15 @@ public static class ItalianRegions
         new("20", "SAR", "Sardegna", "sardegna"),
     ];
 
-    /// <summary>The region with this ISTAT code (<c>03</c>), or <c>null</c>.</summary>
     public static ItalianRegion? FindByIstatCode(string? istatCode) =>
         istatCode is null ? null : All.FirstOrDefault(r => string.Equals(r.IstatCode, istatCode, StringComparison.Ordinal));
 
-    /// <summary>The region with this CasaZen code (<c>LOM</c>, case-insensitive), or <c>null</c>.</summary>
     public static ItalianRegion? FindByCode(string? code) =>
         string.IsNullOrWhiteSpace(code) ? null : All.FirstOrDefault(r => string.Equals(r.Code, code.Trim(), StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>The region with this slug, or <c>null</c>.</summary>
     public static ItalianRegion? FindBySlug(string? slug) =>
         string.IsNullOrWhiteSpace(slug) ? null : All.FirstOrDefault(r => string.Equals(r.Slug, slug.Trim(), StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>
-    /// The region whose name the written <paramref name="name"/> starts with, ignoring case, accents and punctuation
-    /// ("Valle d'Aosta/Vallée d'Aoste" is Valle d'Aosta); <c>null</c> when none does.
-    /// </summary>
     public static ItalianRegion? FindByName(string? name)
     {
         var normalized = ComuneNames.Normalize(name);

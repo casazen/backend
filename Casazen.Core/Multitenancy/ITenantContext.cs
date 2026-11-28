@@ -23,10 +23,6 @@ public interface ITenantContext
     bool FilterEnabled { get; }
 }
 
-/// <summary>
-/// No-op tenant context used outside an authenticated request scope (design-time
-/// migrations, background jobs, unit tests). Disables the global query filter.
-/// </summary>
 public sealed class NullTenantContext : ITenantContext
 {
     public static readonly NullTenantContext Instance = new();

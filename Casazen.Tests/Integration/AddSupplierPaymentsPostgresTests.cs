@@ -36,7 +36,6 @@ public class AddSupplierPaymentsPostgresTests : IAsyncLifetime
         var parents = await SeedParentsAsync(db);
         var id = Guid.NewGuid();
 
-        // What the release before SP-15a writes: none of the new columns.
         await db.Database.ExecuteSqlAsync($"""
             INSERT INTO "ServiceRequests" ("Id", "OrgId", "PropertyId", "SupplierOrgId", "RentalContext", "Category", "Urgency", "Notes", "Status", "ChargeToGuest", "CreatedAt", "UpdatedAt")
             VALUES ({id}, {parents.HostOrg}, {parents.Property}, {parents.SupplierOrg}, 0, 'cleaning', 0, '', 0, false, now(), now());
@@ -71,16 +70,14 @@ public class AddSupplierPaymentsPostgresTests : IAsyncLifetime
         Assert.Equal(10m, stored.CommissionPercent);
     }
 
-    // ─── The checks ───
-
     [PostgresTheory]
-    [InlineData(0, 0, 0)] // no amount
+    [InlineData(0, 0, 0)]
     [InlineData(-5, 0, -5)]
-    [InlineData(ServiceRequestLimits.MaxAmountCents + 1, 0, ServiceRequestLimits.MaxAmountCents + 1)] // above the bound of the catalog
-    [InlineData(6_000, 6_000, 0)] // a commission of the whole price: Stripe wants it strictly below the amount
+    [InlineData(ServiceRequestLimits.MaxAmountCents + 1, 0, ServiceRequestLimits.MaxAmountCents + 1)]
+    [InlineData(6_000, 6_000, 0)]
     [InlineData(6_000, 7_000, -1_000)]
-    [InlineData(6_000, -1, 6_001)] // a negative commission
-    [InlineData(6_000, 600, 5_000)] // the net is not what is left
+    [InlineData(6_000, -1, 6_001)]
+    [InlineData(6_000, 600, 5_000)]
     [InlineData(6_000, 600, 6_000)]
     public async Task Checks_TheAmountsMustBeCoherent(int amount, int fee, int net)
     {
@@ -103,7 +100,6 @@ public class AddSupplierPaymentsPostgresTests : IAsyncLifetime
         await AssertCheckViolationAsync(parents, "CK_ServiceRequestPayments_Amounts", p => p.RefundedCents = -1);
         await AssertCheckViolationAsync(parents, "CK_ServiceRequestPayments_Amounts", p => p.PaymentIntentCount = -1);
         await AssertCheckViolationAsync(parents, "CK_ServiceRequestPayments_Amounts", p => p.SentCount = -1);
-        // The whole amount can be refunded.
         await SavePaymentAsync(parents, p =>
         {
             p.Status = ServicePaymentStatus.Refunded;
@@ -205,8 +201,6 @@ public class AddSupplierPaymentsPostgresTests : IAsyncLifetime
         Assert.Equal((decimal?)percent, stored.CommissionPercentOverride);
     }
 
-    // ─── Keys, indexes, enums ───
-
     [PostgresFact]
     public async Task Index_OnePaymentPerRequestThatIsNotCanceled()
     {
@@ -215,7 +209,6 @@ public class AddSupplierPaymentsPostgresTests : IAsyncLifetime
         await SavePaymentAsync(parents, p => p.Status = ServicePaymentStatus.Canceled);
         await SavePaymentAsync(parents, p => p.Status = ServicePaymentStatus.Requested);
 
-        // The request has a live payment now: every other status is refused, only a canceled row is accepted.
         foreach (var status in new[] { ServicePaymentStatus.Requested, ServicePaymentStatus.Processing, ServicePaymentStatus.Failed, ServicePaymentStatus.NeedsReview })
         {
             var ex = await Assert.ThrowsAsync<DbUpdateException>(() => SavePaymentAsync(parents, p => p.Status = status));
@@ -298,12 +291,11 @@ public class AddSupplierPaymentsPostgresTests : IAsyncLifetime
         var paidVia = await db.Database.SqlQuery<int>($"SELECT \"PaidVia\" AS \"Value\" FROM \"ServiceRequestPayments\" WHERE \"Id\" = {id}").SingleAsync();
         var feeVatMode = await db.Database.SqlQuery<int>($"SELECT \"FeeVatMode\" AS \"Value\" FROM \"ServiceRequestPayments\" WHERE \"Id\" = {id}").SingleAsync();
 
-        // Requested 0, Processing 1, Paid 2, Failed 3, Canceled 4, PartiallyRefunded 5, Refunded 6, NeedsReview 7.
         Assert.Equal(7, status);
-        Assert.Equal(1, payerKind); // Host 0, Private 1
-        Assert.Equal(1, paidVia); // Stripe 0, Offline 1
-        Assert.Equal(2, feeVatMode); // Included 1, Added 2
-        Assert.Equal(1, (int)ServiceRequestPaymentMode.Online); // Manual 0
+        Assert.Equal(1, payerKind);
+        Assert.Equal(1, paidVia);
+        Assert.Equal(2, feeVatMode);
+        Assert.Equal(1, (int)ServiceRequestPaymentMode.Online);
         Assert.Equal(4, (int)ServicePaymentStatus.Canceled);
     }
 
@@ -320,8 +312,6 @@ public class AddSupplierPaymentsPostgresTests : IAsyncLifetime
         Assert.Equal(ServiceRequestPaymentMode.Online, stored.PaymentMode);
         Assert.Equal(confirmedAt, stored.FinalAmountConfirmedAt);
     }
-
-    // ─── Helpers ───
 
     private sealed record Parents(Guid HostOrg, Guid Property, Guid SupplierOrg, Guid Request);
 
@@ -392,7 +382,6 @@ public class AddSupplierPaymentsPostgresTests : IAsyncLifetime
         CommissionPercentOverride = overridePercent,
     };
 
-    /// <summary>A valid live payment of the request with the change applied, saved on a context of its own; returns its id.</summary>
     private async Task<Guid> SavePaymentAsync(Parents parents, Action<ServiceRequestPayment> change)
     {
         await using var db = _database!.CreateContext();

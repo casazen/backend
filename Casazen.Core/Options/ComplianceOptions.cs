@@ -24,14 +24,8 @@ public class ComplianceOptions
         ["LAZ"] = ["CinCertificate", "PropertyLicense"],
     };
 
-    /// <summary>Re-evaluation of the published properties (CO-06, docs/runbooks/compliance.md).</summary>
     public ComplianceStatusCheckOptions StatusCheck { get; set; } = new();
 
-    /// <summary>
-    /// The identity of the guest who leaves the document (CHK-11, NF-50) turns red when the arrival is within this many hours and the
-    /// verification is not passed (or an operator has to decide); before that the item is yellow while the selfie is awaited
-    /// (E03/F02/US01/T03, AC-NF50-8). A proposal the product owner may change.
-    /// </summary>
     public int IdentityRedHoursBeforeArrival { get; set; } = 24;
 
     /// <summary>
@@ -51,11 +45,7 @@ public class ComplianceOptions
     /// </summary>
     public Dictionary<string, int> IstatDeadlineDays { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>The archive of the proofs, its uploads, downloads and exports (<c>Compliance:Archive</c>, E03/F02/US03/T01).</summary>
     public ComplianceArchiveOptions Archive { get; set; } = new();
-
-    // E03/F02/US02/T01 (NF-52, CHK-12): the thresholds of the alerts about a period and about the connection. Proposals the product owner may
-    // change; the alerts run only with Features:ComplianceTrafficLight on, and the defaults are documented in docs/TECHNICAL.md.
 
     /// <summary>
     /// How many days before the deadline day of an ISTAT (or tourist tax) period the host is told it is approaching (stage 1), when nothing proves it
@@ -63,47 +53,27 @@ public class ComplianceOptions
     /// </summary>
     public int PeriodWarningDays { get; set; } = 3;
 
-    /// <summary>How many reminders follow the «overdue» alert of a period (stage 2). 0 disables them. Default 3.</summary>
     public int MaxPeriodReminders { get; set; } = 3;
 
-    /// <summary>Days between the reminders of an overdue period (at least 1). Default 3.</summary>
     public int PeriodReminderDays { get; set; } = 3;
 
-    /// <summary>Hour (Europe/Rome) at which the alerts of a period are sent. Default 9.</summary>
     public int PeriodAlertHourLocal { get; set; } = 9;
 
-    /// <summary>
-    /// The police send of the channel manager of a property that is not active is alerted when a stay arrives within this many days. Default 7.
-    /// </summary>
     public int ConnectionAlertDays { get; set; } = 7;
 
-    /// <summary>Days after the first alert about an inactive connection at which the second and last one is sent (at least 1). Default 2.</summary>
     public int ConnectionReminderDays { get; set; } = 2;
 
-    // E30/F02/US01/T01 (NF-127, D9): the thresholds of the alerts about the 24 hours of the notification of the guests of a Ticino property to the cantonal
-    // police. Proposals the product owner may change; the alerts run only with Features:TicinoNotificationAlerts on. The times are on the clock of the property
-    // (Property.Timezone, Europe/Zurich), the durations are absolute.
-
-    /// <summary>
-    /// Hours after the first expected check-in of an arrival day (the earliest <c>Booking.ExpectedArrivalTime</c> of its stays) at which the first alert of the
-    /// day, «prepare the file», is due (never later than 23:00 of the arrival day). Default 2.
-    /// </summary>
     public int TicinoArrivalAlertDelayHours { get; set; } = 2;
 
-    /// <summary>Hour (0-23, property clock) at which the first alert of an arrival day is due when no stay of it has an expected check-in. Default 18.</summary>
     public int TicinoArrivalAlertDefaultHourLocal { get; set; } = 18;
 
-    /// <summary>Hours before the deadline of the notification (24 hours from the first recorded arrival) at which the second alert is due. Default 6.</summary>
     public int TicinoDueWarningHours { get; set; } = 6;
 
-    /// <summary>How many reminders follow the «overdue» alert of a Ticino arrival day, until the day is closed. 0 disables them. Default 2.</summary>
     public int TicinoMaxOverdueReminders { get; set; } = 2;
 
-    /// <summary>Hours between the «overdue» alert and its reminders (at least 1). Default 24.</summary>
     public int TicinoOverdueReminderHours { get; set; } = 24;
 }
 
-/// <summary>Section <c>Compliance:StatusCheck</c> (CO-06).</summary>
 public class ComplianceStatusCheckOptions
 {
     /// <summary>

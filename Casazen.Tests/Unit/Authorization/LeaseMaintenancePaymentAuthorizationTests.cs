@@ -8,10 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Authorization;
 
-/// <summary>
-/// A property manager may approve a maintenance request (<c>lease.create</c>) and must not debit the org's linked account.
-/// That debit is <c>OrgBillingAdmin</c>, like the other bank-link payments.
-/// </summary>
 public class LeaseMaintenancePaymentAuthorizationTests
 {
     [Fact]

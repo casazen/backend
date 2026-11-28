@@ -4,7 +4,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs;
 
-/// <summary>Body of <c>POST /api/public/bookings/{id}/confirm-email</c>: the token of the link in the "request received" email.</summary>
 public sealed class ConfirmOnSiteRequestEmailRequest
 {
     [Required(ErrorMessage = "OnSiteRequestTokenRequired")]
@@ -12,10 +11,6 @@ public sealed class ConfirmOnSiteRequestEmailRequest
     public string Token { get; set; } = string.Empty;
 }
 
-/// <summary>
-/// A "pay at the property" request as the guest sees it after the confirmation link (BK-06, D5): <c>state</c>
-/// <c>AwaitingHostApproval</c> with the host's deadline, or the final status (Confirmed / Cancelled).
-/// </summary>
 public sealed record OnSiteRequestConfirmationResponse(
     Guid BookingId,
     BookingStatus Status,
@@ -26,14 +21,12 @@ public sealed record OnSiteRequestConfirmationResponse(
         new(snapshot.BookingId, snapshot.Status, snapshot.State, snapshot.RequestExpiresAt);
 }
 
-/// <summary>Body of <c>POST /api/bookings/{id}/decline</c>: an optional message written in the email to the guest.</summary>
 public sealed class DeclineOnSiteRequestRequest
 {
     [MaxLength(500, ErrorMessage = "OnSiteRequestDeclineMessageTooLong")]
     public string? Message { get; set; }
 }
 
-/// <summary>A "pay at the property" request waiting for the host (<c>GET /api/bookings/approval-requests</c>).</summary>
 public sealed record BookingApprovalRequestDto(
     Guid Id,
     Guid PropertyId,

@@ -2,10 +2,6 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Core.Authorization;
 
-/// <summary>
-/// The reach of the caller on the items of the approval queue (E05/F04/US01/T02, NF-68, AM-03): the one way a read or a decision narrows them, next to the
-/// <c>InScope</c> of the other host lists (<see cref="HostScopeQueryExtensions"/>), in a file of its own.
-/// </summary>
 public static class ApprovalQueueScope
 {
     /// <summary>

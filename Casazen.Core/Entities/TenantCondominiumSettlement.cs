@@ -40,7 +40,6 @@ public class TenantCondominiumSettlement : ITenantOwned
     [Column(TypeName = "decimal(18,2)")]
     public decimal PriorTenantBalanceAmount { get; set; }
 
-    /// <summary>Signed euros. Positive is a tenant debit, negative a credit, zero is even.</summary>
     [Column(TypeName = "decimal(18,2)")]
     public decimal SettlementAmount { get; set; }
 
@@ -52,12 +51,10 @@ public class TenantCondominiumSettlement : ITenantOwned
 
     public TenantSettlementStatus Status { get; set; } = TenantSettlementStatus.Draft;
 
-    /// <summary>The prior carry-forward row this settlement absorbed, once posted. Null until then.</summary>
     public Guid? AbsorbedBySettlementId { get; set; }
 
     public string CalculationSnapshotJson { get; set; } = "{}";
 
-    /// <summary>Set only when a person records that the settlement was sent. Posting never sets it.</summary>
     public DateTime? SentToTenantAt { get; set; }
 
     public DateTime? ConfirmedAt { get; set; }

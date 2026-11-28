@@ -15,7 +15,6 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public sealed partial class MessageHubService
 {
-    /// <summary>Stable code of the 404 of a review that is not there, is of another org or is not within reach.</summary>
     public const string ReviewNotFoundCode = "review_not_found";
 
     private const int OtaReviewSource = (int)MessageThreadSource.OtaReview;
@@ -24,12 +23,6 @@ public sealed partial class MessageHubService
     private static NotFoundException ReviewNotFound() =>
         new("The review was not found or is not within reach") { Code = ReviewNotFoundCode, MessageKey = "OtaReviewNotFound" };
 
-    /// <summary>
-    /// The reviews in the shape of the rows of the list, in one statement: the reviews of the booking site that are not taken down, and the reviews of a channel the channel manager shows as
-    /// published (a row that was read and has no review is the state of the read, not a review). Newest first is the order of the list (the instant the review was published). Plain columns
-    /// only: the words of a review are read for the rows of the page, after the statement. <c>NeedsReply</c> is «published and not answered»: a reply of a channel whose outcome is not known
-    /// (it waits for a check) was sent, so it is not asked for again.
-    /// </summary>
     private IQueryable<HubRow> ReviewRows(HostScope scope)
     {
         var orgId = scope.OrgId;
@@ -138,7 +131,6 @@ public sealed partial class MessageHubService
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        // The key of a conversation is never read as the one of a review: it is a review that is not there.
         return key.Source switch
         {
             MessageThreadSource.OtaReview => await GetChannelReviewAsync(scope, key, includeAmounts, cancellationToken),
@@ -147,10 +139,6 @@ public sealed partial class MessageHubService
         };
     }
 
-    /// <summary>
-    /// A review of a channel: the one view of the service of the reviews (the stars, the categories, the words, the reply and the host's own review with their states, and what the channel allows
-    /// narrowed by the connector and the listing), and the booking card. A row nobody published is not a review.
-    /// </summary>
     private async Task<ReviewThreadView> GetChannelReviewAsync(HostScope scope, MessageThreadKey key, bool includeAmounts, CancellationToken cancellationToken)
     {
         var service = otaReviews ?? throw new InvalidOperationException("The reviews of the channels are not registered (AddOtaReviews).");
@@ -189,7 +177,6 @@ public sealed partial class MessageHubService
             view.LastSyncError);
     }
 
-    /// <summary>A review of the booking site: its mark and words, the host's one reply (the host may answer once, and writes no review of the guest) and the booking card.</summary>
     private async Task<ReviewThreadView> GetSiteReviewAsync(HostScope scope, MessageThreadKey key, bool includeAmounts, CancellationToken cancellationToken)
     {
         var review = await db.Reviews

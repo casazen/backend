@@ -16,7 +16,6 @@ public sealed record IstatRegionMatch(string RegionIstatCode, string? ProvinceCo
 /// </summary>
 public static class IstatRegionResolver
 {
-    /// <summary>The three statistical fields, in the order of <see cref="IstatGuestFieldLists"/> and of the stored list.</summary>
     public static IReadOnlyList<string> FieldNames { get; } =
     [
         IstatGuestFieldLists.TourismTypeField,
@@ -24,10 +23,6 @@ public static class IstatRegionResolver
         IstatGuestFieldLists.EducationLevelField,
     ];
 
-    /// <summary>
-    /// The row of a territory: the row of the autonomous province of the comune when there is one, else the row of its region (the one with no
-    /// province). Null when the region is empty or the table has no row for it: «da verificare», never a neighbour's row.
-    /// </summary>
     public static IstatRegionRule? Find(IEnumerable<IstatRegionRule> rules, string? regionIstatCode, string? provinceCode)
     {
         ArgumentNullException.ThrowIfNull(rules);
@@ -69,7 +64,6 @@ public static class IstatRegionResolver
             if (configured is >= 1 and <= 31)
                 return configured;
 
-            // Not a day of the month: the table's day (or none) stands, as if nothing were configured.
             onInvalidOverride?.Invoke(regionCode, configured);
         }
 
@@ -87,10 +81,6 @@ public static class IstatRegionResolver
     public static ComplianceSenderType IstatSenderFor(ComplianceSenderType sender, IstatCoverage coverage) =>
         sender == ComplianceSenderType.ChannelManager && coverage == IstatCoverage.NotCovered ? ComplianceSenderType.Manual : sender;
 
-    /// <summary>
-    /// What the host does next: connect it in the panel when the region is covered, use the portal of the region when it is not, ask support when
-    /// the coverage is not verified. An unknown coverage is never <see cref="IstatNextStep.ConnectInPanel"/>.
-    /// </summary>
     public static IstatNextStep NextStep(IstatCoverage coverage) => coverage switch
     {
         IstatCoverage.Covered => IstatNextStep.ConnectInPanel,
@@ -98,16 +88,8 @@ public static class IstatRegionResolver
         _ => IstatNextStep.AskSupport,
     };
 
-    /// <summary>
-    /// The statistical fields the guests of a region are asked (data minimization, ADR-030-R1): the ones the row requires, none when the region
-    /// has no row or the row is not verified. Never a field the region does not require.
-    /// </summary>
     public static IReadOnlyList<string> RequiredFields(IstatRegionRule? rule) => ParseFields(rule?.RequiredGuestFields);
 
-    /// <summary>
-    /// The names in a stored list: the known ones, once each, in the order of <see cref="FieldNames"/>. Empty for null, for an empty list and for
-    /// text that names nothing known.
-    /// </summary>
     public static IReadOnlyList<string> ParseFields(string? stored)
     {
         if (string.IsNullOrWhiteSpace(stored))
@@ -119,7 +101,6 @@ public static class IstatRegionResolver
         return FieldNames.Where(wanted.Contains).ToList();
     }
 
-    /// <summary>The stored text of a list of names that are all known: once each, in the order of <see cref="FieldNames"/>, comma separated.</summary>
     public static string FormatFields(IReadOnlyCollection<string> names)
     {
         ArgumentNullException.ThrowIfNull(names);
@@ -127,10 +108,6 @@ public static class IstatRegionResolver
         return string.Join(',', FieldNames.Where(wanted.Contains));
     }
 
-    /// <summary>
-    /// Reads the names a person sent (any case, once or more) as the names of <see cref="FieldNames"/>. False when one is not a statistical field of
-    /// the lists: nothing is guessed from a name that is not one.
-    /// </summary>
     public static bool TryNormalizeFields(IEnumerable<string> input, out IReadOnlyList<string> names)
     {
         ArgumentNullException.ThrowIfNull(input);

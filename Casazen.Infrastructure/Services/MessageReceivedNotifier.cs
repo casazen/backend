@@ -75,7 +75,6 @@ public sealed class MessageReceivedNotifier(HostMessageAlertDelivery delivery, I
             return;
         }
 
-        // The message is the entity of the event (OtaMessage.Id): the identity of the alert.
         await delivery.DeliverAsync(
             new HostMessageAlert(
                 domainEvent.OrgId,
@@ -87,7 +86,6 @@ public sealed class MessageReceivedNotifier(HostMessageAlertDelivery delivery, I
             ct);
     }
 
-    /// <summary>The id of the thread in <c>ota:{guid}</c>; false for any other form.</summary>
     private static bool TryThreadIdOf(string? threadKey, out Guid threadId)
     {
         threadId = Guid.Empty;

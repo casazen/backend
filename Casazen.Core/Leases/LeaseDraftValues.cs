@@ -16,28 +16,20 @@ namespace Casazen.Core.Leases;
 /// </remarks>
 public sealed record LeaseDraftValues
 {
-    /// <summary>Step 1: the property of the contract.</summary>
     public Guid? PropertyId { get; init; }
 
-    /// <summary>Step 2: the landlords, in the order entered.</summary>
     public IReadOnlyList<LeaseDraftParty> Landlords { get; init; } = [];
 
-    /// <summary>Step 2: the tenants, in the order entered.</summary>
     public IReadOnlyList<LeaseDraftParty> Tenants { get; init; } = [];
 
-    /// <summary>Step 3: <c>Libero</c>, <c>Concordato</c> or <c>Transitorio</c> (anything else is kept and reported as not available).</summary>
     public string? ContractType { get; init; }
 
-    /// <summary>Step 3: <c>CedolareSecca</c> or <c>Ordinario</c>.</summary>
     public string? TaxRegime { get; init; }
 
-    /// <summary>Step 3: monthly rent in euros.</summary>
     public decimal? MonthlyRent { get; init; }
 
-    /// <summary>Step 3: security deposit in euros; <c>null</c> when there is none.</summary>
     public decimal? SecurityDeposit { get; init; }
 
-    /// <summary>Step 3: the characteristics of the unit that fix the range of a canone concordato.</summary>
     public LeaseDraftConcordato? Concordato { get; init; }
 
     /// <summary>
@@ -46,10 +38,8 @@ public sealed record LeaseDraftValues
     /// </summary>
     public string? TransitoryParty { get; init; }
 
-    /// <summary>Step 3, transitory type only: the need itself, in a few words (at most 500 characters).</summary>
     public string? TransitoryNeed { get; init; }
 
-    /// <summary>Step 4: first day of the contract, <c>yyyy-MM-dd</c>; the end of the first period is computed from the type.</summary>
     public string? StartDate { get; init; }
 
     /// <summary>
@@ -72,10 +62,8 @@ public sealed record LeaseDraftValues
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,
     };
 
-    /// <summary>The JSON document stored in <c>LeaseContract.DraftData</c>.</summary>
     public string ToJson() => JsonSerializer.Serialize(this, Options);
 
-    /// <summary>The values stored in <paramref name="json"/>, or <c>null</c> when there is nothing stored or it cannot be read.</summary>
     public static LeaseDraftValues? FromJson(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -92,7 +80,6 @@ public sealed record LeaseDraftValues
     }
 }
 
-/// <summary>A landlord or a tenant as typed. <see cref="Id"/> is the one the server gave the entry: it is also the id of the party once it is written.</summary>
 public sealed record LeaseDraftParty
 {
     public Guid Id { get; init; }
@@ -101,29 +88,19 @@ public sealed record LeaseDraftParty
 
     public string? LastName { get; init; }
 
-    /// <summary>A 16-character codice fiscale or an 11-digit one (a company), as typed.</summary>
     public string? FiscalCode { get; init; }
 
-    /// <summary>Two letters (ISO 3166-1 alpha-2).</summary>
     public string? Citizenship { get; init; }
 
-    /// <summary>Municipality and address of the residence, or of the registered office of a company.</summary>
     public string? Residence { get; init; }
 
-    /// <summary>Optional: used for the payment links and the reminders.</summary>
     public string? ContactEmail { get; init; }
 
-    /// <summary>Optional international phone number used for direct communications and WhatsApp.</summary>
     public string? ContactPhone { get; init; }
 
-    /// <summary>Step 5: the day the identity document was checked, <c>yyyy-MM-dd</c>; <c>null</c> when it was not.</summary>
     public string? DocumentsVerifiedOn { get; init; }
 }
 
-/// <summary>
-/// The characteristics of the unit for the range of a canone concordato, as typed (the same fields as
-/// <c>RentBandCharacteristics</c>). A field that was not sent is 0, false or empty; the range is computed by the server.
-/// </summary>
 public sealed record LeaseDraftConcordato
 {
     public decimal Sqm { get; init; }

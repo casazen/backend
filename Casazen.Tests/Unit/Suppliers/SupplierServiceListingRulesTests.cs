@@ -6,10 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>
-/// SP-02: the rules of the supplier's service catalog on <see cref="SupplierServiceListingRules"/> (no database):
-/// validation of every field and its limits, the structured supplements, the publication requirements, the slugs.
-/// </summary>
 public class SupplierServiceListingRulesTests
 {
     private static SupplierServiceListingInput Valid() =>
@@ -47,8 +43,6 @@ public class SupplierServiceListingRulesTests
         string per = "flat",
         int? max = null) =>
         new(code, label, amountCents, per, max);
-
-    // ─── Normalize: the happy path ───────────────────────────────────────────────
 
     [Fact]
     public void Normalize_ValidInput_ReturnsTheStoredForm()
@@ -103,8 +97,6 @@ public class SupplierServiceListingRulesTests
         Assert.Null(content.Summary);
         Assert.Null(content.Description);
     }
-
-    // ─── Normalize: name, category, texts ────────────────────────────────────────
 
     [Theory]
     [InlineData(null)]
@@ -172,8 +164,6 @@ public class SupplierServiceListingRulesTests
         Assert.Equal(ServiceCategories.Electrical, content.Category);
     }
 
-    // ─── Normalize: price, duration, notice, weekdays ────────────────────────────
-
     [Theory]
     [InlineData(0)]
     [InlineData(-5)]
@@ -234,8 +224,6 @@ public class SupplierServiceListingRulesTests
             }).WeekdaysMask);
         Assert.Equal(new[] { "weekdays" }, InvalidFields(Valid() with { Weekdays = [(DayOfWeek)9] }));
     }
-
-    // ─── Normalize: supplements ──────────────────────────────────────────────────
 
     [Fact]
     public void Normalize_Supplement_CodeAndUnitAreLowercasedAndTrimmed()
@@ -350,8 +338,6 @@ public class SupplierServiceListingRulesTests
         Assert.Equal(new[] { "supplements" }, InvalidFields(Valid() with { Supplements = many }));
     }
 
-    // ─── Normalize: included, excluded, photos, position ─────────────────────────
-
     [Fact]
     public void Normalize_Lists_DropBlankAndRepeatedLinesKeepingTheFirstOfEach()
     {
@@ -422,8 +408,6 @@ public class SupplierServiceListingRulesTests
         Assert.Equal(new[] { "name", "priceFromCents", "durationMinutes", "minNoticeHours", "included" }, fields);
     }
 
-    // ─── Apply ───────────────────────────────────────────────────────────────────
-
     [Fact]
     public void ApplyTo_WritesTheContentAndLeavesSlugStatusPhotosAndPositionAlone()
     {
@@ -450,8 +434,6 @@ public class SupplierServiceListingRulesTests
         Assert.Equal(new[] { "Biancheria pulita", "Report fotografico" }, SupplierServiceListingJson.ReadStrings(listing.IncludedJson));
         Assert.Equal(new[] { "Lavaggio tende" }, SupplierServiceListingJson.ReadStrings(listing.ExcludedJson));
     }
-
-    // ─── Publication requirements ────────────────────────────────────────────────
 
     private static SupplierServiceListing Publishable() =>
         new()
@@ -530,8 +512,6 @@ public class SupplierServiceListingRulesTests
         Assert.Equal(new[] { "category" }, SupplierServiceListingRules.MissingForPublication(listing));
     }
 
-    // ─── Slugs and copies ────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData("Pulizia cambio ospiti", "pulizia-cambio-ospiti")]
     [InlineData("  Pulizia   città!  ", "pulizia-citta")]
@@ -547,7 +527,6 @@ public class SupplierServiceListingRulesTests
     [Fact]
     public void SlugFromName_ANameLiterallyCalledFornitore_KeepsItsSlug()
     {
-        // The showcase fallback ("fornitore") is not the fallback of a service.
         Assert.Equal("fornitore", SupplierServiceListingRules.SlugFromName("Fornitore"));
         Assert.Equal("fornitore", SupplierShowcaseSlug.FromName(""));
     }
@@ -567,7 +546,6 @@ public class SupplierServiceListingRulesTests
         Assert.Equal("pulizia-2", SupplierServiceListingRules.NextFreeSlug("pulizia", new HashSet<string> { "pulizia" }));
         Assert.Equal("pulizia-4", SupplierServiceListingRules.NextFreeSlug(
             "pulizia", new HashSet<string> { "pulizia", "pulizia-2", "pulizia-3", "altro" }));
-        // A gap is filled: the first free one wins.
         Assert.Equal("pulizia-3", SupplierServiceListingRules.NextFreeSlug(
             "pulizia", new HashSet<string> { "pulizia", "pulizia-2", "pulizia-4" }));
     }

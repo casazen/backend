@@ -9,10 +9,5 @@ namespace Casazen.Core.Multitenancy;
 /// <remarks>Implemented by the tenant context of the web layer, the only writer of the tenant of a scope.</remarks>
 public interface IBackgroundTenantScope
 {
-    /// <summary>
-    /// Scopes the current DI scope to <paramref name="orgId"/>. Once per scope: another org is refused.
-    /// </summary>
-    /// <exception cref="ArgumentException"><paramref name="orgId"/> is empty.</exception>
-    /// <exception cref="InvalidOperationException">The scope already belongs to another org.</exception>
     void EnterOrg(Guid orgId);
 }

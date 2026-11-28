@@ -11,10 +11,8 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Data.Encryption;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Logging;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
 
@@ -55,8 +53,6 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _db.DisposeAsync();
 
-    // ---------------------------------------------------------------- the two proofs of the brief
-
     /// <summary>
     /// Proof (privacy and data): the lock code of a row is stored in the encrypted <c>PropertyAccessCode</c> (Data Protection purpose of the access
     /// codes), appears in no answer and in no log line, and an invalid one is not echoed either; the answer says only <c>lockCodeProvided</c>. A
@@ -82,7 +78,6 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
 
         var csv = Csv("propertyId,lockCode", $"{good},{Secret}", $"{bad},{WrongSecret}");
 
-        // A dry run judges and stores nothing.
         await using (var db = new AppDbContext(options, null, provider))
         {
             var dry = await ServiceOn(db).ImportAsync(new HostScope(orgId), "auth0|host", "file.csv", csv, dryRun: true, Ct);
@@ -95,7 +90,6 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         await using (var db = new AppDbContext(options, null, provider))
             result = await ServiceOn(db).ImportAsync(new HostScope(orgId), "auth0|host", "file.csv", csv, dryRun: false, Ct);
 
-        // The answer: whether there was a code, never the code, whatever the serializer prints.
         Assert.Equal((BulkImportRowCodes.Ok, true, true), (result.Rows[0].Status, result.Rows[0].LockCodeProvided, result.Rows[0].Applied));
         Assert.Equal((BulkImportRowCodes.LockCodeInvalid, true, false), (result.Rows[1].Status, result.Rows[1].LockCodeProvided, result.Rows[1].Applied));
         var echoed = JsonSerializer.Serialize(result) + result;
@@ -121,7 +115,6 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
             Assert.Equal(Secret, converter.ConvertFromProvider(written));
         }
 
-        // The log says what happened, in counts.
         Assert.Contains(_log.Entries, e => e.Message.Contains("2 rows, 1 valid, 1 written", StringComparison.Ordinal));
     }
 
@@ -151,7 +144,6 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         Assert.Equal(result.Rows[0].Errors.Select(e => e.Column), result.Rows[2].Errors.Select(e => e.Column));
         Assert.Equal((BulkImportRowCodes.Ok, true), (result.Rows[3].Status, result.Rows[3].Applied));
 
-        // Nothing of the other org changed: its property, its onboarding data, its access code.
         var theirs = await _db.Properties.AsNoTracking().IgnoreQueryFilters().SingleAsync(p => p.Id == foreign.Id);
         Assert.Null(theirs.ComuneIstatCode);
         Assert.Empty(await _db.PropertyOnboardingData.AsNoTracking().Where(d => d.PropertyId == foreign.Id).ToListAsync());
@@ -172,12 +164,6 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         Assert.Empty(await _db.PropertyAccessCodes.AsNoTracking().Where(a => a.PropertyId == _world.Hidden.Id).ToListAsync());
     }
 
-    // ---------------------------------------------------------------- the check of every row
-
-    /// <summary>
-    /// The dry run answers every row on its own with its status and all its errors by column, plus the columns the import does not know (once), and
-    /// writes nothing: no save at all.
-    /// </summary>
     [Fact]
     public async Task DryRun_ChecksEveryRowOnItsOwn_ReportsTheColumnsOnce_AndWritesNothing()
     {
@@ -189,16 +175,16 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         var twentyOne = string.Join(';', Enumerable.Range(1, 21));
         var csv = Csv(
             "propertyId,cinCode,comuneIstatCode,regionCode,alloggiatiRoomNumbers,lockCode,note,Region",
-            $"{_world.Granted.Id},,058091,LAZ,\"101;102\",4821,hello,x", //                       2 ok
-            $",it015146 c21 h2jklmn,015146,LAZ,,,,", //                                            3 region does not match the comune
-            $"{unknown},,000000,,,,,", //                                                          4 unknown property, unknown comune
-            $",{CinGranted},,,,,,", //                                                             5 Granted again
-            $",{CinShared},,,\"A;B;A\",,,", //                                                     6 two properties with that CIN, repeated room
-            $"{_world.OtherOrgProperty.Id},,,,,,,", //                                             7 another org
-            $"{terza.Id},,,,{twentyOne},12,,", //                                                  8 21 rooms, a lock code of two characters
-            $"{quarta.Id},,999001,,\"101-A;B2\",,,", //                                            9 a comune that is no longer active
-            $"{quinta.Id},,,LAZ,,,,", //                                                          10 a region and no comune anywhere
-            ",,058091,,,,,", //                                                                    11 names no property
+            $"{_world.Granted.Id},,058091,LAZ,\"101;102\",4821,hello,x",
+            $",it015146 c21 h2jklmn,015146,LAZ,,,,",
+            $"{unknown},,000000,,,,,",
+            $",{CinGranted},,,,,,",
+            $",{CinShared},,,\"A;B;A\",,,",
+            $"{_world.OtherOrgProperty.Id},,,,,,,",
+            $"{terza.Id},,,,{twentyOne},12,,",
+            $"{quarta.Id},,999001,,\"101-A;B2\",,,",
+            $"{quinta.Id},,,LAZ,,,,",
+            ",,058091,,,,,",
             $"{sesta.Id},,058091,,\"x y\",,,");
         var saves = _saves.Count;
 
@@ -225,7 +211,6 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         Assert.Equal((1, 10, 0), (result.Summary.Valid, result.Summary.Invalid, result.Summary.Applied));
         Assert.Equal(11, result.Summary.Rows);
 
-        // Every error with its column.
         Assert.Equal(
             [(BulkImportColumns.PropertyId, BulkImportRowCodes.PropertyNotFound), (BulkImportColumns.ComuneIstatCode, BulkImportRowCodes.ComuneUnknown)],
             result.Rows[2].Errors.Select(e => (e.Column, e.Code)));
@@ -261,12 +246,12 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         var quinta = await AddPropertyAsync("Quinta");
         var csv = Csv(
             "propertyId,comuneIstatCode,regionCode,alloggiatiRoomNumbers,lockCode",
-            $"{_world.Granted.Id},058091,LAZ,\"101;102\",4821", //  ok: comune, region, rooms, lock
-            $"{_world.Hidden.Id},,,\"A1; A2\",", //                  ok: rooms only; its comune is untouched
-            $"{terza.Id},015146,,,9999", //                         ok: the region follows the comune
-            $"{quarta.Id},058091,LOM,101,", //                      region of another comune: not written
-            $"{Guid.NewGuid()},058091,,,", //                       no such property
-            $"{quinta.Id},,LAZ,102,"); //                           a region with no comune anywhere: not written
+            $"{_world.Granted.Id},058091,LAZ,\"101;102\",4821",
+            $"{_world.Hidden.Id},,,\"A1; A2\",",
+            $"{terza.Id},015146,,,9999",
+            $"{quarta.Id},058091,LOM,101,",
+            $"{Guid.NewGuid()},058091,,,",
+            $"{quinta.Id},,LAZ,102,");
         var before = _saves.Count;
 
         var result = await Service().ImportAsync(_world.OrgWide, _world.OwnerUserId, "file.csv", csv, dryRun: false, Ct);
@@ -305,7 +290,6 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         Assert.Equal(2, await _db.PropertyAccessCodes.CountAsync());
         Assert.Equal("[\"101\",\"102\"]", (await _db.PropertyOnboardingData.AsNoTracking().SingleAsync(d => d.PropertyId == _world.Granted.Id)).AlloggiatiRoomNumbersJson);
 
-        // A changed value replaces the stored one.
         await Service().ImportAsync(
             _world.OrgWide, _world.OwnerUserId, "file.csv", Csv("propertyId,alloggiatiRoomNumbers,lockCode", $"{_world.Granted.Id},201,0000"), dryRun: false, Ct);
         Assert.Equal("[\"201\"]", (await _db.PropertyOnboardingData.AsNoTracking().SingleAsync(d => d.PropertyId == _world.Granted.Id)).AlloggiatiRoomNumbersJson);
@@ -342,7 +326,6 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         await _db.SaveChangesAsync();
         var saves = _saves.Count;
 
-        // The same numbers as stored: nothing to write.
         var same = await Service().ImportAsync(
             _world.OrgWide, _world.OwnerUserId, "file.csv", Csv("propertyId,alloggiatiRoomNumbers", $"{_world.Granted.Id},\"101;102\""), dryRun: false, Ct);
         Assert.Equal((BulkImportRowCodes.Ok, false), (Assert.Single(same.Rows).Status, same.Rows[0].Applied));
@@ -351,7 +334,6 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         var kept = await _db.PropertyOnboardingData.AsNoTracking().SingleAsync(d => d.PropertyId == _world.Granted.Id);
         Assert.Equal(("[\"101\", \"102\"]", earlier, "auth0|earlier"), (kept.AlloggiatiRoomNumbersJson, kept.UpdatedAt, kept.UpdatedByUserId));
 
-        // Other numbers, and a stored value that is not an array: both are written, with the importer and the time of the import.
         var changed = await Service().ImportAsync(
             _world.OrgWide,
             _world.OwnerUserId,
@@ -369,7 +351,6 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
             data => Assert.Equal((HostScopeScenario.Now.UtcDateTime, _world.OwnerUserId), (data.UpdatedAt, data.UpdatedByUserId)));
     }
 
-    /// <summary>The header goes by Italian or English names in any case, with accents or separators; the delimiter is found on the header; a quoted cell may hold the separator.</summary>
     [Fact]
     public async Task Columns_AreFoundByTheirItalianOrEnglishNames_AndTheDelimiterByTheHeader()
     {
@@ -383,11 +364,10 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         var result = await Service().ImportAsync(_world.OrgWide, _world.OwnerUserId, "file.CSV", csv, dryRun: true, Ct);
 
         Assert.Equal(["Città"], result.UnknownColumns);
-        Assert.Equal(BulkImportRowCodes.RegionMismatch, result.Rows[0].Status); // «lazio» is not a region code (LAZ is)
+        Assert.Equal(BulkImportRowCodes.RegionMismatch, result.Rows[0].Status);
         Assert.Equal(BulkImportRowCodes.Ok, result.Rows[1].Status);
         Assert.Equal(_world.Hidden.Id, result.Rows[1].PropertyId);
 
-        // Written for real, a row with only its key is valid and changes nothing: it is not «applied» and nothing is saved.
         var saves = _saves.Count;
         var written = await Service().ImportAsync(_world.OrgWide, _world.OwnerUserId, "file.CSV", csv, dryRun: false, Ct);
         Assert.Equal((BulkImportRowCodes.Ok, false), (written.Rows[1].Status, written.Rows[1].Applied));
@@ -399,19 +379,12 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         Assert.Equal(BulkImportRowCodes.Ok, Assert.Single(ok.Rows).Status);
         Assert.Empty(ok.UnknownColumns);
 
-        // Text that is not UTF-8 (the CSV of an Italian spreadsheet) is read as Windows-1252, and a code is never mangled.
         var latin1 = Encoding.Latin1.GetBytes($"propertyId,lockCode,Località\r\n{_world.Granted.Id},4821,Città di Perù\r\n");
         var fromLatin1 = await Service().ImportAsync(_world.OrgWide, _world.OwnerUserId, "x.csv", latin1, dryRun: true, Ct);
         Assert.Equal(BulkImportRowCodes.Ok, Assert.Single(fromLatin1.Rows).Status);
         Assert.Equal(["Località"], fromLatin1.UnknownColumns);
     }
 
-    // ---------------------------------------------------------------- the file rules
-
-    /// <summary>
-    /// The rules of the file: a <c>.csv</c> or an <c>.xlsx</c> of at most 2 MB and 1,000 rows. Another type, or content that is not what the name says,
-    /// is 415; a larger file 413; more rows 422; and the problems of the table itself are 422 with their own codes.
-    /// </summary>
     [Fact]
     public async Task FileRules_TypeSizeRowsAndHeader()
     {
@@ -421,7 +394,6 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         async Task<DomainException> RefusedAsync(string name, byte[] content) =>
             await Assert.ThrowsAnyAsync<DomainException>(() => service.ImportAsync(_world.OrgWide, _world.OwnerUserId, name, content, true, Ct));
 
-        // The type.
         foreach (var name in new[] { "file.xls", "file.xlsm", "file.pdf", "file.txt", "file", string.Empty, "file.csv.exe", "x.xlsb" })
         {
             var refused = Assert.IsType<DomainUnsupportedMediaTypeException>(await RefusedAsync(name, valid));
@@ -432,7 +404,6 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         Assert.IsType<DomainUnsupportedMediaTypeException>(await RefusedAsync("binary.csv", [.. valid, 0, 1, 2]));
         Assert.IsType<DomainUnsupportedMediaTypeException>(await RefusedAsync("renamed.xlsx", valid));
 
-        // The size (2 MB) and the rows (1,000).
         var large = Assert.IsType<DomainPayloadTooLargeException>(await RefusedAsync("big.csv", new byte[BulkImportLimits.MaxFileBytes + 1]));
         Assert.Equal(BulkImportCodes.FileTooLarge, large.Code);
         string Rows(int count) => string.Join("\r\n", Enumerable.Range(0, count).Select(_ => $"{Guid.NewGuid()},4821"));
@@ -442,7 +413,6 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
             await RefusedAsync("many.csv", Csv("propertyId,lockCode", Rows(BulkImportLimits.MaxRows + 1))));
         Assert.Equal(BulkImportCodes.TooManyRows, tooMany.Code);
 
-        // The table.
         Assert.Equal(BulkImportCodes.FileEmpty, (await RefusedAsync("empty.csv", [])).Code);
         Assert.Equal(BulkImportCodes.FileEmpty, (await RefusedAsync("blank.csv", Csv(string.Empty, "  ,  "))).Code);
         Assert.Equal(BulkImportCodes.FileEmpty, (await RefusedAsync("header.csv", Csv("propertyId,lockCode"))).Code);
@@ -452,7 +422,6 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         Assert.Empty(await _db.PropertyAccessCodes.AsNoTracking().ToListAsync());
     }
 
-    /// <summary>The list of comuni is the one the property wizard uses: when it is not imported nothing can be judged on a comune, and the whole call says so.</summary>
     [Fact]
     public async Task ComuniListNotImported_IsAnErrorOfTheCall_NotOfTheRows()
     {
@@ -464,18 +433,10 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
             () => service.ImportAsync(_world.OrgWide, _world.OwnerUserId, "x.csv", Csv("propertyId,comuneIstatCode", $"{_world.Granted.Id},058091"), true, Ct));
         Assert.Equal(ComuneErrorCodes.DatasetUnavailable, refused.Code);
 
-        // A file with no comune does not need it.
         var fine = await service.ImportAsync(_world.OrgWide, _world.OwnerUserId, "x.csv", Csv("propertyId,lockCode", $"{_world.Granted.Id},4821"), true, Ct);
         Assert.Equal(BulkImportRowCodes.Ok, Assert.Single(fine.Rows).Status);
     }
 
-    // ---------------------------------------------------------------- Excel
-
-    /// <summary>
-    /// The Excel reader takes the FIRST sheet as the workbook says (not the one called «sheet1»), reads shared strings (rich text without the phonetic
-    /// hints), inline strings and numbers, reads the cached value of a formula and never evaluates it, and leaves boolean and error cells empty. The
-    /// import works on the result as on a CSV.
-    /// </summary>
     [Fact]
     public async Task Xlsx_ReadsTheFirstSheetOfTheWorkbook_AndNeverEvaluatesAFormula()
     {
@@ -488,7 +449,6 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
 
         var read = OnboardingXlsxReader.Read(content);
 
-        // Header is row 1; a formula yields its cached value, or nothing; a number is its stored text.
         Assert.Equal([1, 2, 3], read.Select(r => r.Number));
         Assert.Equal(["propertyId", "comuneIstatCode", "alloggiatiRoomNumbers", "lockCode", "regionCode"], read[0].Cells);
         Assert.Equal([_world.Granted.Id.ToString(), "058091", "101;102", "4821", "LAZ"], read[1].Cells);
@@ -527,28 +487,20 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         Assert.Null(OnboardingXlsxReader.ColumnIndex("ABCD1"));
     }
 
-    /// <summary>
-    /// A file that comes from outside cannot hurt the server: an archive that unzips to more than 20 MB is refused (413), one with more than 200
-    /// entries is not read (422), a DTD or an external entity is never processed (422), and an archive with no workbook, or one that is damaged, is
-    /// unreadable (422).
-    /// </summary>
     [Fact]
     public async Task Xlsx_ZipBombsDtdsAndDamagedArchives_AreRefused()
     {
         var ok = Table(Row("propertyId", "lockCode"), Row(_world.Granted.Id.ToString(), "4821"));
 
-        // Unzips to 25 MB: a few kilobytes of file.
         var bomb = Workbook(ok, extra: zip => AddEntry(zip, "xl/media/bomb.bin", new string('0', 25 * 1024 * 1024)));
         Assert.True(bomb.Length < BulkImportLimits.MaxFileBytes);
         var big = Assert.Throws<DomainPayloadTooLargeException>(() => OnboardingXlsxReader.Read(bomb));
         Assert.Equal(BulkImportCodes.FileTooLarge, big.Code);
 
-        // The same, through the whole import, as the person would meet it.
         var viaImport = await Assert.ThrowsAsync<DomainPayloadTooLargeException>(
             () => Service().ImportAsync(_world.OrgWide, _world.OwnerUserId, "bomb.xlsx", bomb, true, Ct));
         Assert.Equal(BulkImportCodes.FileTooLarge, viaImport.Code);
 
-        // More than 200 entries.
         var crowded = Workbook(ok, extra: zip =>
         {
             for (var i = 0; i < BulkImportLimits.MaxZipEntries + 1; i++)
@@ -556,13 +508,11 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         });
         Assert.Equal(BulkImportCodes.FileUnreadable, Assert.Throws<DomainRuleException>(() => OnboardingXlsxReader.Read(crowded)).Code);
 
-        // A DOCTYPE is refused outright: an external entity can never be reached, whatever it points at.
         const string Xxe =
             "<?xml version=\"1.0\"?><!DOCTYPE worksheet [<!ENTITY xxe SYSTEM \"file:///etc/passwd\">]>"
             + "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData><row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>&xxe;</t></is></c></row></sheetData></worksheet>";
         Assert.Equal(BulkImportCodes.FileUnreadable, Assert.Throws<DomainRuleException>(() => OnboardingXlsxReader.Read(Workbook((Xxe, null)))).Code);
 
-        // No workbook, a workbook with no sheet, a relationship that points nowhere, a part that is not XML, an archive cut short.
         var noWorkbook = Zip(zip => AddEntry(zip, "xl/worksheets/sheet1.xml", "<worksheet/>"));
         Assert.Equal(BulkImportCodes.FileUnreadable, Assert.Throws<DomainRuleException>(() => OnboardingXlsxReader.Read(noWorkbook)).Code);
         var noSheet = Zip(zip =>
@@ -576,7 +526,6 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         var cut = Workbook(ok)[..60];
         Assert.Equal(BulkImportCodes.FileUnreadable, Assert.Throws<DomainRuleException>(() => OnboardingXlsxReader.Read(cut)).Code);
 
-        // More than 1,000 rows of data.
         var rows = new[] { Row("propertyId", "lockCode") }
             .Concat(Enumerable.Range(0, BulkImportLimits.MaxRows + 1).Select(_ => Row(Guid.NewGuid().ToString(), "4821")))
             .ToArray();
@@ -584,14 +533,11 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         Assert.Equal(BulkImportCodes.TooManyRows, Assert.Throws<DomainRuleException>(() => OnboardingXlsxReader.Read(tooMany)).Code);
     }
 
-    // ---------------------------------------------------------------- helpers
-
     private OnboardingBulkImportService Service(IComuneDirectory? comuni = null) => ServiceOn(_db, comuni);
 
     private OnboardingBulkImportService ServiceOn(AppDbContext db, IComuneDirectory? comuni = null) =>
         new(db, comuni ?? Comuni(), _clock, _log);
 
-    /// <summary>The official list, for the comuni the tests use: Roma (Lazio), Milano (Lombardia), and one that is no longer active.</summary>
     private static IComuneDirectory Comuni()
     {
         var known = new Dictionary<string, Comune>
@@ -634,10 +580,6 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
 
     private static byte[] Csv(params string[] lines) => Encoding.UTF8.GetBytes(string.Join("\r\n", lines));
 
-    /// <summary>
-    /// A sheet and its shared strings from rows of text: a plain text is a shared string, <c>i:text</c> an inline string, <c>#123</c> a number,
-    /// <c>=123</c> a formula whose cached value is 123 (a bare <c>=</c> has none) and <c>null</c> no cell.
-    /// </summary>
     private static (string Sheet, string Shared) Table(params string?[][] rows)
     {
         var shared = new List<string>();
@@ -680,10 +622,8 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         return (sheet.ToString(), $"<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">{strings}</sst>");
     }
 
-    /// <summary>One row of <see cref="Table"/>.</summary>
     private static string?[] Row(params string?[] cells) => cells;
 
-    /// <summary>A workbook of one sheet (or of two, the first listed by the workbook being the second file) with the parts a spreadsheet writes.</summary>
     private static byte[] Workbook(
         (string Sheet, string? Shared) first,
         (string Sheet, string? Shared)? second = null,
@@ -734,7 +674,6 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         writer.Write(content);
     }
 
-    /// <summary>Counts the saves of the unit of work.</summary>
     private sealed class SaveCounter : SaveChangesInterceptor
     {
         public int Count { get; private set; }

@@ -12,7 +12,6 @@ public class HostInviteRetentionJob(IHostInviteRetentionService retention)
 {
     public const string RecurringJobId = "host-invite-retention";
 
-    /// <summary>Every day at 03:40 UTC (after the GDPR retention of 03:00).</summary>
     public const string Cron = "40 3 * * *";
 
     [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]

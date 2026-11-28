@@ -18,7 +18,6 @@ public class CinAlertState : ITenantOwned
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row, copied from the property (TN-2).</summary>
     public Guid OrgId { get; set; }
 
     [ForeignKey(nameof(Property))]
@@ -31,16 +30,10 @@ public class CinAlertState : ITenantOwned
     /// </summary>
     public DateOnly? Deadline { get; set; }
 
-    /// <summary>
-    /// Last stage sent for <see cref="Deadline"/>: days before it (30, 7, 1…), 0 on the deadline day, -1 after it or
-    /// for the reminder without a deadline (<see cref="Regulatory.CinAlertStages"/>). Null = none sent yet.
-    /// </summary>
     public int? Stage { get; set; }
 
-    /// <summary>Alerts sent for this property, all deadlines included.</summary>
     public int AlertCount { get; set; }
 
-    /// <summary>UTC instant of the last alert.</summary>
     public DateTime? LastAlertAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

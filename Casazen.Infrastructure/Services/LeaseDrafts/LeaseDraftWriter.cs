@@ -1,6 +1,5 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Leases;
-using Casazen.Core.Regulatory;
 using Casazen.Infrastructure.Data;
 
 namespace Casazen.Infrastructure.Services.LeaseDrafts;
@@ -13,11 +12,6 @@ namespace Casazen.Infrastructure.Services.LeaseDrafts;
 /// </summary>
 internal static class LeaseDraftWriter
 {
-    /// <summary>
-    /// Projects <paramref name="values"/> into the lease: the rows of the parties, the columns, and the typed state (kept only while
-    /// the data are not <paramref name="dataComplete"/>). Stages the changes; the first of the two saves of the parties is already
-    /// done when it returns.
-    /// </summary>
     public static async Task ProjectAsync(
         AppDbContext db,
         LeaseContract lease,

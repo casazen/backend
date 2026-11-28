@@ -10,7 +10,6 @@ namespace Casazen.Core.Leases;
 /// </summary>
 public static partial class LeaseTemplateApproval
 {
-    /// <summary>A version is also a file name: letters, digits, dot, dash and underscore, starting with a letter or digit.</summary>
     [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$", RegexOptions.CultureInvariant)]
     private static partial Regex VersionIdPattern();
 
@@ -22,10 +21,6 @@ public static partial class LeaseTemplateApproval
         && VersionIdPattern().IsMatch(versionId.Trim())
         && !versionId.Contains("..", StringComparison.Ordinal);
 
-    /// <summary>
-    /// Why a declared approval (<c>Approved=true</c>) is not valid; empty when it is valid or when the variant is not
-    /// declared approved at all.
-    /// </summary>
     public static IReadOnlyList<string> GetInvalidApprovalReasons(LeaseTemplateVariantOptions? variant)
     {
         if (variant is null || !variant.Approved)

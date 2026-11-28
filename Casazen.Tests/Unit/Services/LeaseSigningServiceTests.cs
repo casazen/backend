@@ -90,7 +90,6 @@ public class LeaseSigningServiceTests : IDisposable
         Assert.Null(signer.SigningUrl);
         var landlord = await _db.LeaseSigners.AsNoTracking().SingleAsync(s => s.PartyId != tenant.Id);
         Assert.Equal(LeaseSignerStatus.Pending, landlord.Status);
-        // The event names the party by id, never by email (A7-17).
         var partyEvent = Assert.Single(_db.LeaseEvents.Where(e => e.EventType == LeaseEventType.PartySignedDocument));
         Assert.Equal(tenant.Id.ToString(), partyEvent.Payload);
     }
@@ -112,7 +111,6 @@ public class LeaseSigningServiceTests : IDisposable
     [Fact]
     public async Task HandleProviderEventAsync_AllSignedOnAugustFirstWithStartOctoberFirst_SignedWithDeadlineAugust31()
     {
-        // LT-04 (A7-04): signed 1/8 (00:30 in Rome, still 31/7 in UTC), start 1/10 → stipula 1/8, deadline 31/8.
         var clock = new FixedTimeProvider(new DateTimeOffset(2026, 7, 31, 22, 30, 0, TimeSpan.Zero));
         var lease = await SeedLeaseAsync(LeaseStatus.PartiallySigned, withProviderSigners: true, start: new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc));
         ProviderEvent(ESignEventKind.AllSigned);
@@ -125,7 +123,6 @@ public class LeaseSigningServiceTests : IDisposable
         Assert.Equal(LeaseStatus.Signed, stored.Status);
         Assert.Equal(new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc), stored.StipulaDate);
         Assert.Equal(new DateTime(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc), stored.RegistrationDeadline);
-        // The signed PDF is copied into the private bucket: the lease points to our file, never to a provider path.
         var key = Assert.Single(_storedKeys);
         Assert.Equal(key, stored.SignedPdfStoragePath);
         Assert.True(StorageKeys.IsValid(key));
@@ -187,7 +184,6 @@ public class LeaseSigningServiceTests : IDisposable
         var stored = await ReloadAsync(lease.Id);
         Assert.Equal(LeaseStatus.AwaitingSignature, stored.Status);
         Assert.Equal(SessionId, stored.ExternalSigningSessionId);
-        // Persisted (A7-16): a new read returns the same links.
         var reread = await CreateSut().GetSignersAsync(lease.Id);
         Assert.Equal(signers.Select(s => s.SigningUrl), reread.Select(s => s.SigningUrl));
     }
@@ -246,7 +242,6 @@ public class LeaseSigningServiceTests : IDisposable
         var stored = await ReloadAsync(lease.Id);
         Assert.Equal(LeaseStatus.Signed, stored.Status);
         Assert.Equal(stipula, stored.StipulaDate);
-        // min(stipula 20/8, start 1/9) + 30 days.
         Assert.Equal(new DateTime(2026, 9, 19, 0, 0, 0, DateTimeKind.Utc), stored.RegistrationDeadline);
         Assert.Equal("auth0|owner", stored.StipulaDeclaredByUserId);
         Assert.Equal(Assert.Single(_storedKeys), stored.SignedPdfStoragePath);
@@ -264,7 +259,6 @@ public class LeaseSigningServiceTests : IDisposable
     [Fact]
     public async Task DeclareOfflineSignatureAsync_ADraftStillKeepingTheTypedStateOfTheWizard_DropsItWithTheDraft()
     {
-        // LR-12: the typed state of the wizard repeats the data of the parties and is only for a draft; a lease that is signed keeps none.
         var lease = await SeedLeaseAsync(LeaseStatus.Draft);
         var tracked = await _db.LeaseContracts.SingleAsync(l => l.Id == lease.Id);
         tracked.DraftData = """{"landlords":[{"firstName":"Mario"}]}""";
@@ -320,7 +314,6 @@ public class LeaseSigningServiceTests : IDisposable
 
         var state = await CreateSut(providerFlag: true).GetSigningStateAsync(lease.Id);
 
-        // Flag on but no configured provider: the provider path does not exist (LT-02).
         Assert.False(state.ProviderSigningAvailable);
         Assert.False(state.ContractAvailable);
         Assert.Equal("contract_template_not_approved", state.ContractUnavailableCode);

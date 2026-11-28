@@ -36,7 +36,6 @@ public class CleaningAutomationPostgresTests : IAsyncLifetime
         await using var db = _database.CreateContext();
         _world = await HostScopeScenario.SeedAsync(db);
 
-        // The stay is the one already checked out of the first property (it has no cleaning request); the supplier org of the world covers its comune and has an agreed price for it.
         _bookingId = (await db.Bookings.AsNoTracking().SingleAsync(b => b.PropertyId == _world.Granted.Id && b.Status == BookingStatus.CheckedOut)).Id;
         db.SupplierProfiles.Add(new SupplierProfile
         {
@@ -66,10 +65,6 @@ public class CleaningAutomationPostgresTests : IAsyncLifetime
             await _database.DisposeAsync();
     }
 
-    /// <summary>
-    /// Money rule: the triggers of one stay at the same moment make one cleaning. Of four calls together one creates the request and the key, the others find the key (the lock of the stay
-    /// makes them wait for the commit of the first); the stay has one request of category cleaning, one <c>StayCleaning</c> row that points at it, and the supplier is told once.
-    /// </summary>
     [PostgresFact]
     public async Task CleaningAutomation_TriggersAtTheSameMoment_MakeOneRequestAndOneKey_Test()
     {
@@ -87,9 +82,6 @@ public class CleaningAutomationPostgresTests : IAsyncLifetime
         Assert.Single(emails.Snapshot(), e => e.Template == EmailTemplates.Names.ServiceRequestCreated);
     }
 
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The same call from <see cref="Together"/> triggers, each with a context and a service graph of its own, released together.</summary>
     private async Task<CleaningAutomationResult[]> CreateTogetherAsync(RecordingEmailQueue emails)
     {
         var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

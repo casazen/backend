@@ -5,10 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// FD-17 (A3-29, A9-28, A9-29): the real pipeline answers with the security headers and the restricted CORS policy
-/// (configured origins only, no credentials, previews only through the configured pattern).
-/// </summary>
 public class CorsAndSecurityHeadersIntegrationTests : IClassFixture<CorsAndSecurityHeadersIntegrationTests.CorsFactory>
 {
     private const string WebApp = "https://app.casazen.test";
@@ -29,7 +25,6 @@ public class CorsAndSecurityHeadersIntegrationTests : IClassFixture<CorsAndSecur
         Assert.Equal("DENY", Assert.Single(response.Headers.GetValues("X-Frame-Options")));
         Assert.Equal("nosniff", Assert.Single(response.Headers.GetValues("X-Content-Type-Options")));
         Assert.Equal("strict-origin-when-cross-origin", Assert.Single(response.Headers.GetValues("Referrer-Policy")));
-        // Testing environment: HSTS only outside Development/Testing (covered by SecurityHeadersMiddlewareTests).
         Assert.False(response.Headers.Contains("Strict-Transport-Security"));
     }
 

@@ -67,14 +67,6 @@ public sealed class AssistantDraftsController(
         return Ok(AssistantDraftOutcomeDto.From(await drafts.DraftNowAsync(scope, key, userId, cancellationToken)));
     }
 
-    /// <summary>
-    /// Tries the assistant on an example text with the current settings of a property (the switch of the organization may still be off): the situation, the urgency, the confidence, the
-    /// draft, the facts used and what the gate would decide. Writes no log, no item of the queue and no «To do», sends nothing; it spends the AI budget like any call.
-    /// </summary>
-    /// <response code="200">The simulation (<c>decision</c> <c>NotHandled</c> with its <c>reason</c> when no AI provider is in effect).</response>
-    /// <response code="404"><c>property_not_found</c>: not in the caller's org or reach.</response>
-    /// <response code="422"><c>assistant_simulation_invalid</c>: the text is empty or longer than 2,000 characters, or the language is not two letters.</response>
-    /// <response code="429"><c>rate_limited</c>.</response>
     [HttpPost("simulate")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [EnableRateLimiting(RateLimitPolicies.AssistantSimulate)]

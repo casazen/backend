@@ -12,12 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// NF-96: the owner portal shows the owner's properties on the Home's numbers, weighted by the share the owner holds. October 2026, worked
-/// out by hand. Org one: Villa (Alice 50%, Bob 50%) with a 400 stay of 4 nights, Casa Sola (Alice) with a 200 one of 2, Casa Altrui (Carol)
-/// with a 500 one of 5, Casa Venduta (Alice until 30 June) with a 700 one of 7. Org two: Villa Due (Alice) with a 350 stay of 3 nights.
-/// A year earlier the Villa had a 300 stay of 3 nights.
-/// </summary>
 public class OwnerPortalOverviewTests
 {
     private static readonly TimeProvider Clock = new Casazen.Tests.Unit.FixedTimeProvider(HostScopeScenario.Now);
@@ -25,7 +19,6 @@ public class OwnerPortalOverviewTests
     private static readonly DateOnly October = new(2026, 10, 1);
     private static readonly DateOnly OctoberEnd = new(2026, 10, 31);
 
-    // What a guest is: nothing of this may be in an answer of the portal.
     private const string GuestName = "Mario";
     private const string GuestSurname = "Ospitale";
     private const string GuestEmail = "mario.ospitale@example.com";
@@ -149,8 +142,6 @@ public class OwnerPortalOverviewTests
     private static OwnerOverviewQuery Query(HostPerformanceGroupBy groupBy = HostPerformanceGroupBy.Property, bool compare = false) =>
         new(October, OctoberEnd, groupBy, compare);
 
-    // ---------------------------------------------------------------- proof: the revenue is weighted by the share
-
     [Fact]
     public async Task OwnerPortalOverview_ShareWeightedRevenue_Test()
     {
@@ -161,7 +152,6 @@ public class OwnerPortalOverviewTests
         var alice = await world.Service.GetOwnerOverviewAsync(world.Alice.Id, Query(compare: true));
         var bob = await world.Service.GetOwnerOverviewAsync(world.Bob.Id, Query(compare: true));
 
-        // The villa is shared 50/50: half of its 400 for each owner, and the two halves are the Home's revenue for the villa.
         Assert.Equal(400m, home.Revenue);
         var aliceVilla = alice.Rows.Single(r => r.PropertyId == world.Villa.Id).Figures;
         var bobVilla = bob.Rows.Single(r => r.PropertyId == world.Villa.Id).Figures;
@@ -171,30 +161,25 @@ public class OwnerPortalOverviewTests
         Assert.Equal(home.Occupancy.OccupiedNights, aliceVilla.OccupiedNights + bobVilla.OccupiedNights);
         Assert.Equal(home.Occupancy.AvailableNights, aliceVilla.AvailableNights + bobVilla.AvailableNights);
 
-        // Alice: half of the villa, all of Casa Sola and all of Villa Due (another org): 200 + 200 + 350. Her rows are by name.
         Assert.Equal(new[] { "Casa Sola", "Villa", "Villa Due" }, alice.Rows.Select(r => r.Label).ToArray());
         Assert.Equal(750m, alice.Total.Figures.Revenue);
-        Assert.Equal(7m, alice.Total.Figures.OccupiedNights);   // 2 + 2 + 3
-        Assert.Equal(77.5m, alice.Total.Figures.AvailableNights);   // 15.5 + 31 + 31
-        Assert.Equal(107.14m, alice.Total.Figures.Adr);   // 750 over 7 nights
-        Assert.Equal(9.68m, alice.Total.Figures.RevPar);   // 750 over 77.5 nights, 9.677...
+        Assert.Equal(7m, alice.Total.Figures.OccupiedNights);
+        Assert.Equal(77.5m, alice.Total.Figures.AvailableNights);
+        Assert.Equal(107.14m, alice.Total.Figures.Adr);
+        Assert.Equal(9.68m, alice.Total.Figures.RevPar);
         Assert.Equal(200m, bob.Total.Figures.Revenue);
         Assert.Equal(100m, bob.Total.Figures.Adr);
 
-        // The year before: the villa had 300, half of it each; the other houses existed and had nothing (zeros that are real).
         Assert.Equal(150m, alice.Total.PreviousYear!.Revenue);
         Assert.Equal(150m, bob.Total.PreviousYear!.Revenue);
         Assert.Equal(77.5m, alice.Total.PreviousYear.AvailableNights);
         Assert.Equal(Day(2025, 10, 1), alice.PreviousYearPeriod!.From);
 
-        // And what changed is the server's: 750 against 150.
         var dto = OwnerPortalOverviewDto.From(alice, HostPerformanceGroupBy.Property, "Prestazioni per immobile, per competenza");
         Assert.Equal(400.0m, dto.Total.RevenueDeltaPercent);
         Assert.Equal(150m, dto.Total.PreviousYear!.Revenue);
         Assert.Equal(15_000L, dto.Total.PreviousYear.RevenueCents);
     }
-
-    // ---------------------------------------------------------------- proof: an owner never reads a property it does not own
 
     [Fact]
     public async Task OwnerPortalOverview_OtherOwnersProperties_NotCounted_Test()
@@ -203,7 +188,6 @@ public class OwnerPortalOverviewTests
 
         var alice = await world.Service.GetOwnerOverviewAsync(world.Alice.Id, Query());
 
-        // Casa Altrui is Carol's and Casa Venduta was Alice's until June: neither is in her rows, her total, or reachable by id.
         Assert.DoesNotContain(alice.Rows, r => r.PropertyId == world.Altrui.Id || r.PropertyId == world.Venduta.Id);
         Assert.Equal(750m, alice.Total.Figures.Revenue);
 
@@ -215,7 +199,6 @@ public class OwnerPortalOverviewTests
                 world.Service.GetOwnerTrendAsync(world.Alice.Id, Query() with { PropertyId = notHers }));
         }
 
-        // Her own property by id is a view of just that one; Carol sees only hers, with all of it.
         var sola = await world.Service.GetOwnerOverviewAsync(world.Alice.Id, Query() with { PropertyId = world.Sola.Id });
         Assert.Equal(world.Sola.Id, Assert.Single(sola.Rows).PropertyId);
         Assert.Equal(200m, sola.Total.Figures.Revenue);
@@ -223,7 +206,6 @@ public class OwnerPortalOverviewTests
         Assert.Equal(world.Altrui.Id, Assert.Single(carol.Rows).PropertyId);
         Assert.Equal(500m, carol.Total.Figures.Revenue);
 
-        // An owner with no ownership at all has nothing: no rows, no money, no made-up year before.
         var nobody = await world.Service.GetOwnerOverviewAsync(Guid.NewGuid(), Query(compare: true));
         Assert.Empty(nobody.Rows);
         Assert.Equal(0m, nobody.Total.Figures.Revenue);
@@ -235,7 +217,6 @@ public class OwnerPortalOverviewTests
     [Fact]
     public async Task OwnerPortalOverview_AnOwnershipThatStartedAfterTheDays_IsNotInThem()
     {
-        // Alice bought Casa Appena Comprata on 5 October: it is not hers in September, and it is in October.
         Guid appena = default;
         var world = await SeedAsync((db, w) =>
         {
@@ -259,8 +240,6 @@ public class OwnerPortalOverviewTests
             new OwnerOverviewQuery(new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 30)) { PropertyId = appena }));
     }
 
-    // ---------------------------------------------------------------- proof: no guest field in the answers
-
     [Fact]
     public async Task OwnerPortalOverview_NoGuestData_Test()
     {
@@ -271,8 +250,6 @@ public class OwnerPortalOverviewTests
         var overviewJson = JsonSerializer.Serialize(OwnerPortalOverviewDto.From(overview, HostPerformanceGroupBy.Property, "Prestazioni"));
         var trendJson = JsonSerializer.Serialize(OwnerPortalTrendDto.From(trend, HostPerformanceGroupBy.Property, "Andamento"));
 
-        // The stays of the figures belong to guests with a name, an e-mail and a phone: none of it is in the answers, and neither is the
-        // data of another owner (their names, their e-mails).
         foreach (var json in new[] { overviewJson, trendJson })
         {
             foreach (var secret in new[] { GuestName, GuestSurname, GuestEmail, GuestPhone, world.Bob.Email, world.Carol.Email, world.Bob.Auth0Sub })
@@ -284,7 +261,6 @@ public class OwnerPortalOverviewTests
 
         Assert.Contains("Casa Sola", overviewJson, StringComparison.Ordinal);
 
-        // The shape cannot carry it: no member of the results or of the answers is about a guest, an e-mail or a phone.
         foreach (var type in new[]
                  {
                      typeof(OwnerPortalOverview), typeof(OwnerPortalRow), typeof(OwnerPortalTrend), typeof(OwnerPortalSeries),
@@ -300,8 +276,6 @@ public class OwnerPortalOverviewTests
         }
     }
 
-    // ---------------------------------------------------------------- the trend and the property list
-
     [Fact]
     public async Task OwnerPortalTrend_WeightedBucketsAddUpToTheOverview_WithTheYearBefore()
     {
@@ -310,7 +284,6 @@ public class OwnerPortalOverviewTests
 
         var together = await world.Service.GetOwnerTrendAsync(world.Alice.Id, Query(HostPerformanceGroupBy.None, compare: true));
 
-        // The host's weeks (1 to 4, three whole ones, 26 to 31 October), and the lines weighted add up to the overview.
         Assert.Equal(HostOverviewSeriesUnit.Week, together.Unit);
         Assert.Equal(5, together.Buckets.Count);
         var line = Assert.Single(together.Series);
@@ -320,9 +293,8 @@ public class OwnerPortalOverviewTests
         Assert.Equal(overview.Total.Figures.AvailableNights, line.Points.Sum(p => p.AvailableNights));
         Assert.Equal(5, line.PreviousYear.Count);
         Assert.Equal(150m, Math.Round(line.PreviousYear.Sum(p => p!.Revenue), 2));
-        Assert.Equal(150m, line.PreviousYear[2]!.Revenue);   // the stay of 14 to 17 October 2025 is in the third week of that month
+        Assert.Equal(150m, line.PreviousYear[2]!.Revenue);
 
-        // One line for each property, the most revenue first (Villa Due 350, then Casa Sola and the half of the villa, 200 each).
         var byProperty = await world.Service.GetOwnerTrendAsync(world.Alice.Id, Query());
         Assert.Equal(new[] { "Villa Due", "Casa Sola", "Villa" }, byProperty.Series.Select(s => s.Label).ToArray());
         var rows = (await world.Service.GetOwnerOverviewAsync(world.Alice.Id, Query())).Rows;
@@ -337,14 +309,11 @@ public class OwnerPortalOverviewTests
 
         var properties = await world.Service.GetOwnerPropertiesAsync(world.Alice.Id);
 
-        // The last 30 days up to 9 October: 10 of the 30 nights of Casa Sola (20 to 29 September), 3 of Villa Due (3, 4, 5 October), none of
-        // the villa (its stay is later). A percentage from 0 to 100 to one decimal.
         Assert.Equal(33.3, properties.Single(p => p.PropertyId == world.Sola.Id).OccupancyRate);
         Assert.Equal(10.0, properties.Single(p => p.PropertyId == world.VillaDue.Id).OccupancyRate);
         Assert.Equal(0.0, properties.Single(p => p.PropertyId == world.Villa.Id).OccupancyRate);
         Assert.DoesNotContain(properties, p => p.PropertyId == world.Venduta.Id);
 
-        // Built without the Home (as older code does) the older reads still work, and the new ones say what they need.
         var withoutHome = new OwnerPortalService(HostScopeScenario.NewInMemoryDb(), Clock);
         Assert.Empty(await withoutHome.GetOwnerPropertiesAsync(world.Alice.Id));
         await Assert.ThrowsAsync<InvalidOperationException>(() => withoutHome.GetOwnerOverviewAsync(world.Alice.Id, Query()));

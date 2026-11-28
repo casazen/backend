@@ -44,7 +44,6 @@ public class CalendarChangeRunnerTests
 
         var count = await h.Service().RunDueAsync();
 
-        // The org of the oldest due process first (all its due processes), then the other org: never the future, a settled one or one with nothing waiting.
         Assert.Equal(3, count);
         Assert.Equal([a1, a2, b1], ran);
     }
@@ -118,15 +117,10 @@ public class CalendarChangeRunnerTests
         Assert.Equal(CalendarChunkState.Confirmed, Assert.Single(chunks).State);
         Assert.Equal(CalendarChangeState.Confirmed, process.State);
         Assert.Equal(Now.UtcDateTime, process.FinishedAt);
-        // Asked once more later (below), never again after that.
         Assert.Equal(Now.UtcDateTime + CalendarPushRules.ConfirmedRecheckAfter, process.NextAttemptAt);
         Assert.Null(process.ErrorCode);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. A status that is unknown, interim (<c>PROCESSING</c>) or absent never confirms a chunk, and with no status of success configured (the default: none is
-    /// documented) even a process that says it is done confirms nothing: the chunk stays «accepted by the channel manager».
-    /// </summary>
     [Theory]
     [InlineData("PROCESSING", Runner.Success, Runner.Success)]
     [InlineData(Runner.Success, "SOMETHING_UNKNOWN", Runner.Success)]
@@ -169,11 +163,9 @@ public class CalendarChangeRunnerTests
         Assert.Equal((CalendarChangeState.Confirmed, CalendarChunkState.Confirmed), (confirmed.State, Assert.Single(confirmedChunks).State));
         Assert.Equal(Now.UtcDateTime + CalendarPushRules.ConfirmedRecheckAfter, confirmed.NextAttemptAt);
 
-        // Not due yet: nothing is asked.
         await h.Service().RunDueAsync();
         h.Client.Verify(c => c.GetCalendarProcessAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
 
-        // Due: the second look finds the error.
         await h.Service(Now.AddMinutes(11)).RunDueAsync();
 
         var (after, chunks) = await h.ReadAsync(id);
@@ -223,7 +215,6 @@ public class CalendarChangeRunnerTests
     {
         var h = new Runner();
         var id = await h.SeedAsync(OrgA, CalendarChangeState.Sent, due: 0, CalendarChunkState.Accepted, startedMinutesAgo: 1);
-        // The 403 of a quota that is used up (OCT-13) is not a refusal of the endpoint: the chunk waits as the push waits for a quota.
         h.Client
             .Setup(c => c.GetCalendarProcessAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new OctorateRateLimitException(403, quotaExhausted: true));
@@ -237,10 +228,6 @@ public class CalendarChangeRunnerTests
         h.Client.Verify(c => c.GetCalendarProcessAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    /// <summary>
-    /// The follow-up reads at most <see cref="CalendarChangeRunner.MaxReadsPerPass"/> processes of the channel manager for an org in one pass, all its change processes together (a bulk
-    /// of fifty properties has hundreds of accepted chunks): the quota of the org is read once, the rest waits, accepted, and is asked again after the wait of a quota.
-    /// </summary>
     [Fact]
     public async Task Follow_ReadsAtMostTheBudgetOfAPassForAnOrg_TheQuotaIsReadOnce_AndWhatIsLeftWaitsAccepted_Test()
     {
@@ -250,7 +237,6 @@ public class CalendarChangeRunnerTests
 
         await h.Service().RunDueAsync();
 
-        // 20 reads for the first, the 5 that are left for the second.
         h.Client.Verify(c => c.GetCalendarProcessAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(CalendarChangeRunner.MaxReadsPerPass));
         h.Client.Verify(c => c.GetConfigurationAsync(It.IsAny<CancellationToken>()), Times.Once);
         var (firstProcess, firstChunks) = await h.ReadAsync(first);
@@ -260,10 +246,6 @@ public class CalendarChangeRunnerTests
         Assert.Equal(Now.UtcDateTime + CalendarPushRules.QuotaRetryAfter, secondProcess.NextAttemptAt);
     }
 
-    /// <summary>
-    /// The follow-up stops at the quota of the channel manager less the reserve of the push (<c>QuotaReserve</c>, 20): with 164 and 140 used it reads 4, with 150 used none (the
-    /// reserve is not its to take); a quota that cannot be read leaves nothing to read. What is not read stays accepted and is asked again after five minutes.
-    /// </summary>
     [Theory]
     [InlineData(140, 4)]
     [InlineData(150, 0)]
@@ -297,7 +279,6 @@ public class CalendarChangeRunnerTests
         await h.Service().RunDueAsync();
 
         Assert.Equal(Now.UtcDateTime + CalendarPushRules.ConfirmationEvery, (await h.ReadAsync(open)).Process.NextAttemptAt);
-        // Past 30 minutes the chunk stays «accepted by the channel manager» and is not asked again.
         Assert.Null((await h.ReadAsync(over)).Process.NextAttemptAt);
         Assert.Equal(CalendarChunkState.Accepted, (await h.ReadAsync(over)).Chunks.Single().State);
     }
@@ -311,7 +292,6 @@ public class CalendarChangeRunnerTests
     public async Task Follow_TheWindowIsTheChunksOwn_ALateChunkOfAnOldProcessIsFollowed_AndAnOldChunkIsNot_Test()
     {
         var h = new Runner();
-        // The process started two hours ago; its first chunk was sent 45 minutes ago, its second one a minute ago.
         var late = await h.SeedAsync(
             OrgA,
             CalendarChangeState.Sent,
@@ -323,13 +303,11 @@ public class CalendarChangeRunnerTests
 
         await h.Service().RunDueAsync();
 
-        // Only the chunk of the open window is asked (once), and the process is followed again in two minutes, for as long as that window is open.
         h.Client.Verify(c => c.GetCalendarProcessAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
         var (process, chunks) = await h.ReadAsync(late);
         Assert.All(chunks, c => Assert.Equal(CalendarChunkState.Accepted, c.State));
         Assert.Equal(Now.UtcDateTime + CalendarPushRules.ConfirmationEvery, process.NextAttemptAt);
 
-        // A process whose chunks are all past their own window is not asked and is not due again.
         var old = await h.SeedAsync(OrgB, CalendarChangeState.Sent, due: 0, CalendarChunkState.Accepted, startedMinutesAgo: 120, lastCallMinutesAgo: [45]);
 
         await h.Service().RunDueAsync();
@@ -407,10 +385,6 @@ public class CalendarChangeRunnerTests
 
     private sealed class Runner
     {
-        /// <summary>
-        /// The status of success of these tests. No status of success is documented (the Postman examples are NEW, NOT_PROCESSED and ERROR): this one stands for whatever the sandbox
-        /// shows and <c>Octorate:Calendar:ProcessSuccessStatuses</c> lists.
-        /// </summary>
         public const string Success = "SUCCESS_UNDER_TEST";
 
         private readonly string _database = $"calendar-runner-{Guid.NewGuid():N}";

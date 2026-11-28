@@ -73,8 +73,6 @@ public class CheckoutHoldExpiryServiceTests
     [Fact]
     public async Task ExpireDueHoldsAsync_IntentCreatedOnPreviousAccount_CancelsItOnThatAccount()
     {
-        // The org replaced its connected account after the checkout: the intent lives on the account stored on the
-        // payment row (BK-02), not on the org's current one.
         var hold = await SeedHoldAsync(minutesAgo: 20, paymentIntentId: "pi_old_account", paymentAccountId: "acct_previous");
 
         await Service().ExpireDueHoldsAsync();
@@ -119,7 +117,6 @@ public class CheckoutHoldExpiryServiceTests
         Assert.Null(stored.CancellationReason);
         Assert.Equal(PaymentStatus.Processing, Assert.Single(stored.Payments).Status);
 
-        // Recorded: the next run does not ask Stripe again and the hold keeps its dates (CheckoutHolds.IsExpired).
         var next = await Service().ExpireDueHoldsAsync();
         Assert.Equal(CheckoutHoldExpiryRun.Empty, next);
     }
@@ -200,7 +197,6 @@ public class CheckoutHoldExpiryServiceTests
         });
         var confirmedDirect = await SeedHoldAsync(minutesAgo: 600, paymentIntentId: "pi_confirmed",
             configure: b => b.Status = BookingStatus.Confirmed);
-        // D5: a "pay at the property" request waits for the host until its own deadline, whatever the checkout TTL (BK-06).
         var onSite = await SeedHoldAsync(minutesAgo: 600, setupIntentId: "seti_onsite", configure: b =>
         {
             b.PaymentOption = PaymentOption.OnSite;
@@ -222,7 +218,6 @@ public class CheckoutHoldExpiryServiceTests
     [Fact]
     public async Task ExpireDueHoldsAsync_OnSiteRequestPastHostDeadline_CancelsItReleasesDatesAndEmailsTheGuest()
     {
-        // BK-06: the host did not answer within DirectBooking:OnSiteApprovalHours.
         var request = await SeedOnSiteRequestAsync(emailConfirmed: true, expiresInMinutes: -1);
 
         var run = await Service().ExpireDueHoldsAsync();
@@ -241,8 +236,6 @@ public class CheckoutHoldExpiryServiceTests
     [Fact]
     public async Task ExpireDueHoldsAsync_OnSiteRequestEmailNeverConfirmed_CancelsItWithoutEmail()
     {
-        // A3-06: an unconfirmed request (possibly a fake address) holds its dates only for the confirmation window and
-        // never reaches the host; nobody is emailed when it expires.
         var request = await SeedOnSiteRequestAsync(emailConfirmed: false, expiresInMinutes: -1);
 
         var run = await Service().ExpireDueHoldsAsync();
@@ -269,7 +262,6 @@ public class CheckoutHoldExpiryServiceTests
     [Fact]
     public async Task ExpireOverlappingHoldsAsync_ExpiredHoldOfOtherDates_IsLeftToTheJob()
     {
-        // A2-01: a checkout for 10-12 May has no reason to cancel an abandoned hold of 1-5 May.
         var overlapping = await SeedHoldAsync(minutesAgo: 30, paymentIntentId: "pi_overlap",
             checkIn: new DateTime(2026, 5, 10), checkOut: new DateTime(2026, 5, 14));
         var otherDates = await SeedHoldAsync(minutesAgo: 30, setupIntentId: "seti_other",
@@ -300,8 +292,6 @@ public class CheckoutHoldExpiryServiceTests
     [Fact]
     public async Task CloseOpenPaymentsOfCancelledBookingsAsync_CardPaymentLeftOpenByAnOlderCleanup_ReleasesIntentAndClosesPaymentOnly()
     {
-        // Until BK-21 the cleanup before a new booking set only Booking.Status = Cancelled: no time, no reason, and the payment
-        // row stayed Pending ("Da incassare") for ever.
         var legacy = await SeedHoldAsync(minutesAgo: 100 * 24 * 60, paymentIntentId: "pi_legacy",
             configure: b => b.Status = BookingStatus.Cancelled);
 
@@ -317,7 +307,6 @@ public class CheckoutHoldExpiryServiceTests
         Assert.Null(stored.CancellationReason);
         Assert.Equal(legacy.UpdatedAt, stored.UpdatedAt);
 
-        // Closed for good: the next run finds nothing and does not ask Stripe again.
         Assert.Equal(CancelledBookingPaymentsRun.Empty, await Service().CloseOpenPaymentsOfCancelledBookingsAsync());
         _stripe.Verify(s => s.GetPaymentIntentAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -379,8 +368,6 @@ public class CheckoutHoldExpiryServiceTests
     [Fact]
     public async Task CloseOpenPaymentsOfCancelledBookingsAsync_LiveBookingsAndSettledPayments_AreNeverTouched()
     {
-        // A confirmed "pay at the property" booking still has cash to collect, and a cancelled booking keeps the payment it
-        // collected (its refund is another flow): neither is this run's business.
         var confirmed = await SeedHoldAsync(minutesAgo: 600, configure: b =>
         {
             b.Status = BookingStatus.Confirmed;
@@ -463,7 +450,6 @@ public class CheckoutHoldExpiryServiceTests
         return booking;
     }
 
-    /// <summary>The cash payment row of a "pay at the property" booking seeded without one.</summary>
     private async Task AddCashPaymentAsync(Booking booking)
     {
         _db.Payments.Add(new Payment
@@ -480,7 +466,6 @@ public class CheckoutHoldExpiryServiceTests
         _db.ChangeTracker.Clear();
     }
 
-    /// <summary>A "pay at the property" request with its guest, property and cash payment row (read by the notifier).</summary>
     private async Task<Booking> SeedOnSiteRequestAsync(bool emailConfirmed, int expiresInMinutes, int minutesAgo = 20)
     {
         var createdAt = DateTime.UtcNow.AddMinutes(-minutesAgo);

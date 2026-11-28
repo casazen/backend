@@ -4,7 +4,6 @@ using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 
@@ -58,7 +57,6 @@ public class GuestAreaController(IGuestSessionService sessions, IFeatureFlags fe
         [FromBody] GuestSessionRequest request,
         CancellationToken cancellationToken)
     {
-        // The digits are read only with the flag on (the body was checked so: exactly one proof); off, it is the e-mail proof of always.
         var opened = request.UsesPhoneProof(featureFlags)
             ? await sessions.OpenAsync(
                 new GuestBookingPhoneCredentials(request.OrgSlug, request.BookingCode, request.PhoneLast4 ?? string.Empty),

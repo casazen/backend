@@ -17,10 +17,8 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// </summary>
 public class TenantQueryFilterArchitectureTests
 {
-    /// <summary>Entities deliberately NOT tenant-filtered, each with its reason.</summary>
     private static readonly IReadOnlyDictionary<Type, string> NotTenantFiltered = new Dictionary<Type, string>
     {
-        // Tenant, identity and authorization catalog.
         [typeof(OrgEntity)] = "The tenant itself: resolved by id, slug or domain for public sites, billing and onboarding, before a tenant is known.",
         [typeof(User)] = "Identity table: TenantContext reads User.OrgId to resolve the tenant (a filter here would recurse); users are looked up by their own sub, admins manage all users.",
         [typeof(UserContextMembership)] = "Authorization data keyed by UserId, read by the authorization handlers for the caller's own sub before the tenant is resolved.",
@@ -29,7 +27,6 @@ public class TenantQueryFilterArchitectureTests
         [typeof(RolePermission)] = "Global permission catalog (seeded reference data).",
         [typeof(OwnerUser)] = "Property owner users (ADR-011): cross-organization entities representing natural persons who own properties managed by multiple agencies (different orgs). Each OwnerUser can be linked to properties across multiple organizations. A tenant filter would incorrectly scope them to a single agency org, breaking the owner portal's ability to show properties across all agencies that manage their real estate.",
 
-        // Platform reference data and platform-wide state.
         [typeof(MarketingEventSearch)] = "Shared public event catalog keyed by municipality, country and date range. Entries contain public event names, dates, source URLs, descriptions and confidence. No property, guest or organization identifiers are stored.",
         [typeof(TouristTaxRate)] = "Platform reference data: tourist tax rates per comune, managed by admins and read by every org.",
         [typeof(CancellationPolicy)] = "Platform catalog of cancellation policies shared by the properties of every org.",
@@ -67,7 +64,6 @@ public class TenantQueryFilterArchitectureTests
         [typeof(IstatRegionRule)] = "Platform reference data: the ISTAT region table (E21/F01/US01/T01, decision O6), one row for each region and autonomous province with the system of its portal, its deadline, the statistical guest fields it requires and whether the channel manager covers it. Seeded, the same for every org, written only by the platform staff behind AdminOnly and read for the properties and stays of every org. No org, person or stay data.",
         [typeof(CfSimulatedPractice)] = "Test environments only (CF-SIM): the practices of the simulated ConcordatoFacile module, which is an outside service's data and not an org's. Written and read only by CfSimulatorService behind the anonymous api/cf-simulator endpoints (404 unless ConcordatoFacile:FormMode=Simulated, which production refuses at startup) and by SimulatedConcordatoFacileApiClient; no personal data, empty and inert with FormMode=Real.",
 
-        // Supplier marketplace: the supplier acts as User.SupplierOrgId, the tenant filter uses User.OrgId.
         [typeof(ServiceRequest)] = "Two parties: host OrgId and supplier SupplierOrgId, and since SP-10 a third kind of request, from the supplier's public showcase, whose OrgId is the supplier org itself and whose customer is a private person with no account (ServiceRequestRentalContext.Showcase, PropertyId and BookingId null, CK_ServiceRequests_Context). A host-org filter would hide the request from the supplier who takes, completes or rejects it, would give a showcase request to no one, and host matching counts supplier load across orgs. Every query scopes explicitly by OrgId or SupplierOrgId (ServiceRequestService, ServiceRequestRepository); the host reads also filter on the rental context, so they never reach a showcase request even when the supplier org is also a host org.",
         [typeof(ServiceRequestPayment)] = "The payment of a service request inside CasaZen (SP-15a), with two parties and an anonymous payer: the supplier SupplierOrgId that is paid, the host PayerOrgId that pays (null for a private customer of the showcase) and, for the payer who opens the emailed link, no tenant at all, only a token. A host-org filter would hide the row from the supplier and from the payer's link. Only SupplierPaymentService (payer, supplier, webhook, jobs, refunds) touches it, always with an explicit predicate on the payment id, the PaymentIntent, the request or the payer org, or as a system job over the payments in a state (ServiceRequestPaymentTenancyTests); the platform admin's reads (SupplierPaymentAdminService, AdminOnly) are read-only projections across the suppliers.",
         [typeof(ServiceRequestGroup)] = "The group of backup suppliers of a host's request (SP-BKP): the request and the backups it was sent to with it. It belongs to the host org (OrgId) but is read and changed by more than two parties: the host, the supplier of every backup (reaching it through its own request), and a system job that works across every org. A host-org filter would hide it from the backups' suppliers and from the job. Only ServiceRequestService (the take, the pre-approval, the pass over a group, the host's view) and ServiceRequestGroupRunService (the job: ids only) touch it, always with an explicit predicate on the group id or the host org (ServiceRequestGroupTenancyTests).",
@@ -94,15 +90,12 @@ public class TenantQueryFilterArchitectureTests
         [typeof(SupplierInviteRecord)] = "Supplier invitations (of an admin, or of a host for its trusted suppliers) keyed by e-mail, read by the invited supplier before its org exists.",
         [typeof(SupplierAdminAuditEntry)] = "Platform-wide audit log of the admin actions on suppliers and invites (SU-12): suspension, reactivation, invite resend and revoke. Not tenant data: written and read only by SupplierAdminService behind the AdminOnly policy.",
 
-        // Invitation of new independent hosts: the invitee has no org yet and an admin's invite has none at all.
         [typeof(HostInviteRecord)] = "Invite of a prospective independent host, written before any org exists for the invitee and by platform admins who have no org: InvitedByOrgId is attribution and quota scope, never a tenant filter (a filter would hide an admin's invites and the public link lookup). Only HostInviteService and HostInviteRetentionService touch it: the host endpoints always filter by the caller's own InvitedByUserId (a host never reaches another's invite), the admin endpoints are AdminOnly, the public lookup and the acceptance find the row by the SHA-256 of the secret token.",
         [typeof(HostInviteAuditEntry)] = "Append-only audit trail of the host invites (created, sent again, revoked) with the actor and the actor's org, holding no email: platform-wide like SupplierAdminAuditEntry, written in the same transaction as the change by HostInviteService and read only by it to count the daily quota of one host org (ActorOrgId predicate).",
 
-        // Rows owned by a user, not by an org.
         [typeof(PushDelivery)] = "Delivery log of the push jobs (MO-04): one row per event key and push token, written and read only by the Hangfire push delivery and receipts jobs, no endpoint; no org, no user, no text, purged after 7 days.",
         [typeof(DeviceRegistration)] = "Owned by the user (UserId), not the org: DevicesController only touches the caller's own rows and must drop the same push token from users of any org; push delivery crosses orgs by design (supplier to host) with explicit OrgId and UserId predicates. No endpoint lists devices.",
 
-        // Children never addressed by their own id: reached only through a tenant-filtered parent.
         [typeof(OtaSyncLog)] = "No reader or writer outside its unused repository (OTA partner APIs frozen, D10). Must become ITenantOwned before an endpoint exposes it.",
         [typeof(Party)] = "Reached only through its LeaseContract (tenant-filtered and owner-verified by LeaseWorkflowService); no endpoint addresses a party by its own id.",
         [typeof(LeaseRegistration)] = "Reached only through its LeaseContract (tenant-filtered, then authorized by the controller and RliRegistrationService); the provider polling job runs without tenant.",
@@ -137,7 +130,7 @@ public class TenantQueryFilterArchitectureTests
 
         Assert.All(NotTenantFiltered, entry =>
         {
-            Assert.Contains(entry.Key, entities); // no stale entry
+            Assert.Contains(entry.Key, entities);
             Assert.False(typeof(ITenantOwned).IsAssignableFrom(entry.Key), $"{entry.Key.Name} is ITenantOwned and allow-listed");
             Assert.True(entry.Value.Length >= 40, $"{entry.Key.Name}: the reason must say why the entity stays unfiltered");
         });
@@ -152,7 +145,6 @@ public class TenantQueryFilterArchitectureTests
             .Where(e => typeof(ITenantOwned).IsAssignableFrom(e.ClrType))
             .ToList();
 
-        // The ten hand-written filters of US-004 + Guest (TN-1) + the TN-2 entities.
         Assert.True(tenantOwned.Count >= 19, $"Only {tenantOwned.Count} ITenantOwned entities in the model");
         Assert.All(tenantOwned, entityType =>
         {

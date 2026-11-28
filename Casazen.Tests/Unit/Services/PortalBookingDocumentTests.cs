@@ -30,11 +30,9 @@ public class PortalBookingDocumentTests
     {
         var swiss = SwissStay(FiscalPaymentChannel.Portal);
 
-        // The split: what the portal collected and what it did not, adding up to the total of the document.
         Assert.Equal(new PortalCollectionSplit(450.00m, 12.00m), FiscalDocumentPortalCollection.SplitOf(swiss));
         Assert.Equal((462.00m, FiscalDocumentPaymentState.Paid, FiscalPaymentChannel.Portal), (swiss.Total, swiss.PaymentState, swiss.PaymentChannel));
 
-        // The Swiss layout, in Italian: the portal part and the tax in a paragraph each, the total as it was, the note on the line of the tax and on it only.
         var italian = FiscalDocumentPdfs.Pdf(swiss, SwissIssuer(), Texts, "it");
         Assert.Equal(new[] { "Pagata tramite il portale: CHF 450.00", "Tassa di soggiorno da riscuotere in struttura: CHF 12.00" }, BoldParagraphsOf(italian));
         Assert.Equal(
@@ -42,19 +40,16 @@ public class PortalBookingDocumentTests
             Assert.Single(italian.Blocks.OfType<PdfTable>(), t => t.Columns.Count == 5).Rows.Select(r => r[0]).ToArray());
         Assert.Equal(new[] { "445.53", "16.47", "462.00" }, Assert.Single(italian.Blocks.OfType<PdfTable>(), t => t.Columns.Count == 2).Rows.Select(r => r[1]).ToArray());
 
-        // The same document in English: the words are the English ones (the stay line keeps the words it was stored with, as it always did).
         var english = FiscalDocumentPdfs.Pdf(swiss, SwissIssuer(), Texts, "en");
         Assert.Equal(new[] { "Paid through the portal: CHF 450.00", "Tourist tax to be collected at the property: CHF 12.00" }, BoldParagraphsOf(english));
         Assert.Equal(
             new[] { "Soggiorno di 3 notti", "Tourist tax (not subject to VAT) - tax to be collected at the property" },
             Assert.Single(english.Blocks.OfType<PdfTable>(), t => t.Columns.Count == 5).Rows.Select(r => r[0]).ToArray());
 
-        // The Italian layout (a receipt of a private owner, 450.00 + 12.00, stamp duty not charged to the guest): the same split, in «Pagamento: …».
         var receipt = ItalianReceipt(FiscalPaymentChannel.Portal);
         Assert.Equal(new PortalCollectionSplit(450.00m, 12.00m), FiscalDocumentPortalCollection.SplitOf(receipt));
         var receiptIt = FiscalDocumentPdfs.Pdf(receipt, ItalianIssuer(), Texts, "it");
         Assert.Equal(new[] { "Pagamento: pagato tramite il portale per EUR 450,00", "Imposta di soggiorno da pagare in struttura: EUR 12,00" }, PaymentParagraphsOf(receiptIt));
-        // The line of the tax a portal left to the host says it is to pay, never that it was «riscossa» (FIX/BE-IT-TOURISTTAX-DEFAULTS): «imposta» throughout, and never «da riscuotere».
         Assert.Equal(
             new[] { "TEST Soggiorno", "Imposta di soggiorno da pagare in struttura" },
             Assert.Single(receiptIt.Blocks.OfType<PdfTable>(), t => t.Columns.Count == 6).Rows.Select(r => r[1]).ToArray());
@@ -65,7 +60,6 @@ public class PortalBookingDocumentTests
             new[] { "TEST Soggiorno", "Tourist tax payable at the property" },
             Assert.Single(receiptEn.Blocks.OfType<PdfTable>(), t => t.Columns.Count == 6).Rows.Select(r => r[1]).ToArray());
 
-        // The document of the API: the parts and the flag of the line, the total and the stored state untouched; the members are in the JSON.
         var dto = FiscalDocumentDto.From(swiss);
         Assert.Equal((462.00m, "Paid", "Portal", (decimal?)450.00m, (decimal?)12.00m), (dto.Total, dto.PaymentState, dto.PaymentChannel, dto.AmountPaidViaPortal, dto.AmountToCollectAtProperty));
         Assert.Equal(new[] { false, true }, dto.Lines.Select(l => l.ToCollectAtProperty).ToArray());
@@ -82,7 +76,6 @@ public class PortalBookingDocumentTests
     [Fact]
     public void PortalBookingDocument_FullyCollected_IsUnchanged_Test()
     {
-        // Everything collected by the portal: the stay only, «Pagata tramite il portale» for the whole document, in one bold paragraph, as before.
         var collected = SwissStay(FiscalPaymentChannel.Portal, withTax: false);
         Assert.Null(FiscalDocumentPortalCollection.SplitOf(collected));
         var content = FiscalDocumentPdfs.Pdf(collected, SwissIssuer(), Texts, "it");
@@ -91,7 +84,6 @@ public class PortalBookingDocumentTests
         Assert.Equal(new[] { "Pagamento: pagato" }, PaymentParagraphsOf(FiscalDocumentPdfs.Pdf(ItalianReceipt(FiscalPaymentChannel.Portal, withTax: false), ItalianIssuer(), Texts, "it")));
         AssertNothingNewInTheApi(collected);
 
-        // A tourist tax line on a document that is not the guest document of a portal is nobody's «to collect at the property»: the state of the document says what is collected.
         var others = new[]
         {
             (FiscalPaymentChannel.Outside, FiscalDocumentPaymentState.Paid, "Pagata", "Pagamento: pagato"),
@@ -115,7 +107,6 @@ public class PortalBookingDocumentTests
             Assert.Equal(new[] { italianPayment }, PaymentParagraphsOf(FiscalDocumentPdfs.Pdf(receipt, ItalianIssuer(), Texts, "it")));
         }
 
-        // The credit note of a portal document and a document CasaZen did not issue (an import) keep what they say too.
         var credit = SwissStay(FiscalPaymentChannel.Portal);
         credit.Kind = DocumentKind.CreditNote;
         Assert.Null(FiscalDocumentPortalCollection.SplitOf(credit));
@@ -131,16 +122,11 @@ public class PortalBookingDocumentTests
         Assert.Null(FiscalDocumentPortalCollection.SplitOf(imported));
         AssertNothingNewInTheApi(imported);
 
-        // The row of a list carries no lines: nothing to derive, nothing new.
         var row = SwissStay(FiscalPaymentChannel.Portal);
         row.Lines.Clear();
         Assert.Null(FiscalDocumentPortalCollection.SplitOf(row));
     }
 
-    /// <summary>
-    /// A document that bills nothing but the tourist tax of a portal booking has nothing paid through the portal: only the tax to collect is written (never «paid through the portal for 0.00»), and the
-    /// split never says more is to collect than the document is worth.
-    /// </summary>
     [Fact]
     public void PortalBookingDocument_OnlyTheTax_HasNothingPaidThroughThePortal()
     {
@@ -167,7 +153,6 @@ public class PortalBookingDocumentTests
         var swiss = SwissStay(FiscalPaymentChannel.Portal);
         var receipt = ItalianReceipt(FiscalPaymentChannel.Portal);
 
-        // What the record says is collected, never more than the tax of the document, and nothing for a document that is not the guest document of a portal.
         Assert.Equal(12.00m, FiscalDocumentPortalCollection.CollectedOf(swiss, TouristTaxCollectionStatus.PaidAtProperty, 0m, 0m));
         Assert.Equal(5.00m, FiscalDocumentPortalCollection.CollectedOf(swiss, TouristTaxCollectionStatus.PaidOnline, 5.00m, 0m));
         Assert.Equal(3.00m, FiscalDocumentPortalCollection.CollectedOf(swiss, TouristTaxCollectionStatus.PaidOnline, 5.00m, 2.00m));
@@ -175,7 +160,6 @@ public class PortalBookingDocumentTests
         Assert.Equal(0m, FiscalDocumentPortalCollection.CollectedOf(swiss, TouristTaxCollectionStatus.PaidOnline, 5.00m, 5.00m));
         Assert.Equal(0m, FiscalDocumentPortalCollection.CollectedOf(SwissStay(FiscalPaymentChannel.Outside), TouristTaxCollectionStatus.PaidAtProperty, 0m, 0m));
 
-        // Part of it recorded (5.00 paid online): only the rest is to collect, the line keeps its note, and the portal part is what the portal collected.
         swiss.TouristTaxCollected = 5.00m;
         receipt.TouristTaxCollected = 5.00m;
         Assert.Equal(new PortalCollectionSplit(450.00m, 7.00m), FiscalDocumentPortalCollection.SplitOf(swiss));
@@ -185,7 +169,6 @@ public class PortalBookingDocumentTests
         Assert.Equal(((decimal?)450.00m, (decimal?)7.00m), (partial.AmountPaidViaPortal, partial.AmountToCollectAtProperty));
         Assert.Equal(new[] { false, true }, partial.Lines.Select(l => l.ToCollectAtProperty).ToArray());
 
-        // All of it recorded (paid at the property, or paid online in full): nothing is to collect, no note, and the document says what it said when no tax was left to the host.
         foreach (var collected in new[] { 12.00m, 20.00m })
         {
             swiss.TouristTaxCollected = collected;
@@ -200,12 +183,10 @@ public class PortalBookingDocumentTests
             AssertNothingNewInTheApi(swiss);
         }
 
-        // Nothing recorded: as before the collection was read.
         swiss.TouristTaxCollected = 0m;
         Assert.Equal(new PortalCollectionSplit(450.00m, 12.00m), FiscalDocumentPortalCollection.SplitOf(swiss));
     }
 
-    /// <summary>The members the API gained are absent from the answer of a document they do not concern: its JSON is what it was.</summary>
     private static void AssertNothingNewInTheApi(FiscalDocument document)
     {
         var dto = FiscalDocumentDto.From(document);
@@ -222,7 +203,6 @@ public class PortalBookingDocumentTests
     private static string[] BoldParagraphsOf(PdfDocumentContent content) =>
         content.Blocks.OfType<PdfParagraph>().Where(p => p.Bold).Select(p => p.Text).ToArray();
 
-    /// <summary>The paragraphs about the payment of an Italian document: «Pagamento: …» and the tax to collect.</summary>
     private static string[] PaymentParagraphsOf(PdfDocumentContent content) =>
         content.Blocks.OfType<PdfParagraph>()
             .Select(p => p.Text)

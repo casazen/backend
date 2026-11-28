@@ -15,7 +15,6 @@ using Moq;
 
 namespace Casazen.Tests.Unit.Reviews;
 
-/// <summary>An authenticated request of one org: the tenant filter is on, so a row of another org is invisible whatever the query says.</summary>
 internal sealed class RequestTenant(Guid orgId) : ITenantContext
 {
     public Guid? OrgId => orgId;
@@ -23,10 +22,8 @@ internal sealed class RequestTenant(Guid orgId) : ITenantContext
     public bool FilterEnabled => true;
 }
 
-/// <summary>One stay of the world of the reviews: a booking of a channel that ended three days ago, with its reference on the channel manager and the listing of its property.</summary>
 internal sealed record ReviewStay(Guid OrgId, Guid PropertyId, Guid BookingId, string Accommodation, string Refer);
 
-/// <summary>A service of the reviews as an authenticated request of one org builds it: its own context (the tenant filter on) and its own scope of the org.</summary>
 internal sealed class ReviewRequestRig(AppDbContext db, OtaReviewService service) : IAsyncDisposable
 {
     public AppDbContext Db => db;
@@ -51,10 +48,8 @@ internal sealed class OtaReviewHarness
     public const string HiddenRefer = "HMHIDDEN01";
     public const string OtherOrgRefer = "HMOTHERORG";
 
-    /// <summary>2026-11-20 09:00 in Rome.</summary>
     public static readonly DateTimeOffset Now = new(2026, 11, 20, 8, 0, 0, TimeSpan.Zero);
 
-    /// <summary>The day of <see cref="Now"/> as a date (midnight UTC), written out: the stays of the world end some days before it.</summary>
     public static readonly DateTime TodayUtc = new(2026, 11, 20, 0, 0, 0, DateTimeKind.Utc);
 
     private readonly string _database;
@@ -79,7 +74,6 @@ internal sealed class OtaReviewHarness
 
     public ReviewStay Other { get; private set; } = null!;
 
-    /// <summary>The loose client of the channel manager: a call a test did not set up answers nothing and counts.</summary>
     public Mock<IOctorateApiClient> Client { get; } = new();
 
     public Mock<IChannelMappingService> Mappings { get; } = new();
@@ -90,10 +84,8 @@ internal sealed class OtaReviewHarness
 
     public CapturingLogger<OtaReviewService> Log { get; } = new();
 
-    /// <summary>The scope of the calls of a job or a handler (no request): a test opens <c>Use(org)</c> around the calls it makes.</summary>
     public OctorateOrgScope Scope { get; }
 
-    /// <summary>The one rate limiter of the application, over the clock of the harness.</summary>
     public OctorateRateLimiter Limiter { get; }
 
     public static async Task<OtaReviewHarness> CreateAsync()
@@ -115,11 +107,9 @@ internal sealed class OtaReviewHarness
 
     public AppDbContext NewDb() => OpenDb(_database, NullTenantContext.Instance);
 
-    /// <summary>The service in system mode (a job, a handler): the test opens <c>Scope.Use(org)</c> around its calls.</summary>
     public OtaReviewService Service(AppDbContext db, IPushNotificationService? push = null) =>
         new(db, Client.Object, Scope, Mappings.Object, Flags, new DomainEventRecorder(db, NullTenantContext.Instance, Clock), Log, Clock, push);
 
-    /// <summary>The service as an authenticated request of <paramref name="orgId"/> builds it: the org is the request's, and the tenant filter of the context is on.</summary>
     public ReviewRequestRig AsRequestOf(Guid orgId)
     {
         var tenant = new RequestTenant(orgId);
@@ -136,7 +126,6 @@ internal sealed class OtaReviewHarness
         return new ReviewRequestRig(db, service);
     }
 
-    /// <summary>A booking of a channel, ended three days ago, with a reservation on the channel manager and (by default) the confirmed listing of its property.</summary>
     public async Task<ReviewStay> AddStayAsync(
         Guid orgId,
         Guid propertyId,
@@ -181,11 +170,9 @@ internal sealed class OtaReviewHarness
         return new ReviewStay(orgId, propertyId, booking.Id, accommodation, refer);
     }
 
-    /// <summary>The listing of the property is no longer confirmed (the mapping was withdrawn).</summary>
     public void WithdrawListing(Guid orgId, string accommodation) =>
         _rows[orgId].RemoveAll(r => r.OctorateAccommodationId == accommodation);
 
-    /// <summary>The org has a connected account in the test environment of the channel manager: the sync of the reviews reads it.</summary>
     public async Task ConnectAsync(params Guid[] orgIds)
     {
         await using var db = NewDb();
@@ -195,7 +182,6 @@ internal sealed class OtaReviewHarness
         await db.SaveChangesAsync();
     }
 
-    /// <summary>The channel manager reports the guest's review of the stay as published, with an optional reply of the host already on the channel.</summary>
     public void ChannelHasReview(
         ReviewStay stay,
         string text = "Posto bellissimo, host gentilissimo.",
@@ -218,13 +204,11 @@ internal sealed class OtaReviewHarness
                 new OctorateHostReviewInfo(window, null)));
     }
 
-    /// <summary>The channel manager reports nothing for the stay yet: no review, no host review.</summary>
     public void ChannelHasNothing(ReviewStay stay) =>
         Client
             .Setup(c => c.GetReviewAsync(stay.Accommodation, stay.Refer, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OctorateReview(null, null));
 
-    /// <summary>A review of the booking site (E05/F06/US01/T03) of a stay, published <paramref name="publishedMinutesAgo"/> minutes before <see cref="Now"/>, with the words and the stars given.</summary>
     public async Task<Review> AddSiteReviewAsync(ReviewStay stay, string? text = "Soggiorno piacevole, host disponibile.", int rating = 5, string? hostReply = null, int publishedMinutesAgo = 60)
     {
         await using var db = NewDb();
@@ -247,7 +231,6 @@ internal sealed class OtaReviewHarness
         return review;
     }
 
-    /// <summary>The instant the guest's review of a channel was published is set (the read of the channel manager gives the one of its own, a day before <see cref="Now"/>).</summary>
     public async Task SetPublishedAtAsync(ReviewStay stay, int minutesAgo)
     {
         await using var db = NewDb();
@@ -256,7 +239,6 @@ internal sealed class OtaReviewHarness
         await db.SaveChangesAsync();
     }
 
-    /// <summary>Reads the stay from the channel manager (the sync of the job) and returns the row it made.</summary>
     public async Task<OtaReview> SyncAsync(ReviewStay stay)
     {
         await using (var db = NewDb())

@@ -39,8 +39,6 @@ public class IdentityVerificationOptionsTests
             (24, 30, 12),
             (defaults.Retention.AbandonedAfterHours, defaults.Retention.DocumentCheckDays, defaults.Retention.VerificationLogMonths));
 
-        // Every one of the 14 settings is written in appsettings.json, with the value of the class but one: the pin. The class leaves it empty (no policy is
-        // used until one is pinned), the committed file pins the canonical SHA-256 of the policy file it ships (E70/F01/US02/T01, IdentityPolicyFileCoherenceTests).
         Assert.Equal(14, section.AsEnumerable(makePathsRelative: true).Count(setting => setting.Value is not null));
         Assert.Matches("^[0-9a-f]{64}$", committed.PolicySha256);
         committed.PolicySha256 = defaults.PolicySha256;
@@ -50,7 +48,6 @@ public class IdentityVerificationOptionsTests
     [Fact]
     public void IdentityVerificationOptions_Validate_NamesTheSettingNotTheValue()
     {
-        // Privacy: a configuration error reaches the logs and the staff. It names the setting and its bounds, never what was set.
         var options = new IdentityVerificationOptions
         {
             PolicySha256 = "not-a-hash-but-a-secret-73519",
@@ -79,7 +76,6 @@ public class IdentityVerificationOptionsTests
     [Fact]
     public void IdentityVerificationOptions_ValidateRetention_JudgesOnlyTheThreePeriods_InTheWordsOfValidate()
     {
-        // E73/F01/US02/T03 (review of S015): the retention needs its three periods and nothing else of the section; it names the setting, never the value, as Validate does.
         var options = new IdentityVerificationOptions
         {
             Presence = new IdentityPresenceOptions { MaxFrames = 987_654 },

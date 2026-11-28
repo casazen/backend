@@ -45,8 +45,6 @@ public class MarketplaceHealthTests
 {
     private const string Collaborator = "auth0|collaborator";
 
-    // ─── Proofs ───────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task MarketplaceHealth_OtherOrgActivations_NeverReturned_Test()
     {
@@ -62,26 +60,21 @@ public class MarketplaceHealthTests
         {
             var service = w.Service(db);
 
-            // Org A reads its own row and nothing of org B's.
             var health = await service.GetHealthAsync(w.OrgA, w.OrgWide, null);
             Assert.Equal(ofA.Id, Assert.Single(health.Items).ActivationId);
 
-            // It cannot name org B's property: the 404 of a property that does not exist.
             var refused = await Assert.ThrowsAsync<NotFoundException>(() => service.GetHealthAsync(w.OrgA, w.OrgWide, w.PropertyB));
             Assert.Equal("marketplace_property_not_found", refused.Code);
 
-            // The scope of another org is a mistake of the caller, refused before anything is read.
             await Assert.ThrowsAsync<ArgumentException>(() => service.GetHealthAsync(w.OrgA, new HostScope(w.OrgB), null));
         }
 
-        // The sync of org A reads its own accommodation and touches its own rows only.
         var result = await w.SyncAsync(w.OrgA);
         Assert.Equal(1, result.Properties);
         Assert.Equal([World.AccA1], w.Listed);
         Assert.Equal(ofB, await w.DescribedAsync(w.OrgB));
         Assert.Empty(await w.TodosAsync());
 
-        // And the other way round: org B's sync reads org B's accommodation, finds its connection disabled and raises its own «To do»; org A's row stays as the first sync left it.
         var ofAAfter = await w.DescribedAsync(w.OrgA);
         w.Listed.Clear();
         await w.SyncAsync(w.OrgB);
@@ -91,7 +84,6 @@ public class MarketplaceHealthTests
         Assert.NotEmpty(raised);
         Assert.All(raised, todo => Assert.Equal(w.OrgB, todo.OrgId));
 
-        // The job syncs the orgs that have something to sync, each for itself.
         await using var jobDb = w.NewDb();
         Assert.Equal(2, (await w.Service(jobDb).ListOrgsToSyncAsync()).Count);
     }
@@ -104,30 +96,25 @@ public class MarketplaceHealthTests
         await w.AddAsync(w.PropertyA2, MarketplaceActivationKind.Channel, "274", MarketplaceActivationStatus.ToFix, "7002", error: "connection_disabled");
         var wholeOrgRow = await w.AddAsync(null, MarketplaceActivationKind.LicensedFunction, "chat", MarketplaceActivationStatus.Active);
 
-        // The collaborator is granted the first property only.
         await w.GrantAsync(Collaborator, w.PropertyA1);
         var scope = new HostScope(w.OrgA, GrantedToUserId: Collaborator);
 
         await using var db = w.NewDb();
         var service = w.Service(db);
 
-        // Without a property: the rows of the granted property only. The row with no property is the whole org's: «no property named» is never «inside the scope».
         var seen = await service.GetHealthAsync(w.OrgA, scope, null);
         var item = Assert.Single(seen.Items);
         Assert.Equal((w.PropertyA1, "142"), (item.PropertyId, item.Code));
 
-        // The other property: the 404 of a property that does not exist.
         var refused = await Assert.ThrowsAsync<NotFoundException>(() => service.GetHealthAsync(w.OrgA, scope, w.PropertyA2));
         Assert.Equal("marketplace_property_not_found", refused.Code);
 
-        // The whole org reads every row, the one with no property included; asked about one property it reads that property's.
         var everything = await service.GetHealthAsync(w.OrgA, w.OrgWide, null);
         Assert.Equal(3, everything.Items.Count);
         Assert.Contains(everything.Items, row => row.ActivationId == wholeOrgRow.Id && row.PropertyId is null && row.PropertyName is null);
         var one = Assert.Single((await service.GetHealthAsync(w.OrgA, w.OrgWide, w.PropertyA2)).Items);
         Assert.Equal("274", one.Code);
 
-        // Nothing of this went to the channel manager.
         Assert.Empty(w.Client.Invocations);
     }
 
@@ -146,7 +133,6 @@ public class MarketplaceHealthTests
         var item = Assert.Single(health.Items);
         Assert.Equal("connection_disabled", item.Error!.Code);
 
-        // The row, the answer in both languages, the log of the sync and the «To do» hold the code and the words of CasaZen, never the words of the channel.
         var english = await w.Service(db).GetHealthAsync(w.OrgA, w.OrgWide, null, "en");
         var everything = string.Join(
             "\n",
@@ -158,7 +144,6 @@ public class MarketplaceHealthTests
         Assert.DoesNotContain("RAW-TEXT", everything, StringComparison.Ordinal);
         Assert.DoesNotContain("jane.doe", everything, StringComparison.Ordinal);
 
-        // A code nobody listed (a row some other code left) has no text of its own: the generic one, in the language asked, and not the code or its key.
         await using (var other = w.NewDb())
         {
             var row = await other.MarketplaceActivations.SingleAsync();
@@ -171,8 +156,6 @@ public class MarketplaceHealthTests
         Assert.Equal(new ResxMarketplaceTexts().Get(MarketplaceHealthErrorCodes.GenericMessageKey, "en"), generic.Message);
         Assert.DoesNotContain("Marketplace.Error", generic.Message, StringComparison.Ordinal);
     }
-
-    // ─── The read ─────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetHealthAsync_ShowsTheStatusTheLastSyncThePlainErrorAndTheQuotaWarning_AndAsksOctorateNothing()
@@ -199,7 +182,6 @@ public class MarketplaceHealthTests
         await using var db = w.NewDb();
         var italian = await w.Service(db).GetHealthAsync(w.OrgA, w.OrgWide, null, "it");
 
-        // One row for each channel, tool and function that is not turned off; a partner and a turned off channel are not there. By property name, then kind.
         Assert.Equal([tool.Id, function.Id, channel.Id], italian.Items.Select(i => i.ActivationId));
         var shown = italian.Items.Single(i => i.ActivationId == channel.Id);
         Assert.Equal(("Casa Beta", "Booking di prova", MarketplaceActivationStatus.ToFix), (shown.PropertyName, shown.Name, shown.Status));
@@ -208,20 +190,16 @@ public class MarketplaceHealthTests
         Assert.Equal("Strumento di prova", italian.Items.Single(i => i.ActivationId == tool.Id).Name);
         Assert.Null(italian.Items.Single(i => i.ActivationId == tool.Id).Error);
 
-        // The function is named by the resource files and keeps its request.
         var chat = italian.Items.Single(i => i.ActivationId == function.Id);
         Assert.Equal(new ResxMarketplaceTexts().Get("Marketplace.Licensed.chat.Name", "it"), chat.Name);
         Assert.Equal(function.ChangeRequestedAt, chat.ChangeRequestedAt);
         Assert.Equal("license_module_off", chat.Error!.Code);
 
-        // The quota of the last sync is the same on every row: 150 of 164 is past the 80 percent.
         Assert.All(italian.Items, row => Assert.Equal((150, 164, true), (row.Quota!.Used, row.Quota.Limit, row.Quota.Warn)));
 
-        // The messages are in the language asked, and they are not the same words.
         var english = await w.Service(db).GetHealthAsync(w.OrgA, w.OrgWide, null, "en");
         Assert.NotEqual(shown.Error.Message, english.Items.Single(i => i.ActivationId == channel.Id).Error!.Message);
 
-        // A read is the database and the memory: nothing is asked of Octorate.
         Assert.Empty(w.Client.Invocations);
     }
 
@@ -235,8 +213,6 @@ public class MarketplaceHealthTests
         Assert.Empty((await w.Service(db).GetHealthAsync(w.OrgA, w.OrgWide, null)).Items);
         Assert.Empty(await w.Service(db).ListOrgsToSyncAsync());
     }
-
-    // ─── The sync: the status of a connection ─────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task SyncAsync_TurnsTheStatusOfAConnectionIntoTheStatusOfTheActivation_AndAnUnrecognisedStatusChangesNothing()
@@ -263,16 +239,13 @@ public class MarketplaceHealthTests
         Assert.Equal((1, 3, 2), (result.Properties, result.Updated, result.Unrecognised));
         var rows = (await w.RowsAsync(w.OrgA)).ToDictionary(r => r.Id);
 
-        // ENABLED: Active, proven by Octorate and read now.
         Assert.Equal(MarketplaceActivationStatus.Active, rows[enabled.Id].Status);
         Assert.Equal(w.Clock.Now, rows[enabled.Id].VerifiedAt);
         Assert.Equal(w.Clock.Now, rows[enabled.Id].LastSyncedAt);
         Assert.Null(rows[enabled.Id].LastErrorCode);
 
-        // WAITING (in any case, with spaces): Pending.
         Assert.Equal(MarketplaceActivationStatus.Pending, rows[waiting.Id].Status);
 
-        // DISABLED: To fix with the code of the problem and its moment.
         Assert.Equal((MarketplaceActivationStatus.ToFix, "connection_disabled", w.Clock.Now), (rows[disabled.Id].Status, rows[disabled.Id].LastErrorCode, rows[disabled.Id].LastErrorAt));
 
         // A word nobody knew, or none: the row is exactly as it was (a healthy connection is never marked broken by it), and the warning says which word.
@@ -302,31 +275,25 @@ public class MarketplaceHealthTests
         var first = await w.SyncAsync(w.OrgA);
         var rows = (await w.RowsAsync(w.OrgA)).ToDictionary(r => r.Id);
 
-        // ENABLED shows the access given, not the activation finished (the wizard switches the pulls on): a row that is not Active stays as it is, with its problem, and
-        // is not proven; the read of the connection is kept; an Active row is never taken back.
         Assert.Equal((MarketplaceActivationStatus.Pending, null), (rows[pending.Id].Status, rows[pending.Id].VerifiedAt));
         Assert.Equal((MarketplaceActivationStatus.ToFix, "connection_not_enabled", null), (rows[notEnabled.Id].Status, rows[notEnabled.Id].LastErrorCode, rows[notEnabled.Id].VerifiedAt));
         Assert.Equal((MarketplaceActivationStatus.ToFix, "octorate_partner_failed", null), (rows[failed.Id].Status, rows[failed.Id].LastErrorCode, rows[failed.Id].VerifiedAt));
         Assert.Equal(w.Clock.Now, rows[notEnabled.Id].LastSyncedAt);
         Assert.Equal(MarketplaceActivationStatus.Active, rows[active.Id].Status);
 
-        // With the pulls on as well the connection is a finished activation: Active and proven, its problem gone.
         Assert.Equal((MarketplaceActivationStatus.Active, null), (rows[ready.Id].Status, rows[ready.Id].LastErrorCode));
         Assert.Equal(w.Clock.Now, rows[ready.Id].VerifiedAt);
         Assert.Equal(1, first.Updated);
 
-        // The rows that are to fix keep their «To do» open; the others have none.
         var todos = await w.TodosAsync();
         Assert.Equal(2, first.TodoRaised);
         Assert.Equal(new[] { notEnabled.Id, failed.Id }.Order(), todos.Select(t => t.EntityId!.Value).Order());
         Assert.All(todos, todo => Assert.Null(todo.CompletedAt));
 
-        // The next run reads the same: nothing is promoted, no second item, no item closed.
         var second = await w.SyncAsync(w.OrgA);
         Assert.Equal((0, 0, 0), (second.Updated, second.TodoRaised, second.TodoClosed));
         Assert.All(await w.TodosAsync(), todo => Assert.Null(todo.CompletedAt));
 
-        // The pulls are on now (the wizard switched them on): the rows that were waiting for them are Active, and the items of the ones that were to fix are closed.
         w.Connections[World.AccA1] =
         [
             Conn("142", "7001", "ENABLED"),
@@ -359,16 +326,13 @@ public class MarketplaceHealthTests
         // The list shows another connection of the property, so it is readable and this one is gone. Not listed and not new: To fix, and the id is kept so that a connection that comes back is read again.
         Assert.Equal((MarketplaceActivationStatus.ToFix, "connection_missing", "7001"), (rows[gone.Id].Status, rows[gone.Id].LastErrorCode, rows[gone.Id].OctorateConnectionId));
 
-        // The list may lag just after a create: a row written two minutes ago is left for the next run.
         Assert.Equal(recentBefore, Describe(rows[recent.Id]));
 
-        // A row with no connection id has nothing to compare: its status, its problem and its last read stay (its «To do» is raised, as for every row that is to fix).
         Assert.Equal(
             (MarketplaceActivationStatus.ToFix, "connection_missing", null, freed.LastSyncedAt),
             (rows[freed.Id].Status, rows[freed.Id].LastErrorCode, rows[freed.Id].OctorateConnectionId, rows[freed.Id].LastSyncedAt));
         Assert.NotNull(rows[freed.Id].TodoActivityId);
 
-        // The connection comes back (the list was behind): the activation is read again and recovers.
         w.Connections[World.AccA1] = [Conn("142", "7001", "ENABLED"), Conn("235", "7004", "ENABLED")];
         await w.SyncAsync(w.OrgA);
         var back = (await w.RowsAsync(w.OrgA)).Single(r => r.Id == gone.Id);
@@ -384,8 +348,6 @@ public class MarketplaceHealthTests
         await w.AddAsync(w.PropertyA2, MarketplaceActivationKind.Channel, "274", MarketplaceActivationStatus.Active, "7002", verified: true);
         w.Connections[World.AccA2] = [Conn("274", "7002", "ENABLED")];
 
-        // The list of the first property is empty (what an answer of a shape nobody has met, read as empty, would give), and with it every connection of CasaZen is gone at
-        // once: the first pass concludes nothing. No problem is shown, no «To do» is raised for any host, the property is skipped and the log says it by its code.
         var first = await w.SyncAsync(w.OrgA);
         Assert.Equal((0, 1, 0), (first.Updated, first.Skipped, first.TodoRaised));
         var rows = (await w.RowsAsync(w.OrgA)).ToDictionary(r => r.Id);
@@ -410,7 +372,6 @@ public class MarketplaceHealthTests
         Assert.Equal((0, 0), (again.Updated, again.TodoRaised));
         Assert.All((await w.RowsAsync(w.OrgA)).Where(r => r.PropertyId == w.PropertyA1), row => Assert.Equal((MarketplaceActivationStatus.Active, null), (row.Status, row.LastErrorCode)));
 
-        // A second pass, half an hour later, that finds them still gone confirms it: both are to fix, each with its «To do» (High for the channel, Medium for the tool).
         w.Clock.Set(w.Clock.Now.AddMinutes(30));
         var second = await w.SyncAsync(w.OrgA);
         Assert.Equal((2, 2), (second.Updated, second.TodoRaised));
@@ -429,11 +390,9 @@ public class MarketplaceHealthTests
         var pending = await w.AddAsync(w.PropertyA1, MarketplaceActivationKind.Channel, "142", MarketplaceActivationStatus.Pending, "7001");
         var unknown = await w.AddAsync(w.PropertyA1, MarketplaceActivationKind.Tool, "300", MarketplaceActivationStatus.Pending, "7003");
 
-        // The list is empty: the first pass of both is remembered.
         await w.SyncAsync(w.OrgA);
         Assert.All(await w.RowsAsync(w.OrgA), row => Assert.Equal(w.Clock.Now, row.LastErrorAt));
 
-        // Both are listed, one enabled with its pulls still off (it stays Pending), one with a word nobody knew (it stays as it is): the sight forgets the first pass.
         w.Clock.Set(w.Clock.Now.AddMinutes(30));
         w.Connections[World.AccA1] = [Conn("142", "7001", "ENABLED", pulls: false), Conn("300", "7003", "SUSPENDED")];
         await w.SyncAsync(w.OrgA);
@@ -441,7 +400,6 @@ public class MarketplaceHealthTests
         Assert.Equal((MarketplaceActivationStatus.Pending, null), (rows[pending.Id].Status, rows[pending.Id].LastErrorAt));
         Assert.Equal((MarketplaceActivationStatus.Pending, null), (rows[unknown.Id].Status, rows[unknown.Id].LastErrorAt));
 
-        // Gone again half an hour later: a first pass again, not the confirmation of the one before the sight.
         w.Clock.Set(w.Clock.Now.AddMinutes(30));
         w.Connections.Remove(World.AccA1);
         var gone = await w.SyncAsync(w.OrgA);
@@ -465,7 +423,6 @@ public class MarketplaceHealthTests
         var row = Assert.Single(await w.RowsAsync(w.OrgA));
         Assert.Equal((MarketplaceActivationStatus.Active, null, w.Clock.Now), (row.Status, row.LastErrorCode, row.LastErrorAt));
 
-        // An answer the client cannot read is not an empty list: the read fails with its code, the property is counted as failed and left as it is, nothing is concluded.
         w.Clock.Set(w.Clock.Now.AddMinutes(30));
         w.ListFailures[World.AccA1] = new OctorateServerException(200);
         var unreadable = await w.SyncAsync(w.OrgA);
@@ -476,8 +433,6 @@ public class MarketplaceHealthTests
         Assert.Contains(w.Logs.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("octorate_unavailable", StringComparison.Ordinal));
     }
 
-    // ─── The sync: the «To do» items ──────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task SyncAsync_AProblemRaisesExactlyOneTodo_AndItClosesByItselfWhenTheConnectionIsHealthyAgain()
     {
@@ -486,7 +441,6 @@ public class MarketplaceHealthTests
         var tool = await w.AddAsync(w.PropertyA1, MarketplaceActivationKind.Tool, "300", MarketplaceActivationStatus.Active, "7003", verified: true);
         w.Connections[World.AccA1] = [Conn("142", "7001", "DISABLED"), Conn("300", "7003", "DISABLED")];
 
-        // The problem becomes one item for each activation: High for a channel, Medium for a tool, the code as the reason and nothing else about it.
         var first = await w.SyncAsync(w.OrgA);
         Assert.Equal(2, first.TodoRaised);
         var todos = await w.TodosAsync();
@@ -499,12 +453,10 @@ public class MarketplaceHealthTests
         var rows = (await w.RowsAsync(w.OrgA)).ToDictionary(r => r.Id);
         Assert.Equal(item.Id, rows[channel.Id].TodoActivityId);
 
-        // The same problem at the next run: no second item.
         var second = await w.SyncAsync(w.OrgA);
         Assert.Equal(0, second.TodoRaised);
         Assert.Equal(2, (await w.TodosAsync()).Count);
 
-        // The channel is healthy again: its item is closed by the system and the activation forgets it. The tool's problem and item stay.
         w.Connections[World.AccA1] = [Conn("142", "7001", "ENABLED"), Conn("300", "7003", "DISABLED")];
         var third = await w.SyncAsync(w.OrgA);
         Assert.Equal(1, third.TodoClosed);
@@ -517,14 +469,12 @@ public class MarketplaceHealthTests
         Assert.Null(rows[channel.Id].TodoActivityId);
         Assert.NotNull(rows[tool.Id].TodoActivityId);
 
-        // A new problem of the channel raises a new item; the one that was closed stays closed.
         w.Connections[World.AccA1] = [Conn("142", "7001", "DISABLED"), Conn("300", "7003", "DISABLED")];
         await w.SyncAsync(w.OrgA);
         todos = await w.TodosAsync();
         Assert.Equal(3, todos.Count);
         Assert.Equal(1, todos.Count(t => t.EntityId == channel.Id && t.CompletedAt is null));
 
-        // The host closed the tool's item by hand while the problem stays: it is not raised again at every run.
         await using (var db = w.NewDb())
             await w.Activities(db).CloseAsync(rows[tool.Id].TodoActivityId!.Value, "auth0|host", CancellationToken.None);
 
@@ -532,13 +482,10 @@ public class MarketplaceHealthTests
         Assert.Equal(0, fourth.TodoRaised);
         Assert.Equal(3, (await w.TodosAsync()).Count);
 
-        // When the tool recovers the reference is cleared, so its next problem is a new item.
         w.Connections[World.AccA1] = [Conn("142", "7001", "DISABLED"), Conn("300", "7003", "ENABLED")];
         await w.SyncAsync(w.OrgA);
         Assert.Null((await w.RowsAsync(w.OrgA)).Single(r => r.Id == tool.Id).TodoActivityId);
     }
-
-    // ─── The sync: the license, the quota, the properties ─────────────────────────────────────────────────
 
     [Fact]
     public async Task SyncAsync_ReconcilesTheLicenseOfThePropertiesThatHaveAFunction_AndRaisesTheTodoOfAFunctionThatWentOff()
@@ -550,7 +497,6 @@ public class MarketplaceHealthTests
         w.Connections[World.AccA1] = [Conn("142", "7001", "ENABLED")];
         w.Connections[World.AccA2] = [Conn("274", "7002", "ENABLED")];
 
-        // The reconciliation of the license is the service of the licensed functions: here it finds the module off, as it does when the license no longer shows it.
         w.OnReconcile = async (_, propertyId) =>
         {
             await using var db = w.NewDb();
@@ -562,7 +508,6 @@ public class MarketplaceHealthTests
 
         var result = await w.SyncAsync(w.OrgA);
 
-        // Once, for the property that has a function: not for the other one.
         Assert.Equal([(w.OrgA, w.PropertyA1)], w.Reconciled);
         Assert.Equal((2, 1), (result.Properties, result.TodoRaised));
         var todo = Assert.Single(await w.TodosAsync());
@@ -578,7 +523,6 @@ public class MarketplaceHealthTests
         var second = await w.AddAsync(w.PropertyA2, MarketplaceActivationKind.Channel, "274", MarketplaceActivationStatus.Active, "7002", verified: true, lastSyncedAt: w.Clock.Now.AddDays(-1));
         w.Connections[World.AccA2] = [Conn("274", "7002", "DISABLED")];
 
-        // The first property does not answer: it is left for the next run, the second is read, and the log has the code and never a message.
         w.ListFailures[World.AccA1] = new OctorateServerException(503, new HttpRequestException("body of the answer: secret-body"));
         var result = await w.SyncAsync(w.OrgA);
         Assert.Equal((1, 1, 1), (result.Failed, result.Properties, result.Updated));
@@ -588,14 +532,12 @@ public class MarketplaceHealthTests
         Assert.Contains(w.Logs.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("octorate_unavailable", StringComparison.Ordinal));
         Assert.DoesNotContain("secret-body", w.Logs.AllOutput, StringComparison.Ordinal);
 
-        // The token of the org is refused: the other properties would fail alike, so the run of the org ends there.
         w.Listed.Clear();
         w.ListFailures[World.AccA1] = OctorateAuthException.Refused(403);
         var refused = await w.SyncAsync(w.OrgA);
         Assert.Equal([World.AccA1], w.Listed);
         Assert.Equal(1, refused.Failed);
 
-        // A property with no confirmed listing has nothing to read: it is skipped, and nothing is asked for it.
         var unlinked = await World.CreateAsync(linkedA2: false);
         await unlinked.AddAsync(unlinked.PropertyA2, MarketplaceActivationKind.Channel, "274", MarketplaceActivationStatus.Active, "7002", verified: true);
         var skipped = await unlinked.SyncAsync(unlinked.OrgA);
@@ -612,7 +554,6 @@ public class MarketplaceHealthTests
         w.Connections[World.AccA1] = [Conn("142", "7001", "DISABLED")];
         w.ListFailures[World.AccA2] = new OctorateRateLimitException(429);
 
-        // The least recently synced property is read first and saved; the second is rate limited: the run stops there and says so.
         await Assert.ThrowsAsync<OctorateRateLimitException>(() => w.SyncAsync(w.OrgA));
         Assert.Equal([World.AccA1, World.AccA2], w.Listed);
         var rows = (await w.RowsAsync(w.OrgA)).ToDictionary(r => r.Id);
@@ -621,7 +562,6 @@ public class MarketplaceHealthTests
         Assert.Single(await w.TodosAsync());
         Assert.Contains(w.Logs.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("rate limit", StringComparison.OrdinalIgnoreCase));
 
-        // The next run starts with the property that was not reached (the first one was synced a moment ago): it continues, it does not start again.
         w.Listed.Clear();
         w.ListFailures.Clear();
         w.Connections[World.AccA2] = [Conn("274", "7002", "ENABLED")];
@@ -630,7 +570,6 @@ public class MarketplaceHealthTests
         Assert.Equal([World.AccA2, World.AccA1], w.Listed);
         Assert.Equal(2, next.Properties);
 
-        // The rate limit of the quota read, which comes first, stops the run before any connection is read.
         w.Listed.Clear();
         w.ConfigurationFailure = new OctorateRateLimitException(429);
         await Assert.ThrowsAsync<OctorateRateLimitException>(() => w.SyncAsync(w.OrgA));
@@ -646,7 +585,6 @@ public class MarketplaceHealthTests
         w.Connections[World.AccA1] = [Conn("142", "7001", "ENABLED")];
         w.Connections[World.AccA2] = [Conn("274", "7002", "ENABLED")];
 
-        // One read of the configuration however many properties there are; 131 of 164 is just under 80 percent, 132 is over it.
         w.Configuration = new OctorateConfiguration("SANDBOX", 164, 131, null);
         await w.SyncAsync(w.OrgA);
         Assert.Equal(1, w.ConfigurationReads);
@@ -657,7 +595,6 @@ public class MarketplaceHealthTests
         Assert.Equal(2, w.ConfigurationReads);
         Assert.Equal((132, 164, true), await w.QuotaOfFirstRowAsync());
 
-        // The percent is a setting: at 50 percent 82 of 164 warns and 81 does not.
         w.HealthOptions.QuotaWarnPercent = 50;
         w.Configuration = new OctorateConfiguration("SANDBOX", 164, 81, null);
         await w.SyncAsync(w.OrgA);
@@ -666,7 +603,6 @@ public class MarketplaceHealthTests
         await w.SyncAsync(w.OrgA);
         Assert.True((await w.QuotaOfFirstRowAsync()).Warn);
 
-        // A reading that cannot be had leaves the last one; a configuration that states no quota removes it (nothing is guessed).
         w.ConfigurationFailure = new OctorateServerException(null);
         var failed = await w.SyncAsync(w.OrgA);
         Assert.Equal(1, failed.Failed);
@@ -698,11 +634,8 @@ public class MarketplaceHealthTests
         await using var db = disconnected.NewDb();
         Assert.Empty(await disconnected.Service(db).ListOrgsToSyncAsync());
 
-        // An empty org is a mistake of the caller.
         await Assert.ThrowsAsync<ArgumentException>(() => disconnected.SyncAsync(Guid.Empty));
     }
-
-    // ─── The job ──────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task TheJob_GoesOrgByOrg_StopsAtTheFirstRateLimit_AndGoesOnAfterAnyOtherFailure()
@@ -717,7 +650,6 @@ public class MarketplaceHealthTests
 
         await new MarketplaceConnectionSyncJob(health.Object, Flags(true), logs).ExecuteAsync(CancellationToken.None);
 
-        // The org that failed for another reason did not stop the run; the rate limit did: the fourth org was never asked, and is the first of the next run.
         health.Verify(h => h.SyncAsync(orgs[0], It.IsAny<CancellationToken>()), Times.Once);
         health.Verify(h => h.SyncAsync(orgs[1], It.IsAny<CancellationToken>()), Times.Once);
         health.Verify(h => h.SyncAsync(orgs[2], It.IsAny<CancellationToken>()), Times.Once);
@@ -726,13 +658,10 @@ public class MarketplaceHealthTests
         Assert.Contains(logs.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains(nameof(InvalidOperationException), StringComparison.Ordinal));
         Assert.DoesNotContain("secret detail", logs.AllOutput, StringComparison.Ordinal);
 
-        // With the connector off the run does nothing, not even the list of the orgs.
         var off = new Mock<IMarketplaceHealthService>(MockBehavior.Strict);
         await new MarketplaceConnectionSyncJob(off.Object, Flags(false), new CapturingLogger<MarketplaceConnectionSyncJob>()).ExecuteAsync(CancellationToken.None);
         off.VerifyNoOtherCalls();
     }
-
-    // ─── The rules, the words, the registration ───────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("ENABLED", "Healthy", null)]
@@ -789,14 +718,12 @@ public class MarketplaceHealthTests
             var italian = texts.Get(key, "it");
             var english = texts.Get(key, "en");
 
-            // A key that exists in neither file comes back as itself; an English text that is the Italian one is a text nobody translated.
             Assert.NotEqual(key, italian);
             Assert.NotEqual(key, english);
             Assert.NotEqual(italian, english);
             Assert.DoesNotContain("Octorate", italian + english, StringComparison.OrdinalIgnoreCase);
         }
 
-        // The codes are the ones the other services keep on a row, not a second spelling of them.
         Assert.Equal(MarketplaceHealthErrorCodes.ChannelFailed, new OctoratePartnerFailureException().Code);
         Assert.Equal(MarketplaceHealthErrorCodes.ChannelManagerUnavailable, new OctorateServerException(null).Code);
         Assert.Equal(MarketplaceActivationErrorCodes.ConnectionLost, MarketplaceHealthErrorCodes.ConnectionMissing);
@@ -830,8 +757,6 @@ public class MarketplaceHealthTests
         Assert.Contains(services, d => d.ServiceType.IsGenericType && d.ServiceType.GetGenericArguments().Contains(typeof(MarketplaceHealthOptions)));
     }
 
-    // ─── Helpers ──────────────────────────────────────────────────────────────────────────────────────────
-
     /// <summary>A connection as the channel manager lists it: with its pulls on, as the wizard leaves a finished activation, unless <paramref name="pulls"/> says they are off.</summary>
     private static OctorateConnectionInfo Conn(string portal, string id, string? status, bool pulls = true) =>
         new(id, portal, status, null, null, UpdateCalendar: pulls, PullReservations: pulls);
@@ -851,7 +776,6 @@ public class MarketplaceHealthTests
                 .Where(property => property.GetIndexParameters().Length == 0 && (property.PropertyType.IsValueType || property.PropertyType == typeof(string)))
                 .Select(property => $"{property.Name}={property.GetValue(entity)}"));
 
-    /// <summary>A clock a test can move.</summary>
     private sealed class MutableTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {
         private DateTimeOffset _now = utcNow;
@@ -863,10 +787,6 @@ public class MarketplaceHealthTests
         public override DateTimeOffset GetUtcNow() => _now;
     }
 
-    /// <summary>
-    /// Two orgs, each with a connected account in this environment; org A has two properties (Casa Alfa, Casa Beta) and org B one, each with a confirmed listing; a stub of
-    /// the channel manager that lists the connections it is given for each accommodation, and of the reconciliation of the license; the real service of the «To do» list.
-    /// </summary>
     private sealed class World
     {
         public const string AccA1 = "585492";
@@ -900,13 +820,11 @@ public class MarketplaceHealthTests
 
         public MarketplaceHealthOptions HealthOptions { get; } = new();
 
-        /// <summary>The connections the channel manager lists, by accommodation.</summary>
         public Dictionary<string, OctorateConnectionInfo[]> Connections { get; } = new(StringComparer.Ordinal);
 
         /// <summary>What the list of an accommodation answers instead of its connections.</summary>
         public Dictionary<string, Exception> ListFailures { get; } = new(StringComparer.Ordinal);
 
-        /// <summary>The accommodations whose connections were listed, in order.</summary>
         public List<string> Listed { get; } = [];
 
         public OctorateConfiguration Configuration { get; set; } = new("SANDBOX", 164, 10, null);
@@ -915,10 +833,8 @@ public class MarketplaceHealthTests
 
         public int ConfigurationReads { get; private set; }
 
-        /// <summary>The org and property of every call of the reconciliation of the license, in order.</summary>
         public List<(Guid OrgId, Guid PropertyId)> Reconciled { get; } = [];
 
-        /// <summary>What the reconciliation of the license does when it runs (it writes the rows in the real service).</summary>
         public Func<Guid, Guid, Task>? OnReconcile { get; set; }
 
         public static async Task<World> CreateAsync(bool connected = true, bool linkedA2 = true, bool flag = true)
@@ -981,7 +897,6 @@ public class MarketplaceHealthTests
             await db.SaveChangesAsync();
         }
 
-        /// <summary>An activation as an earlier step or sync left it: written (and last read) <paramref name="age"/> ago, two days by default.</summary>
         public async Task<MarketplaceActivation> AddAsync(
             Guid? propertyId,
             MarketplaceActivationKind kind,
@@ -1024,17 +939,14 @@ public class MarketplaceHealthTests
             return await db.MarketplaceActivations.AsNoTracking().Where(a => a.OrgId == orgId).OrderBy(a => a.CreatedAt).ThenBy(a => a.Id).ToListAsync();
         }
 
-        /// <summary>The activations of an org as text, to compare before and after.</summary>
         public async Task<List<string>> DescribedAsync(Guid orgId) => (await RowsAsync(orgId)).Select(Describe).ToList();
 
-        /// <summary>Every «To do» of every org, the oldest first.</summary>
         public async Task<List<InternalActivity>> TodosAsync()
         {
             await using var db = NewDb();
             return await db.InternalActivities.AsNoTracking().Where(a => a.Action != null).OrderBy(a => a.CreatedAt).ThenBy(a => a.Id).ToListAsync();
         }
 
-        /// <summary>The quota of the last sync, as the health read shows it on its first row.</summary>
         public async Task<(int Used, int Limit, bool Warn)> QuotaOfFirstRowAsync()
         {
             await using var db = NewDb();

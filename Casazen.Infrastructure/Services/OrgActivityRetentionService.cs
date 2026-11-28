@@ -25,13 +25,10 @@ public sealed class OrgActivityRetentionService(
     ILogger<OrgActivityRetentionService> logger,
     TimeProvider? timeProvider = null) : IOrgActivityRetentionService
 {
-    /// <summary>The key of the session lock of a run (<see cref="PostgresAdvisoryLocks.Scope.OrgActivityRetention"/>).</summary>
     internal const string RunLockKey = "org-activity-retention";
 
-    /// <summary>Lines deleted per batch.</summary>
     internal const int BatchSize = 500;
 
-    /// <summary>Batches per run: 50 000 lines a night; the next run takes the rest.</summary>
     internal const int MaxBatchesPerRun = 100;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;

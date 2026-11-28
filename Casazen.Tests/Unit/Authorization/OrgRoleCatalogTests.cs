@@ -4,10 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Authorization;
 
-/// <summary>
-/// AM-01: what an org role means in memberships (<see cref="OrgRoleCatalog"/>): the account row of the roles that
-/// administer or read the org, the role key of each rental context, the projection of a person that works in some of them.
-/// </summary>
 public class OrgRoleCatalogTests
 {
     private static readonly string[] BothAreas = ["short-rent", "long-rent"];
@@ -101,7 +97,6 @@ public class OrgRoleCatalogTests
         var roles = OrgRoleCatalog.SeededRoles;
 
         Assert.Equal(Enumerable.Range(4, roles.Count), roles.Select(r => r.Id));
-        // The property manager of the account context is the last one added (AM-02c): ids are append-only.
         Assert.Equal(13, roles[^1].Id);
         Assert.Equal(("account", "org_manager"), (roles[^1].ContextKey, roles[^1].RoleKey));
         Assert.Equal(roles.Count, roles.Select(r => (r.ContextKey, r.RoleKey)).Distinct().Count());
@@ -113,9 +108,6 @@ public class OrgRoleCatalogTests
     [Fact]
     public void SeededRoles_CoverEveryRoleOfEveryProjection()
     {
-        // Whatever role and areas a person has, every role row the projection points to exists: the service never has
-        // to fail for a role that was not seeded. The owner's rental keys (ids 1 and 2) are the seed of the context
-        // authorization.
         var seeded = OrgRoleCatalog.SeededRoles.Select(r => (r.ContextKey, r.RoleKey))
             .Concat([("short-rent", "property_owner"), ("long-rent", "long_term_landlord")])
             .ToHashSet();
@@ -155,7 +147,6 @@ public class OrgRoleCatalogTests
     [Fact]
     public void SeededRoles_TheAccountRoleOfThePropertyManager_HasTheTrustedSuppliersAndNothingElse()
     {
-        // AM-D12: «Fornitori» is the only page of the account area the property manager reaches.
         Assert.Equal(
             [AccountContext.Permissions.SuppliersManage],
             PermissionsOf("account", AccountContext.RoleKeys.Manager));
@@ -164,7 +155,6 @@ public class OrgRoleCatalogTests
     [Fact]
     public void SeededRoles_TheAccountRoleOfThePropertyManager_NeverHoldsTeamBillingSettingsOrActivity()
     {
-        // The role that could slip: it must hold neither the team nor the billing, the settings or the activity log.
         var manager = OrgRoleCatalog.SeededRoles.Single(r => r.RoleKey == AccountContext.RoleKeys.Manager);
 
         Assert.DoesNotContain(AccountContext.Permissions.MembersManage, manager.Permissions);
@@ -212,7 +202,6 @@ public class OrgRoleCatalogTests
         Assert.Equal(
             ["booking.read", "guest.read", "guest.write", "property.read", "servicerequest.write"],
             collaborator.Order(StringComparer.Ordinal).ToArray());
-        // The carve-outs are exactly what keeps the collaborator out of the broad permissions.
         foreach (var broad in new[] { "property.write", "booking.write", "payment.read", "payment.write", "guest.manage", "alloggiati.submit", "ota.write", "approval.decide" })
             Assert.DoesNotContain(broad, collaborator);
     }
@@ -246,7 +235,6 @@ public class OrgRoleCatalogTests
     {
         Assert.True(HostOnboarding.IsHostContext("account"));
         Assert.True(HostOnboarding.IsHostContext("ACCOUNT"));
-        // The staff console is not an org matter.
         Assert.False(HostOnboarding.IsHostContext("admin"));
     }
 }

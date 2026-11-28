@@ -3,7 +3,6 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Events;
 using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
-using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Octorate;
 using Microsoft.EntityFrameworkCore;
@@ -57,11 +56,9 @@ public class ChatMessageReceivedHandlerTests
     {
         var h = new MessageSyncHarness();
 
-        // A notification of a reservation is the booking handlers': nothing is read (the strict client would fail the test).
         await using (var db = h.NewDb())
             await Handler(h, db).HandleAsync(Notification(OctorateWebhookEvents.ReservationChange, MessageSyncHarness.Accommodation, ThreadId), CancellationToken.None);
 
-        // The connector is off: no call is made even for a chat notification.
         h.Flags.Setup(f => f.IsEnabled(FeatureFlags.OctorateConnector)).Returns(false);
         await using (var db = h.NewDb())
             await Handler(h, db).HandleAsync(Notification(OctorateWebhookEvents.ChatMessageReceived, MessageSyncHarness.Accommodation, ThreadId), CancellationToken.None);
@@ -81,7 +78,6 @@ public class ChatMessageReceivedHandlerTests
         h.Client.Setup(c => c.GetChatMessagesAsync(MessageSyncHarness.Accommodation, ThreadId, It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([MessageSyncHarness.Inbound("70001", ThreadId)]);
 
-        // No thread in the body, and a thread that is not a number: both fall back to what the last 24 hours say.
         await using (var db = h.NewDb())
             await Handler(h, db).HandleAsync(Notification(OctorateWebhookEvents.ChatMessageReceived, MessageSyncHarness.Accommodation, null), CancellationToken.None);
         await using (var db = h.NewDb())
@@ -97,8 +93,6 @@ public class ChatMessageReceivedHandlerTests
         var h = new MessageSyncHarness();
         var acc = MessageSyncHarness.Accommodation;
 
-        // The body names 5555, which is not a thread of the chat (it may be another object id): Octorate answers 404, and the notification is
-        // still a signal that something was written, so the recent pass finds the thread that had news.
         h.Client.Setup(c => c.GetChatThreadAsync(acc, "5555", It.IsAny<CancellationToken>())).ThrowsAsync(new OctorateNotFoundException());
         h.Client.Setup(c => c.GetRecentChatMessagesAsync(acc, It.IsAny<CancellationToken>()))
             .ReturnsAsync([MessageSyncHarness.Inbound("70001", ThreadId)]);
@@ -118,7 +112,6 @@ public class ChatMessageReceivedHandlerTests
     {
         var h = new MessageSyncHarness();
 
-        // The body names an accommodation the org does not have in its mapping: it is not read, whatever the notification says.
         await using var db = h.NewDb();
         await Handler(h, db).HandleAsync(Notification(OctorateWebhookEvents.ChatMessageReceived, "999", ThreadId), CancellationToken.None);
 
@@ -131,7 +124,6 @@ public class ChatMessageReceivedHandlerTests
     {
         var h = new MessageSyncHarness();
 
-        // An error of Octorate: the event is delivered again, and the code is on the checkpoints of the listing.
         h.Client.Setup(c => c.GetChatThreadAsync(MessageSyncHarness.Accommodation, ThreadId, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new OctorateServerException(503));
         await using (var db = h.NewDb())
@@ -142,7 +134,6 @@ public class ChatMessageReceivedHandlerTests
 
         Assert.Equal("octorate_unavailable", (await h.ReadAsync(db => db.OtaMessageSyncStates.SingleAsync())).LastError);
 
-        // A rate limit that did not clear: the same.
         h.Client.Setup(c => c.GetChatThreadAsync(MessageSyncHarness.Accommodation, ThreadId, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new OctorateRateLimitException(429));
         await using (var db = h.NewDb())
@@ -151,7 +142,6 @@ public class ChatMessageReceivedHandlerTests
                 () => Handler(h, db).HandleAsync(Notification(OctorateWebhookEvents.ChatMessageReceived, MessageSyncHarness.Accommodation, ThreadId), CancellationToken.None));
         }
 
-        // An org that disconnected, and a listing whose license has no chat module: a new attempt would find the same, so the handler returns.
         h.Client.Setup(c => c.GetChatThreadAsync(MessageSyncHarness.Accommodation, ThreadId, It.IsAny<CancellationToken>()))
             .ThrowsAsync(OctorateAuthException.NotConnected());
         await using (var db = h.NewDb())
@@ -192,7 +182,6 @@ public class ChatMessageReceivedHandlerTests
         Assert.Empty(await h.ReadAsync(db => db.OtaMessageSyncStates.ToListAsync()));
     }
 
-    /// <summary>The handler as the container builds it for one delivery: it and the service of its scope share the pacing of the scope.</summary>
     private static ChatMessageReceivedHandler Handler(MessageSyncHarness h, AppDbContext db)
     {
         var pacing = new MessageSyncPacing();
@@ -204,10 +193,6 @@ public class ChatMessageReceivedHandlerTests
             NullLogger<ChatMessageReceivedHandler>.Instance);
     }
 
-    /// <summary>
-    /// A notification of the webhook as the event bus hands it to a handler: the same event id on every delivery, the payload of the ids the controller
-    /// kept.
-    /// </summary>
     private static OctorateWebhookReceivedEvent Notification(string type, string accommodationId, string? objectId) => new(
         Guid.Parse("a1b2c3d4-0000-4000-8000-00000000e001"),
         MessageSyncHarness.OrgA,

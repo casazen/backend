@@ -7,10 +7,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Extensions;
 
-/// <summary>
-/// Object storage wiring (FD-07, decision D8). Supabase Storage (S3 API) everywhere except
-/// Development/Testing, where a local-disk provider is allowed. Runbook: docs/runbooks/storage.md.
-/// </summary>
 public static class StorageExtensions
 {
     public static IServiceCollection AddCasazenFileStorage(this IServiceCollection services, IConfiguration configuration)
@@ -21,7 +17,6 @@ public static class StorageExtensions
         services.AddSingleton<IPostConfigureOptions<StorageOptions>, StorageOptionsDefaults>();
         services.AddSingleton<IValidateOptions<StorageOptions>, StorageOptionsValidator>();
 
-        // Resolved only when the S3 provider is in use.
         services.AddSingleton<IAmazonS3>(sp =>
             S3FileStorage.CreateClient(sp.GetRequiredService<IOptions<StorageOptions>>().Value));
         services.AddSingleton<IFileStorage>(sp =>
@@ -34,14 +29,9 @@ public static class StorageExtensions
         return services;
     }
 
-    /// <summary>True when the process was started as the legacy file migration command.</summary>
     public static bool IsLegacyFileMigrationCommand(string[] args) =>
         args.Contains(LegacyFileMigrationService.CommandName, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// Runs <c>storage:migrate-legacy [--dry-run]</c>: copies the files of the old local-disk storage
-    /// into the configured object storage and rewrites the database references. Returns the exit code.
-    /// </summary>
     public static async Task<int> RunLegacyFileMigrationAsync(this WebApplication app, string[] args)
     {
         var dryRun = args.Contains(LegacyFileMigrationService.DryRunFlag, StringComparer.OrdinalIgnoreCase);

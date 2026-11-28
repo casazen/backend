@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Linq.Expressions;
 using System.Security.Cryptography;
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
@@ -62,10 +61,8 @@ public class TicinoNotificationService(
                 cancellationToken);
         var pending = await ListPendingDaysAsync(property.OrgId, [property.Id], _clock.TodayInRomeAsDateOnly(), cancellationToken);
 
-        // The characters the CSV of the day would write without their accent (or as «?»), counted on the file itself.
         var csv = TicinoPoliceFile.WriteCsvFile(plan.Registrations, _csvCharset);
 
-        // E30/F02/US02/T01: who declared the day and when, and how many times its file was generated (the audit rows hold no personal data).
         var declaration = await DeclarationsOf(property, day).AsNoTracking().OrderBy(d => d.DeclaredAt).ThenBy(d => d.Id).FirstOrDefaultAsync(cancellationToken);
         var declaredBy = declaration is null ? null : await DisplayNameAsync(declaration.DeclaredByUserId, cancellationToken);
         var policeFormats = SwissNotificationFileFormats.PoliceFile.ToList();
@@ -110,8 +107,6 @@ public class TicinoNotificationService(
         if (format == TicinoPoliceFileFormat.Xml && !plan.XmlAvailable)
             throw new DomainRuleException("ticino_xml_not_available", "TicinoXmlNotAvailable");
 
-        // NF-128 AC2: the portal may create duplicates when the same day is uploaded twice (specifica-ticino §3), so the file of a day that is declared (or has a receipt) is generated
-        // again only when the person confirmed it. The checks of the data come first: a day with nothing to write answers that, not a confirmation for a file that would not exist.
         if (request?.ConfirmRegenerate != true && await IsClosedAsync(property, day, cancellationToken))
             throw new DomainConflictException("ticino_day_already_declared", "TicinoDayAlreadyDeclared");
 
@@ -143,7 +138,6 @@ public class TicinoNotificationService(
             plan.Registrations.Count,
             transliterated);
 
-        // NF-128 AC3: every generation leaves one row, with no personal data. A row that cannot be written fails the request: no file leaves unaudited.
         await RecordFileEventAsync(
             property,
             day,
@@ -168,7 +162,6 @@ public class TicinoNotificationService(
         if (propertyIds is not null)
             propertyQuery = propertyQuery.Where(p => propertyIds.Contains(p.Id));
 
-        // The Swiss properties the one resolver places in Ticino (the stored municipality, or the one the postal code and the city give).
         var swiss = await propertyQuery
             .Select(p => new { p.Id, p.OrgId, p.Name, p.Country, p.SwissMunicipalityCode, p.PostalCode, p.City })
             .ToListAsync(cancellationToken);
@@ -197,7 +190,6 @@ public class TicinoNotificationService(
             .Select(b => new { b.OrgId, b.PropertyId, b.CheckInDate, b.ArrivedAt })
             .ToListAsync(cancellationToken);
 
-        // THE rule of a closed day (E30/F02/US02/T01): a receipt of the portal for the day, or a declaration of it. The alerts and the cockpit read only this list.
         var notified = (await context.SwissComplianceReceipts
                 .AsNoTracking()
                 .Where(r => ids.Contains(r.PropertyId) && r.Type == PoliceReceiptType && r.ReportDate >= from && r.ReportDate < to)
@@ -249,7 +241,6 @@ public class TicinoNotificationService(
 
         var property = await LoadTicinoPropertyAsync(propertyId, cancellationToken);
 
-        // A day that has not started cannot be declared: it would close the day of an arrival that has not happened and silence its alerts.
         if (day > _clock.TodayInRomeAsDateOnly())
             throw new DomainRuleException("ticino_declaration_day_in_future", "TicinoDeclarationDayInFuture");
         if (receiptId is { } receipt && !await IsPoliceReceiptOfTheDayAsync(property, day, receipt, cancellationToken))
@@ -267,7 +258,6 @@ public class TicinoNotificationService(
             }
             catch (DbUpdateConcurrencyException)
             {
-                // A co-host undid the declaration between the read and the save: the row to update is gone, so this call comes after the undo and declares the day again below.
                 context.Entry(existing).State = EntityState.Detached;
                 _logger.LogInformation(
                     "Ticino notification declaration of property {PropertyId} for {ArrivalDay} was undone by a co-host before {UserId} could attach a receipt to it",
@@ -288,14 +278,12 @@ public class TicinoNotificationService(
             ArrivalDay = day,
             DeclaredByUserId = userId,
 
-            // Whole microseconds, the precision of the column: the answer of this call and the answer of every replay (read back from the database) carry the same instant.
             DeclaredAt = UtcDateTime.TruncateToMicroseconds(_clock.GetUtcNow().UtcDateTime),
             Channel = SwissNotificationChannels.Portal,
             ReceiptId = receiptId,
             RegimeCode = null,
         };
 
-        // Added through the set, never through a collection of a parent: the Guid is preset, and EF would track a child added that way as Modified.
         context.SwissNotificationDeclarations.Add(declaration);
         try
         {
@@ -303,7 +291,6 @@ public class TicinoNotificationService(
         }
         catch (DbUpdateException ex) when (IsUniqueViolation(ex))
         {
-            // A co-host declared the same day at the same moment and won the unique index: the answer is the declaration that is there, as if the call had come second.
             context.Entry(declaration).State = EntityState.Detached;
             var winner = await FirstDeclarationAsync(property, day, cancellationToken);
             if (winner is null)
@@ -384,7 +371,6 @@ public class TicinoNotificationService(
     {
         var property = await LoadTicinoPropertyAsync(propertyId, cancellationToken);
 
-        // The same stays as the file: of this property and of its org, owing a notification (never a pending, cancelled or no-show booking).
         var stay = (await ReadStaysAsync(property, b => b.Id == bookingId, cancellationToken)).SingleOrDefault()
             ?? throw new NotFoundException($"Booking {bookingId} not found") { Code = "booking_not_found", MessageKey = "BookingNotFound" };
         var members = TicinoPoliceFile.GroupSheetOf(stay.Facts)
@@ -395,7 +381,6 @@ public class TicinoNotificationService(
         var sheet = new TicinoGroupSheet(
             TicinoPoliceFile.WriteGroupSheet(members), $"scheda-gruppo-ti-{arrival}-{code}.csv", "text/csv; charset=utf-8", members.Count);
 
-        // NF-128 AC3: the sheet is audited like the file of the day (the arrival day of its stay, the members, the hash); no name, no date of birth, no booking code.
         await RecordFileEventAsync(
             property, stay.Facts.Arrival, SwissNotificationFileFormats.GroupSheet, sheet.Members, Sha256Of(sheet.Content), request?.UserId, cancellationToken);
         return sheet;
@@ -410,10 +395,6 @@ public class TicinoNotificationService(
         return ReadStaysAsync(property, b => b.CheckInDate >= from && b.CheckInDate < to, cancellationToken);
     }
 
-    /// <summary>
-    /// The stays of <paramref name="property"/> that <paramref name="which"/> selects and that owe a police communication (the one definition of
-    /// <see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/>, not a no-show), with their guests; every read names the org of the property.
-    /// </summary>
     private async Task<List<StayRead>> ReadStaysAsync(Property property, Expression<Func<Booking, bool>> which, CancellationToken cancellationToken)
     {
         var bookings = await context.Bookings
@@ -438,21 +419,16 @@ public class TicinoNotificationService(
                 .ToListAsync(cancellationToken))
             .ToLookup(g => g.BookingId);
 
-        // NF-126: «Numero bollettino» is the code of the booking as hosts read it, «Numero autovettura» the plate of the stay; the one reading of a stay is shared with the
-        // guest register of E31/F01 (TicinoStayFacts.From).
         return bookings.Select(b => new StayRead(TicinoStayFacts.From(b, guests[b.Id]), b.ArrivedAt)).ToList();
     }
 
-    /// <summary>The declarations of the notification to the Ticino police (no regime code) of <paramref name="property"/> for <paramref name="day"/>; the org of the property is always named.</summary>
     private IQueryable<SwissNotificationDeclaration> DeclarationsOf(Property property, DateOnly day) =>
         context.SwissNotificationDeclarations
             .Where(d => d.OrgId == property.OrgId && d.PropertyId == property.Id && d.ArrivalDay == day && d.RegimeCode == null);
 
-    /// <summary>The declaration of <paramref name="day"/> that stands (the first one, tracked), or <c>null</c> when the day is not declared.</summary>
     private Task<SwissNotificationDeclaration?> FirstDeclarationAsync(Property property, DateOnly day, CancellationToken cancellationToken) =>
         DeclarationsOf(property, day).OrderBy(d => d.DeclaredAt).ThenBy(d => d.Id).FirstOrDefaultAsync(cancellationToken);
 
-    /// <summary>Whether the day is closed: a declaration of it, or a <c>Police</c> receipt recorded for it (the rule of <see cref="ListPendingDaysAsync"/>).</summary>
     private async Task<bool> IsClosedAsync(Property property, DateOnly day, CancellationToken cancellationToken) =>
         await DeclarationsOf(property, day).AsNoTracking().AnyAsync(cancellationToken)
         || await context.SwissComplianceReceipts
@@ -461,7 +437,6 @@ public class TicinoNotificationService(
                 r => r.OrgId == property.OrgId && r.PropertyId == property.Id && r.Type == PoliceReceiptType && r.ReportDate == StoredDay(day),
                 cancellationToken);
 
-    /// <summary>Whether <paramref name="receiptId"/> is a <c>Police</c> receipt of this property, of its org, whose report date is the arrival day.</summary>
     private Task<bool> IsPoliceReceiptOfTheDayAsync(Property property, DateOnly day, Guid receiptId, CancellationToken cancellationToken) =>
         context.SwissComplianceReceipts
             .AsNoTracking()
@@ -473,7 +448,6 @@ public class TicinoNotificationService(
                     && r.ReportDate == StoredDay(day),
                 cancellationToken);
 
-    /// <summary>The audit row of a file (no personal data: a format, a number of rows, a hash, the day and the person who asked).</summary>
     private async Task RecordFileEventAsync(
         Property property,
         DateOnly day,
@@ -506,7 +480,6 @@ public class TicinoNotificationService(
             declaration.ReceiptId,
             created);
 
-    /// <summary>The first and last name of a user as the team sees them; <c>null</c> when the account no longer exists or has no name.</summary>
     private async Task<string?> DisplayNameAsync(string userId, CancellationToken cancellationToken)
     {
         var user = await context.Users
@@ -518,10 +491,6 @@ public class TicinoNotificationService(
         return name.Length == 0 ? null : name;
     }
 
-    /// <summary>
-    /// A unique violation (23505) of the key of the declaration (<see cref="SwissNotificationDeclaration.DefaultRegimeIndexName"/>), whatever the wrapper EF or the provider put around it: a
-    /// co-host declared the same day first.
-    /// </summary>
     private static bool IsUniqueViolation(Exception exception)
     {
         for (var current = exception; current is not null; current = current.InnerException)
@@ -535,10 +504,8 @@ public class TicinoNotificationService(
 
     private static string Sha256Of(byte[] content) => Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
 
-    /// <summary>A calendar day as the bookings store it: midnight UTC of that day.</summary>
     private static DateTime StoredDay(DateOnly day) => DateTime.SpecifyKind(day.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
 
-    /// <summary>24 hours from the first recorded arrival; the start of the next day (Europe/Zurich) when none is recorded.</summary>
     private static DateTime DueAt(DateOnly day, IEnumerable<DateTime?> arrivedAt)
     {
         var first = arrivedAt.Where(a => a.HasValue).Select(a => a!.Value).DefaultIfEmpty(DateTime.MaxValue).Min();

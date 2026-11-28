@@ -163,11 +163,8 @@ public class DirectCheckoutMarketingConsentPostgresTests : IClassFixture<Marketi
         Assert.False(withdrawn.Marketing.Granted);
         var history = withdrawn.ConsentHistory.Where(h => h.Purpose == GuestConsentPurpose.Marketing).ToList();
         Assert.Equal(2, history.Count);
-        // The withdrawal keeps the version of the text the guest had agreed to.
         Assert.Equal(MarketingConsentConfiguredFactory.Version, history.Single(h => h.Action == GuestConsentAction.Withdrawn).Version);
     }
-
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────
 
     private static string UniqueEmail() => $"db03.{Guid.NewGuid():N}@example.com";
 

@@ -18,7 +18,6 @@ public class SupplierRankingTests
     private static readonly Guid Job1 = Guid.Parse("00000000-0000-0000-0000-000000000001");
     private static readonly Guid Job2 = Guid.Parse("00000000-0000-0000-0000-000000000002");
 
-    /// <summary>The score of before SP-REL, written out: 70, minus 8 per open request up to 40, plus the urgency, plus 5 for a bio.</summary>
     private static int ScoreBeforeSpRel(int load, ServiceRequestUrgency urgency, bool hasBio)
     {
         var score = 70 - Math.Min(load * 8, 40);
@@ -106,10 +105,8 @@ public class SupplierRankingTests
     [Fact]
     public void Dispute_CostsMoreThanAMissedDeadline_AndTakesBackThePointsOfThatJob()
     {
-        // A clean job earns 2; a dispute on it takes them back and costs 12 on top of that.
         Assert.Equal(2, Points(Clean(Job1)));
         Assert.Equal(-12, Points(Clean(Job1), Dispute(Job1)));
-        // Another job without a dispute is not touched by it.
         Assert.Equal(-10, Points(Clean(Job1), Clean(Job2), Dispute(Job1)));
         Assert.True(Math.Abs(Points(Dispute(Job1))) > Math.Abs(Points(Missed())));
     }
@@ -121,7 +118,6 @@ public class SupplierRankingTests
 
         Assert.Equal(-40, Points(misses));
         Assert.Equal(-40, Points([.. misses, Dispute(Job1), Dispute(Job2)]));
-        // Even with the worst history and the worst load the score is still a valid one.
         Assert.Equal(1, SupplierRanking.Score(Defaults, 8, ServiceRequestUrgency.Normal, false, Points(misses)));
     }
 
@@ -171,8 +167,6 @@ public class SupplierRankingTests
         Assert.Equal(new ReliabilityTally(2, 1, 1, 2, 1), tally);
         Assert.Equal(ReliabilityTally.None, SupplierRanking.Tally([]));
     }
-
-    // ─── The options ───
 
     [Fact]
     public void Options_TheDefaultsAreValid_AndAreTheOnesOfTheBrief()

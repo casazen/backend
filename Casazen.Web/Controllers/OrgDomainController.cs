@@ -1,4 +1,3 @@
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs.Orgs;
@@ -23,7 +22,6 @@ public class OrgDomainController(
     IOrgDomainService orgDomainService,
     IStringLocalizer<SharedResources> localizer) : ControllerBase
 {
-    /// <summary>422: subdomain mode requested while <c>PublicHost__BaseDomain</c> is not configured (D3, no default).</summary>
     public const string SubdomainsNotConfiguredCode = "subdomains_not_configured";
     public const string DomainInvalidCode = "org_domain_invalid";
     public const string DomainInUseCode = "org_domain_in_use";
@@ -73,7 +71,6 @@ public class OrgDomainController(
             request.Subdomain,
             cancellationToken);
 
-        // The outcomes and their codes are one mapping, shared with the plugin of a connected site (S023): OrgDomainOutcomeResults.
         return this.DomainFailure(result) ?? Ok(OrgDomainMapper.ToDto(result.Config!, localizer));
     }
 
@@ -95,10 +92,6 @@ public class OrgDomainController(
         return this.DomainFailure(result) ?? Ok(OrgDomainMapper.ToDto(result.Verification!, localizer));
     }
 
-    /// <summary>
-    /// The surfaces of the agency's own domain (E40/F01/US01, NF-140..NF-142): guest area, owner portal and links on the verified custom
-    /// domain. 404 while <c>WhiteLabelHost</c> is off; the answer is the whole domain configuration.
-    /// </summary>
     [HttpPut("surfaces")]
     [FeatureGate(FeatureFlags.WhiteLabelHost)]
     [ProducesResponseType(typeof(OrgDomainConfigDto), StatusCodes.Status200OK)]
@@ -159,10 +152,6 @@ public class OrgDomainController(
         };
     }
 
-    /// <summary>
-    /// The Google Tag Manager container of the agency's pages (E40/F01/US01/T04, NF-149): <c>GTM-</c> plus 4 to 12 letters or digits, <c>null</c> or
-    /// empty clears it. 404 while <c>SiteEmbed</c> is off; 400 <c>gtm_container_id_invalid</c> (never echoing the text) for anything else.
-    /// </summary>
     [HttpPut("tracking")]
     [FeatureGate(FeatureFlags.SiteEmbed)]
     [ProducesResponseType(typeof(OrgDomainTrackingDto), StatusCodes.Status200OK)]
@@ -179,7 +168,6 @@ public class OrgDomainController(
         if (forbidden is not null)
             return forbidden;
 
-        // The format has one rule (GtmContainerIds); the service applies it again before it stores anything.
         if (!GtmContainerIds.TryNormalize(request.GtmContainerId, out _))
             return this.ApiProblem(StatusCodes.Status400BadRequest, GtmContainerIds.InvalidCode, "OrgGtmContainerIdInvalid");
 

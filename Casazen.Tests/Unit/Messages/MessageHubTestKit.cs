@@ -9,11 +9,6 @@ using Moq;
 
 namespace Casazen.Tests.Unit.Messages;
 
-/// <summary>
-/// The data every test of the hub of messages (E05/F02/US01/T01) runs on, on top of the org of <see cref="HostScopeScenario"/> (two houses, the
-/// collaborator «Solo alcuni» who was given only the first, a second org): conversations of the channels on each house, one with no property, one of the
-/// other org, and the direct conversations of two stays. Times are counted back from <see cref="HostScopeScenario.Now"/>.
-/// </summary>
 internal sealed record MessageHubWorld(
     HostScopeWorld Scope,
     OtaMessageThread GrantedRequest,
@@ -28,7 +23,6 @@ internal sealed record MessageHubWorld(
     OtaMessage HiddenAttachment,
     OtaMessage OtherOrgAttachment)
 {
-    /// <summary>The address the channel manager gave for the files: the tests assert it never reaches a client.</summary>
     public const string SecretAddress = "https://files.octorate.example/attachments/SECRET-TOKEN-5f3a/photo.jpg?sig=SECRET-SIGNATURE";
 }
 
@@ -43,7 +37,6 @@ internal static class MessageHubTestKit
         var scope = await HostScopeScenario.SeedAsync(db);
         var orgId = scope.OrgId;
 
-        // The stays: a booking that came from a channel on the granted house, and a booking of the public checkout on each house.
         var channelGuest = NewGuest(orgId, "Jonas", "Berg");
         var directGuest = NewGuest(orgId, "Laura", "Conti");
         var hiddenGuest = NewGuest(orgId, "Pietro", "Gallo");
@@ -69,7 +62,6 @@ internal static class MessageHubTestKit
             UpdatedAt = Ago(5000),
         });
 
-        // The conversations of the channels.
         var grantedRequest = NewOtaThread(orgId, scope.Granted.Id, null, OtaChannel.Airbnb, OtaThreadKind.Request, "Marta R. (TEST)");
         var grantedReservation = NewOtaThread(orgId, scope.Granted.Id, channelBooking.Id, OtaChannel.Booking, OtaThreadKind.Reservation, "Jonas B. (TEST)");
         var hiddenReservation = NewOtaThread(orgId, scope.Hidden.Id, null, OtaChannel.Vrbo, OtaThreadKind.Reservation, "Anna S. (TEST)");
@@ -77,9 +69,6 @@ internal static class MessageHubTestKit
         var otherOrg = NewOtaThread(scope.OtherOrgId, scope.OtherOrgProperty.Id, null, OtaChannel.Airbnb, OtaThreadKind.Request, "Ospite Altrove (TEST)");
         db.OtaMessageThreads.AddRange(grantedRequest, grantedReservation, hiddenReservation, unassigned, otherOrg);
 
-        // Messages: the request waits for an answer (the guest wrote last, one unread); the reservation was read and answered, by a person and then by
-        // the assistant (its last message is outbound); the hidden one and the unassigned one wait for an answer. A message of each of the three
-        // threads that matter has a file.
         Add(db, grantedRequest, OtaMessageDirection.Inbound, MessageOrigin.Guest, "Is the house free in August? (TEST)", 400, read: false);
         Add(db, grantedReservation, OtaMessageDirection.Inbound, MessageOrigin.Guest, "What time is check-in? (TEST)", 900, read: true);
         var grantedAttachment = Add(db, grantedReservation, OtaMessageDirection.Inbound, MessageOrigin.Guest, string.Empty, 880, read: true);
@@ -98,7 +87,6 @@ internal static class MessageHubTestKit
         otherAttachment.AttachmentContentType = "image/jpeg";
         Tidy(db, grantedRequest, grantedReservation, hiddenReservation, unassigned, otherOrg);
 
-        // The direct conversations: the granted stay's guest waits for an answer, the hidden one was answered.
         AddDirectThread(db, grantedDirect, guestWroteAgo: 150, hostWroteAgo: null);
         AddDirectThread(db, hiddenDirect, guestWroteAgo: 500, hostWroteAgo: 450);
 
@@ -185,7 +173,6 @@ internal static class MessageHubTestKit
         return message;
     }
 
-    /// <summary>Sets the counters of each thread from its messages, as the sync does.</summary>
     private static void Tidy(AppDbContext db, params OtaMessageThread[] threads)
     {
         foreach (var thread in threads)

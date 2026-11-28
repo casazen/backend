@@ -1,7 +1,5 @@
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
-using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -9,9 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// Proof tests for TrustedSupplier (NF-21, ADR-020): proves money and data isolation rules.
-/// </summary>
 public class TrustedSupplierProofTests
 {
     [Fact]
@@ -54,7 +49,6 @@ public class TrustedSupplierProofTests
     [Fact]
     public void TrustedSupplier_ZeroCommission_ForAgencyWork()
     {
-        // Arrange: Create agency org and trusted supplier relationship
         var agencyOrgId = Guid.NewGuid();
         var supplierOrgId = Guid.NewGuid();
 
@@ -69,35 +63,16 @@ public class TrustedSupplierProofTests
             CreatedAt = DateTime.UtcNow,
         };
 
-        // Act: For trusted supplier work, the contract requires:
-        // - PaymentMode.Manual (no CasaZen payment processing)
-        // - 0% commission (full amount to owner)
-        // This is enforced in ServiceRequest creation when supplier is trusted
-
-        // Assert: TrustedSupplier entity structure enables the zero-commission contract
         Assert.NotEqual(Guid.Empty, trustedSupplier.OrgId);
         Assert.NotEqual(Guid.Empty, trustedSupplier.SupplierOrgId);
 
-        // ADR-020: The relationship exists, and ServiceRequestService will apply:
-        // - PaymentMode.Manual (service contract determines payment mode)
-        // - 0% commission (trusted suppliers get preferential terms)
-        // - Approved amount flows to OwnerStatementLine (NF-17)
-
-        // The proof: TrustedSupplier relationship enables identification of
-        // suppliers who receive preferential treatment (0% commission).
-        // The actual commission application happens in ServiceRequest/Statement logic.
         Assert.Equal(agencyOrgId, trustedSupplier.OrgId);
         Assert.Equal(supplierOrgId, trustedSupplier.SupplierOrgId);
     }
 
-    /// <summary>
-    /// AC-NF21-10 / ADR-020-R10: Agency A MUST NEVER see Agency B's trusted suppliers.
-    /// Proves tenant isolation via OrgId filtering.
-    /// </summary>
     [Fact]
     public async Task TrustedSupplier_TenantIsolation_AgencyANeverSeesAgencyBSuppliers()
     {
-        // Arrange: Two agencies with their own trusted suppliers
         var agencyAOrgId = Guid.NewGuid();
         var agencyBOrgId = Guid.NewGuid();
         var supplierOrgId = Guid.NewGuid();
@@ -111,7 +86,6 @@ public class TrustedSupplierProofTests
         var serviceA = new TrustedSupplierService(dbA, null!, activityLogA, null!);
         var serviceB = new TrustedSupplierService(dbB, null!, activityLogB, null!);
 
-        // Agency A's trusted supplier
         var trustedSupplierA = new TrustedSupplier
         {
             Id = Guid.NewGuid(),
@@ -123,7 +97,6 @@ public class TrustedSupplierProofTests
             CreatedAt = DateTime.UtcNow,
         };
 
-        // Agency B's trusted supplier (different supplier)
         var trustedSupplierB = new TrustedSupplier
         {
             Id = Guid.NewGuid(),
@@ -141,26 +114,19 @@ public class TrustedSupplierProofTests
         await dbA.SaveChangesAsync();
         await dbB.SaveChangesAsync();
 
-        // Act: Agency A queries its trusted suppliers
         var agencyASuppliers = await serviceA.GetTrustedSuppliersAsync(agencyAOrgId);
 
-        // Assert: Agency A sees ONLY its own trusted supplier, never Agency B's
         Assert.Single(agencyASuppliers);
         Assert.Equal(trustedSupplierA.Id, agencyASuppliers[0].Id);
         Assert.Equal(agencyAOrgId, agencyASuppliers[0].OrgId);
 
-        // Verify the other agency's supplier is NOT in the results
         Assert.DoesNotContain(agencyASuppliers, s => s.Id == trustedSupplierB.Id);
         Assert.DoesNotContain(agencyASuppliers, s => s.OrgId == agencyBOrgId);
 
-        // ADR-020: Tenant isolation is enforced by OrgId filtering in the service layer
         Assert.All(agencyASuppliers, s => Assert.Equal(agencyAOrgId, s.OrgId));
     }
 }
 
-/// <summary>
-/// Test implementation of ITenantContext for unit tests.
-/// </summary>
 internal sealed class TestTenantContext : ITenantContext
 {
     public TestTenantContext(Guid orgId)

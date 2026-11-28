@@ -22,13 +22,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IMessageTranslationService
 {
-    /// <summary>
-    /// Translates one message of a conversation (<paramref name="messageId"/>, the id of a row of the hub) or a text the host is writing
-    /// (<paramref name="text"/>), exactly one of the two, into <paramref name="targetLanguage"/> (one of the 14 languages of the channel manager, in any
-    /// case). The conversation is checked against <paramref name="scope"/> first: 404 <c>thread_not_found</c> or <c>message_not_found</c>. 422
-    /// <c>translation_language_invalid</c>, <c>translation_input_invalid</c>, <c>message_text_invalid</c> (a text longer than a message can be) and
-    /// <c>translation_unavailable</c>.
-    /// </summary>
     Task<MessageTranslation> TranslateAsync(
         HostScope scope,
         MessageThreadKey threadKey,
@@ -38,18 +31,11 @@ public interface IMessageTranslationService
         CancellationToken ct = default);
 }
 
-/// <summary>Who produced a translation.</summary>
 public enum MessageTranslationProvider
 {
-    /// <summary>CasaZen's own AI (<see cref="IAiProvider"/>).</summary>
     Ai = 1,
 
-    /// <summary>The channel manager (Octorate), asked only when the AI could not be used.</summary>
     ChannelManager = 2,
 }
 
-/// <summary>
-/// A translation, as the screen shows it. It is always a machine translation (<paramref name="MachineTranslated"/> is true) and is not a message:
-/// nothing in the conversation changes.
-/// </summary>
 public sealed record MessageTranslation(string Text, string TargetLanguage, MessageTranslationProvider Provider, bool MachineTranslated = true);

@@ -10,12 +10,9 @@ public sealed class ESignOptions
 {
     public const string SectionName = "ESign";
 
-    /// <summary>API base URL of the provider (sandbox in test, production in production).</summary>
     public string? BaseUrl { get; set; }
 
-    /// <summary>API key of the provider.</summary>
     public string? ApiKey { get; set; }
 
-    /// <summary>HMAC-SHA256 secret of the webhook signature (<c>X-ESign-Signature</c>, hex).</summary>
     public string? WebhookSecret { get; set; }
 }

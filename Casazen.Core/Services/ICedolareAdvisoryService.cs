@@ -16,11 +16,6 @@ public interface ICedolareAdvisoryService
         Guid leaseId, CedolareAdvisoryInput? input = null, CancellationToken cancellationToken = default);
 }
 
-/// <summary>Data of the advisory that CasaZen does not hold; each may be missing.</summary>
-/// <param name="WrittenPages">Written pages ("facciate") of one copy of the contract.</param>
-/// <param name="Lines">Lines of one copy of the contract, when known.</param>
-/// <param name="Copies">Copies to register.</param>
-/// <param name="OtherTaxableIncomeEur">The landlord's IRPEF taxable income of the year without this rent.</param>
 public sealed record CedolareAdvisoryInput(
     int? WrittenPages = null,
     int? Lines = null,
@@ -67,14 +62,11 @@ public sealed record CedolareEstimate(
 
 public enum CedolareRateBasis
 {
-    /// <summary>The rate of residential leases.</summary>
     Standard = 0,
 
-    /// <summary>The reduced rate of a canone concordato lease in a verified ATA comune.</summary>
     ConcordatoAta = 1,
 }
 
-/// <summary>The ordinary regime option: registration tax, stamp duty and IRPEF.</summary>
 public sealed record OrdinaryRegimeEstimate(
     RegistroEstimate Registro,
     BolloEstimate Bollo,
@@ -98,11 +90,6 @@ public sealed record RegistroEstimate(
     decimal FirstYearEur,
     string Source);
 
-/// <summary>
-/// Stamp duty: <c>EurPerUnit × max(⌈pages / PagesPerUnit⌉, ⌈lines / LinesPerUnit⌉) × copies</c> (fiscale.md L10).
-/// <see cref="AdvisoryEstimateStatus.InputRequired"/> without pages and copies: then only the rule is shown.
-/// </summary>
-/// <param name="LinesConsidered">False when the lines were not given: the amount counts the pages only.</param>
 public sealed record BolloEstimate(
     AdvisoryEstimateStatus Status,
     decimal EurPerUnit,
@@ -131,56 +118,38 @@ public sealed record IrpefEstimate(
 
 public enum AdvisoryEstimateStatus
 {
-    /// <summary>The amount is computed.</summary>
     Computed = 0,
 
-    /// <summary>The landlord must give data CasaZen does not hold.</summary>
     InputRequired = 1,
 
-    /// <summary>CasaZen does not compute it: to be assessed with the accountant (<see cref="IrpefEstimate.ReasonCode"/>).</summary>
     NotComputed = 2,
 }
 
-/// <summary>Why the IRPEF comparison is not computed.</summary>
 public static class IrpefNotComputedReasons
 {
-    /// <summary>No brackets configured.</summary>
     public const string NotConfigured = "not_configured";
 
-    /// <summary>The configured brackets are of an earlier tax year.</summary>
     public const string BracketsOutdated = "brackets_outdated";
 
-    /// <summary>Total income above the configured limit: the brackets alone are not the tax.</summary>
     public const string IncomeOverLimit = "income_over_limit";
 
-    /// <summary>
-    /// Canone concordato in a verified ATA comune: the IRPEF relief of that case is not among the verified rules.
-    /// </summary>
     public const string ConcordatoAtaReliefNotVerified = "concordato_ata_relief_not_verified";
 }
 
-/// <summary>Notes of the advisory (<see cref="CedolareAdvisoryResult.Notes"/>), localized by the client.</summary>
 public static class LeaseTaxAdvisoryNoteCodes
 {
-    /// <summary>Canone concordato in an ATA candidate not verified: 21% and full base shown; 10% and 70% if confirmed.</summary>
     public const string AtaUnverified = "ata_unverified";
 
-    /// <summary>Canone concordato in a comune not in CasaZen's ATA list: 21% and full base shown.</summary>
     public const string AtaNotListed = "ata_not_listed";
 
-    /// <summary>The 10% also applies in comuni with a state of emergency (fiscale.md L12): no official list, not checked.</summary>
     public const string EmergencyComuniNotChecked = "emergency_comuni_not_checked";
 
-    /// <summary>The canone concordato reliefs need the attestation of conformity for contracts without assistance.</summary>
     public const string ConcordatoAttestationRequired = "concordato_attestation_required";
 
-    /// <summary>Transitorio lease: whether the reduced rate and base apply is to be confirmed by the accountant.</summary>
     public const string TransitorioReliefsToConfirm = "transitorio_reliefs_to_confirm";
 
-    /// <summary>Term shorter than a year: the figures are per year (monthly rent × 12).</summary>
     public const string ShortTermAnnualized = "short_term_annualized";
 
-    /// <summary>Older canone concordato lease without a recorded tax regime: both options are shown.</summary>
     public const string TaxRegimeUnknown = "tax_regime_unknown";
 
     /// <summary>Extra-EU tenant: the registration does not replace the 48-hour communication to the Questura (L13-L14).</summary>
@@ -189,7 +158,6 @@ public static class LeaseTaxAdvisoryNoteCodes
 
 public interface IRliExportService
 {
-    /// <summary>RLI prefill of the lease, or <c>null</c> when it is not visible. The caller authorizes the lease first (TN-3).</summary>
     Task<RliExportResult?> ExportAsync(Guid leaseId, CancellationToken cancellationToken = default);
 }
 
@@ -197,10 +165,6 @@ public record RliExportResult(byte[] PdfBytes, string FileName);
 
 public interface IRliChecklistService
 {
-    /// <summary>
-    /// Checklist of <paramref name="lease"/>, loaded with its property, parties and registration and already
-    /// authorized by the caller (TN-3). Items carry a stable key, never a text: the API localizes the labels.
-    /// </summary>
     Task<RliChecklistResult> GetAsync(LeaseContract lease, CancellationToken cancellationToken = default);
 }
 
@@ -249,7 +213,6 @@ public record QuesturaCommunicationStatus(
 /// </summary>
 public record RliChecklistItem(string Key, bool Done, bool Failed = false);
 
-/// <summary>Stable keys of the RLI checklist items (labels: <c>RliChecklist_{key}</c> in the API resources).</summary>
 public static class RliChecklistKeys
 {
     public const string ContractSigned = "contract_signed";

@@ -30,8 +30,6 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
     private const string Comune = "H501";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    // ─── List ───
-
     [PostgresFact]
     public async Task List_AsAdmin_ReturnsANewestFirstPageInSqlWithTheTotalAndTheOpenRequests()
     {
@@ -40,7 +38,6 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
         var middle = await SeedSupplierAsync($"{prefix} Beta", createdAt: DaysAgo(20));
         var newest = await SeedSupplierAsync($"{prefix} Gamma", createdAt: DaysAgo(10));
         var host = await SeedHostAsync();
-        // Two open requests (new, taken) and one closed: only the open ones count.
         await SeedRequestAsync(host, middle.OrgId, ServiceRequestStatus.Richiesto);
         await SeedRequestAsync(host, middle.OrgId, ServiceRequestStatus.PresoInCarico);
         await SeedRequestAsync(host, middle.OrgId, ServiceRequestStatus.Completato);
@@ -143,8 +140,6 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/admin/suppliers/invites")).StatusCode);
     }
 
-    // ─── Suspend / reactivate ───
-
     [PostgresFact]
     public async Task Suspend_ActiveSupplier_SuspendsItRecordsTheAuditAndKeepsItsOpenRequests()
     {
@@ -165,7 +160,6 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
         Assert.Equal(SupplierStatus.Suspended, profile.Status);
         Assert.NotNull(profile.SuspendedAt);
         Assert.Equal("Segnalato da due host", profile.SuspensionReason);
-        // The open request stays as it is: the admin decides what to do with it.
         Assert.Equal(ServiceRequestStatus.PresoInCarico, (await ReadRequestAsync(requestId)).Status);
         var entry = Assert.Single(await ReadAuditAsync(supplier.OrgId));
         Assert.Equal(SupplierAdminAuditAction.Suspended, entry.Action);
@@ -258,7 +252,6 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
         var response = await admin.PostAsync($"/api/admin/suppliers/{supplier.OrgId}/reactivate", null);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        // A reactivation never skips the activation wizard.
         Assert.Equal(SupplierStatus.Pending, (await ReadProfileAsync(supplier.OrgId)).Status);
     }
 
@@ -312,8 +305,6 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
 
         await AssertProblemAsync(response, HttpStatusCode.NotFound, SupplierAdminErrorCodes.SupplierNotFound);
     }
-
-    // ─── A suspended supplier performs no action (A4-29) ───
 
     [PostgresTheory]
     [InlineData("take", ServiceRequestStatus.Richiesto)]
@@ -391,7 +382,6 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
     [PostgresFact]
     public async Task MarkPaid_CompletedRequestOfASuspendedSupplier_StillWorksForTheHost()
     {
-        // Paying is the host's action, not the supplier's: a suspension must not leave completed work unpaid.
         var supplier = await SeedSupplierAsync($"{NewTag()} Srl", SupplierStatus.Suspended);
         var host = await SeedHostAsync();
         var requestId = await SeedRequestAsync(host, supplier.OrgId, ServiceRequestStatus.Completato);
@@ -463,8 +453,6 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
         Assert.Equal("Suspended", dashboard.GetProperty("status").GetString());
     }
 
-    // ─── Invites ───
-
     [PostgresFact]
     public async Task ListInvites_FiltersByStateAndPaginatesInSql()
     {
@@ -473,7 +461,6 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
         var used = await SeedInviteAsync($"{tag}-used@test.com", isUsed: true);
         var expired = await SeedInviteAsync($"{tag}-expired@test.com", expiresAt: DateTime.UtcNow.AddDays(-1));
         var revoked = await SeedInviteAsync($"{tag}-revoked@test.com", revokedAt: DateTime.UtcNow.AddHours(-1));
-        // Created before SU-01: no token hash, so its link can no longer be accepted: it counts as expired.
         var legacy = await SeedInviteAsync($"{tag}-legacy@test.com", withToken: false);
         using var admin = factory.CreateAuthenticatedClient(NewAdminId(), Admin);
 
@@ -490,7 +477,6 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
         Assert.Single(all.GetProperty("items").EnumerateArray());
         var item = (await GetJsonAsync(admin, $"/api/admin/suppliers/invites?search={tag}-pending")).GetProperty("items")[0];
         Assert.Equal("Pending", item.GetProperty("state").GetString());
-        // The link token is never part of the answer.
         Assert.False(item.TryGetProperty("token", out _));
         Assert.False(item.TryGetProperty("tokenHash", out _));
     }
@@ -687,7 +673,6 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
         Assert.Equal(HttpStatusCode.Created, (await admin.PostAsJsonAsync(
             "/api/admin/suppliers/invite", new { email, comuneCode = Comune })).StatusCode);
         var first = await ReadInviteByEmailAsync(email);
-        // While it is pending, a second invite for the email is refused.
         Assert.Equal(HttpStatusCode.Conflict, (await admin.PostAsJsonAsync(
             "/api/admin/suppliers/invite", new { email, comuneCode = Comune })).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await admin.DeleteAsync($"/api/admin/suppliers/invites/{first.Id}")).StatusCode);
@@ -700,8 +685,6 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
             new[] { "Pending", "Revoked" },
             listed.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("state").GetString()).Order());
     }
-
-    // ─── helpers ───
 
     private sealed record SeededSupplier(Guid OrgId, string UserId, string Email);
 
@@ -734,7 +717,6 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
         return id;
     }
 
-    /// <summary>An own supplier org with its profile (comune H501, cleaning) and one member account.</summary>
     private async Task<SeededSupplier> SeedSupplierAsync(
         string legalName,
         SupplierStatus status = SupplierStatus.Active,
@@ -762,7 +744,6 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
                 Email = email,
                 FirstName = "Sara",
                 LastName = "Fornitore",
-                // A supplier account links its supplier org only: User.OrgId is the host org (PL-05, A1-40).
                 SupplierOrgId = org.Id,
                 IsActive = true,
             },
@@ -786,7 +767,6 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
         return new SeededSupplier(org.Id, userId, email);
     }
 
-    /// <summary>A host org with one property in comune H501 and one confirmed stay on it.</summary>
     private async Task<SeededHost> SeedHostAsync()
     {
         var ownerId = $"auth0|su12-owner-{Guid.NewGuid():N}";
@@ -838,7 +818,6 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
     {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        // Take requires a stored interval (fixed UTC, not "today" — see CalendarTodayArchitectureTests).
         var start = new DateTime(2026, 10, 16, 8, 0, 0, DateTimeKind.Utc);
         var request = new ServiceRequest
         {
@@ -948,7 +927,6 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
         return body;
     }
 
-    /// <summary>400 <c>validation_error</c> (FD-05); returns the field errors.</summary>
     private static async Task<JsonElement> AssertValidationErrorAsync(HttpResponseMessage response)
     {
         var text = await response.Content.ReadAsStringAsync();

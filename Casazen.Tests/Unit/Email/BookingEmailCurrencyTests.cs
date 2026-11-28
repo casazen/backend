@@ -5,18 +5,12 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Email;
 
-/// <summary>
-/// CHF-MONEY: the booking e-mails say the amounts in the currency of the property. The texts used to write the euro sign themselves
-/// (<c>{0} €</c>, <c>€{0}</c>), so a guest of a house in francs was told "Totale: 1.262,00 €" of a charge of CHF 1262: the texts now
-/// carry no symbol and the amount they are given has its currency. The euro is written exactly as before.
-/// </summary>
 public class BookingEmailCurrencyTests
 {
     private const string Link = "https://casazen-app.test/app/x";
     private static readonly DateTime CheckIn = new(2026, 10, 5);
     private static readonly BookingHostContact Host = new("Casa Lago Sagl", "info@casalago.test");
 
-    /// <summary>The booking keys whose texts used to carry the euro sign; the rent keys (long term, euros only) are not among them.</summary>
     public static TheoryData<string> BookingKeysOnceInEuros => new()
     {
         "GuestRefundConfirmed_Body", "GuestBookingCancelled_Refund", "GuestPaymentRefundedDatesUnavailable_Refund",

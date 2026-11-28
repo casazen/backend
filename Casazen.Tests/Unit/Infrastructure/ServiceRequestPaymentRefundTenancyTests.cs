@@ -21,7 +21,6 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// </summary>
 public class ServiceRequestPaymentRefundTenancyTests
 {
-    /// <summary>The files that may read or write the table, each with the reason.</summary>
     private static readonly IReadOnlyDictionary<string, string> AllowedFiles = new Dictionary<string, string>
     {
         ["Casazen.Infrastructure/Data/AppDbContext.cs"] = "Declares the DbSet and the model.",
@@ -32,8 +31,6 @@ public class ServiceRequestPaymentRefundTenancyTests
         ["Casazen.Infrastructure/Services/SupplierPaymentService.DisputesAdmin.cs"] = "The admin's decision of a dispute for the customer (SP-15c-c): the refund it decides is reserved with the decision, under the payment lock, as a new pending row.",
     };
 
-    // The statements allowed after "db.ServiceRequestPaymentRefunds" (whitespace removed): an insert, the tracked rows, or a
-    // predicate on the refund id or on the payment id.
     private static readonly string[] AllowedContinuations =
     [
         ".Add(",
@@ -44,18 +41,14 @@ public class ServiceRequestPaymentRefundTenancyTests
         ".AsNoTracking().Where(r=>r.ServiceRequestPaymentId==",
     ];
 
-    // The files that work over many refunds by design, with the extra statements they may use: the jobs filter by status, the
-    // export by status and month. Every refund they change is still handled by id, under the payment lock.
     private static readonly IReadOnlyDictionary<string, string[]> ExtraContinuations = new Dictionary<string, string[]>
     {
         ["Casazen.Infrastructure/Services/SupplierPaymentService.Jobs.cs"] = [".AsNoTracking().Where(r=>r.Status==", ".AsNoTracking().Where(r=>(r.Status=="],
         ["Casazen.Infrastructure/Services/SupplierPaymentAdminService.cs"] = [".AsNoTracking().Where(r=>r.Status=="],
     };
 
-    // Any way to reach the table from code: the DbSet through whatever the context variable is called, or Set<T>().
     private static readonly Regex AnyTableUse = new(@"\.ServiceRequestPaymentRefunds\b|Set<ServiceRequestPaymentRefund>\(", RegexOptions.Compiled);
 
-    // The statements of the allowed files: they call the context "db".
     private static readonly Regex DbSetUse = new(@"db\.ServiceRequestPaymentRefunds(?<rest>[\s\S]{0,90})", RegexOptions.Compiled);
 
     [Fact]
@@ -73,7 +66,6 @@ public class ServiceRequestPaymentRefundTenancyTests
 
         Assert.Null(entity.FindDeclaredQueryFilter(AppDbContext.TenantQueryFilter));
 
-        // A payment with refunds is never removed by the database: the history of the money stays.
         var foreignKey = Assert.Single(entity.GetForeignKeys());
         Assert.Equal(typeof(ServiceRequestPayment), foreignKey.PrincipalEntityType.ClrType);
         Assert.Equal(DeleteBehavior.Restrict, foreignKey.DeleteBehavior);
@@ -86,7 +78,6 @@ public class ServiceRequestPaymentRefundTenancyTests
         using var db = NewNpgsqlContext();
         var entity = db.Model.FindEntityType(typeof(ServiceRequestPaymentRefund))!;
 
-        // One refund per number within the payment: the number is the n of the key sent to Stripe.
         var sequence = Assert.Single(entity.GetIndexes(), index => index.GetDatabaseName() == "UIX_ServiceRequestPaymentRefunds_Payment_Sequence");
         Assert.True(sequence.IsUnique);
         Assert.Equal(
@@ -123,7 +114,6 @@ public class ServiceRequestPaymentRefundTenancyTests
     public void Model_DatabaseChecksMirrorTheRules()
     {
         using var db = NewNpgsqlContext();
-        // The check constraints are design-time metadata: not in the read-optimized runtime model.
         var model = db.GetService<IDesignTimeModel>().Model;
 
         var refund = model.FindEntityType(typeof(ServiceRequestPaymentRefund))!.GetCheckConstraints().ToDictionary(c => c.Name!, c => c.Sql);
@@ -131,12 +121,10 @@ public class ServiceRequestPaymentRefundTenancyTests
             new[] { "CK_ServiceRequestPaymentRefunds_Amounts", "CK_ServiceRequestPaymentRefunds_Succeeded" },
             refund.Keys.Order().ToArray());
 
-        // An amount in cents within the limits of a service, and a refund that succeeded says when.
         Assert.Contains($"BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents}", refund["CK_ServiceRequestPaymentRefunds_Amounts"], StringComparison.Ordinal);
         Assert.Contains($"\"Status\" <> {(int)ServicePaymentRefundStatus.Succeeded}", refund["CK_ServiceRequestPaymentRefunds_Succeeded"], StringComparison.Ordinal);
         Assert.Contains("\"CompletedAt\" IS NOT NULL", refund["CK_ServiceRequestPaymentRefunds_Succeeded"], StringComparison.Ordinal);
 
-        // The date until which an override of the commission holds needs the override.
         var profile = model.FindEntityType(typeof(SupplierProfile))!.GetCheckConstraints().Select(c => c.Name).ToList();
         Assert.Contains("CK_SupplierProfiles_CommissionOverrideUntil", profile);
     }
@@ -151,7 +139,6 @@ public class ServiceRequestPaymentRefundTenancyTests
         Assert.Null(refund.StripeRefundId);
         Assert.Null(refund.ApplicationFeeRefundedCents);
         Assert.Null(refund.CompletedAt);
-        // The values of the enums are stored as numbers: they never move.
         Assert.Equal(
             new[] { 0, 1, 2, 3, 4 },
             new[]

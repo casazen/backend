@@ -39,40 +39,24 @@ public interface IGuestAccountBookingService
         int pageSize,
         CancellationToken cancellationToken = default);
 
-    /// <summary>One booking of the account as "Le mie prenotazioni" shows it, with its id and the slug of its site.</summary>
-    /// <exception cref="Exceptions.NotFoundException"><see cref="GuestBookingLookupErrorCodes.NotFound"/>.</exception>
     Task<GuestAccountBookingDetail> GetAsync(string accountEmail, Guid bookingId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Opens the guest-area session of the site of the booking for the account's email: the same stateless token as the one a booking
-    /// code and an email open (<see cref="IGuestSessionService"/>, <c>gs1.</c>, the same length), so the app reuses the endpoints of the
-    /// guest area (<c>api/public/guest/bookings/{code}/…</c>: the cancellation, the messages) without asking the guest for the code.
-    /// </summary>
-    /// <exception cref="Exceptions.NotFoundException"><see cref="GuestBookingLookupErrorCodes.NotFound"/>.</exception>
     Task<GuestAccountSessionOpened> OpenSessionAsync(string accountEmail, Guid bookingId, CancellationToken cancellationToken = default);
 }
 
-/// <summary>Which stays <see cref="IGuestAccountBookingService.ListAsync"/> lists. Serialized by name in the query: <c>upcoming</c>, <c>past</c>.</summary>
 public enum GuestAccountBookingScope
 {
-    /// <summary>The check-out is today (Europe/Rome) or later.</summary>
     Upcoming,
 
-    /// <summary>The check-out is before today (Europe/Rome).</summary>
     Past,
 }
 
-/// <summary>Limits of the list of the account's bookings, and the one answer for a booking that is not the account's.</summary>
 public static class GuestAccountBookings
 {
     public const int DefaultPageSize = 20;
 
     public const int MaxPageSize = 50;
 
-    /// <summary>
-    /// 404 <see cref="GuestBookingLookupErrorCodes.NotFound"/> with a message that speaks of the account's bookings (the one of the
-    /// anonymous lookup speaks of a code and an email): the same for an id that does not exist, one that is not an id and one of another person.
-    /// </summary>
     public static NotFoundException NotFound() =>
         new("No booking of the account matches the id")
         {
@@ -81,7 +65,6 @@ public static class GuestAccountBookings
         };
 }
 
-/// <summary>A page of <see cref="IGuestAccountBookingService.ListAsync"/>; <paramref name="Total"/> counts the whole scope, not the page.</summary>
 public sealed record GuestAccountBookingPage(IReadOnlyList<GuestAccountBookingSummary> Items, int Total, int Page, int PageSize);
 
 /// <summary>
@@ -117,21 +100,13 @@ public sealed record GuestAccountBookingSummary(
     PaymentOption PaymentOption,
     string? HostName);
 
-/// <summary>A booking of the account as "Le mie prenotazioni" shows it, plus the id and the site slug the app needs.</summary>
 public sealed record GuestAccountBookingDetail(Guid Id, string OrgSlug, GuestBookingView View);
 
-/// <summary>
-/// A guest-area session opened for the account: the token to send as <c>Authorization: Bearer</c> to <c>api/public/guest/*</c>, until when
-/// it works, the booking code (<c>XXXXX-XXXXX</c>) those endpoints take in their path, and the slug of the site.
-/// </summary>
 public sealed record GuestAccountSessionOpened(string AccessToken, DateTime ExpiresAt, string BookingCode, string OrgSlug);
 
-/// <summary>Stable error codes of the guest account (frontend <c>apiErrors.codes.*</c>); the not-found one is <see cref="GuestBookingLookupErrorCodes.NotFound"/>.</summary>
 public static class GuestAccountErrorCodes
 {
-    /// <summary>403: the account's email address is not verified, so no booking can be tied to it.</summary>
     public const string EmailNotVerified = "guest_email_not_verified";
 
-    /// <summary>409: the account also works as a host, a supplier or a platform administrator: it is not removed from the app.</summary>
     public const string IsProfessional = "guest_account_is_professional";
 }

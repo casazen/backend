@@ -6,10 +6,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Platform-admin maintenance of the org membership (AM-01): the reconcile command. Staff only: the people of an org are
-/// managed by the org itself (AM-02), this only repairs what drifted.
-/// </summary>
 [ApiController]
 [Route("api/admin/org-members")]
 [Authorize(Policy = CasazenPolicies.AdminOnly)]

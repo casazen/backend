@@ -18,13 +18,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface ICalendarChangeService
 {
-    /// <summary>
-    /// What <paramref name="request"/> would do, and nothing else: per property how many days change, stay as they are, are taken or are over, the first five
-    /// changed days with their values before and after, whether the property is on the channel manager and the quota it would use (an estimate), and warnings with
-    /// stable codes. Stages and saves nothing. Refuses what <see cref="ApplyAsync"/> refuses.
-    /// </summary>
-    /// <exception cref="Exceptions.DomainRuleException">A code of <see cref="DayRuleErrorCodes"/>, <see cref="HostCalendarErrorCodes.TooManyProperties"/> or <see cref="CalendarPushErrorCodes.NoProperties"/> (422).</exception>
-    /// <exception cref="Exceptions.NotFoundException">A property does not exist for the caller (404 <c>property_not_found</c>).</exception>
     Task<CalendarChangePreview> PreviewAsync(HostScope scope, CalendarChangeRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -72,10 +65,6 @@ public sealed record CalendarChangeValues(
     int? MinAdvanceDays,
     int? MaxAdvanceDays);
 
-/// <summary>A night the change would change, with its values before and after.</summary>
-/// <param name="Date">The night.</param>
-/// <param name="Before">What the night holds now.</param>
-/// <param name="After">What it would hold after the change.</param>
 public sealed record CalendarChangeSample(DateOnly Date, CalendarChangeValues Before, CalendarChangeValues After);
 
 /// <summary>What the change would do to the nights of one property.</summary>
@@ -101,12 +90,8 @@ public sealed record CalendarChangePreviewProperty(
     IReadOnlyList<CalendarChangeSample> Samples,
     int EstimatedQuotaUnits);
 
-/// <summary>Something the host should know before it applies a change.</summary>
-/// <param name="Code">A stable code of <see cref="CalendarPushErrorCodes"/> (<c>property_not_mirrored</c>, <c>room_not_chosen</c>).</param>
-/// <param name="PropertyId">The property it is about.</param>
 public sealed record CalendarChangeWarning(string Code, Guid PropertyId);
 
-/// <summary>The preview of a change: per property and in total, with the warnings. The quota is an estimate.</summary>
 public sealed record CalendarChangePreview(
     IReadOnlyList<CalendarChangePreviewProperty> Properties,
     int Days,

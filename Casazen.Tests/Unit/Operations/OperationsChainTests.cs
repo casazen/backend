@@ -9,7 +9,6 @@ using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Jobs;
-using Moq;
 using Xunit;
 using AutoSendOutcome = Casazen.Infrastructure.Octorate.StayGuestsAutoSendOutcome;
 using World = Casazen.Tests.Unit.Operations.OperationsScenarioBuilder;
@@ -32,7 +31,6 @@ namespace Casazen.Tests.Unit.Operations;
 /// </remarks>
 public class OperationsChainTests
 {
-    // Origine 1, prenotazione da un portale (Booking.com) tramite Octorate: senza e-mail, il link aspetta il permesso della chat, poi parte nel thread; check-in; ospiti a Octorate da soli; ricevuta; cancellazione dei documenti; tassa del canale; pulizia; nessuna recensione.
     [Fact]
     [Trait("Scenario", "A7 B1 B2 B3 B5 B7 B9 B10 B11")]
     public async Task OperationsChain_PortalOrigin_Test()
@@ -40,7 +38,6 @@ public class OperationsChainTests
         await using var world = await World.CreateAsync();
         world.TheChatIsNotLicensed();
 
-        // B1: the booking comes from Booking.com through the channel manager; it carries no address of the guest.
         world.At(World.InRome(World.Day(11, 20), 9));
         var bookingId = await world.ImportPortalBookingAsync(world.PortalReservation(World.CheckInDay, World.CheckOutDay));
         await world.SeedPortalConversationAsync(bookingId);
@@ -49,8 +46,6 @@ public class OperationsChainTests
         Assert.Equal((BookingSource.BookingCom, BookingStatus.Confirmed, BookingOrigin.Portal), (booking.Source, booking.Status, BookingOrigins.Of(booking)));
         Assert.True(string.IsNullOrWhiteSpace(booking.Guest.Email));
 
-        // B2: three days before the arrival the daily job issues the link. Nobody can carry it by e-mail and the chat of the portal is not licensed yet: the link waits for the
-        // permission, nothing goes anywhere, and the host has one «To do» to carry the link itself.
         world.At(World.InRome(World.Day(12, 1), 9));
         await world.RunTheDailyCheckInJobAsync();
         var waiting = await world.DeliveryOfAsync(bookingId);
@@ -61,8 +56,6 @@ public class OperationsChainTests
         var todo = Assert.Single(await world.ActivitiesOfAsync(bookingId), a => a.ActivityType == nameof(ActivityType.CheckInLinkToSend));
         Assert.Null(todo.CompletedAt);
 
-        // The permission arrives: the copy of the chat reads the listing without error, and the next pass puts the link in the thread of the reservation, once, and the
-        // «To do» closes by itself. A refused send is tried again once a day, never an hour after the other in the thread of the guest.
         world.TheChatTakesMessages();
         world.At(World.InRome(World.Day(12, 2), 10));
         await world.TheChatSyncReadsTheListingAsync();
@@ -76,7 +69,6 @@ public class OperationsChainTests
         await world.RunTheLinkRetryAsync();
         Assert.Single(world.ChatMessages);
 
-        // B3: the guest opens the link and completes the check-in; the link is over.
         var submit = await world.GuestChecksInAsync(
             token,
             World.Head(),
@@ -84,21 +76,16 @@ public class OperationsChainTests
         Assert.True(submit.Success, string.Join(", ", submit.ValidationErrors.Select(e => $"{e.Index}:{e.Field}:{e.MessageKey}")));
         Assert.Equal(CheckInLinkEndReasons.CheckInCompleted, (await world.DeliveryOfAsync(bookingId)).EndedReason);
 
-        // B5, A7: the organization asked for it, so the guests reach the channel manager on their own, with the places as its table names them, never as a draft (the
-        // channel manager is the sender: CasaZen never sends to the police).
         await world.DeliverEventsAsync();
         Assert.Equal([0, 1], world.GuestsWritten.Select(g => g.Position));
         Assert.All(world.GuestsWritten, g => Assert.Equal((false, "COMO", "COMO"), (g.Draft, g.BirthCity, g.ResidenceCity)));
 
-        // On the day of the arrival the stay reads «entrusted» to the channel manager, yellow, with no receipt yet.
         world.At(World.InRome(World.CheckInDay, 14));
         var entrusted = await world.StatusOfAsync(bookingId);
         Assert.Equal((AlloggiatiWebStatus.EntrustedToChannelManager, ComplianceSenderType.ChannelManager), (entrusted.Status, entrusted.Sender));
         Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.EntrustedToChannelManager), (entrusted.Verdict!.Verdict.Light, entrusted.Verdict.Verdict.Reason));
         Assert.Null(entrusted.ReceiptProof);
 
-        // B11: the photo of the document stays while no receipt covers the stay: none at all, and the receipt of another day, the one before (a receipt is for the flat and the day of the arrival,
-        // and a day in the future is refused).
         var image = await world.StoreDocumentImageAsync(bookingId);
         Assert.Equal(new GuestDocumentPurgeResult(true, 0, 0, 0), await world.PurgeAsync());
         Assert.Contains(image, world.Storage.Keys);
@@ -109,8 +96,6 @@ public class OperationsChainTests
         Assert.Single(await world.DocumentImagesOfAsync(bookingId));
         Assert.Empty(await world.DocumentDeletionsOfAsync(bookingId));
 
-        // B5: the host uploads the receipt of the day of the arrival for the flat: the stay turns green and the run that deletes the documents is queued; it deletes the photo of the
-        // document (its object and its row), records the deletion with no personal data, and leaves the legal record of the guests as it was.
         var queuedRuns = PurgeRunsQueued(world);
         var receipt = await world.UploadReceiptAsync(World.CheckInDay);
         Assert.Equal(1, receipt.CoveredStays);
@@ -128,7 +113,6 @@ public class OperationsChainTests
         Assert.Equal("YA1234567", kept[0].DocumentNumber);
         Assert.Equal(new GuestDocumentPurgeResult(true, 0, 0, 0), await world.PurgeAsync());
 
-        // Another organization reads nothing of the stay and cannot file a receipt for the flat of the agency.
         Assert.Null(await world.StatusAsAnotherOrganizationAsync(bookingId));
         await Assert.ThrowsAsync<NotFoundException>(() => world.UploadReceiptAsAnotherOrganizationAsync(World.CheckInDay));
 
@@ -140,7 +124,6 @@ public class OperationsChainTests
         world.TheTaxWasNeverCharged();
         Assert.Empty(await world.PaymentsOfAsync(bookingId));
 
-        // B10: at the check-out time of the flat the ready routine makes the cleaning for the member of the staff, once, though the host never registered the departure.
         await world.RunTheTimeTriggersAsync(World.InRome(World.CheckOutDay, 10, 5));
         var cleaning = Assert.Single(await world.CleaningsOfAsync(bookingId));
         Assert.Equal(PropertyCleanerKind.Staff, cleaning.CleanerKind);
@@ -149,7 +132,6 @@ public class OperationsChainTests
         await world.RunTheTimeTriggersAsync(World.InRome(World.CheckOutDay, 10, 20));
         Assert.Single(await world.CleaningsOfAsync(bookingId));
 
-        // B11: the review is asked of the guests of the booking site only: the stay of a portal is skipped, with its reason, and nothing is sent.
         await world.RunTheTimeTriggersAsync(World.InRome(World.CheckOutDay.AddDays(1), 10, 5));
         var run = Assert.Single(await world.ExecutionsOfAsync("Richiesta di recensione"));
         Assert.Equal(RoutineExecutionOutcomes.Success, run.Outcome);
@@ -160,14 +142,12 @@ public class OperationsChainTests
         Assert.DoesNotContain(world.Emails.Snapshot(), e => e.Template == EmailTemplates.Names.ReviewInvite);
     }
 
-    // Origine 2, sito dell'agenzia: prenotazione diretta con utm_source=agency-site; origine «Sito dell'agenzia»; il link del check-in nella conferma; la tassa e' compresa nel pagamento, nessun secondo incasso.
     [Fact]
     [Trait("Scenario", "A11 B1 B2 B3 B7")]
     public async Task OperationsChain_AgencySiteOrigin_Test()
     {
         await using var world = await World.CreateAsync();
 
-        // A11: the guest follows a link of the agency's own site to the booking page of CasaZen and books two days before the arrival. The link says where it comes from.
         world.At(World.InRome(World.Day(12, 2), 9));
         var created = await world.BookOnTheSiteAsync(
             World.CheckInDay,
@@ -182,11 +162,8 @@ public class OperationsChainTests
             (held.AttributionSource, held.AttributionMedium, held.AttributionCampaign, held.AttributionReferrerHost));
         Assert.Equal(BookingOrigin.AgencySite, BookingOrigins.Of(held));
 
-        // The payment of the booking carries the tourist tax of the two adults: three nights, the cleaning, and 2 x 3 x 2.00.
         Assert.Equal((500.00m, 12.00m, 512.00m), (created.BasePrice, created.TouristTaxAmount, created.Amount));
 
-        // Stripe tells the platform the payment succeeded: the booking is confirmed, and the confirmation carries the link of the check-in, which is already open (the
-        // arrival is within three days): it went by e-mail.
         await world.PayOnTheSiteAsync(bookingId);
         await world.DeliverEventsAsync();
         Assert.Equal(BookingStatus.Confirmed, (await world.BookingAsync(bookingId)).Status);
@@ -196,7 +173,6 @@ public class OperationsChainTests
         Assert.Equal(CheckInLinkChannel.Email, delivery.Channel);
         Assert.Contains(delivery.State, new[] { CheckInLinkDeliveryState.Sent, CheckInLinkDeliveryState.Sending });
 
-        // B3: the guest opens the link of the e-mail and registers the two adults; the host confirms the tax of the stay.
         var token = world.TokenOfTheConfirmationEmail();
         var submit = await world.GuestChecksInAsync(
             token,
@@ -206,7 +182,6 @@ public class OperationsChainTests
         await world.DeliverEventsAsync();
         Assert.Equal(12.00m, (await world.ConfirmTouristTaxAsync(bookingId)).AmountDue);
 
-        // B7: what the booking payment carried is the whole tax: nothing is payable online, the host reads it as included, and the guest cannot pay it a second time.
         var view = await world.TouristTaxOfAsync(token);
         Assert.Equal(0m, view!.Payable);
         var host = await world.TouristTaxForHostAsync(bookingId);
@@ -217,7 +192,6 @@ public class OperationsChainTests
         Assert.Single(await world.PaymentsOfAsync(bookingId));
     }
 
-    // Origine 3, sito di CasaZen: prenotazione diretta; il messaggio programmato del check-in parte dalla routine; la differenza della tassa si paga online (webhook finto); l'invito alla recensione il giorno dopo la partenza.
     [Fact]
     [Trait("Scenario", "B1 B2 B3 B7 B9 B10 B11")]
     public async Task OperationsChain_CasaZenSiteOrigin_Test()
@@ -225,8 +199,6 @@ public class OperationsChainTests
         await using var world = await World.CreateAsync();
         await world.AddTheCheckInMessageRoutineAsync();
 
-        // B1: the guest books on the booking site nine days before the arrival: two adults and a child of ten, who owes no tourist tax (the rate starts at fourteen). The
-        // check-in is not open yet, so the confirmation carries no link.
         world.At(World.InRome(World.Day(11, 25), 9));
         var created = await world.BookOnTheSiteAsync(World.CheckInDay, World.CheckOutDay, adults: 2, children: 1, childrenAges: [10]);
         var bookingId = created.BookingId;
@@ -236,13 +208,11 @@ public class OperationsChainTests
         await world.DeliverEventsAsync();
         Assert.Equal(BookingStatus.Confirmed, (await world.BookingAsync(bookingId)).Status);
 
-        // B9: the confirmed booking is planned: one message, the day before the arrival at the check-in time of the flat (15:00 in Rome), with no link issued yet.
         var planned = Assert.Single(await world.ScheduledMessagesOfAsync(bookingId));
         Assert.Equal(ScheduledMessageStatus.Scheduled, planned.Status);
         Assert.Equal(World.InRome(World.CheckInDay.AddDays(-1), 15).UtcDateTime, planned.PlannedAtUtc);
         Assert.Empty(world.DirectThread.Automatic);
 
-        // At the time the routine fires: the message goes to the conversation of the booking, once, with the link of the check-in made at that moment.
         await world.RunTheTimeTriggersAsync(World.InRome(World.CheckInDay.AddDays(-1), 15, 5));
         var message = Assert.Single(world.DirectThread.Automatic);
         Assert.Equal(bookingId, message.BookingId);
@@ -253,7 +223,6 @@ public class OperationsChainTests
         await world.RunTheTimeTriggersAsync(World.InRome(World.CheckInDay.AddDays(-1), 15, 20));
         Assert.Single(world.DirectThread.Automatic);
 
-        // B3: the guest registers the three people: the child of ten of the booking is, in the registration, a member of fifteen, and owes the tax.
         var submit = await world.GuestChecksInAsync(
             token,
             World.Head(),
@@ -262,7 +231,6 @@ public class OperationsChainTests
         Assert.True(submit.Success, string.Join(", ", submit.ValidationErrors.Select(e => $"{e.Index}:{e.Field}:{e.MessageKey}")));
         await world.DeliverEventsAsync();
 
-        // B7: the host confirms the tax of the stay: 3 x 3 x 2.00 = 18.00, 12.00 of which the booking payment carried. The guest pays the difference, 6.00, online.
         Assert.Equal(18.00m, (await world.ConfirmTouristTaxAsync(bookingId)).AmountDue);
         var due = await world.TouristTaxOfAsync(token);
         Assert.Equal((TouristTaxCollectionStatus.ToCollect, 6.00m), (due!.Status, due.Payable));
@@ -274,7 +242,6 @@ public class OperationsChainTests
         Assert.Contains(world.Pushes.Queued, p => p.Payload.Type == PushTypes.TouristTaxPaid && p.Payload.BookingId == bookingId);
         Assert.Single(await world.PaymentsOfAsync(bookingId));
 
-        // B11: the day after the departure the routine asks the guest for the review of the stay: one invitation, to the address of the guest, however many times the job runs.
         await world.RunTheTimeTriggersAsync(World.InRome(World.CheckOutDay.AddDays(1), 10, 5));
         var invite = Assert.Single(await world.ReviewInvitesAsync());
         Assert.Equal(bookingId, invite.BookingId);
@@ -292,7 +259,6 @@ public class OperationsChainTests
     {
         await using var world = await World.CreateAsync();
 
-        // B1: the host enters the booking by hand two days before the arrival: confirmed at once, no payment, nothing sent to the guest by the entry itself.
         world.At(World.InRome(World.Day(12, 2), 9));
         var bookingId = await world.EnterByHandAsync(World.CheckInDay, World.CheckOutDay, adults: 2, totalPrice: 400m);
         await world.DeliverEventsAsync();
@@ -300,12 +266,10 @@ public class OperationsChainTests
         Assert.Equal((BookingSource.Manual, BookingStatus.Confirmed, BookingOrigin.Manual), (booking.Source, booking.Status, BookingOrigins.Of(booking)));
         Assert.Empty(await world.PaymentsOfAsync(bookingId));
 
-        // B2: the arrival is within three days, so the daily job issues the link of the check-in and queues the e-mail to the guest.
         await world.RunTheDailyCheckInJobAsync();
         Assert.Equal(GuestCheckInLinkEmailStatus.Queued, (await world.SessionOfAsync(bookingId)).LinkEmailStatus);
         var token = world.TokenOfTheQueuedLinkEmail();
 
-        // B3: the guest registers the two adults; the host confirms the tax of the stay.
         var submit = await world.GuestChecksInAsync(
             token,
             World.Head(),
@@ -314,7 +278,6 @@ public class OperationsChainTests
         await world.DeliverEventsAsync();
         Assert.Equal(12.00m, (await world.ConfirmTouristTaxAsync(bookingId)).AmountDue);
 
-        // B7: the price of a booking of the host is the host's, so CasaZen has collected nothing of the tax: the guest pays all of it online, 12.00, once.
         var due = await world.TouristTaxOfAsync(token);
         Assert.Equal((TouristTaxCollectionStatus.ToCollect, 12.00m), (due!.Status, due.Payable));
         var session = await world.StartTouristTaxPaymentAsync(token);
@@ -324,8 +287,6 @@ public class OperationsChainTests
         Assert.Equal((TouristTaxCollectionStatus.PaidOnline, 12.00m), (record!.CollectionStatus, record.CollectedAmount));
         Assert.Empty(await world.PaymentsOfAsync(bookingId));
 
-        // B10: at the check-out time the ready routine makes the cleaning for the member of the staff; once the work is done it is a cost the invoicing of the owners reads,
-        // with its amount, its kind and its source.
         await world.RunTheTimeTriggersAsync(World.InRome(World.CheckOutDay, 10, 5));
         var work = Assert.Single(await world.ActivitiesOfAsync(bookingId), a => a.ActivityType == InternalActivity.CleaningActivityType);
         Assert.Empty(await world.CompletedCleaningsAsync(World.Day(12, 1), World.Day(12, 31)));
@@ -345,7 +306,6 @@ public class OperationsChainTests
         await using var world = await World.CreateAsync();
         var adult = new DateTime(1987, 5, 10, 0, 0, 0, DateTimeKind.Utc);
 
-        // The CasaZen site, with a difference: the booking payment carried 12.00 of the 18.00 the guests owe. The tax is collected for 6.00, once.
         world.At(World.InRome(World.Day(12, 2), 9));
         var created = await world.BookOnTheSiteAsync(World.CheckInDay, World.CheckOutDay, adults: 2, children: 1, childrenAges: [10]);
         await world.PayOnTheSiteAsync(created.BookingId);
@@ -362,13 +322,10 @@ public class OperationsChainTests
         var session = await world.StartTouristTaxPaymentAsync(token);
         Assert.Equal(6.00m, session!.Amount);
 
-        // The guest opens the payment again before paying (a second tab, a reload): it is the payment intent already open, read back from Stripe, and Stripe is not asked for another one.
         var reopened = await world.StartTouristTaxPaymentAsync(token);
         Assert.Equal(session.PaymentIntentId, reopened!.PaymentIntentId);
         world.TheTaxWasChargedOnce();
 
-        // When Stripe tells the platform the payment succeeded the record is paid. The same event delivered again, as Stripe does, is dropped by the claim of the event; the same payment told by
-        // another event (another id, as the other endpoint sends it) reaches the tourist tax itself, which records a payment once: nothing is collected or told a second time.
         await world.TouristTaxPaidAsync(session, "evt_tax_once");
         await world.TouristTaxPaidAsync(session, "evt_tax_once");
         await world.TouristTaxPaidAsync(session, "evt_tax_other_endpoint", WebhookSource.Platform);
@@ -376,7 +333,6 @@ public class OperationsChainTests
         Assert.Equal((TouristTaxCollectionStatus.PaidOnline, 6.00m), (record!.CollectionStatus, record.CollectedAmount));
         Assert.Single(world.Pushes.Queued, p => p.Payload.Type == PushTypes.TouristTaxPaid);
 
-        // Paid: a guest who asks again, with the same link or after the host confirms the tax once more, is refused, and Stripe is not asked.
         var again = await Assert.ThrowsAsync<DomainConflictException>(() => world.StartTouristTaxPaymentAsync(token));
         Assert.Contains(again.Code, new[] { TouristTaxCharges.NothingToPayCode, TouristTaxCharges.PaidOnlineCode });
         await world.ConfirmTouristTaxAsync(created.BookingId);
@@ -389,7 +345,6 @@ public class OperationsChainTests
         world.TheTaxWasChargedOnce();
     }
 
-    // Identificazione prima dell'invio: con il passo d'identita' acceso, gli ospiti non partono verso il gestore delle camere finche' una persona non ha accettato; poi partono, una volta sola.
     [Fact]
     [Trait("Scenario", "B3 B5")]
     public async Task OperationsChain_IdentityBeforeTheGuestsReachTheChannelManager_Test()
@@ -399,7 +354,6 @@ public class OperationsChainTests
         var bookingId = await world.ImportPortalBookingAsync(world.PortalReservation(World.CheckInDay, World.CheckOutDay));
         await world.DeliverEventsAsync();
 
-        // B2: the host carries the link to the guest, who registers the two people.
         world.At(World.InRome(World.Day(12, 2), 9));
         var token = await world.HostIssuesTheLinkAsync(bookingId);
         var submit = await world.GuestChecksInAsync(
@@ -418,7 +372,6 @@ public class OperationsChainTests
         Assert.Equal(AutoSendOutcome.IdentityNotVerified, await world.TheGuestsAreOfferedAsync(bookingId));
         Assert.Empty(world.GuestsWritten);
 
-        // The operator accepts the identity: the guests reach the channel manager, once, and only then.
         world.At(World.InRome(World.Day(12, 2), 10));
         Assert.True(await world.TheOperatorAcceptsAsync(bookingId));
         await world.DeliverEventsAsync();
@@ -429,7 +382,6 @@ public class OperationsChainTests
         Assert.Equal(2, world.GuestsWritten.Count);
     }
 
-    // Identificazione rifiutata: il rifiuto dell'operatore non e' un via libera (vale l'ultima riga del registro): gli ospiti non partono, nemmeno quando la stessa richiesta torna per un evento, per il ritentativo o per la scansione.
     [Fact]
     [Trait("Scenario", "B3 B5")]
     public async Task OperationsChain_IdentityRejectedByTheOperator_Test()
@@ -439,7 +391,6 @@ public class OperationsChainTests
         var bookingId = await world.ImportPortalBookingAsync(world.PortalReservation(World.CheckInDay, World.CheckOutDay));
         await world.DeliverEventsAsync();
 
-        // B2, B3: the host carries the link to the guest, who registers the two people; the step of the identity escalates to the operator.
         world.At(World.InRome(World.Day(12, 2), 9));
         var token = await world.HostIssuesTheLinkAsync(bookingId);
         var submit = await world.GuestChecksInAsync(
@@ -486,20 +437,16 @@ public class OperationsChainTests
         Assert.Equal(proof.Id, Assert.Single((await world.ProofsOfAsync(ManualProofKind.IstatProof)).Items).Id);
     }
 
-    // Prerequisito dei passi delle routine (messaggio programmato, pulizia al check-out, richiesta di recensione): senza un provider AI in effetto (Ai:Provider=Stub, il default) il pianificatore non sceglie nulla e ogni esecuzione finisce Failed.
     [Fact]
     [Trait("Scenario", "B9 B10 B11")]
     public async Task OperationsChain_RoutinesNeedAnAiProvider_Test()
     {
         await using var world = await World.CreateWithoutAnAiProviderAsync();
 
-        // B1: the host enters the booking by hand two days before the arrival.
         world.At(World.InRome(World.Day(12, 2), 9));
         var bookingId = await world.EnterByHandAsync(World.CheckInDay, World.CheckOutDay, adults: 2, totalPrice: 400m);
         await world.DeliverEventsAsync();
 
-        // B10: at the check-out time the ready routine fires and the planner has no provider to ask: the execution is closed Failed with its code (the host reads it in the log of the routine)
-        // and no cleaning is made. Every routine of the chain is in the same case, whatever its action.
         await world.RunTheTimeTriggersAsync(World.InRome(World.CheckOutDay, 10, 5));
         var run = Assert.Single(await world.ExecutionsOfAsync("Pulizia al check-out"));
         Assert.Equal(RoutineExecutionOutcomes.Failed, run.Outcome);
@@ -507,7 +454,6 @@ public class OperationsChainTests
         Assert.Empty(await world.CleaningsOfAsync(bookingId));
     }
 
-    // Il passo della tassa del wizard del check-in e' rifatto a mano dal mondo (il passo e' privato e la porta pubblica del wizard rimanda anche gli ospiti): se il wizard cambia le due chiamate, questa prova lo dice.
     [Fact]
     [Trait("Scenario", "B7")]
     public void OperationsChain_TheTaxStepOfTheWizardIsTheOneTheWorldReplays_Test() =>
@@ -515,6 +461,5 @@ public class OperationsChainTests
             World.TheWizardTaxStepMakesTheCallsOfTheWorld(),
             "The tax step of CheckInWizardService no longer confirms the tax and then reconciles the collection: change OperationsScenarioBuilder.ConfirmTouristTaxAsync with it, or call the wizard.");
 
-    /// <summary>The runs of the deletion of the documents that the services handed to the background (the receipt of a stay queues one).</summary>
     private static int PurgeRunsQueued(World world) => world.Jobs.Created.Count(j => j.Job.Type == typeof(GuestDocumentPurgeJob));
 }

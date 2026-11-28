@@ -17,28 +17,18 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public static class StayCurrency
 {
-    /// <summary>The euro: the currency of the houses in Italy.</summary>
     public const string Euro = "EUR";
 
-    /// <summary>The Swiss franc: the currency of the houses in Switzerland.</summary>
     public const string SwissFranc = "CHF";
 
-    /// <summary>What a house without a currency costs in, and what a missing code means (the property row says <c>EUR</c> by default).</summary>
     public const string Default = Euro;
 
-    /// <summary>
-    /// <paramref name="currency"/> as an upper-case ISO 4217 code (<c>chf</c> and <c>CHF </c> are <c>CHF</c>); <see cref="Default"/> when
-    /// there is none.
-    /// </summary>
     public static string Normalize(string? currency) =>
         string.IsNullOrWhiteSpace(currency) ? Default : currency.Trim().ToUpperInvariant();
 
-    /// <summary>The currency of the stays of <paramref name="property"/>; <see cref="Default"/> when the property is not known.</summary>
     public static string ForProperty(Property? property) => Normalize(property?.Currency);
 
-    /// <summary>The code the way Stripe wants it (<c>chf</c>: three letters, lower case) for an amount in the currency of a stay.</summary>
     public static string ForStripe(string? currency) => Normalize(currency).ToLowerInvariant();
 
-    /// <summary>The currencies a stay can be charged in: the two of the houses CasaZen has (Italy, Switzerland).</summary>
     public static bool IsSupported(string? currency) => Normalize(currency) is Euro or SwissFranc;
 }

@@ -48,7 +48,6 @@ public class GuestRepository(AppDbContext context) : IGuestRepository
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        // PO 2026-10-08: the host list is bookers only. Companions live on StayGuest rows and are not guest cards.
         var query = GuestsInScope(scope)
             .AsNoTracking()
             .Where(g => !g.IsDeleted && g.Bookings.Any());
@@ -114,7 +113,6 @@ public class GuestRepository(AppDbContext context) : IGuestRepository
 
     public async Task<GuestUsage> GetUsageAsync(Guid guestId, DateTime today, CancellationToken cancellationToken = default)
     {
-        // IgnoreQueryFilters: the Restrict FKs count every referencing row, whatever its org.
         var bookings = context.Bookings.IgnoreQueryFilters().AsNoTracking().Where(b => b.GuestId == guestId);
 
         var hasOpenBookings = await bookings.AnyAsync(

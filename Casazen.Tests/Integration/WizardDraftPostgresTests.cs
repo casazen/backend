@@ -22,7 +22,6 @@ namespace Casazen.Tests.Integration;
 /// </summary>
 public class WizardDraftPostgresTests
 {
-    // One provider for the whole class: EF keeps one model per provider, and a provider per test would fill the cache the other tests share.
     private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     private static readonly Guid Org = Guid.Parse("00000000-0000-0000-0000-0000000000a1");
@@ -94,7 +93,6 @@ public class WizardDraftPostgresTests
         var saved = await SaveAsync(database, WizardType.BookingCreate, null, 0, typed);
         Assert.Equal(DraftStatus.Saved, saved.Status);
 
-        // The table itself, whatever EF would have made of it: a context without Data Protection reads the stored text.
         await using var stored = database.CreateContext();
         var plain = await stored.Database
             .SqlQueryRaw<string>("SELECT \"DraftJson\"::text AS \"Value\" FROM \"WizardDrafts\"")
@@ -103,19 +101,16 @@ public class WizardDraftPostgresTests
             .SqlQueryRaw<string>("SELECT \"EncryptedFieldsJson\" AS \"Value\" FROM \"WizardDrafts\"")
             .SingleAsync();
 
-        // Neither a value nor the name of a personal field is in the plain column; what is not personal is.
         foreach (var secret in secrets)
             Assert.DoesNotContain(secret, plain, StringComparison.OrdinalIgnoreCase);
         foreach (var name in WizardDraftPiiFields.PII_FIELD_NAMES)
             Assert.DoesNotContain(name, plain, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Villa del Lago (demo)", plain);
 
-        // The personal column is a Data Protection payload, with none of the values in it.
         Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, encrypted, StringComparison.Ordinal);
         foreach (var secret in secrets)
             Assert.DoesNotContain(secret, encrypted, StringComparison.OrdinalIgnoreCase);
 
-        // Read through the service (with Data Protection) the two halves come back together, as typed.
         await using var db = new AppDbContext(database.CreateOptions(), tenantContext: null, Provider);
         var draft = await new WizardDraftService(db, _clock).GetDraftAsync(Org, UserId, WizardType.BookingCreate, null, CancellationToken.None);
         Assert.NotNull(draft);
@@ -132,10 +127,8 @@ public class WizardDraftPostgresTests
     {
         await using var database = PostgresTestDatabase.CreateMigrated("wzd");
 
-        // The draft of a new entity (no EntityId) and the draft of an existing one have an unique index each.
         foreach (Guid? entityId in new Guid?[] { null, Guid.NewGuid() })
         {
-            // The first save of a draft that does not exist yet: both read nothing, both insert, the unique index refuses the second.
             var firstRace = new DraftSaveRendezvous();
             var firsts = await Task.WhenAll(
                 SaveAsync(database, WizardType.BookingEdit, entityId, 0, """{"who":"a"}""", firstRace),
@@ -159,7 +152,6 @@ public class WizardDraftPostgresTests
             Assert.Equal(2, secondLoser.ServerVersion);
             Assert.Equal(Who(secondWinner), Who(secondLoser));
 
-            // What is stored is the winner's draft, once, at version 2.
             await using var db = new AppDbContext(database.CreateOptions(), tenantContext: null, Provider);
             var draft = await new WizardDraftService(db, _clock).GetDraftAsync(Org, UserId, WizardType.BookingEdit, entityId, CancellationToken.None);
             Assert.NotNull(draft);

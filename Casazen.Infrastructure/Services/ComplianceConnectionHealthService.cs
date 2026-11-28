@@ -49,7 +49,6 @@ public sealed class ComplianceConnectionHealthService(
         if (propertyIds.Count == 0)
             return answers;
 
-        // The properties of the caller's org only (the tenant filter): an id of another org is neither read nor served from memory.
         var wanted = propertyIds.Distinct().ToList();
         var visible = await db.Properties.AsNoTracking()
             .Where(p => wanted.Contains(p.Id))
@@ -89,12 +88,10 @@ public sealed class ComplianceConnectionHealthService(
     private DateTime LastReadAt(Guid propertyId) =>
         cache.TryGetValue(LastReadKeyOf(propertyId), out DateTime at) ? at : DateTime.MinValue;
 
-    /// <summary>The health of a property from its sender view; the sender service decides what Octorate proved.</summary>
     private async Task<ComplianceConnectionHealth> ReadAsync(Guid propertyId, CancellationToken ct)
     {
         var view = await senders.GetAsync(propertyId, ct);
 
-        // Only for the sender «CasaZen sends», which no property can be set to in this release: whether the service refused the credentials.
         var refused = view.Applies
                       && view.Sender == ComplianceSenderType.CasaZen
                       && view.QuesturaCredentialsConfigured
@@ -130,7 +127,6 @@ public sealed class ComplianceConnectionHealthService(
             credentialsUsable: false,
             credentialsRefused);
 
-        // The police account is the channel manager's: for any other sender its fields are not about this send.
         var channelManager = effectiveSender == ComplianceSenderType.ChannelManager;
         var reason = effectiveSender switch
         {
@@ -150,10 +146,6 @@ public sealed class ComplianceConnectionHealthService(
             channelManager ? view.DeclaredAt : null);
     }
 
-    /// <summary>
-    /// The placeholder for a property that has no answer in memory and is over the limit of live reads of this call: unknown, never active. It
-    /// is asked for by the status engine only for properties whose sender is the channel manager, the one sender whose health is read live.
-    /// </summary>
     private ComplianceConnectionHealth NotCheckedYet(Guid propertyId)
     {
         var line = new ConnectionHealthLine(
@@ -173,7 +165,6 @@ public sealed class ComplianceConnectionHealthService(
         cache.Set(LastReadKeyOf(health.PropertyId), health.CheckedAt, ComplianceConnectionHealthRules.LastReadMemory);
     }
 
-    /// <summary>The key of the answer of a property in memory (internal: a test lets it expire).</summary>
     internal static string CacheKeyOf(Guid propertyId) => $"compliance-connection-health:{propertyId:N}";
 
     private static string LastReadKeyOf(Guid propertyId) => $"compliance-connection-health-read:{propertyId:N}";

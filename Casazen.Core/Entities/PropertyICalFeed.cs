@@ -5,24 +5,13 @@ using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// One iCal import feed of a property: a property has as many as the host links (Airbnb, Booking.com, ...), each
-/// synced on its own and owning its <see cref="CalendarBlock"/>s (PC-11, A2-11). The export link of the property is
-/// <see cref="PropertyICalExport"/>.
-/// </summary>
 [Table("PropertyICalFeeds")]
 public class PropertyICalFeed : ITenantOwned
 {
-    /// <summary>Longest import URL accepted from the host.</summary>
     public const int ImportUrlMaxLength = 2048;
 
-    /// <summary>
-    /// Column length of <see cref="ImportUrl"/>: the URL is stored encrypted (Data Protection payload, about 4/3 of
-    /// the URL plus a fixed header), so the column is wider than <see cref="ImportUrlMaxLength"/> (A2-20).
-    /// </summary>
     public const int StoredImportUrlMaxLength = 4096;
 
-    /// <summary>Longest free-text label of a feed.</summary>
     public const int LabelMaxLength = 60;
 
     [Key]
@@ -35,7 +24,6 @@ public class PropertyICalFeed : ITenantOwned
 
     public ICalFeedChannel Channel { get; set; } = ICalFeedChannel.Other;
 
-    /// <summary>Optional host label (e.g. "Booking.com - camera 2"); the UI shows the channel when missing.</summary>
     [MaxLength(LabelMaxLength)]
     public string? Label { get; set; }
 
@@ -64,7 +52,6 @@ public class PropertyICalFeed : ITenantOwned
     /// </summary>
     public bool Deprecated { get; set; }
 
-    /// <summary>When the feed was deprecated (UTC); <c>null</c> while it is not.</summary>
     public DateTime? DeprecatedAt { get; set; }
 
     [ForeignKey(nameof(PropertyId))]

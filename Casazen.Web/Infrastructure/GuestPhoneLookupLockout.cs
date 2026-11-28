@@ -10,37 +10,25 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Infrastructure;
 
-/// <summary>
-/// The settings of <see cref="GuestPhoneLookupLockout"/>: <c>GuestArea:PhoneLockout:MaxFailures</c> (5) and <c>GuestArea:PhoneLockout:WindowMinutes</c>
-/// (60), each at least 1, checked at startup (runbook <c>docs/runbooks/direct-booking.md</c> § 8.4).
-/// </summary>
 public sealed class GuestPhoneLookupLockoutOptions
 {
-    /// <summary>Configuration key of the failed attempts that lock a code.</summary>
     public const string MaxFailuresKey = "GuestArea:PhoneLockout:MaxFailures";
 
-    /// <summary>Configuration key of the length of the window of a code, in minutes.</summary>
     public const string WindowMinutesKey = "GuestArea:PhoneLockout:WindowMinutes";
 
     public const int DefaultMaxFailures = 5;
     public const int DefaultWindowMinutes = 60;
 
-    /// <summary>The most codes followed at once: the bound of the memory of the lockout (one entry per code), not a setting.</summary>
     public const int DefaultMaxTrackedCodes = 100_000;
 
-    /// <summary>Failed attempts with the digits of the phone on one code, within its window, that lock the code.</summary>
     public int MaxFailures { get; set; } = DefaultMaxFailures;
 
-    /// <summary>Length of the window of a code, in minutes: it starts with the first attempt on the code, and a lock lasts until it ends.</summary>
     public int WindowMinutes { get; set; } = DefaultWindowMinutes;
 
-    /// <summary>The most codes the lockout follows at once. Not read from the configuration.</summary>
     public int MaxTrackedCodes { get; set; } = DefaultMaxTrackedCodes;
 
-    /// <summary>True when every value is at least 1.</summary>
     public bool IsValid() => MaxFailures >= 1 && WindowMinutes >= 1 && MaxTrackedCodes >= 1;
 
-    /// <summary>Fills <paramref name="options"/> from <paramref name="configuration"/>; a missing key keeps its default.</summary>
     public static void Read(GuestPhoneLookupLockoutOptions options, IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -72,7 +60,6 @@ public sealed class GuestPhoneLookupLockoutOptions
 /// </remarks>
 public sealed class GuestPhoneLookupLockout : IDisposable
 {
-    /// <summary>The name of the limit in the log.</summary>
     public const string PolicyName = "GuestPhoneLookupLockout";
 
     private readonly MemoryCache _codes;
@@ -96,22 +83,15 @@ public sealed class GuestPhoneLookupLockout : IDisposable
         _codes = new MemoryCache(new MemoryCacheOptions { SizeLimit = settings.MaxTrackedCodes });
     }
 
-    /// <summary>Failed attempts on one code, within its window, that lock it.</summary>
     public int MaxFailures { get; }
 
     /// <summary>The window of a code; the <c>Retry-After</c> of a lock always names all of it.</summary>
     public TimeSpan Window { get; }
 
-    /// <summary>The most codes followed at once.</summary>
     public int MaxTrackedCodes { get; }
 
-    /// <summary>How many codes are followed now, never more than <see cref="MaxTrackedCodes"/>.</summary>
     public int TrackedCodes => _codes.Count;
 
-    /// <summary>
-    /// The key of <paramref name="bookingCode"/>: the SHA-256 of the code in its stored form (no dash, upper case, O read as 0, I and L as 1), or of
-    /// the typed text trimmed and in upper case when it is not a code, in upper-case hex. Never the code itself.
-    /// </summary>
     public static string KeyOf(string bookingCode)
     {
         ArgumentNullException.ThrowIfNull(bookingCode);
@@ -119,10 +99,6 @@ public sealed class GuestPhoneLookupLockout : IDisposable
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized)));
     }
 
-    /// <summary>
-    /// Lets one attempt on <paramref name="bookingCode"/> through, counted as failed until <see cref="Reset"/>. False when the code is locked (the
-    /// <see cref="MaxFailures"/> attempts of its window are spent) or the store is full: then the caller answers 429 and reads no booking.
-    /// </summary>
     public bool TryAcquire(string bookingCode)
     {
         var key = KeyOf(bookingCode);
@@ -140,7 +116,6 @@ public sealed class GuestPhoneLookupLockout : IDisposable
                     return true;
                 }
 
-                // The window is over: the lock with it, and the next attempt opens a new window.
                 _codes.Remove(key);
             }
 
@@ -156,7 +131,6 @@ public sealed class GuestPhoneLookupLockout : IDisposable
         }
     }
 
-    /// <summary>A match: the count of <paramref name="bookingCode"/> goes back to zero.</summary>
     public void Reset(string bookingCode)
     {
         var key = KeyOf(bookingCode);
@@ -166,7 +140,6 @@ public sealed class GuestPhoneLookupLockout : IDisposable
 
     public void Dispose() => _codes.Dispose();
 
-    /// <summary>The attempts on one code within its window.</summary>
     private sealed class Attempts(DateTimeOffset windowEndsAt)
     {
         public DateTimeOffset WindowEndsAt { get; } = windowEndsAt;
@@ -211,7 +184,6 @@ public sealed class GuestPhoneLookupLockoutFilter(
         {
             var httpContext = context.HttpContext;
 
-            // No code, digits or IP in the log: the policy, the route and the trace id identify the event.
             logger.LogWarning(
                 "Rate limit exceeded: policy {Policy} on {Method} {Route}. TraceId={TraceId}",
                 GuestPhoneLookupLockout.PolicyName,
@@ -222,8 +194,6 @@ public sealed class GuestPhoneLookupLockoutFilter(
             return;
         }
 
-        // The attempt was counted as failed when it was let through: only a match (the action ran to its end) takes the count back to zero. A 404,
-        // or any other error, leaves it counted.
         var executed = await next();
         if (executed.Exception is null && !executed.Canceled)
             lockout.Reset(request.BookingCode);

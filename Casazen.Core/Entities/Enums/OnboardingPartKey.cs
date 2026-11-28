@@ -9,42 +9,29 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum OnboardingPartKey
 {
-    /// <summary>The consent of the org to its Octorate account, or the creation of the properties there.</summary>
     OctorateConnection = 1,
 
-    /// <summary>The mapping of the Octorate properties to the CasaZen ones, and the creation of the missing ones.</summary>
     Properties = 2,
 
-    /// <summary>The connection of each channel, its mapping and the import of its bookings and calendar.</summary>
     Channels = 3,
 
-    /// <summary>The check of the imported content of each channel.</summary>
     Listings = 4,
 
-    /// <summary>The base price, the rate plans, the restrictions and the policies.</summary>
     PricesRules = 5,
 
     /// <summary>The sender of the Alloggiati and ISTAT communications, the tourist tax and the CIN.</summary>
     Compliance = 6,
 
-    /// <summary>The guest identification, the consent texts, the lock code and the printable QR.</summary>
     Identification = 7,
 
-    /// <summary>The notification preferences, the communication standards and the scheduled messages.</summary>
     MessagesAi = 8,
 
     /// <summary>Who issues the fiscal documents, the regime, the issuer data and the SDI intermediary.</summary>
     FiscalDocuments = 9,
 
-    /// <summary>The optional marketplace integrations.</summary>
     Partners = 10,
 
-    /// <summary>The summary, the final read-only test and the activation of the flows.</summary>
     Activation = 11,
 
-    /// <summary>
-    /// The notification of the guests of the Swiss properties (E29/F02/US01/T02, NF-129): the municipality of each and, for Ticino, the structure number.
-    /// Appended with the next number; in the plan it stands before the activation (its <c>Order</c> is 11, the activation's 12).
-    /// </summary>
     GuestRegistration = 12,
 }

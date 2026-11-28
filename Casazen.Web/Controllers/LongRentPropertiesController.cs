@@ -25,12 +25,6 @@ public class LongRentPropertiesController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
-    /// <summary>
-    /// The active properties in long-term mode of the caller's reach, ordered by name, one row each (<see cref="LongRentPropertyRow"/>).
-    /// <c>view</c> is <c>All</c> (default), <c>Rented</c> (a lease holds them) or <c>Free</c> (none does, a lease on its way included; 400
-    /// <c>validation_error</c> for any other value); <c>q</c>, a text looked for, without regard to case, in the name, address, city and unit
-    /// (at most 100 characters). For a caller who may not read the leases the state is <c>null</c>, and <c>Rented</c> and <c>Free</c> hold nothing.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<LongRentPropertyRow>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]

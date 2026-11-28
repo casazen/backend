@@ -2,14 +2,8 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
-/// <summary>An invitation of an owner, as the lifecycle reads it.</summary>
 public sealed record OwnerInvitationFact(Guid Id, OwnerInvitationStatus Status, DateTime ExpiresAt, DateTime CreatedAt);
 
-/// <summary>
-/// The lifecycle of the portal invitation of an owner (E10/F02/US02/T02, NF-109, AC-NF109-4): <c>ready</c>, <c>invited</c>, <c>accepted</c>,
-/// <c>expired</c>, <c>revoked</c>, and <c>notReady</c> before <c>ready</c>. Worked out on every read from the invitations and the clock, so a
-/// link that lapsed is <c>expired</c> the moment it lapses, with no job to run.
-/// </summary>
 public static class OwnerPortalStateRules
 {
     /// <summary>
@@ -36,10 +30,6 @@ public static class OwnerPortalStateRules
         };
     }
 
-    /// <summary>
-    /// True when an owner in <paramref name="state"/> can be put in a batch of invitations: it is ready, or its earlier invitation lapsed or was
-    /// withdrawn. An owner already <c>invited</c> has a link in force (it is resent, which replaces the link) and an <c>accepted</c> one needs none.
-    /// </summary>
     public static bool CanBeInvited(string state) =>
         state is OwnerPortalStates.Ready or OwnerPortalStates.Expired or OwnerPortalStates.Revoked;
 }

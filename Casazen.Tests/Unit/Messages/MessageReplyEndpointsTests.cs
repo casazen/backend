@@ -28,8 +28,6 @@ public class MessageReplyEndpointsTests
     private static readonly Guid BookingId = Guid.NewGuid();
     private static readonly MessageThreadKey ThreadKey = MessageThreadKey.ForOta(Guid.NewGuid());
 
-    // ---- The shape ----------------------------------------------------------------------------------------------------------------------
-
     [Fact]
     public void TheReply_IsAPostUnderTheThread_ForWhoMayWrite_RateLimited_WithTheKeyInAHeader()
     {
@@ -99,8 +97,6 @@ public class MessageReplyEndpointsTests
             m => Assert.Empty(m.GetCustomAttributes<AllowAnonymousAttribute>()));
     }
 
-    // ---- What a controller does before it asks the service -----------------------------------------------------------------------------
-
     [Fact]
     public async Task Reply_AMalformedKey_Is400_ACallerWithNoScopeIs403_AndTheServiceIsNotAsked()
     {
@@ -142,7 +138,6 @@ public class MessageReplyEndpointsTests
         Assert.Equal(state == OtaMessageDeliveryState.Error ? "chat_not_licensed" : null, dto.ErrorCode);
     }
 
-    /// <summary>A booking the caller does not reach is a 404 before anything is asked of the service, for the options and for the first message alike.</summary>
     [Fact]
     public async Task TheBookingEndpoints_ABookingTheCallerDoesNotReach_Is404_AndTheServiceIsNotAsked()
     {
@@ -175,12 +170,9 @@ public class MessageReplyEndpointsTests
         var optionsDto = Assert.IsType<MessageContactOptionsDto>(options.Value);
         Assert.Equal((MessageContactChannel.Email, true, false), (optionsDto.Channel, optionsDto.EmailAvailable, optionsDto.PhoneAvailable));
         Assert.Equal(OtaMessageDeliveryState.Sent, Assert.IsType<MessageReplyDto>(started.Value).State);
-        // The shape of the answers has no member that could hold an address or a number.
         Assert.DoesNotContain(typeof(MessageContactOptionsDto).GetProperties(), p => p.PropertyType == typeof(string) && p.Name is "Email" or "Phone" or "Address");
         Assert.DoesNotContain(typeof(MessageReplyDto).GetProperties(), p => p.Name is "Email" or "Phone" or "Address" or "To");
     }
-
-    // ---- The rig ------------------------------------------------------------------------------------------------------------------------
 
     private static HostScope Scope() => new(OrgId);
 

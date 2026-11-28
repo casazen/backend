@@ -7,7 +7,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc cref="IGuestNotificationOverrideService" />
 public sealed class GuestNotificationOverrideService(
     AppDbContext db,
     ILogger<GuestNotificationOverrideService> logger,
@@ -21,7 +20,6 @@ public sealed class GuestNotificationOverrideService(
         if (value is { } chosen && !Enum.IsDefined(chosen))
             throw new ArgumentOutOfRangeException(nameof(value), value, "Not a setting of the notification of the guests.");
 
-        // The tenant filter of the context: another org's property is not found.
         var property = await db.Properties.FirstOrDefaultAsync(p => p.Id == propertyId, cancellationToken)
             ?? throw new NotFoundException($"Property {propertyId} not found") { Code = "property_not_found", MessageKey = "PropertyNotFound" };
 

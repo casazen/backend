@@ -54,7 +54,6 @@ public sealed partial class RentBillingService(
     private const int MaxNoteLength = 500;
     private const string PaymentIntentUnexpectedStateCode = "payment_intent_unexpected_state";
 
-    /// <summary>PaymentIntent statuses the tenant can still pay: nothing was collected.</summary>
     private static readonly HashSet<string> PayableStatuses = new(StringComparer.Ordinal)
     {
         "requires_payment_method",
@@ -68,8 +67,6 @@ public sealed partial class RentBillingService(
     private DateTime UtcNow => _clock.GetUtcNow().UtcDateTime;
 
     private DateOnly Today => _clock.TodayInRomeAsDateOnly();
-
-    // ---------------------------------------------------------------- landlord
 
     public async Task<RentLedgerView> GetLedgerAsync(Guid leaseId, CancellationToken cancellationToken = default)
     {
@@ -96,7 +93,6 @@ public sealed partial class RentBillingService(
         if (!Enum.IsDefined(request.Cadence))
             throw new ArgumentOutOfRangeException(nameof(request), request.Cadence, "Unknown rent cadence");
 
-        // The plan runs to the end of the period the lease is in now: a lease that renewed by itself or was ended early (LR-14).
         var leaseStart = RomeCalendar.DateInRome(lease.StartDate);
         var leaseEnd = RomeCalendar.DateInRome(lease.CurrentTermEndDate);
         if (leaseEnd < leaseStart)
@@ -116,7 +112,6 @@ public sealed partial class RentBillingService(
             && (requestedAmount <= 0 || requestedAmount > MaxInstallmentAmount || decimal.Round(requestedAmount, 2) != requestedAmount))
             throw new DomainRuleException(RentBillingErrorCodes.AmountInvalid, "RentAmountInvalid");
 
-        // A day after the end of the lease would leave a plan with nothing to track (LR-04a).
         if (request.TrackFrom is { } requestedTrackFrom && requestedTrackFrom > leaseEnd)
             throw new DomainRuleException(RentBillingErrorCodes.TrackFromInvalid, "RentTrackFromInvalid");
 
@@ -135,8 +130,6 @@ public sealed partial class RentBillingService(
         if (schedule is not null && schedule.Cadence != request.Cadence && entries.Any(e => !IsRegenerable(e)))
             throw new DomainRuleException(RentBillingErrorCodes.CadenceLocked, "RentCadenceLocked");
 
-        // The day the rents are tracked from: the one asked for, else the one the plan already has. A day on or before the
-        // start of the lease is «from the start»; it is stored as null.
         var trackFrom = request.TrackFrom ?? schedule?.TrackFrom;
         if (trackFrom <= leaseStart)
             trackFrom = null;
@@ -161,7 +154,6 @@ public sealed partial class RentBillingService(
         schedule.IsActive = true;
         schedule.NextRunDate = plan.Installments.Count > 0 ? plan.Installments[0].DueDate : trackFrom ?? leaseStart;
         schedule.TrackFrom = trackFrom;
-        // Asking the tenants online is the landlord's choice: a new plan starts with it off, an existing one keeps its own.
         schedule.OnlineRequestsEnabled = request.OnlineRequests ?? schedule.OnlineRequestsEnabled;
         schedule.UpdatedAt = now;
 
@@ -197,7 +189,6 @@ public sealed partial class RentBillingService(
         var notices = new List<RentPaymentNotice>();
         foreach (var entry in open)
         {
-            // A PaymentIntent the tenant could still pay is canceled first; one paid meanwhile wins.
             if (entry.StripePaymentIntentId is not null && (entry.ConnectedAccountId is not null || entry.TransactionFee > 0))
             {
                 var current = await CancelIfPayableAsync(entry, cancellationToken);
@@ -334,8 +325,6 @@ public sealed partial class RentBillingService(
         return view;
     }
 
-    // ---------------------------------------------------------------- tenant (anonymous)
-
     public async Task<PublicRentPayment> GetPublicPaymentAsync(
         Guid installmentId, string token, CancellationToken cancellationToken = default)
     {
@@ -354,114 +343,6 @@ public sealed partial class RentBillingService(
             entry.Status == RentLedgerStatus.Failed)
         { Components = ToView(entry, Today).Components, TransactionFee = entry.Status is RentLedgerStatus.Paid or RentLedgerStatus.Processing ? entry.TransactionFee : TenantSepaAuthorization.TransactionFee };
     }
-
-    public async Task<PublicRentPaymentSession> CreatePaymentSessionAsync(
-        Guid installmentId, string token, CancellationToken cancellationToken = default)
-    {
-        var found = await LoadByTokenAsync(installmentId, token, cancellationToken);
-        var leaseId = found.LeaseContractId;
-
-        PublicRentPaymentSession? session = null;
-        RentPaymentNotice? notice = null;
-        DomainException? refusal = null;
-        await using (var transaction = await LockLeaseAsync(leaseId, cancellationToken))
-        {
-            // Read again under the lock: the webhook, the job or the landlord may have changed it meanwhile.
-            var entry = await db.RentLedgerEntries
-                .Include(e => e.Org)
-                .Include(e => e.RentSchedule)
-                .SingleAsync(e => e.Id == installmentId, cancellationToken);
-            await db.Entry(entry).ReloadAsync(cancellationToken);
-            if (!CheckoutOutcomes.TokenMatches(entry.PaymentTokenHash, token))
-                throw LinkInvalid();
-
-            switch (PublicStateOf(entry))
-            {
-                case PublicRentPaymentState.Paid:
-                    throw AlreadyPaid();
-                case PublicRentPaymentState.Processing:
-                    throw InFlight();
-                case PublicRentPaymentState.Unavailable:
-                    throw NotPayable();
-            }
-
-            var account = entry.Org.StripeConnectedAccountId!;
-            var amountCents = RentCharges.ToCents(entry.AmountDue);
-            PaymentIntent? paymentIntent = null;
-            if (entry.StripePaymentIntentId is not null)
-            {
-                var current = await stripeService.GetPaymentIntentAsync(
-                    entry.StripePaymentIntentId, entry.ConnectedAccountId ?? account, cancellationToken);
-                if (current.Status is not null && PayableStatuses.Contains(current.Status))
-                {
-                    if (current.Amount == amountCents && string.Equals(entry.ConnectedAccountId ?? account, account, StringComparison.Ordinal))
-                    {
-                        paymentIntent = current;
-                    }
-                    else
-                    {
-                        // The amount (or the landlord's account) changed since: that PaymentIntent is canceled.
-                        current = await CancelIfPayableAsync(entry, cancellationToken);
-                    }
-                }
-
-                if (paymentIntent is null && current.Status != "canceled")
-                {
-                    notice = ApplyStripeStatus(entry, current);
-                    refusal = entry.Status == RentLedgerStatus.Paid ? AlreadyPaid() : InFlight();
-                }
-            }
-
-            if (refusal is null && paymentIntent is null)
-            {
-                entry.PaymentIntentCount++;
-                paymentIntent = await stripeService.CreateConnectedAccountPaymentIntentAsync(
-                    account,
-                    amountCents,
-                    RentCharges.Currency,
-                    new Dictionary<string, string>
-                    {
-                        ["kind"] = RentCharges.Kind,
-                        [RentCharges.InstallmentMetadataKey] = entry.Id.ToString(),
-                        ["leaseId"] = entry.LeaseContractId.ToString(),
-                        ["orgId"] = entry.OrgId.ToString(),
-                    },
-                    RentCharges.CreationIdempotencyKey(entry.Id, entry.PaymentIntentCount),
-                    $"Rent {entry.PeriodStart:yyyy-MM-dd} - {entry.PeriodEnd:yyyy-MM-dd}",
-                    cancellationToken);
-                entry.StripePaymentIntentId = paymentIntent.Id;
-                entry.ConnectedAccountId = account;
-                entry.ChargedAt ??= UtcNow;
-                entry.UpdatedAt = UtcNow;
-                logger.LogInformation(
-                    "Rent installment {InstallmentId}: payment intent {PaymentIntentId} created on {AccountId}",
-                    entry.Id,
-                    paymentIntent.Id,
-                    account);
-            }
-
-            await db.SaveChangesAsync(cancellationToken);
-            if (transaction is not null)
-                await transaction.CommitAsync(cancellationToken);
-
-            if (refusal is null)
-            {
-                session = new PublicRentPaymentSession(
-                    entry.Id,
-                    paymentIntent!.ClientSecret,
-                    configuration["Stripe:PublishableKey"] ?? string.Empty,
-                    entry.ConnectedAccountId ?? account);
-            }
-        }
-
-        if (notice is not null)
-            await CompleteAsync(notice, cancellationToken);
-        if (refusal is not null)
-            throw refusal;
-        return session!;
-    }
-
-    // ---------------------------------------------------------------- webhooks
 
     public async Task<RentPaymentNotice?> ApplyPaymentIntentEventAsync(
         RentPaymentIntentEvent paymentEvent, CancellationToken cancellationToken = default)
@@ -489,11 +370,9 @@ public sealed partial class RentBillingService(
 
         var entry = await db.RentLedgerEntries.SingleAsync(e => e.Id == installmentId, cancellationToken);
         await db.Entry(entry).ReloadAsync(cancellationToken);
-        // A signed event from a different connected account must never settle this platform charge.
         if (entry.TransactionFee > 0 && (!string.IsNullOrWhiteSpace(paymentEvent.AccountId)
             || entry.StripePaymentIntentId != paymentEvent.PaymentIntentId
             || paymentEvent.AmountCents != RentCharges.ToCents(entry.AmountDue + entry.TransactionFee))) return null;
-        // Platform rent events are accepted only for this exact new SEPA intent. Legacy direct charges keep their account boundary.
         if (string.IsNullOrWhiteSpace(paymentEvent.AccountId)
             && (entry.ConnectedAccountId is not null || entry.TransactionFee != TenantSepaAuthorization.TransactionFee
                 || entry.StripePaymentIntentId != paymentEvent.PaymentIntentId)) return null;
@@ -619,16 +498,11 @@ public sealed partial class RentBillingService(
         }
     }
 
-    // ---------------------------------------------------------------- job
-
     public async Task<RentCollectionRun> RunCollectionAsync(CancellationToken cancellationToken = default)
     {
         var today = Today;
         var requestUntil = today.AddDays(RentCharges.GetRequestDaysBeforeDue(configuration));
 
-        // Installments coming due, not requested yet, of an active schedule whose org accepts online payments. Only the
-        // ones that were not already due when generated: older ones are the landlord's call (mark paid, or send the link).
-        // Only a schedule the landlord switched online requests on for (LR-04a, LR-D19): tracking the rents writes to no one.
         var due = await db.RentLedgerEntries
             .AsNoTracking()
             .Where(e => e.Status == RentLedgerStatus.Scheduled &&
@@ -725,12 +599,10 @@ public sealed partial class RentBillingService(
         if (QueuePaymentRequest(lease, view, token))
             return true;
 
-        // Not queued (email provider not configured, queue down): tried again at the next run.
         await ResetRequestAsync(installmentId, cancellationToken);
         return false;
     }
 
-    /// <summary>A payment Stripe reported in flight, read again in case its webhook was lost.</summary>
     private async Task<bool> SynchronizeAsync(Guid leaseId, Guid installmentId, CancellationToken cancellationToken)
     {
         db.ChangeTracker.Clear();
@@ -761,15 +633,12 @@ public sealed partial class RentBillingService(
         return true;
     }
 
-    // ---------------------------------------------------------------- helpers
-
     private static bool CanConfigure(LeaseStatus status) =>
         !RliRegistrationDeadline.IsBeforeFullSignature(status) && status != LeaseStatus.Rejected;
 
     private static bool OnlinePaymentsAvailable(Org org) =>
         !string.IsNullOrWhiteSpace(org.StripeConnectedAccountId) && org.ConnectChargesEnabled;
 
-    /// <summary>An installment the schedule may rewrite: not paid, not in flight, no PaymentIntent of the tenant.</summary>
     private static bool IsRegenerable(RentLedgerEntry entry) =>
         (entry.Status is RentLedgerStatus.Scheduled or RentLedgerStatus.Cancelled) && entry.StripePaymentIntentId is null;
 
@@ -791,7 +660,6 @@ public sealed partial class RentBillingService(
         var planned = plan.Installments.ToDictionary(i => i.PeriodStart);
         foreach (var entry in entries.Where(IsRegenerable))
         {
-            // A settlement installment is not a rent period. Regenerating the plan does not rewrite or delete it.
             if (IsSettlementOnly(entry))
                 continue;
 
@@ -810,7 +678,6 @@ public sealed partial class RentBillingService(
             ApplyBreakdown(entry, lease.MonthlyRent, schedule.Cadence, terms);
             if (entry.Status == RentLedgerStatus.Cancelled)
             {
-                // Re-enabled: a new payment request will be sent.
                 entry.Status = RentLedgerStatus.Scheduled;
                 entry.PaymentRequestedAt = null;
                 entry.PaymentTokenHash = null;
@@ -891,12 +758,8 @@ public sealed partial class RentBillingService(
         }
     }
 
-    /// <summary>
-    /// The bank-link row follows the installment. Succeeded is written only when the installment is paid from this PaymentIntent.
-    /// </summary>
     private async Task AlignBankLinkAsync(RentLedgerEntry entry, string? paymentIntentId, CancellationToken cancellationToken)
     {
-        // Cancellation clears StripePaymentIntentId before this runs. The id of the event is what finds the row.
         if (paymentIntentId is null)
             return;
 
@@ -919,7 +782,6 @@ public sealed partial class RentBillingService(
         row.UpdatedAt = UtcNow;
     }
 
-    /// <summary>Records the state Stripe reports for the installment's current PaymentIntent (read, not from an event).</summary>
     private RentPaymentNotice? ApplyStripeStatus(RentLedgerEntry entry, PaymentIntent paymentIntent)
     {
         var eventType = paymentIntent.Status switch
@@ -950,7 +812,6 @@ public sealed partial class RentBillingService(
         return token;
     }
 
-    /// <summary>Queues the payment request to every tenant; true when at least one email was queued.</summary>
     private bool QueuePaymentRequest(LeaseContract lease, RentInstallmentView installment, string token)
     {
         var payUrl = links.RentPayment(installment.Id, token);
@@ -985,7 +846,6 @@ public sealed partial class RentBillingService(
 
     private static List<Party> Tenants(LeaseContract lease) => Recipients(lease, PartyRole.Tenant);
 
-    /// <summary>Parties of <paramref name="role"/> with an address, not anonymized (LT-12), one per address.</summary>
     private static List<Party> Recipients(LeaseContract lease, PartyRole role) =>
         lease.Parties
             .Where(p => p.Role == role && p.AnonymizedAt == null && !string.IsNullOrWhiteSpace(p.ContactEmail))
@@ -995,7 +855,6 @@ public sealed partial class RentBillingService(
 
     private static string FullName(Party party) => $"{party.FirstName} {party.LastName}".Trim();
 
-    /// <summary>The lease with org, property, parties and schedule, read-only (the tenant filter scopes it).</summary>
     private async Task<LeaseContract> LoadLeaseAsync(Guid leaseId, CancellationToken cancellationToken)
     {
         var lease = await db.LeaseContracts
@@ -1019,12 +878,10 @@ public sealed partial class RentBillingService(
                 Code = RentBillingErrorCodes.InstallmentNotFound,
                 MessageKey = "RentInstallmentNotFound",
             };
-        // Read again under the lock (the entity may have been tracked before it).
         await db.Entry(entry).ReloadAsync(cancellationToken);
         return entry;
     }
 
-    /// <summary>Anonymous: the token is the only access check; a wrong id or token get the same 404.</summary>
     private async Task<RentLedgerEntry> LoadByTokenAsync(Guid installmentId, string token, CancellationToken cancellationToken)
     {
         var entry = await db.RentLedgerEntries

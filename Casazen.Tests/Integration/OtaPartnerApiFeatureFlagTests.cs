@@ -10,11 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// FD-20 / D10 (A2-09, A9-17, R-10): the OTA partner API is in freeze behind <c>Features:OtaPartnerApi</c>, off by
-/// default. Every OTA endpoint answers 404 like a missing route, before authentication; the flag is exposed to the
-/// frontend by <c>GET /api/public/features</c>.
-/// </summary>
 public class OtaPartnerApiFeatureFlagTests(CasazenWebApplicationFactory factory) : IClassFixture<CasazenWebApplicationFactory>
 {
     [Theory]
@@ -84,7 +79,6 @@ public class OtaPartnerApiFeatureFlagTests(CasazenWebApplicationFactory factory)
     internal static HttpRequestMessage Request(string method, string path) =>
         new(new HttpMethod(method), path) { Content = new StringContent("{}", Encoding.UTF8, "application/json") };
 
-    /// <summary>Same response as a route that does not exist: 404 problem with code <c>not_found</c>.</summary>
     internal static async Task AssertNotFoundProblemAsync(HttpResponseMessage response)
     {
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
@@ -94,11 +88,6 @@ public class OtaPartnerApiFeatureFlagTests(CasazenWebApplicationFactory factory)
     }
 }
 
-/// <summary>
-/// FD-20 with <c>Features:OtaPartnerApi</c> on: the frozen endpoints come back, without the removed ones
-/// (<c>PUT pricing</c> rewrote <c>NightlyRate</c> unvalidated, <c>validate?apiKey=</c> put the key in the URL,
-/// <c>sync-platform</c> had no ownership check: A9-17).
-/// </summary>
 public class OtaPartnerApiFlagOnTests(OtaPartnerApiEnabledFactory factory) : IClassFixture<OtaPartnerApiEnabledFactory>
 {
     [Fact]
@@ -135,7 +124,6 @@ public class OtaPartnerApiFlagOnTests(OtaPartnerApiEnabledFactory factory) : ICl
 
         var response = await client.PostAsync($"/api/ota/sync?propertyId={property.Id}", null);
 
-        // The property of another tenant is not visible (tenant filter): no sync can be queued for it (A9-17).
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         factory.BackgroundJobClientMock.Verify(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()), Times.Never);
     }

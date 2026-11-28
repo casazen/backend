@@ -6,7 +6,6 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Infrastructure;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -173,7 +172,6 @@ public class ConnectOnboardingServiceTests
 
         var status = await Service(db).GetStatusAsync(org.Id, refreshFromStripe: true);
 
-        // No checkout on an account Stripe no longer knows; the id stays for the replacement key of the onboarding.
         Assert.Equal("acct_deleted", status.ConnectedAccountId);
         Assert.False(status.ChargesEnabled);
         var persisted = await ReloadAsync(db, org.Id);
@@ -248,7 +246,6 @@ public class ConnectOnboardingServiceTests
     [Fact]
     public async Task EnsureExpressAccountAsync_FiscalProfileNotConfirmed_IsIgnored()
     {
-        // An unconfirmed profile only holds what the wizard started with (a default country), not a declaration of the org.
         await using var db = CreateDb();
         var org = await SeedOrgAsync(db, accountId: null, chargesEnabled: false);
         await SeedFiscalProfileAsync(db, org.Id, "CH", confirmed: false);
@@ -321,7 +318,6 @@ public class ConnectOnboardingServiceTests
     [Fact]
     public async Task EnsureExpressAccountAsync_UnsubmittedAccountOfAnotherCountry_IsReplacedByOneInTheOrgCountry()
     {
-        // The Quokka360 case: Swiss org, Italian account whose onboarding never got through.
         await using var db = CreateDb();
         var org = await SeedOrgAsync(db, "acct_italian", chargesEnabled: false, billingCountry: "CH");
         _gateway
@@ -343,7 +339,6 @@ public class ConnectOnboardingServiceTests
     [Fact]
     public async Task EnsureExpressAccountAsync_SubmittedAccountOfAnotherCountry_IsKept()
     {
-        // A submitted account may hold a verified business and money: it is never swapped under the org.
         await using var db = CreateDb();
         var org = await SeedOrgAsync(db, "acct_italian", chargesEnabled: false, billingCountry: "CH");
         _gateway
@@ -399,7 +394,6 @@ public class ConnectOnboardingServiceTests
         Assert.Equal(expected, ConnectOnboardingService.IsUnfinishedInOtherCountry(snapshot, orgCountry.Trim()));
     }
 
-    /// <summary>Stripe creates the account in <paramref name="country"/> and reads it back as such.</summary>
     private void SetupCreation(string country, string accountId)
     {
         _gateway
@@ -410,7 +404,6 @@ public class ConnectOnboardingServiceTests
             .ReturnsAsync(new ConnectAccountSnapshot(accountId, false, false, false, ["business_type"], country));
     }
 
-    /// <summary>The exception the real gateway throws for this Stripe answer.</summary>
     private static StripeConnectException StripeFailure(HttpStatusCode status, string? code) =>
         StripeConnectGateway.ToConnectException(StripeConnectGatewayTests.StripeError(status, code), "test");
 

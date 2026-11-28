@@ -19,12 +19,10 @@ namespace Casazen.Tests.Integration;
 /// </summary>
 public class LeaseDraftFactory : CasazenWebApplicationFactory
 {
-    /// <summary>10:00 in Rome on 9 October 2026 (daylight saving time): "today" of every test is 2026-10-09.</summary>
     public static readonly DateTimeOffset Now = new(2026, 10, 9, 8, 0, 0, TimeSpan.Zero);
 
     public FakeTimeProvider Clock { get; } = new(Now);
 
-    /// <summary>True: the contract template of every regime is approved and complete (a fake), so <c>sent</c> can succeed.</summary>
     protected virtual bool ApprovedTemplates => false;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -46,10 +44,6 @@ public class LeaseDraftFactory : CasazenWebApplicationFactory
         });
     }
 
-    /// <summary>
-    /// A property of the org, long-term, with its energy certificate (with the code and the class the contract prints, LR-APE) and its
-    /// cadastral data: nothing is missing at step 1.
-    /// </summary>
     public async Task MakeReadyAsync(Guid propertyId, bool ape = true, bool cadastre = true, RentalMode mode = RentalMode.Long)
     {
         await using var scope = Services.CreateAsyncScope();
@@ -117,7 +111,6 @@ public class LeaseDraftFactory : CasazenWebApplicationFactory
     }
 }
 
-/// <summary>The same host with every contract template approved: the download for signature can succeed.</summary>
 public sealed class LeaseDraftApprovedTemplatesFactory : LeaseDraftFactory
 {
     protected override bool ApprovedTemplates => true;

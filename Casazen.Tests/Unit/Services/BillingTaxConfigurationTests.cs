@@ -39,7 +39,6 @@ public class BillingTaxConfigurationTests
     [Fact]
     public void BuildCheckoutSessionOptions_NoCustomer_DoesNotSendCustomerUpdate()
     {
-        // Stripe accepts customer_update only together with customer.
         var options = StripeBillingService.BuildCheckoutSessionOptions(null, "price_test_pro", "https://a/ok", "https://a/ko", new Dictionary<string, string>());
 
         Assert.True(options.AutomaticTax.Enabled);

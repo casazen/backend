@@ -47,7 +47,6 @@ public sealed record DatabaseConnectionSettings(
     public const string HangfireApplicationName = "casazen-hangfire";
     public const string AppApplicationName = "casazen-api";
 
-    /// <summary>Supavisor's transaction mode port. Session mode is 5432.</summary>
     public const int TransactionPoolerPort = 6543;
 
     private const int MaxWorkerCount = 50;
@@ -59,20 +58,14 @@ public sealed record DatabaseConnectionSettings(
     /// </summary>
     public int TheoreticalMaxConnections => MaxPoolSizeEffective + (HangfireRegistered ? HangfireMaxPoolSizeEffective : 0);
 
-    /// <summary>
-    /// Effective pool of the EF contexts: the connection string's own <c>Maximum Pool Size</c> wins over <see cref="MaxPoolSize"/>.
-    /// It then applies to each of the two pools.
-    /// </summary>
     public int MaxPoolSizeEffective => ExplicitInString("Maximum Pool Size") ?? MaxPoolSize;
 
     public int HangfireMaxPoolSizeEffective => ExplicitInString("Maximum Pool Size") ?? HangfireMaxPoolSize;
 
     public bool IsTransactionPooler => IsTransactionPoolerEndpoint(ConnectionString);
 
-    /// <summary>Connection string of the EF Core contexts (pool settings and application name applied).</summary>
     public string ForEntityFramework() => Build(MaxPoolSize, MinPoolSize, AppApplicationName);
 
-    /// <summary>Connection string of Hangfire's storage: same database, its own pool.</summary>
     public string ForHangfire() => Build(HangfireMaxPoolSize, 0, HangfireApplicationName);
 
     public static DatabaseConnectionSettings Resolve(IConfiguration configuration, string connectionString, bool hangfireRegistered)
@@ -91,10 +84,6 @@ public sealed record DatabaseConnectionSettings(
         return new DatabaseConnectionSettings(connectionString, workers, maxPool, minPool, hangfirePool, budget, hangfireRegistered);
     }
 
-    /// <summary>
-    /// What is wrong with this configuration, naming settings and never values (no host, user or password).
-    /// Empty when it is fine. <see cref="Severity.Error"/> items make the startup fail outside Development and Testing.
-    /// </summary>
     public IReadOnlyList<Problem> Evaluate()
     {
         var problems = new List<Problem>();
@@ -135,7 +124,6 @@ public sealed record DatabaseConnectionSettings(
         return problems;
     }
 
-    /// <summary>Throws when <see cref="Evaluate"/> finds an error (called outside Development and Testing).</summary>
     public void EnsureUsable()
     {
         var errors = Evaluate().Where(p => p.Severity == Severity.Error).Select(p => p.Message).ToList();
@@ -143,7 +131,6 @@ public sealed record DatabaseConnectionSettings(
             throw new InvalidOperationException("Database connection configuration refused: " + string.Join(" ", errors));
     }
 
-    /// <summary>True for a Supavisor/PgBouncer transaction-mode endpoint (port 6543).</summary>
     public static bool IsTransactionPoolerEndpoint(string? connectionString)
     {
         if (string.IsNullOrWhiteSpace(connectionString))
@@ -171,7 +158,6 @@ public sealed record DatabaseConnectionSettings(
         }
         catch (ArgumentException)
         {
-            // An unparsable connection string fails elsewhere, with its own message.
         }
 
         return 0;
@@ -193,7 +179,6 @@ public sealed record DatabaseConnectionSettings(
         }
     }
 
-    /// <summary>True when the key (or one of its Npgsql synonyms) is written in the connection string, whatever its value.</summary>
     private static bool IsSetInString(string connectionString, string key)
     {
         string[] names = key == "Maximum Pool Size"

@@ -9,19 +9,14 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>The plan of the lines of a month: what the sources of the month say the ledger must contain.</summary>
 public sealed partial class OwnerAccountingService
 {
-    /// <summary>The portals (<see cref="ChannelCommissionRules.Portals"/>), as an array a query can test a booking source against.</summary>
     private static readonly BookingSource[] PortalSources = [.. ChannelCommissionRules.Portals];
 
     private async Task<Plan> PlanAsync(Guid orgId, Period period, CancellationToken ct)
     {
         var plan = new Plan();
 
-        // The collected payments that may be recognized in the month: paid in it, or paid before the end of it for a stay that checks out in it. A refund moves
-        // a payment to PartiallyRefunded or Refunded (PaymentRefundService.RecomputePaymentAsync), so every collected state is read and the revenue is the net
-        // of the refunds: a partial refund lowers the line (reversal + replacement), a full one leaves nothing to share.
         var payments = await db.Payments.AsNoTracking()
             .Where(p => p.OrgId == orgId && CollectedStatuses.Contains(p.Status) && p.ProcessedAt != null && p.ProcessedAt < period.EndUtc
                 && (p.ProcessedAt >= period.StartUtc || (p.Booking.CheckOutDate >= period.StartUtc && p.Booking.CheckOutDate < period.EndUtc)))
@@ -43,9 +38,6 @@ public sealed partial class OwnerAccountingService
                 b.Payments.Any(p => CollectedStatuses.Contains(p.Status) && p.ProcessedAt != null), b.TotalPrice, b.TouristTax, b.PriceOverridden))
             .ToListAsync(ct);
 
-        // The channel commission of a booking on the payment path, with its first payment that still holds money: a portal booking (the commission of the
-        // reservation, else the rule of the agency or the default, ⚖ R2), or another booking whose reservation brought a commission already taken out of the
-        // payments. Active bookings only.
         var bookingIds = payments.Select(p => p.BookingId).Distinct().ToList();
         var feeBookings = (await db.Bookings.AsNoTracking()
                 .Where(b => bookingIds.Contains(b.Id) && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null
@@ -65,8 +57,6 @@ public sealed partial class OwnerAccountingService
                 .ToListAsync(ct))
             .ToDictionary(b => b.Stay.Id, b => new FeeBooking(b.Stay, b.FirstPaymentId));
 
-        // Only one path ever posts a stay: a stay whose revenue the booking path already posted in another month (it was not paid then) keeps that line, its
-        // payment does not post it again (E13/F01/US01/T02).
         var recognizedFromBooking = await StaysPostedFromBookingElsewhereAsync(orgId, period, bookingIds, ct);
 
         var charges = await db.OwnerCharges.AsNoTracking()
@@ -74,8 +64,6 @@ public sealed partial class OwnerAccountingService
                 && (c.EffectiveTo == null || c.EffectiveTo >= period.First))
             .ToListAsync(ct);
 
-        // The wires marked paid. A month an owner settled with a confirmed payout is settled by that payout (it carries the tax decision and posts its own lines):
-        // the wires of the same statement month are not posted, so one transfer is never debited twice (OwnerPayoutService, E06/F05/US02/T03).
         var wireSources = await db.WireBatchStatements.AsNoTracking()
             .Where(w => w.OrgId == orgId && w.WireBatch.Status == WireBatchStatus.Paid && w.WireBatch.PaidAt >= period.StartUtc
                 && w.WireBatch.PaidAt < period.EndUtc && w.OwnerStatement.NetPayable > 0m)
@@ -86,8 +74,6 @@ public sealed partial class OwnerAccountingService
         var settledByPayout = wireSources.Count == 0 ? new HashSet<(Guid, int, int)>() : await PayoutSettledMonthsAsync(orgId, ct);
         var wires = wireSources.Where(w => !settledByPayout.Contains((w.OwnerId, w.StatementYear, w.StatementMonth))).ToList();
 
-        // The mandates of the owners (E13/F01/US01/T01) and those of single ownerships of before: OwnerMandateRules.InForce picks the one of a share. They are read before the
-        // ownerships: the cleanings to read (E14/F01/US02/T01) are those of the properties of the owners whose mandate asks for the actual cost.
         var mandates = await db.OwnerMandates.AsNoTracking()
             .Where(m => m.OrgId == orgId)
             .ToListAsync(ct);
@@ -105,13 +91,10 @@ public sealed partial class OwnerAccountingService
         foreach (var group in ownerships.GroupBy(o => o.PropertyOwnerId))
             plan.OwnerProperties[group.Key] = group.Select(o => o.PropertyId).ToHashSet();
 
-        // The commission rules of the channels and their configured defaults (⚖ R2).
         var channelRules = await db.OrgChannelCommissionRules.AsNoTracking()
             .Where(r => r.OrgId == orgId)
             .ToListAsync(ct);
 
-        // Who holds the account of each listing on each portal and whether the organization recharges the commissions of the accounts it holds (⚖ I10, I11), read once:
-        // the commission of an account of the agency that is not recharged is the agency's (FIX/BE-V2-NO-RECHARGE). Without the resolver every listing is V1.
         var portalAccounts = holders is null ? PortalAccountHolders.Defaults : await holders.ForOrgAsync(orgId, ct);
 
         var earliest = payments.Select(p => DateOnly.FromDateTime(p.PaidAt)).Append(period.First).Min().AddDays(-FxMaxAgeDays);
@@ -179,13 +162,6 @@ public sealed partial class OwnerAccountingService
         return plan;
     }
 
-    /// <summary>
-    /// The lines of a collected payment (a card payment through CasaZen or one the agency recorded): its revenue net of the refunds and of its part of the
-    /// tourist tax (<see cref="OwnerLedgerRules.RevenueOfPayment"/>), recognized on the payment day or on the check-out for a profile with the rule
-    /// <c>stay</c>; the commission of the mandate in force that day on its base; the card fee when the mandate passes it to the owner; with the first payment of
-    /// the booking, the channel commission of a portal (borne by the owner or, for information only, by the agency: <see cref="ChannelFeeTypeOf"/>). A share without a
-    /// mandate in force is posted without commission and holds the version back.
-    /// </summary>
     private async Task PlanPaymentAsync(PlanInputs inputs, PaymentSource payment, FeeBooking? feeBooking, CancellationToken ct)
     {
         var plan = inputs.Plan;
@@ -195,8 +171,6 @@ public sealed partial class OwnerAccountingService
             return;
         }
 
-        // Refunded in full, or only the tourist tax: no revenue left to share. A stay that owes no tourist tax (a booking that is not active, or a no-show: the one
-        // definition of the code, AlloggiatiStatusRules, as the box of the tax of the statement reads it) keeps none of a payment as tax: all of it is revenue.
         var revenueTotal = OwnerLedgerRules.RevenueOfPayment(payment.Net, payment.OwesTouristTax ? payment.TouristTax : 0m, payment.StayTotal);
         if (revenueTotal <= 0m)
             return;
@@ -238,7 +212,6 @@ public sealed partial class OwnerAccountingService
             {
                 AddCommission(inputs, source, shares, i, mandate, revenueTotal, payment.StayGross, payment.StayCleaning, context);
 
-                // The card fee the provider kept (stored by the capture of E06/F04/US01/T02) is the owner's only when the mandate passes it through.
                 if (mandate.PassthroughPaymentFees && cardFees is not null)
                 {
                     var expense = new Source(
@@ -285,12 +258,9 @@ public sealed partial class OwnerAccountingService
         var checkOut = DateOnly.FromDateTime(stay.CheckOut);
         var gross = stay.Gross;
 
-        // A booking without its amounts (a reservation that brought none) is held back, never a revenue of zero; a price agreed by hand is an amount, 0 included.
         if (!stay.Collected && gross <= 0m && !stay.PriceOverridden)
             plan.Issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.SourceAmountMissing, PropertyId: stay.PropertyId, SourceId: stay.Id));
 
-        // The owners of the check-out day: the shares of the revenue of a stay posted from its booking and the ones its flat fees are charged to. A property that has
-        // none (or whose shares do not make 100) is told here, for a stay posted from its payments too: their revenue was shared on the day of the payment.
         if (SharesOn(plan, inputs.Ownerships, stay.PropertyId, checkOut, stay.Id) is not { } shares)
             return;
 
@@ -325,7 +295,6 @@ public sealed partial class OwnerAccountingService
             }
         }
 
-        // The flat fees of the mandate, per stay.
         for (var i = 0; i < shares.Count; i++)
         {
             var share = shares[i];
@@ -341,12 +310,9 @@ public sealed partial class OwnerAccountingService
                 if (rate is not { } amount || amount <= 0m)
                     continue;
 
-                // With the mandate on the actual cost the cleaning is posted from the cleaning requests (PlanCleaningsAsync, E14/F01/US02/T01): the flat fee of the stay is not,
-                // never both. Decided by the mandate of the check-out day, the very day PlanCleaningsAsync reads for the cleanings of this stay.
                 if (kind == OwnerLedgerFlatFees.Cleaning && OwnerMandateRules.CleaningRechargeModeOf(mandate) == CleaningRechargeMode.ActualCost)
                     continue;
 
-                // A flat fee is in the settlement currency of the owner: the line needs no rate (the currency of the property while the owner is not resolved).
                 var context = await ContextAsync(inputs.OrgId, share.OwnerId, inputs.Period, plan, inputs.Contexts, ct);
                 var source = new Source(
                     OwnerLedgerEntryType.OwnerCharge, OwnerLedgerSourceType.MandateFlatFee, stay.Id, kind, "flat:" + reference + ":" + kind,
@@ -356,10 +322,6 @@ public sealed partial class OwnerAccountingService
         }
     }
 
-    /// <summary>
-    /// The commission of the agency on the share <paramref name="index"/>: the percent of the mandate on the share of its base (the whole <paramref name="amount"/>,
-    /// or without its part of the cleaning), split by the shares half to even with the remainder to the last; nothing for a mandate of zero.
-    /// </summary>
     private static void AddCommission(
         PlanInputs inputs,
         Source source,
@@ -407,22 +369,11 @@ public sealed partial class OwnerAccountingService
         return amount > 0m ? new ChannelFee(amount, terms.Source, group) : null;
     }
 
-    /// <summary>
-    /// Who bears the commission a channel kept on <paramref name="stay"/> (FIX/BE-V2-NO-RECHARGE, decision 1 of 20/11/2026): the agency when it holds the account of the
-    /// listing on that channel and the organization does not recharge the commissions of the accounts it holds (<see cref="PortalAccountHolders.IsAgencyAccountWithoutRecharge"/>,
-    /// the very test the owner invoice makes: the portal bills the agency and no invoice of the property manager carries the commission), a line for information only
-    /// (<see cref="OwnerLedgerEntryType.ChannelFeeBorneByAgency"/>) that charges the owner nothing; else the owner, a <see cref="OwnerLedgerEntryType.ChannelFee"/> (V1, or V2 with the
-    /// recharge, where the owner invoice recharges it): deducting a commission no document recharges is the one state the decision forbids.
-    /// </summary>
     private static OwnerLedgerEntryType ChannelFeeTypeOf(PlanInputs inputs, StaySource stay) =>
         inputs.PortalAccounts.IsAgencyAccountWithoutRecharge(stay.PropertyId, stay.Source)
             ? OwnerLedgerEntryType.ChannelFeeBorneByAgency
             : OwnerLedgerEntryType.ChannelFee;
 
-    /// <summary>
-    /// The bookings among <paramref name="bookingIds"/> whose revenue the booking path posted in another month and that is still there (not reversed): the stay
-    /// is recognized there, so its payments do not post it again.
-    /// </summary>
     private async Task<HashSet<Guid>> StaysPostedFromBookingElsewhereAsync(Guid orgId, Period period, List<Guid> bookingIds, CancellationToken ct)
     {
         if (bookingIds.Count == 0)
@@ -456,10 +407,6 @@ public sealed partial class OwnerAccountingService
             plan.Issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.LateSourceAfterClose, late.PropertyOwnerId, late.PropertyId, late.SourceId, Blocking: false));
     }
 
-    /// <summary>
-    /// The (owner, year, month) of the statements settled by a confirmed payout: the payout is the record of the payment to the owner for that month, so a
-    /// wire of the same month's statements is neither posted nor counted at the close.
-    /// </summary>
     private async Task<HashSet<(Guid, int, int)>> PayoutSettledMonthsAsync(Guid orgId, CancellationToken ct)
     {
         var rows = await db.OwnerPayouts.AsNoTracking()
@@ -470,10 +417,6 @@ public sealed partial class OwnerAccountingService
         return rows.Select(r => (r.PropertyOwnerId, r.PeriodYear, r.PeriodMonth)).ToHashSet();
     }
 
-    /// <summary>
-    /// What the owner's profile says for the month: the statement currency, the recognition rule and the rule version. An owner the profile cannot
-    /// resolve is not hidden: the code of the reason is a blocking issue of the month, and its lines carry no rule version.
-    /// </summary>
     private async Task<OwnerContext> ContextAsync(
         Guid orgId,
         Guid ownerId,
@@ -504,7 +447,6 @@ public sealed partial class OwnerAccountingService
         return context;
     }
 
-    /// <summary>The owners of the property on the day, by owner id; <c>null</c> with an issue when there is none or the shares do not make 100.</summary>
     private static List<Share>? SharesOn(Plan plan, IReadOnlyList<PropertyOwnership> ownerships, Guid propertyId, DateOnly day, Guid sourceId)
     {
         var active = ActiveOwnerships(ownerships, propertyId, day);
@@ -530,7 +472,6 @@ public sealed partial class OwnerAccountingService
             .OrderBy(o => o.PropertyOwnerId)
             .ToList();
 
-    /// <summary>The amount split by the shares, each rounded half to even, the last share taking the remainder: the parts add up to the amount.</summary>
     internal static decimal[] Split(decimal amount, IReadOnlyList<Share> shares)
     {
         var parts = new decimal[shares.Count];
@@ -545,7 +486,6 @@ public sealed partial class OwnerAccountingService
         return parts;
     }
 
-    /// <summary>The day a charge is posted in the month: its first day for a one-time charge, the first day of the month (or its own) for a monthly one.</summary>
     private static DateOnly? OccurrenceIn(OwnerCharge charge, Period period)
     {
         if (charge.Recurrence == OwnerChargeRecurrence.OneTime)
@@ -554,10 +494,6 @@ public sealed partial class OwnerAccountingService
         return day <= period.Last && (charge.EffectiveTo is null || day <= charge.EffectiveTo) ? day : null;
     }
 
-    /// <summary>
-    /// The multiplier from one currency to another on a day, from the rates of the agency of that day or of the <see cref="FxMaxAgeDays"/> before (direct, or
-    /// the inverse rounded to 8 decimals); <c>null</c> without one.
-    /// </summary>
     internal static FxQuote? RateFor(IReadOnlyList<OwnerFxRate> rates, string from, string to, DateOnly day)
     {
         if (string.Equals(from, to, StringComparison.Ordinal))
@@ -576,17 +512,14 @@ public sealed partial class OwnerAccountingService
 
     private sealed class Plan
     {
-        /// <summary>The lines the sources say the month holds, those of the closed owners included (they are only compared, never posted).</summary>
         public List<OwnerLedgerEntry> Entries { get; } = [];
 
         public List<OwnerReadinessIssue> Issues { get; } = [];
 
         public HashSet<Guid> ClosedOwners { get; } = [];
 
-        /// <summary>The properties each owner has (or had, or will have) an ownership of: an issue of a property without an owner concerns all of them.</summary>
         public Dictionary<Guid, HashSet<Guid>> OwnerProperties { get; } = [];
 
-        /// <summary>The lines that may be posted: those of the owners whose month is still open.</summary>
         public IEnumerable<OwnerLedgerEntry> OpenEntries => Entries.Where(e => !ClosedOwners.Contains(e.PropertyOwnerId));
 
         /// <summary>
@@ -595,7 +528,6 @@ public sealed partial class OwnerAccountingService
         /// </summary>
         public List<CleaningFact> Cleanings { get; } = [];
 
-        /// <summary>The (owner, stay) already told to have no mandate: one issue each.</summary>
         private HashSet<(Guid Owner, Guid Stay)> MissingMandates { get; } = [];
 
         /// <summary>
@@ -609,7 +541,6 @@ public sealed partial class OwnerAccountingService
         }
     }
 
-    /// <summary>Builds the planned lines: the conversion to the statement currency and the key of the facts.</summary>
     private sealed class PlanBuilder(Guid orgId, Plan plan, IReadOnlyList<OwnerFxRate> rates, Period period)
     {
         public void Add(Source source, Share share, decimal original, OwnerContext context)
@@ -633,8 +564,6 @@ public sealed partial class OwnerAccountingService
                 SourceId = source.SourceId,
                 SourceReference = source.Reference,
                 AttachmentReference = source.Attachment,
-                // A line computed without a rule (the owner's profile or rule set cannot be resolved yet) has its own key: once the owner can be resolved the
-                // key changes, so the line is reversed and replaced by one that carries the rule version (AC-NF110-1), never left without it.
                 IdempotencyKey = string.Create(
                     CultureInfo.InvariantCulture,
                     $"{source.Group}:{(int)source.Type}:{share.OwnerId:N}:{Cents(original)}:{statementCurrency}:{Cents(amount)}{(context.RuleVersion is null ? NoRuleKeySuffix : string.Empty)}"),
@@ -653,7 +582,6 @@ public sealed partial class OwnerAccountingService
                 FxSource = fx.Source,
                 FxDate = fx.Day,
 
-                // A channel commission says where it comes from (payload, channel-rule:{id}, channel-default); every other line the rule set of the owner.
                 RuleVersion = source.RuleVersion ?? context.RuleVersion,
                 Amount = amount,
                 Description = Truncate(source.Description, OwnerLedgerEntry.TextMaxLength),
@@ -686,10 +614,6 @@ public sealed partial class OwnerAccountingService
         string? Attachment = null,
         string? RuleVersion = null);
 
-    /// <summary>
-    /// A collected payment with the facts of its stay the posting needs (the tourist tax, the total, the gross and the cleaning, the status and the no-show mark of
-    /// the booking) and the card fee.
-    /// </summary>
     private sealed record PaymentSource(
         Guid Id,
         Guid BookingId,
@@ -709,18 +633,9 @@ public sealed partial class OwnerAccountingService
         BookingStatus Status,
         DateTime? NoShowAt)
     {
-        /// <summary>
-        /// True when the stay owes its tourist tax: an active booking that is not a no-show (<see cref="AlloggiatiStatusRules"/>, the one definition, which the box of
-        /// the tax of the statement reads too). A cancelled booking or a no-show that keeps a payment owes none, so none of the payment is tax.
-        /// </summary>
         public bool OwesTouristTax => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(Status) && NoShowAt is null;
     }
 
-    /// <summary>
-    /// An active stay: its amounts (<see cref="Booking.BasePrice"/>, the gross without the tourist tax of a booking priced by CasaZen, with the cleaning in it; the
-    /// total of the reservation and its tourist tax, which a portal stay is grossed from), the commission its reservation brought, its days, whether a payment of
-    /// it was collected (then the payment path posts its revenue) and whether the host agreed its price by hand (<see cref="Booking.PriceOverridden"/>).
-    /// </summary>
     private sealed record StaySource(
         Guid Id,
         Guid PropertyId,
@@ -736,17 +651,13 @@ public sealed partial class OwnerAccountingService
         decimal TouristTax,
         bool PriceOverridden)
     {
-        /// <summary>The gross of the stay without the tourist tax (<see cref="OwnerLedgerRules.GrossOfStay"/>): what its booking posts and what the commissions are a percentage of.</summary>
         public decimal Gross => OwnerLedgerRules.GrossOfStay(FiscalCopy.IsOtaBookingSource(Source), BasePrice, TotalPrice, TouristTax);
     }
 
-    /// <summary>A booking whose channel commission goes with its first payment that still holds money.</summary>
     private sealed record FeeBooking(StaySource Stay, Guid FirstPaymentId);
 
-    /// <summary>A channel commission to post: the amount, where it comes from (the rule version of its line) and the group of its key.</summary>
     private sealed record ChannelFee(decimal Amount, string Source, string Group);
 
-    /// <summary>What the lines of a month are computed from, read once by <see cref="PlanAsync"/>: the holders of the portal accounts decide who bears a channel commission.</summary>
     private sealed record PlanInputs(
         Guid OrgId,
         Period Period,

@@ -37,7 +37,6 @@ public sealed class CrmProfileMergeService(
     TimeProvider timeProvider,
     ILogger<CrmProfileMergeService> logger) : ICrmProfileMergeService
 {
-    /// <summary>Longest chain of merged profiles followed to the one that survives; a longer one is a loop.</summary>
     private const int MaxMergeHops = 10;
 
     public async Task<CrmMergeCandidatePage> ListProposedAsync(
@@ -52,7 +51,6 @@ public sealed class CrmProfileMergeService(
         pageSize = Math.Clamp(pageSize, 1, CrmProfileRules.MaxPageSize);
         var orgId = scope.OrgId;
 
-        // Both profiles of the proposal reached in full by the caller, in the same statement; a tombstone is in no scope.
         var reachable = profiles.ProfilesWhollyInScope(scope).Select(profile => profile.Id);
         var open = db.GuestMergeCandidates
             .AsNoTracking()
@@ -157,8 +155,6 @@ public sealed class CrmProfileMergeService(
         var guests = await MoveGuestsAsync(orgId, goneId, survivorProfileId, cancellationToken);
         var contacts = await MoveContactsAsync(orgId, goneId, survivorProfileId, cancellationToken);
 
-        // What the survivor takes of the other profile: the tags (up to the cap), and what it has not got. The consent flags of the profile are
-        // not touched, and the contacts moved as they are: a merge decides who the person is, never what the person agreed to.
         survivor.TagsJson = CrmProfileRules.SerializeTags(
             CrmProfileRules.UnionTags(CrmProfileRules.ParseTags(survivor.TagsJson), CrmProfileRules.ParseTags(gone.TagsJson)));
         if (string.IsNullOrEmpty(survivor.Country))
@@ -182,7 +178,6 @@ public sealed class CrmProfileMergeService(
         await MoveOtherProposalsAsync(orgId, candidate.Id, goneId, survivorProfileId, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
 
-        // The stays, the spend and the properties of the guests that came over; the first stay is the earlier of the two.
         await matching.UpdateProfileAggregatesAsync(survivorProfileId, cancellationToken);
         if (goneHadStays && survivor.TotalStays > 0 && goneFirstStayAt < survivor.FirstStayAt)
         {
@@ -204,8 +199,6 @@ public sealed class CrmProfileMergeService(
             contacts);
         return items.Single();
     }
-
-    // ---- the proposal -------------------------------------------------------------------------------------------------------------
 
     /// <summary>
     /// The proposal of the org, tracked, once the caller is known to reach in full the two profiles it ends up with (404 otherwise, whether a
@@ -231,10 +224,6 @@ public sealed class CrmProfileMergeService(
         return new Decidable(candidate, first.Value, second.Value);
     }
 
-    /// <summary>
-    /// Only a proposal that is still waiting, between the two profiles it was made for, can be decided: one already merged or dismissed, or one
-    /// of which a profile was merged into another meanwhile, answers 409 and nothing changes.
-    /// </summary>
     private static void EnsureProposed(Decidable decidable)
     {
         var candidate = decidable.Candidate;
@@ -246,7 +235,6 @@ public sealed class CrmProfileMergeService(
         }
     }
 
-    /// <summary>The living profile at the end of the merges that started at <paramref name="profileId"/>; <c>null</c> when it is not the org's or the chain is a loop.</summary>
     private async Task<Guid?> SurvivorIdAsync(Guid orgId, Guid profileId, CancellationToken cancellationToken)
     {
         var current = profileId;
@@ -270,12 +258,6 @@ public sealed class CrmProfileMergeService(
         return null;
     }
 
-    // ---- the merge ----------------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// Points the guests of one profile to the other. Each guest is a stub with its key and the old link, and only the link changes: the update
-    /// sets one column and reads no document, no date of birth, no address.
-    /// </summary>
     private async Task<int> MoveGuestsAsync(Guid orgId, Guid fromProfileId, Guid toProfileId, CancellationToken cancellationToken)
     {
         var ids = await db.Guests
@@ -299,10 +281,6 @@ public sealed class CrmProfileMergeService(
         return ids.Count;
     }
 
-    /// <summary>
-    /// Points the contacts of one profile to the other, as they are. Each contact is a stub with its key and the old link, so its address and
-    /// name are neither decrypted nor written, and only the link changes: the basis, the confirmation, the suppression and the times do not.
-    /// </summary>
     private async Task<int> MoveContactsAsync(Guid orgId, Guid fromProfileId, Guid toProfileId, CancellationToken cancellationToken)
     {
         var ids = await db.GuestContacts
@@ -362,9 +340,6 @@ public sealed class CrmProfileMergeService(
         }
     }
 
-    // ---- the list -----------------------------------------------------------------------------------------------------------------
-
-    /// <summary>The names of the properties the caller reaches where the guests of each profile have a booking that is not cancelled, A to Z.</summary>
     private async Task<Dictionary<Guid, List<string>>> PropertyNamesAsync(HostScope scope, List<Guid> profileIds, CancellationToken cancellationToken)
     {
         var rows = await profiles.BookingsInScope(scope)
@@ -383,7 +358,6 @@ public sealed class CrmProfileMergeService(
                 group => group.Select(row => row.Name).OrderBy(name => name, StringComparer.Ordinal).ToList());
     }
 
-    /// <summary>The contacts of the profiles with the value masked: the channel, where it came from, and enough of the value to recognise it.</summary>
     private async Task<ILookup<Guid, CrmMergeContactSummary>> ContactSummariesAsync(Guid orgId, List<Guid> profileIds, CancellationToken cancellationToken)
     {
         var contacts = await CrmProfileContactReader.LoadAsync(db, orgId, profileIds, cancellationToken);
@@ -417,7 +391,6 @@ public sealed class CrmProfileMergeService(
             contacts[item.Id].ToList());
     }
 
-    /// <summary>The reason codes of a proposal; empty for a text that is not a list.</summary>
     private static List<string> ReasonsOf(string? reasonsJson)
     {
         if (string.IsNullOrWhiteSpace(reasonsJson))
@@ -432,8 +405,6 @@ public sealed class CrmProfileMergeService(
             return [];
         }
     }
-
-    // ---- small helpers ------------------------------------------------------------------------------------------------------------
 
     private DateTime Now() => timeProvider.GetUtcNow().UtcDateTime;
 

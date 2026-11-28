@@ -9,8 +9,6 @@ using Casazen.Infrastructure.Data;
 using Casazen.Tests.Unit.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
-using Casazen.Web.DTOs;
-using Casazen.Web.DTOs.Messages;
 using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
@@ -57,7 +55,6 @@ public class MessageHubProofTests : IAsyncLifetime
         var service = MessageHubTestKit.Service(_db, guestMessages.Object, attachments: fetcher.Object);
         var collaborator = _world.Scope.Restricted;
 
-        // The list: the three conversations of the granted house, and nothing else.
         var page = await service.ListAsync(collaborator, new MessageHubFilter(), 1, 50);
         Assert.Equal(
             [MessageThreadKey.ForDirect(_world.GrantedDirectBooking.Id), Ota(_world.GrantedRequest), Ota(_world.GrantedReservation)],
@@ -66,13 +63,11 @@ public class MessageHubProofTests : IAsyncLifetime
         Assert.All(page.Items, i => Assert.Equal(_world.Scope.Granted.Id, i.PropertyId));
         Assert.DoesNotContain(page.Items, i => i.Unassigned);
 
-        // A filter cannot widen it: the hidden house, the unassigned channel and the guest of the hidden stay find nothing.
         Assert.Empty((await service.ListAsync(collaborator, new MessageHubFilter(PropertyId: _world.Scope.Hidden.Id), 1, 50)).Items);
         Assert.Empty((await service.ListAsync(collaborator, new MessageHubFilter(Channel: MessageHubChannel.Expedia), 1, 50)).Items);
         Assert.Empty((await service.ListAsync(collaborator, new MessageHubFilter(Query: "pietro"), 1, 50)).Items);
         Assert.Empty((await service.ListAsync(collaborator, new MessageHubFilter(BookingId: _world.HiddenDirectBooking.Id), 1, 50)).Items);
 
-        // The thread: the granted ones open; the hidden one, the unassigned one and the other org's are a 404, whichever the source.
         foreach (var granted in new[] { Ota(_world.GrantedRequest), Ota(_world.GrantedReservation) })
             Assert.Equal(granted, (await service.GetThreadAsync(collaborator, granted, includeAmounts: true)).Key);
 
@@ -90,13 +85,11 @@ public class MessageHubProofTests : IAsyncLifetime
             await Assert.ThrowsAsync<NotFoundException>(() => service.MarkReadAsync(collaborator, key, "auth0|collab"));
         }
 
-        // Nothing was marked read, and the existing service was never asked about a stay the collaborator does not reach.
         Assert.Equal(2, (await _db.OtaMessageThreads.AsNoTracking().FirstAsync(t => t.Id == _world.HiddenReservation.Id)).UnreadCount);
         Assert.Equal(1, (await _db.OtaMessageThreads.AsNoTracking().FirstAsync(t => t.Id == _world.Unassigned.Id)).UnreadCount);
         guestMessages.Verify(g => g.GetForHostAsync(_world.HiddenDirectBooking.Id, It.IsAny<CancellationToken>()), Times.Never);
         guestMessages.Verify(g => g.MarkReadAsync(_world.HiddenDirectBooking.Id, It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // The files of the conversations it does not reach are as missing as the conversations: the address is not even fetched.
         foreach (var message in new[] { _world.HiddenAttachment, _world.OtherOrgAttachment })
         {
             var error = await Assert.ThrowsAsync<NotFoundException>(() => service.OpenAttachmentAsync(collaborator, message.Id));
@@ -105,23 +98,16 @@ public class MessageHubProofTests : IAsyncLifetime
 
         fetcher.Verify(f => f.FetchAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // The badges: the OTA counters are narrowed by the same scope.
         guestMessages.Setup(g => g.ListUnreadForHostAsync(collaborator, It.IsAny<CancellationToken>())).ReturnsAsync([]);
         var unread = await service.ListUnreadAsync(collaborator, includeOta: true);
         Assert.Equal([Ota(_world.GrantedRequest)], unread.Select(t => t.Key));
 
-        // Who reaches every property of the org sees the unassigned conversation too, marked as such, and can read it.
         var orgWide = (await service.ListAsync(_world.Scope.OrgWide, new MessageHubFilter(), 1, 50)).Items;
         var unassigned = Assert.Single(orgWide, i => i.Key == Ota(_world.Unassigned));
         Assert.True(unassigned.Unassigned);
         Assert.Equal(Ota(_world.Unassigned), (await service.GetThreadAsync(_world.Scope.OrgWide, Ota(_world.Unassigned), true)).Key);
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule, after a remap. A conversation moved to a house the collaborator was given (the mapping of its listing changed) may
-    /// still be linked to a stay at the house it came from, which the collaborator was not given: that stay is in no row of the list, in no filter by
-    /// booking, in no search by the name of its guest and in no badge, as it is in no card of the detail. A conversation that was not moved keeps its stay.
-    /// </summary>
     [Fact]
     public async Task MessageHub_Collaborator_AfterARemap_SeesNothingOfTheStayOfAHouseItWasNotGiven_Test()
     {
@@ -135,7 +121,6 @@ public class MessageHubProofTests : IAsyncLifetime
         var collaborator = _world.Scope.Restricted;
         var key = Ota(_world.GrantedRequest);
 
-        // The list: the conversation is there, at a granted house, and carries nothing of the other stay; the one that was not moved keeps its own.
         var page = await service.ListAsync(collaborator, new MessageHubFilter(), 1, 50);
         var moved = Assert.Single(page.Items, i => i.Key == key);
         Assert.Null(moved.BookingId);
@@ -145,11 +130,9 @@ public class MessageHubProofTests : IAsyncLifetime
         Assert.Null(moved.CheckOutDate);
         Assert.Equal(_world.GrantedChannelBooking.Id, Assert.Single(page.Items, i => i.Key == Ota(_world.GrantedReservation)).BookingId);
 
-        // That stay cannot be found by its booking, nor by the name of its guest.
         Assert.Empty((await service.ListAsync(collaborator, new MessageHubFilter(BookingId: _world.HiddenDirectBooking.Id), 1, 50)).Items);
         Assert.Empty((await service.ListAsync(collaborator, new MessageHubFilter(Query: "gallo"), 1, 50)).Items);
 
-        // The badge names no booking, and the detail has no card and no customer.
         var unread = Assert.Single(await service.ListUnreadAsync(collaborator, includeOta: true), t => t.Key == key);
         Assert.Null(unread.BookingId);
         var view = await service.GetThreadAsync(collaborator, key, includeAmounts: true);
@@ -172,7 +155,6 @@ public class MessageHubProofTests : IAsyncLifetime
         var service = MessageHubTestKit.Service(_db, attachments: fetcher.Object);
         var controller = Controller(service, _world.Scope.OrgWide);
 
-        // The attachment endpoint: the bytes, the type, the headers of a private download, and not a trace of the address.
         var result = await controller.Attachment(_world.GrantedAttachment.Id, CancellationToken.None);
 
         var file = Assert.IsType<FileContentResult>(result);
@@ -188,14 +170,12 @@ public class MessageHubProofTests : IAsyncLifetime
         AssertNoAddress(System.Text.Encoding.Latin1.GetString(file.FileContents));
         fetcher.Verify(f => f.FetchAsync(MessageHubWorld.SecretAddress, It.IsAny<CancellationToken>()), Times.Once);
 
-        // Anything that is not an image is offered as a download.
         fetcher.Setup(f => f.FetchAsync(MessageHubWorld.SecretAddress, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OtaAttachmentContent([1, 2], OtaAttachmentRules.OctetStream));
         var download = Assert.IsType<FileContentResult>(await controller.Attachment(_world.GrantedAttachment.Id, CancellationToken.None));
         Assert.Equal("application/octet-stream", download.ContentType);
         Assert.Equal("attachment", download.FileDownloadName);
 
-        // The thread and the list say the message has a file and of what type, never where it is.
         var thread = await controller.Get(Ota(_world.GrantedReservation).ToString(), CancellationToken.None);
         var threadJson = JsonSerializer.Serialize(Assert.IsType<OkObjectResult>(thread.Result).Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Assert.Contains("\"contentType\":\"image/jpeg\"", threadJson, StringComparison.Ordinal);
@@ -205,7 +185,6 @@ public class MessageHubProofTests : IAsyncLifetime
             .List(null, null, includeOta: true);
         AssertNoAddress(JsonSerializer.Serialize(Assert.IsType<OkObjectResult>(page.Result).Value, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
 
-        // A file that expired: a 404 with its own code, and the error carries nothing of the address.
         fetcher.Setup(f => f.FetchAsync(MessageHubWorld.SecretAddress, It.IsAny<CancellationToken>())).ReturnsAsync((OtaAttachmentContent?)null);
         var expired = await Assert.ThrowsAsync<NotFoundException>(() => controller.Attachment(_world.GrantedAttachment.Id, CancellationToken.None));
         Assert.Equal("attachment_unavailable", expired.Code);
@@ -214,7 +193,6 @@ public class MessageHubProofTests : IAsyncLifetime
         AssertNoAddress(expired.Code ?? string.Empty);
         AssertNoAddress(expired.MessageKey ?? string.Empty);
 
-        // A message of another org is a 404 as if it did not exist, and its address is never fetched.
         fetcher.Invocations.Clear();
         var foreign = await Assert.ThrowsAsync<NotFoundException>(() => controller.Attachment(_world.OtherOrgAttachment.Id, CancellationToken.None));
         Assert.Equal("message_not_found", foreign.Code);
@@ -235,8 +213,6 @@ public class MessageHubProofTests : IAsyncLifetime
         Assert.Equal("attachment_unavailable", error.Code);
         fetcher.Verify(f => f.FetchAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
-
-    // ---- The endpoints --------------------------------------------------------------------------------------------------------------
 
     [Fact]
     public void TheEndpoints_AreUnderApiMessages_WithThePoliciesOfTheBrief_AndPrivateAnswers()
@@ -358,7 +334,6 @@ public class MessageHubProofTests : IAsyncLifetime
 
 internal static class ControllerTestExtensions
 {
-    /// <summary>Gives a controller a signed-in caller and the services the error answers need (the localizer of the messages).</summary>
     public static T WithUser<T>(this T controller)
         where T : ControllerBase
     {

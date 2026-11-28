@@ -6,7 +6,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>The state a card shows (E09/F01/US01/T03): its status, whose it is, and how many properties have it on.</summary>
 internal readonly record struct MarketplaceCardState(MarketplaceCardStatus Status, MarketplaceStatusScope Scope, int? PropertyCount);
 
 /// <summary>

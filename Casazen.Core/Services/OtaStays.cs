@@ -19,7 +19,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public static class OtaStays
 {
-    /// <summary>Guests of a stay when the host does not say (the booker).</summary>
     public const int DefaultNumberOfGuests = 1;
 
     /// <summary>
@@ -34,19 +33,10 @@ public static class OtaStays
         _ => chosen is { } source && FiscalCopy.IsOtaBookingSource(source) ? source : null,
     };
 
-    /// <summary>
-    /// A stay a sync may mark "da verificare": confirmed or checked in, and not over (check-out on
-    /// <paramref name="todayInRome"/> or later). Once a stay is over the OTAs drop its reservation from their feeds: that
-    /// is not a change to report.
-    /// </summary>
     public static bool IsReviewable(Booking stay, DateTime todayInRome) =>
         stay.Status is BookingStatus.Confirmed or BookingStatus.CheckedIn
         && stay.CheckOutDate.Date >= todayInRome.Date;
 
-    /// <summary>
-    /// The block can become a stay: imported from a feed, not linked to a stay still active, not over on
-    /// <paramref name="todayInRome"/>. The overlap with other bookings is checked when converting, under the property lock.
-    /// </summary>
     public static bool IsConvertible(CalendarBlock block, BookingStatus? linkedStayStatus, DateTime todayInRome) =>
         block.Source == CalendarBlockSource.ICalImport
         && block.FeedId is not null
@@ -55,31 +45,20 @@ public static class OtaStays
         && block.EndUtc.Date > block.StartUtc.Date;
 }
 
-/// <summary>
-/// Stable <c>code</c> values of the OTA stays created from iCal blocks (CO-21, FD-05), each with a resource key in
-/// <c>Casazen.Web/Resources/SharedResources*.resx</c>. Part of the API contract: never rename one.
-/// </summary>
 public static class OtaStayErrorCodes
 {
-    /// <summary>404: no calendar block with that id (or of another org).</summary>
     public const string BlockNotFound = "ical_block_not_found";
 
-    /// <summary>422: a manual block, or a block without feed: only a block imported from an OTA calendar becomes a stay.</summary>
     public const string BlockNotImported = "ota_stay_block_not_imported";
 
-    /// <summary>409: the block is already linked to a stay that is not cancelled.</summary>
     public const string AlreadyConverted = "ota_stay_block_already_converted";
 
-    /// <summary>409: the dates of the block overlap a booking already on the property.</summary>
     public const string OverlapsBooking = "ota_stay_block_overlaps_booking";
 
-    /// <summary>422: the stay of the block is over (check-out before today, Europe/Rome).</summary>
     public const string BlockEnded = "ota_stay_block_ended";
 
-    /// <summary>422: the feed's channel is "other" and no OTA source was chosen (or the source chosen is not an OTA).</summary>
     public const string SourceRequired = "ota_stay_source_required";
 
-    /// <summary>422: "apply the channel's dates" on a stay whose block is no longer in the feed.</summary>
     public const string ChannelDatesUnavailable = "ota_stay_channel_dates_unavailable";
 
     public const string BlockNotFoundMessageKey = "OtaStayBlockNotFound";

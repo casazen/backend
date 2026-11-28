@@ -11,20 +11,14 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IOrgSiteDocumentService
 {
-    /// <summary>The state of every kind for the org: the current version and the most recent versions, newest first.</summary>
     Task<IReadOnlyList<OrgSiteDocumentState>> GetStatesAsync(Guid orgId, CancellationToken cancellationToken = default);
 
-    /// <summary>One version of the org's document (with its text), or <c>null</c> when it does not exist.</summary>
     Task<OrgSiteDocument?> GetVersionAsync(
         Guid orgId,
         OrgSiteDocumentKind kind,
         int version,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Publishes a new version of the document (it is shown right away). Publishing exactly what is already shown
-    /// changes nothing and returns the current version. A withdrawn document is published again as a new version.
-    /// </summary>
     Task<OrgSiteDocument> PublishAsync(
         Guid orgId,
         OrgSiteDocumentKind kind,
@@ -32,7 +26,6 @@ public interface IOrgSiteDocumentService
         string? publishedByUserId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Stops showing the current version: the site says the operator has not published the document. False when nothing was shown.</summary>
     Task<bool> WithdrawAsync(Guid orgId, OrgSiteDocumentKind kind, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -42,10 +35,8 @@ public interface IOrgSiteDocumentService
     Task<OrgSiteDocument?> GetPublishedAsync(Guid orgId, OrgSiteDocumentKind kind, CancellationToken cancellationToken = default);
 }
 
-/// <summary>What the operator submits: a text or an address, according to <see cref="Source"/> (the other field is ignored).</summary>
 public sealed record OrgSiteDocumentInput(OrgSiteDocumentSource Source, string? Content, string? ExternalUrl);
 
-/// <summary>A kind of document of an org: its current version (null when never published) and the recent history.</summary>
 public sealed record OrgSiteDocumentState(
     OrgSiteDocumentKind Kind,
     OrgSiteDocument? Current,

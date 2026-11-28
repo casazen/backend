@@ -25,7 +25,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed class GuestRegistrationPartEvaluator(AppDbContext db, IPropertySwissPlaceResolver places) : IOnboardingPartEvaluator
 {
-    /// <summary>The step of the activation wizard of a property that the items point to (the same id as <see cref="PropertyComplianceStatusService.GuestRegistrationStepId"/>).</summary>
     public const string StepCode = PropertyComplianceStatusService.GuestRegistrationStepId;
 
     public OnboardingPartKey Part => OnboardingPartKey.GuestRegistration;
@@ -50,7 +49,6 @@ public sealed class GuestRegistrationPartEvaluator(AppDbContext db, IPropertySwi
         var placeOf = await places.ResolveManyAsync(
             [.. swiss.Select(p => new SwissPlaceLookup(p.Id, p.Country, p.SwissMunicipalityCode, p.PostalCode, p.City))], ct);
 
-        // In the order the plan gives the properties (a stable one), the first reason of each property that lacks something.
         var byId = swiss.ToDictionary(p => p.Id);
         var missing = new List<PartMissingItem>();
         foreach (var id in ids.Where(byId.ContainsKey))
@@ -61,7 +59,6 @@ public sealed class GuestRegistrationPartEvaluator(AppDbContext db, IPropertySwi
                 missing.Add(new PartMissingItem(id, reasons[0], StepCode));
         }
 
-        // The reason of the part is the first thing to do: a municipality before a structure number (nobody knows a property is in Ticino without it).
         var reason = missing.Any(item => item.Reason == OnboardingPartReasons.SwissMunicipalityMissing)
             ? OnboardingPartReasons.SwissMunicipalityMissing
             : OnboardingPartReasons.TicinoStructureIdMissing;

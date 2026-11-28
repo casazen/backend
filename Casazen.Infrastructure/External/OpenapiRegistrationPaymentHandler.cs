@@ -8,11 +8,6 @@ using Stripe.Checkout;
 
 namespace Casazen.Infrastructure.External;
 
-/// <summary>
-/// Records a paid Openapi filing fee from the platform webhook only, and only for the Checkout session that row stores.
-/// A Connect PaymentIntent with the same kind, lease, org and amount is the host's charge: it does not pay this fee.
-/// A late success completes that session's Pending row and no other.
-/// </summary>
 public sealed class OpenapiRegistrationPaymentHandler(
     AppDbContext db,
     ILogger<OpenapiRegistrationPaymentHandler> logger,
@@ -101,7 +96,6 @@ public sealed class OpenapiRegistrationPaymentHandler(
             payment.AmountCents);
     }
 
-    /// <summary>The Checkout session of this PaymentIntent on the platform account, or null when it is not one of ours.</summary>
     private async Task<string?> CheckoutSessionIdAsync(string paymentIntentId)
     {
         var list = await new SessionService(Client).ListAsync(

@@ -12,10 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// AM-02: the endpoints of the owner and the administrators. The org and the account are the caller's own (never from the
-/// request), a caller with no org gets 404, every call is passed to the service as it came, the link is never cached.
-/// </summary>
 public class OrgTeamControllersTests
 {
     private static readonly Guid OrgId = Guid.Parse("7a3c1d52-9f0e-4b8a-8d65-2c4e1f0b9a11");
@@ -61,8 +57,6 @@ public class OrgTeamControllersTests
         ItemId, "auth0|anna", "anna.leone@example.com", "Anna", "Leone", role, OrgMemberStatus.Active,
         PropertyScope.All, ["short-rent"], Now, null);
 
-    // ─── Invitations ────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task CreateInvitation_PassesTheRequestWithTheCallersOrgAndAccount_Answers201()
     {
@@ -90,7 +84,6 @@ public class OrgTeamControllersTests
         var dto = Assert.IsType<OrgInvitationSentDto>(created.Value);
         Assert.True(dto.EmailQueued);
         Assert.Equal(ItemId, dto.Invitation.Id);
-        // AM-02c: the properties the invitation carries travel in, and out again as ids.
         Assert.Equal([propertyId], dto.Invitation.PropertyIds);
         Assert.Equal(Now, dto.Invitation.LastSentAt);
         Assert.NotNull(received);
@@ -176,8 +169,6 @@ public class OrgTeamControllersTests
         Assert.Equal("no-store", controller.Response.Headers.CacheControl.ToString());
     }
 
-    // ─── Members ────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task ListMembers_ReturnsThePeopleAndTheSeats()
     {
@@ -233,7 +224,6 @@ public class OrgTeamControllersTests
     [Fact]
     public async Task SetMemberAreas_NoAreasInTheBody_IsAnEmptyListForTheServiceToRefuse()
     {
-        // The refusal (422 org_member_area_required) is the domain's: a missing list reaches it as an empty one, not as a null.
         _team.Setup(t => t.SetAreasAsync(OrgId, ItemId, It.Is<IReadOnlyCollection<string>>(a => a.Count == 0), "auth0|owner", It.IsAny<CancellationToken>()))
             .ReturnsAsync(MemberView());
 
@@ -294,8 +284,6 @@ public class OrgTeamControllersTests
         _team.VerifyNoOtherCalls();
         _propertyAccess.VerifyNoOtherCalls();
     }
-
-    // ─── AM-03: the properties of a member ──────────────────────────────────────────────────────────────
 
     private static readonly Guid PropertyA = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001");
     private static readonly Guid PropertyB = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000002");
@@ -362,7 +350,6 @@ public class OrgTeamControllersTests
     {
         var controller = typeof(OrgMembersController);
 
-        // The class carries the policy of the team (owner and administrators): the new actions inherit it.
         Assert.Equal(
             Casazen.Web.Authorization.CasazenPolicies.OrgMembersManage,
             controller.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), inherit: true)

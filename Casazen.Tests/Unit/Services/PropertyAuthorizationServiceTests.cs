@@ -36,8 +36,6 @@ public class PropertyAuthorizationServiceTests
     private static Property PropertyOf(string ownerId, Guid? id = null) =>
         new() { Id = id ?? Guid.NewGuid(), OwnerId = ownerId, OrgId = OrgId };
 
-    // ─── CanAccessAsync: an account in no org team (the rule of before the team) ───────────────────
-
     [Fact]
     public async Task CanAccessAsync_WhenUserIsOwner_ReturnsTrue()
     {
@@ -57,8 +55,6 @@ public class PropertyAuthorizationServiceTests
     {
         Assert.True(await ServiceFor().CanAccessAsync("auth0|manager", PropertyOf("auth0|owner"), [role]));
     }
-
-    // ─── CanAccessAsync: a member of the team is decided by its membership (AM-03) ───────────────────
 
     [Theory]
     [InlineData(OrgRole.Owner)]
@@ -87,8 +83,6 @@ public class PropertyAuthorizationServiceTests
         Assert.False(await service.CanAccessAsync("auth0|collab", PropertyOf("auth0|creator"), ["PropertyManager", "Admin"]));
     }
 
-    // ─── CanAccessPropertyAsync ──────────────────────────────────────────────────
-
     [Fact]
     public async Task CanAccessPropertyAsync_WhenUserIsOwner_ReturnsTrue()
     {
@@ -112,7 +106,6 @@ public class PropertyAuthorizationServiceTests
     [InlineData("Admin")]
     public async Task CanAccessPropertyAsync_WhenPropertyNotFound_ReturnsFalse_EvenForAnOrgWideRole(string role)
     {
-        // Not in the caller's org (the tenant filter), or not there at all: nothing to reach.
         var propertyId = Guid.NewGuid();
         _mockRepository.Setup(x => x.GetRecordAsync(propertyId)).ReturnsAsync((Property?)null);
 

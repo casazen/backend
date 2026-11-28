@@ -22,7 +22,7 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class ServiceRequestOfferPaymentTests
 {
-    private const int Total = 12_000; // 2 × 45 + 30 euro: the commission of 10 % is 1,200, the net 10,800
+    private const int Total = 12_000;
     private const int Commission = 1_200;
     private const int Net = 10_800;
 
@@ -40,7 +40,6 @@ public class ServiceRequestOfferPaymentTests
         return (s, request);
     }
 
-    /// <summary>The supplier sends its offer (two hours at 45 and the materials at 30: 120 euro) and returns the version the customer repeats.</summary>
     private static async Task<DateTime> OfferAsync(ServiceRequestScenario s, ServiceRequest request, int hours = 2, DateTime? start = null)
     {
         var at = start ?? Start;
@@ -56,7 +55,6 @@ public class ServiceRequestOfferPaymentTests
         return (await s.ReadAsync(request.Id)).QuoteSentAt!.Value;
     }
 
-    /// <summary>The customer confirmed the card in the browser: the PaymentIntent is a block, and Stripe tells it to the webhook.</summary>
     private static ServicePaymentIntentEvent CardBlocked(ServiceRequestScenario s, ServiceRequestPayment payment, long? capturableCents = null)
     {
         var charge = s.Kit.PlatformGateway.SetStatus(payment.StripePaymentIntentId!, "requires_capture");
@@ -84,8 +82,6 @@ public class ServiceRequestOfferPaymentTests
             NullLogger<ServiceRequestExpiryService>.Instance,
             s.Clock);
 
-    // ─── Asking for the card ───
-
     [Fact]
     public async Task Accept_OfAnOfferPaidInsideCasaZen_AsksForTheCardForTheTotal_AndTakesNothingUntilItIsBlocked()
     {
@@ -99,7 +95,6 @@ public class ServiceRequestOfferPaymentTests
 
         var asked = await s.Kit.Manager.AcceptOfferAsync(CredentialsOf(request), sentAt);
 
-        // The request waits for the card: still new, with its offer, and the answer carries what the browser needs.
         Assert.Equal(ServiceRequestStatus.Richiesto, asked.Status);
         Assert.Equal(ServiceRequestNegotiation.AwaitingPayment, asked.Negotiation);
         Assert.NotNull(asked.Offer);
@@ -112,7 +107,6 @@ public class ServiceRequestOfferPaymentTests
         Assert.Equal("awaiting_card", asked.Payment!.Status);
         Assert.Equal(Total, asked.Payment.AmountCents);
 
-        // On the platform, for the total, blocked and charged later (manual capture), with the transfer group of the request.
         var created = Assert.Single(s.Kit.PlatformGateway.Created);
         Assert.True(created.ManualCapture);
         Assert.Equal(Total, created.AmountCents);
@@ -128,7 +122,6 @@ public class ServiceRequestOfferPaymentTests
         Assert.NotNull(payment.StripePaymentIntentId);
         Assert.Null(payment.CapturedAt);
 
-        // And nothing else changed: the request is not taken, nothing is charged, nobody is told.
         var saved = await s.ReadAsync(request.Id);
         Assert.Equal(ServiceRequestStatus.Richiesto, saved.Status);
         Assert.Equal(ServiceRequestPaymentMode.Manual, saved.PaymentMode);
@@ -138,14 +131,11 @@ public class ServiceRequestOfferPaymentTests
         Assert.Empty(s.Emails.Snapshot());
         Assert.Empty(s.Pushes);
 
-        // Asked again before the card is blocked, it is the same PaymentIntent: no second one, no second payment.
         var again = await s.Kit.Manager.AcceptOfferAsync(CredentialsOf(request), sentAt);
         Assert.Equal(session.ClientSecret, again.PaymentSession!.ClientSecret);
         Assert.Single(s.Kit.PlatformGateway.Created);
         Assert.Single(await s.PaymentsOfAsync(request.Id));
     }
-
-    // ─── The card is blocked: the request is taken, the card charged once for the total ───
 
     [Fact]
     public async Task TheBlock_TakesTheRequestAtTheTimeAndTheTotal_ChargingTheCardOnce_AfterTheTimeIsJudged()
@@ -159,7 +149,6 @@ public class ServiceRequestOfferPaymentTests
 
         var notices = await s.Payments.ApplyPaymentIntentEventAsync(CardBlocked(s, payment));
 
-        // The webhook records the block and says the request is to be taken; it takes nothing by itself.
         var notice = Assert.Single(notices);
         Assert.Equal((ServicePaymentNoticeKind.OfferBlocked, request.Id), (notice.Kind, notice.RequestId));
         var blocked = Assert.Single(await s.PaymentsOfAsync(request.Id));
@@ -180,7 +169,6 @@ public class ServiceRequestOfferPaymentTests
         Assert.Null(saved.QuoteSentAt);
         Assert.Null(saved.ResponseDueAt);
 
-        // Charged once, with the key of the payment, for the whole block: the amount charged is the total of the offer.
         var capture = Assert.Single(s.Kit.PlatformGateway.Captures);
         Assert.Equal((payment.StripePaymentIntentId, ServiceCharges.CaptureIdempotencyKey(payment.Id)), capture);
         Assert.Equal(Total, s.Kit.PlatformGateway.Intent(payment.StripePaymentIntentId!).AmountReceivedCents);
@@ -190,7 +178,6 @@ public class ServiceRequestOfferPaymentTests
         Assert.Equal(Total, held.AmountCents);
         Assert.Null(held.ReleaseAt);
 
-        // The customer is told its card was charged, with the price of the offer; the supplier is told with "Nome C." and a push.
         var toCustomer = Assert.Single(s.Emails.Snapshot(), e => e.To == ShowcaseScenario.CustomerEmail);
         Assert.Equal(EmailTemplates.Names.SupplierBookingAccepted, toCustomer.Template);
         Assert.Contains("120,00 €", toCustomer.Content.HtmlBody);
@@ -198,7 +185,6 @@ public class ServiceRequestOfferPaymentTests
         Assert.Equal(EmailTemplates.Names.ServiceRequestQuoteAnswered, toSupplier.Template);
         Assert.Equal(PushTypes.ServiceRequestQuoteAccepted, Assert.Single(s.Pushes).Payload.Type);
 
-        // The customer reads the money as held, and the negotiation as agreed.
         var view = await s.Kit.Manager.LookupAsync(CredentialsOf(request));
         Assert.Equal(("held", Total), (view.Payment!.Status, view.Payment.AmountCents));
         Assert.Equal(ServiceRequestNegotiation.Agreed, view.Negotiation);
@@ -219,12 +205,10 @@ public class ServiceRequestOfferPaymentTests
         await s.Kit.Manager.AcceptOfferAsync(CredentialsOf(request), sentAt);
         var payment = Assert.Single(await s.PaymentsOfAsync(request.Id));
 
-        // The card is blocked on Stripe and the event is late: it has not reached the payment (still waiting for the card).
         s.Kit.PlatformGateway.SetStatus(payment.StripePaymentIntentId!, "requires_capture");
 
         var taken = await s.Kit.Manager.AcceptOfferAsync(CredentialsOf(request), sentAt);
 
-        // A customer who paid is not asked to pay again: the block is recorded with the checks of the webhook and the request is taken.
         Assert.Equal(ServiceRequestStatus.PresoInCarico, taken.Status);
         Assert.Null(taken.PaymentSession);
         Assert.Equal("held", taken.Payment!.Status);
@@ -233,13 +217,10 @@ public class ServiceRequestOfferPaymentTests
         var saved = await s.ReadAsync(request.Id);
         Assert.Equal((ServiceRequestStatus.PresoInCarico, ServiceRequestPaymentMode.Online, Total), (saved.Status, saved.PaymentMode, saved.QuotedAmountCents));
 
-        // And a second acceptance finds nothing to accept.
         var again = await Assert.ThrowsAsync<DomainRuleException>(() => s.Kit.Manager.AcceptOfferAsync(CredentialsOf(request), sentAt));
         Assert.Equal(ServiceRequestOfferErrors.NoOffer, again.Code);
         Assert.Single(s.Kit.PlatformGateway.Captures);
     }
-
-    // ─── The time is gone: nothing is charged and the block is released ───
 
     [Fact]
     public async Task TheTimeGone_AfterTheCardIsBlocked_ReleasesTheBlock_ChargesNothing_AndTellsTheCustomer()
@@ -251,13 +232,11 @@ public class ServiceRequestOfferPaymentTests
         var payment = Assert.Single(await s.PaymentsOfAsync(request.Id));
         await s.Payments.ApplyPaymentIntentEventAsync(CardBlocked(s, payment));
 
-        // The supplier takes another job at that very time before the request is taken.
         await s.TakenAsync(Start);
         s.ForgetNotifications();
 
         await s.Service.CompleteOfferAcceptanceAsync(request.Id);
 
-        // Nothing was charged, the block is released, the request is as it was and the offer stands.
         Assert.Empty(s.Kit.PlatformGateway.Captures);
         Assert.Equal(payment.StripePaymentIntentId, Assert.Single(s.Kit.PlatformGateway.Cancellations).PaymentIntentId);
         Assert.Equal(ServicePaymentStatus.Canceled, Assert.Single(await s.PaymentsOfAsync(request.Id)).Status);
@@ -266,7 +245,6 @@ public class ServiceRequestOfferPaymentTests
         Assert.Equal(sentAt, saved.QuoteSentAt);
         Assert.Null(saved.QuotedAmountCents);
 
-        // The customer is told, and told that it paid nothing.
         var email = Assert.Single(s.Emails.Snapshot());
         Assert.Equal((ShowcaseScenario.CustomerEmail, EmailTemplates.Names.SupplierInquiryOfferNotCompleted), (email.To, email.Template));
         Assert.Contains("non è più disponibile", email.Content.HtmlBody);
@@ -303,13 +281,10 @@ public class ServiceRequestOfferPaymentTests
 
         var gone = await Assert.ThrowsAsync<DomainConflictException>(() => s.Kit.Manager.AcceptOfferAsync(CredentialsOf(request), sentAt));
 
-        // Nobody is asked to pay for a time that is already gone: no PaymentIntent was made.
         Assert.Equal(ServiceRequestErrorCodes.SlotUnavailable, gone.Code);
         Assert.Empty(s.Kit.PlatformGateway.Created);
         Assert.Empty(await s.PaymentsOfAsync(request.Id));
     }
-
-    // ─── The offer ends without being taken: its card is released ───
 
     [Fact]
     public async Task ANewOffer_ReleasesTheCardOfTheOldOne_AndTheNextAcceptanceBlocksTheNewTotal()
@@ -324,14 +299,12 @@ public class ServiceRequestOfferPaymentTests
 
         var secondSentAt = await OfferAsync(s, request, hours: 1);
 
-        // The card blocked for the old offer is released, never charged for the new one.
         Assert.Equal(first.StripePaymentIntentId, Assert.Single(s.Kit.PlatformGateway.Cancellations).PaymentIntentId);
         Assert.Equal(ServicePaymentStatus.Canceled, Assert.Single(await s.PaymentsOfAsync(request.Id)).Status);
         await s.Service.CompleteOfferAcceptanceAsync(request.Id);
         Assert.Empty(s.Kit.PlatformGateway.Captures);
         Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(request.Id)).Status);
 
-        // The customer who accepts the new offer is asked for a new card, for the new total (1 × 45 + 30 euro).
         var asked = await s.Kit.Manager.AcceptOfferAsync(CredentialsOf(request), secondSentAt);
         Assert.Equal(7_500, asked.PaymentSession!.AmountCents);
         Assert.Equal(2, s.Kit.PlatformGateway.Created.Count);
@@ -394,8 +367,6 @@ public class ServiceRequestOfferPaymentTests
         Assert.Equal(ServicePaymentStatus.Canceled, Assert.Single(await s.PaymentsOfAsync(request.Id)).Status);
     }
 
-    // ─── A block that is not what was asked for ───
-
     [Fact]
     public async Task ABlockThatIsNotTheTotal_GoesToReview_AndTheRequestIsNotTaken()
     {
@@ -407,7 +378,6 @@ public class ServiceRequestOfferPaymentTests
 
         var notices = await s.Payments.ApplyPaymentIntentEventAsync(CardBlocked(s, payment, capturableCents: 5_000));
 
-        // An alert for the admins, and no notice to take the request.
         Assert.DoesNotContain(notices, n => n.Kind == ServicePaymentNoticeKind.OfferBlocked);
         Assert.Contains(notices, n => n.Kind == ServicePaymentNoticeKind.FundsAlert);
         Assert.Equal(ServicePaymentStatus.NeedsReview, Assert.Single(await s.PaymentsOfAsync(request.Id)).Status);
@@ -417,8 +387,6 @@ public class ServiceRequestOfferPaymentTests
         Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(request.Id)).Status);
         Assert.Empty(s.Kit.PlatformGateway.Captures);
     }
-
-    // ─── Not paid inside CasaZen: taken at once, as in the first part ───
 
     [Fact]
     public async Task AnOfferBelowTheMinimum_IsTakenAtOnce_WithNoCard()

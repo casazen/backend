@@ -31,9 +31,8 @@ public class OutboxCleanupJob(
     ILogger<OutboxCleanupJob> logger)
 {
     public const string RecurringJobId = "outbox-cleanup";
-    public const string Cron = "10 3 * * *"; // daily at 03:10 UTC
+    public const string Cron = "10 3 * * *";
 
-    /// <summary>Rows deleted by one statement.</summary>
     public const int BatchSize = 1000;
 
     [AutomaticRetry(Attempts = 3)]

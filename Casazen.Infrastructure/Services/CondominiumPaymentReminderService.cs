@@ -61,7 +61,6 @@ public sealed class CondominiumPaymentReminderService(AppDbContext db, ICondomin
         var row = (await ListAsync(scope, ct)).SingleOrDefault(i => i.Id == installmentId) ?? throw new NotFoundException("Installment not found");
         await using var tx = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, ct,
             (PostgresAdvisoryLocks.Scope.Condominium, row.CondominiumId.ToString("N")));
-        // Read the residual again under the accounting lock. A double click records no second payment.
         var current = (await ListAsync(scope, ct)).Single(i => i.Id == installmentId);
         if (!current.Paid && current.Amount > 0)
             await accounting.RecordPaymentAsync(scope, row.CondominiumId, row.PeriodId,

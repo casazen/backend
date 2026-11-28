@@ -37,7 +37,6 @@ public class WelcomeConsentService(
     TimeProvider timeProvider,
     ILogger<WelcomeConsentService> logger) : IWelcomeConsentService
 {
-    /// <summary>Properties kept in <see cref="GuestCrmProfile.PropertyIdsJson"/>: the column holds 2,000 characters, 39 for each id.</summary>
     private const int MaxPropertyIds = 50;
 
     public async Task<WelcomePage?> GetPageAsync(string token, CancellationToken cancellationToken = default)
@@ -63,14 +62,12 @@ public class WelcomeConsentService(
                 MessageKey = "WelcomeLinkInvalid",
             };
 
-        // Adults only, nothing preselected, at least one channel.
         if (!input.AdultConfirmed)
             throw new DomainRuleException(WelcomeConsentErrorCodes.AdultRequired, "WelcomeAdultRequired");
 
         if (!input.ConsentEmail && !input.ConsentWhatsApp)
             throw new DomainRuleException(WelcomeConsentErrorCodes.ChannelRequired, "WelcomeChannelRequired");
 
-        // The address of each ticked channel, in the form the CRM stores.
         string? email = null;
         if (input.ConsentEmail && !CrmNormalizer.TryNormalizeEmail(input.Email, out email))
             throw new DomainRuleException(WelcomeConsentErrorCodes.EmailInvalid, "WelcomeEmailInvalid");
@@ -82,7 +79,6 @@ public class WelcomeConsentService(
                 ?? throw new DomainRuleException(WelcomeConsentErrorCodes.PhoneInvalid, "WelcomePhoneInvalid");
         }
 
-        // The text must have a configured version, and a CRM that can store the contact; and the version sent must be the current one.
         var version = GdprOptions.Normalize(gdprOptions.Value.MarketingConsentVersion);
         if (version is null || !contactIndex.IsConfigured)
             throw new DomainRuleException(WelcomeConsentErrorCodes.ConsentUnavailable, "WelcomeConsentUnavailable");
@@ -132,7 +128,6 @@ public class WelcomeConsentService(
                 cancellationToken);
         }
 
-        // The double opt-in e-mail; what it did (sent, nothing to send, suppressed, too soon) is deliberately not part of the answer.
         if (emailContact is not null)
             _ = await confirmation.SendConfirmationAsync(target.OrgId, emailContact.Id, cancellationToken);
 
@@ -143,10 +138,6 @@ public class WelcomeConsentService(
             profile.Id);
     }
 
-    /// <summary>
-    /// The property of an active link: a token that is unknown, revoked, too long to be one, of a deleted property or of an org that is not
-    /// active is <c>null</c>, all the same.
-    /// </summary>
     private async Task<WelcomeTarget?> FindAsync(string token, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(token) || token.Length > PropertyWelcomeLink.TokenMaxLength)
@@ -159,7 +150,6 @@ public class WelcomeConsentService(
         if (link is null)
             return null;
 
-        // The soft-delete filter hides a deleted property.
         var property = await db.Properties.AsNoTracking()
             .Where(p => p.Id == link.PropertyId && p.OrgId == link.OrgId)
             .Select(p => new { p.Name })

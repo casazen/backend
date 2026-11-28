@@ -26,7 +26,6 @@ public class HostDashboardPostgresTests : IClassFixture<HostDashboardPostgresTes
 {
     private const string HostRole = "PropertyOwner";
 
-    // June 2026: a month of 30 days. 09:00 UTC is the same date in Rome.
     private static readonly DateTimeOffset JuneTenth = new(2026, 6, 10, 9, 0, 0, TimeSpan.Zero);
 
     private readonly Factory _factory;
@@ -40,16 +39,12 @@ public class HostDashboardPostgresTests : IClassFixture<HostDashboardPostgresTes
         var hostId = NewHostId();
         var first = await _factory.SeedPropertyAsync(hostId);
         var second = await _factory.SeedPropertyAsync(hostId);
-        // First property: 10 nights of a stay (1-10) and 5 of a block imported from Airbnb (20-24) = 15.
         await SeedBookingAsync(first, BookingStatus.Confirmed, June(1), June(11));
         await SeedBlockAsync(first, CalendarBlockSource.ICalImport, June(20), June(25));
-        // Second property: 6 nights checked in (8-13) and the 6 June nights of a stay ending in July (25-30) = 12.
         await SeedBookingAsync(second, BookingStatus.CheckedIn, June(8), June(14));
         await SeedBookingAsync(second, BookingStatus.Confirmed, June(25), new DateTime(2026, 7, 5, 0, 0, 0, DateTimeKind.Utc));
-        // Not taken: a cancelled booking, a stay of May.
         await SeedBookingAsync(second, BookingStatus.Cancelled, June(15), June(18));
         await SeedBookingAsync(first, BookingStatus.CheckedOut, new DateTime(2026, 5, 20, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 5, 25, 0, 0, 0, DateTimeKind.Utc));
-        // Another org, fully booked in June: none of its nights nor its property counts here.
         var otherProperty = await _factory.SeedPropertyAsync(NewHostId());
         await SeedBookingAsync(otherProperty, BookingStatus.Confirmed, June(1), new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc));
         using var host = _factory.CreateAuthenticatedClient(hostId, HostRole);
@@ -75,7 +70,6 @@ public class HostDashboardPostgresTests : IClassFixture<HostDashboardPostgresTes
         var hostId = NewHostId();
         var property = await _factory.SeedPropertyAsync(hostId);
         await SeedBookingAsync(property, BookingStatus.Confirmed, June(1), June(8));
-        // Owner stay 10-14 (4 nights), closed by hand: neither occupied nor available.
         await SeedBlockAsync(property, CalendarBlockSource.Manual, June(10), June(14));
         using var host = _factory.CreateAuthenticatedClient(hostId, HostRole);
 
@@ -93,13 +87,9 @@ public class HostDashboardPostgresTests : IClassFixture<HostDashboardPostgresTes
         _factory.Clock.SetUtcNow(JuneTenth);
         var hostId = NewHostId();
         var property = await _factory.SeedPropertyAsync(hostId);
-        // 4 nights in June: 400. The tourist tax (for the comune) is not revenue.
         await SeedBookingAsync(property, BookingStatus.Confirmed, June(1), June(5), basePrice: 400m, touristTax: 20m);
-        // 29 May - 1 June: 1 of 4 nights in June = 75, the other 3 in May = 225.
         await SeedBookingAsync(property, BookingStatus.CheckedOut, new DateTime(2026, 5, 29, 0, 0, 0, DateTimeKind.Utc), June(2), basePrice: 300m);
-        // 28 June - 2 July: 3 of 5 nights in June = 300.
         await SeedBookingAsync(property, BookingStatus.CheckedIn, June(28), new DateTime(2026, 7, 3, 0, 0, 0, DateTimeKind.Utc), basePrice: 500m);
-        // Not confirmed: no revenue.
         await SeedBookingAsync(property, BookingStatus.Pending, June(10), June(12), basePrice: 1000m);
         await SeedBookingAsync(property, BookingStatus.Cancelled, June(15), June(17), basePrice: 1000m);
         using var host = _factory.CreateAuthenticatedClient(hostId, HostRole);
@@ -120,10 +110,8 @@ public class HostDashboardPostgresTests : IClassFixture<HostDashboardPostgresTes
         _factory.Clock.SetUtcNow(JuneTenth);
         var hostId = NewHostId();
         var property = await _factory.SeedPropertyAsync(hostId);
-        // The period starts on 12 May: the nights of 10-11 May are out, those of 12-13 May in.
         await SeedBookingAsync(property, BookingStatus.CheckedOut, new DateTime(2026, 5, 10, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 5, 12, 0, 0, 0, DateTimeKind.Utc));
         await SeedBookingAsync(property, BookingStatus.CheckedOut, new DateTime(2026, 5, 12, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 5, 14, 0, 0, 0, DateTimeKind.Utc));
-        // Tonight (10 June) is in the period, tomorrow night is not.
         await SeedBookingAsync(property, BookingStatus.Confirmed, June(10), June(12));
         using var host = _factory.CreateAuthenticatedClient(hostId, HostRole);
 
@@ -141,7 +129,6 @@ public class HostDashboardPostgresTests : IClassFixture<HostDashboardPostgresTes
     {
         var hostId = NewHostId();
         var property = await _factory.SeedPropertyAsync(hostId);
-        // Check-in stored as an instant: 15 June 23:30 UTC is already 16 June 01:30 in Rome.
         var lateArrival = await SeedBookingAsync(property, BookingStatus.Confirmed, new DateTime(2026, 6, 15, 23, 30, 0, DateTimeKind.Utc), June(19));
         var arrival16 = await SeedBookingAsync(property, BookingStatus.Confirmed, June(16), June(18));
         var arrival15 = await SeedBookingAsync(property, BookingStatus.Confirmed, June(13), June(15));
@@ -150,7 +137,6 @@ public class HostDashboardPostgresTests : IClassFixture<HostDashboardPostgresTes
         await SeedBookingAsync(property, BookingStatus.Pending, June(16), June(17));
         using var host = _factory.CreateAuthenticatedClient(hostId, HostRole);
 
-        // 15 June 10:00 UTC (12:00 in Rome): the 23:30 UTC arrival is tomorrow's, an upcoming check-in dated 16 June.
         _factory.Clock.SetUtcNow(new DateTimeOffset(2026, 6, 15, 10, 0, 0, TimeSpan.Zero));
         var afternoon = await GetKpisAsync(host, "");
 
@@ -161,7 +147,6 @@ public class HostDashboardPostgresTests : IClassFixture<HostDashboardPostgresTes
         var late = Assert.Single(upcoming, i => i.GetProperty("bookingId").GetGuid() == lateArrival);
         Assert.Equal("2026-06-16", late.GetProperty("checkInDate").GetString());
 
-        // 15 June 23:30 UTC = 16 June 01:30 in Rome: today is 16 June, not the UTC date.
         _factory.Clock.SetUtcNow(new DateTimeOffset(2026, 6, 15, 23, 30, 0, TimeSpan.Zero));
         var night = await GetKpisAsync(host, "");
 
@@ -182,7 +167,6 @@ public class HostDashboardPostgresTests : IClassFixture<HostDashboardPostgresTes
         var later = await SeedBookingAsync(property, BookingStatus.Confirmed, June(20), June(22));
         var today = await SeedBookingAsync(property, BookingStatus.Confirmed, June(10), June(11));
         var next = await SeedBookingAsync(property, BookingStatus.Confirmed, June(12), June(14));
-        // Arrived already today, or a past stay: not a check-in to come.
         await SeedBookingAsync(property, BookingStatus.CheckedIn, June(10), June(13));
         await SeedBookingAsync(property, BookingStatus.Confirmed, June(1), June(3));
         using var host = _factory.CreateAuthenticatedClient(hostId, HostRole);
@@ -224,7 +208,6 @@ public class HostDashboardPostgresTests : IClassFixture<HostDashboardPostgresTes
         Assert.DoesNotContain(bookingA, b.GetProperty("recentBookings").EnumerateArray().Select(i => i.GetProperty("bookingId").GetGuid()));
         Assert.Equal(0, feedsB.GetArrayLength());
         Assert.Equal([feedA], feedsA.EnumerateArray().Select(f => f.GetProperty("feedId").GetGuid()));
-        // An org without properties: zeroes, no rate, nothing listed.
         Assert.Equal(0, empty.GetProperty("propertyCount").GetInt32());
         Assert.Equal(JsonValueKind.Null, empty.GetProperty("occupancy").GetProperty("rate").ValueKind);
         Assert.Equal(0m, empty.GetProperty("revenue").GetProperty("amount").GetDecimal());
@@ -239,7 +222,6 @@ public class HostDashboardPostgresTests : IClassFixture<HostDashboardPostgresTes
         var property = await _factory.SeedPropertyAsync(hostId);
         var ok = await SeedFeedAsync(property, PropertyICalImportStatus.Success, lastError: null);
         var failing = await SeedFeedAsync(property, PropertyICalImportStatus.Failure, ICalErrorCodes.Unreachable);
-        // A raw exception message saved before FD-16 is never shown as is.
         var legacy = await SeedFeedAsync(property, PropertyICalImportStatus.Failure, "System.Net.Http.HttpRequestException: 10.0.0.1 refused");
         var never = await SeedFeedAsync(property, status: null, lastError: null);
         using var host = _factory.CreateAuthenticatedClient(hostId, HostRole);
@@ -313,7 +295,6 @@ public class HostDashboardPostgresTests : IClassFixture<HostDashboardPostgresTes
 
     private int _guestNumber;
 
-    /// <summary>A booking inserted directly (the booking API refuses past check-ins and overlapping dates).</summary>
     private async Task<Guid> SeedBookingAsync(
         Property property,
         BookingStatus status,
@@ -389,7 +370,6 @@ public class HostDashboardPostgresTests : IClassFixture<HostDashboardPostgresTes
         return feed.Id;
     }
 
-    /// <summary>The app with its clock under the test's control (FD-06): "today" never depends on when the tests run.</summary>
     public sealed class Factory : CasazenWebApplicationFactory
     {
         public FakeTimeProvider Clock { get; } = new(JuneTenth);

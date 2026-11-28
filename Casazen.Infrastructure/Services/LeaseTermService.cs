@@ -41,20 +41,15 @@ public sealed class LeaseTermService(
     ILogger<LeaseTermService> logger,
     TimeProvider? timeProvider = null) : ILeaseTermService
 {
-    /// <summary>The key of the session lock of a run (<see cref="PostgresAdvisoryLocks.Scope.LeaseTermRenewalRun"/>).</summary>
     internal const string RunLockKey = "lease-term-renewal";
 
-    /// <summary>Leases read per batch.</summary>
     internal const int BatchSize = 100;
 
-    /// <summary>Batches per run: 2,000 leases an hour; the next run takes the rest.</summary>
     internal const int MaxBatchesPerRun = 20;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     private DateTime UtcNow => _clock.GetUtcNow().UtcDateTime;
-
-    // ---- what the landlord records -------------------------------------------------------------------------------
 
     public async Task<Guid?> FindPropertyIdAsync(Guid leaseId, CancellationToken cancellationToken = default) =>
         await db.LeaseContracts
@@ -77,7 +72,6 @@ public sealed class LeaseTermService(
         if (lease.NoticeOn is not null)
             throw new DomainConflictException(LeaseLifecycleCodes.NoticeAlreadyRecorded, "LeaseNoticeAlreadyRecorded");
 
-        // A notice is given on a day that has come, and not before the lease began.
         if (on > _clock.TodayInRomeAsDateOnly() || on < RomeCalendar.DateInRome(lease.StartDate))
             throw new DomainRuleException(LeaseLifecycleCodes.NoticeDateInvalid, "LeaseNoticeDateInvalid");
 
@@ -104,11 +98,9 @@ public sealed class LeaseTermService(
         await using var transaction = await BeginLockedAsync(leaseId, lockRent: false, cancellationToken);
         var lease = await LoadForUpdateAsync(leaseId, ignoreTenant: false, cancellationToken);
 
-        // Taking back a notice that is not there changes nothing.
         if (lease.NoticeOn is not { } given)
             return;
 
-        // Once the period is over the lease has ended, or is about to renew: the notice is part of what happened and stays.
         if (lease.CurrentTermEndDate < _clock.TodayInRome())
             throw new DomainConflictException(LeaseLifecycleCodes.TermAlreadyEnded, "LeaseTermAlreadyEnded");
 
@@ -139,7 +131,6 @@ public sealed class LeaseTermService(
         if (!Enum.IsDefined(reason))
             throw new ArgumentOutOfRangeException(nameof(reason), reason, "Unknown reason");
 
-        // Serious reasons: the notice of the rules, whatever was typed. The contractual faculty: the notice the contract gives.
         var months = LeaseOperationRules.WithdrawalNoticeMonths(reason, noticeMonths);
         if (months is < 1 or > LeaseOperationRules.MaxContractualNoticeMonths)
         {
@@ -152,7 +143,6 @@ public sealed class LeaseTermService(
             leaseId,
             lease =>
             {
-                // The letter of the tenant was received on a day that has come, and not before the lease began.
                 if (receivedOn > _clock.TodayInRomeAsDateOnly() || receivedOn < RomeCalendar.DateInRome(lease.StartDate))
                     throw new DomainRuleException(LeaseLifecycleCodes.WithdrawalDateInvalid, "LeaseWithdrawalDateInvalid");
 
@@ -176,13 +166,11 @@ public sealed class LeaseTermService(
             if (lease.NoticeOn is not null)
                 throw new DomainConflictException(LeaseLifecycleCodes.RenewalBlockedByNotice, "LeaseRenewalBlockedByNotice");
 
-            // Once the period is over the lease renews by itself and the hourly job writes it: a second path would add a period twice.
             var periodEnd = RomeCalendar.DateInRome(lease.CurrentTermEndDate);
             var today = _clock.TodayInRomeAsDateOnly();
             if (periodEnd < today)
                 throw new DomainConflictException(LeaseLifecycleCodes.RenewalPeriodOver, "LeaseRenewalPeriodOver");
 
-            // Only in the last stretch before the end, when the parties decide: recording one moves the end forward, so it cannot be done twice in a row.
             var opensOn = LongRentDeadlineRules.NoticeDate(lease.ContractType, periodEnd) ?? periodEnd;
             if (today < opensOn)
                 throw new DomainRuleException(LeaseLifecycleCodes.RenewalNotYet, "LeaseRenewalNotYet", opensOn);
@@ -200,8 +188,6 @@ public sealed class LeaseTermService(
                 to = RomeCalendar.DateInRome(LeaseRenewal.NextEnd(lease.CurrentTermEndDate, lease.ContractType)!.Value);
             }
 
-            // A new period may not cover the days of another lease of the property (LR-OVERLAP): checked under the lock of the property,
-            // inside this transaction, after the row of the lease.
             await LeasePeriodGuard.EnsureFreeAsync(db, lease.PropertyId, lease.Id, ToStoredDate(from), ToStoredDate(to), cancellationToken);
 
             var now = UtcNow;
@@ -216,7 +202,6 @@ public sealed class LeaseTermService(
             });
             await db.SaveChangesAsync(cancellationToken);
 
-            // The plan of the rent follows, in the same transaction, once the new end is saved (the tacit renewal does the same).
             installments = await rentBilling.ExtendScheduleToCurrentTermAsync(leaseId, cancellationToken);
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
@@ -227,7 +212,6 @@ public sealed class LeaseTermService(
             leaseId, agreedEnd is not null, Format(to), installments);
     }
 
-    /// <summary>The withdrawal of the tenant an early termination carries: what the history writes next to the <c>Terminated</c> event.</summary>
     private sealed record TenantWithdrawal(TenantWithdrawalReason Reason, DateOnly ReceivedOn, DateOnly EffectiveOn, int NoticeMonths);
 
     /// <summary>
@@ -274,7 +258,6 @@ public sealed class LeaseTermService(
             });
             await db.SaveChangesAsync(cancellationToken);
 
-            // The installments that start after the last day, in the same transaction: the lease is never ended with its future rent still due.
             var result = await rentBilling.CancelInstallmentsAfterAsync(lease.Id, on, cancellationToken);
             cancelled = result.Cancelled;
             notices = result.Notices;
@@ -282,7 +265,6 @@ public sealed class LeaseTermService(
                 await transaction.CommitAsync(cancellationToken);
         }
 
-        // A payment that turned out to be made while the installments were cancelled: the landlord is told, as for any payment.
         foreach (var notice in notices)
             await rentBilling.CompleteAsync(notice, cancellationToken);
 
@@ -290,8 +272,6 @@ public sealed class LeaseTermService(
         if (withdrawal is not null)
             logger.LogInformation("Lease withdrawal of the tenant recorded. LeaseId={LeaseId} Reason={Reason}", leaseId, withdrawal.Reason);
     }
-
-    // ---- the tacit renewal (the job) -----------------------------------------------------------------------------
 
     public async Task<LeaseTermRenewalRun> RenewDueAsync(CancellationToken cancellationToken = default)
     {
@@ -307,8 +287,6 @@ public sealed class LeaseTermService(
         await RepairUnsetEndsAsync(today, cancellationToken);
 
         int leases = 0, periods = 0, left = 0;
-        // Every lease this run looked at, renewed or not: none is read twice, so the cap of periods per lease holds for the run and one
-        // that refuses (busy, a failure) cannot stop the ones behind it.
         var seen = new HashSet<Guid>();
         for (var batch = 0; batch < MaxBatchesPerRun; batch++)
         {
@@ -366,7 +344,6 @@ public sealed class LeaseTermService(
         if (!db.Database.IsRelational())
             return;
 
-        // First the ones that were already over (the same rule as the renewal says which are in force and of a renewable type), then the rest.
         var concluded = await db.LeaseContracts
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(LeaseRenewal.DueOn(today))
@@ -386,18 +363,12 @@ public sealed class LeaseTermService(
         }
     }
 
-    /// <summary>
-    /// Brings one lease forward while it is still due once its row is locked: the periods added (0 when it was no longer due, a notice or an
-    /// early termination came first or another run renewed it), or <c>null</c> when it could not be done now (busy, a failure), left for the next run.
-    /// </summary>
     internal async Task<int?> TryRenewAsync(Guid leaseId, DateTime today, CancellationToken cancellationToken)
     {
         try
         {
-            // The plan of the rent is extended in the same transaction, so its lock comes first (see BeginLockedAsync).
             await using var transaction = await BeginLockedAsync(leaseId, lockRent: true, cancellationToken);
 
-            // The job has no tenant: it reads every org, on purpose.
             var lease = await LoadForUpdateAsync(leaseId, ignoreTenant: true, cancellationToken);
             if (!LeaseRenewal.IsDue(lease, today))
                 return 0;
@@ -422,7 +393,6 @@ public sealed class LeaseTermService(
             lease.UpdatedAt = now;
             await db.SaveChangesAsync(cancellationToken);
 
-            // The plan of the rent follows, in the same transaction (the lock of the lease joins it).
             var installments = await rentBilling.ExtendScheduleToCurrentTermAsync(leaseId, cancellationToken);
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
@@ -434,7 +404,6 @@ public sealed class LeaseTermService(
         }
         catch (Exception ex) when (LeaseDraftLocking.IsContention(ex) || ex is DomainConflictException { Code: LeaseLifecycleCodes.Busy })
         {
-            // Somebody is changing the lease right now: the next run looks again.
             logger.LogInformation("Lease term renewal: the lease is busy and is left for the next run. LeaseId={LeaseId}", leaseId);
             return null;
         }
@@ -454,8 +423,6 @@ public sealed class LeaseTermService(
             db.ChangeTracker.Clear();
         }
     }
-
-    // ---- locking and loading -------------------------------------------------------------------------------------
 
     /// <summary>
     /// Opens the transaction (a relational database only) and locks the row of the lease until it ends; a second writer waits here and then reads
@@ -477,7 +444,6 @@ public sealed class LeaseTermService(
         {
             if (lockRent && PostgresAdvisoryLocks.IsSupported(db))
             {
-                // The wait is bounded like the one for the row; the lock joins the transaction opened above (and is kept until it ends).
                 await db.Database.ExecuteSqlRawAsync(LeaseDraftLocking.SetLockTimeoutSql, cancellationToken);
                 await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
                     db, cancellationToken, (PostgresAdvisoryLocks.Scope.RentLease, leaseId.ToString("N")));

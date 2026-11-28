@@ -12,10 +12,8 @@ public static partial class IdentityVerificationServiceCollectionExtensions
 {
     static partial void AddDocumentGeometryServices(IServiceCollection services)
     {
-        // Stateless: it reads the face detector and the options of the models, and keeps nothing of a picture.
         services.AddSingleton<DocumentGeometryInspector>();
 
-        // Pure: no dependency, no state, no I/O, no logging.
         services.AddSingleton<DocumentSideClassifier>();
     }
 }

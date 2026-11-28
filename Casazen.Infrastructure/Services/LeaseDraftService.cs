@@ -6,7 +6,6 @@ using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Leases;
 using Casazen.Core.Leases.Reading;
-using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -43,8 +42,6 @@ public sealed class LeaseDraftService(
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
     private readonly LeaseConcordatoAssessor _concordato = new(eligibility, timeProvider ?? TimeProvider.System);
-
-    // ---- creation and reads --------------------------------------------------------------------------------------
 
     public async Task<Guid?> FindPropertyIdAsync(Guid leaseId, CancellationToken cancellationToken = default) =>
         await db.LeaseContracts
@@ -167,8 +164,6 @@ public sealed class LeaseDraftService(
             evaluation.Flow);
     }
 
-    // ---- saving a step -------------------------------------------------------------------------------------------
-
     public async Task<LeaseDraftSaved> SaveAsync(
         Guid leaseId, int version, int step, JsonElement values, CancellationToken cancellationToken = default)
     {
@@ -180,8 +175,6 @@ public sealed class LeaseDraftService(
         var current = LeaseDraftProjection.ReadValues(lease);
         var next = LeaseDraftPatch.Apply(current, step, values, Guid.NewGuid);
 
-        // The property can be changed at step 1 only to a property of the caller's org (the web layer has authorized it for the
-        // caller): a property that is not visible is the same as one that does not exist.
         if (next.PropertyId is { } propertyId && propertyId != lease.PropertyId)
         {
             if (!await db.Properties.AsNoTracking().AnyAsync(p => p.Id == propertyId, cancellationToken))
@@ -225,12 +218,8 @@ public sealed class LeaseDraftService(
         LeaseDraftWriter.ProjectAsync(
             db, lease, values, evaluation.Reading, evaluation.Concordato, evaluation.Flow.DataComplete, evaluation.Input.Today, cancellationToken);
 
-    // ---- the review ----------------------------------------------------------------------------------------------
-
     public async Task<LeaseReviewView> GetReviewAsync(Guid leaseId, CancellationToken cancellationToken = default)
     {
-        // The property comes with its energy certificate: the template of the contract prints it, and a lease read without it would
-        // always look as if the data of the template were missing.
         var lease = await db.LeaseContracts
             .AsNoTracking()
             .Include(l => l.Property).ThenInclude(p => p.PropertyDocuments.Where(d => d.DocumentType == DocumentType.Ape))
@@ -261,12 +250,8 @@ public sealed class LeaseDraftService(
         if (LeaseReview.HasBlock(checks))
             throw new DomainRuleException(LeaseDraftErrorCodes.ReviewBlocked, "LeaseReviewBlocked");
 
-        // LR-OVERLAP: the contract takes its days only if no other lease of the property has them (409 lease_period_overlaps).
         await EnsurePeriodFreeAsync(lease, evaluation, cancellationToken);
 
-        // The data may have become complete without a save (the agreement data of the comune were loaded, a date typed ahead of today has
-        // come): the columns and the rows are written now, as a save would, so what is confirmed is what every other reader sees and
-        // the draft stops looking like one that is still being typed.
         var projected = false;
         if (lease.DraftData is not null && evaluation.Flow.DataComplete)
         {
@@ -324,10 +309,6 @@ public sealed class LeaseDraftService(
         return new LeaseDraftReviewResult(lease.DraftVersion, lease.ReviewConfirmedAt, FlowOf(evaluation, lease));
     }
 
-    /// <summary>
-    /// Withdraws the confirmation and, with it, "downloaded for signature": the copy handed out for signature is of a contract the
-    /// review no longer stands behind. Stages the changes without saving.
-    /// </summary>
     private void ReopenReview(LeaseContract lease, DateTime now, string reason)
     {
         lease.ReviewConfirmedAt = null;
@@ -358,7 +339,6 @@ public sealed class LeaseDraftService(
         var blocker = lease.Origin == LeaseOrigin.Imported ? null : templates.GetFinalContractBlocker(lease);
         return new LeaseReviewFacts
         {
-            // LR-OVERLAP: the lease in the way, found while the draft was evaluated (the rule of the days of LeasePeriodRules).
             PeriodConflict = evaluation.PeriodConflict,
             TemplateNotApproved = blocker == Casazen.Infrastructure.External.LeaseContractTemplateService.TemplateNotApprovedCode,
             TemplateDataMissing = blocker == Casazen.Infrastructure.External.LeaseContractTemplateService.DataMissingCode
@@ -371,8 +351,6 @@ public sealed class LeaseDraftService(
         checks.Count(c => c.Severity == LeaseReviewSeverity.Warn),
         checks.Count(c => c.Severity == LeaseReviewSeverity.Info),
         checks.Count(c => c.Severity == LeaseReviewSeverity.Ok));
-
-    // ---- downloaded for signature --------------------------------------------------------------------------------
 
     public async Task<LeaseDraftSentResult> MarkSentAsync(Guid leaseId, int? version, CancellationToken cancellationToken = default)
     {
@@ -397,8 +375,6 @@ public sealed class LeaseDraftService(
             // LR-OVERLAP: nor can it go to the signature if another lease has taken the days since (409 lease_period_overlaps).
             await EnsurePeriodFreeAsync(lease, evaluation, cancellationToken);
 
-            // The gate of GET contract.pdf, so the state never says something that download would refuse (decision LR-D28): the
-            // term of the type, then the template of the regime (422 contract_template_not_approved / contract_data_missing).
             LeaseContractTerms.EnsureTerm(lease.ContractType, lease.StartDate, lease.EndDate);
             templates.EnsureFinalContractAvailable(lease);
 
@@ -448,8 +424,6 @@ public sealed class LeaseDraftService(
         return new LeaseDraftSentResult(lease.DraftVersion, lease.SentForSignatureAt, FlowOf(evaluation, lease));
     }
 
-    // ---- deletion ------------------------------------------------------------------------------------------------
-
     public async Task DeleteAsync(Guid leaseId, CancellationToken cancellationToken = default)
     {
         await using var transaction = await BeginLockedAsync(leaseId, cancellationToken);
@@ -464,8 +438,6 @@ public sealed class LeaseDraftService(
         logger.LogInformation("Lease draft deleted. LeaseId={LeaseId} Files={Files}", leaseId, files.Count);
     }
 
-    // ---- filled from the contract the owner uploaded (NL-DOCS) ----------------------------------------------------
-
     public async Task<LeaseDraftFillResult> ApplyContractReadingAsync(
         Guid leaseId, LeaseContractReading reading, Guid documentId, CancellationToken cancellationToken = default)
     {
@@ -479,12 +451,9 @@ public sealed class LeaseDraftService(
         if (lease.Origin != LeaseOrigin.Imported)
             return new LeaseDraftFillResult(false, false, lease.DraftVersion, []);
 
-        // Deleted while the file was being read: the row is locked until this transaction ends, so the delete either
-        // committed already (nothing is written) or waits until this fill does. A later upload can still fill what is empty.
         if (!await SourceDocumentStillThereAsync(documentId, lease.Id, cancellationToken))
             throw DocumentNotFound(documentId);
 
-        // The draft of the guided service (CF-DONE): the landlord's citizenship, which its contract does not state, is derived (and marked so).
         var fill = LeaseDraftContractFill.Merge(
             LeaseDraftProjection.ReadValues(lease), reading, lease.Origin, Guid.NewGuid, deriveLandlordCitizenship: lease.IsConcordatoFacileSource);
         if (fill.Changed)
@@ -509,8 +478,6 @@ public sealed class LeaseDraftService(
         return new LeaseDraftFillResult(true, fill.Changed, lease.DraftVersion, fill.Fields);
     }
 
-    // ---- evaluation ----------------------------------------------------------------------------------------------
-
     /// <summary>
     /// What the values typed mean for the lease: how they read, the flow they give, the range of the canone concordato and the other lease
     /// of the property that covers some of the same days (LR-OVERLAP, only a warning here: <see cref="EnsurePeriodFreeAsync"/> is the block).
@@ -533,8 +500,6 @@ public sealed class LeaseDraftService(
         var reading = LeaseDraftRules.Read(values, lease.Origin);
         var facts = await LoadFactsAsync(values.PropertyId, fullApeCheck, cancellationToken);
 
-        // The range of a canone concordato is for a contract that is going to be signed: an imported one is already signed, so
-        // nothing is asked of the calculator and no range is stored (decision LR-D13).
         ConcordatoAssessmentResult? concordato = null;
         LeaseDraftConcordatoOutcome? outcome = null;
         if (lease.Origin != LeaseOrigin.Imported
@@ -611,8 +576,6 @@ public sealed class LeaseDraftService(
         if (property is null)
             return new LeaseDraftFacts { PropertyExists = false };
 
-        // Code and energy class of the certificates of the property: the contract prints the last one that has them (LeaseContractDocument),
-        // so the draft needs one that has them, whatever the reading of the file said (LR-APE).
         var apes = await db.PropertyDocuments
             .AsNoTracking()
             .Where(d => d.PropertyId == id && d.DocumentType == DocumentType.Ape)
@@ -630,8 +593,6 @@ public sealed class LeaseDraftService(
             }
             catch (ApeComplianceException ex)
             {
-                // A certificate that is there but could not be read whole asks for its code and class: that is the need of the
-                // identification, not "the APE is missing" (there is nothing to upload).
                 hasApe = ex.Code == ApeComplianceException.IdentificationRequiredCode;
             }
         }
@@ -650,7 +611,6 @@ public sealed class LeaseDraftService(
         };
     }
 
-    /// <summary>The input of the flow as the lease is now (the facts of the evaluation, the state fields of the lease).</summary>
     private static LeaseDraftProgressInput FlowInput(DraftEvaluation evaluation, LeaseContract lease) => evaluation.Input with
     {
         Status = lease.Status,
@@ -661,8 +621,6 @@ public sealed class LeaseDraftService(
 
     private static LeaseDraftFlow FlowOf(DraftEvaluation evaluation, LeaseContract lease) =>
         LeaseDraftProgress.Compute(FlowInput(evaluation, lease)) with { PeriodConflict = evaluation.PeriodConflict };
-
-    // ---- locking and loading -------------------------------------------------------------------------------------
 
     /// <summary>
     /// Opens the transaction (PostgreSQL only) and locks the row of the lease until it ends; a second writer waits here and then
@@ -702,7 +660,6 @@ public sealed class LeaseDraftService(
         var query = db.LeaseContracts.Include(l => l.Parties).AsQueryable();
         if (includeProperty)
         {
-            // With its energy certificate, which the template of the contract prints (see GetReviewAsync).
             query = query.Include(l => l.Property).ThenInclude(p => p.PropertyDocuments.Where(d => d.DocumentType == DocumentType.Ape));
         }
 

@@ -15,10 +15,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The public property search (BK-20, A8-13): every filter the console offers is applied by the API, each result carries
-/// the slug of its org (the link to its booking site), and a property of an inactive org is never offered.
-/// </summary>
 public class PublicPropertySearchTests : IDisposable
 {
     private readonly AppDbContext _db = new(new DbContextOptionsBuilder<AppDbContext>()

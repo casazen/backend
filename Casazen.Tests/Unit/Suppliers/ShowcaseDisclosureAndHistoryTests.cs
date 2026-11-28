@@ -4,10 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>
-/// SP-10, decision D9: what the supplier knows of a private customer of its public showcase before and after it takes the request,
-/// and who the history names as the party that asked.
-/// </summary>
 public class ShowcaseDisclosureAndHistoryTests
 {
     [Theory]
@@ -24,7 +20,6 @@ public class ShowcaseDisclosureAndHistoryTests
     [Fact]
     public void CustomerName_ARequestRefusedOrCancelledNeverGivesTheFullName()
     {
-        // A request the supplier never took, or no longer has a job for, shows what a new request shows.
         Assert.Equal("Anna B.", SupplierJobDisclosure.CustomerName(ServiceRequestStatus.Rifiutato, "Anna Bianchi"));
         Assert.Equal("Anna B.", SupplierJobDisclosure.CustomerName(ServiceRequestStatus.Annullato, "Anna Bianchi"));
         Assert.Equal(string.Empty, SupplierJobDisclosure.CustomerName(ServiceRequestStatus.Richiesto, null));
@@ -101,7 +96,6 @@ public class ShowcaseDisclosureAndHistoryTests
     [Fact]
     public void StateMachine_TheCustomerCancelsANewOrATakenRequest_NeverOneInProgressOrClosed()
     {
-        // SP-11: the customer is an actor of its own cancellation, like the supplier: before the work starts, never after.
         Assert.All(
             new[] { ServiceRequestStatus.Richiesto, ServiceRequestStatus.PresoInCarico },
             status => Assert.True(ServiceRequestStateMachine.CanCancel(status, ServiceRequestActorParty.Customer)));

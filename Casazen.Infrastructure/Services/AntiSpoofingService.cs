@@ -6,27 +6,15 @@ using Microsoft.ML.OnnxRuntime;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Anti-spoofing detection using MiniFASNet (Apache-2.0) for photo-of-photo and screen attack detection (ADR-013, NF-11, NF-24).
-/// Processes images in-memory only with immediate deletion (ADR-013-R2). <b>No code path returns "live" without the model having run</b>: the
-/// models not available, no face in the picture, a timeout and an exception are all "not live".
-/// </summary>
 public class AntiSpoofingService(
     ILogger<AntiSpoofingService> logger,
     IBiometricModelStore? store = null,
     IFaceDetector? detector = null,
     IOptions<BiometricModelOptions>? options = null) : IAntiSpoofingService
 {
-    /// <summary>
-    /// Detects if the selfie image is a live capture or a photo-of-photo attack using MiniFASNet.
-    /// </summary>
     public async Task<bool> DetectLivenessAsync(Stream imageStream, CancellationToken cancellationToken = default) =>
         (await ScoreLivenessAsync(imageStream, cancellationToken)).IsLive;
 
-    /// <summary>
-    /// Finds the face of the selfie, cuts it with the margin the model was trained with, and takes the score of the real-face class
-    /// (<c>Biometrics:LivenessThreshold</c> decides). The picture, the cut and the tensor are zeroed before returning.
-    /// </summary>
     public async Task<LivenessResult> ScoreLivenessAsync(Stream imageStream, CancellationToken cancellationToken = default)
     {
         var settings = options?.Value ?? new BiometricModelOptions();
@@ -66,7 +54,6 @@ public class AntiSpoofingService(
             var score = Run(model, input, settings.LivenessInputSize, timeout.Token);
             var live = score >= settings.LivenessThreshold;
 
-            // The outcome only, never the score: the frames of the self-hosted presence (E72/F01/US02/T01) go through here one by one, and no number of a person goes to a log (ADR-013-R17).
             logger.LogInformation("Liveness check: live={IsLive}", live);
             return new LivenessResult(live, score);
         }
@@ -81,13 +68,11 @@ public class AntiSpoofingService(
         }
         catch (Exception ex)
         {
-            // On error, treat as suspicious (not live) for security. The type only: a message could carry what was being read.
             logger.LogError("Anti-spoofing detection failed ({ErrorType}), not live", ex.GetType().Name);
             return default;
         }
         finally
         {
-            // ADR-013-R2: Immediate deletion guarantee
             ImageBytes.Zero(bytes);
             ImageBytes.Zero(input);
             small?.Dispose();
@@ -114,13 +99,8 @@ public class AntiSpoofingService(
     }
 }
 
-/// <summary>The arithmetic around MiniFASNet: where the face is cut, how the cut is given to the model and how its answer becomes a score.</summary>
 internal static class LivenessCrop
 {
-    /// <summary>
-    /// The box of the face made <paramref name="scale"/> times larger around its centre and moved (not cut) to stay inside the picture, as the
-    /// authors of the model do. Inclusive pixel coordinates.
-    /// </summary>
     public static (int Left, int Top, int Right, int Bottom) Box(int imageWidth, int imageHeight, DetectedFace face, double scale)
     {
         double boxWidth = Math.Max(1.0, face.Width);
@@ -163,7 +143,6 @@ internal static class LivenessCrop
         return ((int)left, (int)top, Math.Max((int)left + 1, (int)right), Math.Max((int)top + 1, (int)bottom));
     }
 
-    /// <summary>Planar blue, green, red, 0 to 255 (the model takes unnormalised values, in the order OpenCV reads a picture).</summary>
     public static float[] BuildInput(RasterImage cut)
     {
         var plane = cut.Width * cut.Height;

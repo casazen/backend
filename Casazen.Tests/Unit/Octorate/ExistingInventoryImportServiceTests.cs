@@ -41,7 +41,6 @@ public class ExistingInventoryImportServiceTests
     private const string UserB = "auth0|host-b";
     private const string PanelUrl = "https://panel.example.test/octobook";
 
-    /// <summary>The only calls of the Octorate client an import may make: the read of the connections and the four operations of the D6 sequence.</summary>
     private static readonly string[] AllowedClientCalls =
     [
         nameof(IOctorateApiClient.GetOrgConnectionsAsync),
@@ -56,8 +55,6 @@ public class ExistingInventoryImportServiceTests
 
     private static ExistingInventoryCaller CallerA => new(OrgA, UserA);
 
-    // ─── Proofs ───────────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task ExistingInventoryImport_NeverCreatesOrPublishesListing_Test()
     {
@@ -65,7 +62,6 @@ public class ExistingInventoryImportServiceTests
         // connections and for the four operations of the D6 sequence and for nothing else, the mapping is only read, and no property is made.
         var harnesses = new List<Harness>();
 
-        // 1. No operation verified: nothing is called but the read of the connections; the step stays guided.
         var unverified = new Harness();
         harnesses.Add(unverified);
         await unverified.SeedAsync(verified: false);
@@ -88,7 +84,6 @@ public class ExistingInventoryImportServiceTests
             view = await limited.Service(db).RunAsync(CallerA, view.Id, CancellationToken.None);
         Assert.Equal(OctorateInventoryImportStatus.AwaitingMapping, view.Channels[0].Status);
 
-        // 3. A failure of the channel (550) is a Failed channel with a stable code, and so is an unknown result; both are retried, never replaced.
         var failing = new Harness();
         harnesses.Add(failing);
         await failing.SeedAsync(verified: true);
@@ -106,7 +101,6 @@ public class ExistingInventoryImportServiceTests
             view = await failing.Service(db).ContinueAsync(CallerA, view.Id, null, CancellationToken.None, ["1002"]);
         Assert.Equal(OctorateInventoryImportStatus.Completed, view.Status);
 
-        // 4. The access is given but Octorate shows no connection: nothing is created to make one.
         var missing = new Harness();
         harnesses.Add(missing);
         await missing.SeedAsync(verified: true);
@@ -114,7 +108,6 @@ public class ExistingInventoryImportServiceTests
         view = await missing.RunToRoomsAsync();
         Assert.Equal(OctorateInventoryErrorCodes.ChannelConnectionNotFound, view.Channels[0].ErrorCode);
 
-        // 5. The whole sequence, to the end.
         var complete = new Harness();
         harnesses.Add(complete);
         await complete.SeedAsync(verified: true);
@@ -129,7 +122,6 @@ public class ExistingInventoryImportServiceTests
             var clientCalls = harness.Client.Invocations.Select(i => i.Method.Name).Distinct().ToList();
             Assert.All(clientCalls, name => Assert.Contains(name, AllowedClientCalls));
 
-            // The mapping is read and refreshed; it is never confirmed, rejected, imported as a property or set by the import.
             Assert.All(
                 harness.Mappings.Invocations.Select(i => i.Method.Name).Distinct(),
                 name => Assert.Contains(name, new[] { nameof(IChannelMappingService.ListAsync), nameof(IChannelMappingService.RefreshAsync) }));
@@ -137,17 +129,14 @@ public class ExistingInventoryImportServiceTests
                 harness.Bookings.Invocations.Select(i => i.Method.Name).Distinct(),
                 name => Assert.Equal(nameof(IBookingImportService.ImportAllAsync), name));
 
-            // No property is made by the import (the properties are the two the test seeded).
             await using var db = harness.NewDb();
             Assert.Equal(2, await db.Properties.CountAsync());
         }
 
-        // The sequence has the four operations and no other: there is no member that could create or publish a listing.
         Assert.Equal(
             new[] { "ImportCalendar", "ImportReservations", "ImportRooms", "MarkConnected" },
             Enum.GetNames<OctorateD6Operation>().Order().ToArray());
 
-        // The service depends on no creator or publisher: what it holds is the client, the mapping (read and refreshed), the bookings import and the handoff.
         var dependencies = typeof(ExistingInventoryImportService).GetConstructors().Single().GetParameters().Select(p => p.ParameterType.Name).ToArray();
         Assert.DoesNotContain(
             dependencies,
@@ -157,7 +146,6 @@ public class ExistingInventoryImportServiceTests
     [Fact]
     public async Task ExistingInventoryImport_SecretsNeverEnterCasaZen_Test()
     {
-        // No type of the request, of the state or of the answer has a member for a username, a password, a cookie or a token of an OTA.
         Type[] types =
         [
             typeof(OctorateInventoryIntent), typeof(OctorateInventoryImportBatch), typeof(OctorateInventoryImportChannel), typeof(OctorateInventoryImportItem),
@@ -180,7 +168,6 @@ public class ExistingInventoryImportServiceTests
             }
         }
 
-        // The address of the panel is in the answer of the start of the access and nowhere else.
         foreach (var type in types.Where(t => t != typeof(ChannelAccessStartDto) && t != typeof(ChannelAccessStartResult)))
         {
             Assert.DoesNotContain(
@@ -201,7 +188,6 @@ public class ExistingInventoryImportServiceTests
             start = await service.StartChannelAccessAsync(CallerA, batch.Id, "142", CancellationToken.None);
         }
 
-        // The address returned carries no organization, property or person data, and it is saved before it is returned.
         Assert.False(start.AlreadyComplete);
         Assert.Equal(PanelUrl, start.PanelUrl);
         Assert.Equal(PanelHandoffMode.ManagedWindow, start.HandoffMode);
@@ -219,7 +205,6 @@ public class ExistingInventoryImportServiceTests
             Assert.Equal(OctorateInventoryImportStatus.AwaitingChannelAccess, stored.Status);
             Assert.Equal(h.Handoff.StepId, stored.PanelStepId);
 
-            // From now on the address is not in any answer, nor in a log line.
             h.Handoff.State = ChannelAccessState.Verified;
             var service = h.Service(db, logger: logger);
             var after = await service.GetBatchAsync(CallerA, batch.Id, CancellationToken.None);
@@ -244,7 +229,6 @@ public class ExistingInventoryImportServiceTests
         var mine = h.Properties[0];
         var theirs = await h.AddPropertyAsync(OrgB);
 
-        // A property of another organization is the same 404 as one that does not exist, alone or among the caller's own: nothing is stored.
         await using (var db = h.NewDb())
         {
             var service = h.Service(db);
@@ -265,8 +249,6 @@ public class ExistingInventoryImportServiceTests
             Assert.Empty(await db.OctorateInventoryIntents.ToListAsync());
         }
 
-        // A group of the mixed portfolio is the org's own: the group of another org does not exist for the caller, and a group never takes in
-        // the property of another org.
         await using (var db = h.NewDb())
         {
             db.OctorateInventoryIntents.Add(new OctorateInventoryIntent
@@ -295,12 +277,10 @@ public class ExistingInventoryImportServiceTests
 
         await using (var db = h.NewDb())
         {
-            // The org B's own row is untouched and org A has no intent for the foreign property.
             Assert.Empty(await db.OctorateInventoryIntents.Where(i => i.OrgId == OrgA && i.PropertyId == theirs).ToListAsync());
             Assert.Single(await db.OctorateInventoryIntents.Where(i => i.OrgId == OrgB).ToListAsync());
         }
 
-        // A caller who reaches only some properties cannot take the whole inventory, nor a property it was not given.
         await using (var db = h.NewDb())
         {
             var limited = h.Service(db, new FakeScope(OrgA, orgWide: false));
@@ -315,7 +295,6 @@ public class ExistingInventoryImportServiceTests
             var batch = await given.CreateBatchAsync(CallerA, ["142"], ExistingInventoryScope.ForProperties([mine]), CancellationToken.None);
             Assert.Equal(new[] { mine }, batch.PropertyIds);
 
-            // A batch of the whole inventory is not seen by such a caller, and a batch of org A is not seen by org B.
             ExistingInventoryBatchView whole;
             await using (var adminDb = h.NewDb())
                 whole = await h.Service(adminDb).CreateBatchAsync(CallerA, ["142"], ExistingInventoryScope.AllInventory, CancellationToken.None);
@@ -332,8 +311,6 @@ public class ExistingInventoryImportServiceTests
     [Fact]
     public async Task ExistingInventoryImport_EmptyPropertySelectionIsNeverTheWholeInventory_Test()
     {
-        // A wizard with nothing ticked sends an empty list of properties. It must not start a batch on the whole organization of someone who
-        // reaches it: only leaving the list out asks for the whole inventory.
         var import = new Mock<IExistingInventoryImportService>();
         var view = new ExistingInventoryBatchView(
             Guid.NewGuid(),
@@ -364,7 +341,6 @@ public class ExistingInventoryImportServiceTests
             i => i.CreateBatchAsync(It.IsAny<ExistingInventoryCaller>(), It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<ExistingInventoryScope>(), It.IsAny<CancellationToken>()),
             Times.Never);
 
-        // Leaving the list out is the whole inventory, and naming a property is that property.
         await controller.Create(new CreateExistingInventoryBatchRequest { Channels = ["142"] }, CancellationToken.None);
         import.Verify(
             i => i.CreateBatchAsync(
@@ -388,8 +364,6 @@ public class ExistingInventoryImportServiceTests
     [Fact]
     public async Task ExistingInventoryImport_ReachOfTheCallerLimitsWhatIsShownAndTouched_Test()
     {
-        // A collaborator «Solo alcuni» reaches only the first property. The second one, of the same org and never declared, has its listing
-        // confirmed too: the collaborator's batch must neither show it nor touch it, whatever the collaborator asks.
         var h = new Harness();
         await h.SeedAsync(verified: true);
         var mine = h.Properties[0];
@@ -405,12 +379,9 @@ public class ExistingInventoryImportServiceTests
             batch = await service.RunAsync(CallerA, batch.Id, CancellationToken.None);
         }
 
-        // Both listings were unknown when the rooms were imported; then the mapping confirms them: the second one to a property that was
-        // confirmed long before the batch and that nobody declared.
         var longBefore = DateTime.UtcNow.AddDays(-30);
         h.Rows.AddRange([Harness.Row("1001", OctorateMappingStatus.Confirmed, mine), Harness.Row("1002", OctorateMappingStatus.Confirmed, colleagues, longBefore)]);
 
-        // The batch shows the collaborator its own listing only, and the org-wide caller both, the second one as outside the scope.
         await using (var db = h.NewDb())
         {
             var seen = await h.Service(db, limited).GetBatchAsync(CallerA, batch.Id, CancellationToken.None);
@@ -422,8 +393,6 @@ public class ExistingInventoryImportServiceTests
             Assert.Equal(1, whole.Channels[0].Counts.OutOfScope);
         }
 
-        // The collaborator goes on, naming the other listing as one to leave for later: that is ignored, and nothing of the other property
-        // is asked of Octorate, read into CasaZen, declared or marked.
         await using (var db = h.NewDb())
             batch = await h.Service(db, limited).ContinueAsync(CallerA, batch.Id, ["1002"], CancellationToken.None);
 
@@ -443,8 +412,6 @@ public class ExistingInventoryImportServiceTests
             Assert.Null(other.OctorateReservationsImportedAt);
         }
 
-        // A listing confirmed to a property AFTER the batch began is a property the import itself made: the org-wide caller goes on for it
-        // and declares it «already on OTAs». The collaborator still does not see it, and declares nothing.
         h.Rows[1] = Harness.Row("1002", OctorateMappingStatus.Confirmed, colleagues, DateTime.UtcNow.AddHours(1));
         await using (var db = h.NewDb())
         {
@@ -476,7 +443,6 @@ public class ExistingInventoryImportServiceTests
         await h.SeedAsync(verified: true);
         var properties = h.Properties;
 
-        // The first batch: the access is given, the rooms are imported, and a restart of the worker (a new context and service) changes nothing.
         ExistingInventoryBatchView first;
         await using (var db = h.NewDb())
         {
@@ -496,7 +462,6 @@ public class ExistingInventoryImportServiceTests
         Assert.Equal(2, h.Calls(nameof(IOctorateApiClient.ImportRoomsAsync)));
         Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.GetOrgConnectionsAsync)));
 
-        // The person confirms both listings; the calendar of the second one fails: the first one is connected, the second one is not.
         h.Rows.AddRange([Harness.Row("1001", OctorateMappingStatus.Confirmed, properties[0]), Harness.Row("1002", OctorateMappingStatus.Confirmed, properties[1])]);
         h.Failures[(OctorateD6Operation.ImportCalendar, "502")] = new OctorateServerException(503);
         await using (var db = h.NewDb())
@@ -508,14 +473,12 @@ public class ExistingInventoryImportServiceTests
         Assert.Equal(2, h.Calls(nameof(IOctorateApiClient.ImportCalendarAsync)));
         Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.MarkConnectedAsync)));
 
-        // A restart and the same command: the calendar of the second listing has an unknown result, so nothing is asked of Octorate by itself.
         h.Failures.Clear();
         await using (var db = h.NewDb())
             first = await h.Service(db).ContinueAsync(CallerA, first.Id, null, CancellationToken.None);
         Assert.Equal(OctorateInventoryImportStatus.NeedsAttention, first.Status);
         Assert.Equal(2, h.Calls(nameof(IOctorateApiClient.ImportCalendarAsync)));
 
-        // The person checked the panel and names the listing: only what has no stamp is asked again, and only the second listing is marked.
         await using (var db = h.NewDb())
             first = await h.Service(db).ContinueAsync(CallerA, first.Id, null, CancellationToken.None, ["1002"]);
         Assert.Equal(OctorateInventoryImportStatus.Completed, first.Status);
@@ -527,14 +490,12 @@ public class ExistingInventoryImportServiceTests
         Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.MarkConnectedAsync), "501"));
         Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.MarkConnectedAsync), "502"));
 
-        // Repeating it again asks Octorate for nothing.
         var before = h.Client.Invocations.Count;
         await using (var db = h.NewDb())
             first = await h.Service(db).ContinueAsync(CallerA, first.Id, null, CancellationToken.None);
         Assert.Equal(before, h.Client.Invocations.Count);
         Assert.Equal(OctorateInventoryImportStatus.Completed, first.Status);
 
-        // A second batch for the same channel takes the stamps of the connections: no operation is asked for the same item twice.
         ExistingInventoryBatchView second;
         await using (var db = h.NewDb())
         {
@@ -555,8 +516,6 @@ public class ExistingInventoryImportServiceTests
     [Fact]
     public async Task ExistingInventoryImport_ResultNobodyKnowsIsNeverAskedAgainByItself_Test()
     {
-        // The request is closed while the call to Octorate is on its way (the connection drops, the worker stops): the call may have been
-        // done and nobody knows. The item is marked before the call leaves, so the next command does not ask for the same operation in silence.
         var h = new Harness();
         await h.SeedAsync(verified: true);
         var batch = await h.RunToRoomsAsync();
@@ -577,7 +536,6 @@ public class ExistingInventoryImportServiceTests
             Assert.Null(marked.OctorateReservationsImportedAt);
         }
 
-        // A plain command goes on with the other listing and does not ask again for the marked one; it says why that one waits.
         h.Failures.Clear();
         await using (var db = h.NewDb())
             batch = await h.Service(db).ContinueAsync(CallerA, batch.Id, null, CancellationToken.None);
@@ -590,7 +548,6 @@ public class ExistingInventoryImportServiceTests
         Assert.Equal(OctorateInventoryErrorCodes.D6ResultUnknown, batch.Channels[0].ErrorCode);
         Assert.Equal(OctorateInventoryErrorCodes.D6ResultUnknown, batch.Channels[0].Items.Single(i => i.OctorateAccommodationId == "1001").ErrorCode);
 
-        // Naming another listing resumes nothing; naming this one, after the person checked the panel, asks again once and the sequence ends.
         await using (var db = h.NewDb())
             batch = await h.Service(db).ContinueAsync(CallerA, batch.Id, null, CancellationToken.None, ["1002"]);
 
@@ -607,8 +564,6 @@ public class ExistingInventoryImportServiceTests
     [Fact]
     public async Task ExistingInventoryImport_StampOfAnAnsweredCallSurvivesTheRequestBeingClosed_Test()
     {
-        // Octorate answered the first «mark connected» and then the request was closed: the stamp is saved without the token of the request,
-        // so the next command does not mark the same connection again.
         var h = new Harness();
         await h.SeedAsync(verified: true);
         var batch = await h.RunToRoomsAsync();
@@ -628,7 +583,6 @@ public class ExistingInventoryImportServiceTests
             }
             catch (OperationCanceledException)
             {
-                // The request is gone, as the test meant.
             }
         }
 
@@ -650,8 +604,6 @@ public class ExistingInventoryImportServiceTests
     [Fact]
     public async Task ExistingInventoryImport_OneListingThatFailsNeverHoldsTheOthersBack_Test()
     {
-        // Three connections of the channel: two authorized and one whose access was not given. The rooms of one authorized connection fail
-        // with an unknown result. That must not keep the other from being imported, mapped and marked.
         var h = new Harness();
         await h.SeedAsync(verified: true);
         h.Connections.Add(new OctorateConnectionSummary("505", "142", "1005", "H505", "WAITING", null));
@@ -659,8 +611,6 @@ public class ExistingInventoryImportServiceTests
 
         var batch = await h.RunToRoomsAsync();
 
-        // The channel waits for the mapping with the listing that got through; the other shows its code. The connection without access
-        // is not asked at all.
         var channel = batch.Channels[0];
         Assert.Equal(OctorateInventoryImportStatus.AwaitingMapping, channel.Status);
         Assert.Null(channel.ErrorCode);
@@ -674,14 +624,11 @@ public class ExistingInventoryImportServiceTests
         Assert.Equal(0, h.Calls(nameof(IOctorateApiClient.ImportRoomsAsync), "505"));
         Assert.Equal(1, h.Mappings.Invocations.Count(i => i.Method.Name == nameof(IChannelMappingService.RefreshAsync)));
 
-        // A plain run does not ask the listing of the unknown result again by itself.
         await using (var db = h.NewDb())
             batch = await h.Service(db).RunAsync(CallerA, batch.Id, CancellationToken.None);
 
         Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.ImportRoomsAsync), "502"));
 
-        // The person confirms the listing that got through; the other one is only proposed, but its rooms are not in, so it does not wait
-        // for a decision and does not block the first. The channel does not say it is done while the other one waits with its code.
         h.Rows.AddRange([Harness.Row("1001", OctorateMappingStatus.Confirmed, h.Properties[0]), Harness.Row("1002", OctorateMappingStatus.Proposed, h.Properties[1])]);
         await using (var db = h.NewDb())
             batch = await h.Service(db).ContinueAsync(CallerA, batch.Id, null, CancellationToken.None);
@@ -694,8 +641,6 @@ public class ExistingInventoryImportServiceTests
         Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.MarkConnectedAsync), "501"));
         Assert.Equal(0, h.Calls(nameof(IOctorateApiClient.ImportReservationsAsync), "502"));
 
-        // The person checked the panel and asks the rooms of that listing again: they come in, the listings are read again, and once the
-        // listing is confirmed the sequence ends for it.
         h.Failures.Clear();
         await using (var db = h.NewDb())
             batch = await h.Service(db).RunAsync(CallerA, batch.Id, CancellationToken.None, ["1002"]);
@@ -717,8 +662,6 @@ public class ExistingInventoryImportServiceTests
     [Fact]
     public async Task ExistingInventoryImport_RejectingTheListingThatFailedTakesItOutOfTheImport_Test()
     {
-        // The rooms of one listing fail for good. The person says it is not one of its properties: it is no longer asked for its rooms and
-        // the channel can end with the other listing.
         var h = new Harness();
         await h.SeedAsync(verified: true);
         h.Failures[(OctorateD6Operation.ImportRooms, "502")] = new OctorateServerException(550);
@@ -740,12 +683,9 @@ public class ExistingInventoryImportServiceTests
         Assert.Equal(1, batch.Channels[0].Counts.Rejected);
     }
 
-    // ─── The rules around them ────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task ExistingInventoryImport_RoomImportStoresEachConnectionAsANewRow_Test()
     {
-        // The items of a channel the context already tracks are inserted, not updated: a row that is not there cannot be updated.
         var h = new Harness();
         await h.SeedAsync(verified: true);
         var view = await h.RunToRoomsAsync();
@@ -772,7 +712,6 @@ public class ExistingInventoryImportServiceTests
             batch = await service.RunAsync(CallerA, batch.Id, CancellationToken.None);
         }
 
-        // One listing is confirmed, the other is ambiguous: nothing goes on until somebody decides, and nothing was asked for the reservations.
         h.Rows.AddRange([Harness.Row("1001", OctorateMappingStatus.Confirmed, h.Properties[0]), Harness.Row("1002", OctorateMappingStatus.Ambiguous)]);
         await using (var db = h.NewDb())
         {
@@ -783,7 +722,6 @@ public class ExistingInventoryImportServiceTests
 
         Assert.Equal(0, h.Calls(nameof(IOctorateApiClient.ImportReservationsAsync)));
 
-        // Left for later: the other listing goes on to the end, the left one stays as it is (write-blocked by the mapping, not connected).
         await using (var db = h.NewDb())
             batch = await h.Service(db).ContinueAsync(CallerA, batch.Id, ["1002"], CancellationToken.None);
 
@@ -797,7 +735,6 @@ public class ExistingInventoryImportServiceTests
         Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.MarkConnectedAsync)));
         Assert.Equal(0, h.Calls(nameof(IOctorateApiClient.MarkConnectedAsync), "502"));
 
-        // Once it is confirmed it goes on by itself on the next command and is no longer «left».
         h.Rows[1] = Harness.Row("1002", OctorateMappingStatus.Confirmed, h.Properties[1]);
         await using (var db = h.NewDb())
             batch = await h.Service(db).ContinueAsync(CallerA, batch.Id, null, CancellationToken.None);
@@ -836,7 +773,6 @@ public class ExistingInventoryImportServiceTests
         Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.MarkConnectedAsync), "501"));
         Assert.Equal(0, h.Calls(nameof(IOctorateApiClient.MarkConnectedAsync), "502"));
 
-        // It stays left for later on the next plain command: the person's word is remembered.
         await using (var db = h.NewDb())
             batch = await h.Service(db).ContinueAsync(CallerA, batch.Id, null, CancellationToken.None);
 
@@ -856,7 +792,6 @@ public class ExistingInventoryImportServiceTests
         var guard = new InventoryScenarioGuard(db);
         var service = h.Service(db);
 
-        // No declaration, a declaration of existing inventory, and a declaration of another org: the creation is refused (409).
         foreach (var scenario in new OctorateInventoryScenario?[] { null, OctorateInventoryScenario.OnOctorate, OctorateInventoryScenario.OnOtas })
         {
             if (scenario is { } declaredScenario)
@@ -877,11 +812,9 @@ public class ExistingInventoryImportServiceTests
         await db.SaveChangesAsync();
         await Assert.ThrowsAsync<DomainConflictException>(() => guard.EnsureNewInventoryAsync(OrgA, declared, CancellationToken.None));
 
-        // Only the explicit choice of the person opens it, and only for a property no import concerns.
         await service.SetIntentsAsync(CallerA, [new InventoryIntentAssignment(declared, OctorateInventoryScenario.NewInventory, null)], CancellationToken.None);
         await guard.EnsureNewInventoryAsync(OrgA, declared, CancellationToken.None);
 
-        // A property that an import batch covers cannot be moved to «new»: it is never an automatic recovery.
         await service.CreateBatchAsync(CallerA, ["142"], ExistingInventoryScope.ForProperties([mapped]), CancellationToken.None);
         var changed = await Assert.ThrowsAsync<DomainConflictException>(
             () => service.SetIntentsAsync(CallerA, [new InventoryIntentAssignment(mapped, OctorateInventoryScenario.NewInventory, null)], CancellationToken.None));
@@ -916,8 +849,6 @@ public class ExistingInventoryImportServiceTests
         var handoff = Handoff(db);
         var start = await handoff.StartAsync(OrgA, "142", new ChannelAccessResumePoint(batchId, "142"), CancellationToken.None);
 
-        // The hand-over and the resume point are stored before the address is returned (the page of the portal's connection on the panel); no
-        // nonce, no credential.
         Assert.Equal(PanelUrl + "/user/channelmanager/edit.xhtml?portal=142", start.PanelUrl);
         Assert.Equal(PanelHandoffMode.ManagedWindow, start.HandoffMode);
         var step = await db.OnboardingPanelSteps.AsNoTracking().SingleAsync();
@@ -930,7 +861,6 @@ public class ExistingInventoryImportServiceTests
         Assert.Equal(batchId, step.ResumeDraftEntityId);
         Assert.Equal(OnboardingChannelAccessHandoff.ResumeStepCode, step.ResumeStepCode);
 
-        // Before any check, and while the checks go on, the person cannot confirm.
         var early = await Assert.ThrowsAsync<DomainConflictException>(() => handoff.ConfirmAsync(OrgA, UserA, "142", CancellationToken.None));
         Assert.Equal("panel_step_verification_required", early.Code);
         Assert.Equal(ChannelAccessState.Waiting, (await handoff.GetAsync(OrgA, "142", verifyIfDue: true, CancellationToken.None)).State);
@@ -940,7 +870,6 @@ public class ExistingInventoryImportServiceTests
         Assert.Equal(ChannelAccessState.Verifying, (await handoff.GetAsync(OrgA, "142", verifyIfDue: true, CancellationToken.None)).State);
         await Assert.ThrowsAsync<DomainConflictException>(() => handoff.ConfirmAsync(OrgA, UserA, "142", CancellationToken.None));
 
-        // The last check without proof stores «could not tell»: only now the person may confirm.
         clock.Advance(TimeSpan.FromMinutes(1));
         var undecided = await handoff.GetAsync(OrgA, "142", verifyIfDue: true, CancellationToken.None);
         Assert.Equal(ChannelAccessState.NeedsConfirmation, undecided.State);
@@ -951,7 +880,6 @@ public class ExistingInventoryImportServiceTests
         Assert.True(confirmed.IsComplete);
         Assert.Equal(UserA, (await db.OnboardingPanelSteps.AsNoTracking().SingleAsync()).CompletedByUserId);
 
-        // Another channel: an authorized connection of THIS channel is the proof, one of another channel is not, and then there is nothing to confirm.
         await handoff.StartAsync(OrgA, "274", new ChannelAccessResumePoint(batchId, "274"), CancellationToken.None);
         clock.Advance(TimeSpan.FromMinutes(1));
         connections.Add(new OctorateConnectionSummary("502", "142", "1002", "H2", "ENABLED", true));
@@ -962,7 +890,6 @@ public class ExistingInventoryImportServiceTests
         Assert.Equal(ChannelAccessState.Verified, verified.State);
         await handoff.ConfirmAsync(OrgA, UserA, "274", CancellationToken.None);
 
-        // The base is only ever the configured one: no query, https, a named host.
         Assert.Null(OnboardingChannelAccessHandoff.ParsePanelUrl("https://panel.example.test/octobook?org=1"));
         Assert.Null(OnboardingChannelAccessHandoff.ParsePanelUrl("http://panel.example.test/octobook"));
         Assert.Null(OnboardingChannelAccessHandoff.ParsePanelUrl("https://user:secret@panel.example.test/octobook"));
@@ -973,18 +900,14 @@ public class ExistingInventoryImportServiceTests
     [Fact]
     public void ChannelAccessHandoff_TheAddressIsThePageOfThePortal_OnlyForACodeThatIsANumber_Test()
     {
-        // The page of a portal's connection on the panel, verified by the product owner for Booking.com (142) on 14/11/2026: the portal code is
-        // the only thing added to the configured base, joined with one slash whatever the base ends with.
         const string Booking = "https://admin.octorate.com/octobook/user/channelmanager/edit.xhtml?portal=142";
         Assert.Equal(Booking, OnboardingChannelAccessHandoff.PanelUrlOf("https://admin.octorate.com/octobook", "142"));
         Assert.Equal(Booking, OnboardingChannelAccessHandoff.PanelUrlOf("https://admin.octorate.com/octobook/", " 142 "));
 
-        // A code that is not a number (or too long to be one Octorate knows) opens the panel itself, and so does a step with no channel.
         Assert.Equal("https://admin.octorate.com/octobook", OnboardingChannelAccessHandoff.PanelUrlOf("https://admin.octorate.com/octobook", "booking_xml"));
         Assert.Equal("https://admin.octorate.com/octobook", OnboardingChannelAccessHandoff.PanelUrlOf("https://admin.octorate.com/octobook", "1234567890123456789"));
         Assert.Equal("https://admin.octorate.com/octobook", OnboardingChannelAccessHandoff.PanelUrlOf("https://admin.octorate.com/octobook", null));
 
-        // A base that is not a valid address of the panel is still refused, whatever the code.
         Assert.Null(OnboardingChannelAccessHandoff.PanelUrlOf("https://admin.octorate.com/octobook?org=1", "142"));
         Assert.Null(OnboardingChannelAccessHandoff.PanelUrlOf(null, "142"));
     }
@@ -1013,7 +936,6 @@ public class ExistingInventoryImportServiceTests
             clock,
             NullLogger<OnboardingChannelAccessHandoff>.Instance);
 
-        // A batch of one named property, which is confirmed to the accommodation 1002; and a batch of the whole inventory.
         var property = Guid.NewGuid();
         var named = Guid.NewGuid();
         var whole = Guid.NewGuid();
@@ -1051,8 +973,6 @@ public class ExistingInventoryImportServiceTests
             return (await handoff.GetAsync(OrgA, channel, verifyIfDue: true, CancellationToken.None)).State;
         }
 
-        // Channel 142, batch of the named property: the old authorization is no proof, nor is another old one for an accommodation the
-        // batch is not about; one of the accommodation the batch is about is.
         await handoff.StartAsync(OrgA, "142", new ChannelAccessResumePoint(named, "142"), CancellationToken.None);
         Assert.Equal(ChannelAccessState.Verifying, await CheckAsync("142"));
         connections.Add(new OctorateConnectionSummary("502", "142", "1009", "H9", "ENABLED", true, longBefore));
@@ -1060,7 +980,6 @@ public class ExistingInventoryImportServiceTests
         connections.Add(new OctorateConnectionSummary("503", "142", "1002", "H2", "ENABLED", true));
         Assert.Equal(ChannelAccessState.Verified, await CheckAsync("142"));
 
-        // Channel 274: the person logged in before the hand-over (no proof), then after it (the proof), whatever accommodation it is.
         await handoff.StartAsync(OrgA, "274", new ChannelAccessResumePoint(named, "274"), CancellationToken.None);
         connections.Add(new OctorateConnectionSummary("700", "274", "1010", "H10", "ENABLED", true, clock.GetUtcNow().UtcDateTime.AddDays(-10)));
         Assert.Equal(ChannelAccessState.Verifying, await CheckAsync("274"));
@@ -1068,7 +987,6 @@ public class ExistingInventoryImportServiceTests
         connections.Add(new OctorateConnectionSummary("701", "274", "1011", "H11", "ENABLED", true, clock.GetUtcNow().UtcDateTime));
         Assert.Equal(ChannelAccessState.Verified, await CheckAsync("274"));
 
-        // Channel 235, batch of the whole inventory: no accommodation stands for the whole inventory, so only a login after the hand-over proves it.
         await handoff.StartAsync(OrgA, "235", new ChannelAccessResumePoint(whole, "235"), CancellationToken.None);
         connections.Add(new OctorateConnectionSummary("800", "235", "1002", "H20", "ENABLED", true));
         Assert.Equal(ChannelAccessState.Verifying, await CheckAsync("235"));
@@ -1080,8 +998,6 @@ public class ExistingInventoryImportServiceTests
     [Fact]
     public void OctorateConnectionSummary_IsAuthorized_OnlyWhenTheConnectionIsEnabled_Test()
     {
-        // The sandbox of 13/11/2026 (structure 520897): a connection created through the API with a hotel id that does not exist on Booking.com
-        // answered WAITING with userLogged true, although Booking.com accepted nothing. userLogged is no access given; only ENABLED is.
         Assert.False(new OctorateConnectionSummary("1", "142", "520897", "FAKE-1", "WAITING", true).IsAuthorized);
         Assert.False(new OctorateConnectionSummary("2", "142", "520897", null, null, true, DateTime.UtcNow).IsAuthorized);
         Assert.False(new OctorateConnectionSummary("3", "142", "520897", null, "DISABLED", true).IsAuthorized);
@@ -1092,9 +1008,6 @@ public class ExistingInventoryImportServiceTests
     [Fact]
     public async Task ChannelAccessHandoff_TheConnectionCasaZenMadeIsTheProofOnceItIsEnabled_Test()
     {
-        // «Collega» connected the accommodation 520897 to the channel for a batch of the whole inventory, where no confirmed accommodation stands
-        // for the batch. Right after the create Octorate shows it WAITING with userLogged true: no proof. Once the host approved Octorate on the
-        // extranet of the OTA it is ENABLED: the proof, with no login after the hand-over. An old enabled connection of another accommodation is none.
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 14, 8, 0, 0, TimeSpan.Zero));
         var connections = new List<OctorateConnectionSummary>
         {
@@ -1174,16 +1087,13 @@ public class ExistingInventoryImportServiceTests
         await using (var db = h.NewDb())
             Assert.Equal(h.Handoff.StepId, (await db.OctorateInventoryImportChannels.AsNoTracking().SingleAsync()).PanelStepId);
 
-        // The answer of the API names them connectedAccommodationIds.
         var json = JsonSerializer.Serialize(ExistingInventoryBatchDto.From(batch), new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Assert.Contains("\"connectedAccommodationIds\":[\"1001\",\"1002\"]", json, StringComparison.Ordinal);
 
-        // A second click finds the connections in the list of Octorate: nothing new is created.
         await using (var db = h.NewDb())
             await h.Service(db).ConnectChannelAsync(CallerA, batch.Id, "142", body, CancellationToken.None);
         Assert.Equal(2, h.Created.Count);
 
-        // Once the access is given, «Collega» changes nothing and calls nothing.
         h.Handoff.State = ChannelAccessState.Verified;
         var before = h.Client.Invocations.Count;
         await using (var db = h.NewDb())
@@ -1196,8 +1106,6 @@ public class ExistingInventoryImportServiceTests
     [Fact]
     public async Task ExistingInventoryConnect_NeverASecondConnectionOfTheChannelOnAnAccommodation_Test()
     {
-        // 1001 already has a connection of the channel (waiting): it is only recorded. 1002 is created, then Octorate refuses 1003 (the quota of
-        // the minute): the refusal reaches the caller as it is, and what was made before it stays recorded.
         var h = new Harness();
         await h.SeedAsync(verified: true);
         await h.PrepareConnectAsync();
@@ -1223,7 +1131,6 @@ public class ExistingInventoryImportServiceTests
             Assert.Equal(new[] { "1001", "1002" }, ExistingInventoryImportService.ParseAccommodationIds(stored.ConnectedAccommodationIdsJson));
         }
 
-        // The host clicks again just after: the list of Octorate does not show 1002 yet, but the channel recorded it, so only 1003 is created.
         h.CreateFailures.Clear();
         h.ListShowsCreated = false;
         h.Connections.RemoveAll(c => c.AccommodationId == "1002");
@@ -1261,15 +1168,12 @@ public class ExistingInventoryImportServiceTests
             return await Assert.ThrowsAsync<DomainRuleException>(() => h.Service(db).ConnectChannelAsync(CallerA, batchId, channel, body, CancellationToken.None));
         }
 
-        // A portal whose access is given on the panel of Octorate (Airbnb) is not connected from CasaZen.
         Assert.Equal("existing_inventory_connect_not_supported", (await RefusedAsync(named.Id, "274", [new("1001", "1234567")])).Code);
 
-        // No accommodation, or more than 50.
         Assert.Equal("existing_inventory_connect_empty", (await RefusedAsync(named.Id, "142", [])).Code);
         var tooMany = Enumerable.Range(0, ExistingInventoryImportService.MaxConnectionsPerRequest + 1).Select(i => new ExistingInventoryConnectTarget($"{3000 + i}", "1")).ToList();
         Assert.Equal("existing_inventory_connect_empty", (await RefusedAsync(named.Id, "142", tooMany)).Code);
 
-        // An id on the portal that is not one, or an accommodation named twice: the accommodations concerned come with the code.
         foreach (var bad in new[] { "", "   ", "12 34", "abc$", "id/../1", new string('9', ExistingInventoryImportService.HotelIdMaxLength + 1) })
         {
             var refused = await RefusedAsync(named.Id, "142", [new("1001", bad), new("1002", "7654321")]);
@@ -1279,7 +1183,6 @@ public class ExistingInventoryImportServiceTests
 
         Assert.Equal("existing_inventory_hotel_id_invalid", (await RefusedAsync(named.Id, "142", [new("1001", "1"), new(" 1001", "2")])).Code);
 
-        // An accommodation CasaZen does not know, one confirmed to a property outside the batch, one the person rejected, one of another org.
         var unknown = await RefusedAsync(named.Id, "142", [new("1001", "1"), new("9999", "2"), new("1004", "3")]);
         Assert.Equal("existing_inventory_accommodation_unknown", unknown.Code);
         Assert.Equal(new[] { "1004", "9999" }, (IEnumerable<string>)unknown.Extensions["accommodations"]!);
@@ -1287,7 +1190,6 @@ public class ExistingInventoryImportServiceTests
         foreach (var notOfTheOrg in new[] { "1005", "2001" })
             Assert.Equal("existing_inventory_accommodation_unknown", (await RefusedAsync(whole.Id, "142", [new(notOfTheOrg, "1")])).Code);
 
-        // Nothing was asked of Octorate, nothing was recorded and no step was started.
         Assert.Empty(h.Client.Invocations);
         Assert.Empty(h.Handoff.Started);
         await using (var db = h.NewDb())
@@ -1297,7 +1199,6 @@ public class ExistingInventoryImportServiceTests
     [Fact]
     public async Task ExistingInventoryConnect_TheControllerTakesTheBodyOfTheContract_Test()
     {
-        // The body the wizard sends, as the API reads it: { accommodations: [ { accommodationId, hotelId } ] }; the answer is private and not cached.
         var request = JsonSerializer.Deserialize<ConnectExistingInventoryChannelRequest>(
             """{ "accommodations": [ { "accommodationId": "520897", "hotelId": "1234567" } ] }""",
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
@@ -1342,7 +1243,6 @@ public class ExistingInventoryImportServiceTests
             TimeProvider.System,
             NullLogger<OctorateApiClient>.Instance);
 
-        // The calls: a POST to /connection/{ACTION}/{accommodation}/{connection} for each of the four, and a read of the connections that asks only ids and state.
         using (scope.Use(OrgA))
         {
             handler.Body = """[{"productId": 376539, "externalId": 1154454, "portalConnection": 82043, "id": 536429}]""";
@@ -1375,7 +1275,6 @@ public class ExistingInventoryImportServiceTests
         Assert.DoesNotContain("username", read, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("password", read, StringComparison.OrdinalIgnoreCase);
 
-        // An answer that is not a list (or the documented wrapper for the same action) is an unknown result, never a success.
         var wrapper = new OctorateApiClient.OctorateAnswer(200, """{"additionalInfo": {"actionPerformed": "IMPORT_ROOMS", "connectionId": 501}, "data": [{"productId": 1, "externalId": 2}]}""");
         Assert.Single(OctorateApiClient.ReadD6Result(OctorateD6Operation.ImportRooms, "501", wrapper).Mappings);
         Assert.Empty(OctorateApiClient.ReadD6Result(OctorateD6Operation.MarkConnected, "501", new OctorateApiClient.OctorateAnswer(200, "[]")).Mappings);
@@ -1385,8 +1284,6 @@ public class ExistingInventoryImportServiceTests
                 "501",
                 new OctorateApiClient.OctorateAnswer(200, """{"additionalInfo": {"actionPerformed": "import_calendar"}, "data": []}""")).Mappings);
 
-        // An object that is not the documented wrapper (nothing in it, an error that came with HTTP 200, no list, no action, another action)
-        // is no answer CasaZen can trust: an unknown result, never a success that stamps the step.
         string[] notAnswers =
         [
             string.Empty,
@@ -1412,15 +1309,11 @@ public class ExistingInventoryImportServiceTests
         Assert.Throws<OctorateServerException>(() => OctorateApiClient.ReadD6Result(OctorateD6Operation.ImportReservations, "501", wrapper));
         Assert.Throws<ArgumentException>(() => OctorateApiClient.CheckedConnectionId("5/../01"));
 
-        // Through the client: «{}» with HTTP 200 reaches the import as an unknown result.
         handler.Body = "{}";
         using (scope.Use(OrgA))
             await Assert.ThrowsAsync<OctorateServerException>(() => client.ImportCalendarAsync("1001", "501", CancellationToken.None));
     }
 
-    // ─── Harness ──────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>An org with two properties, two connections of the channel «142» (and one of another channel), a strict Octorate client and the doubles around the service.</summary>
     private sealed class Harness
     {
         private readonly string _database = $"existing-inventory-{Guid.NewGuid():N}";
@@ -1462,13 +1355,10 @@ public class ExistingInventoryImportServiceTests
 
         public OctorateExistingInventoryOptions Capabilities { get; } = new();
 
-        /// <summary>The two properties of org A the batches are about.</summary>
         public List<Guid> Properties { get; } = [];
 
-        /// <summary>One instance for every context: EF builds its internal services once for the same interceptor.</summary>
         private static readonly HonourCancellation CancellationInterceptor = new();
 
-        /// <summary>Runs after Octorate answered an operation, before the service sees the answer (a hook for a request that is closed then).</summary>
         public Action<OctorateD6Operation, string>? AfterAnswer { get; set; }
 
         public AppDbContext NewDb() =>
@@ -1494,7 +1384,6 @@ public class ExistingInventoryImportServiceTests
                 TimeProvider.System,
                 logger ?? NullLogger<ExistingInventoryImportService>.Instance);
 
-        /// <summary>The portal «142» in the catalog, two properties of org A, two connections of «142» and one of «274», the access given.</summary>
         public async Task SeedAsync(bool verified)
         {
             await using (var db = NewDb())
@@ -1526,13 +1415,10 @@ public class ExistingInventoryImportServiceTests
             }
         }
 
-        /// <summary>The connections «Collega» asked Octorate to create, attempts that failed included, in order.</summary>
         public List<(string Accommodation, OctorateConnectionCreate Request)> Created { get; } = [];
 
-        /// <summary>The create of a connection on an accommodation that Octorate refuses, with the error it answers.</summary>
         public Dictionary<string, Exception> CreateFailures { get; } = [];
 
-        /// <summary>Whether the list of the connections shows a connection created a moment ago (false: the list of Octorate lags).</summary>
         public bool ListShowsCreated { get; set; } = true;
 
         /// <summary>
@@ -1560,7 +1446,6 @@ public class ExistingInventoryImportServiceTests
                     if (CreateFailures.TryGetValue(accommodation, out var failure))
                         return Task.FromException<OctorateConnectionInfo>(failure);
 
-                    // What the sandbox answered on 13/11/2026: the connection waits for the OTA, and userLogged is true already.
                     var id = "9" + accommodation;
                     if (ListShowsCreated)
                         Connections.Add(new OctorateConnectionSummary(id, request.PortalCode, accommodation, request.HotelId, "WAITING", true));
@@ -1569,7 +1454,6 @@ public class ExistingInventoryImportServiceTests
                 });
         }
 
-        /// <summary>A listing of the org as the mapping knows it: the accommodation, its state and the property it is confirmed to.</summary>
         public async Task AddMappingAsync(Guid orgId, string accommodation, OctorateMappingStatus status, Guid? propertyId = null)
         {
             await using var db = NewDb();
@@ -1584,7 +1468,6 @@ public class ExistingInventoryImportServiceTests
             await db.SaveChangesAsync();
         }
 
-        /// <summary>A listed, enabled OTA of the catalog that Octorate creates through its API with the id of the property and, when said, the access on its panel.</summary>
         public async Task AddPortalAsync(string code, bool tokenAuthentication)
         {
             await using var db = NewDb();
@@ -1602,7 +1485,6 @@ public class ExistingInventoryImportServiceTests
             await db.SaveChangesAsync();
         }
 
-        /// <summary>Creates the batch for the two properties, gets the access (already given) and runs the rooms; the view after the run.</summary>
         public async Task<ExistingInventoryBatchView> RunToRoomsAsync()
         {
             await using var db = NewDb();
@@ -1664,7 +1546,6 @@ public class ExistingInventoryImportServiceTests
         }
     }
 
-    /// <summary>A save with a token that is already cancelled does not happen, as with a real database provider (the in-memory one does not look).</summary>
     private sealed class HonourCancellation : SaveChangesInterceptor
     {
         public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
@@ -1677,7 +1558,6 @@ public class ExistingInventoryImportServiceTests
         }
     }
 
-    /// <summary>The panel step of the access: the state is the test's, the start is recorded.</summary>
     private sealed class StubHandoff : IChannelAccessHandoff
     {
         public ChannelAccessState State { get; set; } = ChannelAccessState.NotStarted;
@@ -1705,7 +1585,6 @@ public class ExistingInventoryImportServiceTests
         }
     }
 
-    /// <summary>The reach of a caller: the whole org of <paramref name="orgId"/>, or only the properties it was given; nothing in another org.</summary>
     private sealed class FakeScope(Guid orgId, bool orgWide = true, params Guid[] reachable) : IHostScopeResolver
     {
         public Task<HostScope?> ResolveAsync(string userId, IReadOnlySet<string> jwtRoles, Guid org, CancellationToken cancellationToken = default) =>
@@ -1721,13 +1600,11 @@ public class ExistingInventoryImportServiceTests
             Task.FromResult(org == orgId && (orgWide || (propertyId is { } id && reachable.Contains(id))));
     }
 
-    /// <summary>The org of the caller of a controller: always the same one.</summary>
     private sealed class FixedOrg(Guid orgId) : Casazen.Web.Infrastructure.IOrgContextResolver
     {
         public Task<Guid?> GetOrProvisionOrgIdAsync(CancellationToken cancellationToken = default) => Task.FromResult<Guid?>(orgId);
     }
 
-    /// <summary>The tokens of a stub: a fixed one for every org and for the partner.</summary>
     private sealed class StubTokens : IOctorateTokenService
     {
         public Task<string> GetAccessTokenAsync(Guid orgId, CancellationToken ct) => Task.FromResult("stub-access");
@@ -1746,7 +1623,6 @@ public class ExistingInventoryImportServiceTests
             throw new InvalidOperationException("No partner-level call is made in these tests.");
     }
 
-    /// <summary>Answers every call with the same body and keeps the method, the path and the query of each request.</summary>
     private sealed class RecordingHandler : HttpMessageHandler
     {
         public string Body { get; set; } = "[]";
@@ -1763,7 +1639,6 @@ public class ExistingInventoryImportServiceTests
         }
     }
 
-    /// <summary>Keeps every formatted line and every named value a log call carried.</summary>
     private sealed class CapturingLogger<T> : ILogger<T>
     {
         public List<string> Lines { get; } = [];

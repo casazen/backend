@@ -2,10 +2,6 @@ using Casazen.Core.Search;
 
 namespace Casazen.Web.DTOs.Search;
 
-/// <summary>
-/// Answer of <c>GET /api/search</c> (UI-13a): the groups that have at least one result, in a fixed order
-/// (<see cref="SearchTypes.All"/>). A group the caller may not read is never in it, whether or not it has matching rows.
-/// </summary>
 public sealed record GlobalSearchResponse(IReadOnlyList<SearchGroupDto> Groups)
 {
     public static GlobalSearchResponse From(GlobalSearchResult result)
@@ -15,7 +11,6 @@ public sealed record GlobalSearchResponse(IReadOnlyList<SearchGroupDto> Groups)
     }
 }
 
-/// <summary>The results of one kind. <c>hasMore</c> is true when there are more than the <c>limit</c> asked for.</summary>
 public sealed record SearchGroupDto(string Type, bool HasMore, IReadOnlyList<SearchHitDto> Items)
 {
     public static SearchGroupDto From(SearchGroup group) =>

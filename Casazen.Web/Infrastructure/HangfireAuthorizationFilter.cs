@@ -2,14 +2,9 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Hangfire.Dashboard;
-using Microsoft.AspNetCore.Http;
 
 namespace Casazen.Web.Infrastructure;
 
-/// <summary>
-/// Authorization filter for Hangfire Dashboard.
-/// Allows access via <c>X-Hangfire-ApiKey</c> header or authenticated Admin role.
-/// </summary>
 public class HangfireAuthorizationFilter(IConfiguration configuration) : IDashboardAuthorizationFilter
 {
     public bool Authorize(DashboardContext context) =>

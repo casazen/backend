@@ -20,20 +20,16 @@ namespace Casazen.Core.Suppliers;
 /// </remarks>
 public static class CommissionExportCsv
 {
-    /// <summary>The content type of the file.</summary>
     public const string ContentType = "text/csv";
 
-    /// <summary>The columns, in order.</summary>
     public static IReadOnlyList<string> Columns { get; } =
     [
         "type", "date", "payment_id", "service_request_id", "supplier_org_id", "supplier_name", "supplier_vat_number",
         "payer_org_id", "payer_name", "currency", "gross_cents", "commission_percent", "commission_cents", "vat_percent", "net_cents",
     ];
 
-    /// <summary>The file name for a month: <c>commissioni-2026-10.csv</c>.</summary>
     public static string FileName(int year, int month) => $"commissioni-{year:D4}-{month:D2}.csv";
 
-    /// <summary>The CSV text of the export: the header, then one line per row, each ended by CRLF.</summary>
     public static string Write(CommissionExport export)
     {
         ArgumentNullException.ThrowIfNull(export);
@@ -67,13 +63,8 @@ public static class CommissionExportCsv
         return csv.ToString();
     }
 
-    /// <summary>A percentage with up to two decimals, with a dot, whatever the culture of the server.</summary>
     internal static string Number(decimal value) => value.ToString("0.##", CultureInfo.InvariantCulture);
 
-    /// <summary>
-    /// A text field: neutralized when a spreadsheet would read it as a formula, then quoted when it needs to be. Shared with the supplier's own
-    /// earnings export (<see cref="SupplierEarningsCsv"/>): one rule for every CSV of the money.
-    /// </summary>
     internal static string Text(string? value)
     {
         if (string.IsNullOrEmpty(value))

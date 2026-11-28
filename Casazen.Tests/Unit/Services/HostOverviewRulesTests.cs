@@ -24,8 +24,6 @@ public class HostOverviewRulesTests
         return period;
     }
 
-    // --- The free period ---------------------------------------------------------------------------------
-
     [Fact]
     public void TryCustom_BothDaysAreIncluded_AndTheNightsAreTheDaysBetween()
     {
@@ -38,15 +36,15 @@ public class HostOverviewRulesTests
     }
 
     [Theory]
-    [InlineData(2026, 1, 1, 2026, 12, 31, true)] // 365 days
-    [InlineData(2024, 1, 1, 2024, 12, 31, true)] // 366 days: a leap year
-    [InlineData(2026, 1, 1, 2027, 1, 1, true)] // 366 days with both ends included: the longest allowed
-    [InlineData(2024, 1, 1, 2025, 1, 1, false)] // 367 days
-    [InlineData(2026, 10, 11, 2026, 10, 5, false)] // the last day before the first
-    [InlineData(1999, 12, 1, 2000, 1, 31, false)] // before the supported years
-    [InlineData(2000, 1, 1, 2000, 1, 31, true)] // the first supported year
-    [InlineData(2100, 12, 1, 2100, 12, 31, true)] // the last supported year
-    [InlineData(2100, 12, 1, 2101, 1, 31, false)] // after it
+    [InlineData(2026, 1, 1, 2026, 12, 31, true)]
+    [InlineData(2024, 1, 1, 2024, 12, 31, true)]
+    [InlineData(2026, 1, 1, 2027, 1, 1, true)]
+    [InlineData(2024, 1, 1, 2025, 1, 1, false)]
+    [InlineData(2026, 10, 11, 2026, 10, 5, false)]
+    [InlineData(1999, 12, 1, 2000, 1, 31, false)]
+    [InlineData(2000, 1, 1, 2000, 1, 31, true)]
+    [InlineData(2100, 12, 1, 2100, 12, 31, true)]
+    [InlineData(2100, 12, 1, 2101, 1, 31, false)]
     public void TryCustom_AtMost366Days_InOrder_InTheSupportedYears(
         int fromYear, int fromMonth, int fromDay, int toYear, int toMonth, int toDay, bool accepted)
     {
@@ -67,12 +65,10 @@ public class HostOverviewRulesTests
         Assert.Equal((HostDashboardPeriodKind.Custom, Day(9, 28), Day(10, 19), 21), (previous.Kind, previous.From, previous.To, previous.Nights));
     }
 
-    // --- The differences the Home shows ------------------------------------------------------------------------
-
     [Theory]
     [InlineData(79, 100, 76, 100, 3.0)]
     [InlineData(50, 100, 75, 100, -25.0)]
-    [InlineData(9, 62, 5, 62, 6.5)] // 14.516% - 8.065% = 6.452 points
+    [InlineData(9, 62, 5, 62, 6.5)]
     [InlineData(1, 3, 1, 3, 0.0)]
     public void OccupancyDeltaPoints_IsTheDifferenceOfTheRatesInPoints_ToOneDecimal(
         int occupied, int available, int previousOccupied, int previousAvailable, double expected)
@@ -97,7 +93,7 @@ public class HostOverviewRulesTests
     [Theory]
     [InlineData(1100.00, 1000.00, 10.0)]
     [InlineData(900.00, 1000.00, -10.0)]
-    [InlineData(123.45, 100.00, 23.5)] // 23.45 rounds away from zero
+    [InlineData(123.45, 100.00, 23.5)]
     [InlineData(0.00, 500.00, -100.0)]
     [InlineData(600.00, 500.00, 20.0)]
     public void RevenueDeltaPercent_IsMoreOrLessThanTheEarlierPeriod_InPercentToOneDecimal(double now, double before, double expected)
@@ -108,12 +104,9 @@ public class HostOverviewRulesTests
     [Fact]
     public void RevenueDeltaPercent_AgainstNothing_IsNothing()
     {
-        // A percentage of zero says nothing: the client shows no arrow, not "infinite".
         Assert.Null(HostOverviewRules.RevenueDeltaPercent(600m, 0m));
         Assert.Null(HostOverviewRules.RevenueDeltaPercent(0m, 0m));
     }
-
-    // --- The bars of the chart ----------------------------------------------------------------------------------
 
     [Theory]
     [InlineData(1, HostOverviewSeriesUnit.Week)]
@@ -134,7 +127,6 @@ public class HostOverviewRulesTests
     [Fact]
     public void BucketsOf_AMonth_IsISOWeeksFromMonday_CutAtTheEdgesOfThePeriod()
     {
-        // 1 October 2026 is a Thursday: the first bar is four nights, the last six; the others are whole weeks.
         var october = HostDashboardPeriod.ForMonth(new DateOnly(2026, 10, 1));
 
         var buckets = HostOverviewSeriesRules.BucketsOf(october, HostOverviewSeriesRules.UnitFor(october));
@@ -153,7 +145,6 @@ public class HostOverviewRulesTests
     [Fact]
     public void BucketsOf_AWeekAcrossTheEndOfTheYear_TakesTheISOYearOfItsWeek()
     {
-        // 29 December 2025 is a Monday and in week 1 of 2026 (ISO): the label says so, not the calendar year of the day.
         var period = Custom(Day(12, 29, 2025), Day(1, 4));
 
         var buckets = HostOverviewSeriesRules.BucketsOf(period, HostOverviewSeriesUnit.Week);
@@ -175,12 +166,12 @@ public class HostOverviewRulesTests
     }
 
     [Theory]
-    [InlineData(2026, 10, 1, 2026, 10, 31)] // a month
-    [InlineData(2026, 10, 19, 2026, 11, 8)] // across the daylight saving change of 25 October and the end of the month
-    [InlineData(2026, 3, 22, 2026, 4, 5)] // across the change of 29 March
-    [InlineData(2025, 12, 20, 2026, 1, 20)] // across the end of the year
-    [InlineData(2026, 10, 25, 2026, 10, 25)] // the day the clocks go back, alone
-    [InlineData(2026, 1, 1, 2026, 12, 31)] // a year, by month
+    [InlineData(2026, 10, 1, 2026, 10, 31)]
+    [InlineData(2026, 10, 19, 2026, 11, 8)]
+    [InlineData(2026, 3, 22, 2026, 4, 5)]
+    [InlineData(2025, 12, 20, 2026, 1, 20)]
+    [InlineData(2026, 10, 25, 2026, 10, 25)]
+    [InlineData(2026, 1, 1, 2026, 12, 31)]
     public void BucketsOf_CoverThePeriodExactly_InOrder_WithNoGapAndNoOverlap(
         int fromYear, int fromMonth, int fromDay, int toYear, int toMonth, int toDay)
     {
@@ -199,25 +190,20 @@ public class HostOverviewRulesTests
         }
     }
 
-    // --- The revenue of each bar ----------------------------------------------------------------------------
-
     [Fact]
     public void Distribute_EachNightIsPaidWhereItFalls_ProRataOfTheBasePrice()
     {
-        // 500 for the five nights of 23 to 28 October, over the week that ends on the 26th and the one that starts on it.
         var windows = new[] { (Day(10, 19), Day(10, 26)), (Day(10, 26), Day(11, 2)) };
         var stays = new[] { Stay(500m, Day(10, 23), Day(10, 28)) };
 
         var amounts = HostOverviewSeriesRules.Distribute(stays, windows, total: 500m);
 
-        // The nights of the 23rd, 24th and 25th (the night the clocks go back among them) and the 26th and 27th.
         Assert.Equal([300m, 200m], amounts);
     }
 
     [Fact]
     public void Distribute_TheCentsAddUpToTheTotal_WhateverTheRounding()
     {
-        // 100 over three nights, one per bar: 33.33 + 33.34 + 33.33, not 33.33 x 3 = 99.99.
         var windows = new[] { (Day(10, 5), Day(10, 6)), (Day(10, 6), Day(10, 7)), (Day(10, 7), Day(10, 8)) };
         var stays = new[] { Stay(100m, Day(10, 5), Day(10, 8)) };
 
@@ -225,14 +211,12 @@ public class HostOverviewRulesTests
 
         Assert.Equal(100m, amounts.Sum());
         Assert.Equal([33.33m, 33.34m, 33.33m], amounts);
-        // No bar is off its share by a cent or more.
         Assert.All(amounts, amount => Assert.InRange(Math.Abs(amount - 100m / 3m), 0m, 0.01m));
     }
 
     [Fact]
     public void Distribute_NoBarIsEverNegative_EvenWhenTheLastOnesAreEmptyAndTheEarlierOnesRoundUp()
     {
-        // 100.05 over two nights is 50.025 each, which rounds up to 50.03: a remainder handed to an empty last bar would go below zero.
         var windows = new[]
         {
             (Day(10, 5), Day(10, 6)), (Day(10, 6), Day(10, 7)), (Day(10, 7), Day(10, 14)), (Day(10, 14), Day(10, 21)), (Day(10, 21), Day(10, 28)),
@@ -268,16 +252,14 @@ public class HostOverviewRulesTests
         Assert.True(revenue > 0m);
     }
 
-    // --- The whole series -----------------------------------------------------------------------------------
-
     [Fact]
     public void Build_TheBarsAddUpToTheRevenue_ThePreviousBarsToThePreviousRevenue_AndTheFutureOnesAreForecasts()
     {
         var october = HostDashboardPeriod.ForMonth(new DateOnly(2026, 10, 1));
         var stays = new[]
         {
-            Stay(300m, Day(10, 10), Day(10, 13)), // the 10th and the 11th in the week from the 5th, the 12th in the next
-            Stay(300m, Day(10, 8), Day(10, 11)), // all in the week from the 5th
+            Stay(300m, Day(10, 10), Day(10, 13)),
+            Stay(300m, Day(10, 8), Day(10, 11)),
         };
         var previousStays = new[] { Stay(500m, Day(9, 20), Day(9, 25)) };
         var revenue = StayKpiRules.RevenueOf(stays, october.From, october.To);
@@ -292,17 +274,14 @@ public class HostOverviewRulesTests
             [("2026-W40", 0m), ("2026-W41", 500m), ("2026-W42", 100m), ("2026-W43", 0m), ("2026-W44", 0m)],
             series.Buckets.Select(b => (b.Label, b.Amount)));
         Assert.Equal(revenue, series.Buckets.Sum(b => b.Amount));
-        // The same days of the period before: 31 days earlier, so 20 to 24 September fall in the bar of the 19th to the 25th.
         Assert.Equal([0m, 0m, 0m, 500m, 0m], series.Buckets.Select(b => b.PreviousAmount));
         Assert.Equal(previousRevenue, series.Buckets.Sum(b => b.PreviousAmount));
-        // Today is the 9th: the bars from the 12th on are forecasts, the one it falls in is not.
         Assert.Equal([false, false, true, true, true], series.Buckets.Select(b => b.IsFuture));
     }
 
     [Fact]
     public void Build_TheBarThatStartsTodayInRomeIsNotAForecast_EvenWhenTheClockOfTheServerIsStillYesterday()
     {
-        // 23:30 UTC of the 25th is 00:30 of the 26th in Rome (the clocks went back that night): today is the 26th.
         var today = RomeCalendar.TodayAt(new DateTimeOffset(2026, 10, 25, 23, 30, 0, TimeSpan.Zero));
         var period = Custom(Day(10, 19), Day(11, 8));
 
@@ -326,8 +305,6 @@ public class HostOverviewRulesTests
         Assert.Equal(HostOverviewSeriesUnit.Month, series.Unit);
         Assert.Equal(["2026-07", "2026-08", "2026-09"], series.Buckets.Select(b => b.Label));
         Assert.Equal(revenue, series.Buckets.Sum(b => b.Amount));
-        // July keeps its nights of the first stay (28 to 31: 4 of 7 = 571.43), August the other 3 (428.57); September the 3 nights
-        // of the second stay it has (3 of 7 of 900), the last cents falling on the last bar: 385.71, not 385.72.
         Assert.Equal([571.43m, 428.57m, 385.71m], series.Buckets.Select(b => b.Amount));
         Assert.All(series.Buckets, b => Assert.Equal(0m, b.PreviousAmount));
         Assert.All(series.Buckets, b => Assert.False(b.IsFuture));

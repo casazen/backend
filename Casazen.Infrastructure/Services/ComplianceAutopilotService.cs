@@ -39,7 +39,6 @@ public sealed class ComplianceAutopilotService(
     TimeProvider? timeProvider = null,
     AgencyDomainLinks? agencyLinks = null) : IComplianceAutopilotService
 {
-    /// <summary>One run at a time per org: a double click, two tabs, the app and the web.</summary>
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> Gates = new();
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -91,7 +90,6 @@ public sealed class ComplianceAutopilotService(
 
         var outcomes = new List<AutopilotOutcome>();
 
-        // What the host saw as to do and is no longer: said, not silently dropped.
         if (wanted is not null)
         {
             var done = ready.Select(i => i.Key).ToHashSet(StringComparer.Ordinal);
@@ -100,7 +98,6 @@ public sealed class ComplianceAutopilotService(
                 .Select(i => Outcome(i, AutopilotOutcomeStatus.Skipped, AutopilotOutcomeCodes.NoLongerNeeded)));
         }
 
-        // The guests first: their link works only while the stay is open, and nothing here closes a stay that is waiting for them.
         var wording = await WriteChatTextsAsync(scope.OrgId, caller, requests, snapshot, cancellationToken);
         foreach (var item in requests)
         {
@@ -126,9 +123,6 @@ public sealed class ComplianceAutopilotService(
         return new AutopilotRunResult(outcomes, wording.AiUsed, wording.AiReason, beyondLimit);
     }
 
-    // ───────────────────────────── the guests ─────────────────────────────
-
-    /// <summary>One call of the AI for all the chat messages of the run (a message per language and reminder), the plain texts when it is not there.</summary>
     private async Task<AutopilotWording> WriteChatTextsAsync(
         Guid orgId,
         AutopilotCaller caller,
@@ -154,12 +148,9 @@ public sealed class ComplianceAutopilotService(
         AutopilotWording wording,
         CancellationToken cancellationToken)
     {
-        // No public address of the web app (only a development host lacks it): no link can be built, and a link issued is a link lost.
         if (!links.IsConfigured)
             return Outcome(item, AutopilotOutcomeStatus.Failed, AutopilotOutcomeCodes.Failed, errorCode: GuestCheckInLinkEmailErrors.LinkUnavailable);
 
-        // E40/F01/US01/T03: the link of the chat draft is on the agency's own domain when its guest area is served there. Read before the link is
-        // issued, so nothing waits between the new link and what carries it.
         var chatLinks = item.Channels.Contains(AutopilotChannels.Chat)
             ? await agencyLinks.ForOrgOrPlatformAsync(links, booking.OrgId, cancellationToken)
             : null;
@@ -167,7 +158,6 @@ public sealed class ComplianceAutopilotService(
         IssuedCheckInLink link;
         try
         {
-            // The link of an earlier request stops working, as for the host's own «Invia link»: only the last one is the guest's.
             link = await checkIn.IssueLinkAsync(booking.Id, booking.OrgId);
         }
         catch (DomainException ex)
@@ -216,13 +206,10 @@ public sealed class ComplianceAutopilotService(
             written.AiWritten);
     }
 
-    // ───────────────────────────── the departures ─────────────────────────────
-
     private async Task<AutopilotOutcome> CloseDepartureAsync(AutopilotItem item, CancellationToken cancellationToken)
     {
         try
         {
-            // The check-out of POST /check-out: the departure only, nothing declared for the property, the tax or the cleaning.
             await stayLifecycle.CheckOutAsync(item.BookingId, new StayCheckOut(RegisterArrival: false), cancellationToken);
             return Outcome(item, AutopilotOutcomeStatus.Done, AutopilotOutcomeCodes.DepartureClosed);
         }
@@ -239,8 +226,6 @@ public sealed class ComplianceAutopilotService(
             return Outcome(item, AutopilotOutcomeStatus.Skipped, AutopilotOutcomeCodes.NoLongerNeeded);
         }
     }
-
-    // ───────────────────────────── the plan ─────────────────────────────
 
     private async Task<Snapshot> SnapshotAsync(HostScope scope, AutopilotCaller caller, CancellationToken cancellationToken)
     {
@@ -321,7 +306,6 @@ public sealed class ComplianceAutopilotService(
 
         foreach (var (cockpit, failed) in alloggiatiItems)
         {
-            // The stay whose guests are asked for their data is already one item: this would say the same thing twice.
             if (!TryBooking(cockpit, bookings, out var booking) || asking.ContainsKey(booking.Id))
                 continue;
 
@@ -380,7 +364,6 @@ public sealed class ComplianceAutopilotService(
         }
     }
 
-    /// <summary>The links issued for each stay: how many, when the last one, and whether the guest has submitted. The sessions of other stays are not read.</summary>
     private async Task<Dictionary<Guid, StayHistory>> HistoryAsync(Guid orgId, IReadOnlyCollection<Guid> bookingIds, CancellationToken cancellationToken)
     {
         var sessions = await db.GuestCheckInSessions
@@ -399,12 +382,6 @@ public sealed class ComplianceAutopilotService(
                     g.Any(s => s.Status is GuestCheckInSessionStatus.Completo or GuestCheckInSessionStatus.AlloggiatiInviato)));
     }
 
-    // ───────────────────────────── helpers ─────────────────────────────
-
-    /// <summary>
-    /// One item is its own unit: what goes wrong in it (a rule that refuses, a database error) is its failure, not the run's. A failed
-    /// save leaves the change tracker dirty and the next item would save it again, so it is cleared.
-    /// </summary>
     private async Task<AutopilotOutcome> GuardedAsync(AutopilotItem item, Func<Task<AutopilotOutcome>> action)
     {
         try
@@ -433,7 +410,6 @@ public sealed class ComplianceAutopilotService(
         string? errorCode = null) =>
         new(item.Key, item.Topic, item.BookingId, item.GuestName, item.PropertyName, status, code, emailStatus, emailError, chat, errorCode);
 
-    /// <summary>What the plan keeps for a run: the bookings it was made from and how often each stay was asked.</summary>
     private sealed record Snapshot(
         AutopilotPlan Plan,
         IReadOnlyDictionary<Guid, Booking> Bookings,

@@ -38,11 +38,9 @@ public static class RoutineEventMap
             [TimeTrigger.Weekly] = RoutineEventType.WeeklyRecurrence,
         };
 
-    /// <summary>The routine event type of a domain event that is not a time trigger; <c>null</c> when it starts no routine.</summary>
     public static RoutineEventType? Of(DomainEventType type) =>
         DomainEvents.TryGetValue(type, out var routineEventType) ? routineEventType : null;
 
-    /// <summary>The routine event type of the kind of a time trigger (<see cref="TimeTrigger"/>); <c>null</c> for an unknown kind.</summary>
     public static RoutineEventType? OfTimeTriggerKind(string? kind) =>
         kind is not null && TimeTriggerKinds.TryGetValue(kind, out var routineEventType) ? routineEventType : null;
 }

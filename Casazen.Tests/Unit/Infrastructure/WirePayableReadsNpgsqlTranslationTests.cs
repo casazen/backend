@@ -17,10 +17,8 @@ public class WirePayableReadsNpgsqlTranslationTests
     private static readonly Guid OrgId = Guid.Parse("7a3c1d52-9f0e-4b8a-8d65-2c4e1f0b9a11");
     private static readonly Guid BatchId = Guid.Parse("0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0");
 
-    // The org as a parameter of the statement (EF names it @orgId or @__orgId_0 by its version), never a literal and never the global filter alone.
     private static readonly Regex OrgPredicate = new(@"""OrgId"" = @(__)?orgId", RegexOptions.Compiled);
 
-    /// <summary>The batch the first statement of the read selects: one row, with no state of download or payment.</summary>
     private static DataTable? OneBatch(string sql)
     {
         if (!sql.Contains("FROM \"WireBatches\"", StringComparison.Ordinal))
@@ -56,7 +54,6 @@ public class WirePayableReadsNpgsqlTranslationTests
         Assert.Contains("\"PublishedAt\" IS NOT NULL", sql, StringComparison.Ordinal);
         Assert.Contains("LIMIT", sql, StringComparison.OrdinalIgnoreCase);
 
-        // The payouts, their versions, their owners and the payouts of the batches: four tables, the org on each of them.
         Assert.True(OrgPredicate.Matches(sql).Count >= 4, $"the org is not asked of every table:{Environment.NewLine}{sql}");
     }
 
@@ -69,7 +66,6 @@ public class WirePayableReadsNpgsqlTranslationTests
 
         await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.GetBatchPayoutsAsync(OrgId, BatchId));
 
-        // The batch, then its payouts: the probe must have got as far as the second statement, or it proved nothing about it.
         Assert.True(statements.Count == 2, $"{statements.Count} of the 2 reads were reached:{Environment.NewLine}{string.Join(Environment.NewLine, statements)}");
         Assert.True(OrgPredicate.IsMatch(statements[0]), $"the batch is not read for its org:{Environment.NewLine}{statements[0]}");
         Assert.DoesNotContain("XmlContent", statements[0], StringComparison.Ordinal);

@@ -41,16 +41,12 @@ public class CrmProfileSyncJob(
     public const string RecurringJobId = "crm-profile-sync";
     public const string Cron = "*/15 * * * *";
 
-    /// <summary>The bookings changed within this time are synced by each run.</summary>
     public static readonly TimeSpan RecentWindow = TimeSpan.FromHours(2);
 
-    /// <summary>Guests with no profile linked by one run.</summary>
     public const int BackfillChunkSize = 200;
 
-    /// <summary>A run starts no new booking or guest after this time, so it ends before the next run is due.</summary>
     public static readonly TimeSpan RunBudget = TimeSpan.FromMinutes(10);
 
-    // The next run comes in a quarter of an hour and does the same: a failed run is not retried.
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
     public async Task ExecuteAsync(CancellationToken cancellationToken)
     {
@@ -63,7 +59,6 @@ public class CrmProfileSyncJob(
         var started = timeProvider.GetTimestamp();
         var counts = new Counts();
 
-        // (a) The bookings changed lately, oldest change first.
         var since = timeProvider.GetUtcNow().UtcDateTime - RecentWindow;
         var recent = await db.Bookings
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -93,7 +88,6 @@ public class CrmProfileSyncJob(
                 cancellationToken);
         }
 
-        // (b) The guests with no profile, chosen after (a) so the ones it just linked are not read again.
         var unlinked = await db.Guests
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -133,7 +127,6 @@ public class CrmProfileSyncJob(
             unlinked.Count == BackfillChunkSize ? ", more guests to link" : string.Empty);
     }
 
-    /// <summary>One booking or guest: a failure is logged with its ids and the kind of error, and the run goes on to the next.</summary>
     private async Task RunAsync(
         string kind,
         Guid orgId,

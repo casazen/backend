@@ -11,7 +11,6 @@ namespace Casazen.Web.DTOs.Seo;
 /// </summary>
 public sealed class SeoEventRequestDto
 {
-    /// <summary><c>cta_click</c> or <c>signup_start</c>; another name is refused by the service (422 <c>seo_event_unknown</c>).</summary>
     [Required(ErrorMessage = "SeoEventUnknown")]
     [StringLength(20, ErrorMessage = SignupAttributionRules.TooLongKey)]
     public string Event { get; set; } = string.Empty;
@@ -38,7 +37,6 @@ public sealed class SeoEventRequestDto
     [RegularExpression(SignupAttributionRules.UtmPattern, ErrorMessage = SignupAttributionRules.InvalidCharactersKey)]
     public string? UtmCampaign { get; set; }
 
-    /// <summary>Host of the referring site (<c>www.google.com</c>), never the full URL.</summary>
     [Display(Name = "referrerHost")]
     [StringLength(SignupAttributionRules.MaxReferrerHostLength, ErrorMessage = SignupAttributionRules.TooLongKey)]
     [RegularExpression(SignupAttributionRules.ReferrerHostPattern, ErrorMessage = SignupAttributionRules.InvalidCharactersKey)]

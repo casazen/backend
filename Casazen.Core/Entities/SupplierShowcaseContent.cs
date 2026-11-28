@@ -25,44 +25,28 @@ namespace Casazen.Core.Entities;
 [Table("SupplierShowcaseContents")]
 public class SupplierShowcaseContent
 {
-    /// <summary>The supplier org (<see cref="SupplierProfile.OrgId"/>): the key, and the foreign key.</summary>
     [Key]
     public Guid OrgId { get; set; }
 
-    /// <summary>Format of the three documents (<see cref="ShowcaseContentLimits.SchemaVersion"/>); a new format gets a new number.</summary>
     public int SchemaVersion { get; set; } = ShowcaseContentLimits.SchemaVersion;
 
-    /// <summary>The draft the supplier is writing (the editor autosaves into it); never shown to customers.</summary>
     [Column(TypeName = "jsonb")]
     public string DraftJson { get; set; } = "{}";
 
-    /// <summary>The version the customers read; <c>null</c> until the first publication.</summary>
     [Column(TypeName = "jsonb")]
     public string? PublishedJson { get; set; }
 
-    /// <summary>
-    /// The version published before the last publication, kept for "Annulla" while <see cref="UndoUntil"/> is in the future;
-    /// <c>null</c> when the last publication was the first (undoing it unpublishes) or when no undo is possible.
-    /// </summary>
     [Column(TypeName = "jsonb")]
     public string? PreviousPublishedJson { get; set; }
 
-    /// <summary>When <see cref="PreviousPublishedJson"/> was published (restored with it).</summary>
     public DateTime? PreviousPublishedAt { get; set; }
 
-    /// <summary>
-    /// Until when the last publication can be undone; <c>null</c> when it cannot. Set by a publication, cleared by any other change
-    /// (a save, a discard, a pause) and once the time has passed.
-    /// </summary>
     public DateTime? UndoUntil { get; set; }
 
-    /// <summary>The last save of the draft (UTC).</summary>
     public DateTime SavedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>The last publication (UTC); <c>null</c> while nothing is published.</summary>
     public DateTime? PublishedAt { get; set; }
 
-    /// <summary>When the supplier paused the showcase (UTC); <c>null</c> while it is not paused.</summary>
     public DateTime? PausedAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

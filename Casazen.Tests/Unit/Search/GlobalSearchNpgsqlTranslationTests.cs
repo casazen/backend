@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.RegularExpressions;
 using Casazen.Core.Authorization;
 using Casazen.Core.Search;
 using Casazen.Infrastructure.Search;
@@ -54,7 +53,6 @@ public class GlobalSearchNpgsqlTranslationTests(ITestOutputHelper output)
     {
         var statements = await RunAsync(Request("rossi mar", EverythingOf(scope)));
 
-        // properties, bookings by guest, guests, leases, host requests, suppliers
         Assert.Equal(6, statements.Count);
     }
 

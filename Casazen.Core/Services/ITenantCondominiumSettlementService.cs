@@ -21,10 +21,6 @@ public interface ITenantCondominiumSettlementService
     Task<TenantSettlementView> PostAsync(
         HostScope scope, Guid leaseId, Guid settlementId, string userId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// A new confirmed consuntivo reverses a settlement already posted for that year and posts the replacement.
-    /// Calling it again for the same consuntivo does not post a second one. A year with no posted settlement is left alone.
-    /// </summary>
     Task<IReadOnlyList<TenantSettlementView>> ReplacePostedForPeriodAsync(
         HostScope scope, Guid periodId, string userId, CancellationToken cancellationToken = default);
 

@@ -24,17 +24,13 @@ public class SupplierWorkingHours
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The supplier org the hours belong to (<see cref="SupplierProfile.OrgId"/>).</summary>
     [Required]
     public Guid OrgId { get; set; }
 
-    /// <summary>Day of the week, stored as the number of <see cref="DayOfWeek"/> (Sunday is 0). The API shows the name.</summary>
     public DayOfWeek Weekday { get; set; }
 
-    /// <summary>Minutes after midnight (Rome) at which the band starts: 0 to 1439.</summary>
     public int StartMinute { get; set; }
 
-    /// <summary>Minutes after midnight (Rome) at which the band ends, after <see cref="StartMinute"/>: up to 1440 (midnight).</summary>
     public int EndMinute { get; set; }
 
     [ForeignKey(nameof(OrgId))]

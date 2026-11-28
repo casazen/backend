@@ -77,7 +77,6 @@ public sealed class AssistantMessageHandler(
         logger.LogInformation("Message {MessageId} of conversation {ThreadKey} (org {OrgId}) goes to the assistant (job {JobId})", messageId, threadKey, orgId, jobId);
     }
 
-    /// <summary>The conversation of the payload, when it is the one its source says: <c>ota:</c> for a channel, <c>direct:</c> for the guest area.</summary>
     private static MessageThreadKey? KeyOf(DomainEvent domainEvent)
     {
         GuestMessageReceivedPayload? payload;

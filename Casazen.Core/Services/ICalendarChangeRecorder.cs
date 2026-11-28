@@ -54,15 +54,11 @@ public interface ICalendarChangeRecorder
         IReadOnlyDictionary<Guid, CalendarSendOutcome>? resolved = null);
 }
 
-/// <summary>What the lookup of where a property books says about sending its change (<see cref="ICalendarChangeRecorder.ResolveAsync"/>).</summary>
 public enum CalendarSendOutcome
 {
-    /// <summary>No chunk: the property is not on the channel manager (not connected, a mapping that is not confirmed, or the connector off).</summary>
     NotMirrored = 0,
 
-    /// <summary>Chunks to send.</summary>
     Send = 1,
 
-    /// <summary>Chunks that failed at once: the mapping is confirmed and the room of it is not chosen.</summary>
     RoomNotChosen = 2,
 }

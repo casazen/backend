@@ -12,7 +12,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>The statement versions, their approval and publication, the close, the legal hold and the evidence.</summary>
 public sealed partial class OwnerAccountingService
 {
     private static readonly JsonSerializerOptions SnapshotJson = new(JsonSerializerDefaults.Web)
@@ -26,7 +25,6 @@ public sealed partial class OwnerAccountingService
         return outcome.Version;
     }
 
-    /// <summary>A version of the owner's month, and whether this call made it (<c>false</c>: the version in force was already the picture of the ledger).</summary>
     private sealed record GenerateOutcome(OwnerStatementVersion Version, bool Created);
 
     /// <summary>
@@ -58,9 +56,6 @@ public sealed partial class OwnerAccountingService
         var ofMonth = entries.Where(e => e.PeriodYear == year && e.PeriodMonth == month).ToList();
         var hash = Hash(ofMonth);
 
-        // A balance is money in a currency, not a bare number. A month without entries retains the currency of the
-        // outstanding balance; changing currency while another currency is still owed needs an explicit conversion. A line for information only (the commission of a
-        // portal the agency bears, FIX/BE-V2-NO-RECHARGE) is in no balance: it is in the lines of the version (their hash) and in none of its amounts.
         var priorBalances = entries.Where(e => OwnerLedgerBalance.Counts(e.EntryType) && new Period(e.PeriodYear, e.PeriodMonth).IsBefore(year, month))
             .GroupBy(e => e.StatementCurrency, StringComparer.Ordinal)
             .Select(group => new { Currency = group.Key, Amount = group.Sum(e => e.Amount) })
@@ -72,8 +67,6 @@ public sealed partial class OwnerAccountingService
         if (priorBalances.Any(balance => balance.Currency != currency))
             throw new DomainConflictException(OwnerAccountingErrors.StatementCurrencyConflict, "OwnerStatementCurrencyConflict");
 
-        // The opening balance is what the earlier months say now: a correction posted in an earlier month changes it, and a version cut before it is no longer
-        // the picture of the ledger even though the lines of its own month are the same.
         var opening = priorBalances.Sum(balance => balance.Amount);
         var sameLines = previous is not null && !row.IsDirty && previous.Currency == currency
             && string.Equals(previous.EntriesSha256, hash, StringComparison.Ordinal) && previous.OpeningBalance == opening;
@@ -91,8 +84,6 @@ public sealed partial class OwnerAccountingService
         if (closing < 0m)
             issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.NegativeBalance, ownerId, Blocking: false));
 
-        // The statement flag (E18/F01/US03/T01, ⚖ I8, behind Features:TaxReportingExports): an owner past the limit of units of a private person is presumed a business. It
-        // never blocks the version: the statement is right, the tax treatment of the owner is what the agency looks at. The units are those of the last day of the month.
         if (taxChecks is { WarningsEnabled: true }
             && (await taxChecks.CheckUnitsAsync(orgId, [ownerId], period.Last, ct)).TryGetValue(ownerId, out var units)
             && units.PresumedBusiness)
@@ -100,8 +91,6 @@ public sealed partial class OwnerAccountingService
             issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.ShortLetBusinessPresumed, ownerId, Blocking: false));
         }
 
-        // A draft or flagged version made of these very lines, with these very issues, is what a new version would be: the bulk generation leaves it (running it twice
-        // changes nothing more).
         if (skipWhenCurrent && sameLines && previous is not null && SameIssues(previous, issues))
             return new GenerateOutcome(previous, false);
 
@@ -118,7 +107,6 @@ public sealed partial class OwnerAccountingService
             OpeningBalance = opening,
             Revenue = SumOf(ofMonth, OwnerLedgerEntryType.BookingRevenue),
 
-            // The commissions the owner bears: the ones the agency bears (ChannelFeeBorneByAgency) are for information only, in no column.
             ChannelFees = SumOf(ofMonth, OwnerLedgerEntryType.ChannelFee),
             // The commission of the agency with the VAT its owner invoice added on top (E14/F01/US01/T01): the section of the statement that names the invoice.
             Commission = SumOf(ofMonth, OwnerLedgerEntryType.AgencyCommission, OwnerLedgerEntryType.AgencyVat),
@@ -203,7 +191,6 @@ public sealed partial class OwnerAccountingService
         version.PublishedAt = time.GetUtcNow().UtcDateTime;
         version.PublishedByUserId = userId;
 
-        // The PDF the owner downloads is made now, from the same lines, and stored with the version in the same save (E13/F01/US02/T01): one file, never made again.
         var stored = statementFiles is null ? StoredStatementPdf.None : await statementFiles.StorePublishedPdfAsync(version, entries, userId, ct);
         try
         {
@@ -235,7 +222,6 @@ public sealed partial class OwnerAccountingService
         var period = Period.Of(year, month);
         await EnsureOwnerAsync(orgId, ownerId, ct);
 
-        // A month is closed once it is over: closing it earlier would leave every payment and charge that comes after the close out of the owner's account.
         if (period.Last >= time.TodayInRomeAsDateOnly())
             throw new DomainConflictException(OwnerAccountingErrors.PeriodNotEnded, "OwnerPeriodNotEnded");
 
@@ -257,8 +243,6 @@ public sealed partial class OwnerAccountingService
             throw new DomainRuleException(OwnerAccountingErrors.VersionNotApproved, "OwnerStatementNotApproved");
         await EnsureCleanAsync(version, ct);
 
-        // Nothing the sources say may be missing from the ledger: a payment that came after the cut-off and was never posted, a gap of the shares, an exchange rate
-        // that is missing, an owner whose profile cannot be used. The readiness the version was generated with is read again now.
         var plan = await PlanAsync(orgId, period, ct);
         var blocking = LedgerIssues(plan, await LiveEntriesAsync(orgId, period, ct), ownerId)
             .Where(i => i.Blocking)
@@ -274,9 +258,6 @@ public sealed partial class OwnerAccountingService
             };
         }
 
-        // The approved closing balance against what settled it, in the currency of the version: the confirmed payouts of the month's versions (their gross: the
-        // net transferred plus the withholding kept, E06/F05/US02/T03) or, when the month has none, the wires marked paid for the month's statements. A month
-        // settled with payouts is settled by them (PlanAsync leaves its wires out), so one transfer is counted once.
         var versionIds = await db.OwnerStatementVersions.AsNoTracking()
             .Where(v => v.OrgId == orgId && v.PropertyOwnerId == ownerId && v.PeriodYear == year && v.PeriodMonth == month)
             .Select(v => v.Id)
@@ -311,7 +292,6 @@ public sealed partial class OwnerAccountingService
             row.WaivedAt = now;
         }
 
-        // The retention follows the approved rule set of the owner (the version could not be approved without one).
         var resolution = await fiscal.ResolveAsync(orgId, ownerId, period.Last, ct);
         var years = OwnerRetention.YearsFor(resolution.Policy.Jurisdiction, resolution.Parameters.RetentionYears);
         row.Status = OwnerClosePeriodStatus.Closed;
@@ -388,17 +368,12 @@ public sealed partial class OwnerAccountingService
         return new OwnerAccountingEvidence(ownerId, year, month, row, versions, entries, charges);
     }
 
-    /// <summary>The lines a version was made of: its owner's lines of the month posted up to its cut-off.</summary>
     private async Task<List<OwnerLedgerEntry>> EntriesOfAsync(OwnerStatementVersion version, CancellationToken ct) =>
         (await LinesOf(db.OwnerLedgerEntries.AsNoTracking(), version).ToListAsync(ct))
         .OrderBy(e => e.PostedAt)
         .ThenBy(e => e.Id)
         .ToList();
 
-    /// <summary>
-    /// The ledger lines of a version: its owner's lines of the month posted up to its cut-off, the one definition of what a version is made of (its hash, its published file and
-    /// its PDF and CSV read the lines through it).
-    /// </summary>
     internal static IQueryable<OwnerLedgerEntry> LinesOf(IQueryable<OwnerLedgerEntry> entries, OwnerStatementVersion version)
     {
         return entries.Where(e => e.OrgId == version.OrgId && e.PropertyOwnerId == version.PropertyOwnerId && e.PeriodYear == version.PeriodYear
@@ -431,7 +406,6 @@ public sealed partial class OwnerAccountingService
         }
     }
 
-    /// <summary>A version is acted on only while it is the picture of the ledger: the month is not dirty and its lines still hash to it.</summary>
     private async Task EnsureCleanAsync(OwnerStatementVersion version, CancellationToken ct)
     {
         var dirty = await db.OwnerClosePeriods.AsNoTracking().AnyAsync(
@@ -450,8 +424,6 @@ public sealed partial class OwnerAccountingService
         if (entries.Any(entry => entry.StatementCurrency != version.Currency))
             throw new DomainConflictException(OwnerAccountingErrors.StatementCurrencyConflict, "OwnerStatementCurrencyConflict");
 
-        // The balance carried in from the earlier months is part of the picture: a line posted there after the cut-off makes this version stale too. A line for information
-        // only is in no balance.
         var priorBalances = await db.OwnerLedgerEntries.AsNoTracking()
             .CountingInBalance()
             .Where(e => e.OrgId == version.OrgId && e.PropertyOwnerId == version.PropertyOwnerId
@@ -469,7 +441,6 @@ public sealed partial class OwnerAccountingService
     private static decimal SumOf(IEnumerable<OwnerLedgerEntry> entries, params OwnerLedgerEntryType[] types) =>
         entries.Where(e => types.Contains(e.EntryType)).Sum(e => e.Amount);
 
-    /// <summary>The issues recorded on a version at its generation; <c>null</c> when the record cannot be read.</summary>
     private static List<OwnerReadinessIssue>? IssuesOf(OwnerStatementVersion version)
     {
         if (string.IsNullOrEmpty(version.IssuesJson))
@@ -485,11 +456,9 @@ public sealed partial class OwnerAccountingService
         }
     }
 
-    /// <summary>The codes of the blocking issues a version was generated with, sorted: why a flagged version is flagged.</summary>
     private static List<string> BlockingCodesOf(OwnerStatementVersion version) =>
         IssuesOf(version)?.Where(i => i.Blocking).Select(i => i.Code).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList() ?? [];
 
-    /// <summary>Whether the issues recorded on a version are the ones the month has now (same codes about the same owners, properties and sources).</summary>
     private static bool SameIssues(OwnerStatementVersion version, IReadOnlyList<OwnerReadinessIssue> current) =>
         IssuesOf(version) is { } recorded && IssueKeys(recorded).SequenceEqual(IssueKeys(current), StringComparer.Ordinal);
 
@@ -501,7 +470,6 @@ public sealed partial class OwnerAccountingService
     private static NotFoundException VersionNotFound(Guid versionId) =>
         new($"Owner statement version {versionId} was not found") { Code = OwnerAccountingErrors.VersionNotFound, MessageKey = "OwnerStatementVersionNotFound" };
 
-    /// <summary>The published file of a version: the version and its lines, as the owner received them.</summary>
     private sealed record Snapshot(
         Guid VersionId,
         Guid OwnerId,

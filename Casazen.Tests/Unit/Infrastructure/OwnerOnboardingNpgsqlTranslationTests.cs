@@ -63,8 +63,6 @@ public class OwnerOnboardingNpgsqlTranslationTests
     [MemberData(nameof(Scopes))]
     public async Task TheImportOfTheOwners_TranslatesToSql_ForTheCheckAndForThePeriods(string scopeKind)
     {
-        // The property of the file is found (the probe answers its row), so the queries that follow it are compiled too: the owners inside the
-        // reach, the keys the caller cannot see, the owners shared outside the reach, the periods and the mandates of the property.
         static DataTable? Rows(string sql)
         {
             if (!Regex.IsMatch(sql.TrimStart(), @"^SELECT\s+\w+\.""Id"",\s*\w+\.""CinCode""\s+FROM ""Properties""", RegexOptions.CultureInvariant))
@@ -86,7 +84,6 @@ public class OwnerOnboardingNpgsqlTranslationTests
         await NpgsqlTranslationProbe.AssertTranslatesAsync(
             () => Onboarding(db).ImportAsync(ScopeOf(scopeKind), "auth0|admin", "owners.csv", Encoding.UTF8.GetBytes(csv), dryRun: true, CancellationToken.None));
 
-        // The probe swallows what is not a translation failure, so say that it went as far as the queries of the owners and of the periods.
         Assert.Contains(statements, s => s.Contains("FROM \"PropertyOwners\"", StringComparison.Ordinal));
         Assert.Contains(statements, s => s.Contains("FROM \"PropertyOwnerships\"", StringComparison.Ordinal));
     }
@@ -100,7 +97,6 @@ public class OwnerOnboardingNpgsqlTranslationTests
         var claims = OwnerInvitationService.ClaimRows(db, Guid.NewGuid(), now).ToQueryString();
         var grantable = OwnerInvitationService.GrantableOwnerships(db, OrgId, Guid.NewGuid(), now).ToQueryString();
 
-        // The tenant filter of the caller (who has no org) is ignored, the soft-delete filter of the properties is not, and the org is named.
         Assert.Contains("\"IsDeleted\"", claims, StringComparison.Ordinal);
         Assert.Contains("\"OwnerUserId\"", claims, StringComparison.Ordinal);
         Assert.Contains("\"OrgId\" = @", grantable, StringComparison.Ordinal);

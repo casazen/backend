@@ -19,10 +19,6 @@ public interface IUserRepository
     Task<(User User, bool Created)> AddIfAbsentAsync(User user);
     Task UpdateAsync(User user);
 
-    /// <summary>
-    /// Removes the account. Memberships and property grants cascade; a property that named this user as responsible
-    /// is left without one. Push tokens of the account are removed too (they have no foreign key).
-    /// </summary>
     Task DeleteAsync(string id, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -47,20 +43,15 @@ public interface IUserRepository
     Task<bool> HasOtherActiveAdminAsync(string excludingUserId, CancellationToken cancellationToken = default);
 }
 
-/// <summary>Result of <see cref="IUserRepository.SetActiveAsync"/>.</summary>
 public enum UserActivationOutcome
 {
-    /// <summary>The active flag changed.</summary>
     Updated,
 
-    /// <summary>The user already had the requested state: nothing written.</summary>
     Unchanged,
 
     NotFound,
 
-    /// <summary>Deactivation refused: the admin who asked for it is no longer active.</summary>
     ActorInactive,
 
-    /// <summary>Deactivation refused: no other active user would keep the <see cref="UserRole.Admin"/> role.</summary>
     LastActiveAdmin,
 }

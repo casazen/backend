@@ -65,7 +65,6 @@ public class SeoComuneCatalogTests
         Assert.Equal("013075", (await catalog.GetPilotBySlugAsync("como"))!.Code);
         Assert.Equal("013075", (await catalog.GetPilotByRegionAndComuneSlugAsync("lombardia", "COMO"))!.Code);
         Assert.Null(await catalog.GetPilotByRegionAndComuneSlugAsync("toscana", "como"));
-        // Castro exists twice in Italy and is no pilot: a slug does not name it.
         Assert.Null(await catalog.GetPilotBySlugAsync("castro"));
         Assert.Null(await catalog.GetPilotBySlugAsync(null));
     }

@@ -16,13 +16,8 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IChannelMappingService
 {
-    /// <summary>
-    /// Reads the listings of the org's connection again, upserts their rows (the snapshot) and proposes a CasaZen property for each,
-    /// never touching a confirmed or rejected row. An ambiguous row raises one "To do". Returns the rows of the org.
-    /// </summary>
     Task<IReadOnlyList<ChannelMappingRow>> RefreshAsync(Guid orgId, CancellationToken ct);
 
-    /// <summary>The rows of the org, as stored (no call to Octorate).</summary>
     Task<IReadOnlyList<ChannelMappingRow>> ListAsync(Guid orgId, CancellationToken ct);
 
     /// <summary>
@@ -41,7 +36,6 @@ public interface IChannelMappingService
         CancellationToken ct,
         IReadOnlySet<string>? tokenRoles = null);
 
-    /// <summary>Sets the Octorate room of a confirmed listing with several rooms; a room of another accommodation is refused.</summary>
     Task SetRoomAsync(
         Guid orgId,
         string octorateAccommodationId,
@@ -50,7 +44,6 @@ public interface IChannelMappingService
         CancellationToken ct,
         IReadOnlySet<string>? tokenRoles = null);
 
-    /// <summary>Rejects the mapping of the listing: it is not one of the org's CasaZen properties, and refreshes leave it alone.</summary>
     Task RejectAsync(Guid orgId, string octorateAccommodationId, string userId, CancellationToken ct, IReadOnlySet<string>? tokenRoles = null);
 
     /// <summary>
@@ -60,10 +53,6 @@ public interface IChannelMappingService
     /// </summary>
     Task<Guid> ImportAsPropertyAsync(Guid orgId, string octorateAccommodationId, string userId, CancellationToken ct);
 
-    /// <summary>
-    /// True while the property sits in a proposed or ambiguous row (as the proposal or among the candidates), or is not known: the content
-    /// push and the booking actions refuse to write to Octorate for it.
-    /// </summary>
     Task<bool> IsWriteBlockedAsync(Guid propertyId, CancellationToken ct);
 }
 
@@ -98,15 +87,11 @@ public sealed record ChannelMappingRow(
     IReadOnlyList<ChannelMappingChannel> Channels,
     DateTime? ConfirmedAt)
 {
-    /// <summary>True for a listing with no candidate at all: what the host can import as a new CasaZen property.</summary>
     public bool OfferedForImport => Status == OctorateMappingStatus.Proposed && Property is null;
 }
 
-/// <summary>A room of a listing: the Octorate product id, its name and the guests it takes.</summary>
 public sealed record ChannelMappingRoom(string Id, string? Name, int? MaxGuests);
 
-/// <summary>A CasaZen property as the mapping screen names it.</summary>
 public sealed record ChannelMappingProperty(Guid Id, string Name, string Address, string City);
 
-/// <summary>A channel of a listing: the channel code and the id of the listing on it, exactly as Octorate gives them.</summary>
 public sealed record ChannelMappingChannel(string ChannelId, string ExternalId);

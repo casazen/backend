@@ -23,13 +23,11 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public static class VerificationHandOff
 {
-    /// <summary>The sessions that still need a decision, including hand-offs from an older link of the same booking.</summary>
     internal static IQueryable<GuestCheckInSession> Unanswered(this IQueryable<GuestCheckInSession> sessions, AppDbContext db) =>
         sessions.Where(VerificationOperatorRules.NeedsOperator)
             .Where(s => !db.BiometricVerificationLogs.Any(l =>
                 l.BookingId == s.BookingId && l.Method == VerificationMethod.Operator && l.CreatedAt >= (s.OperatorRequestedAt ?? s.CreatedAt)));
 
-    /// <summary>Before this fix an answered hand-off could leave an open To do. Hide it also on a direct read of the list or badge.</summary>
     internal static IQueryable<Guid> AwaitingReplacementPhoto(AppDbContext db, Guid orgId)
     {
         var unanswered = db.GuestCheckInSessions.Unanswered(db);
@@ -41,7 +39,6 @@ public static class VerificationHandOff
             .Select(l => l.BookingId);
     }
 
-    /// <summary>The bookings among <paramref name="bookingIds"/> that are with an operator: rejected by one, or with a hand-off still open.</summary>
     public static async Task<HashSet<Guid>> BookingsWithOperatorAsync(
         AppDbContext db,
         IReadOnlyCollection<Guid> bookingIds,
@@ -53,7 +50,6 @@ public static class VerificationHandOff
         if (bookingIds.Count == 0)
             return [];
 
-        // Rejected by an operator: the latest row of the booking is its rejection.
         var rejected = await db.BiometricVerificationLogs
             .AsNoTracking()
             .Where(l => bookingIds.Contains(l.BookingId)
@@ -94,11 +90,9 @@ public static class VerificationHandOff
         return [.. open];
     }
 
-    /// <summary>Whether the verification of <paramref name="bookingId"/> is with an operator.</summary>
     public static async Task<bool> IsWithOperatorAsync(AppDbContext db, Guid bookingId, CancellationToken ct) =>
         (await BookingsWithOperatorAsync(db, [bookingId], ct)).Count > 0;
 
-    /// <summary>Whether <paramref name="bookingId"/> has a hand-off still open: the operators were told and nobody decided yet.</summary>
     public static async Task<bool> HasOpenHandOffAsync(AppDbContext db, Guid bookingId, CancellationToken ct) =>
         (await OpenHandOffsAsync(db, [bookingId], ct)).Count > 0;
 }

@@ -23,14 +23,8 @@ public interface IHostTodayService
     Task<HostToday> GetTodayAsync(HostScope scope, HostTodayOptions options, CancellationToken cancellationToken = default);
 }
 
-/// <summary>What the caller may see of the day (SR-03).</summary>
-/// <param name="IncludePayments">
-/// Also list the confirmed stays whose payment failed (<see cref="HostTodoAction.ReviewFailedPayment"/>). Payment data: the
-/// web layer sets it only for a caller who may read payments.
-/// </param>
 public sealed record HostTodayOptions(bool IncludePayments = false);
 
-/// <summary>A count and its first items (the count covers all of them).</summary>
 public sealed record HostTodayList<T>(int Count, IReadOnlyList<T> Items);
 
 /// <summary>The day of the host.</summary>
@@ -48,11 +42,6 @@ public sealed record HostToday(
     HostTodayList<HostTodayApproval> Approvals,
     HostTodayList<HostTodoItem> Todo)
 {
-    /// <summary>
-    /// The service requests (interventions) of the properties of the scope that are for today, in order of time (SR-03b): the
-    /// requests whose scheduled time falls on today in Europe/Rome and, for the ones that have no time (older than the time of a
-    /// request, "da concordare"), the ones of a stay that leaves today. Not the ones the supplier refused or somebody cancelled.
-    /// </summary>
     public HostTodayList<HostTodayServiceRequest> Services { get; init; } = new(0, []);
 }
 
@@ -81,14 +70,8 @@ public sealed record HostTodayStay(
 /// </param>
 public sealed record HostTodayAlloggiati(AlloggiatiWebStatus Status, DateTime? DeadlineAt);
 
-/// <summary>The cleaning of a leaving stay (SR-03b): its latest request and where it stands.</summary>
 public sealed record HostTodayCleaning(Guid ServiceRequestId, ServiceRequestStatus Status);
 
-/// <summary>A service request (intervention) of the day (SR-03b).</summary>
-/// <param name="Category">The category code (<see cref="Casazen.Core.Suppliers.ServiceCategories"/>).</param>
-/// <param name="ServiceName">The name of the service of the supplier's catalog when the request was made; null for a request by category only.</param>
-/// <param name="ScheduledStart">When the work starts (UTC); null for a request with no time.</param>
-/// <param name="ScheduledEnd">When the work ends (UTC); null for a request with no time.</param>
 public sealed record HostTodayServiceRequest(
     Guid Id,
     string Category,
@@ -110,29 +93,19 @@ public sealed record HostTodayServiceRequest(
 /// </param>
 public sealed record HostTodayCheckIn(HostTodayCheckInState State, bool DataComplete);
 
-/// <summary>What happened to the check-in link of a stay.</summary>
 public enum HostTodayCheckInState
 {
-    /// <summary>No usable link was issued, or the email with it failed: the guest has nothing to open.</summary>
     NotSent,
 
-    /// <summary>A link is out and the guest has not opened it yet.</summary>
     Sent,
 
-    /// <summary>The guest opened the link and is filling in the form.</summary>
     InProgress,
 
-    /// <summary>The guest submitted the data.</summary>
     Completed,
 
-    /// <summary>The link expired before the guest submitted the data.</summary>
     Expired,
 }
 
-/// <summary>A "pay at the property" request waiting for the host, whose answer is due by <paramref name="RespondBy"/>.</summary>
-/// <param name="CheckInDate">Europe/Rome check-in date, midnight UTC.</param>
-/// <param name="CheckOutDate">Europe/Rome check-out date, midnight UTC.</param>
-/// <param name="RespondBy">Until when the host may answer (UTC): then the request is cancelled.</param>
 public sealed record HostTodayApproval(
     Guid BookingId,
     string BookingCode,
@@ -151,43 +124,29 @@ public sealed record HostTodayApproval(
 /// </summary>
 public enum HostTodoAction
 {
-    /// <summary>A request to accept or decline. Target: the booking.</summary>
     RespondToRequest,
 
-    /// <summary>The Alloggiati communication failed or was rejected (<c>ResolveAlloggiatiFailure</c>). Target: the booking.</summary>
     ResolveAlloggiatiFailure,
 
     /// <summary>The Alloggiati communication is to be sent on the portal (<c>SendAlloggiati</c>). Target: the booking.</summary>
     SendAlloggiati,
 
-    /// <summary>The guest data of the stay are incomplete, or the check-in link is to be sent (<c>CompleteGuestCheckIn</c>). Target: the booking.</summary>
     CompleteGuestCheckIn,
 
-    /// <summary>The payment of a confirmed stay failed. Target: the booking (and the payment).</summary>
     ReviewFailedPayment,
 
-    /// <summary>A departure to close (<c>CheckOut</c>). Target: the booking.</summary>
     CheckOut,
 
-    /// <summary>A property to declare ready after the check-out (<c>ConfirmPropertyReady</c>). Target: the booking.</summary>
     ConfirmPropertyReady,
 
-    /// <summary>A property to activate (<c>ActivateProperty</c>). Target: the property.</summary>
     ActivateProperty,
 
-    /// <summary>
-    /// A supplier proposed another time for a request and the host has to accept or turn it down (SR-03b, <c>RespondToServiceRequest</c>;
-    /// with the quotes of SP-04b, also a quote to accept). Target: the service request.
-    /// </summary>
     RespondToServiceRequest,
 
-    /// <summary>The final amount a supplier asked is above the quote by more than the tolerance and waits for the host (SR-03b, <c>ConfirmFinalAmount</c>). Target: the service request.</summary>
     ConfirmFinalAmount,
 
-    /// <summary>A finished job waits for the host to pay it (SR-03b, <c>PayServiceRequest</c>). Target: the service request.</summary>
     PayServiceRequest,
 
-    /// <summary>Two stays or blocks of a property take the same night (SR-02a, <c>ResolveCalendarConflict</c>). Target: the property and the first stay of the two, if any.</summary>
     ResolveCalendarConflict,
 }
 
@@ -227,7 +186,6 @@ public sealed record HostTodoItem(
 /// </summary>
 public static class HostTodoPriority
 {
-    /// <summary>The priority of an action, 1 (most pressing) to 8.</summary>
     public static int Of(HostTodoAction action) => action switch
     {
         HostTodoAction.RespondToRequest => 1,
@@ -245,7 +203,6 @@ public static class HostTodoPriority
         _ => 9,
     };
 
-    /// <summary>The action of a cockpit item (<see cref="Casazen.Core.Enums.ComplianceCockpitAction"/>), by name.</summary>
     public static HostTodoAction From(Casazen.Core.Enums.ComplianceCockpitAction action) => action switch
     {
         Casazen.Core.Enums.ComplianceCockpitAction.ActivateProperty => HostTodoAction.ActivateProperty,
@@ -258,13 +215,6 @@ public static class HostTodoPriority
             nameof(action), action, "A cockpit action without a place in the things to do: map it, or list it in CockpitActionsOutsideTheDay."),
     };
 
-    /// <summary>
-    /// The cockpit actions of the compliance traffic light (E03/F02/US01/T03, NF-52) that the list of the day does not carry: the day reads the six
-    /// older sections of the cockpit, while these items live in the new sections (identity, receipts, sends by hand, connections, periods), which the
-    /// compliance cockpit shows and the «Da fare» list (ADR-026) receives. A cockpit action is either mapped by <see cref="From"/> or listed here, so a new
-    /// one is decided on purpose: the test <c>From_EveryActionOfTheCockpit_HasAPlaceInTheThingsToDo_OrIsLeftOutOfTheDayOnPurpose</c> holds the two
-    /// against the enum.
-    /// </summary>
     public static IReadOnlySet<Casazen.Core.Enums.ComplianceCockpitAction> CockpitActionsOutsideTheDay { get; } =
         new HashSet<Casazen.Core.Enums.ComplianceCockpitAction>
         {
@@ -276,10 +226,8 @@ public static class HostTodoPriority
             Casazen.Core.Enums.ComplianceCockpitAction.UploadIstatProof,
             Casazen.Core.Enums.ComplianceCockpitAction.EnterMunicipalityTaxRate,
             Casazen.Core.Enums.ComplianceCockpitAction.DeclareTouristTax,
-            // casazen/backend#979: the police notification of the Ticino properties lives in its own section of the cockpit.
             Casazen.Core.Enums.ComplianceCockpitAction.NotifyTicinoPolice,
 
-            // E31/F02/US01/T01: the same for the notification of the guests to the authority of a canton other than Ticino: its own section of the cockpit.
             Casazen.Core.Enums.ComplianceCockpitAction.NotifyGuestsAuthority,
         };
 }

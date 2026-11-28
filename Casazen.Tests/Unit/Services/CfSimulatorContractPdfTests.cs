@@ -26,7 +26,6 @@ public sealed class CfSimulatorContractPdfTests
         var text = await new ContractTextReader().ReadAsync(pdf);
         var reading = LeaseContractTextParser.Parse(text.Text, new LeaseContractParseContext(house.Address, house.City));
 
-        // One page of its own text: no OCR, and no footer cutting a sentence in two.
         Assert.Equal(1, text.Pages);
         Assert.Equal(0, text.PagesOcr);
         Assert.Contains(CfSimulatorDocuments.SampleNotice, text.Text, StringComparison.Ordinal);
@@ -44,7 +43,6 @@ public sealed class CfSimulatorContractPdfTests
         Assert.Equal(36, reading.TermMonths!.Value);
         Assert.Equal(today, reading.StipulaDate!.Value);
 
-        // The house is the one of the lease: the comparison with the property finds a match, never a conflict.
         Assert.Equal(PropertyAddressMatch.Match, reading.Property!.Value);
     }
 }

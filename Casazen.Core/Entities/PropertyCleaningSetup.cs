@@ -28,54 +28,38 @@ namespace Casazen.Core.Entities;
 [Table("PropertyCleaningSetups")]
 public class PropertyCleaningSetup : ITenantOwned
 {
-    /// <summary>The unique index that keeps one setup for each property.</summary>
     public const string PropertyIndexName = "UIX_PropertyCleaningSetups_PropertyId";
 
-    /// <summary>The check constraint that ties the kind of cleaner to the columns it uses.</summary>
     public const string CleanerCheckName = "CK_PropertyCleaningSetups_Cleaner";
 
-    /// <summary>The longest id of a staff user (the size of <c>User.Id</c>).</summary>
     public const int UserIdMaxLength = 255;
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row, copied from the property when it is created (TN-2).</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The property (cascade, unique).</summary>
     public Guid PropertyId { get; set; }
 
-    /// <summary>Who cleans: a supplier or a member of the staff.</summary>
     public PropertyCleanerKind CleanerKind { get; set; }
 
-    /// <summary>The supplier org, for <see cref="PropertyCleanerKind.Supplier"/> only (cascade).</summary>
     public Guid? SupplierOrgId { get; set; }
 
-    /// <summary>The member of the org (<c>User.Id</c>), for <see cref="PropertyCleanerKind.Staff"/> only.</summary>
     [MaxLength(UserIdMaxLength)]
     public string? StaffUserId { get; set; }
 
-    /// <summary>
-    /// The price agreed for one cleaning, in cents of the currency of the property; from 1 cent (the bound of <c>ServiceRequestLimits.MaxAmountCents</c> above).
-    /// Required for a supplier, optional for staff.
-    /// </summary>
     public int? PriceCents { get; set; }
 
-    /// <summary>The time the cleaning starts on the check-out day, on the clock of the property; <c>null</c> = the check-out time of the property.</summary>
     public TimeOnly? StartTime { get; set; }
 
-    /// <summary>How long the cleaning lasts, in minutes (5 to 1,440); <c>null</c> = the default length.</summary>
     public int? DurationMinutes { get; set; }
 
-    /// <summary>The automation uses the setup only while it is active; an inactive one is kept for the host to switch on again.</summary>
     public bool Active { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>The user who saved the setup last (<c>User.Id</c>).</summary>
     [MaxLength(UserIdMaxLength)]
     public string? UpdatedByUserId { get; set; }
 }

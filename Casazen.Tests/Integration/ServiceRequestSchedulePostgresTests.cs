@@ -22,8 +22,6 @@ namespace Casazen.Tests.Integration;
 [Collection(SupplierCatalogHostsCollection.Name)]
 public class ServiceRequestSchedulePostgresTests(CasazenWebApplicationFactory factory) : IClassFixture<CasazenWebApplicationFactory>
 {
-    // ─── Parallel changes for one slot: exactly one winner ───
-
     [PostgresFact]
     public async Task Create_ParallelRequestsForTheSameSlot_ExactlyOneGetsItAndTheOthersGet409()
     {
@@ -72,7 +70,6 @@ public class ServiceRequestSchedulePostgresTests(CasazenWebApplicationFactory fa
         var world = await ServiceRequestWorlds.SeedAsync(factory);
         var first = await factory.CreateRequestAsync(world);
         var second = await factory.CreateRequestAsync(world);
-        // Create always stores an interval; clear it so take can set the contested slot (legacy take-sets-time path).
         await ClearScheduleAsync(first);
         await ClearScheduleAsync(second);
         var slot = ServiceRequestWorlds.Slot();
@@ -85,7 +82,6 @@ public class ServiceRequestSchedulePostgresTests(CasazenWebApplicationFactory fa
         var refused = responses.Single(response => response.StatusCode == HttpStatusCode.Conflict);
         Assert.Equal("supplier_slot_unavailable", (await ReadAsync(refused)).GetProperty("code").GetString());
         Assert.Equal(1, await CountAtAsync(world, slot));
-        // The one that lost is still new and still without a time.
         var loser = await factory.LoadRequestAsync(first == await WinnerAsync(world, slot) ? second : first);
         Assert.Equal(ServiceRequestStatus.Richiesto, loser.Status);
         Assert.Null(loser.ScheduledStartUtc);
@@ -156,8 +152,6 @@ public class ServiceRequestSchedulePostgresTests(CasazenWebApplicationFactory fa
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 
-    // ─── The lock itself ───
-
     [PostgresTheory]
     [InlineData("create")]
     [InlineData("take")]
@@ -193,7 +187,6 @@ public class ServiceRequestSchedulePostgresTests(CasazenWebApplicationFactory fa
         var world = await ServiceRequestWorlds.SeedAsync(factory);
         await using var holder = await HoldTheLockAsync(world.SupplierOrgId);
 
-        // Auto-timed create still takes the calendar lock (overlap check).
         var pending = PostAsHostAsync(world, "/api/service-requests", CreateBody(world, slot: null));
         await Task.Delay(300);
         Assert.False(pending.IsCompleted, "create without a host time did not wait for the lock of the supplier's calendar");
@@ -231,8 +224,6 @@ public class ServiceRequestSchedulePostgresTests(CasazenWebApplicationFactory fa
         Assert.Equal(0, await CountAtAsync(world, sunday));
         Assert.Equal(1, await CountAtAsync(world, free));
     }
-
-    // ─── helpers ───
 
     private static object CreateBody(ServiceRequestWorld world, DateTime? slot) => new
     {
@@ -276,7 +267,6 @@ public class ServiceRequestSchedulePostgresTests(CasazenWebApplicationFactory fa
         return await db.ServiceRequests.IgnoreQueryFilters().CountAsync(r => r.SupplierOrgId == world.SupplierOrgId && r.ScheduledStartUtc == slot);
     }
 
-    /// <summary>The id of the request of the supplier that holds the slot.</summary>
     private async Task<Guid> WinnerAsync(ServiceRequestWorld world, DateTime slot)
     {
         await using var scope = factory.Services.CreateAsyncScope();
@@ -293,7 +283,6 @@ public class ServiceRequestSchedulePostgresTests(CasazenWebApplicationFactory fa
         return scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.GetConnectionString()!;
     }
 
-    /// <summary>Another connection holding the calendar lock of a supplier, as an iCal sync that is writing its days would.</summary>
     private async Task<LockHolder> HoldTheLockAsync(Guid supplierOrgId)
     {
         var connection = new NpgsqlConnection(await ConnectionStringAsync());

@@ -3,13 +3,11 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Entities;
 
-/// <summary>PL-02: <see cref="UserRole.None"/> appended to the enum stored as integers, and default of a new user.</summary>
 public class UserRoleTests
 {
     [Fact]
     public void UserRole_ExistingValues_AreUnchangedAndNoneIsAppended()
     {
-        // Stored as integers: a value inserted before the existing ones would change the meaning of every row.
         Assert.Equal(0, (int)UserRole.Admin);
         Assert.Equal(1, (int)UserRole.PropertyOwner);
         Assert.Equal(2, (int)UserRole.PropertyManager);

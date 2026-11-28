@@ -14,12 +14,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// E70/F01/US01/T01: the contracts every later task of E70-E74 builds on, spelled exactly as the plan fixes them (the frontend translates these codes and
-/// the stored rows keep them, so a rename breaks both): the codes and the header, the enums with their numbers, <c>BiometricOutcome</c> unchanged, the checks of
-/// the reasons, the stored JSON of the session (a record written before still reads), the state of the page and the two rate limits. A new code goes at the end
-/// of its class and of its <c>All</c> list, and this test is updated with it.
-/// </summary>
 public class IdentityContractsTests
 {
     private static readonly JsonSerializerOptions FlowJson = (JsonSerializerOptions)typeof(IdentityVerificationFlowService)
@@ -105,7 +99,6 @@ public class IdentityContractsTests
         Assert.Equal([(0, "Observation"), (1, "Automatic"), (2, "Suspended")], Values<IdentitySegmentMode>());
         Assert.Equal([(0, "DocumentPortrait"), (1, "Frame")], Values<IdentityEvidenceKind>());
 
-        // The self-hosted path writes Accept and Escalate only: no value is added to the outcome of the log.
         Assert.Equal([(0, "Accept"), (1, "Escalate"), (2, "Reject")], Values<BiometricOutcome>());
     }
 
@@ -125,7 +118,6 @@ public class IdentityContractsTests
     [Fact]
     public void StoredDocumentCheck_WrittenBeforeThePresenceChallenge_StillReads_WithoutOne()
     {
-        // The JSON the flow wrote before E70/F01/US01/T01, a two-sided card with its pose challenge (the computed members of the check included).
         const string before = """
             {"check":{"mrzRead":true,"checkDigitsValid":true,"expired":false,"namesConsistent":true,"birthDateConsistent":true,
             "documentNumberConsistent":null,"nationalityConsistent":true,"holderIsMinor":false,"valid":true,"consistent":true},
@@ -183,7 +175,6 @@ public class IdentityContractsTests
             (false, false, (string?)null, (string?)null, (string?)null, false, false, (string?)null),
             (dto.SelfHosted, dto.Opened, dto.NoticeVersion, dto.Choice, dto.FormatId, dto.GuidedRetryAvailable, dto.Closed, dto.Outcome));
 
-        // The cross-repository contract: the eight members are always in the JSON of the page, null included.
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(dto, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         foreach (var member in new[] { "selfHosted", "opened", "noticeVersion", "choice", "formatId", "guidedRetryAvailable", "closed", "outcome" })
             Assert.True(json.RootElement.TryGetProperty(member, out _), $"{member} is missing from the state of the page");

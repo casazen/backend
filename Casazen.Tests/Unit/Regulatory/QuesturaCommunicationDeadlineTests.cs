@@ -57,7 +57,6 @@ public class QuesturaCommunicationDeadlineTests
     [Fact]
     public void DaysUntil_LateEveningUtc_CountsOnTheRomeCalendar()
     {
-        // 22:30 UTC of 1/10 is already 2/10 in Rome: one day to 3/10.
         var today = Casazen.Core.Utilities.RomeCalendar.TodayAt(new DateTimeOffset(2026, 10, 1, 22, 30, 0, TimeSpan.Zero));
 
         Assert.Equal(1, QuesturaCommunicationDeadline.DaysUntil(new DateTime(2026, 10, 3, 0, 0, 0, DateTimeKind.Utc), today));

@@ -31,30 +31,24 @@ namespace Casazen.Web.DTOs;
 /// </remarks>
 public class UpdatePropertyRequest
 {
-    /// <summary>Display name of the property; when sent, not blank.</summary>
     [NotBlankWhenPresent(ErrorMessage = "PropertyNameRequired")]
     [MaxLength(100, ErrorMessage = "PropertyNameTooLong")]
     public string? Name { get; set; }
 
-    /// <summary>Full description shown to guests (may be sent empty).</summary>
     [MaxLength(Casazen.Core.Services.ListingTextLimits.DescriptionMaxLength, ErrorMessage = "PropertyDescriptionTooLong")]
     public string? Description { get; set; }
 
-    /// <summary>Street address of the property; when sent, not blank.</summary>
     [NotBlankWhenPresent(ErrorMessage = "PropertyAddressRequired")]
     [MaxLength(500, ErrorMessage = "PropertyAddressTooLong")]
     public string? Address { get; set; }
 
-    /// <summary>City where the property is located; when sent, not blank.</summary>
     [NotBlankWhenPresent(ErrorMessage = "PropertyCityRequired")]
     [MaxLength(50, ErrorMessage = "PropertyCityTooLong")]
     public string? City { get; set; }
 
-    /// <summary>Postal / ZIP code.</summary>
     [MaxLength(10, ErrorMessage = "PropertyPostalCodeTooLong")]
     public string? PostalCode { get; set; }
 
-    /// <summary>Country of an imported draft being reviewed. Other properties keep their current country.</summary>
     [RegularExpression("^(IT|CH)$", ErrorMessage = "ValidationError")]
     public string? Country { get; set; }
 
@@ -98,48 +92,30 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>True when the body carries <see cref="SwissMunicipalityCode"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool SwissMunicipalityCodeSent { get; private set; }
 
-    /// <summary>Geographic latitude in degrees, -90 to 90 (A2-33); more than 6 decimals are rounded.</summary>
     [Range(typeof(decimal), "-90", "90", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
         ErrorMessage = "PropertyLatitudeRange")]
     public decimal? Latitude { get; set; }
 
-    /// <summary>Geographic longitude in degrees, -180 to 180 (A2-33); more than 6 decimals are rounded.</summary>
     [Range(typeof(decimal), "-180", "180", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
         ErrorMessage = "PropertyLongitudeRange")]
     public decimal? Longitude { get; set; }
 
-    /// <summary>Number of bedrooms (0–100): <c>0</c> is a studio flat (monolocale, A2-27).</summary>
     [Range(0, 100, ErrorMessage = "PropertyBedroomsRange")]
     public int? Bedrooms { get; set; }
 
-    /// <summary>Number of bathrooms, whole number (1–50, A2-27).</summary>
     [Range(1, 50, ErrorMessage = "PropertyBathroomsRange")]
     public int? Bathrooms { get; set; }
 
-    /// <summary>
-    /// Maximum number of guests of a short stay (0–100). <c>0</c> = not set: a property kept only for long-term leases
-    /// has none (A7-06); the short-stay listing cannot be activated until it is set (activation wizard).
-    /// </summary>
     [Range(0, 100, ErrorMessage = "PropertyMaxGuestsRange")]
     public int? MaxGuests { get; set; }
 
-    /// <summary>
-    /// Base nightly rate in euros (€0–€100,000). <c>0</c> = no short-stay rate (long-term only property, A7-06); the
-    /// short-stay listing cannot be activated until it is set (activation wizard).
-    /// </summary>
     [Range(typeof(decimal), "0", "100000", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
         ErrorMessage = "PropertyNightlyRateRange")]
     public decimal? NightlyRate { get; set; }
 
-    /// <summary>
-    /// Fewest nights the public booking site accepts (DB-03), 1 to 30. <c>null</c> removes the minimum (no minimum); leaving
-    /// it out keeps it. The guests' quote and checkout refuse a shorter stay (422 <c>direct_booking_min_nights_not_met</c>);
-    /// the host can still enter one by hand.
-    /// </summary>
     [Range(PropertyStayRules.MinMinNights, PropertyStayRules.MaxMinNights, ErrorMessage = "PropertyMinNightsRange")]
     public int? MinNights
     {
@@ -151,10 +127,6 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>
-    /// Percent added to the nightly rate on the Friday and Saturday nights of a stay (DB-03), 0 to 100 with two decimals;
-    /// <c>0</c> turns the surcharge off, leaving it out (or <c>null</c>) keeps the stored value.
-    /// </summary>
     [Range(typeof(decimal), "0", "100", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
         ErrorMessage = "PropertyWeekendSurchargeRange")]
     public decimal? WeekendSurchargePercent { get; set; }
@@ -168,20 +140,16 @@ public class UpdatePropertyRequest
     /// </summary>
     public RentalMode? RentalMode { get; set; }
 
-    /// <summary>One-time cleaning fee in euros (€0–€10,000), charged by the checkout.</summary>
     [Range(typeof(decimal), "0", "10000", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
         ErrorMessage = "PropertyCleaningFeeRange")]
     public decimal? CleaningFee { get; set; }
 
-    /// <summary>Refundable damage deposit in euros (€0–€50,000).</summary>
     [Range(typeof(decimal), "0", "50000", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
         ErrorMessage = "PropertyDamageDepositRange")]
     public decimal? DamageDeposit { get; set; }
 
-    /// <summary>List of amenities available at the property (the whole list replaces the stored one).</summary>
     public List<PropertyAmenity>? Amenities { get; set; }
 
-    /// <summary>House rules presented to guests before booking (may be sent empty).</summary>
     [MaxLength(1000, ErrorMessage = "PropertyHouseRulesTooLong")]
     public string? HouseRules { get; set; }
 
@@ -203,11 +171,6 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>
-    /// The «Numero identificativo LEAR / NO-LEAR» of the structure for the Ticino police portal (casazen/backend#979), e.g.
-    /// <c>NL-12345678</c>: spaces are ignored and the value is stored uppercase (see <c>TicinoStructureId</c>); <c>null</c> or blank clears
-    /// it; leaving it out keeps it.
-    /// </summary>
     [MaxLength(40, ErrorMessage = Casazen.Core.Regulatory.TicinoStructureId.InvalidFormatMessageKey)]
     [TicinoStructureId]
     public string? TicinoStructureId
@@ -220,22 +183,13 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>True when the body carries <see cref="TicinoStructureId"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool TicinoStructureIdSent { get; private set; }
 
-    /// <summary>
-    /// IANA timezone identifier used for booking date calculations (e.g. <c>Europe/Rome</c>); unknown and Windows ids
-    /// are rejected.
-    /// </summary>
     [MaxLength(50, ErrorMessage = "PropertyTimezoneInvalid")]
     [IanaTimeZone(ErrorMessage = "PropertyTimezoneInvalid")]
     public string? Timezone { get; set; }
 
-    /// <summary>
-    /// Cancellation policy applied to new bookings (one of <c>GET /api/properties/cancellation-policies</c>);
-    /// <c>null</c> removes it. An id that does not exist is refused with 422 <c>cancellation_policy_not_found</c>.
-    /// </summary>
     public Guid? CancellationPolicyId
     {
         get;
@@ -246,19 +200,15 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>Host override of catalog full-refund hours. Null leaves the stored override; omit to keep.</summary>
     [Range(0, 24 * 365, ErrorMessage = "PropertyCancellationHoursRange")]
     public int? CancellationFullRefundHours { get; set; }
 
-    /// <summary>Host override of catalog partial-refund hours.</summary>
     [Range(0, 24 * 365, ErrorMessage = "PropertyCancellationHoursRange")]
     public int? CancellationPartialRefundHours { get; set; }
 
-    /// <summary>Host override of catalog partial-refund percent (0-100).</summary>
     [Range(typeof(decimal), "0", "100", ErrorMessage = "PropertyCancellationPercentRange")]
     public decimal? CancellationPartialRefundPercent { get; set; }
 
-    /// <summary>Percent of stay or non-refundable. Long stays (28+ nights) ignore this.</summary>
     public HostCancellationRefundType? CancellationRefundType { get; set; }
 
     /// <summary>
@@ -276,7 +226,6 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>URL slug for direct booking links (unique within org); <c>null</c> or blank removes it.</summary>
     [MaxLength(100, ErrorMessage = "PropertySlugTooLong")]
     public string? Slug
     {
@@ -288,10 +237,6 @@ public class UpdatePropertyRequest
         }
     }
 
-    // The fields of the wizard «Aggiungi immobile» (SR-07a). A field left out keeps its stored value; sending it as null clears it
-    // (a host who removes the extra-guest fee or the quiet hours); a form that does not know them never touches them.
-
-    /// <summary>The kind of accommodation (<c>Apartment</c>, <c>HouseOrVilla</c>, <c>TrulloOrMasseria</c>, <c>LoftOrPenthouse</c>, <c>RoomOrSuite</c>); <c>null</c> clears it, leaving it out keeps it.</summary>
     public AccommodationType? AccommodationType
     {
         get;
@@ -302,7 +247,6 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>Number of beds (1–100); <c>null</c> clears it, leaving it out keeps it.</summary>
     [Range(PropertyHouseRules.MinBeds, PropertyHouseRules.MaxBeds, ErrorMessage = "PropertyBedsRange")]
     public int? Beds
     {
@@ -314,7 +258,6 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>Living area in square metres (1–9999); <c>null</c> clears it, leaving it out keeps it.</summary>
     [Range(PropertyHouseRules.MinAreaSqm, PropertyHouseRules.MaxAreaSqm, ErrorMessage = "PropertyAreaSqmRange")]
     public int? AreaSqm
     {
@@ -326,7 +269,6 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>The headline of the listing, at most 60 characters; <c>null</c> or blank clears it (the listing uses the name), leaving it out keeps it.</summary>
     [MaxLength(PropertyHouseRules.ListingTitleMaxLength, ErrorMessage = "PropertyListingTitleTooLong")]
     public string? ListingTitle
     {
@@ -338,13 +280,8 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>
-    /// «Mostra la casa sul sito»: <c>true</c> or <c>false</c> is applied, <c>null</c> or left out keeps the stored value. It only
-    /// takes a property off the site or puts it back where it can be: it publishes nothing that is not activated.
-    /// </summary>
     public bool? PublishedOnSite { get; set; }
 
-    /// <summary>The earliest time guests can arrive, <c>HH:mm</c> on the property's clock; <c>null</c> clears it, leaving it out keeps it.</summary>
     public TimeOnly? CheckInFrom
     {
         get;
@@ -355,7 +292,6 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>The time by which guests must leave, <c>HH:mm</c> on the property's clock; <c>null</c> clears it, leaving it out keeps it.</summary>
     public TimeOnly? CheckOutBy
     {
         get;
@@ -366,7 +302,6 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>Smoking (<c>No</c>, <c>OutdoorsOnly</c>, <c>Yes</c>); <c>Yes</c> puts the amenity <c>SmokingAllowed</c> in the list and any other answer takes it out; <c>null</c> clears the rule, leaving it out keeps it.</summary>
     public SmokingPolicy? SmokingPolicy
     {
         get;
@@ -377,7 +312,6 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>Pets (<c>No</c>, <c>OnRequest</c>, <c>Yes</c>); <c>Yes</c> puts the amenity <c>PetFriendly</c> in the list and any other answer takes it out; <c>null</c> clears the rule, leaving it out keeps it.</summary>
     public PetsPolicy? PetsPolicy
     {
         get;
@@ -388,7 +322,6 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>Parties and events (<c>No</c>, <c>OnRequest</c>); <c>null</c> clears the rule, leaving it out keeps it.</summary>
     public PartiesPolicy? PartiesPolicy
     {
         get;
@@ -399,7 +332,6 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>Children (<c>No</c>, <c>OnRequest</c>, <c>Yes</c>): the structured rule the channels receive (NF-37); <c>null</c> clears the rule, leaving it out keeps it.</summary>
     public ChildrenPolicy? ChildrenPolicy
     {
         get;
@@ -410,7 +342,6 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>Quiet hours start, <c>HH:mm</c>; <c>null</c> clears it, leaving it out keeps it. Start and end are set together or cleared together (422 <c>property_quiet_hours_incomplete</c>).</summary>
     public TimeOnly? QuietHoursFrom
     {
         get;
@@ -421,7 +352,6 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>Quiet hours end, <c>HH:mm</c>; <c>null</c> clears it, leaving it out keeps it.</summary>
     public TimeOnly? QuietHoursTo
     {
         get;
@@ -432,7 +362,6 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>What the host asks per night for each extra guest, in euros (0–1000); <c>null</c> clears it (extra guests are not accepted), leaving it out keeps it.</summary>
     [Range(typeof(decimal), "0", "1000", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
         ErrorMessage = "PropertyExtraGuestFeeRange")]
     public decimal? ExtraGuestFeePerNight
@@ -445,79 +374,60 @@ public class UpdatePropertyRequest
         }
     }
 
-    /// <summary>True when the body carries <see cref="AccommodationType"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool AccommodationTypeSent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="Beds"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool BedsSent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="AreaSqm"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool AreaSqmSent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="ListingTitle"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool ListingTitleSent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="CheckInFrom"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool CheckInFromSent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="CheckOutBy"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool CheckOutBySent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="SmokingPolicy"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool SmokingPolicySent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="PetsPolicy"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool PetsPolicySent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="PartiesPolicy"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool PartiesPolicySent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="ChildrenPolicy"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool ChildrenPolicySent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="QuietHoursFrom"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool QuietHoursFromSent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="QuietHoursTo"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool QuietHoursToSent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="ExtraGuestFeePerNight"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool ExtraGuestFeePerNightSent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="CinCode"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool CinCodeSent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="ComuneIstatCode"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool ComuneIstatCodeSent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="CancellationPolicyId"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool CancellationPolicyIdSent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="Unit"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool UnitSent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="Slug"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool SlugSent { get; private set; }
 
-    /// <summary>True when the body carries <see cref="MinNights"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool MinNightsSent { get; private set; }
 
@@ -586,7 +496,6 @@ public class UpdatePropertyRequest
         if (SlugSent)
             property.Slug = string.IsNullOrWhiteSpace(Slug) ? null : Slug.Trim().ToLowerInvariant();
 
-        // The wizard's fields (SR-07a): only the ones in the body; the property service stores them normalized.
         if (AccommodationTypeSent)
             property.AccommodationType = AccommodationType;
         if (BedsSent)

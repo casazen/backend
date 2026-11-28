@@ -19,66 +19,34 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IHostCalendarService
 {
-    /// <summary>The calendar of <paramref name="query"/>'s days (both ends included): the properties and the items that have a day in the range.</summary>
-    /// <exception cref="Exceptions.DomainRuleException">
-    /// <see cref="HostCalendarErrorCodes.WindowTooLarge"/> or <see cref="HostCalendarErrorCodes.TooManyProperties"/> (422).
-    /// </exception>
     Task<HostCalendar> GetCalendarAsync(HostScope scope, HostCalendarQuery query, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// What the calendar of <paramref name="query"/>'s days (both ends included) asks the host to look at, the most serious first
-    /// (<see cref="CalendarAlertRules"/>): the one calculation the Home puts among its things to do. Only nights taken twice so far.
-    /// </summary>
-    /// <exception cref="Exceptions.DomainRuleException">
-    /// <see cref="HostCalendarErrorCodes.WindowTooLarge"/> or <see cref="HostCalendarErrorCodes.TooManyProperties"/> (422).
-    /// </exception>
     Task<HostCalendarAlerts> GetAlertsAsync(HostScope scope, HostCalendarAlertsQuery query, CancellationToken cancellationToken = default);
 }
 
-/// <summary>The limits of the calendar reads.</summary>
 public static class HostCalendarLimits
 {
-    /// <summary>The longest range of days a read takes, ends included.</summary>
     public const int MaxWindowDays = 92;
 
-    /// <summary>The most properties a read is asked for by id; the calendar lists at most this many when it is asked for none.</summary>
     public const int MaxProperties = 50;
 
-    /// <summary>The days the things to do of the Home look at: today and the 29 after it.</summary>
     public const int TodoAlertDays = 30;
 }
 
-/// <summary>Stable <c>code</c> values of the calendar errors: part of the API contract, never rename one.</summary>
 public static class HostCalendarErrorCodes
 {
-    /// <summary>422: the range asked is longer than <see cref="HostCalendarLimits.MaxWindowDays"/> days.</summary>
     public const string WindowTooLarge = "calendar_window_too_large";
 
-    /// <summary>422: more than <see cref="HostCalendarLimits.MaxProperties"/> properties asked for by id.</summary>
     public const string TooManyProperties = "calendar_too_many_properties";
 
     public const string WindowTooLargeMessageKey = "CalendarWindowTooLarge";
     public const string TooManyPropertiesMessageKey = "CalendarTooManyProperties";
 }
 
-/// <param name="From">First day of the range.</param>
-/// <param name="To">Last day of the range, included.</param>
-/// <param name="PropertyIds">
-/// Only these properties of the caller's reach (the ones it does not reach are left out, as if they did not exist); null or empty =
-/// all of them.
-/// </param>
 public sealed record HostCalendarQuery(DateOnly From, DateOnly To, IReadOnlyCollection<Guid>? PropertyIds = null);
 
-/// <param name="From">First day of the range.</param>
-/// <param name="To">Last day of the range, included.</param>
-/// <param name="PropertyIds">Only these properties of the caller's reach; null or empty = all of them.</param>
 public sealed record HostCalendarAlertsQuery(DateOnly From, DateOnly To, IReadOnlyCollection<Guid>? PropertyIds = null);
 
-/// <summary>The calendar of the host's properties for a range of days.</summary>
-/// <param name="Today">Today in Europe/Rome.</param>
-/// <param name="PropertiesTotal">How many short-rent properties the caller reaches; more than <see cref="Properties"/> when the list was cut to <see cref="HostCalendarLimits.MaxProperties"/>.</param>
-/// <param name="Properties">The properties, by name.</param>
-/// <param name="Items">The items that have a day in the range, by first day.</param>
 public sealed record HostCalendar(
     DateOnly Today,
     int PropertiesTotal,
@@ -87,18 +55,11 @@ public sealed record HostCalendar(
 
 public enum CalendarPropertyStatus
 {
-    /// <summary>Takes bookings.</summary>
     Active,
 
-    /// <summary>The host paused it (<see cref="Property.IsPaused"/>): hidden from the booking site, still on the host's calendar.</summary>
     Paused,
 }
 
-/// <summary>A property of the calendar, with what a screen needs to place its row.</summary>
-/// <param name="MinNights">Fewest nights the booking site accepts; null = no minimum (<see cref="Property.MinNights"/>).</param>
-/// <param name="BaseRateCents">The nightly rate, in cents of euro.</param>
-/// <param name="WeekendSurchargePercent">Percent added to the rate on a Friday or Saturday night (<see cref="Property.WeekendSurchargePercent"/>).</param>
-/// <param name="CleaningFeeCents">The cleaning fee of a stay, in cents of euro.</param>
 public sealed record CalendarProperty(
     Guid Id,
     string Name,
@@ -112,24 +73,15 @@ public sealed record CalendarProperty(
 
 public enum CalendarItemType
 {
-    /// <summary>A stay of CasaZen: the booking site, entered by the host, or a portal's reservation the host turned into a stay.</summary>
     Booking,
 
-    /// <summary>A reservation of a portal as it arrives, a block of an iCal calendar: dates only.</summary>
     Ical,
 
-    /// <summary>The host's own block.</summary>
     Block,
 
-    /// <summary>An intervention (a service request) of a supplier.</summary>
     Service,
 }
 
-/// <summary>
-/// One thing on the calendar. <see cref="From"/> and <see cref="To"/> are calendar days: the first night and the day of the departure
-/// (the first day the item no longer takes a night, so a stay that leaves on the 12th and a stay that arrives on the 12th do not
-/// overlap); an intervention has the day of the work and the day after.
-/// </summary>
 public abstract record CalendarItem(Guid Id, Guid PropertyId, DateOnly From, DateOnly To)
 {
     public abstract CalendarItemType Type { get; }
@@ -185,9 +137,6 @@ public sealed record IcalCalendarItem(
     public override CalendarItemType Type => CalendarItemType.Ical;
 }
 
-/// <summary>The host's own block: the dates are closed.</summary>
-/// <param name="Reason">Why the host closed them; <see cref="CalendarBlockReason.ModeChange"/> is CasaZen's.</param>
-/// <param name="Note">What the host wrote.</param>
 public sealed record BlockCalendarItem(
     Guid Id,
     Guid PropertyId,
@@ -201,17 +150,13 @@ public sealed record BlockCalendarItem(
 
 public enum CalendarServiceKind
 {
-    /// <summary>Cleaning, laundry.</summary>
     Cleaning,
 
-    /// <summary>Maintenance, plumbing, electrical.</summary>
     Maintenance,
 
-    /// <summary>Any other category.</summary>
     Other,
 }
 
-/// <summary>What kind of work a service category is, for the calendar.</summary>
 public static class CalendarServiceKinds
 {
     public static CalendarServiceKind Of(string category) => category switch
@@ -246,6 +191,4 @@ public sealed record ServiceCalendarItem(
     public override CalendarItemType Type => CalendarItemType.Service;
 }
 
-/// <summary>The alerts of the calendar for a range of days.</summary>
-/// <param name="Alerts">The most serious first, then by day (<see cref="CalendarAlertRules.Sort"/>).</param>
 public sealed record HostCalendarAlerts(DateOnly Today, DateOnly From, DateOnly To, IReadOnlyList<CalendarAlert> Alerts);

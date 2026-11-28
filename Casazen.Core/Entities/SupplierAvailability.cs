@@ -4,9 +4,6 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// Per-date availability flag for a supplier org (US-022 / #292, AC8).
-/// </summary>
 [Table("SupplierAvailability")]
 public class SupplierAvailability
 {
@@ -21,10 +18,6 @@ public class SupplierAvailability
 
     public bool Available { get; set; } = true;
 
-    /// <summary>
-    /// Manual (the supplier) or iCal feed (the sync), SU-15. The sync frees only its own days; rows written before SU-15
-    /// are <see cref="SupplierAvailabilitySource.Manual"/> (their origin is unknown, see <c>docs/runbooks/ical.md</c>).
-    /// </summary>
     public SupplierAvailabilitySource Source { get; set; } = SupplierAvailabilitySource.Manual;
 
     [ForeignKey(nameof(OrgId))]

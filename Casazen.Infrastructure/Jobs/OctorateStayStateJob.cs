@@ -22,7 +22,6 @@ public class OctorateStayStateJob(
     IOctorateOrgScope orgScope,
     ILogger<OctorateStayStateJob> logger)
 {
-    /// <summary>The seconds a run waits for another run of the same booking.</summary>
     public const int LockTimeoutSeconds = 60;
 
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]

@@ -4,26 +4,19 @@ using Casazen.Core.Services;
 
 namespace Casazen.Core.Regulatory;
 
-/// <summary>Where the guests of a stay are, for the check-in wizard (E03/F01/US01/T04, NF-45).</summary>
 public enum StayAttendance
 {
-    /// <summary>Confirmed, the arrival not registered and no no-show.</summary>
     Expected = 0,
 
-    /// <summary>The arrival is registered (<see cref="BookingStatus.CheckedIn"/>).</summary>
     Arrived = 1,
 
-    /// <summary>The stay is checked out.</summary>
     Departed = 2,
 
-    /// <summary>Confirmed, with <see cref="Booking.NoShowAt"/> set and no arrival: the guests never came.</summary>
     NoShow = 3,
 
-    /// <summary>Pending or cancelled: no check-in is expected.</summary>
     Inactive = 4,
 }
 
-/// <summary>The attendance of a stay, from its status and its no-show mark.</summary>
 public static class CheckInAttendance
 {
     public static StayAttendance Of(Booking booking)
@@ -50,16 +43,13 @@ public static class CheckInAttendance
 /// <param name="Blocking">True when the wizard cannot be confirmed until it is fixed.</param>
 public sealed record CheckInIssue(int? Position, string Code, string? Field, bool Blocking);
 
-/// <summary>The codes of <see cref="CheckInIssue"/>.</summary>
 public static class CheckInIssueCodes
 {
-    /// <summary>A field of the Alloggiati record is missing or not accepted (blocking).</summary>
     public const string GuestFieldMissing = "guest_field_missing";
 
     /// <summary>The official code of a field is still to complete: it blocks only the record file (a warning here).</summary>
     public const string GuestCodeMissing = "guest_code_missing";
 
-    /// <summary>The booking is mirrored on Octorate and a name Octorate requires of a complete guest is missing (blocking).</summary>
     public const string OctorateFieldMissing = "octorate_field_missing";
 
     /// <summary>
@@ -102,7 +92,6 @@ public sealed record CheckInReadinessInput(
 /// </summary>
 public static class CheckInReadinessRules
 {
-    /// <summary>The stay has no registered guest yet.</summary>
     public const string FieldGuests = "guests";
 
     public const string FieldResidence = "residence";
@@ -110,13 +99,10 @@ public static class CheckInReadinessRules
     public const string FieldResidenceCountry = "residenceCountry";
     public const string FieldDocumentExpiresOn = "documentExpiresOn";
 
-    /// <summary>A no-show before the check-in day (422).</summary>
     public const string NoShowTooEarlyCode = "no_show_too_early";
 
-    /// <summary>A no-show of a stay whose police communication already went (409).</summary>
     public const string NoShowAlloggiatiSentCode = "no_show_alloggiati_sent";
 
-    /// <summary>The fields of the document of a guest (the documents step of the wizard).</summary>
     public static IReadOnlySet<string> DocumentFields { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
         AlloggiatiRecordRules.FieldDocumentType,
@@ -138,7 +124,6 @@ public static class CheckInReadinessRules
         return [.. issues.Where(i => i.Blocking && i.Code != CheckInIssueCodes.GuestFieldRequired)];
     }
 
-    /// <summary>The issues of the stay: blocking ones first per guest, then the warnings, then the stay as a whole.</summary>
     public static IReadOnlyList<CheckInIssue> Evaluate(CheckInReadinessInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -153,8 +138,6 @@ public static class CheckInReadinessRules
         foreach (var error in AlloggiatiRecordRules.CompositionErrors(guests.Select(g => g.Type).ToList()))
             issues.Add(new CheckInIssue(guests[error.Index].Position, CheckInIssueCodes.GuestFieldMissing, AlloggiatiRecordRules.FieldType, true));
 
-        // NF-132: in Ticino the police file notifies every adult (or every minor of a stay without adults) on their own row, with the type of their
-        // document: the check-in is not complete until each of them has one, family and group members included.
         var notified = input.InTicino
             ? TicinoPoliceFile.NotifiedPositions(
                 guests.Select(g => (g.Position, g.Type, g.DateOfBirth is { } born ? DateOnly.FromDateTime(born) : (DateOnly?)null)), input.Arrival)
@@ -207,10 +190,6 @@ public static class CheckInReadinessRules
         return null;
     }
 
-    /// <summary>
-    /// The names Octorate requires of a complete guest (sandbox, 2026-11-04): the comune of birth of a guest born in Italy and the place of
-    /// residence. A field the record already reports missing is not reported twice.
-    /// </summary>
     private static IEnumerable<CheckInIssue> OctorateIssues(StayGuest guest, IReadOnlyList<string> missing)
     {
         if (guest.BornInItaly == true
@@ -248,10 +227,6 @@ public static class CheckInReadinessRules
         }
     }
 
-    /// <summary>
-    /// The statistical fields the region requires and the guest left empty, as warnings (never blocking, see <see cref="SendBlockers"/>); a field the region
-    /// does not require is never asked.
-    /// </summary>
     private static IEnumerable<CheckInIssue> RequiredIssues(StayGuest guest, IReadOnlyCollection<string> required)
     {
         foreach (var field in required)

@@ -104,7 +104,6 @@ public class OnboardingEntitiesProofTests
         Assert.Equal(OnboardingFlow.Bookings, Assert.Single(await asOrgA.PropertyFlowActivations.ToListAsync()).Flow);
         Assert.Equal(PanelStepKind.PoliceConnection, Assert.Single(await asOrgA.OnboardingPanelSteps.ToListAsync()).Kind);
 
-        // The request holds the reference to the draft of the wizard, and nothing of its content.
         var request = Assert.Single(await asOrgA.OnboardingAssistRequests.ToListAsync());
         Assert.Equal((WizardType.OnboardingActivation, (Guid?)propertyOfA), (request.DraftWizardType, request.DraftEntityId));
 

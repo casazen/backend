@@ -13,7 +13,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.HostInvites;
 
-/// <summary>The authorization shape of the host invite endpoints: who may call what, read from the attributes.</summary>
 public class HostInviteEndpointsTests
 {
     [Fact]

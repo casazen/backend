@@ -5,7 +5,6 @@ using Casazen.Core.Utilities;
 using Casazen.Web.DTOs.Supplier;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 
@@ -60,8 +59,6 @@ public class PublicSupplierController(
 
         var dto = SupplierShowcaseMapper.ToDto(profile, listed, availability);
 
-        // SP-13a: what the supplier published with the editor (the published version, never the draft). A supplier that published nothing has
-        // none of these members and the page reads exactly as it always did.
         var page = await showcase.GetPublishedPageAsync(profile, ct);
         if (page is not null)
             PublicShowcaseMapper.Apply(dto, page);
@@ -113,11 +110,6 @@ public class PublicSupplierController(
         });
     }
 
-    /// <summary>
-    /// One published service by its slug, with its description and the structured supplements the estimate is computed from.
-    /// 404 <c>supplier_service_not_found</c> for an unknown slug, a draft, a paused or a deleted service and a service of
-    /// another supplier: the same answer for all.
-    /// </summary>
     [HttpGet("{slug}/services/{serviceSlug}")]
     [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
     [ProducesResponseType(typeof(PublicSupplierServiceDetailDto), StatusCodes.Status200OK)]
@@ -175,7 +167,6 @@ public class PublicSupplierController(
         if (supplier is null)
             return SupplierNotFound();
 
-        // SP-13a: a showcase the supplier paused offers no slot (the booking is refused with the same answer).
         if (await showcase.IsPausedAsync(supplier, ct))
             throw ShowcaseBookingErrors.OfflineSupplier();
 
@@ -206,7 +197,6 @@ public class PublicSupplierController(
         if (supplier is null)
             return SupplierNotFound();
 
-        // SP-13a: a showcase the supplier paused gives no estimate either.
         if (await showcase.IsPausedAsync(supplier, ct))
             throw ShowcaseBookingErrors.OfflineSupplier();
 
@@ -228,14 +218,11 @@ public class PublicSupplierController(
         }
     }
 
-    /// <summary>This API is data for the page, not a page: every answer says so, errors included.</summary>
     private void MarkNotIndexable() => Response.Headers["X-Robots-Tag"] = "noindex";
 
-    /// <summary>The 404 of an unknown, pending or suspended supplier: one answer for the three.</summary>
     private ObjectResult SupplierNotFound() =>
         this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierShowcaseNotFound");
 
-    /// <summary>The 404 of a service that is not a published one of this supplier: one answer for every reason.</summary>
     private ObjectResult ServiceNotFound() =>
         this.ApiProblem(StatusCodes.Status404NotFound, SupplierServiceCatalogErrors.NotFound, "SupplierServiceNotFound");
 }

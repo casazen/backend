@@ -8,9 +8,7 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum ServiceRequestSource
 {
-    /// <summary>A CasaZen host asked the supplier for the work (short-rent or long-rent context).</summary>
     Host = 0,
 
-    /// <summary>A customer without an account booked it from the supplier's public showcase (SP-10).</summary>
     Showcase = 1,
 }

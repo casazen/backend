@@ -66,7 +66,6 @@ public sealed class SiteConnectionServiceTests : IDisposable
 
     public static TheoryData<string, string, string, string, string> RequestsThatBreakARule => new()
     {
-        // siteUrl, returnUrl, state, challenge, method
         { Site, "https://evil.example/wp-admin/options-general.php?page=casazen", "state-1", ValidChallenge, "S256" },
         { Site, "javascript:alert(document.cookie)", "state-1", ValidChallenge, "S256" },
         { Site, "ftp://www.quokka360.com/wp-admin/", "state-1", ValidChallenge, "S256" },
@@ -169,7 +168,6 @@ public sealed class SiteConnectionServiceTests : IDisposable
         _clock.Advance(SiteConnectionRules.CodeLifetime + TimeSpan.FromSeconds(1));
         Assert.Null(await Service().ExchangeAsync(expired, verifier, Site));
 
-        // A refused code was spent: the right verifier and site after a wrong one open nothing either.
         Assert.Null(await Service().ExchangeAsync(wrongVerifier, verifier, Site));
         Assert.Null(await Service().ExchangeAsync(otherSite, verifier, Site));
         Assert.Single(await _db.SiteConnections.AsNoTracking().ToListAsync());
@@ -307,8 +305,6 @@ public sealed class SiteConnectionServiceTests : IDisposable
         Assert.Single(await _db.SiteConnections.AsNoTracking().ToListAsync());
     }
 
-    // ─── Helpers ───────────────────────────────────────────────────────────────────────────────────
-
     private static readonly string ValidChallenge = SiteConnectionTokens.S256(new string('v', 43));
 
     private SiteConnectionService Service() => new(_db, _clock, new ListLogger<SiteConnectionService>(_logs));
@@ -340,7 +336,6 @@ public sealed class SiteConnectionServiceTests : IDisposable
     private async Task<DateTime?> LastUsedAsync(Guid connectionId) =>
         (await _db.SiteConnections.AsNoTracking().SingleAsync(c => c.Id == connectionId)).LastUsedAt;
 
-    /// <summary>Every text column of every row of the two tables.</summary>
     private async Task<List<string>> StoredTextAsync()
     {
         var codes = await _db.SiteConnectionCodes.AsNoTracking().ToListAsync();

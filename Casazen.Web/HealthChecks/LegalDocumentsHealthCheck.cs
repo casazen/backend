@@ -41,7 +41,6 @@ public sealed class LegalDocumentsHealthCheck(ILegalDocumentService legalDocumen
             : HealthCheckResult.Degraded("Legal documents incomplete: " + string.Join(" | ", problems)));
     }
 
-    /// <summary>One line per document that is not published (or has a text that cannot be); empty when all are.</summary>
     public static IReadOnlyList<string> GetProblems(ILegalDocumentService legalDocuments) =>
         Enum.GetValues<LegalDocumentKind>()
             .Select(legalDocuments.GetPublication)

@@ -49,14 +49,12 @@ public class OtaMessageJobsTests
         await using (var db = kit.NewDb())
             await kit.ReconcileJob(db).ExecuteAsync(CancellationToken.None);
 
-        // The disconnected org is not read; the one that used its calls is stopped: no import is started for it (the checkpoints continue it next time).
         kit.Sync.Verify(s => s.ReconcileRecentAsync(OrgC, It.IsAny<CancellationToken>()), Times.Never);
         kit.Sync.Verify(s => s.ReconcileRecentAsync(OrgA, It.IsAny<CancellationToken>()), Times.Once);
         kit.Sync.Verify(s => s.ReconcileRecentAsync(OrgB, It.IsAny<CancellationToken>()), Times.Once);
         kit.Sync.Verify(s => s.ImportPropertyAsync(PropertyA1, It.IsAny<CancellationToken>(), It.IsAny<TimeSpan?>()), Times.Never);
         kit.Sync.Verify(s => s.ImportPropertyAsync(PropertyA2, It.IsAny<CancellationToken>(), It.IsAny<TimeSpan?>()), Times.Never);
 
-        // The other org's listing with no history is imported, within a slice of the budget.
         kit.Sync.Verify(
             s => s.ImportPropertyAsync(PropertyB1, It.IsAny<CancellationToken>(), It.Is<TimeSpan?>(b => b != null && b <= OtaMessageReconcileJob.ImportSlice)),
             Times.Once);
@@ -72,7 +70,6 @@ public class OtaMessageJobsTests
         await using (var db = kit.NewDb())
             await kit.ReconcileJob(db).ExecuteAsync(CancellationToken.None);
 
-        // The listing whose import finished (A2) is not imported again; the one that fails (A1) does not keep the one of the other org (B1) waiting.
         kit.Sync.Verify(s => s.ImportPropertyAsync(PropertyA1, It.IsAny<CancellationToken>(), It.IsAny<TimeSpan?>()), Times.Once);
         kit.Sync.Verify(s => s.ImportPropertyAsync(PropertyA2, It.IsAny<CancellationToken>(), It.IsAny<TimeSpan?>()), Times.Never);
         kit.Sync.Verify(s => s.ImportPropertyAsync(PropertyB1, It.IsAny<CancellationToken>(), It.IsAny<TimeSpan?>()), Times.Once);
@@ -89,7 +86,6 @@ public class OtaMessageJobsTests
             await kit.ReconcileJob(db).ExecuteAsync(CancellationToken.None);
         kit.Sync.Verify(s => s.ImportPropertyAsync(PropertyA1, It.IsAny<CancellationToken>(), It.IsAny<TimeSpan?>()), Times.Never);
 
-        // An hour and more later the module may be in the license: the listing is tried again.
         var later = new Kit();
         later.AddState(OrgA, "111", PropertyA1, OtaMessageSyncErrorCodes.ChatNotLicensed, minutesAgo: 120);
         await using (var db = later.NewDb())
@@ -178,7 +174,6 @@ public class OtaMessageJobsTests
             Assert.InRange(attribute.TimeoutSec, 1, (int)HangfireStorageSettings.DefaultDistributedLockTimeout.TotalSeconds);
         }
 
-        // The jobs live in the infrastructure project, which cannot see JobLockTimeouts (web): the numbers are kept equal here.
         Assert.Equal(JobLockTimeouts.FrequentSeconds, OtaMessageReconcileJob.LockTimeoutSeconds);
         Assert.Equal(JobLockTimeouts.DefaultSeconds, OtaMessageDeepReconcileJob.LockTimeoutSeconds);
     }
@@ -191,7 +186,6 @@ public class OtaMessageJobsTests
 
         Assert.Contains(services, d => d.ServiceType == typeof(IMessageSyncService) && d.ImplementationType == typeof(MessageSyncService));
 
-        // One pacing for the scope: the handler sets it not to wait and the service of the same scope reads it.
         Assert.Contains(services, d => d.ServiceType == typeof(MessageSyncPacing) && d.Lifetime == ServiceLifetime.Scoped);
         Assert.Contains(
             services,
@@ -202,8 +196,6 @@ public class OtaMessageJobsTests
             services,
             d => d.ServiceType == typeof(IOtaMessageRetentionService) && d.ImplementationType == typeof(Casazen.Infrastructure.Services.OtaMessageRetentionService));
 
-        // E05/F05/US03/T03: the guard that keeps Octorate's own assistant off the threads the copy reads is the one consumer of the events of the bus this
-        // registration adds, one for each event, in a scope of its own (it checks the type of the event and the connector flag itself).
         var consumers = Assert.Single(services, d => d.ServiceType == typeof(IEventHandler<DomainEvent>));
         Assert.Equal(typeof(OctorateAiAssistantGuard), consumers.ImplementationType);
         Assert.Equal(ServiceLifetime.Scoped, consumers.Lifetime);
@@ -226,10 +218,6 @@ public class OtaMessageJobsTests
         return (manager, jobs);
     }
 
-    /// <summary>
-    /// Three orgs: A and B connected, C disconnected. A has two confirmed listings, one with its history imported; B has one with none. The sync service
-    /// answers an empty result to anything the test does not set up.
-    /// </summary>
     private sealed class Kit
     {
         private readonly string _database = $"ota-message-jobs-{Guid.NewGuid():N}";
@@ -278,7 +266,6 @@ public class OtaMessageJobsTests
         public OtaMessageDeepReconcileJob DeepJob(AppDbContext db) =>
             new(db, Sync.Object, new OctorateOrgScope(NullTenantContext.Instance), Flags.Object, Host.Object, NullLogger<OtaMessageDeepReconcileJob>.Instance);
 
-        /// <summary>The checkpoints of a listing of an org of the kit, worked on <paramref name="minutesAgo"/> minutes ago, with the error it kept.</summary>
         public void AddState(Guid orgId, string accommodation, Guid propertyId, string? lastError, int minutesAgo)
         {
             using var db = NewDb();

@@ -17,24 +17,16 @@ public sealed class CheckInWizardStateDto
 {
     public CheckInWizardBookingDto Booking { get; init; } = new();
 
-    /// <summary><c>Expected</c>, <c>Arrived</c>, <c>Departed</c>, <c>NoShow</c> or <c>Inactive</c>.</summary>
     public StayAttendance Attendance { get; init; }
 
     public IReadOnlyList<CheckInWizardGuestDto> Guests { get; init; } = [];
 
-    /// <summary>
-    /// The guest fields the regime requires: the statistical fields the region requires and, in canton Ticino (NF-132), <c>DocumentType</c>,
-    /// <c>DocumentNumber</c> (of every guest the police file notifies, members included), <c>ResidenceStreet</c>, <c>ResidencePostalCode</c>,
-    /// <c>ResidenceCityName</c> and <c>ResidenceCountryName</c>.
-    /// </summary>
     public IReadOnlyList<string> RequiredGuestFields { get; init; } = [];
 
-    /// <summary>The plate of the car is asked for the stay, optional (canton Ticino, NF-132); the plate itself is <c>booking.vehiclePlate</c>.</summary>
     public bool AskVehiclePlate { get; init; }
 
     public IReadOnlyList<CheckInIssueDto> Issues { get; init; } = [];
 
-    /// <summary>The tourist tax of the stay; null when it cannot be worked out now.</summary>
     public StayTouristTaxDto? Tax { get; init; }
 
     public CheckInWizardSenderDto Sender { get; init; } = new();
@@ -45,7 +37,6 @@ public sealed class CheckInWizardStateDto
 
     public CheckInWizardCapabilitiesDto Capabilities { get; init; } = new();
 
-    /// <summary><c>guests</c>, <c>documents</c>, <c>checks</c>, <c>tax</c>, <c>send</c> or <c>result</c>: the first step with something to do.</summary>
     public string SuggestedStep { get; init; } = CheckInWizardSteps.Guests;
 
     /// <param name="state">What the six steps show.</param>
@@ -116,14 +107,11 @@ public sealed class CheckInWizardBookingDto
     /// <summary>When the host marked the stay as a no-show; null otherwise.</summary>
     public DateTime? NoShowAt { get; init; }
 
-    /// <summary>The plate of the car of the stay (NF-132), null when none was given.</summary>
     public string? VehiclePlate { get; init; }
 }
 
-/// <summary>A guest as the host summary shows it: the document number masked, the exemption code of the tourist tax with the guest.</summary>
 public sealed class CheckInWizardGuestDto
 {
-    /// <summary>False for the booker shown before any guest is registered (nothing saved yet).</summary>
     public bool Saved { get; init; }
 
     public int Position { get; init; }
@@ -147,14 +135,12 @@ public sealed class CheckInWizardGuestDto
     public string? ResidenceCountryCode { get; init; }
     public string? ResidenceCountryName { get; init; }
 
-    /// <summary>The home of the guest (NF-132): street and house number, postal code, town; null when not entered.</summary>
     public string? ResidenceStreet { get; init; }
     public string? ResidencePostalCode { get; init; }
     public string? ResidenceCityName { get; init; }
     public GuestDocumentType? DocumentType { get; init; }
     public string? DocumentTypeCode { get; init; }
 
-    /// <summary>The document number with all but the last characters masked; null without one.</summary>
     public string? DocumentNumberMasked { get; init; }
 
     public string? DocumentIssuePlaceCode { get; init; }
@@ -165,7 +151,6 @@ public sealed class CheckInWizardGuestDto
     public string? TravelWay { get; init; }
     public string? EducationLevel { get; init; }
 
-    /// <summary>The host's exemption of the tourist tax (a reason code), if any; <c>null</c> for a caller without <c>guest.read</c>.</summary>
     public string? TaxExemptionCode { get; init; }
 
     public StayGuestDataSource DataSource { get; init; }
@@ -211,19 +196,12 @@ public sealed class CheckInWizardGuestDto
     };
 }
 
-/// <summary>An issue of the checks: the code and the field the client translates.</summary>
 public sealed class CheckInIssueDto
 {
-    /// <summary>The position of the guest; null for the stay as a whole.</summary>
     public int? Position { get; init; }
 
-    /// <summary>
-    /// <c>guest_field_missing</c>, <c>guest_code_missing</c>, <c>octorate_field_missing</c>, <c>guest_field_required</c>, <c>document_expired</c> or
-    /// <c>guests_count_mismatch</c>.
-    /// </summary>
     public string Code { get; init; } = string.Empty;
 
-    /// <summary>The camelCase field of the guest; null for the stay.</summary>
     public string? Field { get; init; }
 
     /// <summary>True when the wizard cannot be confirmed until it is fixed; false for a warning.</summary>
@@ -238,22 +216,17 @@ public sealed class CheckInIssueDto
     };
 }
 
-/// <summary>Who sends the police communications of the property.</summary>
 public sealed class CheckInWizardSenderDto
 {
-    /// <summary><c>ChannelManager</c>, <c>CasaZen</c> or <c>Manual</c>.</summary>
     public ComplianceSenderType AlloggiatiSender { get; init; }
 
     public SenderSource Source { get; init; }
 
-    /// <summary>False for a property outside Italy.</summary>
     public bool Applies { get; init; }
 }
 
-/// <summary>The check-in on Octorate: each guest sent and the three states of the stay (no personal data).</summary>
 public sealed class CheckInWizardOctorateDto
 {
-    /// <summary>False when the booking is not on Octorate (then the lists are empty).</summary>
     public bool Mirrored { get; init; }
 
     public IReadOnlyList<OctorateGuestLinkView> Guests { get; init; } = [];
@@ -268,7 +241,6 @@ public sealed class CheckInWizardOctorateDto
     };
 }
 
-/// <summary>The police communication of the stay.</summary>
 public sealed class CheckInWizardAlloggiatiDto
 {
     public string Status { get; init; } = string.Empty;
@@ -278,20 +250,16 @@ public sealed class CheckInWizardAlloggiatiDto
     public DateTime? ReportedAt { get; init; }
 }
 
-/// <summary>What the host can do now.</summary>
 public sealed class CheckInWizardCapabilitiesDto
 {
-    /// <summary>The photo of a document can be read (<c>POST …/checkin-wizard/document-reading</c>; 404 while off).</summary>
     public bool DocumentReading { get; init; }
 
     public bool CanRegisterArrival { get; init; }
     public bool CanMarkNoShow { get; init; }
 
-    /// <summary>The tourist tax values travel to Octorate with the guests.</summary>
     public bool OctorateTaxValues { get; init; }
 }
 
-/// <summary>The answer of <c>POST api/bookings/{id}/checkin-wizard/confirm</c>: one entry per element and the new state.</summary>
 public sealed class CheckInConfirmationDto
 {
     public CheckInTaxOutcomeDto Tax { get; init; } = new();
@@ -299,8 +267,6 @@ public sealed class CheckInConfirmationDto
     public CheckInAlloggiatiNextDto Alloggiati { get; init; } = new();
     public CheckInWizardStateDto State { get; init; } = new();
 
-    /// <param name="confirmation">What the confirmation did.</param>
-    /// <param name="includeExemptionCodes">As in <see cref="CheckInWizardStateDto.From"/>: false for a caller without <c>guest.read</c>.</param>
     public static CheckInConfirmationDto From(CheckInConfirmation confirmation, bool includeExemptionCodes) => new()
     {
         Tax = new CheckInTaxOutcomeDto { Saved = confirmation.Tax.Saved, Reason = confirmation.Tax.Reason },
@@ -317,14 +283,12 @@ public sealed class CheckInConfirmationDto
     };
 }
 
-/// <summary>The tourist tax of the confirmation: saved, or the code of why not (<c>tax_not_calculable</c>, ...).</summary>
 public sealed class CheckInTaxOutcomeDto
 {
     public bool Saved { get; init; }
     public string? Reason { get; init; }
 }
 
-/// <summary>What was sent to Octorate; <c>correctionAfterSend</c> warns that data already transmitted may need a correction on the portal.</summary>
 public sealed class CheckInOctorateOutcomeDto
 {
     public OctorateCheckInSendState State { get; init; }
@@ -334,19 +298,15 @@ public sealed class CheckInOctorateOutcomeDto
     public IReadOnlyList<OctorateGuestSendResult> Guests { get; init; } = [];
 }
 
-/// <summary>What the police communication does next for the sender of the property.</summary>
 public sealed class CheckInAlloggiatiNextDto
 {
-    /// <summary><c>ChannelManagerSends</c>, <c>Manual</c> (with the guide), <c>AlreadySent</c> or <c>NotApplicable</c>.</summary>
     public CheckInAlloggiatiNextStep Step { get; init; }
 
     public ComplianceSenderType Sender { get; init; }
 }
 
-/// <summary>The fields read on a document photo (never stored): the host checks them before saving the guest.</summary>
 public sealed class DocumentReadingDto
 {
-    /// <summary><c>Mrz</c>, <c>Ocr</c> or <c>None</c>.</summary>
     public DocumentReadingMethod Method { get; init; }
 
     public double Confidence { get; init; }
@@ -364,7 +324,6 @@ public sealed class DocumentReadingDto
     };
 }
 
-/// <summary>The answer of <c>POST api/bookings/{id}/no-show</c>.</summary>
 public sealed class NoShowResultDto
 {
     public Guid BookingId { get; init; }

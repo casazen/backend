@@ -25,22 +25,17 @@ namespace Casazen.Core.Entities;
 [Table("OctorateInventoryImportBatches")]
 public class OctorateInventoryImportBatch : ITenantOwned
 {
-    /// <summary>Longest <see cref="ScopeGroup"/>.</summary>
     public const int GroupMaxLength = 100;
 
-    /// <summary>Longest <see cref="ErrorCode"/>.</summary>
     public const int ErrorCodeMaxLength = 60;
 
-    /// <summary>Longest <see cref="CreatedByUserId"/>: the column length of <c>User.Id</c>, the Auth0 subject.</summary>
     public const int UserIdMaxLength = 255;
 
-    /// <summary>An empty JSON array, the value of <see cref="ScopePropertyIdsJson"/> when the scope names no property.</summary>
     public const string EmptyJsonArray = "[]";
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row (TN-2). Server-set, never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
     public OctorateInventoryScopeKind ScopeKind { get; set; } = OctorateInventoryScopeKind.AllInventory;
@@ -49,7 +44,6 @@ public class OctorateInventoryImportBatch : ITenantOwned
     [MaxLength(GroupMaxLength)]
     public string? ScopeGroup { get; set; }
 
-    /// <summary>The properties the batch is about, as a JSON array of ids (jsonb); empty for the whole inventory.</summary>
     [Required]
     public string ScopePropertyIdsJson { get; set; } = EmptyJsonArray;
 
@@ -59,7 +53,6 @@ public class OctorateInventoryImportBatch : ITenantOwned
     [MaxLength(ErrorCodeMaxLength)]
     public string? ErrorCode { get; set; }
 
-    /// <summary>Who started it: the Auth0 subject.</summary>
     [Required]
     [MaxLength(UserIdMaxLength)]
     public string CreatedByUserId { get; set; } = string.Empty;
@@ -68,9 +61,7 @@ public class OctorateInventoryImportBatch : ITenantOwned
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>When every channel was completed (UTC); <c>null</c> until then.</summary>
     public DateTime? CompletedAt { get; set; }
 
-    /// <summary>The channels of the batch, one each.</summary>
     public List<OctorateInventoryImportChannel> Channels { get; set; } = [];
 }

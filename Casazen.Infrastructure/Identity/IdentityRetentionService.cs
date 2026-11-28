@@ -48,14 +48,12 @@ public sealed class IdentityRetentionService(
     TimeProvider clock,
     ILogger<IdentityRetentionService> logger)
 {
-    /// <summary>The rows one unit of work takes: the size of a batch, not a rule of the retention.</summary>
     internal const int BatchSize = 200;
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private static readonly GuestCheckInSessionStatus[] OpenStatuses = [GuestCheckInSessionStatus.Inviato, GuestCheckInSessionStatus.InCompilazione];
 
-    /// <summary>The whole retention runs: one of the two flags of the self-hosted verification that keep something is on. With both off only the evidence past its time is deleted.</summary>
     public bool PurgeOn =>
         featureFlags.IsEnabled(FeatureFlags.CheckInIdentitySelfHosted) || featureFlags.IsEnabled(FeatureFlags.CheckInIdentityReviewEvidence);
 
@@ -89,7 +87,6 @@ public sealed class IdentityRetentionService(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // The type only: a message could carry a key or a value. The other organizations go on; the run is reported failed below.
                 failed++;
                 db.ChangeTracker.Clear();
                 logger.LogError("Identity retention of org {OrgId} failed ({ErrorType}); the next run repeats it", orgId, ex.GetType().Name);
@@ -109,10 +106,6 @@ public sealed class IdentityRetentionService(
         return total;
     }
 
-    /// <summary>
-    /// What a platform administrator checks to see that nothing overdue remains (AC-NF195-4): the evidence past its time and not deleted, the kept pictures of the document that no
-    /// session is still using (both across every organization), and what the last run of this process did (null after a start, until the first run).
-    /// </summary>
     public async Task<IdentityRetentionStatus> StatusAsync(CancellationToken ct)
     {
         var now = clock.GetUtcNow().UtcDateTime;
@@ -126,12 +119,6 @@ public sealed class IdentityRetentionService(
         return new IdentityRetentionStatus(overdueEvidence, overdueImages, runLog.Last);
     }
 
-    /// <summary>
-    /// The live kept pictures of a document (<see cref="DocumentImage"/>, not marked deleted) of a booking that no check-in session of its own is still using, of
-    /// <paramref name="orgId"/> or of every organization: a session in use is open (sent or being filled in), not expired, its verification neither closed nor approved, and
-    /// not opened, or opened less than <paramref name="abandonedAfterHours"/> hours ago. Every way of the flow to a person and every approval deletes them already: what is left is
-    /// the picture of an abandoned verification, or of a deletion that failed.
-    /// </summary>
     internal IQueryable<DocumentImage> OverdueDocumentImages(Guid? orgId, DateTime now, int abandonedAfterHours)
     {
         var abandonedBefore = now.AddHours(-abandonedAfterHours);
@@ -148,10 +135,6 @@ public sealed class IdentityRetentionService(
         return images.Where(image => !inUse.Any(session => session.OrgId == image.OrgId && session.BookingId == image.BookingId));
     }
 
-    /// <summary>
-    /// The organizations that have something for a category; the same conditions as the categories, so an organization with nothing is never visited. While not
-    /// <paramref name="whole"/> (both flags off) only those with evidence past its time.
-    /// </summary>
     private async Task<List<Guid>> OrgsWithWorkAsync(DateTime now, IdentityRetentionOptions? periods, bool whole, CancellationToken ct)
     {
         var orgs = new HashSet<Guid>();
@@ -194,7 +177,6 @@ public sealed class IdentityRetentionService(
     private IQueryable<IdentityReviewEvidence> LiveEvidence(Guid orgId) =>
         db.IdentityReviewEvidences.IgnoreQueryFilters().Where(evidence => evidence.OrgId == orgId && evidence.DeletedAt == null);
 
-    /// <summary>The live evidence of a booking decided after it was kept: an approval (of the policy or of an operator) or an operator's rejection.</summary>
     private IQueryable<IdentityReviewEvidence> DecidedEvidence(Guid orgId) =>
         LiveEvidence(orgId).Where(evidence => db.BiometricVerificationLogs.Any(log =>
             log.OrgId == orgId
@@ -202,10 +184,6 @@ public sealed class IdentityRetentionService(
             && log.CreatedAt >= evidence.CreatedAt
             && (log.Outcome == BiometricOutcome.Accept || (log.Method == VerificationMethod.Operator && log.Outcome == BiometricOutcome.Reject))));
 
-    /// <summary>
-    /// Deletes, batch after batch, the evidence <paramref name="query"/> selects: the objects, then the rows marked with <paramref name="reason"/>. What was marked before a failure
-    /// of the storage is saved before the failure goes on.
-    /// </summary>
     private async Task<int> DeleteEvidenceAsync(Func<IQueryable<IdentityReviewEvidence>> query, string reason, DateTime now, CancellationToken ct)
     {
         var total = 0;
@@ -246,7 +224,6 @@ public sealed class IdentityRetentionService(
         return orgId is { } org ? sessions.Where(session => session.OrgId == org) : sessions;
     }
 
-    /// <summary>Closes the abandoned sessions of the organization, batch after batch, and deletes the evidence linked to them: the sessions closed and the pictures deleted.</summary>
     private async Task<(int Sessions, int Evidence)> CloseAbandonedSessionsAsync(Guid orgId, DateTime now, DateTime abandonedBefore, CancellationToken ct)
     {
         int sessions = 0, evidence = 0;
@@ -318,7 +295,6 @@ public sealed class IdentityRetentionService(
         return true;
     }
 
-    /// <summary>Deletes the overdue kept pictures of the documents of the organization (objects and rows), batch after batch: the rows deleted.</summary>
     private async Task<int> DeleteOverdueDocumentImagesAsync(Guid orgId, DateTime now, int abandonedAfterHours, CancellationToken ct)
     {
         var total = 0;
@@ -343,10 +319,6 @@ public sealed class IdentityRetentionService(
         return total;
     }
 
-    /// <summary>
-    /// The sessions whose checks of the document are past their time: expired before <paramref name="before"/>, or closed before it and not usable any more (expired, or replaced by
-    /// a new link). A session still open keeps them: the final submission compares the number typed with the proof of the one read.
-    /// </summary>
     private IQueryable<GuestCheckInSession> ExpiredDocumentChecks(Guid? orgId, DateTime now, DateTime before)
     {
         var sessions = db.GuestCheckInSessions
@@ -419,7 +391,6 @@ public sealed class IdentityRetentionService(
         return total;
     }
 
-    /// <summary>The first day whose check-outs keep their logs: today in Europe/Rome, <paramref name="months"/> months ago (midnight UTC of that date).</summary>
     private static DateTime LogCutoff(DateTime now, int months) => RomeCalendar.TodayAt(new DateTimeOffset(now, TimeSpan.Zero)).AddMonths(-months);
 
     private static StoredDocumentCheck? ReadCheck(string? json)
@@ -433,7 +404,6 @@ public sealed class IdentityRetentionService(
         }
         catch (JsonException)
         {
-            // A value that is not one of ours: nothing to clear in it; its time comes with DocumentCheckDays.
             return null;
         }
     }
@@ -446,10 +416,6 @@ public sealed class IdentityRetentionService(
     };
 }
 
-/// <summary>
-/// What one run of the identity retention deleted (E73/F01/US02/T03), per category: the evidence past its time, the evidence of a booking decided, the abandoned sessions
-/// closed and their evidence, the kept pictures of the documents nobody uses any more, the checks of the document cleared and the verification logs deleted. Counts only.
-/// </summary>
 public sealed record IdentityRetentionCounts(
     int ExpiredEvidence,
     int DecidedEvidence,
@@ -476,16 +442,10 @@ public sealed record IdentityRetentionCounts(
     }
 }
 
-/// <summary>One run of the identity retention: when it ran (UTC), what it deleted and how many organizations failed.</summary>
 public sealed record IdentityRetentionRun(DateTime RanAt, IdentityRetentionCounts Counts, int FailedOrgs);
 
-/// <summary>What the status of the platform administrators shows of the retention: what is overdue now and the last run of this process (null until the first one).</summary>
 public sealed record IdentityRetentionStatus(int OverdueEvidence, int OverdueDocumentImages, IdentityRetentionRun? LastRun);
 
-/// <summary>
-/// The last run of the identity retention in this process (E73/F01/US02/T03): the job and the API share the process (Hangfire runs in the web service), so the status of the
-/// platform administrators reads it here; after a start it is empty until the hourly run. The overdue counts, read from the database, are the proof; this is the context.
-/// </summary>
 public sealed class IdentityRetentionRunLog
 {
     private IdentityRetentionRun? _last;
@@ -512,10 +472,8 @@ public sealed class IdentityRetentionFailedException : InvalidOperationException
         PeriodsInvalid = periodsInvalid;
     }
 
-    /// <summary>How many organizations the run could not finish.</summary>
     public int FailedOrgs { get; }
 
-    /// <summary>The periods of <c>IdentityVerification:Retention</c> are not valid: the abandoned sessions, the kept pictures, the checks of the document and the logs were not touched.</summary>
     public bool PeriodsInvalid { get; }
 
     private static string MessageOf(int failedOrgs, bool periodsInvalid)

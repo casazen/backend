@@ -22,11 +22,6 @@ internal sealed class OnboardingPartStateConfiguration : IEntityTypeConfiguratio
     }
 }
 
-/// <summary>
-/// The activation of a flow on a property (NF-106): one row per property and flow, going with the property (cascade) and carrying its org
-/// (TN-2, restrict). An activation after a deactivation reuses the row, so the unique index is also what lets two activations of the same
-/// flow end on one row.
-/// </summary>
 internal sealed class PropertyFlowActivationConfiguration : IEntityTypeConfiguration<PropertyFlowActivation>
 {
     public void Configure(EntityTypeBuilder<PropertyFlowActivation> entity)
@@ -91,10 +86,6 @@ internal sealed class OnboardingAssistRequestConfiguration : IEntityTypeConfigur
     }
 }
 
-/// <summary>
-/// A property of the pilot group (NF-105, H10): one row per property (unique index), going with the property (cascade) and carrying its org
-/// (TN-2, restrict).
-/// </summary>
 internal sealed class OnboardingPilotMemberConfiguration : IEntityTypeConfiguration<OnboardingPilotMember>
 {
     public void Configure(EntityTypeBuilder<OnboardingPilotMember> entity)
@@ -108,10 +99,6 @@ internal sealed class OnboardingPilotMemberConfiguration : IEntityTypeConfigurat
     }
 }
 
-/// <summary>
-/// The per-property data of the activation (NF-105): one row per property (unique index), going with the property (cascade) and carrying its
-/// org (TN-2, restrict).
-/// </summary>
 internal sealed class PropertyOnboardingDataConfiguration : IEntityTypeConfiguration<PropertyOnboardingData>
 {
     public void Configure(EntityTypeBuilder<PropertyOnboardingData> entity)

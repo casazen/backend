@@ -6,7 +6,6 @@ public static partial class EmailTemplates
 {
     public static partial class Names
     {
-        /// <summary>«An item waits for your approval», to the host, when the preferences of the host ask for an email (E05/F04, NF-68).</summary>
         public const string HostApprovalToDecide = "host-approval-to-decide";
     }
 

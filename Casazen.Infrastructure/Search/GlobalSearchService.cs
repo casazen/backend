@@ -38,18 +38,14 @@ namespace Casazen.Infrastructure.Search;
 /// </remarks>
 public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchService> logger) : IGlobalSearchService
 {
-    /// <summary>Tenants shown in the title of a lease: the others are told as a number.</summary>
     private const int TenantNamesInTitle = 2;
 
-    /// <summary>Category labels shown in the subtitle of a supplier.</summary>
     private const int CategoriesInSubtitle = 2;
 
-    /// <summary>Between the parts of a subtitle: a space, the middle dot (U+00B7), a space.</summary>
     public const string SubtitleSeparator = " \u00B7 ";
 
     private readonly bool _fullText = db.Database.IsNpgsql();
 
-    /// <inheritdoc />
     public async Task<GlobalSearchResult> SearchAsync(GlobalSearchRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -72,7 +68,6 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
         if (request.SupplierOrgId is { } supplierOrgId)
             Add(groups, await SupplierRequestsAsync(request.Query, limit, request.Culture, supplierOrgId, cancellationToken));
 
-        // The groups are read in the order of SearchTypes.All, which is the order of the answer.
         logger.LogDebug("Global search: {Groups} group(s) with results", groups.Count);
         return new GlobalSearchResult(groups);
     }
@@ -83,11 +78,8 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
             groups.Add(group);
     }
 
-    // ─── Properties ─────────────────────────────────────────────────────────────────────────────────────
-
     private async Task<SearchGroup?> PropertiesAsync(SearchQuery query, int limit, HostSearchAccess host, CancellationToken ct)
     {
-        // A property belongs to the area of its mode: it is found by whoever holds property.read there.
         var modes = new List<RentalMode>();
         if (host.ShortRentProperties)
             modes.Add(RentalMode.Short);
@@ -119,8 +111,6 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
             hasMore);
     }
 
-    // ─── Bookings ───────────────────────────────────────────────────────────────────────────────────────
-
     private async Task<SearchGroup?> BookingsAsync(SearchQuery query, int limit, HostSearchAccess host, CancellationToken ct)
     {
         if (!host.Bookings)
@@ -134,7 +124,6 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
             .Where(b => b.OrgId == scope.OrgId && b.Property.OrgId == scope.OrgId && b.Guest.OrgId == scope.OrgId)
             .InScope(scope);
 
-        // By guest: the guests whose key matches, among the ones of the org (the bookings are then those of the scope).
         var guestIds = db.Guests
             .Where(g => g.OrgId == scope.OrgId && !g.IsDeleted && g.DataAnonymizedDate == null)
             .WhereKeyMatches(query, _fullText)
@@ -146,7 +135,6 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
         var hasMore = byGuest.HasMore;
         if (query.BookingCodePrefix is { } prefix)
         {
-            // By code: a range of the prefix index. A booking found both ways is told once.
             var pattern = prefix + "%";
             var byCode = await TakeAsync(Project(ScopedBookings().Where(b => EF.Functions.Like(b.BookingCode, pattern))), limit, ct);
             rows = rows.Concat(byCode.Rows).GroupBy(row => row.Id).Select(group => group.First()).ToList();
@@ -177,7 +165,6 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
         static SearchHit ToHit(BookingRow row)
         {
             var code = BookingCodes.Format(row.BookingCode);
-            // A guest who asked to be erased leaves nothing to show but the code.
             return row.GuestHidden
                 ? new SearchHit(SearchTypes.Booking, row.Id, code, NullIfBlank(row.PropertyName), SearchDestinations.ShortRentBooking)
                 : new SearchHit(
@@ -198,8 +185,6 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
         bool GuestHidden,
         string PropertyName);
 
-    // ─── Guests ─────────────────────────────────────────────────────────────────────────────────────────
-
     private async Task<SearchGroup?> GuestsAsync(SearchQuery query, int limit, HostSearchAccess host, CancellationToken ct)
     {
         if (!host.Guests)
@@ -207,8 +192,6 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
 
         var scope = host.Scope;
 
-        // A guest belongs to the org, not to a property: whoever reaches only some properties finds the guests of their stays
-        // (the rule of InScope for guests, the same as the guest list and the guest card, SR-04b).
         var guests = db.Guests.AsNoTracking()
             .Where(g => g.OrgId == scope.OrgId && !g.IsDeleted && g.DataAnonymizedDate == null)
             .InScope(scope, db.Bookings);
@@ -222,7 +205,6 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
             limit,
             ct);
 
-        // Only what recognises a person: the name, and the e-mail masked (m***@example.it). Never the phone or the document.
         return new SearchGroup(
             SearchTypes.Guest,
             rows.Select(g => new SearchHit(
@@ -234,8 +216,6 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
             hasMore);
     }
 
-    // ─── Leases ─────────────────────────────────────────────────────────────────────────────────────────
-
     private async Task<SearchGroup?> LeasesAsync(SearchQuery query, int limit, HostSearchAccess host, CancellationToken ct)
     {
         if (!host.Leases)
@@ -243,7 +223,6 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
 
         var scope = host.Scope;
 
-        // The leases with a tenant whose name matches (the parties have no org of their own: the lease below carries it).
         var leaseIds = db.Parties
             .Where(p => p.Role == PartyRole.Tenant && p.AnonymizedAt == null)
             .WhereKeyMatches(query, _fullText)
@@ -251,7 +230,6 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
 
         var (rows, hasMore) = await TakeAsync(
             db.LeaseContracts.AsNoTracking()
-                // The property is joined before the limit, as for the bookings.
                 .Where(l => l.OrgId == scope.OrgId && l.Property.OrgId == scope.OrgId && leaseIds.Contains(l.Id))
                 .InScope(scope)
                 .OrderByDescending(l => l.CreatedAt)
@@ -262,7 +240,6 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
         if (rows.Count == 0)
             return null;
 
-        // The names of the tenants of those leases, in the order they were entered (one query for the whole group).
         var ids = rows.Select(row => row.Id).ToList();
         var tenants = (await db.Parties.AsNoTracking()
                 .Where(p => ids.Contains(p.LeaseContractId) && p.Role == PartyRole.Tenant && p.AnonymizedAt == null)
@@ -288,8 +265,6 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
         var shown = string.Join(", ", names.Take(TenantNamesInTitle));
         return names.Count > TenantNamesInTitle ? $"{shown} +{names.Count - TenantNamesInTitle}" : shown;
     }
-
-    // ─── Service requests of the host ───────────────────────────────────────────────────────────────────
 
     private async Task<SearchGroup?> HostRequestsAsync(
         SearchQuery query, int limit, CultureInfo culture, HostSearchAccess host, CancellationToken ct)
@@ -328,18 +303,14 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
             hasMore);
     }
 
-    // ─── Suppliers the org works with ───────────────────────────────────────────────────────────────────
-
     private async Task<SearchGroup?> SuppliersAsync(
         SearchQuery query, int limit, CultureInfo culture, HostSearchAccess host, CancellationToken ct)
     {
-        // The marketplace of the host is a short-rent matter (GET /api/suppliers asks property.read there).
         if (!host.ShortRentProperties)
             return null;
 
         var scope = host.Scope;
 
-        // The suppliers that got a request from the org, within the scope: the preferred list (OrgTrustedSupplier) does not exist yet.
         var asked = db.ServiceRequests
             .OnlyVisibleToHost()
             .Where(r => r.OrgId == scope.OrgId)
@@ -366,8 +337,6 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
                 SearchDestinations.ShortRentSupplier)).ToList(),
             hasMore);
     }
-
-    // ─── Requests of the supplier ───────────────────────────────────────────────────────────────────────
 
     private async Task<SearchGroup?> SupplierRequestsAsync(
         SearchQuery query, int limit, CultureInfo culture, Guid supplierOrgId, CancellationToken ct)
@@ -403,9 +372,6 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
             hasMore);
     }
 
-    // ─── Shared ─────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The first <paramref name="limit"/> rows of <paramref name="query"/> and whether there are more (one more row is read).</summary>
     private static async Task<(List<T> Rows, bool HasMore)> TakeAsync<T>(IQueryable<T> query, int limit, CancellationToken ct)
     {
         var rows = await query.Take(limit + 1).ToListAsync(ct);
@@ -416,11 +382,9 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
 
     private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    /// <summary>The name of the service the supplier wrote, or its category in the language of the caller.</summary>
     private static string ServiceTitle(string? serviceName, string category, CultureInfo culture) =>
         string.IsNullOrWhiteSpace(serviceName) ? EmailTemplates.ServiceCategoryLabel(culture, category) : serviceName.Trim();
 
-    /// <summary>The first categories of a supplier, in the language of the caller; null when it has none or the column is not a list.</summary>
     private static string? CategoryLabels(string? json, CultureInfo culture)
     {
         if (string.IsNullOrWhiteSpace(json))

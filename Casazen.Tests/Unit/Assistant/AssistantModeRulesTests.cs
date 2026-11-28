@@ -18,7 +18,6 @@ public class AssistantModeRulesTests
 {
     private const string Host = "auth0|host";
 
-    /// <summary>The situations that never go automatic: the seven that carry a sensitive category by nature, and <c>Other</c>.</summary>
     private static readonly AssistantSituation[] NeverAutomatic =
     [
         AssistantSituation.InvoiceRequest,
@@ -44,7 +43,6 @@ public class AssistantModeRulesTests
     [Fact]
     public async Task AssistantModeRules_SensitiveSituation_NeverAutomatic_Test()
     {
-        // The set is the table's: a situation that becomes sensitive in the catalog is in this list, and one that is not in it is not sensitive.
         Assert.Equal(
             NeverAutomatic.Order(),
             AssistantSituationCatalog.All.Where(info => info.IsSensitive || info.Situation == AssistantSituation.Other).Select(info => info.Situation).Order());
@@ -64,11 +62,9 @@ public class AssistantModeRulesTests
             var code = AssistantSituationCatalog.Of(situation).Code;
             foreach (var mode in AutomaticModes)
             {
-                // The rule.
                 Assert.False(AssistantModeRules.IsAllowed(situation, mode));
                 Assert.Equal(AssistantModeRules.ModeNotAllowedCode, Assert.Throws<DomainRuleException>(() => AssistantModeRules.Validate(situation, mode)).Code);
 
-                // The service, for the organization and for a property.
                 foreach (var propertyId in new Guid?[] { null, world.Granted.Id })
                 {
                     var refused = await Assert.ThrowsAsync<DomainRuleException>(
@@ -76,7 +72,6 @@ public class AssistantModeRulesTests
                     Assert.Equal("assistant_mode_not_allowed", refused.Code);
                 }
 
-                // The API: the organization's endpoint, and a property's.
                 var request = new SaveAssistantSituationRequest { Mode = mode };
                 Assert.Equal(
                     "assistant_mode_not_allowed",
@@ -86,7 +81,6 @@ public class AssistantModeRulesTests
                     (await Assert.ThrowsAsync<DomainRuleException>(() => controller.SaveForProperty(world.Granted.Id, code, request, CancellationToken.None))).Code);
             }
 
-            // The prudent modes are allowed.
             foreach (var mode in PrudentModes)
             {
                 Assert.True(AssistantModeRules.IsAllowed(situation, mode));
@@ -94,11 +88,9 @@ public class AssistantModeRulesTests
             }
         }
 
-        // Nothing was saved by any of the refusals, and the version of the instructions never moved.
         Assert.Empty(await db.AssistantSituationSettings.AsNoTracking().ToListAsync());
         Assert.Empty(await db.OrgAssistantRules.AsNoTracking().ToListAsync());
 
-        // The positive control: a situation that is not sensitive can be automatic, in both modes, for the organization and for a property.
         foreach (var plain in AssistantSituationCatalog.All.Where(info => !NeverAutomatic.Contains(info.Situation)))
         {
             foreach (var mode in AutomaticModes)
@@ -109,7 +101,6 @@ public class AssistantModeRulesTests
             }
         }
 
-        // A row that breaks the rule, written by hand (or by a version that did not know it), is read as a draft and never as an automatic one.
         var stale = world.Hidden.Id;
         db.AssistantSituationSettings.AddRange(
             new AssistantSituationSetting { OrgId = world.OrgId, Situation = AssistantSituation.Complaint, Mode = AssistantMode.Automatic, ModeSince = AssistantTestKit.Now.UtcDateTime },
@@ -147,12 +138,10 @@ public class AssistantModeRulesTests
         var now = new DateTime(2026, 11, 12, 10, 0, 0, DateTimeKind.Utc);
         var fortnight = TimeSpan.FromDays(14);
 
-        // No start (a situation nobody saved has no row): never elapsed, whatever the period and however late it is asked.
         Assert.False(AssistantModeRules.TrustPeriodElapsed(null, now, fortnight));
         Assert.False(AssistantModeRules.TrustPeriodElapsed(null, now.AddYears(50), fortnight));
         Assert.False(AssistantModeRules.TrustPeriodElapsed(null, now, TimeSpan.Zero));
 
-        // A known start: elapsed from the moment the period is full and not before, and never for a start that is still to come.
         Assert.False(AssistantModeRules.TrustPeriodElapsed(now.AddDays(-14).AddTicks(1), now, fortnight));
         Assert.True(AssistantModeRules.TrustPeriodElapsed(now.AddDays(-14), now, fortnight));
         Assert.True(AssistantModeRules.TrustPeriodElapsed(now.AddDays(-30), now, fortnight));

@@ -12,7 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>FD-21: AI supplier discovery behind a flag (D11), with the guards of A8-01, A8-14 and A4-26.</summary>
 public class AiSupplierDiscoveryServiceTests
 {
     private const string ExtractedJson =
@@ -113,7 +112,6 @@ public class AiSupplierDiscoveryServiceTests
         Assert.Equal(kept, AiSupplierDiscoveryService.SafeGoogleMapsUrl(url) is not null);
     }
 
-    // A8-25: the cache is bounded, expires and is keyed by org (SE-05), not a static dictionary shared by the process.
     [Fact]
     public async Task SearchNearbyAsync_SameCityAndCategoryForAnotherOrg_SearchesAgainInsteadOfSharingTheEntry()
     {

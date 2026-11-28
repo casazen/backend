@@ -8,12 +8,9 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum SmokingPolicy
 {
-    /// <summary>Vietato.</summary>
     No = 0,
 
-    /// <summary>Solo all'aperto.</summary>
     OutdoorsOnly = 1,
 
-    /// <summary>Consentito.</summary>
     Yes = 2,
 }

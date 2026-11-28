@@ -4,9 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// Proof tests for Ticino compliance files (NF-15, ADR-016): proves data / tenant isolation rules.
-/// </summary>
 public class TicinoFileProofTests
 {
     /// <summary>
@@ -17,18 +14,16 @@ public class TicinoFileProofTests
     [Fact]
     public void TicinoFile_IsolatedPerOrg()
     {
-        // Arrange: Two different organizations
         var orgA = Guid.NewGuid();
         var orgB = Guid.NewGuid();
 
-        // Arrange: Two properties in different orgs, both in Ticino
         var propertyA = new Property
         {
             Id = Guid.NewGuid(),
             OrgId = orgA,
             Name = "Property A",
             Country = "CH",
-            SwissMunicipalityCode = "5192", // Lugano
+            SwissMunicipalityCode = "5192",
         };
 
         var propertyB = new Property
@@ -37,10 +32,9 @@ public class TicinoFileProofTests
             OrgId = orgB,
             Name = "Property B",
             Country = "CH",
-            SwissMunicipalityCode = "5192", // Lugano
+            SwissMunicipalityCode = "5192",
         };
 
-        // Arrange: Create compliance receipts for each property
         var receiptA = new SwissComplianceReceipt
         {
             Id = Guid.NewGuid(),
@@ -63,17 +57,14 @@ public class TicinoFileProofTests
             UploadedFileHash = "def456",
         };
 
-        // Act & Assert: Verify SwissComplianceReceipt implements ITenantOwned
         var receiptType = typeof(SwissComplianceReceipt);
         Assert.True(typeof(ITenantOwned).IsAssignableFrom(receiptType),
             "SwissComplianceReceipt MUST implement ITenantOwned for tenant isolation");
 
-        // Assert: Verify OrgId is set correctly (tenant key AC2)
         Assert.Equal(orgA, receiptA.OrgId);
         Assert.Equal(orgB, receiptB.OrgId);
         Assert.NotEqual(receiptA.OrgId, receiptB.OrgId);
 
-        // Assert: Verify PropertyId matches the property's org
         Assert.Equal(propertyA.Id, receiptA.PropertyId);
         Assert.Equal(propertyB.Id, receiptB.PropertyId);
         Assert.Equal(propertyA.OrgId, receiptA.OrgId);

@@ -51,7 +51,6 @@ internal sealed class RentPaymentEventApplier(TimeProvider clock, ILogger logger
                 return new RentPaymentNotice(entry.Id, RentPaymentNoticeKind.Received);
 
             case "payment_intent.processing":
-                // A late processing event must not put a failed or finished installment back in flight.
                 if (!isCurrent || entry.Status is RentLedgerStatus.Paid or RentLedgerStatus.Cancelled or RentLedgerStatus.Failed)
                     return null;
                 entry.Status = RentLedgerStatus.Processing;
@@ -66,8 +65,6 @@ internal sealed class RentPaymentEventApplier(TimeProvider clock, ILogger logger
                 entry.FailureCode = paymentEvent.FailureCode is { Length: > 100 } code ? code[..100] : paymentEvent.FailureCode;
                 entry.LastFailedAt = now;
                 entry.UpdatedAt = now;
-                // On-session failures are shown to the tenant on the page; a payment that fails after it was accepted
-                // (e.g. a SEPA debit returned) gets an email with a new link.
                 return wasInFlight ? new RentPaymentNotice(entry.Id, RentPaymentNoticeKind.Failed) : null;
 
             case "payment_intent.canceled":

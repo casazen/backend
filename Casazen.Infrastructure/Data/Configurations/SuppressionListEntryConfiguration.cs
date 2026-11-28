@@ -11,7 +11,6 @@ internal sealed class SuppressionListEntryConfiguration : IEntityTypeConfigurati
         entity.HasOne<Org>().WithMany().HasForeignKey(r => r.OrgId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Index for fast suppression checks: OrgId + EmailHash
         entity.HasIndex(r => new { r.OrgId, r.EmailHash })
             .IsUnique();
 

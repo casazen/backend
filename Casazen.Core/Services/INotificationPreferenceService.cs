@@ -21,57 +21,30 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface INotificationPreferenceService
 {
-    /// <summary>
-    /// The caller's own settings: its quiet hours, one entry for each kind of event (what it chose, or the default, marked as such) and the
-    /// channels that can deliver today. A user with no host org gets the defaults. Never throws for a user the database does not know.
-    /// </summary>
     Task<NotificationPreferencesView> GetAsync(string userId, CancellationToken ct);
 
-    /// <summary>
-    /// Saves the caller's own settings: the quiet hours and the kinds of event of <paramref name="update"/> (the others stay as they are).
-    /// </summary>
-    /// <exception cref="DomainRuleException">
-    /// 422: <see cref="NotificationPreferenceRules.LegalChannelRequiredCode"/> (no channel for a legal deadline),
-    /// <see cref="NotificationPreferenceRules.ChannelUnavailableCode"/> (browser push), an empty update or a kind of event twice.
-    /// </exception>
-    /// <exception cref="NotFoundException">The caller has no host org: there is nothing of its to save.</exception>
     Task<NotificationPreferencesView> SaveAsync(string userId, NotificationPreferencesUpdate update, CancellationToken ct);
 
-    /// <summary>
-    /// Who is told about <paramref name="context"/> and how: the recipients with the channels that go now and the ones that wait, with the
-    /// instant they are due. Only people who can be reached by at least one channel are returned, sorted by user id.
-    /// </summary>
     Task<IReadOnlyList<NotificationRecipient>> ResolveAsync(NotificationEventContext context, CancellationToken ct);
 }
 
-/// <summary>The quiet hours of a user, on the clock of Europe/Rome.</summary>
-/// <param name="Start">When they start (default 22:00).</param>
-/// <param name="End">When they end (default 08:00); equal to <paramref name="Start"/> there are none.</param>
-/// <param name="LegalAlertsOverride">A legal deadline alerts also during them (default on, not editable yet).</param>
 public sealed record QuietHoursSettings(TimeOnly Start, TimeOnly End, bool LegalAlertsOverride);
 
-/// <summary>What a user has for one kind of event: <paramref name="IsDefault"/> when it never chose and the default of PO-10 applies.</summary>
 public sealed record NotificationEventSetting(NotificationEventType EventType, NotificationChannels Channels, bool IsDefault);
 
-/// <summary>A channel and whether it can deliver today; <paramref name="UnavailableReason"/> is a code the page turns into a sentence.</summary>
 public sealed record NotificationChannelAvailability(NotificationChannels Channel, bool Available, string? UnavailableReason);
 
-/// <summary>The settings of a user as the API gives them.</summary>
 public sealed record NotificationPreferencesView(
     QuietHoursSettings QuietHours,
     IReadOnlyList<NotificationEventSetting> Events,
     IReadOnlyList<NotificationChannelAvailability> AvailableChannels);
 
-/// <summary>New quiet hours of a user.</summary>
 public sealed record QuietHoursUpdate(TimeOnly Start, TimeOnly End);
 
-/// <summary>The channels a user chose for one kind of event (<see cref="NotificationChannels.None"/> = nothing at all).</summary>
 public sealed record NotificationEventUpdate(NotificationEventType EventType, NotificationChannels Channels);
 
-/// <summary>A save: the quiet hours and/or the kinds of event to change. An update with neither is a 422.</summary>
 public sealed record NotificationPreferencesUpdate(QuietHoursUpdate? QuietHours, IReadOnlyList<NotificationEventUpdate>? Events);
 
-/// <summary>A permission the recipients of an alert must hold, in the context that grants it (<c>short-rent</c>, <c>long-rent</c>, ...).</summary>
 public sealed record NotificationPermission(string ContextKey, string PermissionKey);
 
 /// <summary>

@@ -16,8 +16,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class ServiceRequestScheduleTests
 {
-    // ─── Create: the service ───
-
     [Fact]
     public async Task CreateAsync_ServiceAndFreeSlot_KeepsTheTimeTheNameTheEstimateAndTheDeadline()
     {
@@ -55,7 +53,6 @@ public class ServiceRequestScheduleTests
             ServiceListingId: s.ListingId,
             ScheduledStartUtc: null));
 
-        // Check-out is 2026-10-12 UTC midnight → 10:00 Europe/Rome that day (08:00Z in CEST).
         var expectedStart = new DateTime(2026, 10, 12, 8, 0, 0, DateTimeKind.Utc);
         Assert.Equal(expectedStart, created.ScheduledStartUtc);
         Assert.Equal(expectedStart.AddMinutes(ServiceRequestScenario.ServiceMinutes), created.ScheduledEndUtc);
@@ -105,11 +102,11 @@ public class ServiceRequestScheduleTests
     }
 
     [Theory]
-    [InlineData(SupplierServicePriceUnit.PerHour, false, 4000)] // the hours are not known yet
+    [InlineData(SupplierServicePriceUnit.PerHour, false, 4000)]
     [InlineData(SupplierServicePriceUnit.PerSet, false, 4000)]
     [InlineData(SupplierServicePriceUnit.PerSquareMeter, false, 4000)]
-    [InlineData(SupplierServicePriceUnit.PerJob, true, 4000)] // on quote
-    [InlineData(SupplierServicePriceUnit.PerJob, false, null)] // no price at all
+    [InlineData(SupplierServicePriceUnit.PerJob, true, 4000)]
+    [InlineData(SupplierServicePriceUnit.PerJob, false, null)]
     [InlineData(SupplierServicePriceUnit.PerJob, false, 0)]
     public async Task CreateAsync_ServiceWithoutAPriceKnownInAdvance_HasNoEstimate(
         SupplierServicePriceUnit unit, bool requiresQuote, int? priceFromCents)
@@ -221,8 +218,6 @@ public class ServiceRequestScheduleTests
         Assert.Equal(ServiceRequestErrorCodes.TimeNeedsService, ex.Code);
     }
 
-    // ─── Create: the slot ───
-
     [Fact]
     public async Task CreateAsync_TimeOnADayTheSupplierDoesNotWork_Throws409SlotUnavailableAndSendsNothing()
     {
@@ -238,10 +233,10 @@ public class ServiceRequestScheduleTests
     }
 
     [Theory]
-    [InlineData("2026-10-09T18:00:00Z")] // 20:00 in Rome: after the evening band
-    [InlineData("2026-10-09T05:00:00Z")] // 07:00 in Rome: before the morning band
-    [InlineData("2026-10-09T10:00:00Z")] // 12:00 in Rome: the two hours would run into the lunch break
-    [InlineData("2026-10-09T08:15:00Z")] // 10:15 in Rome: not one of the slots the supplier offers
+    [InlineData("2026-10-09T18:00:00Z")]
+    [InlineData("2026-10-09T05:00:00Z")]
+    [InlineData("2026-10-09T10:00:00Z")]
+    [InlineData("2026-10-09T08:15:00Z")]
     public async Task CreateAsync_TimeThePlannerDoesNotOffer_Throws409SlotUnavailable(string startUtc)
     {
         using var s = await ServiceRequestScenario.CreateAsync();
@@ -255,9 +250,9 @@ public class ServiceRequestScheduleTests
     }
 
     [Theory]
-    [InlineData("2026-10-09T06:00:00Z")] // 08:00 in Rome: the first slot of the morning
-    [InlineData("2026-10-09T09:00:00Z")] // 11:00 in Rome: the last one, the work ends with the band at 13:00
-    [InlineData("2026-10-09T12:00:00Z")] // 14:00 in Rome: the first of the afternoon
+    [InlineData("2026-10-09T06:00:00Z")]
+    [InlineData("2026-10-09T09:00:00Z")]
+    [InlineData("2026-10-09T12:00:00Z")]
     public async Task CreateAsync_TimeInsideTheHours_IsAccepted(string startUtc)
     {
         using var s = await ServiceRequestScenario.CreateAsync();
@@ -288,7 +283,6 @@ public class ServiceRequestScheduleTests
     public async Task CreateAsync_SlotInsideTheBufferAfterAnotherJob_IsRefusedAndTheOneAfterTheBufferIsNot()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        // 08:00-10:00 in Rome; 30 minutes of buffer: 10:00 is too close, 11:00 is the next slot of the supplier.
         await s.RequestAsync(new DateTime(2026, 10, 9, 6, 0, 0, DateTimeKind.Utc));
 
         await Assert.ThrowsAsync<DomainConflictException>(() => s.RequestAsync(ServiceRequestScenario.FridayAt10));
@@ -301,7 +295,6 @@ public class ServiceRequestScheduleTests
     public async Task CreateAsync_ServiceWithItsOwnNotice_RefusesASlotInsideIt()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        // Friday 10:00 is 22 hours from now (Thursday 12:00): too soon for a service that wants 48 hours.
         var withNotice = await s.AddListingAsync("Con preavviso", minNoticeHours: 48);
 
         var ex = await Assert.ThrowsAsync<DomainConflictException>(
@@ -356,7 +349,6 @@ public class ServiceRequestScheduleTests
         var rejected = await s.RequestAsync(ServiceRequestScenario.FridayAt14);
         await s.Service.RejectAsync(rejected.Id, s.SupplierOrgId, "Non posso");
 
-        // Both slots are free again.
         var again10 = await s.RequestAsync(ServiceRequestScenario.FridayAt10);
         var again14 = await s.RequestAsync(ServiceRequestScenario.FridayAt14);
 
@@ -368,7 +360,6 @@ public class ServiceRequestScheduleTests
     public async Task CreateAsync_CategoryOnlyJobsWithDuration_SkipThePlannerDailyMaximum()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        // Duration-typed creates skip the published-slot check, so they can exceed the daily maximum of timed catalog slots.
         var origin = new DateTime(2026, 11, 2, 8, 0, 0, DateTimeKind.Utc);
         for (var i = 0; i < 4; i++)
             await s.RequestAsync(origin.AddHours(i * 3), withService: false, durationMinutes: 60);
@@ -389,8 +380,6 @@ public class ServiceRequestScheduleTests
         Assert.Equal(DateTimeKind.Utc, (await s.ReadAsync(created.Id)).ScheduledStartUtc!.Value.Kind);
         Assert.Equal(ServiceRequestScenario.FridayAt10, (await s.ReadAsync(created.Id)).ScheduledStartUtc);
     }
-
-    // ─── Take: time and price ───
 
     [Fact]
     public async Task TakeAsync_WithATime_SetsItFromTheDurationOfTheServiceAndClearsTheDeadline()
@@ -493,7 +482,6 @@ public class ServiceRequestScheduleTests
         using var s = await ServiceRequestScenario.CreateAsync();
         var request = await s.RequestAsync(ServiceRequestScenario.FridayAt10);
 
-        // Sending the time the host chose again is not a change: the request is not "in its own way".
         var taken = await s.Service.TakeAsync(
             request.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId,
             new TakeServiceRequestCommand(ServiceRequestScenario.FridayAt10));
@@ -542,9 +530,9 @@ public class ServiceRequestScheduleTests
     }
 
     [Theory]
-    [InlineData(0)] // the end is the start
-    [InlineData(-30)] // the end is before the start
-    [InlineData(SupplierServiceCatalogLimits.MaxDurationMinutes + 1)] // longer than a service can last
+    [InlineData(0)]
+    [InlineData(-30)]
+    [InlineData(SupplierServiceCatalogLimits.MaxDurationMinutes + 1)]
     public async Task TakeAsync_EndThatIsNotAfterTheStartOrIsTooLong_Throws422TimeInvalid(int minutesAfterStart)
     {
         using var s = await ServiceRequestScenario.CreateAsync();
@@ -595,7 +583,6 @@ public class ServiceRequestScheduleTests
     public async Task TakeAsync_TwoJobsWhoseIntervalsOverlap_TheSecondConflicts()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        // Both stay Richiesto until the first take: create only conflicts with jobs already accepted.
         var first = await s.RequestAsync(ServiceRequestScenario.FridayAt10);
         var second = await s.RequestAsync(ServiceRequestScenario.FridayAt10, withService: false, durationMinutes: 60);
         await s.Service.TakeAsync(first.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId);

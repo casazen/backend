@@ -19,16 +19,10 @@ public interface IOnSiteBookingRequestService
     /// </summary>
     Task<OnSiteRequestSnapshot> ConfirmGuestEmailAsync(Guid bookingId, string token, CancellationToken cancellationToken = default);
 
-    /// <summary>Requests of <paramref name="scope"/> waiting for the host (email confirmed, deadline not passed), soonest deadline first.</summary>
     Task<IReadOnlyList<Booking>> GetAwaitingHostApprovalAsync(HostScope scope, CancellationToken cancellationToken = default);
 
-    /// <summary>The host accepts: the booking becomes <see cref="BookingStatus.Confirmed"/> and valid (D5).</summary>
     Task<Booking> AcceptAsync(Guid bookingId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The host declines: the booking is cancelled with <see cref="BookingCancellationReason.OnSiteRequestDeclined"/> and
-    /// its dates released. <paramref name="messageToGuest"/> is only written in the email to the guest.
-    /// </summary>
     Task<Booking> DeclineAsync(Guid bookingId, string? messageToGuest, CancellationToken cancellationToken = default);
 }
 
@@ -43,27 +37,19 @@ public sealed record OnSiteRequestSnapshot(
     OnSiteRequestState? State,
     DateTime? RequestExpiresAt);
 
-/// <summary>Stable error codes of "pay at the property" requests (frontend <c>apiErrors.codes.*</c>).</summary>
 public static class OnSiteRequestErrorCodes
 {
-    /// <summary>422: the stay is longer than <c>DirectBooking:OnSiteMaxNights</c>.</summary>
     public const string TooManyNights = "onsite_request_too_many_nights";
 
-    /// <summary>404: the confirmation link does not match any request (wrong booking or token).</summary>
     public const string LinkInvalid = "onsite_request_link_invalid";
 
-    /// <summary>409: the request is past its deadline (email not confirmed in time, or no answer from the host).</summary>
     public const string Expired = "onsite_request_expired";
 
-    /// <summary>409: the request was already accepted, declined, cancelled or expired.</summary>
     public const string NotPending = "onsite_request_not_pending";
 
-    /// <summary>409: the guest has not confirmed the email yet: the host cannot answer.</summary>
     public const string EmailNotConfirmed = "onsite_request_email_not_confirmed";
 
-    /// <summary>422: the booking is not a "pay at the property" request.</summary>
     public const string NotOnSiteRequest = "booking_not_onsite_request";
 
-    /// <summary>409: the dates now overlap a calendar block imported from an OTA: the request can only be declined.</summary>
     public const string DatesBlocked = "onsite_request_dates_blocked";
 }

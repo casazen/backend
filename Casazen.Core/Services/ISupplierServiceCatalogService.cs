@@ -22,30 +22,14 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface ISupplierServiceCatalogService
 {
-    /// <summary>The services of the supplier that are not deleted, by sort position then creation. Read-only.</summary>
     Task<IReadOnlyList<SupplierServiceListing>> ListAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
-    /// <summary>One service of the supplier. Read-only.</summary>
-    /// <exception cref="Exceptions.NotFoundException"><c>supplier_service_not_found</c>.</exception>
     Task<SupplierServiceListing> GetAsync(Guid supplierOrgId, Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The service as a service request needs it (SP-04), whatever its status; <c>null</c> when it is not one of the supplier's
-    /// or was deleted. The caller decides what a draft or paused service means (<see cref="SupplierServiceForRequest.IsRequestable"/>).
-    /// Read-only.
-    /// </summary>
     Task<SupplierServiceForRequest?> FindForRequestAsync(Guid supplierOrgId, Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>How many published (<c>Active</c>) services the supplier has: a step of the console checklist (SP-04). Read-only.</summary>
     Task<int> CountActiveAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The services the public may see (SP-09): the <c>Active</c> ones, not deleted, of <paramref name="supplierOrgId"/> <b>when
-    /// that supplier is itself <c>Active</c></b> (the supplier's status is part of the same statement: an org that is not an
-    /// active supplier has none, whatever the caller checked). By position then creation date. Only
-    /// <see cref="SupplierPublicService"/>, which carries nothing the console keeps to itself. Read-only; for the anonymous
-    /// reads, the org having been found from an active supplier's showcase slug.
-    /// </summary>
     Task<IReadOnlyList<SupplierPublicService>> ListPublicAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -59,11 +43,6 @@ public interface ISupplierServiceCatalogService
         IReadOnlyCollection<Guid> supplierOrgIds,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// One service the public may see (<see cref="ListPublicAsync"/> rules) by its slug (lowercase, as stored); <c>null</c> for
-    /// an unknown slug, a draft, a paused, a deleted service, a service of another supplier and a supplier that is not active.
-    /// Read-only.
-    /// </summary>
     Task<SupplierPublicService?> FindPublicAsync(Guid supplierOrgId, string serviceSlug, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -106,29 +85,12 @@ public interface ISupplierServiceCatalogService
         SupplierServiceListingInput input,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Soft delete: the service disappears from every read and its slug is free again.</summary>
-    /// <exception cref="Exceptions.NotFoundException"><c>supplier_service_not_found</c>, also when it is already deleted.</exception>
     Task DeleteAsync(Guid supplierOrgId, Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Publishes a draft or paused service (<see cref="SupplierServiceListingRules.EnsurePublishable"/>); an active one is
-    /// returned as it is.
-    /// </summary>
-    /// <exception cref="Exceptions.NotFoundException"><c>supplier_service_not_found</c>.</exception>
-    /// <exception cref="Exceptions.DomainRuleException"><c>supplier_service_not_publishable</c> (names what is missing).</exception>
     Task<SupplierServiceListing> PublishAsync(Guid supplierOrgId, Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>Pauses an active service; a paused one is returned as it is.</summary>
-    /// <exception cref="Exceptions.NotFoundException"><c>supplier_service_not_found</c>.</exception>
-    /// <exception cref="Exceptions.DomainRuleException"><c>supplier_service_cannot_pause</c>: a draft is not published.</exception>
     Task<SupplierServiceListing> PauseAsync(Guid supplierOrgId, Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// A draft copy of a service: the same content and photos, a new slug, the name followed by
-    /// <paramref name="copyNameSuffix"/> (shortened to fit), the last position.
-    /// </summary>
-    /// <exception cref="Exceptions.NotFoundException"><c>supplier_service_not_found</c>.</exception>
-    /// <exception cref="Exceptions.DomainRuleException"><c>supplier_service_limit_reached</c>.</exception>
     Task<SupplierServiceListing> DuplicateAsync(
         Guid supplierOrgId,
         Guid id,

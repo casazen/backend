@@ -4,7 +4,6 @@ using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Supplier;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
@@ -46,7 +45,6 @@ public class SupplierRequestOfferController(
         [FromBody] SendSupplierRequestOfferRequest request,
         CancellationToken cancellationToken)
     {
-        // A write: the org comes only from the caller's own supplier link, like take and reject.
         var orgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
         var userId = User.GetUserId();
         if (orgId is null || userId is null)
@@ -65,10 +63,6 @@ public class SupplierRequestOfferController(
         return Ok(ServiceRequestOfferMapper.ToResponse(updated));
     }
 
-    /// <summary>
-    /// Takes the offer back: the request stays new and the conversation goes on (no clock runs on the supplier). 404 <c>service_request_not_found</c>;
-    /// 422 <c>service_request_no_offer</c> (none waits), <c>service_request_supplier_not_active</c>; 409 <c>service_request_state_changed</c>.
-    /// </summary>
     [HttpPost("{id:guid}/offer/withdraw")]
     [ProducesResponseType(typeof(SupplierRequestOfferResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]

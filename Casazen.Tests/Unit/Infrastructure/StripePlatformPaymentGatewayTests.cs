@@ -62,8 +62,6 @@ public class StripePlatformPaymentGatewayTests
 
     private StripePlatformPaymentGateway Gateway() => new(NullLogger<StripePlatformPaymentGateway>.Instance, _client.Object);
 
-    // ─── Create ──────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task CreateAsync_BlocksTheCardOnThePlatform_WithTheGroupTheMetadataAndTheKey_AndNoFee()
     {
@@ -80,7 +78,6 @@ public class StripePlatformPaymentGatewayTests
         Assert.Equal(Group, options.TransferGroup);
         Assert.Equal("Booking of a service", options.Description);
 
-        // On the platform: no connected account, no destination, no on-behalf-of. The commission is what is not transferred, never a fee.
         Assert.Null(request.RequestOptions!.StripeAccount);
         Assert.Equal("service-hold:abc", request.RequestOptions.IdempotencyKey);
         Assert.Null(options.ApplicationFeeAmount);
@@ -88,7 +85,6 @@ public class StripePlatformPaymentGatewayTests
         Assert.Null(options.OnBehalfOf);
         Assert.Null(options.AutomaticPaymentMethods);
 
-        // Routed by the webhook on the kind, with the marker of the money CasaZen holds and the ids that find the hold.
         Assert.Equal("service-charge", options.Metadata["kind"]);
         Assert.Equal("platform-held", options.Metadata["funds"]);
         Assert.Equal("h1", options.Metadata["showcaseHoldId"]);
@@ -142,8 +138,6 @@ public class StripePlatformPaymentGatewayTests
         Assert.Empty(_requests);
     }
 
-    // ─── Capture ─────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task CaptureAsync_ChargesTheWholeBlock_OnThePlatform_WithTheKey()
     {
@@ -155,7 +149,6 @@ public class StripePlatformPaymentGatewayTests
         Assert.Equal(HttpMethod.Post, request.Method);
         Assert.Equal($"/v1/payment_intents/{IntentId}/capture", request.Path);
         var options = Assert.IsType<PaymentIntentCaptureOptions>(request.Options);
-        // The whole block: no amount to capture, no fee, no transfer.
         Assert.Null(options.AmountToCapture);
         Assert.Null(options.ApplicationFeeAmount);
         Assert.Null(options.TransferData);
@@ -183,7 +176,6 @@ public class StripePlatformPaymentGatewayTests
 
         var charge = await Gateway().CaptureAsync(IntentId, "service-capture:abc");
 
-        // The caller sees the truth (the block expired) and decides from it.
         Assert.Equal("canceled", charge.Status);
     }
 
@@ -197,8 +189,6 @@ public class StripePlatformPaymentGatewayTests
 
         await Assert.ThrowsAsync<StripeException>(() => Gateway().CaptureAsync(IntentId, "service-capture:abc"));
     }
-
-    // ─── Get and cancel ──────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetAsync_ReadsThePaymentIntentFromThePlatform_WithItsCharge()
@@ -271,8 +261,6 @@ public class StripePlatformPaymentGatewayTests
         await Assert.ThrowsAsync<StripeException>(() => Gateway().CancelAsync(IntentId, "key"));
     }
 
-    // ─── Refund ──────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task CreateRefundAsync_GivesMoneyBackFromThePlatform_WithNoCommissionToReturn()
     {
@@ -299,8 +287,6 @@ public class StripePlatformPaymentGatewayTests
         Assert.Equal("re_1", refund.Id);
         Assert.Equal("succeeded", refund.Status);
     }
-
-    // ─── Transfer ────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task CreateTransferAsync_PaysTheSupplierFromTheChargeOfThePayment_WithTheGroupAndTheKey()
@@ -337,7 +323,6 @@ public class StripePlatformPaymentGatewayTests
         Assert.Equal(5_400, options.Amount);
         Assert.Equal("eur", options.Currency);
         Assert.Equal("acct_supplier", options.Destination);
-        // Tied to the money of this payment: it works while the charge is not settled, and the funds follow the charge's.
         Assert.Equal(ChargeId, options.SourceTransaction);
         Assert.Equal(Group, options.TransferGroup);
         Assert.Equal("service-transfer", options.Metadata["kind"]);
@@ -402,7 +387,6 @@ public class StripePlatformPaymentGatewayTests
         Assert.Equal("service-hold:3f2c1a407c114b538e8a0c2f4d9a1b11", ServiceCharges.HoldAuthorizationIdempotencyKey(id));
         Assert.Equal("service-capture:3f2c1a407c114b538e8a0c2f4d9a1b11", ServiceCharges.CaptureIdempotencyKey(id));
         Assert.Equal("service-transfer:3f2c1a407c114b538e8a0c2f4d9a1b11:0", ServiceCharges.TransferIdempotencyKey(id, 0));
-        // A refused transfer is tried again with another key, a try whose answer was lost with the same one.
         Assert.NotEqual(ServiceCharges.TransferIdempotencyKey(id, 0), ServiceCharges.TransferIdempotencyKey(id, 1));
         Assert.True(ServiceCharges.IsCapturable("requires_capture"));
         Assert.False(ServiceCharges.IsCapturable("succeeded"));

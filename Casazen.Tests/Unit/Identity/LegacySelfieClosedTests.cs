@@ -24,11 +24,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// E73/F01/US01/T02 (NF-192, AC-NF192-4, ADR-013-R17): with <c>Features:CheckInIdentitySelfHosted</c> on the two-frame selfie of the legacy path is closed (its routes answer 409
-/// <c>presence_sequence_required</c> and the flow itself runs no two-frame check) and the step after the document is <c>presence</c>; off, the selfie is the step, as before. And the
-/// endpoint of the presence: its attributes, its key, its statuses and the body of its answer.
-/// </summary>
 public sealed class LegacySelfieClosedTests
 {
     private const string Token = "token";
@@ -40,7 +35,6 @@ public sealed class LegacySelfieClosedTests
     [Fact]
     public async Task LegacySelfieClosed_WithSelfHosted_Returns409()
     {
-        // Proof (security): the weaker two-frame check is not usable with the self-hosted flow on: both legacy routes refuse before anything is read, and the flow never runs.
         SetupOpenSession();
         var controller = Controller(new TestFeatureFlags(FeatureFlags.CheckInIdentityVerification, FeatureFlags.CheckInIdentitySelfHosted));
 
@@ -69,8 +63,6 @@ public sealed class LegacySelfieClosedTests
     [Fact]
     public async Task LegacySelfieClosed_TheFlowItself_RunsNoTwoFrameCheck_AndTheStepIsThePresence()
     {
-        // Defence in depth: called directly (not through the routes), the flow with the self-hosted flow on issues no pose challenge, reads and compares nothing and writes nothing;
-        // the step after a complete document is the presence. With the flow off the same session is at the selfie.
         await using var world = await PresenceClosureWorld.CreateAsync();
         var session = await world.ReadyStayAsync();
         var before = (await world.ReadBackAsync(session.Id)).DocumentCheckJson;
@@ -104,7 +96,6 @@ public sealed class LegacySelfieClosedTests
         var cache = Assert.Single(method.GetCustomAttributes<ResponseCacheAttribute>());
         Assert.True(cache.NoStore);
 
-        // AC7: 12 MB and 64 KB at most, all of it buffered in memory (never a temporary file); the configured limits of the sequence are checked by the reader under it.
         Assert.Equal((12 * 1024 * 1024) + (64 * 1024), PublicGuestCheckInController.MaxPresenceRequestBytes);
         Assert.Equal(
             (long?)PublicGuestCheckInController.MaxPresenceRequestBytes,
@@ -113,7 +104,6 @@ public sealed class LegacySelfieClosedTests
         Assert.Equal(PublicGuestCheckInController.MaxPresenceRequestBytes, form.MemoryBufferThreshold);
         Assert.Equal(PublicGuestCheckInController.MaxPresenceRequestBytes, form.MultipartBodyLengthLimit);
 
-        // Anonymous like its neighbours (the token of the link is the proof), and no authorization of its own.
         Assert.NotNull(typeof(PublicGuestCheckInController).GetCustomAttribute<AllowAnonymousAttribute>());
         Assert.Empty(method.GetCustomAttributes<AuthorizeAttribute>());
     }
@@ -195,7 +185,6 @@ public sealed class LegacySelfieClosedTests
         Assert.NotNull(seen.DocumentPhoto);
         Assert.Null(seen.DocumentPhotoBack);
 
-        // The streams of the parts are closed when the request ends.
         Assert.All(frames, frame => Assert.True(frame.Closed));
         Assert.True(document.Closed);
 
@@ -231,8 +220,6 @@ public sealed class LegacySelfieClosedTests
     [Fact]
     public async Task PresenceEndpoint_TheFlowFails_LogsTheTypeOfTheErrorOnly_NeverItsText()
     {
-        // Proof (privacy, ADR-013-R2): the error of the flow may carry what it was reading (a name, a number of a document, a score). The 500 is logged with the session and the TYPE of the
-        // exception; the text of the exception, the name of the guest and the numbers never reach the log.
         SetupOpenSession();
         var presence = new Mock<IIdentityPresenceFlow>();
         presence.Setup(flow => flow.SubmitPresenceSequenceAsync(It.IsAny<GuestCheckInSession>(), It.IsAny<PresenceSubmission>(), It.IsAny<CancellationToken>()))
@@ -288,7 +275,6 @@ public sealed class LegacySelfieClosedTests
         };
     }
 
-    /// <summary>A part of the form whose stream says when it was closed.</summary>
     private sealed class TrackedFile(string name, string contentType) : IFormFile
     {
         private readonly byte[] _bytes = TestJpeg.Noise(16, 16, 5);

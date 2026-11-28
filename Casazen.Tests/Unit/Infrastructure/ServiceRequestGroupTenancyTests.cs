@@ -20,7 +20,6 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// </summary>
 public class ServiceRequestGroupTenancyTests
 {
-    /// <summary>The files that may read or write the table, each with the reason.</summary>
     private static readonly IReadOnlyDictionary<string, string> AllowedFiles = new Dictionary<string, string>
     {
         ["Casazen.Infrastructure/Data/AppDbContext.cs"] = "Declares the DbSet and the model.",
@@ -30,7 +29,6 @@ public class ServiceRequestGroupTenancyTests
             "The system job (service-request-groups): lists the groups with something due, across every org on purpose, ids only; each group is then resolved by id under its lock.",
     };
 
-    // What may follow "db.ServiceRequestGroups" (whitespace removed): an insert, a predicate on the id, or the host org.
     private static readonly string[] AllowedContinuations =
     [
         ".Add(",
@@ -38,16 +36,13 @@ public class ServiceRequestGroupTenancyTests
         ".AsNoTracking().Where(g=>g.OrgId==",
     ];
 
-    // The system job's one statement: the groups of every org whose time has come, by state and clock, ids only.
     private static readonly IReadOnlyDictionary<string, string[]> ExtraContinuations = new Dictionary<string, string[]>
     {
         ["Casazen.Infrastructure/Services/ServiceRequestGroupRunService.cs"] = [".AsNoTracking().Where(g=>g.Phase!="],
     };
 
-    // Any way to reach the table from code: the DbSet through whatever the context variable is called, or Set<T>().
     private static readonly Regex AnyTableUse = new(@"\.ServiceRequestGroups\b|Set<ServiceRequestGroup>\(", RegexOptions.Compiled);
 
-    // The statements of the allowed files: they call the context "db".
     private static readonly Regex DbSetUse = new(@"db\.ServiceRequestGroups(?<rest>[\s\S]{0,90})", RegexOptions.Compiled);
 
     [Fact]
@@ -58,14 +53,12 @@ public class ServiceRequestGroupTenancyTests
         var entity = db.Model.FindEntityType(typeof(ServiceRequestGroup));
         Assert.NotNull(entity);
 
-        // Not tenant-filtered: a host filter would hide the group from the supplier of a backup and from the system job.
         Assert.Null(entity.FindDeclaredQueryFilter(AppDbContext.TenantQueryFilter));
         Assert.Equal("ServiceRequestGroups", entity.GetTableName());
         var hostOrg = Assert.Single(entity.GetForeignKeys());
         Assert.Equal(typeof(OrgEntity), hostOrg.PrincipalEntityType.ClrType);
         Assert.Equal(DeleteBehavior.Restrict, hostOrg.DeleteBehavior);
 
-        // A group is never deleted while a request belongs to it.
         var membership = Assert.Single(
             db.Model.FindEntityType(typeof(ServiceRequest))!.GetForeignKeys(), fk => fk.PrincipalEntityType.ClrType == typeof(ServiceRequestGroup));
         Assert.Equal(DeleteBehavior.Restrict, membership.DeleteBehavior);
@@ -88,14 +81,12 @@ public class ServiceRequestGroupTenancyTests
         Assert.Contains(requests.GetIndexes(), index => index.GetDatabaseName() == "IX_ServiceRequests_GroupId" && !index.IsUnique);
         Assert.Contains(groups.GetIndexes(), index => index.GetDatabaseName() == "IX_ServiceRequestGroups_Open");
 
-        // The check constraints are design-time metadata: not in the read-optimized runtime model.
         var design = db.GetService<IDesignTimeModel>().Model;
         Assert.Contains("CK_ServiceRequests_GroupRole", design.FindEntityType(typeof(ServiceRequest))!.GetCheckConstraints().Select(c => c.Name));
         Assert.Equal(
             ["CK_ServiceRequestGroups_Phase", "CK_ServiceRequestGroups_Windows"],
             design.FindEntityType(typeof(ServiceRequestGroup))!.GetCheckConstraints().Select(c => c.Name!).Order());
 
-        // The integers are stored: never renumbered.
         Assert.Equal(0, (int)ServiceRequestGroupRole.None);
         Assert.Equal(1, (int)ServiceRequestGroupRole.Primary);
         Assert.Equal(2, (int)ServiceRequestGroupRole.Backup);
@@ -113,12 +104,10 @@ public class ServiceRequestGroupTenancyTests
         var request = db.Model.FindEntityType(typeof(ServiceRequest))!;
         var org = db.Model.FindEntityType(typeof(OrgEntity))!;
 
-        // A request that exists before the backups is in no group: no group, role None, no acceptance.
         Assert.True(request.FindProperty(nameof(ServiceRequest.GroupId))!.IsNullable);
         Assert.False(request.FindProperty(nameof(ServiceRequest.GroupRole))!.IsNullable);
         Assert.Equal(ServiceRequestGroupRole.None, new ServiceRequest().GroupRole);
         Assert.True(request.FindProperty(nameof(ServiceRequest.BackupAcceptedAt))!.IsNullable);
-        // The rule is general: every org that exists has it on, and the entity says the same (a new org is on too).
         Assert.True(new OrgEntity().SupplierBackupsEnabled);
         Assert.Equal(true, org.FindProperty(nameof(OrgEntity.SupplierBackupsEnabled))!.GetDefaultValue());
     }
@@ -130,17 +119,15 @@ public class ServiceRequestGroupTenancyTests
 
         var sql = ServiceRequestGroupRunService.DueIdsOf(db, new DateTime(2026, 10, 30, 10, 0, 0, DateTimeKind.Utc)).ToQueryString();
 
-        Assert.Contains("\"Phase\" <> 2", sql); // not Closed
+        Assert.Contains("\"Phase\" <> 2", sql);
         Assert.Contains("\"PrimaryDueAt\" <= @", sql);
         Assert.Contains("\"BackupDueAt\" <= @", sql);
-        // The request the host follows moved on and the group did not: taken, or cancelled by the host.
         Assert.Contains("\"GroupRole\" IN (1, 4)", sql);
         Assert.Contains("\"CancelledBy\" = 0", sql);
         var orderBy = sql[sql.IndexOf("ORDER BY", StringComparison.Ordinal)..];
         Assert.StartsWith("ORDER BY", orderBy);
         Assert.Matches(@"LIMIT @\w+", sql);
         Assert.Matches($@"@\w+='{ServiceRequestGroupRunService.MaxPerRun}'", sql);
-        // The job works across every org: no tenant predicate narrows it to one host.
         Assert.DoesNotContain("\"OrgId\" = @", sql, StringComparison.Ordinal);
     }
 
@@ -190,7 +177,6 @@ public class ServiceRequestGroupTenancyTests
             .Select(rest => rest[..Math.Min(rest.Length, 60)])
             .ToList();
 
-        // The job file may only list; the group file may only insert, read by id and read for the host.
         Assert.True(
             offenders.Count == 0,
             $"{relative}: a statement on ServiceRequestGroups without an explicit predicate: {string.Join(" | ", offenders)}");

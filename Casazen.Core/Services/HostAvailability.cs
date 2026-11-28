@@ -14,14 +14,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IHostAvailabilityService
 {
-    /// <summary>
-    /// The state of the stay <paramref name="from"/> (arrival day) to <paramref name="to"/> (departure day, not a night) of
-    /// <paramref name="property"/>, which the caller has already been authorized to book. <paramref name="channel"/> narrows the block
-    /// that <see cref="HostAvailabilityState.LinkableBlock"/> offers to the calendar of that portal.
-    /// </summary>
-    /// <exception cref="Exceptions.DomainRuleException">
-    /// <see cref="PropertyRentalModeErrorCodes.NotBookableInLongMode"/>: the property is in long-term mode (PM-01).
-    /// </exception>
     Task<HostStayAvailability> CheckAsync(
         Property property,
         DateOnly from,
@@ -32,13 +24,10 @@ public interface IHostAvailabilityService
 
 public enum HostAvailabilityState
 {
-    /// <summary>The nights are free and the stay is not shorter than the minimum.</summary>
     Ok,
 
-    /// <summary>The nights are free but the stay is shorter than the minimum stay of the property: the host may go on, it is their booking.</summary>
     BelowMinimum,
 
-    /// <summary>At least one night is taken: see the conflicts and the nearest free window.</summary>
     Occupied,
 
     /// <summary>
@@ -47,37 +36,26 @@ public enum HostAvailabilityState
     /// </summary>
     LinkableBlock,
 
-    /// <summary>The dates cannot be a stay: see the reason.</summary>
     Invalid,
 }
 
 public enum HostAvailabilityInvalidReason
 {
-    /// <summary>The departure is not after the arrival.</summary>
     CheckOutNotAfterCheckIn,
 
-    /// <summary>The arrival is before today (Europe/Rome): the host enters stays from today on.</summary>
     CheckInInPast,
 
-    /// <summary>The stay is longer than <see cref="TouristTax.TouristTaxCalculator.MaxNights"/> nights.</summary>
     StayTooLong,
 }
 
 public enum HostAvailabilityConflictType
 {
-    /// <summary>A stay of CasaZen (the booking site, entered by the host, or a portal's reservation the host turned into a stay).</summary>
     Booking,
 
-    /// <summary>A reservation of a portal as it arrives, a block of its iCal calendar.</summary>
     Ical,
 
-    /// <summary>The host's own block.</summary>
     Block,
 
-    /// <summary>
-    /// The channel manager (Octorate) says the nights cannot be booked (E08/F01/US02/T01). It has no row of CasaZen: the id is empty, the
-    /// dates are the ones asked for, and the title is the channel Octorate names, when it names one (its answer holds none today).
-    /// </summary>
     ChannelManager,
 }
 
@@ -97,7 +75,6 @@ public sealed record HostAvailabilityConflict(
     DateOnly From,
     DateOnly To);
 
-/// <summary>A free stay of the same number of nights as the one asked for.</summary>
 public sealed record HostAvailabilityWindow(DateOnly From, DateOnly To);
 
 /// <summary>The state of a stay and what the host needs to act on it.</summary>
@@ -122,10 +99,8 @@ public sealed record HostStayAvailability(
     Guid? LinkableBlockId,
     bool? ChannelManagerChecked = null);
 
-/// <summary>The part of the availability that needs no database (SR-06a).</summary>
 public static class HostAvailabilityRules
 {
-    /// <summary>How many days before and after the arrival asked the nearest free window is looked for.</summary>
     public const int NearestWindowDays = 40;
 
     /// <summary>

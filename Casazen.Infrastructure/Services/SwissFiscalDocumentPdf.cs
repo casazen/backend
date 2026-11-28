@@ -32,7 +32,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public static class SwissFiscalDocumentPdf
 {
-    /// <summary>The figures of a Swiss document: the it-CH culture with the apostrophe as the thousands separator and the point as the decimal one.</summary>
     private static readonly NumberFormatInfo SwissNumbers = CreateSwissNumbers();
 
     /// <summary>What a line outside the VAT shows in the column of the rate.</summary>
@@ -79,7 +78,6 @@ public static class SwissFiscalDocumentPdf
         if (stay.Count > 0)
             blocks.Add(new PdfParagraph(string.Join('\n', stay)));
 
-        // The tourist tax a portal left to the host is not declared paid (FIX/BE-PORTAL-TAXLINE): its line says so, and so does the payment below.
         var split = FiscalDocumentPortalCollection.SplitOf(document);
         var lines = document.Lines.OrderBy(l => l.LineNumber).ToList();
         var columns = new List<PdfTableColumn>
@@ -144,8 +142,6 @@ public static class SwissFiscalDocumentPdf
         if (document.Kind != DocumentKind.CreditNote && document.Purpose != FiscalDocumentPurpose.OwnerInvoice)
             blocks.AddRange(PaymentBlocks(document, split, texts, language));
 
-        // An issued owner invoice that leaves an amount for the owner to pay ends with the QR-bill of that amount (E14/F01/US01/T02); offset in the statement,
-        // or without an account of the agency for a QR-bill, it says so instead.
         PdfSwissQrBill? qrBill = null;
         if (document.Purpose == FiscalDocumentPurpose.OwnerInvoice && document.Kind != DocumentKind.CreditNote && settlement is not null)
         {
@@ -196,7 +192,6 @@ public static class SwissFiscalDocumentPdf
         return SwissQrBill.Part(data, LabelsOf(texts, language));
     }
 
-    /// <summary>The headings of the receipt and of the payment part in the language of the document.</summary>
     private static PdfSwissQrBillLabels LabelsOf(IDocumentTexts texts, string language) => new(
         texts.Get("QrBillReceipt", language),
         texts.Get("QrBillPaymentPart", language),
@@ -210,10 +205,8 @@ public static class SwissFiscalDocumentPdf
         texts.Get("QrBillAcceptancePoint", language),
         texts.Get("QrBillSeparate", language));
 
-    /// <summary>An amount of a Swiss document: two decimals, the apostrophe between the thousands (<c>1'234.50</c>).</summary>
     public static string Money(decimal amount) => amount.ToString("N2", SwissNumbers);
 
-    /// <summary>A VAT rate of a Swiss document: <c>3.8%</c>, <c>8.1%</c>.</summary>
     public static string Rate(decimal percent) => percent.ToString("0.##", SwissNumbers) + "%";
 
     /// <summary>The rates of the document with their base and their stored VAT; the lines outside the VAT (the tourist tax) are not a rate.</summary>
@@ -236,7 +229,6 @@ public static class SwissFiscalDocumentPdf
         if (issuer.VatRegistered && !string.IsNullOrWhiteSpace(issuer.SwissVatNumber))
             yield return texts.Get("FiscalDocPdfChVatNumber", language, issuer.SwissVatNumber);
 
-        // An owner who issues in Switzerland (⚖ C1, E17/F01/US01/T02): the co-owners and the agency it issues through.
         foreach (var line in FiscalDocumentPdfs.OwnerIssuerLines(issuer, texts, language))
             yield return line;
     }
@@ -276,17 +268,11 @@ public static class SwissFiscalDocumentPdf
     private static string Description(FiscalDocumentLine line, IDocumentTexts texts, string language) =>
         line.LineType == FiscalLineType.TouristTax ? texts.Get("FiscalDocLineTouristTaxCh", language) : line.Description;
 
-    /// <summary>The payment state from who collected: the portal, the money collected, or still to collect. Never the name of a portal.</summary>
     private static string PaymentLabel(FiscalDocument document, IDocumentTexts texts, string language) =>
         document.PaymentChannel == FiscalPaymentChannel.Portal ? texts.Get("FiscalDocPdfChPaidPortal", language)
         : document.PaymentState == FiscalDocumentPaymentState.Paid ? texts.Get("FiscalDocPdfChPaid", language)
         : texts.Get("FiscalDocPdfChToCollect", language);
 
-    /// <summary>
-    /// The payment of the document, one bold paragraph as it always was; the document of a booking of a portal that left a tourist tax to the host (<paramref name="split"/>,
-    /// FIX/BE-PORTAL-TAXLINE) says instead what the portal collected and, in a paragraph of its own, the tax still to collect at the property: never «paid through the portal»
-    /// for the whole total. A document that bills nothing but the tax has only the second.
-    /// </summary>
     private static IEnumerable<PdfBlock> PaymentBlocks(FiscalDocument document, PortalCollectionSplit? split, IDocumentTexts texts, string language)
     {
         if (split is null)

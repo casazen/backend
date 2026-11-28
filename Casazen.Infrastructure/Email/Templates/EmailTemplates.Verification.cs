@@ -19,10 +19,6 @@ public static partial class EmailTemplates
         public const string GuestVideoCall = "guest-video-call";
     }
 
-    /// <summary>
-    /// Biometric verification requires operator decision (NF-12, AC-NF12-1), to the host: the guest's selfie
-    /// escalated, reached max attempts, or consent was declined. Links to the booking in the console.
-    /// </summary>
     public static EmailContent HostVerificationRequired(
         CultureInfo culture,
         string guestName,
@@ -36,10 +32,6 @@ public static partial class EmailTemplates
                 bookingUrl)
             .Build("VerificationRequired_Subject", propertyName);
 
-    /// <summary>
-    /// Operator requested a new selfie photo (NF-12, AC-NF12-5), to the guest: explains why and provides
-    /// the check-in link with the extended session.
-    /// </summary>
     public static EmailContent GuestNewPhotoRequest(
         CultureInfo culture,
         string guestName,
@@ -55,9 +47,6 @@ public static partial class EmailTemplates
             .LinkFallback("GuestNewPhotoRequest_LinkFallback", checkInLink)
             .Build("GuestNewPhotoRequest_Subject", propertyName);
 
-    /// <summary>
-    /// Push text for verification required alert (NF-12): short notification to property hosts.
-    /// </summary>
     public static PushText VerificationRequiredPush(CultureInfo culture, string guestName, string propertyName)
     {
         return new PushText(
@@ -65,11 +54,6 @@ public static partial class EmailTemplates
             string.Format(culture, EmailTexts.Get("VerificationRequiredPush_Body", culture), guestName, propertyName));
     }
 
-    /// <summary>
-    /// The identity of a guest waits for an operator (E03/F04/US02/T03, AC-NF50-3), to each user who decides the verifications of the property:
-    /// the property, the arrival date, why (a sentence and the code of <see cref="VerificationAlertReasons"/>) and the booking in the console.
-    /// No guest name, no image, nothing read on the document. Every dynamic value is HTML-encoded by the builder.
-    /// </summary>
     public static EmailContent VerificationOperatorAlert(
         CultureInfo culture,
         string propertyName,
@@ -85,16 +69,11 @@ public static partial class EmailTemplates
                 bookingUrl)
             .Build("VerificationOperatorAlert_Subject", propertyName);
 
-    /// <summary>The push of <see cref="VerificationOperatorAlert"/>: the property only (a lock screen never shows a guest name).</summary>
     public static PushText VerificationOperatorAlertPush(CultureInfo culture, string propertyName) =>
         new(
             EmailTexts.Get("VerificationOperatorAlertPush_Title", culture),
             string.Format(culture, EmailTexts.Get("VerificationOperatorAlertPush_Body", culture), propertyName));
 
-    /// <summary>
-    /// The lock code of the property, to the guest, after a passed verification (E03/F04/US02/T03 and T04, AC-NF50-2, AC-NF50-4): sent only when
-    /// the agent said ok or an operator approved. The code is HTML-encoded like every value; it is never logged.
-    /// </summary>
     public static EmailContent GuestAccessCode(
         CultureInfo culture,
         string guestName,
@@ -134,10 +113,6 @@ public static partial class EmailTemplates
             .Build("GuestVideoCall_Subject", propertyName);
     }
 
-    /// <summary>
-    /// The culture of <see cref="GuestAccessCode"/> for the language the guest chose on the check-in page: Italian for <c>it</c> (and when none
-    /// was chosen), English for every other language (the code e-mail is written in Italian and English only).
-    /// </summary>
     public static CultureInfo GuestAccessCodeCulture(string? sessionLanguage) =>
         string.IsNullOrWhiteSpace(sessionLanguage) || string.Equals(sessionLanguage.Trim(), "it", StringComparison.OrdinalIgnoreCase)
             ? DefaultCulture

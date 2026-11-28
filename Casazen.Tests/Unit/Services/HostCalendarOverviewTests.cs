@@ -26,12 +26,10 @@ public class HostCalendarOverviewTests : IAsyncLifetime
     [Fact]
     public async Task GetCalendarOverviewAsync_ExportLinks_OnlyWithPropertyReadAndOnlyForThePropertiesOfTheScope()
     {
-        // The permission: the short-rent property.read (a long-rent landlord passes the policy of the class, not this one).
         var action = typeof(PropertiesController).GetMethod(nameof(PropertiesController.GetCalendarOverview));
         Assert.NotNull(action);
         Assert.Contains(CasazenPolicies.PropertyRead, action.GetCustomAttributes<AuthorizeAttribute>().Select(a => a.Policy));
 
-        // A link for each of the three properties of the scenario: the one given to the collaborator, the one it was not given, another org's.
         var tokens = new Dictionary<Guid, Guid>();
         foreach (var property in new[] { _world.Granted, _world.Hidden, _world.OtherOrgProperty })
         {
@@ -46,13 +44,11 @@ public class HostCalendarOverviewTests : IAsyncLifetime
         var restricted = await HostScopePoints.Dashboard(_db).GetCalendarOverviewAsync(_world.Restricted);
         var orgWide = await HostScopePoints.Dashboard(_db).GetCalendarOverviewAsync(_world.OrgWide);
 
-        // The collaborator sees its property, with its feed and its link, and not a trace of the other links.
         var granted = Assert.Single(restricted.Properties);
         Assert.Equal(_world.Granted.Id, granted.PropertyId);
         Assert.Equal(tokens[_world.Granted.Id], granted.ExportToken);
         Assert.Single(granted.Feeds);
 
-        // The whole org sees the two properties of the org with their links, and the link of the other org is nowhere.
         Assert.Equal(
             new[] { _world.Granted.Id, _world.Hidden.Id }.Order(),
             orgWide.Properties.Select(p => p.PropertyId).Order());

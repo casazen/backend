@@ -30,20 +30,14 @@ public class GuestSessionRequest : IPerEmailRateLimitedRequest, IGuestBookingCod
     [MaxLength(64, ErrorMessage = "GuestBookingCodeInvalid")]
     public string BookingCode { get; set; } = string.Empty;
 
-    /// <summary>
-    /// The e-mail the booking was made with. Empty when it is left out, as in the lookup's body, so a missing address is refused exactly as the lookup
-    /// refuses it; nullable, so the phone proof needs none (a non-nullable string would be implicitly required).
-    /// </summary>
     [GuestSessionProof(GuestSessionProofCheck.EmailGiven)]
     [GuestSessionProof(GuestSessionProofCheck.EmailAddress)]
     [MaxLength(255, ErrorMessage = "GuestBookingEmailInvalid")]
     public string? Email { get; set; } = string.Empty;
 
-    /// <summary>The last four digits of the phone the guest gave when booking (NF-143). Read only with the flag <c>WhiteLabelHost</c> on.</summary>
     [GuestSessionProof(GuestSessionProofCheck.PhoneLast4)]
     public string? PhoneLast4 { get; set; }
 
-    /// <summary>The guests' limit per e-mail counts the address over the whole site: no scope.</summary>
     string? IPerEmailRateLimitedRequest.RateLimitScope => null;
 
     /// <summary>
@@ -54,7 +48,6 @@ public class GuestSessionRequest : IPerEmailRateLimitedRequest, IGuestBookingCod
         !string.IsNullOrWhiteSpace(PhoneLast4) && featureFlags?.IsEnabled(FeatureFlags.WhiteLabelHost) == true;
 }
 
-/// <summary>Which check of the proof of a <see cref="GuestSessionRequest"/> a <see cref="GuestSessionProofAttribute"/> makes.</summary>
 public enum GuestSessionProofCheck
 {
     /// <summary>
@@ -66,26 +59,16 @@ public enum GuestSessionProofCheck
     /// <summary>On the e-mail: an address, as the lookup's <c>[EmailAddress]</c>, unless the digits are the proof.</summary>
     EmailAddress,
 
-    /// <summary>On the digits: four ASCII digits when given. Not read with the flag off.</summary>
     PhoneLast4,
 }
 
-/// <summary>
-/// The checks of the proof of the guest session (NF-143) on the properties of <see cref="GuestSessionRequest"/>, so they are reported together with
-/// the other field errors, as the attributes of the lookup's body are. The flag is read from the services of the request (<see cref="IFeatureFlags"/>;
-/// none means off). With the flag off the two checks of the e-mail are the lookup's <c>[Required]</c> and <c>[EmailAddress]</c>, with the same
-/// messages, and the digits are not read.
-/// </summary>
-/// <remarks>MVC localizes only the built-in attributes: this one translates its key itself (<c>SharedResources</c>).</remarks>
 [AttributeUsage(AttributeTargets.Property, AllowMultiple = true)]
 public sealed class GuestSessionProofAttribute(GuestSessionProofCheck check) : ValidationAttribute
 {
     private static readonly EmailAddressAttribute Address = new();
 
-    /// <summary>The check this attribute makes.</summary>
     public GuestSessionProofCheck Check { get; } = check;
 
-    /// <summary>One identity per instance: the property carries the attribute more than once.</summary>
     public override object TypeId => this;
 
     protected override ValidationResult? IsValid(object? value, ValidationContext validationContext)

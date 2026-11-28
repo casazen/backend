@@ -18,17 +18,11 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IBookingPaymentLedgerService
 {
-    /// <summary>
-    /// The lines of one booking; <c>null</c> when the booking is not one the scope reaches. With an Octorate reservation the individual collections are read
-    /// from Octorate (while the connector is on); when that read fails the stored OTA amounts are answered with <see cref="PaymentLedgerBooking.Degraded"/>.
-    /// </summary>
     Task<PaymentLedgerBooking?> GetForBookingAsync(HostScope scope, Guid bookingId, CancellationToken ct = default);
 
-    /// <summary>One page of the lines of a period (newest first), with the criteria and the limits of the payment list.</summary>
     Task<PaymentLedgerPage> ListAsync(HostScope scope, PaymentListCriteria criteria, int page, int pageSize, CancellationToken ct = default);
 }
 
-/// <summary>What a line is.</summary>
 public enum PaymentLedgerKind
 {
     Card = 1,
@@ -38,7 +32,6 @@ public enum PaymentLedgerKind
     Other = 5,
 }
 
-/// <summary>Whether the money of a line came in.</summary>
 public enum PaymentLedgerState
 {
     Paid = 1,
@@ -49,7 +42,6 @@ public enum PaymentLedgerState
     Canceled = 6,
 }
 
-/// <summary>Who collected the money of a line.</summary>
 public enum PaymentLedgerCollector
 {
     Unknown = 0,
@@ -58,13 +50,8 @@ public enum PaymentLedgerCollector
     Platform = 3,
 }
 
-/// <summary>The fiscal document of the booking a line belongs to.</summary>
 public sealed record PaymentLedgerDocument(Guid Id, string? Number, string Kind, string Status, string PaymentState);
 
-/// <summary>
-/// One line of the ledger. <paramref name="Date"/> is the Europe/Rome day of the settlement (else of the creation; for a line of a channel, the day of the
-/// collection Octorate gave, else the check-in). <paramref name="ProviderFee"/>, <paramref name="Net"/> and <paramref name="CreditDate"/> only when stored.
-/// </summary>
 public sealed record PaymentLedgerLine(
     PaymentLedgerKind Kind,
     Guid BookingId,
@@ -81,7 +68,6 @@ public sealed record PaymentLedgerLine(
     PaymentLedgerCollector CollectedBy,
     PaymentLedgerDocument? Document);
 
-/// <summary>The ledger of one booking: its lines, its channel and whether the collections of Octorate could not be read.</summary>
 public sealed record PaymentLedgerBooking(
     Guid BookingId,
     string BookingCode,
@@ -90,9 +76,7 @@ public sealed record PaymentLedgerBooking(
     IReadOnlyList<PaymentLedgerLine> Lines,
     bool Degraded);
 
-/// <summary>One page of the lines of a period.</summary>
 public sealed record PaymentLedgerPage(IReadOnlyList<PaymentLedgerLine> Items, int TotalCount, int Page, int PageSize)
 {
-    /// <summary>The most rows of each source a period reads (payments, bookings of a channel); a longer period is narrowed by the caller.</summary>
     public const int MaxRowsPerSource = 5_000;
 }

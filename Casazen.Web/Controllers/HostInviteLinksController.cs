@@ -8,10 +8,6 @@ using Microsoft.AspNetCore.RateLimiting;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// The two calls of the person who received a host invite: what the link is for, and the acceptance. The invite grants no role:
-/// accepting only marks it used and records who invited whom. Never cached.
-/// </summary>
 [ApiController]
 [Route("api/host-invites")]
 public class HostInviteLinksController(
@@ -37,7 +33,6 @@ public class HostInviteLinksController(
         return Ok(HostInviteLookupResponse.From(await invites.LookupAsync(token, cancellationToken)));
     }
 
-    /// <summary>The same as the GET lookup with the token in the body, so it never ends up in a URL or a request log.</summary>
     [HttpPost("lookup")]
     [AllowAnonymous]
     [EnableRateLimiting(RateLimitPolicies.PublicInvitationLookup)]

@@ -32,7 +32,6 @@ public sealed class BookingFlowAutomationJob(
     ILogger<BookingFlowAutomationJob> logger,
     TimeProvider? timeProvider = null)
 {
-    /// <summary>The id of the recurring job.</summary>
     public const string RecurringJobId = "booking-flow-automation";
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -85,7 +84,6 @@ public sealed class BookingFlowAutomationJob(
             logger.LogInformation("Booking flow: {Arrivals} arrivals and {Departures} departures registered automatically", arrivals, departures);
     }
 
-    /// <summary>What the flow does for <paramref name="stay"/> now: the departure first (it registers the arrival with it), the arrival once its day is over, else nothing.</summary>
     public static BookingFlowAutomaticStep? StepOf(Stay stay, BookingFlowSettingsView flow, DateTime todayInRome, DateTime nowUtc)
     {
         var departureDue = stay.CheckOutDate.Date <= todayInRome.Date && CheckOutInstantUtc(stay) <= nowUtc;
@@ -98,14 +96,12 @@ public sealed class BookingFlowAutomationJob(
         return null;
     }
 
-    /// <summary>The check-out time of the property on the departure day, on the property's clock (Europe/Rome when it has none), in UTC.</summary>
     public static DateTime CheckOutInstantUtc(Stay stay) =>
         RomeCalendar.ToUtc(
             DateOnly.FromDateTime(stay.CheckOutDate),
             stay.CheckOutBy ?? BookingFlowRules.FallbackCheckOutTime,
             RomeCalendar.ZoneOf(stay.Timezone));
 
-    /// <summary>What the job reads of a stay.</summary>
     public sealed record Stay(
         Guid Id,
         Guid OrgId,

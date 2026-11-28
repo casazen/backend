@@ -15,8 +15,6 @@ public class StayAlertScheduleChk12Tests
     private static readonly StayAlertOptions Defaults = new();
     private static readonly DateTime CheckIn = Utc(2026, 10, 5);
 
-    // ─── Receipt missing ───
-
     [Fact]
     public void DueReceiptMissingStep_TheDayAfterTheCommunicationAt10Rome_IsDueOnce()
     {
@@ -46,7 +44,6 @@ public class StayAlertScheduleChk12Tests
     [Fact]
     public void DueReceiptMissingStep_ACommunicationAfterMidnightInRome_CountsTheRomeDay()
     {
-        // 22:30 UTC of the 5th is 00:30 of the 6th in Rome: the day after is the 7th.
         var communicated = Utc(2026, 10, 5, 22, 30);
 
         Assert.Null(ReceiptDue(communicated, Utc(2026, 10, 6, 8, 0)));
@@ -56,7 +53,6 @@ public class StayAlertScheduleChk12Tests
     [Fact]
     public void DueReceiptMissingStep_ADeclarationStoredAsMidnightUtc_CountsItsOwnDay()
     {
-        // The day a host declared it sent is stored as midnight UTC of the Rome day: the same calendar day.
         Assert.NotNull(ReceiptDue(Utc(2026, 10, 5), Utc(2026, 10, 6, 8, 0)));
         Assert.Null(ReceiptDue(Utc(2026, 10, 5), Utc(2026, 10, 6, 7, 59)));
     }
@@ -70,14 +66,11 @@ public class StayAlertScheduleChk12Tests
         Assert.NotNull(StayAlertSchedule.DueReceiptMissingStep(Stay(), Utc(2026, 10, 5, 14, 0), options, Utc(2026, 10, 6, 16, 0)));
     }
 
-    // ─── Short stay at risk ───
-
     [Fact]
     public void DueShortStayRiskStep_NotEntrusted_IsDueFromSixHoursBeforeTheArrivalUntilTheLegalDeadline()
     {
         var shortStay = Stay(checkOut: Utc(2026, 10, 6));
 
-        // The arrival day starts at 22:00 UTC of the 4th: six hours before it, the stay is at risk; the 6-hour term ends at 04:00 UTC of the 5th.
         Assert.Null(RiskDue(shortStay, entrusted: false, Utc(2026, 10, 4, 15, 59)));
 
         var step = RiskDue(shortStay, entrusted: false, Utc(2026, 10, 4, 16, 0));
@@ -89,7 +82,6 @@ public class StayAlertScheduleChk12Tests
         Assert.Null(step.Alert.DeadlineUtc);
         Assert.NotNull(RiskDue(shortStay, false, Utc(2026, 10, 5, 3, 59)));
 
-        // After the legal deadline the overdue stage takes over.
         Assert.Null(RiskDue(shortStay, false, Utc(2026, 10, 5, 4, 0)));
     }
 
@@ -123,12 +115,10 @@ public class StayAlertScheduleChk12Tests
         Assert.NotNull(StayAlertSchedule.DueShortStayRiskStep(shortStay, false, options, Utc(2026, 10, 4, 22, 0)));
     }
 
-    // ─── Over thirty nights ───
-
     [Fact]
     public void DueOverThirtyNightsStep_TheDayBeforeTheArrivalAt9Rome_IsDueOnce()
     {
-        var longStay = Stay(checkOut: Utc(2026, 11, 5)); // 31 nights
+        var longStay = Stay(checkOut: Utc(2026, 11, 5));
 
         Assert.Null(OverDue(longStay, Utc(2026, 10, 4, 6, 59)));
 
@@ -145,7 +135,7 @@ public class StayAlertScheduleChk12Tests
     [Fact]
     public void DueOverThirtyNightsStep_ThirtyNightsOrFewer_ReturnsNothing()
     {
-        Assert.Null(OverDue(Stay(checkOut: Utc(2026, 11, 4)), Utc(2026, 10, 4, 8, 0))); // 30 nights
+        Assert.Null(OverDue(Stay(checkOut: Utc(2026, 11, 4)), Utc(2026, 10, 4, 8, 0)));
         Assert.Null(OverDue(Stay(checkOut: Utc(2026, 10, 8)), Utc(2026, 10, 4, 8, 0)));
     }
 
@@ -157,8 +147,6 @@ public class StayAlertScheduleChk12Tests
         Assert.Null(StayAlertSchedule.DueOverThirtyNightsStep(Stay(checkOut: Utc(2026, 11, 5)), options, Utc(2026, 10, 4, 17, 59)));
         Assert.NotNull(StayAlertSchedule.DueOverThirtyNightsStep(Stay(checkOut: Utc(2026, 11, 5)), options, Utc(2026, 10, 4, 18, 0)));
     }
-
-    // ─── Add-only ───
 
     [Fact]
     public void StayAlertType_TheStoredValuesAreUnchanged_AndTheNewOnesAreAppended()

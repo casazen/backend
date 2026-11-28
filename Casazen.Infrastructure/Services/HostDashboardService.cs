@@ -23,10 +23,8 @@ public sealed partial class HostDashboardService(
     IConfiguration configuration,
     TimeProvider? timeProvider = null) : IHostDashboardService
 {
-    /// <summary>Items listed for upcoming check-ins and recent bookings (the count covers all of them).</summary>
     public const int ListSize = 5;
 
-    /// <summary>Items listed for today's arrivals and departures (the count covers all of them).</summary>
     public const int TodayListSize = 10;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -50,7 +48,6 @@ public sealed partial class HostDashboardService(
         var today = RomeCalendar.TodayAt(now);
         var period = PeriodOf(query, today);
 
-        // One 404 for a property that is missing, another org's or not reached by the caller: nothing tells them apart.
         if (query.PropertyId is { } filtered && !await IsPropertyInScopeAsync(scope, filtered, cancellationToken))
             throw new NotFoundException($"Property {filtered} not found") { MessageKey = "PropertyNotFound" };
 
@@ -110,7 +107,6 @@ public sealed partial class HostDashboardService(
         var departures = await ListAsync(
             stays.Where(StayKpiRules.DepartsOn(today)).OrderBy(b => b.Property.Name).ThenBy(b => b.Id),
             TodayListSize, cancellationToken);
-        // After today: the arrivals of today are already in the first list.
         var upcoming = await ListAsync(
             stays.Where(StayKpiRules.UpcomingCheckIn(today.AddDays(1))).OrderBy(b => b.CheckInDate).ThenBy(b => b.Id),
             ListSize, cancellationToken);
@@ -124,8 +120,6 @@ public sealed partial class HostDashboardService(
     {
         ArgumentNullException.ThrowIfNull(propertyIds);
 
-        // The period and the nights of the Home's «ultimi 30 giorni» (HostDashboardPeriod.ForLast30Days, GetNightsByPropertyAsync):
-        // the list of the properties shows the very number the Home would give for each of them.
         var now = _clock.GetUtcNow();
         var period = HostDashboardPeriod.ForLast30Days(RomeCalendar.TodayAt(now));
         return await GetNightsByPropertyAsync(propertyIds, period, now.UtcDateTime, cancellationToken);
@@ -139,7 +133,6 @@ public sealed partial class HostDashboardService(
 
         var feeds = db.PropertyICalFeeds.AsNoTracking().Where(f => f.OrgId == scope.OrgId).InScope(scope);
 
-        // Never the import URL (encrypted, A2-20): the projection does not read it. Feeds with a sync error first.
         return await feeds
             .OrderBy(f => f.LastImportStatus == PropertyICalImportStatus.Failure
                           || f.LastImportStatus == PropertyICalImportStatus.PartialFailure ? 0 : 1)
@@ -166,7 +159,6 @@ public sealed partial class HostDashboardService(
         CancellationToken cancellationToken) =>
         TotalOccupancy((await GetNightsByPropertyAsync(propertyIds, period, nowUtc, cancellationToken)).Values);
 
-    // The Home's occupancy is the sum of its properties' (SR-10): the reports read the nights of each property through this same code.
     private static HostDashboardOccupancy TotalOccupancy(IEnumerable<HostDashboardOccupancy> properties)
     {
         var occupied = 0;
@@ -182,7 +174,6 @@ public sealed partial class HostDashboardService(
         return new HostDashboardOccupancy(occupied, available, closed);
     }
 
-    // The occupancy of each property of <propertyIds>, one entry for every one of them.
     private async Task<IReadOnlyDictionary<Guid, HostDashboardOccupancy>> GetNightsByPropertyAsync(
         IReadOnlyCollection<Guid> propertyIds,
         HostDashboardPeriod period,
@@ -193,8 +184,6 @@ public sealed partial class HostDashboardService(
         return sets.ToDictionary(property => property.Key, property => property.Value.Occupancy(period));
     }
 
-    // The nights a property has taken and the ones its host closed, as dates: the very sets the occupancy of the Home counts, kept so
-    // that the reports (NF-96) can count them again for the days of a week or a month. The figures of the parts add up to the whole.
     private sealed class PropertyNights(HashSet<DateTime> taken, HashSet<DateTime> closedOnly)
     {
         public HashSet<DateTime> Taken { get; } = taken;
@@ -205,7 +194,6 @@ public sealed partial class HostDashboardService(
             new(Taken.Count, period.Nights - ClosedOnly.Count, ClosedOnly.Count);
     }
 
-    // The nights of each property of <propertyIds>, one entry for every one of them.
     private async Task<IReadOnlyDictionary<Guid, PropertyNights>> GetNightSetsByPropertyAsync(
         IReadOnlyCollection<Guid> propertyIds,
         HostDashboardPeriod period,
@@ -216,7 +204,6 @@ public sealed partial class HostDashboardService(
         if (propertyIds.Count == 0)
             return byProperty;
 
-        // The nights the booking site shows as taken (BK-05): same expressions and hold TTL as the public availability.
         var expiredHoldCutoff = CheckoutHolds.CutoffAt(nowUtc, CheckoutHolds.GetTtlMinutes(configuration));
         var stays = await db.Bookings
             .AsNoTracking()
@@ -233,7 +220,6 @@ public sealed partial class HostDashboardService(
             .Select(b => new { b.PropertyId, b.Source, Start = b.StartUtc, End = b.EndUtc })
             .ToListAsync(cancellationToken);
 
-        // A period of up to 24 months (the reports) over many properties: grouped once, not searched for every property.
         var staysOf = stays.ToLookup(s => s.PropertyId);
         var blocksOf = blocks.ToLookup(b => b.PropertyId);
         foreach (var propertyId in propertyIds)
@@ -256,7 +242,6 @@ public sealed partial class HostDashboardService(
         return byProperty;
     }
 
-    // The figures of one period (SR-03): the current one, and the one before it when the caller compares.
     private async Task<HostDashboardFigures> GetFiguresAsync(
         HostScope scope,
         HostDashboardQuery query,
@@ -266,7 +251,6 @@ public sealed partial class HostDashboardService(
         CancellationToken cancellationToken) =>
         (await GetFiguresWithStaysAsync(scope, query, propertyIds, period, nowUtc, cancellationToken)).Figures;
 
-    // The same, with the confirmed stays the revenue is made of: the overview (SR-03b) cuts them into the bars of its chart.
     private async Task<(HostDashboardFigures Figures, IReadOnlyList<HostRevenueStay> Stays)> GetFiguresWithStaysAsync(
         HostScope scope,
         HostDashboardQuery query,
@@ -289,7 +273,6 @@ public sealed partial class HostDashboardService(
         return (figures, stays);
     }
 
-    // The confirmed stays that have a night in the period, with what the revenue needs of each.
     private async Task<IReadOnlyList<HostRevenueStay>> GetRevenueStaysAsync(
         HostScope scope,
         Guid? propertyId,
@@ -299,13 +282,11 @@ public sealed partial class HostDashboardService(
             .Select(b => new HostRevenueStay(b.BasePrice, b.CheckInDate, b.CheckOutDate, b.Source))
             .ToListAsync(cancellationToken);
 
-    // The rows the revenue is made of, defined once: the reports (SR-10) cut the very same stays by property and by channel.
     private IQueryable<Booking> RevenueStays(HostScope scope, Guid? propertyId, HostDashboardPeriod period) =>
         BookingsInScope(scope, propertyId)
             .Where(StayKpiRules.IsConfirmedStay())
             .Where(PropertyOccupancy.BookingTakesNightIn(period.From, period.To));
 
-    // Money collected in the period, by cash (SR-03, PaymentCashRules): the payments of the scope that came in on those days.
     private async Task<HostDashboardCollected> GetCollectedAsync(
         HostScope scope,
         Guid? propertyId,
@@ -340,8 +321,6 @@ public sealed partial class HostDashboardService(
         _ => HostDashboardPeriod.ForMonth(query.Month ?? DateOnly.FromDateTime(todayInRome)),
     };
 
-    // Active short-rent properties of the scope, as GET /api/properties lists them, minus the ones in long-term mode (SR-03:
-    // they were still counted in the number of properties and in the denominator of the occupancy, PM-01 follow-up).
     private IQueryable<Property> ActivePropertiesInScope(HostScope scope, Guid? propertyId)
     {
         var properties = db.Properties
@@ -389,7 +368,6 @@ public sealed partial class HostDashboardService(
         ArrivedAt = b.ArrivedAt,
     };
 
-    // Stay dates as their Europe/Rome calendar date (midnight UTC), whatever time a legacy value carries.
     private static HostDashboardStay ToRomeDates(HostDashboardStay stay) => stay with
     {
         CheckInDate = StayKpiRules.RomeDateOf(stay.CheckInDate),

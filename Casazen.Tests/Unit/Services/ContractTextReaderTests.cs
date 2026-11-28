@@ -7,7 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>NL-DOCS: a digital contract is read where it is, without OCR; nothing is not a contract.</summary>
 public sealed class ContractTextReaderTests
 {
     [Fact]
@@ -33,7 +32,6 @@ public sealed class ContractTextReaderTests
         await Assert.ThrowsAsync<InvalidDataException>(() => new ContractTextReader().ReadAsync([]));
     }
 
-    // PdfPig's builder uses the standard 14 PDF fonts, so it needs no system fonts.
     private static byte[] BuildPdf(params string[] lines)
     {
         var builder = new PdfDocumentBuilder();

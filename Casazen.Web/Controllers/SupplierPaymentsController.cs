@@ -38,10 +38,6 @@ public class SupplierPaymentsController(
     ISupplierOrgContextResolver supplierOrgContextResolver,
     PublicSiteLinks publicSiteLinks) : ControllerBase
 {
-    /// <summary>
-    /// The state of the account, read from the database; with <c>refresh=true</c> read again from Stripe first (the page that
-    /// Stripe sends the supplier back to asks for it). Without an account every flag is false and nothing reaches Stripe.
-    /// </summary>
     [HttpGet("account")]
     [ProducesResponseType(typeof(SupplierPaymentsAccountDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -83,7 +79,6 @@ public class SupplierPaymentsController(
         await RunAsync(
             async orgId =>
             {
-                // Checked before anything is created on Stripe: no account, no link that could not send the supplier back.
                 if (!publicSiteLinks.IsConfigured)
                 {
                     return this.ApiProblem(
@@ -126,7 +121,6 @@ public class SupplierPaymentsController(
     /// </summary>
     private async Task<ActionResult> RunAsync(Func<Guid, Task<ActionResult>> action, CancellationToken cancellationToken)
     {
-        // The links are single-use credentials and the state is private: nothing is cached by the browser or a proxy.
         Response.Headers.CacheControl = "private, no-store";
 
         var orgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
@@ -143,7 +137,6 @@ public class SupplierPaymentsController(
         }
     }
 
-    /// <summary>The response of a failed Stripe call: the same codes and texts as the host's Connect onboarding.</summary>
     private ObjectResult StripeConnectProblem(StripeConnectException exception)
     {
         switch (exception.Failure)

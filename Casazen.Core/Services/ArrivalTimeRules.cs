@@ -10,16 +10,10 @@ namespace Casazen.Core.Services;
 /// </summary>
 public static class ArrivalTimeRules
 {
-    /// <summary>Stored when the guest arrives after the check-in window ("dopo le …" in the checkout).</summary>
     public const string Late = "late";
 
-    /// <summary>Longest stored value (<c>HH:mm</c> is 5 characters, <c>late</c> 4).</summary>
     public const int MaxLength = 5;
 
-    /// <summary>
-    /// The value to store for <paramref name="value"/>: <c>null</c> for none (a missing or blank value), <see cref="Late"/>, or the time as
-    /// <c>HH:mm</c> (<c>9:30</c> is read as <c>09:30</c>). <c>false</c> for anything else.
-    /// </summary>
     public static bool TryNormalize(string? value, out string? normalized)
     {
         normalized = null;

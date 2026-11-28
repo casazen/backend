@@ -10,10 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services.LeaseContracts;
 
-/// <summary>
-/// LT-03 (A7-03): outside Development/Testing a fake approval of a lease contract template stops the startup
-/// (<c>ValidateOnStart</c>); by default nothing is approved and the API starts.
-/// </summary>
 public sealed class LeaseTemplateStartupValidationTests : IDisposable
 {
     private readonly LeaseTemplateTestFiles _files = new();

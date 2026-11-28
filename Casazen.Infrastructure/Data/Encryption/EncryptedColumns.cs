@@ -32,7 +32,6 @@ public static class EncryptedColumns
     /// </summary>
     public const string GuestDocumentPurpose = "Casazen.Guest.Document";
 
-    /// <summary>Purpose of the Alloggiati Web credentials of a property.</summary>
     public const string QuesturaCredentialsPurpose = "Casazen.PropertyQuesturaCredentials";
 
     /// <summary>
@@ -49,10 +48,6 @@ public static class EncryptedColumns
     /// </summary>
     public const string ServiceRequestMessagePurpose = "Casazen.ServiceRequestMessage";
 
-    /// <summary>
-    /// Purpose of the place of the work of a request from the public showcase (SP-10): street address, floor and access notes of
-    /// <see cref="ServiceRequest"/>. The comune and the postal code are not encrypted: the supplier sees them before it takes the request.
-    /// </summary>
     public const string ServiceRequestLocationPurpose = "Casazen.ServiceRequest.Location";
 
     /// <summary>
@@ -62,16 +57,11 @@ public static class EncryptedColumns
     /// </summary>
     public const string ServicePaymentDisputePurpose = "Casazen.ServicePaymentDispute";
 
-    /// <summary>Purpose of the AI provider key saved from the admin panel. Never change it: stored keys would become unreadable.</summary>
     public const string PlatformAiSettingsPurpose = "Casazen.PlatformAiSettings";
 
     /// <summary>Purpose of the personal data and bank details collected for a provider registration. Never change it.</summary>
     public const string OpenapiRegistrationPurpose = "Casazen.LeaseContract.OpenapiRegistration";
 
-    /// <summary>
-    /// Purpose of the typed state of a lease draft (LR-12): <see cref="LeaseContract.DraftData"/>, the JSON with the names, fiscal codes and
-    /// residences the landlord typed in the wizard, kept until the data of the draft is complete. Nothing is searched in it. Never change it.
-    /// </summary>
     public const string LeaseDraftPurpose = "Casazen.LeaseContract.Draft";
 
     /// <summary>
@@ -88,10 +78,6 @@ public static class EncryptedColumns
     /// </summary>
     public const string LeaseTransitoryNeedPurpose = "Casazen.LeaseContract.TransitoryNeed";
 
-    /// <summary>
-    /// Purpose of the identity document image URLs (NF-10, ADR-009-R21): <see cref="DocumentImage.FrontImageUrl"/> and
-    /// <see cref="DocumentImage.BackImageUrl"/>. Never stored for Ticino properties per ADR-013-R6. Never change it.
-    /// </summary>
     public const string DocumentImagePurpose = "Casazen.DocumentImage";
 
     /// <summary>
@@ -182,11 +168,6 @@ public static class EncryptedColumns
     /// </summary>
     public const string OwnerPortalContactPurpose = "Casazen.OwnerPortal.Contact";
 
-    /// <summary>
-    /// Purpose of the wire files of the agency (NF-25, NF-113, E16/F01/US01/T01): <see cref="WireBatch.XmlContent"/>, the bank file with the IBAN, the name and the
-    /// address of every owner, and <see cref="WireBatch.DebitAccount"/>, the IBAN of the agency that pays. Read to give the file back to the agency and by nobody
-    /// else, never searched, never listed, never logged. Its own purpose, apart from the owner registry. Never change it: stored values would become unreadable.
-    /// </summary>
     public const string WireBatchFilePurpose = "Casazen.WireBatch.File";
 
     /// <summary>
@@ -225,15 +206,10 @@ public static class EncryptedColumns
     /// </summary>
     public const string TaxReportingDatasetPurpose = "Casazen.TaxReportingDataset";
 
-    /// <summary>
-    /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
-    /// it was written in clear before its column was encrypted.
-    /// </summary>
     public const string ProtectedPayloadPrefix = "CfDJ8";
 
     private const int BatchSize = 200;
 
-    /// <summary>SQL-translatable twin of <see cref="IsLegacyPlaintext"/>: <c>col NOT LIKE 'CfDJ8%'</c>.</summary>
     private static readonly Expression<Func<string, bool>> NotAPayload =
         stored => !stored.StartsWith(ProtectedPayloadPrefix);
 
@@ -243,7 +219,6 @@ public static class EncryptedColumns
             OtaSecretsPurpose,
             nameof(OtaIntegration.ApiKey),
             nameof(OtaIntegration.ApiSecret)),
-        // iCal import URLs (PC-11, A2-20): only a URL is accepted as a value stored in clear.
         new EncryptedEntity<PropertyICalFeed>(
             PropertyICalFeedUrlEncryption.Purpose,
             PropertyICalFeedUrlEncryption.IsLegacyPlaintext,
@@ -264,7 +239,6 @@ public static class EncryptedColumns
             nameof(StayGuest.ResidenceStreet),
             nameof(StayGuest.ResidencePostalCode),
             nameof(StayGuest.ResidenceCityName)),
-        // NF-132: the plate of the car of the stay, typed at the check-in with the guests' data and never searched: the same purpose as them.
         new EncryptedEntity<Booking>(
             GuestDocumentPurpose,
             nameof(Booking.VehiclePlate)),
@@ -293,7 +267,6 @@ public static class EncryptedColumns
             nameof(PropertyOwner.BillingCity),
             nameof(PropertyOwner.BillingProvince),
             nameof(PropertyOwner.BillingCountry)),
-        // SP-10: the private customers of the suppliers and the booking that waits for their e-mail check.
         new EncryptedEntity<ServiceCustomer>(
             ServiceCustomerPurpose,
             nameof(ServiceCustomer.FullName),
@@ -302,7 +275,6 @@ public static class EncryptedColumns
         new EncryptedEntity<ShowcaseBookingHold>(
             ServiceCustomerPurpose,
             nameof(ShowcaseBookingHold.Payload)),
-        // SP-10b: the request on measure that waits for the e-mail check (the same data as the hold, plus the words) and the thread.
         new EncryptedEntity<ShowcaseInquiry>(
             ServiceCustomerPurpose,
             nameof(ShowcaseInquiry.Payload)),
@@ -314,7 +286,6 @@ public static class EncryptedColumns
             nameof(ServiceRequest.LocationAddress),
             nameof(ServiceRequest.LocationFloor),
             nameof(ServiceRequest.LocationAccessNotes)),
-        // SP-15c-c: the words of a complaint about a job paid through CasaZen.
         new EncryptedEntity<ServicePaymentDispute>(
             ServicePaymentDisputePurpose,
             nameof(ServicePaymentDispute.CustomerText),
@@ -323,7 +294,6 @@ public static class EncryptedColumns
         new EncryptedEntity<PlatformAiSettings>(
             PlatformAiSettingsPurpose,
             nameof(PlatformAiSettings.ApiKey)),
-        // LR-12: the typed state of a lease draft and the residence of a party.
         new EncryptedEntity<LeaseContract>(
             LeaseDraftPurpose,
             nameof(LeaseContract.DraftData)),
@@ -334,25 +304,20 @@ public static class EncryptedColumns
             LeasePartyPurpose,
             nameof(Party.Residence),
             nameof(Party.ContactPhone)),
-        // TR: the need of a transitory lease and its documentation.
         new EncryptedEntity<LeaseContract>(
             LeaseTransitoryNeedPurpose,
             nameof(LeaseContract.TransitoryNeed),
             nameof(LeaseContract.TransitoryDocumentation)),
-        // NF-10: identity document image URLs for OCR (ADR-009-R21, ADR-013-R3).
         new EncryptedEntity<DocumentImage>(
             DocumentImagePurpose,
             nameof(DocumentImage.FrontImageUrl),
             nameof(DocumentImage.BackImageUrl)),
-        // NF-13: property access codes (E06/F03/US01/T01).
         new EncryptedEntity<PropertyAccessCode>(
             PropertyAccessCodeEncryptionPurpose.Purpose,
             nameof(PropertyAccessCode.EncryptedCode)),
-        // ADR-024: the personal half of a wizard draft (E01/F02/US01/T02).
         new EncryptedEntity<WizardDraft>(
             WizardDraftPiiPurpose,
             nameof(WizardDraft.EncryptedFieldsJson)),
-        // ADR-023-R1: the OAuth tokens of the Octorate connection of an organization (E02/F01/US01/T01).
         new EncryptedEntity<OctorateConnection>(
             OctorateOAuthPurpose,
             nameof(OctorateConnection.EncryptedAccessToken),
@@ -368,7 +333,6 @@ public static class EncryptedColumns
         new EncryptedEntity<PropertyActivationCredentialAssignment>(
             "Casazen.PropertyActivation.Assignment",
             nameof(PropertyActivationCredentialAssignment.UnitCode)),
-        // NF-89: the value and the display name of a CRM contact (E07/F01/US01/T01).
         new EncryptedEntity<GuestContact>(
             GuestContactPurpose,
             nameof(GuestContact.Value),
@@ -384,13 +348,10 @@ public static class EncryptedColumns
             nameof(BookingInvoiceData.PostalCode),
             nameof(BookingInvoiceData.City),
             nameof(BookingInvoiceData.Pec),
-            // E06/F02/US01/T04: the hash of the billing data last written to Octorate is a hash of the personal data above.
             nameof(BookingInvoiceData.OctorateBillingHash)),
-        // ADR-032-R3: the words of the OTA conversations of the guests (E05/F01/US01/T01).
         new EncryptedEntity<OtaMessage>(
             OtaMessageTextPurpose,
             nameof(OtaMessage.Text)),
-        // NF-69: the words of the reviews of the channels: what the guest wrote, the reply of the host and the host's own review of the guest (E05/F06/US01/T01).
         new EncryptedEntity<OtaReview>(
             ReviewContentPurpose,
             nameof(OtaReview.GuestReviewText),
@@ -398,7 +359,6 @@ public static class EncryptedColumns
             nameof(OtaReview.HostReviewJson)),
         new EncryptedEntity<StorefrontChatThread>("Casazen.StorefrontChat.Contact", nameof(StorefrontChatThread.VisitorEmail)),
         new EncryptedEntity<StorefrontChatMessage>("Casazen.StorefrontChat.Text", nameof(StorefrontChatMessage.Text)),
-        // NF-83: the recipient snapshot of a fiscal document and its XML (E06/F01/US02/T01), and the snapshot of its issuer (E11/F01/US01/T01).
         new EncryptedEntity<FiscalDocument>(
             FiscalDocumentPurpose,
             nameof(FiscalDocument.RecipientName),
@@ -414,7 +374,6 @@ public static class EncryptedColumns
             nameof(FiscalDocument.RecipientPec),
             nameof(FiscalDocument.FatturaPaXml),
             nameof(FiscalDocument.IssuerSnapshot),
-            // FIX/BE-TD17-JOB-EXIT: the free note of the closing of a replacement draft as «non più dovuta» (it can name a person or a portal document): the same purpose, no length.
             nameof(FiscalDocument.ClosedNotDueNote)),
         // E11/F01/US01/T01: the bank accounts of the issuer of an organization; E17/F01/US01/T01: the personal data of an issuer (an owner who issues is often a
         // private person: the same treatment for every profile). The province, the country and the SDI code are no personal data.
@@ -430,7 +389,6 @@ public static class EncryptedColumns
             nameof(OrgFiscalIssuerProfile.PostalCode),
             nameof(OrgFiscalIssuerProfile.City),
             nameof(OrgFiscalIssuerProfile.IssuerPec)),
-        // ADR-012, NF-109: the identifiers, the address and the bank account of the fiscal profile of an owner (E06/F05/US02/T01).
         new EncryptedEntity<OwnerFiscalProfile>(
             OwnerFiscalProfilePurpose,
             nameof(OwnerFiscalProfile.LegalName),
@@ -446,8 +404,6 @@ public static class EncryptedColumns
             OtaMessageTextPurpose,
             nameof(ApprovalQueueItem.ContentText),
             nameof(ApprovalQueueItem.EditedContentText)),
-        // NF-66, PO-09: the free text a host writes for the assistant (the knowledge base, the lessons, the response templates of the situations): a Wi-Fi password or a
-        // note of the host can be in it (E05/F05/US01/T01). The decision log keeps no text at all.
         new EncryptedEntity<PropertyKnowledgeEntry>(
             AssistantContentPurpose,
             nameof(PropertyKnowledgeEntry.Text)),
@@ -457,8 +413,6 @@ public static class EncryptedColumns
         new EncryptedEntity<AssistantSituationSetting>(
             AssistantContentPurpose,
             nameof(AssistantSituationSetting.ResponseTemplate)),
-        // NF-111: the words of the owner inbox (the message, the name of its file, the subject of the conversation) and the address and name of the
-        // delegated contacts of an owner (E07/F07/US01/T02). The contact is found by OwnerPortalContact.EmailHash, never by the address.
         new EncryptedEntity<OwnerMessage>(
             OwnerPortalMessagePurpose,
             nameof(OwnerMessage.Body),
@@ -471,8 +425,6 @@ public static class EncryptedColumns
             nameof(OwnerPortalContact.Email),
             nameof(OwnerPortalContact.FirstName),
             nameof(OwnerPortalContact.LastName)),
-        // NF-25, NF-113: the wire file of the agency, with the IBAN, the name and the address of every owner, and the IBAN of the agency that pays (E16/F01/US01/T01).
-        // The columns are text, they have no length: the converter writes a longer text in them.
         new EncryptedEntity<WireBatch>(
             WireBatchFilePurpose,
             nameof(WireBatch.XmlContent),
@@ -492,39 +444,29 @@ public static class EncryptedColumns
         new EncryptedEntity<CheckInLinkDelivery>(
             CheckInLinkTokenPurpose,
             nameof(CheckInLinkDelivery.LinkToken)),
-        // NF-71: the host's edit of the text of a scheduled message for one booking (E05/F07/US01/T01): a text written for a guest, the same purpose as the words of the conversations.
         new EncryptedEntity<ScheduledMessage>(
             OtaMessageTextPurpose,
             nameof(ScheduledMessage.TextOverride)),
-        // NF-101: the address the package of the accountant is sent to every month (E15/F01/US02/T01); the job asks only whether there is one (IS NOT NULL).
         new EncryptedEntity<AccountantPackageSettings>(
             AccountantPackagePurpose,
             nameof(AccountantPackageSettings.AccountantEmail)),
-        // NF-117: the annual tax data of the owners, with the recipients of the Certificazione Unica and their stays (E18/F01/US02/T01). The column is text, it has no length.
         new EncryptedEntity<TaxReportingDataset>(
             TaxReportingDatasetPurpose,
             nameof(TaxReportingDataset.PayloadJson)),
     ];
 
-    /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>
     public static IReadOnlyList<EncryptedColumn> All { get; } =
         Entities.SelectMany(e => e.Properties.Select(p => new EncryptedColumn(e.EntityType, p, e.Purpose))).ToList();
 
-    /// <summary>
-    /// True for a stored value written in clear before its column was encrypted: it is read as it is until
-    /// <see cref="EncryptLegacyPlaintextAsync"/> rewrites it (every write is encrypted).
-    /// </summary>
     public static bool IsLegacyPlaintext(string stored) =>
         !stored.StartsWith(ProtectedPayloadPrefix, StringComparison.Ordinal);
 
-    /// <summary>Gives every encrypted column its converter, built from <paramref name="provider"/>.</summary>
     internal static void Configure(ModelBuilder modelBuilder, IDataProtectionProvider provider)
     {
         foreach (var entity in Entities)
             entity.Configure(modelBuilder, provider);
     }
 
-    /// <summary>True when the model of <paramref name="db"/> encrypts every column of <see cref="All"/>.</summary>
     public static bool IsConfigured(AppDbContext db) =>
         All.All(c => db.Model.FindEntityType(c.EntityType)?.FindProperty(c.Property)?.GetValueConverter()
             is EncryptedStringConverter);
@@ -547,7 +489,6 @@ public static class EncryptedColumns
                 "(docs/runbooks/encryption.md).");
         }
 
-        // Same database and options, no provider: its model has no converters, so it reads the stored text.
         var options = (DbContextOptions<AppDbContext>)db.GetService<IDbContextOptions>();
         await using var stored = new AppDbContext(options);
 
@@ -591,7 +532,6 @@ public static class EncryptedColumns
         params string[] properties) : IEncryptedEntity
         where TEntity : class
     {
-        /// <summary>Columns whose values stored in clear are the ones without the payload prefix.</summary>
         public EncryptedEntity(string purpose, params string[] properties)
             : this(purpose, IsLegacyPlaintext, NotAPayload, properties)
         {
@@ -612,7 +552,6 @@ public static class EncryptedColumns
 
         public async Task<int> EncryptLegacyPlaintextAsync(AppDbContext stored, AppDbContext db, CancellationToken ct)
         {
-            // Startup maintenance of every org: no tenant, the rows are only re-encrypted.
             var ids = await stored.Set<TEntity>()
                 .IgnoreQueryFilters()
                 .AsNoTracking()
@@ -640,10 +579,6 @@ public static class EncryptedColumns
             return ids.Count;
         }
 
-        /// <summary>
-        /// At least one column neither empty nor encrypted:
-        /// <c>(col IS NOT NULL AND col &lt;&gt; '' AND &lt;storedInClear(col)&gt;) OR …</c>.
-        /// </summary>
         private Expression<Func<TEntity, bool>> StoredInClear()
         {
             var entity = Expression.Parameter(typeof(TEntity), "e");
@@ -671,5 +606,4 @@ public static class EncryptedColumns
     }
 }
 
-/// <summary>An encrypted column: entity, property and Data Protection purpose (<see cref="EncryptedColumns.All"/>).</summary>
 public sealed record EncryptedColumn(Type EntityType, string Property, string Purpose);

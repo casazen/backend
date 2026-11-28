@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Regulatory.GuestRegistration;
@@ -31,13 +30,9 @@ public class SwissNotificationServiceTests
     private static DateTime Utc(string iso) =>
         DateTime.Parse(iso, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal);
 
-    // ─── Which days are raised ───
-
     [Fact]
     public async Task Assisted_AskOrNotRequired_NeverRaisesItem_Test()
     {
-        // PROOF TEST (data): a legal alarm is raised only where the duty is Required: the host said so, or the regime is verified as covering private rentals. A canton whose sources are partial
-        // (Zurich, Nidwalden) is Ask, the host that said NotRequired is not raised, and a canton that only asks for a register (Bern) is never raised, whatever the host says.
         using var world = new SwissNotificationTestWorld();
         var org = world.AddOrg();
         var verifiedByDefault = world.AddProperty("SH", org, name: "Schaffhausen verified");
@@ -57,7 +52,6 @@ public class SwissNotificationServiceTests
         Assert.Equal(["CH-SH", "CH-ZH"], days.OrderBy(d => d.RegimeCode, StringComparer.Ordinal).Select(d => d.RegimeCode));
         Assert.All(days, d => Assert.Equal((Day, 1, org.Id), (d.Day, d.StayCount, d.OrgId)));
 
-        // The day of a property whose duty is Ask is still readable (it says so and raises nothing), the one of a register-only canton is not covered at all.
         var service = world.Service();
         var ask = await service.GetDayAsync(askZurich.Id, Day);
         Assert.Equal(GuestRegistrationEffectiveDuty.Ask, ask.EffectiveDuty);
@@ -73,8 +67,6 @@ public class SwissNotificationServiceTests
     [Fact]
     public async Task Assisted_Ticino_NotInThisSection_Test()
     {
-        // PROOF TEST (data): one obligation, one section. A Ticino property has its own flow: it is never listed here, its day, its declaration and its undo are refused as not covered, and
-        // a declaration of the Ticino police (no regime code) closes nothing of this section. An Italian property is not Swiss at all.
         using var world = new SwissNotificationTestWorld();
         var org = world.AddOrg();
         var ticino = world.AddProperty("TI", org, name: "Lugano");
@@ -97,7 +89,6 @@ public class SwissNotificationServiceTests
             Assert.Equal("swiss_notification_not_applicable", (await Assert.ThrowsAsync<DomainRuleException>(() => service.UndeclareDayAsync(notCovered, Day, Anna))).Code);
         }
 
-        // The declaration of the Ticino day closes the Ticino day and nothing here; a declaration here closes nothing of Ticino.
         await ticinoService.DeclareDayAsync(ticino.Id, Day, Anna);
         Assert.Equal(schaffhausen.Id, Assert.Single(await service.ListPendingDaysAsync(org.Id, null, Day)).PropertyId);
         await service.DeclareDayAsync(schaffhausen.Id, Day, Anna);
@@ -137,7 +128,6 @@ public class SwissNotificationServiceTests
         Assert.Equal(propertyB.Id, Assert.Single(listedForB).PropertyId);
         Assert.Empty(namingTheOtherOrgsProperty);
 
-        // Nothing of B touched A: its declaration is still there, and the day of B shows no declaration.
         Assert.Equal(propertyA.Id, Assert.Single(await world.Db.SwissNotificationDeclarations.AsNoTracking().ToListAsync()).PropertyId);
         Assert.Null((await serviceOfB.GetDayAsync(propertyB.Id, Day)).DeclaredAtUtc);
     }
@@ -157,7 +147,6 @@ public class SwissNotificationServiceTests
         Assert.Equal(first.Id, Assert.Single(await service.ListPendingDaysAsync(org.Id, [first.Id], Day)).PropertyId);
         Assert.Equal(2, (await service.ListPendingDaysAsync(org.Id, null, Day)).Count);
 
-        // The job reads every org: (null, null), and an org that has nothing is not an error.
         Assert.Equal(2, (await service.ListPendingDaysAsync(null, null, Day)).Count);
         Assert.Empty(await service.ListPendingDaysAsync(Guid.NewGuid(), null, Day));
     }
@@ -176,7 +165,6 @@ public class SwissNotificationServiceTests
         Assert.Empty(await service.ListPendingDaysAsync(org.Id, null, Day));
         Assert.Empty(await service.ListPendingDaysAsync(null, null, Day));
 
-        // The setting is not read while the flag is off: the duty of the property that chose Required is the one of its regime.
         Assert.Equal(GuestRegistrationEffectiveDuty.Ask, (await service.GetDayAsync(chosen.Id, Day)).EffectiveDuty);
 
         world.RegimesOn = true;
@@ -217,8 +205,6 @@ public class SwissNotificationServiceTests
         Assert.Equal(14, ISwissNotificationService.PendingLookbackDays);
     }
 
-    // ─── The deadline of each kind, in the list the cockpit and the alerts read ───
-
     [Fact]
     public async Task ListPendingDays_EachDayCarriesTheDeadlineOfItsRegime_OnTheClockOfTheProperty()
     {
@@ -240,7 +226,6 @@ public class SwissNotificationServiceTests
         Assert.Equal((DateTime?)Utc("2026-11-19T14:00:00Z"), days[atArrival.Id].DueAtUtc);
         Assert.Equal((DateTime?)Utc("2026-11-22T22:59:00Z"), days[weekly.Id].DueAtUtc);
 
-        // A daily regime whose source gives no time (Basel-Stadt, Neuchâtel) is listed like the one that has no deadline at all: the day is there, the due date is not.
         Assert.Null(days[noTimeBasel.Id].DueAtUtc);
         Assert.Null(days[noTimeNeuchatel.Id].DueAtUtc);
         Assert.Null(days[noDeadline.Id].DueAtUtc);
@@ -261,12 +246,9 @@ public class SwissNotificationServiceTests
 
         var days = (await world.Service().ListPendingDaysAsync(org.Id, null, Day)).ToDictionary(d => d.PropertyId);
 
-        // Zug: the earliest arrival recorded among the three stays. A property on another clock ends the day when its own day ends: midnight on UTC is 00:00Z, not the 23:00Z of Zurich in winter.
         Assert.Equal((DateTime?)Utc("2026-11-19T13:30:00Z"), days[zug.Id].DueAtUtc);
         Assert.Equal((DateTime?)Utc("2026-11-20T00:00:00Z"), days[utcClock.Id].DueAtUtc);
     }
-
-    // ─── The one rule of a closed day ───
 
     [Fact]
     public async Task Declare_ClosesTheDay_ThePendingListNoLongerHoldsIt_AndTheDayShowsWhoAndWhen()
@@ -289,7 +271,6 @@ public class SwissNotificationServiceTests
         Assert.Equal([Day.AddDays(-1), Day], before.PendingDays.Select(d => d.Day));
         Assert.Equal((property.Id, Day, "CH-SH", true, "Anna Rossi"), (declaration.PropertyId, declaration.Day, declaration.RegimeCode, declaration.Created, declaration.DeclaredBy));
 
-        // The rule the cockpit and the alerts read: the declared day is gone from the list, for one org and for the job that reads every org; the other day is still to notify.
         Assert.Equal(Day.AddDays(-1), Assert.Single(list).Day);
         Assert.Equal(Day.AddDays(-1), Assert.Single(everyOrg).Day);
         Assert.True(after.AlreadyDeclared);
@@ -308,7 +289,6 @@ public class SwissNotificationServiceTests
         var property = world.AddProperty("SH", org);
         world.AddStay(property);
 
-        // The property was declared while it was in Zug (the host then corrected the municipality): the declaration was for another authority.
         world.Db.SwissNotificationDeclarations.Add(new SwissNotificationDeclaration
         {
             OrgId = org.Id,
@@ -349,7 +329,6 @@ public class SwissNotificationServiceTests
         Assert.Equal((created.DeclaredAtUtc, "Anna Rossi"), (repeated.DeclaredAtUtc, repeated.DeclaredBy));
         Assert.Single(await world.Db.SwissNotificationDeclarations.AsNoTracking().ToListAsync());
 
-        // Told once, to the hosts of the property, with the type of the other cantons and a key of its own (never the Ticino one).
         var (key, audience, payload) = Assert.Single(world.Pushes);
         Assert.Equal(PushAudience.PropertyHosts(property.Id), audience);
         Assert.Equal((PushTypes.SwissNotificationDeclared, PushRoutes.Properties), (payload.Type, payload.Route));
@@ -373,7 +352,6 @@ public class SwissNotificationServiceTests
         Assert.True(await service.UndeclareDayAsync(property.Id, Day, Bruno));
         Assert.False(await service.UndeclareDayAsync(property.Id, Day, Bruno));
 
-        // One push for the declaration and one for the undo, none for the undo that had nothing to undo.
         Assert.Equal(2, world.Pushes.Count);
         Assert.All(world.Pushes, p => Assert.Equal(PushTypes.SwissNotificationDeclared, p.Payload.Type));
         Assert.Equal(2, world.Pushes.Select(p => p.Key).Distinct().Count());
@@ -431,7 +409,6 @@ public class SwissNotificationServiceTests
             world.Store,
             () =>
             {
-                // The winner saves the same day a moment before this call.
                 using var other = world.NewDb();
                 other.SwissNotificationDeclarations.Add(new SwissNotificationDeclaration
                 {
@@ -519,8 +496,6 @@ public class SwissNotificationServiceTests
         Assert.Empty(await world.Db.SwissNotificationDeclarations.AsNoTracking().ToListAsync());
     }
 
-    // ─── The day: data ready to copy ───
-
     [Fact]
     public async Task GetDay_TheGuestsAreCopyReady_WithWhatTheyLack_ThePortalAndTheDeadline()
     {
@@ -544,7 +519,6 @@ public class SwissNotificationServiceTests
         Assert.Equal((SwissDocumentTypes.Passport, "X1234567", "Via Berna 11", "8001", "Zürich"), (adult.DocumentType, adult.DocumentNumber, adult.Street, adult.PostalCode, adult.City));
         Assert.Equal(("7Q3KZ-8M2XB", "ZH 123456", Day, Day.AddDays(2)), (adult.BookingCode, adult.Plate, adult.Arrival, adult.Departure));
 
-        // The child has no last name: a gap the host completes; a minor needs no document.
         var issue = Assert.Single(day.Issues);
         Assert.Equal((1, "Marta"), (issue.Position, issue.GuestName));
         Assert.Equal(["lastName"], issue.Missing);
@@ -559,7 +533,6 @@ public class SwissNotificationServiceTests
 
         var day = await world.Service().GetDayAsync(property.Id, Day);
 
-        // No guest recorded: the booker alone, with nothing but the name, and the stay lacks the other two.
         var booker = Assert.Single(day.Guests);
         Assert.Equal(("Booker", "Person", (DateOnly?)null), (booker.FirstName, booker.LastName, booker.BirthDate));
         Assert.Contains(day.Issues, i => i is { Position: null } && i.Missing.SequenceEqual(["guests"]));
@@ -569,8 +542,6 @@ public class SwissNotificationServiceTests
     [Fact]
     public async Task GetDay_NeverHoldsTheExemptionOfAGuest_NorTheContactOfTheBooker()
     {
-        // PROOF (privacy): the reason of a tourist tax exemption can reveal a health condition and the e-mail of the booker is a contact: neither is among the data the notification needs,
-        // so neither reaches the answer, whatever the check-in holds.
         using var world = new SwissNotificationTestWorld();
         var property = world.AddProperty("SH");
         var stay = world.AddStay(property);
@@ -608,8 +579,6 @@ public class SwissNotificationServiceTests
 
         Assert.Equal("property_not_found", missing.Code);
     }
-
-    // ─── Test doubles ───
 
     private sealed class RecordingPush(SwissNotificationTestWorld world) : IPushNotificationService
     {

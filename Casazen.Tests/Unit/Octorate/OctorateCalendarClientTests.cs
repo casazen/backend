@@ -33,7 +33,6 @@ public class OctorateCalendarClientTests
         var day = Assert.Single(days);
         Assert.Equal(new OctorateCalendarDay("956528", new DateOnly(2026, 11, 10), 0, 90m, false, null, null, null, null), day);
 
-        // One call, for the org of the scope: the dates as days (dateTo is the last day, included) and the room.
         var request = Assert.Single(h.Requests);
         Assert.EndsWith("/rest/v1/calendar/585492?dateFrom=2026-11-06&dateTo=2027-11-06&products=956528", request.PathAndQuery);
         Assert.Equal(["Bearer token-" + Org.ToString("N")], h.Authorizations);
@@ -139,7 +138,6 @@ public class OctorateCalendarClientTests
             throw new InvalidOperationException("No partner-level call is made in these tests.");
     }
 
-    /// <summary>Answers each call with the next queued body and keeps the addresses and the tokens it was called with.</summary>
     private sealed class QueueHandler : HttpMessageHandler
     {
         public Queue<string> Bodies { get; } = new();

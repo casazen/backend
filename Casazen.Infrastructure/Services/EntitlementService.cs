@@ -26,7 +26,6 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
 
         var storedTier = org?.PlanTier ?? PlanTier.Starter;
         var paidTier = ResolvePaidTier(storedTier, org?.SubscriptionStatus ?? SubscriptionStatus.None, org?.PastDueSince);
-        // BL-01: the open access lifts the orgs that exist; an unknown org id keeps the fail-closed Starter fallback.
         var effectiveTier = org is null ? paidTier : ApplyOpenAccess(paidTier);
         var maxProperties = ResolveMaxProperties(effectiveTier);
         var propertyCount = await CountPropertiesAsync(orgId, cancellationToken);
@@ -46,8 +45,6 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
     {
         ArgumentNullException.ThrowIfNull(createProperty);
 
-        // A1-21: the count and the insert share one transaction and a per-org advisory lock, so two parallel
-        // creates cannot both take the last slot. Disposing without commit rolls back (limit reached or error).
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             dbContext,
             cancellationToken,
@@ -62,8 +59,6 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
         return created;
     }
 
-    // IgnoreQueryFilters (tenant only): usage belongs to the org passed in, whoever the caller is. The admin plan
-    // change reads another org (it showed usage=0), and the limit check must count every row of the org (A1-21).
     private Task<int> CountPropertiesAsync(Guid orgId, CancellationToken cancellationToken) =>
         dbContext.Properties
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -75,8 +70,6 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
         if (org is null || org.SubscriptionStatus == SubscriptionStatus.None)
             return;
 
-        // The tier the subscription pays for, never the effective one: the open access (BL-01) is an override on read
-        // and must not reach the stored tier.
         var paidTier = ResolvePaidTier(org.PlanTier, org.SubscriptionStatus, org.PastDueSince);
         if (paidTier != org.PlanTier)
         {
@@ -118,10 +111,6 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
     public PlanTier ResolvePaidTier(Org org) =>
         ResolvePaidTier(org.PlanTier, org.SubscriptionStatus, org.PastDueSince);
 
-    /// <summary>
-    /// The tier every gate uses: the one the subscription pays for (<see cref="ResolvePaidTier(PlanTier, SubscriptionStatus, DateTime?)"/>),
-    /// raised to the tier of the open access when that is on and higher (BL-01, <see cref="OpenAccess"/>).
-    /// </summary>
     internal PlanTier ResolveEffectiveTier(PlanTier storedTier, SubscriptionStatus status, DateTime? pastDueSince) =>
         ApplyOpenAccess(ResolvePaidTier(storedTier, status, pastDueSince));
 
@@ -140,16 +129,10 @@ public class EntitlementService(AppDbContext dbContext, IConfiguration configura
             _ => PlanTier.Starter,
         };
 
-    /// <summary>
-    /// <c>Entitlement:OpenAccess</c> (BL-01): with the switch on, the tier of the org is at least the configured one; off (the
-    /// default) or not valid, the paid tier is returned as it is. Read from the configuration at every call, like the other
-    /// <c>Entitlement</c> and <c>Billing</c> settings.
-    /// </summary>
     private PlanTier ApplyOpenAccess(PlanTier paidTier) => OpenAccess.Read(configuration).Apply(paidTier);
 
     private bool IsPastDueGraceExpired(DateTime? pastDueSince)
     {
-        // The webhook always records when an org became past due; without it the grace cannot be bounded.
         if (pastDueSince is null)
             return true;
 

@@ -50,20 +50,13 @@ public sealed record ServicePaymentActionFacts(
 /// </remarks>
 public static class ServicePaymentActions
 {
-    /// <summary>
-    /// The supplier may ask for the payment (the first link, or a reminder with a new one): the flag is on, the supplier may act, the
-    /// request is paid inside CasaZen and completed with an amount nobody still has to confirm and of at least the minimum, the supplier
-    /// can be paid, the payer has an address, the payment is not settled or in flight, and no link went out in the last day.
-    /// </summary>
     public static bool CanRequest(ServicePaymentActionFacts facts, DateTime now)
     {
         ArgumentNullException.ThrowIfNull(facts);
 
-        // The endpoint is behind the flag (404 before authentication while it is off).
         if (!facts.OnlinePaymentsEnabled)
             return false;
 
-        // EnsureRequestable: paid inside CasaZen, completed, nothing left to confirm.
         if (!facts.SupplierMayAct
             || facts.PaymentMode != ServiceRequestPaymentMode.Online
             || facts.RequestStatus != ServiceRequestStatus.Completato
@@ -79,15 +72,10 @@ public static class ServicePaymentActions
         if (facts.PaymentStatus is { } status && IsSettledOrInFlight(status))
             return false;
 
-        // At most one request or reminder a day.
         return facts.PaymentLastSentAt is not { } lastSent
             || now - lastSent >= TimeSpan.FromHours(ServicePaymentLimits.MinHoursBetweenRequests);
     }
 
-    /// <summary>
-    /// The supplier may record that it was paid outside CasaZen: it may act, the request can still become <c>Pagato</c>, it has a final
-    /// amount, and its payment is not already paid or in flight. Not behind the flag.
-    /// </summary>
     public static bool CanRecordOffline(ServicePaymentActionFacts facts)
     {
         ArgumentNullException.ThrowIfNull(facts);
@@ -101,10 +89,6 @@ public static class ServicePaymentActions
         return facts.PaymentStatus is not { } status || !IsSettledOrInFlight(status);
     }
 
-    /// <summary>
-    /// The payment was collected (and perhaps refunded), is being processed by Stripe, waits for an admin, or is held by CasaZen (SP-15c-a:
-    /// blocked, held, released, in dispute, transfer failed): nothing can be asked or recorded.
-    /// </summary>
     private static bool IsSettledOrInFlight(ServicePaymentStatus status) => status is
         ServicePaymentStatus.Paid
         or ServicePaymentStatus.PartiallyRefunded

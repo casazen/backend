@@ -83,8 +83,6 @@ public class ComplianceAlertFollowUpTests : IDisposable
             .Setup(r => r.ForPropertyAsync(orgId, propertyId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ComplianceAlertRecipients(["org@example.com"], userIds));
 
-    // ─── The popup ───
-
     [Fact]
     public async Task PopupAsync_ALegalDeadlineWithinTwentyFourHours_AlertsEachPersonOfTheAudience_AndNobodyElse()
     {
@@ -126,7 +124,6 @@ public class ComplianceAlertFollowUpTests : IDisposable
             Now,
             CancellationToken.None);
 
-        // The people already read are alerted once each; an empty list alerts nobody and never asks the port for «everybody».
         _router.Verify(
             r => r.RouteAlertAsync(AlertType.IstatDeadline, propertyId, "Property", "auth0|owner", AlertUrgency.High, deadline, It.IsAny<CancellationToken>()),
             Times.Once);
@@ -180,8 +177,6 @@ public class ComplianceAlertFollowUpTests : IDisposable
         }
     }
 
-    // ─── The "To do" ───
-
     [Fact]
     public async Task OpenTodoAsync_KeepsOneItemOpen_AndAPropertyThatIsGoneIsNotAnError()
     {
@@ -207,7 +202,6 @@ public class ComplianceAlertFollowUpTests : IDisposable
         await followUp.OpenTodoAsync(Todo(propertyId, ActivityType.ReceiptToRetrieve, first), CancellationToken.None);
         await followUp.OpenTodoAsync(Todo(propertyId, ActivityType.AlloggiatiDeadline, second), CancellationToken.None);
 
-        // An empty list of entities is nothing, never «all of them».
         await followUp.CloseTodosAsync([ActivityType.AlloggiatiDeadline], InternalActivity.BookingEntityType, [], CancellationToken.None);
         Assert.Equal(3, await _db.InternalActivities.CountAsync(a => a.CompletedAt == null && a.Action != null));
 

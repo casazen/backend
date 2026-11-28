@@ -5,7 +5,6 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
-using Casazen.Infrastructure.Services.ICal;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.Supplier;
 using Casazen.Web.Infrastructure;
@@ -24,10 +23,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// <c>api/supplier/calendar/free-events</c>: the supplier lists and answers about the "Available" events of its calendar. The
-/// caller's supplier org comes from the resolver only, never from the request, so the id of another supplier's event is a 404.
-/// </summary>
 public class SupplierFreeEventsControllerTests
 {
     private static readonly Guid Mine = Guid.Parse("a1111111-1111-4111-8111-111111111111");

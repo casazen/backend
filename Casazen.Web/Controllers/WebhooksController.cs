@@ -5,7 +5,6 @@ using Casazen.Core.Features;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Jobs;
-using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Configuration;
@@ -19,7 +18,7 @@ namespace Casazen.Web.Controllers;
 
 [ApiController]
 [Route("webhooks")]
-[AllowAnonymous] // Webhooks come from external services, not authenticated users
+[AllowAnonymous]
 public class WebhooksController : ControllerBase
 {
     private readonly IBackgroundJobClient _backgroundJobClient;
@@ -57,7 +56,6 @@ public class WebhooksController : ControllerBase
             var signatureHeader = Request.Headers["Stripe-Signature"].ToString();
             var webhookSecret = _configuration["Stripe:WebhookSecret"];
 
-            // A placeholder committed in appsettings.json is public: signing with it would accept forged events.
             if (RequiredConfiguration.IsMissing(webhookSecret))
             {
                 _logger.LogError("Stripe webhook secret not configured");
@@ -86,8 +84,6 @@ public class WebhooksController : ControllerBase
                 stripeEvent.Id,
                 stripeEvent.ApiVersion);
 
-            // Acknowledging invoice.created allows Stripe to finalize the invoice. For Agency
-            // month-end cycles, let the meter reporter close the period before starting that clock.
             if (stripeEvent.Type == "invoice.created" && string.IsNullOrEmpty(stripeEvent.Account) &&
                 stripeEvent.Data.Object is Invoice { BillingReason: "subscription_cycle" } invoice &&
                 invoice.Parent?.SubscriptionDetails is { } details &&
@@ -102,14 +98,11 @@ public class WebhooksController : ControllerBase
                 }
             }
 
-            // Queue the event for background processing
-            // This allows us to respond within 3 seconds while processing happens asynchronously
             _backgroundJobClient.Enqueue<StripeWebhookJob>(job =>
                 job.ProcessEventAsync(stripeEvent.Id, stripeEvent.Type, json, WebhookSource.Platform));
 
             _logger.LogInformation("Queued Stripe webhook event {EventId} for background processing", stripeEvent.Id);
 
-            // Return 200 immediately to acknowledge receipt
             return Ok();
         }
         catch (Exception ex)
@@ -119,10 +112,6 @@ public class WebhooksController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// Connected-account Stripe webhooks (Connect onboarding, account.updated).
-    /// Verified with <c>Stripe:ConnectWebhookSecret</c> per RF2.
-    /// </summary>
     [HttpPost("stripe/connect")]
     public async Task<IActionResult> StripeConnectWebhook()
     {
@@ -132,15 +121,12 @@ public class WebhooksController : ControllerBase
             var signatureHeader = Request.Headers["Stripe-Signature"].ToString();
             var webhookSecret = _configuration["Stripe:ConnectWebhookSecret"];
 
-            // A placeholder committed in appsettings.json is public: signing with it would accept forged events.
             if (RequiredConfiguration.IsMissing(webhookSecret))
             {
                 _logger.LogError("Stripe Connect webhook secret not configured");
                 return StripeWebhookNotConfigured();
             }
 
-            // See the platform endpoint above (A3-39): tolerant of an API version pinned differently on the connect
-            // endpoint, still fully signature-verified.
             Event stripeEvent;
             try
             {
@@ -270,7 +256,6 @@ public class WebhooksController : ControllerBase
         {
             var payload = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
 
-            // Validated at startup with the flag on (ESignOptionsValidator); a public placeholder never signs anything.
             var webhookSecret = _configuration["ESign:WebhookSecret"];
             if (ESignOptionsValidator.IsWebhookSecretMissing(webhookSecret))
             {

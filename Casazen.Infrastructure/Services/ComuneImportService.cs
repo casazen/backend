@@ -36,15 +36,12 @@ public class ComuneImportService(
     ILogger<ComuneImportService> logger,
     TimeProvider? timeProvider = null) : IComuneImportService
 {
-    /// <summary>Largest file accepted (the official list is about 1.2 MB).</summary>
     public const int MaxFileBytes = 10 * 1024 * 1024;
 
-    /// <summary>Line errors listed in a rejected import; the file is rejected as a whole anyway.</summary>
     public const int MaxReportedErrors = 50;
 
     public const string SeedFileName = "comuni-istat.csv";
 
-    /// <summary>Manifest resource names of the seed file and of its metadata (<c>Data/Seeds</c>, embedded in the assembly).</summary>
     public const string SeedResourceName = "Casazen.Infrastructure.Data.Seeds.comuni-istat.csv";
 
     public const string SeedMetadataResourceName = "Casazen.Infrastructure.Data.Seeds.comuni-istat.source.json";
@@ -57,7 +54,6 @@ public class ComuneImportService(
         "CODICECOMUNEALFANUMERICO", "CODISTAT", "ISTAT", "CODICECOMUNE",
     ];
 
-    // The numeric format drops the leading zeros of the code (1001 for 001001): accepted only when there is no alphanumeric one.
     private static readonly string[] IstatNumericHeaders = ["CODICECOMUNEFORMATONUMERICO", "CODICECOMUNENUMERICO"];
 
     private static readonly string[] NameHeaders =
@@ -126,7 +122,6 @@ public class ComuneImportService(
         var sha256 = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
         var now = _clock.GetUtcNow().UtcDateTime;
 
-        // One import at a time, across API instances: the diff below is computed from the stored rows.
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db, cancellationToken, (PostgresAdvisoryLocks.Scope.ComuneImport, "comuni"));
 
@@ -196,7 +191,6 @@ public class ComuneImportService(
         var clash = FindCadastralClash(stored, toInsert, rows);
         if (clash is not null)
         {
-            // The rows were already applied to the tracked comuni: forget them, nothing is saved.
             db.ChangeTracker.Clear();
             logger.LogWarning("Comuni import rejected: the cadastral code of line {Line} is held by another active comune", clash.Value);
             return ComuneImportResult.Rejected(new ComuneImportLineError(clash.Value, ComuneImportErrors.ConflictsWithStoredComuni));
@@ -204,8 +198,6 @@ public class ComuneImportService(
 
         try
         {
-            // Changes first (a comune that changes province keeps its cadastral code: the old row is deactivated, then
-            // the new one is inserted), then the new rows.
             db.ComuneImports.Add(import);
             await db.SaveChangesAsync(cancellationToken);
             if (toInsert.Count > 0)
@@ -244,7 +236,6 @@ public class ComuneImportService(
             return ComuneSeedOutcome.NoSeedFile;
         }
 
-        // The file never travels without its source and date: nothing is invented for it.
         await using var metadataStream = assembly.GetManifestResourceStream(SeedMetadataResourceName);
         var metadata = metadataStream is null ? null : await ReadSeedMetadataAsync(metadataStream, cancellationToken);
         if (metadata is null)
@@ -323,10 +314,6 @@ public class ComuneImportService(
         }
     }
 
-    /// <summary>
-    /// Line of the first row whose cadastral code would be held by another active comune after the import (the unique
-    /// index of the active comuni); null when there is none. Checked in memory so a clash is a rejection, not a 500.
-    /// </summary>
     private static int? FindCadastralClash(
         Dictionary<string, Comune> stored,
         List<Comune> toInsert,
@@ -380,7 +367,6 @@ public class ComuneImportService(
             UpdatedAt = now,
         };
 
-        /// <summary>Copies the row onto the stored comune; true when something changed (an unchanged row is not touched).</summary>
         public bool ApplyTo(Comune stored, Guid importId, DateTime now)
         {
             var normalized = Truncate(ComuneNames.Normalize(Name), ComuneRules.NameMaxLength);
@@ -453,7 +439,6 @@ public class ComuneImportService(
             var (row, error) = ParseRow(lineNumber, cells, columns, referenceDate);
             if (error is null && !seenIstat.Add(row!.IstatCode))
                 error = ComuneImportErrors.DuplicateIstatCode;
-            // The unique index is on the active comuni: a row that ceased may share the code of its successor.
             if (error is null && row!.IsActive && row.CadastralCode is not null && !seenCadastral.Add(row.CadastralCode))
                 error = ComuneImportErrors.DuplicateCadastralCode;
 
@@ -574,7 +559,6 @@ public class ComuneImportService(
         if (validFrom is { } from && validTo is { } to && to < from)
             return (null, ComuneImportErrors.ValidityInconsistent);
 
-        // A comune that ceased before the date of the list is in the file for the record, not to be selected.
         var active = validTo is null || validTo.Value >= referenceDate;
 
         return (new ParsedComune(
@@ -596,7 +580,6 @@ public class ComuneImportService(
             if (region is null)
                 return (null, null, ComuneImportErrors.RegionUnknown);
 
-            // The code and the name of the same row must agree: a shifted column is not imported.
             if (writtenName.Length > 0 && ItalianRegions.FindByName(writtenName)?.IstatCode != region.IstatCode)
                 return (null, null, ComuneImportErrors.RegionInconsistent);
         }
@@ -640,7 +623,6 @@ public class ComuneImportService(
 
     private static string Cell(List<string> cells, int index) => index >= 0 && index < cells.Count ? cells[index] : string.Empty;
 
-    /// <summary>Header cell as a comparable key: accents removed, upper case, letters and digits only.</summary>
     private static string HeaderKey(string header)
     {
         var builder = new StringBuilder(header.Length);

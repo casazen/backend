@@ -26,7 +26,6 @@ public class LeaseRentController(
 {
     private const string LeaseNotFoundCode = "lease_not_found";
 
-    /// <summary>Schedule, installments (state, overdue, how paid) and what the landlord can do.</summary>
     [HttpGet]
     public async Task<ActionResult<RentLedgerView>> Get(Guid leaseId, CancellationToken cancellationToken)
     {
@@ -55,12 +54,6 @@ public class LeaseRentController(
             cancellationToken));
     }
 
-    /// <summary>
-    /// Confirms the condominium terms of the lease (advance, cadence, settlement clause). An active plan whose installment
-    /// is still the rent, or still the rent plus the advance already confirmed, takes the new total; a corrected amount
-    /// replaces it and clearing the advance removes it. 422 <c>rent_condominium_terms_invalid</c>,
-    /// <c>rent_condominium_source_not_found</c>.
-    /// </summary>
     [HttpPut("condominium-terms")]
     [Authorize(Policy = CasazenPolicies.LeaseCreate)]
     public async Task<ActionResult<RentLedgerView>> ConfirmCondominiumTerms(
@@ -86,7 +79,6 @@ public class LeaseRentController(
             cancellationToken));
     }
 
-    /// <summary>Stops the schedule: unpaid installments are cancelled (their payable PaymentIntents canceled on Stripe).</summary>
     [HttpPost("schedule/disable")]
     [Authorize(Policy = CasazenPolicies.LeaseCreate)]
     public async Task<ActionResult<RentLedgerView>> Disable(Guid leaseId, CancellationToken cancellationToken)
@@ -96,11 +88,6 @@ public class LeaseRentController(
         return Ok(await rentBilling.DisableScheduleAsync(leaseId, cancellationToken));
     }
 
-    /// <summary>
-    /// Declares an installment paid outside CasaZen (bank transfer, cash). 409 <c>rent_installment_not_payable</c> when it
-    /// is already paid (also online meanwhile) or cancelled, 409 <c>rent_installment_in_flight</c> while an online payment
-    /// is being processed, 422 <c>rent_paid_on_invalid</c> for a date in the future.
-    /// </summary>
     [HttpPost("installments/{installmentId:guid}/mark-paid")]
     [Authorize(Policy = CasazenPolicies.LeaseCreate)]
     public async Task<ActionResult<RentInstallmentView>> MarkPaid(
@@ -144,10 +131,6 @@ public class LeaseRentController(
     }
 }
 
-/// <summary>
-/// Rent schedule chosen by the landlord: cadence, due day (1-28, default the start day), amount (default monthly rent × months), the
-/// day the rents are tracked from (LR-04a) and whether the daily job emails the tenants the payment links (LR-04a).
-/// </summary>
 public sealed class ConfigureRentScheduleDto
 {
     [Required(ErrorMessage = "RentCadenceRequired")]
@@ -161,16 +144,11 @@ public sealed class ConfigureRentScheduleDto
         ErrorMessage = "RentAmountInvalid")]
     public decimal? Amount { get; set; }
 
-    /// <summary>LR-04a: the day the rents are tracked from (<c>yyyy-MM-dd</c>); absent = the whole lease, or the day the plan already has.</summary>
     public DateOnly? TrackFrom { get; set; }
 
-    /// <summary>LR-04a: the daily job emails the tenants the payment links; absent = off for a new plan, unchanged for an existing one.</summary>
     public bool? OnlineRequests { get; set; }
 }
 
-/// <summary>
-/// Condominium clause of the lease. A fixed advance needs an amount and a cadence. Saving confirms the values.
-/// </summary>
 public sealed class ConfirmLeaseCondominiumTermsDto
 {
     [Required(ErrorMessage = "RentCondominiumTermsInvalid")]
@@ -200,7 +178,6 @@ public sealed class ConfirmLeaseCondominiumTermsDto
     public decimal? ExtractionConfidence { get; set; }
 }
 
-/// <summary>Offline payment of an installment: the day it was paid (not in the future) and an optional note.</summary>
 public sealed class MarkRentPaidDto
 {
     [Required(ErrorMessage = "RentPaidOnInvalid")]

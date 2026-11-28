@@ -47,7 +47,6 @@ public class LeaseFlowWebApplicationFactory : CasazenWebApplicationFactory
     }
 }
 
-/// <summary>Lease flow with the RLI provider path on (<c>Features:RliProvider</c>) and the configured fake provider.</summary>
 public class LeaseProviderFlowWebApplicationFactory : LeaseFlowWebApplicationFactory
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -58,10 +57,6 @@ public class LeaseProviderFlowWebApplicationFactory : LeaseFlowWebApplicationFac
     }
 }
 
-/// <summary>
-/// Lease flow with the e-signature provider path on (<c>Features:ESignProvider</c>) and the configured fake provider
-/// (LT-02). The webhook secret is the base factory's <c>esign-test-secret</c>.
-/// </summary>
 public class LeaseESignProviderFlowWebApplicationFactory : LeaseFlowWebApplicationFactory
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)

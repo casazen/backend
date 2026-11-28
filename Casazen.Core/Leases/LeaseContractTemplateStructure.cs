@@ -2,19 +2,12 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Leases;
 
-/// <summary>
-/// Data placeholders of a lease contract template (<c>{{name}}</c> in the clause texts). Their values are always
-/// computed from the lease (parties, property, dates, rent), never written in the template or in code (LT-03, A7-03).
-/// </summary>
 public static class LeaseContractPlaceholders
 {
-    /// <summary>Every landlord: name, surname and fiscal code.</summary>
     public const string Landlords = "locatori";
 
-    /// <summary>Every tenant: name, surname and fiscal code.</summary>
     public const string Tenants = "conduttori";
 
-    /// <summary>Address, postal code and comune of the property.</summary>
     public const string PropertyAddress = "immobile_indirizzo";
 
     public const string PropertyComune = "immobile_comune";
@@ -29,24 +22,20 @@ public static class LeaseContractPlaceholders
     public const string PropertyComposition = "immobile_composizione";
     public const string TaxRegime = "regime_fiscale";
 
-    /// <summary>Cadastral identification of the unit, from the property (sheet, parcel, subaltern, category, income; LT-10).</summary>
     public const string CadastralData = "dati_catastali";
 
-    /// <summary>Identification of the APE (code and energy class), from the latest APE document of the property that has it (LT-10, LR-APE).</summary>
     public const string ApeData = "ape_estremi";
 
     public const string MonthlyRent = "canone_mensile";
 
     public const string AnnualRent = "canone_annuo";
 
-    /// <summary>Security deposit of the lease (LT-10).</summary>
     public const string SecurityDeposit = "deposito_cauzionale";
 
     public const string StartDate = "data_decorrenza";
 
     public const string EndDate = "data_scadenza";
 
-    /// <summary>Actual term computed from the dates (e.g. "4 anni", "18 mesi"), never a fixed "3+2" or "4+4".</summary>
     public const string Term = "durata";
 
     /// <summary>
@@ -55,7 +44,6 @@ public static class LeaseContractPlaceholders
     /// </summary>
     public const string TransitoryParty = "esigenza_parte";
 
-    /// <summary>Transitory contract only: the need that justifies the term, as the landlord wrote it (at most 500 characters).</summary>
     public const string TransitoryNeed = "esigenza_motivo";
 
     /// <summary>
@@ -122,7 +110,6 @@ public static class LeaseContractTemplateStructure
     public const string AncillaryCharges = "oneri_accessori";
     public const string Ape = "ape";
 
-    // The transitory variant (TR): one section per article of the Allegato B of the D.M. 16/01/2017, which is mandatory as a whole.
     public const string TransitoryNeedSection = "esigenza";
     public const string TransitoryNonCompliance = "inadempimento";
     public const string StampAndRegistration = "bollo_registrazione";
@@ -258,7 +245,6 @@ public static class LeaseContractTemplateStructure
         Article(ApprovedInWriting, "Clausole approvate specificamente"),
     ];
 
-    /// <summary>The sections a template of <paramref name="variant"/> must contain, in the suggested order.</summary>
     public static IReadOnlyList<LeaseContractSectionDefinition> RequiredSections(LeaseTemplateVariant variant) => variant switch
     {
         LeaseTemplateVariant.CanoneConcordato => CanoneConcordatoSections,
@@ -268,7 +254,6 @@ public static class LeaseContractTemplateStructure
         _ => throw new ArgumentOutOfRangeException(nameof(variant), variant, "Unknown template variant."),
     };
 
-    /// <summary>The sections a template of <paramref name="regime"/> (a canone libero or concordato) must contain, in the suggested order.</summary>
     public static IReadOnlyList<LeaseContractSectionDefinition> RequiredSections(FiscalRegime regime) =>
         RequiredSections(LeaseTemplateVariants.Of(regime));
 }

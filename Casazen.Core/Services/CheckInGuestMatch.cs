@@ -8,7 +8,6 @@ public static class CheckInGuestMatch
     public static bool SameName(string? booked, string? entered) =>
         string.Equals(AlloggiatiRecordRules.NormalizeDescription(booked), AlloggiatiRecordRules.NormalizeDescription(entered), StringComparison.Ordinal);
 
-    // A single OCR character error can suggest a guest for confirmation, never establish identity.
     private static bool OneMisreadLetter(string booked, string read)
     {
         if (booked.Length < 3)

@@ -19,31 +19,21 @@ public class SelfBillingOptions
     /// <summary>The VAT integrated on the commission, in percent, when nothing is configured (⚖: the ordinary Italian rate, art. 17 c. 2 DPR 633/72).</summary>
     public const decimal DefaultVatRatePercent = 22m;
 
-    /// <summary>The day of the month after the one of the commissions by which the TD17 is issued (⚖: the 15th).</summary>
     public const int DefaultIssueByDay = 15;
 
-    /// <summary>The series pattern of the TD17 of every issuer (its own counter, apart from the sales documents): <c>{year}</c> is the year of the issue; at most 10 characters.</summary>
     public const string DefaultSeriesPattern = "TD17-{year}";
 
-    /// <summary>The version of the choices of this section, stored on every TD17 (a new rate or a new rule is a new version, never an edit of a published one).</summary>
     public const string DefaultRuleVersion = "td17-2026.11-1";
 
-    /// <summary>
-    /// The legal entities of the foreign portals that invoice the commissions, one for each channel (<see cref="SelfBillingPortalOptions.Channel"/> is the name of a
-    /// <see cref="BookingSource"/>). A channel without an entry is never self-billed: its commissions are reported, not invoiced.
-    /// </summary>
     public List<SelfBillingPortalOptions> Portals { get; set; } = [];
 
     /// <summary>The VAT integrated on the commissions, in percent (⚖). Above 0 and at most 100; anything else refuses the generation.</summary>
     public decimal VatRatePercent { get; set; } = DefaultVatRatePercent;
 
-    /// <summary>The day of the following month by which the TD17 is issued (⚖), 1 to 28; the deadline shown with every draft.</summary>
     public int IssueByDay { get; set; } = DefaultIssueByDay;
 
-    /// <summary>The series pattern of the TD17 numbers (see <see cref="DefaultSeriesPattern"/>).</summary>
     public string SeriesPattern { get; set; } = DefaultSeriesPattern;
 
-    /// <summary>The version of the choices stored on the documents (see <see cref="DefaultRuleVersion"/>).</summary>
     public string RuleVersion { get; set; } = DefaultRuleVersion;
 
     /// <summary>
@@ -52,16 +42,12 @@ public class SelfBillingOptions
     /// </summary>
     public SelfBillingMonthlyDraftsOptions MonthlyDrafts { get; set; } = new();
 
-    /// <summary>True when <see cref="VatRatePercent"/> can be integrated: above 0 and at most 100.</summary>
     public bool HasValidVatRate => VatRatePercent is > 0m and <= 100m;
 
-    /// <summary>The deadline day as it is used: <see cref="IssueByDay"/> kept between 1 and 28, so every month has it.</summary>
     public int EffectiveIssueByDay => Math.Clamp(IssueByDay, 1, 28);
 
-    /// <summary>The series pattern as it is used: <see cref="SeriesPattern"/>, or the default when it is blank.</summary>
     public string EffectiveSeriesPattern => string.IsNullOrWhiteSpace(SeriesPattern) ? DefaultSeriesPattern : SeriesPattern.Trim();
 
-    /// <summary>The version as it is used: <see cref="RuleVersion"/>, or the default when it is blank, cut to what a document stores.</summary>
     public string EffectiveRuleVersion
     {
         get
@@ -88,7 +74,6 @@ public class SelfBillingOptions
         return portals;
     }
 
-    /// <summary>How many entries of <see cref="Portals"/> are ignored (not a portal, incomplete, in Italy, or a channel already given): the generation logs it.</summary>
     public int IgnoredPortalEntries() => (Portals?.Count ?? 0) - ConfiguredPortals().Count;
 }
 
@@ -99,20 +84,13 @@ public class SelfBillingOptions
 /// </summary>
 public class SelfBillingMonthlyDraftsOptions
 {
-    /// <summary>
-    /// Whether the run does anything. <b>true</b> by default (decision 3 of the fiscal decisions of 2026-11-20, R3): a draft has no fiscal effect until a person issues it, so preparing it is safe and not
-    /// preparing it risks the penalty of a missing or late TD17. <c>false</c> turns it off for an environment: the job is then a no-op (no organization is read, no lock is taken, nothing is written).
-    /// </summary>
     public bool Enabled { get; set; } = true;
 }
 
-/// <summary>One entry of <c>SelfBilling:Portals</c>: the legal entity of a foreign portal as it appears on its invoices (⚖: verify it against a real invoice of the portal).</summary>
 public class SelfBillingPortalOptions
 {
-    /// <summary>The channel the entity invoices: the name of a <see cref="BookingSource"/> (<c>BookingCom</c>, <c>Airbnb</c>...).</summary>
     public string? Channel { get; set; }
 
-    /// <summary>The legal name of the entity (<c>Booking.com B.V.</c>).</summary>
     public string? Name { get; set; }
 
     /// <summary>The ISO 3166-1 alpha-2 country of the entity; never <c>IT</c> (an Italian supplier invoices with VAT and needs no TD17).</summary>
@@ -121,19 +99,14 @@ public class SelfBillingPortalOptions
     /// <summary>The VAT number of the entity, with or without the country prefix (<c>NL805734958B01</c>).</summary>
     public string? VatNumber { get; set; }
 
-    /// <summary>The street of the registered office.</summary>
     public string? Street { get; set; }
 
-    /// <summary>The house number, when the address has one.</summary>
     public string? Civic { get; set; }
 
-    /// <summary>The postal code as the entity writes it (the XML writes <c>00000</c> for a foreign one).</summary>
     public string? PostalCode { get; set; }
 
-    /// <summary>The city of the registered office.</summary>
     public string? City { get; set; }
 
-    /// <summary>The entity as a portal that can be invoiced, or <c>null</c> when the entry is not usable (see <see cref="SelfBillingOptions.ConfiguredPortals"/>).</summary>
     public SelfBillingPortal? ToPortal()
     {
         if (!EnumNames.TryParseDefined<BookingSource>(Channel, out var channel)

@@ -24,10 +24,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// The host side of the tourist tax collection (E25/F01/US01/T01): the change of the tax of a stay evaluates the collection at once (a lower confirmed amount raises
-/// the «To do», AC2), «Pagata in struttura» needs <c>payment.write</c> on the booking's property, and the setting of the organization is for its billing admins.
-/// </summary>
 public class StayTouristTaxCollectionControllerTests
 {
     private static readonly Guid OrgId = Guid.Parse("5b2c8d1e-7f3a-4c6b-9d0e-1a2b3c4d5e61");
@@ -56,7 +52,6 @@ public class StayTouristTaxCollectionControllerTests
         var declared = new SetTouristTaxCollectorRequest { Collector = TouristTaxCollector.Host };
         Assert.IsType<OkObjectResult>((await controller.SetCollector(BookingId, declared, CancellationToken.None)).Result);
 
-        // The change is saved first, the collection is evaluated right after it (never before, never skipped).
         Assert.Equal(["confirm", "reconcile", "exemptions", "reconcile", "collector", "reconcile"], order);
     }
 
@@ -84,7 +79,6 @@ public class StayTouristTaxCollectionControllerTests
             .ReturnsAsync(new TouristTaxCollectionView(
                 TouristTaxCollectionStatus.PaidAtProperty, TouristTaxNotPayableReason.PaidAtProperty, 0m, 0m, 0m, 15m, 0m, 0m, 0m, "EUR", null, true));
 
-        // A caller with payment.write on the property records it; one without it (booking.read only, the accountant role) is told the booking does not exist.
         var denied = Controller(tax.Object, collection.Object, allowed: true, deniedOperation: PaymentOperations.Write);
         var refused = await denied.RecordPaidAtProperty(BookingId, CancellationToken.None);
         Assert.Equal(StatusCodes.Status404NotFound, Assert.IsType<ObjectResult>(refused.Result).StatusCode);
@@ -96,7 +90,6 @@ public class StayTouristTaxCollectionControllerTests
         Assert.Equal(TouristTaxCollectionStatus.PaidAtProperty, dto.Status);
         collection.Verify(c => c.RecordPaidAtPropertyAsync(BookingId, "auth0|host", It.IsAny<CancellationToken>()), Times.Once);
 
-        // The policy of the action is payment.write, and every new route is behind the flag (404 before authentication when it is off).
         var type = typeof(StayTouristTaxController);
         var action = type.GetMethod(nameof(StayTouristTaxController.RecordPaidAtProperty))!;
         Assert.Equal(CasazenPolicies.PaymentWrite, Assert.Single(action.GetCustomAttributes<AuthorizeAttribute>()).Policy);
@@ -169,7 +162,6 @@ public class StayTouristTaxCollectionControllerTests
         null,
         false);
 
-    /// <summary>The key itself: the tests read which sentence was chosen, not its words.</summary>
     private sealed class KeyLocalizer : IStringLocalizer<SharedResources>
     {
         public LocalizedString this[string name] => new(name, name);

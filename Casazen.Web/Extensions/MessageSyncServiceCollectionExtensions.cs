@@ -20,19 +20,13 @@ public static class MessageSyncServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        // E05/F01/US01/T02 (NF-62, NF-64): the threads and messages of the channels, copied from the channel manager and kept up to date. The pacing is
-        // one for the scope: the handler of a notification, which runs in the outbox dispatcher, tells the service of its scope not to wait for the calls
-        // of the org to refill; the jobs and the import keep the default and wait.
         services.AddScoped<MessageSyncPacing>();
         services.AddScoped<IMessageSyncService, MessageSyncService>();
 
-        // E05/F01/US01/T03 (NF-62, OCT-08, OCT-09): the chat notification of the webhook re-reads the thread; the pass of every 10 minutes and the
-        // deep pass of every night recover whatever the webhook missed. The event bus runs the handler in its own scope under the org of the event.
         services.AddScoped<IEventHandler<OctorateWebhookReceivedEvent>, ChatMessageReceivedHandler>();
         services.AddScoped<OtaMessageReconcileJob>();
         services.AddScoped<OtaMessageDeepReconcileJob>();
 
-        // E05/F01/US01/T03 (ADR-032-R13): the copy follows the retention of the guest data; the erasure of a guest goes through GuestDataEraser.
         services.AddScoped<IOtaMessageRetentionService, OtaMessageRetentionService>();
 
         // E05/F05/US03/T03 (NF-67, OCT-11, AC-NF67-6): Octorate's own assistant is kept off on the threads CasaZen manages. The consumer of OtaThreadSynced, which

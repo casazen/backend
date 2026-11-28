@@ -5,17 +5,12 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Repositories;
 
-/// <summary>The floor plan levels and the points of interest of a property (DB-11a).</summary>
 public sealed record PropertySiteMedia(IReadOnlyList<PropertyFloorPlan> FloorPlans, IReadOnlyList<PropertyPoi> Pois);
 
 public interface IPropertyRepository
 {
     Task<Property?> GetByIdAsync(Guid id);
 
-    /// <summary>
-    /// The property row alone, tracked, without bookings, OTA integrations or documents (A2-32): what the record
-    /// endpoints read and update. Saving it never rewrites rows of other aggregates (A2-04).
-    /// </summary>
     Task<Property?> GetRecordAsync(Guid id);
 
     /// <summary>
@@ -26,23 +21,11 @@ public interface IPropertyRepository
     Task<PropertySiteMedia> GetSiteMediaAsync(Guid propertyId, CancellationToken cancellationToken = default);
     Task<IEnumerable<Property>> GetByOwnerAsync(string ownerId);
 
-    /// <summary>
-    /// Active properties of <see cref="HostScope.OrgId"/>, restricted to <see cref="HostScope.OwnerId"/> when set
-    /// (TN-3 list filter, in SQL).
-    /// </summary>
     Task<IEnumerable<Property>> GetByScopeAsync(HostScope scope);
 
-    /// <summary>
-    /// The properties of <see cref="GetByScopeAsync(HostScope)"/> in <paramref name="mode"/> only (PM-01,
-    /// <c>GET /api/properties?mode=</c>).
-    /// </summary>
     Task<IEnumerable<Property>> GetByScopeAsync(HostScope scope, RentalMode mode);
     Task<IEnumerable<Property>> GetAllAsync();
     Task<IEnumerable<Property>> SearchAsync(string? city, int? bedrooms, decimal? maxPrice);
-    /// <summary>
-    /// Published properties of active orgs (<c>PublicListing.IsPublished</c>) matching <paramref name="criteria"/>,
-    /// optionally of one org: the query of the public search, the org's property list and the public property pages.
-    /// </summary>
     IQueryable<Property> GetSearchQueryable(PublicPropertySearchCriteria criteria, Guid? orgId = null);
     Task<Property> AddAsync(Property property);
     Task<Property> UpdateAsync(Property property);
@@ -65,10 +48,6 @@ public interface IPropertyRepository
 
     Task<bool> ExistsAsync(Guid id);
 
-    /// <summary>
-    /// OrgId of the property (under the caller's tenant filter), or <c>null</c> when it does not exist.
-    /// Child rows (documents, OTA integrations, pricing) copy it on creation (TN-2).
-    /// </summary>
     Task<Guid?> GetOrgIdAsync(Guid id);
     Task<Property?> GetPropertyDetailAsync(Guid id);
 
@@ -82,24 +61,18 @@ public interface IPropertyRepository
     Task<bool> CinCodeExistsOnOtherPropertyAsync(string cinCode, Guid excludePropertyId);
     Task<bool> SlugExistsInOrgAsync(Guid orgId, string slug, Guid? excludePropertyId = null);
 
-    /// <summary>The cancellation policies a property can reference (global catalog), by name.</summary>
     Task<IReadOnlyList<CancellationPolicy>> GetCancellationPoliciesAsync();
 
     Task<bool> CancellationPolicyExistsAsync(Guid id);
 }
 
-/// <summary>Result of <see cref="IPropertyRepository.SoftDeleteAsync"/> (PC-05).</summary>
 public enum PropertySoftDeleteOutcome
 {
-    /// <summary>The property is now soft-deleted.</summary>
     Deleted,
 
-    /// <summary>No such property for the caller (other org, never existed, or already deleted): nothing changed.</summary>
     NotFound,
 
-    /// <summary>A pending, confirmed or checked-in stay has not checked out yet: nothing changed.</summary>
     HasUpcomingStays,
 
-    /// <summary>A lease is in force or in progress (not draft nor rejected) and has not ended yet: nothing changed.</summary>
     HasActiveLeases,
 }

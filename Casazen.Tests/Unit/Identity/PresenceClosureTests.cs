@@ -41,7 +41,6 @@ public sealed class PresenceClosureTests
     [Fact]
     public async Task PresenceClosure_ObservationWithPerfectEvidence_RowIsEscalateWithShadowAccept_AndAPersonDecides()
     {
-        // AC1, AC5, AC-NF194-3: the decision is taken in one save, its row says how, and the session closes with the outcome code review.
         await using var world = await PresenceClosureWorld.CreateAsync();
         var session = await world.ReadyStayAsync();
         var token = await world.IssueChallengeAsync(session);
@@ -81,7 +80,6 @@ public sealed class PresenceClosureTests
         Assert.NotNull(saved.OperatorRequestedAt);
         Assert.Equal((key, "operator"), (saved.IdentityLastAttemptKey, saved.IdentityLastAttemptResult));
 
-        // The challenge is consumed and the perceptual hashes of the sides are gone; the kept picture of the document is deleted; the operators are told once, with review.
         var check = PresenceClosureKit.ReadCheck(saved);
         Assert.Null(check.Presence);
         Assert.Null(check.Front?.DHash);
@@ -96,8 +94,6 @@ public sealed class PresenceClosureTests
     [Fact]
     public async Task PresenceClosure_QualifiedSegmentWithTheGlobalPermission_Accepts_AndTakesTheSuccessPathOfToday()
     {
-        // AC-NF194-4: in a segment that allows it (qualified for the policy and the weights in force, with CheckInIdentityAutoApproval on) perfect evidence approves: the row is
-        // Accept, the event is announced in the same save, and then the kept picture goes, the alerts are resolved and the lock code is released.
         await using var world = await PresenceClosureWorld.CreateAsync();
         world.Segment = EvidenceBundles.Allowed;
         var session = await world.ReadyStayAsync();
@@ -126,8 +122,6 @@ public sealed class PresenceClosureTests
     [Fact]
     public async Task PresenceClosure_ModelFault_GoesToOperator()
     {
-        // Proof (security, AC4, AC-NF194-2): an exception of a model, a pipeline that could not judge, models that are not loaded or the time of the attempt over: a person decides,
-        // in a segment that would allow the approval; never an Accept row; and the guest can still ask for a person afterwards.
         var faults = new (string Name, Action<PresenceClosureWorld> Arrange, string Outcome, string Processing)[]
         {
             ("model exception", world => world.Collector.Fail(new InvalidOperationException("face model crashed")), IdentityOutcomeCodes.TechnicalError, VerificationReasons.Results.Error),
@@ -162,7 +156,6 @@ public sealed class PresenceClosureTests
             Assert.Equal([(session.Id, VerificationAlertReasons.TechnicalError)], world.Alerts.Raised);
             world.AccessCodes.Verify(codes => codes.ReleaseToGuestAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
 
-            // The request for a person still works after the fault: no error, the way to a person open, the closure as it was.
             var afterwards = await world.Flow().RequestOperatorAsync(session, Ct);
             Assert.True(afterwards.OperatorPathOpen);
             Assert.Equal(IdentityVerificationGuestResults.Operator, afterwards.Result);
@@ -190,7 +183,6 @@ public sealed class PresenceClosureTests
     [Fact]
     public async Task PresenceClosure_ChallengeOfAnotherSession_IsRefused()
     {
-        // Proof (security, isolation): the proof of a challenge is bound to its session: sent to another session it is no challenge there, and nothing of that session moves.
         await using var world = await PresenceClosureWorld.CreateAsync();
         var left = await world.ReadyStayAsync();
         var right = await world.ReadyStayAsync();
@@ -208,7 +200,6 @@ public sealed class PresenceClosureTests
         Assert.Equal((0, 0, (string?)null), (after.BiometricAttempts, after.IdentityGuidedRetries, after.IdentityLastAttemptKey));
         Assert.Equal(0, world.Collector.Calls);
 
-        // Its own session still takes it.
         var own = await world.Flow().SubmitPresenceSequenceAsync(left, PresenceClosureKit.Submission(PresenceClosureKit.NewKey(), leftToken), Ct);
         Assert.Equal(PresenceStepStatus.Done, own.Status);
     }
@@ -256,7 +247,6 @@ public sealed class PresenceClosureTests
         Assert.Equal(IdentityVerificationGuestResults.Retry, retry.State.Result);
         Assert.False(retry.State.GuidedRetryAvailable);
 
-        // The proof of the consumed challenge does not open a second attempt.
         var stale = await world.Flow().SubmitPresenceSequenceAsync(session, PresenceClosureKit.Submission(PresenceClosureKit.NewKey(), null), Ct);
         Assert.Equal(PresenceStepStatus.ChallengeRequired, stale.Status);
 
@@ -298,7 +288,6 @@ public sealed class PresenceClosureTests
         Assert.Equal((1, 0, (DateTime?)null), (afterTheRetry.IdentityGuidedRetries, afterTheRetry.BiometricAttempts, afterTheRetry.IdentityClosedAt));
         Assert.Empty(world.Alerts.Raised);
 
-        // The new recording is perfect, and the coherence cannot be told: a person decides, with the reason of the document.
         var second = await world.Flow().SubmitPresenceSequenceAsync(session, TicinoSubmission(PresenceClosureKit.NewKey(), await world.IssueChallengeAsync(session)), Ct);
 
         Assert.Equal(IdentityVerificationGuestResults.Operator, second.Result);
@@ -307,7 +296,6 @@ public sealed class PresenceClosureTests
         Assert.Contains(new VerificationReason(VerificationReasons.Checks.DocumentCoherence, VerificationReasons.Results.NotRun), VerificationReasons.Parse(row.ReasonsJson));
     }
 
-    /// <summary>The attempt of a property that keeps no document: the front and the back come again with the frames.</summary>
     private static PresenceSubmission TicinoSubmission(string key, string token) =>
         PresenceClosureKit.Submission(
             key,
@@ -382,7 +370,6 @@ public sealed class PresenceClosureTests
     [Fact]
     public async Task PresenceClosure_APropertyThatKeepsNoDocument_TakesThePicturesAgain_AndRefusesOthers()
     {
-        // Ticino (ADR-013-R6): nothing is kept, the front and the back come again with the frames, recognised by their SHA-256; missing is 400, another picture 409.
         await using var world = await PresenceClosureWorld.CreateAsync();
         var session = await world.ReadyStayAsync(keepsNoDocument: true);
         var token = await world.IssueChallengeAsync(session);
@@ -414,7 +401,6 @@ public sealed class PresenceClosureTests
         Assert.Equal(1, world.Collector.Calls);
         Assert.Empty(world.Storage.Objects);
 
-        // The coherence of the sides could not be checked (nothing kept to read again): never a pass, a person reviews it.
         var row = Assert.Single(await world.LogRowsAsync(session));
         Assert.Contains(new VerificationReason(VerificationReasons.Checks.DocumentCoherence, VerificationReasons.Results.NotRun), VerificationReasons.Parse(row.ReasonsJson));
     }
@@ -422,8 +408,6 @@ public sealed class PresenceClosureTests
     [Fact]
     public async Task PresenceClosure_TheFramesAndThePictureOfTheDocument_AreZeroedAfterTheRequest_AndTheLogsHoldNoNumberOfAPerson()
     {
-        // Proof (privacy, AC7, ADR-013-R2): the sequence handed to the pipeline is disposed (every JPEG zeroed) and the decrypted picture of the document zeroed when the request
-        // ends; the log lines of the flow carry the session, codes and counts, never a similarity, a liveness score or a picture.
         await using var world = await PresenceClosureWorld.CreateAsync();
         var session = await world.ReadyStayAsync();
         var token = await world.IssueChallengeAsync(session);
@@ -453,8 +437,6 @@ public sealed class PresenceClosureTests
     [InlineData("deletion")]
     public async Task PresenceClosure_AnExceptionIsLoggedByItsTypeOnly_NeverByItsTextNorTheNameOfTheGuest(string failing)
     {
-        // Proof (privacy, ADR-013-R2): what a model or the storage throws may carry what it was reading, a name, a number of a document, a score. The log of the flow names the session and the TYPE
-        // of the exception, nothing of its text, of the guest or of a number of a person: when the pipeline throws (the attempt goes to a person) and when the deletion of the kept picture does.
         await using var world = await PresenceClosureWorld.CreateAsync();
         var session = await world.ReadyStayAsync();
         var token = await world.IssueChallengeAsync(session);
@@ -490,7 +472,6 @@ public sealed class PresenceClosureTests
         Assert.Equal((0.93, policy.Presence.Liveness.MinScore), (liveness.Value, liveness.Threshold));
         Assert.Equal(IdentityModelsFault.None, PresenceClosureKit.Perfect().ModelsFault);
 
-        // A failure of the validation: its check failed with its correctability and its code, the others passed, the liveness not run.
         var mixed = new PresenceEvidence(
             new SequenceValidationReport(
                 false,
@@ -508,7 +489,6 @@ public sealed class PresenceClosureTests
         Assert.Equal(IdentityCheckStatus.NotRun, Assert.Single(mixed, check => check.Check == VerificationReasons.Checks.Liveness).Status);
         Assert.Equal(IdentityCheckStatus.Passed, Assert.Single(mixed, check => check.Check == VerificationReasons.Checks.PresenceContinuity).Status);
 
-        // The frames could not be chosen: presence_quality, correctable.
         var notChosen = new PresenceEvidence(
             PresenceClosureKit.ValidSequence(),
             new SequenceFailure(IdentityGuidanceCodes.PresenceQuality, VerificationReasons.Checks.PresenceQuality, Correctable: true),
@@ -519,7 +499,6 @@ public sealed class PresenceClosureTests
             (Assert.Single(notChosen, check => check.Check == VerificationReasons.Checks.PresenceQuality).Status,
                 Assert.Single(notChosen, check => check.Check == VerificationReasons.Checks.PresenceQuality).Correctable));
 
-        // A sequence that could not be judged, or a liveness or a match that could not be made, is a fault: never a pass.
         Assert.All(PresenceClosureKit.NotJudged().Checks(policy).Take(5), check => Assert.Equal(IdentityCheckStatus.Unavailable, check.Status));
         Assert.Equal(IdentityModelsFault.Failed, PresenceClosureKit.NotJudged().ModelsFault);
         Assert.Equal(IdentityModelsFault.Failed, (PresenceClosureKit.Perfect() with { Liveness = LivenessReport.NotAvailable(), Match = null }).ModelsFault);
@@ -534,7 +513,6 @@ public sealed class PresenceClosureTests
         Assert.Equal("operator", IdentityVerificationFlowService.EncodeAnswer("operator", []));
         Assert.Equal("retry:presence_too_short,presence_quality", IdentityVerificationFlowService.EncodeAnswer("retry", ["presence_too_short", "presence_quality"]));
 
-        // Every code of the presence at once does not fit in 80 characters: the first ones are kept, and that is what the guest is told and what a replay answers.
         string[] all =
         [
             IdentityGuidanceCodes.PresenceTooShort, IdentityGuidanceCodes.PresenceTiming, IdentityGuidanceCodes.PresenceSingleFace, IdentityGuidanceCodes.PresenceQuality,
@@ -558,8 +536,6 @@ public sealed class PresenceClosureTests
     [Fact]
     public async Task PresenceClosure_TheApplicationWiresTheClosure_WithTheServicesItNeeds()
     {
-        // The closure runs only when the flow holds the reader, the pipeline, the segments, the engine and the policy: a service that stopped being registered would close the presence
-        // in silence. Built with the registrations of the application and doubles only for what it registers elsewhere (the models, the database, the flags, the clock).
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
@@ -571,7 +547,6 @@ public sealed class PresenceClosureTests
         services.AddSingleton<IFeatureFlags>(new TestFeatureFlags());
         services.AddSingleton(TimeProvider.System);
 
-        // E73/F01/US02/T01: the store of the evidence of the reviewer the flow takes writes to the private bucket with Data Protection.
         services.AddSingleton(Mock.Of<IFileStorage>());
         services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
         services.AddScoped(_ => Mock.Of<IAntiSpoofingService>());
@@ -602,7 +577,6 @@ public sealed class PresenceClosureTests
         Assert.IsType<PresenceEvidenceCollector>(scope.ServiceProvider.GetRequiredService<IPresenceEvidenceCollector>());
         Assert.Equal(ServiceLifetime.Scoped, Assert.Single(services, descriptor => descriptor.ServiceType == typeof(IPresenceEvidenceCollector)).Lifetime);
 
-        // Built by hand without them (a tool, a test of another task), the closure is not there: nothing runs, nothing is written.
         var bare = new IdentityVerificationFlowService(
             scope.ServiceProvider.GetRequiredService<AppDbContext>(),
             Mock.Of<IIdentityVerificationAgent>(),
@@ -623,20 +597,16 @@ public sealed class PresenceClosureTests
     }
 }
 
-/// <summary>The pieces of the tests of the closure of the presence (E73/F01/US01/T02): the policy, the frames, the submissions and the evidence of the pipeline.</summary>
 internal static class PresenceClosureKit
 {
     public static readonly DateTimeOffset Now = new(2026, 11, 27, 9, 0, 0, TimeSpan.Zero);
 
-    /// <summary>The front of the document as it was read and kept (any bytes: the pipeline is a double and never decodes it).</summary>
     public static readonly byte[] FrontPicture = Encoding.ASCII.GetBytes("TEST-DOCUMENT-FRONT-PICTURE");
 
-    /// <summary>The back of the document as it was read.</summary>
     public static readonly byte[] BackPicture = Encoding.ASCII.GetBytes("TEST-DOCUMENT-BACK-PICTURE");
 
     public static string NewKey() => Guid.NewGuid().ToString();
 
-    /// <summary>The committed policy file, written in <paramref name="directory"/> and pinned (or pinned to another hash).</summary>
     public static IdentityPolicyProvider Policy(string directory, bool pinned = true)
     {
         const string file = "identity-policy-of-the-test.json";
@@ -648,11 +618,9 @@ internal static class PresenceClosureKit
             directory);
     }
 
-    /// <summary>The registry of the formats the application ships (the CIE).</summary>
     public static DocumentFormatRegistry Formats() =>
         new(Options.Create(new IdentityVerificationOptions()), NullLogger<DocumentFormatRegistry>.Instance, System.AppContext.BaseDirectory);
 
-    /// <summary><paramref name="count"/> small JPEG frames of noise (generated: no picture of anybody) and their timestamps, one every 125 ms from 0.</summary>
     public static (List<PresenceFrameUpload> Frames, string Timestamps) Frames(int count = 4, int seed = 1)
     {
         var frames = new List<PresenceFrameUpload>(count);
@@ -672,10 +640,8 @@ internal static class PresenceClosureKit
         return new PresenceSubmission(key, token, timestamps, parts, documentPhoto, documentPhotoBack);
     }
 
-    /// <summary>A sequence that passed every check of the validation.</summary>
     public static SequenceValidationReport ValidSequence() => new(true, [], [], []);
 
-    /// <summary>Everything passed: the sequence, the liveness of the chosen frames (0.95 and 0.93) and the match (<paramref name="similarity"/>, the weakest frame 0.01 below).</summary>
     public static PresenceEvidence Perfect(double similarity = 0.93)
     {
         var match = IdentityTestPolicy.Shipped().Match;
@@ -697,18 +663,14 @@ internal static class PresenceClosureKit
     public static PresenceEvidence CorrectableFailure(string guidance) =>
         new(new SequenceValidationReport(false, [new SequenceFailure(guidance, VerificationReasons.Checks.PresenceTiming, Correctable: true)], [], []), null, null, null);
 
-    /// <summary>A sequence that is not live: never correctable.</summary>
     public static PresenceEvidence LivenessFailed() =>
         new(ValidSequence(), null, new LivenessReport(LivenessState.Failed, [new FrameLiveness(0, 0.2)]), null);
 
-    /// <summary>A sequence the pipeline could not judge (a model not there, a failure, its own time over).</summary>
     public static PresenceEvidence NotJudged() => new(SequenceValidationReport.NotAvailable(), null, null, null);
 
-    /// <summary>The checks of the document of the session.</summary>
     public static StoredDocumentCheck ReadCheck(GuestCheckInSession session) =>
         JsonSerializer.Deserialize<StoredDocumentCheck>(session.DocumentCheckJson!, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
 
-    /// <summary>Every check of the coherence the CIE requires (the ones the report carries), passed: names and results only.</summary>
     public static IReadOnlyList<DocumentCoherenceCheck> PassedCoherence() =>
     [
         new(DocumentFormatChecks.MrzCheckDigits, DocumentCoherenceResults.Passed),
@@ -719,10 +681,6 @@ internal static class PresenceClosureKit
     ];
 }
 
-/// <summary>
-/// A double of the pipeline of E72 (<see cref="IPresenceEvidenceCollector"/>): it answers the evidence the test scripted (perfect by default), fails, or waits for the time of the attempt
-/// to be over. It keeps the sequences and the pictures of the document it was handed, the very objects of the flow, to prove they are zeroed when the request ends.
-/// </summary>
 internal sealed class ScriptedEvidenceCollector : IPresenceEvidenceCollector
 {
     private readonly Queue<Func<CancellationToken, Task<PresenceEvidence>>> _answers = new();
@@ -736,7 +694,6 @@ internal sealed class ScriptedEvidenceCollector : IPresenceEvidenceCollector
 
     public PresenceEvidence Default { get; set; } = PresenceClosureKit.Perfect();
 
-    /// <summary>Runs, awaited, when the pipeline is asked and before it answers: what another request does while this one is in the middle of its work (a twin that writes its row).</summary>
     public Func<Task>? OnCollect { get; set; }
 
     public void Next(PresenceEvidence evidence) => _answers.Enqueue(_ => Task.FromResult(evidence));
@@ -765,17 +722,14 @@ internal sealed class ScriptedEvidenceCollector : IPresenceEvidenceCollector
     }
 }
 
-/// <summary>The alerts to the operators, raised and resolved, in order.</summary>
 internal sealed class RecordingOperatorAlerts : IVerificationOperatorAlerts
 {
     public List<(Guid SessionId, string Reason)> Raised { get; } = [];
 
     public List<(Guid OrgId, Guid BookingId)> Resolved { get; } = [];
 
-    /// <summary>The failure of the next alert (a push that is down, a database that refuses): nothing is recorded for it, the way a call that threw told nobody.</summary>
     public Exception? FailNextRaise { get; set; }
 
-    /// <summary>The token each alert was raised with: the operators are told by the effects of a decision, which no request that drops may cancel.</summary>
     public List<CancellationToken> RaisedWith { get; } = [];
 
     public Task RaiseAsync(Guid sessionId, string reasonCode, CancellationToken ct)
@@ -804,12 +758,10 @@ internal sealed class RecordingOperatorAlerts : IVerificationOperatorAlerts
     }
 }
 
-/// <summary>A private bucket in memory.</summary>
 internal sealed class PresenceMemoryStorage : IFileStorage
 {
     public Dictionary<string, byte[]> Objects { get; } = new(StringComparer.Ordinal);
 
-    /// <summary>The failure of the next deletion (a storage that is down): the object stays where it was.</summary>
     public Exception? FailNextDelete { get; set; }
 
     public async Task PutAsync(StorageBucket bucket, string key, Stream content, string contentType, CancellationToken cancellationToken = default)
@@ -918,7 +870,6 @@ internal sealed class PresenceClosureWorld : IAsyncDisposable
 
     public bool ModelsReady { get; set; } = true;
 
-    /// <summary>The world; <paramref name="interceptors"/> sit on every context of its database (a save that is refused, the unique index of the log that the memory store has not).</summary>
     public static async Task<PresenceClosureWorld> CreateAsync(bool pinThePolicy = true, params SaveChangesInterceptor[] interceptors)
     {
         var world = new PresenceClosureWorld(pinThePolicy, interceptors);
@@ -939,7 +890,6 @@ internal sealed class PresenceClosureWorld : IAsyncDisposable
 
     public AppDbContext NewContext() => new(_options, null, DataProtection);
 
-    /// <summary>The flow with the closure, on <paramref name="db"/> (the context of the world by default).</summary>
     public IdentityVerificationFlowService Flow(AppDbContext? db = null, Microsoft.Extensions.Logging.ILogger<IdentityVerificationFlowService>? logger = null)
     {
         var context = db ?? Db;
@@ -970,10 +920,6 @@ internal sealed class PresenceClosureWorld : IAsyncDisposable
             decisionEngine: new IdentityDecisionEngine());
     }
 
-    /// <summary>
-    /// A confirmed stay of an adult booker whose guest opened the identity step, gave the consent to the text served and has the CIE read and checked (coherent), its front kept
-    /// encrypted; or, with <paramref name="keepsNoDocument"/>, at a property that keeps nothing (the two sides read, nothing kept). Loaded as the public endpoint loads it.
-    /// </summary>
     public async Task<GuestCheckInSession> ReadyStayAsync(bool keepsNoDocument = false, AppDbContext? db = null)
     {
         var context = db ?? Db;
@@ -1052,14 +998,12 @@ internal sealed class PresenceClosureWorld : IAsyncDisposable
         return await LoadAsync(session.Id, context);
     }
 
-    /// <summary>The session as the public endpoint loads it (tracked, with its booking, property and guest), on <paramref name="db"/>.</summary>
     public async Task<GuestCheckInSession> LoadAsync(Guid sessionId, AppDbContext? db = null) =>
         await (db ?? Db).GuestCheckInSessions
             .Include(s => s.Booking).ThenInclude(b => b.Property)
             .Include(s => s.Booking).ThenInclude(b => b.Guest)
             .SingleAsync(s => s.Id == sessionId);
 
-    /// <summary>A challenge issued by the flow for <paramref name="session"/>: its proof.</summary>
     public async Task<string> IssueChallengeAsync(GuestCheckInSession session)
     {
         var issued = await Flow().IssuePresenceChallengeAsync(session, CancellationToken.None);
@@ -1067,10 +1011,6 @@ internal sealed class PresenceClosureWorld : IAsyncDisposable
         return issued.ChallengeToken;
     }
 
-    /// <summary>
-    /// A challenge stored for <paramref name="session"/> and its proof, made as the flow makes them, for a world whose policy cannot be used (the flow then issues none, but a challenge
-    /// issued before the policy stopped matching its pin can still come back).
-    /// </summary>
     public async Task<string> StoreChallengeAsync(GuestCheckInSession session)
     {
         var challenge = new StoredPresenceChallenge(
@@ -1088,14 +1028,12 @@ internal sealed class PresenceClosureWorld : IAsyncDisposable
         return DataProtection.CreateProtector(IdentityVerificationFlowService.PresenceTokenPurpose, bound).Protect(challenge.Id.ToString("N"));
     }
 
-    /// <summary>The log rows of the booking of <paramref name="session"/>, read by another context.</summary>
     public async Task<List<BiometricVerificationLog>> LogRowsAsync(GuestCheckInSession session)
     {
         await using var other = NewContext();
         return await other.BiometricVerificationLogs.IgnoreQueryFilters().AsNoTracking().Where(row => row.BookingId == session.BookingId).ToListAsync();
     }
 
-    /// <summary>The session as it was saved, read by another context.</summary>
     public async Task<GuestCheckInSession> ReadBackAsync(Guid sessionId)
     {
         await using var other = NewContext();
@@ -1139,7 +1077,6 @@ internal sealed class UniqueIdempotencyKeyInterceptor : SaveChangesInterceptor
     private readonly HashSet<(Guid BookingId, string Key)> _saved = [];
     private List<(Guid BookingId, string Key)> _pending = [];
 
-    /// <summary>The saves refused so far.</summary>
     public int Refused { get; private set; }
 
     public override ValueTask<InterceptionResult<int>> SavingChangesAsync(

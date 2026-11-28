@@ -67,7 +67,6 @@ public class SupplierShowcaseContentServiceTests
     {
         await Service().SaveDraftAsync(OrgA, 0, Patch("""{"tagline":"Della A"}"""));
 
-        // B sees an empty draft, saves its own, discards it: A keeps what it wrote.
         Assert.Null((await Service().GetAsync(OrgB)).Draft.Tagline);
         await Service().SaveDraftAsync(OrgB, 0, Patch("""{"tagline":"Della B"}"""));
         var discarded = await Service().DiscardAsync(OrgB, null);
@@ -99,14 +98,11 @@ public class SupplierShowcaseContentServiceTests
         Assert.Empty(await db.SupplierShowcaseContents.ToListAsync());
     }
 
-    // ─── helpers ─────────────────────────────────────────────────────────────────
-
     private static JsonObject Patch(string json) => (JsonObject)JsonNode.Parse(json)!;
 
     private AppDbContext CreateDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_databaseName).Options);
 
-    /// <summary>A service on its own context, as every request gets its own; no service of the catalog is active.</summary>
     private SupplierShowcaseContentService Service()
     {
         var catalog = new Mock<ISupplierServiceCatalogService>();

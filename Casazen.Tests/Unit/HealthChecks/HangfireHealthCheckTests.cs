@@ -11,7 +11,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.HealthChecks;
 
-/// <summary>FD-12 (A9-19): Hangfire readiness, storage reachable and this process's server alive.</summary>
 public class HangfireHealthCheckTests
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 23, 10, 0, 0, TimeSpan.Zero);

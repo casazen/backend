@@ -52,10 +52,8 @@ public class LeasesController(
     private const string ImuNotificationNotReadyCode = "imu_notification_not_ready";
     private const string PropertyNotFoundCode = "property_not_found";
 
-    /// <summary>The receipt (at most <see cref="RliRegistrationLimits.MaxReceiptBytes"/>) plus the other form fields.</summary>
     private const long ManualRegistrationRequestLimit = RliRegistrationLimits.MaxReceiptBytes + 64 * 1024;
 
-    /// <summary>The signed contract (at most <see cref="LeaseSigningLimits.MaxSignedContractBytes"/>) plus the other form fields.</summary>
     private const long SignedDocumentRequestLimit = LeaseSigningLimits.MaxSignedContractBytes + 64 * 1024;
 
     /// <summary>The Questura receipt (at most <see cref="QuesturaCommunicationLimits.MaxReceiptBytes"/>) plus the other form fields.</summary>
@@ -91,7 +89,6 @@ public class LeasesController(
         if (!string.IsNullOrWhiteSpace(view) && !EnumNames.TryParseDefined(view, out listView))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "LeaseListViewUnknown");
 
-        // Org and property filter applied in SQL (HostScope), never the whole table filtered in memory.
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         if (orgId is null
             || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken) is not { } scope)
@@ -100,7 +97,6 @@ public class LeasesController(
         return Ok(await leaseService.GetLeasesAsync(scope, new LeaseListQuery(propertyId, listView, q)));
     }
 
-    /// <summary>Lease detail: parties with masked fiscal code and email, registration, timeline without payloads.</summary>
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<LeaseDetailDto>> GetById(Guid id)
     {
@@ -108,7 +104,6 @@ public class LeasesController(
         return denied ?? Ok(LeaseDtoMapper.ToDetail(lease!, _clock.TodayInRome()));
     }
 
-    /// <summary>Original PDFs attached to this lease (not the property's document collection).</summary>
     [HttpGet("{id:guid}/documents")]
     public async Task<IActionResult> GetDocuments(Guid id, [FromServices] ILeaseDocumentService documents, CancellationToken ct)
     {
@@ -149,7 +144,6 @@ public class LeasesController(
         return File(document.Content, "application/pdf", document.FileName);
     }
 
-    /// <summary>Deletes a document of this lease and its file. 404 when the document is not on this lease.</summary>
     [HttpDelete("{id:guid}/documents/{documentId:guid}")]
     [Authorize(Policy = CasazenPolicies.LeaseCreate)]
     public async Task<IActionResult> DeleteDocument(Guid id, Guid documentId,
@@ -182,7 +176,6 @@ public class LeasesController(
         return Ok(reading);
     }
 
-    /// <summary>Create a new lease contract draft.</summary>
     [HttpPost]
     [Authorize(Policy = CasazenPolicies.LeaseCreate)]
     public async Task<IActionResult> Create([FromBody] CreateLeaseDto dto)
@@ -299,7 +292,6 @@ public class LeasesController(
         }
         catch (ESignProviderException)
         {
-            // Logged with its cause by the service; the client learns only that the provider failed.
             return this.ApiProblem(StatusCodes.Status502BadGateway, LeaseSigningErrorCodes.ProviderFailed, "ESignProviderFailed");
         }
         catch (ApeComplianceException ex)
@@ -308,12 +300,6 @@ public class LeasesController(
         }
     }
 
-    /// <summary>
-    /// The final contract to be signed offline (LT-02): only from a complete, approved template (422
-    /// <c>contract_template_not_approved</c> / <c>contract_data_missing</c>, LT-03; the BOZZA is <c>contract/preview</c>),
-    /// only before every party signed (409 <c>lease_already_signed</c>). Needs <c>lease.sign</c>: the document carries
-    /// the parties' full fiscal codes.
-    /// </summary>
     [HttpGet("{id:guid}/contract.pdf")]
     [Authorize(Policy = CasazenPolicies.LeaseSign)]
     public async Task<IActionResult> GetContractForSignature(
@@ -335,12 +321,6 @@ public class LeasesController(
         }
     }
 
-    /// <summary>
-    /// Offline signature (LT-02, default path, D15): the landlord uploads the contract signed by every party (PDF, checked
-    /// on its content, at most 20 MB, private bucket, FD-07) and declares the stipula date (not after today). Only now
-    /// the lease is Signed, the stipula recorded and the RLI deadline fixed (LT-04). Multipart fields:
-    /// <c>stipulaDate</c>, <c>signedContract</c>.
-    /// </summary>
     [HttpPost("{id:guid}/signed-document")]
     [Consumes("multipart/form-data")]
     [Authorize(Policy = CasazenPolicies.LeaseSign)]
@@ -374,11 +354,6 @@ public class LeasesController(
         return Ok(LeaseDtoMapper.ToDetail((await leaseService.GetLeaseDetailAsync(id))!, _clock.TodayInRome()));
     }
 
-    /// <summary>
-    /// The contract signed by every party, from the private bucket (FD-07): only through this authenticated endpoint,
-    /// for a caller who may read the lease (TN-3: the owner or an org-wide member of its org). 404
-    /// <c>lease_signed_contract_not_available</c> until a signed contract is stored.
-    /// </summary>
     [HttpGet("{id:guid}/signed-document")]
     public async Task<IActionResult> GetSignedDocument(
         Guid id, [FromServices] ILeaseSigningService signing, CancellationToken cancellationToken)
@@ -486,7 +461,6 @@ public class LeasesController(
         }
         catch (LeaseRegistrationProviderException)
         {
-            // Logged with its cause by the service; the client learns only that the provider failed.
             return this.ApiProblem(
                 StatusCodes.Status502BadGateway, RliRegistrationErrorCodes.ProviderFailed, "RliProviderFailed");
         }
@@ -594,7 +568,6 @@ public class LeasesController(
         if (denied is not null)
             return denied;
 
-        // The receipt comes once: the file sent now, or the document already uploaded to this lease.
         if ((form.Receipt is null) == (form.ReceiptDocumentId is null))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "RegistrationReceiptSourceInvalid");
 
@@ -666,7 +639,6 @@ public class LeasesController(
             : File(result.PdfBytes, "application/pdf", result.FileName);
     }
 
-    /// <summary>RLI checklist; item labels are localized here from their stable keys (A7-26).</summary>
     [HttpGet("{id:guid}/rli/checklist")]
     public async Task<ActionResult<RliChecklistResponse>> GetRliChecklist(Guid id, CancellationToken cancellationToken)
     {
@@ -757,7 +729,6 @@ public class LeasesController(
         return File(receipt.Content, "application/pdf", receipt.FileName);
     }
 
-    /// <summary>Get current RLI registration status.</summary>
     [HttpGet("{id:guid}/registration")]
     public async Task<ActionResult<LeaseRegistrationDto>> GetRegistration(Guid id)
     {
@@ -771,10 +742,6 @@ public class LeasesController(
         return Ok(LeaseDtoMapper.ToRegistration(registration));
     }
 
-    /// <summary>
-    /// The RLI registration receipt (PDF) from the private bucket (FD-07): only through this authenticated endpoint, for
-    /// a caller who may read the lease (TN-3). 404 <c>rli_receipt_not_available</c> until the lease is registered.
-    /// </summary>
     [HttpGet("{id:guid}/registration/receipt")]
     public async Task<IActionResult> GetReceipt(
         Guid id,
@@ -790,10 +757,6 @@ public class LeasesController(
         return File(receipt.Content, "application/pdf", receipt.FileName);
     }
 
-    /// <summary>
-    /// Whether the IMU notification applies to the lease and can be exported/marked sent now (A7-24): the export and
-    /// mark-sent buttons must never guess this from the lease status alone.
-    /// </summary>
     [HttpGet("{id:guid}/canone-concordato/imu-notification")]
     public async Task<IActionResult> GetImuNotificationStatus(Guid id, CancellationToken cancellationToken)
     {
@@ -805,7 +768,6 @@ public class LeasesController(
         return status is null ? NotFound() : Ok(status);
     }
 
-    /// <summary>Export a draft comune IMU-reduction notification (PDF). Landlord sends it themselves.</summary>
     [HttpGet("{id:guid}/canone-concordato/imu-notification/export")]
     public async Task<IActionResult> ExportImuNotification(Guid id, CancellationToken cancellationToken)
     {
@@ -826,7 +788,6 @@ public class LeasesController(
         }
     }
 
-    /// <summary>Landlord attests they sent the IMU notification. Never inferred.</summary>
     [HttpPost("{id:guid}/canone-concordato/imu-notification/mark-sent")]
     [Authorize(Policy = CasazenPolicies.LeaseRegister)]
     public async Task<IActionResult> MarkImuNotificationSent(Guid id, CancellationToken cancellationToken)
@@ -843,10 +804,6 @@ public class LeasesController(
         }
     }
 
-    /// <summary>
-    /// Loads a lease of the caller's org (tenant filter) and authorizes <paramref name="operation"/> on it as a row of
-    /// its property: 404 <c>lease_not_found</c> when it is not visible, 403 when the caller may not handle it.
-    /// </summary>
     private async Task<(LeaseContract? Lease, ActionResult? Denied)> AuthorizeLeaseAsync(
         Guid leaseId, HostOperationRequirement operation)
     {
@@ -864,10 +821,6 @@ public class LeasesController(
             : (null, Forbid());
     }
 
-    /// <summary>
-    /// APE pre-checks (lease creation, signature, RLI registration): 400 with the APE code, as before; the message is
-    /// localized here, never the exception text.
-    /// </summary>
     private ObjectResult ApeProblem(ApeComplianceException ex) =>
         this.ApiProblem(
             ex.IsUnavailable ? StatusCodes.Status503ServiceUnavailable : StatusCodes.Status400BadRequest,
@@ -897,16 +850,8 @@ public record RliChecklistResponse(
     IReadOnlyList<RliChecklistItemResponse> Items,
     QuesturaCommunicationStatus? Questura);
 
-/// <summary>A checklist item: <c>Done</c> only when the step happened, <c>Failed</c> when its last attempt failed.</summary>
 public record RliChecklistItemResponse(string Key, string Label, bool Done, bool Failed);
 
-/// <summary>
-/// A new lease (LT-10). <c>ContractType</c> (Libero 4+4, Concordato 3+2, Transitorio 1-18 months) and <c>TaxRegime</c>
-/// replace the legacy <c>FiscalRegime</c>, accepted alone from older clients. The term comes from the dates. A canone
-/// concordato lease needs <c>CanoneConcordato</c>: the server computes the range from it (422
-/// <c>concordato_rent_out_of_range</c> with verified agreement data; with unconfirmed data the range is indicative and
-/// the lease is created, A7-23).
-/// </summary>
 public record CreateLeaseDto(
     [param: Required] Guid PropertyId,
     [param: EnumDataType(typeof(FiscalRegime))] FiscalRegime? FiscalRegime,
@@ -919,10 +864,6 @@ public record CreateLeaseDto(
     [param: EnumDataType(typeof(LeaseTaxRegime))] LeaseTaxRegime? TaxRegime = null,
     [param: Range(0.0, 1_000_000.0)] decimal? SecurityDeposit = null);
 
-/// <summary>
-/// Characteristics of the unit for the canone concordato range (LT-10). No contract years: the term comes from the lease
-/// dates (A7-12). Appurtenances in square metres; element counts as defined by the territorial agreement.
-/// </summary>
 public record CanoneConcordatoCharacteristicsDto(
     [param: Range(1, 10_000)] decimal Sqm,
     [param: Range(0, 100)] int TypeAElementCount,
@@ -969,10 +910,8 @@ public record CreatePartyDto(
     [param: Required, EmailAddress] string ContactEmail,
     [param: MaxLength(32), InternationalPhone] string? ContactPhone = null);
 
-/// <summary>Stipula date of a lease already signed (calendar date, not after today).</summary>
 public record DeclareStipulaDto([param: Required] DateTime? StipulaDate);
 
-/// <summary>Delivery date of the property (calendar date, not after the end of the lease); null clears it (LT-07).</summary>
 public record DeclareDeliveryDateDto(DateTime? DeliveryDate);
 
 /// <summary>
@@ -987,14 +926,11 @@ public sealed class QuesturaCommunicationForm
     public IFormFile? Receipt { get; set; }
 }
 
-/// <summary>Offline signature: the stipula date and the contract signed by every party.</summary>
 public sealed class SignedDocumentForm
 {
-    /// <summary>Date of the stipula: the day the last party signed (calendar date, not after today).</summary>
     [Required]
     public DateTime? StipulaDate { get; set; }
 
-    /// <summary>The contract signed by every party, a PDF of at most 20 MB.</summary>
     [Required]
     public IFormFile? SignedContract { get; set; }
 }
@@ -1003,10 +939,6 @@ public record TriggerRegistrationDto(
     [param: Required, MaxLength(80)] string TosVersion,
     [param: Required] bool AttestationAccepted);
 
-/// <summary>
-/// Data of the tax advisory that CasaZen does not hold (LT-08); each may be omitted. The stamp duty needs the written
-/// pages and the copies, the IRPEF comparison the landlord's taxable income of the year without this rent.
-/// </summary>
 public sealed record CedolareAdvisoryRequest(
     [param: Range(1, 1_000)] int? WrittenPages,
     [param: Range(1, 100_000)] int? Lines,
@@ -1019,21 +951,14 @@ public sealed record CedolareAdvisoryRequest(
 /// </summary>
 public sealed class ManualRegistrationForm
 {
-    /// <summary>Registration number or protocol, as written on the receipt.</summary>
     [Required, StringLength(RliRegistrationLimits.MaxRegistrationCodeLength, MinimumLength = 1)]
     public string? RegistrationCode { get; set; }
 
-    /// <summary>Date of the registration (calendar date).</summary>
     [Required]
     public DateTime? RegistrationDate { get; set; }
 
-    /// <summary>The receipt sent now, a PDF of at most 10 MB. Exactly one of this and <see cref="ReceiptDocumentId"/>.</summary>
     public IFormFile? Receipt { get; set; }
 
-    /// <summary>
-    /// The receipt already uploaded to this lease: the id of its document of kind <c>Registration</c>. Exactly one of this and
-    /// <see cref="Receipt"/>.
-    /// </summary>
     public Guid? ReceiptDocumentId { get; set; }
 }
 

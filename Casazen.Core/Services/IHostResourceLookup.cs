@@ -11,6 +11,5 @@ public interface IHostResourceLookup
 {
     Task<HostResource?> ForPropertyAsync(Guid propertyId, CancellationToken cancellationToken = default);
 
-    /// <summary>The resource of a booking: its property (org and owner).</summary>
     Task<HostResource?> ForBookingAsync(Guid bookingId, CancellationToken cancellationToken = default);
 }

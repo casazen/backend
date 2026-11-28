@@ -15,7 +15,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IPropertyWelcomeLinkService
 {
-    /// <summary>The active link of the property, or <c>null</c> when it has none.</summary>
     Task<PropertyWelcomeLink?> GetActiveAsync(Guid orgId, Guid propertyId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -29,10 +28,6 @@ public interface IPropertyWelcomeLinkService
         string? createdByUserId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Revokes the active link, if any, and makes a new one with a new token, in one transaction. The new link is the property's only active
-    /// one; the old token answers like a token that never existed.
-    /// </summary>
     Task<PropertyWelcomeLink> RotateAsync(
         Guid orgId,
         Guid propertyId,
@@ -40,7 +35,4 @@ public interface IPropertyWelcomeLinkService
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>An active welcome link and whether the call just made it.</summary>
-/// <param name="Link">The active link.</param>
-/// <param name="Created"><c>true</c> when this call made it, <c>false</c> when the property already had it.</param>
 public sealed record PropertyWelcomeLinkResult(PropertyWelcomeLink Link, bool Created);

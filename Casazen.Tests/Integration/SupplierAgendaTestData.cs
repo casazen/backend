@@ -7,10 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>Seeds for the agenda tests (SP-03): rows written straight to the database, valid on PostgreSQL and in memory.</summary>
 internal static class SupplierAgendaTestData
 {
-    /// <summary>A manual window or one of the calendar feed of <paramref name="orgId"/>.</summary>
     public static async Task<SupplierBusyWindow> SeedWindowAsync(
         CasazenWebApplicationFactory factory,
         Guid orgId,
@@ -36,7 +34,6 @@ internal static class SupplierAgendaTestData
         return window;
     }
 
-    /// <summary>A day override (<c>SupplierAvailability</c>).</summary>
     public static async Task SeedDayAsync(
         CasazenWebApplicationFactory factory,
         Guid orgId,
@@ -127,7 +124,6 @@ internal static class SupplierAgendaTestData
         return (request.Id, address, "Montecchi");
     }
 
-    /// <summary>The number of rows each agenda table holds for <paramref name="orgId"/>.</summary>
     public static async Task<(int Hours, int TimeOff, int Windows, int Settings)> CountsAsync(CasazenWebApplicationFactory factory, Guid orgId)
     {
         await using var scope = factory.Services.CreateAsyncScope();

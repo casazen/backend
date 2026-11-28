@@ -29,11 +29,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface ICrmProfileMergeService
 {
-    /// <summary>
-    /// The proposals waiting for a decision that the caller may decide (both profiles reached in full), the surest first, with a side-by-side
-    /// summary of the two profiles (computed over what the caller reaches, the contacts masked). <paramref name="page"/> starts at 1; <paramref name="pageSize"/> is cut to
-    /// <see cref="CrmProfileRules.MaxPageSize"/>.
-    /// </summary>
     Task<CrmMergeCandidatePage> ListProposedAsync(
         HostScope scope,
         int page,
@@ -70,13 +65,8 @@ public interface ICrmProfileMergeService
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>A contact of a profile in the summary of a proposal: the channel, where it came from and the value masked.</summary>
 public sealed record CrmMergeContactSummary(GuestContactChannel Channel, GuestContactOrigin Origin, string ValueMasked);
 
-/// <summary>
-/// One of the two profiles of a proposal, as much as a person needs to tell whether it is the same guest. Stays and last stay are over the
-/// bookings the caller reaches.
-/// </summary>
 public sealed record CrmMergeProfileSummary(
     Guid Id,
     string DisplayName,
@@ -86,10 +76,6 @@ public sealed record CrmMergeProfileSummary(
     IReadOnlyList<string> PropertyNames,
     IReadOnlyList<CrmMergeContactSummary> Contacts);
 
-/// <summary>
-/// A proposal to decide: how sure the matching is, why (codes, never what matched), and the two profiles. <paramref name="ProfileA"/> is the one with
-/// the smaller id, as the pair is stored.
-/// </summary>
 public sealed record CrmMergeCandidateView(
     Guid Id,
     int Score,
@@ -98,5 +84,4 @@ public sealed record CrmMergeCandidateView(
     CrmMergeProfileSummary ProfileA,
     CrmMergeProfileSummary ProfileB);
 
-/// <summary>A page of proposals. <paramref name="TotalCount"/> is over all the pages.</summary>
 public sealed record CrmMergeCandidatePage(IReadOnlyList<CrmMergeCandidateView> Items, int TotalCount, int Page, int PageSize);

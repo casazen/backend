@@ -3,7 +3,6 @@ using System.Text;
 using System.Threading.RateLimiting;
 using Casazen.Web.DTOs;
 using Casazen.Web.Extensions;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 
 namespace Casazen.Web.Infrastructure;
@@ -35,10 +34,8 @@ public abstract class PerEmailRateLimiter : IDisposable
         _emails = PartitionedRateLimiter.Create<string, string>(key => RateLimitPartition.GetFixedWindowLimiter(key, _ => options));
     }
 
-    /// <summary>The name of the policy, for the configuration keys and the log.</summary>
     public string PolicyName { get; }
 
-    /// <summary>The window of the limit.</summary>
     public TimeSpan Window { get; }
 
     /// <summary>
@@ -48,10 +45,6 @@ public abstract class PerEmailRateLimiter : IDisposable
     /// </summary>
     public virtual bool NamesTheWholeWindow => false;
 
-    /// <summary>
-    /// Takes one permit for <paramref name="email"/>, within <paramref name="scope"/> when the call names one (the supplier's slug):
-    /// the time to wait when there is none left. The same address at two suppliers has two budgets.
-    /// </summary>
     public bool TryAcquire(string? scope, string email, out TimeSpan retryAfter)
     {
         ArgumentNullException.ThrowIfNull(email);
@@ -66,10 +59,8 @@ public abstract class PerEmailRateLimiter : IDisposable
         return lease.IsAcquired;
     }
 
-    /// <summary>The form of an address a budget is counted under: trimmed and lowercase, as the guests' own area compares it.</summary>
     protected virtual string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
 
-    /// <summary>The form of the scope (the supplier's slug) a budget is counted under: trimmed and lowercase.</summary>
     protected virtual string NormalizeScope(string scope) => scope.Trim().ToLowerInvariant();
 
     public void Dispose() => _emails.Dispose();
@@ -98,7 +89,6 @@ public sealed class PerEmailRateLimitFilter<TLimiter>(
 
         var httpContext = context.HttpContext;
 
-        // No address, code or IP in the log: the policy, the route and the trace id identify the event.
         logger.LogWarning(
             "Rate limit exceeded: policy {Policy} on {Method} {Route}. TraceId={TraceId}",
             limiter.PolicyName,

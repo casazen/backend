@@ -19,8 +19,6 @@ public class ServiceRequestSqlTests
 
     private static readonly DateTimeOffset Instant = new(2026, 10, 8, 10, 0, 0, TimeSpan.Zero);
 
-    // ─── The inbox ───
-
     [Fact]
     public void InboxRows_AreScopedByTheSupplierAndNeverJoinTheGuest()
     {
@@ -32,7 +30,6 @@ public class ServiceRequestSqlTests
         Assert.DoesNotContain("Guests", sql, StringComparison.Ordinal);
         Assert.DoesNotContain("GuestId", sql, StringComparison.Ordinal);
         Assert.DoesNotContain("\"FirstName\"", sql, StringComparison.Ordinal);
-        // The filters of the host (tenant, soft delete) are off: the property and the stay belong to another tenant.
         Assert.DoesNotContain("\"DeletedAt\" IS NULL", sql, StringComparison.Ordinal);
     }
 
@@ -90,8 +87,6 @@ public class ServiceRequestSqlTests
 
         var sql = reader.Filter(reader.Rows(SupplierOrg), new SupplierInboxQuery([], null, null, 1, 20, ClientId: Guid.NewGuid())).ToQueryString();
 
-        // The supplier predicate and the client one: two different columns of the request. The client is the private customer of
-        // a showcase request (SP-10) or, when it has none, the host org that owns the request.
         Assert.Contains("\"SupplierOrgId\" = @", sql);
         Assert.Matches("COALESCE\\([^)]*\"CustomerId\"[^)]*\"OrgId\"[^)]*\\) = @", sql);
     }
@@ -124,8 +119,6 @@ public class ServiceRequestSqlTests
 
         Assert.Equal(plain, filtered);
     }
-
-    // ─── The earnings, the answers, the auto-cancel ───
 
     [Fact]
     public void Earnings_TheMonthAndTheAmountToCollect_AreSummedByTheDatabaseForTheSupplierOnly()
@@ -168,19 +161,16 @@ public class ServiceRequestSqlTests
 
         var sql = ServiceRequestAutoCancelService.DueIdsOf(db, Instant.UtcDateTime).ToQueryString();
 
-        Assert.Matches("\"Status\" = 0", sql); // Richiesto
+        Assert.Matches("\"Status\" = 0", sql);
         Assert.Contains("\"ResponseDueAt\" IS NOT NULL", sql);
         Assert.Contains("\"ResponseDueAt\" <= @", sql);
         Assert.Contains("\"ProposedStartUtc\" IS NULL", sql);
-        // SP-BKP: the requests of a group of backup suppliers lapse by the logic of the group, never one by one here.
         Assert.Contains("\"GroupId\" IS NULL", sql);
         var orderBy = sql[sql.IndexOf("ORDER BY", StringComparison.Ordinal)..];
         Assert.StartsWith("ORDER BY", orderBy);
         Assert.Contains("\"ResponseDueAt\"", orderBy);
-        // The cap is a parameter of the statement (LIMIT @p) with the value of MaxPerRun.
         Assert.Matches(@"LIMIT @\w+", sql);
         Assert.Matches($@"@\w+='{ServiceRequestAutoCancelService.MaxPerRun}'", sql);
-        // The job works across every org: no tenant predicate narrows it to one host.
         Assert.DoesNotContain("\"OrgId\" = @", sql, StringComparison.Ordinal);
         Assert.DoesNotContain("\"SupplierOrgId\" = @", sql, StringComparison.Ordinal);
     }

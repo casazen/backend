@@ -19,16 +19,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Octorate;
 
-/// <summary>
-/// The rules of the channels for changing and cancelling a booking that came from them (E08/F02/US02/T01, D8, NF-75, NF-76): closed by default,
-/// a channel that is not listed is closed, every booking says what the host may do with it and, when not, the one sentence that tells how to ask
-/// the guest or the channel; and the two services that change a booking refuse a booking of a closed channel and change nothing.
-/// </summary>
 public class OtaChannelActionPolicyTests
 {
     private static readonly Guid OrgId = Guid.Parse("4f1e2d3c-6b5a-4978-8a1b-2c3d4e5f6a81");
 
-    /// <summary>2026-11-06 09:00 in Rome.</summary>
     private static readonly FixedTimeProvider Clock = new(new DateTimeOffset(2026, 11, 6, 8, 0, 0, TimeSpan.Zero));
 
     [Fact]
@@ -112,7 +106,6 @@ public class OtaChannelActionPolicyTests
     [Fact]
     public void ChangeOptionsOf_TheBookingsCasaZenHolds_FollowTheExistingRules()
     {
-        // Entered by the host: changed and cancelled while it is neither started nor over.
         var manual = BookingEditRules.ChangeOptionsOf(NewBooking(BookingSource.Manual, BookingStatus.Confirmed));
         Assert.True(manual.CanEdit);
         Assert.True(manual.CanCancel);
@@ -120,7 +113,6 @@ public class OtaChannelActionPolicyTests
         Assert.Null(manual.GuidanceKey);
         Assert.Null(manual.Channel);
 
-        // A confirmed direct booking, even one mirrored on Octorate: its dates and guests are changed here, with the money settled (E08/F02/US01/T01).
         var direct = BookingEditRules.ChangeOptionsOf(NewBooking(BookingSource.Direct, BookingStatus.Confirmed, "5001"));
         Assert.True(direct.CanEdit);
         Assert.True(direct.CanCancel);
@@ -128,7 +120,6 @@ public class OtaChannelActionPolicyTests
         Assert.Null(direct.GuidanceKey);
         Assert.Null(direct.Channel);
 
-        // A direct booking that is still a request (a hold being paid, a «pay at the property» request) is not a booking yet: it keeps its terms.
         var request = BookingEditRules.ChangeOptionsOf(NewBooking(BookingSource.Direct, BookingStatus.Pending));
         Assert.False(request.CanEdit);
         Assert.Equal(BookingErrorCodes.SourceLocked, request.ReasonCode);
@@ -161,7 +152,6 @@ public class OtaChannelActionPolicyTests
     {
         var booking = NewBooking(BookingSource.BookingCom, BookingStatus.Confirmed, "7001");
 
-        // Without a policy every channel is closed: nothing can be done from CasaZen and the sentence of the channel says how to ask.
         var closed = BookingEditRules.ChangeOptionsOf(booking);
         Assert.False(closed.CanEdit);
         Assert.False(closed.CanCancel);
@@ -171,7 +161,6 @@ public class OtaChannelActionPolicyTests
         Assert.Equal(BookingErrorCodes.OtaBookingCancelNotAllowed, closed.CancelReasonCode);
         Assert.Equal("OtaChannelCancelGuidanceBookingCom", closed.CancelGuidanceKey);
 
-        // The cancellation opened: the booking can be cancelled, through Octorate. It still cannot be changed: its change is not built.
         var cancelOpen = BookingEditRules.ChangeOptionsOf(booking, Policy(BookingSource.BookingCom, canCancel: true));
         Assert.True(cancelOpen.CanCancel);
         Assert.Null(cancelOpen.CancelReasonCode);
@@ -179,13 +168,11 @@ public class OtaChannelActionPolicyTests
         Assert.False(cancelOpen.CanEdit);
         Assert.Equal(BookingErrorCodes.OtaBookingChangeNotAllowed, cancelOpen.ReasonCode);
 
-        // The change opened: the booking stays locked where its price and payment came from, and says so.
         var modifyOpen = BookingEditRules.ChangeOptionsOf(booking, Policy(BookingSource.BookingCom, canModify: true));
         Assert.False(modifyOpen.CanEdit);
         Assert.Equal(BookingErrorCodes.SourceLocked, modifyOpen.ReasonCode);
         Assert.False(modifyOpen.CanCancel);
 
-        // Once cancelled or over, the channel has nothing left to be asked.
         var cancelled = BookingEditRules.ChangeOptionsOf(NewBooking(BookingSource.BookingCom, BookingStatus.Cancelled, "7001"));
         Assert.False(cancelled.CanEdit);
         Assert.False(cancelled.CanCancel);
@@ -219,7 +206,6 @@ public class OtaChannelActionPolicyTests
         var hostBookings = HostBookings(db, recorder);
         var cancellations = Cancellations(db, stripe.Object, recorder, null);
 
-        // The change: other dates, another number of guests, a new note. Refused, with the sentence of the channel.
         var update = new HostBookingUpdate(
             bookingId,
             before.CheckInDate.AddDays(1),
@@ -234,14 +220,12 @@ public class OtaChannelActionPolicyTests
         Assert.Equal("OtaChannelModifyGuidanceAirbnb", change.Extensions[OtaChannelActionPolicy.GuidanceKeyExtension]);
         Assert.Equal("Airbnb", change.Extensions[OtaChannelActionPolicy.ChannelExtension]);
 
-        // The cancellation, with a refund asked for: refused, with the sentence of the channel. Stripe is strict: any call would fail the test.
         var cancel = await Assert.ThrowsAsync<DomainRuleException>(
             () => cancellations.CancelAsync(new BookingCancellationRequest(bookingId, 50m, "Disdetta", "auth0|host"), CancellationToken.None));
         Assert.Equal(BookingErrorCodes.OtaBookingCancelNotAllowed, cancel.Code);
         Assert.Equal("OtaChannelCancelGuidanceAirbnb", cancel.MessageKey);
         Assert.Equal("Airbnb", cancel.Extensions[OtaChannelActionPolicy.ChannelExtension]);
 
-        // The quote says it is not cancellable; a channel the configuration opens says it is, and its cancellation is still not made here.
         Assert.False((await cancellations.GetQuoteAsync(bookingId)).Cancellable);
         var openCancellations = Cancellations(db, stripe.Object, recorder, Policy(BookingSource.Airbnb, canCancel: true));
         Assert.True((await openCancellations.GetQuoteAsync(bookingId)).Cancellable);
@@ -249,7 +233,6 @@ public class OtaChannelActionPolicyTests
             () => openCancellations.CancelAsync(new BookingCancellationRequest(bookingId, null, null, "auth0|host"), CancellationToken.None));
         Assert.Equal(BookingErrorCodes.OtaBookingCancelNotAllowed, stillRefused.Code);
 
-        // Exactly as it was.
         await using var after = NewDb(database, tenant);
         var stored = await after.Bookings.AsNoTracking().SingleAsync();
         Assert.Equal(BookingStatus.Confirmed, stored.Status);
@@ -280,7 +263,6 @@ public class OtaChannelActionPolicyTests
             bookingId, read.CheckInDate, read.CheckOutDate, 2, 0, null, "Nota", new OtaAmountsInput(99m, null, null, null));
         var refused = await Assert.ThrowsAsync<DomainRuleException>(() => HostBookings(db, null).UpdateAsync(update, CancellationToken.None));
 
-        // ADR-033-R3 comes first: the figures of the channel are never edited, whatever the rule of the channel is.
         Assert.Equal(BookingErrorCodes.OtaAmountsReadonly, refused.Code);
     }
 
@@ -329,7 +311,6 @@ public class OtaChannelActionPolicyTests
     private static Booking NewBooking(BookingSource source, BookingStatus status, string? reservationId = null) =>
         new() { Source = source, Status = status, OctorateReservationId = reservationId };
 
-    /// <summary>A confirmed booking of 10 to 13 December 2026 that came from a channel, with its property and guest.</summary>
     private static async Task<Guid> SeedAsync(string database, BookingSource source, string? reservationId)
     {
         await using var db = NewDb(database, null);

@@ -18,19 +18,10 @@ public interface IAlloggiatiWebService
     /// </summary>
     Task<bool> IsStayDataCompleteAsync(Guid bookingId);
 
-    /// <summary>Status of the communication of a booking. Throws <c>NotFoundException</c> for an unknown booking.</summary>
     Task<AlloggiatiStatusInfo> GetStatusAsync(Guid bookingId);
 
-    /// <summary>
-    /// The communications of the active bookings of <paramref name="scope"/> (the org and, for a restricted scope, the
-    /// properties the caller reaches, AM-03), by arrival, optionally of one property.
-    /// </summary>
     Task<IReadOnlyList<AlloggiatiSummaryInfo>> GetSummaryAsync(HostScope scope, Guid? propertyId);
 
-    /// <summary>
-    /// Per-guest data the host copies on the portal, in the order of the record. Throws <c>NotFoundException</c>
-    /// for an unknown booking.
-    /// </summary>
     Task<AlloggiatiGuestSummaryInfo> GetGuestSummaryAsync(Guid bookingId);
 
     /// <summary>
@@ -49,21 +40,11 @@ public interface IAlloggiatiWebService
     /// </summary>
     Task<AlloggiatiReportReservation?> ReserveReportAsync(Guid bookingId);
 
-    /// <summary>Records the Hangfire job scheduled for a reservation.</summary>
     Task SetScheduledJobAsync(Guid reportId, string jobId, DateTime scheduledForUtc);
 
-    /// <summary>Arrival-day step, run by the scheduled job: see <see cref="AlloggiatiProcessOutcome"/>.</summary>
     Task<AlloggiatiProcessOutcome> ProcessScheduledReportAsync(Guid bookingId, Guid guestId);
 
-    /// <summary>
-    /// Records that the host sent the communication on the portal on <paramref name="sentOn"/> (a date between the
-    /// check-in date and today in Europe/Rome). Throws <c>DomainRuleException</c> for an invalid date,
-    /// <c>DomainConflictException</c> when already sent, <c>NotFoundException</c> for an unknown booking. The declaration writes one line
-    /// of the log of what was sent (<see cref="IComplianceSendLog"/>, sender <see cref="ComplianceSender.Manual"/>, NF-47) in the same
-    /// save, naming <paramref name="byUserId"/> (the person who declared it); a declaration that is refused writes none.
-    /// </summary>
     Task<AlloggiatiStatusInfo> MarkSentManuallyAsync(Guid bookingId, DateTime sentOn, string? byUserId = null);
 
-    /// <summary>True when the deadline has passed and the communication is not sent (nor declared sent).</summary>
     bool IsOverdue(Booking booking, AlloggiatiWebStatus? reportStatus);
 }

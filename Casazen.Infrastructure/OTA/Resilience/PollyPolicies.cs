@@ -1,14 +1,10 @@
 using Microsoft.Extensions.Logging;
 using Polly;
-using Polly.CircuitBreaker;
 using Polly.Extensions.Http;
 using Polly.Timeout;
 
 namespace Casazen.Infrastructure.OTA.Resilience;
 
-/// <summary>
-/// Provides resilience policies for OTA platform HTTP communication
-/// </summary>
 public static class PollyPolicies
 {
     /// <summary>
@@ -38,13 +34,6 @@ public static class PollyPolicies
                 });
     }
 
-    /// <summary>
-    /// Creates a circuit breaker policy to prevent cascading failures
-    /// </summary>
-    /// <param name="failureThreshold">Number of consecutive failures before opening circuit</param>
-    /// <param name="durationOfBreak">How long the circuit stays open</param>
-    /// <param name="logger">Logger for tracking circuit state changes</param>
-    /// <returns>Async circuit breaker policy</returns>
     public static IAsyncPolicy<HttpResponseMessage> GetCircuitBreakerPolicy(
         int failureThreshold,
         TimeSpan durationOfBreak,
@@ -77,12 +66,6 @@ public static class PollyPolicies
                 });
     }
 
-    /// <summary>
-    /// Creates a timeout policy to prevent long-running requests
-    /// </summary>
-    /// <param name="timeout">Maximum time to wait for a response</param>
-    /// <param name="logger">Logger for tracking timeouts</param>
-    /// <returns>Async timeout policy</returns>
     public static IAsyncPolicy<HttpResponseMessage> GetTimeoutPolicy(TimeSpan timeout, ILogger logger)
     {
         return Policy.TimeoutAsync<HttpResponseMessage>(

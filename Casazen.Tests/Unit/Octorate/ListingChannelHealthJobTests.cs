@@ -13,11 +13,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Octorate;
 
-/// <summary>
-/// The daily check of the channels that went silent (E02/F03/US01/T07, NF-38, ADR-034-R3): one «To do» for a pushed channel not confirmed for 24 hours,
-/// closed when it is fresh again. Run over the real «To do» service on an in-memory database, whose property filters (the deleted properties) are the
-/// ones of production: a deleted property keeps its channel rows, and the service cannot raise an item for it.
-/// </summary>
 public class ListingChannelHealthJobTests
 {
     private static readonly Guid OrgId = Guid.Parse("4f1e2d3c-6b5a-4978-8a1b-2c3d4e5f6a31");
@@ -45,7 +40,6 @@ public class ListingChannelHealthJobTests
             Assert.NotEqual(fresh.RowId, item.EntityId);
         }
 
-        // The channel manager answers again: the row is fresh and the next run closes the item.
         await using (var db = NewDb())
         {
             (await db.ListingChannelStates.SingleAsync(s => s.Id == silent.RowId)).LastSyncedAt = Now.UtcDateTime.AddMinutes(-5);
@@ -63,8 +57,6 @@ public class ListingChannelHealthJobTests
     [Fact]
     public async Task ExecuteAsync_ASilentChannelOfADeletedProperty_DoesNotStopTheRun_AndRaisesNothingForIt()
     {
-        // A deleted property keeps its channel rows (no cleanup) and the «To do» service cannot see the property: it would throw «not found» at the
-        // first such row, and the run would end before the other channels were looked at, every day.
         var gone = await SeedAsync(deleted: true, lastSyncedHoursAgo: 30);
         var silent = await SeedAsync(deleted: false, lastSyncedHoursAgo: 30);
 
@@ -111,7 +103,6 @@ public class ListingChannelHealthJobTests
     private AppDbContext NewDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options, NullTenantContext.Instance);
 
-    /// <summary>A property (deleted or not) with one published channel last confirmed <paramref name="lastSyncedHoursAgo"/> hours ago.</summary>
     private async Task<(Guid PropertyId, Guid RowId)> SeedAsync(bool deleted, int lastSyncedHoursAgo)
     {
         await using var db = NewDb();

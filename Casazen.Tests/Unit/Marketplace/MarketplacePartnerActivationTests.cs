@@ -45,8 +45,6 @@ public class MarketplacePartnerActivationTests
     private static readonly Guid OrgA = Guid.Parse("c3a1d7e0-5b24-4f6a-9d1e-7a8b9c0d1e21");
     private static readonly Guid OrgB = Guid.Parse("5e9f0a1b-2c3d-4e5f-8a6b-7c8d9e0f1a32");
 
-    // ─── Proofs ───────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task MarketplacePartnerBrief_NeverIncludesGuestOrBookingData_Test()
     {
@@ -57,7 +55,6 @@ public class MarketplacePartnerActivationTests
         await using var db = w.NewDb();
         var brief = await w.Service(db).GetBriefAsync(OrgA, w.OrgWide, "partner-uno", w.PropertyId, "it");
 
-        // What the host takes to the partner: the partner, the checklist, and the whitelisted fields of the property.
         Assert.Equal("partner-uno", brief.Code);
         Assert.Equal("Partner partner-uno", brief.Name);
         Assert.Equal("https://example.com/partner-uno", brief.WebsiteUrl);
@@ -67,7 +64,6 @@ public class MarketplacePartnerActivationTests
             ("Casa Lago", "Via Prova 1", "Como", "22100", 2, 1, 4, ValidCin),
             (data.Name, data.Address, data.City, data.PostalCode, data.Bedrooms, data.Bathrooms, data.MaxGuests, data.CinCode));
 
-        // What goes over the wire is the whitelist and nothing else, at the top and in the property.
         var json = JsonSerializer.Serialize(MarketplacePartnerBriefDto.From(brief), new JsonSerializerOptions(JsonSerializerDefaults.Web));
         using var document = JsonDocument.Parse(json);
         Assert.Equal(
@@ -80,7 +76,6 @@ public class MarketplacePartnerActivationTests
             new[] { "Address", "Bathrooms", "Bedrooms", "CinCode", "City", "MaxGuests", "Name", "PostalCode" },
             typeof(MarketplacePartnerPropertyData).GetProperties().Select(p => p.Name).Order(StringComparer.Ordinal).ToList());
 
-        // The guest, the stay, the prices, the documents and the rest of the property never get in, however the property was filled in.
         foreach (var secret in new[]
                  {
                      "Mario-TEST", "Rossi-TEST", "mario.rossi.test@example.com", "333 0000000", "DOCUMENTO-DI-TEST-123", "BK-TEST-0001", "EXT-TEST-0001",
@@ -134,7 +129,6 @@ public class MarketplacePartnerActivationTests
         {
             var service = w.Service(db);
 
-            // Hidden, not for the plan of the org (Pro), not for its country (IT) and a code nobody has: the same 404, so the code cannot be guessed.
             foreach (var code in new[] { "hidden", "starter-only", "switzerland-only", "nobody-has-this-code", " ", string.Empty })
             {
                 var brief = await Assert.ThrowsAsync<NotFoundException>(() => service.GetBriefAsync(OrgA, w.OrgWide, code, w.PropertyId));
@@ -146,7 +140,6 @@ public class MarketplacePartnerActivationTests
             }
         }
 
-        // Nothing was written; the control: the partner everybody may see is read and declared.
         Assert.Empty(await w.ActivationsAsync());
         await using (var db = w.NewDb())
         {
@@ -162,7 +155,6 @@ public class MarketplacePartnerActivationTests
         await w.AddPartnerAsync("partner-uno");
         await w.SeedOtherOrgAsync();
 
-        // The collaborator is granted the first property only.
         await w.GrantAsync(Collaborator, w.PropertyId);
         var scope = new HostScope(OrgA, GrantedToUserId: Collaborator);
 
@@ -170,8 +162,6 @@ public class MarketplacePartnerActivationTests
         {
             var service = w.Service(db);
 
-            // To read the brief, to declare and to turn off, for a property outside the scope, for another org's property and for one that does not exist:
-            // the 404 of a property that does not exist.
             foreach (var property in new[] { w.OtherPropertyId, w.PropertyOfB, Guid.NewGuid(), Guid.Empty })
             {
                 var steps = new Func<Task>[]
@@ -187,14 +177,12 @@ public class MarketplacePartnerActivationTests
                 }
             }
 
-            // The scope of another org is a mistake of the caller, refused before anything is read.
             await Assert.ThrowsAsync<ArgumentException>(
                 () => service.DeclareAsync(OrgA, new HostScope(OrgB), "partner-uno", w.PropertyId, new DateOnly(2026, 11, 3), Collaborator));
         }
 
         Assert.Empty(await w.ActivationsAsync());
 
-        // The same collaborator reaches the property it was given.
         await using (var db = w.NewDb())
         {
             var declared = await w.Service(db).DeclareAsync(OrgA, scope, "partner-uno", w.PropertyId, new DateOnly(2026, 11, 3), Collaborator);
@@ -212,7 +200,6 @@ public class MarketplacePartnerActivationTests
         await w.AddPartnerAsync("partner-uno");
         await w.GrantAsync(Collaborator, w.PropertyId);
 
-        // A collaborator limited to some properties, and an account that only reaches the properties it created: «no property named» is not «inside the scope».
         var limited = new[] { new HostScope(OrgA, GrantedToUserId: Collaborator), new HostScope(OrgA, OwnerId: "auth0|owner") };
         foreach (var scope in limited)
         {
@@ -224,13 +211,11 @@ public class MarketplacePartnerActivationTests
             var undeclared = await Assert.ThrowsAsync<DomainForbiddenException>(() => service.UndeclareAsync(OrgA, scope, "partner-uno", null, Collaborator));
             Assert.Equal("marketplace_partner_needs_whole_org", undeclared.Code);
 
-            // The brief without a property holds no data of the org, so it is read by everybody; with the property it is the property's data.
             Assert.Null((await service.GetBriefAsync(OrgA, scope, "partner-uno", null)).PropertyData);
         }
 
         Assert.Empty(await w.ActivationsAsync());
 
-        // The whole org declares it for the whole org.
         await using (var db = w.NewDb())
         {
             var declared = await w.Service(db).DeclareAsync(OrgA, w.OrgWide, "partner-uno", null, new DateOnly(2026, 11, 3), Host);
@@ -254,13 +239,11 @@ public class MarketplacePartnerActivationTests
         {
             var service = w.Service(db);
 
-            // Org A declares: it gets a row of its own, and org B's two rows are exactly as they were. A row of org B is not org A's already-Active row.
             var declared = await service.DeclareAsync(OrgA, w.OrgWide, "partner-uno", null, new DateOnly(2026, 11, 3), Host);
             Assert.Equal(MarketplaceActivationStatus.Active, declared.Status);
             Assert.True(declared.IsDeclared);
             Assert.Null(declared.VerifiedAt);
 
-            // Turning it off is org A's row, never org B's; and org A cannot name org B's property.
             Assert.Equal(MarketplaceActivationStatus.Deactivated, (await service.UndeclareAsync(OrgA, w.OrgWide, "partner-uno", null, Host)).Status);
             var named = await Assert.ThrowsAsync<NotFoundException>(
                 () => service.DeclareAsync(OrgA, w.OrgWide, "partner-uno", w.PropertyOfB, new DateOnly(2026, 11, 3), Host));
@@ -272,8 +255,6 @@ public class MarketplacePartnerActivationTests
         Assert.Equal(ofB, await w.RowsAsync(OrgB));
         Assert.Equal(OrgA, Assert.Single(await w.ActivationsAsync()).OrgId);
     }
-
-    // ─── The declaration ──────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task TheDeclaration_RecordsActiveAndDeclared_WithTheDayGiven_AndDeclaringTwiceChangesNothing()
@@ -301,7 +282,6 @@ public class MarketplacePartnerActivationTests
         Assert.Null(row.LastSyncedAt);
         var stored = (await w.RowsAsync()).Single();
 
-        // Declaring again, later and with another day: the same activation, the row exactly as it was, nothing written.
         w.Clock.Set(new DateTimeOffset(2026, 11, 9, 9, 30, 0, TimeSpan.Zero));
         foreach (var day in new[] { new DateOnly(2026, 11, 3), new DateOnly(2026, 11, 1), new DateOnly(2026, 11, 9) })
         {
@@ -312,7 +292,6 @@ public class MarketplacePartnerActivationTests
 
         Assert.Equal(stored, (await w.RowsAsync()).Single());
 
-        // For a property it is a row of its own: both exist, each single.
         await using (var db = w.NewDb())
         {
             var ofProperty = await w.Service(db).DeclareAsync(OrgA, w.OrgWide, "partner-uno", w.PropertyId, new DateOnly(2026, 11, 5), Host);
@@ -323,7 +302,6 @@ public class MarketplacePartnerActivationTests
 
         Assert.Equal(2, (await w.ActivationsAsync()).Count);
 
-        // The log holds ids and the code of the partner, never what is in the property.
         var logged = w.Logs.AllOutput;
         Assert.Contains("partner-uno", logged, StringComparison.Ordinal);
         foreach (var secret in new[] { "Casa Lago", "Via Prova", "Como", ValidCin })
@@ -336,7 +314,6 @@ public class MarketplacePartnerActivationTests
         var w = await World.CreateAsync();
         await w.AddPartnerAsync("partner-uno");
 
-        // 23:30 UTC on the 6th is 00:30 of the 7th in Rome: the 7th is today for the host, the 8th is the future.
         w.Clock.Set(new DateTimeOffset(2026, 11, 6, 23, 30, 0, TimeSpan.Zero));
         await using (var db = w.NewDb())
         {
@@ -373,11 +350,9 @@ public class MarketplacePartnerActivationTests
             Assert.False(declared.IsDeclared);
             Assert.Equal(w.Clock.Now, declared.VerifiedAt);
 
-            // The host's day is kept; only the proof is added.
             Assert.Equal(new DateTime(2026, 11, 3, 0, 0, 0, DateTimeKind.Utc), declared.DeclaredAt);
         }
 
-        // A channel of the same portal proves it too.
         var channel = await World.CreateAsync();
         await channel.AddPartnerAsync("partner-uno", portalCode: "portal-uno");
         await channel.AddRowAsync(Row(OrgA, channel.PropertyId, MarketplaceActivationKind.Channel, "portal-uno", MarketplaceActivationStatus.Active, verified: true));
@@ -422,7 +397,6 @@ public class MarketplacePartnerActivationTests
         var owner = scenario == "AnotherOrgSameProperty" ? OrgB : OrgA;
         await w.AddRowAsync(Row(owner, scenario == "OtherProperty" ? w.OtherPropertyId : w.PropertyId, kind, code, status, declared: scenario == "DeclaredByTheHost"));
 
-        // The org-level declaration has no property to compare: the connection of a property does not prove the partner for the whole org.
         Guid? declaredFor = scenario == "NoProperty" ? null : w.PropertyId;
         await using var db = w.NewDb();
         var declared = await w.Service(db).DeclareAsync(OrgA, w.OrgWide, "partner-uno", declaredFor, new DateOnly(2026, 11, 3), Host);
@@ -439,7 +413,6 @@ public class MarketplacePartnerActivationTests
         var w = await World.CreateAsync();
         await w.AddPartnerAsync("partner-uno", portalCode: "portal-uno");
 
-        // Declared first, with no connection yet: the host's word, with the day it gave.
         MarketplacePartnerActivation first;
         await using (var db = w.NewDb())
             first = await w.Service(db).DeclareAsync(OrgA, w.OrgWide, "partner-uno", w.PropertyId, new DateOnly(2026, 11, 3), Host);
@@ -448,7 +421,6 @@ public class MarketplacePartnerActivationTests
         Assert.Null(first.VerifiedAt);
         var before = Assert.Single(await w.ActivationsAsync());
 
-        // The connection comes after the declaration. With the connector off nothing is read: declaring again is as before and the row is untouched.
         await w.AddRowAsync(Row(OrgA, w.PropertyId, MarketplaceActivationKind.Tool, "portal-uno", MarketplaceActivationStatus.Active, verified: true));
         w.Clock.Set(new DateTimeOffset(2026, 11, 9, 9, 30, 0, TimeSpan.Zero));
         w.ConnectorOn = false;
@@ -457,8 +429,6 @@ public class MarketplacePartnerActivationTests
 
         Assert.Equal(Describe(before), Describe(PartnerRow(await w.ActivationsAsync())));
 
-        // Connector on: the proven connection of the same property shows it now. The same activation is verified, with another day given it keeps the first
-        // one, and only the proof is added.
         w.ConnectorOn = true;
         MarketplacePartnerActivation verified;
         await using (var db = w.NewDb())
@@ -478,14 +448,12 @@ public class MarketplacePartnerActivationTests
         Assert.Equal<DateTime?>(w.Clock.Now, after.VerifiedAt);
         Assert.Equal(w.Clock.Now, after.UpdatedAt);
 
-        // Verified, declaring again changes nothing at all.
         w.Clock.Set(new DateTimeOffset(2026, 11, 10, 9, 30, 0, TimeSpan.Zero));
         await using (var db = w.NewDb())
             Assert.Equal(verified, await w.Service(db).DeclareAsync(OrgA, w.OrgWide, "partner-uno", w.PropertyId, new DateOnly(2026, 11, 10), Host));
 
         Assert.Equal(Describe(after), Describe(PartnerRow(await w.ActivationsAsync())));
 
-        // A declaration for the whole org has no property to compare: the connection of a property never verifies it, not even declaring again.
         await using (var db = w.NewDb())
         {
             Assert.True((await w.Service(db).DeclareAsync(OrgA, w.OrgWide, "partner-uno", null, new DateOnly(2026, 11, 10), Host)).IsDeclared);
@@ -517,14 +485,12 @@ public class MarketplacePartnerActivationTests
         Assert.Equal(w.Clock.Now, row.UpdatedAt);
         var stored = (await w.RowsAsync()).Single();
 
-        // Turning it off again changes nothing.
         w.Clock.Set(new DateTimeOffset(2026, 11, 9, 10, 0, 0, TimeSpan.Zero));
         await using (var db = w.NewDb())
             Assert.Equal(off, await w.Service(db).UndeclareAsync(OrgA, w.OrgWide, "partner-uno", w.PropertyId, Host));
 
         Assert.Equal(stored, (await w.RowsAsync()).Single());
 
-        // A partner that was never activated is a 404, and a partner that is hidden cannot be declared again.
         await using (var db = w.NewDb())
         {
             var never = await Assert.ThrowsAsync<NotFoundException>(() => w.Service(db).UndeclareAsync(OrgA, w.OrgWide, "partner-due", w.PropertyId, Host));
@@ -533,7 +499,6 @@ public class MarketplacePartnerActivationTests
                 () => w.Service(db).DeclareAsync(OrgA, w.OrgWide, "partner-uno", w.PropertyId, new DateOnly(2026, 11, 9), Host));
         }
 
-        // Once visible again the host declares again: the same row is Active, declared, with the new day.
         await w.HidePartnerAsync("partner-uno", visible: true);
         await using (var db = w.NewDb())
         {
@@ -566,8 +531,6 @@ public class MarketplacePartnerActivationTests
         Assert.Null((await service.GetBriefAsync(OrgA, w.OrgWide, "both", null, "en")).PropertyData);
     }
 
-    // ─── The catalog follows a declaration for a property ─────────────────────────────────────────────────
-
     [Fact]
     public async Task ThePartnerCard_FollowsADeclarationMadeForAProperty_AndTheActiveTabListsItWithItsProperty()
     {
@@ -582,8 +545,6 @@ public class MarketplacePartnerActivationTests
         {
             var catalog = w.Catalog(db);
 
-            // Asked without a property, or about the property it was declared for, the card is Active; about another property it is not; it is the partner's
-            // card, so the scope of its status stays the org's. Another partner is not touched.
             Assert.Equal(MarketplaceCardStatus.Active, CardOf(await catalog.GetCatalogAsync(OrgA, w.OrgWide, null, "it"), "partner-uno").Status);
             Assert.Equal(MarketplaceCardStatus.Active, CardOf(await catalog.GetCatalogAsync(OrgA, w.OrgWide, w.PropertyId, "it"), "partner-uno").Status);
             var other = CardOf(await catalog.GetCatalogAsync(OrgA, w.OrgWide, w.OtherPropertyId, "it"), "partner-uno");
@@ -599,7 +560,6 @@ public class MarketplacePartnerActivationTests
             Assert.True(integration.IsDeclared);
         }
 
-        // The row of the whole org counts for every property, as it always did.
         await using (var db = w.NewDb())
             await w.Service(db).DeclareAsync(OrgA, w.OrgWide, "partner-due", null, new DateOnly(2026, 11, 3), Host);
 
@@ -610,7 +570,6 @@ public class MarketplacePartnerActivationTests
             Assert.Equal(MarketplaceCardStatus.Active, CardOf(await catalog.GetCatalogAsync(OrgA, w.OrgWide, null, "it"), "partner-due").Status);
         }
 
-        // Turned off, the card is Not active again.
         await using (var db = w.NewDb())
             await w.Service(db).UndeclareAsync(OrgA, w.OrgWide, "partner-uno", w.PropertyId, Host);
 
@@ -626,14 +585,12 @@ public class MarketplacePartnerActivationTests
         await w.AddPartnerAsync("partner-due");
         await w.AddRowAsync(Row(OrgA, w.PropertyId, MarketplaceActivationKind.Tool, "portal-uno", MarketplaceActivationStatus.Active, verified: true));
 
-        // One partner proven by the connection of the same property, one that is only the host's word.
         await using (var db = w.NewDb())
         {
             await w.Service(db).DeclareAsync(OrgA, w.OrgWide, "partner-uno", w.PropertyId, new DateOnly(2026, 11, 3), Host);
             await w.Service(db).DeclareAsync(OrgA, w.OrgWide, "partner-due", w.PropertyId, new DateOnly(2026, 11, 4), Host);
         }
 
-        // A new request reads the Active tab: the day and the proof come from the rows, in the answer the client gets.
         await using var reload = w.NewDb();
         var active = await w.Catalog(reload).GetActiveAsync(OrgA, w.OrgWide, null);
         var json = JsonSerializer.Serialize(
@@ -653,12 +610,9 @@ public class MarketplacePartnerActivationTests
         Assert.Equal("2026-11-04T00:00:00Z", Text("partner-due", "declaredAt"));
         Assert.Null(Text("partner-due", "verifiedAt"));
 
-        // The same two fields on every kind: the connection was never declared by the host, and it was proven on the day its row says.
         Assert.Null(Text("portal-uno", "declaredAt"));
         Assert.Equal("2026-11-02T08:00:00Z", Text("portal-uno", "verifiedAt"));
     }
-
-    // ─── The endpoints, the registration and the words ────────────────────────────────────────────────────
 
     [Fact]
     public async Task TheEndpoints_AnswerTheBriefAndTheDeclaration_NoStore_AndAMissingDayIsA422()
@@ -675,7 +629,6 @@ public class MarketplacePartnerActivationTests
         Assert.Equal("Casa Lago", briefDto.PropertyData?.Name);
         Assert.Equal("private, no-store", controller.Response.Headers.CacheControl.ToString());
 
-        // The day is the host's: without it nothing is declared, and the answer is the 422 of a day that is not valid.
         var missing = await Assert.ThrowsAsync<DomainRuleException>(
             () => controller.Declare("partner-uno", new DeclareMarketplacePartnerRequest { PropertyId = w.PropertyId }, default));
         Assert.Equal("marketplace_declared_date_invalid", missing.Code);
@@ -736,14 +689,11 @@ public class MarketplacePartnerActivationTests
             var italian = texts.Get(key, "it");
             var english = texts.Get(key, "en");
 
-            // A key that exists in neither file comes back as itself; an English text that is the Italian one is a text nobody translated.
             Assert.NotEqual(key, italian);
             Assert.NotEqual(key, english);
             Assert.NotEqual(italian, english);
         }
     }
-
-    // ─── Helpers ──────────────────────────────────────────────────────────────────────────────────────────
 
     private static MarketplaceCatalogEntry CardOf(MarketplaceCatalog catalog, string code) =>
         catalog.Groups.Single(group => group.Id == MarketplaceGroupIds.Partners).Entries.Single(entry => entry.Code == code);
@@ -768,11 +718,9 @@ public class MarketplacePartnerActivationTests
             VerifiedAt = verified ? new DateTime(2026, 11, 2, 8, 0, 0, DateTimeKind.Utc) : null,
         };
 
-    /// <summary>The row of the partner among the activations of an org (the one partner row, the other kinds left out).</summary>
     private static MarketplaceActivation PartnerRow(IEnumerable<MarketplaceActivation> rows) =>
         rows.Single(row => row.Kind == MarketplaceActivationKind.Partner);
 
-    /// <summary>Every public member of an entity as text, to compare before and after.</summary>
     private static string Describe(object entity) =>
         string.Join(
             "; ",
@@ -780,7 +728,6 @@ public class MarketplacePartnerActivationTests
                 .Where(property => property.GetIndexParameters().Length == 0)
                 .Select(property => $"{property.Name}={property.GetValue(entity)}"));
 
-    /// <summary>A clock a test can move.</summary>
     private sealed class MutableTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {
         private DateTimeOffset _now = utcNow;
@@ -792,10 +739,6 @@ public class MarketplacePartnerActivationTests
         public override DateTimeOffset GetUtcNow() => _now;
     }
 
-    /// <summary>
-    /// An org on the Pro plan in Italy with a connected account and two properties, a stay of a guest at the first one, and a catalog of partners the test
-    /// fills; a second org when asked.
-    /// </summary>
     private sealed class World
     {
         public Guid PropertyId { get; private set; }
@@ -835,7 +778,6 @@ public class MarketplacePartnerActivationTests
             return new MarketplaceCatalogService(db, suppliers.Object, Flags(), Mock.Of<IFileStorage>(), new ResxMarketplaceTexts(), HostEnvironment());
         }
 
-        /// <summary>The controller of a caller that is the whole org, over the service on <paramref name="db"/>.</summary>
         public MarketplacePartnersController Controller(AppDbContext db)
         {
             var orgs = new Mock<IOrgContextResolver>();
@@ -858,7 +800,6 @@ public class MarketplacePartnerActivationTests
             await db.SaveChangesAsync();
         }
 
-        /// <summary>A partner of the catalog with its texts: the Italian one when <paramref name="guideIt"/> is given, the English one when <paramref name="guideEn"/> is.</summary>
         public async Task AddPartnerAsync(
             string code,
             bool visible = true,
@@ -903,7 +844,6 @@ public class MarketplacePartnerActivationTests
             await db.SaveChangesAsync();
         }
 
-        /// <summary>A guest and a stay at the first property, with everything a partner must never get.</summary>
         public async Task AddStayAsync()
         {
             var guest = new Guest
@@ -950,10 +890,8 @@ public class MarketplacePartnerActivationTests
             return await db.MarketplaceActivations.AsNoTracking().Where(a => a.OrgId == org).OrderBy(a => a.PropertyId).ToListAsync();
         }
 
-        /// <summary>The activations of an org as text, to compare before and after.</summary>
         public async Task<List<string>> RowsAsync(Guid? orgId = null) => (await ActivationsAsync(orgId)).Select(Describe).ToList();
 
-        /// <summary>A second org with a property of its own.</summary>
         public async Task SeedOtherOrgAsync()
         {
             var property = new Property { OrgId = OrgB, OwnerId = "auth0|owner-b", Name = "Casa B", Address = "Via B 1", City = "Roma", MaxGuests = 2 };
@@ -998,7 +936,6 @@ public class MarketplacePartnerActivationTests
             await db.SaveChangesAsync();
         }
 
-        /// <summary>A property filled in beyond what the brief may carry: a description, rules, prices, a fiscal code, the unit.</summary>
         private static Property NewProperty(string name) =>
             new()
             {

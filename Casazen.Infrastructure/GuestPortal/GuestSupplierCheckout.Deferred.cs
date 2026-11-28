@@ -17,8 +17,6 @@ public sealed partial class GuestSupplierCheckout
         return expected < serviceAt ? expected : serviceAt;
     }
 
-    // D35: seven days to supplier confirmation. Without a supplier response commitment, only a service
-    // occurring within the existing conservative two-day window provides a reliable upper bound.
     public static bool NeedsSavedCard(DateTime orderedAt, DateTime serviceAt, DateTime? confirmationAt) =>
         confirmationAt is { } deadline ? deadline > orderedAt.AddDays(7) : serviceAt > orderedAt + Horizon;
 
@@ -99,7 +97,6 @@ public sealed partial class GuestSupplierCheckout
         return session;
     }
 
-    // The caller commits the prepared, unconfirmed intent before performing the first off-session confirmation.
     private async Task<bool> PrepareSupplierDecisionAsync(GuestSupplierOrder order, string action, CancellationToken ct)
     {
         if (action == "decline")

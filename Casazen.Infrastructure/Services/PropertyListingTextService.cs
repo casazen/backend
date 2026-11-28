@@ -11,13 +11,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc />
-/// <remarks>
-/// The listings of the same comune are read across orgs, as the public search reads them: only published listings
-/// (<see cref="PublicListing.IsPublished"/>) of active orgs, and only what their public page shows (the headline, the kind, the spaces, the
-/// amenities). Up to <see cref="SimilarListingsMax"/>, the same kind of place first, then the closest number of guests. The answers of the AI
-/// are kept by <see cref="IAiResponseCache"/> in the scope of the org, under a key made of the prompt and the photos.
-/// </remarks>
 public sealed class PropertyListingTextService(
     AppDbContext db,
     IComuneDirectory comuni,
@@ -25,7 +18,6 @@ public sealed class PropertyListingTextService(
     IAiResponseCache cache,
     ILogger<PropertyListingTextService> logger) : IPropertyListingTextService
 {
-    /// <summary>Listings of the same comune the AI compares the property with.</summary>
     public const int SimilarListingsMax = 5;
 
     public Task<ListingTextSuggestion> SuggestFieldsAsync(
@@ -183,7 +175,6 @@ public sealed class PropertyListingTextService(
             .ToList();
     }
 
-    /// <summary>The prompt version, the texts and the bytes of each photo: the same data and photos give the same key.</summary>
     private static string CacheKey(AiRequest request)
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);

@@ -30,7 +30,6 @@ public class ChildEntityOrgBackfillPostgresTests : IAsyncLifetime
     [PostgresFact]
     public async Task ChildEntities_OrgIdIsRequired_AndTheForeignKeyToTheOrgRestricts()
     {
-        // The names are those of the tables above: never user input.
         foreach (var table in ChildTables)
         {
             Assert.Equal(

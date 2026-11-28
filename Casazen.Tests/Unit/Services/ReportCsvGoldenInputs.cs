@@ -13,7 +13,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 internal static class ReportCsvGoldenInputs
 {
-    /// <summary>Every list report of the export, under the name its golden file is kept by.</summary>
     public static readonly string[] Reports =
     [
         "revenue-by-property",
@@ -37,7 +36,6 @@ internal static class ReportCsvGoldenInputs
     private static readonly HostDashboardPeriod October = HostReportRules.PeriodOf(new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31));
     private static readonly HostDashboardPeriod LastOctober = HostReportRules.PeriodOf(new DateOnly(2025, 10, 1), new DateOnly(2025, 10, 31));
 
-    /// <summary>The CSV the report writes from the fixed inputs: the very bytes of the file.</summary>
     public static byte[] Csv(string report) => report switch
     {
         "revenue-by-property" => HostReportDocuments.Csv(Revenue()),

@@ -15,7 +15,6 @@ internal sealed class OtaMessageConfiguration : IEntityTypeConfiguration<OtaMess
 {
     public void Configure(EntityTypeBuilder<OtaMessage> entity)
     {
-        // The messages go with their thread.
         entity.HasOne<OtaMessageThread>()
             .WithMany()
             .HasForeignKey(m => m.ThreadId)
@@ -25,7 +24,6 @@ internal sealed class OtaMessageConfiguration : IEntityTypeConfiguration<OtaMess
             .HasForeignKey(m => m.OrgId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // The column says what it holds: encrypted at rest. There is no plaintext column for the words of a message.
         entity.Property(m => m.Text).HasColumnName("TextEncrypted").IsRequired();
 
         // A message of Octorate, delivered twice (the webhook retries for two days, the reconciliation reads it again), is one row.
@@ -40,7 +38,6 @@ internal sealed class OtaMessageConfiguration : IEntityTypeConfiguration<OtaMess
             .HasFilter("\"IdempotencyKey\" IS NOT NULL")
             .HasDatabaseName(OtaMessage.ThreadIdempotencyIndexName);
 
-        // The thread in order.
         entity.HasIndex(m => new { m.ThreadId, m.SentAt })
             .HasDatabaseName("IX_OtaMessages_ThreadId_SentAt");
 

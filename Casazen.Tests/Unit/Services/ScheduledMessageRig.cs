@@ -12,7 +12,6 @@ using Hangfire;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 
 namespace Casazen.Tests.Unit.Services;
@@ -30,7 +29,6 @@ internal sealed class ScheduledMessageRig
     public const string Owner = "auth0|owner";
     public const string Manager = "auth0|manager";
 
-    /// <summary>Wednesday 18 November 2026, 11:00 in Rome (UTC+1): inside the send window.</summary>
     public static readonly DateTimeOffset Now = new(2026, 11, 18, 10, 0, 0, TimeSpan.Zero);
 
     private readonly string _database = $"scheduled-messages-{Guid.NewGuid()}";
@@ -62,13 +60,11 @@ internal sealed class ScheduledMessageRig
                 It.IsAny<CancellationToken>()))
             .Returns(async (HostScope scope, Guid bookingId, string? text, string? key, string? userId, MessageOrigin origin, CancellationToken _) =>
             {
-                // A test can hold the send in the channel (a send under way) to see what the other actors do meanwhile.
                 if (SendGate is { } gate)
                     await gate();
 
                 return Send(scope, bookingId, text, key, userId, origin);
             });
-        // The dispatch takes the code (nothing is logged) and writes the line of the release only once the message has gone: a test sees both.
         AccessCodes
             .Setup(a => a.GetReleasableCodeAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid _, string channel, CancellationToken _) =>
@@ -105,10 +101,8 @@ internal sealed class ScheduledMessageRig
             .Returns("job-1");
     }
 
-    /// <summary>The scheduled messages are on (<see cref="FeatureFlags.ScheduledMessages"/>) with the routines they work on (<see cref="FeatureFlags.Routines"/>); a test switches one off with <c>Flags.Set</c>.</summary>
     public TestFeatureFlags Flags { get; } = new(FeatureFlags.ScheduledMessages, FeatureFlags.Routines);
 
-    /// <summary>The evaluator of the conditions of the routines, the real one: the engine and the plan read a condition with it.</summary>
     public ConditionEvaluator Conditions { get; } = new(NullLogger<ConditionEvaluator>.Instance);
 
     public ScheduledMessageOptions Options { get; } = new();
@@ -129,39 +123,28 @@ internal sealed class ScheduledMessageRig
 
     public RecordingEmailQueue Emails { get; } = new();
 
-    /// <summary>How the guest is reached; <c>null</c> = the conversation of the direct booking.</summary>
     public MessageContactOptions? Channel { get; set; }
 
-    /// <summary>What the message layer throws when it is asked how the guest is reached (a limit, an outage of the channel manager); <c>null</c> = it answers.</summary>
     public Exception? ChannelThrows { get; set; }
 
-    /// <summary>The lock code the access code service gives; <c>null</c> = the guest is not verified.</summary>
     public string? AccessCode { get; set; }
 
-    /// <summary>What the message layer does with a send: the answer, or an exception to throw; <c>null</c> = it takes the message.</summary>
     public Func<string?, string?, MessageReplyResult?>? Answer { get; set; }
 
     public Exception? SendThrows { get; set; }
 
-    /// <summary>Awaited by the send of the message layer before it answers: the send stays «under way» until the test lets it go.</summary>
     public Func<Task>? SendGate { get; set; }
 
-    /// <summary>The state the message layer reports for a message it took.</summary>
     public OtaMessageDeliveryState State { get; set; } = OtaMessageDeliveryState.Sent;
 
-    /// <summary>Every call of the send of the message layer, with what it was given.</summary>
     public List<SentMessage> Sent { get; } = [];
 
-    /// <summary>The channels the access code was released through: the lines of the release log that were written (after the message went).</summary>
     public List<string> Released { get; } = [];
 
-    /// <summary>The channels the access code was taken for (the gate was asked; nothing was logged).</summary>
     public List<string> Taken { get; } = [];
 
-    /// <summary>The events the alerts asked the preferences about.</summary>
     public List<NotificationEventContext> Contexts { get; } = [];
 
-    /// <summary>The distinct messages that reached the guest (a key that was sent is not counted twice).</summary>
     public int Delivered => _delivered.Count;
 
     public AppDbContext NewDb() => new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options);
@@ -181,7 +164,6 @@ internal sealed class ScheduledMessageRig
     public InternalActivityService Activities(AppDbContext db, TimeProvider? clock = null) =>
         new(db, NullLogger<InternalActivityService>.Instance, clock ?? new FixedTimeProvider(Now));
 
-    /// <summary>A double of the service of the «To do» a test gives to the dispatch and the plan in place of the real one (a «To do» that cannot be raised); <c>null</c> = the real service.</summary>
     public IInternalActivityService? ActivitiesDouble { get; set; }
 
     public ScheduledMessageDispatcher Dispatcher(AppDbContext db, TimeProvider? clock = null) => new(
@@ -214,10 +196,6 @@ internal sealed class ScheduledMessageRig
             NullLogger<ScheduledMessageService>.Instance);
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The message layer
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
     private MessageReplyResult Send(HostScope scope, Guid bookingId, string? text, string? key, string? userId, MessageOrigin origin)
     {
         Sent.Add(new SentMessage(scope, bookingId, text, key, userId, origin));
@@ -229,7 +207,6 @@ internal sealed class ScheduledMessageRig
         if (Answer?.Invoke(text, key) is { } answer)
             return answer;
 
-        // The rule of the real service: a key found again is the same message, whatever its state.
         if (key is not null && _refusedBefore.Contains(key))
             return new MessageReplyResult(channel, thread, null, OtaMessageDeliveryState.Error, true, null);
 
@@ -244,10 +221,6 @@ internal sealed class ScheduledMessageRig
     }
 
     internal sealed record SentMessage(HostScope Scope, Guid BookingId, string? Text, string? Key, string? UserId, MessageOrigin Origin);
-
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The data
-    // ------------------------------------------------------------------------------------------------------------------------------------
 
     public async Task<Property> SeedPropertyAsync(Guid orgId, string name = "Casa Rosa (TEST)", TimeOnly? checkInFrom = null, TimeOnly? checkOutBy = null, string? siteProfileJson = null)
     {
@@ -303,7 +276,6 @@ internal sealed class ScheduledMessageRig
         return booking;
     }
 
-    /// <summary>The marketing consent of the guest of the booking, the flag the campaigns and the guardrail of the engine read.</summary>
     public async Task SetMarketingConsentAsync(Booking booking, bool granted)
     {
         await using var db = NewDb();
@@ -321,7 +293,6 @@ internal sealed class ScheduledMessageRig
         return template;
     }
 
-    /// <summary>A routine with one <c>MessageToGuest</c> of <paramref name="template"/>, one day before the check-in.</summary>
     public async Task<Routine> SeedRoutineAsync(
         Guid orgId,
         MessageTemplate template,

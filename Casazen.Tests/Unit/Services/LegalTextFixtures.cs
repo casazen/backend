@@ -1,12 +1,9 @@
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>Configuration and files shared by the tests of the legal documents (LEGAL-TEXTS).</summary>
 internal static class LegalTextFixtures
 {
-    /// <summary>Version of the drafts shipped under <c>Casazen.Web/LegalDocuments</c>.</summary>
     public const string DraftVersion = "2026-10-v1";
 
-    /// <summary>The folder the API ships (<c>Casazen.Web/LegalDocuments</c>), found from the test output up to the repository.</summary>
     public static string ShippedRoot() => Path.Combine(RepositoryRoot(), "Casazen.Web", "LegalDocuments");
 
     public static string RepositoryRoot()
@@ -22,7 +19,6 @@ internal static class LegalTextFixtures
         throw new DirectoryNotFoundException("Casazen.Web/LegalDocuments was not found above the test output.");
     }
 
-    /// <summary>Every value the three drafts need, with fake data, and the drafts' version for the three documents.</summary>
     public static Dictionary<string, string?> CompleteConfiguration() => new()
     {
         ["Legal:ContentPath"] = ShippedRoot(),

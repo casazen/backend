@@ -49,8 +49,6 @@ public class OwnerInvitationService(
 
     private DateTime Now() => UtcDateTime.TruncateToMicroseconds(timeProvider.GetUtcNow().UtcDateTime);
 
-    // ---------------------------------------------------------------- one owner
-
     public async Task<Guid> CreateInvitationAsync(
         Guid orgId,
         Guid propertyOwnerId,
@@ -58,11 +56,9 @@ public class OwnerInvitationService(
         CancellationToken cancellationToken = default,
         HostScope? scope = null)
     {
-        // E40/F01/US01/T03: where the link of the e-mail lives, read before the transaction (a failed read never touches it).
         var agency = await agencyLinks.ForOrgOrPlatformAsync(links, orgId, cancellationToken);
         await using var transaction = await LockAsync(orgId, cancellationToken);
 
-        // Verify PropertyOwner exists and belongs to this org, and fetch org for email template
         var propertyOwner = await dbContext.PropertyOwners
             .Include(po => po.Org)
             .FirstOrDefaultAsync(po => po.Id == propertyOwnerId && po.OrgId == orgId, cancellationToken);
@@ -105,8 +101,6 @@ public class OwnerInvitationService(
         return invitation.Invitation.Id;
     }
 
-    // ---------------------------------------------------------------- the batch
-
     public async Task<OwnerInvitationPreview> PreviewBatchAsync(
         HostScope scope,
         IReadOnlyCollection<Guid>? ownerIds,
@@ -114,7 +108,6 @@ public class OwnerInvitationService(
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        // An explicit list that is empty is a mistake of the caller, never «all the owners».
         if (ownerIds is { Count: 0 })
             throw new DomainRuleException(OwnerInvitationErrors.SelectionEmpty, "OwnerInvitationSelectionEmpty");
 
@@ -123,14 +116,12 @@ public class OwnerInvitationService(
         var byId = report.Owners.ToDictionary(o => o.OwnerId);
         var selection = ownerIds?.Distinct().OrderBy(id => id).ToList();
 
-        // A caller with a partial reach does not send a link that opens the whole portfolio of an owner who also holds properties it cannot reach.
         var shared = await OwnerOnboardingService.OwnersWithPeriodsOutsideReachAsync(dbContext, scope, [.. byId.Keys], cancellationToken);
 
         var recipients = new List<OwnerReadinessOwner>();
         var exclusions = new List<OwnerInvitationExclusion>();
         foreach (var id in selection ?? [.. report.Owners.Select(o => o.OwnerId).OrderBy(id => id)])
         {
-            // An id that is not an owner of the caller (another org's, outside the reach, unknown) is one answer, with no name.
             if (!byId.TryGetValue(id, out var owner))
             {
                 exclusions.Add(new OwnerInvitationExclusion(id, null, [OwnerInvitationExclusions.OwnerNotFound]));
@@ -195,11 +186,9 @@ public class OwnerInvitationService(
         if (string.IsNullOrWhiteSpace(fingerprint))
             throw new DomainRuleException(OwnerInvitationErrors.PreviewRequired, "OwnerInvitationPreviewRequired");
 
-        // E40/F01/US01/T03: where the links of the e-mails live, read before the transaction (a failed read never touches it).
         var agency = await agencyLinks.ForOrgOrPlatformAsync(links, scope.OrgId, cancellationToken);
         await using var transaction = await LockAsync(scope.OrgId, cancellationToken);
 
-        // Judged again, under the lock: what the person saw must still be true, or nothing is sent.
         var preview = await PreviewBatchAsync(scope, ownerIds, cancellationToken);
         if (!FingerprintsMatch(preview.Fingerprint, fingerprint.Trim()))
             throw new DomainConflictException(OwnerInvitationErrors.PreviewStale, "OwnerInvitationPreviewStale");
@@ -207,7 +196,6 @@ public class OwnerInvitationService(
         if (preview.Recipients.Count == 0)
             throw new DomainRuleException(OwnerInvitationErrors.NothingToSend, "OwnerInvitationNothingToSend");
 
-        // All or nothing as to the limit of the day: a batch that does not fit is not cut.
         if (preview.Recipients.Count > preview.Quota.Remaining)
         {
             throw new DomainTooManyRequestsException(
@@ -254,7 +242,6 @@ public class OwnerInvitationService(
             .Select(p => new OwnerInvitationSent(p.Invitation.Id, p.Owner.Id, p.Invitation.ExpiresAt))
             .ToList();
 
-        // Counts only: no name, no address, no link.
         logger.LogInformation(
             "Owner invitations of org {OrgId}: {Sent} sent, {Failed} not queued",
             scope.OrgId,
@@ -304,13 +291,11 @@ public class OwnerInvitationService(
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentException.ThrowIfNullOrWhiteSpace(actorUserId);
 
-        // E40/F01/US01/T03: where the link of the e-mail lives, read before the transaction (a failed read never touches it).
         var agency = await agencyLinks.ForOrgOrPlatformAsync(links, scope.OrgId, cancellationToken);
         await using var transaction = await LockAsync(scope.OrgId, cancellationToken);
         var invitation = await FindVisibleAsync(scope, invitationId, cancellationToken);
         await EnsureNotSharedOutsideReachAsync(scope, invitation.PropertyOwnerId, cancellationToken);
 
-        // The owner has accepted (this invitation or an earlier one): there is no link to send again.
         if (await dbContext.OwnerInvitations.AnyAsync(
                 i => i.OrgId == scope.OrgId && i.PropertyOwnerId == invitation.PropertyOwnerId && i.Status == OwnerInvitationStatus.Accepted,
                 cancellationToken))
@@ -370,7 +355,6 @@ public class OwnerInvitationService(
                 break;
         }
 
-        // A second withdrawal finds it done: nothing written, no second line.
         if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);
 
@@ -378,20 +362,16 @@ public class OwnerInvitationService(
         return await ItemAsync(scope.OrgId, owner, now, cancellationToken);
     }
 
-    // ---------------------------------------------------------------- the acceptance
-
     public async Task<OwnerInvitationAccepted> AcceptAsync(AcceptOwnerInvitation command, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
         ArgumentException.ThrowIfNullOrWhiteSpace(command.Auth0Sub);
 
-        // Normalize token
         if (!TryNormalizeToken(command.Token, out var normalizedToken))
             throw new DomainGoneException(OwnerInvitationErrors.Invalid, "OwnerInvitationInvalid");
 
         var tokenHash = HashToken(normalizedToken);
 
-        // The caller has no org: this lookup (and every one below) names the org of the invitation and ignores the tenant filter of the caller.
         var orgId = await dbContext.OwnerInvitations
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -401,11 +381,8 @@ public class OwnerInvitationService(
         if (orgId is null)
             throw new DomainGoneException(OwnerInvitationErrors.Invalid, "OwnerInvitationInvalid");
 
-        // Two locks, always in this order: the org of the invitation (a second acceptance of the same token waits and finds what the first did) and
-        // the account (an owner who accepts the invitations of two orgs at once gets one identity, not two: OwnerUsers has no unique key of its own).
         await using var transaction = await LockAsync(orgId.Value, cancellationToken, $"owner-user:{command.Auth0Sub}");
 
-        // Read again, under the lock.
         var invitation = await dbContext.OwnerInvitations
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .FirstOrDefaultAsync(i => i.TokenHash == tokenHash && i.OrgId == orgId.Value, cancellationToken);
@@ -415,7 +392,6 @@ public class OwnerInvitationService(
         var now = Now();
         var existingUser = await dbContext.OwnerUsers.FirstOrDefaultAsync(ou => ou.Auth0Sub == command.Auth0Sub, cancellationToken);
 
-        // Check invitation status
         if (invitation.Status == OwnerInvitationStatus.Accepted)
         {
             // Idempotent for the account that accepted it, and for nobody else: the token is one-time use.
@@ -431,7 +407,6 @@ public class OwnerInvitationService(
                 if (started.Count > 0)
                     await dbContext.SaveChangesAsync(cancellationToken);
 
-                // The locks and the transaction end here: the hand-over of the claims is an HTTP call to the identity provider and holds none of them.
                 if (transaction is not null)
                     await transaction.CommitAsync(cancellationToken);
 
@@ -450,7 +425,6 @@ public class OwnerInvitationService(
         if (invitation.Status == OwnerInvitationStatus.Expired || invitation.ExpiresAt <= now)
             throw new DomainGoneException(OwnerInvitationErrors.Expired, "OwnerInvitationExpired");
 
-        // The e-mail comes from the token or from Auth0 and has to be verified: a link in the hands of somebody else is worth nothing.
         if (!command.EmailVerified)
             throw new DomainForbiddenException(OwnerInvitationErrors.EmailNotVerified, "OwnerInvitationEmailNotVerified");
 
@@ -458,7 +432,6 @@ public class OwnerInvitationService(
         if (!string.Equals(invitation.Email, normalizedEmail, StringComparison.Ordinal))
             throw new DomainForbiddenException(OwnerInvitationErrors.EmailMismatch, "OwnerInvitationEmailMismatch");
 
-        // Find or create OwnerUser
         var ownerUser = existingUser;
         if (ownerUser is null)
         {
@@ -475,13 +448,10 @@ public class OwnerInvitationService(
 
         ownerUser.LastLoginAt = now;
 
-        // Only the ownerships of this invitation: this org, this registry owner, a property of this org, not over. Never one already given to
-        // somebody else, never another org's.
         var ownerships = await GrantableOwnerships(dbContext, orgId.Value, invitation.PropertyOwnerId, now).ToListAsync(cancellationToken);
         foreach (var ownership in ownerships.Where(o => o.OwnerUserId is null))
             ownership.OwnerUserId = ownerUser.Id;
 
-        // Update invitation
         invitation.Status = OwnerInvitationStatus.Accepted;
         invitation.AcceptedAt = now;
         invitation.OwnerUserId = ownerUser.Id;
@@ -500,10 +470,6 @@ public class OwnerInvitationService(
         return await ResultAsync(command, ownerUser.Id, alreadyAccepted: false, now, cancellationToken);
     }
 
-    /// <summary>
-    /// The claims of the owner as they stand after the acceptance (every org, every ownership of the account that is not over) and their hand-over
-    /// to the identity provider. The hand-over is repeated by every acceptance of the same token, so a failure is cured by accepting again.
-    /// </summary>
     private async Task<OwnerInvitationAccepted> ResultAsync(
         AcceptOwnerInvitation command,
         Guid ownerUserId,
@@ -527,9 +493,6 @@ public class OwnerInvitationService(
         return new OwnerInvitationAccepted(ownerUserId, agencyIds, propertyIds, alreadyAccepted, refresh);
     }
 
-    // ---------------------------------------------------------------- shared
-
-    /// <summary>One ownership of an owner account and the property it is on, with the org of each (the claims of the account are the ones whose two orgs are the same).</summary>
     internal sealed record OwnerClaimRow(Guid PropertyId, Guid PropertyOrgId, Guid OrgId);
 
     /// <summary>
@@ -550,10 +513,6 @@ public class OwnerInvitationService(
                 ownership => ownership.PropertyId,
                 (property, ownership) => new OwnerClaimRow(property.Id, property.OrgId, ownership.OrgId));
 
-    /// <summary>
-    /// The ownerships an acceptance may give the account: of the org of the invitation, of its registry owner, in force now (started and not over),
-    /// on a property of that org. One that starts later is linked when it has started (the repeat of the acceptance by the same account).
-    /// </summary>
     internal static IQueryable<PropertyOwnership> GrantableOwnerships(AppDbContext db, Guid orgId, Guid propertyOwnerId, DateTime now)
     {
         var propertyIds = db.Properties
@@ -579,7 +538,6 @@ public class OwnerInvitationService(
                 (PostgresAdvisoryLocks.Scope.OwnerOnboarding, orgId.ToString("N")),
                 (PostgresAdvisoryLocks.Scope.OwnerOnboarding, account));
 
-    /// <summary>How many invitations the org sent in the last 24 hours: the instants of every send kept on its invitations.</summary>
     private async Task<int> UsedTodayAsync(Guid orgId, DateTime now, CancellationToken cancellationToken)
     {
         var since = now.AddDays(-1);
@@ -594,10 +552,6 @@ public class OwnerInvitationService(
     private async Task<string> AgencyNameAsync(Guid orgId, CancellationToken cancellationToken) =>
         await dbContext.Orgs.AsNoTracking().Where(o => o.Id == orgId).Select(o => o.Name).FirstOrDefaultAsync(cancellationToken) ?? string.Empty;
 
-    /// <summary>
-    /// A new invitation for the owner, staged with its line of the log, and the link in force withdrawn (a link that lapsed is closed as expired). Not
-    /// saved. The link is built first, so a missing public address stops here with nothing staged.
-    /// </summary>
     private async Task<(OwnerInvitation Invitation, string Token)> PrepareAsync(
         Guid orgId,
         PropertyOwner owner,
@@ -643,16 +597,11 @@ public class OwnerInvitationService(
             UpdatedAt = now,
         };
 
-        // Through the DbSet: the Guid of the row is preset, so a row attached any other way would be tracked as modified.
         dbContext.OwnerInvitations.Add(invitation);
         activityLog.Record(Line(invitation, actorUserId, replaced ? "resent" : "sent"));
         return (invitation, token);
     }
 
-    /// <summary>
-    /// Queues the e-mail of an invitation; false when it could not be queued (the provider is not configured, no address). The link is on the
-    /// agency's own domain only once the owner sign-in works there (<paramref name="agency"/>, E40/F01/US01/T03).
-    /// </summary>
     private bool QueueEmail(OwnerInvitation invitation, string token, PropertyOwner owner, string agencyName, AgencyLinks agency)
     {
         var content = EmailTemplates.OwnerInvitation(
@@ -664,9 +613,6 @@ public class OwnerInvitationService(
         return emailQueue.Enqueue(owner.Email, content, EmailTemplates.Names.OwnerInvitation);
     }
 
-    /// <summary>
-    /// Withdraws the invitations whose e-mail was not queued: they said «invited» for a person nobody wrote to. The send leaves the count of the day.
-    /// </summary>
     private async Task WithdrawUndeliveredAsync(IReadOnlyCollection<OwnerInvitation> invitations, string actorUserId, CancellationToken cancellationToken)
     {
         var now = Now();
@@ -693,10 +639,6 @@ public class OwnerInvitationService(
         return invitation;
     }
 
-    /// <summary>
-    /// A caller with a partial reach does not send a link to an owner who also holds a period on a property it cannot reach: the acceptance opens
-    /// the whole portfolio of the owner in the org, not only the part the caller sees. Whoever reaches all of it sends the link.
-    /// </summary>
     private async Task EnsureNotSharedOutsideReachAsync(HostScope? scope, Guid ownerId, CancellationToken cancellationToken)
     {
         if (scope is null || scope.IsOrgWide)
@@ -707,7 +649,6 @@ public class OwnerInvitationService(
             throw new DomainRuleException(OwnerInvitationErrors.SharedOutsideReach, "OwnerInvitationSharedOutsideReach");
     }
 
-    /// <summary>An owner of the org not anonymized, and, for a caller with a partial reach, one that holds a period on a property it reaches.</summary>
     private async Task<bool> OwnerVisibleAsync(HostScope scope, Guid ownerId, CancellationToken cancellationToken)
     {
         if (!await dbContext.PropertyOwners.AnyAsync(o => o.Id == ownerId && o.OrgId == scope.OrgId && o.AnonymizedAt == null, cancellationToken))
@@ -752,10 +693,6 @@ public class OwnerInvitationService(
             invitation.Id.ToString("D"),
             (OrgActivityDetailKeys.Status, status));
 
-    /// <summary>
-    /// The fingerprint of a preview: SHA-256 of the org, the selection, each recipient with its address (lower case) and state, and each exclusion
-    /// with its reasons, in a fixed order. It says nothing of the data and changes with any of it.
-    /// </summary>
     private static string Fingerprint(
         Guid orgId,
         IReadOnlyList<Guid>? selection,

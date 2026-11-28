@@ -16,20 +16,15 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface ILeaseRegistrationProvider
 {
-    /// <summary>True only when every setting the provider needs (credentials, service id, callback) is present.</summary>
     bool IsConfigured { get; }
 
-    /// <summary>Opens the filing request; returns the provider's request id. Throws <see cref="LeaseRegistrationProviderException"/> on failure.</summary>
     Task<string> SubmitAsync(LeaseContract lease, CancellationToken cancellationToken = default);
 
-    /// <summary>Current state of a request opened by <see cref="SubmitAsync"/>.</summary>
     Task<ProviderRegistrationStatus> GetStatusAsync(string externalRegistrationId, CancellationToken cancellationToken = default);
 
-    /// <summary>Official receipt (PDF) of a <see cref="ProviderRegistrationState.Registered"/> request. The caller disposes the stream.</summary>
     Task<Stream> DownloadReceiptAsync(string externalRegistrationId, CancellationToken cancellationToken = default);
 }
 
-/// <summary>State of a provider request.</summary>
 public enum ProviderRegistrationState
 {
     InProgress,
@@ -47,7 +42,6 @@ public sealed record ProviderRegistrationStatus(
     string? RegistrationCode = null,
     string? FailureCode = null);
 
-/// <summary>The provider could not take or process the request (network, credit, validation, outage).</summary>
 public sealed class LeaseRegistrationProviderException : Exception
 {
     public LeaseRegistrationProviderException(string failureCode, string message, Exception? innerException = null)
@@ -57,7 +51,6 @@ public sealed class LeaseRegistrationProviderException : Exception
         FailureCode = failureCode;
     }
 
-    /// <summary>Stable code stored on the registration (<see cref="RliRegistrationFailureCodes"/>).</summary>
     public string FailureCode { get; }
 }
 

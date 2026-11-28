@@ -1,4 +1,3 @@
-using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 
@@ -15,9 +14,7 @@ public static class MarketingServiceCollectionExtensions
     {
         services.AddOptions<Casazen.Core.Options.GdprOptions>()
             .BindConfiguration(Casazen.Core.Options.GdprOptions.SectionName);
-        // NF-05: Marketing suppression list with blind index (SHA-256) for one-click unsubscribe (ADR-007-R18, R22).
         services.AddScoped<ISuppressionService, SuppressionService>();
-        // NF-24: Marketing campaigns and guest segmentation (ADR-014).
         services.AddScoped<IConditionEvaluator, ConditionEvaluator>();
         services.AddHttpClient<MarketingOpenEvents>(client =>
         {

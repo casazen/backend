@@ -11,10 +11,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// DB-08h (BK-02, BK-07): the public cancellation link answers 200 with the booking, its status and the refund; a link
-/// without a token is a 400 and never reaches the service.
-/// </summary>
 public class PublicGuestBookingCancellationControllerTests
 {
     private readonly Mock<IGuestBookingCancellationService> _service = new();

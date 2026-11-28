@@ -20,12 +20,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Demo;
 
-/// <summary>
-/// What the showcase writes for the compliance traffic light (E03/F02/US01/T03, NF-52) is valid for the real rules: the stay the template entrusts to
-/// the channel manager reads yellow and the one with the uploaded receipt reads green, read by the real status engine over the rows the real seeding
-/// code wrote, at any time of the day the showcase is reset. The rows are marked as showcase data, the receipt is a file that exists in the private
-/// bucket under the key the row holds, and nothing is written for a stay the template does not mention.
-/// </summary>
 public class DemoComplianceTrafficLightSeedTests
 {
     [Theory]
@@ -57,7 +51,6 @@ public class DemoComplianceTrafficLightSeedTests
             (green.Verdict.Light, green.Verdict.Reason, green.Verdict.EvidenceClass, green.Verdict.EvidenceSource));
         Assert.StartsWith("manual-proof:", green.Verdict.ProofReference, StringComparison.Ordinal);
 
-        // The connection of the house the host declared active is not a second item beside the yellow stay, and the two stays are the only ones read.
         Assert.DoesNotContain(status.Items, i => i.Kind == ComplianceItemKind.Connection && i.PropertyId == entrustedHouse.Id);
         Assert.Equal(
             new[] { entrustedStay.Id, archivedStay.Id }.Order(),
@@ -79,7 +72,6 @@ public class DemoComplianceTrafficLightSeedTests
         Assert.NotNull(sender.ActivationDeclaredAt);
         Assert.True(sender.ActivationDeclaredAt >= sender.LastChangedAt, "A declaration older than the choice of the sender would be void.");
 
-        // The guests of the entrusted stay are on Octorate for good, one row for each, with a hash the column accepts and no personal data.
         var links = await world.Db.StayGuestOctorateLinks.AsNoTracking().OrderBy(l => l.Position).ToListAsync();
         Assert.Equal([0, 1], links.Select(l => l.Position));
         Assert.All(links, link =>
@@ -92,11 +84,9 @@ public class DemoComplianceTrafficLightSeedTests
             Assert.NotNull(link.SentAt);
         });
 
-        // The arrival of the entrusted stay is three hours before the reset, so the legal term runs from then.
         Assert.Equal(new DateTime(2026, 11, 6, 7, 0, 0, DateTimeKind.Utc), entrustedStay.ArrivedAt);
         Assert.Null(archivedStay.ArrivedAt);
 
-        // The receipt: one row for the arrival day of the finished stay, of its house, pointing at a real one-page PDF that says it is test data.
         var proof = await world.Db.ManualComplianceProofs.AsNoTracking().SingleAsync();
         Assert.Equal(
             (archivedHouse.Id, ManualProofKind.AlloggiatiReceipt, DateOnly.FromDateTime(archivedStay.CheckInDate), "application/pdf", world.Owner.Id),
@@ -109,8 +99,6 @@ public class DemoComplianceTrafficLightSeedTests
         Assert.StartsWith("%PDF", text, StringComparison.Ordinal);
         Assert.Contains(DemoDocumentPdf.Marker, text, StringComparison.Ordinal);
 
-        // The log of what was sent (E03/F02/US03/T01): the line of the channel manager for the entrusted stay and the host's declaration, by the owner and
-        // the arrival day, for the finished one; no guest, no reference.
         var lines = await world.Db.ComplianceSendLogEntries.AsNoTracking().ToListAsync();
         var automatic = Assert.Single(lines, l => l.BookingId == entrustedStay.Id);
         Assert.Equal((entrustedHouse.Id, ComplianceSender.ChannelManager, (string?)null), (automatic.PropertyId, automatic.Sender, automatic.ByUserId));
@@ -120,7 +108,6 @@ public class DemoComplianceTrafficLightSeedTests
             (declared.PropertyId, declared.Sender, declared.ByUserId, DateOnly.FromDateTime(declared.SentAt)));
         Assert.All(lines, l => Assert.Equal((world.Org.Id, ComplianceSendKind.AlloggiatiGuests, (string?)null), (l.OrgId, l.Kind, l.Reference)));
 
-        // Every row the seeding wrote is marked as showcase data, so the reset finds it.
         var markers = await world.Db.TestDataMarkers.AsNoTracking().Where(m => m.Origin == TestDataOrigins.Showcase).ToListAsync();
         Assert.Equal(
             lines.Select(l => l.Id).Order(),
@@ -139,14 +126,12 @@ public class DemoComplianceTrafficLightSeedTests
     {
         var world = await SeedAsync(new FakeTimeProvider(new DateTimeOffset(2026, 11, 6, 10, 0, 0, TimeSpan.Zero)), plainStayEmail: "ospite.demo.semplice@example.com");
 
-        // A stay of the same house written by the same code, from a template with no compliance block: it has its guest and nothing else.
         var guest = await world.Db.Guests.AsNoTracking().SingleAsync(g => g.Email == "ospite.demo.semplice@example.com");
         var plain = await world.Db.Bookings.AsNoTracking().SingleAsync(b => b.GuestId == guest.Id);
         Assert.Empty(await world.Db.StayGuestOctorateLinks.AsNoTracking().Where(l => l.BookingId == plain.Id).ToListAsync());
         Assert.Null(plain.ArrivedAt);
         Assert.Equal(1, await world.Db.StayGuests.CountAsync(g => g.BookingId == plain.Id));
 
-        // And the rows of the compliance block are still only the two the template asks for.
         Assert.Single(await world.Db.PropertyComplianceSenders.AsNoTracking().ToListAsync());
         Assert.Single(await world.Db.ManualComplianceProofs.AsNoTracking().ToListAsync());
         Assert.Equal(2, await world.Db.StayGuestOctorateLinks.CountAsync());
@@ -154,10 +139,6 @@ public class DemoComplianceTrafficLightSeedTests
         Assert.Empty(await world.Db.ComplianceSendLogEntries.AsNoTracking().Where(l => l.BookingId == plain.Id).ToListAsync());
     }
 
-    /// <summary>
-    /// An org with its owner and the houses of the catalog that have a stay with a compliance block, seeded by the real code of the showcase (the
-    /// sender of the house, then each stay), over an InMemory context and a file store that keeps what is put in it.
-    /// </summary>
     private static async Task<SeedWorld> SeedAsync(FakeTimeProvider clock, string? plainStayEmail = null)
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];
@@ -238,7 +219,6 @@ public class DemoComplianceTrafficLightSeedTests
 
         public IReadOnlyDictionary<string, byte[]> StoredFiles { get; } = files;
 
-        /// <summary>The house and the only stay of it that the compliance block <paramref name="which"/> picks in the catalog.</summary>
         public (Property House, Booking Stay) StayOf(Func<DemoBookingTemplate, bool> which)
         {
             var template = DemoShowcaseCatalog.Properties.Single(p => p.Bookings.Any(which));
@@ -246,7 +226,6 @@ public class DemoComplianceTrafficLightSeedTests
             return (house, Db.Bookings.AsNoTracking().Single(b => b.PropertyId == house.Id));
         }
 
-        /// <summary>The real status engine over the same context, with the real sender store and the connector on.</summary>
         public ComplianceStatusService StatusService()
         {
             var environment = new Mock<IHostEnvironment>();
@@ -276,10 +255,6 @@ public class DemoComplianceTrafficLightSeedTests
                 clock);
         }
 
-        /// <summary>
-        /// What the health service answers for a house of the channel manager when Octorate exposes nothing about the police account: unknown, and the
-        /// host's word (<c>declaredAt</c>) when the sender row holds one, as the real service reads it from the same row.
-        /// </summary>
         private ComplianceConnectionHealth UnknownHealth(Guid propertyId)
         {
             var declaredAt = Db.PropertyComplianceSenders.AsNoTracking().Where(s => s.PropertyId == propertyId).Select(s => s.ActivationDeclaredAt).FirstOrDefault();

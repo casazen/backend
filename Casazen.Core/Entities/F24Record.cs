@@ -18,20 +18,13 @@ public class F24Record : ITenantOwned
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant key. Inherited from the org; never client-supplied.</summary>
     public Guid OrgId { get; set; }
     public virtual Org Org { get; set; } = null!;
 
-    /// <summary>Reference month (1-12) for the withholding period.</summary>
     public int ReferenceMonth { get; set; }
 
-    /// <summary>Reference year (e.g., 2026) for the withholding period.</summary>
     public int ReferenceYear { get; set; }
 
-    /// <summary>
-    /// Total amount to pay (sum of all owners' withholding for this period).
-    /// Aggregated from WithholdingLog entries for this month/year.
-    /// </summary>
     [Precision(18, 2)]
     public decimal TotalAmount { get; set; }
 
@@ -42,10 +35,6 @@ public class F24Record : ITenantOwned
     [MaxLength(10)]
     public string TaxCode { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Payment deadline (16th of the month following ReferenceMonth, ADR-018-R8).
-    /// Computed as 16th of (ReferenceMonth + 1).
-    /// </summary>
     public DateTime DueDate { get; set; }
 
     /// <summary>
@@ -54,21 +43,17 @@ public class F24Record : ITenantOwned
     /// </summary>
     public DateTime? PaidAt { get; set; }
 
-    /// <summary>When this F24 record was created (UTC).</summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     /// <summary>Where the F24 is (E06/F05/US02/T03): generated is never filed; submitted only through a controlled manual handoff.</summary>
     public Enums.TaxFilingState FilingState { get; set; } = Enums.TaxFilingState.Generated;
 
-    /// <summary>The rule versions of the evidence it was built from (<c>{ruleCode}@{version}</c>, comma separated).</summary>
     [MaxLength(200)]
     public string? RuleVersion { get; set; }
 
-    /// <summary>The reference of the controlled manual handoff.</summary>
     [MaxLength(200)]
     public string? HandoffReference { get; set; }
 
-    /// <summary>The receipt once accepted.</summary>
     [MaxLength(200)]
     public string? ReceiptReference { get; set; }
 

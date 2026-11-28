@@ -1,5 +1,4 @@
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -18,7 +17,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class DocumentImageErasureTests
 {
-    /// <summary>Privacy rule: the erasure of a guest deletes every photo kept for the verification of its bookings, objects and rows, and only its own.</summary>
     [Fact]
     public async Task DocumentImageErasure_ErasingAGuest_DeletesItsPhotosAndNobodyElses_Test()
     {
@@ -36,16 +34,11 @@ public class DocumentImageErasureTests
         var left = await db.DocumentImages.AsNoTracking().ToListAsync();
         Assert.Equal(world.GuestB.Id, Assert.Single(left).GuestId);
 
-        // Once done there is nothing left to delete.
         deleted.Clear();
         Assert.Equal(0, await eraser.DeleteVerificationDocumentImagesAsync(world.GuestA, CancellationToken.None));
         Assert.Empty(deleted);
     }
 
-    /// <summary>
-    /// Privacy rule: once an archived receipt of the communication covers the stay, the photos of its verification are deleted, objects and rows, and only its own: the
-    /// stay of the next day, which has no receipt, keeps its photo (E20/F02/US01/T02, the one place that deletes the documents after a receipt).
-    /// </summary>
     [Fact]
     public async Task DocumentImageErasure_AlloggiatiReceipt_DeletesThePhotosOfTheBooking_Test()
     {
@@ -69,7 +62,6 @@ public class DocumentImageErasureTests
         var flags = new Mock<IFeatureFlags>();
         flags.Setup(f => f.IsEnabled(FeatureFlags.PurgeDocumentsAfterReceipt)).Returns(true);
 
-        // The traffic light reads every stay it is asked about green (its own verdicts are proved in GuestDocumentPurgeTests and ComplianceReceiptCoverageTests).
         var engine = new Mock<IComplianceStatusService>();
         engine
             .Setup(s => s.GetStaysAReceiptTurnsGreenAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
@@ -101,7 +93,6 @@ public class DocumentImageErasureTests
         return storage;
     }
 
-    /// <summary>Two guests of one org, a stay each; the first one has two photos (one already deleted from the bucket by its verification and marked), the second one.</summary>
     private sealed class World
     {
         public required Guest GuestA { get; init; }
@@ -148,7 +139,6 @@ public class DocumentImageErasureTests
             return world;
         }
 
-        /// <summary>The storage keys of the photos of <paramref name="guest"/>.</summary>
         public IEnumerable<string> KeysOf(Guest guest) => Images.Where(i => i.GuestId == guest.Id).Select(i => i.FrontImageUrl);
 
         private static Guest NewGuest(Guid orgId, string firstName) => new()

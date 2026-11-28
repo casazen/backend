@@ -24,7 +24,6 @@ public class ICalExportPostgresTests : IClassFixture<PropertyICalSyncPostgresTes
 {
     private const string HostRole = "PropertyOwner";
 
-    // Fixed clock of the export for the tests on holds (FD-06): never the real time.
     private static readonly DateTimeOffset ExportNow =
         new(PublicAvailabilityPostgresTests.NextYear(9, 1).AddHours(10), TimeSpan.Zero);
 
@@ -57,7 +56,6 @@ public class ICalExportPostgresTests : IClassFixture<PropertyICalSyncPostgresTes
 
         var ics = await PublicFeedAsync(await ExportPathAsync(owner, property.Id));
 
-        // The block was imported (it takes its nights on CasaZen) but it is not sent back to the OTAs.
         await using (var scope = _factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -96,7 +94,6 @@ public class ICalExportPostgresTests : IClassFixture<PropertyICalSyncPostgresTes
         Assert.DoesNotContain($"booking-{expired}", ics);
         Assert.DoesNotContain($"{PublicAvailabilityPostgresTests.NextYear(11, 1):yyyyMMdd}", ics);
         Assert.Contains($"UID:booking-{valid}", ics.Split("\r\n"));
-        // Five minutes after its creation the same hold was still valid and exported: the TTL decides, not the status.
         var beforeExpiry = await ExportAtAsync(path, ExportNow.AddHours(-2).AddMinutes(5));
         Assert.Contains($"UID:booking-{expired}", beforeExpiry.Split("\r\n"));
     }
@@ -126,7 +123,6 @@ public class ICalExportPostgresTests : IClassFixture<PropertyICalSyncPostgresTes
 
         var ics = await ExportAtAsync(await ExportPathAsync(owner, property.Id), ExportNow);
 
-        // BK-06: pending OnSite requests MUST block OTA channels immediately.
         Assert.Contains($"UID:booking-{pending}", ics.Split("\r\n"));
         Assert.Contains($"UID:booking-{accepted}", ics.Split("\r\n"));
     }
@@ -150,7 +146,6 @@ public class ICalExportPostgresTests : IClassFixture<PropertyICalSyncPostgresTes
         var fresh = await anonymous.GetAsync(newPath);
         Assert.Equal(HttpStatusCode.OK, fresh.StatusCode);
         Assert.Contains("BEGIN:VCALENDAR", await fresh.Content.ReadAsStringAsync());
-        // The host keeps seeing (and copying) the new link.
         Assert.Equal(newPath, await ExportPathAsync(owner, property.Id));
         var status = await owner.GetFromJsonAsync<JsonElement>($"/api/properties/{property.Id}/ical/status");
         Assert.Equal(newPath, new Uri(status.GetProperty("exportUrl").GetString()!).AbsolutePath);
@@ -174,7 +169,6 @@ public class ICalExportPostgresTests : IClassFixture<PropertyICalSyncPostgresTes
         Assert.Equal(HttpStatusCode.OK, (await anonymous.GetAsync(path)).StatusCode);
     }
 
-    // Path of the export link shown to the host (created on first use).
     private static async Task<string> ExportPathAsync(HttpClient owner, Guid propertyId)
     {
         var body = await owner.GetFromJsonAsync<JsonElement>($"/api/properties/{propertyId}/ical/export-url");
@@ -199,14 +193,12 @@ public class ICalExportPostgresTests : IClassFixture<PropertyICalSyncPostgresTes
         return await sync.BuildPublicExportAsync(token, "Occupato");
     }
 
-    // What the queued Hangfire job does (the test host mocks the job client).
     private async Task SyncAsync(Guid feedId)
     {
         await using var scope = _factory.Services.CreateAsyncScope();
         await scope.ServiceProvider.GetRequiredService<PropertyICalSyncService>().SyncFeedAsync(feedId);
     }
 
-    /// <summary>A direct booking, Pending by default (a checkout hold), with a Stripe PaymentIntent when given.</summary>
     private async Task<Guid> SeedBookingAsync(
         Property property,
         DateTime checkIn,

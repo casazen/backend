@@ -3,7 +3,6 @@ using Casazen.Core.Documents;
 
 namespace Casazen.Core.Condominium;
 
-/// <summary>The two PDFs CondoLedger owners send, plus the same figures the screen shows.</summary>
 public static class SituazioneDocuments
 {
     private static readonly CultureInfo Italian = CultureInfo.GetCultureInfo("it-IT");

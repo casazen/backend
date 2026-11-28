@@ -73,7 +73,6 @@ public static class StatementDocuments
             ],
             Totals(statement, texts, language).Select(t => Row(t.Label, DocumentLanguages.Money(t.Amount, language))).ToList()));
 
-        // The ledger the current version was cut from, as stored on it: the statement is a versioned ledger output, and its totals are the ledger's.
         if (data.Ledger is { } ledger)
         {
             blocks.Add(new PdfHeading(texts.Get("StatementDocLedgerHeading", language, ledger.VersionNumber, ledger.Currency)));
@@ -209,7 +208,6 @@ public static class StatementDocuments
         return CsvWriter.Write(rows, CsvWriter.NoLimit);
     }
 
-    /// <summary>The paragraphs on top of the file: owner, property, period, version, status, share and currency.</summary>
     private static IEnumerable<string> HeaderLines(StatementExportData data, IDocumentTexts texts, string language)
     {
         var statement = data.Statement;
@@ -232,7 +230,6 @@ public static class StatementDocuments
         yield return (texts.Get("StatementDocNetPayable", language), statement.NetPayable);
     }
 
-    /// <summary>The totals of the ledger version as stored, in the currency of the ledger.</summary>
     private static IEnumerable<(string Label, decimal Amount)> LedgerTotals(StatementVersionTotals ledger, IDocumentTexts texts, string language)
     {
         yield return (texts.Get("StatementDocLedgerOpening", language), ledger.OpeningBalance);
@@ -253,7 +250,6 @@ public static class StatementDocuments
     private static IEnumerable<StatementLine> OrderedLines(OwnerStatement statement) =>
         statement.Lines.OrderBy(l => l.Type).ThenBy(l => l.CreatedAt).ThenBy(l => l.Id);
 
-    /// <summary>The booking code of a booking line, else the label the line was given (channel, expense category, reason).</summary>
     private static string Reference(StatementLine line) =>
         line.Booking is { } booking ? BookingCodes.Format(booking.BookingCode) : line.Label ?? string.Empty;
 

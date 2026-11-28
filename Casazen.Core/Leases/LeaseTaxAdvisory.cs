@@ -5,8 +5,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Core.Leases;
 
-/// <summary>What the tax advisory needs to know about a lease (LT-08).</summary>
-/// <param name="Term">Term from the lease dates; null when the dates are inconsistent.</param>
 public sealed record LeaseTaxFacts(
     FiscalRegime LegacyRegime,
     LeaseContractType ContractType,
@@ -148,7 +146,6 @@ public static class LeaseTaxAdvisory
         new(AdvisoryEstimateStatus.NotComputed, reason, cfg.Configured ? cfg.TaxYear : null,
             cfg.Configured ? cfg.RentFlatReduction : null, taxableRent, null, cfg.Configured ? cfg.Source : null);
 
-    /// <summary>Gross tax of <paramref name="income"/> with ascending brackets (the last one open).</summary>
     public static decimal GrossTax(decimal income, IReadOnlyList<IrpefBracketOptions> brackets)
     {
         decimal tax = 0, lower = 0;

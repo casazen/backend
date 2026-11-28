@@ -9,11 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Regulatory;
 
-/// <summary>
-/// casazen/backend#979: the file of the guests of a Ticino property for the cantonal police (notifiche.ti.ch), checked against the official
-/// XSD and CSV model of <c>https://www4.ti.ch/index.php?id=145950</c> (copies in <c>Fixtures/ticino</c>), the minors rule of the user manual
-/// and the mandatory fields of the official page.
-/// </summary>
 public class TicinoPoliceFileTests
 {
     private const string Structure = "NL-12345678";
@@ -22,8 +17,6 @@ public class TicinoPoliceFileTests
     private static readonly DateOnly Today = new(2026, 11, 19);
 
     private static string FixturePath(string name) => Path.Combine(System.AppContext.BaseDirectory, "Fixtures", "ticino", name);
-
-    // ─── XML against the official XSD ───────────────────────────────────────────────────────────────────
 
     [Fact]
     public void Xml_OfOneGuest_IsValidAgainstTheOfficialXsd_AsPublished()
@@ -53,8 +46,6 @@ public class TicinoPoliceFileTests
 
         var xml = TicinoPoliceFile.WriteXml(plan.Registrations);
 
-        // The published XSD gives <registration> no maxOccurs, so it allows one per file although its root is plural and the portal reads the
-        // file "line by line": every registration fits the schema, and only the count is refused by the schema as published.
         Assert.DoesNotContain("maxOccurs", File.ReadAllText(FixturePath("F-Modello_4.xsd")), StringComparison.Ordinal);
         Assert.Empty(Validate(OfficialSchema(relaxRegistrationCount: true), xml));
         Assert.NotEmpty(Validate(OfficialSchema(relaxRegistrationCount: false), xml));
@@ -74,11 +65,8 @@ public class TicinoPoliceFileTests
         Assert.False(britishPlan.XmlAvailable);
         Assert.False(noResidencePlan.XmlAvailable);
         Assert.Throws<ArgumentException>(() => TicinoPoliceFile.WriteXml(britishPlan.Registrations));
-        // The CSV has no such limit: the postcode is written as given.
         Assert.Contains(";SW1A 1AA;", Encoding.Latin1.GetString(TicinoPoliceFile.WriteCsv(britishPlan.Registrations)), StringComparison.Ordinal);
     }
-
-    // ─── CSV against the official model ─────────────────────────────────────────────────────────────────
 
     [Fact]
     public void Csv_HasTheHeaderOfTheOfficialModel_ByteForByte_AndItsRowFormat()
@@ -93,12 +81,11 @@ public class TicinoPoliceFileTests
         Assert.Equal(modelHeader, csv.AsSpan(0, modelHeader.Length).ToArray());
 
         var lines = Encoding.Latin1.GetString(csv).Split("\r\n");
-        Assert.Equal(2, lines.Length); // header and one row, no line break after the last one (as in the model)
+        Assert.Equal(2, lines.Length);
         Assert.Equal(18, lines[1].Split(';').Length);
         Assert.Equal(
             "NL-12345678;Rossi;Anna;04.01.1984;CHE;19.11.2026;21.11.2026;SVIZZERA;;Via Test 1;6900;Lugano;CHE;;0;0;Carta identità;X1234567",
             lines[1]);
-        // ISO-8859-1 like the model: «à» is the single byte 0xE0.
         Assert.Contains((byte)0xE0, csv);
         Assert.DoesNotContain((byte)0xC3, csv);
     }
@@ -116,8 +103,6 @@ public class TicinoPoliceFileTests
         Assert.Contains(";Ulica Zólta 5;", row, StringComparison.Ordinal);
     }
 
-    // ─── Who is a row: the minors rule of the user manual ───────────────────────────────────────────────
-
     [Fact]
     public void Plan_NotifiesEveryAdult_AndCountsTheMinorsOnTheHeadOfFamilyOnly()
     {
@@ -134,7 +119,7 @@ public class TicinoPoliceFileTests
         Assert.Empty(plan.Issues);
         Assert.Equal(["Anna", "Marco", "Paolo"], plan.Registrations.Select(r => r.FirstName));
         var head = Assert.Single(plan.Registrations, r => r.FirstName == "Marco");
-        Assert.Equal(2, head.PersonsOver14); // 16 and 14 years old
+        Assert.Equal(2, head.PersonsOver14);
         Assert.Equal(1, head.PersonsUnder14);
         Assert.All(plan.Registrations.Where(r => r != head), r => Assert.Equal((0, 0), (r.PersonsOver14, r.PersonsUnder14)));
     }
@@ -153,8 +138,6 @@ public class TicinoPoliceFileTests
         Assert.Equal(2, minorRows.Count);
         Assert.All(minorRows, r => Assert.Equal((0, 0), (r.PersonsOver14, r.PersonsUnder14)));
     }
-
-    // ─── Missing data: said per guest, never an invalid file ────────────────────────────────────────────
 
     [Fact]
     public void Plan_ReportsPerGuestWhatIsMissing_AndLeavesTheWholeStayOutOfTheFile()
@@ -178,7 +161,6 @@ public class TicinoPoliceFileTests
         Assert.All(plan.Issues, i => Assert.Equal(incomplete.BookingId, i.BookingId));
         Assert.Equal([TicinoMissing.Nationality, TicinoMissing.DocumentType], Assert.Single(plan.Issues, i => i.Position == 1).Missing);
         Assert.Equal([TicinoMissing.BirthDate, TicinoMissing.FirstName], Assert.Single(plan.Issues, i => i.Position == 3).Missing);
-        // A minor counted on an adult needs no nationality nor document of their own.
         Assert.DoesNotContain(plan.Issues, i => i.Position == 2);
     }
 
@@ -206,13 +188,9 @@ public class TicinoPoliceFileTests
         Assert.Equal([TicinoMissing.Guests], issue.Missing);
     }
 
-    // ─── NF-126: the data of the file and its character set ─────────────────────────────────────────────
-
     [Fact]
     public void TicinoCsv_CompleteStay_EqualsExpectedBytes_Test()
     {
-        // A complete stay in Lugano: two adults and a child of 10. One row per adult, the code of the booking on each, the plate on the head's
-        // row only, the child counted once (on the head, in «Min14»).
         var head = Adult("Marco", "Bernasconi", position: 0, type: StayGuestType.HeadOfFamily) with { BirthDate = new DateOnly(1980, 3, 2) };
         var partner = Adult("Giulia", "Bernasconi", position: 1, type: StayGuestType.FamilyMember) with
         {
@@ -237,7 +215,6 @@ public class TicinoPoliceFileTests
         Assert.Equal(Windows1252.GetBytes(expected), file.Content);
         Assert.Equal(("windows-1252", 0), (file.Charset, file.TransliteratedCount));
 
-        // The header is the official model's, byte for byte («à» is the single byte 0xE0, as in the model).
         var model = File.ReadAllBytes(FixturePath("D-Modello_2.CSV"));
         var modelHeader = model.AsSpan(0, model.AsSpan().IndexOf("\r\n"u8)).ToArray();
         Assert.Equal(modelHeader, file.Content.AsSpan(0, modelHeader.Length).ToArray());
@@ -254,8 +231,6 @@ public class TicinoPoliceFileTests
         var windows = TicinoPoliceFile.WriteCsvFile(plan.Registrations, TicinoCsvCharset.Windows1252);
         var utf8 = TicinoPoliceFile.WriteCsvFile(plan.Registrations, TicinoCsvCharset.Utf8);
 
-        // Windows-1252: the letter without its accent where it has one (Ł ř Ż ł ń), «?» only for the letters with nothing to fall back on (the
-        // Cyrillic name), counted; «Š» and «á» are letters of the set and stay as typed (Š is 0x8A, which ISO-8859-1 does not have).
         var rows = Windows1252.GetString(windows.Content).Split("\r\n");
         Assert.StartsWith("NL-12345678;Dvorák;Lukasz;", rows[1], StringComparison.Ordinal);
         Assert.Contains(";Ulica Zólta 5;6900;Gdansk;", rows[1], StringComparison.Ordinal);
@@ -266,7 +241,6 @@ public class TicinoPoliceFileTests
         Assert.Contains((byte)0x8A, windows.Content);
         Assert.Equal(windows.Content, Windows1252.GetBytes(string.Join("\r\n", rows)));
 
-        // UTF-8 by configuration: every letter as typed, nothing counted, no byte order mark.
         Assert.Equal(("utf-8", 0), (utf8.Charset, utf8.TransliteratedCount));
         var text = Encoding.UTF8.GetString(utf8.Content);
         Assert.Contains("NL-12345678;Dvořák;Łukasz;", text, StringComparison.Ordinal);
@@ -294,7 +268,6 @@ public class TicinoPoliceFileTests
         Assert.Contains((byte)0xE9, file.Content);
         Assert.Equal(1, file.TransliteratedCount);
 
-        // The same text typed as single characters gives the same bytes and the same count.
         Assert.Equal(typedWhole.Content, file.Content);
         Assert.Equal(typedWhole.TransliteratedCount, file.TransliteratedCount);
     }
@@ -302,7 +275,6 @@ public class TicinoPoliceFileTests
     [Fact]
     public void TicinoCsv_Windows1252_AnIllFormedText_IsWrittenWithAQuestionMark_NeverAnException_Test()
     {
-        // A lone surrogate is no character: the composed form cannot be asked of such a text, which is written with «?» and counted as before.
         var stay = Stay(Adult("Ann\uD800a", "Rossi"));
 
         var file = TicinoPoliceFile.WriteCsvFile(TicinoPoliceFile.Plan(Structure, [stay], Today).Registrations, TicinoCsvCharset.Windows1252);
@@ -390,13 +362,10 @@ public class TicinoPoliceFileTests
         var minors = TicinoPoliceFile.NotifiedPositions(
             [(0, StayGuestType.SingleGuest, new DateOnly(2010, 1, 1)), (1, StayGuestType.SingleGuest, new DateOnly(2012, 1, 1))], arrival);
 
-        // 18 on the day of the arrival is an adult; the day after is not; a guest without a birth date is in neither.
         Assert.Equal([0, 1], family.Order());
         Assert.Equal([0, 1], minors.Order());
     }
 
-    // The guests whose document the host may read in a stay of Ticino besides the single guests and the heads: the ADULTS the file notifies, so never a minor (the file notifies the minors of a stay
-    // with no adult, which are not in this answer), never a guest of unknown age, and in a group of six or more nobody but the leader.
     [Fact]
     public void NotifiedAdultPositions_AreTheAdultsTheFileNotifies_NeverAMinor_NeverAGuestOfUnknownAge()
     {
@@ -407,24 +376,20 @@ public class TicinoPoliceFileTests
              (3, StayGuestType.FamilyMember, new DateOnly(2008, 11, 19)), (4, StayGuestType.FamilyMember, new DateOnly(2008, 11, 20)), (5, StayGuestType.FamilyMember, null)],
             arrival);
 
-        // The head, the second adult and the guest who turns 18 on the day of the arrival; the child, the one who turns 18 the day after and the guest with no birth date are not.
         Assert.Equal([0, 1, 3], family.Order());
 
-        // A stay of minors only: the file notifies each of them, and none of them is an adult.
         var minors = TicinoPoliceFile.NotifiedAdultPositions(
             [(0, StayGuestType.SingleGuest, new DateOnly(2010, 1, 1)), (1, StayGuestType.SingleGuest, new DateOnly(2012, 1, 1))], arrival);
         Assert.Equal([0, 1], TicinoPoliceFile.NotifiedPositions(
             [(0, StayGuestType.SingleGuest, new DateOnly(2010, 1, 1)), (1, StayGuestType.SingleGuest, new DateOnly(2012, 1, 1))], arrival).Order());
         Assert.Empty(minors);
 
-        // A group of six: only the leader is a row of the file, so only the leader can be in the answer, and the members are not (adults or not).
         var group = TicinoPoliceFile.NotifiedAdultPositions(
             [(0, StayGuestType.HeadOfGroup, new DateOnly(1975, 1, 1)), (1, StayGuestType.GroupMember, new DateOnly(1980, 1, 1)), (2, StayGuestType.GroupMember, new DateOnly(1981, 1, 1)),
              (3, StayGuestType.GroupMember, new DateOnly(1982, 1, 1)), (4, StayGuestType.GroupMember, new DateOnly(1983, 1, 1)), (5, StayGuestType.GroupMember, new DateOnly(2015, 1, 1))],
             arrival);
         Assert.Equal([0], group.Order());
 
-        // A group of five is not a group: every adult is a row.
         var smallGroup = TicinoPoliceFile.NotifiedAdultPositions(
             [(0, StayGuestType.HeadOfGroup, new DateOnly(1975, 1, 1)), (1, StayGuestType.GroupMember, new DateOnly(1980, 1, 1)), (2, StayGuestType.GroupMember, new DateOnly(1981, 1, 1)),
              (3, StayGuestType.GroupMember, new DateOnly(1982, 1, 1)), (4, StayGuestType.GroupMember, new DateOnly(2015, 1, 1))],
@@ -432,13 +397,9 @@ public class TicinoPoliceFileTests
         Assert.Equal([0, 1, 2, 3], smallGroup.Order());
     }
 
-    // ─── D11: groups of six or more and minors without an adult ─────────────────────────────────────────
-
     [Fact]
     public void TicinoGroup_LeaderRowWithCounters_Test()
     {
-        // A group of 7: the leader and 6 members (3 adults, one of 15, two of 10). The file holds ONE row, the leader's, with the 6 others counted on
-        // it: 14 or more in «Mag14» (the adults too), under 14 in «Min14». The plate and the code of the booking are on that row.
         var group = Stay(
             Adult("Laura", "Guida", position: 0, type: StayGuestType.HeadOfGroup),
             Adult("Paolo", "Membro", position: 1, type: StayGuestType.GroupMember) with { DocumentType = null, DocumentTypeCode = null },
@@ -461,8 +422,6 @@ public class TicinoPoliceFileTests
             "NL-12345678;Guida;Laura;04.01.1984;CHE;19.11.2026;21.11.2026;SVIZZERA;ABCDE-12345;Via Test 1;6900;Lugano;CHE;TI123456;4;2;Passaporto;X1234567",
             Windows1252.GetString(TicinoPoliceFile.WriteCsv(plan.Registrations)).Split("\r\n")[1]);
 
-        // The sheet of the group: the 7 members, the leader first, the four data of each, UTF-8 with its byte order mark, every line ended by CRLF (the last
-        // one too: the one writer of the files the host opens in a spreadsheet, so the text after the last CRLF is empty).
         var sheet = TicinoPoliceFile.WriteGroupSheet(TicinoPoliceFile.GroupSheetOf(stay)!);
         Assert.True(sheet.AsSpan().StartsWith(Encoding.UTF8.Preamble));
         Assert.Equal(
@@ -479,16 +438,12 @@ public class TicinoPoliceFileTests
             ],
             Encoding.UTF8.GetString(sheet.AsSpan(Encoding.UTF8.Preamble.Length)).Split("\r\n"));
 
-        // Only the leader is a row: the check-in asks the document of the leader alone.
         Assert.Equal([0], TicinoPoliceFile.NotifiedPositions(stay.Guests.Select(g => (g.Position, g.Type, g.BirthDate)), Arrival));
     }
 
     [Fact]
     public void GroupSheet_ANameASpreadsheetWouldRunAsAFormula_IsWrittenAsText_Test()
     {
-        // The names are typed by the guests and the sheet is opened in a spreadsheet: a text that starts with = + - @ (or a tab) would be run as a formula, so
-        // it is written with a leading apostrophe, as every file the host downloads (CsvWriter); a cell with a semicolon or a quote is quoted, never changed;
-        // an accent and the digits of a date are written as they are.
         TicinoGroupMember[] members =
         [
             new("=1+1", "@SUM(A1:A9)", new DateOnly(1984, 1, 4), "CHE"),
@@ -546,7 +501,6 @@ public class TicinoPoliceFileTests
 
         var plan = TicinoPoliceFile.Plan(Structure, [stay], Today);
 
-        // Under six persons the adults are rows and the minors are counted on the head of the group.
         Assert.Equal(["Laura", "Paolo", "Sara"], plan.Registrations.Select(r => r.FirstName));
         Assert.Equal((1, 1), (plan.Registrations[0].PersonsOver14, plan.Registrations[0].PersonsUnder14));
         Assert.All(plan.Registrations, r => Assert.Equal(TicinoRowKind.Guest, r.Kind));
@@ -604,8 +558,6 @@ public class TicinoPoliceFileTests
         Assert.Equal((minors.BookingId, TicinoWarnings.ParentalAuthorizationNeeded), (warning.BookingId, warning.Code));
     }
 
-    // ─── Codes ──────────────────────────────────────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData("100000241", null, "CHE")]
     [InlineData("100000100", null, "ITA")]
@@ -643,8 +595,6 @@ public class TicinoPoliceFileTests
         Assert.Equal(expected, TicinoPoliceFile.DocumentKindOf(Adult("Anna", "Rossi") with { DocumentTypeCode = code, DocumentType = type }));
     }
 
-    // ─── The structure identifier of the property ───────────────────────────────────────────────────────
-
     [Theory]
     [InlineData("NL-12345678", "NL-12345678")]
     [InlineData(" nl-1234 5678 ", "NL-12345678")]
@@ -678,8 +628,6 @@ public class TicinoPoliceFileTests
         Assert.True(new TicinoStructureIdAttribute().IsValid(input));
         Assert.Null(TicinoStructureId.Normalize(input));
     }
-
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────────
 
     private static readonly Encoding Windows1252 = CodePagesEncodingProvider.Instance.GetEncoding(1252)!;
 
@@ -740,7 +688,6 @@ public class TicinoPoliceFileTests
             DocumentNumber = null,
         };
 
-    /// <summary>A minor member of a group: <paramref name="age"/> years at the arrival, no document.</summary>
     private static TicinoGuestFacts GroupChild(string first, int age, int position) =>
         Child(first, age, position) with { LastName = "Membro", Type = StayGuestType.GroupMember };
 

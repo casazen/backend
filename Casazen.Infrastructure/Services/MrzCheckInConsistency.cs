@@ -15,10 +15,6 @@ namespace Casazen.Infrastructure.Services;
 /// <param name="Citizenship">The citizenship as entered (a label, or an ISO code).</param>
 public sealed record CheckInIdentity(string? FirstName, string? LastName, DateOnly? DateOfBirth, string? DocumentNumber, string? Citizenship);
 
-/// <summary>
-/// Whether each field of the MRZ agrees with the check-in data: true agrees, false disagrees, null not compared (the check-in has no value for
-/// it, or no reliable form to compare). One flag per field, never the values.
-/// </summary>
 public sealed record MrzConsistency(bool? Names, bool? BirthDate, bool? DocumentNumber, bool? Nationality);
 
 /// <summary>
@@ -39,7 +35,6 @@ public sealed record MrzConsistency(bool? Names, bool? BirthDate, bool? Document
 /// </remarks>
 public static class MrzCheckInConsistency
 {
-    /// <summary>The flags of the comparison of <paramref name="mrz"/> with <paramref name="checkIn"/>.</summary>
     public static MrzConsistency Compare(MrzExtractionResult mrz, CheckInIdentity checkIn)
     {
         ArgumentNullException.ThrowIfNull(mrz);
@@ -85,7 +80,6 @@ public static class MrzCheckInConsistency
         return code.Length == 0 || label.Length != 3 ? null : string.Equals(code, label, StringComparison.Ordinal);
     }
 
-    /// <summary>Every token of <paramref name="part"/> is in <paramref name="whole"/>, and <paramref name="part"/> is enough to name a person.</summary>
     private static bool Covers(IReadOnlyList<string> part, IReadOnlyList<string> whole)
     {
         var enough = part.Count >= 2 || (part.Count == 1 && whole.Count == 1);
@@ -101,7 +95,6 @@ public static class MrzCheckInConsistency
         return shorter.Length >= 4 && longer.StartsWith(shorter, StringComparison.Ordinal);
     }
 
-    /// <summary>The names in capital letters A to Z, without diacritics, split on anything else (the fillers of the MRZ, hyphens, apostrophes).</summary>
     internal static IReadOnlyList<string> Tokens(string? value, bool transliterate)
     {
         if (string.IsNullOrWhiteSpace(value))

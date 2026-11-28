@@ -5,10 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>
-/// SP-04e: the <c>phase</c> of a request is derived once, here, from the status and the proposed time. The status keeps its seven
-/// values (the mobile app does not know new ones); the phase is an open set a client reads with a fallback.
-/// </summary>
 public class SupplierRequestPhaseTests
 {
     [Theory]
@@ -29,7 +25,6 @@ public class SupplierRequestPhaseTests
     [Fact]
     public void Of_ProposalAndQuoteAtOnce_ProposalWins()
     {
-        // The order is part of the contract shared with the agenda (SP-03b): a proposal, then a quote, else the supplier answers.
         Assert.Equal(SupplierRequestPhases.ProposalPending, SupplierRequestPhases.Of(ServiceRequestStatus.Richiesto, true, true));
     }
 
@@ -54,7 +49,6 @@ public class SupplierRequestPhaseTests
     [InlineData(int.MaxValue)]
     public void Of_AStatusItDoesNotKnow_IsUnknown_AndNeverThrows(int value)
     {
-        // A request forwarded to an external provider (spec #466) would be an eighth status: no exception, a value the client can show.
         Assert.Equal(SupplierRequestPhases.Unknown, SupplierRequestPhases.Of((ServiceRequestStatus)value, false));
         Assert.Equal(SupplierRequestPhases.Unknown, SupplierRequestPhases.Of((ServiceRequestStatus)value, true, true));
         Assert.Equal("unknown", SupplierRequestPhases.Unknown);

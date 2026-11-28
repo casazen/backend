@@ -50,7 +50,6 @@ public sealed partial class HostDashboardService
                 NightsIn(counted, period)));
         }
 
-        // The total is the Home's: all the stays at once, rounded once on the sum.
         var all = StayKpiRules
             .WithNightsIn(staysOf.Values.SelectMany(s => s), period.From, period.To)
             .ToList();
@@ -108,15 +107,12 @@ public sealed partial class HostDashboardService
             period, rows, counted.Count, NightsIn(counted, period), StayKpiRules.RevenueOf(counted, period.From, period.To));
     }
 
-    // One 404 for a property that is missing, another org's or not reached by the caller: nothing tells them apart.
     private async Task EnsurePropertyInScopeAsync(HostScope scope, Guid? propertyId, CancellationToken cancellationToken)
     {
         if (propertyId is { } filtered && !await IsPropertyInScopeAsync(scope, filtered, cancellationToken))
             throw new NotFoundException($"Property {filtered} not found") { MessageKey = "PropertyNotFound" };
     }
 
-    // The properties a revenue report lists: the active short-rent ones of the scope (a quiet one shows its zero) and any other one
-    // of the scope that has revenue in the period (a paused or deleted one still has its guests and its money), by name.
     private async Task<IReadOnlyList<(Guid Id, string Name)>> ReportPropertiesAsync(
         HostScope scope,
         Guid? propertyId,
@@ -149,7 +145,6 @@ public sealed partial class HostDashboardService
             .ToList();
     }
 
-    // The nights of the stays that fall in the period (the same nights the revenue is pro rata of).
     private static int NightsIn(IEnumerable<HostRevenueStay> stays, HostDashboardPeriod period) =>
         stays.Sum(s => PropertyOccupancy.NightsIn(s.CheckIn, s.CheckOut, period.From, period.To).Count());
 }

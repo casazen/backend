@@ -1,8 +1,6 @@
-using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Http;
-using Casazen.Infrastructure.Services;
 using Polly;
 
 namespace Casazen.Web.Extensions;
@@ -17,12 +15,10 @@ public static class ExternalHttpServiceCollectionExtensions
 {
     public static IServiceCollection AddCasazenExternalHttpClients(this IServiceCollection services)
     {
-        // User-chosen URLs (iCal feeds) are downloaded only through the anti-SSRF client (FD-16).
         services.AddOptions<SafeExternalHttpOptions>().BindConfiguration(SafeExternalHttpOptions.SectionName);
         services.AddSingleton<IExternalHostResolver, SystemDnsHostResolver>();
         services.AddSingleton<ISafeExternalHttpClient, SafeExternalHttpClient>();
 
-        // ConcordatoFacile status API client with Polly resilience (ADR-008-R1 through ADR-008-R5).
         services.AddHttpClient<ConcordatoFacileApiClient>((serviceProvider, client) =>
         {
             var configuration = serviceProvider.GetRequiredService<IConfiguration>();
@@ -53,7 +49,6 @@ public static class ExternalHttpServiceCollectionExtensions
         {
             var handler = new SocketsHttpHandler
             {
-                // TLS 1.2+ enforced (ADR-008-R14)
                 SslOptions = new System.Net.Security.SslClientAuthenticationOptions
                 {
                     EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13

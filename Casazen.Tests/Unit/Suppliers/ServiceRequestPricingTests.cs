@@ -5,20 +5,17 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>SP-04: the price of a completed request (the agreed price plus the extras), and decision D7 (a final amount far above the quote).</summary>
 public class ServiceRequestPricingTests
 {
-    // ─── Decision D7: more than the tolerance above the quote ───
-
     [Theory]
-    [InlineData(10000, 12000, 20, false)] // exactly +20 %: "oltre il 20 %" is not reached
-    [InlineData(10000, 12001, 20, true)] // one cent over
+    [InlineData(10000, 12000, 20, false)]
+    [InlineData(10000, 12001, 20, true)]
     [InlineData(10000, 10000, 20, false)]
-    [InlineData(10000, 9000, 20, false)] // cheaper than the quote
-    [InlineData(10000, 15000, 50, false)] // another tolerance
+    [InlineData(10000, 9000, 20, false)]
+    [InlineData(10000, 15000, 50, false)]
     [InlineData(10000, 15001, 50, true)]
-    [InlineData(10000, 10001, 0, true)] // no tolerance at all
-    [InlineData(333, 400, 20, true)] // 333 * 1.2 = 399.6
+    [InlineData(10000, 10001, 0, true)]
+    [InlineData(333, 400, 20, true)]
     [InlineData(333, 399, 20, false)]
     public void ExceedsQuote_FinalAgainstReference_IsStrictlyAboveTheTolerance(int reference, int final, int tolerance, bool expected)
     {
@@ -26,9 +23,9 @@ public class ServiceRequestPricingTests
     }
 
     [Theory]
-    [InlineData(null, 5000)] // nobody priced the work: nothing to be above
+    [InlineData(null, 5000)]
     [InlineData(0, 5000)]
-    [InlineData(5000, null)] // no final amount
+    [InlineData(5000, null)]
     [InlineData(null, null)]
     public void ExceedsQuote_NoReferenceOrNoFinalAmount_NeverNeedsConfirmation(int? reference, int? final)
     {
@@ -46,13 +43,11 @@ public class ServiceRequestPricingTests
     [InlineData(null, null, null)]
     [InlineData(6000, null, 6000)]
     [InlineData(null, 5000, 5000)]
-    [InlineData(6000, 5000, 6000)] // the quote wins over the estimate
+    [InlineData(6000, 5000, 6000)]
     public void ReferenceAmount_TheQuoteThenTheEstimate(int? quoted, int? estimated, int? expected)
     {
         Assert.Equal(expected, ServiceRequestPricing.ReferenceAmount(quoted, estimated));
     }
-
-    // ─── Composing the final price ───
 
     [Fact]
     public void ComposeFinalPrice_NothingDeclared_IsTheAgreedPriceAsOneBaseLine()
@@ -213,8 +208,6 @@ public class ServiceRequestPricingTests
     {
         Assert.Equal(expected, ServiceRequestPricing.IsValidAmount(cents));
     }
-
-    // ─── JSON of the columns ───
 
     [Fact]
     public void ServiceRequestJson_PriceLinesAndPhotos_RoundTripInCamelCase()

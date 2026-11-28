@@ -7,9 +7,7 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum StayVatTreatment
 {
-    /// <summary>The rate of the rule for the stay (10% in Italy for a para-hotel stay). The default.</summary>
     Standard = 1,
 
-    /// <summary>Exempt under art. 10 n. 8 DPR 633/72 (nature <c>N4</c>).</summary>
     ExemptArt10 = 2,
 }

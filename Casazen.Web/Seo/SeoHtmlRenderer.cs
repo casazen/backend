@@ -10,10 +10,8 @@ namespace Casazen.Web.Seo;
 /// </summary>
 public static class SeoHtmlRenderer
 {
-    /// <summary><c>robots</c> of an indexable page; the large image preview lets link previews show the photo.</summary>
     public const string RobotsIndex = "index,follow,max-image-preview:large";
 
-    /// <summary><c>robots</c> of a page that must not be indexed.</summary>
     public const string RobotsNoIndex = "noindex,nofollow";
 
     public static string Render(SeoDocument document)
@@ -33,11 +31,9 @@ public static class SeoHtmlRenderer
 
         AppendMeta(html, "name", "robots", document.Indexable ? RobotsIndex : RobotsNoIndex);
 
-        // The canonical and the language alternates only on a page that may be indexed: a noindex page points nowhere.
         if (document.CanonicalUrl is not null && document.Indexable)
         {
             html.Append("<link rel=\"canonical\" href=\"").Append(SeoHtml.Encode(document.CanonicalUrl)).Append("\">\n");
-            // One URL per page, whatever the language of the visitor: the page is its own language alternate.
             AppendAlternate(html, document.Language, document.CanonicalUrl);
             AppendAlternate(html, "x-default", document.CanonicalUrl);
         }

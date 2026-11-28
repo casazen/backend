@@ -16,7 +16,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface ISupplierClientsService
 {
-    /// <summary>A page of the customers, the one with the latest activity first, and how many there are for <paramref name="filter"/>.</summary>
     Task<SupplierClientsPage> ListAsync(
         Guid supplierOrgId,
         SupplierClientFilter filter,
@@ -24,7 +23,5 @@ public interface ISupplierClientsService
         int pageSize,
         CancellationToken cancellationToken = default);
 
-    /// <summary>One customer with its latest requests.</summary>
-    /// <exception cref="Exceptions.NotFoundException"><see cref="SupplierClientErrors.NotFound"/>: not a customer of this supplier.</exception>
     Task<SupplierClientDetail> GetAsync(Guid supplierOrgId, Guid clientId, CancellationToken cancellationToken = default);
 }

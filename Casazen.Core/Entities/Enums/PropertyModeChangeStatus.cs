@@ -7,18 +7,12 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum PropertyModeChangeStatus
 {
-    /// <summary>Waiting for its day: the property is still in <see cref="PropertyModeChange.FromMode"/>. At most one per property.</summary>
     Scheduled = 0,
 
     /// <summary>Done: the property is in <see cref="PropertyModeChange.ToMode"/> since <see cref="PropertyModeChange.AppliedAt"/>.</summary>
     Applied = 1,
 
-    /// <summary>Withdrawn by a person before its day. Nothing changed.</summary>
     Cancelled = 2,
 
-    /// <summary>
-    /// The daily job could not apply it: on its day the stays, blocks or leases no longer allowed the date
-    /// (<see cref="PropertyModeChange.FailureReason"/>), or the property was gone. Nothing changed; the host was told.
-    /// </summary>
     Failed = 3,
 }

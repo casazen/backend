@@ -3,52 +3,27 @@ using Casazen.Core.Exceptions;
 
 namespace Casazen.Core.Services;
 
-/// <summary>Which rule of the nights a stay breaks (E08/F05/US01/T03, NF-36).</summary>
 public enum DayRuleViolationKind
 {
-    /// <summary>The stay arrives on a night closed to arrival.</summary>
     ArrivalClosed,
 
-    /// <summary>The stay leaves on a day closed to departure.</summary>
     DepartureClosed,
 
-    /// <summary>The stay is shorter than the minimum stay of its arrival date.</summary>
     MinNights,
 
-    /// <summary>The stay is longer than the maximum stay of its arrival date.</summary>
     MaxNights,
 
-    /// <summary>The stay is booked closer to its arrival than the minimum advance of its arrival date.</summary>
     AdvanceTooShort,
 
-    /// <summary>The stay is booked further ahead of its arrival than the maximum advance of its arrival date.</summary>
     AdvanceTooLong,
 }
 
-/// <summary>The first rule a stay breaks, with the date it is about and the limit it did not respect.</summary>
-/// <param name="Kind">The rule.</param>
-/// <param name="Date">The date the rule is read on: the arrival date, or the departure date for <see cref="DayRuleViolationKind.DepartureClosed"/>.</param>
-/// <param name="Limit">The minimum or maximum of the rule (nights or days); <c>null</c> for a closed arrival or departure.</param>
 public sealed record DayRuleViolation(DayRuleViolationKind Kind, DateOnly Date, int? Limit = null);
 
-/// <summary>
-/// Whether a stay respects the rules of its nights (E08/F05/US01/T03, NF-36): one pure function that the quote, the checkout and the search of
-/// the booking site all ask, so a stay the search offers is a stay the checkout accepts. It reads the rule of the night the stay arrives on (the
-/// minimum and the maximum stay, the closed arrival, the advance) and of the day it leaves (the closed departure), and falls back on the minimum stay
-/// of the property when the arrival night has none of its own.
-/// </summary>
 public static class DayRuleStayChecks
 {
-    /// <summary>No rules at all: a stay is then judged on the minimum stay of the property alone.</summary>
     public static IReadOnlyDictionary<DateOnly, DayRuleValues> NoRules { get; } = new Dictionary<DateOnly, DayRuleValues>();
 
-    /// <summary>
-    /// The first rule the stay from <paramref name="arrival"/> to <paramref name="departure"/> (the day it leaves) breaks, or <c>null</c> when it
-    /// breaks none. The order: the arrival closed, the departure closed, fewer nights than the minimum of the arrival date (the rule's, else
-    /// <paramref name="propertyMinNights"/>), more nights than its maximum, an advance shorter than its minimum, an advance longer than its maximum.
-    /// The advance is the number of days from <paramref name="todayOfProperty"/> to the arrival, on the calendar of the property.
-    /// </summary>
-    /// <param name="rules">The rules of the property by night; a night that is not in it has none.</param>
     public static DayRuleViolation? FirstViolation(
         DateOnly arrival,
         DateOnly departure,
@@ -77,15 +52,9 @@ public static class DayRuleStayChecks
         return AdvanceViolation(arrival, todayOfProperty, onArrival);
     }
 
-    /// <summary>
-    /// Whether a stay can start on <paramref name="night"/> at all, whatever its length and its departure: the night is not closed to arrival and
-    /// it is inside the advance limits of its rule (<paramref name="rule"/>, <c>null</c> for a night with none). It is what the days of the whole
-    /// site (the date picker of the home) ask of each night; the checks of a whole stay are <see cref="FirstViolation"/>.
-    /// </summary>
     public static bool CanArriveOn(DateOnly night, DateOnly todayOfProperty, DayRuleValues? rule) =>
         rule is not { ClosedToArrival: true } && AdvanceViolation(night, todayOfProperty, rule) is null;
 
-    // The advance is the number of days from today of the property to the arrival, read against the rule of the arrival night.
     private static DayRuleViolation? AdvanceViolation(DateOnly arrival, DateOnly todayOfProperty, DayRuleValues? onArrival)
     {
         var advance = arrival.DayNumber - todayOfProperty.DayNumber;
@@ -98,11 +67,6 @@ public static class DayRuleStayChecks
         return null;
     }
 
-    /// <summary>
-    /// The 422 a quote or a checkout answers for <paramref name="violation"/>: the stable code of <see cref="DirectBookingErrorCodes"/>, the sentence
-    /// of its key in both languages (a limit is its argument) and, as extra members of the problem, the <c>date</c> the rule is about
-    /// (<c>yyyy-MM-dd</c>, the calendar date of the property) and the <c>limit</c> when there is one.
-    /// </summary>
     public static DomainRuleException ToException(DayRuleViolation violation)
     {
         ArgumentNullException.ThrowIfNull(violation);

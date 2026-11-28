@@ -18,7 +18,6 @@ public sealed class DirectAlloggiatiJob(IServiceScopeFactory scopes, ILogger<Dir
             try { await item.ServiceProvider.GetRequiredService<DirectAlloggiatiDispatch>().ProcessAsync(id, ct); }
             catch (Exception error) when (!ct.IsCancellationRequested)
             {
-                // Provider exception text can contain fragments of a record. Only the local identifier and error type enter logs.
                 logger.LogWarning("Alloggiati report {ReportId} could not be processed ({ErrorType})", id, error.GetType().Name);
             }
         }

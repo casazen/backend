@@ -30,7 +30,6 @@ public static partial class EmailTemplates
         public const string SupplierBookingCancelled = "supplier-booking-cancelled";
         public const string SupplierBookingExpired = "supplier-booking-expired";
 
-        // The customer's own area of a booking (SP-11).
         public const string SupplierBookingCancellationReceipt = "supplier-booking-cancellation-receipt";
         public const string SupplierBookingProposalExpired = "supplier-booking-proposal-expired";
         public const string SupplierBookingCancelledByCustomer = "supplier-booking-cancelled-by-customer";
@@ -39,17 +38,9 @@ public static partial class EmailTemplates
         public const string SupplierBookingProposalLapsed = "supplier-booking-proposal-lapsed";
     }
 
-    /// <summary>
-    /// The culture of the e-mails to a customer of the public showcase: English for <c>en</c>, Italian for everything else
-    /// (<see cref="ServiceCustomerLocales.Normalize"/>).
-    /// </summary>
     public static CultureInfo CultureOf(string? locale) =>
         ServiceCustomerLocales.Normalize(locale) == ServiceCustomerLocales.English ? CultureInfo.GetCultureInfo("en") : DefaultCulture;
 
-    /// <summary>
-    /// First mail of the booking, to the customer: the link that checks the address. Until the customer follows it the supplier
-    /// receives nothing, and the slot is held for <paramref name="validMinutes"/> minutes.
-    /// </summary>
     public static EmailContent SupplierBookingVerification(
         CultureInfo culture,
         string customerName,
@@ -115,11 +106,6 @@ public static partial class EmailTemplates
             .Build("SupplierBookingReceipt_Subject", supplierName);
     }
 
-    /// <summary>
-    /// A booking whose address was checked, to the supplier (Italian): the comune, the day and time, the estimate, who asks as
-    /// "Nome C." and the time by which it has to answer. Not the address, not the contacts, not the full name: they come with
-    /// the take (decision D9).
-    /// </summary>
     public static EmailContent SupplierBookingNewRequest(
         CultureInfo culture,
         string supplierName,
@@ -148,11 +134,6 @@ public static partial class EmailTemplates
             .Build("SupplierBookingNewRequest_Subject", comune);
     }
 
-    /// <summary>
-    /// The supplier accepted the request, to the customer: when, the price (the supplier's own when it gave one, else the
-    /// estimate) and, only when it will really be sent, the time of the reminder of the day before. With <paramref name="cardCharged"/>
-    /// (SP-15c-a) the card was charged for the total that was blocked: the e-mail says so, and that CasaZen holds the amount until the work.
-    /// </summary>
     public static EmailContent SupplierBookingAccepted(
         CultureInfo culture,
         string customerName,
@@ -184,7 +165,6 @@ public static partial class EmailTemplates
             .Build("SupplierBookingAccepted_Subject", supplierName);
     }
 
-    /// <summary>The supplier cannot accept the request, to the customer, with the reason the supplier gave.</summary>
     public static EmailContent SupplierBookingDeclined(
         CultureInfo culture,
         string customerName,
@@ -204,10 +184,6 @@ public static partial class EmailTemplates
             .Build("SupplierBookingDeclined_Subject", supplierName);
     }
 
-    /// <summary>
-    /// The supplier proposes another time, to the customer: the time it cannot do, the one it proposes, its message, and the time
-    /// by which the customer has to answer (after it the request lapses).
-    /// </summary>
     public static EmailContent SupplierBookingTimeProposed(
         CultureInfo culture,
         string customerName,
@@ -234,7 +210,6 @@ public static partial class EmailTemplates
             .Build("SupplierBookingTimeProposed_Subject", supplierName);
     }
 
-    /// <summary>The reminder of the day before, to the customer of a request the supplier took.</summary>
     public static EmailContent SupplierBookingReminder(
         CultureInfo culture,
         string customerName,
@@ -251,7 +226,6 @@ public static partial class EmailTemplates
             .Build("SupplierBookingReminder_Subject", serviceName, supplierName);
     }
 
-    /// <summary>The supplier cancelled the request, to the customer, with the reason the supplier gave.</summary>
     public static EmailContent SupplierBookingCancelled(
         CultureInfo culture,
         string customerName,
@@ -271,10 +245,6 @@ public static partial class EmailTemplates
             .Build("SupplierBookingCancelled_Subject", supplierName);
     }
 
-    /// <summary>
-    /// Nobody answered in time and CasaZen cancelled the request, to the customer, with the other suppliers that could help when they were looked for
-    /// (<paramref name="alternatives"/>, SP-10c: an empty list says that there is none to suggest for now).
-    /// </summary>
     public static EmailContent SupplierBookingExpired(
         CultureInfo culture,
         string customerName,
@@ -295,12 +265,6 @@ public static partial class EmailTemplates
             .Build("SupplierBookingExpired_Subject", supplierName);
     }
 
-    // ─── The customer's own area of a booking (SP-11) ───────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The customer cancelled its booking, to the customer: the receipt, with the reason it wrote (when it wrote one) and the words
-    /// that nothing was paid and nothing is charged (decision D6: no exit cost in v1, so a late cancellation is the same).
-    /// </summary>
     public static EmailContent SupplierBookingCancellationReceipt(
         CultureInfo culture,
         string customerName,
@@ -322,11 +286,6 @@ public static partial class EmailTemplates
             .Build("SupplierBookingCancellationReceipt_Subject", supplierName);
     }
 
-    /// <summary>
-    /// The customer did not answer the other time the supplier proposed, and the request was cancelled, to the customer. Not the
-    /// words of <see cref="SupplierBookingExpired"/>: there it is the supplier that did not answer, here it is the customer (decision D24).
-    /// </summary>
-    /// <param name="startUtc">The time the customer had asked for (the request keeps it while a proposal waits).</param>
     public static EmailContent SupplierBookingProposalExpired(
         CultureInfo culture,
         string customerName,
@@ -344,11 +303,6 @@ public static partial class EmailTemplates
             .Build("SupplierBookingProposalExpired_Subject", supplierName);
     }
 
-    /// <summary>
-    /// The customer cancelled a request, to the supplier (Italian): the comune, the service and the time, "Nome C." and the reason it
-    /// wrote. When the supplier had taken the request and the cancellation came with less notice than the free cancellation asks
-    /// for, the mail says so (<paramref name="shortNoticeHours"/>); nothing else is claimed about it.
-    /// </summary>
     public static EmailContent SupplierBookingCancelledByCustomer(
         CultureInfo culture,
         string supplierName,
@@ -374,10 +328,6 @@ public static partial class EmailTemplates
             .Build("SupplierBookingCancelledByCustomer_Subject", comune);
     }
 
-    /// <summary>
-    /// The customer moved a new request to another time, to the supplier (Italian): from when to when, that the request waits again
-    /// and until when the supplier has to answer, and — when it had proposed another time — that the proposal no longer applies.
-    /// </summary>
     public static EmailContent SupplierBookingRescheduledByCustomer(
         CultureInfo culture,
         string supplierName,
@@ -409,13 +359,6 @@ public static partial class EmailTemplates
             .Build("SupplierBookingRescheduledByCustomer_Subject", comune);
     }
 
-    /// <summary>
-    /// The customer answered the time the supplier proposed, to the supplier (Italian). Accepted: the new time, and that the request
-    /// is taken. Turned down: the request stays at the time first asked for, and the supplier has until
-    /// <paramref name="respondByUtc"/> to answer it.
-    /// </summary>
-    /// <param name="startUtc">The new time when <paramref name="accepted"/>, the time first asked for when not.</param>
-    /// <param name="respondByUtc">The supplier's new deadline; named only when the proposal was turned down.</param>
     public static EmailContent SupplierBookingProposalAnsweredByCustomer(
         CultureInfo culture,
         string supplierName,
@@ -450,10 +393,6 @@ public static partial class EmailTemplates
             .Build($"{prefix}_Subject", comune);
     }
 
-    /// <summary>
-    /// The customer did not answer the time the supplier proposed and the request was cancelled, to the supplier (Italian). Not the
-    /// words of the request nobody answered: here the supplier did answer, and it is the customer who did not (decision D24).
-    /// </summary>
     public static EmailContent SupplierBookingProposalLapsed(
         CultureInfo culture,
         string supplierName,
@@ -472,7 +411,6 @@ public static partial class EmailTemplates
             .Build("SupplierBookingProposalLapsed_Subject", comune);
     }
 
-    /// <summary>"Cliente: Nome C." — left out when there is no name to show (decision D9: never more than the short name).</summary>
     private static void CustomerLine(EmailHtmlBuilder builder, string customerShortName)
     {
         if (!string.IsNullOrWhiteSpace(customerShortName))

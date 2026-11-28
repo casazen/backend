@@ -70,10 +70,8 @@ public sealed record StayCancellation(
     DateOnly? PartialRefundUntil,
     bool SelfServiceAvailable);
 
-/// <summary>Builds the two public views of a cancellation policy from the one rule (<see cref="CancellationRefundPolicy"/>).</summary>
 public static class PublicCancellation
 {
-    /// <summary>The policy for the public page of a property; <c>null</c> when the property has none.</summary>
     public static PublicCancellationPolicy? PolicyOf(CancellationPolicy? catalog, HostCancellationOverrides overrides)
     {
         if (catalog is null)
@@ -85,7 +83,6 @@ public static class PublicCancellation
         int? full = effective.FullRefundHours < CancellationRefundPolicy.NeverFullRefundHours ? effective.FullRefundHours : null;
         var percent = Math.Clamp(effective.PartialRefundPercent, 0m, 100m);
 
-        // A partial window that ends before the full one starts to count is not a window of its own (a policy written upside down).
         var hasPartial = percent > 0m && (full is not { } fullHours || effective.PartialRefundHours < fullHours);
 
         return new PublicCancellationPolicy(
@@ -99,7 +96,6 @@ public static class PublicCancellation
             CancellationRefundPolicy.LongStayNightsUnchanged);
     }
 
-    /// <summary>The dates of a stay that checks in on <paramref name="checkInDate"/> under <paramref name="effectivePolicy"/>, from <paramref name="today"/> on.</summary>
     public static StayCancellation StayOf(CancellationPolicy? effectivePolicy, DateTime checkInDate, DateOnly today)
     {
         var windows = CancellationRefundPolicy.RefundWindows(effectivePolicy, checkInDate);

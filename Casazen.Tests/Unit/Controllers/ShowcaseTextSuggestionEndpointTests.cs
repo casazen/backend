@@ -9,10 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// The AI help of the showcase editor sits behind the same door as the rest of the editor (the supplier of the caller's own org) and under the rate
-/// limit of every endpoint that calls an AI provider: the status read costs nothing and calls no provider, so it has no such limit.
-/// </summary>
 public class ShowcaseTextSuggestionEndpointTests
 {
     private static MethodInfo Action(string name) =>
@@ -51,7 +47,6 @@ public class ShowcaseTextSuggestionEndpointTests
     {
         var properties = typeof(SuggestShowcaseTextsRequest).GetProperties().Select(property => property.Name).Order().ToArray();
 
-        // No supplier id, no facts: the data of the supplier is read on the server from its own org.
         Assert.Equal(new[] { "Answers", "Fields", "Regenerate" }, properties.Where(name => name is not "ToCommand").ToArray());
     }
 

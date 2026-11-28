@@ -57,37 +57,25 @@ public class SwissComplianceController(
     IAuthorizationService authorizationService,
     ILogger<SwissComplianceController> logger) : ControllerBase
 {
-    /// <summary>Code of an OTR period whose end is before its start (400).</summary>
     public const string PeriodInvalidCode = "swiss_period_invalid";
 
-    /// <summary>Code of an OTR period longer than <see cref="MaxPeriodDays"/> days (400).</summary>
     public const string PeriodTooLongCode = "swiss_period_too_long";
 
-    /// <summary>Code of a receipt type that is not <c>Police</c>, <c>OTR</c>, <c>ParentalAuthorization</c> or <c>GroupSheet</c> (400).</summary>
     public const string ReceiptTypeInvalidCode = "swiss_receipt_type_invalid";
 
-    /// <summary>Code of a receipt file that is empty or larger than the limit (400).</summary>
     public const string ReceiptFileInvalidCode = "swiss_receipt_file_invalid";
 
-    /// <summary>
-    /// Code of a document kept five years (<c>Police</c>, <c>ParentalAuthorization</c>, <c>GroupSheet</c>) whose report date is already past that time (400): the daily
-    /// retention job would delete it the night it is recorded.
-    /// </summary>
     public const string ReceiptDateTooOldCode = "swiss_receipt_date_too_old";
 
-    /// <summary>Longest OTR period, both ends counted: a year, leap year included.</summary>
-    /// <summary>Code of a police file format that is not <c>csv</c> or <c>xml</c> (400).</summary>
     public const string TicinoFileFormatInvalidCode = "ticino_file_format_invalid";
 
     public const int MaxPeriodDays = 366;
 
-    /// <summary>The header of the file of the guest register that says how many years the regime of the property asks the host to keep it; absent when the sources do not say.</summary>
     public const string RetentionYearsHeader = "X-Retention-Years";
 
     private const string CsvContentType = "text/csv";
     private const long MaxReceiptRequestBytes = SwissComplianceReceipts.MaxFileBytes + 64 * 1024;
 
-    /// <summary>Lists recorded Swiss receipts, including legacy hash-only evidence without a retained original.</summary>
     [HttpGet("receipts")]
     [Authorize(Policy = CasazenPolicies.GuestRead)]
     [ProducesResponseType(typeof(SwissReceiptPageResponse), StatusCodes.Status200OK)]
@@ -102,7 +90,6 @@ public class SwissComplianceController(
         return Ok(SwissReceiptPageResponse.From(result));
     }
 
-    /// <summary>Downloads the verified original from private storage after the same tenant and property-scope checks.</summary>
     [HttpGet("receipts/{receiptId:guid}/file")]
     [Authorize(Policy = CasazenPolicies.GuestRead)]
     public async Task<ActionResult> DownloadReceipt(Guid propertyId, Guid receiptId, CancellationToken cancellationToken = default)
@@ -381,7 +368,6 @@ public class SwissComplianceController(
         var file = await guestRegisters.GenerateAsync(
             propertyId, from, to, new GuestRegisterRequest(User.GetUserId(), DocumentLanguages.Current), cancellationToken);
 
-        // Ids, dates and counts only: the log never names a guest.
         logger.LogInformation(
             "User {UserId} downloaded the guest register ({Rows} lines, regime {RegimeCode}) of property {PropertyId} for {FromDate}..{ToDate}",
             User.GetUserId(), file.Rows, file.RegimeCode, propertyId, from, to);
@@ -477,7 +463,6 @@ public class SwissComplianceController(
         if (to.DayNumber - from.DayNumber >= MaxPeriodDays)
             return this.ApiProblem(StatusCodes.Status400BadRequest, PeriodTooLongCode, "SwissPeriodTooLong", MaxPeriodDays);
 
-        // The service counts the nights up to its end bound, exclusive: the last night of the period starts the day before it.
         var file = await otrReports.GeneratePeriodReportAsync(propertyId, AsDay(from), AsDay(to).AddDays(1), cancellationToken);
 
         logger.LogInformation(
@@ -537,8 +522,6 @@ public class SwissComplianceController(
         if (!EnumNames.TryParseDefined<SwissComplianceFileType>(form.Type, out var type))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ReceiptTypeInvalidCode, "SwissReceiptTypeInvalid");
 
-        // NF-128: a document of a type kept five years with a date already past that time would be deleted (file and row) by the daily retention job the night
-        // it is recorded, with a count in the log: refused here, so a legal proof is never destroyed in silence by a mistyped date.
         if (SwissComplianceReceipts.IsPastRetention(type, form.ReportDate!.Value, TimeProvider.System.TodayInRomeAsDateOnly()))
         {
             return this.ApiProblem(
@@ -562,13 +545,8 @@ public class SwissComplianceController(
         return StatusCode(StatusCodes.Status201Created, SwissReceiptResponse.From(receipt));
     }
 
-    /// <summary>A day from the client as a stay date: midnight UTC of that day (the storage convention of the bookings).</summary>
     private static DateTime AsDay(DateOnly day) => DateTime.SpecifyKind(day.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
 
-    /// <summary>
-    /// The 400 of a period the guest register cannot be made for (the same codes and words as the OTR report), or <c>null</c> when the period is fine. The one rule is
-    /// <see cref="GuestRegisterFile.PeriodErrorOf"/>, which the service applies too.
-    /// </summary>
     private ObjectResult? PeriodProblem(DateOnly from, DateOnly to) => GuestRegisterFile.PeriodErrorOf(from, to) switch
     {
         GuestRegisterFile.PeriodInvalidCode => this.ApiProblem(StatusCodes.Status400BadRequest, PeriodInvalidCode, "SwissPeriodInvalid"),
@@ -576,7 +554,6 @@ public class SwissComplianceController(
         _ => null,
     };
 
-    /// <summary>TN-3: 404 when the property is not visible (another org), 403 when it is but the caller's scope or permission does not allow it.</summary>
     private async Task<ActionResult?> AuthorizeAsync(
         Guid propertyId,
         HostOperationRequirement operation,

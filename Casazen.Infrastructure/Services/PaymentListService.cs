@@ -8,11 +8,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc cref="IPaymentListService"/>
-/// <remarks>
-/// The payments of a deleted property are still listed (<see cref="AppDbContext.SoftDeleteQueryFilter"/> is ignored, as the fiscal
-/// reports do): the money that came in stays visible after the property is archived.
-/// </remarks>
 public sealed class PaymentListService(AppDbContext db) : IPaymentListService
 {
     public async Task<IReadOnlyList<PaymentListItem>> ListAsync(
@@ -49,8 +44,6 @@ public sealed class PaymentListService(AppDbContext db) : IPaymentListService
             .Select(ItemProjection)
             .ToListAsync(cancellationToken);
 
-        // A page that is not full is the last one, and says how many there are: no second query. A full page, or a page past the
-        // end, does not, and the count is asked.
         var isLastPage = items.Count < pageSize && (items.Count > 0 || skipped == 0);
         var total = isLastPage ? skipped + items.Count : await query.CountAsync(cancellationToken);
 
@@ -70,15 +63,12 @@ public sealed class PaymentListService(AppDbContext db) : IPaymentListService
         if (criteria.BookingId is { } bookingId)
             query = query.Where(p => p.BookingId == bookingId);
 
-        // The days are Europe/Rome calendar days; the payment date is when it was settled, else when it was created (the
-        // fiscal reports' rule), compared as an instant.
         if (criteria.From is { } from)
         {
             var start = RomeCalendar.StartOfDayUtc(from);
             query = query.Where(p => (p.ProcessedAt ?? p.CreatedAt) >= start);
         }
 
-        // The last day the calendar has is no upper bound: the day after it cannot be written.
         if (criteria.To is { } to && to != DateOnly.MaxValue)
         {
             var end = RomeCalendar.StartOfDayUtc(to.AddDays(1));
@@ -88,7 +78,6 @@ public sealed class PaymentListService(AppDbContext db) : IPaymentListService
         return query;
     }
 
-    // Newest first, then the id: a total order, so a page boundary never repeats or skips a payment.
     private static IOrderedQueryable<Payment> Ordered(IQueryable<Payment> query) =>
         query.OrderByDescending(p => p.CreatedAt).ThenBy(p => p.Id);
 

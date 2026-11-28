@@ -16,11 +16,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>SP-04: the codes, the texts (Italian and English) and the options of the service request flows.</summary>
 public class ServiceRequestSupportTests
 {
-    // ─── Codes and message keys ───
-
     [Fact]
     public void MessageKeys_EveryKeyOfTheServiceRequestFlows_ExistsInItalianAndEnglishWithDifferentText()
     {
@@ -138,16 +135,14 @@ public class ServiceRequestSupportTests
         Assert.Equal(1, (int)Attribute<RangeAttribute>(typeof(CompleteServiceRequestRequest), nameof(CompleteServiceRequestRequest.FinalAmountCents)).Minimum);
     }
 
-    // ─── Options ───
-
     [Fact]
     public void Options_Defaults_AreTheDecisionsOfTheWaveSpec()
     {
         var options = new ServiceRequestOptions();
 
         Assert.Equal("Suppliers:ServiceRequests", ServiceRequestOptions.SectionName);
-        Assert.Equal(120, options.HostResponseMinutes); // D8
-        Assert.Equal(20, options.FinalAmountTolerancePercent); // D7
+        Assert.Equal(120, options.HostResponseMinutes);
+        Assert.Equal(20, options.FinalAmountTolerancePercent);
         Assert.Equal(6, options.RemindIntervalHours);
         Assert.Empty(options.Validate());
     }
@@ -218,15 +213,12 @@ public class ServiceRequestSupportTests
         Assert.Equal(12, options.RemindIntervalHours);
     }
 
-    // ─── Statuses and values that cross the API ───
-
     [Fact]
     public void Status_TheIntegersAreExplicitAndAnnullatoIsAppendedAfterRifiutato()
     {
         Assert.Equal(
             new[] { ("Richiesto", 0), ("PresoInCarico", 1), ("InCorso", 2), ("Completato", 3), ("Pagato", 4), ("Rifiutato", 5), ("Annullato", 6) },
             Enum.GetValues<Casazen.Core.Entities.Enums.ServiceRequestStatus>().Select(s => (s.ToString(), (int)s)));
-        // SP-10 appended the customer of the public showcase after CasaZen itself; the integers of the others did not move.
         Assert.Equal(
             new[] { ("Host", 0), ("Supplier", 1), ("System", 2), ("Customer", 3) },
             Enum.GetValues<Casazen.Core.Entities.Enums.ServiceRequestActorParty>().Select(a => (a.ToString(), (int)a)));

@@ -1,6 +1,5 @@
 namespace Casazen.Core.Suppliers;
 
-/// <summary>The first and last Europe/Rome day of a window of slots, both included.</summary>
 public readonly record struct PublicSlotRange(DateOnly First, DateOnly Last);
 
 /// <summary>

@@ -44,10 +44,8 @@ public sealed class RoutinesController(
     IHostScopeResolver hostScopeResolver,
     ILogger<RoutinesController> logger) : ControllerBase
 {
-    /// <summary>The largest body of a request that writes: ten actions of 4 KB and a condition of 16 KB fit with room to spare.</summary>
     private const int MaxBodyBytes = 131072;
 
-    /// <summary>The routines of the org, by name: all of them for a caller who reaches the whole org, none for one limited to some properties.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<RoutineDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -65,13 +63,11 @@ public sealed class RoutinesController(
         return Ok(all.Select(RoutineDto.From).ToList());
     }
 
-    /// <summary>The actions a routine can hold, each with whether it can run today and, when it cannot, <c>routine_action_not_available</c>. The same list the engine and the activation read.</summary>
     [HttpGet("actions")]
     [ProducesResponseType(typeof(IReadOnlyList<RoutineActionCatalogItemDto>), StatusCodes.Status200OK)]
     public ActionResult<IReadOnlyList<RoutineActionCatalogItemDto>> Actions() =>
         Ok(RoutineActionCatalog.All(featureFlags).Select(RoutineActionCatalogItemDto.From).ToList());
 
-    /// <summary>Suggests a runnable operation for the editor. Saving the routine is a separate request.</summary>
     [HttpPost("suggest-action")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [AiRateLimit]
@@ -110,7 +106,6 @@ public sealed class RoutinesController(
             : null));
     }
 
-    /// <summary>One routine of the org.</summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(RoutineDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -149,7 +144,6 @@ public sealed class RoutinesController(
         return CreatedAtAction(nameof(Get), new { id = routine.Id }, RoutineDto.From(routine));
     }
 
-    /// <summary>Changes a routine: what the body leaves out stays as it is, and the whole routine that results is validated.</summary>
     [HttpPut("{id:guid}")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [RequestSizeLimit(MaxBodyBytes)]
@@ -169,7 +163,6 @@ public sealed class RoutinesController(
         return Ok(RoutineDto.From(routine));
     }
 
-    /// <summary>Deletes a routine and its log.</summary>
     [HttpDelete("{id:guid}")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -187,7 +180,6 @@ public sealed class RoutinesController(
         return NoContent();
     }
 
-    /// <summary>Switches a routine on or off. On, outside test mode, 422 <c>routine_action_not_available</c> when an action cannot run yet.</summary>
     [HttpPut("{id:guid}/active")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(RoutineDto), StatusCodes.Status200OK)]
@@ -206,7 +198,6 @@ public sealed class RoutinesController(
         return Ok(RoutineDto.From(routine));
     }
 
-    /// <summary>Switches test mode on or off (the routine then simulates its actions, or runs them). Off, on an active routine, the same 422 as the activation.</summary>
     [HttpPut("{id:guid}/test-mode")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(RoutineDto), StatusCodes.Status200OK)]
@@ -225,10 +216,6 @@ public sealed class RoutinesController(
         return Ok(RoutineDto.From(routine));
     }
 
-    /// <summary>
-    /// The log of a routine, the newest execution first, a page at a time (<c>page</c> from 1, <c>pageSize</c> 1 to 100, 50 when left out); the total is
-    /// in the header <c>X-Total-Count</c>. The saved payload of an execution that waits is not shown.
-    /// </summary>
     [HttpGet("{id:guid}/executions")]
     [ProducesResponseType(typeof(IReadOnlyList<RoutineExecutionDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -251,10 +238,6 @@ public sealed class RoutinesController(
         return Ok(result.Items.Select(RoutineExecutionDto.From).ToList());
     }
 
-    /// <summary>
-    /// What the routine would do for a sample event (the body, a JSON object that says which booking it is about with <c>bookingId</c>): whether its
-    /// condition is met, and for each action whether it would be stopped (a guardrail, or an action that cannot run yet). Nothing is written, scheduled or sent.
-    /// </summary>
     [HttpPost("{id:guid}/simulate")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [RequestSizeLimit(MaxBodyBytes)]
@@ -274,7 +257,6 @@ public sealed class RoutinesController(
         return Ok(await engine.SimulateAsync(scope.Value!.OrgId, id, samplePayload, cancellationToken));
     }
 
-    /// <summary>The caller's reach on the host data of its org: a problem (401 with no org, 403 with no reach) or the scope. Never widened.</summary>
     private async Task<(HostScope? Value, ObjectResult? Problem)> ResolveScopeAsync(CancellationToken cancellationToken)
     {
         var orgId = tenantContext.OrgId ?? Guid.Empty;
@@ -292,10 +274,6 @@ public sealed class RoutinesController(
             : (scope, null);
     }
 
-    /// <summary>
-    /// <see cref="ResolveScopeAsync"/> for what changes a routine or reads a booking for the simulation: a routine acts on every property of the org, so
-    /// the caller reaches the whole org, or it is 403 <c>routines_need_org_scope</c>.
-    /// </summary>
     private async Task<(HostScope? Value, ObjectResult? Problem)> ResolveWriterScopeAsync(CancellationToken cancellationToken)
     {
         var scope = await ResolveScopeAsync(cancellationToken);

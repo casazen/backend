@@ -52,7 +52,6 @@ public partial class PropertyICalSyncService
         _notifications = notifications;
     }
 
-    /// <summary>Import feeds of the property, oldest first (PC-11). Read-only.</summary>
     public async Task<IReadOnlyList<PropertyICalFeed>> ListFeedsAsync(Guid propertyId, CancellationToken ct = default) =>
         await _db.PropertyICalFeeds
             .AsNoTracking()
@@ -61,7 +60,6 @@ public partial class PropertyICalSyncService
             .ThenBy(f => f.Id)
             .ToListAsync(ct);
 
-    /// <summary>Number of blocks imported by each feed of the property (feeds without blocks are missing).</summary>
     public async Task<IReadOnlyDictionary<Guid, int>> GetBlockCountsByFeedAsync(Guid propertyId, CancellationToken ct = default) =>
         await _db.CalendarBlocks
             .Where(b => b.PropertyId == propertyId && b.FeedId != null)
@@ -125,14 +123,10 @@ public partial class PropertyICalSyncService
         if (transaction is not null)
             await transaction.CommitAsync(ct);
 
-        // Never the token: the link gives access to the feed.
         _logger.LogInformation("iCal export link of property {PropertyId} regenerated", propertyId);
         return export;
     }
 
-    // IgnoreQueryFilters (here and in BuildPublicExportAsync): the public export is authorized by the
-    // unguessable ExportToken, not by a user, and is scoped to that export's property. A soft-deleted property's link
-    // stops working (PC-05).
     public async Task<PropertyICalExport?> GetExportByTokenAsync(Guid exportToken, CancellationToken ct = default) =>
         await _db.PropertyICalExports
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -239,7 +233,6 @@ public partial class PropertyICalSyncService
         var feed = await _db.PropertyICalFeeds.FirstOrDefaultAsync(f => f.Id == feedId && f.PropertyId == propertyId, ct)
             ?? throw FeedNotFound(feedId);
 
-        // Also deleted by the FK cascade; removed here so every provider (and the change tracker) agrees.
         var blocks = await _db.CalendarBlocks.Where(b => b.FeedId == feedId).ToListAsync(ct);
         _db.CalendarBlocks.RemoveRange(blocks);
         _db.PropertyICalFeeds.Remove(feed);
@@ -310,7 +303,6 @@ public partial class PropertyICalSyncService
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            // Unexpected failure (database, client, ...): the feed gets its own error state, the blocks are kept.
             _logger.LogError(ex, "iCal sync failed for feed {FeedId} of property {PropertyId}", feed.Id, feed.PropertyId);
             _db.ChangeTracker.Clear();
             await SaveFailureAsync(feed.Id, feed.ImportUrl, ICalErrorCodes.SyncFailed, ct);
@@ -319,7 +311,6 @@ public partial class PropertyICalSyncService
 
     private async Task SyncFeedCoreAsync(Guid feedId, Guid propertyId, string importUrl, CancellationToken ct)
     {
-        // Get property currency for import default (ADR-002-R8, NF-02)
         var propertyCurrency = await _db.Properties
             .AsNoTracking()
             .Where(p => p.Id == propertyId)
@@ -329,7 +320,6 @@ public partial class PropertyICalSyncService
         string icsContent;
         try
         {
-            // Anti-SSRF download (FD-16): https only, public addresses only, size and time limits.
             icsContent = await _externalHttpClient.GetStringAsync(importUrl, ct);
         }
         catch (ExternalFetchException ex)
@@ -349,7 +339,6 @@ public partial class PropertyICalSyncService
         }
         catch (ICalFormatException ex)
         {
-            // Type only: the parser's message can quote the downloaded document.
             _logger.LogWarning(
                 "iCal feed {FeedId} of property {PropertyId} is not a readable iCalendar ({Failure}, {ErrorType})",
                 feedId, propertyId, ex.Failure, ex.InnerException?.GetType().Name);
@@ -375,8 +364,6 @@ public partial class PropertyICalSyncService
         await AlertOtaStayReviewsAsync(feedId, outcome.Reviews, ct);
     }
 
-    // After the commit: the stays are already marked "da verificare", an alert that cannot be delivered never undoes that
-    // nor turns the sync into a failure.
     private async Task AlertOtaStayReviewsAsync(Guid feedId, IReadOnlyList<OtaStayReviewAlert> reviews, CancellationToken ct)
     {
         foreach (var review in reviews)
@@ -393,12 +380,6 @@ public partial class PropertyICalSyncService
         }
     }
 
-    /// <summary>
-    /// Replaces the blocks of the feed with <paramref name="incoming"/> and marks the feed
-    /// <see cref="PropertyICalImportStatus.Success"/>. The blocks of <paramref name="unreadableUids"/> (events still in
-    /// the feed that could not be read) are kept. Returns the number of blocks removed and the OTA stays marked "da
-    /// verificare" (CO-21), or null when the feed was removed or its URL changed during the download (nothing is written).
-    /// </summary>
     private async Task<(int Removed, IReadOnlyList<OtaStayReviewAlert> Reviews)?> ApplyBlocksAsync(
         Guid feedId,
         Guid propertyId,
@@ -410,7 +391,6 @@ public partial class PropertyICalSyncService
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             _db, ct, (PostgresAdvisoryLocks.Scope.PropertyICalSync, propertyId.ToString()));
 
-        // Read under the lock: a run that held it has committed, READ COMMITTED sees its blocks.
         var feed = await _db.PropertyICalFeeds.FirstOrDefaultAsync(f => f.Id == feedId, ct);
         if (feed is null || feed.ImportUrl != importUrl)
         {
@@ -427,7 +407,6 @@ public partial class PropertyICalSyncService
             .GroupBy(b => b.ExternalUid!, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
 
-        // Dates of the blocks turned into OTA stays before this sync (CO-21): a change is reported, never applied to the stay.
         var linkedDates = existing
             .Where(b => b.BookingId is not null)
             .ToDictionary(b => b.Id, b => (Start: b.StartUtc.Date, End: b.EndUtc.Date));
@@ -463,8 +442,6 @@ public partial class PropertyICalSyncService
             added.Add(newBlock);
         }
 
-        // An empty feed removes every block of this feed (A2-10, A9-13), never those of the property's other feeds. An
-        // event still in the feed but unreadable is not proof that its reservation is gone: its blocks stay.
         var incomingUids = incoming.Select(b => b.ExternalUid).ToHashSet(StringComparer.Ordinal);
         var orphans = existing
             .Where(b => b.ExternalUid is not null
@@ -591,8 +568,6 @@ public partial class PropertyICalSyncService
         }
     }
 
-    // Stores the stable error code, never the exception message (FD-16: no oracle on what the server can reach). The
-    // context holds no pending change here. A feed whose URL was replaced meanwhile is left to the run of the new URL.
     private async Task SaveFailureAsync(Guid feedId, string importUrl, string errorCode, CancellationToken ct)
     {
         var feed = await _db.PropertyICalFeeds.FirstOrDefaultAsync(f => f.Id == feedId, ct);
@@ -613,8 +588,6 @@ public partial class PropertyICalSyncService
     /// </summary>
     public async Task SyncAllFeedsAsync(CancellationToken ct = default)
     {
-        // A soft-deleted property (PC-05) is no longer synced. IgnoreQueryFilters([SoftDeleteQueryFilter]): the
-        // deleted ones are exactly what this lookup is for (a background job: no tenant filter in effect).
         var deletedPropertyIds = await _db.Properties
             .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .Where(p => p.IsDeleted)
@@ -671,7 +644,6 @@ public partial class PropertyICalSyncService
     [GeneratedRegex(@"(^|\.)booking\.com$")]
     private static partial Regex BookingHost();
 
-    // Label trimmed, empty → none. Control characters (line breaks included) are refused: the label is shown as is.
     private static string? NormalizeLabel(string? label)
     {
         var trimmed = label?.Trim();
@@ -687,7 +659,6 @@ public partial class PropertyICalSyncService
         return trimmed;
     }
 
-    // Same feed for the duplicate check: scheme, host (lower case), port, path and query as written.
     private static string ComparableUrl(Uri url) =>
         url.GetComponents(UriComponents.HttpRequestUrl, UriFormat.UriEscaped);
 
@@ -711,7 +682,6 @@ public partial class PropertyICalSyncService
         var export = await GetExportByTokenAsync(exportToken, ct)
             ?? throw new NotFoundException("iCal export token not found");
 
-        // Get property currency for export (ADR-002-R7, NF-02)
         var propertyCurrency = await _db.Properties
             .AsNoTracking()
             .Where(p => p.Id == export.PropertyId)
@@ -815,11 +785,6 @@ public partial class PropertyICalSyncService
         CancellationToken ct = default) =>
         HasOverlappingBlockAsync(_db, propertyId, checkIn, checkOut, ct);
 
-    /// <summary>
-    /// True when a calendar block (iCal import or manual) of the property takes a night of [<paramref name="checkIn"/>,
-    /// <paramref name="checkOut"/>): the single rule of the booking checks, also used by the late-payment
-    /// reconfirmation of the payment webhook (BK-04), with the nights of the public availability (PropertyOccupancy, BK-05).
-    /// </summary>
     internal static async Task<bool> HasOverlappingBlockAsync(
         AppDbContext db,
         Guid propertyId,

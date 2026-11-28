@@ -38,7 +38,6 @@ public class BookingListPostgresTests : IClassFixture<BookingListPostgresTests.C
         var first = await SeedPropertyAsync(org.Id, hostId);
         await SeedBookingAsync(first, 0);
         using var host = _factory.CreateAuthenticatedClient(hostId, Owner);
-        // Warm-up: the first request of a user may provision caches (org context, onboarding) and is not measured.
         await GetIdsAsync(host, "/api/bookings");
 
         var (oneBooking, oneCount) = await CountQueriesAsync(host);
@@ -57,8 +56,6 @@ public class BookingListPostgresTests : IClassFixture<BookingListPostgresTests.C
         Assert.Single(oneBooking);
         Assert.Equal(10, tenBookings.Count);
         Assert.True(oneCount > 0, "The counter saw no SQL command for GET /api/bookings.");
-        // The total is asked for only when the page is full (SR-03b: the list is the search): ten bookings fill the page of ten and
-        // one booking does not, so one command more, never one per booking.
         Assert.InRange(tenCount, oneCount, oneCount + 1);
     }
 
@@ -86,16 +83,13 @@ public class BookingListPostgresTests : IClassFixture<BookingListPostgresTests.C
         using var manager = _factory.CreateAuthenticatedClient(managerId, Manager);
         using var other = _factory.CreateAuthenticatedClient(otherHostId, Owner);
 
-        // Owner role: only the properties the caller owns, even inside the same org.
         Assert.Equal([ownerBooking.Id], await GetIdsAsync(owner, "/api/bookings"));
         Assert.Equal([colleagueBooking.Id], await GetIdsAsync(colleague, "/api/bookings"));
-        // Org-wide role: the whole org, never another org.
         Assert.Equal(
             new[] { ownerBooking.Id, colleagueBooking.Id }.Order(),
             (await GetIdsAsync(manager, "/api/bookings")).Order());
         Assert.Equal([otherBooking.Id], await GetIdsAsync(other, "/api/bookings"));
 
-        // guestId narrows inside the scope: the guest of a colleague's booking gives nothing to the owner.
         Assert.Empty(await GetIdsAsync(owner, $"/api/bookings?guestId={colleagueBooking.GuestId}"));
         Assert.Equal(
             [colleagueBooking.Id],
@@ -104,7 +98,6 @@ public class BookingListPostgresTests : IClassFixture<BookingListPostgresTests.C
             [colleagueBooking.Id],
             await GetIdsAsync(manager, $"/api/bookings?propertyId={colleagueProperty.Id}"));
 
-        // propertyId: another member's property is 403, another org's is 404 (TN-3).
         var colleagues = await owner.GetAsync($"/api/bookings?propertyId={colleagueProperty.Id}");
         var otherOrgs = await owner.GetAsync($"/api/bookings?propertyId={otherProperty.Id}");
         Assert.Equal(HttpStatusCode.Forbidden, colleagues.StatusCode);
@@ -172,7 +165,6 @@ public class BookingListPostgresTests : IClassFixture<BookingListPostgresTests.C
         return property;
     }
 
-    /// <summary>A confirmed booking with its own guest snapshot, <paramref name="weeksAhead"/> weeks from next year's June.</summary>
     private async Task<Booking> SeedBookingAsync(Property property, int weeksAhead)
     {
         using var scope = _factory.Services.CreateScope();
@@ -225,7 +217,6 @@ public class BookingListPostgresTests : IClassFixture<BookingListPostgresTests.C
         await db.SaveChangesAsync();
     }
 
-    /// <summary>The test host with <see cref="Counter"/> on every <see cref="AppDbContext"/>.</summary>
     public sealed class CountingFactory : CasazenWebApplicationFactory
     {
         internal BookingListCommandCounter Counter { get; } = new();
@@ -245,7 +236,6 @@ public class BookingListPostgresTests : IClassFixture<BookingListPostgresTests.C
         }
     }
 
-    /// <summary>Counts the SQL commands run while serving <c>GET /api/bookings</c> (requests of this class run one at a time).</summary>
     internal sealed class BookingListCommandCounter : DbCommandInterceptor
     {
         private int _count;

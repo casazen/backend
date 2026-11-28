@@ -15,7 +15,6 @@ public class CleaningCostSourceNpgsqlTranslationTests
     private static readonly Guid OrgId = Guid.Parse("7a3c1d52-9f0e-4b8a-8d65-2c4e1f0b9a11");
     private static readonly Guid PropertyId = Guid.Parse("11111111-2222-3333-4444-555555555555");
 
-    /// <summary>The first statement of the read (the properties of the org with their currency) answers one row; the others answer none.</summary>
     private static DataTable? OneProperty(string sql)
     {
         var isPropertiesRead = sql.Contains("FROM \"Properties\"", StringComparison.Ordinal)
@@ -31,7 +30,6 @@ public class CleaningCostSourceNpgsqlTranslationTests
         return table;
     }
 
-    /// <summary>With every property of the org and with a list of them: the properties, the requests and the staff work are three statements, and all three are translated.</summary>
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -45,7 +43,6 @@ public class CleaningCostSourceNpgsqlTranslationTests
         await NpgsqlTranslationProbe.AssertTranslatesAsync(
             () => source.GetCompletedAsync(OrgId, propertyIds, new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31), CancellationToken.None));
 
-        // The probe must have got as far as the requests and the staff work that follow the properties, or it proved nothing about them.
         Assert.True(
             statements.Count >= 3,
             $"only {statements.Count} of the 3 reads were reached:{Environment.NewLine}{string.Join(Environment.NewLine, statements)}");

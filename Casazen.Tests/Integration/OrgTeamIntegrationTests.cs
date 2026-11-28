@@ -12,12 +12,10 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>Data and calls shared by the org team integration tests.</summary>
 internal static class OrgTeamHttp
 {
     private const string ConsentVersion = "2026-06-v1";
 
-    /// <summary>A person onboarded for <paramref name="orgId"/> with an org member row written directly (no roles needed).</summary>
     public static async Task<string> SeedMemberRowAsync(
         CasazenWebApplicationFactory factory, Guid orgId, OrgRole role, OrgMemberStatus status = OrgMemberStatus.Active)
     {
@@ -41,7 +39,6 @@ internal static class OrgTeamHttp
         return userId;
     }
 
-    /// <summary>A person added through the real service: the member row and its memberships (needs the seeded roles: PostgreSQL).</summary>
     public static async Task<string> AddMemberAsync(
         CasazenWebApplicationFactory factory, Guid orgId, OrgRole role, string[] areas, bool deactivate = false)
     {
@@ -68,7 +65,6 @@ internal static class OrgTeamHttp
         return userId;
     }
 
-    /// <summary>An owner as the onboarding leaves it: its org, the rental membership of its role and the org owner rows.</summary>
     public static async Task<(string UserId, Guid OrgId)> SeedOwnerWithTeamRowsAsync(CasazenWebApplicationFactory factory)
     {
         var ownerId = $"auth0|am01-owner-{Guid.NewGuid():N}";
@@ -81,7 +77,6 @@ internal static class OrgTeamHttp
 
     public static async Task SetMemberStatusInDatabaseAsync(CasazenWebApplicationFactory factory, string userId, OrgMemberStatus status)
     {
-        // A direct write, as another API instance would make: nothing invalidates this instance's authorization cache.
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var member = await db.OrgMembers.IgnoreQueryFilters().SingleAsync(m => m.UserId == userId);
@@ -262,7 +257,6 @@ public class OrgTeamPostgresIntegrationTests(CasazenWebApplicationFactory factor
             Assert.Equal(["account/org_owner", "short-rent/property_owner"], memberships.Order());
         }
 
-        // The account context is listed first (the list is sorted by key), then the rental one.
         Assert.Equal(["account", "short-rent"], await OrgTeamHttp.ContextKeysAsync(client));
 
         // Repeating the onboarding (or its retry) changes nothing.
@@ -282,7 +276,6 @@ public class OrgTeamPostgresIntegrationTests(CasazenWebApplicationFactory factor
         var manager = await OrgTeamHttp.AddMemberAsync(factory, orgId, OrgRole.PropertyManager, ["short-rent"]);
         var collaborator = await OrgTeamHttp.AddMemberAsync(factory, orgId, OrgRole.Collaborator, ["short-rent"]);
 
-        // No role in the token: what the DB says is all there is.
         using var asAdmin = factory.CreateAuthenticatedClient(admin);
         using var asAccountant = factory.CreateAuthenticatedClient(accountant);
         using var asManager = factory.CreateAuthenticatedClient(manager);
@@ -302,8 +295,6 @@ public class OrgTeamPostgresIntegrationTests(CasazenWebApplicationFactory factor
         var collaborator = await OrgTeamHttp.AddMemberAsync(factory, orgId, OrgRole.Collaborator, ["short-rent"]);
         using var asCollaborator = factory.CreateAuthenticatedClient(collaborator);
 
-        // A collaborator reads the booking side (booking.read) and cannot write prices or bookings: the permissions of its
-        // staff role, enforced by the same context policies as before.
         Assert.Equal(HttpStatusCode.OK, (await asCollaborator.GetAsync("/api/bookings")).StatusCode);
         var write = await asCollaborator.PostAsJsonAsync("/api/bookings", new { propertyId = property.Id });
         Assert.Equal(HttpStatusCode.Forbidden, write.StatusCode);
@@ -327,13 +318,9 @@ public class OrgTeamPostgresIntegrationTests(CasazenWebApplicationFactory factor
     [PostgresFact]
     public async Task Veto_FormerOwnerOfLongRent_WithAnOldToken_DoesNotKeepLongRent_ButANonMemberStillDoes()
     {
-        // Owner of the org, onboarded for short-term only: its token still says LongTermLandlord (the Auth0 role removal
-        // failed or the token is old). As an org member its host contexts come from the DB only.
         var (member, _) = await OrgTeamHttp.SeedOwnerWithTeamRowsAsync(factory);
         using var asMember = factory.CreateAuthenticatedClient(member, roles: "PropertyOwner,LongTermLandlord");
 
-        // The same token for a user that is in no org team (as every owner of before the backfill): unchanged, the token
-        // completes its contexts.
         var legacyId = $"auth0|am01-legacy-{Guid.NewGuid():N}";
         await factory.SeedOrgForOwnerAsync(legacyId);
         using (var scope = factory.Services.CreateScope())
@@ -391,7 +378,6 @@ public class OrgTeamPostgresIntegrationTests(CasazenWebApplicationFactory factor
     }
 }
 
-/// <summary>AM-01: the account context is listed to its owners and administrators, never to the staff.</summary>
 public class OrgTeamContextsIntegrationTests(CasazenWebApplicationFactory factory) : IClassFixture<CasazenWebApplicationFactory>
 {
     [PostgresFact]

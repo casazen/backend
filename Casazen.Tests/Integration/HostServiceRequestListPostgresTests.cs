@@ -35,7 +35,6 @@ public class HostServiceRequestListPostgresTests : IClassFixture<CasazenWebAppli
         using var host = _factory.CreateAuthenticatedClient(w.OwnerId, Host);
         var requests = await SeedRequestsAsync(w, host);
 
-        // The chips: each request is in exactly one, and "needsaction" is another cut (the finished job waits for the host).
         Assert.Equal([requests.Pending], await IdsAsync(host, "view=pending"));
         Assert.Equal([requests.Active], await IdsAsync(host, "view=active"));
         Assert.Equal([requests.ToPay], await IdsAsync(host, "view=topay"));
@@ -51,12 +50,10 @@ public class HostServiceRequestListPostgresTests : IClassFixture<CasazenWebAppli
         Assert.Equal(1, counts.GetProperty("done").GetInt32());
         Assert.Equal(1, counts.GetProperty("needsAction").GetInt32());
 
-        // The counters take the same filters as the list but the chip: the cleaning ones are three.
         var cleaning = await ReadJsonAsync(await host.GetAsync("/api/service-requests/counts?category=cleaning"));
         Assert.Equal(3, cleaning.GetProperty("all").GetInt32());
         Assert.Equal(0, cleaning.GetProperty("active").GetInt32());
 
-        // The filters.
         Assert.Equal([requests.Active], await IdsAsync(host, "category=plumbing"));
         Assert.Equal([requests.Active], await IdsAsync(host, $"propertyId={w.PropertyB}"));
         Assert.Equal([requests.Pending], await IdsAsync(host, $"bookingId={w.StayA1}"));
@@ -66,24 +63,20 @@ public class HostServiceRequestListPostgresTests : IClassFixture<CasazenWebAppli
         Assert.Equal([requests.Active], await IdsAsync(host, "q=idraulic"));
         Assert.Equal(3, (await IdsAsync(host, "q=pulizie")).Count);
 
-        // The day of the work: the finished one is the stay A2 left (ten days from today); the paid one twenty days.
         var today = TimeProvider.System.TodayInRome();
         string Day(int days) => today.AddDays(days).ToString("yyyy-MM-dd");
         Assert.Equal([requests.ToPay], await IdsAsync(host, $"from={Day(9)}&to={Day(11)}"));
         Assert.Equal([requests.Done], await IdsAsync(host, $"from={Day(19)}&to={Day(25)}"));
         Assert.Equal([requests.Done], await IdsAsync(host, $"from={Day(19)}"));
 
-        // The order: the next work first, or the opposite; what waits for the host first, then the status in the order of the work.
         Assert.Equal([requests.Active, requests.Pending, requests.ToPay, requests.Done], await IdsAsync(host, "sort=scheduled"));
         Assert.Equal([requests.Done, requests.ToPay, requests.Pending, requests.Active], await IdsAsync(host, "sort=scheduled:desc"));
         Assert.Equal([requests.ToPay, requests.Active, requests.Pending, requests.Done], await IdsAsync(host, "sort=status"));
 
-        // A page: two of the four, the total of all.
         var page = await ListAsync(host, "sort=scheduled&page=2&pageSize=2");
         Assert.Equal([requests.ToPay, requests.Done], page.Ids);
         Assert.Equal(4, page.Total);
 
-        // What a request says to its host.
         var items = (await ListAsync(host, "pageSize=100")).Items.ToDictionary(i => i.GetProperty("id").GetGuid());
         var pending = items[requests.Pending];
         Assert.Equal("remind", pending.GetProperty("hostAction").GetProperty("kind").GetString());
@@ -98,7 +91,6 @@ public class HostServiceRequestListPostgresTests : IClassFixture<CasazenWebAppli
         Assert.Equal(["markPaid"], Strings(toPay.GetProperty("availableActions")));
         Assert.Equal(SupplierPhone, toPay.GetProperty("supplierContact").GetProperty("phone").GetString());
 
-        // Without a stay: no stay in the answer, and the work in progress has nothing for the host but cancel.
         var active = items[requests.Active];
         Assert.Equal(JsonValueKind.Null, active.GetProperty("stay").ValueKind);
         Assert.Equal(JsonValueKind.Null, active.GetProperty("bookingId").ValueKind);
@@ -110,13 +102,11 @@ public class HostServiceRequestListPostgresTests : IClassFixture<CasazenWebAppli
         Assert.Equal("Pagato", done.GetProperty("status").GetString());
         Assert.Equal(["requestAgain"], Strings(done.GetProperty("availableActions")));
 
-        // A new request reminded a moment ago has nothing to do yet, and the answer says from when the host can remind again.
         await SetLastRemindedAsync(requests.Pending, DateTime.UtcNow.AddHours(-1));
         var reminded = (await ListAsync(host, $"bookingId={w.StayA1}")).Items.Single().GetProperty("hostAction");
         Assert.Equal("none", reminded.GetProperty("kind").GetString());
         Assert.NotEqual(JsonValueKind.Null, reminded.GetProperty("remindAvailableAt").ValueKind);
 
-        // What it does not understand is a 400 that says which parameter, and nothing else of the list changes.
         await AssertProblemAsync(await host.GetAsync("/api/service-requests?view=sometimes"), "service_request_list_invalid_view");
         await AssertProblemAsync(await host.GetAsync("/api/service-requests?sort=price"), "service_request_list_invalid_sort");
         await AssertProblemAsync(await host.GetAsync("/api/service-requests?sort=scheduled:sideways"), "service_request_list_invalid_sort");
@@ -125,7 +115,6 @@ public class HostServiceRequestListPostgresTests : IClassFixture<CasazenWebAppli
         await AssertProblemAsync(await host.GetAsync($"/api/service-requests?from={Day(5)}&to={Day(1)}"), "service_request_list_invalid_range");
         await AssertProblemAsync(await host.GetAsync("/api/service-requests/counts?category=Pulizie"), "service_request_list_invalid_category");
 
-        // Another org: nothing of this one, in the list, in the counters, or by id.
         var outsider = $"auth0|sr08a-outsider-{Guid.NewGuid():N}";
         await _factory.SeedOrgForOwnerAsync(outsider);
         using var other = _factory.CreateAuthenticatedClient(outsider, Host);
@@ -143,7 +132,6 @@ public class HostServiceRequestListPostgresTests : IClassFixture<CasazenWebAppli
         using var host = _factory.CreateAuthenticatedClient(w.OwnerId, Host);
         using var supplier = _factory.CreateAuthenticatedClient(w.SupplierUserId, "Supplier");
 
-        // With a stay and without one: both are sent to the supplier, and the supplier sees neither the guest nor the property before the take.
         var withStay = await CreateAsync(host, StayBody(w, w.StayA1));
         var alone = await CreateAsync(host, new { propertyId = w.PropertyB, supplierOrgId = w.SupplierOrgId, category = "plumbing" });
         foreach (var id in new[] { withStay, alone })
@@ -155,7 +143,6 @@ public class HostServiceRequestListPostgresTests : IClassFixture<CasazenWebAppli
             Assert.Equal(JsonValueKind.Null, json.GetProperty("propertyName").ValueKind);
         }
 
-        // Taken, started, finished: the supplier still gets no guest, in any of its answers and in its own reads.
         Assert.Equal(HttpStatusCode.OK, (await supplier.PostAsJsonAsync($"/api/service-requests/{withStay}/take", new { })).StatusCode);
         foreach (var url in new[] { $"/api/service-requests/{withStay}", $"/api/supplier/inbox/{withStay}", "/api/supplier/inbox" })
         {
@@ -166,7 +153,6 @@ public class HostServiceRequestListPostgresTests : IClassFixture<CasazenWebAppli
             Assert.DoesNotContain("Anna", text, StringComparison.Ordinal);
         }
 
-        // The request for the house alone, from the take to the payment, and the host's actions on the way.
         Assert.Equal("remind", await HostActionKindAsync(host, alone));
         var taken = await supplier.PostAsJsonAsync($"/api/service-requests/{alone}/take", new { });
         Assert.Equal(HttpStatusCode.OK, taken.StatusCode);
@@ -180,12 +166,9 @@ public class HostServiceRequestListPostgresTests : IClassFixture<CasazenWebAppli
         var body = await ReadJsonAsync(paid);
         Assert.Equal("Pagato", body.GetProperty("status").GetString());
         Assert.Equal(JsonValueKind.Null, body.GetProperty("bookingId").ValueKind);
-        // The answer of the host's own action carries the extras too.
         Assert.Equal("none", body.GetProperty("hostAction").GetProperty("kind").GetString());
         Assert.Equal(["requestAgain"], Strings(body.GetProperty("availableActions")));
     }
-
-    // ─── helpers ───
 
     private static void AssertNothingOfTheHost(string text, JsonElement json)
     {
@@ -293,10 +276,6 @@ public class HostServiceRequestListPostgresTests : IClassFixture<CasazenWebAppli
             .ExecuteUpdateAsync(u => u.SetProperty(r => r.LastRemindedAt, at));
     }
 
-    /// <summary>
-    /// A host org with two properties in comune H501 (A with two stays, B with none) owned by one user, and an active supplier (its own
-    /// org) operating in H501 for cleaning and plumbing, with a phone the host can be given once the supplier took a request.
-    /// </summary>
     private async Task<World> SeedWorldAsync()
     {
         const string comune = "H501";

@@ -38,7 +38,6 @@ public sealed class Ross1000DayService(AppDbContext db, IRoss1000DirectRoute rou
         if (string.IsNullOrWhiteSpace(structure)) throw new Ross1000Problem("credentials_missing");
         var start = RomeCalendar.ToUtc(day, TimeOnly.MinValue, RomeCalendar.TimeZone);
         var end = RomeCalendar.ToUtc(day.AddDays(1), TimeOnly.MinValue, RomeCalendar.TimeZone);
-        // A stay with old, unbackfilled arrival/departure instants needs an operator to reconcile the dates.
         var atDay = day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var nextDay = atDay.AddDays(1);
         var candidates = db.Bookings.AsNoTracking().Where(b => b.OrgId == org && b.PropertyId == property &&
@@ -73,7 +72,6 @@ public sealed class Ross1000DayService(AppDbContext db, IRoss1000DirectRoute rou
             return Preview(previous?.Hash == movement.Hash ? previous.State : previous?.State == "accepted" ? "correction" : "ready");
         if (confirmedHash != movement.Hash) throw new Ross1000Problem("preview_changed");
 
-        // Commit the exclusive reservation before network I/O so a crash, timeout or parallel request cannot resend this day.
         int claimed = previous == null
             ? await db.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO "Ross1000Days" ("OrgId","PropertyId","Day","Hash","State","RecordKeys")

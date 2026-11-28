@@ -88,13 +88,10 @@ public sealed partial class IdentityVerificationFlowService(
     IdentityDecisionEngine? decisionEngine = null,
     IdentityReviewEvidenceStore? reviewEvidence = null) : IIdentityVerificationFlowService
 {
-    /// <summary>Data Protection purpose of the encrypted picture of a document in the private bucket. Never change it: stored pictures would become unreadable.</summary>
     public const string DocumentImageContentPurpose = "Casazen.DocumentImage.Content";
 
-    /// <summary>The thresholds of an organization without settings (ADR-013-R13), never calibrated.</summary>
     public static readonly VerificationPolicy DefaultPolicy = new(0.85, 0.70, 3, Provisional: true);
 
-    /// <summary>Largest picture read, in bytes (the endpoint refuses more than 10 MB anyway).</summary>
     internal const int MaxImageBytes = 12_000_000;
 
     private const string StoredContentType = "application/octet-stream";
@@ -123,14 +120,12 @@ public sealed partial class IdentityVerificationFlowService(
         ArgumentNullException.ThrowIfNull(session);
         var context = await ContextAsync(session, ct);
 
-        // A verification that passed is over: an answer changes nothing.
         if (session.BiometricOutcome == BiometricOutcome.Accept)
             return new BiometricConsentResult(BiometricConsentStatus.Recorded, State(session, context));
 
         var now = UtcNow();
         if (!consentGiven)
         {
-            // E70/F02/US01/T01: on the self-hosted flow a refusal is the choice of the assisted path (and opens the step when it was not opened).
             NoteChoice(session, context, IdentityChoices.Assisted, consentVersion, channel, now);
             session.BiometricConsentRefusedAt = now;
             session.BiometricConsentAt = null;
@@ -145,7 +140,6 @@ public sealed partial class IdentityVerificationFlowService(
         if (string.IsNullOrEmpty(version) || version.Length > BiometricConsentRules.VersionMaxLength)
             return new BiometricConsentResult(BiometricConsentStatus.VersionRequired, State(session, context));
 
-        // E70/F02/US01/T01: on the self-hosted flow a consent to the served version is the choice of the automatic verification (a stale version records nothing).
         NoteChoice(session, context, IdentityChoices.Automatic, version, channel, now);
 
         if (!context.Enabled)
@@ -162,7 +156,6 @@ public sealed partial class IdentityVerificationFlowService(
             return new BiometricConsentResult(BiometricConsentStatus.Operator, State(session, context));
         }
 
-        // E70/F02/US01/T01: the guest the verification is bound to left the stay: the verification never moves to somebody else, a person decides.
         if (context.BoundGuestMissing)
         {
             await DeleteStoredDocumentAsync(session, ct);
@@ -170,8 +163,6 @@ public sealed partial class IdentityVerificationFlowService(
             return new BiometricConsentResult(BiometricConsentStatus.Operator, State(session, context));
         }
 
-        // E22/F01/US02/T02: no text of the consent can be shown (production serves approved texts only, and none is approved): the biometric path is closed, a person
-        // verifies and the host is told why (legal_text_not_approved).
         if (!context.ConsentTextServed)
         {
             await DeleteStoredDocumentAsync(session, ct);
@@ -184,7 +175,6 @@ public sealed partial class IdentityVerificationFlowService(
         if (served is null || !string.Equals(served.Version, version, StringComparison.Ordinal))
             return new BiometricConsentResult(BiometricConsentStatus.VersionUnknown, State(session, context));
 
-        // Already with the operator (a refusal, a request, a review): the person decides, the biometric path is not opened again.
         if (InOperatorPath(session, context))
         {
             await CloseOperatorPathAsync(session, context, ct);
@@ -232,11 +222,8 @@ public sealed partial class IdentityVerificationFlowService(
         {
             bytes = await ImageBytes.ReadAllAsync(image, MaxImageBytes, ct);
 
-            // E70/F02/US01/T01: a verification whose bound guest left the stay is not offered any more: no face is looked for and no picture is kept.
             var consented = context.Enabled && HasCurrentConsent(session, context) && !context.BoundGuestMissing;
 
-            // The face of the document is looked for only after the consent, and not on the back of a card (the photo is on the front); the MRZ
-            // hints give the guidance of the reading in any case.
             CaptureAssessment? assessment = null;
             if (consented)
             {
@@ -255,7 +242,6 @@ public sealed partial class IdentityVerificationFlowService(
             }
             else if (side == DocumentSide.Back)
             {
-                // The printed fields are read on the front: the back of a card is only asked for its MRZ.
                 reading = DocumentReading.Nothing;
             }
             else
@@ -265,8 +251,6 @@ public sealed partial class IdentityVerificationFlowService(
                 reading = fromOcr is { HasDocumentEvidence: true } ? FromOcr(fromOcr) : DocumentReading.Nothing;
             }
 
-            // E71/F01/US03/T01: the checks of the self-hosted document step (geometry, side, format, fields), only with the flow on and after the consent: a picture with any
-            // guidance code is refused here (not stored, not an attempt) and the format of the document is known from here on. Off, nothing of it runs.
             DocumentPictureChecks? selfChecks = null;
             if (DocumentStepOn && consented)
             {
@@ -287,8 +271,6 @@ public sealed partial class IdentityVerificationFlowService(
 
             var now = UtcNow();
 
-            // The proofs of the numbers are made with the key the first picture of the attempt was made with, and keep it (StoredDocumentCheck.ProofKey): a new
-            // token of the session (the guest at the door gets one without losing the attempt, IGuestCheckInService.ReissueLinkAsync) must not change them.
             var previous = ReadCheck(session);
             var proofKey = previous?.ProofKey ?? session.TokenHash;
             var picture = new StoredDocumentPicture(
@@ -300,7 +282,6 @@ public sealed partial class IdentityVerificationFlowService(
                 selfChecks?.ClassifiedSide,
                 selfChecks?.DHash);
 
-            // The attempt keeps up to two pictures: a side sent again replaces its own and leaves the other, a single picture replaces both.
             var kept = side == DocumentSide.Single ? null : previous;
             StoredDocumentPicture? front;
             StoredDocumentPicture? back;
@@ -333,7 +314,6 @@ public sealed partial class IdentityVerificationFlowService(
                     break;
             }
 
-            // The face must come from the front (or the single picture), the MRZ from any side.
             var check = CombineChecks(front?.Mrz, back?.Mrz, side);
             if (front?.NumberProof is { } frontNumber && back?.NumberProof is { } backNumber && frontNumber != backNumber)
                 check = check with { DocumentNumberConsistent = false };
@@ -347,7 +327,6 @@ public sealed partial class IdentityVerificationFlowService(
                 .ToList();
             AddMissingSideGuidance(guidance, side, mrzReading.Result is not null, mrzRead, frontGood);
 
-            // E71/F01/US03/T01: the format the MRZ showed, and the coherence of the sides (flags only, never a value read) when both are in.
             IReadOnlyList<DocumentCoherenceCheck>? coherence = null;
             if (selfChecks is not null)
             {
@@ -357,14 +336,12 @@ public sealed partial class IdentityVerificationFlowService(
                 coherence = await CheckCoherenceAsync(session, context, selfChecks, side, mrzReading, front, back, ct);
             }
 
-            // With the self-hosted flow on, a side that is accepted is forgiven what it cost: its refusals are not counted any more and the picture last refused is forgotten.
             var storedCheck = new StoredDocumentCheck(
                 check, frontHash, now, backHash, front, back, side != DocumentSide.Single, context.VerifyingGuestPosition, proofKey,
                 Refusals: selfChecks is null ? previous?.Refusals : WithoutSide(previous?.Refusals, side),
                 Coherence: coherence,
                 RefusedSha256: selfChecks is null ? previous?.RefusedSha256 : WithoutSide(previous?.RefusedSha256, side));
 
-            // With the self-hosted flow on the document is complete only when every side of its format passed its checks.
             if (selfChecks is not null)
                 acceptable = acceptable && DocumentComplete(session, storedCheck);
 
@@ -383,7 +360,6 @@ public sealed partial class IdentityVerificationFlowService(
             }
             else
             {
-                // A new picture replaces the old one: a kept picture of an earlier upload must not stay behind (a minor found on either side wipes both).
                 await DeleteStoredDocumentAsync(session, ct);
             }
 
@@ -429,15 +405,12 @@ public sealed partial class IdentityVerificationFlowService(
                 ? Done(IdentityVerificationGuestResults.Ok, [], Remaining(session, policy), null)
                 : Refused(SelfieStepStatus.ChallengeRequired, session, policy);
 
-        // Also a new link of a booking that is with an operator (rejected, or a hand-off still open): the session is new, the decision is not.
         if (InOperatorPath(session, context))
         {
             await CloseOperatorPathAsync(session, context, ct);
             return Done(IdentityVerificationGuestResults.Operator, [], Remaining(session, policy), null);
         }
 
-        // Every way to the operator takes the pictures kept for the comparison with it (both sides of a document): an administrator of the organization can
-        // switch the face check off, or lower the attempts, while a guest is between the document and the selfie (E22/F01/US01/T03).
         if (!context.Enabled)
         {
             await DeleteStoredDocumentAsync(session, ct);
@@ -450,14 +423,12 @@ public sealed partial class IdentityVerificationFlowService(
             return await OperatorAsync(session, VerificationAlertReasons.MinorExcluded, policy, ct);
         }
 
-        // E70/F02/US01/T01: the bound guest left the stay: no comparison with somebody else's data, a person decides.
         if (context.BoundGuestMissing)
         {
             await DeleteStoredDocumentAsync(session, ct);
             return await OperatorAsync(session, VerificationAlertReasons.Review, policy, ct);
         }
 
-        // E22/F01/US02/T02: the text of the consent is no longer served (a registry with nothing approved in production): no selfie is compared, a person verifies.
         if (!context.ConsentTextServed)
         {
             await DeleteStoredDocumentAsync(session, ct);
@@ -465,7 +436,6 @@ public sealed partial class IdentityVerificationFlowService(
         }
 
         var stored = ReadCheck(session);
-        // The document says the holder is a minor: no biometric processing (ADR-013-R9).
         if (stored?.Check.HolderIsMinor == true)
         {
             await DeleteStoredDocumentAsync(session, ct);
@@ -476,8 +446,6 @@ public sealed partial class IdentityVerificationFlowService(
         if (stored is null)
             return Refused(SelfieStepStatus.DocumentRequired, session, policy);
 
-        // A document of two sides that still lacks its face or its MRZ does not reach the comparison: the page asks for the missing side, and no
-        // attempt is spent (the attempts are the complete document and selfie tries, E22/F01/US01/T02).
         if (!DocumentComplete(session, stored))
             return Refused(SelfieStepStatus.DocumentRequired, session, policy);
 
@@ -509,14 +477,11 @@ public sealed partial class IdentityVerificationFlowService(
             }
             else
             {
-                // The storage and Data Protection errors of this read propagate (500, the guest tries again): they say nothing about the guest
-                // and must not hand the verification to a person for good.
                 documentBytes = await LoadStoredDocumentAsync(session, ct);
                 if (documentBytes is null)
                     return Refused(SelfieStepStatus.DocumentRequired, session, policy);
             }
 
-            // A property in Ticino keeps nothing: the back of a two-sided document comes again too, and must be the one that was read.
             if (context.DocumentNotArchived && stored.BackSha256 is not null)
             {
                 if (documentPhotoBack is null)
@@ -559,8 +524,6 @@ public sealed partial class IdentityVerificationFlowService(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // The verification itself failed unexpectedly. The safe default is a person: the session says why, the operators are alerted, the
-                // log keeps the type only (a message could carry what was being read).
                 logger.LogError("Identity verification of session {SessionId} failed ({ErrorType}); it goes to the operator", session.Id, ex.GetType().Name);
                 await DeleteStoredDocumentAsync(session, ct);
                 return await OperatorAsync(session, VerificationAlertReasons.TechnicalError, policy, ct);
@@ -588,7 +551,6 @@ public sealed partial class IdentityVerificationFlowService(
                 ? VerificationAlertReasons.LegalTextNotApproved
                 : VerificationAlertReasons.GuestRequest;
 
-            // E70/F02/US01/T01: on the self-hosted flow the request is the switch to the assisted path of an opened verification (the hand-off below closes it).
             if (SelfHostedOn && session.IdentityOpenedAt is not null && session.IdentityClosedAt is null)
             {
                 var now = UtcNow();
@@ -604,7 +566,6 @@ public sealed partial class IdentityVerificationFlowService(
         return State(session, context);
     }
 
-    /// <summary>Records one attempt that reached a decision and acts on it: the code on <c>ok</c>, the operator on a review or the last failure.</summary>
     private async Task<SelfieStepResult> ApplyAsync(
         GuestCheckInSession session,
         IdentityVerificationOutcome outcome,
@@ -612,7 +573,6 @@ public sealed partial class IdentityVerificationFlowService(
         VerificationPolicy policy,
         CancellationToken ct)
     {
-        // A capture that is not good enough: nothing compared, the attempt does not count, nothing is logged.
         if (outcome.Result == IdentityVerificationResult.Recapture)
             return Done(IdentityVerificationGuestResults.Retry, outcome.GuidanceCodes, Remaining(session, policy), null);
 
@@ -637,8 +597,6 @@ public sealed partial class IdentityVerificationFlowService(
             CreatedAt = now,
         });
 
-        // E20/F01/US01/T01: a passed verification is announced on the bus, in the same save as its row of the log: an org that lets CasaZen write the
-        // guests to the channel manager on their own learns that the identity of the stay is verified. Ids and the method only, never a picture or a value.
         if (outcome.Result == IdentityVerificationResult.Ok)
         {
             domainEvents?.Record(
@@ -659,7 +617,6 @@ public sealed partial class IdentityVerificationFlowService(
                 await DeleteStoredDocumentAsync(session, ct);
                 await db.SaveChangesAsync(ct);
 
-                // The caller releases the code only after the verified decision is committed.
                 return Done(IdentityVerificationGuestResults.Ok, [], Remaining(session, policy), null);
 
             case IdentityVerificationResult.Review:
@@ -682,10 +639,6 @@ public sealed partial class IdentityVerificationFlowService(
         }
     }
 
-    /// <summary>
-    /// The lock code for the screen (channel <c>checkin-screen</c>) and, when the guest has an address, the same code e-mailed at once (channel
-    /// <c>email</c>, template <c>GuestAccessCode</c>). Both reads go through the gate of <see cref="IAccessCodeService"/>.
-    /// </summary>
     private async Task<string?> ReleaseCodeAsync(GuestCheckInSession session, CancellationToken ct)
     {
         var code = await accessCodes.ReleaseToGuestAsync(session.BookingId, AccessCodeReleaseChannels.CheckInScreen, ct);
@@ -704,7 +657,6 @@ public sealed partial class IdentityVerificationFlowService(
         if (emailed is null)
             return code;
 
-        // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
         var branding = await emailBranding.ForOrgOrNullAsync(session.OrgId, ct);
         var email = EmailTemplates.GuestAccessCode(
             EmailTemplates.GuestAccessCodeCulture(session.Language),
@@ -719,19 +671,12 @@ public sealed partial class IdentityVerificationFlowService(
         return code;
     }
 
-    /// <summary>
-    /// Hands the verification to an operator: the time of the request on the session and, the first time only, the alert (the "To do" is saved
-    /// with the session). A later reason does not alert again, and neither does a new session of a booking whose hand-off is still open: the
-    /// operators were told and nobody decided yet, and the booking has one "To do". After a decision a new request alerts again.
-    /// </summary>
     private async Task ToOperatorAsync(GuestCheckInSession session, string reason, CancellationToken ct)
     {
-        // E70/F02/US01/T01: the first hand-off of an opened self-hosted verification closes it with the code of its reason, saved with the "To do" below.
         CloseIdentitySession(session, IdentityOutcomeOf(reason));
 
         if (session.OperatorRequestedAt is null)
         {
-            // Read before the request of this session is saved: it says what the other sessions and the log already hold.
             var alreadyTold = await VerificationHandOff.HasOpenHandOffAsync(db, session.BookingId, ct);
             var now = UtcNow();
             session.OperatorRequestedAt = now;
@@ -764,8 +709,6 @@ public sealed partial class IdentityVerificationFlowService(
     {
         await DeleteStoredDocumentAsync(session, ct);
 
-        // E70/F02/US01/T01: an opened self-hosted verification found with a person (the booking is with an operator through another session, or the attempts reach a
-        // lowered maximum) is closed: a person reviews it.
         CloseIdentitySession(session, IdentityOutcomeCodes.Review);
         if (OnlyTheAttemptsReachTheMax(session, context))
         {
@@ -805,11 +748,6 @@ public sealed partial class IdentityVerificationFlowService(
     private static int Remaining(GuestCheckInSession session, VerificationPolicy policy) =>
         Math.Max(0, policy.MaxAttempts - session.BiometricAttempts);
 
-    /// <summary>
-    /// The verification is with the operator: this session asked for a person, refused the consent, was reviewed, or used its attempts without a
-    /// pass; or the <b>booking</b> is with an operator through another session (rejected by one, or a hand-off still open: a new link does not
-    /// start the verification again).
-    /// </summary>
     private static bool InOperatorPath(GuestCheckInSession session, FlowContext context) =>
         context.BookingWithOperator
         || session.OperatorRequestedAt is not null
@@ -835,7 +773,6 @@ public sealed partial class IdentityVerificationFlowService(
         // when the face and the MRZ were found across the pictures, so a reloaded page asks for the missing side instead of the selfie.
         var documentChecked = check is not null && DocumentComplete(session, check);
 
-        // E70/F02/US01/T01: the members of the self-hosted session, read only while the self-hosted flow is on (off, they keep their defaults, as before).
         var selfHosted = SelfHostedOn;
 
         // E73/F01/US01/T02: on the self-hosted flow a guided retry is a retry the guest was offered, and the step after the document is the presence (the two-frame selfie is closed).
@@ -885,7 +822,6 @@ public sealed partial class IdentityVerificationFlowService(
         return snapshot is not null && snapshot.IsReady ? snapshot.Policy.Closure.GuidedRetries : 0;
     }
 
-    /// <summary>What every step needs: the settings of the org, the guest who verifies and whether the property keeps no document.</summary>
     private async Task<FlowContext> ContextAsync(GuestCheckInSession session, CancellationToken ct)
     {
         var (enabled, policy) = await PolicyAsync(session.OrgId, ct);
@@ -924,14 +860,12 @@ public sealed partial class IdentityVerificationFlowService(
             boundGuestMissing);
     }
 
-    /// <summary>The settings of the org, or the default of ADR-013-R13 when it has none: enabled on the Agency plan only.</summary>
     private async Task<(bool Enabled, VerificationPolicy Policy)> PolicyAsync(Guid orgId, CancellationToken ct)
     {
         var settings = await db.BiometricSettings
             .AsNoTracking()
             .IgnoreQueryFilters()
             .Where(s => s.OrgId == orgId)
-            // The oldest row, the one BiometricSettingsService reads and writes (the table has no unique index on the org).
             .OrderBy(s => s.CreatedAt)
             .ThenBy(s => s.Id)
             .Select(s => new { s.Enabled, s.AcceptThreshold, s.EscalateThreshold, s.MaxAttempts, s.CalibratedAt })
@@ -1022,7 +956,6 @@ public sealed partial class IdentityVerificationFlowService(
         return minor && !chosen.HolderIsMinor ? chosen with { HolderIsMinor = true } : chosen;
     }
 
-    /// <summary>Whether a face was found on a picture where one is looked for (null: not looked for on the back, or the models could not say).</summary>
     private static bool? FaceOf(CaptureAssessment? assessment, DocumentSide side)
     {
         if (side == DocumentSide.Back || assessment is not { Assessed: true })
@@ -1031,7 +964,6 @@ public sealed partial class IdentityVerificationFlowService(
         return !assessment.GuidanceCodes.Contains(CaptureGuidanceCodes.ShowDocumentPhoto, StringComparer.Ordinal);
     }
 
-    /// <summary>Whether the light, the glare and the blur of a picture were good (the face apart); null when they were not assessed.</summary>
     private static bool? QualityOf(CaptureAssessment? assessment)
     {
         if (assessment is not { Assessed: true })
@@ -1057,8 +989,6 @@ public sealed partial class IdentityVerificationFlowService(
             case DocumentSide.Front:
                 if (!mrzFoundAnywhere && frontGood)
                 {
-                    // The MRZ is not on the front of a card: «show the whole document», which the reading of this picture gave, would send the guest
-                    // after something that is not there. The back is what is missing.
                     guidance.RemoveAll(code => string.Equals(code, CaptureGuidanceCodes.ShowWholeDocument, StringComparison.Ordinal));
                     guidance.Add(CaptureGuidanceCodes.DocumentBackNeeded);
                 }
@@ -1074,15 +1004,10 @@ public sealed partial class IdentityVerificationFlowService(
         }
     }
 
-    /// <summary>
-    /// A document of one picture is complete as soon as it was read, as it always was (the agent says what is wrong at the selfie); a document of two
-    /// sides only when its front is there with a face (or no way to look for one) and the MRZ was read on a side.
-    /// </summary>
     private static bool IsComplete(StoredDocumentCheck check) =>
         !check.TwoSided
         || (check.Front is { } front && front.Face != false && (front.Mrz is not null || check.Back?.Mrz is not null));
 
-    /// <summary>The side still to photograph for a document of two sides: the front when it is missing or has no face, else the back when no MRZ was read.</summary>
     private static string? SideNeeded(StoredDocumentCheck? check)
     {
         if (check is null || !check.TwoSided)
@@ -1094,7 +1019,6 @@ public sealed partial class IdentityVerificationFlowService(
         return front.Mrz is null && check.Back?.Mrz is null ? DocumentSides.Back : null;
     }
 
-    /// <summary>The pictures of the attempt as the page names them: <c>single</c>, or <c>front</c> and <c>back</c> for those that are there.</summary>
     private static IReadOnlyList<string> SidesOf(bool twoSided, StoredDocumentPicture? front, StoredDocumentPicture? back)
     {
         if (!twoSided)
@@ -1138,7 +1062,6 @@ public sealed partial class IdentityVerificationFlowService(
         }
         catch (JsonException)
         {
-            // A value that is not one of ours: the document is read again.
             return null;
         }
     }
@@ -1165,14 +1088,12 @@ public sealed partial class IdentityVerificationFlowService(
                 .ToListAsync(ct);
             row = live.FirstOrDefault();
 
-            // One live row per booking is what this flow writes; should there be more, only the newest stays.
             foreach (var extra in live.Skip(1))
             {
                 await DeleteObjectsAsync(extra, ct);
                 extra.DeletedAt = now;
             }
 
-            // The old picture of this side goes before the new one is written, as the single picture always did, so a failure leaves nothing behind.
             if (row is not null)
                 await DeleteObjectAsync(side == DocumentSide.Front ? row.FrontImageUrl : row.BackImageUrl, ct);
         }
@@ -1202,7 +1123,6 @@ public sealed partial class IdentityVerificationFlowService(
         row.ProcessedAt = now;
     }
 
-    /// <summary>Encrypts a picture (Data Protection, <see cref="DocumentImageContentPurpose"/>) and writes it to the private bucket; the key it has there.</summary>
     private async Task<string> PutEncryptedAsync(GuestCheckInSession session, byte[] bytes, CancellationToken ct)
     {
         var key = StorageKeys.GuestDocument(session.OrgId, session.Booking.GuestId, $"{Guid.NewGuid():N}.bin");
@@ -1220,21 +1140,18 @@ public sealed partial class IdentityVerificationFlowService(
         return key;
     }
 
-    /// <summary>Deletes one object of the private bucket; a blank address (a side that was never sent) is nothing to delete.</summary>
     private async Task DeleteObjectAsync(string? key, CancellationToken ct)
     {
         if (!string.IsNullOrWhiteSpace(key))
             await storage.DeleteAsync(StorageBucket.Private, key, ct);
     }
 
-    /// <summary>Deletes the objects of both sides of a kept document.</summary>
     private async Task DeleteObjectsAsync(DocumentImage image, CancellationToken ct)
     {
         await DeleteObjectAsync(image.FrontImageUrl, ct);
         await DeleteObjectAsync(image.BackImageUrl, ct);
     }
 
-    /// <summary>The kept picture of the document of the booking, decrypted; null when none is kept.</summary>
     private async Task<byte[]?> LoadStoredDocumentAsync(GuestCheckInSession session, CancellationToken ct)
     {
         var key = await db.DocumentImages
@@ -1262,7 +1179,6 @@ public sealed partial class IdentityVerificationFlowService(
         }
     }
 
-    /// <summary>Deletes the kept pictures of the booking, both sides (the objects, and the rows marked deleted): the verification no longer needs them.</summary>
     private async Task DeleteStoredDocumentAsync(GuestCheckInSession session, CancellationToken ct)
     {
         var kept = await db.DocumentImages
@@ -1320,10 +1236,6 @@ public sealed partial class IdentityVerificationFlowService(
 
     private DateTime UtcNow() => clock.GetUtcNow().UtcDateTime;
 
-    /// <summary>
-    /// What every step needs. <see cref="VerifyingGuestId"/> is the id the opening of a self-hosted verification binds for the guest who verifies, and
-    /// <see cref="BoundGuestMissing"/> says that the guest a self-hosted verification is bound to left the stay (E70/F02/US01/T01): never true with the flow off.
-    /// </summary>
     private sealed record FlowContext(
         bool Enabled,
         VerificationPolicy Policy,

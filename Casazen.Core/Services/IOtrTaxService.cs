@@ -1,9 +1,5 @@
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// OTR (Overnight Tourist Registry) tax CSV generator for Ticino.
-/// Generates CSV files of overnight stays per period for tax reporting (ADR-016).
-/// </summary>
 public interface IOtrTaxService
 {
     /// <summary>
@@ -22,7 +18,6 @@ public interface IOtrTaxService
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>Result of an OTR tax report generation.</summary>
 public sealed record OtrTaxResult(
     string CsvContent,
     string Reference,

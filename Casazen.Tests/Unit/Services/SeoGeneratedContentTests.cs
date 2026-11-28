@@ -8,13 +8,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// SE-01 (A8-06): only a real, well-formed answer of a configured AI provider becomes publishable SEO text; the stub,
-/// a missing key, an empty or a "loose" answer (markdown, chat reply, one line) are explicit "not generated" states.
-/// </summary>
 public class SeoGeneratedContentTests
 {
-    /// <summary>An answer with the sections, paragraphs and length the checks require.</summary>
     public static string ValidHtml(string marker = "Como")
     {
         var html = new StringBuilder("<h2>CIN (Codice Identificativo Nazionale)</h2>");
@@ -49,7 +44,6 @@ public class SeoGeneratedContentTests
     [Fact]
     public void Evaluate_ProviderNotConfigured_IsNotGeneratedWithoutBody()
     {
-        // The stub text would pass for a paragraph: the flag, not the content, decides.
         var (status, body) = SeoGeneratedContent.Evaluate(Answer(ValidHtml(), providerConfigured: false));
 
         Assert.Equal(SeoContentStatus.AiProviderNotConfigured, status);
@@ -100,7 +94,6 @@ public class SeoGeneratedContentTests
     }
 }
 
-/// <summary>SE-01 (A8-06): the SEO prompt has instructions and names the only facts and sources the text may use.</summary>
 public class SeoContentPromptTests
 {
     private static readonly ComuneInfo Como = ComuneTestData.ComoInfo;
@@ -194,7 +187,6 @@ public class SeoContentPromptTests
     [Fact]
     public void VersionFor_OnlyTheLombardyGuides_HaveTheNewVersion()
     {
-        // A page whose prompt did not change keeps its version: it is not regenerated, nor reviewed again, for nothing.
         Assert.Equal(SeoContentPrompt.LombardyGuideVersion, SeoContentPrompt.VersionFor(Como, SeoPageType.ComplianceGuide));
         Assert.Equal(SeoContentPrompt.Version, SeoContentPrompt.VersionFor(Como, SeoPageType.TouristTaxCalc));
         Assert.Equal(SeoContentPrompt.Version, SeoContentPrompt.VersionFor(ComuneTestData.PalermoInfo, SeoPageType.ComplianceGuide));
@@ -206,7 +198,6 @@ public class SeoContentPromptTests
     {
         var prompt = SeoContentPrompt.Build(Como, SeoPageType.ComplianceGuide, []);
 
-        // FD-15 allowlist (SeoHtmlSanitizer / src/lib/sanitize-html.ts): the prompt never asks for a tag that is stripped.
         foreach (var tag in new[] { "h2", "h3", "p", "ul", "ol", "li", "strong", "em", "table", "thead", "tbody", "tr", "th", "td", "br" })
             Assert.Contains($"<{tag}>", prompt);
         Assert.Contains("<a href=", prompt);

@@ -14,38 +14,27 @@ namespace Casazen.Web.DTOs.Payments;
 /// </remarks>
 public sealed record CreateBatchRequest
 {
-    /// <summary>IDs of the confirmed payouts to pay (one transfer for each). An empty list is never «all the payouts».</summary>
     public List<Guid> PayoutIds { get; init; } = [];
 
-    /// <summary>The day the bank is asked to execute the transfers (<c>yyyy-MM-dd</c>): today or later, at most a year ahead. Required.</summary>
     public DateOnly? ExecutionDate { get; init; }
 
-    /// <summary>Retired: the batch is made from payouts. Any value is refused (422 <c>wire_batch_from_statement_retired</c>).</summary>
     public List<Guid>? StatementIds { get; init; }
 
-    /// <summary>Retired: the debit account is the IBAN of the issuer profile of the org. Any value is refused (422 <c>wire_batch_from_statement_retired</c>).</summary>
     public string? DebitAccount { get; init; }
 }
 
-/// <summary>Response after creating a wire transfer batch. No IBAN and no name.</summary>
 public sealed record CreateBatchResponse
 {
-    /// <summary>The ID of the created batch.</summary>
     public Guid BatchId { get; init; }
 
-    /// <summary>Currency of the batch.</summary>
     public string Currency { get; init; } = string.Empty;
 
-    /// <summary>Total amount of all transfers in the batch: the sum of the net amounts of its payouts.</summary>
     public decimal TotalAmount { get; init; }
 
-    /// <summary>Number of wire transfers in the batch: one for each payout.</summary>
     public int TransferCount { get; init; }
 
-    /// <summary>The day the file asks the bank to execute the transfers.</summary>
     public DateOnly? ExecutionDate { get; init; }
 
-    /// <summary>The message of the file: <c>pain.001.001.09.ch.03</c> for CHF, <c>pain.001.001.09</c> for EUR.</summary>
     public string? Format { get; init; }
 }
 
@@ -116,11 +105,6 @@ public sealed record WirePayoutResponse(
     }
 }
 
-/// <summary>
-/// A batch and the payouts it pays (<c>GET api/wire-transfers/batch/{id}/payouts</c>): <see cref="Batch"/> is the batch as the list of the batches shows it, with its state
-/// (<c>Generated</c>, <c>Downloaded</c>, <c>Paid</c>) and no IBAN, name or file; <see cref="Payouts"/> are its payouts with the members of the payable ones, in the order of
-/// the transfers of the file. A batch of before the payouts (made from statements) has none.
-/// </summary>
 public sealed record WireBatchPayoutsResponse(WireBatchListItemResponse Batch, IReadOnlyList<WirePayoutResponse> Payouts)
 {
     public static WireBatchPayoutsResponse From(WireBatchPayoutsSummary summary)

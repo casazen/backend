@@ -32,7 +32,6 @@ namespace Casazen.Tests.Integration;
 /// </summary>
 public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) : IClassFixture<LeaseRentPostgresTests.RentFactory>
 {
-    /// <summary>10:00 in Rome on 25 September 2026: after the stipula (20/8) and the lease start (1/9).</summary>
     private static readonly DateTimeOffset Now = new(2026, 9, 25, 8, 0, 0, TimeSpan.Zero);
 
     private const string TenantEmail = "giulia@example.com";
@@ -57,12 +56,10 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
         Assert.Equal("2026-09-30", installments[0].GetProperty("periodEnd").GetString());
         Assert.Equal("2026-09-05", installments[0].GetProperty("dueDate").GetString());
         Assert.All(installments, i => Assert.Equal("Scheduled", i.GetProperty("status").GetString()));
-        // Due on 5 September, not paid on the 25th: overdue, computed on read.
         Assert.True(installments[0].GetProperty("isOverdue").GetBoolean());
         Assert.False(installments[1].GetProperty("isOverdue").GetBoolean());
         Assert.Equal(JsonValueKind.Null, ledger.GetProperty("partialFinalPeriod").ValueKind);
 
-        // Quarterly: the amount defaults to three months of rent; nothing was paid, so the cadence can change.
         var quarterly = await ReadJson(await seeded.Client.PutAsJsonAsync($"{RentPath(seeded)}/schedule", new { cadence = "Quarterly", billingDayOfMonth = 5 }));
         var quarters = quarterly.GetProperty("installments").EnumerateArray().ToList();
         Assert.Equal(16, quarters.Count);
@@ -89,7 +86,6 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
         (await seeded.Client.PutAsJsonAsync(
             $"{RentPath(seeded)}/schedule", new { cadence = "Monthly", billingDayOfMonth = 5 })).EnsureSuccessStatusCode();
 
-        // Rent is € 1.200. The first confirm adds the advance; a later confirm has to replace it, and None removes it.
         var first = await ConfirmTermsAsync(seeded, new { advanceMode = "FixedContractAmount", advanceAmount = 150m, cadence = "Monthly" });
         AssertCondominiumPlan(first, 1_350m, "FixedContractAmount", 150m, rent: 1_200m, advance: 150m);
 
@@ -99,7 +95,6 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
         var cleared = await ConfirmTermsAsync(seeded, new { advanceMode = "None" });
         AssertCondominiumPlan(cleared, 1_200m, "None", advanceAmount: null, rent: 1_200m, advance: null);
 
-        // An installment the landlord set to their own amount is not the rent or the previous rent-plus-advance, so it stays.
         var custom = await ReadJson(await seeded.Client.PutAsJsonAsync(
             $"{RentPath(seeded)}/schedule", new { cadence = "Monthly", billingDayOfMonth = 5, amount = 1_500m }));
         Assert.Equal(1_500m, custom.GetProperty("schedule").GetProperty("amount").GetDecimal());
@@ -128,11 +123,9 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
     public async Task RunCollection_InstallmentComingDue_EmailsTheTenantOnceAndTheWebhookMarksItPaid()
     {
         var seeded = await SignedLeaseAsync("collect", connect: true);
-        // LR-04a: the job writes to the tenants only for a plan the landlord switched online requests on for.
         (await seeded.Client.PutAsJsonAsync(
             $"{RentPath(seeded)}/schedule", new { cadence = "Monthly", billingDayOfMonth = 5, onlineRequests = true })).EnsureSuccessStatusCode();
 
-        // 25/9: October is due on 5/10, beyond the lead days; September was already due when generated (landlord's call).
         await RunJobAsync();
         Assert.Empty(EmailsTo(TenantEmail, seeded));
 
@@ -158,7 +151,6 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
         Assert.Equal("", first.GetProperty("stripeAccountId").GetString());
         Assert.Equal(1201m, page.GetProperty("totalAmount").GetDecimal());
         var paymentIntentId = (await InstallmentAsync(installmentId)).StripePaymentIntentId!;
-        // The second session reuses the payable PaymentIntent (read back from Stripe): one creation only.
         Assert.StartsWith(paymentIntentId, second.GetProperty("clientSecret").GetString(), StringComparison.Ordinal);
         var created = Assert.Single(
             factory.Stripe.IdempotentPaymentIntents, p => p.Key.StartsWith($"rent-charge:{installmentId:N}:", StringComparison.Ordinal));
@@ -170,7 +162,7 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
 
         var paid = RentEvent("payment_intent.succeeded", paymentIntentId, installmentId, account: null);
         await HandleWebhookAsync(paid);
-        await HandleWebhookAsync(paid); // duplicate delivery
+        await HandleWebhookAsync(paid);
 
         var settled = await InstallmentAsync(installmentId);
         Assert.Equal(RentLedgerStatus.Paid, settled.Status);
@@ -194,7 +186,6 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
     {
         var seeded = await SignedLeaseAsync("tracked", connect: true);
 
-        // Six months into the lease (it started on 1 September 2026): the rents are tracked from March.
         factory.Clock.SetUtcNow(new DateTimeOffset(2027, 3, 12, 8, 0, 0, TimeSpan.Zero));
         var configured = await ReadJson(await seeded.Client.PutAsJsonAsync(
             $"{RentPath(seeded)}/schedule", new { cadence = "Monthly", billingDayOfMonth = 5, trackFrom = "2027-03-01" }));
@@ -203,18 +194,15 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
         Assert.Equal("2027-03-01", schedule.GetProperty("trackFrom").GetString());
         Assert.False(schedule.GetProperty("onlineRequestsEnabled").GetBoolean());
         var installments = configured.GetProperty("installments").EnumerateArray().ToList();
-        Assert.Equal(42, installments.Count); // March 2027 to August 2030: the six months before it were never born
+        Assert.Equal(42, installments.Count);
         Assert.Equal("2027-03-01", installments[0].GetProperty("periodStart").GetString());
-        // Only the rent of the current month, due on the 5th and not paid on the 12th, is late; none of the months before it.
         Assert.Single(installments, i => i.GetProperty("isOverdue").GetBoolean());
         Assert.Equal(42, await CountInstallmentsAsync(seeded.LeaseId));
 
-        // 1 April: April falls due on the 5th, inside the lead days, but nobody switched the online requests on: no e-mail.
         factory.Clock.SetUtcNow(new DateTimeOffset(2027, 4, 1, 6, 0, 0, TimeSpan.Zero));
         await RunJobAsync();
         Assert.Empty(EmailsTo(TenantEmail, seeded));
 
-        // The landlord switches them on (without repeating the day it is tracked from, which the plan keeps): the next run asks for April.
         var switchedOn = await ReadJson(await seeded.Client.PutAsJsonAsync(
             $"{RentPath(seeded)}/schedule", new { cadence = "Monthly", billingDayOfMonth = 5, onlineRequests = true }));
         Assert.True(switchedOn.GetProperty("schedule").GetProperty("onlineRequestsEnabled").GetBoolean());
@@ -225,7 +213,6 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
         Assert.Equal(EmailTemplates.Names.RentPaymentRequest, request.Template);
         Assert.Equal(new DateOnly(2027, 4, 1), (await InstallmentAsync(LinkOf(request.Content).InstallmentId)).PeriodStart);
 
-        // The lease renews by itself (LR-14): the plan grows by the 48 months of the new period, and the six months it skipped stay away.
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -269,7 +256,6 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
         var twice = await seeded.Client.PostAsJsonAsync(
             $"{RentPath(seeded)}/installments/{installmentId}/mark-paid", new { paidOn = "2026-09-24" });
         Assert.Equal(HttpStatusCode.Conflict, twice.StatusCode);
-        // The link no longer opens a payment.
         var page = await ReadJson(await tenant.PostAsJsonAsync($"/api/public/rent-payments/{installmentId}", new { token }));
         Assert.Equal("Paid", page.GetProperty("state").GetString());
     }
@@ -351,14 +337,11 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
         var statuses = ledger.GetProperty("installments").EnumerateArray().Select(i => i.GetProperty("status").GetString()).ToList();
         Assert.Equal("Paid", statuses[0]);
         Assert.All(statuses.Skip(1), s => Assert.Equal("Cancelled", s));
-        // With something paid the cadence is locked; the monthly plan itself can be enabled again.
         var quarterly = await seeded.Client.PutAsJsonAsync($"{RentPath(seeded)}/schedule", new { cadence = "Quarterly" });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, quarterly.StatusCode);
         var again = await ReadJson(await seeded.Client.PutAsJsonAsync($"{RentPath(seeded)}/schedule", new { cadence = "Monthly", billingDayOfMonth = 5 }));
         Assert.All(again.GetProperty("installments").EnumerateArray().Skip(1), i => Assert.Equal("Scheduled", i.GetProperty("status").GetString()));
     }
-
-    // ---------------------------------------------------------------- helpers
 
     private static string RentPath(SeededLease seeded) => $"/api/leases/{seeded.LeaseId}/rent";
 
@@ -453,7 +436,6 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
         return ledger.GetProperty("installments")[0].GetProperty("id").GetGuid();
     }
 
-    /// <summary>The landlord sends the payment link now; returns the token of the link emailed to the tenant.</summary>
     private async Task<string> SendPaymentRequestAsync(SeededLease seeded, Guid installmentId)
     {
         var response = await seeded.Client.PostAsync($"{RentPath(seeded)}/installments/{installmentId}/payment-request", null);
@@ -467,7 +449,6 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
             .Where(e => e.To == to && InstallmentIdsOf(seeded).Any(id => e.Content.HtmlBody.Contains(id, StringComparison.Ordinal)))
             .ToList();
 
-    /// <summary>Emails of every test go to the same parties: they are told apart by the installment or lease id in the link.</summary>
     private List<string> InstallmentIdsOf(SeededLease seeded)
     {
         using var scope = factory.Services.CreateScope();
@@ -550,7 +531,6 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
     private static async Task<JsonElement> ReadJson(HttpResponseMessage response) =>
         JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync(), JsonOpts);
 
-    /// <summary>Lease flow factory with a clock the tests control and an email queue that records what is queued.</summary>
     private sealed class SepaGateway(FakeStripeService stripe) : IStripeRentSepaGateway
     {
         public async Task<PaymentIntent> CreateAsync(string account, Guid lease, Guid installment, long amount, string key, CancellationToken ct)

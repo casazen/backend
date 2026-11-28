@@ -7,7 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Push;
 
-/// <summary>MO-04 (A6-29): the Expo HTTP client, its access token and how it classifies Expo's answers.</summary>
 public class ExpoPushClientTests
 {
     [Fact]

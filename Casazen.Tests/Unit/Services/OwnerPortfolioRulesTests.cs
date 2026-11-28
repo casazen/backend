@@ -6,10 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The rule of the shares of a property (ADR-012-R4, NF-109, AC-NF109-2): on every day the shares in force add up to exactly 100.00, nobody holds
-/// the same property twice at once, and a property whose owners all left has a gap up to today. The import and the readiness both ask it.
-/// </summary>
 public class OwnerOwnershipTimelineTests
 {
     private static readonly Guid A = Guid.Parse("00000000-0000-0000-0000-00000000000a");
@@ -46,7 +42,6 @@ public class OwnerOwnershipTimelineTests
     [Fact]
     public void Analyze_MoreThanOneHundred_IsAnExcess_OnTheDaysItHolds()
     {
-        // B joins on 1 June with 60 more: 160 from then on.
         var issues = OwnerOwnershipTimeline.Analyze([P(A, 100m, D(2024, 1, 1)), P(B, 60m, D(2026, 6, 1))], D(2024, 1, 1), Today);
 
         var issue = Assert.Single(issues);
@@ -56,7 +51,6 @@ public class OwnerOwnershipTimelineTests
     [Fact]
     public void Analyze_AHandOverWithADayInBetween_IsAGapOfThatDay()
     {
-        // A until 31 March, B from 2 April: 1 April belongs to nobody.
         var issues = OwnerOwnershipTimeline.Analyze([P(A, 100m, D(2025, 1, 1), D(2026, 3, 31)), P(B, 100m, D(2026, 4, 2))], D(2025, 1, 1), Today);
 
         var issue = Assert.Single(issues);
@@ -81,14 +75,12 @@ public class OwnerOwnershipTimelineTests
     [Fact]
     public void Analyze_ThePlannedEndOfTheLastOwner_IsNotAGap()
     {
-        // The last owner leaves next year: the days after that are not checked.
         Assert.Empty(OwnerOwnershipTimeline.Analyze([P(A, 100m, D(2024, 1, 1), D(2027, 6, 30))], D(2024, 1, 1), Today));
     }
 
     [Fact]
     public void Analyze_ThePlannedEndOfACoOwner_LeavesTheOtherShort_TheFirstDayAfterIsAShortfall()
     {
-        // B leaves on 30 June 2027 and A, open, stays with half: from 1 July the shares add up to 50, which is seen now.
         var issues = OwnerOwnershipTimeline.Analyze([P(A, 50m, D(2024, 1, 1)), P(B, 50m, D(2024, 1, 1), D(2027, 6, 30))], D(2024, 1, 1), Today);
 
         var issue = Assert.Single(issues);
@@ -112,7 +104,6 @@ public class OwnerOwnershipTimelineTests
     [Fact]
     public void Analyze_FromTheFirstDayTheFileTouches_IgnoresAnOlderHole()
     {
-        // 2024 is a hole in the stored data; a file that touches 2026 on is judged from 2026.
         var periods = new[] { P(A, 100m, D(2023, 1, 1), D(2023, 12, 31)), P(B, 100m, D(2025, 1, 1)) };
 
         Assert.NotEmpty(OwnerOwnershipTimeline.Analyze(periods, D(2023, 1, 1), Today));
@@ -152,7 +143,6 @@ public class OwnerOwnershipTimelineTests
     }
 }
 
-/// <summary>How the facts of an owner are written and checked: the same rules for the import and for the readiness.</summary>
 public class OwnerFieldRulesTests
 {
     [Theory]
@@ -255,7 +245,6 @@ public class OwnerFieldRulesTests
     }
 }
 
-/// <summary>The cells of an owner file: a share, a day, and the header.</summary>
 public class OwnerImportParserTests
 {
     [Theory]
@@ -350,7 +339,6 @@ public class OwnerImportParserTests
     }
 }
 
-/// <summary>What is missing on an owner, dimension by dimension (AC-NF109-3, AC-NF109-6): the codes and the fields, never a value.</summary>
 public class OwnerReadinessRulesTests
 {
     private static readonly DateOnly Today = new(2026, 10, 9);
@@ -451,7 +439,6 @@ public class OwnerReadinessRulesTests
         owner.SettlementCurrency = "EUR";
         Assert.Equal(OwnerReadinessReasons.IbanInvalid, Assert.Single(OwnerReadinessRules.Payment(owner)).Code);
 
-        // A valid IBAN outside the SEPA area needs the BIC too.
         owner.Iban = "AE070331234567890123456";
         Assert.Equal(OwnerReadinessReasons.BicMissing, Assert.Single(OwnerReadinessRules.Payment(owner)).Code);
         owner.Bic = "EBILAEAD";
@@ -465,7 +452,6 @@ public class OwnerReadinessRulesTests
         owner.Iban = null;
         owner.FiscalCode = null;
 
-        // The fiscal profile and the payment are not ready, and the owner can still be invited.
         Assert.Empty(OwnerReadinessRules.Portal(owner, registryReady: true, ownershipReady: true));
 
         owner.Email = "not an address";
@@ -489,11 +475,9 @@ public class OwnerReadinessRulesTests
         var signed = new[] { new OwnerMandateFact(ownership, new DateOnly(2025, 1, 1), null, HasDocument: true) };
         Assert.Empty(OwnerReadinessRules.Mandate(facts, signed, Today));
 
-        // A mandate that started before the ownership is outside it.
         var early = new[] { new OwnerMandateFact(ownership, new DateOnly(2024, 6, 1), null, HasDocument: true) };
         Assert.Equal(OwnerReadinessReasons.MandateOutsideOwnership, Assert.Single(OwnerReadinessRules.Mandate(facts, early, Today)).Code);
 
-        // A mandate that ended before today covers nothing today.
         var ended = new[] { new OwnerMandateFact(ownership, new DateOnly(2025, 1, 1), new DateOnly(2026, 1, 1), HasDocument: true) };
         Assert.Equal(OwnerReadinessReasons.MandateMissing, Assert.Single(OwnerReadinessRules.Mandate(facts, ended, Today)).Code);
     }
@@ -524,7 +508,6 @@ public class OwnerReadinessRulesTests
             OwnerPortalStates.Accepted,
             OwnerPortalStateRules.StateOf([Invitation(OwnerInvitationStatus.Accepted, 3, 5), Invitation(OwnerInvitationStatus.Revoked, 3, 1)], now, true));
 
-        // The latest invitation says: an old revoked one followed by a live one is invited.
         Assert.Equal(
             OwnerPortalStates.Invited,
             OwnerPortalStateRules.StateOf([Invitation(OwnerInvitationStatus.Revoked, 3, 5), Invitation(OwnerInvitationStatus.Pending, 3, 1)], now, true));

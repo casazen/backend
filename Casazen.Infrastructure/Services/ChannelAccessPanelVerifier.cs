@@ -28,7 +28,6 @@ public sealed class ChannelAccessPanelVerifier(AppDbContext db, IMarketplaceChan
 {
     public PanelStepKind Kind => PanelStepKind.ChannelAccess;
 
-    /// <summary>Higher than <c>ChannelAccessDefaultPanelVerifier</c> (0): the verifier with the highest order of a kind is the one that runs.</summary>
     public int Order => 10;
 
     public async Task<PanelVerificationOutcome> VerifyAsync(PanelStepContext context, CancellationToken ct)
@@ -37,7 +36,6 @@ public sealed class ChannelAccessPanelVerifier(AppDbContext db, IMarketplaceChan
         if (context.PropertyId is not { } propertyId || context.ChannelCode?.Trim() is not { Length: > 0 } channelCode)
             return PanelVerificationOutcome.Unverifiable;
 
-        // The activation of this org, property and channel (a channel or a tool: both are reached through the panel). Nothing of another org.
         var activationId = await db.MarketplaceActivations.AsNoTracking()
             .Where(a => a.OrgId == context.OrgId
                         && a.PropertyId == propertyId
@@ -56,8 +54,6 @@ public sealed class ChannelAccessPanelVerifier(AppDbContext db, IMarketplaceChan
         }
         catch (Exception ex) when (ex is DomainException or NotFoundException)
         {
-            // The connector is off, the org is not connected, the property is no longer linked, the activation is gone, an operation of the D6
-            // sequence is not verified for the channel: «cannot tell», not a verdict.
             return PanelVerificationOutcome.Unverifiable;
         }
         catch (OctorateException ex) when (ex is not (OctorateServerException or OctorateRateLimitException))

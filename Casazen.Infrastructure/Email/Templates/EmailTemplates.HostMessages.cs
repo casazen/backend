@@ -6,7 +6,6 @@ public static partial class EmailTemplates
 {
     public static partial class Names
     {
-        /// <summary>«A guest wrote on a channel», to the host, when the preferences of the host ask for an email (E05/F03, NF-65).</summary>
         public const string HostMessageReceived = "host-message-received";
     }
 
@@ -38,10 +37,6 @@ public static partial class EmailTemplates
             .Build("HostMessageReceived_Subject", string.IsNullOrWhiteSpace(propertyName) ? channelName : propertyName);
     }
 
-    /// <summary>
-    /// Push text of a message of a guest on a channel, to a host (E05/F03/US01/T03): the property and the channel only. Neither the guest's name
-    /// nor the text of the message reach the lock screen.
-    /// </summary>
     public static PushText OtaMessagePush(CultureInfo culture, string? propertyName, string channelName) =>
         string.IsNullOrWhiteSpace(propertyName)
             ? new PushText(
@@ -51,7 +46,6 @@ public static partial class EmailTemplates
                 EmailTexts.Get("Push_OtaMessage_Title", culture),
                 string.Format(culture, EmailTexts.Get("Push_OtaMessage_Body", culture), propertyName, channelName));
 
-    /// <summary>The name of a channel of the hub of messages as the host knows it. Brand names, the same in every language.</summary>
     public static string OtaChannelBrand(Casazen.Core.Entities.Enums.OtaChannel channel) => channel switch
     {
         Casazen.Core.Entities.Enums.OtaChannel.Airbnb => "Airbnb",

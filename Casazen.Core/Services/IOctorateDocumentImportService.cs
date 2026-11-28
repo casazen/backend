@@ -28,47 +28,32 @@ public interface IOctorateDocumentImportService
     /// </summary>
     Task<OctorateDocumentImportResult> ImportAsync(Guid orgId, DateTime? since, CancellationToken ct = default);
 
-    /// <summary>
-    /// The orgs an import runs for: none while <c>FiscalDocuments:ImportOctorateDocuments</c> is false (the default); with it, the orgs whose connection of
-    /// this environment is connected.
-    /// </summary>
     Task<IReadOnlyList<Guid>> OrgsToImportAsync(CancellationToken ct = default);
 
-    /// <summary>When the org's imported documents last changed (informational: every accommodation is read from its own last import); <c>null</c> before the first.</summary>
     Task<DateTime?> LastImportedAtAsync(Guid orgId, CancellationToken ct = default);
 }
 
-/// <summary>What one import of an org did.</summary>
 public sealed record OctorateDocumentImportResult(int Created, int Updated, int Skipped, int FailedReads);
 
-/// <summary>The constants of the import of the Octorate documents.</summary>
 public static class OctorateDocumentImport
 {
-    /// <summary>How far back the first import of an org reads.</summary>
     public const int FirstReadDays = 400;
 
-    /// <summary>How far before the last change a run starts again, so a document changed during a run is read again.</summary>
     public static readonly TimeSpan Overlap = TimeSpan.FromDays(2);
 
-    /// <summary>The reason of the "To do" of a document the SDI rejected.</summary>
     public const string SdiRejectedReason = "sdi_rejected_octorate";
 
-    /// <summary>The reason of the "To do" of a document still to collect.</summary>
     public const string ToCollectReason = "to_collect";
 
     /// <summary>The entity type of the "To do" about the SDI state of a document.</summary>
     public const string SdiEntityType = "FiscalDocument";
 
-    /// <summary>The entity type of the "To do" about the payment of a document.</summary>
     public const string PaymentEntityType = "FiscalDocumentPayment";
 }
 
-/// <summary>The stable codes of the errors of the documents of Octorate, with the keys of their messages in <c>SharedResources</c>.</summary>
 public static class OctorateDocumentErrors
 {
-    /// <summary>404: the document is not one of the caller's org (or does not exist).</summary>
     public const string DocumentNotFound = "fiscal_document_not_found";
 
-    /// <summary>404: Octorate holds no PDF of the document, or the PDF cannot be read through the API.</summary>
     public const string PdfUnavailable = "octorate_pdf_unavailable";
 }

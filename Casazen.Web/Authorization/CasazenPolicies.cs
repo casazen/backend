@@ -23,13 +23,10 @@ namespace Casazen.Web.Authorization;
 /// </remarks>
 public static class CasazenPolicies
 {
-    /// <summary>Any signed-in user, suppliers included. User-scoped endpoints only (see remarks).</summary>
     public const string Authenticated = "Authenticated";
 
-    /// <summary>Platform administrator (JWT role <c>Admin</c>).</summary>
     public const string AdminOnly = "AdminOnly";
 
-    /// <summary>Supplier console (JWT role <c>Supplier</c>, backfilled from the DB supplier link).</summary>
     public const string Supplier = "RequireSupplier";
 
     /// <summary>
@@ -42,12 +39,6 @@ public static class CasazenPolicies
     /// </summary>
     public const string OrgBillingAdmin = "RequireOrgBillingAdmin";
 
-    /// <summary>
-    /// The guest of a booking site, with no account (DB-06a): a valid, unexpired guest-session token (<c>Authorization: Bearer gs1.…</c>,
-    /// <c>IGuestSessionService</c>). It is not a sign-in of the hosts and carries no role: it opens only the actions of the guest area
-    /// (<c>api/public/guest/*</c>), which read the ticket with <c>User.GetGuestSessionTicket()</c> and find the guest's own bookings with
-    /// <c>IGuestSessionService.FindBookingAsync</c>. The request is scoped to the org of the session.
-    /// </summary>
     public const string GuestSession = "GuestSession";
 
     /// <summary>
@@ -77,10 +68,8 @@ public static class CasazenPolicies
     private const string ShortRent = "RequireContext:short-rent:";
     private const string LongRent = "RequireContext:long-rent:";
 
-    /// <summary>Either rental context: the permission may be held in short-rent or in long-rent (see <see cref="ParseContextPolicy"/>).</summary>
     private const string AnyRentalContext = "RequireContext:short-rent|long-rent:";
 
-    /// <summary>Separates the alternative contexts of a context policy (<c>RequireContext:a|b:permission</c>).</summary>
     private const char ContextSeparator = '|';
 
     /// <summary>
@@ -89,17 +78,10 @@ public static class CasazenPolicies
     /// </summary>
     public const string PropertyRead = ShortRent + "property.read";
 
-    /// <summary>Change a property's short-stay side (see <see cref="PropertyRead"/>). Short-rent context only.</summary>
     public const string PropertyWrite = ShortRent + "property.write";
 
-    /// <summary>
-    /// Read the property core that both kinds of landlord need (A7-06): the property list and record and its documents
-    /// (APE). Passes with <c>property.read</c> in the short-rent <b>or</b> the long-rent context; the row is checked with
-    /// <see cref="SharedPropertyOperations"/>. The org plan entitlement is an org matter: <see cref="OrgBillingAdmin"/>.
-    /// </summary>
     public const string SharedPropertyRead = AnyRentalContext + "property.read";
 
-    /// <summary>Create or change the property core (record, documents): <c>property.write</c> in either rental context.</summary>
     public const string SharedPropertyWrite = AnyRentalContext + "property.write";
 
     public const string BookingRead = ShortRent + "booking.read";
@@ -115,16 +97,8 @@ public static class CasazenPolicies
     // The finer permissions of AM-03, carved out of the broad ones so that the collaborator can do its job without prices, CIN
     // or bookings (HostPermissions).
 
-    /// <summary>
-    /// Ask a supplier for an intervention on a stay (find the supplier, create the request, mark it paid). It used to be
-    /// <see cref="PropertyWrite"/>. Short-rent context.
-    /// </summary>
     public const string ServiceRequestWrite = ShortRent + HostPermissions.ServiceRequestWrite;
 
-    /// <summary>
-    /// Erase or anonymize a guest and change its consents: the destructive and legal acts on a guest's data. It used to be
-    /// <see cref="GuestWrite"/>, which still lets a person register and correct a guest. Short-rent context.
-    /// </summary>
     public const string GuestManage = ShortRent + HostPermissions.GuestManage;
 
     /// <summary>
@@ -140,34 +114,15 @@ public static class CasazenPolicies
     /// </summary>
     public const string VerificationDecision = ShortRent + HostPermissions.VerificationDecision;
 
-    /// <summary>
-    /// Decide the items of the approval queue (E05/F04/US01/T01, NF-68): list them, edit a draft, approve it and reject it. Owner, administrators and
-    /// property managers; not the collaborator, who held the broad <see cref="PropertyWrite"/> that guarded the queue before. Short-rent context. The
-    /// permission is <see cref="HostPermissions.ApprovalDecide"/>; which items of the queue the caller reaches (the property of an item) is decided
-    /// by its <c>HostScope</c>, in the service.
-    /// </summary>
     public const string ApprovalDecide = ShortRent + HostPermissions.ApprovalDecide;
 
     public const string ApprovalQueueAccess = "ApprovalQueueAccess";
     public static IReadOnlyList<string> ApprovalQueuePolicies { get; } = [ApprovalDecide, Marketing];
 
-    /// <summary>
-    /// «Portale ospiti» (E50/F01/US01/T01, NF-152, guest portal plan decision A7): set up the guest portal of the org (house guide, extras, suppliers and
-    /// their percentages, automatic replies, the wizard). Owner, administrators and property managers; not the collaborator nor the accountant.
-    /// Short-rent context. The permission is <see cref="HostPermissions.GuestPortalManage"/>. The link of a stay is not behind it: the endpoints of the
-    /// link ask for the permissions on the bookings (<see cref="BookingRead"/>, <see cref="BookingWrite"/>). Registered once here for the set-up
-    /// endpoints of the portal epics (E51-E59).
-    /// </summary>
     public const string GuestPortalManage = ShortRent + HostPermissions.GuestPortalManage;
 
-    /// <summary>
-    /// Read a property's long-term side that is not a lease: the long-rent service requests (D2, SU-07). Long-rent
-    /// context only, so a short-rent <c>property.read</c> never reaches it; the row is checked with
-    /// <see cref="LongRentPropertyOperations"/>.
-    /// </summary>
     public const string LongRentPropertyRead = LongRent + "property.read";
 
-    /// <summary>Change a property's long-term side (see <see cref="LongRentPropertyRead"/>). Long-rent context only.</summary>
     public const string LongRentPropertyWrite = LongRent + "property.write";
 
     public const string LeaseRead = LongRent + "lease.read";
@@ -175,47 +130,30 @@ public static class CasazenPolicies
     public const string LeaseSign = LongRent + "lease.sign";
     public const string LeaseRegister = LongRent + "lease.register";
 
-    /// <summary>
-    /// Agency tier B2B policies (ADR-010, ADR-012): each requires the agency plan (<c>Org.PlanTier == PlanTier.Agency</c>, reads only
-    /// once the org is downgraded) <b>and</b> its agency permission held by the caller's org role (DEB-01,
-    /// <see cref="OrgRoleCatalog.AgencyPermissionsOf"/>): the rest of the name is the permission (<see cref="ParseAgencyPolicy"/>).
-    /// </summary>
     private const string Agency = "RequireAgencyTier:";
 
-    /// <summary>View property owner list and details, IBAN masked (agency B2B, ADR-012).</summary>
     public const string AgencyOwnerView = Agency + AgencyPermissions.OwnerView;
 
-    /// <summary>View full IBAN of property owners (requires audit log, agency B2B, ADR-012-R3).</summary>
     public const string AgencyOwnerFinancialRead = Agency + AgencyPermissions.OwnerFinancialRead;
 
-    /// <summary>Generate, approve and publish monthly statements (agency B2B).</summary>
     public const string AgencyStatementManage = Agency + AgencyPermissions.StatementManage;
 
-    /// <summary>View and export monthly statements (agency B2B).</summary>
     public const string AgencyStatementView = Agency + AgencyPermissions.StatementView;
 
-    /// <summary>Create and issue invoices (agency B2B).</summary>
     public const string AgencyInvoiceManage = Agency + AgencyPermissions.InvoiceManage;
 
-    /// <summary>Manage withholding tax (agency B2B).</summary>
     public const string AgencyWithholdingManage = Agency + AgencyPermissions.WithholdingManage;
 
-    /// <summary>Create wire transfer batches (agency B2B).</summary>
     public const string AgencyWireManage = Agency + AgencyPermissions.WireManage;
 
-    /// <summary>Manage internal staff activities (agency B2B).</summary>
     public const string AgencyActivityManage = Agency + AgencyPermissions.ActivityManage;
 
-    /// <summary>Manage the organisation’s trusted suppliers on any subscription.</summary>
     public const string TrustedSupplierManage = "host.trusted-supplier.manage";
 
-    /// <summary>Invite and manage property owners (agency B2B, ADR-011-R4).</summary>
     public const string AgencyOwnerManage = Agency + AgencyPermissions.OwnerManage;
 
-    /// <summary>Full fiscal profiles of the owners, the rule sets and their approval, payouts and tax evidence (agency B2B, E06/F05/US02).</summary>
     public const string AgencyOwnerFinancialManage = Agency + AgencyPermissions.OwnerFinancialManage;
 
-    /// <summary>Publish an approved owner statement version (agency B2B, E06/F05/US02/T02).</summary>
     public const string AgencyStatementPublish = Agency + AgencyPermissions.StatementPublish;
 
 
@@ -225,25 +163,12 @@ public static class CasazenPolicies
     /// </summary>
     public const string OwnerPortal = "OwnerPortal";
 
-    /// <summary>
-    /// Invite, change, deactivate, reactivate and remove the people of the caller's org (AM-02): the permission
-    /// <c>org.members.manage</c> of the <c>account</c> context, held by the org's owner and administrators and by nobody
-    /// else. Like the host contexts it waits for the onboarding and the consents. What each of them may do to whom
-    /// (only the owner creates and manages administrators) is decided by the services (<c>OrgTeamRules</c>).
-    /// </summary>
     public const string OrgMembersManage = ContextPolicyPrefix + AccountContext.Key + ":" + AccountContext.Permissions.MembersManage;
 
-    /// <summary>
-    /// Read the activity log of the caller's org (AM-02b): the list and the CSV of who did what. The permission
-    /// <c>org.activity.read</c> of the <c>account</c> context, held by the org's owner and administrators and by nobody else
-    /// (AM-01 seeds it). Like the host contexts it waits for the onboarding and the consents.
-    /// </summary>
     public const string OrgActivityRead = ContextPolicyPrefix + AccountContext.Key + ":" + AccountContext.Permissions.ActivityRead;
 
-    /// <summary>Prefix of the context policies; the rest is <c>{context}:{permission}</c>.</summary>
     public const string ContextPolicyPrefix = "RequireContext:";
 
-    /// <summary>The context policies registered at startup.</summary>
     public static IReadOnlyList<string> ContextPolicies { get; } =
     [
         PropertyRead, PropertyWrite,
@@ -261,7 +186,6 @@ public static class CasazenPolicies
         OrgMembersManage, OrgActivityRead,
     ];
 
-    /// <summary>The agency tier policies registered at startup (ADR-010, ADR-012): one per agency permission.</summary>
     public static IReadOnlyList<string> AgencyPolicies { get; } =
     [
         AgencyOwnerView,
@@ -277,7 +201,6 @@ public static class CasazenPolicies
         AgencyStatementPublish,
     ];
 
-    /// <summary>The agency permission an agency policy requires: <c>RequireAgencyTier:agency.wire.manage</c> needs <c>agency.wire.manage</c>.</summary>
     public static string ParseAgencyPolicy(string policyName)
     {
         if (!policyName.StartsWith(Agency, StringComparison.Ordinal) || policyName.Length == Agency.Length)
@@ -286,10 +209,6 @@ public static class CasazenPolicies
         return policyName[Agency.Length..];
     }
 
-    /// <summary>
-    /// Splits a context policy name into its contexts and permission: <c>RequireContext:short-rent:property.read</c>
-    /// has one context, <c>RequireContext:short-rent|long-rent:property.read</c> passes with either.
-    /// </summary>
     public static (IReadOnlyList<string> ContextKeys, string PermissionKey) ParseContextPolicy(string policyName)
     {
         if (!policyName.StartsWith(ContextPolicyPrefix, StringComparison.Ordinal))

@@ -3,7 +3,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs.HostInvites;
 
-/// <summary>Body of the creation of a host invite (admin and host).</summary>
 public class CreateHostInviteRequest
 {
     [Required(ErrorMessage = "HostInviteEmailRequired")]
@@ -14,12 +13,10 @@ public class CreateHostInviteRequest
     [MaxLength(500, ErrorMessage = "HostInviteMessageTooLong")]
     public string? Message { get; set; }
 
-    /// <summary>Language of the email: <c>it</c> (default) or <c>en</c>.</summary>
     [MaxLength(5, ErrorMessage = "HostInviteLocaleInvalid")]
     public string? Locale { get; set; }
 }
 
-/// <summary>Body of the public lookup, for clients that prefer the token out of the URL.</summary>
 public class HostInviteLookupRequest
 {
     [Required(ErrorMessage = "HostInviteTokenRequired")]
@@ -55,7 +52,6 @@ public class HostInviteDto
     public Guid Id { get; set; }
     public string Email { get; set; } = string.Empty;
 
-    /// <summary><c>Pending</c>, <c>Used</c>, <c>Expired</c> or <c>Revoked</c>.</summary>
     public string State { get; set; } = string.Empty;
 
     public string? Message { get; set; }
@@ -63,7 +59,6 @@ public class HostInviteDto
     public DateTime ExpiresAt { get; set; }
     public DateTime? UsedAt { get; set; }
 
-    /// <summary>Who invited: filled in the admin list, null in the host's own list.</summary>
     public HostInviteInviterDto? InvitedBy { get; set; }
 
     public static HostInviteDto From(HostInviteItem item) => new()
@@ -95,12 +90,10 @@ public class HostInviteLookupResponse
     public bool IsAgency { get; set; }
     public bool Valid { get; set; }
 
-    /// <summary><c>Pending</c>, <c>Used</c>, <c>Expired</c>, <c>Revoked</c> or <c>Invalid</c>.</summary>
     public string State { get; set; } = string.Empty;
 
     public string? InviterName { get; set; }
 
-    /// <summary>The address with its local part hidden (<c>m***@example.com</c>), only for a valid invite. Never the whole email.</summary>
     public string? MaskedEmail { get; set; }
 
     public static HostInviteLookupResponse From(HostInviteLookup lookup) => new()

@@ -16,10 +16,10 @@ public class SupplierVerificationTests
 {
     [Theory]
     [InlineData("acct_1", true, true, true)]
-    [InlineData("acct_1", true, false, false)] // charges on, payouts not yet: the money could not leave the account
+    [InlineData("acct_1", true, false, false)]
     [InlineData("acct_1", false, true, false)]
     [InlineData("acct_1", false, false, false)]
-    [InlineData(null, true, true, false)] // flags without an account (cleared id): never ready
+    [InlineData(null, true, true, false)]
     [InlineData("", true, true, false)]
     [InlineData("   ", true, true, false)]
     public void CanReceivePayments_NeedsALinkedAccountWithChargesAndPayoutsEnabled(

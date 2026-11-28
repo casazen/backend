@@ -6,16 +6,9 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// SR-03: the rules the read API of the short rent area is built on, with no database: the periods of the Home and the one
-/// before each, what counts as money collected and on which day, what part of a text can be a booking code, and the order of the
-/// things to do.
-/// </summary>
 public class ShortRentReadRulesTests
 {
     private static DateTime Day(int year, int month, int day) => new(year, month, day, 0, 0, 0, DateTimeKind.Utc);
-
-    // --- The periods ------------------------------------------------------------------------------------
 
     [Fact]
     public void Next30Days_StartsTodayAndTakesThirtyNights()
@@ -45,7 +38,6 @@ public class ShortRentReadRulesTests
 
         var previous = last.Previous();
 
-        // The last 30 days are 10 September to 9 October; the thirty before them end on 9 September (10 September excluded).
         Assert.Equal(Day(2026, 9, 10), last.From);
         Assert.Equal(Day(2026, 8, 11), previous.From);
         Assert.Equal(Day(2026, 9, 10), previous.To);
@@ -59,7 +51,6 @@ public class ShortRentReadRulesTests
 
         var previous = october.Previous();
 
-        // October has 31 days: the 31 days before it start on 31 August, so the two periods weigh the same.
         Assert.Equal(31, october.Nights);
         Assert.Equal(Day(2026, 8, 31), previous.From);
         Assert.Equal(Day(2026, 10, 1), previous.To);
@@ -83,8 +74,6 @@ public class ShortRentReadRulesTests
     {
         Assert.False(DashboardController.TryParsePeriod("Next30Days", "2026-10", out _, out _));
     }
-
-    // --- Money collected ------------------------------------------------------------------------------
 
     private static Payment PaymentOf(PaymentStatus status, DateTime? processedAt, DateTime createdAt, decimal amount = 100m, decimal refunded = 0m)
     {
@@ -117,14 +106,11 @@ public class ShortRentReadRulesTests
     [Fact]
     public void Collected_TheDaysAreRomeDays_TheEdgesBelongToTheDayTheyFallOnInRome()
     {
-        // 9 October to 7 November (the end day excluded): summer time until 25 October, winter time after.
         var rule = PaymentCashRules.CollectedBetween(Day(2026, 10, 9), Day(2026, 11, 8)).Compile();
         bool Counts(DateTime instant) => rule(PaymentOf(PaymentStatus.Completed, instant, Day(2026, 10, 1)));
 
-        // 22:00Z on the 8th is midnight of the 9th in Rome (UTC+2).
         Assert.False(Counts(new DateTime(2026, 10, 8, 21, 59, 59, DateTimeKind.Utc)));
         Assert.True(Counts(new DateTime(2026, 10, 8, 22, 0, 0, DateTimeKind.Utc)));
-        // The 7th of November ends at 23:00Z (UTC+1).
         Assert.True(Counts(new DateTime(2026, 11, 7, 22, 59, 59, DateTimeKind.Utc)));
         Assert.False(Counts(new DateTime(2026, 11, 7, 23, 0, 0, DateTimeKind.Utc)));
     }
@@ -136,7 +122,6 @@ public class ShortRentReadRulesTests
 
         Assert.True(rule(PaymentOf(PaymentStatus.Completed, null, Day(2026, 10, 20))));
         Assert.False(rule(PaymentOf(PaymentStatus.Completed, null, Day(2026, 9, 20))));
-        // The instant of settlement wins over the creation: created in September, settled in October.
         Assert.True(rule(PaymentOf(PaymentStatus.Completed, Day(2026, 10, 2), Day(2026, 9, 28))));
     }
 
@@ -160,8 +145,6 @@ public class ShortRentReadRulesTests
         Assert.Equal(cents, PaymentCashRules.ToCents(decimal.Parse(euros, System.Globalization.CultureInfo.InvariantCulture)));
     }
 
-    // --- Text that can be a booking code ----------------------------------------------------------------
-
     [Theory]
     [InlineData(null, null)]
     [InlineData("", null)]
@@ -181,13 +164,9 @@ public class ShortRentReadRulesTests
         Assert.Equal(expected, BookingSearchRules.CodeFragment(text));
     }
 
-    // --- The things to do -------------------------------------------------------------------------------
-
     [Fact]
     public void Priority_EveryActionHasAPlace_OneToEight_AndEveryPlaceIsTaken()
     {
-        // SR-03b added three actions about the interventions: they stand with the thing they are like (1, 5 and 6) and nothing is
-        // renumbered, so the priorities stay 1 to 8 and no action falls in the "unknown" 9.
         var priorities = Enum.GetValues<HostTodoAction>().Select(HostTodoPriority.Of).Distinct().Order().ToList();
 
         Assert.Equal(Enumerable.Range(1, 8), priorities);
@@ -226,7 +205,6 @@ public class ShortRentReadRulesTests
     [Fact]
     public void From_EveryActionOfTheCockpit_HasAPlaceInTheThingsToDo_OrIsLeftOutOfTheDayOnPurpose()
     {
-        // A new cockpit action neither mapped nor listed as left out of the day fails here, not in front of a host.
         foreach (var action in Enum.GetValues<ComplianceCockpitAction>())
         {
             if (HostTodoPriority.CockpitActionsOutsideTheDay.Contains(action))
@@ -239,8 +217,6 @@ public class ShortRentReadRulesTests
     [Fact]
     public void From_TheActionsLeftOutOfTheDay_AreTheOnesOfTheComplianceTrafficLight_AndNoOtherOne()
     {
-        // E03/F02/US01/T03: the day reads the six older sections of the cockpit; the eight actions of the traffic light live in the new sections
-        // (the compliance cockpit and the «Da fare» list carry them). The six older ones keep their place under the same name.
         ComplianceCockpitAction[] older =
         [
             ComplianceCockpitAction.ActivateProperty,
@@ -252,7 +228,6 @@ public class ShortRentReadRulesTests
         ];
 
         Assert.Equal(older.Order(), Enum.GetValues<ComplianceCockpitAction>().Except(HostTodoPriority.CockpitActionsOutsideTheDay).Order());
-        // The eight of the traffic light, the police notification of the Ticino properties (casazen/backend#979) and the notification of the other cantons (E31/F02/US01/T01).
         Assert.Equal(10, HostTodoPriority.CockpitActionsOutsideTheDay.Count);
     }
 }

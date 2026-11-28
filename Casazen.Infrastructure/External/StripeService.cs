@@ -11,7 +11,6 @@ public interface IStripeService
         long amountCents,
         string currency,
         Dictionary<string, string> metadata);
-    Task<PaymentIntent> ConfirmPaymentAsync(string paymentIntentId);
 
     /// <summary>
     /// Creates an on-session PaymentIntent on the connected account (direct charge, automatic payment methods), sent with
@@ -40,7 +39,6 @@ public interface IStripeService
     /// </summary>
     Task<Refund> CreateRefundAsync(StripeRefundCreateRequest request, CancellationToken cancellationToken = default);
 
-    /// <summary>Every refund of a PaymentIntent, on the connected account when <paramref name="connectedAccountId"/> is set.</summary>
     Task<IReadOnlyList<Refund>> ListRefundsAsync(
         string paymentIntentId,
         string? connectedAccountId,
@@ -51,7 +49,6 @@ public interface IStripeService
         string? connectedAccountId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Cancels a PaymentIntent that was not paid (the guest is never charged afterwards).</summary>
     Task<PaymentIntent> CancelPaymentIntentAsync(
         string paymentIntentId,
         string? connectedAccountId,
@@ -63,14 +60,12 @@ public interface IStripeService
         string connectedAccountId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Cancels a SetupIntent that has not saved a card yet.</summary>
     Task<SetupIntent> CancelSetupIntentAsync(
         string setupIntentId,
         string connectedAccountId,
         string idempotencyKey,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Detaches a saved card from its customer, so it can no longer be charged off-session.</summary>
     Task DetachPaymentMethodAsync(
         string paymentMethodId,
         string connectedAccountId,
@@ -98,10 +93,6 @@ public interface IStripeService
         string idempotencyKey,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Confirms again, off-session, a deferred charge PaymentIntent whose previous attempt failed (BK-08), with the saved
-    /// payment method. Same 402 behaviour as <see cref="ChargePaymentMethodAsync"/>.
-    /// </summary>
     Task<PaymentIntent> ConfirmPaymentIntentOffSessionAsync(
         string paymentIntentId,
         string connectedAccountId,
@@ -109,10 +100,6 @@ public interface IStripeService
         string idempotencyKey,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// PaymentIntents of a customer of the connected account (most recent first, at most 100): finds a deferred charge
-    /// created by an attempt whose answer was lost (timeout) before a new one is created (BK-08).
-    /// </summary>
     Task<IReadOnlyList<PaymentIntent>> ListCustomerPaymentIntentsAsync(
         string customerId,
         string connectedAccountId,
@@ -242,7 +229,6 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
             Currency = currency,
             Metadata = metadata,
             Description = description,
-            // No application fee (A3-40): see CreateConnectedAccountPaymentIntentAsync above.
             AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions { Enabled = true },
         };
 
@@ -255,22 +241,6 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
             paymentIntent.Id,
             connectedAccountId);
         return paymentIntent;
-    }
-
-    public async Task<PaymentIntent> ConfirmPaymentAsync(string paymentIntentId)
-    {
-        try
-        {
-            var service = new PaymentIntentService(Client);
-            var paymentIntent = await service.ConfirmAsync(paymentIntentId);
-            logger.LogInformation("Payment confirmed: {PaymentIntentId}", paymentIntentId);
-            return paymentIntent;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error confirming payment");
-            throw;
-        }
     }
 
     public async Task<Refund> CreateRefundAsync(StripeRefundCreateRequest request, CancellationToken cancellationToken = default)
@@ -537,7 +507,6 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
             Confirm = true,
             OffSession = true,
             Metadata = metadata,
-            // See CreateConnectedAccountPaymentIntentAsync above (A3-40): omitted, not an explicit 0.
         };
 
         var paymentIntent = await new PaymentIntentService(Client).CreateAsync(
@@ -564,8 +533,6 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
         ArgumentException.ThrowIfNullOrWhiteSpace(paymentMethodId);
         ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
 
-        // Same parameters as the creation (see ChargePaymentMethodAsync): off-session, no return_url, no
-        // error_on_requires_action.
         var paymentIntent = await new PaymentIntentService(Client).ConfirmAsync(
             paymentIntentId,
             new PaymentIntentConfirmOptions { PaymentMethod = paymentMethodId, OffSession = true },

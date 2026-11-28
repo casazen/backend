@@ -4,10 +4,6 @@ using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// Money the owner paid the condominium (CondoLedger <c>payments</c>). <see cref="ExternalSourceHash"/> stops the same
-/// imported movement from being recorded twice. This is not a tenant rent payment.
-/// </summary>
 [Table("CondominiumPayments")]
 public class CondominiumPayment : ITenantOwned
 {

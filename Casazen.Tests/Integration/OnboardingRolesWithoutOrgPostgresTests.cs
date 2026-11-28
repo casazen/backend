@@ -28,24 +28,20 @@ public class OnboardingRolesWithoutOrgPostgresTests(CasazenWebApplicationFactory
         var email = NewEmail();
         using var client = factory.CreateAuthenticatedClient(userId, roles: "PropertyOwner", email: email);
 
-        // First login: the user row exists, the org does not.
         var before = await client.GetFromJsonAsync<JsonElement>("/api/users/me");
         Assert.Equal(JsonValueKind.Null, before.GetProperty("orgId").ValueKind);
 
-        // PUT without consents (the old client path for users with roles): explicit code, nothing provisioned.
         var withoutConsents = await client.PutAsJsonAsync(OnboardingPath, new { rentalType = "ShortTerm" });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, withoutConsents.StatusCode);
         var problem = await withoutConsents.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("consents_required", problem.GetProperty("code").GetString());
         Assert.Equal(0, await CountOrgsOfAsync(email));
 
-        // PUT with consents: creates the org and records the consents.
         var first = await ReadOkAsync(await client.PutAsJsonAsync(OnboardingPath, Payload("ShortTerm")));
         var orgId = first.GetProperty("orgId").GetString();
         Assert.True(first.GetProperty("orgProvisioned").GetBoolean());
         Assert.True(first.GetProperty("consentsRecorded").GetBoolean());
 
-        // Repeated PUT (no consents needed any more) and POST: same org, nothing provisioned again.
         var again = await ReadOkAsync(await client.PutAsJsonAsync(OnboardingPath, new { rentalType = "ShortTerm" }));
         Assert.Equal(orgId, again.GetProperty("orgId").GetString());
         Assert.False(again.GetProperty("orgProvisioned").GetBoolean());
@@ -88,7 +84,6 @@ public class OnboardingRolesWithoutOrgPostgresTests(CasazenWebApplicationFactory
 
     private static string NewEmail() => $"pl01.{Guid.NewGuid():N}@example.com";
 
-    /// <summary>Orgs provisioned for the user: the slug is neutral (A1-23), the contact email is the one of this test.</summary>
     private async Task<int> CountOrgsOfAsync(string email)
     {
         using var scope = factory.Services.CreateScope();

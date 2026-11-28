@@ -5,10 +5,6 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Casazen.Infrastructure.Data.Configurations;
 
-/// <summary>
-/// The floor plan levels of a property (DB-11a): rows follow their property (cascade) and carry its org (TN-2, restrict like every other
-/// <c>OrgId</c> foreign key). The ranges are also constraints, so no other writer can store a level or an area the host form refuses.
-/// </summary>
 internal sealed class PropertyFloorPlanConfiguration : IEntityTypeConfiguration<PropertyFloorPlan>
 {
     public void Configure(EntityTypeBuilder<PropertyFloorPlan> entity)
@@ -35,10 +31,6 @@ internal sealed class PropertyFloorPlanConfiguration : IEntityTypeConfiguration<
     }
 }
 
-/// <summary>
-/// The points of interest of a property (DB-11a): same ownership as the floor plan levels. The ranges (minutes, rounded distance) are also
-/// constraints; the direction is one of eight points, never a bearing in degrees.
-/// </summary>
 internal sealed class PropertyPoiConfiguration : IEntityTypeConfiguration<PropertyPoi>
 {
     public void Configure(EntityTypeBuilder<PropertyPoi> entity)

@@ -21,11 +21,6 @@ public class Party
     [Required]
     public PartyRole Role { get; set; }
 
-    /// <summary>
-    /// Order of the party among the parties of the same role, from 0 (LT-14): the order entered, used by the contract,
-    /// the RLI pre-fill and the detail page. Unique per lease and role; leases created before LT-14 have one party per
-    /// role at 0 (migration <c>LeaseMultipleParties</c>).
-    /// </summary>
     public int Position { get; set; }
 
     [Required]
@@ -36,10 +31,6 @@ public class Party
     [MaxLength(100)]
     public string LastName { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Fiscal code, normalized (upper case, no spaces) and validated at creation (LT-14, <c>ItalianFiscalCode</c>): 16
-    /// characters of a natural person or 11 digits. Rows created before LT-14 were only normalized by the migration.
-    /// </summary>
     [Required]
     [MaxLength(16)]
     public string FiscalCode { get; set; } = string.Empty;
@@ -53,7 +44,6 @@ public class Party
     [EmailAddress]
     public string ContactEmail { get; set; } = string.Empty;
 
-    /// <summary>Optional international phone number used for direct communications such as WhatsApp. Encrypted at rest.</summary>
     public string? ContactPhone { get; set; }
 
     public bool IsExtraEU { get; set; }
@@ -68,11 +58,6 @@ public class Party
     /// </summary>
     public string? Residence { get; set; }
 
-    /// <summary>
-    /// The day the landlord checked the identity document (and, for a citizen of a non-EU state, the residence permit) of the
-    /// party (LR-12, decision LR-D3): "documento verificato il …". A date and nothing else: this verification itself keeps no document copy. A separate registration preparation can collect private identity attachments
-    /// explicitly for transmission to the registration provider. <c>null</c> when not declared, and after the anonymization.
-    /// </summary>
     public DateOnly? DocumentsVerifiedOn { get; set; }
 
     /// <summary>
@@ -82,6 +67,5 @@ public class Party
     /// </summary>
     public DateTime? AnonymizedAt { get; set; }
 
-    /// <summary>The longest <see cref="Residence"/> accepted.</summary>
     public const int ResidenceMaxLength = 200;
 }

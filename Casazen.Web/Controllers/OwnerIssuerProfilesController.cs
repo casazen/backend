@@ -30,10 +30,6 @@ public class OwnerIssuerProfilesController(
     IAuthorizationService authorizationService,
     ILogger<OwnerIssuerProfilesController> logger) : ControllerBase
 {
-    /// <summary>
-    /// The profile of the owner, or the empty one of an owner that has none (<c>exists: false</c>): the data, the regime, the series, the fields still missing
-    /// (<c>missingFields</c>) and the tax rule in force today. 404 <c>owner_not_found</c>.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(OwnerIssuerProfileDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -51,11 +47,6 @@ public class OwnerIssuerProfilesController(
         return Ok(OwnerIssuerProfileDto.From(view, full));
     }
 
-    /// <summary>
-    /// Saves the profile of the owner as a whole (made at the first save). An incomplete profile is saved and says what is missing; nothing is issued on it until
-    /// it is complete. 403 <c>fiscal_settings_need_whole_org</c>; 404 <c>owner_not_found</c>; 422 <c>issuer_field_invalid</c> (with the <c>field</c> and the
-    /// <c>errors</c>), <c>issuer_regime_country_mismatch</c>, <c>document_issuance_not_available</c>. A refusal saves nothing.
-    /// </summary>
     [HttpPut]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
     [ProducesResponseType(typeof(OwnerIssuerProfileDto), StatusCodes.Status200OK)]
@@ -68,7 +59,6 @@ public class OwnerIssuerProfilesController(
         if (await ScopeAsync() is not { } scope)
             return Forbid();
 
-        // How the stays of an owner are invoiced is the agency's decision: a caller who reaches only some of its properties cannot make it.
         if (!scope.IsOrgWide)
         {
             logger.LogWarning("User {UserId} may not change the issuer profile of owner {OwnerId}: its scope is not the whole org", User.GetUserId(), ownerId);
@@ -131,7 +121,6 @@ public class OwnerIssuerProfilesController(
         return new EmptyResult();
     }
 
-    /// <summary>The caller's reach on its org; <c>null</c> without an org or a reach (never widened to the whole org).</summary>
     private async Task<HostScope?> ScopeAsync()
     {
         var ct = HttpContext.RequestAborted;
@@ -139,7 +128,6 @@ public class OwnerIssuerProfilesController(
         return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, ct);
     }
 
-    /// <summary>The caller may change the profile, and so read it in full: the whole organization and <c>agency.owner.financial.manage</c>.</summary>
     private async Task<bool> MayChangeAsync(HostScope scope) =>
         scope.IsOrgWide && (await authorizationService.AuthorizeAsync(User, CasazenPolicies.AgencyOwnerFinancialManage)).Succeeded;
 }

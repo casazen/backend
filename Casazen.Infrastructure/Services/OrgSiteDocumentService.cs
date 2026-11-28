@@ -20,7 +20,6 @@ public sealed class OrgSiteDocumentService(
     ILogger<OrgSiteDocumentService> logger,
     TimeProvider? timeProvider = null) : IOrgSiteDocumentService
 {
-    /// <summary>Versions listed in the history of a kind; older ones stay stored and reachable by number.</summary>
     internal const int HistoryLimit = 50;
 
     /// <summary>Attempts at a version number before giving up on concurrent publishes.</summary>
@@ -35,7 +34,6 @@ public sealed class OrgSiteDocumentService(
         var states = new List<OrgSiteDocumentState>(Kinds.Length);
         foreach (var kind in Kinds)
         {
-            // The text is not needed for the history list: the current version is read in full below.
             var history = await db.OrgSiteDocuments
                 .AsNoTracking()
                 .Where(d => d.OrgId == orgId && d.Kind == kind)
@@ -88,7 +86,6 @@ public sealed class OrgSiteDocumentService(
     {
         ArgumentNullException.ThrowIfNull(input);
 
-        // Validate and render before touching the database: an invalid input changes nothing.
         var (content, contentHtml, externalUrl) = Prepare(input);
 
         for (var attempt = 1; ; attempt++)
@@ -129,7 +126,6 @@ public sealed class OrgSiteDocumentService(
                 ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation }
                 && attempt < MaxPublishAttempts)
             {
-                // A parallel publish took this number: detach and take the next one.
                 db.Entry(document).State = EntityState.Detached;
                 continue;
             }
@@ -158,8 +154,6 @@ public sealed class OrgSiteDocumentService(
 
     public async Task<OrgSiteDocument?> GetPublishedAsync(Guid orgId, OrgSiteDocumentKind kind, CancellationToken cancellationToken = default)
     {
-        // IgnoreQueryFilters: anonymous read of a public site by an org id found from its public slug. A signed-in host
-        // looking at another org's site must see that org's document, not an empty one under their own tenant.
         var current = await db.OrgSiteDocuments
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -169,12 +163,10 @@ public sealed class OrgSiteDocumentService(
         if (current is null || current.WithdrawnAt is not null)
             return null;
 
-        // Sanitized again on read (as the SEO content, FD-15): a row written by other means never reaches a page unsanitized.
         current.ContentHtml = SeoHtmlSanitizer.Sanitize(current.ContentHtml);
         return current;
     }
 
-    /// <summary>Validated text, its sanitized HTML and the normalized address of an input; only the field of its source is kept.</summary>
     private static (string? Content, string? ContentHtml, string? ExternalUrl) Prepare(OrgSiteDocumentInput input) =>
         input.Source switch
         {

@@ -74,7 +74,6 @@ public sealed class AccountantPackageService(
         var t = new PackageTexts(documentTexts, PackageTexts.PackageLanguage);
         var plan = new Plan();
 
-        // A period with more documents than the cap allows is refused before the documents are read: each is at least one file.
         var guestCount = access.Includes(AccountantPackageFolders.GuestDocuments)
             ? await AccountantPackageFacts.IssuedDocuments(db, scope, period, FiscalDocumentPurpose.GuestStay).CountAsync(cancellationToken)
             : 0;
@@ -149,7 +148,6 @@ public sealed class AccountantPackageService(
         CheckCaps(plan.DocumentFiles.Count, limits);
         var omitted = ownerAccounting ? [] : AccountantPackageStructure.OwnerAccountingFolders;
 
-        // The folders left out by choice are named too, with their own reason (an owner accounting folder the caller may not read is already in `omitted`): the index never hides a folder that is not there.
         var notSelected = AccountantPackageFolderRules.Singles
             .Where(folder => !access.Includes(folder) && (ownerAccounting || !AccountantPackageFolderRules.IsOwnerAccounting(folder)))
             .Select(AccountantPackageFolderRules.FolderOf)
@@ -166,8 +164,6 @@ public sealed class AccountantPackageService(
             ownerAccounting);
         return new AccountantPackageResult(plan.Documents, written.Files, written.Bytes, omitted);
     }
-
-    // ---------------------------------------------------------------- what goes in the package
 
     private void PlanGuestDocuments(
         Plan plan,
@@ -254,10 +250,6 @@ public sealed class AccountantPackageService(
             AccountantPackageDocuments.UnusedNumbers(rows, names, fallback, period, t));
     }
 
-    /// <summary>
-    /// The portal commissions of the accounts the agency holds (V2) of the statement months of the period, from the owner ledger (owner accounting): the table for each month, owner and channel
-    /// and its totals, in <see cref="AccountantPackageStructure.OwnerInvoicesFolder"/>. A period with none adds nothing.
-    /// </summary>
     private async Task PlanPortalCommissionsAsync(
         Plan plan, Guid orgId, IReadOnlyList<PortalCommissionLine> lines, AccountantPackagePeriod period, PackageTexts t, CancellationToken cancellationToken)
     {
@@ -270,7 +262,6 @@ public sealed class AccountantPackageService(
         plan.AddTables(AccountantPackageStructure.OwnerInvoicesFolder, AccountantPackageStructure.PortalCommissionsFile, AccountantPackageDocuments.PortalCommissions(named, period, t));
     }
 
-    /// <summary>The PDF of a document CasaZen issued and its XML when it has one: the ones the screens download. A document imported from another system has neither.</summary>
     private void PlanDocumentFiles(Plan plan, string folder, PackageDocument document, PackageTexts t)
     {
         if (document.Source != FiscalDocumentSource.CasaZen)
@@ -296,7 +287,6 @@ public sealed class AccountantPackageService(
         }
     }
 
-    /// <summary>The published statements of the months of the period: the list, and the PDF and the CSV of each (the latest published version of each owner and month).</summary>
     private async Task PlanStatementsAsync(Plan plan, Guid orgId, AccountantPackagePeriod period, PackageTexts t, CancellationToken cancellationToken)
     {
         var fromKey = (period.From.Year * 100) + period.From.Month;
@@ -414,7 +404,6 @@ public sealed class AccountantPackageService(
 
         plan.Documents += f24.Count;
 
-        // The Certificazione Unica is a year's data: a month has the file with its header only.
         var cuYear = period.From.Year;
         var cuRows = new List<PackageCuRow>();
         if (period.Kind == AccountantPackagePeriodKind.Year)
@@ -506,9 +495,6 @@ public sealed class AccountantPackageService(
         plan.AddGenerated($"{folder}/costi-dei-canali.xlsx", $"{costsTable.Title} (Excel)", ChannelCostsReportDocuments.Xlsx(costs), RowsOf([costsTable]));
     }
 
-    // ---------------------------------------------------------------- the ZIP
-
-    /// <summary>Writes the generated files, then each file of a document (rendered when its turn comes), then <c>indice.csv</c>, to <paramref name="destination"/>.</summary>
     internal static async Task<(int Files, long Bytes)> WriteAsync(
         Plan plan, AccountantPackagePeriod period, IReadOnlyList<string> omitted, IReadOnlyList<string> notSelected, PackageTexts t, Stream destination, CancellationToken cancellationToken)
     {
@@ -554,9 +540,6 @@ public sealed class AccountantPackageService(
         await target.WriteAsync(content, cancellationToken);
     }
 
-    // ---------------------------------------------------------------- the caps, the issuers, the names
-
-    /// <summary>422 <c>accountant_package_too_large</c> when <paramref name="files"/> files of documents (each counted at <see cref="EstimatedFileBytes"/>) are more than the caps of the archive allow.</summary>
     internal static void CheckCaps(int files, DocumentArchiveOptions limits)
     {
         if (files <= limits.MaxExportFiles && files * EstimatedFileBytes <= limits.MaxExportBytes)
@@ -579,7 +562,6 @@ public sealed class AccountantPackageService(
         };
     }
 
-    /// <summary>The issuers of the period, by key, and always the issuer of the org today (so the structure is the same for an empty period).</summary>
     internal static IReadOnlyList<AgencyIssuer> IssuersOf(
         IReadOnlyList<PackageDocument> guest, IReadOnlyList<PackageDocument> owner, FiscalIssuerSnapshot fallback, AgencyIssuer current) =>
         guest.Concat(owner)
@@ -610,18 +592,14 @@ public sealed class AccountantPackageService(
 
     internal static int RowsOf(IReadOnlyList<ReportTable> tables) => tables.Sum(table => table.Rows.Count);
 
-    /// <summary>The owners of the annual dataset as it was stored (a payload that cannot be read is a damaged dataset: it fails the build, never an empty file).</summary>
     private static IReadOnlyList<CuOwner> ReadCu(string payload) => JsonSerializer.Deserialize<List<CuOwner>>(payload, Web) ?? [];
 
     private sealed record CuOwner(Guid OwnerId, decimal GrossBase, decimal Withheld, int Evidence);
 
-    /// <summary>A file the package holds that was made in memory (a table as CSV or Excel, a PDF), and its rows when it is a table.</summary>
     internal sealed record GeneratedFile(string Path, string Description, byte[] Content, int? Rows);
 
-    /// <summary>A file of a document, made when its turn comes (a PDF is rendered, an XML is read): at most one is in memory at a time.</summary>
     internal sealed record DocumentFile(string Path, string Description, Func<CancellationToken, Task<byte[]>> Load);
 
-    /// <summary>What the package will hold, in the order it is written; the names are taken once, so no two files share a path.</summary>
     internal sealed class Plan
     {
         private readonly HashSet<string> _paths = new(StringComparer.OrdinalIgnoreCase);
@@ -633,7 +611,6 @@ public sealed class AccountantPackageService(
         /// <summary>The fiscal documents, the statements and the F24 the package holds (a PDF with its XML counts once).</summary>
         public int Documents { get; set; }
 
-        /// <summary>A table (or several, one under the other) as a CSV and as an Excel file with the same rows.</summary>
         public void AddTables(string folder, string name, IReadOnlyList<ReportTable> tables)
         {
             var rows = RowsOf(tables);

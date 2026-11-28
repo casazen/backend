@@ -1,5 +1,4 @@
 using Casazen.Core.DTOs;
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
@@ -13,11 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// Unit tests for PublicOrgController — US-003 (#215) branded booking site.
-/// Covers AC1 (org branding endpoint), AC2 (property list endpoint), AC3 (property detail
-/// scoped by org, cross-org 404), and DTO whitelist (no internal Org fields).
-/// </summary>
 public class PublicOrgControllerTests
 {
     private const string PublicSite = "https://public-site.example.test";
@@ -32,7 +26,6 @@ public class PublicOrgControllerTests
 
     public PublicOrgControllerTests()
     {
-        // Default: the stored tier is paid for (the effective-tier rules are covered by EntitlementServiceTests).
         _entitlementService.Setup(s => s.ResolveEffectiveTier(It.IsAny<OrgEntity>()))
             .Returns((OrgEntity o) => o.PlanTier);
         _controller = new PublicOrgController(
@@ -48,20 +41,15 @@ public class PublicOrgControllerTests
             _reviews.Object);
     }
 
-    // ── GetOrg ──────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetOrg_WhenOrgExists_Returns200WithBrandingDto()
     {
-        // Arrange
         var org = BuildOrg("casazen-milan");
         _orgService.Setup(s => s.GetPublicBySlugAsync("casazen-milan", It.IsAny<CancellationToken>()))
             .ReturnsAsync(org);
 
-        // Act
         var result = await _controller.GetOrg("casazen-milan", CancellationToken.None);
 
-        // Assert
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var dto = Assert.IsType<PublicOrgDto>(ok.Value);
         Assert.Equal("casazen-milan", dto.Slug);
@@ -96,7 +84,6 @@ public class PublicOrgControllerTests
     [Fact]
     public async Task GetOrg_UnsetOrLegacyTheme_ReturnsDefaultThemeAndPrimaryColor()
     {
-        // BK-12: the site always gets a theme it supports, and the color under the spec's name (US-023 AC11).
         var org = BuildOrg("legacy-theme-org");
         org.PublicThemeId = "theme-from-an-old-release";
         _orgService.Setup(s => s.GetPublicBySlugAsync("legacy-theme-org", It.IsAny<CancellationToken>()))
@@ -113,7 +100,6 @@ public class PublicOrgControllerTests
     [Fact]
     public async Task GetOrg_StoredProWithoutPaidSubscription_ShowPoweredByTrue()
     {
-        // A3-37: "Powered by" follows the effective tier, not the stored one (canceled / unpaid / never paid).
         var org = BuildOrg("lapsed-pro-org");
         _orgService.Setup(s => s.GetPublicBySlugAsync("lapsed-pro-org", It.IsAny<CancellationToken>()))
             .ReturnsAsync(org);
@@ -130,31 +116,25 @@ public class PublicOrgControllerTests
     [Fact]
     public async Task GetOrg_WhenOrgNotFound_Returns404()
     {
-        // Arrange
         _orgService.Setup(s => s.GetPublicBySlugAsync("unknown-slug", It.IsAny<CancellationToken>()))
             .ReturnsAsync((OrgEntity?)null);
 
-        // Act
         var result = await _controller.GetOrg("unknown-slug", CancellationToken.None);
 
-        // Assert
         Assert.IsType<NotFoundResult>(result.Result);
     }
 
     [Fact]
     public async Task GetOrg_DtoNeverExposesInternalFields()
     {
-        // Arrange — org has sensitive internal data
         var org = BuildOrg("org-with-secrets");
         org.StripeCustomerId = "cus_secret_123";
         org.StripeConnectedAccountId = "acct_secret_456";
         _orgService.Setup(s => s.GetPublicBySlugAsync("org-with-secrets", It.IsAny<CancellationToken>()))
             .ReturnsAsync(org);
 
-        // Act
         var result = await _controller.GetOrg("org-with-secrets", CancellationToken.None);
 
-        // Assert — DTO properties do not include Stripe IDs, plan tier, or timestamps
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var dto = Assert.IsType<PublicOrgDto>(ok.Value);
         var dtoProperties = dto.GetType().GetProperties().Select(p => p.Name);
@@ -164,12 +144,9 @@ public class PublicOrgControllerTests
         Assert.DoesNotContain(dtoProperties, p => p.Equals("UpdatedAt", StringComparison.OrdinalIgnoreCase));
     }
 
-    // ── GetProperties ────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetProperties_WhenOrgExists_Returns200WithPropertyList()
     {
-        // Arrange
         var org = BuildOrg("casazen-rome");
         var properties = new List<PublicPropertyDto>
         {
@@ -181,10 +158,8 @@ public class PublicOrgControllerTests
         _propertyService.Setup(s => s.SearchByOrgAsync(org.Id))
             .ReturnsAsync(properties);
 
-        // Act
         var result = await _controller.GetProperties("casazen-rome", CancellationToken.None);
 
-        // Assert
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var list = Assert.IsAssignableFrom<IEnumerable<PublicPropertyDto>>(ok.Value);
         Assert.Equal(2, list.Count());
@@ -194,14 +169,11 @@ public class PublicOrgControllerTests
     [Fact]
     public async Task GetProperties_WhenOrgNotFound_Returns404()
     {
-        // Arrange
         _orgService.Setup(s => s.GetPublicBySlugAsync("ghost-org", It.IsAny<CancellationToken>()))
             .ReturnsAsync((OrgEntity?)null);
 
-        // Act
         var result = await _controller.GetProperties("ghost-org", CancellationToken.None);
 
-        // Assert
         Assert.IsType<NotFoundResult>(result.Result);
         _propertyService.Verify(s => s.SearchByOrgAsync(It.IsAny<Guid>()), Times.Never);
     }
@@ -209,28 +181,22 @@ public class PublicOrgControllerTests
     [Fact]
     public async Task GetProperties_WhenOrgHasNoProperties_Returns200WithEmptyList()
     {
-        // Arrange
         var org = BuildOrg("empty-org");
         _orgService.Setup(s => s.GetPublicBySlugAsync("empty-org", It.IsAny<CancellationToken>()))
             .ReturnsAsync(org);
         _propertyService.Setup(s => s.SearchByOrgAsync(org.Id))
             .ReturnsAsync(new List<PublicPropertyDto>());
 
-        // Act
         var result = await _controller.GetProperties("empty-org", CancellationToken.None);
 
-        // Assert
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var list = Assert.IsAssignableFrom<IEnumerable<PublicPropertyDto>>(ok.Value);
         Assert.Empty(list);
     }
 
-    // ── GetProperty ──────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetProperty_WhenPropertyBelongsToOrg_Returns200WithDetailDto()
     {
-        // Arrange
         var org = BuildOrg("host-org");
         var propertyId = Guid.NewGuid();
         var detail = new PublicPropertyDetailDto
@@ -246,10 +212,8 @@ public class PublicOrgControllerTests
         _propertyService.Setup(s => s.GetPublicPropertyForOrgAsync(propertyId.ToString(), org.Id))
             .ReturnsAsync(detail);
 
-        // Act
         var result = await _controller.GetProperty("host-org", propertyId.ToString(), CancellationToken.None);
 
-        // Assert
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var dto = Assert.IsType<PublicPropertyDetailDto>(ok.Value);
         Assert.Equal("Villa Detail", dto.Name);
@@ -259,7 +223,6 @@ public class PublicOrgControllerTests
     [Fact]
     public async Task GetProperty_WhenPropertyBelongsToOtherOrg_Returns404()
     {
-        // Arrange — AC3: cross-org access is blocked
         var orgA = BuildOrg("org-a");
         var propertyId = Guid.NewGuid();
         _orgService.Setup(s => s.GetPublicBySlugAsync("org-a", It.IsAny<CancellationToken>()))
@@ -267,29 +230,22 @@ public class PublicOrgControllerTests
         _propertyService.Setup(s => s.GetPublicPropertyForOrgAsync(propertyId.ToString(), orgA.Id))
             .ReturnsAsync((PublicPropertyDetailDto?)null);
 
-        // Act
         var result = await _controller.GetProperty("org-a", propertyId.ToString(), CancellationToken.None);
 
-        // Assert
         Assert.IsType<NotFoundResult>(result.Result);
     }
 
     [Fact]
     public async Task GetProperty_WhenOrgNotFound_Returns404WithoutCallingPropertyService()
     {
-        // Arrange
         _orgService.Setup(s => s.GetPublicBySlugAsync("no-org", It.IsAny<CancellationToken>()))
             .ReturnsAsync((OrgEntity?)null);
 
-        // Act
         var result = await _controller.GetProperty("no-org", Guid.NewGuid().ToString(), CancellationToken.None);
 
-        // Assert
         Assert.IsType<NotFoundResult>(result.Result);
         _propertyService.Verify(s => s.GetPublicPropertyForOrgAsync(It.IsAny<string>(), It.IsAny<Guid>()), Times.Never);
     }
-
-    // ── Helpers ──────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetProperty_WhenResolvedBySlug_Returns200()
@@ -314,8 +270,6 @@ public class PublicOrgControllerTests
         var dto = Assert.IsType<PublicPropertyDetailDto>(ok.Value);
         Assert.Equal("villa-parco", dto.Slug);
     }
-
-    // ── ContactEmail opt-in (A1-22, A1-23) ─────────────────────────────────────────
 
     [Fact]
     public async Task GetOrg_ContactEmailPublicIsFalse_OmitsContactEmail()
@@ -364,13 +318,10 @@ public class PublicOrgControllerTests
         Assert.False(dto.CanContactHost);
     }
 
-    // ── Canonical URL (BK-15) ───────────────────────────────────────────────────
-
     [Fact]
     public async Task GetOrg_ConfiguredPublicSite_ReturnsCanonicalUrlOfTheCurrentSlug()
     {
         var org = BuildOrg("current-slug");
-        // An old slug of the org still resolves (PL-04): the canonical is always the current one.
         _orgService.Setup(s => s.GetPublicBySlugAsync("old-slug", It.IsAny<CancellationToken>())).ReturnsAsync(org);
 
         var result = await _controller.GetOrg("old-slug", CancellationToken.None);
@@ -441,8 +392,6 @@ public class PublicOrgControllerTests
         Assert.Equal("https://villa-rossi.sites.example.test/property/casa-mare", dto.CanonicalUrl);
     }
 
-    // ── Public profile and booking readiness (DB-03) ─────────────────────────────────
-
     [Fact]
     public async Task GetOrg_PublicProfile_ReturnsSubtitleHostNameAndPublicPhone()
     {
@@ -477,9 +426,9 @@ public class PublicOrgControllerTests
     }
 
     [Theory]
-    [InlineData(null, false, false)] // no account
-    [InlineData("", true, false)] // a blank account
-    [InlineData("acct_started", false, false)] // onboarding started, Stripe does not allow charges yet
+    [InlineData(null, false, false)]
+    [InlineData("", true, false)]
+    [InlineData("acct_started", false, false)]
     [InlineData("acct_ready", true, true)]
     public async Task GetOrg_AcceptsBookings_IsTheRuleOfTheCheckout(string? accountId, bool chargesEnabled, bool expected)
     {
@@ -491,7 +440,6 @@ public class PublicOrgControllerTests
         var dto = Assert.IsType<PublicOrgDto>(Assert.IsType<OkObjectResult>((await _controller.GetOrg("bookable-org", CancellationToken.None)).Result).Value);
 
         Assert.Equal(expected, dto.AcceptsBookings);
-        // One rule: the same property of the org that the checkout reads before it accepts a booking.
         Assert.Equal(org.CanTakeDirectPayments, dto.AcceptsBookings);
     }
 
@@ -520,8 +468,6 @@ public class PublicOrgControllerTests
         LogoUrl = "https://cdn.example.com/logo.png",
         ThemeColor = "#2563eb",
         ContactEmail = "contact@casazen-milan.it",
-        // Existing tests assert on ContactEmail being surfaced by the branding DTO: opted in by default here
-        // (A1-22/A1-23 add a dedicated off-by-default coverage below).
         ContactEmailPublic = true,
         PlanTier = PlanTier.Pro,
         StripeCustomerId = "cus_secret",

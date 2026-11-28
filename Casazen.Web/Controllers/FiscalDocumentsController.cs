@@ -33,10 +33,6 @@ public class FiscalDocumentsController(
     IHostScopeResolver hostScopeResolver,
     ILogger<FiscalDocumentsController> logger) : ControllerBase
 {
-    /// <summary>
-    /// One page of the documents the caller reaches, newest first, narrowed in SQL to its scope. Filters: <c>bookingId</c>, <c>propertyId</c> (404 when the
-    /// caller may not read their payments), <c>from</c>/<c>to</c> (Europe/Rome days of the issue), <c>kind</c>, <c>status</c>, <c>source</c>.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(FiscalDocumentPageDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -83,10 +79,6 @@ public class FiscalDocumentsController(
         return document is null ? DocumentNotFound() : Ok(FiscalDocumentDto.From(document));
     }
 
-    /// <summary>
-    /// The draft of a direct booking (or the one it has, made again): 422 <c>document_booking_not_direct</c>, <c>document_invoice_data_missing</c>,
-    /// <c>document_rule_not_configured</c>, <c>issuer_profile_incomplete</c>; 409 <c>document_issuer_conflict</c>, <c>document_already_issued</c>.
-    /// </summary>
     [HttpPost]
     [Authorize(Policy = CasazenPolicies.PaymentWrite)]
     [FeatureGate(FeatureFlags.FiscalDocumentIssuance)]
@@ -105,7 +97,6 @@ public class FiscalDocumentsController(
         return CreatedAtAction(nameof(Get), new { id = draft.Id }, FiscalDocumentDto.From(draft));
     }
 
-    /// <summary>The draft made again from the current price and data of its booking. 422 <c>document_not_draft</c>, <c>document_read_only</c>.</summary>
     [HttpPost("{id:guid}/refresh")]
     [Authorize(Policy = CasazenPolicies.PaymentWrite)]
     [FeatureGate(FeatureFlags.FiscalDocumentIssuance)]
@@ -140,11 +131,6 @@ public class FiscalDocumentsController(
         return Ok(FiscalDocumentDto.From(await documents.IssueAsync(id, request.Confirm, HttpContext.RequestAborted)));
     }
 
-    /// <summary>
-    /// A credit note of an issued CasaZen document, issued at once in its series: <c>{ amount?, reason, confirm }</c>, the whole document by default.
-    /// 422 <c>credit_amount_exceeds</c>, <c>document_not_creditable</c>, <c>document_read_only</c>, <c>document_confirmation_required</c>, <c>document_owner_invoice</c>
-    /// (an owner invoice is credited by <c>POST api/owner-invoices/{id}/credit-note</c>, with <c>agency.statement.manage</c>: its credit note writes to the owner ledger).
-    /// </summary>
     [HttpPost("{id:guid}/credit-note")]
     [Authorize(Policy = CasazenPolicies.PaymentWrite)]
     [FeatureGate(FeatureFlags.FiscalDocumentIssuance)]
@@ -182,10 +168,6 @@ public class FiscalDocumentsController(
         return Ok(FiscalDocumentBatchResultDto.From(result));
     }
 
-    /// <summary>
-    /// The documents of a booking (E12/F01/US01/T02): number, kind, status, total, currency and the current payment state of each, newest first; a discarded draft is not one. The
-    /// booking card reads it. The booking is authorized like its payments: 404 for a booking the caller may not read.
-    /// </summary>
     [HttpGet("~/api/bookings/{bookingId:guid}/fiscal-documents")]
     [ProducesResponseType(typeof(IReadOnlyList<BookingFiscalDocumentDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -237,7 +219,6 @@ public class FiscalDocumentsController(
         return File(System.Text.Encoding.UTF8.GetBytes(xml), "application/xml", $"{FileNameOf(document)}.xml");
     }
 
-    /// <summary>The PDF of a CasaZen document in the language of the request (the courtesy copy of an electronic invoice).</summary>
     [HttpGet("{id:guid}/pdf")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -275,7 +256,6 @@ public class FiscalDocumentsController(
         return Ok(FiscalDocumentEmailQueuedDto.From(sent));
     }
 
-    /// <summary>The document when the caller reaches it: through its booking, or the whole org for a document without a booking.</summary>
     private Task<FiscalDocument?> ReachableAsync(Guid id, HostOperationRequirement operation) =>
         FiscalDocumentReach.ReachableAsync(
             User, id, operation, documents, hostResources, authorizationService, orgContextResolver, hostScopeResolver, HttpContext.RequestAborted);

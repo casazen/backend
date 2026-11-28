@@ -15,11 +15,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// The edit of a booking and its quote (E08/F02/US01/T01, NF-75) move or show money: like the cancellation (BookingCancellationController) and the payment
-/// endpoints they need <c>payment.write</c> when the plan moves money and <c>payment.read</c> for the quote, on top of <c>booking.write</c>. An edit that
-/// moves no money needs <c>booking.write</c> only.
-/// </summary>
 public class BookingLifecycleControllerEditTests
 {
     private const string OwnerId = "auth0|owner_1";
@@ -49,10 +44,6 @@ public class BookingLifecycleControllerEditTests
             .ReturnsAsync(() => new HostBookingUpdateResult(_booking, BookingEditSettlement.NotNeeded("EUR")));
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule. The plan of the edit is a refund, the caller has <c>booking.write</c> and not <c>payment.write</c>: 403, and the edit is
-    /// never made (nothing is refunded, charged or sent).
-    /// </summary>
     [Fact]
     public async Task Update_ThatMovesMoney_WithoutPaymentWrite_Is403_AndNothingIsDone_Test()
     {
@@ -89,7 +80,6 @@ public class BookingLifecycleControllerEditTests
 
         Assert.IsType<OkObjectResult>(result.Result);
 
-        // The service gets "no right to move money": a plan that changes meanwhile is refused there, under the lock of the booking.
         _hostBookings.Verify(
             h => h.UpdateAsync(It.Is<HostBookingUpdate>(u => u.BookingId == _booking.Id && !u.CanMoveMoney && u.RequestedByUserId == OwnerId), It.IsAny<CancellationToken>()),
             Times.Once);
@@ -107,10 +97,6 @@ public class BookingLifecycleControllerEditTests
         _hostBookings.Verify(h => h.QuoteEditAsync(It.IsAny<HostBookingUpdate>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule. The quote says what the guest has paid and what the money of the edit comes to: without <c>payment.read</c> it is 403 and
-    /// nothing is worked out; with it the quote is given.
-    /// </summary>
     [Fact]
     public async Task QuoteEdit_WithoutPaymentRead_Is403_AndNeverQuotes_Test()
     {

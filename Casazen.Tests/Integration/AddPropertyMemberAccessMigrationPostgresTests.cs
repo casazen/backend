@@ -38,12 +38,9 @@ public class AddPropertyMemberAccessMigrationPostgresTests : IAsyncLifetime
         Assert.Equal(
             "YES",
             await TextAsync("SELECT is_nullable FROM information_schema.columns WHERE table_name = 'Properties' AND column_name = 'ResponsibleUserId'"));
-        // The pair person and property is unique; the property and the org are indexed for the reads of the lists.
         Assert.Contains("UNIQUE", await TextAsync("SELECT indexdef FROM pg_indexes WHERE indexname = 'UIX_PropertyMemberAccesses_UserId_PropertyId'"));
         Assert.Equal("1", await TextAsync("SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'IX_PropertyMemberAccesses_PropertyId'"));
         Assert.Equal("1", await TextAsync("SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'IX_PropertyMemberAccesses_OrgId_UserId'"));
-        // A grant goes with its property and its person (cascade, "c"); the org is never deleted under it (restrict, "r"); a person
-        // erased leaves the property with nobody in charge (set null, "n").
         Assert.Equal("c", await TextAsync("SELECT confdeltype FROM pg_constraint WHERE conname = 'FK_PropertyMemberAccesses_Properties_PropertyId'"));
         Assert.Equal("c", await TextAsync("SELECT confdeltype FROM pg_constraint WHERE conname = 'FK_PropertyMemberAccesses_Users_UserId'"));
         Assert.Equal("r", await TextAsync("SELECT confdeltype FROM pg_constraint WHERE conname = 'FK_PropertyMemberAccesses_Orgs_OrgId'"));

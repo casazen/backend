@@ -6,10 +6,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Extensions;
 
-/// <summary>
-/// Lease contract templates (LT-03, A7-03): options validated at startup (a fake approval stops Production), catalog of
-/// the template files and PDF service. Runbook: docs/runbooks/lease-contract-templates.md.
-/// </summary>
 public static class LeaseContractTemplateExtensions
 {
     public static IServiceCollection AddCasazenLeaseContractTemplates(this IServiceCollection services, IConfiguration configuration)

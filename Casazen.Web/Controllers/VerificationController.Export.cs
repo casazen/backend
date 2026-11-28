@@ -41,7 +41,6 @@ public partial class VerificationController
         [FromServices] IdentityPilotExport pilotExport,
         CancellationToken cancellationToken)
     {
-        // The gates answer first; this keeps a direct call honest too.
         if (!SelfHostedIdentityOn(featureFlags))
             return NotFound();
 
@@ -56,18 +55,12 @@ public partial class VerificationController
         if (!TryResolvePeriod(from, to, out var first, out var last))
             return this.ApiProblem(StatusCodes.Status400BadRequest, "verification_metrics_period_invalid", "VerificationMetricsPeriodInvalid");
 
-        // Every read happens here, before the first byte of the answer: a failure of the database is an error answer, not a file cut short.
         var file = await pilotExport.OpenAsync(scope, RomeCalendar.StartOfDayUtc(first), RomeCalendar.StartOfDayUtc(last.AddDays(1)), cancellationToken);
 
-        // Who asked, the period and how many rows: never a cell.
         logger.LogInformation("User {UserId} exported the CSV of the identity pilot, {Rows} rows, {From} to {To}", userId, file.RowCount, first, last);
         return new PilotCsvResult(file, IdentityPilotExport.FileName(first, last));
     }
 
-    /// <summary>
-    /// Writes the CSV of the pilot to the response, one line at a time: the byte order mark, the header, then each row as it is formatted (the file is not held as one text). The
-    /// download is never cached and never sniffed as anything but CSV.
-    /// </summary>
     private sealed class PilotCsvResult(IdentityPilotFile file, string fileName) : IActionResult
     {
         private static readonly byte[] Utf8Bom = Encoding.UTF8.GetPreamble();

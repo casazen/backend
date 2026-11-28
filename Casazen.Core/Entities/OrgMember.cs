@@ -25,10 +25,8 @@ public class OrgMember : ITenantOwned
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The org the person belongs to (the same as <c>User.OrgId</c>).</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The person (<c>User.Id</c>). Unique: one org per user.</summary>
     [Required, MaxLength(255)]
     public string UserId { get; set; } = string.Empty;
 
@@ -38,19 +36,13 @@ public class OrgMember : ITenantOwned
 
     public OrgMemberStatus Status { get; set; } = OrgMemberStatus.Active;
 
-    /// <summary>
-    /// Every property of the org, or (a collaborator only) just the ones granted to the person in <see cref="PropertyMemberAccess"/>
-    /// (AM-03). The resolver of the scope reads it from here, never from the token.
-    /// </summary>
     public PropertyScope PropertyScope { get; set; } = PropertyScope.All;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>Who added the person (<c>User.Id</c>); <c>null</c> for the owner (onboarding, backfill).</summary>
     [MaxLength(255)]
     public string? CreatedByUserId { get; set; }
 
-    /// <summary>When the member was last deactivated; <c>null</c> while active (cleared by the reactivation).</summary>
     public DateTime? DeactivatedAt { get; set; }
 
     public User User { get; set; } = null!;

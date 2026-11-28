@@ -18,25 +18,19 @@ public class SupplierAdminAuditEntry
 
     public SupplierAdminAuditAction Action { get; set; }
 
-    /// <summary>The supplier org the action is about; null for an invite action (see <see cref="InviteId"/>).</summary>
     public Guid? SupplierOrgId { get; set; }
 
-    /// <summary>The invite an invite action is about.</summary>
     public Guid? InviteId { get; set; }
 
-    /// <summary>Auth0 subject of the admin who acted.</summary>
     [Required, MaxLength(200)]
     public string ActorUserId { get; set; } = string.Empty;
 
     public DateTime OccurredAt { get; set; }
 
-    /// <summary>The reason the admin gave (required to suspend); never shown to the supplier.</summary>
     [MaxLength(500)]
     public string? Reason { get; set; }
 
-    /// <summary>Status of the supplier before a suspension or reactivation.</summary>
     public SupplierStatus? PreviousStatus { get; set; }
 
-    /// <summary>Status of the supplier after a suspension or reactivation.</summary>
     public SupplierStatus? NewStatus { get; set; }
 }

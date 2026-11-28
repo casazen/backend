@@ -19,16 +19,12 @@ internal sealed class FakeSupplierPaymentGateway : ISupplierPaymentGateway
     private readonly Dictionary<string, ServiceChargeIntent> _byIdempotencyKey = new(StringComparer.Ordinal);
     private int _sequence;
 
-    /// <summary>Every creation request received, in order (also the ones answered with an existing PaymentIntent).</summary>
     public List<ServiceChargeIntentRequest> Created { get; } = [];
 
     /// <summary>Every cancellation received: PaymentIntent, account and idempotency key.</summary>
     public List<(string PaymentIntentId, string AccountId, string IdempotencyKey)> Canceled { get; } = [];
 
-    /// <summary>How many times a PaymentIntent was read.</summary>
     public int GetCount { get; private set; }
-
-    // ─── Refunds (SP-15b) ───
 
     private readonly Dictionary<string, ServiceChargeRefund> _refunds = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ServiceChargeRefund> _refundsByKey = new(StringComparer.Ordinal);
@@ -39,13 +35,10 @@ internal sealed class FakeSupplierPaymentGateway : ISupplierPaymentGateway
     /// <summary>Every refund request received, in order (also the ones answered with an existing refund by the idempotency key).</summary>
     public List<ServiceChargeRefundRequest> RefundRequests { get; } = [];
 
-    /// <summary>How many times the refunds of a PaymentIntent were listed.</summary>
     public int ListRefundsCount { get; private set; }
 
-    /// <summary>The status a new refund starts with (Stripe answers <c>succeeded</c> at once for a card).</summary>
     public string NewRefundStatus { get; set; } = "succeeded";
 
-    /// <summary>The refunds that exist on this fake Stripe.</summary>
     public IReadOnlyList<ServiceChargeRefund> Refunds
     {
         get
@@ -55,10 +48,8 @@ internal sealed class FakeSupplierPaymentGateway : ISupplierPaymentGateway
         }
     }
 
-    /// <summary>The next refund creation fails with this exception (once): a 4xx is a refusal, a timeout or a 5xx leaves the outcome unknown.</summary>
     public void FailNextRefund(Exception exception) => _failNextRefund = exception;
 
-    /// <summary>The next listing of refunds fails with this exception (once).</summary>
     public void FailNextList(Exception exception) => _failNextList = exception;
 
     /// <summary>
@@ -71,7 +62,6 @@ internal sealed class FakeSupplierPaymentGateway : ISupplierPaymentGateway
             return StoreRefund(request, NewRefundStatus);
     }
 
-    /// <summary>Moves a refund to <paramref name="status"/> (the bank completed it, it failed afterwards…).</summary>
     public ServiceChargeRefund SetRefundStatus(string refundId, string status, string? failureReason = null)
     {
         lock (_gate)
@@ -111,7 +101,6 @@ internal sealed class FakeSupplierPaymentGateway : ISupplierPaymentGateway
             if (_refundsByKey.TryGetValue(request.IdempotencyKey, out var existing))
                 return Task.FromResult(_refunds[existing.Id]);
 
-            // A refund of a PaymentIntent that does not exist on this account is "no such payment_intent".
             Find(request.PaymentIntentId, request.ConnectedAccountId);
             return Task.FromResult(StoreRefund(request, NewRefundStatus));
         }
@@ -146,7 +135,6 @@ internal sealed class FakeSupplierPaymentGateway : ISupplierPaymentGateway
         return refund;
     }
 
-    /// <summary>The PaymentIntents that exist on this fake Stripe.</summary>
     public IReadOnlyList<ServiceChargeIntent> Intents
     {
         get
@@ -156,25 +144,18 @@ internal sealed class FakeSupplierPaymentGateway : ISupplierPaymentGateway
         }
     }
 
-    /// <summary>A pause inside <see cref="CreateAsync"/>, to keep the payment lock held while a second request arrives.</summary>
     public TimeSpan CreateDelay { get; set; }
 
-    /// <summary>The next creation fails with this exception (once), as a Stripe outage would.</summary>
     public void FailNextCreate(Exception exception) => _failNextCreate = exception;
 
     private Exception? _failNextCreate;
 
-    /// <summary>The next read of a PaymentIntent fails with this exception (once), as a Stripe outage would.</summary>
     public void FailNextGet(Exception exception) => _failNextGet = exception;
 
     private Exception? _failNextGet;
 
     private readonly HashSet<string> _deletedAccounts = new(StringComparer.Ordinal);
 
-    /// <summary>
-    /// The connected account no longer exists on Stripe: every call on it fails with <c>account_invalid</c>, which is how Stripe
-    /// answers a <c>Stripe-Account</c> header it does not know (SP-14 replaces a supplier's account only in that case).
-    /// </summary>
     public void DeleteAccount(string accountId)
     {
         lock (_gate)
@@ -276,7 +257,6 @@ internal sealed class FakeSupplierPaymentGateway : ISupplierPaymentGateway
         }
     }
 
-    /// <summary>Moves a PaymentIntent to <paramref name="status"/> (the payer paid, Stripe is processing, the card failed…).</summary>
     public ServiceChargeIntent SetStatus(string paymentIntentId, string status, string? lastErrorCode = null)
     {
         lock (_gate)
@@ -287,7 +267,6 @@ internal sealed class FakeSupplierPaymentGateway : ISupplierPaymentGateway
         }
     }
 
-    /// <summary>Changes anything of a PaymentIntent (SP-15b): an amount received that is not the price, a fee that was not asked for…</summary>
     public ServiceChargeIntent UpdateIntent(string paymentIntentId, Func<ServiceChargeIntent, ServiceChargeIntent> change)
     {
         lock (_gate)
@@ -298,7 +277,6 @@ internal sealed class FakeSupplierPaymentGateway : ISupplierPaymentGateway
         }
     }
 
-    /// <summary>The PaymentIntent as it is now (without counting it as a read).</summary>
     public ServiceChargeIntent Intent(string paymentIntentId)
     {
         lock (_gate)
@@ -315,7 +293,6 @@ internal sealed class FakeSupplierPaymentGateway : ISupplierPaymentGateway
         if (_deletedAccounts.Contains(connectedAccountId))
             throw AccountInvalid(connectedAccountId);
 
-        // A direct charge exists only on its own account: any other account gets Stripe's "No such payment_intent".
         if (_intents.TryGetValue(paymentIntentId, out var intent) && intent.ConnectedAccountId == connectedAccountId)
             return intent;
 

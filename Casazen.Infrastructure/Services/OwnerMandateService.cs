@@ -14,18 +14,12 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc cref="IOwnerMandateService"/>
-/// <remarks>
-/// The writes of the mandates and of the channel rules run under the lock of the owner accounting of the org (<see cref="PostgresAdvisoryLocks.Scope.OwnerAccounting"/>),
-/// like a posting: two versions written at once never both stay open, and a posting never reads half a list. Logs carry ids and counts: never an address.
-/// </remarks>
 public sealed partial class OwnerMandateService(
     AppDbContext db,
     TimeProvider time,
     IOptions<OwnerAccountingOptions> options,
     ILogger<OwnerMandateService> logger) : IOwnerMandateService
 {
-    /// <summary>The highest amount of a decimal(10,2) column: a flat fee above it is a typing mistake.</summary>
     private const decimal MaxFlatRate = 99_999_999.99m;
 
     [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9/_.-]*$", RegexOptions.CultureInvariant, 250)]
@@ -54,7 +48,6 @@ public sealed partial class OwnerMandateService(
         if (versions.Any(v => v.ValidFrom >= terms.ValidFrom))
             throw new DomainConflictException(OwnerMandateErrors.MandateOverlap, "OwnerMandateOverlap");
 
-        // The version in force before the new one ends the day before it starts: the versions of an owner never overlap.
         foreach (var open in versions.Where(v => v.ValidTo is null || v.ValidTo >= terms.ValidFrom))
             open.ValidTo = terms.ValidFrom.AddDays(-1);
 
@@ -84,8 +77,6 @@ public sealed partial class OwnerMandateService(
         var today = time.TodayInRomeAsDateOnly();
         await using var tx = await LockAsync(scope.OrgId, ct);
 
-        // The candidates: the listed owners (each must be in reach: an owner outside it is the 404 of an owner that does not exist), or every owner of the org
-        // in reach that is not anonymized.
         List<Guid> candidates;
         if (command.OwnerIds is { } listed)
         {
@@ -118,12 +109,9 @@ public sealed partial class OwnerMandateService(
         var skipped = new List<Guid>();
         foreach (var ownerId in candidates.OrderBy(id => id))
         {
-            // An ownership not ended (in force or to come): the owner is managed by the agency. A period that ended is history.
             var own = periods.Where(p => p.PropertyOwnerId == ownerId).ToList();
             var managed = own.Any(p => p.OwnershipEnd is not { } end || RomeCalendar.DateInRome(end) >= today);
 
-            // A mandate of the owner (or of one of its ownerships) still in force on the first day of the template or later: the owner has one, and a new
-            // version would overlap it.
             var ownershipIds = own.Select(p => p.Id).ToHashSet();
             var hasMandate = mandates.Any(m => (m.PropertyOwnershipId is null ? m.PropertyOwnerId == ownerId : ownershipIds.Contains(m.PropertyOwnershipId.Value))
                 && (m.ValidTo is not { } last || last >= terms.ValidFrom));
@@ -167,7 +155,6 @@ public sealed partial class OwnerMandateService(
 
         country = country.ToUpperInvariant();
 
-        // Italy needs the province (the sigla, upper case) on the documents: the same rule the readiness of the owner applies. Elsewhere it is kept as written.
         var italian = string.Equals(country, OwnerFieldRules.Italy, StringComparison.Ordinal);
         if (province is null && italian)
             throw AddressInvalid("province");
@@ -223,7 +210,6 @@ public sealed partial class OwnerMandateService(
             wanted.Add((i, rule.Channel.ToString(), percent, rule.Base ?? CommissionBase.GrossExclTouristTax, rule.ValidFrom, rule.ValidTo));
         }
 
-        // The rules of one channel never overlap: on a check-out day one rule at most is in force.
         foreach (var channel in wanted.GroupBy(w => w.Channel))
         {
             var ordered = channel.OrderBy(w => w.ValidFrom).ThenBy(w => w.Index).ToList();
@@ -238,9 +224,6 @@ public sealed partial class OwnerMandateService(
         var stored = await db.OrgChannelCommissionRules.Where(r => r.OrgId == orgId).ToListAsync(ct);
         var now = time.GetUtcNow().UtcDateTime;
 
-        // A rule of the list with the channel and the first day of a stored one is that rule (the unique index: one rule per channel and first day): it keeps its
-        // row and its id, which the lines already posted name (channel-rule:{id}). A stored rule the list leaves out, or gives another percent or base, does not
-        // stay as it was.
         var matches = new List<(OrgChannelCommissionRule Stored, decimal Percent, CommissionBase Base, DateOnly? ValidTo)>();
         var created = new List<(string Channel, decimal Percent, CommissionBase Base, DateOnly ValidFrom, DateOnly? ValidTo)>();
         foreach (var w in wanted)
@@ -255,8 +238,6 @@ public sealed partial class OwnerMandateService(
         var removed = stored.Where(r => matches.All(m => m.Stored.Id != r.Id)).ToList();
         var changed = matches.Where(m => m.Stored.Percent != m.Percent || m.Stored.Base != m.Base).Select(m => m.Stored).ToList();
 
-        // The ledger keeps the id of the rule behind a channel commission, not its terms: a rule named by lines already posted is the evidence of what they took, so
-        // it is never removed nor given another percent or base. Its last day can move: the rule is closed and the new one starts after it.
         var named = await RulesNamedByPostedLinesAsync(orgId, removed.Concat(changed).ToList(), ct);
         if (named.Count > 0)
         {
@@ -299,7 +280,6 @@ public sealed partial class OwnerMandateService(
         return await GetChannelRulesAsync(orgId, ct);
     }
 
-    /// <summary>The ones among <paramref name="rules"/> that a line of the owner ledger names in its rule version (<c>channel-rule:{id}</c>).</summary>
     private async Task<List<Guid>> RulesNamedByPostedLinesAsync(Guid orgId, IReadOnlyCollection<OrgChannelCommissionRule> rules, CancellationToken ct)
     {
         if (rules.Count == 0)
@@ -314,7 +294,6 @@ public sealed partial class OwnerMandateService(
         return rules.Where(r => used.Contains(ChannelFeeSources.Rule(r.Id))).Select(r => r.Id).ToList();
     }
 
-    /// <summary>The rules and, for each portal, what applies today: the rule in force, else the configured default (marked), else nothing.</summary>
     private ChannelCommissionRuleSet SetOf(IReadOnlyList<OrgChannelCommissionRule> rules)
     {
         var today = time.TodayInRomeAsDateOnly();
@@ -338,10 +317,6 @@ public sealed partial class OwnerMandateService(
         return new ChannelCommissionRuleSet(rules, channels);
     }
 
-    /// <summary>
-    /// The owners among <paramref name="ownerIds"/> that are owners of the org of the scope and in its reach: all of them for an org-wide scope; for a partial
-    /// one only those that hold at least one ownership period and every one of them on a property the scope reaches (no declaration is never in reach).
-    /// </summary>
     private async Task<HashSet<Guid>> OwnersInReachAsync(HostScope scope, IReadOnlyCollection<Guid> ownerIds, CancellationToken ct)
     {
         if (ownerIds.Count == 0)
@@ -392,7 +367,6 @@ public sealed partial class OwnerMandateService(
         CreatedByUserId = userId,
     };
 
-    /// <summary>The terms of a version, checked: 422 <c>owner_mandate_invalid</c> with the first field that is wrong.</summary>
     private static MandateTerms Validated(OwnerMandateCommand? command)
     {
         if (command is null)
@@ -432,12 +406,10 @@ public sealed partial class OwnerMandateService(
             document);
     }
 
-    /// <summary>0 to 100 with at most two decimals.</summary>
     private static bool IsPercent(decimal value) => value is >= 0m and <= 100m && decimal.Round(value, 2) == value;
 
     private static bool IsFlatRate(decimal? value) => value is not { } amount || (amount is >= 0m and <= MaxFlatRate && decimal.Round(amount, 2) == amount);
 
-    /// <summary>An https address, or the key of a file of the private storage (letters, digits, <c>/ _ . -</c>, never <c>..</c>).</summary>
     private static bool IsDocumentReference(string value)
     {
         if (value.Length > OwnerMandate.DocumentMaxLength)

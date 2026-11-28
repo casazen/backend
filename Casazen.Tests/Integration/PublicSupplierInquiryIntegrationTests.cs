@@ -30,7 +30,6 @@ public class PublicSupplierInquiryIntegrationTests(PublicBookingFactory factory)
         var email = PublicBookingTestData.NewEmail();
         using var client = factory.CreateClient();
 
-        // 1. The customer writes: an inquiry, an e-mail to check the address, and the supplier hears nothing.
         var created = await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/inquiries", Body(email));
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         AssertPrivateAnswer(created);
@@ -46,13 +45,11 @@ public class PublicSupplierInquiryIntegrationTests(PublicBookingFactory factory)
         Assert.Empty(factory.EmailsTo(supplier.ContactEmail));
         Assert.Equal(0, (await supplier.InboxAsync(factory)).GetProperty("total").GetInt32());
 
-        // 2. A wrong token is the same 404 as a link that does not exist, and changes nothing.
         var wrong = await client.PostAsJsonAsync(
             $"/api/public/suppliers/{supplier.Slug}/inquiries/{inquiryId}/confirm-email", new { token = "token-sbagliato-di-prova-0123456789" });
         await AssertProblemAsync(wrong, HttpStatusCode.NotFound, "supplier_booking_link_invalid");
         Assert.Equal(0, (await supplier.InboxAsync(factory)).GetProperty("total").GetInt32());
 
-        // 3. It follows the link: now the supplier has a request, and both sides are told.
         var confirmed = await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/inquiries/{inquiryId}/confirm-email", new { token });
         Assert.Equal(HttpStatusCode.OK, confirmed.StatusCode);
         AssertPrivateAnswer(confirmed);
@@ -71,7 +68,6 @@ public class PublicSupplierInquiryIntegrationTests(PublicBookingFactory factory)
             Assert.DoesNotContain(secret, mailed, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(factory.Pushes.ToArray(), p => p.Audience == PushAudience.SupplierOrg(supplier.OrgId));
 
-        // 4. The supplier sees "Nome C." and the comune: a request with no time, none of the customer's contacts, none of its words.
         var inbox = await supplier.InboxAsync(factory);
         var item = Assert.Single(inbox.GetProperty("items").EnumerateArray());
         Assert.Equal("showcase", item.GetProperty("source").GetString());
@@ -84,7 +80,6 @@ public class PublicSupplierInquiryIntegrationTests(PublicBookingFactory factory)
         foreach (var secret in PublicBookingTestData.Secrets(email).Append("ringhiera"))
             Assert.DoesNotContain(secret, beforeTake, StringComparison.OrdinalIgnoreCase);
 
-        // 5. A second click on the link answers the same, and does nothing again.
         var emailsBefore = factory.EmailsTo(email).Count;
         var again = await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/inquiries/{inquiryId}/confirm-email", new { token });
         Assert.Equal(HttpStatusCode.OK, again.StatusCode);
@@ -107,7 +102,6 @@ public class PublicSupplierInquiryIntegrationTests(PublicBookingFactory factory)
         var (_, token) = LinkOf(Assert.Single(factory.EmailsTo(email)));
         await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/inquiries/{inquiryId}/confirm-email", new { token });
 
-        // 1. The console knows the kind of the request, and the thread has what the customer wrote.
         var item = Assert.Single((await supplier.InboxAsync(factory)).GetProperty("items").EnumerateArray());
         Assert.Equal("Custom", item.GetProperty("kind").GetString());
         Assert.False(IsNull(item, "respondBy"));
@@ -119,13 +113,11 @@ public class PublicSupplierInquiryIntegrationTests(PublicBookingFactory factory)
         Assert.Equal("Customer", first.GetProperty("author").GetString());
         Assert.Equal(Words, first.GetProperty("body").GetString());
 
-        // 2. Another supplier gets the same 404 for reading and for writing, and a request that is not on measure is one too.
         using var asOther = other.Client(factory);
         Assert.Equal(HttpStatusCode.NotFound, (await asOther.GetAsync($"/api/supplier/requests/{id}/thread")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await asOther.PostAsJsonAsync($"/api/supplier/requests/{id}/messages", new { body = "Buongiorno a tutti" })).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await asSupplier.GetAsync($"/api/supplier/requests/{Guid.NewGuid()}/thread")).StatusCode);
 
-        // 3. The supplier answers: the customer is told with a link and none of the words, and the hour stops.
         var posted = await asSupplier.PostAsJsonAsync($"/api/supplier/requests/{id}/messages", new { body = "Posso passare giovedì per un sopralluogo gratuito." });
         Assert.Equal(HttpStatusCode.Created, posted.StatusCode);
         Assert.Equal("Supplier", (await posted.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("author").GetString());
@@ -137,7 +129,6 @@ public class PublicSupplierInquiryIntegrationTests(PublicBookingFactory factory)
         Assert.True(IsNull(answered, "respondBy"));
         Assert.Equal(2, (await asSupplier.GetFromJsonAsync<JsonElement>($"/api/supplier/requests/{id}/thread")).GetProperty("messages").GetArrayLength());
 
-        // 4. A message that is not one is a 422; the request is not taken the way a booking is: it is refused or answered.
         await AssertProblemAsync(
             await asSupplier.PostAsJsonAsync($"/api/supplier/requests/{id}/messages", new { body = "   " }),
             (HttpStatusCode)422,
@@ -147,7 +138,6 @@ public class PublicSupplierInquiryIntegrationTests(PublicBookingFactory factory)
             (HttpStatusCode)422,
             "supplier_inquiry_needs_offer");
 
-        // 5. Refused: the customer is told with the reason, and the thread is closed.
         var rejected = await asSupplier.PostAsJsonAsync($"/api/service-requests/{id}/reject", new { reason = "Non copro questo tipo di lavoro" });
         Assert.Equal(HttpStatusCode.OK, rejected.StatusCode);
         Assert.Contains(factory.EmailsTo(email), e => e.Template == EmailTemplates.Names.SupplierInquiryDeclined);
@@ -170,7 +160,6 @@ public class PublicSupplierInquiryIntegrationTests(PublicBookingFactory factory)
         var code = (await confirmed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("publicCode").GetString();
         var access = new { slug = supplier.Slug, code, email };
 
-        // 1. The customer finds its request again: a request on measure, waiting for the supplier, with its own words as the first message.
         var lookup = await client.PostAsJsonAsync("/api/public/supplier-bookings/lookup", access);
         Assert.Equal(HttpStatusCode.OK, lookup.StatusCode);
         AssertPrivateAnswer(lookup);
@@ -200,7 +189,6 @@ public class PublicSupplierInquiryIntegrationTests(PublicBookingFactory factory)
             Assert.False(IsNull(read.GetProperty("thread").GetProperty("messages").EnumerateArray().Last(), "readAt"));
         }
 
-        // 3. The customer writes (after the quiet period of the first message): the supplier is told with "Nome C." and never the words.
         using (factory.MoveClock(TimeSpan.FromMinutes(11)))
         {
             var posted = await client.PostAsJsonAsync(
@@ -219,14 +207,12 @@ public class PublicSupplierInquiryIntegrationTests(PublicBookingFactory factory)
         Assert.Equal(3, supplierThread.GetProperty("messages").GetArrayLength());
         Assert.True(IsNull(supplierThread.GetProperty("messages").EnumerateArray().Last(), "readAt"));
 
-        // 4. Who is not the customer is the same 404, and the thread is not touched.
         await AssertProblemAsync(
             await client.PostAsJsonAsync(
                 "/api/public/supplier-bookings/messages", new { slug = supplier.Slug, code, email = PublicBookingTestData.NewEmail(), body = "Sono io, davvero." }),
             HttpStatusCode.NotFound,
             "supplier_booking_not_found");
 
-        // 5. The customer closes the request: free, the supplier is told without a day, the thread is closed for both.
         var cancelled = await client.PostAsJsonAsync("/api/public/supplier-bookings/cancel", new { slug = supplier.Slug, code, email, reason = "Ho trovato un altro fornitore" });
         Assert.Equal(HttpStatusCode.OK, cancelled.StatusCode);
         var closed = await cancelled.Content.ReadFromJsonAsync<JsonElement>();
@@ -258,7 +244,6 @@ public class PublicSupplierInquiryIntegrationTests(PublicBookingFactory factory)
         var responses = new List<HttpResponseMessage>
         {
             created,
-            // Refusals: a name that is not one, no service of that name, a supplier that does not exist, a link that is not theirs.
             await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/inquiries", Body(email, fullName: "A")),
             await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/inquiries", Body(email, service: "non-esiste")),
             await client.PostAsJsonAsync("/api/public/suppliers/non-esiste/inquiries", Body(email)),
@@ -299,7 +284,6 @@ public class PublicSupplierInquiryIntegrationTests(PublicBookingFactory factory)
         Assert.Equal(0, await db.ShowcaseInquiries.Where(i => i.OrgId == supplier.OrgId).CountAsync());
     }
 
-    /// <summary>A member that is null, or left out of the JSON when it is.</summary>
     private static bool IsNull(JsonElement element, string name) =>
         !element.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null;
 
@@ -324,7 +308,6 @@ public class PublicSupplierInquiryIntegrationTests(PublicBookingFactory factory)
             website,
         };
 
-    /// <summary>The inquiry and the token of the link in a verification e-mail (the token is in the fragment of the link).</summary>
     private static (Guid InquiryId, string Token) LinkOf((string? To, Casazen.Infrastructure.Email.EmailContent Content, string Template) email)
     {
         var match = Regex.Match(email.Content.HtmlBody, "inquiry=([0-9a-fA-F-]{36})#token=([A-Za-z0-9_-]+)");
@@ -349,10 +332,6 @@ public class PublicSupplierInquiryIntegrationTests(PublicBookingFactory factory)
     }
 }
 
-/// <summary>
-/// SP-10b with the flag <c>SupplierShowcaseBooking</c> <b>off</b> (the default of every environment): the two endpoints answer 404 like a route
-/// that does not exist, whatever the supplier published and whatever the request, and nothing is stored or sent.
-/// </summary>
 [Collection(SupplierCatalogHostsCollection.Name)]
 public class PublicSupplierInquiryFlagOffIntegrationTests(CasazenWebApplicationFactory factory) : IClassFixture<CasazenWebApplicationFactory>
 {
@@ -369,7 +348,6 @@ public class PublicSupplierInquiryFlagOffIntegrationTests(CasazenWebApplicationF
                 $"/api/public/suppliers/{supplier.Slug}/inquiries",
                 new { clientRequestId = Guid.NewGuid(), city = "Monza", message = "Vorrei far sistemare la ringhiera.", fullName = "Mario Rossi", email = PublicBookingTestData.NewEmail() }),
             await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/inquiries/{Guid.NewGuid()}/confirm-email", new { token = "x" }),
-            // A request that would be refused is a 404 too, never a 400 or a 422: nothing is read.
             await client.PostAsync($"/api/public/suppliers/{supplier.Slug}/inquiries", new StringContent("{ not json", Encoding.UTF8, "application/json")),
             await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/inquiries/{Guid.NewGuid()}/confirm-email", new { }),
         };

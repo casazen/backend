@@ -92,14 +92,12 @@ public sealed class OctorateBookingCancelHandler(
         await PushAsync(domainEvent.OrgId, domainEvent.EntityId, domainEvent.Type == DomainEventType.OctorateSyncRequested, ct);
     }
 
-    /// <summary>Cancels the reservation of a cancelled booking on Octorate, once and with a state the host sees (see the remarks of the class).</summary>
     private async Task PushAsync(Guid orgId, Guid bookingId, bool askedAgain, CancellationToken ct)
     {
         await using var hold = await PostgresAdvisoryLocks.TryAcquireSessionLockAsync(
                 db, PostgresAdvisoryLocks.Scope.OctorateBookingSync, bookingId.ToString("N"), ct)
             ?? throw new OctorateSyncBusyException(bookingId);
 
-        // Read under the lock, from what is committed: the create may have finished, the booking may have been brought back to life meanwhile.
         var booking = await db.Bookings
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -112,14 +110,11 @@ public sealed class OctorateBookingCancelHandler(
             return;
         }
 
-        // The event is older than the booking (a hold confirmed again by a late payment): there is nothing to cancel. A booking of a channel is
-        // cancelled through the channel path.
         if (booking.Status != BookingStatus.Cancelled || FiscalCopy.IsOtaBookingSource(booking.Source))
             return;
 
         var sync = await db.OctorateBookingSyncs.FirstOrDefaultAsync(s => s.BookingId == bookingId && s.OrgId == orgId, ct);
 
-        // The host asks again: only for a cancellation that was sent (its row says so); the other rows are the business of the create.
         if (askedAgain && sync is not { LastOperation: OctorateSyncOperation.Cancel })
             return;
 
@@ -165,7 +160,6 @@ public sealed class OctorateBookingCancelHandler(
             return;
         }
 
-        // The attempt is committed before the call, so a process that stops during it leaves the trace.
         sync = await MarkPendingAsync(booking, sync, ct);
 
         try
@@ -175,7 +169,6 @@ public sealed class OctorateBookingCancelHandler(
         }
         catch (OctorateConflictException)
         {
-            // Octorate refuses the state of the reservation (409): the host looks at it, nothing is sent again by itself.
             await RecordAsync(booking, sync, OctorateSyncState.Conflict, OctorateSyncErrorCodes.ReservationChanged, ct);
             logger.LogWarning("Octorate cancellation of booking {BookingId}: the reservation conflicts with its state on Octorate, not retried", bookingId);
             return;
@@ -197,7 +190,6 @@ public sealed class OctorateBookingCancelHandler(
         }
         catch (ArgumentException ex)
         {
-            // An id Octorate could not take: nothing left CasaZen, nothing was cancelled, and sending it again changes nothing.
             await RecordAsync(booking, sync, OctorateSyncState.Failed, OctorateSyncErrorCodes.Rejected, ct);
             logger.LogWarning(ex, "Octorate cancellation of booking {BookingId}: the request cannot be written, not sent", bookingId);
             return;
@@ -219,11 +211,9 @@ public sealed class OctorateBookingCancelHandler(
         if (sync is not { Attempts: > 0 })
             return null;
 
-        // Only the accommodation is needed: the rooms are not read to look a reservation up.
         var accommodation = await targets.AccommodationOfAsync(booking.PropertyId, ct);
         if (accommodation is null)
         {
-            // Not mirrored now: nothing can be looked up, and the cancellation is not dropped (see the remarks of the class).
             await RecordAsync(booking, sync, OctorateSyncState.Failed, OctorateSyncErrorCodes.NotMirrored, ct);
             logger.LogWarning(
                 "Octorate cancellation of booking {BookingId} of org {OrgId}: its property is not mirrored now, the reservation of the create is not looked up; the host asks again",
@@ -240,7 +230,6 @@ public sealed class OctorateBookingCancelHandler(
         }
         catch (OctorateException ex)
         {
-            // No answer, a 429 or a 5xx (or a list that could not be read whole, which proves nothing): the event is delivered again.
             var retry = ex is OctorateServerException or OctorateRateLimitException;
             await RecordAsync(booking, sync, OctorateSyncState.Failed, retry ? OctorateSyncErrorCodes.Unavailable : OctorateSyncErrorCodes.Rejected, ct);
             logger.LogWarning(
@@ -255,7 +244,6 @@ public sealed class OctorateBookingCancelHandler(
         }
         catch (ArgumentException ex)
         {
-            // A reference Octorate could not take: nothing left CasaZen, and asking again changes nothing.
             await RecordAsync(booking, sync, OctorateSyncState.Failed, OctorateSyncErrorCodes.Rejected, ct);
             logger.LogWarning(ex, "Octorate cancellation of booking {BookingId}: the reference cannot be written, the reservation is not looked up", booking.Id);
             return null;
@@ -267,7 +255,6 @@ public sealed class OctorateBookingCancelHandler(
             return null;
         }
 
-        // Linked, as the create does when it hears the answer: from here the booking is one with its reservation.
         var tracked = await db.Bookings.FirstAsync(b => b.Id == booking.Id && b.OrgId == booking.OrgId, ct);
         tracked.OctorateReservationId = found.Id;
         tracked.OctorateUpdatedAt = found.UpdatedAt ?? tracked.OctorateUpdatedAt;
@@ -292,7 +279,6 @@ public sealed class OctorateBookingCancelHandler(
         return sync;
     }
 
-    /// <summary>Writes the outcome of the cancellation on the row of the booking (made when the booking has none), in one save.</summary>
     private async Task RecordAsync(BookingFacts booking, OctorateBookingSync? sync, OctorateSyncState state, string? errorCode, CancellationToken ct)
     {
         var now = UtcNow;
@@ -324,7 +310,6 @@ public sealed class OctorateBookingCancelHandler(
         return sync;
     }
 
-    /// <summary>What the push reads of a booking: ids and enums only.</summary>
     private sealed record BookingFacts(
         Guid Id,
         Guid OrgId,

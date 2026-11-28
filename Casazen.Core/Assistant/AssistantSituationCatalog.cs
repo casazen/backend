@@ -23,7 +23,6 @@ public sealed record AssistantSituationInfo(
     KnowledgeTopic? SourceTopic,
     IReadOnlyList<KnowledgeTopic> RequiredTopics)
 {
-    /// <summary>The situation carries a sensitive category by nature (money, cancellation, complaint, damage, safety, legal, personal data).</summary>
     public bool IsSensitive => SensitiveCategories != SensitiveCategory.None;
 }
 
@@ -43,7 +42,6 @@ public static class AssistantSituationCatalog
 
     private static readonly AssistantMode[] NeverAutomatic = [AssistantMode.Escalate, AssistantMode.Draft];
 
-    /// <summary>The 14 situations of NF-66 and the one that matches none, in the order the screens list them.</summary>
     public static IReadOnlyList<AssistantSituationInfo> All { get; } =
     [
         Info(AssistantSituation.CheckInTime, "check_in_time", SensitiveCategory.None, source: KnowledgeTopic.CheckIn, required: [KnowledgeTopic.CheckIn]),
@@ -74,12 +72,10 @@ public static class AssistantSituationCatalog
         Info(AssistantSituation.Other, "other", SensitiveCategory.None, neverAutomatic: true),
     ];
 
-    /// <summary>The entry of <paramref name="situation"/>; <see cref="ArgumentOutOfRangeException"/> for a value that is no member of <see cref="AssistantSituation"/>.</summary>
     public static AssistantSituationInfo Of(AssistantSituation situation) =>
         All.FirstOrDefault(info => info.Situation == situation)
         ?? throw new ArgumentOutOfRangeException(nameof(situation), situation, "Not a situation of the assistant.");
 
-    /// <summary>The situation with this stable code (<c>check_in_time</c>), in any case; <c>false</c> for anything else.</summary>
     public static bool TryFromCode(string? code, out AssistantSituation situation)
     {
         var text = code?.Trim();
@@ -88,10 +84,6 @@ public static class AssistantSituationCatalog
         return found is not null;
     }
 
-    /// <summary>
-    /// The situation a route or a body names: its stable code (<c>check_in_time</c>) or the name of the enum member (<c>CheckInTime</c>), in any case. A number, and a name that
-    /// is none of them, is <c>false</c>.
-    /// </summary>
     public static bool TryParse(string? text, out AssistantSituation situation)
     {
         if (TryFromCode(text, out situation))

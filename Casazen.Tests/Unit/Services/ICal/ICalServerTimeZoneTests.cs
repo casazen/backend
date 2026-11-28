@@ -4,18 +4,12 @@ using CalendarModel = Ical.Net.Calendar;
 
 namespace Casazen.Tests.Unit.Services.ICal;
 
-/// <summary>Tests that change the process time zone (TZ): they run alone, never next to other tests.</summary>
 [CollectionDefinition(Name, DisableParallelization = true)]
 public sealed class ServerTimeZoneCollection
 {
     public const string Name = "Server time zone";
 }
 
-/// <summary>
-/// PC-10 (A2-23): all-day blocks are the dates written in the feed whatever the server's time zone. Before the fix the
-/// spike read them with Ical.Net's <c>AsUtc</c>, which shifted them to the previous day on a server east of UTC
-/// (e.g. a developer machine in Europe/Rome).
-/// </summary>
 [Collection(ServerTimeZoneCollection.Name)]
 public class ICalServerTimeZoneTests
 {
@@ -48,7 +42,6 @@ public class ICalServerTimeZoneTests
     [ProcessTimeZoneFact]
     public void ServerTimeZone_EastOfUtc_ShiftsIcalNetUtcValueOfAllDayDates()
     {
-        // Guards the test above: the TZ switch is effective, so the old AsUtc reading would have failed it.
         using var _ = new ServerTimeZone("Pacific/Kiritimati");
 
         var calendarEvent = CalendarModel.Load(AllDayFeed).Events.First(e => e.Uid == "stay");
@@ -57,11 +50,6 @@ public class ICalServerTimeZoneTests
         Assert.Equal(new DateTime(2026, 10, 9), calendarEvent.DtStart.AsUtc.Date);
     }
 
-    /// <summary>
-    /// Sets the process time zone through <c>TZ</c> and restores it on dispose. .NET reads <c>TZ</c> on Linux and macOS only: on
-    /// Windows <c>TimeZoneInfo.Local</c> is the system setting and nothing here changes it, so the theory above then runs under
-    /// the time zone of the machine (the one a developer in Rome has, east of UTC, is the case PC-10 fixed).
-    /// </summary>
     private sealed class ServerTimeZone : IDisposable
     {
         private readonly string? _previous = Environment.GetEnvironmentVariable("TZ");

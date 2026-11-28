@@ -26,16 +26,10 @@ public class PublicSeoController(IPublicSeoService seoService) : ControllerBase
 {
     private const string SlugPattern = "^[A-Za-z0-9-]{1,100}$";
 
-    /// <summary>The paths of an org's own host that have a crawler page: <c>/</c> and <c>/property/{slug or id}</c>.</summary>
     private const string HostPathPattern = "^/(?:property/[A-Za-z0-9._~%-]{1,150})?$";
 
-    /// <summary>Header of the 404 for a host that serves no org site (read by the crawler function).</summary>
     public const string UnknownHostHeader = "X-Seo-Host";
 
-    /// <summary>
-    /// Landing page of an org's booking site. <c>host</c> is the host the crawler used, as the web app saw it: it decides
-    /// whether the page may be indexed there.
-    /// </summary>
     [HttpGet("orgs/{orgSlug}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status301MovedPermanently)]
@@ -46,7 +40,6 @@ public class PublicSeoController(IPublicSeoService seoService) : ControllerBase
         CancellationToken cancellationToken) =>
         ToResult(await seoService.RenderOrgAsync(orgSlug, host, cancellationToken));
 
-    /// <summary>A published property of an org, by slug or id.</summary>
     [HttpGet("orgs/{orgSlug}/properties/{propertySlugOrId}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status301MovedPermanently)]
@@ -58,12 +51,6 @@ public class PublicSeoController(IPublicSeoService seoService) : ControllerBase
         CancellationToken cancellationToken) =>
         ToResult(await seoService.RenderPropertyAsync(orgSlug, propertySlugOrId, host, cancellationToken));
 
-    /// <summary>
-    /// A page of an org's own site by the host the crawler used (BK-16, subdomain or verified custom domain): the landing page
-    /// (<c>path=/</c>) or a property (<c>path=/property/{slug or id}</c>). A host that serves no org site answers 404 with
-    /// <c>X-Seo-Host: unknown</c>: the web app's own host (the crawler function serves the single-page app there), a preview,
-    /// a custom domain waiting for its verification or no longer paid for.
-    /// </summary>
     [HttpGet("hosts/page")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status301MovedPermanently)]
@@ -74,7 +61,6 @@ public class PublicSeoController(IPublicSeoService seoService) : ControllerBase
         CancellationToken cancellationToken) =>
         ToResult(await seoService.RenderHostPageAsync(host, path, cancellationToken));
 
-    /// <summary>The public showcase of an active supplier (<c>/fornitori/{slug}</c>).</summary>
     [HttpGet("suppliers/{slug}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status301MovedPermanently)]
@@ -84,7 +70,6 @@ public class PublicSeoController(IPublicSeoService seoService) : ControllerBase
         CancellationToken cancellationToken) =>
         ToResult(await seoService.RenderSupplierAsync(slug, cancellationToken));
 
-    /// <summary>A compliance guide of a comune.</summary>
     [HttpGet("guides/{regionSlug}/{comuneSlug}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -94,7 +79,6 @@ public class PublicSeoController(IPublicSeoService seoService) : ControllerBase
         CancellationToken cancellationToken) =>
         ToResult(await seoService.RenderGuideAsync(regionSlug, comuneSlug, cancellationToken));
 
-    /// <summary>The tourist tax page of a comune.</summary>
     [HttpGet("tourist-tax/{comuneSlug}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -103,7 +87,6 @@ public class PublicSeoController(IPublicSeoService seoService) : ControllerBase
         CancellationToken cancellationToken) =>
         ToResult(await seoService.RenderTouristTaxAsync(comuneSlug, cancellationToken));
 
-    /// <summary>The hub of the guides.</summary>
     [HttpGet("hub")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetHub(CancellationToken cancellationToken) =>
@@ -111,8 +94,6 @@ public class PublicSeoController(IPublicSeoService seoService) : ControllerBase
 
     private ContentResult ToResult(SeoPageResult result)
     {
-        // Never cached by an intermediary: the same URL is also served to people by the single-page app, and an org that
-        // unpublishes a property must disappear from crawlers at once.
         Response.Headers.CacheControl = "no-store";
 
         switch (result.Status)

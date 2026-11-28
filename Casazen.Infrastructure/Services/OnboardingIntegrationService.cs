@@ -53,23 +53,16 @@ public sealed class OnboardingIntegrationService(
 
         var definition = OnboardingPartCatalog.Of(key);
 
-        // The decision is the org's, so the state is the one over the whole org (every property), not the reach of the caller; the same read
-        // the deferral makes before it raises a "To do".
         var plan = await plans.GetPlanAsync(orgId, new HostScope(orgId), ct);
         if (plan.Parts.Single(part => part.Key == key).State == OnboardingPartStates.NotAvailable)
             throw new DomainRuleException(OnboardingIntegrationCodes.PartNotReopenable, "OnboardingPartNotReopenable");
 
-        // Clears the deferral and closes the "To do" (harmless on a part that was never put off); the wizard of the part changes the data.
         await plans.ResumeAsync(orgId, userId, key, ct);
 
         logger.LogInformation("Onboarding part {Part} of org {OrgId} reopened from the integration settings", definition.Code, orgId);
         return new OnboardingPartReopen(key, definition.Code, definition.LaunchTarget, OnboardingReopenFocus.Of(key));
     }
 
-    /// <summary>
-    /// The connection of the org in this environment. A missing connection has no status and needs no reconnection (it was never made); a
-    /// disconnected one or one in error does.
-    /// </summary>
     private async Task<OnboardingConnectionHealth> ConnectionAsync(Guid orgId, CancellationToken ct)
     {
         var environment = OctorateEnvironments.Of(hostEnvironment);
@@ -88,7 +81,6 @@ public sealed class OnboardingIntegrationService(
                 row.Status is OctorateConnectionStatus.Disconnected or OctorateConnectionStatus.Error);
     }
 
-    /// <summary>The short-rent, active properties of the org the scope reaches: the ones the plan counts, with their country.</summary>
     private async Task<IReadOnlyList<(Guid Id, string? Country)>> PropertiesAsync(Guid orgId, HostScope scope, CancellationToken ct)
     {
         var rows = await db.Properties
@@ -103,10 +95,6 @@ public sealed class OnboardingIntegrationService(
         return [.. rows.Select(row => (row.Id, (string?)row.Country))];
     }
 
-    /// <summary>
-    /// The properties for each stored sender. A property outside Italy has no police sender to choose (the store says it does not apply), so it
-    /// is in no count; a property with no stored choice inherits an explicit account choice, or is <c>notSet</c> (an implicit default is not a choice).
-    /// </summary>
     private async Task<OnboardingSenderCounts> SenderCountsAsync(
         Guid orgId,
         IReadOnlyList<(Guid Id, string? Country)> properties,
@@ -131,7 +119,6 @@ public sealed class OnboardingIntegrationService(
         var notSet = applicable.Count - channelManager - casaZen - manual;
         var accountChoice = await db.Orgs.AsNoTracking().Where(o => o.Id == orgId)
             .Select(o => o.DefaultComplianceSender).SingleOrDefaultAsync(ct);
-        // Only a person-saved account choice counts; the connected/manual fallback still means notSet.
         if (accountChoice == ComplianceSenderType.ChannelManager)
         {
             channelManager += notSet;
@@ -145,7 +132,6 @@ public sealed class OnboardingIntegrationService(
         return new OnboardingSenderCounts(channelManager, casaZen, manual, notSet);
     }
 
-    /// <summary>The channel states of the properties, for each publication status; every status is listed, with zero when none is in it.</summary>
     private async Task<IReadOnlyList<OnboardingChannelStatusCount>> ChannelCountsAsync(
         Guid orgId,
         IReadOnlyList<Guid> propertyIds,

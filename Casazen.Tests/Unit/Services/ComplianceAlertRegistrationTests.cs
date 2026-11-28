@@ -6,11 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E03/F02/US02 (NF-52): the services of the alert stages and of the monthly summary are registered, each scoped, each with its implementation. Every line of this
-/// list is a change someone makes on purpose: the port that says who is told, the source of the tourist tax deadline day (which answers «not known» until the
-/// plan decides where the day comes from), the follow-up of a stage, and the two services.
-/// </summary>
 public class ComplianceAlertRegistrationTests
 {
     [Fact]
@@ -25,9 +20,7 @@ public class ComplianceAlertRegistrationTests
                      (typeof(IComplianceAlertRecipientResolver), typeof(ComplianceAlertRecipientResolver)),
                      (typeof(ITouristTaxDeadlineSource), typeof(NoTouristTaxDeadlineSource)),
                      (typeof(IComplianceAlertFollowUp), typeof(ComplianceAlertFollowUp)),
-                     // E30/F02/US01/T01: the service of the Ticino days the alert service reads them from (the only place that says a day is closed).
                      (typeof(ITicinoNotificationService), typeof(TicinoNotificationService)),
-                     // E31/F02/US01/T01: the service of the days of the other cantons, read by the alert service and by the cockpit (the one place that says a day is closed).
                      (typeof(ISwissNotificationService), typeof(SwissNotificationService)),
                      (typeof(IComplianceAlertService), typeof(ComplianceAlertService)),
                      (typeof(IStayAlertService), typeof(StayAlertService)),

@@ -66,8 +66,6 @@ public class OrgInvitationAcceptanceControllerTests
         SubprocessorsVersion = "v1",
     };
 
-    // ─── Lookup ─────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Lookup_AValidLink_AnswersWithWhatItIsForAndNeverCachesIt()
     {
@@ -99,8 +97,6 @@ public class OrgInvitationAcceptanceControllerTests
         Assert.NotEqual("InvitationInvalid", problem.Detail);
         Assert.Equal("no-store", controller.Response.Headers.CacheControl.ToString());
     }
-
-    // ─── Accept ─────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Accept_Success_PassesTheAccountTheEmailFromTheTokenAndTheClientIp()

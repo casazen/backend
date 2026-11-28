@@ -12,7 +12,6 @@ namespace Casazen.Core.Suppliers;
 /// </summary>
 public static class ServiceRequestStateMachine
 {
-    /// <summary>True when a request in <paramref name="from"/> may move to <paramref name="to"/>, whoever asks.</summary>
     public static bool CanTransition(ServiceRequestStatus from, ServiceRequestStatus to) => (from, to) switch
     {
         (ServiceRequestStatus.Richiesto, ServiceRequestStatus.PresoInCarico) => true,
@@ -41,15 +40,9 @@ public static class ServiceRequestStateMachine
             _ => false,
         };
 
-    /// <summary>True for a status nothing leaves: <c>Rifiutato</c>, <c>Pagato</c> and <c>Annullato</c>.</summary>
     public static bool IsFinal(ServiceRequestStatus status) =>
         status is ServiceRequestStatus.Rifiutato or ServiceRequestStatus.Pagato or ServiceRequestStatus.Annullato;
 
-    /// <summary>
-    /// True for a request that still is, or will be, a job of the supplier: <c>Richiesto</c> (waiting for an answer),
-    /// <c>PresoInCarico</c> or <c>InCorso</c>. What the agenda counts as taking the supplier's time and what the conflict detector
-    /// (SP-03b) checks: one definition for both.
-    /// </summary>
     public static bool IsOpenJob(ServiceRequestStatus status) =>
         status is ServiceRequestStatus.Richiesto or ServiceRequestStatus.PresoInCarico or ServiceRequestStatus.InCorso;
 

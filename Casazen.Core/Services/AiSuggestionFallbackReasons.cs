@@ -7,15 +7,11 @@ namespace Casazen.Core.Services;
 /// </summary>
 public static class AiSuggestionFallbackReasons
 {
-    /// <summary>No external AI provider is active (<c>Ai:Provider</c> is the stub, or there is no key).</summary>
     public const string AiNotConfigured = "ai_not_configured";
 
-    /// <summary>The platform's monthly AI budget cannot cover the call.</summary>
     public const string AiBudgetExhausted = "ai_budget_exhausted";
 
-    /// <summary>The provider did not answer (error, timeout).</summary>
     public const string AiUnavailable = "ai_unavailable";
 
-    /// <summary>The provider answered with something that is not what the prompt asked for.</summary>
     public const string AiInvalidAnswer = "ai_invalid_answer";
 }

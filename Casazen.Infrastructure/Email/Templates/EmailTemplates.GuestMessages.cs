@@ -6,10 +6,8 @@ public static partial class EmailTemplates
 {
     public static partial class Names
     {
-        /// <summary>«The guest wrote», to the host, when the guest sends a message from the guest area (DB-14a).</summary>
         public const string GuestMessageToHost = "guest-message-to-host";
 
-        /// <summary>«The host answered», to the guest, when the host sends a message from the booking (DB-14a).</summary>
         public const string HostReplyToGuest = "host-reply-to-guest";
     }
 

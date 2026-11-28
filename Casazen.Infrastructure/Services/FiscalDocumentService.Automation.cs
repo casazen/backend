@@ -14,20 +14,14 @@ using DocumentKind = Casazen.Core.Entities.Enums.FiscalDocumentKind;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// The drafts at the end of every stay, the daily run and the bulk issue (E12/F01/US01/T02).
-/// </summary>
 public sealed partial class FiscalDocumentService
 {
     public async Task<EnsureDraftOutcome> EnsureDraftAsync(Guid bookingId, string? userId, CancellationToken ct = default)
     {
-        // An owner without an issuer profile that can issue (E17/F01/US01/T02) gets its «Da fare» here, before the lock: inside it the refusal would roll the item back
-        // with the transaction. The refusal itself (422 owner_issuer_missing) is the answer: no document is made.
         var booking = await BookingOfAsync(bookingId, ct);
         if (IsActive(booking) && !await HasLiveDocumentAsync(bookingId, ct))
             await RequirePlanAsync(booking, ct);
 
-        // The check and the draft under the lock of the booking: the check-out event and the daily run, or two runs, never both see «no document» and make two drafts.
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db,
             ct,
@@ -115,7 +109,6 @@ public sealed partial class FiscalDocumentService
         {
             ct.ThrowIfCancellationRequested();
 
-            // The day is a Europe/Rome day: the stay that ends today is not over yet, whatever the stored instant says.
             if (RomeCalendar.DateInRome(candidate.CheckOutDate) >= today)
                 continue;
 
@@ -143,7 +136,6 @@ public sealed partial class FiscalDocumentService
             }
             catch (Exception ex) when (ex is DomainException or NotFoundException)
             {
-                // The rules refuse this stay now (data missing, no tax rule), or it is gone: it keeps what it had and is read again at the next run.
                 db.ChangeTracker.Clear();
                 skipped++;
                 logger.LogInformation(
@@ -154,7 +146,6 @@ public sealed partial class FiscalDocumentService
             }
         }
 
-        // The stays of a portal that ended and then changed on the portal: the import records no event for a stay that is over.
         var changesTold = await TellTheChangesOfEndedPortalStaysAsync(orgId, todayStart, since, limit, ct);
 
         logger.LogInformation(
@@ -219,7 +210,6 @@ public sealed partial class FiscalDocumentService
                 var changed = !IsActive(booking);
                 if (!changed)
                 {
-                    // Compared with the lines the document's own issuer billed (E17/F01/US01/T02): the owner's stay, or the agency's services, or everything.
                     var profile = await IssuerProfileAsync(booking, organization, document.IssuerProfileId, requireComplete: false, ct);
                     var rule = RuleOf(profile, booking);
                     var built = await _lines.BuildAsync(booking.Id, rule, platformCollected, ct);
@@ -231,7 +221,6 @@ public sealed partial class FiscalDocumentService
             }
             catch (Exception ex) when (ex is DomainException or NotFoundException)
             {
-                // The rules refuse the comparison now (no tax rule), or the booking is gone: the document is looked at again at the next run.
                 db.ChangeTracker.Clear();
                 logger.LogInformation(
                     "Document {DocumentId} of org {OrgId} not compared with its booking now ({Code})",
@@ -250,7 +239,6 @@ public sealed partial class FiscalDocumentService
             .AsNoTracking()
             .AnyAsync(a => a.EntityType == FiscalDocumentTodos.EntityType && a.EntityId == documentId && a.Reason == FiscalDocumentTodos.BookingChangedReason, ct);
 
-    /// <summary>The draft made again from the booking, under the lock of the booking as the corrections of a change are: a change handled at the same moment never rewrites it too.</summary>
     private async Task MakeDraftAgainAsync(Guid bookingId, Guid draftId, CancellationToken ct)
     {
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
@@ -282,7 +270,6 @@ public sealed partial class FiscalDocumentService
         var properties = (request.PropertyIds ?? []).Distinct().ToList();
         var byPeriodOrProperty = request.From is not null || request.To is not null || properties.Count > 0;
 
-        // An empty selection is never «all»: nothing named, no period, no property is a refusal.
         if (requested.Count == 0 && !byPeriodOrProperty)
             throw new DomainRuleException(FiscalDocumentErrors.BatchSelectionRequired, "FiscalDocumentBatchSelectionRequired");
         if (requested.Count > FiscalDocumentBatch.MaxDocuments)
@@ -290,7 +277,6 @@ public sealed partial class FiscalDocumentService
         if (request.From is { } from && request.To is { } to && to < from)
             throw new DomainRuleException(FiscalDocumentErrors.BatchPeriodInvalid, "FiscalDocumentBatchPeriodInvalid");
 
-        // What the caller reaches: the scope of the list, narrowed in SQL (a caller restricted to some properties never reaches the rest).
         var reach = Matching(scope, new FiscalDocumentCriteria());
         var plan = new List<(Guid Id, string? ErrorCode)>();
 
@@ -317,7 +303,6 @@ public sealed partial class FiscalDocumentService
         var remaining = 0;
         if (byPeriodOrProperty)
         {
-            // The drafts of the stays of the period (their last day) and of the properties; a correction (a credit note) is only issued when it is named.
             var selected = reach.Where(d => d.Source == FiscalDocumentSource.CasaZen
                                             && (d.Purpose == FiscalDocumentPurpose.GuestStay || d.Purpose == FiscalDocumentPurpose.GuestExtraSupplement)
                                             && d.Status == FiscalDocumentStatus.Draft
@@ -353,7 +338,6 @@ public sealed partial class FiscalDocumentService
                 continue;
             }
 
-            // Each draft through the issue path of the API, in its own transaction: one that fails leaves nothing behind for the next.
             try
             {
                 var issued = await IssueCoreAsync(id, confirm: true, notify: false, ct);
@@ -398,10 +382,6 @@ public sealed partial class FiscalDocumentService
                      && !d.CreditedInFull,
                 ct);
 
-    /// <summary>
-    /// The drafts CasaZen made for the booking (not a credit note), one for each part of the plan in its order: the document of the stay, then the services of the
-    /// agency (E17/F01/US01/T02); the newest of a part when there are several.
-    /// </summary>
     private async Task<IReadOnlyList<Guid>> LiveDraftIdsOfAsync(Guid bookingId, CancellationToken ct)
     {
         var drafts = await db.FiscalDocuments
@@ -418,10 +398,6 @@ public sealed partial class FiscalDocumentService
         return drafts.GroupBy(d => new { d.ForAgencyServices, d.SupplementForExtraOrderId }).Select(g => g.First().Id).ToList();
     }
 
-    /// <summary>
-    /// Tells the hosts of the booking that a document was issued (<see cref="FiscalDocumentLiveRefresh"/>): a push that the decorator turns into the entry of the bell and the live
-    /// message that makes the open pages read the list of the documents and the booking again. Best effort after the issue is committed.
-    /// </summary>
     private void TellTheHostsOfTheIssue(FiscalDocument document, Org org) =>
         FiscalDocumentLiveRefresh.Tell(pushNotifications, texts, document, org, logger);
 }

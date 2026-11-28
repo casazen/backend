@@ -3,7 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.BankStatements;
 
-/// <summary>The values a bank file holds (amounts, dates, IBANs, the months a reason names): each bank writes them its own way.</summary>
 public class BankValuesTests
 {
     [Theory]
@@ -199,7 +198,6 @@ public class BankValuesTests
         Assert.True(BankValues.ReferencesPeriod(anyOctober, new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31)));
         Assert.False(BankValues.ReferencesPeriod(october, new DateOnly(2025, 10, 1), new DateOnly(2025, 10, 31)));
         Assert.False(BankValues.ReferencesPeriod(october, new DateOnly(2026, 11, 1), new DateOnly(2026, 11, 30)));
-        // A quarterly installment is for any of its months.
         Assert.True(BankValues.ReferencesPeriod(october, new DateOnly(2026, 8, 1), new DateOnly(2026, 10, 31)));
         Assert.False(BankValues.ReferencesPeriod([], new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31)));
     }

@@ -12,7 +12,6 @@ namespace Casazen.Infrastructure.Octorate;
 /// </summary>
 internal static class OctorateContentRequests
 {
-    /// <summary>The <c>type</c> Octorate gives the 400 of data it refuses (<c>{"type": "ApiParamsExemption", "nested": [...]}</c>).</summary>
     internal const string ParamsExemptionType = "ApiParamsExemption";
 
     private const int MaxFieldErrors = 30;
@@ -23,9 +22,6 @@ internal static class OctorateContentRequests
 
     private const int MaxReasonLength = 300;
 
-    // ─── Bodies ────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The body of <c>POST /rest/v2/accommodation</c>: the shape of the sandbox, plus the ISO members and the alternative address of PO-19.</summary>
     internal static string PropertyCreateBody(OctoratePropertyCreate request)
     {
         var body = new JsonObject
@@ -47,7 +43,6 @@ internal static class OctorateContentRequests
             ["isoCurrency"] = request.Currency,
             ["propertyCategory"] = "APARTMENT",
 
-            // PO-19: Octorate sends the credentials of the user it creates only to the CasaZen address; the owner gets nothing.
             ["welcome_user"] = false,
             ["welcome_alternative_email"] = request.AlternativeEmail,
             ["location"] = new JsonObject
@@ -87,7 +82,6 @@ internal static class OctorateContentRequests
         return body.ToJsonString();
     }
 
-    /// <summary>The body of <c>POST /rest/v3/roomrates/{acc}</c>: the members of the unit the sandbox created with.</summary>
     internal static string RoomCreateBody(string accommodationId, OctorateRoomCreate room)
     {
         var body = new JsonObject
@@ -120,7 +114,6 @@ internal static class OctorateContentRequests
         return body.ToJsonString();
     }
 
-    /// <summary>The body of the descriptions: the description and the house rules for each language, the directions as one text; an empty member is left out.</summary>
     internal static string DescriptionsBody(OctorateDescriptions descriptions)
     {
         var body = new JsonObject();
@@ -134,7 +127,6 @@ internal static class OctorateContentRequests
         return body.ToJsonString();
     }
 
-    /// <summary>The body of one room of the unit, as the sandbox took it: the kind, the number, the guests and the beds (as the default configuration too).</summary>
     internal static string RoomBody(OctorateContentRoom room)
     {
         var beds = new JsonArray();
@@ -206,12 +198,6 @@ internal static class OctorateContentRequests
         return map;
     }
 
-    // ─── Errors ────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The meaning of two refusals of the creation of an accommodation: 412 is a network Octorate does not know; 400 <c>ApiParamsExemption</c> is
-    /// data it refuses, with the fields it names. Anything else keeps the generic mapping (<c>null</c>).
-    /// </summary>
     internal static OctorateException? TranslateCreateError(int status, string body)
     {
         if (status == StatusCodes.Status412PreconditionFailed)
@@ -226,10 +212,6 @@ internal static class OctorateContentRequests
         return null;
     }
 
-    /// <summary>
-    /// The fields of an <c>ApiParamsExemption</c>: the <c>machine_name</c> and the message of each entry of <c>nested</c> (or <c>fields</c>,
-    /// <c>errors</c>). An answer that names no field gives one entry for the property as a whole, so the person is never left with an empty list.
-    /// </summary>
     internal static IReadOnlyList<OctorateFieldError> ReadFieldErrors(string body)
     {
         var errors = new List<OctorateFieldError>();
@@ -263,7 +245,6 @@ internal static class OctorateContentRequests
         }
         catch (JsonException)
         {
-            // Not JSON: the property as a whole is the field.
         }
 
         if (errors.Count == 0)
@@ -272,12 +253,6 @@ internal static class OctorateContentRequests
         return errors;
     }
 
-    // ─── Answers ───────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The answer of the creation of an accommodation: <c>codice</c> (an array, or one value, else the first of <c>ids</c>) and the refresh token
-    /// (<c>refresh_token</c>, or the one of <c>identity</c>). <c>null</c> when either is missing: the caller then refuses the answer.
-    /// </summary>
     internal static OctoratePropertyCreated? ReadCreated(string body)
     {
         try
@@ -302,7 +277,6 @@ internal static class OctorateContentRequests
         }
     }
 
-    /// <summary>The product id of a unit just created: <c>[{data: {id}}]</c>, <c>{id}</c> or <c>{data: {id}}</c>, else the last digits of the address of the resource.</summary>
     internal static string? ReadCreatedUnitId(string body)
     {
         try
@@ -330,7 +304,6 @@ internal static class OctorateContentRequests
         }
     }
 
-    /// <summary>The process a push answered with (<c>processId</c>, else <c>id</c>); <c>null</c> when it names none.</summary>
     internal static string? ReadProcessId(string body)
     {
         if (string.IsNullOrWhiteSpace(body))
@@ -348,7 +321,6 @@ internal static class OctorateContentRequests
         }
     }
 
-    /// <summary>The result of a publication process: its state word, and the first error it lists. A state CasaZen does not know is <see cref="OctorateProcessState.Unknown"/>.</summary>
     internal static OctorateContentProcess ReadProcess(string body)
     {
         try
@@ -364,7 +336,6 @@ internal static class OctorateContentRequests
                 OctorateHttp.StringOf(root, "message") ?? OctorateHttp.StringOf(root, "error") ?? OctorateHttp.StringOf(root, "description"),
                 MaxReasonLength);
 
-            // A list of errors in a finished process is a partial refusal: the channel did not take it all (OCT-05).
             foreach (var member in new[] { "errors", "failures" })
             {
                 if (root.TryGetProperty(member, out var list) && list.ValueKind == JsonValueKind.Array && list.GetArrayLength() > 0)
@@ -393,7 +364,6 @@ internal static class OctorateContentRequests
         }
     }
 
-    /// <summary>An entry of the photo queue: its id (<c>id</c>, <c>taskId</c>, <c>queueId</c>), its state word and, once done, the name of the photo. <c>null</c> without an id.</summary>
     internal static OctoratePhotoQueueEntry? ReadPhotoEntry(string body, string? fallbackId = null)
     {
         try
@@ -431,7 +401,6 @@ internal static class OctorateContentRequests
         }
     }
 
-    /// <summary>The descriptions of a unit: the language maps of the description and of the house rules, and the directions (a text, or a map of which the Italian one is taken).</summary>
     internal static OctorateDescriptions ReadDescriptions(string body)
     {
         using var document = JsonDocument.Parse(body);
@@ -452,7 +421,6 @@ internal static class OctorateContentRequests
         };
     }
 
-    /// <summary>The rooms of a unit with their beds: an array of <c>{index, room: {...}}</c> or of rooms; the beds of <c>defaultSubRoomBeds</c>, else of the first configuration.</summary>
     internal static IReadOnlyList<OctorateContentRoom> ReadContentRooms(string body)
     {
         using var document = JsonDocument.Parse(body);
@@ -509,7 +477,6 @@ internal static class OctorateContentRequests
     private static JsonElement Member(JsonElement root, string name) =>
         root.ValueKind == JsonValueKind.Object && root.TryGetProperty(name, out var value) ? value : default;
 
-    /// <summary>A map of language to text, the language upper-cased; entries that are not a text are left out.</summary>
     private static Dictionary<string, string> ReadLanguageMap(JsonElement element)
     {
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -525,7 +492,6 @@ internal static class OctorateContentRequests
         return map;
     }
 
-    /// <summary>The first value of a member that is an array, a number or a text (a text of several values separated by commas gives its first).</summary>
     private static string? FirstOf(JsonElement root, string name)
     {
         if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty(name, out var value))

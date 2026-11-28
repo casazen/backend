@@ -25,10 +25,6 @@ public class MarketingConfirmationProofTests
     private const string Secret = "a-long-random-secret-of-the-signed-links";
     private static readonly CancellationToken Ct = CancellationToken.None;
 
-    /// <summary>
-    /// Privacy rule: the link holds the contact, the expiry and the signature and nothing else (no address, no org), the page address keeps them in
-    /// the fragment, and a changed contact, expiry or signature, a missing secret or a late click is refused.
-    /// </summary>
     [Fact]
     public void MarketingConfirmation_Link_CarriesNoAddressAndRejectsTampering_Test()
     {
@@ -47,7 +43,6 @@ public class MarketingConfirmationProofTests
         Assert.Equal("2026-11-09T08:00:00Z", expiresAt);
         Assert.Matches("^[0-9a-f]{64}$", signature);
 
-        // The values travel in the fragment of the address of the page: a browser never sends it to a server.
         var page = EmailTestHelpers.Links().MarketingConfirm(link.SignedQuery);
         Assert.StartsWith("https://casazen-app.test/marketing/confirm#contactId=", page, StringComparison.Ordinal);
         Assert.DoesNotContain("?", page, StringComparison.Ordinal);
@@ -55,7 +50,6 @@ public class MarketingConfirmationProofTests
         Assert.Equal(MarketingConfirmationCheck.Valid, links.Verify(contactId, expiresAt, signature));
         Assert.Equal(MarketingConfirmationCheck.Valid, links.Verify(contactId, expiresAt, signature.ToUpperInvariant()));
 
-        // Another contact, a longer life, a changed signature or none: the signature is of these values and no others.
         Assert.Equal(MarketingConfirmationCheck.InvalidSignature, links.Verify(Guid.NewGuid(), expiresAt, signature));
         Assert.Equal(MarketingConfirmationCheck.InvalidSignature, links.Verify(contactId, "2026-12-31T08:00:00Z", signature));
         Assert.Equal(
@@ -64,20 +58,14 @@ public class MarketingConfirmationProofTests
         Assert.Equal(MarketingConfirmationCheck.InvalidSignature, links.Verify(contactId, expiresAt, string.Empty));
         Assert.Equal(MarketingConfirmationCheck.InvalidTimestamp, links.Verify(contactId, "tomorrow", signature));
 
-        // Without the secret nothing is signed and nothing is checked.
         var unconfigured = NewLinks(CrmTestWorld.Clock(), secret: null);
         Assert.Throws<EmailConfigurationException>(() => unconfigured.Create(contactId));
         Assert.Equal(MarketingConfirmationCheck.NotConfigured, unconfigured.Verify(contactId, expiresAt, signature));
 
-        // Valid for 72 hours, and not a second more.
         clock.Advance(TimeSpan.FromHours(72) + TimeSpan.FromSeconds(1));
         Assert.Equal(MarketingConfirmationCheck.Expired, links.Verify(contactId, expiresAt, signature));
     }
 
-    /// <summary>
-    /// Data rule: a person is never mailed more than three confirmations, and never twice inside ten minutes. The fourth call, and a call that
-    /// comes too soon, send nothing and are not counted.
-    /// </summary>
     [Fact]
     public async Task MarketingConfirmation_SendLimit_StopsAtMax_Test()
     {
@@ -88,7 +76,6 @@ public class MarketingConfirmationProofTests
 
         Assert.Equal(MarketingConfirmationSendOutcome.Queued, await world.Service.SendConfirmationAsync(orgId, contact.Id, Ct));
 
-        // A repeat inside the ten minutes sends nothing.
         world.Clock.Advance(TimeSpan.FromMinutes(9));
         Assert.Equal(MarketingConfirmationSendOutcome.TooSoon, await world.Service.SendConfirmationAsync(orgId, contact.Id, Ct));
         Assert.Single(world.Queue.Snapshot());
@@ -98,7 +85,6 @@ public class MarketingConfirmationProofTests
         world.Clock.Advance(TimeSpan.FromMinutes(11));
         Assert.Equal(MarketingConfirmationSendOutcome.Queued, await world.Service.SendConfirmationAsync(orgId, contact.Id, Ct));
 
-        // The fourth never goes out, however long the person waits.
         world.Clock.Advance(TimeSpan.FromDays(5));
         Assert.Equal(MarketingConfirmationSendOutcome.LimitReached, await world.Service.SendConfirmationAsync(orgId, contact.Id, Ct));
 
@@ -106,7 +92,6 @@ public class MarketingConfirmationProofTests
         var stored = await world.Db.GuestContacts.AsNoTracking().SingleAsync(c => c.Id == contact.Id, Ct);
         Assert.Equal((3, GuestContactConfirmation.Pending), (stored.ConfirmationSentCount, stored.Confirmation));
 
-        // A message the queue refuses (no e-mail provider) is not counted as sent.
         var another = await world.ConsentAsync(orgId, "altro@example.com");
         world.Queue.Refuse = true;
         Assert.Equal(MarketingConfirmationSendOutcome.Unavailable, await world.Service.SendConfirmationAsync(orgId, another.Id, Ct));
@@ -114,30 +99,23 @@ public class MarketingConfirmationProofTests
         Assert.Equal((0, GuestContactConfirmation.Unconfirmed), (untouched.ConfirmationSentCount, untouched.Confirmation));
     }
 
-    /// <summary>
-    /// Privacy rule: nothing is sent to an address that opted out. A consent typed for an address that was already on the suppression list, and a
-    /// consent that the person withdrew, get no e-mail; the click on a link made before the opt-out confirms nothing and does not lift it.
-    /// </summary>
     [Fact]
     public async Task MarketingConfirmation_SuppressedContact_GetsNone_Test()
     {
         using var world = new Harness();
         var orgId = Guid.NewGuid();
 
-        // The address opted out before it was a contact; a consent is then typed for it: stored, flagged suppressed, never written to.
         await world.Suppression.AddToSuppressionListAsync(orgId, "uscito@example.com", "unsubscribe", Ct);
         var late = await world.ConsentAsync(orgId, "uscito@example.com");
         Assert.True(late.IsSuppressed);
         Assert.Equal(MarketingConfirmationSendOutcome.Suppressed, await world.Service.SendConfirmationAsync(orgId, late.Id, Ct));
 
-        // A person who consented and then withdrew.
         var consented = await world.ConsentAsync(orgId, "ospite@example.com");
         var link = world.Links.Create(consented.Id);
         await world.Contacts.WithdrawAsync(orgId, consented.Id, "unsubscribe", GuestConsentSource.GuestPage, cancellationToken: Ct);
         Assert.Equal(MarketingConfirmationSendOutcome.Suppressed, await world.Service.SendConfirmationAsync(orgId, consented.Id, Ct));
         Assert.Empty(world.Queue.Snapshot());
 
-        // The link made before the opt-out is still inside its 72 hours: the click confirms nothing.
         var values = QueryHelpers.ParseQuery(link.SignedQuery);
         var outcome = await world.Service.ConfirmAsync(consented.Id, values["expiresAt"].ToString(), values["signature"].ToString(), Ct);
         Assert.Equal(MarketingConfirmationOutcome.ContactSuppressed, outcome);
@@ -147,10 +125,6 @@ public class MarketingConfirmationProofTests
         Assert.False(CrmContactRules.CanReceiveMarketing(stored));
     }
 
-    /// <summary>
-    /// Data rule: only the signed click confirms a consent. A wrong signature changes nothing; the right one confirms, makes the address marketable
-    /// and confirms the rows of the check-in of the same guest and address; a second click changes nothing and says so.
-    /// </summary>
     [Fact]
     public async Task MarketingConfirmation_Confirm_NeedsTheSignatureAndIsIdempotent_Test()
     {
@@ -180,7 +154,6 @@ public class MarketingConfirmationProofTests
         var expiresAt = values["expiresAt"].ToString();
         var signature = values["signature"].ToString();
 
-        // A signature of another contact confirms nobody.
         var forged = await world.Service.ConfirmAsync(contact.Id, expiresAt, world.Links.Create(Guid.NewGuid()).SignedQuery.Split("signature=")[1], Ct);
         Assert.Equal(MarketingConfirmationOutcome.InvalidSignature, forged);
         Assert.NotEqual(GuestContactConfirmation.Confirmed, (await world.Db.GuestContacts.AsNoTracking().SingleAsync(c => c.Id == contact.Id, Ct)).Confirmation);
@@ -195,7 +168,6 @@ public class MarketingConfirmationProofTests
         Assert.True(CrmContactRules.CanReceiveMarketing(stored));
         Assert.True((await world.Db.MarketingConsentRecords.AsNoTracking().SingleAsync(Ct)).EmailConfirmed);
 
-        // A link for a contact that does not exist is refused only after the signature is right.
         var ghost = Guid.NewGuid();
         var ghostValues = QueryHelpers.ParseQuery(world.Links.Create(ghost).SignedQuery);
         Assert.Equal(
@@ -203,10 +175,6 @@ public class MarketingConfirmationProofTests
             await world.Service.ConfirmAsync(ghost, ghostValues["expiresAt"].ToString(), ghostValues["signature"].ToString(), Ct));
     }
 
-    /// <summary>
-    /// Trust rule: the e-mail is in the language of the contact, every dynamic value is HTML-encoded, the address that receives it is not in its body
-    /// and it holds the link of the confirmation page.
-    /// </summary>
     [Fact]
     public async Task MarketingConfirmation_Email_IsInTheContactLanguageAndEncodesTheOrgName_Test()
     {
@@ -254,7 +222,6 @@ public class MarketingConfirmationProofTests
             .AddInMemoryCollection(secret is null ? new Dictionary<string, string?>() : new Dictionary<string, string?> { ["SIGNED_LINK_SECRET"] = secret })
             .Build();
 
-    /// <summary>The world of the proofs: a store, a clock, the contact service and the suppression list over it, a queue that records, the service under test.</summary>
     private sealed class Harness : IDisposable
     {
         public Harness()
@@ -290,7 +257,6 @@ public class MarketingConfirmationProofTests
 
         public MarketingConfirmationService Service { get; }
 
-        /// <summary>A consent on an e-mail address, as a collection point records it: a contact with the basis consent, not confirmed.</summary>
         public async Task<GuestContact> ConsentAsync(Guid orgId, string address, string? language = null) =>
             (await Contacts.RecordConsentAsync(
                 new CrmConsentInput(

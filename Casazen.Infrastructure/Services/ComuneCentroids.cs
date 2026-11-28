@@ -4,7 +4,6 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>The centre of a comune, in degrees (WGS84).</summary>
 public readonly record struct ComuneCentre(decimal Latitude, decimal Longitude);
 
 /// <summary>
@@ -27,7 +26,6 @@ public static class ComuneCentroids
 
     private static readonly Lazy<FrozenDictionary<string, ComuneCentre>> Seed = new(ReadSeed);
 
-    /// <summary>How many ISTAT codes the seed has a centre for.</summary>
     public static int Count => Seed.Value.Count;
 
     /// <summary>
@@ -41,7 +39,6 @@ public static class ComuneCentroids
         return code is { Length: IstatCodeLength } && Seed.Value.TryGetValue(code, out centre);
     }
 
-    /// <summary>The whole seed, for the tests that check it.</summary>
     internal static IReadOnlyDictionary<string, ComuneCentre> All => Seed.Value;
 
     /// <summary>

@@ -21,28 +21,22 @@ public static class BookingOperationsServiceCollectionExtensions
 {
     public static IServiceCollection AddCasazenBookingOperations(this IServiceCollection services)
     {
-        // E08/F06/US01/T02 (NF-79): a stay ended without a cleaning request, a booking with a special request, a booking from a channel.
         services.AddScoped<IEventHandler<DomainEvent>, BookingCleaningActivityHandler>();
 
-        // casazen/backend#978: the supplier completed the cleaning of a stay, so the booking flow declares the property ready when the org says so.
         services.AddScoped<IEventHandler<DomainEvent>, PropertyReadyAutomationHandler>();
         services.AddScoped<IEventHandler<DomainEvent>, BookingSpecialRequestActivityHandler>();
         services.AddScoped<IEventHandler<DomainEvent>, ChannelBookingAlertHandler>();
 
-        // E24/F01/US01/T02 (NF-120): the automatic cleaning of a stay follows the stay: moved when its dates change, cancelled when the booking is, behind Features:Routines.
         services.AddScoped<IEventHandler<DomainEvent>, CleaningBookingChangesHandler>();
 
-        // E08/F01/US01/T02 (NF-74): where in Octorate a property books; every writer of a booking to Octorate asks it first.
         services.AddScoped<IOctorateBookingTargets, OctorateBookingTargets>();
 
         // E08/F01/US01/T03 (NF-74, NF-80): a confirmed booking is created on Octorate once, with a state the host sees, and asked again on retry.
         services.AddScoped<IBookingOctorateSyncService, BookingOctorateSyncService>();
         services.AddScoped<IEventHandler<DomainEvent>, OctorateBookingCreateHandler>();
 
-        // E08/F01/US01/T04 (NF-74, D9): a payment of a mirrored booking that became paid is recorded on its Octorate reservation once.
         services.AddScoped<IEventHandler<DomainEvent>, OctoratePaymentHandler>();
 
-        // E08/F01/US01/T05 (NF-74): the payment link of a booking the host entered (the checkout page and the webhook are the checkout's).
         services.AddScoped<IBookingPaymentLinkService, BookingPaymentLinkService>();
 
         // E08/F02/US02 (NF-75, NF-76, D8): which channels let the host change or cancel a booking from CasaZen (all closed unless
@@ -57,19 +51,12 @@ public static class BookingOperationsServiceCollectionExtensions
         // on Octorate is kept with both versions and never overwritten silently.
         services.AddScoped<IEventHandler<DomainEvent>, OctorateBookingUpdateHandler>();
 
-        // E08/F01/US02/T01 (NF-74, NF-80): whether the channel manager can take a stay, asked before a booking of CasaZen is written and when the
-        // host looks at the dates (the public calendar and availability never ask it).
         services.AddScoped<IChannelManagerAvailability, ChannelManagerAvailabilityService>();
 
-        // E08/F01/US02/T02 (NF-80): a booking that arrives from the channel manager on taken nights raises an urgent To do and an alert, and the
-        // item closes by itself when the nights are free again.
         services.AddScoped<IEventHandler<DomainEvent>, BookingOverlapHandler>();
 
-        // E08/F03/US03/T02 (NF-74, NF-77): the state of the mirror of a booking, read for the booking answer (a read only, no push).
         services.AddScoped<IBookingOctorateSyncReader, BookingOctorateSyncReader>();
 
-        // E08/F05/US01/T02 (NF-36, NF-78): the price and the rules of the nights of a property. The store of the rules and the read of every day of
-        // the calendar; the quote, the checkout, the public calendar and the search of the booking site read the rules through it (T03, T04).
         services.AddScoped<IPropertyDayRuleService, PropertyDayRuleService>();
 
         // E08/F05/US02 (NF-36, NF-78): the changes of the calendar reach the channel manager. The recorder adds the process of a change (a manual block, a change of the

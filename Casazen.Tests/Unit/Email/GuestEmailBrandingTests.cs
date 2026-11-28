@@ -36,8 +36,6 @@ public sealed class GuestEmailBrandingTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
-    // ---- AC1: logo, color and name appear, the sender is the host ------------------------------------------------------------------------
-
     /// <summary>
     /// PROOF TEST (privacy/data: what a guest sees of the host): a guest template rendered with the brand of an org shows its logo (https, alt text = the name, bounded), its color on the
     /// header bar and on the buttons with the text that reads on it, its name, the small «powered by CasaZen» footer instead of the CasaZen one, and the content carries the host's name as
@@ -62,7 +60,6 @@ public sealed class GuestEmailBrandingTests : IDisposable
         Assert.Equal("host@aurora.test", content.ReplyTo);
     }
 
-    /// <summary>A light color gets dark text and a dark one white text: the button always reads (at least 4.5 to 1).</summary>
     [Theory]
     [InlineData("#ffe066", "#000000")]
     [InlineData("#003366", "#ffffff")]
@@ -98,12 +95,6 @@ public sealed class GuestEmailBrandingTests : IDisposable
         Assert.Contains(">Casa &amp; Figli</span>", content.HtmlBody, StringComparison.Ordinal);
     }
 
-    // ---- AC2: host, staff and supplier e-mails render exactly as before; no brand = the CasaZen e-mail -----------------------------------
-
-    /// <summary>
-    /// PROOF TEST (trust: the CasaZen e-mails are not touched): one e-mail of the host, one of the staff and one of a supplier keep the layout of today to the byte at its two ends (the
-    /// head and the opening of the body with no header bar, the CasaZen footer, the CasaZen blue on the buttons), carry no sender name and no reply-to, and say nothing of «powered by».
-    /// </summary>
     [Fact]
     public void HostAndStaffTemplates_AreUnchanged()
     {
@@ -121,7 +112,6 @@ public sealed class GuestEmailBrandingTests : IDisposable
         Assert.Contains("background:#0d8abc;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:bold;", supplier.HtmlBody, StringComparison.Ordinal);
     }
 
-    /// <summary>The whole document of a short e-mail, as it has always been written: nothing was added to the layout of an e-mail that has no brand.</summary>
     [Fact]
     public void LayoutWithoutBrand_IsByteForByteTheOneOfToday()
     {
@@ -145,7 +135,6 @@ public sealed class GuestEmailBrandingTests : IDisposable
         Assert.Null(content.ReplyTo);
         Assert.Null(content.FromName);
 
-        // A brand with nothing usable in it is no brand: the same document.
         var empty = new EmailHtmlBuilder(Italian, new GuestEmailBranding(null, "javascript:alert(1)", "red", "not an address"))
             .Paragraph("Booking_Greeting", "Anna")
             .Button("Booking_MyBookingsCta", "https://app.casazen.test/my-bookings")
@@ -153,12 +142,6 @@ public sealed class GuestEmailBrandingTests : IDisposable
         Assert.Equal(expected, empty.HtmlBody);
     }
 
-    // ---- AC3: a hostile logo, color, name or address cannot inject anything --------------------------------------------------------------
-
-    /// <summary>
-    /// PROOF TEST (security: what a host types never becomes markup, CSS or a header): a logo that is a <c>javascript:</c> address, a color that tries to add a rule, a name with a line
-    /// break, markup and a second header, and a reply-to with a second header are dropped (or cleaned), and the e-mail keeps the CasaZen blue and carries no foreign header.
-    /// </summary>
     [Fact]
     public void HostileValues_AreEncodedOrDropped()
     {
@@ -231,12 +214,9 @@ public sealed class GuestEmailBrandingTests : IDisposable
         var long64 = GuestEmailBranding.CleanName(new string('a', 100));
         Assert.Equal(GuestEmailBranding.NameMaxLength, long64!.Length);
 
-        // Never in the middle of a surrogate pair.
         var emoji = GuestEmailBranding.CleanName(new string('a', 63) + "\U0001F3E0");
         Assert.Equal(new string('a', 63), emoji);
     }
-
-    // ---- The provider: the values of the org's showcase, only while the portal is on -------------------------------------------------
 
     [Fact]
     public async Task Provider_FlagOff_GivesNoBrand_SoEveryGuestEmailIsTheCasaZenOne()
@@ -274,8 +254,6 @@ public sealed class GuestEmailBrandingTests : IDisposable
 
         Assert.Equal(new GuestEmailBranding("Casa Aurora", null, "#336699", null), branding);
     }
-
-    // ---- The sender: the host's name as the display name, the address is the configured one ---------------------------------------------
 
     [Fact]
     public void BrandedEmail_IsQueuedAsTheBrandedJob_WithTheHostNameAndReplyTo()
@@ -349,7 +327,6 @@ public sealed class GuestEmailBrandingTests : IDisposable
             Times.Once);
     }
 
-    /// <summary>The jobs already waiting in the queue during a deploy were created with these signatures: they never change, the new ones are new methods.</summary>
     [Fact]
     public void ExistingHangfireJobMethods_KeepTheirSignatures()
     {
@@ -368,7 +345,6 @@ public sealed class GuestEmailBrandingTests : IDisposable
         AssertSignature(typeof(BookingConfirmationEmailJob), nameof(BookingConfirmationEmailJob.SendAsync), text, text, text, text, typeof(Guid), typeof(Guid), typeof(int));
         AssertSignature(typeof(GuestCheckInLinkEmailJob), nameof(GuestCheckInLinkEmailJob.SendAsync), typeof(Guid), typeof(string), typeof(int));
 
-        // And the new ones are methods of their own.
         AssertSignature(typeof(EmailDeliveryJob), nameof(EmailDeliveryJob.SendBrandedAsync), text, text, text, text, text, text);
         AssertSignature(
             typeof(BookingConfirmationEmailJob),
@@ -403,12 +379,6 @@ public sealed class GuestEmailBrandingTests : IDisposable
         emailService.Verify(s => s.SendEmailAsync("guest@example.com", "S", "<p/>"), Times.Once);
     }
 
-    // ---- The callers: the confirmation of a booking, end to end ------------------------------------------------------------------------
-
-    /// <summary>
-    /// With the portal on the confirmation of a booking is sent in the name of the host with the host as reply-to, with its logo and color; with the portal off it is the CasaZen
-    /// e-mail of today, to the byte: no header bar, the CasaZen footer, no sender name, no reply-to.
-    /// </summary>
     [Fact]
     public async Task Confirmation_FlagOn_IsSentInTheHostsName_FlagOff_IsTheCasaZenEmail()
     {
@@ -434,12 +404,9 @@ public sealed class GuestEmailBrandingTests : IDisposable
         AssertCasaZenLayout(plain);
         Assert.DoesNotContain("cdn.casazen.test", plain.HtmlBody, StringComparison.Ordinal);
 
-        // The host's own e-mail about the same booking is the CasaZen one in both runs.
         foreach (var hostEmail in on.Snapshot().Concat(off.Snapshot()).Where(e => e.Template == EmailTemplates.Names.HostBookingConfirmed))
             AssertCasaZenLayout(hostEmail.Content);
     }
-
-    // ---- The data every test runs on ---------------------------------------------------------------------------------------------------
 
     private BookingNotifier Notifier(RecordingEmailQueue emails, TestFeatureFlags flags) =>
         new(
@@ -486,7 +453,6 @@ public sealed class GuestEmailBrandingTests : IDisposable
         return booking.Id;
     }
 
-    /// <summary>What every e-mail that carries no brand has always looked like at both ends, and no sender name or reply-to.</summary>
     private static void AssertCasaZenLayout(EmailContent content)
     {
         var html = content.HtmlBody;

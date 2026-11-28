@@ -38,7 +38,6 @@ public class SupplierServiceCatalogRepairPostgresTests(CasazenWebApplicationFact
         foreach (var row in new[] { keeperOwn, keeperDeleted, collides, free, deleted })
             await SupplierCatalogTestData.SaveRowAsync(factory, row);
 
-        // The dry run reports the move and changes nothing.
         var dry = await FixOrphanedAsync(dryRun: true);
         Assert.Equal(HttpStatusCode.OK, dry.StatusCode);
         Assert.Equal(3, SingleMerge(await ReadAsync(dry), duplicate).GetProperty("serviceListingsMoved").GetInt32());
@@ -54,19 +53,16 @@ public class SupplierServiceCatalogRepairPostgresTests(CasazenWebApplicationFact
 
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        // Nothing is lost with the duplicate profile (the cascade would have taken what stayed): every row is the keeper's.
         Assert.False(await db.SupplierProfiles.AnyAsync(sp => sp.OrgId == duplicate));
         Assert.Equal(0, await db.SupplierServiceListings.CountAsync(l => l.OrgId == duplicate));
         var moved = await db.SupplierServiceListings.AsNoTracking().Where(l => l.OrgId == keeper).ToListAsync();
         Assert.Equal(5, moved.Count);
 
-        // The slug the keeper already used got the next free suffix; the free one and the deleted ones kept theirs.
         Assert.Equal("pulizia", moved.Single(l => l.Id == keeperOwn.Id).Slug);
         Assert.Equal("pulizia-2", moved.Single(l => l.Id == collides.Id).Slug);
         Assert.Equal("sanificazione", moved.Single(l => l.Id == free.Id).Slug);
         Assert.Equal("vecchio", moved.Single(l => l.Id == deleted.Id).Slug);
         Assert.NotNull(moved.Single(l => l.Id == deleted.Id).DeletedAt);
-        // ...so the unique index still holds for the services that are not deleted.
         var live = moved.Where(l => l.DeletedAt is null).Select(l => l.Slug).ToList();
         Assert.Equal(live.Count, live.Distinct().Count());
     }
@@ -86,11 +82,8 @@ public class SupplierServiceCatalogRepairPostgresTests(CasazenWebApplicationFact
         var merge = SingleMerge(await ReadAsync(applied), duplicate);
         Assert.Equal(0, merge.GetProperty("serviceListingsMoved").GetInt32());
         Assert.True(merge.GetProperty("duplicateOrgDeleted").GetBoolean());
-        // The keeper's own catalog is untouched.
         Assert.Equal(1, await CountAsync(keeper));
     }
-
-    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private static async Task<JsonElement> ReadAsync(HttpResponseMessage response) =>
         await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -108,7 +101,6 @@ public class SupplierServiceCatalogRepairPostgresTests(CasazenWebApplicationFact
         return await admin.PostAsync($"/api/admin/suppliers/fix-orphaned?dryRun={(dryRun ? "true" : "false")}", null);
     }
 
-    /// <summary>Data written before the migration SupplierProfileEmailUnique: without its unique index.</summary>
     private async Task DropEmailIndexAsync()
     {
         await using var scope = factory.Services.CreateAsyncScope();

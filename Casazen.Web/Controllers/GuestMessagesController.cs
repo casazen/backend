@@ -3,7 +3,6 @@ using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.GuestMessages;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 
@@ -22,10 +21,6 @@ namespace Casazen.Web.Controllers;
 [PrivateAnswer]
 public class GuestMessagesController(IGuestSessionService sessions, IGuestMessageService messages) : ControllerBase
 {
-    /// <summary>
-    /// The thread of the booking, oldest message first (the latest 300), also after it closed. 401 without a valid session; 404
-    /// <c>guest_booking_not_found</c>; 429.
-    /// </summary>
     [HttpGet]
     [EnableRateLimiting(RateLimitPolicies.PublicBookingLookup)]
     [ProducesResponseType(typeof(GuestThreadDto), StatusCodes.Status200OK)]

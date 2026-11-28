@@ -1,15 +1,11 @@
 namespace Casazen.Infrastructure.Identity;
 
-/// <summary>How the comparison of the portrait of the document with the frames the server chose came out (E72/F01/US02/T02, NF-193).</summary>
 public enum MatchState
 {
-    /// <summary>The portrait and the frames were compared: the numbers of the report are the comparison.</summary>
     Ok,
 
-    /// <summary>No face was found in the document, in any orientation: there is nothing to compare the guest with.</summary>
     NoPortrait,
 
-    /// <summary>The comparison could not be made (no policy, the models are not ready, one failed or the time was over): never a match, and a person decides.</summary>
     Unavailable,
 }
 
@@ -30,13 +26,11 @@ public enum MatchState
 /// </param>
 public sealed record MatchReport(MatchState State, double Aggregate, double Min, int FrameCount, bool AcceptPassed, bool InReviewBand)
 {
-    /// <summary>The report of a document with no face in it: nothing compared, never a match.</summary>
     public static MatchReport NoPortrait()
     {
         return new MatchReport(MatchState.NoPortrait, 0, 0, 0, false, false);
     }
 
-    /// <summary>The report of a comparison that could not be made: nothing compared, never a match.</summary>
     public static MatchReport NotAvailable()
     {
         return new MatchReport(MatchState.Unavailable, 0, 0, 0, false, false);

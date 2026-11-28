@@ -4,7 +4,6 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Data.Encryption;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit.Services;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -21,16 +20,11 @@ public class OtaReviewEncryptionPostgresTests
     private const string ReplyWords = "Grazie di cuore! Vi aspettiamo di nuovo la prossima primavera";
     private const string HostReviewWords = "{\"ratings\":[{\"category\":\"cleanliness\",\"value\":5}],\"text\":\"Ospiti ordinati\",\"privateText\":\"Hanno lasciato la casa in ordine perfetto\"}";
 
-    // Whole texts and pieces of them that cannot appear by chance in a base64url payload (a comma, a space, a long word).
     private static readonly string[] Secrets =
     [
         GuestWords, ReplyWords, HostReviewWords, "Appartamento pulito", "gentilissimo", "bambini", "Grazie di cuore", "prossima primavera", "Ospiti ordinati", "ordine perfetto", "privateText",
     ];
 
-    /// <summary>
-    /// Privacy rule: the three texts of a review are not plaintext in the database. The table holds the payload only, there is no plaintext column, and read through EF with Data
-    /// Protection the clear texts come back.
-    /// </summary>
     [PostgresFact]
     public async Task OtaReview_TextIsEncryptedAtRest_Test()
     {
@@ -45,7 +39,6 @@ public class OtaReviewEncryptionPostgresTests
             await db.SaveChangesAsync();
         }
 
-        // The table itself, whatever EF would have made of it: a context without Data Protection reads the stored text.
         await using var stored = database.CreateContext();
         var columns = new[] { "GuestReviewTextEncrypted", "HostReplyTextEncrypted", "HostReviewJsonEncrypted" };
         var queries = new[]
@@ -64,7 +57,6 @@ public class OtaReviewEncryptionPostgresTests
                 Assert.DoesNotContain(secret, text, StringComparison.OrdinalIgnoreCase);
         }
 
-        // No plaintext column for the words exists: the only ones are the encrypted ones.
         var names = await stored.Database
             .SqlQueryRaw<string>("SELECT column_name AS \"Value\" FROM information_schema.columns WHERE table_name = 'OtaReviews'")
             .ToListAsync();
@@ -73,13 +65,11 @@ public class OtaReviewEncryptionPostgresTests
         Assert.DoesNotContain("HostReplyText", names);
         Assert.DoesNotContain("HostReviewJson", names);
 
-        // The same through the model of a context without Data Protection: the property holds the payload.
         var row = await stored.OtaReviews.IgnoreQueryFilters().AsNoTracking().SingleAsync(r => r.OrgId == orgId);
         Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, row.GuestReviewText, StringComparison.Ordinal);
         Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, row.HostReplyText, StringComparison.Ordinal);
         Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, row.HostReviewJson, StringComparison.Ordinal);
 
-        // Read through EF with Data Protection the clear texts come back.
         await using var reader = new AppDbContext(database.CreateOptions(), tenantContext: null, provider);
         var readBack = await reader.OtaReviews.IgnoreQueryFilters().AsNoTracking().SingleAsync(r => r.OrgId == orgId);
         Assert.Equal(GuestWords, readBack.GuestReviewText);
@@ -128,7 +118,6 @@ public class OtaReviewEncryptionPostgresTests
         Assert.Equal("reply-key-one", kept.HostReplyIdempotencyKey);
         Assert.Equal(ReplyWords, kept.HostReplyText);
 
-        // One row per organization, booking and channel: a second one for the same booking is refused by the database.
         await using var duplicate = new AppDbContext(database.CreateOptions(), tenantContext: null, provider);
         var booking2 = await duplicate.Bookings.AsNoTracking().FirstAsync(b => b.Id == bookingId);
         duplicate.OtaReviews.Add(NewReview(booking2, null, null, null));
@@ -155,7 +144,6 @@ public class OtaReviewEncryptionPostgresTests
         NextPollAt = new DateTime(2026, 11, 16, 9, 0, 0, DateTimeKind.Utc),
     };
 
-    /// <summary>A stay of Airbnb that ended on 10 November 2026, with its guest, in an org the scenario of the hosts seeds.</summary>
     private static async Task<(Guid OrgId, Guid BookingId)> SeedAirbnbStayAsync(PostgresTestDatabase database)
     {
         await using var db = database.CreateContext();

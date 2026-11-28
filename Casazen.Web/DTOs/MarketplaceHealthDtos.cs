@@ -58,8 +58,6 @@ public sealed record MarketplaceHealthItemDto(
     }
 }
 
-/// <summary>A problem in simple words: <c>code</c> is the stable code a client may translate, <c>message</c> the text in the language asked.</summary>
 public sealed record MarketplaceHealthErrorDto(string Code, string Message);
 
-/// <summary>The quota of the channel manager's API at the last sync: <c>used</c> of <c>limit</c> units, <c>warn</c> when the share the setting names is reached, <c>readAt</c> when it was read (UTC).</summary>
 public sealed record MarketplaceQuotaDto(int Used, int Limit, bool Warn, DateTime ReadAt);

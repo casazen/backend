@@ -39,10 +39,8 @@ public class MarketingConfirmationService(
     TimeProvider timeProvider,
     ILogger<MarketingConfirmationService> logger) : IMarketingConfirmationService
 {
-    /// <summary>The shortest time between two confirmation messages to the same contact: a repeat inside it sends nothing.</summary>
     public static readonly TimeSpan MinimumInterval = TimeSpan.FromMinutes(10);
 
-    /// <summary>The name the e-mail gives the sender when the org has no public name.</summary>
     private const string FallbackOrgName = "CasaZen";
 
     public async Task<MarketingConfirmationSendOutcome> SendConfirmationAsync(
@@ -50,7 +48,6 @@ public class MarketingConfirmationService(
         Guid contactId,
         CancellationToken cancellationToken = default)
     {
-        // Not tracked: the booking of the send below is an update of the row itself, so a copy kept by this context would be out of date at once.
         var contact = await db.GuestContacts.AsNoTracking().FirstOrDefaultAsync(c => c.OrgId == orgId && c.Id == contactId, cancellationToken);
         if (contact is null)
             return MarketingConfirmationSendOutcome.ContactNotFound;
@@ -68,7 +65,6 @@ public class MarketingConfirmationService(
         }
         catch (EmailConfigurationException ex)
         {
-            // The message names the variable that is missing, never the contact.
             logger.LogError(
                 "Marketing confirmation of contact {ContactId} of org {OrgId} not sent: {Problem}", contact.Id, orgId, ex.Message);
             return MarketingConfirmationSendOutcome.Unavailable;
@@ -85,11 +81,8 @@ public class MarketingConfirmationService(
             confirmUrl,
             link.ExpiresAtUtc);
 
-        // The send is booked BEFORE the message is queued, by one conditional update: of the requests that reach the contact together, only
-        // one finds the limits still open and goes on. A read of the counters followed by the queue and a save would let all of them through.
         if (!await BookSendAsync(contact, now, cancellationToken))
         {
-            // Another request booked the send first, or the person confirmed or opted out meanwhile: the answer says why, from the row as it is now.
             var current = await db.GuestContacts.AsNoTracking().FirstOrDefaultAsync(c => c.OrgId == orgId && c.Id == contactId, cancellationToken);
             return current is null
                 ? MarketingConfirmationSendOutcome.ContactNotFound
@@ -103,7 +96,6 @@ public class MarketingConfirmationService(
         }
         finally
         {
-            // A message the queue refused (no e-mail provider configured), or a queue that failed, must not use up one of the sends.
             if (!queued)
                 await GiveBackSendAsync(contact, CancellationToken.None);
         }
@@ -146,12 +138,10 @@ public class MarketingConfirmationService(
                 return MarketingConfirmationOutcome.InvalidSignature;
         }
 
-        // Only now, with a valid signature, the contact is looked for: a forged link learns nothing about which ids exist.
         var contact = await db.GuestContacts.FirstOrDefaultAsync(c => c.Id == contactId, cancellationToken);
         if (contact is null)
             return MarketingConfirmationOutcome.ContactNotFound;
 
-        // A person who opted out is not brought back by an old link, and the click is not recorded as a confirmation.
         if (contact.IsSuppressed)
             return MarketingConfirmationOutcome.ContactSuppressed;
 
@@ -169,13 +159,8 @@ public class MarketingConfirmationService(
         return alreadyConfirmed ? MarketingConfirmationOutcome.AlreadyConfirmed : MarketingConfirmationOutcome.Confirmed;
     }
 
-    /// <summary>
-    /// Why nothing is sent to the contact now, by the rules in their order; <c>null</c> when a message can go. Only what the contact looked like
-    /// when it was read: the booking of the send (<see cref="BookSendAsync"/>) applies the same limits to the row itself.
-    /// </summary>
     private MarketingConfirmationSendOutcome? RefusalOf(GuestContact contact, DateTime now)
     {
-        // The person asked not to be written to: nothing goes out, whatever consent was recorded on the contact afterwards.
         if (contact.IsSuppressed)
             return MarketingConfirmationSendOutcome.Suppressed;
 
@@ -287,10 +272,6 @@ public class MarketingConfirmationService(
             await entry.ReloadAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// A contact is sent a confirmation when it is an e-mail address, not an OTA forward, whose basis is the person's consent, and the person
-    /// did not confirm yet: the only case in which the confirmation changes whether the address can be written to.
-    /// </summary>
     private static bool NeedsConfirmation(GuestContact contact) =>
         contact.Channel == GuestContactChannel.Email
         && contact.Origin != GuestContactOrigin.OtaForward
@@ -298,11 +279,6 @@ public class MarketingConfirmationService(
             || (contact.Origin == GuestContactOrigin.Imported && contact.LegalBasis == GuestContactLegalBasis.SoftOptIn))
         && contact.Confirmation != GuestContactConfirmation.Confirmed;
 
-    /// <summary>
-    /// The per-channel consent that the online check-in recorded before the contacts existed (<see cref="MarketingConsentRecord"/>) holds its own
-    /// confirmation flag, which the profile of the guest reads: the rows of the same org and guest with the same address, normalized, are
-    /// confirmed together with the contact.
-    /// </summary>
     private async Task ConfirmLegacyRowsAsync(GuestContact contact, CancellationToken cancellationToken)
     {
         if (contact.Channel != GuestContactChannel.Email || contact.GuestId is not { } guestId)

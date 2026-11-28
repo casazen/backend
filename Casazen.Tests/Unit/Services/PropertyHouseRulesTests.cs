@@ -20,7 +20,6 @@ public class PropertyHouseRulesTests
     [InlineData(PetsPolicy.No, false)]
     public void SyncAmenities_PetFriendlyIsInTheListExactlyWhenThePetsRuleSaysYes(PetsPolicy rule, bool expected)
     {
-        // Whatever the list said before: the stated rule wins.
         foreach (var listedBefore in new[] { false, true })
         {
             var property = new Property
@@ -54,7 +53,6 @@ public class PropertyHouseRulesTests
     [Fact]
     public void SyncAmenities_NoRuleStated_LeavesTheListAsTheHostMadeIt()
     {
-        // Every property that existed before the rules: nothing changes for it.
         var property = new Property { Amenities = [PropertyAmenity.PetFriendly, PropertyAmenity.SmokingAllowed, PropertyAmenity.WiFi] };
 
         PropertyHouseRules.SyncAmenities(property);

@@ -1,29 +1,21 @@
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Regulatory;
-using Casazen.Core.Utilities;
 
 namespace Casazen.Core.Leases;
 
-/// <summary>How much a check of the review matters (LR-12), in the order the review lists them.</summary>
 public enum LeaseReviewSeverity
 {
-    /// <summary>The contract cannot be confirmed (nor downloaded for signature) until it is fixed.</summary>
     Block,
 
-    /// <summary>To check: the contract can be confirmed, but the landlord should look at it.</summary>
     Warn,
 
-    /// <summary>To know: a fact that is true of the contract and needs nothing from the landlord.</summary>
     Info,
 
-    /// <summary>Checked, nothing to do.</summary>
     Ok,
 }
 
-/// <summary>One line of the review: a stable code (<see cref="LeaseNeedCodes"/>), how much it matters, the step to go to, and its parameters.</summary>
 public sealed record LeaseReviewCheck(string Code, LeaseReviewSeverity Severity, int Step, IReadOnlyDictionary<string, object?>? Params = null);
 
-/// <summary>What the review knows besides the flow: the other contracts of the property and the state of the template.</summary>
 public sealed record LeaseReviewFacts
 {
     /// <summary>
@@ -33,10 +25,8 @@ public sealed record LeaseReviewFacts
     /// </summary>
     public LeasePeriodConflict? PeriodConflict { get; init; }
 
-    /// <summary>The contract template of this type and regime is not approved (decision LR-D28: to know, not a block).</summary>
     public bool TemplateNotApproved { get; init; }
 
-    /// <summary>The template is approved but the draft lacks data it uses.</summary>
     public bool TemplateDataMissing { get; init; }
 }
 
@@ -71,7 +61,6 @@ public static class LeaseReview
                 step,
                 parameters.Length == 0 ? null : parameters.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal)));
 
-        // The needs of the data steps are the blocks. The same need keeps its parameters.
         var blocked = new HashSet<string>(StringComparer.Ordinal);
         for (var step = 1; step <= LeaseDraftDefaults.LastDataStep; step++)
         {
@@ -85,7 +74,6 @@ public static class LeaseReview
             }
         }
 
-        // An imported contract does not show the property facts as needs: the review says so as warnings.
         if (imported && values.PropertyId is not null && input.Facts.PropertyExists)
         {
             if (!input.Facts.HasApe)
@@ -94,7 +82,6 @@ public static class LeaseReview
                 Add(LeaseNeedCodes.CadastralMissing, LeaseReviewSeverity.Warn, 1);
         }
 
-        // 1 · the property
         if (values.PropertyId is not null && input.Facts.PropertyExists)
         {
             Add(LeaseNeedCodes.PropertyOk, LeaseReviewSeverity.Ok, 1);
@@ -106,7 +93,6 @@ public static class LeaseReview
                 Add(LeaseNeedCodes.PropertyShortMode, LeaseReviewSeverity.Warn, 1);
         }
 
-        // 2 · the parties
         if (values.Landlords.Count > 0 && values.Landlords.All(LeaseDraftRules.IsPartyComplete))
             Add(LeaseNeedCodes.LandlordsOk, LeaseReviewSeverity.Ok, 2, ("count", values.Landlords.Count));
         if (values.Tenants.Count > 0 && values.Tenants.All(LeaseDraftRules.IsPartyComplete))
@@ -135,11 +121,8 @@ public static class LeaseReview
                 Add(LeaseNeedCodes.DepositOk, LeaseReviewSeverity.Ok, 3, ("amount", deposit), ("rents", decimal.Round(deposit / rent, 1)));
         }
 
-        // 4 · start and term
         if (reading.Start is { } start && reading.End is { } end)
         {
-            // The end of the first period follows the type: it is only told once the type is one that can be created, and an end an
-            // imported contract states that is not a day, or that its type does not allow, is a block, not something that is fine.
             if (reading.Months is { } months && !blocked.Contains(LeaseNeedCodes.EndInvalid) && !blocked.Contains(LeaseNeedCodes.TermOutOfRange))
             {
                 Add(
@@ -155,7 +138,6 @@ public static class LeaseReview
                 Add(LeaseNeedCodes.StartOk, LeaseReviewSeverity.Ok, 4, ("start", start.ToString("yyyy-MM-dd")));
             }
 
-            // A contract already signed starts when it started: a start in the past is the normal case, nothing to check.
             if (start < input.Today && !imported)
                 Add(LeaseNeedCodes.StartInPast, LeaseReviewSeverity.Warn, 4, ("start", start.ToString("yyyy-MM-dd")));
             if (facts.PeriodConflict is { } conflict)
@@ -170,7 +152,6 @@ public static class LeaseReview
             }
         }
 
-        // 5 · the documents of the parties are checked by the landlord, not kept
         if (!imported)
         {
             var unverified = values.Landlords.Concat(values.Tenants)
@@ -179,7 +160,6 @@ public static class LeaseReview
                 Add(LeaseNeedCodes.DocumentsNotVerified, LeaseReviewSeverity.Info, 5, ("count", unverified));
         }
 
-        // To know
         if (values.Tenants.Any(t => LeaseDraftRules.IsPartyComplete(t)
                 && Clean(t.Citizenship) is { } citizenship && !EuMemberStates.IsEuCitizenship(citizenship)))
         {
@@ -194,14 +174,12 @@ public static class LeaseReview
                 Add(LeaseNeedCodes.TemplateDataMissing, LeaseReviewSeverity.Warn, 6);
         }
 
-        // Block, Warn, Info, Ok; inside each group the order of the steps (the sort is stable).
         return checks
             .OrderBy(c => (int)c.Severity)
             .ThenBy(c => c.Step)
             .ToList();
     }
 
-    /// <summary>True when a block is left: the review cannot be confirmed.</summary>
     public static bool HasBlock(IEnumerable<LeaseReviewCheck> checks) => checks.Any(c => c.Severity == LeaseReviewSeverity.Block);
 
     private static string? Clean(string? value) => LeaseDraftRules.Clean(value);

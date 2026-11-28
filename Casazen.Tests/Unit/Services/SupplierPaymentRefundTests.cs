@@ -1,5 +1,4 @@
 using System.Net;
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
@@ -46,8 +45,6 @@ public class SupplierPaymentRefundTests
         new StripeError { Type = "api_error" },
         "Stripe is down");
 
-    // ─── A refund in full ───
-
     [Fact]
     public async Task Refund_InFull_ReturnsEverything_AndTheCommissionWithIt_AsAskedToStripe()
     {
@@ -67,7 +64,6 @@ public class SupplierPaymentRefundTests
         Assert.Equal(ServiceRequestScenario.Instant.UtcDateTime, refund.CompletedAt);
         Assert.Equal(600, refund.ApplicationFeeRefundedCents);
 
-        // What Stripe was asked: a refund of the PaymentIntent on the supplier's account, the commission refunded, the key above.
         var request = Assert.Single(s.Gateway.RefundRequests);
         Assert.Equal(opened.IntentId, request.PaymentIntentId);
         Assert.Equal(ServiceRequestScenario.SupplierAccountId, request.ConnectedAccountId);
@@ -81,7 +77,6 @@ public class SupplierPaymentRefundTests
         var payment = await s.ReloadAsync(opened.PaymentId);
         Assert.Equal(ServicePaymentStatus.Refunded, payment.Status);
         Assert.Equal(6_000, payment.RefundedCents);
-        // The request stays paid: it was paid, and money went back.
         Assert.Equal(ServiceRequestStatus.Pagato, (await s.ReadAsync(opened.Request.Id)).Status);
     }
 
@@ -111,8 +106,6 @@ public class SupplierPaymentRefundTests
         Assert.DoesNotContain("rossi", request.IdempotencyKey, StringComparison.OrdinalIgnoreCase);
     }
 
-    // ─── A partial refund reduces the commission in proportion ───
-
     [Fact]
     public async Task Refund_Partial_ReturnsTheCommissionInProportion_AndTheOtherPartsAddUpToTheWhole()
     {
@@ -126,13 +119,12 @@ public class SupplierPaymentRefundTests
         s.Clock.Advance(TimeSpan.FromMinutes(1));
         var third = await s.Payments.RefundAsync(opened.PaymentId, null, null, Admin);
 
-        Assert.Equal(150, first.ApplicationFeeRefundedCents); // 25 % of the price, 25 % of the commission
+        Assert.Equal(150, first.ApplicationFeeRefundedCents);
         Assert.Equal(ServicePaymentStatus.PartiallyRefunded, afterFirst.Status);
         Assert.Equal(1_500, afterFirst.RefundedCents);
         var refunds = await s.RefundsOfAsync(opened.PaymentId);
         Assert.Equal([1, 2, 3], refunds.Select(r => r.Sequence).ToArray());
         Assert.Equal([1_500, 1_234, 3_266], refunds.Select(r => r.AmountCents).ToArray());
-        // 273 (cumulative 2 734 of 6 000 → 273.4) and the rest: the parts add up to the whole commission.
         Assert.Equal(150, refunds[0].ApplicationFeeRefundedCents);
         Assert.Equal(123, refunds[1].ApplicationFeeRefundedCents);
         Assert.Equal(327, refunds[2].ApplicationFeeRefundedCents);
@@ -153,8 +145,6 @@ public class SupplierPaymentRefundTests
         Assert.Equal(0, refund.ApplicationFeeRefundedCents);
         Assert.DoesNotContain(s.EmailsOf(EmailTemplates.Names.ServicePaymentRefundedSupplier), e => e.Content.HtmlBody.Contains("Insieme al rimborso", StringComparison.Ordinal));
     }
-
-    // ─── What can be refunded ───
 
     [Fact]
     public async Task Refund_MoreThanWhatIsLeft_Is422_WithTheMostThatCanBeRefunded()
@@ -251,8 +241,6 @@ public class SupplierPaymentRefundTests
         await Assert.ThrowsAsync<ArgumentException>(() => s.Payments.RefundAsync(opened.PaymentId, null, null, " "));
     }
 
-    // ─── Exactly once ───
-
     [Fact]
     public async Task Refund_StripeIsPending_TheAmountIsReserved_AndNothingIsRefundedYet()
     {
@@ -268,13 +256,12 @@ public class SupplierPaymentRefundTests
         Assert.NotNull(first.StripeRefundId);
         Assert.Null(first.CompletedAt);
         Assert.Null(first.ApplicationFeeRefundedCents);
-        // 4 000 are being refunded: 2 000 are left, not 6 000.
         Assert.Equal(ServicePaymentErrors.RefundAmountExceeds, tooMuch.Code);
         Assert.Equal(2_000, rest.AmountCents);
         var payment = await s.ReloadAsync(opened.PaymentId);
         Assert.Equal(ServicePaymentStatus.Paid, payment.Status);
         Assert.Equal(0, payment.RefundedCents);
-        Assert.Empty(s.Emails.PaymentEmails()); // nobody is told it was refunded before Stripe says so
+        Assert.Empty(s.Emails.PaymentEmails());
     }
 
     [Fact]
@@ -310,7 +297,6 @@ public class SupplierPaymentRefundTests
         Assert.Null(pending.StripeRefundId);
         Assert.Equal(ServicePaymentStatus.Paid, (await s.ReloadAsync(opened.PaymentId)).Status);
 
-        // Younger than two minutes: the request that wrote it may still be running, so the sync leaves it alone.
         var tooSoon = await s.Payments.SynchronizeAsync();
         Assert.Equal(0, tooSoon.RefundsRead);
 
@@ -344,7 +330,7 @@ public class SupplierPaymentRefundTests
         var run = await s.Payments.SynchronizeAsync();
 
         Assert.Equal(1, run.RefundsRead);
-        Assert.Single(s.Gateway.RefundRequests); // no second creation, not even with the same key
+        Assert.Single(s.Gateway.RefundRequests);
         Assert.Single(s.Gateway.Refunds);
         var row = Assert.Single(await s.RefundsOfAsync(opened.PaymentId));
         Assert.Equal(pending.Id, row.Id);
@@ -367,7 +353,6 @@ public class SupplierPaymentRefundTests
 
         Assert.Equal(1, run.Errors);
         Assert.Equal(ServicePaymentRefundStatus.Pending, Assert.Single(await s.RefundsOfAsync(opened.PaymentId)).Status);
-        // The next run goes through.
         Assert.Equal(0, (await s.Payments.SynchronizeAsync()).Errors);
         Assert.Equal(ServicePaymentRefundStatus.Succeeded, Assert.Single(await s.RefundsOfAsync(opened.PaymentId)).Status);
     }
@@ -392,13 +377,10 @@ public class SupplierPaymentRefundTests
         var payment = await s.ReloadAsync(opened.PaymentId);
         Assert.Equal(ServicePaymentStatus.PartiallyRefunded, payment.Status);
         Assert.Equal(1_000, payment.RefundedCents);
-        // Told once, when Stripe says so: a second run changes nothing and sends nothing.
         s.ForgetNotifications();
         await s.Payments.SynchronizeAsync();
         Assert.Empty(s.Emails.PaymentEmails());
     }
-
-    // ─── Who is told ───
 
     [Fact]
     public async Task Refund_ThatSucceeded_TellsThePayerAndTheSupplier_OnceEach()
@@ -411,16 +393,14 @@ public class SupplierPaymentRefundTests
         var payer = Assert.Single(s.EmailsOf(EmailTemplates.Names.ServicePaymentRefundedPayer));
         Assert.Equal("host@test.com", payer.To);
         Assert.Contains("15,00 €", payer.Content.HtmlBody);
-        Assert.DoesNotMatch(@"\d\s*%", payer.Content.HtmlBody); // the payer is never told about the commission
+        Assert.DoesNotMatch(@"\d\s*%", payer.Content.HtmlBody);
         Assert.DoesNotContain("commission", payer.Content.HtmlBody, StringComparison.OrdinalIgnoreCase);
         var supplier = Assert.Single(s.EmailsOf(EmailTemplates.Names.ServicePaymentRefundedSupplier));
         Assert.Equal("supplier@test.com", supplier.To);
         Assert.Contains("15,00 €", supplier.Content.HtmlBody);
-        Assert.Contains("1,50 €", supplier.Content.HtmlBody); // the commission that came back with the refund
+        Assert.Contains("1,50 €", supplier.Content.HtmlBody);
         Assert.Contains("saldo del tuo account Stripe", supplier.Content.HtmlBody);
     }
-
-    // ─── What Stripe tells CasaZen: charge.refunded and refund.* ───
 
     [Fact]
     public async Task ChargeRefunded_ARefundMadeOnTheStripeDashboard_IsRecordedAndTheSupplierAndPayerAreTold()
@@ -530,7 +510,6 @@ public class SupplierPaymentRefundTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         var opened = await s.OpenedAsync();
-        // The payment succeeded and was refunded on Stripe, but the success event is still waiting in the queue.
         s.Gateway.SetStatus(opened.IntentId, "succeeded");
         s.Gateway.AddExternalRefund(opened.IntentId, 6_000);
         Assert.Equal(ServicePaymentStatus.Requested, (await s.ReloadAsync(opened.PaymentId)).Status);
@@ -543,7 +522,6 @@ public class SupplierPaymentRefundTests
         Assert.Equal(ServicePaymentChannel.Stripe, payment.PaidVia);
         Assert.NotNull(payment.PaidAt);
         Assert.Equal(ServiceRequestStatus.Pagato, (await s.ReadAsync(opened.Request.Id)).Status);
-        // When the success event finally arrives it finds it all done.
         var late = await s.Payments.ApplyPaymentIntentEventAsync(opened.EventOf(Succeeded));
         Assert.Empty(late);
         Assert.Equal(ServicePaymentStatus.Refunded, (await s.ReloadAsync(opened.PaymentId)).Status);
@@ -648,7 +626,6 @@ public class SupplierPaymentRefundTests
         Assert.Equal(6_000, payment.RefundedCents);
         Assert.Equal(ServicePaymentStatus.Refunded, payment.Status);
         Assert.Contains(logger.Entries, e => e.Level == LogLevel.Error && e.Message.Contains("more than the", StringComparison.Ordinal));
-        // The commission is never given back more than once.
         Assert.Equal(600, (await s.RefundsOfAsync(opened.PaymentId)).Sum(r => r.ApplicationFeeRefundedCents));
     }
 

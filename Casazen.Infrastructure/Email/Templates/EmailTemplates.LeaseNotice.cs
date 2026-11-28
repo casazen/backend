@@ -2,7 +2,6 @@ using System.Globalization;
 
 namespace Casazen.Infrastructure.Email.Templates;
 
-/// <summary>Reminder to the landlord of the last day to give notice of a long-term lease (LR-11c-a).</summary>
 public static partial class EmailTemplates
 {
     public static partial class Names

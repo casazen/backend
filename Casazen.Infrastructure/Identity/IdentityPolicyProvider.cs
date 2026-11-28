@@ -8,32 +8,23 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Identity;
 
-/// <summary>Whether the decision policy can be used.</summary>
 public enum IdentityPolicyState
 {
-    /// <summary>The file was read, is valid and its canonical SHA-256 is the pinned one.</summary>
     Ready,
 
-    /// <summary>The policy cannot be used, for the reason code of the snapshot: every verification goes to a person.</summary>
     Unavailable,
 }
 
-/// <summary>The reasons a policy is <see cref="IdentityPolicyState.Unavailable"/> (codes only: the logs and the counters speak them).</summary>
 public static class IdentityPolicyReasonCodes
 {
-    /// <summary>There is no file at <c>IdentityVerification:PolicyFile</c>, or it cannot be read.</summary>
     public const string PolicyMissing = "policy_missing";
 
-    /// <summary>The file is not strict JSON, lacks a member, has one it should not, or a value is out of its bounds.</summary>
     public const string PolicyInvalid = "policy_invalid";
 
-    /// <summary>The canonical SHA-256 of the file is not <c>IdentityVerification:PolicySha256</c>: the file was changed after it was pinned.</summary>
     public const string PolicyHashMismatch = "policy_hash_mismatch";
 
-    /// <summary><c>IdentityVerification:PolicySha256</c> is empty: a policy that is not pinned is never used.</summary>
     public const string PolicyHashNotConfigured = "policy_hash_not_configured";
 
-    /// <summary>Every code, in this order.</summary>
     public static IReadOnlyList<string> All { get; } = [PolicyMissing, PolicyInvalid, PolicyHashMismatch, PolicyHashNotConfigured];
 }
 
@@ -53,7 +44,6 @@ public static class IdentityPolicyReasonCodes
 /// <param name="Provisional">True while the policy is provisional (never qualified) and always true when unavailable.</param>
 public sealed record IdentityPolicySnapshot(IdentityPolicyState State, string? ReasonCode, IdentityDecisionPolicy? Policy, string? Hash, bool Provisional)
 {
-    /// <summary>True when <see cref="State"/> is <see cref="IdentityPolicyState.Ready"/>: then <see cref="Policy"/> and <see cref="Hash"/> are set.</summary>
     [MemberNotNullWhen(true, nameof(Policy), nameof(Hash))]
     public bool IsReady => State == IdentityPolicyState.Ready;
 }
@@ -84,16 +74,10 @@ public sealed record IdentityPolicySnapshot(IdentityPolicyState State, string? R
 /// </summary>
 public sealed class IdentityPolicyProvider
 {
-    /// <summary>
-    /// The fewest bits of entropy a presence challenge must have, whatever the policy says (NF-192, AC-NF192-1): "more than one bit" means at least two, so a
-    /// challenge of one move out of three, or of any number of moves out of two that never repeat in a row, is refused.
-    /// </summary>
     public const double MinChallengeEntropyBits = 2.0;
 
-    /// <summary>The longest a challenge may live, in seconds (5 minutes), whatever the policy says.</summary>
     public const int MaxChallengeLifetimeSeconds = 300;
 
-    /// <summary>The largest policy file that is read, in bytes: a policy is a few kilobytes.</summary>
     private const int MaxFileBytes = 262_144;
 
     private readonly IOptions<IdentityVerificationOptions> _options;
@@ -101,13 +85,11 @@ public sealed class IdentityPolicyProvider
     private readonly string _baseDirectory;
     private readonly Lazy<IdentityPolicySnapshot> _snapshot;
 
-    /// <summary>The provider of the application: the folder of the policy file is the application folder.</summary>
     public IdentityPolicyProvider(IOptions<IdentityVerificationOptions> options, ILogger<IdentityPolicyProvider> logger)
         : this(options, logger, AppContext.BaseDirectory)
     {
     }
 
-    /// <summary>The provider with the folder a relative <c>PolicyFile</c> starts from: what the tests use.</summary>
     internal IdentityPolicyProvider(IOptions<IdentityVerificationOptions> options, ILogger<IdentityPolicyProvider> logger, string baseDirectory)
     {
         _options = options;
@@ -116,13 +98,8 @@ public sealed class IdentityPolicyProvider
         _snapshot = new Lazy<IdentityPolicySnapshot>(Load, LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
-    /// <summary>The policy, read at the first use and kept for the life of the process. Never throws.</summary>
     public IdentityPolicySnapshot Snapshot => _snapshot.Value;
 
-    /// <summary>
-    /// The canonical SHA-256 (lower case hexadecimal) of the bytes of a policy file, the value to pin in <c>IdentityVerification:PolicySha256</c> for a new
-    /// calibration; null when the bytes are not strict JSON. The same for every line ending, indentation and order of the members.
-    /// </summary>
     public static string? CanonicalSha256(ReadOnlyMemory<byte> utf8Json)
     {
         return IdentityConfigurationJson.TryCanonicalize(utf8Json, out var canonical) ? IdentityConfigurationJson.Sha256Hex(canonical) : null;
@@ -141,7 +118,6 @@ public sealed class IdentityPolicyProvider
         if (!noImmediateRepeat)
             return steps * Math.Log2(actions);
 
-        // One move that must not repeat: a single step draws it with certainty (log2(1) = 0 bits), more steps cannot be drawn at all.
         if (actions == 1)
             return 0;
 
@@ -239,7 +215,6 @@ public sealed class IdentityPolicyProvider
         if (match.ReviewFloor > match.Accept)
             failures.Add("match.reviewFloor must not be above match.accept.");
 
-        // The server chooses the frames out of the validated sequence: the shortest valid sequence must hold as many as the policy asks for.
         if (liveness.Frames > sequence.MinFrames)
             failures.Add("presence.liveness.frames must not be above presence.sequence.minFrames.");
 
@@ -258,7 +233,6 @@ public sealed class IdentityPolicyProvider
         }
         catch (Exception ex)
         {
-            // Never an exception to a caller (ADR-013-R18): whatever went wrong, the policy is unavailable and a person decides. The type only, never the message.
             _logger.LogError("The identity policy could not be loaded ({ErrorType}); every verification goes to a person", ex.GetType().Name);
             return Unavailable(IdentityPolicyReasonCodes.PolicyInvalid);
         }
@@ -291,7 +265,6 @@ public sealed class IdentityPolicyProvider
             return Unavailable(IdentityPolicyReasonCodes.PolicyMissing);
         }
 
-        // What is validated and used is the canonical text, the very text the hash covers: nothing the file says escapes the hash.
         if (!IdentityConfigurationJson.TryCanonicalize(bytes, out var canonical))
         {
             _logger.LogWarning("The identity policy is unavailable: reason={Reason} (not strict JSON)", IdentityPolicyReasonCodes.PolicyInvalid);
@@ -305,7 +278,6 @@ public sealed class IdentityPolicyProvider
         }
         catch (JsonException ex)
         {
-            // The path of the member (for example $.match.accept), never its value.
             _logger.LogWarning("The identity policy is unavailable: reason={Reason} (member {Member})", IdentityPolicyReasonCodes.PolicyInvalid, ex.Path ?? "$");
             return Unavailable(IdentityPolicyReasonCodes.PolicyInvalid);
         }
@@ -369,14 +341,12 @@ public sealed class IdentityPolicyProvider
             failures.Add(string.Create(CultureInfo.InvariantCulture, $"{name} must be between {min} and {max}."));
     }
 
-    /// <summary>A threshold, a ratio or a share that must be above 0 and at most 1.</summary>
     private static void CheckThreshold(List<string> failures, string name, double value)
     {
         if (!(value > 0 && value <= 1))
             failures.Add($"{name} must be above 0 and at most 1.");
     }
 
-    /// <summary>A share that may be 0 (none) up to 1 (all).</summary>
     private static void CheckShare(List<string> failures, string name, double value)
     {
         if (!(value >= 0 && value <= 1))
@@ -389,7 +359,6 @@ public sealed class IdentityPolicyProvider
             failures.Add($"{name} must be above 0 and at most 90.");
     }
 
-    /// <summary>A difference of pixels in grey levels of an 8-bit picture: above 0 and at most 255.</summary>
     private static void CheckGreyLevels(List<string> failures, string name, double value)
     {
         if (!(value > 0 && value <= 255))
@@ -411,7 +380,6 @@ public sealed class IdentityPolicyProvider
             failures.Add($"{name} must not repeat a value.");
     }
 
-    /// <summary>A name of a field of a document: a lower case letter, then letters and digits, at most 40 characters.</summary>
     private static bool IsMemberName(string value)
     {
         return value.Length is > 0 and <= 40 && char.IsAsciiLetterLower(value[0]) && value.All(char.IsAsciiLetterOrDigit);

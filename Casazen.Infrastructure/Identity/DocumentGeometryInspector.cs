@@ -64,15 +64,8 @@ namespace Casazen.Infrastructure.Identity;
 /// </summary>
 public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptions<BiometricModelOptions> options)
 {
-    /// <summary>The largest value of <c>|gx| + |gy|</c> of the Sobel gradient of a picture of 8 bits (4 * 255 on each axis): a bound of the arithmetic, not a rule.</summary>
     private const int MaxGradient = 2040;
 
-    /// <summary>
-    /// Inspects <paramref name="image"/>, a picture of the identity document of <paramref name="format"/> sent as <paramref name="declaredSide"/>. The numbers of the format
-    /// are read from <see cref="DocumentFormat.Layout"/>; <paramref name="declaredSide"/> says which side's portrait (<c>document_portrait_missing</c>) and MRZ band (the
-    /// rotation of a back) are asked for. Throws <see cref="BiometricUnavailableException"/> when the face models are not available (see the class). The report of a card that is not
-    /// held straight owns a copy of the levelled card: its owner disposes the report (<see cref="DocumentGeometryReport.Dispose"/>).
-    /// </summary>
     public DocumentGeometryReport Inspect(RasterImage image, DocumentFormat format, DocumentSide declaredSide, CancellationToken cancellationToken) =>
         Inspect(image, format, declaredSide, lookForPortrait: true, cancellationToken);
 
@@ -102,8 +95,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        // The gray copy the card was found in: the one that lies as the picture does, or the one levelled by the turn of the card. The box is in the picture as it lies; the size and the
-        // area are the ones of the card (the box of a turned card is larger than it).
         var tilt = finding.TiltDegrees;
         var seen = finding.Levelled ?? gray;
         NormalizedBox box;
@@ -147,7 +138,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
                 cancellationToken.ThrowIfCancellationRequested();
                 var tall = cardHeight > cardWidth;
 
-                // A card turned by more than the fine step is read on the card levelled, not on the box cut out of the picture: the zones of the format are fractions of a card that lies straight.
                 if (Math.Abs(tilt) > DocumentGeometryRules.TiltRoundingStepDegrees)
                     levelCard = DocumentTilt.LevelCard(image, seen.Width, seen.Height, tilt, card.Left, card.Top, card.Right, card.Bottom);
 
@@ -183,7 +173,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
                 true, box, edgesVisible, ratio, aspectOk, orientation.Rotation, orientation.PortraitInZone, glare, blur, QualityCodes(codes, glare, blur),
                 DocumentGeometryRules.Version, tilt, rectified);
 
-            // The levelled card now belongs to the report (it is the rectified card itself when the card lies upright, else the rectified card is its turned copy and this one goes).
             if (ReferenceEquals(levelCard, rectified))
                 levelCard = null;
 
@@ -197,29 +186,19 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         }
     }
 
-    /// <summary>The card as the rectangle found makes it: its sides in pixels of the gray copy, and which of them are lines of the picture (the others are the border of the picture).</summary>
     private sealed record CardRectangle(int Left, int Top, int Right, int Bottom, bool LeftSeen, bool TopSeen, bool RightSeen, bool BottomSeen)
     {
-        /// <summary>How many sides are lines of the picture (4: the card is whole).</summary>
         public int SeenSides => (LeftSeen ? 1 : 0) + (TopSeen ? 1 : 0) + (RightSeen ? 1 : 0) + (BottomSeen ? 1 : 0);
 
-        /// <summary>The first column of the card (the border of the picture when the left side runs out of it).</summary>
         public int LeftEdge => LeftSeen ? Left : 0;
 
-        /// <summary>The first row of the card.</summary>
         public int TopEdge => TopSeen ? Top : 0;
 
-        /// <summary>The last column of the card in a picture of <paramref name="width"/> pixels.</summary>
         public int RightEdge(int width) => RightSeen ? Right : width - 1;
 
-        /// <summary>The last row of the card in a picture of <paramref name="height"/> pixels.</summary>
         public int BottomEdge(int height) => BottomSeen ? Bottom : height - 1;
     }
 
-    /// <summary>
-    /// The card found in a picture, and the picture it was found in: the rectangle (null when no card was found), the turn of the card in degrees clockwise (0 for a card found as the picture lies)
-    /// and, for a card that was turned, the gray copy levelled by that turn, in which the rectangle is. The levelled copy is zeroed by <see cref="Dispose"/>.
-    /// </summary>
     private sealed class CardFinding(CardRectangle? card, double tiltDegrees, GrayBitmap? levelled) : IDisposable
     {
         public CardRectangle? Card { get; } = card;
@@ -231,16 +210,10 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         public void Dispose() => Levelled?.Dispose();
     }
 
-    /// <summary>
-    /// What decides which rectangle is the card: the plausible ones first, then the one with the most sides that are lines of the picture, then the one whose turn is within
-    /// <see cref="DocumentGeometryRules.MaxTiltDegrees"/>, then the one of the ratio, then the largest.
-    /// </summary>
     private readonly record struct Rank(bool Plausible, int SeenSides, bool WithinLimit, bool AspectMatch, long Area);
 
-    /// <summary>The turn of a card, whether it could be decided, and where the portrait is (see <see cref="ResolveOrientation"/>).</summary>
     private sealed record Orientation(int Rotation, bool Decided, bool? PortraitInZone, bool PortraitFarOutside);
 
-    /// <summary>A face found in the card upright: the turn at which it was found and its box, as shares of the upright card.</summary>
     private sealed record PortraitEvidence(int ExifOrientation, double CenterX, double CenterY, double Left, double Top, double Right, double Bottom);
 
     private static NormalizedBox ToBox(CardRectangle card, int width, int height)
@@ -252,10 +225,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         return new NormalizedBox((double)left / width, (double)top / height, (double)(right - left) / width, (double)(bottom - top) / height);
     }
 
-    /// <summary>
-    /// The box, in the picture as it lies, of the four corners of a card found in the gray copy levelled by <paramref name="degrees"/> (the corners are the lines of its four sides), cut to
-    /// the picture, and whether every corner keeps <paramref name="marginMin"/> of the picture from every border: a corner that leaves the picture is a card cut by the frame.
-    /// </summary>
     private static (NormalizedBox Box, bool MarginsKept) BoxOfTurnedCard(CardRectangle card, double degrees, int width, int height, double marginMin)
     {
         double minX = double.MaxValue;
@@ -290,7 +259,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
     private static (double Glare, double Blur) Quality(GrayBitmap region) =>
         (MrzImageLocator.SaturatedShare(region), MrzImageLocator.BlurRatio(region));
 
-    /// <summary>The codes of the card, then the ones of the glare and the blur against the limits of the capture checks.</summary>
     private static IReadOnlyList<string> QualityCodes(IEnumerable<string> codes, double glare, double blur)
     {
         var all = codes.ToList();
@@ -324,7 +292,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         var baseRotation = tall ? 90 : 0;
         var zone = PortraitZone(format);
 
-        // Without the permission to look for a face the detector is not asked: no evidence, and the portrait is not judged (null, never «missing»).
         var evidence = zone is null || !lookForPortrait ? null : FindPortrait(image, levelCard, box, tall, cancellationToken);
         format.Layout.Sides.TryGetValue(DocumentSides.CodeOf(declaredSide), out var declaredLayout);
 
@@ -352,10 +319,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         return new Orientation(cueRotation, cueDecided, zone is null || !lookForPortrait ? null : false, false);
     }
 
-    /// <summary>
-    /// Where the portrait is, from the face found on the card (null when none): <c>(null, false)</c> when no side of the format has a portrait zone or the face was found only
-    /// sideways (not judged), <c>(false, false)</c> with no face, else whether the centre of the face is in the zone and whether the face is far outside it (no area in common).
-    /// </summary>
     private static (bool? InZone, bool FarOutside) JudgePortrait((string Side, DocumentFormatRegion Region)? zone, PortraitEvidence? evidence)
     {
         if (zone is not { } portraitZone)
@@ -371,10 +334,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         return (inZone, !inZone && !Overlaps(portraitZone.Region, evidence));
     }
 
-    /// <summary>
-    /// The face of the card, looked for with <see cref="DocumentPortrait.FindOriented"/> in the card cut out of the picture (or the card levelled, when it was turned), brought within the
-    /// input of the detector and made landscape; null when there is none. The copies are zeroed.
-    /// </summary>
     private PortraitEvidence? FindPortrait(RasterImage image, RasterImage? levelCard, NormalizedBox box, bool tall, CancellationToken cancellationToken)
     {
         var settings = options.Value;
@@ -396,7 +355,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         }
     }
 
-    /// <summary>The card cut out of <paramref name="image"/> and shrunk, when it is larger, to <paramref name="longestSide"/> pixels (what the detector scales to anyway).</summary>
     private static RasterImage CropCard(RasterImage image, NormalizedBox box, int longestSide)
     {
         var left = (int)Math.Round(box.X * image.Width);
@@ -419,7 +377,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         }
     }
 
-    /// <summary>A copy of the levelled card <paramref name="card"/>, shrunk, when it is larger, to <paramref name="longestSide"/> pixels: the card itself stays with its owner.</summary>
     private static RasterImage ShrunkCopy(RasterImage card, int longestSide)
     {
         var longest = Math.Max(card.Width, card.Height);
@@ -430,11 +387,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         return card.Resized(Math.Max(1, (int)Math.Round(card.Width * scale)), Math.Max(1, (int)Math.Round(card.Height * scale)));
     }
 
-    /// <summary>
-    /// The turn the MRZ band tells: the band is the densest text of the card, so the card is upright when the band has more edges than the region opposite to it (the
-    /// band turned by 180 degrees), and upside down when it has fewer. Equal (or no band to look at) is no evidence: a landscape card is taken as upright, a tall one is
-    /// not decided.
-    /// </summary>
     private static (int Rotation, bool Decided) MrzBandTurn(GrayBitmap? cardGray, bool tall, DocumentFormatRegion? mrz)
     {
         var baseRotation = tall ? 90 : 0;
@@ -451,7 +403,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         return (baseRotation, expected > opposite || !tall);
     }
 
-    /// <summary>The mean of the differences between neighbouring pixels (horizontal and vertical) in a region of the card, 0 to 510: how much text and structure the region has.</summary>
     private static double RegionEdges(GrayBitmap card, DocumentFormatRegion region)
     {
         var width = card.Width;
@@ -474,7 +425,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         return count == 0 ? 0 : (double)sum / count;
     }
 
-    /// <summary>The side of the format that has the portrait and its zone on the canonical card; null when no side of the format has one.</summary>
     private static (string Side, DocumentFormatRegion Region)? PortraitZone(DocumentFormat format)
     {
         foreach (var (side, sideLayout) in format.Layout.Sides)
@@ -489,15 +439,9 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
     private static bool Contains(DocumentFormatRegion zone, double x, double y) =>
         x >= zone.X && x <= zone.X + zone.W && y >= zone.Y && y <= zone.Y + zone.H;
 
-    /// <summary>The box of the face and the zone share some area: a face that does not is far from the zone (the layout is not the one of the format).</summary>
     private static bool Overlaps(DocumentFormatRegion zone, PortraitEvidence face) =>
         face.Left < zone.X + zone.W && face.Right > zone.X && face.Top < zone.Y + zone.H && face.Bottom > zone.Y;
 
-    /// <summary>
-    /// The card of the gray copy, as it lies or levelled by the turn it has, and the copy it was found in. The card as the picture lies comes first (the common case: its edges are the rows
-    /// and the columns, and nothing more is done); when that has no whole card of the ratio of the format, the angle of the card is looked for (<see cref="FindTurnedCard"/>) and a whole card
-    /// found at an angle replaces what was found as the picture lies, when it is better (see <see cref="Rank"/>). Every buffer made from the picture is zeroed.
-    /// </summary>
     private static CardFinding FindCard(GrayBitmap gray, DocumentFormatLayout layout, CancellationToken cancellationToken)
     {
         using var edges = ComputeEdges(gray, cancellationToken);
@@ -512,7 +456,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         return turned ?? new CardFinding(straight, 0, null);
     }
 
-    /// <summary>A card as the picture lies is supported when it is whole (all four sides are lines of the picture), plausible (it covers what the format asks) and of the ratio of the format.</summary>
     private static bool IsSupported(CardRectangle? card, GrayBitmap gray, DocumentFormatLayout layout)
     {
         if (card is null || card.SeenSides != 4)
@@ -522,12 +465,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         return rank.Plausible && rank.AspectMatch;
     }
 
-    /// <summary>
-    /// The card of a picture whose card is not held straight: the likeliest angles of the edges (<see cref="DocumentTilt.Angles"/>) are tried one after the other, the picture is
-    /// levelled by each and the card is looked for in it; the best whole card wins (see <see cref="Rank"/>), and the search stops at the first that is plausible, of the ratio and within
-    /// <see cref="DocumentGeometryRules.MaxTiltDegrees"/>. Null when none is whole, or when <paramref name="straight"/>, what was found as the picture lies, is as good. The finding owns its
-    /// levelled copy; the copies of the angles that lost are zeroed here.
-    /// </summary>
     private static CardFinding? FindTurnedCard(
         GrayBitmap gray, DocumentEdgeMaps edges, DocumentFormatLayout layout, CardRectangle? straight, CancellationToken cancellationToken)
     {
@@ -541,7 +478,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // An angle that is no turn at all is the picture as it lies, which was read already.
                 if (Math.Abs(angle) < DocumentGeometryRules.TiltRoundingStepDegrees / 2)
                     continue;
 
@@ -581,10 +517,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         }
     }
 
-    /// <summary>
-    /// The whole card of the gray copy levelled by <paramref name="degrees"/> (an angle of the search), or null when the levelled copy has none: all four sides must be lines of the picture. The
-    /// levelled copy of a card that was found is the finding's; every other one is zeroed here.
-    /// </summary>
     private static CardFinding? LevelAndFind(GrayBitmap gray, double degrees, DocumentFormatLayout layout, CancellationToken cancellationToken)
     {
         GrayBitmap? levelled = null;
@@ -611,10 +543,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         }
     }
 
-    /// <summary>
-    /// The edges of the gray copy: the Sobel gradient, which pixels are strong edges of a mostly horizontal and of a mostly vertical line, and the edge pixels of every row and column. Null when the
-    /// picture is too small to hold a card. The caller zeroes the maps (<see cref="DocumentEdgeMaps.Dispose"/>).
-    /// </summary>
     private static DocumentEdgeMaps? ComputeEdges(GrayBitmap gray, CancellationToken cancellationToken)
     {
         var width = gray.Width;
@@ -669,10 +597,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         }
     }
 
-    /// <summary>
-    /// The card of the edges of a gray copy, or null when the picture has none: the largest rectangle bounded by rows and columns where a long straight edge is (see the class), with the
-    /// border of the picture for a side that runs out of the frame. Every buffer made here is zeroed; the maps are the caller's.
-    /// </summary>
     private static CardRectangle? FindCard(DocumentEdgeMaps edges, DocumentFormatLayout layout, CancellationToken cancellationToken)
     {
         var width = edges.Width;
@@ -683,8 +607,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // A card smaller than the format asks for is still a card (its edges are not visible: it is too small, not missing), so the shortest side looked for is a share of
-            // the picture, not of the area of the format; a line shorter than the support asked of such a side cannot be one.
             var smallest = (double)Math.Min(width, height) / DocumentGeometryRules.SmallestCardSideDivisor;
             var minLine = DocumentGeometryRules.SideSupportMin * smallest;
             var rows = LinePositions(edges.RowEdges, minLine);
@@ -713,10 +635,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
             Array.Clear(array);
     }
 
-    /// <summary>
-    /// The Sobel gradient of the interior of the picture into <paramref name="gradientX"/> and <paramref name="gradientY"/> (the border row and column stay 0), and the value
-    /// of <c>|gx| + |gy|</c> from which a pixel is an edge: the larger of <see cref="DocumentGeometryRules.EdgeFloor"/> and <see cref="DocumentGeometryRules.EdgeRelative"/> of the 99th percentile of the picture.
-    /// </summary>
     private static int Gradients(GrayBitmap gray, short[] gradientX, short[] gradientY)
     {
         var width = gray.Width;
@@ -797,10 +715,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
             .ToList();
     }
 
-    /// <summary>
-    /// For every row, the running count of its edge pixels: <c>prefix[y * (width + 1) + x + 1]</c> is the count in the columns 0 to x of row y, so the edge pixels of a stretch
-    /// of a row are a difference of two entries.
-    /// </summary>
     private static int[] RowPrefix(byte[] edges, int width, int height)
     {
         var prefix = new int[height * (width + 1)];
@@ -814,7 +728,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         return prefix;
     }
 
-    /// <summary>The same for the columns: <c>prefix[x * (height + 1) + y + 1]</c> is the count of the edge pixels in the rows 0 to y of column x.</summary>
     private static int[] ColumnPrefix(byte[] edges, int width, int height)
     {
         var prefix = new int[width * (height + 1)];
@@ -828,10 +741,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         return prefix;
     }
 
-    /// <summary>
-    /// The share of columns <paramref name="from"/> to <paramref name="to"/> that are edge pixels in the row that has the most of them within <see cref="DocumentGeometryRules.BandRadius"/> of the row
-    /// <paramref name="y"/>: how much of a straight horizontal edge the row has there.
-    /// </summary>
     private static double RowSupport(int[] rowPrefix, int width, int height, int y, int from, int to)
     {
         var best = 0;
@@ -841,7 +750,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         return (double)best / (to - from + 1);
     }
 
-    /// <summary>The share of rows <paramref name="from"/> to <paramref name="to"/> that are edge pixels in the column that has the most of them within <see cref="DocumentGeometryRules.BandRadius"/> of the column <paramref name="x"/>.</summary>
     private static double ColumnSupport(int[] columnPrefix, int width, int height, int x, int from, int to)
     {
         var best = 0;
@@ -909,7 +817,6 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         return best;
     }
 
-    /// <summary>The rank of a rectangle in a gray copy of <paramref name="width"/> by <paramref name="height"/> pixels: whether it covers what the format asks, how many sides are lines of the picture, whether its ratio is the format's, how large it is.</summary>
     private static Rank RankOf(CardRectangle card, int width, int height, DocumentFormatLayout layout, bool withinLimit)
     {
         var across = card.Right - card.Left;

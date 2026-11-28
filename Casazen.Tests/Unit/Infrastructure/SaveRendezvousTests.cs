@@ -21,7 +21,6 @@ public class SaveRendezvousTests
     [Fact]
     public void HoldParallelSaves_RegistersTheMarkerThatSkipsAdvisoryLocksAcrossTheBarrier()
     {
-        // Take always holds the calendar lock across SaveChanges; without this marker the first party deadlocks the second.
         Assert.True(typeof(IParallelSaveRendezvousInterceptor).IsAssignableFrom(typeof(SaveRendezvous)));
     }
 
@@ -42,7 +41,7 @@ public class SaveRendezvousTests
 
         var firstSave = firstDb.SaveChangesAsync();
         await Task.Delay(TimeSpan.FromMilliseconds(250));
-        Assert.False(firstSave.IsCompleted); // alone, it waits for the other one
+        Assert.False(firstSave.IsCompleted);
         Assert.Equal(1, rendezvous.Arrived);
 
         var secondSave = secondDb.SaveChangesAsync();
@@ -56,7 +55,6 @@ public class SaveRendezvousTests
     {
         var services = NewServices();
         var built = new ConcurrentBag<SaveRendezvous>();
-        // What the five parallel-transition tests did: the rendezvous is made where the options are built, which happens for every scope.
         services.ConfigureDbContext<AppDbContext>(options =>
         {
             var rendezvous = new SaveRendezvous(parties: 2, ShortTimeout);
@@ -75,7 +73,6 @@ public class SaveRendezvousTests
 
         var failures = await Task.WhenAll(FailureOf(firstDb.SaveChangesAsync()), FailureOf(secondDb.SaveChangesAsync()));
 
-        // Each save waited alone for a second party that was in another object, and the time ran out: the API answers that with 500.
         Assert.All(failures, failure =>
         {
             var timeout = Assert.IsType<TimeoutException>(failure);
@@ -93,14 +90,13 @@ public class SaveRendezvousTests
         var rendezvous = SaveRendezvous.HoldParallelSaves(services, parties: 2, ShortTimeout);
         await using var provider = services.BuildServiceProvider();
 
-        await SeedRequestAsync(provider); // would fail with a TimeoutException after half a second if it were held
+        await SeedRequestAsync(provider);
 
         Assert.Equal(0, rendezvous.Arrived);
     }
 
     private static ServiceCollection NewServices()
     {
-        // The name is made once: the lambda below runs for every scope, and each scope must see the same database.
         var databaseName = $"save-rendezvous-{Guid.NewGuid()}";
         var services = new ServiceCollection();
         services.AddDbContext<AppDbContext>(options => options.UseInMemoryDatabase(databaseName));

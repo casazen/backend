@@ -20,12 +20,10 @@ public static class TimeTrigger
     public const string AfterCheckOut = "AfterCheckOut";
     public const string Weekly = "Weekly";
 
-    /// <summary>The largest offset taken, one year in hours: a longer one is a mistake in the routine, not a trigger.</summary>
     public const int MaxOffsetHours = ScheduledMessagePlanner.MaxOffsetHours;
 
     private static readonly JsonSerializerOptions ReadOptions = new() { PropertyNameCaseInsensitive = true };
 
-    /// <summary>The kind the emitter writes for each routine event type of a stay.</summary>
     public static IReadOnlyDictionary<RoutineEventType, string> StayKinds { get; } = new Dictionary<RoutineEventType, string>
     {
         [RoutineEventType.BeforeCheckin] = BeforeCheckIn,
@@ -34,19 +32,10 @@ public static class TimeTrigger
         [RoutineEventType.AfterCheckout] = AfterCheckOut,
     };
 
-    /// <summary>True for the kinds due before their date (the offset is subtracted).</summary>
     public static bool IsBefore(string kind) => kind is BeforeCheckIn or BeforeCheckOut;
 
-    /// <summary>True for the kinds counted from the check-in date, false for those counted from the check-out date.</summary>
     public static bool IsCheckIn(string kind) => kind is BeforeCheckIn or AfterCheckIn;
 
-    /// <summary>
-    /// The offset a routine asks for, in whole hours: <c>days * 24 + hours</c> of its <c>EventConfig</c>
-    /// (<c>{ "days": N, "hours": N }</c>, the shape the routine editor writes; a missing member counts 0, the names are read in any
-    /// case), so <c>{ "days": 2 }</c> and <c>{ "hours": 48 }</c> are the same offset. <c>null</c> when the configuration is not
-    /// that: not JSON, not an object, a member that is not a whole number of zero or more, or more than
-    /// <see cref="MaxOffsetHours"/> in all.
-    /// </summary>
     public static int? OffsetHours(string? eventConfig) => ScheduledMessagePlanner.OffsetHours(eventConfig);
 
     /// <summary>
@@ -57,9 +46,6 @@ public static class TimeTrigger
     public static string DedupKey(string kind, int offsetHours, Guid entityId, DateTime dueAtUtc) =>
         string.Create(CultureInfo.InvariantCulture, $"{kind}:{offsetHours}:{entityId:D}:{dueAtUtc:yyyy-MM-dd'T'HH}Z");
 
-    /// <summary>
-    /// Reads the payload of a time trigger (names in any case). False when it is not one: not JSON, no kind, a negative offset.
-    /// </summary>
     public static bool TryReadPayload(string? payloadJson, [NotNullWhen(true)] out TimeTriggerPayload? payload)
     {
         payload = null;
@@ -85,10 +71,6 @@ public static class TimeTrigger
     }
 }
 
-/// <summary>
-/// The payload of a <see cref="DomainEventType.TimeTrigger"/> event: ids and the trigger, no personal data (ADR-022-R21).
-/// <see cref="Offset"/> is in whole hours, compared with the routine's <c>EventConfig</c> by <see cref="TimeTrigger.OffsetHours"/>.
-/// </summary>
 public sealed record TimeTriggerPayload(
     [property: JsonPropertyName("kind")] string Kind,
     [property: JsonPropertyName("offset")] int Offset,
